@@ -1,25 +1,21 @@
 // Formatting + small pure helpers shared by the branch views and charts.
 // Colocated here (not lib/) since lib/api.ts is outside this worker's
 // write set — see the task's strict write-set note.
+//
+// fmtUsd/fmtPct used to be reimplemented here with a DIFFERENT unit contract
+// than shared/format.ts (this file's old fmtPct took a pre-scaled percent;
+// shared's takes a fraction) — a silent-100x-bug trap. Consolidated: import
+// fmtUsd/fmtPct from shared/format.ts everywhere. Engine sim stats
+// (cagrPct, maxDrawdownPct, vsBtcPct, vsUsdcPct) are pre-scaled percents, so
+// call sites divide by 100 before passing them to shared's fmtPct.
 import type { Allocation, BranchConfig } from '../../../shared/types'
 import type { EquityPoint } from './types'
 
-const MINUS = '−'
-
 export const STABLE_COINS = new Set(['USDC', 'USDT'])
-
-export function fmtUsd(value: number): string {
-  return `$${Math.round(value).toLocaleString('en-US')}`
-}
 
 export function fmtUsdCompact(value: number): string {
   const sign = value < 0 ? '-' : ''
   return `${sign}$${new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Math.abs(value))}`
-}
-
-export function fmtPct(value: number, digits = 1): string {
-  const sign = value >= 0 ? '+' : MINUS
-  return `${sign}${Math.abs(value).toFixed(digits)}%`
 }
 
 export function signClass(value: number): string {

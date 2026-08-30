@@ -27,6 +27,10 @@ export function fmtUsd(
   return body;
 }
 
+// Unit contract: `n` is a FRACTION (0.021 -> "2.10%"), not a pre-scaled
+// percent. Hyperliquid fields (funding, dayChange) are fractions already, so
+// this is the natural fit there. Engine sim stats (cagrPct, vsBtcPct, …) are
+// pre-scaled percents instead — divide by 100 before calling this.
 export function fmtPct(
   n: number,
   opts: { decimals?: number; sign?: boolean } = {},
@@ -40,11 +44,6 @@ export function fmtPct(
   return body;
 }
 
-export function fmtLev(n: number): string {
-  if (!isFinite(n) || n <= 0) return "0×";
-  return `${n.toFixed(n < 10 ? 2 : 1)}×`;
-}
-
 export function fmtPrice(n: number, decimals?: number): string {
   if (!isFinite(n)) return "--";
   const d = decimals ?? (n >= 1000 ? 2 : n >= 1 ? 3 : 5);
@@ -52,26 +51,6 @@ export function fmtPrice(n: number, decimals?: number): string {
     minimumFractionDigits: d,
     maximumFractionDigits: d,
   });
-}
-
-export function fmtSize(n: number, decimals = 4): string {
-  if (!isFinite(n)) return "--";
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: decimals,
-  });
-}
-
-export function fmtDuration(ms: number): string {
-  if (!isFinite(ms) || ms <= 0) return "0m";
-  const sec = Math.floor(ms / 1000);
-  const min = Math.floor(sec / 60);
-  const hr = Math.floor(min / 60);
-  const day = Math.floor(hr / 24);
-  if (day >= 1) return `${day}d ${hr % 24}h`;
-  if (hr >= 1) return `${hr}h ${min % 60}m`;
-  if (min >= 1) return `${min}m`;
-  return `${sec}s`;
 }
 
 export function fmtDate(ms: number): string {
@@ -96,12 +75,6 @@ export function fmtDateTime(ms: number): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-export function colorForPnl(n: number): string {
-  if (n > 0) return "var(--green)";
-  if (n < 0) return "var(--red)";
-  return "var(--text-secondary)";
 }
 
 export function classForPnl(n: number): string {

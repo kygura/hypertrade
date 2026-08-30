@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Panel, AnimatedDigits, Button, CandleChart, type Candle, type CandleTf } from '../components'
-import { SkeletonRows, ErrorBlock } from '../components/state'
+import { SkeletonRows, ErrorBlock, OfflineBlock, StaleBanner, AgeStamp } from '../components/state'
 import { useApi } from '../lib/api'
 import { fmtPrice, fmtPct, classForPnl, fmtUsd } from '../../shared/format'
 import type { MarketRow } from './Markets'
+
+const STALE_MIN = 5
 
 // Markets drill-in — DESIGN.md §10.7. Full view (not an overlay), route
 // /markets/:coin — back-button friendly, linkable. Header pulls from the
@@ -28,13 +30,14 @@ export function MarketDrill() {
   const navigate = useNavigate()
   const [tf, setTf] = useState<CandleTf>('1D')
 
-  const { data: markets } = useApi<MarketRow[]>('/hl/markets')
-  const row = markets?.find((r) => r.coin === coin)
+  const { data: marketsData } = useApi<{ fetchedAt: string; markets: MarketRow[] }>('/hl/markets')
+  const row = marketsData?.markets.find((r) => r.coin === coin)
 
   const {
     data: rawCandles,
     loading,
     error,
+    offline,
     refetch,
   } = useApi<RawCandle[]>(coin ? `/candles/${coin}?tf=${TF_TO_QUERY[tf]}` : null)
 
@@ -50,6 +53,7 @@ export function MarketDrill() {
       </Button>
 
       <Panel>
+        {marketsData && <StaleBanner generatedAt={marketsData.fetchedAt} thresholdHours={STALE_MIN / 60} noun="snapshot" />}
         <div className="flex flex-wrap items-baseline gap-3 px-3 py-3 border-b border-border">
           <span className="text-[16px] uppercase text-text-secondary">{coin}</span>
           {row ? (
@@ -62,6 +66,9 @@ export function MarketDrill() {
           ) : (
             <span className="text-[13px] text-text-secondary">--</span>
           )}
+          {marketsData && (
+            <AgeStamp generatedAt={marketsData.fetchedAt} thresholdHours={STALE_MIN / 60} />
+          )}
         </div>
         {row && (
           <div className="px-3 py-2 text-[11px] text-text-secondary tabular">
@@ -72,7 +79,9 @@ export function MarketDrill() {
       </Panel>
 
       <Panel>
-        {error && candles.length === 0 ? (
+        {offline && candles.length === 0 ? (
+          <OfflineBlock onRetry={refetch} />
+        ) : error && candles.length === 0 ? (
           <ErrorBlock message={error} onRetry={refetch} />
         ) : loading && candles.length === 0 ? (
           <div className="flex flex-col gap-2">

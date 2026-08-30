@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Panel, PanelHeader, PanelBody, SrcTag, DataTable, type Column } from '../components'
-import { SkeletonRows, EmptyBlock, ErrorBlock, StaleBanner } from '../components/state'
+import { SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock, StaleBanner } from '../components/state'
 import { useApi } from '../lib/api'
 import { fmtPrice, fmtPct, classForPnl, fmtUsd } from '../../shared/format'
 
@@ -24,11 +24,16 @@ export interface MarketRow {
 
 const FUNDING_CROWDED = 0.001 // |funding| >= 0.1%/8h
 
+interface MarketsResponse {
+  fetchedAt: string
+  markets: MarketRow[]
+}
+
 export function Markets() {
   const navigate = useNavigate()
-  const { data, loading, error, refetch } = useApi<MarketRow[]>('/hl/markets')
+  const { data, loading, error, offline, refetch } = useApi<MarketsResponse>('/hl/markets')
+  const markets = data?.markets ?? null
   const [filter, setFilter] = useState('')
-  const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null)
 
   const prevPx = useRef<Map<string, number>>(new Map())
   const [flash, setFlash] = useState<Map<string, 'up' | 'down'>>(new Map())
@@ -39,10 +44,9 @@ export function Markets() {
   }, [refetch])
 
   useEffect(() => {
-    if (!data) return
-    setLastFetchedAt(Date.now())
+    if (!markets) return
     const next = new Map<string, 'up' | 'down'>()
-    for (const row of data) {
+    for (const row of markets) {
       const prev = prevPx.current.get(row.coin)
       if (prev != null && prev !== row.markPx) next.set(row.coin, row.markPx > prev ? 'up' : 'down')
       prevPx.current.set(row.coin, row.markPx)
@@ -52,13 +56,13 @@ export function Markets() {
       const t = setTimeout(() => setFlash(new Map()), 220)
       return () => clearTimeout(t)
     }
-  }, [data])
+  }, [markets])
 
   const filtered = useMemo(() => {
     const q = filter.trim().toUpperCase()
-    if (!q) return data ?? []
-    return (data ?? []).filter((r) => r.coin.includes(q))
-  }, [data, filter])
+    if (!q) return markets ?? []
+    return (markets ?? []).filter((r) => r.coin.includes(q))
+  }, [markets, filter])
 
   const columns: Column<MarketRow>[] = [
     { key: 'coin', label: 'COIN', priority: 1, sortValue: (r) => r.coin, render: (r) => r.coin },
@@ -121,7 +125,7 @@ export function Markets() {
       <Panel>
         <PanelHeader title="MARKETS">
           <SrcTag source="hl" />
-          <span className="text-[10px] text-text-secondary tabular">{data ? `${filtered.length} PERPS` : ''}</span>
+          <span className="text-[10px] text-text-secondary tabular">{markets ? `${filtered.length} PERPS` : ''}</span>
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
@@ -130,11 +134,11 @@ export function Markets() {
           />
         </PanelHeader>
         <PanelBody>
-          {lastFetchedAt && (
-            <StaleBanner generatedAt={new Date(lastFetchedAt).toISOString()} thresholdHours={STALE_MIN / 60} noun="snapshot" />
-          )}
+          {data && <StaleBanner generatedAt={data.fetchedAt} thresholdHours={STALE_MIN / 60} noun="snapshot" />}
           {loading && !data ? (
             <SkeletonRows rows={5} />
+          ) : offline ? (
+            <OfflineBlock onRetry={refetch} />
           ) : error ? (
             <ErrorBlock message={error} onRetry={refetch} />
           ) : filtered.length === 0 ? (

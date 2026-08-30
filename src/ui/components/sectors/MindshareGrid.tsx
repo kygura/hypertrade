@@ -5,7 +5,23 @@ import { MomentumBadge } from '../MomentumBadge'
 // mindshare_score, cell BACKGROUND from the momentum ramp (§2 tokens).
 // Deliberately not a treemap — see DESIGN.md's rationale for the decision.
 
-export type EnrichedSector = Sector & { oi_usd_total: number; avg_funding: number; names_matched: number }
+// Per-matched-token row from GET /api/sectors enrichment (DESIGN.md §10.5
+// drill-in table): TOKEN/PRICE/24H%/OI/FUNDING, mirrors
+// src/server/routes/sectors.ts's SectorTokenRow.
+export interface SectorTokenRow {
+  coin: string
+  markPx: number
+  dayChangePct: number
+  openInterestUsd: number
+  funding: number
+}
+
+export type EnrichedSector = Sector & {
+  oi_usd_total: number
+  avg_funding: number
+  names_matched: number
+  tokenRows: SectorTokenRow[]
+}
 
 type Tier = 'lg' | 'md' | 'sm'
 

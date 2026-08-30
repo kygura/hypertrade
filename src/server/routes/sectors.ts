@@ -14,9 +14,18 @@ async function getCtxs(): Promise<AssetCtx[]> {
   return ctxs;
 }
 
+export interface SectorTokenRow {
+  coin: string;
+  markPx: number;
+  dayChangePct: number;
+  openInterestUsd: number;
+  funding: number;
+}
+
 /**
- * Per-sector OI/funding aggregate over its constituent tokens. Tokens not
- * listed on Hyperliquid (or not found in the current universe) are skipped
+ * Per-sector OI/funding aggregate over its constituent tokens, plus a
+ * per-matched-token row (DESIGN.md §10.5 drill-in table). Tokens not listed
+ * on Hyperliquid (or not found in the current universe) are skipped
  * silently — the sector still renders, just without that token's weight.
  */
 export function enrichSector(tokens: string[], ctxs: AssetCtx[]) {
@@ -27,7 +36,14 @@ export function enrichSector(tokens: string[], ctxs: AssetCtx[]) {
   const avg_funding = matched.length
     ? matched.reduce((sum, c) => sum + c.funding, 0) / matched.length
     : 0;
-  return { oi_usd_total, avg_funding, names_matched: matched.length };
+  const tokenRows: SectorTokenRow[] = matched.map((c) => ({
+    coin: c.name,
+    markPx: c.markPx,
+    dayChangePct: c.dayChange,
+    openInterestUsd: c.openInterest * c.markPx,
+    funding: c.funding,
+  }));
+  return { oi_usd_total, avg_funding, names_matched: matched.length, tokenRows };
 }
 
 export const sectorsRoutes = new Hono().get("/", async (c) => {

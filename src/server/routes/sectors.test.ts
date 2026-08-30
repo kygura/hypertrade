@@ -49,6 +49,14 @@ describe("enrichSector", () => {
   });
 
   test("returns zeros when nothing matches", () => {
-    expect(enrichSector(["NOPE"], ctxs)).toEqual({ oi_usd_total: 0, avg_funding: 0, names_matched: 0 });
+    expect(enrichSector(["NOPE"], ctxs)).toEqual({ oi_usd_total: 0, avg_funding: 0, names_matched: 0, tokenRows: [] });
+  });
+
+  test("returns a per-matched-token row for the sector drill-in table", () => {
+    const result = enrichSector(["BTC", "ETH", "NOTLISTED"], ctxs);
+    expect(result.tokenRows).toEqual([
+      { coin: "BTC", markPx: 60_000, dayChangePct: 0, openInterestUsd: 100 * 60_000, funding: 0.0001 },
+      { coin: "ETH", markPx: 3_000, dayChangePct: 0, openInterestUsd: 200 * 3_000, funding: 0.0002 },
+    ]);
   });
 });

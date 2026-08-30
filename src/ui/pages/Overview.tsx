@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router'
 import { Panel, PanelHeader, PanelBody, Button, MomentumBadge, MetricStat, Sparkline } from '../components'
-import { SkeletonRows, EmptyBlock, ErrorBlock, StaleBanner, AgeStamp } from '../components/state'
+import { SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock, StaleBanner, AgeStamp } from '../components/state'
 import { useApi } from '../lib/api'
 import { classForPnl, fmtUsd } from '../../shared/format'
 import type { MarketStateData, SectorsData } from '../../shared/types'
@@ -76,9 +76,10 @@ const METRIC_DEFS: {
 
 function MetricsStrip() {
   const ids = METRIC_DEFS.map((d) => d.id).join(',')
-  const { data, loading, error, refetch } = useApi<MetricSummaryRow[]>(`/metrics/summary?ids=${ids}`)
+  const { data, loading, error, offline, refetch } = useApi<MetricSummaryRow[]>(`/metrics/summary?ids=${ids}`)
 
   if (loading && !data) return <Panel><SkeletonRows /></Panel>
+  if (offline) return <Panel><OfflineBlock onRetry={refetch} /></Panel>
   if (error) return <Panel><ErrorBlock message={error} onRetry={refetch} /></Panel>
   if (!data || data.length === 0) return <Panel><EmptyBlock label="no metrics yet" /></Panel>
 
@@ -113,7 +114,7 @@ function MetricsStrip() {
 
 function MarketStateCard() {
   const navigate = useNavigate()
-  const { data, loading, error, refetch } = useApi<MarketStateData>('/marketstate')
+  const { data, loading, error, offline, refetch } = useApi<MarketStateData>('/marketstate')
 
   return (
     <Panel className="h-full">
@@ -123,6 +124,8 @@ function MarketStateCard() {
       <PanelBody>
         {loading && !data ? (
           <SkeletonRows />
+        ) : offline ? (
+          <OfflineBlock onRetry={refetch} />
         ) : error ? (
           <ErrorBlock message={error} onRetry={refetch} />
         ) : !data || !data.headline ? (
@@ -144,7 +147,7 @@ function MarketStateCard() {
 
 function SectorHeatCard() {
   const navigate = useNavigate()
-  const { data, loading, error, refetch } = useApi<SectorsData>('/sectors')
+  const { data, loading, error, offline, refetch } = useApi<SectorsData>('/sectors')
   const top = [...(data?.sectors ?? [])].sort((a, b) => b.mindshare_score - a.mindshare_score).slice(0, 6)
 
   return (
@@ -155,6 +158,8 @@ function SectorHeatCard() {
       <PanelBody>
         {loading && !data ? (
           <SkeletonRows />
+        ) : offline ? (
+          <OfflineBlock onRetry={refetch} />
         ) : error ? (
           <ErrorBlock message={error} onRetry={refetch} />
         ) : top.length === 0 ? (
@@ -184,7 +189,7 @@ function SectorHeatCard() {
 
 function BranchesCard() {
   const navigate = useNavigate()
-  const { data, loading, error, refetch } = useApi<Branch[]>('/branches')
+  const { data, loading, error, offline, refetch } = useApi<Branch[]>('/branches')
   const top = [...(data ?? [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3)
 
   return (
@@ -193,6 +198,8 @@ function BranchesCard() {
       <PanelBody>
         {loading && !data ? (
           <SkeletonRows />
+        ) : offline ? (
+          <OfflineBlock onRetry={refetch} />
         ) : error ? (
           <ErrorBlock message={error} onRetry={refetch} />
         ) : top.length === 0 ? (

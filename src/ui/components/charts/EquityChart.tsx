@@ -1,6 +1,7 @@
 import { Area, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { EquityPoint, MonteCarloResult } from '../branches/types'
-import { fmtChartDate, fmtUsd, fmtUsdCompact } from '../branches/format'
+import { fmtChartDate, fmtUsdCompact } from '../branches/format'
+import { fmtUsd } from '../../../shared/format'
 import { buildBandData, ProjectionReadout } from './FanChart'
 
 // Equity curve vs benchmarks — DESIGN.md §9.1 (+ §9.3 forward fan on the
@@ -15,7 +16,7 @@ const LEGEND = [
 ] as const
 
 function tooltipFormatter(value: number) {
-  return fmtUsd(value)
+  return fmtUsd(value, { decimals: 0 })
 }
 
 export function EquityChart({

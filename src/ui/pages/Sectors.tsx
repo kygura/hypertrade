@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Panel, PanelHeader, PanelBody } from '../components/Panel'
-import { AgeStamp, StaleBanner, SkeletonRows, EmptyBlock, ErrorBlock } from '../components/state'
+import { AgeStamp, StaleBanner, SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock } from '../components/state'
 import { useApi } from '../lib/api'
 import { MindshareGrid, type EnrichedSector } from '../components/sectors/MindshareGrid'
 import { RotationsPanel } from '../components/sectors/RotationsPanel'
@@ -14,7 +14,7 @@ import type { SectorsData } from '../../shared/types'
 type SectorsResponse = Omit<SectorsData, 'sectors'> & { sectors: EnrichedSector[] }
 
 export function Sectors() {
-  const { data, loading, error, refetch } = useApi<SectorsResponse>('/sectors')
+  const { data, loading, error, offline, refetch } = useApi<SectorsResponse>('/sectors')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const drillRef = useRef<HTMLDivElement>(null)
 
@@ -32,7 +32,8 @@ export function Sectors() {
         <PanelHeader title="MINDSHARE">{data && <AgeStamp generatedAt={data.generated_at} thresholdHours={24} />}</PanelHeader>
         <PanelBody>
           {loading && <SkeletonRows />}
-          {error && <ErrorBlock message={error} onRetry={refetch} />}
+          {!loading && offline && <OfflineBlock onRetry={refetch} />}
+          {!loading && !offline && error && <ErrorBlock message={error} onRetry={refetch} />}
           {data && data.sectors.length === 0 && <EmptyBlock label="no sector data yet — trigger the routine from STATE" />}
           {data && data.sectors.length > 0 && (
             <MindshareGrid

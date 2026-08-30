@@ -26,16 +26,12 @@ const TONE_BG: Record<Tone, string> = {
 export interface BadgeProps {
   tone: Tone
   children: ReactNode
-  variant?: 'solid' | 'outline'
   className?: string
 }
 
-export function Badge({ tone, children, variant = 'solid', className = '' }: BadgeProps) {
+export function Badge({ tone, children, className = '' }: BadgeProps) {
   const base = 'inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wider border font-mono'
-  const look =
-    variant === 'outline'
-      ? `border-current ${TONE_TEXT[tone]} bg-transparent`
-      : `border-transparent ${TONE_TEXT[tone]} ${TONE_BG[tone]}`
+  const look = `border-transparent ${TONE_TEXT[tone]} ${TONE_BG[tone]}`
   return <span className={`${base} ${look} ${className}`}>{children}</span>
 }
 

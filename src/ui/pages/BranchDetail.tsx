@@ -6,6 +6,7 @@ import {
   ConfirmDialog,
   EmptyBlock,
   ErrorBlock,
+  OfflineBlock,
   SkeletonRows,
 } from '../components'
 import { api, ApiError, useApi } from '../lib/api'
@@ -15,7 +16,8 @@ import type { BranchDetail as BranchDetailData, BranchResult } from '../componen
 import { EquityChart } from '../components/charts/EquityChart'
 import { ProjectionAssumptions } from '../components/charts/FanChart'
 import { DrawdownChart } from '../components/branches/DrawdownChart'
-import { fmtPct, fmtUsd, maxDdClass, signClass, STABLE_COINS, sumWeights } from '../components/branches/format'
+import { maxDdClass, signClass, STABLE_COINS, sumWeights } from '../components/branches/format'
+import { fmtPct, fmtUsd } from '../../shared/format'
 
 // /branches/:id — DESIGN.md §10.4. Editor (left, 4 cols) + results (right,
 // 8 cols: equity/fan, drawdown, stats), reordered on mobile so results
@@ -44,7 +46,7 @@ const REBALANCE_OPTIONS: { value: BranchConfig['rebalance']; label: string }[] =
 export function BranchDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { data, loading, error, refetch } = useApi<BranchDetailData>(id ? `/branches/${id}` : null)
+  const { data, loading, error, offline, refetch } = useApi<BranchDetailData>(id ? `/branches/${id}` : null)
 
   const [form, setForm] = useState<FormState | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -184,7 +186,15 @@ export function BranchDetail() {
         </div>
       )}
 
-      {!loading && error && (
+      {!loading && offline && (
+        <div className="panel">
+          <div className="panel-body">
+            <OfflineBlock onRetry={refetch} />
+          </div>
+        </div>
+      )}
+
+      {!loading && !offline && error && (
         <div className="panel">
           <div className="panel-body">
             <ErrorBlock message={error} onRetry={refetch} />
@@ -192,7 +202,7 @@ export function BranchDetail() {
         </div>
       )}
 
-      {!loading && !error && form && (
+      {!loading && !offline && !error && form && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
           {/* EQUITY */}
           <div className="order-1 lg:order-none lg:col-start-5 lg:col-span-8 lg:row-start-1 panel">
@@ -208,15 +218,17 @@ export function BranchDetail() {
                 <div style={{ opacity: busy === 'running' ? 0.7 : 1 }}>
                   <div className="mb-1">
                     <span className="text-xl tabular">
-                      <AnimatedDigits text={fmtUsd(result.stats.finalValue)} />
+                      <AnimatedDigits text={fmtUsd(result.stats.finalValue, { decimals: 0 })} />
                     </span>
                   </div>
                   <div className="text-[12px] tabular mb-3">
                     <span className={signClass(result.stats.finalValue / form.initialCapitalUsd - 1)}>
-                      {fmtPct((result.stats.finalValue / form.initialCapitalUsd - 1) * 100)}
+                      {fmtPct(result.stats.finalValue / form.initialCapitalUsd - 1, { decimals: 1, sign: true })}
                     </span>{' '}
-                    · CAGR {fmtPct(result.stats.cagrPct)} · vs BTC{' '}
-                    <span className={signClass(result.stats.vsBtcPct)}>{fmtPct(result.stats.vsBtcPct)}</span>
+                    · CAGR {fmtPct(result.stats.cagrPct / 100, { decimals: 1, sign: true })} · vs BTC{' '}
+                    <span className={signClass(result.stats.vsBtcPct)}>
+                      {fmtPct(result.stats.vsBtcPct / 100, { decimals: 1, sign: true })}
+                    </span>
                   </div>
                   <EquityChart
                     equity={result.equity}
@@ -426,7 +438,7 @@ export function BranchDetail() {
               <span className="panel-title">DRAWDOWN</span>
               {result && (
                 <span className={`text-[11px] tabular ${maxDdClass(result.stats.maxDrawdownPct)}`}>
-                  MAX DD {fmtPct(-Math.abs(result.stats.maxDrawdownPct))}
+                  MAX DD {fmtPct(-Math.abs(result.stats.maxDrawdownPct) / 100, { decimals: 1 })}
                 </span>
               )}
             </div>
@@ -448,25 +460,31 @@ export function BranchDetail() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className="flex flex-col gap-0.5">
                       <span className="label">CAGR</span>
-                      <span className={`tabular ${signClass(result.stats.cagrPct)}`}>{fmtPct(result.stats.cagrPct)}</span>
+                      <span className={`tabular ${signClass(result.stats.cagrPct)}`}>
+                        {fmtPct(result.stats.cagrPct / 100, { decimals: 1, sign: true })}
+                      </span>
                     </div>
                     <div className="flex flex-col gap-0.5">
                       <span className="label">MAX DD</span>
                       <span className={`tabular ${maxDdClass(result.stats.maxDrawdownPct)}`}>
-                        {fmtPct(-Math.abs(result.stats.maxDrawdownPct))}
+                        {fmtPct(-Math.abs(result.stats.maxDrawdownPct) / 100, { decimals: 1 })}
                       </span>
                     </div>
                     <div className="flex flex-col gap-0.5">
                       <span className="label">FINAL</span>
-                      <span className="tabular text-text-primary">{fmtUsd(result.stats.finalValue)}</span>
+                      <span className="tabular text-text-primary">{fmtUsd(result.stats.finalValue, { decimals: 0 })}</span>
                     </div>
                     <div className="flex flex-col gap-0.5">
                       <span className="label">VS BTC</span>
-                      <span className={`tabular ${signClass(result.stats.vsBtcPct)}`}>{fmtPct(result.stats.vsBtcPct)}</span>
+                      <span className={`tabular ${signClass(result.stats.vsBtcPct)}`}>
+                        {fmtPct(result.stats.vsBtcPct / 100, { decimals: 1, sign: true })}
+                      </span>
                     </div>
                     <div className="flex flex-col gap-0.5">
                       <span className="label">VS USDC</span>
-                      <span className={`tabular ${signClass(result.stats.vsUsdcPct)}`}>{fmtPct(result.stats.vsUsdcPct)}</span>
+                      <span className={`tabular ${signClass(result.stats.vsUsdcPct)}`}>
+                        {fmtPct(result.stats.vsUsdcPct / 100, { decimals: 1, sign: true })}
+                      </span>
                     </div>
                   </div>
                   <div className="text-[10px] text-text-secondary mt-3">COMPUTED —</div>
@@ -480,7 +498,7 @@ export function BranchDetail() {
       {deleteOpen && (
         <ConfirmDialog
           title="DELETE BRANCH"
-          body={`Delete "${form?.name}"? This cannot be undone.`}
+          body={`Delete "${form?.name}"? Its simulation history goes with it.`}
           confirmLabel="DELETE"
           onConfirm={doDelete}
           onCancel={() => {

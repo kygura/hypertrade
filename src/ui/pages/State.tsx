@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Panel, PanelHeader, PanelBody } from '../components/Panel'
-import { AgeStamp, StaleBanner, SkeletonRows, EmptyBlock, ErrorBlock } from '../components/state'
+import { AgeStamp, StaleBanner, SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock } from '../components/state'
 import { Button } from '../components/Button'
 import { useApi } from '../lib/api'
 import { DomainCard } from '../components/state/DomainCard'
@@ -20,7 +20,7 @@ function fullStamp(iso: string): string {
 }
 
 export function State() {
-  const { data: latest, loading, error, refetch } = useApi<LatestResponse>('/marketstate')
+  const { data: latest, loading, error, offline, refetch } = useApi<LatestResponse>('/marketstate')
   const [viewDate, setViewDate] = useState<string | null>(null)
 
   const latestDate = latest?.generated_at.slice(0, 10) ?? null
@@ -35,7 +35,8 @@ export function State() {
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)]">
       <div className="max-w-[760px] mx-auto flex flex-col gap-4">
         {loading && <SkeletonRows />}
-        {error && <ErrorBlock message={error} onRetry={refetch} />}
+        {!loading && offline && <OfflineBlock onRetry={refetch} />}
+        {!loading && !offline && error && <ErrorBlock message={error} onRetry={refetch} />}
 
         {latest && latest.history.length === 0 && (
           <Panel>

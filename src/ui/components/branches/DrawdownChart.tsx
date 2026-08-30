@@ -44,9 +44,9 @@ export function DrawdownChart({ equity, height = 120 }: { equity: EquityPoint[];
         <ReferenceDot
           x={data[worst]!.ts}
           y={data[worst]!.value}
-          r={4}
+          r={2}
           shape={(props: { cx?: number; cy?: number }) => (
-            <rect x={(props.cx ?? 0) - 2} y={(props.cy ?? 0) - 2} width={4} height={4} fill="var(--color-drawdown-line)" />
+            <rect x={(props.cx ?? 0) - 1} y={(props.cy ?? 0) - 1} width={2} height={2} fill="var(--color-drawdown-line)" />
           )}
         />
       </AreaChart>

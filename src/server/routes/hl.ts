@@ -9,6 +9,11 @@ import type { AssetCtx } from "../../shared/types";
 const CACHE_MS = 60_000;
 let cache: { ts: number; markets: MarketRow[] } | null = null;
 
+export interface MarketsResponse {
+  fetchedAt: string;
+  markets: MarketRow[];
+}
+
 export interface MarketRow {
   coin: string;
   markPx: number;
@@ -37,9 +42,13 @@ export function toMarketRows(ctxs: AssetCtx[]): MarketRow[] {
 }
 
 export const hlRoutes = new Hono().get("/markets", async (c) => {
-  if (cache && Date.now() - cache.ts < CACHE_MS) return c.json(cache.markets);
-  const { ctxs } = await fetchPerpMetaAndCtxs();
-  const markets = toMarketRows(ctxs);
-  cache = { ts: Date.now(), markets };
-  return c.json(markets);
+  if (!cache || Date.now() - cache.ts >= CACHE_MS) {
+    const { ctxs } = await fetchPerpMetaAndCtxs();
+    cache = { ts: Date.now(), markets: toMarketRows(ctxs) };
+  }
+  // fetchedAt = when the cached snapshot was actually fetched upstream, not
+  // response time — Markets/MarketDrill (DESIGN.md §10.7) stale-check off
+  // this, not client poll time.
+  const body: MarketsResponse = { fetchedAt: new Date(cache.ts).toISOString(), markets: cache.markets };
+  return c.json(body);
 });
