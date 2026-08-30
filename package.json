@@ -5,9 +5,9 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "bun run scripts/dev-api.ts",
-    "build": "tsc -b && vite build",
+    "build": "bun run typecheck && vite build",
     "test": "bun test src",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {
     "hono": "^4.7.10",

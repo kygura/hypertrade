@@ -1,10 +1,12 @@
 {
   "compilerOptions": {
-    "composite": true,
     "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "types": ["bun-types"]
   },
-  "include": ["vite.config.ts", "scripts", "api"]
+  "include": ["vite.config.ts", "scripts", "api", "src/server", "src/shared"]
 }
