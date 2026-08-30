@@ -2,8 +2,9 @@ import { useNavigate } from 'react-router'
 import { Panel, PanelHeader, PanelBody, Button, MomentumBadge, MetricStat, Sparkline } from '../components'
 import { SkeletonRows, EmptyBlock, ErrorBlock, StaleBanner, AgeStamp } from '../components/state'
 import { useApi } from '../lib/api'
-import { classForPnl } from '../../shared/format'
+import { classForPnl, fmtUsd } from '../../shared/format'
 import type { MarketStateData, SectorsData } from '../../shared/types'
+import type { Branch } from '../components/branches/types'
 
 // Overview — DESIGN.md §10.2. 30-second morning read: metrics strip,
 // MarketState headline, sector heat, recent branches. Nothing is edited
@@ -11,15 +12,6 @@ import type { MarketStateData, SectorsData } from '../../shared/types'
 
 const STALE_METRICS_H = 2
 const STALE_ROUTINE_H = 24
-
-function fmtCompactUsd(n: number): string {
-  const abs = Math.abs(n)
-  const sign = n < 0 ? '-' : ''
-  if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`
-  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(2)}M`
-  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(2)}K`
-  return `${sign}$${abs.toFixed(2)}`
-}
 
 function pctChange(latest: number | null, previous: number | null): { text: string; positive: boolean } | null {
   if (latest == null || previous == null || previous === 0) return null
@@ -53,7 +45,7 @@ const METRIC_DEFS: {
   {
     id: 'hl.total_oi_usd',
     label: 'TOTAL OI',
-    fmtValue: fmtCompactUsd,
+    fmtValue: (v: number) => fmtUsd(v, { compact: true }),
     fmtDelta: (r) => pctChange(r.latest, r.previous),
   },
   {
@@ -77,7 +69,7 @@ const METRIC_DEFS: {
   {
     id: 'llama.stablecoin_cap_usd',
     label: 'STABLES',
-    fmtValue: fmtCompactUsd,
+    fmtValue: (v: number) => fmtUsd(v, { compact: true }),
     fmtDelta: (r) => pctChange(r.latest, r.previous),
   },
 ]
@@ -190,19 +182,9 @@ function SectorHeatCard() {
   )
 }
 
-// Shape not yet finalized by the branches worker — GET /api/branches isn't
-// mounted yet, so this reads defensively and degrades to ErrorBlock/EmptyBlock
-// until that route lands.
-interface BranchListItem {
-  id: string
-  name: string
-  updatedAt: string
-  result?: { totalReturnPct?: number; equityCurve?: { equity: number }[] } | null
-}
-
 function BranchesCard() {
   const navigate = useNavigate()
-  const { data, loading, error, refetch } = useApi<BranchListItem[]>('/branches')
+  const { data, loading, error, refetch } = useApi<Branch[]>('/branches')
   const top = [...(data ?? [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3)
 
   return (
@@ -218,8 +200,9 @@ function BranchesCard() {
         ) : (
           <div className="flex flex-col">
             {top.map((b) => {
-              const ret = b.result?.totalReturnPct
-              const points = b.result?.equityCurve?.map((e) => e.equity) ?? []
+              const finalValue = b.result?.stats.finalValue
+              const ret = finalValue != null ? (finalValue / b.config.initialCapitalUsd - 1) * 100 : null
+              const points = b.result?.equity.map((e) => e.value) ?? []
               return (
                 <button
                   key={b.id}

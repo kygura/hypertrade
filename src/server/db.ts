@@ -215,11 +215,16 @@ export async function candleCoverage(coin: string, tf: string): Promise<{ min: D
 
 // -------------------------------------------------------------- branches
 
-export async function listBranches(): Promise<Branch[]> {
+export type BranchListRow = Branch & { result: unknown }
+
+export async function listBranches(): Promise<BranchListRow[]> {
   const rows = await sql()<any[]>`
-    select id, name, config, created_at, updated_at from branches order by updated_at desc
+    select b.id, b.name, b.config, b.created_at, b.updated_at, r.result
+    from branches b
+    left join branch_results r on r.branch_id = b.id
+    order by b.updated_at desc
   `
-  return rows.map(toBranch)
+  return rows.map((r) => ({ ...toBranch(r), result: r.result ?? null }))
 }
 
 export async function getBranch(id: string): Promise<Branch | null> {

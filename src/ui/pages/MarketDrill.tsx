@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router'
 import { Panel, AnimatedDigits, Button, CandleChart, type Candle, type CandleTf } from '../components'
 import { SkeletonRows, ErrorBlock } from '../components/state'
 import { useApi } from '../lib/api'
-import { fmtPrice, fmtPct, classForPnl } from '../../shared/format'
+import { fmtPrice, fmtPct, classForPnl, fmtUsd } from '../../shared/format'
 import type { MarketRow } from './Markets'
 
 // Markets drill-in — DESIGN.md §10.7. Full view (not an overlay), route
@@ -12,14 +12,6 @@ import type { MarketRow } from './Markets'
 // candles backfill on miss server-side, so a first load can take seconds.
 
 const TF_TO_QUERY: Record<CandleTf, string> = { '1H': '1h', '4H': '4h', '1D': '1d', '1W': '1w' }
-
-function fmtCompactUsd(n: number): string {
-  const abs = Math.abs(n)
-  if (abs >= 1e9) return `$${(abs / 1e9).toFixed(2)}B`
-  if (abs >= 1e6) return `$${(abs / 1e6).toFixed(2)}M`
-  if (abs >= 1e3) return `$${(abs / 1e3).toFixed(2)}K`
-  return `$${abs.toFixed(2)}`
-}
 
 interface RawCandle {
   ts: string
@@ -73,8 +65,8 @@ export function MarketDrill() {
         </div>
         {row && (
           <div className="px-3 py-2 text-[11px] text-text-secondary tabular">
-            OI {fmtCompactUsd(row.openInterestUsd)} · FUND {fmtPct(row.funding, { decimals: 4, sign: true })} · VOL{' '}
-            {fmtCompactUsd(row.dayNtlVlm)}
+            OI {fmtUsd(row.openInterestUsd, { compact: true })} · FUND {fmtPct(row.funding, { decimals: 4, sign: true })} · VOL{' '}
+            {fmtUsd(row.dayNtlVlm, { compact: true })}
           </div>
         )}
       </Panel>

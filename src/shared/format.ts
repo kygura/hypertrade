@@ -8,7 +8,11 @@ export function fmtUsd(
   if (!isFinite(n)) return "$--";
   const abs = Math.abs(n);
   let body: string;
-  if (compact && abs >= 1_000_000) {
+  if (compact && abs >= 1_000_000_000_000) {
+    body = `$${(abs / 1_000_000_000_000).toFixed(2)}T`;
+  } else if (compact && abs >= 1_000_000_000) {
+    body = `$${(abs / 1_000_000_000).toFixed(2)}B`;
+  } else if (compact && abs >= 1_000_000) {
     body = `$${(abs / 1_000_000).toFixed(2)}M`;
   } else if (compact && abs >= 1_000) {
     body = `$${(abs / 1_000).toFixed(2)}K`;

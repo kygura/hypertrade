@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { Panel, PanelHeader, PanelBody, SrcTag, DataTable, type Column } from '../components'
 import { SkeletonRows, EmptyBlock, ErrorBlock, StaleBanner } from '../components/state'
 import { useApi } from '../lib/api'
-import { fmtPrice, fmtPct, classForPnl } from '../../shared/format'
+import { fmtPrice, fmtPct, classForPnl, fmtUsd } from '../../shared/format'
 
 // Markets — DESIGN.md §10.7. HL universe table, live-ish (poll every 15s),
 // tick flash on price change, funding crowded-trade flag, filter + sort.
@@ -20,14 +20,6 @@ export interface MarketRow {
   openInterestUsd: number
   dayNtlVlm: number
   dayChangePct: number
-}
-
-function fmtCompactUsd(n: number): string {
-  const abs = Math.abs(n)
-  if (abs >= 1e9) return `$${(abs / 1e9).toFixed(2)}B`
-  if (abs >= 1e6) return `$${(abs / 1e6).toFixed(2)}M`
-  if (abs >= 1e3) return `$${(abs / 1e3).toFixed(2)}K`
-  return `$${abs.toFixed(2)}`
 }
 
 const FUNDING_CROWDED = 0.001 // |funding| >= 0.1%/8h
@@ -100,7 +92,7 @@ export function Markets() {
       priority: 3,
       align: 'right',
       sortValue: (r) => r.openInterestUsd,
-      render: (r) => fmtCompactUsd(r.openInterestUsd),
+      render: (r) => fmtUsd(r.openInterestUsd, { compact: true }),
     },
     {
       key: 'funding',
@@ -120,7 +112,7 @@ export function Markets() {
       priority: 4,
       align: 'right',
       sortValue: (r) => r.dayNtlVlm,
-      render: (r) => fmtCompactUsd(r.dayNtlVlm),
+      render: (r) => fmtUsd(r.dayNtlVlm, { compact: true }),
     },
   ]
 

@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router'
 import { fmtUsd, fmtPct } from '../../../shared/format'
 import { Button } from '../Button'
 import { MomentumBadge } from '../MomentumBadge'
@@ -16,6 +17,7 @@ import type { EnrichedSector } from './MindshareGrid'
 // with the same "absence shown, not hidden" rule when nothing matched.
 
 export function SectorDrillPanel({ sector, onClose }: { sector: EnrichedSector; onClose: () => void }) {
+  const navigate = useNavigate()
   return (
     <div className="flex flex-col gap-3 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -45,9 +47,13 @@ export function SectorDrillPanel({ sector, onClose }: { sector: EnrichedSector; 
         </div>
         <div className="flex flex-wrap gap-1.5 mb-2">
           {sector.tokens.map((t) => (
-            <span key={t} className="text-[11px] tabular px-1.5 py-0.5 border border-border-subtle text-text-primary">
+            <button
+              key={t}
+              onClick={() => navigate(`/markets/${t}`)}
+              className="text-[11px] tabular px-1.5 py-0.5 border border-border-subtle text-text-primary hover:bg-hover hover:border-border"
+            >
               {t}
-            </span>
+            </button>
           ))}
         </div>
         <div className="flex flex-wrap gap-4 text-[11px] tabular">

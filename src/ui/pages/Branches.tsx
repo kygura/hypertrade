@@ -3,12 +3,11 @@ import { useNavigate } from 'react-router'
 import { Button, ConfirmDialog, DataTable, EmptyBlock, ErrorBlock, SkeletonRows, type Column } from '../components'
 import { api, ApiError, useApi } from '../lib/api'
 import type { Branch } from '../components/branches/types'
-import { allocationSummary, defaultBranchConfig, rebalanceLabel } from '../components/branches/format'
+import { allocationSummary, defaultBranchConfig, fmtPct, maxDdClass, rebalanceLabel, signClass } from '../components/branches/format'
 
 // /branches — DESIGN.md §10.3. List + create; delete is a per-row Level 2
-// confirm. RETURN%/MAX DD/VS BTC columns from DESIGN's §4.4 table need the
-// cached result, which GET /api/branches does not currently join (only
-// GET /api/branches/:id does) — those cells render "—" until that lands.
+// confirm. RETURN%/MAX DD/VS BTC come from GET /api/branches's left-joined
+// cached result; branches never simulated render "—".
 
 export function Branches() {
   const { data, loading, error, refetch } = useApi<Branch[]>('/branches')
@@ -53,9 +52,46 @@ export function Branches() {
         </div>
       ),
     },
-    { key: 'return', label: 'RETURN%', priority: 1, align: 'right', render: () => <span className="text-text-secondary">—</span> },
-    { key: 'maxdd', label: 'MAX DD', priority: 2, align: 'right', render: () => <span className="text-text-secondary">—</span> },
-    { key: 'vsbtc', label: 'VS BTC', priority: 3, align: 'right', render: () => <span className="text-text-secondary">—</span> },
+    {
+      key: 'return',
+      label: 'RETURN%',
+      priority: 1,
+      align: 'right',
+      render: (b) =>
+        b.result ? (
+          <span className={signClass((b.result.stats.finalValue / b.config.initialCapitalUsd - 1) * 100)}>
+            {fmtPct((b.result.stats.finalValue / b.config.initialCapitalUsd - 1) * 100)}
+          </span>
+        ) : (
+          <span className="text-text-secondary">—</span>
+        ),
+    },
+    {
+      key: 'maxdd',
+      label: 'MAX DD',
+      priority: 2,
+      align: 'right',
+      render: (b) =>
+        b.result ? (
+          <span className={maxDdClass(-Math.abs(b.result.stats.maxDrawdownPct))}>
+            {fmtPct(-Math.abs(b.result.stats.maxDrawdownPct))}
+          </span>
+        ) : (
+          <span className="text-text-secondary">—</span>
+        ),
+    },
+    {
+      key: 'vsbtc',
+      label: 'VS BTC',
+      priority: 3,
+      align: 'right',
+      render: (b) =>
+        b.result ? (
+          <span className={signClass(b.result.stats.vsBtcPct)}>{fmtPct(b.result.stats.vsBtcPct)}</span>
+        ) : (
+          <span className="text-text-secondary">—</span>
+        ),
+    },
     {
       key: 'updated',
       label: 'UPDATED',

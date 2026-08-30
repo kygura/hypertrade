@@ -5,14 +5,6 @@
 // there and is reused as-is).
 import type { BranchConfig } from '../../../shared/types'
 
-export interface Branch {
-  id: string
-  name: string
-  config: BranchConfig
-  createdAt: string
-  updatedAt: string
-}
-
 export interface EquityPoint {
   ts: number
   value: number
@@ -39,5 +31,15 @@ export interface BranchResult {
   montecarlo?: MonteCarloResult
 }
 
-// GET /api/branches/:id shape (branch row + cached result, possibly null).
-export type BranchDetail = Branch & { result: BranchResult | null }
+// GET /api/branches and GET /api/branches/:id both left-join branch_results,
+// so every branch row carries its cached result (possibly null).
+export interface Branch {
+  id: string
+  name: string
+  config: BranchConfig
+  createdAt: string
+  updatedAt: string
+  result: BranchResult | null
+}
+
+export type BranchDetail = Branch

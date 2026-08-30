@@ -6,7 +6,10 @@ import { Login } from './pages/Login'
 import { Overview } from './pages/Overview'
 import { Markets } from './pages/Markets'
 import { MarketDrill } from './pages/MarketDrill'
-import { Stub } from './pages/Stub'
+import { Branches } from './pages/Branches'
+import { BranchDetail } from './pages/BranchDetail'
+import { Sectors } from './pages/Sectors'
+import { State } from './pages/State'
 
 // Router — SPEC.md route map. All routes except /login render inside
 // AppShell. Auth guard: a session probe on shell mount plus the api.ts
@@ -36,7 +39,7 @@ export default function App() {
           path="/branches"
           element={
             <Shell>
-              <Stub title="BRANCHES" label="not implemented yet" />
+              <Branches />
             </Shell>
           }
         />
@@ -44,7 +47,7 @@ export default function App() {
           path="/branches/:id"
           element={
             <Shell>
-              <Stub title="BRANCH" label="not implemented yet" />
+              <BranchDetail />
             </Shell>
           }
         />
@@ -52,7 +55,7 @@ export default function App() {
           path="/sectors"
           element={
             <Shell>
-              <Stub title="SECTORS" label="not implemented yet" />
+              <Sectors />
             </Shell>
           }
         />
@@ -60,7 +63,7 @@ export default function App() {
           path="/state"
           element={
             <Shell>
-              <Stub title="STATE" label="not implemented yet" />
+              <State />
             </Shell>
           }
         />
