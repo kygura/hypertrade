@@ -1,0 +1,7 @@
+{
+  "peggedAssets": [
+    { "pegType": "peggedUSD", "circulating": { "peggedUSD": 120000000000 } },
+    { "pegType": "peggedUSD", "circulating": { "peggedUSD": 30000000000 } },
+    { "pegType": "peggedEUR", "circulating": {} }
+  ]
+}
