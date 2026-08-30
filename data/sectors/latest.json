@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-08-30T06:00:00Z",
+  "note": "seed data — overwritten by the first cloud routine run, see ROUTINE.md",
+  "sectors": [
+    {
+      "id": "ai-agents",
+      "label": "AI Agents",
+      "mindshare_score": 0.71,
+      "momentum": 0.42,
+      "rationale": "Autonomous-agent narrative still the loudest thing on CT this week; several launches drove volume spikes across the sub-sector, and search interest is climbing off an already-elevated base.",
+      "tokens": ["FET", "VIRTUAL", "AI16Z"],
+      "sources": ["crypto-twitter mindshare sweep", "coingecko trending"]
+    },
+    {
+      "id": "defi-blue-chip",
+      "label": "DeFi Blue Chip",
+      "mindshare_score": 0.38,
+      "momentum": 0.18,
+      "rationale": "Lending TVL rotating back in as funding-rate arb reopens; mindshare is quieter than the narrative sectors but flows are real, not just talk.",
+      "tokens": ["AAVE", "UNI", "CRV"],
+      "sources": ["defillama TVL deltas", "onchain narrative sweep"]
+    },
+    {
+      "id": "l1-l2-infra",
+      "label": "L1/L2 Infrastructure",
+      "mindshare_score": 0.29,
+      "momentum": -0.12,
+      "rationale": "Mindshare cooling off a July peak as attention rotates toward application-layer narratives; still structurally relevant but not where the marginal flow is going this week.",
+      "tokens": ["SOL", "ARB", "OP", "SUI"],
+      "sources": ["crypto-twitter mindshare sweep"]
+    },
+    {
+      "id": "memecoins",
+      "label": "Memecoins",
+      "mindshare_score": 0.55,
+      "momentum": -0.31,
+      "rationale": "Late-stage fade off a euphoric run two weeks ago; volume and social mentions both declining, a classic mindshare-before-price rollover.",
+      "tokens": ["WIF", "POPCAT"],
+      "sources": ["coingecko trending", "crypto-twitter mindshare sweep"]
+    }
+  ],
+  "rotations": [
+    {
+      "from": "memecoins",
+      "to": "ai-agents",
+      "confidence": 0.6,
+      "trigger": "Memecoin social volume down two weeks running while AI-agent launches keep drawing fresh capital",
+      "note": "Low-confidence on timing, but the mindshare gradient favors this continuing near-term."
+    },
+    {
+      "from": "l1-l2-infra",
+      "to": "defi-blue-chip",
+      "confidence": 0.35,
+      "trigger": "Funding-rate arb reopening on majors would pull leverage back toward blue-chip lending markets",
+      "note": "Early signal only — TVL inflow is real but mindshare hasn't caught up yet."
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-08-30T06:00:00Z",
+  "note": "seed data — overwritten by the first cloud routine run, see ROUTINE.md",
+  "headline": "Liquidity tightening at the margin; crypto bid independent of a firm dollar",
+  "tldr": "Net liquidity draining slightly on a sticky CPI print, dollar firm, equity leadership narrow. Crypto majors are bid despite dollar strength, funding elevated but not extreme. Tech dispersion is wide with NVDA carrying semis. Geopolitical risk is elevated on tariff headlines and an oil supply premium. Watch: the next CPI print and FOMC guidance for the range break. Not financial advice.",
+  "domains": [
+    {
+      "domain": "macro",
+      "summary": "Curve stays inverted with a mild bear-flattening bias as sticky inflation pushes back rate-cut timing. Net liquidity is drifting lower, credit spreads are calm but widening at the edge, and a firm dollar is a headwind for risk assets.",
+      "signals": [
+        { "label": "10Y yield", "value": "4.38%", "direction": "up" },
+        { "label": "2s10s spread", "value": "-23bp", "direction": "down" },
+        { "label": "CPI YoY", "value": "3.1%", "direction": "up" },
+        { "label": "net liquidity", "value": "$5.91T", "direction": "down" },
+        { "label": "HY OAS", "value": "318bp", "direction": "up" }
+      ]
+    },
+    {
+      "domain": "equities",
+      "summary": "Indices are soft with narrow, mega-cap-led leadership; small caps continue to lag. Volatility is low but ticking up, and sentiment is neutral tilting cautious ahead of next week's earnings.",
+      "signals": [
+        { "label": "SPY", "value": "559.30", "direction": "down" },
+        { "label": "IWM", "value": "214.50", "direction": "down" },
+        { "label": "VIX", "value": "14.8", "direction": "up" }
+      ]
+    },
+    {
+      "domain": "crypto",
+      "summary": "Majors are bid, led by SOL outperformance, even against a firmer dollar — reads as crypto-specific flow rather than broad risk-on. Perp open interest is building with funding elevated but not extreme; risk appetite (Fear & Greed, stablecoin cap) points to cautious positioning with dry powder still on the sidelines.",
+      "signals": [
+        { "label": "BTC", "value": "$68,400", "direction": "up" },
+        { "label": "SOL", "value": "$158", "direction": "up" },
+        { "label": "perp OI", "value": "$9.4B", "direction": "up" },
+        { "label": "funding skew", "value": "+0.011%/8h", "direction": "up" },
+        { "label": "fear & greed", "value": "26 (Fear)", "direction": "flat" }
+      ]
+    },
+    {
+      "domain": "tech",
+      "summary": "Mega-cap dispersion is wide and NVDA-led; semis breadth is thin and concentrated in one name. AI-capex commentary remains constructive, with one antitrust headline weighing on sentiment.",
+      "signals": [
+        { "label": "NVDA", "value": "128.40", "direction": "up" },
+        { "label": "META", "value": "512.60", "direction": "down" },
+        { "label": "SMH", "value": "+1.1%", "direction": "up" }
+      ]
+    },
+    {
+      "domain": "geopolitics",
+      "summary": "Risk is elevated: a Middle East supply-risk premium keeps a floor under oil, and US-China tariff headlines are rotating back into focus ahead of scheduled catalysts.",
+      "signals": [
+        { "label": "WTI", "value": "$71.20", "direction": "down" },
+        { "label": "FOMC", "value": "Jul 29-30", "direction": "flat" }
+      ]
+    }
+  ],
+  "thesis": {
+    "observe": "Sticky CPI is pushing back rate-cut timing with the curve still inverted. Equities are soft with narrow leadership while VIX stays low but is ticking up. Crypto is firm despite a firmer dollar. Oil carries a geopolitical risk premium heading into the next FOMC.",
+    "infer": "Markets are pricing a higher-for-longer path without new hikes, leaning on mega-cap earnings to carry index levels while breadth quietly narrows. The firm dollar and reaccelerating CPI sit awkwardly against that setup — the equity tape looks priced for a soft-landing continuation that the macro data is no longer clearly confirming.",
+    "forecast": "Base case (we lean here, a bit above even odds): range-bound chop into FOMC. Consensus is pricing a dovish hold; we read the risk as a more neutral hold that disappoints rate-cut hopes and keeps pressure on small caps and long-duration tech. Tail case (low-confidence): a hot CPI print or a hawkish FOMC guidance shift triggers a fast VIX repricing and a risk-off leg — low-confidence, but the setup of low vol plus narrow breadth is fragile. Crypto: risk skews toward it trading on its own flows near-term rather than tracking equities, given the dollar divergence.",
+    "disclaimer": "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything."
+  },
+  "risks": [
+    "Hot CPI print or hawkish FOMC guidance triggers a fast VIX repricing",
+    "Tariff escalation headline drives a broad risk-off spike, semis most exposed",
+    "Oil supply shock from an active Middle East tension feeds through to inflation"
+  ]
+}
