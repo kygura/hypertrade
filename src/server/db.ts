@@ -1,6 +1,7 @@
 import postgres from 'postgres'
 
-// TODO(wire): use shared types from src/shared/types.ts once it lands.
+// DB row shapes. Distinct from src/shared/types.ts on purpose: shared types
+// model computed/HL payloads (epoch-ms timestamps), these model Postgres rows.
 export type SeriesDef = { id: string; source?: string; units?: string; description?: string }
 export type Observation = { seriesId: string; ts: Date | string; value: number }
 export type Point = { ts: Date; value: number }
