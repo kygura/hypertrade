@@ -1,14 +1,345 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @font-face {
-  font-family: "Geist Mono";
-  src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2")
-    format("woff2");
+  font-family: 'Geist Mono';
+  src: url('../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2')
+    format('woff2');
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
 }
 
+@theme {
+  /* ── Hyperion base palette, verbatim ─────────────────────────── */
+  --color-body: #100e0a;
+  --color-panel: #111111;
+  --color-panel-alt: #0d0d0d;
+  --color-elevated: #191613;
+  --color-hover: rgba(255, 255, 255, 0.04);
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #928d86;
+  --color-text-muted: #d5d1cd;
+  --color-green: #38a67c;
+  --color-red: #bc263e;
+  --color-red-accent: #ed3602;
+  --color-amber: #ffb800;
+
+  /* ── Hyperion additive layer, verbatim (meanings preserved) ──── */
+  --color-green-text: #38a67c;
+  --color-red-text: #e8677d;
+  --color-info: #6ea8d8;
+  --color-text-disabled: #5c5751;
+  --color-active: rgba(255, 255, 255, 0.08);
+  --color-selected: rgba(255, 255, 255, 0.06);
+  --color-scrim: rgba(0, 0, 0, 0.55);
+  --color-focus: rgba(255, 255, 255, 0.9);
+  --color-green-bg: rgba(56, 166, 124, 0.12);
+  --color-red-bg: rgba(188, 38, 62, 0.12);
+  --color-amber-bg: rgba(255, 184, 0, 0.1);
+  --color-info-bg: rgba(110, 168, 216, 0.1);
+  --color-flash-up: rgba(56, 166, 124, 0.22);
+  --color-flash-down: rgba(188, 38, 62, 0.22);
+  --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.6);
+
+  /* ── HYPERTRADE additions ────────────────────────────────────── */
+
+  /* Source attribution (stolen from Night Desk's hyperliquid jade).
+     Used ONLY on 8.5-10px provenance tags: HL / CG / FRED / ROUTINE. */
+  --color-src-hl: #58b89a;
+
+  /* Sector momentum ramp — 5 diverging buckets over momentum ∈ [-1, 1].
+     Cell BACKGROUNDS for the mindshare grid; text on them is always
+     text-primary and every cell carries the signed number (color is never
+     the sole signal). Bucket edges: -0.5, -0.15, +0.15, +0.5. */
+  --color-mom-neg2: rgba(188, 38, 62, 0.45);
+  --color-mom-neg1: rgba(188, 38, 62, 0.22);
+  --color-mom-zero: #191613; /* = elevated */
+  --color-mom-pos1: rgba(56, 166, 124, 0.22);
+  --color-mom-pos2: rgba(56, 166, 124, 0.45);
+
+  /* Projection / benchmark chart colors (§9.3). Projections are info-blue
+     so speculation never wears the green/red of realized PnL. */
+  --color-proj-line: #6ea8d8; /* median monte-carlo path */
+  --color-proj-band: rgba(110, 168, 216, 0.12); /* p10–p90 fill */
+  --color-bench-btc: #ffb800; /* HODL-BTC benchmark line */
+  --color-bench-usdc: #928d86; /* 100%-USDC benchmark line */
+  --color-equity: #ffffff; /* the branch's own curve */
+  --color-drawdown-fill: rgba(188, 38, 62, 0.18);
+  --color-drawdown-line: #bc263e;
+
+  /* ── Type scale (Hyperion §2.4, closed set, unchanged) ───────── */
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-md: 12px;
+  --text-base: 13px;
+  --text-lg: 16px;
+  --text-xl: 22px;
+
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --font-sans: 'Geist Mono', ui-monospace, monospace;
+}
+
+:root {
+  /* Density scale — desktop values (Hyperion §2.5). */
+  --gutter: 12px;
+  --panel-pad: 8px;
+  --cell-x: 8px;
+  --cell-y: 4px;
+  --row-h: 24px; /* NEW: named so mobile can override it */
+  --control-sm: 22px;
+  --control-md: 26px;
+  --control-lg: 32px;
+  --tap-min: 24px; /* NEW: minimum interactive target */
+
+  color-scheme: dark;
+}
+
+/* Coarse pointers (phones, tablets): the density scale relaxes. Desktop
+   numbers are the default; this single media query is the entire "touch
+   mode" — components read the variables, never re-derive sizes. */
+@media (pointer: coarse) {
+  :root {
+    --cell-y: 10px; /* rows become ≥40px */
+    --row-h: 40px;
+    --control-sm: 32px;
+    --control-md: 40px;
+    --control-lg: 44px;
+    --tap-min: 44px;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-body);
+  color: var(--color-text-primary);
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  /* CHANGED from Hyperion: pages scroll. overflow-x stays clipped so a
+     wide table can never cause page-level horizontal scroll (§4.4). */
+  overflow-x: hidden;
+}
+
 * {
-  font-family: "Geist Mono", monospace;
+  box-sizing: border-box;
+  border-radius: 0 !important;
+}
+
+.mono,
+.tabular {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-panel-alt);
+  flex-shrink: 0;
+}
+
+.panel-title {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* Wide-content escape hatch: any table wider than its panel scrolls inside
+   this wrapper, never the page (§4.4). */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Scrollbar — Hyperion verbatim */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  background: var(--color-panel-alt);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  padding: 6px 8px;
+  font-size: 12px;
+  min-height: var(--control-md);
+  outline: none;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-text-secondary);
+}
+
+.tab-active {
+  border-bottom: 2px solid var(--color-red-accent);
+  color: var(--color-text-primary);
+}
+
+/* Source-attribution tag (Night Desk import, restyled square) */
+.src-tag {
+  font-size: 9px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border: 1px solid var(--color-border-subtle);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+.src-tag--hl {
+  color: var(--color-src-hl);
+  border-color: rgba(88, 184, 154, 0.25);
+}
+
+/* AnimatedDigits, tick flash, pulse — Hyperion verbatim */
+.digit-cell {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: baseline;
+  line-height: 1em;
+}
+.digit-slot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform, opacity;
+}
+@keyframes digit-enter {
+  from {
+    transform: translateY(-85%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes digit-exit {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(85%);
+    opacity: 0;
+  }
+}
+.digit-in {
+  animation: digit-enter 220ms ease-out both;
+}
+.digit-out {
+  animation: digit-exit 220ms ease-out both;
+}
+
+@keyframes flash-up {
+  from {
+    background-color: var(--color-flash-up);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@keyframes flash-down {
+  from {
+    background-color: var(--color-flash-down);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.flash-up {
+  animation: flash-up 220ms linear;
+}
+.flash-down {
+  animation: flash-down 220ms linear;
+}
+
+@keyframes pulse-opacity {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+.pulse-label {
+  animation: pulse-opacity 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .digit-in,
+  .digit-out,
+  .flash-up,
+  .flash-down,
+  .pulse-label {
+    animation: none !important;
+  }
 }

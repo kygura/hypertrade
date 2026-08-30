@@ -1,0 +1,12 @@
+// Shared component vocabulary — DESIGN.md §3 (tiers), §6 (state), §11
+// (inventory). Every view imports from here rather than hand-rolling.
+export { Button, type ButtonTier, type ButtonProps } from './Button'
+export { Badge, StatusDot, type Tone, type DotStatus } from './Badge'
+export { MomentumBadge } from './MomentumBadge'
+export { Panel, PanelHeader, PanelBody } from './Panel'
+export { AnimatedDigits } from './AnimatedDigits'
+export { SkeletonRows, EmptyBlock, OfflineBlock, ErrorBlock, StaleBanner, AgeStamp } from './state'
+export { SrcTag, type Source } from './SrcTag'
+export { ConfirmDialog } from './ConfirmDialog'
+export { DataTable, type Column } from './DataTable'
+export { AppShell } from './AppShell'
