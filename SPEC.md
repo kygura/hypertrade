@@ -96,7 +96,7 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 - `POST /api/auth/login` `{password}` → sets cookie; `POST /api/auth/logout`
 - `GET /api/health` (public)
 - `POST /api/cron/collect` (x-cron-token) — runs all collectors, writes observations
-- `GET /api/metrics/summary` — latest value + delta + mean30/90 + z30 per series (baseline.ts math, SQL-window or in-code)
+- `GET /api/metrics/summary` — latest value + delta + mean30/90 + z30 per series (SQL windows; z30 = (latest − mean30) / population stddev over the 30-window, null when fewer than 5 observations)
 - `GET /api/metrics/series/:id?from&to&buckets` — downsampled observations
 - `GET /api/hl/markets` — live pass-through snapshot of Hyperliquid universe (price/OI/funding), short in-memory cache
 - `GET/POST /api/branches`, `GET/PUT/DELETE /api/branches/:id`, `POST /api/branches/:id/run` → simulation result
