@@ -118,15 +118,18 @@ type SummaryRow = {
   previous: number | null
   mean30: number | null
   stddev30: number | null
+  n30: number
   mean90: number | null
   stddev90: number | null
 }
+
+const Z_MIN_N = 5
 
 /** Pure mapping: derives delta and z30 from the aggregate row. Exported for tests. */
 export function toMetricSummary(r: SummaryRow): MetricSummary {
   const delta = r.latest !== null && r.previous !== null ? r.latest - r.previous : null
   const z30 =
-    r.latest !== null && r.mean30 !== null && r.stddev30 !== null && r.stddev30 !== 0
+    r.latest !== null && r.mean30 !== null && r.stddev30 !== null && r.stddev30 !== 0 && r.n30 >= Z_MIN_N
       ? (r.latest - r.mean30) / r.stddev30
       : null
   return {
@@ -157,10 +160,11 @@ export async function summaryFor(seriesIds: string[]): Promise<MetricSummary[]> 
            max(ts)    filter (where rn = 1)   as ts,
            max(value) filter (where rn = 1)   as latest,
            max(value) filter (where rn = 2)   as previous,
-           avg(value)         filter (where rn <= 30) as mean30,
-           stddev_samp(value) filter (where rn <= 30) as stddev30,
-           avg(value)         filter (where rn <= 90) as mean90,
-           stddev_samp(value) filter (where rn <= 90) as stddev90
+           avg(value)        filter (where rn <= 30) as mean30,
+           stddev_pop(value) filter (where rn <= 30) as stddev30,
+           count(*)::int     filter (where rn <= 30) as n30,
+           avg(value)        filter (where rn <= 90) as mean90,
+           stddev_pop(value) filter (where rn <= 90) as stddev90
     from ranked
     where rn <= 90
     group by series_id

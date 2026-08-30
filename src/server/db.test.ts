@@ -8,6 +8,7 @@ const base = {
   previous: 100,
   mean30: 100,
   stddev30: 5,
+  n30: 30,
   mean90: 90,
   stddev90: 10,
 }
@@ -22,4 +23,9 @@ test('null-safe when history is thin or flat', () => {
   expect(toMetricSummary({ ...base, previous: null }).delta).toBeNull()
   expect(toMetricSummary({ ...base, stddev30: 0 }).z30).toBeNull()
   expect(toMetricSummary({ ...base, latest: null, mean30: null, stddev30: null }).z30).toBeNull()
+})
+
+test('z30 stays null below n=5 even when stddev30 is nonzero (n>=5 contract)', () => {
+  expect(toMetricSummary({ ...base, n30: 4 }).z30).toBeNull()
+  expect(toMetricSummary({ ...base, n30: 5 }).z30).toBe(2)
 })

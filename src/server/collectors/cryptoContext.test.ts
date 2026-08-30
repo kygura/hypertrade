@@ -3,7 +3,8 @@ import coingeckoFixture from "../../shared/fixtures/coingecko-global.json";
 import fngFixture from "../../shared/fixtures/fng.json";
 import defillamaFixture from "../../shared/fixtures/defillama-stablecoins.json";
 import deribitFixture from "../../shared/fixtures/deribit-dvol.json";
-import { parseCoinGecko, parseDeribit, parseFng, parseStablecoins } from "./cryptoContext";
+import { parseCoinGecko, parseDeribit, parseFng, parseStablecoins, collectCryptoContext, type CryptoContextDbDeps } from "./cryptoContext";
+import type { Observation } from "../db";
 
 describe("parseCoinGecko", () => {
   test("extracts total mcap and BTC dominance", () => {
@@ -42,5 +43,67 @@ describe("parseDeribit", () => {
 
   test("throws when the data array is empty of a close", () => {
     expect(() => parseDeribit({ result: { data: [] } })).toThrow();
+  });
+});
+
+describe("collectCryptoContext orchestration", () => {
+  function fakeDeps() {
+    const written: Observation[] = [];
+    const deps: CryptoContextDbDeps = {
+      ensureSeries: async () => {},
+      upsertObservations: async (rows) => {
+        written.push(...rows);
+        return rows.length;
+      },
+      recordCollectorRun: async () => {},
+    };
+    return { deps, written };
+  }
+
+  function fetchByUrl(handlers: Record<string, () => Promise<Response>>): typeof fetch {
+    return (async (url: string) => {
+      for (const [needle, handler] of Object.entries(handlers)) {
+        if (url.includes(needle)) return handler();
+      }
+      throw new Error(`unexpected url in test: ${url}`);
+    }) as unknown as typeof fetch;
+  }
+
+  test("one dead source doesn't kill the others", async () => {
+    const { deps, written } = fakeDeps();
+    const fetchFn = fetchByUrl({
+      "api.coingecko.com": async () => new Response(JSON.stringify(coingeckoFixture)),
+      "alternative.me": async () => {
+        throw new Error("network down");
+      },
+      "stablecoins.llama.fi": async () => new Response(JSON.stringify(defillamaFixture)),
+      "deribit.com": async () => new Response(JSON.stringify(deribitFixture)),
+    });
+
+    const result = await collectCryptoContext(fetchFn, deps);
+
+    expect(result.ok).toBe(true);
+    expect(result.error).toContain("fng");
+    expect(written.map((o) => o.seriesId)).not.toContain("fng.value");
+    expect(written.map((o) => o.seriesId)).toContain("cg.total_mcap_usd");
+    expect(written.map((o) => o.seriesId)).toContain("llama.stablecoin_cap_usd");
+    expect(written.map((o) => o.seriesId)).toContain("deribit.btc_dvol");
+  });
+
+  test("all sources failing returns an error status and writes nothing", async () => {
+    const { deps, written } = fakeDeps();
+    const fetchFn = fetchByUrl({
+      "api.coingecko.com": async () => new Response("", { status: 500 }),
+      "alternative.me": async () => new Response("", { status: 500 }),
+      "stablecoins.llama.fi": async () => new Response("", { status: 500 }),
+      "deribit.com": async () => new Response("", { status: 500 }),
+    });
+
+    const result = await collectCryptoContext(fetchFn, deps);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBeTruthy();
+    expect(result.written).toBe(0);
+    expect(written).toHaveLength(0);
   });
 });

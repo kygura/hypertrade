@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  BranchConfigSchema, MarketStateDataSchema, SectorsDataSchema, MetricSummarySchema,
+  BranchConfigSchema, MarketStateDataSchema, SectorsDataSchema,
   HlMetaAndAssetCtxsResponseSchema,
 } from "./schemas";
 import fixture from "./fixtures/hyperliquid.json";
@@ -37,6 +37,21 @@ describe("BranchConfigSchema", () => {
   test("rejects a missing required field", () => {
     const { startDate: _startDate, ...missing } = valid;
     expect(() => BranchConfigSchema.parse(missing)).toThrow();
+  });
+
+  test("rejects an unparseable startDate", () => {
+    expect(() => BranchConfigSchema.parse({ ...valid, startDate: "not-a-date" })).toThrow();
+  });
+
+  test("rejects a non-integer or non-positive scenario horizonDays/paths", () => {
+    const withScenario = (scenario: Record<string, unknown>) => ({
+      ...valid,
+      scenario: { horizonDays: 180, assumptions: [], paths: 200, ...scenario },
+    });
+    expect(() => BranchConfigSchema.parse(withScenario({ horizonDays: 0 }))).toThrow();
+    expect(() => BranchConfigSchema.parse(withScenario({ horizonDays: 1.5 }))).toThrow();
+    expect(() => BranchConfigSchema.parse(withScenario({ paths: 0 }))).toThrow();
+    expect(() => BranchConfigSchema.parse(withScenario({ paths: 1.5 }))).toThrow();
   });
 });
 
@@ -100,17 +115,6 @@ describe("SectorsDataSchema", () => {
   test("rejects momentum out of [-1,1]", () => {
     const bad = { ...valid, sectors: [{ ...valid.sectors[0]!, momentum: 2 }] };
     expect(() => SectorsDataSchema.parse(bad)).toThrow();
-  });
-});
-
-describe("MetricSummarySchema", () => {
-  test("parses with nullable stats and optional date", () => {
-    const valid = { value: 1.2, delta: null, mean_30: 1.0, mean_90: null, z_30: null };
-    expect(MetricSummarySchema.parse(valid)).toMatchObject(valid);
-  });
-
-  test("rejects a non-numeric value", () => {
-    expect(() => MetricSummarySchema.parse({ value: "1.2", delta: null, mean_30: null, mean_90: null, z_30: null })).toThrow();
   });
 });
 

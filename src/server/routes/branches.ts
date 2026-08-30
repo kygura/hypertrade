@@ -3,7 +3,7 @@ import { z } from "zod";
 import * as db from "../db";
 import { BranchConfigSchema } from "../../shared/schemas";
 import type { BranchConfig } from "../../shared/types";
-import { simulate, type DailyClose } from "../sim/engine";
+import { simulate, NoPriceDataError, type DailyClose } from "../sim/engine";
 import { runMonteCarlo } from "../sim/montecarlo";
 import { backfillBranch } from "../sim/backfill";
 
@@ -11,6 +11,16 @@ const createBody = z.object({ name: z.string().min(1), config: BranchConfigSchem
 const updateBody = z.object({ name: z.string().min(1).optional(), config: BranchConfigSchema.optional() });
 
 const STABLES = new Set(["USDC", "USDT"]);
+
+/** Normalizes a zod failure into the {error: string, details} shape every
+ * other route uses — "invalid config" when only the nested config field
+ * failed, "invalid body" otherwise. */
+function invalidBody(error: z.ZodError) {
+  const flat = error.flatten();
+  const keys = Object.keys(flat.fieldErrors);
+  const errorMsg = keys.length === 1 && keys[0] === "config" ? "invalid config" : "invalid body";
+  return { error: errorMsg, details: flat };
+}
 
 async function loadCandlesByCoin(config: BranchConfig): Promise<Record<string, DailyClose[]>> {
   const coins = new Set(config.allocations.map((a) => a.coin));
@@ -31,7 +41,7 @@ export const branchesRoutes = new Hono()
   .post("/", async (c) => {
     const body = await c.req.json().catch(() => null);
     const parsed = createBody.safeParse(body);
-    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+    if (!parsed.success) return c.json(invalidBody(parsed.error), 400);
     const branch = await db.createBranch(parsed.data.name, parsed.data.config);
     return c.json(branch, 201);
   })
@@ -44,7 +54,7 @@ export const branchesRoutes = new Hono()
   .put("/:id", async (c) => {
     const body = await c.req.json().catch(() => null);
     const parsed = updateBody.safeParse(body);
-    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+    if (!parsed.success) return c.json(invalidBody(parsed.error), 400);
     const branch = await db.updateBranch(c.req.param("id"), parsed.data);
     if (!branch) return c.json({ error: "not found" }, 404);
     return c.json(branch);
@@ -60,7 +70,13 @@ export const branchesRoutes = new Hono()
 
     await backfillBranch(config);
     const candlesByCoin = await loadCandlesByCoin(config);
-    const result = simulate(config, candlesByCoin);
+    let result: ReturnType<typeof simulate>;
+    try {
+      result = simulate(config, candlesByCoin);
+    } catch (err) {
+      if (err instanceof NoPriceDataError) return c.json({ error: err.message }, 422);
+      throw err;
+    }
     const montecarlo = config.scenario
       ? runMonteCarlo(config.scenario, config.allocations, result.stats.finalValue, Date.now())
       : undefined;

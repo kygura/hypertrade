@@ -11,7 +11,6 @@ import type {
   SectorSchema,
   RotationSchema,
   SectorsDataSchema,
-  MetricSummarySchema,
   HlPerpMetaSchema,
   HlAssetCtxSchema,
   HlCandleSchema,
@@ -30,8 +29,6 @@ export type MarketStateData = z.infer<typeof MarketStateDataSchema>;
 export type Sector = z.infer<typeof SectorSchema>;
 export type Rotation = z.infer<typeof RotationSchema>;
 export type SectorsData = z.infer<typeof SectorsDataSchema>;
-
-export type MetricSummary = z.infer<typeof MetricSummarySchema>;
 
 export type HlRawPerpMeta = z.infer<typeof HlPerpMetaSchema>;
 export type HlRawAssetCtx = z.infer<typeof HlAssetCtxSchema>;

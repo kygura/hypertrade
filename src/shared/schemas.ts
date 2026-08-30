@@ -17,16 +17,16 @@ export const ScenarioAssumptionSchema = z.object({
 });
 
 export const ScenarioSchema = z.object({
-  horizonDays: z.number(),
+  horizonDays: z.number().int().min(1),
   assumptions: z.array(ScenarioAssumptionSchema),
-  paths: z.number(),
+  paths: z.number().int().min(1),
 });
 
 export const RebalanceSchema = z.enum(["none", "monthly", "weekly", "threshold5pct"]);
 
 export const BranchConfigSchema = z.object({
   description: z.string().optional(),
-  startDate: z.string(),
+  startDate: z.string().refine((s) => !Number.isNaN(Date.parse(s)), { message: "invalid date" }),
   initialCapitalUsd: z.number(),
   allocations: z.array(AllocationSchema),
   rebalance: RebalanceSchema,
@@ -85,17 +85,6 @@ export const SectorsDataSchema = z.object({
   generated_at: z.string(),
   sectors: z.array(SectorSchema),
   rotations: z.array(RotationSchema),
-});
-
-// ─── Metrics ───
-
-export const MetricSummarySchema = z.object({
-  value: z.number(),
-  date: z.string().optional(),
-  delta: z.number().nullable(),
-  mean_30: z.number().nullable(),
-  mean_90: z.number().nullable(),
-  z_30: z.number().nullable(),
 });
 
 // ─── Hyperliquid raw response shapes ───

@@ -28,6 +28,16 @@ export interface BranchResult {
 const STABLES = new Set(["USDC", "USDT"]);
 const DAY_MS = 86400000;
 
+/** Thrown by simulate() when an allocation coin has no candle data at all —
+ * priceAt() would fall back to 0 for it, and dividing initial capital by that
+ * 0 poisons the whole equity curve with Infinity/NaN. Fail fast instead. */
+export class NoPriceDataError extends Error {
+  constructor(public readonly coin: string) {
+    super(`no price data for ${coin}`);
+    this.name = "NoPriceDataError";
+  }
+}
+
 /**
  * Price of `coin` at-or-before `ts`, carrying the last known close forward
  * over gaps. Stablecoins are a constant $1 and need no candle data at all.
@@ -58,6 +68,11 @@ function shouldRebalance(mode: BranchConfig["rebalance"], prevTs: number, ts: nu
     return a.getUTCFullYear() !== b.getUTCFullYear() || a.getUTCMonth() !== b.getUTCMonth();
   }
   if (mode === "weekly") {
+    // Epoch-anchored weeks (bucket = floor(ts / 7 days)), not ISO/calendar
+    // weeks: the Unix epoch (1970-01-01) was a Thursday, so the boundary
+    // falls on every Thursday 00:00 UTC rather than Monday. Documented
+    // behavior, not "fixed" — matches the grid's UTC daily buckets and is
+    // stable/deterministic, just not calendar-week-anchored.
     return Math.floor(prevTs / (7 * DAY_MS)) !== Math.floor(ts / (7 * DAY_MS));
   }
   return false; // "none" and "threshold5pct" are handled by their own triggers
@@ -121,6 +136,11 @@ function cagrPct(initial: number, final: number, firstTs: number, lastTs: number
 }
 
 export function simulate(config: BranchConfig, candlesByCoin: Record<string, DailyClose[]>): BranchResult {
+  for (const a of config.allocations) {
+    if (STABLES.has(a.coin)) continue;
+    if (!candlesByCoin[a.coin] || candlesByCoin[a.coin]!.length === 0) throw new NoPriceDataError(a.coin);
+  }
+
   const startMs = Date.parse(config.startDate);
   const grid = buildGrid(candlesByCoin, startMs);
 

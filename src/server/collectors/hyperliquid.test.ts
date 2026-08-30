@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { fetchPerpMetaAndCtxs } from "../../shared/hl-client";
 import fixture from "../../shared/fixtures/hyperliquid.json";
 import { buildHyperliquidObservations } from "./hyperliquid";
+import type { AssetCtx } from "../../shared/types";
 
 function mockFetch(body: unknown): typeof fetch {
   return (async () => new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
@@ -46,5 +47,29 @@ describe("buildHyperliquidObservations", () => {
     const { ctxs } = await fetchPerpMetaAndCtxs(mockFetch(fixture));
     const { topCoins } = buildHyperliquidObservations(ctxs, new Date());
     expect(topCoins.length).toBeLessThanOrEqual(20);
+  });
+
+  test("all assets delisted or zero-OI -> zero totals, empty topCoins, no per-coin series", () => {
+    const ctxs: AssetCtx[] = [
+      {
+        name: "ZEROOI", szDecimals: 0, markPx: 10, oraclePx: 10, midPx: 10, dayNtlVlm: 0,
+        prevDayPx: 10, openInterest: 0, funding: 0.001, premium: 0, dayChange: 0, isDelisted: false,
+      },
+      {
+        name: "DELISTED", szDecimals: 0, markPx: 20, oraclePx: 20, midPx: 20, dayNtlVlm: 0,
+        prevDayPx: 20, openInterest: 100, funding: 0.002, premium: 0, dayChange: 0, isDelisted: true,
+      },
+    ];
+    const ts = new Date("2026-01-01T00:00:00Z");
+    const { seriesDefs, observations, totalOiUsd, fundingSkew, topCoins } = buildHyperliquidObservations(ctxs, ts);
+
+    expect(totalOiUsd).toBe(0);
+    expect(fundingSkew).toBe(0); // guards the totalOiUsd>0 branch — no divide-by-zero
+    expect(topCoins).toEqual([]);
+    expect(seriesDefs.map((s) => s.id)).toEqual(["hl.total_oi_usd", "hl.funding_skew"]);
+    expect(observations).toEqual([
+      { seriesId: "hl.total_oi_usd", ts, value: 0 },
+      { seriesId: "hl.funding_skew", ts, value: 0 },
+    ]);
   });
 });

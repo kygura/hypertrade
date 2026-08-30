@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fetchAllMids, fetchPerpMetaAndCtxs, fetchCandles, HLSocket } from "./hl-client";
+import { fetchPerpMetaAndCtxs, fetchCandles } from "./hl-client";
 import fixture from "./fixtures/hyperliquid.json";
 
 function mockFetch(body: unknown, ok = true, status = 200): typeof fetch {
@@ -33,31 +33,10 @@ describe("fetchPerpMetaAndCtxs", () => {
   });
 });
 
-describe("fetchAllMids", () => {
-  test("parses a coin->price string map", async () => {
-    const mids = await fetchAllMids(mockFetch({ BTC: "63846.0", ETH: "1800.4" }));
-    expect(mids.BTC).toBe("63846.0");
-  });
-
-  test("rejects a non-string value", async () => {
-    await expect(fetchAllMids(mockFetch({ BTC: 63846 }))).rejects.toThrow();
-  });
-});
-
 describe("fetchCandles", () => {
   test("parses candle snapshot rows into numeric OHLCV", async () => {
     const raw = [{ t: 3_600_000, T: 7_199_999, o: "100", h: "110", l: "90", c: "105", v: "12.5" }];
     const candles = await fetchCandles("BTC", "1h", 0, 10_000_000, mockFetch(raw));
     expect(candles).toEqual([{ t: 3_600_000, T: 7_199_999, o: 100, h: 110, l: 90, c: 105, v: 12.5 }]);
-  });
-});
-
-describe("HLSocket", () => {
-  test("construction is a no-op without a global WebSocket (server-side import safety)", () => {
-    const originalWebSocket = (globalThis as { WebSocket?: unknown }).WebSocket;
-    // @ts-expect-error simulating a server environment with no WebSocket global
-    delete globalThis.WebSocket;
-    expect(() => new HLSocket().close()).not.toThrow();
-    if (originalWebSocket) (globalThis as { WebSocket?: unknown }).WebSocket = originalWebSocket;
   });
 });

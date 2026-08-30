@@ -12,8 +12,8 @@ type SeriesPoint = { seriesId: string; value: number; units: string; description
 
 const CoinGeckoSchema = z.object({
   data: z.object({
-    total_market_cap: z.object({ usd: z.number() }),
-    market_cap_percentage: z.object({ btc: z.number() }),
+    total_market_cap: z.object({ usd: z.number().finite() }),
+    market_cap_percentage: z.object({ btc: z.number().finite() }),
   }),
 });
 
@@ -37,7 +37,7 @@ export function parseFng(json: unknown): SeriesPoint[] {
 // Only peggedUSD is read; z.object strips unknown keys so odd fields elsewhere
 // (other pegs, missing circulating) can't fail the parse of a 400+ asset payload.
 const StablecoinsSchema = z.object({
-  peggedAssets: z.array(z.object({ pegType: z.string(), circulating: z.object({ peggedUSD: z.number().optional() }) })),
+  peggedAssets: z.array(z.object({ pegType: z.string(), circulating: z.object({ peggedUSD: z.number().finite().optional() }) })),
 });
 
 export function parseStablecoins(json: unknown): SeriesPoint[] {
@@ -49,7 +49,7 @@ export function parseStablecoins(json: unknown): SeriesPoint[] {
 }
 
 // Data points are [timestamp, open, high, low, close].
-const DeribitSchema = z.object({ result: z.object({ data: z.array(z.array(z.number())).min(1) }) });
+const DeribitSchema = z.object({ result: z.object({ data: z.array(z.array(z.number().finite())).min(1) }) });
 
 export function parseDeribit(json: unknown): SeriesPoint[] {
   const parsed = DeribitSchema.parse(json);
