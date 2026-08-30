@@ -22,11 +22,13 @@
 | T4 | Auth: src/server/auth.ts + routes, HMAC cookie session, middleware + tests | opus | T1 | done |
 | T5 | Collectors: hyperliquid/cryptoContext/fred ports + cron route + metrics routes (summary/series) + tests | sonnet | T2,T3 | done |
 | T6 | Branch simulator: candles backfill (coingecko+HL), engine (equity/drawdown/CAGR/benchmarks/monte-carlo), branches routes + tests (TDD) | sonnet | T2,T3 | done (V1 must re-verify threshold-rebalance test math + montecarlo blend) |
-| T7 | Routine contract: ROUTINE.md (port marketstate prompt corpus + schemas), data/ seed examples, sectors/marketstate/trigger routes | sonnet | T2 | frontier |
+| T7 | Routine contract: ROUTINE.md (port marketstate prompt corpus + schemas), data/ seed examples, sectors/marketstate/trigger routes | sonnet | T2 | done (history via static-import index.ts files — Vercel bundling) |
+| T7b | All completed routes mounted in api/index.ts by planner; 77 server tests green | — | — | done |
 | D1 | DESIGN.md — Fable design pass: iterate Hyperion language, solve mobile, all views in SPEC | fable | T0 | done |
 | T8 | UI foundation: index.css tokens per DESIGN.md, shell/nav, router, login page, api client hook, state vocabulary components | sonnet | D1,T1 | done (planner added GET /auth/me + shell session probe) |
-| T9 | UI Overview + Markets views (metrics strip, marketstate card, HL table, candle chart) | sonnet | T8,T5 | open |
-| T10 | UI Branches views (list, editor, equity/drawdown/projection charts) | sonnet | T8,T6 | open |
-| T11 | UI Sectors + MarketState views (treemap/grid, rotations, briefing, history, trigger) | sonnet | T8,T7 | open |
+| T9 | UI Overview + Markets views (metrics strip, marketstate card, HL table, candle chart) | sonnet | T8,T5 | done (hl route mounted by planner; debts → T12) |
+| T11 | UI Sectors + MarketState views (treemap/grid, rotations, briefing, history, trigger) | sonnet | T8,T7 | done |
+| T12 | Reconcile+wire: App.tsx routes for Branches/Sectors/State; BranchesCard vs real branch shapes (list route lacks result; fields are cagrPct + {ts,value}); fmtUsd B-suffix + dedupe local fmtCompactUsd; SectorDrillPanel token chips → link /markets/:coin (route exists now) | sonnet | T10,T11 | open |
+| T10 | UI Branches views (list, editor, equity/drawdown/projection charts) | sonnet | T8,T6 | done |
 | V1 | Verification gate: build/tests, feature-finalizer, review-risk + review-reliability, ponytail-review, mp-standards-spec-review, design-drift check, fix loops (max 3) | mixed | all | open |
 | V2 | Provision Supabase, apply migrations, vercel deploy, envs, smoke test | — (planner+MCP) | V1 | open |

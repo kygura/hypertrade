@@ -29,8 +29,9 @@ export function signClass(value: number): string {
 }
 
 // MAX DD: signed negative, red text only past -20% (DESIGN.md §10.3).
-export function maxDdClass(value: number): string {
-  return value <= -20 ? 'text-red-text' : 'text-text-primary'
+// Engine reports maxDrawdownPct as a positive magnitude.
+export function maxDdClass(magnitudePct: number): string {
+  return Math.abs(magnitudePct) >= 20 ? 'text-red-text' : 'text-text-primary'
 }
 
 export function allocationSummary(allocations: Allocation[]): string {

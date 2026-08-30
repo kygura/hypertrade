@@ -73,7 +73,7 @@ export function Branches() {
       align: 'right',
       render: (b) =>
         b.result ? (
-          <span className={maxDdClass(-Math.abs(b.result.stats.maxDrawdownPct))}>
+          <span className={maxDdClass(b.result.stats.maxDrawdownPct)}>
             {fmtPct(-Math.abs(b.result.stats.maxDrawdownPct))}
           </span>
         ) : (
