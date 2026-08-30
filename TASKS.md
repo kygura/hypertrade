@@ -10,6 +10,7 @@
 - T0 done: git repo at app/, identity set locally.
 - T1 done (haiku): scaffold committed; planner fixed emitted-artifact leak (tsconfigs now noEmit, build = typecheck && vite build, verified green). React 19.2.8, vite 6, tailwind 4, hono 4.7.
 - T4 owns api/index.ts edits in wave 2; T5/T6/T7 route mounting will be staggered to avoid conflicts.
+- V1 accepted deviations (documented, not fixed): HistoryStepper is server-backed (T7's static-import index design supersedes DESIGN.md's build-time glob); text-[Npx] arbitrary values match the closed type scale (convention-enforced, refactor not worth churn); /metrics/series/:id has no UI caller yet (SPEC surface for later); recharts chunk size warning (code-split later); no dependency audit run (sandbox blocks registry — rely on Dependabot post-push).
 
 ## Tasks
 
@@ -30,5 +31,5 @@
 | T11 | UI Sectors + MarketState views (treemap/grid, rotations, briefing, history, trigger) | sonnet | T8,T7 | done |
 | T12 | Reconcile+wire: App.tsx routes for Branches/Sectors/State; BranchesCard vs real branch shapes (list route lacks result; fields are cagrPct + {ts,value}); fmtUsd B-suffix + dedupe local fmtCompactUsd; SectorDrillPanel token chips → link /markets/:coin (route exists now) | sonnet | T10,T11 | done (planner fixed maxDdClass magnitude convention) |
 | T10 | UI Branches views (list, editor, equity/drawdown/projection charts) | sonnet | T8,T6 | done |
-| V1 | Verification gate: build/tests, feature-finalizer, review-risk + review-reliability, ponytail-review, mp-standards-spec-review, design-drift check, fix loops (max 3) | mixed | all | frontier (6 lenses running) |
+| V1 | Verification gate: build/tests, feature-finalizer, review-risk + review-reliability, ponytail-review, mp-standards-spec-review, design-drift check, fix loops (max 3) | mixed | all | done (1 loop: 2 criticals fixed — z30 n-gate, sim NaN guard; error shapes normalized; ~300 lines dead code removed; fmtPct unit dedupe; OfflineBlock wired; per-token sector table; CI workflow added; sim math independently verified correct) |
 | V2 | Provision Supabase, apply migrations, vercel deploy, envs, smoke test | — (planner+MCP) | V1 | open |
