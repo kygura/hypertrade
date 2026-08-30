@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { Button } from './Button'
-import { StatusDot } from './Badge'
-import { api } from '../lib/api'
+import { StatusDot, type DotStatus } from './Badge'
+import { api, useApi } from '../lib/api'
 
 // AppShell — DESIGN.md §5. TopBar (>=768) / TopStrip + bottom tab bar
-// (<768) via CSS breakpoints only, no JS matchMedia. Freshness cluster is a
-// placeholder here (dot + dash) — wired to /api/metrics/summary by a later
-// view task.
+// (<768) via CSS breakpoints only, no JS matchMedia. Freshness cluster reads
+// the most recent hl.total_oi_usd observation as a representative collector
+// heartbeat: green <30min, amber 30min-2h, red >2h or fetch failed.
 
 const NAV = [
   { to: '/', label: 'OVERVIEW', tab: 'OVIEW', glyph: '◈' },
@@ -22,9 +22,21 @@ function isActive(pathname: string, to: string): boolean {
   return pathname === to || pathname.startsWith(`${to}/`)
 }
 
+function useFreshness(): { status: DotStatus; label: string } {
+  const { data, error } = useApi<{ ts: string | null }[]>('/metrics/summary?ids=hl.total_oi_usd')
+  if (error) return { status: 'down', label: 'DATA —' }
+  const ts = data?.[0]?.ts
+  if (!ts) return { status: 'unknown', label: 'DATA —' }
+  const ageMin = (Date.now() - new Date(ts).getTime()) / 60_000
+  const status: DotStatus = ageMin < 30 ? 'ok' : ageMin < 120 ? 'degraded' : 'down'
+  const label = `DATA ${new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+  return { status, label }
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const freshness = useFreshness()
 
   const logout = async () => {
     await api.post('/auth/logout').catch(() => {})
@@ -54,9 +66,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="flex items-center gap-3">
-          <span className="hidden md:flex items-center gap-1.5" title="last collector run">
-            <StatusDot status="unknown" />
-            <span className="text-[10px] text-text-secondary tabular">DATA —</span>
+          <span className="hidden md:flex items-center gap-1.5" title="last collector run (hl.total_oi_usd)">
+            <StatusDot status={freshness.status} />
+            <span className="text-[10px] text-text-secondary tabular">{freshness.label}</span>
           </span>
           <Button tier="ghost" onClick={logout}>
             LOGOUT

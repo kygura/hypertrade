@@ -3,6 +3,9 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { AppShell } from './components/AppShell'
 import { api } from './lib/api'
 import { Login } from './pages/Login'
+import { Overview } from './pages/Overview'
+import { Markets } from './pages/Markets'
+import { MarketDrill } from './pages/MarketDrill'
 import { Stub } from './pages/Stub'
 
 // Router — SPEC.md route map. All routes except /login render inside
@@ -25,7 +28,7 @@ export default function App() {
           path="/"
           element={
             <Shell>
-              <Stub title="OVERVIEW" label="not implemented yet" />
+              <Overview />
             </Shell>
           }
         />
@@ -65,7 +68,15 @@ export default function App() {
           path="/markets"
           element={
             <Shell>
-              <Stub title="MARKETS" label="not implemented yet" />
+              <Markets />
+            </Shell>
+          }
+        />
+        <Route
+          path="/markets/:coin"
+          element={
+            <Shell>
+              <MarketDrill />
             </Shell>
           }
         />

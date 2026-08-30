@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 // DataTable — DESIGN.md §4.4/§11. Priority-column drop mechanism via
 // hidden md:table-cell / hidden lg:table-cell — no JS column manager.
@@ -12,6 +12,8 @@ export interface Column<T> {
   priority: 1 | 2 | 3 | 4
   align?: 'left' | 'right'
   render: (row: T) => ReactNode
+  /** Raw sort key for this column; columns without one are not clickable-sortable. */
+  sortValue?: (row: T) => number | string
 }
 
 function priorityClass(priority: 1 | 2 | 3 | 4): string {
@@ -26,32 +28,63 @@ export function DataTable<T>({
   rowKey,
   onRowClick,
   emptyLabel,
+  sortable,
+  defaultSort,
 }: {
   columns: Column<T>[]
   rows: T[]
   rowKey: (row: T) => string
   onRowClick?: (row: T) => void
   emptyLabel?: ReactNode
+  sortable?: boolean
+  defaultSort?: { key: string; dir: 'asc' | 'desc' }
 }) {
+  const [sort, setSort] = useState(defaultSort ?? null)
+
+  const sortedRows = useMemo(() => {
+    if (!sort) return rows
+    const col = columns.find((c) => c.key === sort.key)
+    if (!col?.sortValue) return rows
+    const dir = sort.dir === 'asc' ? 1 : -1
+    return [...rows].sort((a, b) => {
+      const av = col.sortValue!(a)
+      const bv = col.sortValue!(b)
+      if (av < bv) return -1 * dir
+      if (av > bv) return 1 * dir
+      return 0
+    })
+  }, [rows, sort, columns])
+
   if (rows.length === 0 && emptyLabel) return <>{emptyLabel}</>
+
+  const toggleSort = (key: string) =>
+    setSort((s) => (s?.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }))
 
   return (
     <div className="table-scroll">
       <table className="w-full text-[11px] tabular border-collapse">
         <thead>
           <tr className="border-b border-border">
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                className={`px-2 py-1.5 label ${col.align === 'right' ? 'text-right' : 'text-left'} ${priorityClass(col.priority)}`}
-              >
-                {col.label}
-              </th>
-            ))}
+            {columns.map((col) => {
+              const canSort = sortable && col.sortValue
+              const active = sort?.key === col.key
+              return (
+                <th
+                  key={col.key}
+                  onClick={canSort ? () => toggleSort(col.key) : undefined}
+                  className={`px-2 py-1.5 label ${col.align === 'right' ? 'text-right' : 'text-left'} ${priorityClass(col.priority)} ${
+                    canSort ? 'cursor-pointer select-none hover:text-text-primary' : ''
+                  } ${active ? 'text-text-primary' : ''}`}
+                >
+                  {col.label}
+                  {active && (sort!.dir === 'desc' ? ' ▾' : ' ▴')}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {sortedRows.map((row) => (
             <tr
               key={rowKey(row)}
               className={`border-b border-border-subtle ${onRowClick ? 'cursor-pointer hover:bg-hover' : ''}`}
