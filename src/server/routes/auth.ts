@@ -23,4 +23,6 @@ export const authRoutes = new Hono()
   .post("/logout", (c) => {
     clearSessionCookie(c);
     return c.json({ ok: true });
-  });
+  })
+  // Session probe for the frontend route guard; requireAuth already protects it.
+  .get("/me", (c) => c.json({ ok: true }));

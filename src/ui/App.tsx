@@ -1,15 +1,18 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { AppShell } from './components/AppShell'
+import { api } from './lib/api'
 import { Login } from './pages/Login'
 import { Stub } from './pages/Stub'
 
 // Router — SPEC.md route map. All routes except /login render inside
-// AppShell. The auth guard is the api.ts 401 -> /login redirect (SPEC.md:
-// "Frontend route guard redirects to /login"): every view that fetches
-// protected data enforces it the moment it calls the API; there is no
-// separate session-probe endpoint to gate on before that.
+// AppShell. Auth guard: a session probe on shell mount plus the api.ts
+// 401 -> /login redirect on every later call.
 
 function Shell({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    api.get('/auth/me').catch(() => {}) // 401 redirect handled in api.ts
+  }, [])
   return <AppShell>{children}</AppShell>
 }
 
