@@ -124,6 +124,13 @@ Design language: iterate on Hyperion (dark-only, Geist Mono, zero radius, dense 
 
 `DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `CRON_TOKEN`, `FRED_API_KEY` (optional), `ROUTINE_WEBHOOK_URL` (optional)
 
+GitHub Actions repository secrets (Settings > Secrets and variables > Actions), used by `.github/workflows/collect.yml`:
+
+- `APP_URL` — deployed origin, e.g. `https://hypertrade.vercel.app` (no trailing slash; a trailing slash is stripped anyway).
+- `CRON_TOKEN` — must match the app's `CRON_TOKEN` env var, or the endpoint returns 401.
+
+Both are required: the workflow fails its preflight step with a named error if either is unset.
+
 ## Definition of done
 
 - `bun install && bun run build` green (typecheck included); `bun test` green (sim engine, baseline math, auth, collector parsers — fixture-based, no live network in tests).
