@@ -1,0 +1,165 @@
+{
+  "strategies": [
+    {
+      "manifest": {
+        "id": "funding_skew",
+        "name": "Funding skew fade",
+        "version": "0.1.0",
+        "description": "Fades extreme perp funding when the crowd is one-sided. Sizes a counter-trend position when funding sits outside its 30-day range and the model reads the long side as crowded.",
+        "venues": [
+          "hyperliquid",
+          "paper"
+        ],
+        "cadence": "5m",
+        "markets": [
+          "BTC",
+          "ETH"
+        ],
+        "params": [
+          {
+            "key": "size_usd",
+            "type": "number",
+            "label": "Size per intent (USD)",
+            "default": 250,
+            "min": 10,
+            "max": 100000,
+            "step": 10,
+            "description": "Notional per intent."
+          },
+          {
+            "key": "min_p",
+            "type": "number",
+            "label": "Min probability",
+            "default": 0.8,
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "description": "Minimum probability on the chosen direction before an intent is emitted."
+          },
+          {
+            "key": "side_bias",
+            "type": "enum",
+            "label": "Side bias",
+            "options": [
+              "both",
+              "long_only",
+              "short_only"
+            ],
+            "default": "both"
+          },
+          {
+            "key": "note",
+            "type": "string",
+            "label": "Operator note",
+            "default": ""
+          },
+          {
+            "key": "close_on_flip",
+            "type": "bool",
+            "label": "Close on regime flip",
+            "default": true
+          }
+        ],
+        "questions": {
+          "funding_extreme": {
+            "type": "noul",
+            "instructions": "Funding is extreme relative to the 30-day range"
+          },
+          "direction": {
+            "type": "choice",
+            "instructions": "Which regime is this market in",
+            "criteria": {
+              "risk_on": "risk-seeking flows, longs paid",
+              "risk_off": "risk-averse flows, shorts paid",
+              "chop": "no clear regime"
+            }
+          },
+          "crowding": {
+            "type": "score",
+            "instructions": "How crowded is the long side",
+            "criteria": [
+              "not crowded",
+              "somewhat",
+              "extremely"
+            ]
+          }
+        }
+      },
+      "config": {
+        "id": "funding_skew",
+        "enabled": false,
+        "venue": "paper",
+        "params": {
+          "size_usd": 250,
+          "min_p": 0.8,
+          "side_bias": "both",
+          "note": "",
+          "close_on_flip": true
+        },
+        "governor": {
+          "min_confidence": 0.75
+        }
+      },
+      "last_run_at": "2026-09-23T08:05:12Z",
+      "last_decision_id": "01J9Z6X8K3R4T5V6W7X8Y9Z0A1",
+      "last_error": "",
+      "next_run_at": "2026-09-23T08:10:12Z"
+    },
+    {
+      "manifest": {
+        "id": "basis_carry",
+        "name": "Basis carry",
+        "version": "0.2.1",
+        "description": "Harvests positive basis between perp and spot when the spread exceeds carry cost.",
+        "venues": [
+          "hyperliquid",
+          "paper"
+        ],
+        "cadence": "1h",
+        "markets": [
+          "BTC"
+        ],
+        "params": [
+          {
+            "key": "size_usd",
+            "type": "number",
+            "label": "Size per intent (USD)",
+            "default": 250,
+            "min": 10,
+            "max": 100000,
+            "step": 10,
+            "description": "Notional per intent."
+          },
+          {
+            "key": "min_basis_bps",
+            "type": "number",
+            "label": "Min basis (bps)",
+            "default": 25,
+            "min": 0,
+            "max": 500,
+            "step": 5
+          }
+        ],
+        "questions": {
+          "basis_rich": {
+            "type": "noul",
+            "instructions": "Basis is rich relative to funding-implied carry"
+          }
+        }
+      },
+      "config": {
+        "id": "basis_carry",
+        "enabled": true,
+        "venue": "hyperliquid",
+        "params": {
+          "size_usd": 500,
+          "min_basis_bps": 25
+        }
+      },
+      "last_run_at": "2026-09-23T07:00:03Z",
+      "last_decision_id": "01J9Z5A1B2C3D4E5F6G7H8J9K0",
+      "last_error": "venue timeout after 5s",
+      "next_run_at": "2026-09-23T09:00:00Z"
+    }
+  ]
+}

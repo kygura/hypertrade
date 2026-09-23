@@ -41,7 +41,8 @@ export function toMarketRows(ctxs: AssetCtx[]): MarketRow[] {
     .sort((a, b) => b.openInterestUsd - a.openInterestUsd);
 }
 
-export const hlRoutes = new Hono().get("/markets", async (c) => {
+/** Cached Hyperliquid universe snapshot (shared by the route and the analyst tools). */
+export async function getMarkets(): Promise<MarketsResponse> {
   if (!cache || Date.now() - cache.ts >= CACHE_MS) {
     const { ctxs } = await fetchPerpMetaAndCtxs();
     cache = { ts: Date.now(), markets: toMarketRows(ctxs) };
@@ -49,6 +50,9 @@ export const hlRoutes = new Hono().get("/markets", async (c) => {
   // fetchedAt = when the cached snapshot was actually fetched upstream, not
   // response time — Markets/MarketDrill (DESIGN.md §10.7) stale-check off
   // this, not client poll time.
-  const body: MarketsResponse = { fetchedAt: new Date(cache.ts).toISOString(), markets: cache.markets };
-  return c.json(body);
+  return { fetchedAt: new Date(cache.ts).toISOString(), markets: cache.markets };
+}
+
+export const hlRoutes = new Hono().get("/markets", async (c) => {
+  return c.json(await getMarkets());
 });

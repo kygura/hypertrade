@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
 import { requireAuth } from "../src/server/auth";
+import { analystRoutes } from "../src/server/routes/analyst";
 import { authRoutes } from "../src/server/routes/auth";
 import { branchesRoutes } from "../src/server/routes/branches";
 import { candlesRoutes } from "../src/server/routes/candles";
 import { cronRoutes } from "../src/server/routes/cron";
+import { engineRoutes } from "../src/server/routes/engine";
 import { hlRoutes } from "../src/server/routes/hl";
 import { marketstateRoutes } from "../src/server/routes/marketstate";
 import { metricsRoutes } from "../src/server/routes/metrics";
@@ -22,11 +24,13 @@ app.get("/health", (c) => {
 });
 
 app.route("/auth", authRoutes);
+app.route("/analyst", analystRoutes);
 
 // Mount routes from src/server/routes/ here — no auth wiring needed.
 app.route("/branches", branchesRoutes);
 app.route("/candles", candlesRoutes);
 app.route("/cron", cronRoutes);
+app.route("/engine", engineRoutes);
 app.route("/hl", hlRoutes);
 app.route("/marketstate", marketstateRoutes);
 app.route("/metrics", metricsRoutes);

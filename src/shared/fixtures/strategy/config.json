@@ -1,0 +1,7 @@
+{
+  "id": "funding_skew",
+  "enabled": false,
+  "venue": "paper",
+  "params": { "size_usd": 250, "min_p": 0.8, "side_bias": "both", "note": "", "close_on_flip": true },
+  "governor": { "min_confidence": 0.75 }
+}

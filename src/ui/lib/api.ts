@@ -6,9 +6,12 @@ import { useCallback, useEffect, useState } from 'react'
 
 export class ApiError extends Error {
   status: number
-  constructor(message: string, status: number) {
+  /** Offending field when the server names one (`{ error, field }`, e.g. the engine's 400s). */
+  field?: string
+  constructor(message: string, status: number, field?: string) {
     super(message)
     this.status = status
+    this.field = field
   }
 }
 
@@ -40,7 +43,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const body = await res.json().catch(() => null)
   if (!res.ok) {
-    throw new ApiError(body?.error ?? res.statusText, res.status)
+    throw new ApiError(body?.error ?? res.statusText, res.status, typeof body?.field === 'string' ? body.field : undefined)
   }
   return body as T
 }

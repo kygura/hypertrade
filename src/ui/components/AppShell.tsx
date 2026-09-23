@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router'
 import { Button } from './Button'
 import { StatusDot, type DotStatus } from './Badge'
 import { api, useApi } from '../lib/api'
+import { isEnginePath } from './strategy/EngineTabs'
 
 // AppShell — DESIGN.md §5. TopBar (>=768) / TopStrip + bottom tab bar
 // (<768) via CSS breakpoints only, no JS matchMedia. Freshness cluster reads
@@ -15,10 +16,16 @@ const NAV = [
   { to: '/sectors', label: 'SECTORS', tab: 'SECTR', glyph: '▦' },
   { to: '/state', label: 'STATE', tab: 'STATE', glyph: '☰' },
   { to: '/markets', label: 'MARKETS', tab: 'MKTS', glyph: '≋' },
+  // Strategy console: one shell entry so the mobile tab bar stays compact;
+  // /strategies, /decisions and /governor switch inside via EngineTabs.
+  { to: '/strategies', label: 'ENGINE', tab: 'ENGIN', glyph: '⚙' },
+  // Read-only LLM analyst (SPEC.md "Analyst"); a seventh cell on mobile.
+  { to: '/analyst', label: 'ANALYST', tab: 'ASK', glyph: '?' },
 ]
 
 function isActive(pathname: string, to: string): boolean {
   if (to === '/') return pathname === '/'
+  if (to === '/strategies') return isEnginePath(pathname)
   return pathname === to || pathname.startsWith(`${to}/`)
 }
 

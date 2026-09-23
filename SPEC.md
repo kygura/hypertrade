@@ -16,7 +16,7 @@ A single deployable web application merging three prior projects (`../hyperion`,
 - **Backend**: Hono on Vercel Functions — one catch-all function at `api/index.ts` serving `/api/*`. Runtime: Node (Vercel default), code written to also run under `bun dev` locally.
 - **Database**: Supabase Postgres (hosted; serverless has no disk). Accessed from API routes via `postgres` (postgres.js) with `DATABASE_URL`. No Supabase client SDK needed — plain SQL through a thin data layer.
 - **Scheduling**: Vercel cron cannot run sub-daily on Hobby, so collection is an authenticated endpoint `POST /api/cron/collect` (header `x-cron-token: $CRON_TOKEN`) triggered by a GitHub Actions workflow on `schedule` (every 15 min) living in this repo (`.github/workflows/collect.yml`). A daily Vercel cron entry hits the same endpoint as fallback.
-- **LLM**: the app itself makes NO Anthropic API calls. All LLM work happens in the user's cloud Claude routine, which writes results into `data/` and pushes.
+- **LLM**: routine work (briefings, sector maps) still happens in the user's cloud Claude routine, which writes results into `data/` and pushes. One exception, decided by the operator in phase 2: the **Analyst** (`/analyst`, `POST /api/analyst/query`) makes server-side LLM calls to answer natural-language questions over the app's data and the web. It is read-only market intelligence: its tools only read (briefings, sectors, metrics, series, Hyperliquid markets, engine strategies and decisions) and it has no tool that places, approves, rejects or configures anything. Jev stays the only model inside the trading loop (hyperion `docs/jev/SPEC.md`). Both providers can be configured at once — `anthropic` (Messages API with streaming, client tools and Anthropic's server-side web search; catalog: Fable 5.1 / Opus 5.5 / Sonnet 5 / Haiku 4.5, `src/server/llm/catalog.ts`) and `openai-compatible` (any `/chat/completions` endpoint; no web search, and the tool list says so) — with `ANALYST_PROVIDER=anthropic` (default) naming which is the server default; `POST /api/analyst/query` accepts an optional `provider`/`model`/`effort` per question, validated against `GET /api/analyst/models`'s catalog (400 with the offending field on a bad choice). A model/provider selector in the page header lets the operator pick per question; see README.md "Analyst" for the full env var precedence. Keys never leave the server. Bounds: 8 tool rounds, 90 s per question.
 - **Auth**: single password (env `APP_PASSWORD`), login form → HMAC-signed session cookie (`SESSION_SECRET`), 30-day expiry, middleware guards all `/api/*` except `/api/health`, `/api/cron/collect` (token-guarded instead), `/api/auth/login` and `/api/auth/logout`. Frontend route guard redirects to `/login`.
 - **Package manager**: bun. Single package (no workspaces): Vite app at repo root, `api/` for the function, `src/` for frontend, `src/shared/` for code imported by both sides.
 
@@ -103,6 +103,8 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 - `GET /api/candles/:coin?tf&from` — cached candles, backfilling on miss
 - `GET /api/sectors` / `GET /api/marketstate` — serve latest committed data + quant enrichment (sectors joined with live per-token OI/funding aggregates)
 - `POST /api/routines/trigger`
+- `/api/engine/*` — authenticated proxy to the Hyperion strategy core (`${ENGINE_URL}/api/strategy/*`, bearer `ENGINE_TOKEN`); 503 `engine not configured`, 502 `engine unreachable` / `engine timeout`
+- `POST /api/analyst/query` `{question, history?, provider?, model?, effort?}` → `text/event-stream` with events `text {delta}`, `tool_call {id, name, input, server}`, `tool_result {id, name, ok, summary}`, `citations {citations}`, `error {error}`, `done {usage, model, provider, rounds, stop, effort?}`; `GET /api/analyst/status` → provider, model, web search availability, tool list; `GET /api/analyst/models` → `{default: {provider, model}, providers: [{id, label, available, reason?, models: [{id, label, note, tier, effort}]}]}`, always 200. Server default unconfigured → 503 `{ "error": "analyst not configured" }`; an explicit but invalid/unavailable `provider`/`model`/`effort` choice → 400 `{ error, field }`.
 
 ## UI views (design pass produces DESIGN.md; implementation follows it)
 
@@ -112,17 +114,19 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 - `/sectors` — mindshare treemap/grid of routine-defined sectors sized by mindshare, colored by momentum; rotations list; per-sector drill-in with token-level OI/funding
 - `/state` — full MarketState briefing (domains, thesis with Observe/Infer/Forecast, risks) + history browser + trigger button
 - `/markets` — Hyperliquid universe table (price, 24h, OI, funding) with candle chart drill-in
+- `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` — the **ENGINE** console: companion to the Hyperion operator terminal for the Jev-driven strategy runtime (configure, dry-run, approve/reject proposals, governor and kill switch, venues). The Overview carries a compact ENGINE card.
+- `/analyst` — **ANALYST**: model/provider selector in the header (`ModelSelector`, popover desktop / bottom sheet mobile, persisted per-browser), question box, quick prompts, streamed answer, collapsible tool trace, citations, the session's turns (in memory, each showing the provider/model/effort that produced it); OfflineBlock when the analyst is not configured (503) or unreachable (502/network).
 
 Design language: iterate on Hyperion (dark-only, Geist Mono, zero radius, dense terminal aesthetic, its exact color tokens as the base) but MUST additionally work on mobile — Hyperion never solved responsive; DESIGN.md must.
 
 ## What is explicitly OUT of scope
 
-- Trade execution, wallets, signing, anything touching Hyperliquid private endpoints (Hyperion's executor/signing stays behind).
-- Anthropic API calls from the app. Multi-user/accounts. Telegram delivery. The Go TUI.
+- Trade execution, wallets, signing, anything touching Hyperliquid private endpoints (Hyperion's executor/signing stays behind; the ENGINE pages only proxy operator actions to the Hyperion core, which owns the governor and venues).
+- LLM calls anywhere except the read-only Analyst. Multi-user/accounts. Telegram delivery. The Go TUI.
 
 ## Environment variables
 
-`DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `CRON_TOKEN`, `FRED_API_KEY` (optional), `ROUTINE_WEBHOOK_URL` (optional)
+`DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `CRON_TOKEN`, `FRED_API_KEY` (optional), `ROUTINE_WEBHOOK_URL` (optional), `ENGINE_URL` / `ENGINE_TOKEN` (optional, engine console), `ANALYST_PROVIDER` / `ANALYST_MODEL` / `ANALYST_API_KEY` / `ANALYST_BASE_URL` / `ANALYST_EFFORT` / `ANALYST_ANTHROPIC_API_KEY` / `ANALYST_OPENAI_API_KEY` / `ANALYST_OPENAI_BASE_URL` / `ANALYST_MODELS` (all optional, analyst — see README.md "Analyst" for precedence)
 
 GitHub Actions repository secrets (Settings > Secrets and variables > Actions), used by `.github/workflows/collect.yml`:
 
