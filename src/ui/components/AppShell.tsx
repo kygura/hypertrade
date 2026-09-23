@@ -16,9 +16,11 @@ const NAV = [
   { to: '/sectors', label: 'SECTORS', tab: 'SECTR', glyph: '▦' },
   { to: '/state', label: 'STATE', tab: 'STATE', glyph: '☰' },
   { to: '/markets', label: 'MARKETS', tab: 'MKTS', glyph: '≋' },
-  // Strategy console: one shell entry so the mobile tab bar stays at six
-  // cells; /strategies, /decisions and /governor switch inside via EngineTabs.
+  // Strategy console: one shell entry so the mobile tab bar stays compact;
+  // /strategies, /decisions and /governor switch inside via EngineTabs.
   { to: '/strategies', label: 'ENGINE', tab: 'ENGIN', glyph: '⚙' },
+  // Read-only LLM analyst (SPEC.md "Analyst"); a seventh cell on mobile.
+  { to: '/analyst', label: 'ANALYST', tab: 'ASK', glyph: '?' },
 ]
 
 function isActive(pathname: string, to: string): boolean {

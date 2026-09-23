@@ -1013,6 +1013,39 @@ States: SkeletonRows / ErrorBlock / EmptyBlock (filter matches nothing:
 `no coins match`) / StaleBanner if the snapshot is > 5min old (short-cache
 surface, tight threshold).
 
+### 10.8 `/analyst` — read-only analyst (phase 2)
+
+```
+┌ ANALYST ─────────────────────── anthropic · model · [web search] ┐
+│ read-only market intelligence … not financial advice (10px)      │
+│ [What changed since the last briefing?] [Explain the last 5 …]   │
+│ [Which sector is rotating?]                                      │
+│ ┌ textarea (Enter sends, Shift+Enter newline) ┐ [ASK] [STOP]      │
+└──────────────────────────────────────────────────────────────────┘
+SESSION · 2                                                  [CLEAR]
+┌ <question, 12px text-primary> ─────────────────── STREAMING ┐
+│ ▸ TOOL TRACE · 3 calls        (collapsed <details>; rows: name, │
+│                                web tag, ok/error badge, input,  │
+│                                result summary)                  │
+│ answer, 13px text-muted, pre-wrap, streamed as it arrives       │
+│ ErrorBlock (verbatim) when the turn failed                      │
+│ SOURCES 1. title · host  (web citations, info-blue links)       │
+│ model · 1,204 in · 388 out · 2 tool rounds · stop (if not end)  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Data: `GET /api/analyst/status`, `POST /api/analyst/query` (SSE). Turns live
+in memory for the tab session (survive route changes, not reloads); the last
+10 answered turns are sent back as context.
+
+States: SkeletonRows while the status probe runs; OfflineBlock
+`ANALYST NOT CONFIGURED` / `set ANALYST_API_KEY …` on 503; OfflineBlock
+`ANALYST UNREACHABLE` on 502 or no network; a per-turn verbatim ErrorBlock
+for timeouts, refusals and provider errors. In-flight indicator is the
+`.pulse-label` on `ASKING…` and on `running…` trace rows — no spinners.
+Mobile: the seventh tab-bar cell (`ASK`, glyph `?`); buttons and textarea
+go full-width, the trace stays collapsed by default.
+
 ---
 
 ## 11. Component inventory

@@ -15,6 +15,7 @@ import { StrategyDetail } from './pages/StrategyDetail'
 import { Decisions } from './pages/Decisions'
 import { DecisionDetail } from './pages/DecisionDetail'
 import { Governor } from './pages/Governor'
+import { Analyst } from './pages/Analyst'
 
 // Router — SPEC.md route map. All routes except /login render inside
 // AppShell. Auth guard: a session probe on shell mount plus the api.ts
@@ -125,6 +126,14 @@ export default function App() {
           element={
             <Shell>
               <Governor />
+            </Shell>
+          }
+        />
+        <Route
+          path="/analyst"
+          element={
+            <Shell>
+              <Analyst />
             </Shell>
           }
         />
