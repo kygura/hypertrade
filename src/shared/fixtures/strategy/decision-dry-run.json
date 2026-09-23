@@ -1,0 +1,25 @@
+{
+  "id": "01J9Z6Y0M1N2P3Q4R5S6T7U8V9",
+  "ts": "2026-09-23T08:10:44Z",
+  "strategy_id": "funding_skew",
+  "venue": "paper",
+  "dry_run": true,
+  "state_digest": "sha256:1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
+  "state": { "market": "BTC", "funding_8h": 0.00009, "funding_30d_p90": 0.00042 },
+  "questions": {
+    "funding_extreme": { "type": "noul", "instructions": "Funding is extreme relative to the 30-day range" },
+    "direction": { "type": "choice", "instructions": "Which regime is this market in", "criteria": { "risk_on": "risk-seeking flows, longs paid", "risk_off": "risk-averse flows, shorts paid", "chop": "no clear regime" } },
+    "crowding": { "type": "score", "instructions": "How crowded is the long side", "criteria": ["not crowded", "somewhat", "extremely"] }
+  },
+  "answers": {
+    "funding_extreme": { "type": "noul", "noul": 0.12 },
+    "direction": { "type": "choice", "choice": "chop", "probabilities": { "risk_on": 0.31, "risk_off": 0.22, "chop": 0.47 }, "confidence": 0.44 },
+    "crowding": { "type": "score", "score": 0.4, "probabilities": { "0": 0.62, "1": 0.36, "2": 0.02 }, "legend": { "0": "not crowded", "1": "somewhat", "2": "extremely" }, "confidence": 0.58 }
+  },
+  "intents": [],
+  "verdicts": [],
+  "model": "jev-1.13.0",
+  "usage": { "input_tokens": 398, "output_tokens": 24 },
+  "latency_ms": 164,
+  "error": ""
+}

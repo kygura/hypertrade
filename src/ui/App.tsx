@@ -10,6 +10,11 @@ import { Branches } from './pages/Branches'
 import { BranchDetail } from './pages/BranchDetail'
 import { Sectors } from './pages/Sectors'
 import { State } from './pages/State'
+import { Strategies } from './pages/Strategies'
+import { StrategyDetail } from './pages/StrategyDetail'
+import { Decisions } from './pages/Decisions'
+import { DecisionDetail } from './pages/DecisionDetail'
+import { Governor } from './pages/Governor'
 
 // Router — SPEC.md route map. All routes except /login render inside
 // AppShell. Auth guard: a session probe on shell mount plus the api.ts
@@ -80,6 +85,46 @@ export default function App() {
           element={
             <Shell>
               <MarketDrill />
+            </Shell>
+          }
+        />
+        <Route
+          path="/strategies"
+          element={
+            <Shell>
+              <Strategies />
+            </Shell>
+          }
+        />
+        <Route
+          path="/strategies/:id"
+          element={
+            <Shell>
+              <StrategyDetail />
+            </Shell>
+          }
+        />
+        <Route
+          path="/decisions"
+          element={
+            <Shell>
+              <Decisions />
+            </Shell>
+          }
+        />
+        <Route
+          path="/decisions/:id"
+          element={
+            <Shell>
+              <DecisionDetail />
+            </Shell>
+          }
+        />
+        <Route
+          path="/governor"
+          element={
+            <Shell>
+              <Governor />
             </Shell>
           }
         />

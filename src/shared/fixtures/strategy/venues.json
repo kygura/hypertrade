@@ -1,0 +1,33 @@
+{
+  "venues": [
+    {
+      "id": "paper",
+      "kind": "paper",
+      "chain": "none",
+      "status": "connected",
+      "capabilities": [
+        "perps"
+      ],
+      "positions": [
+        {
+          "market": "ETH",
+          "size_usd": -250,
+          "entry": 3100.5,
+          "mark": 3080.2,
+          "upnl_usd": 1.6
+        }
+      ]
+    },
+    {
+      "id": "hyperliquid",
+      "kind": "hyperliquid",
+      "chain": "arbitrum",
+      "status": "degraded",
+      "capabilities": [
+        "perps",
+        "spot"
+      ],
+      "positions": []
+    }
+  ]
+}
