@@ -100,6 +100,7 @@
   },
   "last_run_at": "2026-09-23T08:05:12Z",
   "last_decision_id": "01J9Z6X8K3R4T5V6W7X8Y9Z0A1",
+  "last_action": "open_short ETH",
   "last_error": "",
   "next_run_at": "2026-09-23T08:10:12Z"
 }

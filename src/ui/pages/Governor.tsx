@@ -55,6 +55,20 @@ function venueDot(status: string): 'green' | 'amber' | 'red' | 'gray' {
   return 'gray'
 }
 
+/** One line of an evm venue's meta: "mainnet · chain 143 · block 41,234,567 · 3.2 MON · 0x12ab…cdef · uniswap_v3". */
+function venueMeta(v: VenueStatus): string {
+  const m = v.meta
+  if (!m) return ''
+  const parts: string[] = []
+  if (typeof m.network === 'string') parts.push(m.network)
+  if (typeof m.chain_id === 'number') parts.push(`chain ${m.chain_id}`)
+  if (typeof m.head_block === 'number') parts.push(`block ${m.head_block.toLocaleString()}`)
+  if (typeof m.native_balance === 'number') parts.push(`${m.native_balance.toFixed(4)} ${typeof m.native_symbol === 'string' ? m.native_symbol : ''}`.trim())
+  if (typeof m.address === 'string') parts.push(m.address.length > 12 ? `${m.address.slice(0, 6)}…${m.address.slice(-4)}` : m.address)
+  if (typeof m.protocol === 'string') parts.push(m.protocol)
+  return parts.join(' · ')
+}
+
 function VenuesPanel() {
   const { data, loading, error, offline, fetchedAt, refetch } = useEngine(() => engine.listVenues(), [])
   return (
@@ -81,6 +95,8 @@ function VenuesPanel() {
                     {v.chain && v.chain !== 'none' ? ` · ${v.chain}` : ''}
                   </span>
                 </div>
+                {venueMeta(v) && <span className="text-[10px] text-text-secondary tabular break-all">{venueMeta(v)}</span>}
+                {v.error && <span className="text-[11px] text-red-text break-words" role="alert">{v.error}</span>}
                 <div className="flex flex-wrap gap-1">
                   {v.capabilities.length === 0 && <span className="text-[10px] text-text-secondary">no capabilities</span>}
                   {v.capabilities.map((c) => (
@@ -110,7 +126,7 @@ function VenuesPanel() {
                             <td className={`px-2 text-right ${p.size_usd < 0 ? 'text-red-text' : 'text-green'}`}>
                               {fmtUsdSigned(p.size_usd)} {p.size_usd < 0 ? 'SHORT' : 'LONG'}
                             </td>
-                            <td className="px-2 text-right text-text-muted hidden md:table-cell">{p.entry ?? '—'}</td>
+                            <td className="px-2 text-right text-text-muted hidden md:table-cell">{p.entry ? p.entry : '—'}</td>
                             <td className="px-2 text-right text-text-muted hidden md:table-cell">{p.mark ?? '—'}</td>
                             <td
                               className={`px-2 text-right ${

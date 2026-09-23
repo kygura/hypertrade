@@ -72,6 +72,7 @@ describe("strategy fixtures parse", () => {
 
   test("strategy status and strategies envelope", () => {
     const s = StrategyStatusSchema.parse(strategyStatus);
+    expect(s.last_action).toBe("open_short ETH");
     expect(s.config.id).toBe(s.manifest.id);
     const list = StrategiesResponseSchema.parse(strategies).strategies;
     expect(list.length).toBe(2);
@@ -82,6 +83,11 @@ describe("strategy fixtures parse", () => {
     const v = VenuesResponseSchema.parse(venues).venues;
     expect(v[0]!.positions[0]!.size_usd).toBe(-250);
     expect(v[1]!.positions).toEqual([]);
+    const monad = v.find((x) => x.id === "monad")!;
+    expect(monad.kind).toBe("evm");
+    expect(monad.chain).toBe("monad");
+    expect(monad.meta?.chain_id).toBe(143);
+    expect(monad.error).toBeUndefined();
   });
 });
 

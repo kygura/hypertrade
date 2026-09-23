@@ -14,8 +14,10 @@ import { ACTION_LABEL, actionClass, fmtAge, fmtTs } from '../components/strategy
 // from the newest decision per strategy — StrategyStatus carries only
 // last_decision_id, so the page also polls /decisions.
 
-function lastActionOf(d: DecisionRecord | undefined): { text: string; className: string } {
-  if (!d) return { text: '—', className: 'text-text-secondary' }
+function lastActionOf(d: DecisionRecord | undefined, fallback?: string | null): { text: string; className: string } {
+  // No decision in the polled window (older, or the core restarted with
+  // history): the status's own last_action still says what happened.
+  if (!d) return fallback ? { text: fallback, className: 'text-text-muted' } : { text: '—', className: 'text-text-secondary' }
   if (d.error) return { text: 'ERROR', className: 'text-red-text' }
   const first = d.intents[0]
   if (!first) return { text: 'HOLD', className: 'text-text-muted' }
@@ -125,7 +127,7 @@ export function Strategies() {
       priority: 4,
       align: 'right',
       render: (s) => {
-        const a = lastActionOf(latestByStrategy.get(s.config.id))
+        const a = lastActionOf(latestByStrategy.get(s.config.id), s.last_action)
         return <span className={`uppercase ${a.className}`}>{a.text}</span>
       },
     },

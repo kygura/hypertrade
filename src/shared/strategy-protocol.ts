@@ -117,6 +117,8 @@ export const StrategyStatusSchema = z.object({
   config: StrategyConfigSchema,
   last_run_at: z.string().nullish(),
   last_decision_id: z.string().nullish(),
+  /** Short summary of the newest decision ("open_short ETH", "hold"); absent before the first run. */
+  last_action: z.string().nullish(),
   last_error: z.string().nullish(),
   next_run_at: z.string().nullish(),
 });
@@ -200,6 +202,10 @@ export const VenueStatusSchema = z.object({
   status: z.string(),
   capabilities: z.array(z.string()).default([]),
   positions: z.array(PositionSchema).default([]),
+  /** Set when status is not connected. */
+  error: z.string().optional(),
+  /** Optional venue-specific facts (evm: network, chain_id, head_block, native_balance, native_symbol, address, protocol). */
+  meta: z.record(z.unknown()).optional(),
 });
 
 // ─── Envelopes ───
