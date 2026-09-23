@@ -39,3 +39,21 @@ to `${ENGINE_URL}/api/strategy/*` with `Authorization: Bearer ${ENGINE_TOKEN}`.
 Upstream failures surface as `502 { "error": "engine unreachable" }` (or
 `"engine timeout"` after 10s). Wire types live in
 `src/shared/strategy-protocol.ts`; fixtures under `src/shared/fixtures/strategy/`.
+
+## Analyst (optional)
+
+`/analyst` is a read-only natural-language analyst over the app's data
+(briefings, sectors, metrics, Hyperliquid markets, engine strategies and
+decisions) plus web search. It never places or approves anything; Jev and the
+operator own the trading loop. Server: `src/server/llm/*`,
+`src/server/routes/analyst.ts` (`POST /api/analyst/query`, SSE).
+
+- `ANALYST_API_KEY` — provider key, server-side only. Unset: `503 { "error": "analyst not configured" }` and the page shows its offline state.
+- `ANALYST_PROVIDER` — `anthropic` (default) or `openai-compatible`.
+- `ANALYST_MODEL` — model id; defaults to the provider module's default (`claude-opus-5-5` for anthropic).
+- `ANALYST_BASE_URL` — required for `openai-compatible` (the `/v1` base of a Chat Completions endpoint); optional override for anthropic.
+- `ANALYST_EFFORT` — anthropic effort level (`low`…`max`, default `medium`).
+
+Web search is available only with the anthropic provider (server-side tool);
+with `openai-compatible` the status endpoint and page mark it unavailable.
+Each question is bounded to 8 tool rounds and 90 seconds.
