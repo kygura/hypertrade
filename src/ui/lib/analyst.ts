@@ -23,7 +23,7 @@ export type AnalystStreamEvent =
   | { type: 'tool_result'; id: string; name: string; ok: boolean; summary: string }
   | { type: 'citations'; citations: AnalystCitation[] }
   | { type: 'error'; error: string }
-  | { type: 'done'; usage: AnalystUsage; model: string; provider: string; rounds: number; stop: string }
+  | { type: 'done'; usage: AnalystUsage; model: string; provider: string; rounds: number; stop: string; effort?: AnalystEffort }
 
 export interface AnalystStatus {
   configured: boolean
@@ -36,6 +36,39 @@ export interface AnalystStatus {
 export interface HistoryTurn {
   role: 'user' | 'assistant'
   content: string
+}
+
+// Model/provider catalog (src/server/llm/catalog.ts) — GET /api/analyst/models,
+// used by ModelSelector (src/ui/components/analyst/ModelSelector.tsx).
+export type AnalystProviderId = 'anthropic' | 'openai-compatible'
+export type AnalystEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export type AnalystTier = 'frontier' | 'balanced' | 'fast'
+
+export interface AnalystCatalogModel {
+  id: string
+  label: string
+  note: string
+  tier: AnalystTier
+  effort: boolean
+}
+
+export interface AnalystCatalogProvider {
+  id: AnalystProviderId
+  label: string
+  available: boolean
+  reason?: string
+  models: AnalystCatalogModel[]
+}
+
+export interface AnalystCatalog {
+  default: { provider: AnalystProviderId; model: string }
+  providers: AnalystCatalogProvider[]
+}
+
+export interface AnalystChoice {
+  provider: AnalystProviderId
+  model: string
+  effort?: AnalystEffort
 }
 
 const REDIRECT_KEY = 'ht_redirect_to'
@@ -59,6 +92,19 @@ export async function getAnalystStatus(): Promise<AnalystStatus> {
   }
   if (!res.ok) return failFrom(res)
   return (await res.json()) as AnalystStatus
+}
+
+/** Always resolves — the catalog is 200 even fully unconfigured (both
+ * providers `available: false`), so the selector can explain what to set. */
+export async function getAnalystModels(): Promise<AnalystCatalog> {
+  let res: Response
+  try {
+    res = await fetch('/api/analyst/models', { credentials: 'include' })
+  } catch (err) {
+    throw new NetworkError(err instanceof Error ? err.message : 'network unreachable')
+  }
+  if (!res.ok) return failFrom(res)
+  return (await res.json()) as AnalystCatalog
 }
 
 /** Splits an SSE text buffer into complete frames; returns [frames, rest]. */
@@ -90,6 +136,7 @@ export async function streamAnalyst(
   history: HistoryTurn[],
   onEvent: (e: AnalystStreamEvent) => void,
   signal?: AbortSignal,
+  choice?: AnalystChoice,
 ): Promise<void> {
   let res: Response
   try {
@@ -97,7 +144,7 @@ export async function streamAnalyst(
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ question, history }),
+      body: JSON.stringify({ question, history, ...choice }),
       signal,
     })
   } catch (err) {

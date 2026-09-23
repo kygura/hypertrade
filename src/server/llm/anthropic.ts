@@ -34,12 +34,15 @@ export class AnthropicProvider implements LLMProvider {
   readonly id = "anthropic" as const;
   readonly webSearch = true;
   readonly model: string;
+  /** Effort actually in force — defaults to "medium", same as step(). */
+  readonly effort: Effort;
   private readonly client: Anthropic;
   private readonly opts: AnthropicProviderOptions;
 
   constructor(opts: AnthropicProviderOptions) {
     this.opts = opts;
     this.model = opts.model;
+    this.effort = opts.effort ?? "medium";
     this.client = new Anthropic({
       apiKey: opts.apiKey,
       baseURL: opts.baseURL,

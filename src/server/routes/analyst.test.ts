@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createAnalystRoutes, runAnalyst, type AnalystEvent } from "./analyst";
-import type { Conversation, LLMProvider, StepHooks, StepOptions, StepResult, ToolOutcome, ToolSpec, Turn } from "../llm/provider";
+import type { AnalystCatalog } from "../llm/catalog";
+import type { Conversation, Effort, LLMProvider, ProviderId, StepHooks, StepOptions, StepResult, ToolOutcome, ToolSpec, Turn } from "../llm/provider";
 import type { ToolDeps } from "../llm/tools";
 import { DISCLAIMER } from "../llm/system";
 
@@ -9,15 +10,23 @@ import { DISCLAIMER } from "../llm/system";
 type Script = (hooks: StepHooks, opts: StepOptions, tools: ToolSpec[]) => Promise<StepResult> | StepResult;
 
 class FakeProvider implements LLMProvider {
-  readonly id = "anthropic" as const;
-  readonly model = "fake-model";
+  readonly id: ProviderId;
+  readonly model: string;
   readonly webSearch = true;
+  readonly effort?: Effort;
   system = "";
   question = "";
   history: Turn[] = [];
   toolResults: ToolOutcome[][] = [];
   finals: boolean[] = [];
-  constructor(private readonly scripts: Script[]) {}
+  constructor(
+    private readonly scripts: Script[],
+    opts: { id?: ProviderId; model?: string; effort?: Effort } = {},
+  ) {
+    this.id = opts.id ?? "anthropic";
+    this.model = opts.model ?? "fake-model";
+    this.effort = opts.effort;
+  }
   start(system: string, history: Turn[], question: string): Conversation {
     this.system = system;
     this.history = history;
@@ -62,6 +71,31 @@ function parseSSE(body: string): Array<{ event: string; data: any }> {
 
 function post(app: ReturnType<typeof createAnalystRoutes>, body: unknown) {
   return app.request("/query", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+}
+
+/** A small two-provider catalog for model-selection tests (src/server/llm/catalog.ts shape). */
+function fakeCatalog(): AnalystCatalog {
+  return {
+    default: { provider: "anthropic", model: "claude-sonnet-5" },
+    providers: [
+      {
+        id: "anthropic",
+        label: "Anthropic",
+        available: true,
+        models: [
+          { id: "claude-sonnet-5", label: "Sonnet 5", note: "n", tier: "balanced", effort: true },
+          { id: "claude-haiku-4-5", label: "Haiku 4.5", note: "n", tier: "fast", effort: false },
+        ],
+      },
+      {
+        id: "openai-compatible",
+        label: "OpenAI-compatible",
+        available: false,
+        reason: "set ANALYST_OPENAI_API_KEY and ANALYST_OPENAI_BASE_URL",
+        models: [],
+      },
+    ],
+  };
 }
 
 describe("/analyst", () => {
@@ -188,5 +222,109 @@ describe("/analyst", () => {
     const res = events.filter((e) => e.type === "tool_result") as Array<Extract<AnalystEvent, { type: "tool_result" }>>;
     expect(res.map((r) => r.ok)).toEqual([false, false]);
     expect(res[1]!.summary).toBe("unknown tool place_order");
+  });
+});
+
+describe("GET /analyst/models", () => {
+  test("serves the injected catalog verbatim (200, even fully unconfigured)", async () => {
+    const cat = fakeCatalog();
+    const app = createAnalystRoutes({ resolve: () => null, catalog: () => cat });
+    const res = await app.request("/models");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(cat);
+  });
+
+  test("unconfigured shape: both providers unavailable with reasons", async () => {
+    const unconfigured: AnalystCatalog = {
+      default: { provider: "anthropic", model: "claude-opus-5-5" },
+      providers: [
+        { id: "anthropic", label: "Anthropic", available: false, reason: "set ANALYST_ANTHROPIC_API_KEY", models: fakeCatalog().providers[0]!.models },
+        { id: "openai-compatible", label: "OpenAI-compatible", available: false, reason: "set ANALYST_OPENAI_API_KEY and ANALYST_OPENAI_BASE_URL", models: [] },
+      ],
+    };
+    const app = createAnalystRoutes({ resolve: () => null, catalog: () => unconfigured });
+    const body = (await (await app.request("/models")).json()) as AnalystCatalog;
+    expect(body.providers.every((p) => !p.available)).toBe(true);
+  });
+});
+
+describe("POST /analyst/query model selection", () => {
+  test("omitted provider/model/effort uses the server default (resolve()), unchanged", async () => {
+    const provider = new FakeProvider([() => ({ stop: "end", toolCalls: [], usage })]);
+    let resolveCalls = 0;
+    let choiceCalls = 0;
+    const app = createAnalystRoutes({
+      resolve: () => {
+        resolveCalls++;
+        return provider;
+      },
+      catalog: fakeCatalog,
+      resolveChoice: () => {
+        choiceCalls++;
+        return provider;
+      },
+    });
+    const res = await post(app, { question: "hi" });
+    expect(res.status).toBe(200);
+    expect(resolveCalls).toBe(1);
+    expect(choiceCalls).toBe(0);
+  });
+
+  test("unavailable provider → 400 field provider, with the catalog's reason", async () => {
+    const app = createAnalystRoutes({ resolve: () => null, catalog: fakeCatalog });
+    const res = await post(app, { question: "hi", provider: "openai-compatible" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "set ANALYST_OPENAI_API_KEY and ANALYST_OPENAI_BASE_URL", field: "provider" });
+  });
+
+  test("unknown model for the (available) provider → 400 field model", async () => {
+    const app = createAnalystRoutes({ resolve: () => null, catalog: fakeCatalog });
+    const res = await post(app, { question: "hi", provider: "anthropic", model: "claude-nonexistent" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).field).toBe("model");
+  });
+
+  test("effort on a model that does not support it → 400 field effort", async () => {
+    const app = createAnalystRoutes({ resolve: () => null, catalog: fakeCatalog });
+    const res = await post(app, { question: "hi", provider: "anthropic", model: "claude-haiku-4-5", effort: "high" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).field).toBe("effort");
+  });
+
+  test("a bogus provider string fails schema validation with field provider", async () => {
+    const app = createAnalystRoutes({ resolve: () => null, catalog: fakeCatalog });
+    const res = await post(app, { question: "hi", provider: "bogus" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).field).toBe("provider");
+  });
+
+  test("valid explicit choice is built via resolveChoice and echoed on the done event", async () => {
+    const events: Array<{ event: string; data: any }> = [];
+    const app = createAnalystRoutes({
+      resolve: () => null,
+      catalog: fakeCatalog,
+      resolveChoice: (choice) => new FakeProvider([() => ({ stop: "end", toolCalls: [], usage })], choice),
+    });
+    const res = await post(app, { question: "hi", provider: "anthropic", model: "claude-sonnet-5", effort: "low" });
+    expect(res.status).toBe(200);
+    for (const f of parseSSE(await res.text())) events.push(f);
+    const done = events.find((e) => e.event === "done")!;
+    expect(done.data).toMatchObject({ provider: "anthropic", model: "claude-sonnet-5", effort: "low" });
+  });
+
+  test("model omitted with an explicit provider falls back to that provider's own default/first model", async () => {
+    const state: { picked: { provider: string; model: string; effort?: string } | null } = { picked: null };
+    const app = createAnalystRoutes({
+      resolve: () => null,
+      catalog: fakeCatalog,
+      resolveChoice: (choice) => {
+        state.picked = choice;
+        return new FakeProvider([() => ({ stop: "end", toolCalls: [], usage })], choice);
+      },
+    });
+    // provider matches the catalog default → falls back to the default model.
+    const res = await post(app, { question: "hi", provider: "anthropic" });
+    expect(res.status).toBe(200);
+    expect(state.picked).toEqual({ provider: "anthropic", model: "claude-sonnet-5", effort: undefined });
   });
 });

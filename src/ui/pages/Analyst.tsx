@@ -1,15 +1,63 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Badge, Button, ErrorBlock, OfflineBlock, SkeletonRows } from '../components'
+import { ModelSelector } from '../components/analyst/ModelSelector'
 import { ApiError, NetworkError } from '../lib/api'
 import {
+  getAnalystModels,
   getAnalystStatus,
   streamAnalyst,
+  type AnalystCatalog,
+  type AnalystChoice,
   type AnalystCitation,
   type AnalystStatus,
   type AnalystStreamEvent,
   type AnalystUsage,
   type HistoryTurn,
 } from '../lib/analyst'
+
+// Model/provider selection persistence (DESIGN.md analyst header). The
+// stored choice is validated against the live catalog on every load —
+// falling back to the server default when stale (model retired, provider
+// reconfigured) — so a bad localStorage value can never wedge the picker.
+const MODEL_STORAGE_KEY = 'ht_analyst_model'
+
+function loadStoredChoice(): AnalystChoice | null {
+  try {
+    const raw = localStorage.getItem(MODEL_STORAGE_KEY)
+    if (!raw) return null
+    const v = JSON.parse(raw) as Partial<AnalystChoice>
+    if (typeof v.provider === 'string' && typeof v.model === 'string') return v as AnalystChoice
+  } catch {
+    // Corrupt/unavailable storage (private mode, etc.) — fall through to the server default.
+  }
+  return null
+}
+
+function saveChoice(choice: AnalystChoice) {
+  try {
+    localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(choice))
+  } catch {
+    // Best-effort only; the picker still works for this tab without persistence.
+  }
+}
+
+/** Validates a stored/candidate choice against the live catalog, falling back to catalog.default. */
+function resolveChoice(catalog: AnalystCatalog, candidate: AnalystChoice | null): AnalystChoice {
+  const find = (c: AnalystChoice | null) => {
+    if (!c) return null
+    const provider = catalog.providers.find((p) => p.id === c.provider && p.available)
+    const model = provider?.models.find((m) => m.id === c.model)
+    if (!provider || !model) return null
+    return { provider: provider.id, model: model.id, effort: model.effort ? (c.effort ?? 'medium') : undefined }
+  }
+  const valid = find(candidate)
+  if (valid) return valid
+  const fallback = find({ provider: catalog.default.provider, model: catalog.default.model })
+  if (fallback) return fallback
+  // Nothing available at all: park on the declared default anyway so the
+  // pill has something stable to show once a provider comes online.
+  return { provider: catalog.default.provider, model: catalog.default.model }
+}
 
 // /analyst — natural-language analyst over the app's data (SPEC.md
 // "Analyst"). Read-only market intelligence: it reads briefings, sectors,
@@ -45,7 +93,7 @@ interface TurnState {
   trace: TraceItem[]
   citations: AnalystCitation[]
   error: string | null
-  done: { usage: AnalystUsage; model: string; rounds: number; stop: string } | null
+  done: { usage: AnalystUsage; model: string; provider: string; effort?: string; rounds: number; stop: string } | null
   streaming: boolean
 }
 
@@ -57,7 +105,10 @@ type Offline = { title: string; message: string } | null
 
 function offlineFrom(err: unknown): Offline {
   if (err instanceof ApiError && err.status === 503) {
-    return { title: 'ANALYST NOT CONFIGURED', message: 'set ANALYST_API_KEY (and optionally ANALYST_PROVIDER, ANALYST_MODEL) on the server' }
+    return {
+      title: 'ANALYST NOT CONFIGURED',
+      message: 'set ANALYST_API_KEY, or a provider key (ANALYST_ANTHROPIC_API_KEY / ANALYST_OPENAI_API_KEY + ANALYST_OPENAI_BASE_URL), on the server',
+    }
   }
   if (err instanceof NetworkError || (err instanceof ApiError && err.status === 502)) {
     return { title: 'ANALYST UNREACHABLE', message: 'check your connection and retry' }
@@ -78,7 +129,7 @@ function applyEvent(t: TurnState, e: AnalystStreamEvent): TurnState {
     case 'error':
       return { ...t, error: e.error }
     case 'done':
-      return { ...t, streaming: false, done: { usage: e.usage, model: e.model, rounds: e.rounds, stop: e.stop } }
+      return { ...t, streaming: false, done: { usage: e.usage, model: e.model, provider: e.provider, effort: e.effort, rounds: e.rounds, stop: e.stop } }
   }
 }
 
@@ -161,7 +212,10 @@ function Turn({ t }: { t: TurnState }) {
         <Citations items={t.citations} />
         {t.done && (
           <div className="text-[10px] text-text-secondary tabular flex flex-wrap gap-x-3">
-            <span>{t.done.model}</span>
+            <span>
+              {t.done.provider} · {t.done.model}
+              {t.done.effort ? ` · ${t.done.effort}` : ''}
+            </span>
             <span>
               {t.done.usage.input_tokens.toLocaleString()} in · {t.done.usage.output_tokens.toLocaleString()} out
             </span>
@@ -182,6 +236,9 @@ export function Analyst() {
   const [offline, setOffline] = useState<Offline>(null)
   const [turns, setTurns] = useState<TurnState[]>(sessionTurns)
   const [draft, setDraft] = useState('')
+  const [catalog, setCatalog] = useState<AnalystCatalog | null>(null)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [choice, setChoice] = useState<AnalystChoice | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
   const busy = turns.some((t) => t.streaming)
@@ -201,10 +258,31 @@ export function Analyst() {
       .finally(() => setStatusLoading(false))
   }, [])
 
+  // Model catalog: loaded once, revalidated on retry. The stored choice
+  // (localStorage) is checked against it every time it (re)loads, so a
+  // retired model or reconfigured provider never leaves the picker stuck.
+  const loadCatalog = useCallback(() => {
+    setCatalogError(null)
+    getAnalystModels()
+      .then((cat) => {
+        setCatalog(cat)
+        const resolved = resolveChoice(cat, loadStoredChoice())
+        setChoice(resolved)
+        saveChoice(resolved)
+      })
+      .catch((err) => setCatalogError(err instanceof Error ? err.message : String(err)))
+  }, [])
+
+  const onModelChange = useCallback((next: AnalystChoice) => {
+    setChoice(next)
+    saveChoice(next)
+  }, [])
+
   useEffect(() => {
     probe()
+    loadCatalog()
     return () => abortRef.current?.abort()
-  }, [probe])
+  }, [probe, loadCatalog])
 
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: 'end' })
@@ -223,7 +301,10 @@ export function Analyst() {
       abortRef.current = ctrl
       const update = (fn: (t: TurnState) => TurnState) => setTurns((ts) => ts.map((t) => (t.id === id ? fn(t) : t)))
       try {
-        await streamAnalyst(q, history, (e) => update((t) => applyEvent(t, e)), ctrl.signal)
+        // choice is undefined until the catalog loads — the server then
+        // uses its own default (resolveProvider), same as before this
+        // selector existed.
+        await streamAnalyst(q, history, (e) => update((t) => applyEvent(t, e)), ctrl.signal, choice ?? undefined)
         update((t) => (t.streaming ? { ...t, streaming: false, error: t.error ?? (ctrl.signal.aborted ? 'stopped' : 'stream ended without a done event') } : t))
       } catch (err) {
         const off = offlineFrom(err)
@@ -233,7 +314,7 @@ export function Analyst() {
         if (abortRef.current === ctrl) abortRef.current = null
       }
     },
-    [busy, turns],
+    [busy, turns, choice],
   )
 
   const stop = () => abortRef.current?.abort()
@@ -241,8 +322,23 @@ export function Analyst() {
   return (
     <div className="max-w-[1100px] mx-auto p-3 md:p-[var(--gutter)] flex flex-col gap-3">
       <div className="panel">
-        <div className="panel-header flex-wrap gap-2">
+        {/* Mobile (<md): stacked column — title row, then the model
+            selector on its own full-width row (its own effort-control row
+            beneath that), then the status line. Desktop: original single
+            row. No horizontal scroll on any width (DESIGN.md §4.1). */}
+        <div className="panel-header flex-col items-start justify-start gap-2 md:flex-row md:items-center md:justify-between">
           <span className="panel-title">ANALYST</span>
+          {catalogError ? (
+            <button
+              type="button"
+              onClick={loadCatalog}
+              className="text-[10px] uppercase tracking-wider text-red-text underline underline-offset-2"
+            >
+              model list unreachable — retry
+            </button>
+          ) : (
+            <ModelSelector catalog={catalog} value={choice} onChange={onModelChange} />
+          )}
           {status && (
             <span className="flex flex-wrap items-center gap-2 text-[10px] text-text-secondary">
               <span>{status.provider}</span>

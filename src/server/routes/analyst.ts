@@ -2,7 +2,18 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { buildSystemPrompt } from "../llm/system";
-import { resolveProvider, type Citation, type LLMProvider, type ToolOutcome, type Usage } from "../llm/provider";
+import { buildCatalog, type AnalystCatalog } from "../llm/catalog";
+import {
+  resolveChosenProvider,
+  resolveProvider,
+  type AnalystEnv,
+  type Citation,
+  type Effort,
+  type LLMProvider,
+  type ProviderId,
+  type ToolOutcome,
+  type Usage,
+} from "../llm/provider";
 import { TOOL_SPECS, defaultToolDeps, runTool, toolCatalog, type ToolDeps } from "../llm/tools";
 
 // /analyst — the classic-LLM analyst (SPEC.md "Analyst"). Read-only: it
@@ -10,15 +21,20 @@ import { TOOL_SPECS, defaultToolDeps, runTool, toolCatalog, type ToolDeps } from
 // stays the only model inside the trading loop. Session-cookie protection
 // comes from the global requireAuth gate in api/index.ts.
 //
-// POST /analyst/query {question, history?} → text/event-stream:
+// POST /analyst/query {question, history?, provider?, model?, effort?} →
+//   text/event-stream:
 //   event: text         {delta}
 //   event: tool_call    {id, name, input, server}
 //   event: tool_result  {id, name, ok, summary}
 //   event: citations    {citations: [{url, title, cited_text?}]}
 //   event: error        {error}
-//   event: done         {usage, model, provider, rounds, stop}
+//   event: done         {usage, model, provider, rounds, stop, effort?}
 // GET /analyst/status → {configured, provider, model, web_search, tools}
-// Unconfigured → 503 { error: "analyst not configured" }.
+// GET /analyst/models → {default: {provider, model}, providers: [...]}
+//   (src/server/llm/catalog.ts) — always 200, even fully unconfigured.
+// Unconfigured (no provider/model/effort chosen in the body) → 503
+// { error: "analyst not configured" }. An explicit but invalid/unavailable
+// provider, model or effort choice → 400 { error, field }.
 
 export const TIMEOUT_MS = 90_000;
 export const MAX_TOOL_ROUNDS = 8;
@@ -29,6 +45,11 @@ const QueryBody = z.object({
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(20_000) }))
     .max(40)
     .optional(),
+  // Optional model/provider selection (src/ui/components/analyst/ModelSelector.tsx).
+  // Omitted entirely → the server default (resolveProvider), unchanged.
+  provider: z.enum(["anthropic", "openai-compatible"]).optional(),
+  model: z.string().trim().min(1).max(200).optional(),
+  effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
 });
 
 export type AnalystEvent =
@@ -37,7 +58,7 @@ export type AnalystEvent =
   | { type: "tool_result"; id: string; name: string; ok: boolean; summary: string }
   | { type: "citations"; citations: Citation[] }
   | { type: "error"; error: string }
-  | { type: "done"; usage: Usage; model: string; provider: string; rounds: number; stop: string };
+  | { type: "done"; usage: Usage; model: string; provider: string; rounds: number; stop: string; effort?: Effort };
 
 export interface RunOptions {
   provider: LLMProvider;
@@ -141,7 +162,7 @@ export async function runAnalyst(opts: RunOptions, emit: (e: AnalystEvent) => Pr
     opts.signal?.removeEventListener("abort", onOuterAbort);
   }
   if (citations.length) await emit({ type: "citations", citations });
-  await emit({ type: "done", usage, model: provider.model, provider: provider.id, rounds, stop });
+  await emit({ type: "done", usage, model: provider.model, provider: provider.id, rounds, stop, effort: provider.effort });
 }
 
 /** Provider failures without leaking request details (keys never appear here). */
@@ -157,7 +178,12 @@ function providerError(err: unknown): string {
 }
 
 export interface AnalystRouteOptions {
+  /** Resolves the server-default provider (no explicit choice in the body). */
   resolve?: () => LLMProvider | null;
+  /** The catalog GET /models serves and POST /query validates choices against. */
+  catalog?: () => AnalystCatalog;
+  /** Builds a specific, already-validated provider/model/effort choice. */
+  resolveChoice?: (choice: { provider: ProviderId; model: string; effort?: Effort }) => LLMProvider | null;
   deps?: ToolDeps;
   timeoutMs?: number;
   maxRounds?: number;
@@ -165,15 +191,17 @@ export interface AnalystRouteOptions {
 
 export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
   const resolve = o.resolve ?? (() => resolveProvider());
+  const catalog = o.catalog ?? (() => buildCatalog(process.env as AnalystEnv));
+  const resolveChoice =
+    o.resolveChoice ?? ((choice: { provider: ProviderId; model: string; effort?: Effort }) => resolveChosenProvider(process.env as AnalystEnv, choice));
   return new Hono()
     .get("/status", (c) => {
       const p = resolve();
       if (!p) return c.json({ configured: false, error: "analyst not configured" }, 503);
       return c.json({ configured: true, provider: p.id, model: p.model, web_search: p.webSearch, tools: toolCatalog(p.webSearch) });
     })
+    .get("/models", (c) => c.json(catalog()))
     .post("/query", async (c) => {
-      const provider = resolve();
-      if (!provider) return c.json({ error: "analyst not configured" }, 503);
       let body: unknown;
       try {
         body = await c.req.json();
@@ -182,6 +210,32 @@ export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
       }
       const parsed = QueryBody.safeParse(body);
       if (!parsed.success) return c.json({ error: "invalid query", field: parsed.error.issues[0]?.path.join(".") }, 400);
+
+      let provider: LLMProvider | null;
+      const { provider: reqProvider, model: reqModel, effort: reqEffort } = parsed.data;
+      if (reqProvider !== undefined || reqModel !== undefined || reqEffort !== undefined) {
+        // An explicit choice: validate it against the catalog (400 with the
+        // offending field on failure) rather than falling back silently.
+        const cat = catalog();
+        const providerId = reqProvider ?? cat.default.provider;
+        const entry = cat.providers.find((p) => p.id === providerId);
+        if (!entry || !entry.available) {
+          return c.json({ error: entry?.reason ?? `provider ${providerId} is not available`, field: "provider" }, 400);
+        }
+        const modelId = reqModel ?? (providerId === cat.default.provider ? cat.default.model : entry.models[0]?.id);
+        const modelEntry = modelId ? entry.models.find((m) => m.id === modelId) : undefined;
+        if (!modelEntry) {
+          return c.json({ error: `unknown model ${JSON.stringify(modelId ?? null)} for provider ${providerId}`, field: "model" }, 400);
+        }
+        if (reqEffort !== undefined && !modelEntry.effort) {
+          return c.json({ error: `${modelEntry.id} does not support an effort level`, field: "effort" }, 400);
+        }
+        provider = resolveChoice({ provider: providerId, model: modelEntry.id, effort: reqEffort });
+        if (!provider) return c.json({ error: entry.reason ?? `provider ${providerId} is not configured`, field: "provider" }, 400);
+      } else {
+        provider = resolve();
+        if (!provider) return c.json({ error: "analyst not configured" }, 503);
+      }
 
       c.header("cache-control", "no-store");
       c.header("x-accel-buffering", "no");
