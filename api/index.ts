@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
 import { requireAuth } from "../src/server/auth";
+import { analystRoutes } from "../src/server/routes/analyst";
 import { authRoutes } from "../src/server/routes/auth";
 import { branchesRoutes } from "../src/server/routes/branches";
 import { candlesRoutes } from "../src/server/routes/candles";
@@ -23,6 +24,7 @@ app.get("/health", (c) => {
 });
 
 app.route("/auth", authRoutes);
+app.route("/analyst", analystRoutes);
 
 // Mount routes from src/server/routes/ here — no auth wiring needed.
 app.route("/branches", branchesRoutes);

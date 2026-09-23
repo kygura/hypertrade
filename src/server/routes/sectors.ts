@@ -46,7 +46,8 @@ export function enrichSector(tokens: string[], ctxs: AssetCtx[]) {
   return { oi_usd_total, avg_funding, names_matched: matched.length, tokenRows };
 }
 
-export const sectorsRoutes = new Hono().get("/", async (c) => {
+/** The routine's latest sector read joined with live per-token HL aggregates. */
+export async function getSectorsPayload() {
   const data = SectorsDataSchema.parse(latest);
   let ctxs: AssetCtx[] = [];
   try {
@@ -56,5 +57,9 @@ export const sectorsRoutes = new Hono().get("/", async (c) => {
     // without live enrichment, rather than 500ing the whole route.
   }
   const sectors = data.sectors.map((s) => ({ ...s, ...enrichSector(s.tokens, ctxs) }));
-  return c.json({ ...data, sectors });
+  return { ...data, sectors };
+}
+
+export const sectorsRoutes = new Hono().get("/", async (c) => {
+  return c.json(await getSectorsPayload());
 });

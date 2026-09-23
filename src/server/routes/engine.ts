@@ -25,33 +25,36 @@ function restOf(pathname: string): string {
   return rest.replace(/\/+$/, "");
 }
 
-export const engineRoutes = new Hono().all("/*", async (c) => {
-  const base = process.env.ENGINE_URL;
-  if (!base) return c.json({ error: "engine not configured" }, 503);
+export interface EngineResult {
+  status: number;
+  json: unknown;
+}
 
-  const inUrl = new URL(c.req.url);
-  const target = `${base.replace(/\/+$/, "")}/api/strategy/${restOf(inUrl.pathname)}${inUrl.search}`;
+/**
+ * One call to the core's strategy API with the proxy's failure vocabulary.
+ * `rest` is the path after /api/strategy/ plus any query string. Shared by
+ * the /engine proxy and the analyst's read-only engine tools.
+ */
+export async function engineFetch(
+  rest: string,
+  init: { method?: string; body?: string; contentType?: string } = {},
+): Promise<EngineResult> {
+  const base = process.env.ENGINE_URL;
+  if (!base) return { status: 503, json: { error: "engine not configured" } };
+  const target = `${base.replace(/\/+$/, "")}/api/strategy/${rest.replace(/^\/+/, "")}`;
 
   const headers: Record<string, string> = { accept: "application/json" };
   const token = process.env.ENGINE_TOKEN;
   if (token) headers.authorization = `Bearer ${token}`;
-
-  const method = c.req.method.toUpperCase();
-  let body: string | undefined;
-  if (method !== "GET" && method !== "HEAD") {
-    const text = await c.req.text();
-    if (text.length > 0) {
-      body = text;
-      headers["content-type"] = c.req.header("content-type") ?? "application/json";
-    }
-  }
+  const method = (init.method ?? "GET").toUpperCase();
+  if (init.body !== undefined) headers["content-type"] = init.contentType ?? "application/json";
 
   let upstream: Response;
   try {
-    upstream = await fetch(target, { method, headers, body, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    upstream = await fetch(target, { method, headers, body: init.body, signal: AbortSignal.timeout(TIMEOUT_MS) });
   } catch (err) {
     const timedOut = err instanceof Error && err.name === "TimeoutError";
-    return c.json({ error: timedOut ? "engine timeout" : "engine unreachable" }, 502);
+    return { status: 502, json: { error: timedOut ? "engine timeout" : "engine unreachable" } };
   }
 
   const text = await upstream.text();
@@ -62,5 +65,21 @@ export const engineRoutes = new Hono().all("/*", async (c) => {
     json = { error: text || upstream.statusText || `HTTP ${upstream.status}` };
   }
   if (json === null) json = upstream.ok ? {} : { error: upstream.statusText || `HTTP ${upstream.status}` };
-  return c.json(json, upstream.status as ContentfulStatusCode);
+  return { status: upstream.status, json };
+}
+
+export const engineRoutes = new Hono().all("/*", async (c) => {
+  const inUrl = new URL(c.req.url);
+  const method = c.req.method.toUpperCase();
+  let body: string | undefined;
+  if (method !== "GET" && method !== "HEAD") {
+    const text = await c.req.text();
+    if (text.length > 0) body = text;
+  }
+  const res = await engineFetch(`${restOf(inUrl.pathname)}${inUrl.search}`, {
+    method,
+    body,
+    contentType: c.req.header("content-type") ?? "application/json",
+  });
+  return c.json(res.json, res.status as ContentfulStatusCode);
 });
