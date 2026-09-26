@@ -32,4 +32,8 @@
 | T12 | Reconcile+wire: App.tsx routes for Branches/Sectors/State; BranchesCard vs real branch shapes (list route lacks result; fields are cagrPct + {ts,value}); fmtUsd B-suffix + dedupe local fmtCompactUsd; SectorDrillPanel token chips → link /markets/:coin (route exists now) | sonnet | T10,T11 | done (planner fixed maxDdClass magnitude convention) |
 | T10 | UI Branches views (list, editor, equity/drawdown/projection charts) | sonnet | T8,T6 | done |
 | V1 | Verification gate: build/tests, feature-finalizer, review-risk + review-reliability, ponytail-review, mp-standards-spec-review, design-drift check, fix loops (max 3) | mixed | all | done (1 loop: 2 criticals fixed — z30 n-gate, sim NaN guard; error shapes normalized; ~300 lines dead code removed; fmtPct unit dedupe; OfflineBlock wired; per-token sector table; CI workflow added; sim math independently verified correct) |
-| V2 | Provision Supabase, apply migrations, vercel deploy, envs, smoke test | — (planner+MCP) | V1 | open |
+| V2 | Provision Supabase, apply migrations, vercel deploy, envs, smoke test | — (planner+MCP) | V1 | **open — app has never been live; routine data stale since 2026-08-30** |
+| P0 | PROP.md — prop-trading contract: Breakout rule set, risk framework, setup ledger, session protocol, gates | fable | — | done |
+| T13 | Journal DB + routes: `db/migrations/002_journal.sql` (trades, sessions, accounts per PROP.md §(e)), `src/server/routes/journal.ts` (CRUD + `/stats`), tests | sonnet | T3,P0 | open |
+| T14 | Journal UI `/journal`: daily check-in, plan-before-trigger form, sizing calculator (PROP.md §(b) formula), setup picker limited to §(c) ledger, server-computed lockout banner, venue tag paper/eval/funded | sonnet | T8,T13 | open |
+| T15 | Gate page: PROP.md §(f) checklist computed from paper record; stays red until cleared; weekly per-setup expectancy review | sonnet | T14 | open |

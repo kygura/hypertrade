@@ -25,6 +25,14 @@ bun run build
 
 Deployed on Vercel + Supabase. Set environment variables from `.env.example` in Vercel project settings.
 
+## Prop-trading contract
+
+`PROP.md` is the operator's own rulebook for trading a Breakout evaluation
+with this app as journal and enforcer: the firm's limits, the risk framework
+derived from them, the setup ledger, the session protocol and the gates that
+must clear before a fee is paid. The journal that enforces it is T13–T15 in
+`TASKS.md`.
+
 ## Strategy engine (optional)
 
 The `/strategies`, `/decisions` and `/governor` pages talk to the hyperion core
