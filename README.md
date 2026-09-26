@@ -25,6 +25,12 @@ bun run build
 
 Deployed on Vercel + Supabase. Set environment variables from `.env.example` in Vercel project settings.
 
+## Operator playbook
+
+`PLAYBOOK.md` is the operator's own contract: goal state, the three daily tracks
+(income, build, edge), the prop-trading risk framework and gate, the daily
+journal shape and the Sunday review. Not code, but the reason the code exists.
+
 ## Strategy engine (optional)
 
 The `/strategies`, `/decisions` and `/governor` pages talk to the hyperion core

@@ -33,3 +33,4 @@
 | T10 | UI Branches views (list, editor, equity/drawdown/projection charts) | sonnet | T8,T6 | done |
 | V1 | Verification gate: build/tests, feature-finalizer, review-risk + review-reliability, ponytail-review, mp-standards-spec-review, design-drift check, fix loops (max 3) | mixed | all | done (1 loop: 2 criticals fixed — z30 n-gate, sim NaN guard; error shapes normalized; ~300 lines dead code removed; fmtPct unit dedupe; OfflineBlock wired; per-token sector table; CI workflow added; sim math independently verified correct) |
 | V2 | Provision Supabase, apply migrations, vercel deploy, envs, smoke test | — (planner+MCP) | V1 | open |
+| T13 | Operator journal + jobs tracker: zod schemas for `data/journal/*.json` and `data/jobs/applications.json` (shapes in PLAYBOOK.md §7), `/journal` and `/jobs` routes + views, weekly-review row rendered from journal files | sonnet | V1 | open |
