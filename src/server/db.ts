@@ -23,10 +23,32 @@ export type BranchResult = { branchId: string; computedAt: Date; result: unknown
 
 let client: postgres.Sql | null = null
 
+/**
+ * The connection string. DATABASE_URL wins; otherwise the pooled URL the
+ * Vercel Supabase integration injects, under its default `DATABASE_` prefix
+ * or with no prefix.
+ */
+export function databaseUrl(env: Record<string, string | undefined> = process.env): string | undefined {
+  const raw = env.DATABASE_URL || env.DATABASE_POSTGRES_URL || env.POSTGRES_URL
+  if (!raw) return undefined
+  // postgres.js forwards unknown query parameters to the server as settings,
+  // and the integration's URL carries ones Postgres rejects (`supa=...`,
+  // `pgbouncer=true`). Only sslmode is meant for the client.
+  try {
+    const url = new URL(raw)
+    for (const key of [...url.searchParams.keys()]) {
+      if (key !== 'sslmode') url.searchParams.delete(key)
+    }
+    return url.toString()
+  } catch {
+    return raw
+  }
+}
+
 /** Lazy singleton. Nothing connects at import time; builds and tests run without a DB. */
 export function sql(): postgres.Sql {
   if (client) return client
-  const url = process.env.DATABASE_URL
+  const url = databaseUrl()
   if (!url) throw new Error('DATABASE_URL is not set — database queries are unavailable')
   // prepare:false is required behind Supabase's transaction pooler; max:1 because
   // each serverless invocation is its own process.
