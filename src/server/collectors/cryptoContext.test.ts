@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import coingeckoFixture from "../../shared/fixtures/coingecko-global.json";
-import fngFixture from "../../shared/fixtures/fng.json";
-import defillamaFixture from "../../shared/fixtures/defillama-stablecoins.json";
-import deribitFixture from "../../shared/fixtures/deribit-dvol.json";
-import { parseCoinGecko, parseDeribit, parseFng, parseStablecoins, collectCryptoContext, type CryptoContextDbDeps } from "./cryptoContext";
-import type { Observation } from "../db";
+import coingeckoFixture from "../../shared/fixtures/coingecko-global.json" with { type: "json" };
+import fngFixture from "../../shared/fixtures/fng.json" with { type: "json" };
+import defillamaFixture from "../../shared/fixtures/defillama-stablecoins.json" with { type: "json" };
+import deribitFixture from "../../shared/fixtures/deribit-dvol.json" with { type: "json" };
+import { parseCoinGecko, parseDeribit, parseFng, parseStablecoins, collectCryptoContext, type CryptoContextDbDeps } from "./cryptoContext.js";
+import type { Observation } from "../db.js";
 
 describe("parseCoinGecko", () => {
   test("extracts total mcap and BTC dominance", () => {

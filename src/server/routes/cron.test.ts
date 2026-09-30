@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { cronRoutes } from "./cron";
+import { cronRoutes } from "./cron.js";
 
 process.env.CRON_TOKEN = "test-cron-token";
 

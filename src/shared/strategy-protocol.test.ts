@@ -12,18 +12,18 @@ import {
   StrategyStatusSchema,
   VenuesResponseSchema,
   legendText,
-} from "./strategy-protocol";
-import { coerceParam, defaultParams, validateParams } from "./strategy-params";
-import manifest from "./fixtures/strategy/manifest.json";
-import manifests from "./fixtures/strategy/manifests.json";
-import config from "./fixtures/strategy/config.json";
-import governor from "./fixtures/strategy/governor.json";
-import decision from "./fixtures/strategy/decision.json";
-import decisionDryRun from "./fixtures/strategy/decision-dry-run.json";
-import decisions from "./fixtures/strategy/decisions.json";
-import strategyStatus from "./fixtures/strategy/strategy-status.json";
-import strategies from "./fixtures/strategy/strategies.json";
-import venues from "./fixtures/strategy/venues.json";
+} from "./strategy-protocol.js";
+import { coerceParam, defaultParams, validateParams } from "./strategy-params.js";
+import manifest from "./fixtures/strategy/manifest.json" with { type: "json" };
+import manifests from "./fixtures/strategy/manifests.json" with { type: "json" };
+import config from "./fixtures/strategy/config.json" with { type: "json" };
+import governor from "./fixtures/strategy/governor.json" with { type: "json" };
+import decision from "./fixtures/strategy/decision.json" with { type: "json" };
+import decisionDryRun from "./fixtures/strategy/decision-dry-run.json" with { type: "json" };
+import decisions from "./fixtures/strategy/decisions.json" with { type: "json" };
+import strategyStatus from "./fixtures/strategy/strategy-status.json" with { type: "json" };
+import strategies from "./fixtures/strategy/strategies.json" with { type: "json" };
+import venues from "./fixtures/strategy/venues.json" with { type: "json" };
 
 describe("strategy fixtures parse", () => {
   test("manifest", () => {

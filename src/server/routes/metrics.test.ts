@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { metricsRoutes } from "./metrics";
+import { metricsRoutes } from "./metrics.js";
 
 const app = new Hono().route("/metrics", metricsRoutes);
 

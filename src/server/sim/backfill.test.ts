@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { needsBackfill, daysParam, COINGECKO_IDS, backfillCoin } from "./backfill";
+import { needsBackfill, daysParam, COINGECKO_IDS, backfillCoin } from "./backfill.js";
 
 const DAY = 86400000;
 

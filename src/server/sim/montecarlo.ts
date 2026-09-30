@@ -1,6 +1,6 @@
 // Pure forward Monte Carlo projection — no I/O. See SPEC.md "Branch model".
-import type { BranchConfig } from "../../shared/types";
-import type { EquityPoint } from "./engine";
+import type { BranchConfig } from "../../shared/types.js";
+import type { EquityPoint } from "./engine.js";
 
 export interface MonteCarloResult {
   median: EquityPoint[];

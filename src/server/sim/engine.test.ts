@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { simulate, NoPriceDataError, type DailyClose } from "./engine";
-import type { BranchConfig } from "../../shared/types";
+import { simulate, NoPriceDataError, type DailyClose } from "./engine.js";
+import type { BranchConfig } from "../../shared/types.js";
 
 const DAY = 86400000;
 const d0 = Date.parse("2024-01-01");

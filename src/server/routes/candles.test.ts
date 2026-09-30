@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { candlesRoutes } from "./candles";
+import { candlesRoutes } from "./candles.js";
 
 const app = new Hono().route("/candles", candlesRoutes);
 

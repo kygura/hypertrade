@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { fetchPerpMetaAndCtxs } from "../../shared/hl-client";
-import fixture from "../../shared/fixtures/hyperliquid.json";
-import { buildHyperliquidObservations } from "./hyperliquid";
-import type { AssetCtx } from "../../shared/types";
+import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
+import fixture from "../../shared/fixtures/hyperliquid.json" with { type: "json" };
+import { buildHyperliquidObservations } from "./hyperliquid.js";
+import type { AssetCtx } from "../../shared/types.js";
 
 function mockFetch(body: unknown): typeof fetch {
   return (async () => new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { seriesRange, summaryFor } from "../db";
+import { seriesRange, summaryFor } from "../db.js";
 
 const summaryQuery = z.object({ ids: z.string().min(1) });
 

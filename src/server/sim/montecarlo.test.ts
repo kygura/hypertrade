@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { runMonteCarlo } from "./montecarlo";
+import { runMonteCarlo } from "./montecarlo.js";
 
 const DAY = 86400000;
 

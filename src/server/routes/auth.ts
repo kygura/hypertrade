@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { clearSessionCookie, login, setSessionCookie } from "../auth";
+import { clearSessionCookie, login, setSessionCookie } from "../auth.js";
 
 const loginBody = z.object({ password: z.string().min(1) });
 

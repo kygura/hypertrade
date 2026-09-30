@@ -1,5 +1,5 @@
 // Pure branch simulation engine — no I/O. See SPEC.md "Branch model".
-import type { BranchConfig } from "../../shared/types";
+import type { BranchConfig } from "../../shared/types.js";
 
 export interface DailyClose {
   ts: number; // ms epoch

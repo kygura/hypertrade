@@ -7,8 +7,8 @@
 // approves or rejects anything; Jev stays the only model inside the trading
 // loop (hyperion docs/jev/SPEC.md).
 
-import { AnthropicProvider } from "./anthropic";
-import { OpenAICompatibleProvider } from "./openai";
+import { AnthropicProvider } from "./anthropic.js";
+import { OpenAICompatibleProvider } from "./openai.js";
 
 export const DEFAULT_MODEL = "claude-opus-5-5";
 

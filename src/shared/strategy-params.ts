@@ -2,7 +2,7 @@
 // ParamSpec list. Mirrors what the core enforces on PUT (400 with
 // {error, field}) so the form can refuse before the round trip. Pure — no
 // React — so `bun test src` covers it.
-import type { ParamSpec } from "./strategy-protocol";
+import type { ParamSpec } from "./strategy-protocol.js";
 
 export type ParamValues = Record<string, unknown>;
 export type ParamErrors = Record<string, string>;

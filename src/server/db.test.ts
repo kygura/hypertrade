@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { databaseUrl, toMetricSummary } from './db'
+import { databaseUrl, toMetricSummary } from './db.js'
 
 const base = {
   series_id: 'hl.total_oi_usd',

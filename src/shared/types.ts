@@ -14,7 +14,7 @@ import type {
   HlPerpMetaSchema,
   HlAssetCtxSchema,
   HlCandleSchema,
-} from "./schemas";
+} from "./schemas.js";
 
 export type Allocation = z.infer<typeof AllocationSchema>;
 export type ScenarioAssumption = z.infer<typeof ScenarioAssumptionSchema>;

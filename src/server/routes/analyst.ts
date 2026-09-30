@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import { buildSystemPrompt } from "../llm/system";
-import { buildCatalog, type AnalystCatalog } from "../llm/catalog";
+import { buildSystemPrompt } from "../llm/system.js";
+import { buildCatalog, type AnalystCatalog } from "../llm/catalog.js";
 import {
   resolveChosenProvider,
   resolveProvider,
@@ -13,8 +13,8 @@ import {
   type ProviderId,
   type ToolOutcome,
   type Usage,
-} from "../llm/provider";
-import { TOOL_SPECS, defaultToolDeps, runTool, toolCatalog, type ToolDeps } from "../llm/tools";
+} from "../llm/provider.js";
+import { TOOL_SPECS, defaultToolDeps, runTool, toolCatalog, type ToolDeps } from "../llm/tools.js";
 
 // /analyst — the classic-LLM analyst (SPEC.md "Analyst"). Read-only: it
 // reads the app's data through tools/tools.ts and never places orders; Jev

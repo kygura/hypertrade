@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { MarketStateDataSchema } from "../../shared/schemas";
-import latest from "../../../data/marketstate/latest.json";
-import { MARKETSTATE_HISTORY } from "../../../data/marketstate/index";
+import { MarketStateDataSchema } from "../../shared/schemas.js";
+import latest from "../../../data/marketstate/latest.json" with { type: "json" };
+import { MARKETSTATE_HISTORY } from "../../../data/marketstate/index.js";
 
 export const marketstateRoutes = new Hono()
   .get("/", (c) => {

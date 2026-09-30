@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import fixture from "../../shared/fixtures/fred-observations.json";
-import { collectFred, deriveMetrics, parseFredObservations } from "./fred";
+import fixture from "../../shared/fixtures/fred-observations.json" with { type: "json" };
+import { collectFred, deriveMetrics, parseFredObservations } from "./fred.js";
 
 describe("parseFredObservations", () => {
   test("skips the '.' (missing) observation and returns the latest valid one", () => {

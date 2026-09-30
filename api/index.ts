@@ -1,17 +1,17 @@
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
-import { requireAuth } from "../src/server/auth";
-import { analystRoutes } from "../src/server/routes/analyst";
-import { authRoutes } from "../src/server/routes/auth";
-import { branchesRoutes } from "../src/server/routes/branches";
-import { candlesRoutes } from "../src/server/routes/candles";
-import { cronRoutes } from "../src/server/routes/cron";
-import { engineRoutes } from "../src/server/routes/engine";
-import { hlRoutes } from "../src/server/routes/hl";
-import { marketstateRoutes } from "../src/server/routes/marketstate";
-import { metricsRoutes } from "../src/server/routes/metrics";
-import { routinesRoutes } from "../src/server/routes/routines";
-import { sectorsRoutes } from "../src/server/routes/sectors";
+import { requireAuth } from "../src/server/auth.js";
+import { analystRoutes } from "../src/server/routes/analyst.js";
+import { authRoutes } from "../src/server/routes/auth.js";
+import { branchesRoutes } from "../src/server/routes/branches.js";
+import { candlesRoutes } from "../src/server/routes/candles.js";
+import { cronRoutes } from "../src/server/routes/cron.js";
+import { engineRoutes } from "../src/server/routes/engine.js";
+import { hlRoutes } from "../src/server/routes/hl.js";
+import { marketstateRoutes } from "../src/server/routes/marketstate.js";
+import { metricsRoutes } from "../src/server/routes/metrics.js";
+import { routinesRoutes } from "../src/server/routes/routines.js";
+import { sectorsRoutes } from "../src/server/routes/sectors.js";
 
 const app = new Hono({ strict: false }).basePath("/api");
 

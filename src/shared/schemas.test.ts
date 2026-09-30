@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   BranchConfigSchema, MarketStateDataSchema, SectorsDataSchema,
   HlMetaAndAssetCtxsResponseSchema,
-} from "./schemas";
-import fixture from "./fixtures/hyperliquid.json";
+} from "./schemas.js";
+import fixture from "./fixtures/hyperliquid.json" with { type: "json" };
 
 describe("BranchConfigSchema", () => {
   const valid = {

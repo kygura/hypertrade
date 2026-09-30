@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { engineRoutes } from "./engine";
-import governor from "../../shared/fixtures/strategy/governor.json";
-import strategyStatus from "../../shared/fixtures/strategy/strategy-status.json";
+import { engineRoutes } from "./engine.js";
+import governor from "../../shared/fixtures/strategy/governor.json" with { type: "json" };
+import strategyStatus from "../../shared/fixtures/strategy/strategy-status.json" with { type: "json" };
 
 const originalFetch = globalThis.fetch;
 const originalUrl = process.env.ENGINE_URL;
