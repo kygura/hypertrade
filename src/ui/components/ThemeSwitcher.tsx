@@ -11,7 +11,7 @@ export function ThemeSwitcher() {
       <select
         value={theme}
         onChange={(e) => setTheme(e.target.value as ThemeId)}
-        className="theme-switcher !min-h-0 h-[var(--control-sm)] !py-0 !px-1.5 !text-[10px] font-control tracking-[var(--control-tracking)] text-text-secondary"
+        className="theme-switcher"
       >
         {THEMES.map((t) => (
           <option key={t.id} value={t.id}>

@@ -288,6 +288,18 @@ textarea {
   min-height: var(--control-md);
   outline: none;
 }
+/* Top-bar theme select: compact, and unlayered like the rule above so a
+   theme can restyle it via .theme-switcher. */
+.theme-switcher {
+  min-height: 0;
+  height: var(--control-sm);
+  padding: 0 6px;
+  font-family: var(--font-control);
+  font-size: 10px;
+  letter-spacing: var(--control-tracking);
+  color: var(--color-text-secondary);
+}
+
 input:focus,
 select:focus,
 textarea:focus {

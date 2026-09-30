@@ -28,7 +28,9 @@ export const THEMES: readonly ThemeDef[] = [
     id: 'tradexyz',
     label: 'TRADE[XYZ]',
     scheme: 'dark',
-    fonts: [],
+    fonts: [
+      'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Hanken+Grotesk:wght@300;400;500&display=swap',
+    ],
   },
 ]
 

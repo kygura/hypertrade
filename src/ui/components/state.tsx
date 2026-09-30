@@ -40,7 +40,7 @@ export function EmptyBlock({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-8 px-3 text-center">
-      <span className="text-[11px] uppercase tracking-wider text-text-secondary">{label}</span>
+      <span className="state-title text-[11px] [text-transform:var(--label-case)] tracking-[var(--label-tracking)] font-[number:var(--label-weight)] text-text-secondary">{label}</span>
       {action && (
         <Button tier="ghost" onClick={action.onClick}>
           {action.label}
@@ -63,7 +63,7 @@ export function OfflineBlock({
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-8 px-3 text-center">
       <StatusDot status="unknown" />
-      <span className="text-[11px] uppercase tracking-wider text-text-secondary">{title}</span>
+      <span className="state-title text-[11px] [text-transform:var(--label-case)] tracking-[var(--label-tracking)] font-[number:var(--label-weight)] text-text-secondary">{title}</span>
       <span className="text-[10px] text-text-secondary">{message}</span>
       {onRetry && (
         <Button tier="ghost" onClick={onRetry}>

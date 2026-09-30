@@ -19,7 +19,7 @@ export function MetricStat({
 
   return (
     <div className="metric flex flex-col gap-1 p-3 min-w-0">
-      <span className="metric-label label !text-[10px]">{label}</span>
+      <span className="metric-label text-[10px] text-text-secondary [text-transform:var(--label-case)] tracking-[var(--label-tracking)] font-[number:var(--label-weight)]">{label}</span>
       <span className="metric-value text-[16px] tabular text-text-primary truncate">{value}</span>
       {delta != null && (
         <span

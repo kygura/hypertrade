@@ -1,3 +1,434 @@
-/* Trade[XYZ] theme — placeholder, filled from design-systems/tradexyz/. */
+/* ─────────────────────────────────────────────────────────────────────────
+   Trade[XYZ] theme — design-systems/tradexyz/DESIGN.md (tokens.json).
+
+   Source of truth: the trading app at app.trade.xyz (dark, #0e141b "screen",
+   a slate ladder #11151b → #cccfd3, warm off-white #efece7 text, gold
+   #ffce55 brand accent, emerald #00d492 / rose #ff637e for long/short),
+   carrying the marketing site's gold brackets and grotesque display face.
+
+   Fonts (register in registry.ts — see DESIGN.md §3.2):
+     Inter            — UI text (real face, Google Fonts)
+     IBM Plex Sans    — numerics / tables / inputs (the app's `font-mono`)
+     Hanken Grotesk   — display / wordmark (free stand-in for Britti Sans,
+                        a commercial face not on Google Fonts)
+     Geist Mono       — control labels (marketing CTA face; bundled locally)
+
+   Only contract tokens (src/ui/themes/README.md) are redefined in the token
+   block; structural hooks follow under the same selector.
+   ───────────────────────────────────────────────────────────────────────── */
+
 :root[data-theme='tradexyz'] {
+  color-scheme: dark;
+
+  /* ── Surfaces (brand-screen + slate ladder) ─────────────────────────── */
+  --color-body: #0e141b; /* brand-screen, also <meta theme-color> */
+  --color-panel: #11151b; /* slate-950 — cards, panels, chart pane */
+  --color-panel-alt: #0e141b; /* screen — recessed wells */
+  --color-elevated: #151b23; /* slate-900 — inputs, popovers, zero cell */
+  --color-panel-header: #11151b; /* app panels have no tinted header strip */
+  --color-topbar: rgba(14, 20, 27, 0.86); /* screen @86% + blur (hook below) */
+  --color-input: #151b23; /* slate-900 */
+
+  /* Interaction overlays (table hover = slate-700/40, pressed = slate-700/70,
+     selected row = slate-800). */
+  --color-hover: rgba(43, 53, 65, 0.4);
+  --color-active: rgba(43, 53, 65, 0.7);
+  --color-selected: #1e252e;
+
+  /* Hairlines — the app's --color-border is slate-800. */
+  --color-border: #1e252e;
+  --color-border-subtle: rgba(30, 37, 46, 0.6);
+
+  /* ── Text ladder ────────────────────────────────────────────────────── */
+  --color-text-primary: #efece7; /* brand white-100 (warm) — 15.5:1 on panel */
+  --color-text-muted: #cccfd3; /* slate-100 — readable prose, 11.7:1 */
+  --color-text-secondary: #868d95; /* slate-300 — labels, axes, 5.5:1 */
+  --color-text-disabled: #535e69; /* slate-500 — placeholders, disabled */
+
+  /* ── Brand ──────────────────────────────────────────────────────────── */
+  --color-accent: #ffce55; /* yellow-400: active nav, [XYZ] brackets, focus */
+  --color-on-accent: #11151b;
+
+  /* Primary (neutral-tier) button = the app's "Connect Wallet"/"Deposit":
+     slate-100 fill, slate-900 text, slate-200/85 on hover. */
+  --color-primary: #cccfd3;
+  --color-primary-hover: rgba(174, 179, 185, 0.85);
+  --color-on-primary: #151b23;
+
+  /* ── Semantic ───────────────────────────────────────────────────────── */
+  --color-green: #00bc7d; /* green-500: bids, candles, fills, Long */
+  --color-green-text: #00d492; /* green-400: +Δ text (9.4:1) */
+  --color-green-bg: rgba(0, 212, 146, 0.1);
+  --color-red: #ff637e; /* red-400: asks, candles, Short */
+  --color-red-text: #ff637e; /* 6.4:1 on panel */
+  --color-red-bg: rgba(255, 99, 126, 0.1);
+  --color-red-accent: #ff2056; /* flash-ask hue — destructive emphasis */
+  --color-amber: #f99c00; /* amber-500 — warnings (kept off the gold accent) */
+  --color-amber-bg: rgba(249, 156, 0, 0.1);
+  --color-info: #96b0b9; /* brand dusk-400 — neutral info, projections */
+  --color-info-bg: rgba(150, 176, 185, 0.1);
+  --color-flash-up: rgba(0, 188, 125, 0.2); /* flash-green 20% keyframe */
+  --color-flash-down: rgba(255, 32, 86, 0.2); /* flash-red 20% keyframe */
+
+  --color-scrim: rgba(0, 0, 0, 0.5); /* bg-black/50 */
+  --color-focus: #ffce55; /* focus-visible:ring-brand-yellow-400 */
+  --shadow-overlay: 0 0 30px rgba(0, 0, 0, 0.07), 0 30px 60px rgba(0, 0, 0, 0.26),
+    inset 0 0 1px rgba(255, 255, 255, 0.15);
+  --color-scrollbar: #2b3541; /* slate-700 */
+  --color-scrollbar-hover: #35414f; /* slate-600 */
+  --color-src-hl: #5ee9b5; /* green-300 — Hyperliquid provenance */
+
+  /* Momentum ramp — rose/emerald washes; zero = slate-900. Primary text on
+     every bucket ≥ 6.4:1. */
+  --color-mom-neg2: rgba(255, 99, 126, 0.45);
+  --color-mom-neg1: rgba(255, 99, 126, 0.22);
+  --color-mom-zero: #151b23;
+  --color-mom-pos1: rgba(0, 188, 125, 0.22);
+  --color-mom-pos2: rgba(0, 188, 125, 0.45);
+
+  /* Chart series. Projections wear dusk (never green/red); the BTC
+     benchmark takes the gold of the outcome chart's lead line. */
+  --color-proj-line: #96b0b9;
+  --color-proj-band: rgba(150, 176, 185, 0.14);
+  --color-bench-btc: #ffce55;
+  --color-bench-usdc: #68717b; /* slate-400 — the outcome chart's grey line */
+  --color-equity: #efece7;
+  --color-drawdown-fill: rgba(255, 99, 126, 0.16);
+  --color-drawdown-line: #ff637e;
+
+  /* ── Type ───────────────────────────────────────────────────────────── */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Sans', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Hanken Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-control: 'Geist Mono', ui-monospace, monospace;
+  --base-font-size: 14px; /* app body = text-sm */
+
+  /* Closed scale, shifted up one notch toward the app's 12/14px rhythm. */
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 18px;
+  --text-xl: 24px;
+
+  /* Labels read as authored; the app's labels are plain, untracked. */
+  --label-case: none;
+  --label-tracking: 0.01em;
+  --label-weight: 400;
+  /* Controls borrow the marketing CTA ("TRADE NOW": Geist Mono 600 caps). */
+  --control-case: uppercase;
+  --control-tracking: 0.02em;
+  --control-weight: 500;
+
+  /* ── Shape & depth (--radius: .625rem) ─────────────────────────────── */
+  --radius-panel: 10px; /* rounded-lg */
+  --radius-control: 6px; /* rounded-sm */
+  --radius-badge: 4px; /* rounded */
+  --shadow-panel: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1); /* shadow-sm */
+
+  /* ── Density — the app runs roomier than Hyperion ───────────────────── */
+  --gutter: 8px; /* gap-2 between trade-screen panels */
+  --panel-pad: 12px;
+  --cell-x: 8px; /* px-2 */
+  --cell-y: 6px;
+  --row-h: 30px; /* tbody tr h-[30.5px] */
+  --control-sm: 28px; /* h-7 */
+  --control-md: 32px; /* h-8 */
+  --control-lg: 36px; /* h-9 */
+  --tap-min: 28px;
+}
+
+/* This selector outranks the default touch block, so restate it. */
+@media (pointer: coarse) {
+  :root[data-theme='tradexyz'] {
+    --cell-y: 10px;
+    --row-h: 40px;
+    --control-sm: 32px;
+    --control-md: 40px;
+    --control-lg: 44px;
+    --tap-min: 44px;
+  }
+}
+
+/* ─────────────────────────── structural hooks ─────────────────────────── */
+
+/* App background: the `.app-background` radial glows (emerald top-left,
+   slate top-right, emerald mid-right) over a screen→#0a1016 fall-off. */
+:root[data-theme='tradexyz'] body {
+  background-color: var(--color-body);
+  background-image:
+    radial-gradient(circle at top left, rgba(0, 188, 125, 0.08), transparent 36rem),
+    radial-gradient(circle at top right, rgba(53, 65, 79, 0.2), transparent 42rem),
+    radial-gradient(ellipse 42rem 34rem at 100% 67%, rgba(0, 188, 125, 0.06), rgba(0, 188, 125, 0.02) 45%, transparent 100%),
+    linear-gradient(to bottom, #0e141b, #0a1016);
+  background-attachment: fixed;
+}
+
+:root[data-theme='tradexyz'] ::selection {
+  color: #11151b;
+  background-color: #f9bd29; /* marketing ::selection gold */
+}
+
+/* ── Top bar: borderless, translucent over the screen, 48px ─────────── */
+:root[data-theme='tradexyz'] .app-topbar {
+  height: 48px;
+  border-bottom-color: transparent;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+/* Wordmark: lowercase grotesque + gold brackets, after "trade[XYZ]". The
+   Hyperion dot becomes a bracketed gold square. */
+:root[data-theme='tradexyz'] .app-wordmark {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+  text-transform: lowercase;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--color-text-primary);
+  gap: 1px;
+}
+:root[data-theme='tradexyz'] .app-wordmark-dot {
+  position: relative;
+  display: inline-block;
+  width: 21px;
+  height: 1em;
+  margin-left: 1px;
+  background: linear-gradient(var(--color-accent), var(--color-accent)) center 55% / 5px 5px no-repeat;
+  color: var(--color-accent);
+  font-weight: 300;
+  line-height: 1;
+}
+:root[data-theme='tradexyz'] .app-wordmark-dot::before,
+:root[data-theme='tradexyz'] .app-wordmark-dot::after {
+  position: absolute;
+  top: 0;
+}
+:root[data-theme='tradexyz'] .app-wordmark-dot::before {
+  content: '[';
+  left: 0;
+}
+:root[data-theme='tradexyz'] .app-wordmark-dot::after {
+  content: ']';
+  right: 0;
+}
+
+/* Primary nav: Inter 14px sentence case, warm white; active = gold text,
+   no underline (the app never rules its nav). */
+:root[data-theme='tradexyz'] .app-nav {
+  gap: 20px; /* gap-5 */
+  /* Nav sits beside the wordmark (not centred), as in the app header. */
+  margin-left: 24px;
+  margin-right: auto;
+}
+:root[data-theme='tradexyz'] .app-nav-link {
+  display: inline-block; /* ::first-letter needs a block container */
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: lowercase;
+  padding-bottom: 0;
+  border-bottom: 0;
+  color: var(--color-text-primary);
+  transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+:root[data-theme='tradexyz'] .app-nav-link::first-letter {
+  text-transform: uppercase;
+}
+:root[data-theme='tradexyz'] .app-nav-link:hover {
+  color: #f9bd29; /* yellow-500 */
+}
+:root[data-theme='tradexyz'] .app-nav-link[aria-current='page'] {
+  color: var(--color-accent);
+}
+
+/* Mobile tab bar: the app's bottom bar — active cell is a slate-800 tile. */
+:root[data-theme='tradexyz'] .app-tabbar {
+  background: #11151b;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+:root[data-theme='tradexyz'] .app-tab {
+  border-top-color: transparent;
+  border-radius: 8px;
+  margin: 4px 1px;
+  font-family: var(--font-sans);
+}
+:root[data-theme='tradexyz'] .app-tab[aria-current='page'] {
+  background: #1e252e;
+  color: var(--color-text-primary);
+}
+
+/* Sub-tabs (engine console): the app's content tabs — Inter 14px, slate-400
+   → white, active carries a 2px WHITE rule (gold is reserved for nav). */
+:root[data-theme='tradexyz'] .subtab {
+  display: inline-block; /* was inline-flex; ::first-letter needs a block box */
+  line-height: var(--control-md);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: lowercase;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+:root[data-theme='tradexyz'] .subtab::first-letter {
+  text-transform: uppercase;
+}
+:root[data-theme='tradexyz'] .subtab.tab-active {
+  border-bottom-color: var(--color-text-primary);
+}
+
+/* ── Panels: rounded-lg slate-950 cards with slate-800 hairline ───────── */
+:root[data-theme='tradexyz'] .panel-header {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-bottom-color: var(--color-border);
+}
+/* Titles are authored in caps; render them in the app's sentence case. */
+:root[data-theme='tradexyz'] .panel-title {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: lowercase;
+  color: var(--color-text-primary);
+}
+:root[data-theme='tradexyz'] .panel-title::first-letter {
+  text-transform: uppercase;
+}
+
+:root[data-theme='tradexyz'] .label {
+  font-size: 12px;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+:root[data-theme='tradexyz'] .btn {
+  font-size: 12px;
+  padding-left: 14px;
+  padding-right: 14px;
+  transition:
+    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Ghost = "Transfer / Withdraw": input-tinted outline, slate-700 on hover. */
+:root[data-theme='tradexyz'] .btn--ghost {
+  border-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.045);
+  color: var(--color-text-muted);
+}
+:root[data-theme='tradexyz'] .btn--ghost:hover:not(:disabled) {
+  background-color: #2b3541;
+  color: var(--color-text-primary);
+}
+/* Neutral = "Connect Wallet / Deposit": slate-100 slab, no border. */
+:root[data-theme='tradexyz'] .btn--neutral {
+  border-color: transparent;
+  font-weight: 600;
+}
+:root[data-theme='tradexyz'] .btn--neutral:disabled {
+  background-color: #2b3541;
+  color: var(--color-text-disabled);
+}
+/* Danger = "Short"-tinted outline. */
+:root[data-theme='tradexyz'] .btn--danger {
+  border-color: rgba(255, 99, 126, 0.5);
+}
+:root[data-theme='tradexyz'] .btn:disabled {
+  opacity: 0.5;
+}
+
+/* ── Badges: the "xyz · 20x" chips and the "+0.00%" pill ─────────────── */
+:root[data-theme='tradexyz'] .badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 5px;
+}
+:root[data-theme='tradexyz'] .badge--green {
+  color: #5ee9b5;
+  background-color: rgba(94, 233, 181, 0.2); /* green-300/20 */
+}
+:root[data-theme='tradexyz'] .badge--red {
+  background-color: rgba(255, 99, 126, 0.2);
+}
+:root[data-theme='tradexyz'] .badge--gray {
+  color: var(--color-text-muted);
+  background-color: #2b3541; /* slate-700 chip */
+}
+
+/* ── DataTable: zebra rows, borderless, 28/30px rhythm ────────────────── */
+:root[data-theme='tradexyz'] .dt {
+  font-size: 13px;
+}
+:root[data-theme='tradexyz'] .dt thead tr {
+  border-bottom-color: transparent;
+}
+:root[data-theme='tradexyz'] .dt th {
+  height: 28px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  background: var(--color-panel);
+}
+:root[data-theme='tradexyz'] .dt tbody tr {
+  height: var(--row-h);
+  border-bottom-color: transparent;
+}
+:root[data-theme='tradexyz'] .dt tbody tr:nth-child(odd) {
+  background-color: rgba(30, 37, 46, 0.3); /* odd:bg-brand-slate-800/30 */
+}
+:root[data-theme='tradexyz'] .dt tbody tr:hover {
+  background-color: var(--color-hover);
+}
+
+/* ── Metrics: the market header strip (label over IBM Plex value) ─────── */
+:root[data-theme='tradexyz'] .metric-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* ── Provenance tag and theme switcher ────────────────────────────────── */
+:root[data-theme='tradexyz'] .src-tag {
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+:root[data-theme='tradexyz'] .src-tag--hl {
+  border-color: rgba(94, 233, 181, 0.25);
+}
+:root[data-theme='tradexyz'] .theme-switcher {
+  border-color: var(--color-border);
+  background-color: #151b23;
+  color: var(--color-text-muted);
+}
+
+/* ── Inputs: slate-900 wells, rounded-md, slate-300 focus edge ─────────── */
+:root[data-theme='tradexyz'] input,
+:root[data-theme='tradexyz'] select,
+:root[data-theme='tradexyz'] textarea {
+  font-size: 14px;
+  border-radius: 8px;
+}
+:root[data-theme='tradexyz'] input::placeholder,
+:root[data-theme='tradexyz'] textarea::placeholder {
+  color: var(--color-text-disabled);
+}
+
+/* Loading bars (state.tsx skeletons) become the app's rounded slate pills. */
+:root[data-theme='tradexyz'] .pulse-label.bg-elevated {
+  border-radius: 6px;
+  background-color: #1e252e;
 }
