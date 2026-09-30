@@ -1,5 +1,5 @@
-import { expect, test } from 'bun:test'
-import { toMetricSummary } from './db'
+import { describe, expect, test } from 'bun:test'
+import { databaseUrl, toMetricSummary } from './db'
 
 const base = {
   series_id: 'hl.total_oi_usd',
@@ -28,4 +28,22 @@ test('null-safe when history is thin or flat', () => {
 test('z30 stays null below n=5 even when stddev30 is nonzero (n>=5 contract)', () => {
   expect(toMetricSummary({ ...base, n30: 4 }).z30).toBeNull()
   expect(toMetricSummary({ ...base, n30: 5 }).z30).toBe(2)
+})
+
+describe('databaseUrl', () => {
+  test('prefers DATABASE_URL, then the Supabase integration variables', () => {
+    expect(databaseUrl({ DATABASE_URL: 'postgres://a@h/db', DATABASE_POSTGRES_URL: 'postgres://b@h/db' })).toBe(
+      'postgres://a@h/db',
+    )
+    expect(databaseUrl({ DATABASE_POSTGRES_URL: 'postgres://b@h/db' })).toBe('postgres://b@h/db')
+    expect(databaseUrl({ POSTGRES_URL: 'postgres://c@h/db' })).toBe('postgres://c@h/db')
+    expect(databaseUrl({})).toBeUndefined()
+  })
+
+  test('keeps sslmode and drops parameters Postgres would reject', () => {
+    const url = databaseUrl({
+      DATABASE_POSTGRES_URL: 'postgres://u:p@aws-0.pooler.supabase.com:6543/postgres?sslmode=require&supa=base-pooler.x&pgbouncer=true',
+    })
+    expect(url).toBe('postgres://u:p@aws-0.pooler.supabase.com:6543/postgres?sslmode=require')
+  })
 })
