@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { SectorsDataSchema } from "../../shared/schemas";
-import { fetchPerpMetaAndCtxs } from "../../shared/hl-client";
-import type { AssetCtx } from "../../shared/types";
-import latest from "../../../data/sectors/latest.json";
+import { SectorsDataSchema } from "../../shared/schemas.js";
+import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
+import type { AssetCtx } from "../../shared/types.js";
+import latest from "../../../data/sectors/latest.json" with { type: "json" };
 
 const CACHE_MS = 60_000;
 let cache: { ts: number; ctxs: AssetCtx[] } | null = null;

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { fetchPerpMetaAndCtxs } from "../../shared/hl-client";
-import fixture from "../../shared/fixtures/hyperliquid.json";
-import { hlRoutes, toMarketRows } from "./hl";
+import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
+import fixture from "../../shared/fixtures/hyperliquid.json" with { type: "json" };
+import { hlRoutes, toMarketRows } from "./hl.js";
 
 function mockFetch(body: unknown): typeof fetch {
   return (async () => new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;

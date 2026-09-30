@@ -1,10 +1,10 @@
 // Backfills the `candles` table for a branch's coins from CoinGecko (primary)
 // and Hyperliquid candleSnapshot (fallback for perp-listed coins CoinGecko
 // doesn't cover). Stablecoins are a constant $1 and are never backfilled.
-import * as db from "../db";
-import type { Candle } from "../db";
-import { fetchCandles as fetchHlCandles } from "../../shared/hl-client";
-import type { BranchConfig } from "../../shared/types";
+import * as db from "../db.js";
+import type { Candle } from "../db.js";
+import { fetchCandles as fetchHlCandles } from "../../shared/hl-client.js";
+import type { BranchConfig } from "../../shared/types.js";
 
 const DAY_MS = 86400000;
 const STABLES = new Set(["USDC", "USDT"]);

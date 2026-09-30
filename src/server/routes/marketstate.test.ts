@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { MarketStateDataSchema } from "../../shared/schemas";
-import latest from "../../../data/marketstate/latest.json";
-import dated from "../../../data/marketstate/2026-08-30.json";
-import { marketstateRoutes } from "./marketstate";
+import { MarketStateDataSchema } from "../../shared/schemas.js";
+import latest from "../../../data/marketstate/latest.json" with { type: "json" };
+import dated from "../../../data/marketstate/2026-08-30.json" with { type: "json" };
+import { marketstateRoutes } from "./marketstate.js";
 
 describe("seed data", () => {
   test("latest.json parses against MarketStateDataSchema", () => {

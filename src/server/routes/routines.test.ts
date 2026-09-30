@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { routinesRoutes } from "./routines";
+import { routinesRoutes } from "./routines.js";
 
 const originalFetch = globalThis.fetch;
 const originalWebhook = process.env.ROUTINE_WEBHOOK_URL;

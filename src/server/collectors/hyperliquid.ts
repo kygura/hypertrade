@@ -1,10 +1,10 @@
 // Hyperliquid perp collector. Reuses src/shared/hl-client.ts (already parses
 // metaAndAssetCtxs into numeric AssetCtx[], premium included) instead of
 // re-porting marketstate's fetch/parse — same wire call, one parser.
-import { fetchPerpMetaAndCtxs } from "../../shared/hl-client";
-import type { AssetCtx } from "../../shared/types";
-import { ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db";
-import type { CollectorResult } from "./types";
+import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
+import type { AssetCtx } from "../../shared/types.js";
+import { ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db.js";
+import type { CollectorResult } from "./types.js";
 
 const TOP_N = 20;
 const COLLECTOR = "hyperliquid";

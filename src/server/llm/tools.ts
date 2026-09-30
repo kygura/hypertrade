@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { MarketStateDataSchema } from "../../shared/schemas";
-import latestMarketState from "../../../data/marketstate/latest.json";
-import { MARKETSTATE_HISTORY } from "../../../data/marketstate/index";
-import { seriesRange, summaryFor } from "../db";
-import { engineFetch, type EngineResult } from "../routes/engine";
-import { getMarkets, type MarketRow } from "../routes/hl";
-import { getSectorsPayload } from "../routes/sectors";
-import type { ToolSpec } from "./provider";
+import { MarketStateDataSchema } from "../../shared/schemas.js";
+import latestMarketState from "../../../data/marketstate/latest.json" with { type: "json" };
+import { MARKETSTATE_HISTORY } from "../../../data/marketstate/index.js";
+import { seriesRange, summaryFor } from "../db.js";
+import { engineFetch, type EngineResult } from "../routes/engine.js";
+import { getMarkets, type MarketRow } from "../routes/hl.js";
+import { getSectorsPayload } from "../routes/sectors.js";
+import type { ToolSpec } from "./provider.js";
 
 // The analyst's tools: read-only views over data the app already serves.
 // Every tool maps onto an existing server function; none writes, and none

@@ -4,8 +4,8 @@
 // keep that exact pattern (marketstate's fetcher, and downstream consumers,
 // expect a skip to be distinguishable from a real failure).
 import { z } from "zod";
-import { ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db";
-import type { CollectorResult } from "./types";
+import { ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db.js";
+import type { CollectorResult } from "./types.js";
 
 export const FRED_SERIES = [
   "WALCL",

@@ -9,7 +9,7 @@ import type {
   ToolOutcome,
   ToolSpec,
   Turn,
-} from "./provider";
+} from "./provider.js";
 
 // OpenAI-compatible Chat Completions provider (any server exposing
 // POST {base}/chat/completions with streaming function calls: a gateway,

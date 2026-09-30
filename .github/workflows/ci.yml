@@ -14,3 +14,4 @@ jobs:
       - run: bun run typecheck
       - run: bun test src
       - run: bun run build
+      - run: bun run check:api

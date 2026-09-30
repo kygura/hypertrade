@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { ANTHROPIC_MODELS, buildCatalog, parseOpenAIModels } from "./catalog";
-import { DEFAULT_MODEL, resolveChosenProvider } from "./provider";
+import { ANTHROPIC_MODELS, buildCatalog, parseOpenAIModels } from "./catalog.js";
+import { DEFAULT_MODEL, resolveChosenProvider } from "./provider.js";
 
 // Catalog availability/precedence logic (SPEC.md "Analyst" model selector).
 // See README.md's "Analyst" section for the plain-English precedence rules

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { fetchPerpMetaAndCtxs, fetchCandles } from "./hl-client";
-import fixture from "./fixtures/hyperliquid.json";
+import { fetchPerpMetaAndCtxs, fetchCandles } from "./hl-client.js";
+import fixture from "./fixtures/hyperliquid.json" with { type: "json" };
 
 function mockFetch(body: unknown, ok = true, status = 200): typeof fetch {
   return (async () => new Response(JSON.stringify(body), { status: ok ? status : 500 })) as unknown as typeof fetch;

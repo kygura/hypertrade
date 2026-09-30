@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { fmtPct, fmtUsd } from './format'
+import { fmtPct, fmtUsd } from './format.js'
 
 test('fmtUsd compact scales K/M/B/T', () => {
   expect(fmtUsd(1_500, { compact: true })).toBe('$1.50K')

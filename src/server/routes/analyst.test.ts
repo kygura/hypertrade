@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { createAnalystRoutes, runAnalyst, type AnalystEvent } from "./analyst";
-import type { AnalystCatalog } from "../llm/catalog";
-import type { Conversation, Effort, LLMProvider, ProviderId, StepHooks, StepOptions, StepResult, ToolOutcome, ToolSpec, Turn } from "../llm/provider";
-import type { ToolDeps } from "../llm/tools";
-import { DISCLAIMER } from "../llm/system";
+import { createAnalystRoutes, runAnalyst, type AnalystEvent } from "./analyst.js";
+import type { AnalystCatalog } from "../llm/catalog.js";
+import type { Conversation, Effort, LLMProvider, ProviderId, StepHooks, StepOptions, StepResult, ToolOutcome, ToolSpec, Turn } from "../llm/provider.js";
+import type { ToolDeps } from "../llm/tools.js";
+import { DISCLAIMER } from "../llm/system.js";
 
 // A scripted provider: each step() runs the next script entry, which can
 // stream text, call server-tool hooks, and return tool calls.

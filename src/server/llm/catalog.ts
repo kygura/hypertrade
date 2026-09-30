@@ -1,4 +1,4 @@
-import { DEFAULT_MODEL, anthropicCredentials, openaiCredentials, type AnalystEnv, type ProviderId } from "./provider";
+import { DEFAULT_MODEL, anthropicCredentials, openaiCredentials, type AnalystEnv, type ProviderId } from "./provider.js";
 
 // The analyst's model/provider catalog (GET /api/analyst/models). Lists
 // what a client may pick for POST /api/analyst/query's optional

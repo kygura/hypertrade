@@ -12,7 +12,7 @@ import type {
   ToolOutcome,
   ToolSpec,
   Turn,
-} from "./provider";
+} from "./provider.js";
 
 // Anthropic Messages API provider (official SDK, streaming). Client tools
 // are the analyst's read-only data tools; web search is Anthropic's

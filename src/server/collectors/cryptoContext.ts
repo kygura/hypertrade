@@ -3,8 +3,8 @@
 // stablecoin cap, Deribit BTC DVOL. Per-source try/catch so one dead API never
 // discards the others (SPEC.md: never fail the whole run over one tool).
 import { z } from "zod";
-import { ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db";
-import type { CollectorResult } from "./types";
+import { ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db.js";
+import type { CollectorResult } from "./types.js";
 
 const COLLECTOR = "crypto-context";
 

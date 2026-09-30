@@ -1,4 +1,4 @@
-import { toolCatalog } from "./tools";
+import { toolCatalog } from "./tools.js";
 
 // The analyst's system prompt. The hard rule and the hedge vocabulary are
 // copied verbatim from ROUTINE.md (§ "Hard rule" and § (d) "Hedge

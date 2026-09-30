@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { requireCronToken } from "../auth";
-import { collectCryptoContext } from "../collectors/cryptoContext";
-import { collectFred } from "../collectors/fred";
-import { collectHyperliquid } from "../collectors/hyperliquid";
+import { requireCronToken } from "../auth.js";
+import { collectCryptoContext } from "../collectors/cryptoContext.js";
+import { collectFred } from "../collectors/fred.js";
+import { collectHyperliquid } from "../collectors/hyperliquid.js";
 
 // Safe to call repeatedly: observations PK (series_id, ts) dedupes upserts,
 // and each collector run is independent — a re-trigger just overwrites the

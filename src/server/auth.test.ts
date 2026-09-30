@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { app } from "../../api/index";
-import { login, requireAuth, signSession, verifySession } from "./auth";
+import { app } from "../../api/index.js";
+import { login, requireAuth, signSession, verifySession } from "./auth.js";
 
 // Read at call time by auth.ts, so setting them after import is safe.
 process.env.SESSION_SECRET = "test-session-secret";

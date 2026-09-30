@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { resolveProvider, DEFAULT_MODEL, type StepHooks } from "./provider";
-import { AnthropicProvider } from "./anthropic";
-import { OpenAICompatibleProvider } from "./openai";
-import { DISCLAIMER, FORECAST_RULE, HARD_RULE, HEDGE_VOCABULARY, buildSystemPrompt } from "./system";
-import { TOOL_SPECS, runTool, type ToolDeps } from "./tools";
+import { resolveProvider, DEFAULT_MODEL, type StepHooks } from "./provider.js";
+import { AnthropicProvider } from "./anthropic.js";
+import { OpenAICompatibleProvider } from "./openai.js";
+import { DISCLAIMER, FORECAST_RULE, HARD_RULE, HEDGE_VOCABULARY, buildSystemPrompt } from "./system.js";
+import { TOOL_SPECS, runTool, type ToolDeps } from "./tools.js";
 
 const ROUTINE = readFileSync(new URL("../../../ROUTINE.md", import.meta.url), "utf8");
 

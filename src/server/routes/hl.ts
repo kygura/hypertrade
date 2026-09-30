@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { fetchPerpMetaAndCtxs } from "../../shared/hl-client";
-import type { AssetCtx } from "../../shared/types";
+import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
+import type { AssetCtx } from "../../shared/types.js";
 
 // GET /hl/markets — live pass-through snapshot of the Hyperliquid universe
 // (SPEC.md API surface). Module-level 60s cache: serverless-ephemeral is

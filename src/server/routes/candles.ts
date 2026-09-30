@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import * as db from "../db";
-import { backfillCoin } from "../sim/backfill";
+import * as db from "../db.js";
+import { backfillCoin } from "../sim/backfill.js";
 
 const DAY_MS = 86400000;
 const DEFAULT_LOOKBACK_DAYS = 365;

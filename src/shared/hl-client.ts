@@ -1,7 +1,7 @@
 // Hyperliquid public REST client. No auth required. Isomorphic: the REST
 // calls are plain `fetch` and run on server or browser.
-import { HlCandlesResponseSchema, HlMetaAndAssetCtxsResponseSchema } from "./schemas";
-import type { AssetCtx, Candle, HlRawPerpMeta } from "./types";
+import { HlCandlesResponseSchema, HlMetaAndAssetCtxsResponseSchema } from "./schemas.js";
+import type { AssetCtx, Candle, HlRawPerpMeta } from "./types.js";
 
 export const HL_REST = "https://api.hyperliquid.xyz/info";
 export const HL_WS = "wss://api.hyperliquid.xyz/ws";

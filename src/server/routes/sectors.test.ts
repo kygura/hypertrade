@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { SectorsDataSchema } from "../../shared/schemas";
-import latest from "../../../data/sectors/latest.json";
-import dated from "../../../data/sectors/2026-08-30.json";
-import { enrichSector } from "./sectors";
-import type { AssetCtx } from "../../shared/types";
+import { SectorsDataSchema } from "../../shared/schemas.js";
+import latest from "../../../data/sectors/latest.json" with { type: "json" };
+import dated from "../../../data/sectors/2026-08-30.json" with { type: "json" };
+import { enrichSector } from "./sectors.js";
+import type { AssetCtx } from "../../shared/types.js";
 
 function ctx(name: string, openInterest: number, markPx: number, funding: number): AssetCtx {
   return {
