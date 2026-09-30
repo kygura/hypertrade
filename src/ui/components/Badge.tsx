@@ -30,8 +30,8 @@ export interface BadgeProps {
 }
 
 export function Badge({ tone, children, className = '' }: BadgeProps) {
-  const base = 'inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wider border font-mono'
-  const look = `border-transparent ${TONE_TEXT[tone]} ${TONE_BG[tone]}`
+  const base = 'badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border rounded-badge font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)] font-[number:var(--control-weight)]'
+  const look = `badge--${tone} border-transparent ${TONE_TEXT[tone]} ${TONE_BG[tone]}`
   return <span className={`${base} ${look} ${className}`}>{children}</span>
 }
 

@@ -12,7 +12,7 @@ export function MomentumBadge({ momentum, className = '' }: { momentum: number; 
   const tone = momentum >= 0.15 ? 'text-green bg-green-bg' : momentum <= -0.15 ? 'text-red-text bg-red-bg' : 'text-text-secondary bg-elevated'
   return (
     <span
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] tabular border border-transparent ${tone} ${className}`}
+      className={`badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] tabular border border-transparent rounded-badge ${tone} ${className}`}
     >
       {glyph} {fmt(momentum)}
     </span>

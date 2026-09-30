@@ -18,9 +18,9 @@ export function MetricStat({
   const zWarn = z30 != null && Math.abs(z30) >= 2
 
   return (
-    <div className="flex flex-col gap-1 p-3 min-w-0">
-      <span className="text-[10px] uppercase tracking-wider text-text-secondary">{label}</span>
-      <span className="text-[16px] tabular text-text-primary truncate">{value}</span>
+    <div className="metric flex flex-col gap-1 p-3 min-w-0">
+      <span className="metric-label label !text-[10px]">{label}</span>
+      <span className="metric-value text-[16px] tabular text-text-primary truncate">{value}</span>
       {delta != null && (
         <span
           className={`text-[10px] tabular ${

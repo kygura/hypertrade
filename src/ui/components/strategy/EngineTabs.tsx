@@ -17,7 +17,7 @@ export function isEnginePath(pathname: string): boolean {
 export function EngineTabs() {
   const { pathname } = useLocation()
   return (
-    <nav aria-label="engine" className="flex items-center gap-3 border-b border-border mb-3">
+    <nav aria-label="engine" className="subtabs flex items-center gap-3 border-b border-border mb-3">
       {TABS.map((t) => {
         const active = pathname === t.to || pathname.startsWith(`${t.to}/`)
         return (
@@ -25,7 +25,7 @@ export function EngineTabs() {
             key={t.to}
             to={t.to}
             aria-current={active ? 'page' : undefined}
-            className={`h-[var(--control-md)] inline-flex items-center px-1 text-[10px] uppercase tracking-wider ${
+            className={`subtab h-[var(--control-md)] inline-flex items-center px-1 text-[10px] font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)] font-[number:var(--control-weight)] ${
               active ? 'tab-active' : 'text-text-secondary hover:text-text-primary'
             }`}
           >

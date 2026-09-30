@@ -1,5 +1,10 @@
 @import 'tailwindcss';
 
+/* Theme overrides — see src/ui/themes/README.md. Each file scopes itself to
+   :root[data-theme='<id>'] and only redefines tokens declared below. */
+@import './themes/hyperdash.css';
+@import './themes/tradexyz.css';
+
 @font-face {
   font-family: 'Geist Mono';
   src: url('../../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2')
@@ -80,6 +85,38 @@
 
   --font-mono: 'Geist Mono', ui-monospace, monospace;
   --font-sans: 'Geist Mono', ui-monospace, monospace;
+
+  /* ── Theme contract (src/ui/themes/README.md) ────────────────── */
+  /* Every value below reproduces the Hyperion look exactly; a theme
+     overrides them under :root[data-theme='<id>']. */
+
+  /* Fonts: sans = running UI text, mono = numerics/tables, display = the
+     wordmark and view titles, control = button/tab/badge labels. */
+  --font-display: 'Geist Mono', ui-monospace, monospace;
+  --font-control: 'Geist Mono', ui-monospace, monospace;
+
+  /* Brand accent: active tab rule, wordmark dot, focus of attention. */
+  --color-accent: #ed3602;
+  --color-on-accent: #ffffff;
+
+  /* Primary (neutral-tier) button fill. */
+  --color-primary: #191613;
+  --color-primary-hover: rgba(255, 255, 255, 0.04);
+  --color-on-primary: #ffffff;
+
+  /* Surfaces that used to borrow panel-alt. */
+  --color-panel-header: #0d0d0d;
+  --color-topbar: #0d0d0d;
+  --color-input: #0d0d0d;
+  --color-scrollbar: rgba(255, 255, 255, 0.08);
+  --color-scrollbar-hover: rgba(255, 255, 255, 0.16);
+
+  /* Shape. rounded-panel / rounded-control / rounded-badge utilities. */
+  --radius-panel: 0px;
+  --radius-control: 0px;
+  --radius-badge: 0px;
+
+  --shadow-panel: none;
 }
 
 :root {
@@ -93,6 +130,15 @@
   --control-md: 26px;
   --control-lg: 32px;
   --tap-min: 24px; /* NEW: minimum interactive target */
+
+  /* Label treatment (theme contract). Hyperion: uppercase, tracked. */
+  --label-case: uppercase;
+  --label-tracking: 0.06em;
+  --label-weight: 500;
+  --control-case: uppercase;
+  --control-tracking: 0.05em;
+  --control-weight: 400;
+  --base-font-size: 13px;
 
   color-scheme: dark;
 }
@@ -127,8 +173,8 @@ body,
 body {
   background: var(--color-body);
   color: var(--color-text-primary);
-  font-family: 'Geist Mono', ui-monospace, monospace;
-  font-size: 13px;
+  font-family: var(--font-sans);
+  font-size: var(--base-font-size);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   /* CHANGED from Hyperion: pages scroll. overflow-x stays clipped so a
@@ -138,20 +184,28 @@ body {
 
 * {
   box-sizing: border-box;
-  border-radius: 0 !important;
+}
+
+/* Square by default. In the base layer so the rounded-panel/-control/-badge
+   utilities (and the .panel/input rules below) can re-round per theme;
+   every radius token defaults to 0 so Hyperion stays square. */
+@layer base {
+  * {
+    border-radius: 0;
+  }
 }
 
 .mono,
 .tabular {
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
 }
 
 .label {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 500;
+  text-transform: var(--label-case);
+  letter-spacing: var(--label-tracking);
+  font-weight: var(--label-weight);
   font-size: 11px;
   color: var(--color-text-secondary);
 }
@@ -159,6 +213,8 @@ body {
 .panel {
   background: var(--color-panel);
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -171,14 +227,16 @@ body {
   justify-content: space-between;
   padding: 6px 10px;
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-panel-alt);
+  background: var(--color-panel-header);
   flex-shrink: 0;
+  /* follow the panel's corner inside its 1px border */
+  border-radius: max(0px, calc(var(--radius-panel) - 1px)) max(0px, calc(var(--radius-panel) - 1px)) 0 0;
 }
 
 .panel-title {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 500;
+  text-transform: var(--label-case);
+  letter-spacing: calc(var(--label-tracking) + 0.02em);
+  font-weight: var(--label-weight);
   font-size: 11px;
   color: var(--color-text-secondary);
 }
@@ -206,10 +264,10 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-scrollbar);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--color-scrollbar-hover);
 }
 
 button {
@@ -220,9 +278,10 @@ button {
 input,
 select,
 textarea {
-  font-family: 'Geist Mono', ui-monospace, monospace;
-  background: var(--color-panel-alt);
+  font-family: var(--font-mono);
+  background: var(--color-input);
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   color: var(--color-text-primary);
   padding: 6px 8px;
   font-size: 12px;
@@ -236,7 +295,7 @@ textarea:focus {
 }
 
 .tab-active {
-  border-bottom: 2px solid var(--color-red-accent);
+  border-bottom: 2px solid var(--color-accent);
   color: var(--color-text-primary);
 }
 
