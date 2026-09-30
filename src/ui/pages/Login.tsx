@@ -33,9 +33,9 @@ export function Login() {
     <div className="flex items-center justify-center px-4" style={{ minHeight: '100dvh' }}>
       <form onSubmit={submit} className="panel w-full max-w-[320px]">
         <div className="p-4 flex flex-col gap-3">
-          <div className="flex items-center gap-1.5 text-[16px] uppercase font-semibold tracking-wider">
+          <div className="app-wordmark flex items-center gap-1.5 text-[16px] uppercase font-semibold tracking-wider font-display">
             HYPERTRADE
-            <span className="inline-block w-1.5 h-1.5 bg-red-accent" />
+            <span className="app-wordmark-dot inline-block w-1.5 h-1.5 bg-accent" />
           </div>
 
           <label className="flex flex-col gap-1">

@@ -30,8 +30,8 @@ export interface BadgeProps {
 }
 
 export function Badge({ tone, children, className = '' }: BadgeProps) {
-  const base = 'inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wider border font-mono'
-  const look = `border-transparent ${TONE_TEXT[tone]} ${TONE_BG[tone]}`
+  const base = 'badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border rounded-badge font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)] font-[number:var(--control-weight)]'
+  const look = `badge--${tone} border-transparent ${TONE_TEXT[tone]} ${TONE_BG[tone]}`
   return <span className={`${base} ${look} ${className}`}>{children}</span>
 }
 
@@ -46,5 +46,5 @@ const DOT_CLASS: Record<DotStatus, string> = {
 
 // StatusDot — 6x6px square. Always pair with a text label at the call site.
 export function StatusDot({ status, className = '' }: { status: DotStatus; className?: string }) {
-  return <span className={`inline-block w-1.5 h-1.5 flex-shrink-0 ${DOT_CLASS[status]} ${className}`} />
+  return <span className={`status-dot status-dot--${status} inline-block w-1.5 h-1.5 flex-shrink-0 ${DOT_CLASS[status]} ${className}`} />
 }

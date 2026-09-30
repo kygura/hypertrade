@@ -13,7 +13,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const BASE =
-  'inline-flex items-center justify-center gap-1.5 font-mono uppercase tracking-wider ' +
+  'btn inline-flex items-center justify-center gap-1.5 rounded-control ' +
+  'font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)] font-[number:var(--control-weight)] ' +
   'transition-colors duration-100 disabled:cursor-not-allowed'
 
 const TIER_CLASS: Record<ButtonTier, string> = {
@@ -22,8 +23,8 @@ const TIER_CLASS: Record<ButtonTier, string> = {
     'hover:text-text-primary hover:bg-hover active:bg-active ' +
     'disabled:text-text-disabled disabled:border-border-subtle',
   neutral:
-    'h-[var(--control-md)] px-2.5 text-[10px] border border-border bg-elevated text-text-primary ' +
-    'hover:bg-hover active:bg-active ' +
+    'h-[var(--control-md)] px-2.5 text-[10px] border border-border bg-primary text-on-primary ' +
+    'hover:bg-primary-hover active:bg-active ' +
     'disabled:text-text-disabled disabled:border-border-subtle disabled:bg-transparent',
   danger:
     'h-[var(--control-md)] px-2.5 text-[10px] border border-border text-red-text ' +
@@ -38,7 +39,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   return (
     <button
       ref={ref}
-      className={`${BASE} ${TIER_CLASS[tier]} ${className}`}
+      className={`${BASE} btn--${tier} ${TIER_CLASS[tier]} ${className}`}
       disabled={disabled}
       {...props}
     />

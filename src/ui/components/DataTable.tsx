@@ -62,7 +62,7 @@ export function DataTable<T>({
 
   return (
     <div className="table-scroll">
-      <table className="w-full text-[11px] tabular border-collapse">
+      <table className="dt w-full text-[11px] tabular border-collapse">
         <thead>
           <tr className="border-b border-border">
             {columns.map((col) => {
