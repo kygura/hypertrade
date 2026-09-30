@@ -50,3 +50,29 @@ jobs:
             echo "::error::Collection failed (curl exit $status, HTTP ${code:-none})"
             exit 1
           fi
+
+      # Daily candles for the core coins and every coin a branch holds. Already
+      # covered coins cost one coverage query, so running this every cycle is
+      # cheap and new branches get history on the next run.
+      - name: Backfill candles
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          set -o pipefail
+          url="${APP_URL%/}/api/cron/backfill"
+          body=$(mktemp)
+          code=$(curl -sS -X POST \
+            --fail-with-body \
+            --retry 2 --retry-delay 5 --retry-all-errors \
+            --max-time 280 \
+            -H "x-cron-token: $CRON_TOKEN" \
+            -o "$body" -w '%{http_code}' \
+            "$url") && status=0 || status=$?
+          echo "POST $url -> HTTP ${code:-none}"
+          cat "$body"
+          echo
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Backfill failed (curl exit $status, HTTP ${code:-none})"
+            exit 1
+          fi
