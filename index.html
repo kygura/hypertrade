@@ -1,8 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="hyperdash">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Paint the stored theme before the bundle loads (key/default mirror
+       src/ui/themes/registry.ts); an unknown value is corrected on init. -->
+  <script>
+    try {
+      var t = localStorage.getItem('hypertrade.theme')
+      if (t) document.documentElement.setAttribute('data-theme', t)
+    } catch (e) {}
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <title>Hypertrade</title>
 </head>
 <body>
