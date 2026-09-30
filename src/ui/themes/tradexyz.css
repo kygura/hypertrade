@@ -137,6 +137,18 @@
   --control-md: 32px; /* h-8 */
   --control-lg: 36px; /* h-9 */
   --tap-min: 28px;
+
+  /* Segmented (Market / Limit / Pro): slate-800 track, 2px pad, rounded-sm;
+     checked segment slate-700 with white-100 text. */
+  --seg-track: #1e252e;
+  --seg-border: transparent;
+  --seg-divider: transparent;
+  --seg-pad: 2px;
+  --seg-gap: 0px;
+  --seg-radius: 6px;
+  --seg-active: #2b3541;
+  --seg-active-text: #efece7;
+  --seg-active-shadow: none;
 }
 
 /* This selector outranks the default touch block, so restate it. */
@@ -401,7 +413,7 @@
   letter-spacing: 0;
 }
 
-/* ── Provenance tag and theme switcher ────────────────────────────────── */
+/* ── Provenance tag ────────────────────────────────────────────────────── */
 :root[data-theme='tradexyz'] .src-tag {
   border-radius: 4px;
   letter-spacing: 0.04em;
@@ -409,10 +421,17 @@
 :root[data-theme='tradexyz'] .src-tag--hl {
   border-color: rgba(94, 233, 181, 0.25);
 }
-:root[data-theme='tradexyz'] .theme-switcher {
-  border-color: var(--color-border);
-  background-color: #151b23;
+:root[data-theme='tradexyz'] .seg-item {
+  /* the app's segments are Inter text-sm/medium, not the mono CTA face */
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 0 10px;
+}
+:root[data-theme='tradexyz'] .seg-item:hover:not(:disabled):not([aria-checked='true']) {
   color: var(--color-text-muted);
+  background: transparent;
 }
 
 /* ── Inputs: slate-900 wells, rounded-md, slate-300 focus edge ─────────── */

@@ -140,6 +140,19 @@
   --control-weight: 400;
   --base-font-size: 13px;
 
+  /* Segmented control (theme contract). Hyperion: a hairline box of
+     divided cells, checked cell filled. Themes turn it into a padded well
+     with a lifted pill by setting pad/radius/track and clearing the divider. */
+  --seg-track: transparent;
+  --seg-border: var(--color-border);
+  --seg-divider: var(--color-border);
+  --seg-pad: 0px;
+  --seg-gap: 0px;
+  --seg-radius: 0px;
+  --seg-active: var(--color-selected);
+  --seg-active-text: var(--color-text-primary);
+  --seg-active-shadow: none;
+
   color-scheme: dark;
 }
 
@@ -288,18 +301,6 @@ textarea {
   min-height: var(--control-md);
   outline: none;
 }
-/* Top-bar theme select: compact, and unlayered like the rule above so a
-   theme can restyle it via .theme-switcher. */
-.theme-switcher {
-  min-height: 0;
-  height: var(--control-sm);
-  padding: 0 6px;
-  font-family: var(--font-control);
-  font-size: 10px;
-  letter-spacing: var(--control-tracking);
-  color: var(--color-text-secondary);
-}
-
 input:focus,
 select:focus,
 textarea:focus {
@@ -309,6 +310,71 @@ textarea:focus {
 .tab-active {
   border-bottom: 2px solid var(--color-accent);
   color: var(--color-text-primary);
+}
+
+/* Segmented control (components/Segmented.tsx). Item height is derived so
+   the whole control is exactly --control-sm / --control-md tall. */
+.seg {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  padding: var(--seg-pad);
+  gap: var(--seg-gap);
+  background: var(--seg-track);
+  border: 1px solid var(--seg-border);
+  border-radius: var(--seg-radius);
+}
+.seg-item {
+  --seg-h: var(--control-sm);
+  height: calc(var(--seg-h) - 2 * var(--seg-pad) - 2px);
+  min-width: 0;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-family: var(--font-control);
+  font-size: 10px;
+  font-weight: var(--control-weight);
+  text-transform: var(--control-case);
+  letter-spacing: var(--control-tracking);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: max(0px, calc(var(--seg-radius) - var(--seg-pad) - 1px));
+  transition:
+    color 100ms,
+    background-color 100ms;
+}
+.seg--md .seg-item {
+  --seg-h: var(--control-md);
+}
+.seg-item + .seg-item {
+  box-shadow: -1px 0 0 var(--seg-divider);
+}
+.seg-item:hover:not(:disabled):not([aria-checked='true']) {
+  color: var(--color-text-primary);
+  background: var(--color-hover);
+}
+.seg-item[aria-checked='true'] {
+  color: var(--seg-active-text);
+  background: var(--seg-active);
+  box-shadow: var(--seg-active-shadow);
+}
+.seg-item[aria-checked='true'][data-tone='green'] {
+  color: var(--color-green-text);
+  background: var(--color-green-bg);
+}
+.seg-item[aria-checked='true'][data-tone='red'] {
+  color: var(--color-red-text);
+  background: var(--color-red-bg);
+}
+.seg-item:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+.seg-item:focus-visible {
+  outline-offset: -2px;
 }
 
 /* Source-attribution tag (Night Desk import, restyled square) */

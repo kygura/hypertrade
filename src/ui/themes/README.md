@@ -1,24 +1,30 @@
 # Themes
 
-HYPERTRADE's default look is Hyperion (DESIGN.md). Other looks are **themes**:
-one CSS file each, scoped to `:root[data-theme='<id>']`, that only redefine
-tokens from the contract below. No component forks, no per-theme JSX.
+HYPERTRADE ships three looks. The token defaults in `../index.css` are
+Hyperion (DESIGN.md); every other look is a **theme**: one CSS file scoped to
+`:root[data-theme='<id>']` that only redefines tokens from the contract
+below. No component forks, no per-theme JSX.
 
 | id | file | design system |
 |---|---|---|
-| `hyperion` (default) | `../index.css` | `DESIGN.md` |
-| `hyperdash` | `hyperdash.css` | `design-systems/hyperdash/` |
+| `hyperdash` (default) | `hyperdash.css` | `design-systems/hyperdash/` |
 | `tradexyz` | `tradexyz.css` | `design-systems/tradexyz/` |
+| `hyperion` | `../index.css` (the unscoped defaults) | `DESIGN.md` |
 
-`registry.ts` lists themes, applies `data-theme` on `<html>`, lazy-loads each
-theme's web fonts, and persists the choice in `localStorage`
-(`hypertrade.theme`). `ThemeSwitcher` in the top bar switches it.
+`registry.ts` lists themes (`DEFAULT_THEME` picks the default), applies
+`data-theme` on `<html>`, lazy-loads each theme's web fonts, and persists an
+explicit choice in `localStorage` (`hypertrade.theme`); a visitor who never
+chose follows the default. `index.html` sets the default `data-theme` and
+applies a stored choice with an inline script before first paint, so keep
+its key and default in sync with `registry.ts`. `ThemeSwitcher` (a
+`Segmented` toggle in the top bar) switches it.
 
 ## Adding a theme
 
 1. Create `<id>.css` with a `:root[data-theme='<id>'] { … }` block.
 2. `@import` it in `../index.css` next to the others.
-3. Add a `ThemeDef` to `THEMES` in `registry.ts` (scheme + font URLs).
+3. Add a `ThemeDef` to `THEMES` in `registry.ts` (label, short label,
+   scheme, font URLs).
 
 ## Token contract
 
@@ -61,6 +67,12 @@ Label/control casing: `--label-case`, `--label-tracking`, `--label-weight`,
 must also restate the `@media (pointer: coarse)` touch values, since its
 selector outranks the default touch block.
 
+**Segmented control** (`:root`): `--seg-track`, `--seg-border`,
+`--seg-divider`, `--seg-pad`, `--seg-gap`, `--seg-radius`, `--seg-active`,
+`--seg-active-text`, `--seg-active-shadow`. Hyperion's defaults are a
+hairline box of divided cells; a theme gets a padded well with a lifted pill
+by setting track/pad/radius and clearing border and divider.
+
 ## Structural hooks
 
 For looks that tokens alone can't express, a theme may style these classes
@@ -72,7 +84,8 @@ under its own selector (`:root[data-theme='<id>'] .btn--neutral { … }`):
 · `.dt` (DataTable `<table>`) · `.metric` `.metric-label` `.metric-value` ·
 `.app-topbar` `.app-wordmark` `.app-wordmark-dot` `.app-nav` `.app-nav-link`
 (`[aria-current=page]` when active) `.app-tabbar` `.app-tab` · `.subtabs`
-`.subtab` · `.tab-active` · `.label` · `.src-tag` · `.theme-switcher`.
+`.subtab` · `.tab-active` · `.label` · `.src-tag` · `.seg` `.seg--{sm,md}`
+`.seg-item` (`[aria-checked=true]`, `[data-tone=green|red]`) · `.theme-switcher`.
 
 Keep the Hyperion rules that are about meaning, not looks: color is never the
 only signal, projections never use green/red, text contrast ≥ 4.5:1 for body

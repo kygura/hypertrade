@@ -121,6 +121,19 @@
   --control-lg: 36px;
   --tap-min: 28px;
 
+  /* ── Segmented (hd-tabs-tertiary): black-12% well, 2px pad, 6px
+     radius; the checked item lifts with a white-4% fill, a drop shadow and
+     a top-lit 0.5px edge. */
+  --seg-track: rgba(0, 0, 0, 0.12);
+  --seg-border: transparent;
+  --seg-divider: transparent;
+  --seg-pad: 2px;
+  --seg-gap: 2px;
+  --seg-radius: 6px;
+  --seg-active: rgba(255, 255, 255, 0.04);
+  --seg-active-text: #ffffff;
+  --seg-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.32), inset 0 0.5px 0 rgba(255, 255, 255, 0.14);
+
   color-scheme: dark;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
@@ -372,9 +385,16 @@
 :root[data-theme='hyperdash'] textarea:hover {
   border-color: rgba(255, 255, 255, 0.12);
 }
-:root[data-theme='hyperdash'] .theme-switcher {
-  font-family: var(--font-control);
-  text-transform: uppercase;
+:root[data-theme='hyperdash'] .seg-item {
+  font-size: 11px;
+  padding: 0 10px;
+  transition:
+    color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+:root[data-theme='hyperdash'] .seg-item:hover:not(:disabled):not([aria-checked='true']) {
+  color: var(--color-text-muted);
+  background: transparent;
 }
 
 /* Scrollbar: 8px track, 4px pill thumb inset by a transparent border. */

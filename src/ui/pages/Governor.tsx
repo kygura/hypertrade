@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button, ConfirmDialog, EmptyBlock, ErrorBlock, SkeletonRows } from '../components'
+import { Badge, Button, ConfirmDialog, EmptyBlock, ErrorBlock, Segmented, SkeletonRows } from '../components'
 import { engine, errorMessage, useEngine } from '../lib/engine'
 import type { GovernorMode, GovernorSettings, VenueStatus } from '../../shared/strategy-protocol'
 import { EngineTabs } from '../components/strategy/EngineTabs'
@@ -14,10 +14,10 @@ import { fmtUsdSigned } from '../components/strategy/format'
 // word (KILL) here and nowhere else. Venues render beneath: status,
 // capabilities, open positions — the surface the kill switch acts on.
 
-const MODES: { value: GovernorMode; label: string; hint: string }[] = [
-  { value: 'manual', label: 'MANUAL', hint: 'every intent waits for the operator' },
-  { value: 'threshold', label: 'THRESHOLD', hint: 'auto-approve above min confidence, within limits' },
-  { value: 'auto', label: 'AUTO', hint: 'auto-approve within limits' },
+const MODES: { value: GovernorMode; label: string; title: string }[] = [
+  { value: 'manual', label: 'MANUAL', title: 'every intent waits for the operator' },
+  { value: 'threshold', label: 'THRESHOLD', title: 'auto-approve above min confidence, within limits' },
+  { value: 'auto', label: 'AUTO', title: 'auto-approve within limits' },
 ]
 
 interface Form {
@@ -245,25 +245,18 @@ export function Governor() {
               <>
                 <div className="flex flex-col gap-1">
                   <span className="label">MODE</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {MODES.map((m) => (
-                      <button
-                        key={m.value}
-                        type="button"
-                        title={m.hint}
-                        onClick={() => {
-                          setForm((f) => (f ? { ...f, mode: m.value } : f))
-                          setDirty(true)
-                        }}
-                        className={`h-[var(--control-md)] px-3 text-[10px] font-mono uppercase border border-border ${
-                          form.mode === m.value ? 'text-text-primary bg-selected' : 'text-text-secondary'
-                        }`}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                  <span className="text-[10px] text-text-secondary">{MODES.find((m) => m.value === form.mode)?.hint}</span>
+                  <Segmented
+                    label="mode"
+                    size="md"
+                    options={MODES}
+                    value={form.mode}
+                    onChange={(mode) => {
+                      setForm((f) => (f ? { ...f, mode } : f))
+                      setDirty(true)
+                    }}
+                    className="self-start"
+                  />
+                  <span className="text-[10px] text-text-secondary">{MODES.find((m) => m.value === form.mode)?.title}</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

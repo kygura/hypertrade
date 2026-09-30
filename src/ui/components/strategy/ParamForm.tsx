@@ -1,5 +1,11 @@
 import type { ParamSpec } from '../../../shared/strategy-protocol'
 import { coerceParam, paramLabel, type ParamErrors, type ParamValues } from '../../../shared/strategy-params'
+import { Segmented } from '../Segmented'
+
+const BOOL_OPTIONS = [
+  { value: true, label: 'TRUE' },
+  { value: false, label: 'FALSE' },
+]
 
 // ParamForm — generated from manifest.params. number → <input type=number>
 // with min/max/step; enum → <select>; bool → two ghost chips (TRUE/FALSE,
@@ -77,23 +83,16 @@ export function ParamForm({
               </select>
             )}
             {spec.type === 'bool' && (
-              <div id={id} role="radiogroup" aria-label={paramLabel(spec)} className="flex gap-1.5">
-                {[true, false].map((opt) => (
-                  <button
-                    key={String(opt)}
-                    type="button"
-                    role="radio"
-                    aria-checked={v === opt}
-                    disabled={disabled}
-                    onClick={() => onChange(spec.key, opt)}
-                    className={`h-[var(--control-md)] px-3 text-[10px] font-mono uppercase border border-border ${
-                      v === opt ? 'text-text-primary bg-selected' : 'text-text-secondary'
-                    }`}
-                  >
-                    {opt ? 'TRUE' : 'FALSE'}
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                id={id}
+                label={paramLabel(spec)}
+                size="md"
+                options={BOOL_OPTIONS}
+                value={v as boolean}
+                disabled={disabled}
+                onChange={(opt) => onChange(spec.key, opt)}
+                className="self-start"
+              />
             )}
             {spec.description && <span className="text-[10px] text-text-secondary">{spec.description}</span>}
             {(spec.min != null || spec.max != null || spec.step != null) && (

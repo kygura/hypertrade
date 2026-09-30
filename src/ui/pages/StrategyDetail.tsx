@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { Badge, Button, ErrorBlock, SkeletonRows } from '../components'
+import { Badge, Button, ErrorBlock, Segmented, SkeletonRows } from '../components'
 import { engine, errorMessage, useEngine } from '../lib/engine'
 import { ApiError } from '../lib/api'
 import type { DecisionRecord, GovernorMode, GovernorOverride, StrategyConfig, StrategyStatus } from '../../shared/strategy-protocol'
@@ -10,6 +10,11 @@ import { EngineOffline, OfflineStrip } from '../components/strategy/EngineOfflin
 import { ParamForm } from '../components/strategy/ParamForm'
 import { DecisionMeta, DecisionView } from '../components/strategy/DecisionView'
 import { fmtAge, fmtTs } from '../components/strategy/format'
+
+const ENABLED_OPTIONS = [
+  { value: true, label: 'ON', tone: 'green' as const },
+  { value: false, label: 'OFF' },
+]
 
 // /strategies/:id — manifest description, param form generated from
 // manifest.params (min/max/step/enum validated client-side, mirrored by
@@ -208,25 +213,17 @@ export function StrategyDetail() {
               <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border-subtle">
                 <div className="flex flex-col gap-1">
                   <span className="label">ENABLED</span>
-                  <div role="radiogroup" aria-label="enabled" className="flex gap-1.5">
-                    {[true, false].map((opt) => (
-                      <button
-                        key={String(opt)}
-                        type="button"
-                        role="radio"
-                        aria-checked={enabled === opt}
-                        onClick={() => {
-                          setEnabled(opt)
-                          setDirty(true)
-                        }}
-                        className={`h-[var(--control-md)] px-3 text-[10px] font-mono uppercase border border-border ${
-                          enabled === opt ? (opt ? 'text-green bg-green-bg' : 'text-text-primary bg-selected') : 'text-text-secondary'
-                        }`}
-                      >
-                        {opt ? 'ON' : 'OFF'}
-                      </button>
-                    ))}
-                  </div>
+                  <Segmented
+                    label="enabled"
+                    size="md"
+                    options={ENABLED_OPTIONS}
+                    value={enabled}
+                    onChange={(opt) => {
+                      setEnabled(opt)
+                      setDirty(true)
+                    }}
+                    className="self-start"
+                  />
                 </div>
                 <label className="flex flex-col gap-1">
                   <span className="label">VENUE</span>
@@ -272,23 +269,16 @@ export function StrategyDetail() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
                     <span className="label">MODE</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {MODES.map((m) => (
-                        <button
-                          key={m.value}
-                          type="button"
-                          onClick={() => {
-                            setOverride((o) => ({ ...o, mode: m.value }))
-                            setDirty(true)
-                          }}
-                          className={`h-[var(--control-sm)] px-2 text-[10px] font-mono uppercase border border-border ${
-                            override.mode === m.value ? 'text-text-primary bg-selected' : 'text-text-secondary'
-                          }`}
-                        >
-                          {m.label}
-                        </button>
-                      ))}
-                    </div>
+                    <Segmented
+                      label="override mode"
+                      options={MODES}
+                      value={override.mode}
+                      onChange={(mode) => {
+                        setOverride((o) => ({ ...o, mode }))
+                        setDirty(true)
+                      }}
+                      className="self-start"
+                    />
                   </div>
                   {(
                     [
