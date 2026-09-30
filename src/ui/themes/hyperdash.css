@@ -1,3 +1,395 @@
-/* Hyperdash theme — placeholder, filled from design-systems/hyperdash/. */
+/* Hyperdash theme — extracted from hyperdash.com (live "covert" theme,
+   globals-CE-9bAlf.css) — see design-systems/hyperdash/DESIGN.md.
+   Scoped to :root[data-theme='hyperdash']; only redefines contract tokens
+   (themes/README.md) plus looks on the structural hook classes.
+
+   Typography rule carried over from Hyperdash: sentence-case text and
+   numbers are BDO Grotesk (tabular figures); anything UPPERCASE (nav, tabs,
+   labels, tags) is Geist Mono. HYPERTRADE's JSX strings are uppercase, so
+   controls/labels route to Geist Mono and running text + numerals to the
+   grotesk. BDO Grotesk is not on Google Fonts: the stack names it first (used
+   if installed) and falls back to Host Grotesk (Google Fonts, loaded by
+   registry.ts), whose default figures are already tabular. */
+
 :root[data-theme='hyperdash'] {
+  /* ── Surfaces (covert: gray-15 / gray-14 / gray-13b / gray-13) ───── */
+  --color-body: #141210; /* --color-base */
+  --color-panel: #191613; /* --color-subtle: cards, panels, table heads */
+  --color-panel-alt: #141210;
+  --color-elevated: #1d1a18; /* --color-raised: secondary buttons, chips */
+  --color-panel-header: #191613; /* headers sit on the panel, split by a hairline */
+  --color-topbar: #141210;
+  --color-input: #1d1b1a; /* input-surface (white 4%) composited on subtle */
+  --color-hover: rgba(255, 255, 255, 0.05); /* ≈ surface-hover #262422 on subtle */
+  --color-active: rgba(255, 255, 255, 0.08);
+  --color-selected: rgba(255, 255, 255, 0.06);
+
+  /* ── Hairlines (white-alpha-4 / white-alpha-2) ───────────────────── */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+
+  /* ── Text ladder (fg-primary / fg-secondary / fg-tertiary) ────────── */
+  --color-text-primary: #ffffff;
+  --color-text-muted: #d5d1cd; /* fg-secondary, 11.9:1 on panel */
+  --color-text-secondary: #928d86; /* fg-tertiary, 5.5:1 on panel */
+  --color-text-disabled: #524f4a; /* gray-10 ≈ fg-disabled (white 24%) */
+
+  /* ── Brand ───────────────────────────────────────────────────────── */
+  --color-accent: #fd4612; /* orange-8: wordmark square, active tab rule */
+  --color-on-accent: #ffffff;
+  /* Primary submit. Hyperdash paints #fd4612 with white text (3.5:1); we
+     shift one step darker so the label clears 4.5:1 at rest and on hover. */
+  --color-primary: #d93102; /* 4.8:1 with white */
+  --color-primary-hover: #e03302; /* 4.5:1 with white */
+  --color-on-primary: #ffffff;
+
+  /* ── Semantic ────────────────────────────────────────────────────── */
+  --color-green: #5cc09b; /* fg-green (green-7) */
+  --color-green-text: #5cc09b;
+  --color-green-bg: rgba(92, 192, 155, 0.14);
+  --color-red: #d44b62; /* fg-red (rose-7) — fills, candles, dots */
+  --color-red-text: #da6479; /* rose-6: fg-red is 4.3:1 on panel, rose-6 is 5.2:1 */
+  --color-red-bg: rgba(212, 75, 98, 0.14);
+  --color-red-accent: #fd4612;
+  --color-amber: #ffd230; /* fg-yellow (yellow-7) */
+  --color-amber-bg: rgba(255, 210, 48, 0.1);
+  --color-info: #5897d7; /* fg-blue (blue-7) */
+  --color-info-bg: rgba(88, 151, 215, 0.12);
+  --color-flash-up: rgba(92, 192, 155, 0.18);
+  --color-flash-down: rgba(212, 75, 98, 0.18);
+
+  /* ── Overlay / focus / scrollbar ─────────────────────────────────── */
+  --color-scrim: rgba(0, 0, 0, 0.72); /* modal-scrim black-alpha-13 */
+  /* Hyperdash's focus outline is white 16% — too faint; keep it white but legible. */
+  --color-focus: rgba(255, 255, 255, 0.64);
+  --shadow-overlay: 0 0 0 1px rgba(0, 0, 0, 0.16), 0 16px 48px rgba(0, 0, 0, 0.6);
+  --color-scrollbar: rgba(255, 255, 255, 0.2);
+  --color-scrollbar-hover: rgba(255, 255, 255, 0.3);
+  --color-src-hl: #3dcdb1; /* teal-7 */
+
+  /* ── Momentum ramp (chart-heatmap scale; text on it stays white) ─── */
+  --color-mom-neg2: #841d2e; /* rose-11 */
+  --color-mom-neg1: #51141e; /* rose-13 */
+  --color-mom-zero: #262422; /* gray-13 */
+  --color-mom-pos1: #1c4837; /* green-13 */
+  --color-mom-pos2: #297558; /* green-11 */
+
+  /* ── Chart series (projections stay blue, never green/red) ──────── */
+  --color-proj-line: #5897d7; /* fg-blue */
+  --color-proj-band: rgba(88, 151, 215, 0.12);
+  --color-bench-btc: #efbb00; /* chart-yellow (yellow-9) */
+  --color-bench-usdc: #928d86;
+  --color-equity: #ffffff;
+  --color-drawdown-fill: rgba(212, 75, 98, 0.16);
+  --color-drawdown-line: #d44b62;
+
+  /* ── Type ────────────────────────────────────────────────────────── */
+  --font-sans: 'BDO Grotesk', 'Host Grotesk', system-ui, sans-serif;
+  --font-mono: 'BDO Grotesk', 'Host Grotesk', system-ui, sans-serif; /* numbers = grotesk + tnum */
+  --font-display: 'BDO Grotesk', 'Host Grotesk', system-ui, sans-serif;
+  --font-control: 'Geist Mono', ui-monospace, monospace;
+  --base-font-size: 12px;
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-md: 12px;
+  --text-base: 13px;
+  --text-lg: 16px;
+  --text-xl: 22px;
+
+  --label-case: uppercase;
+  --label-tracking: -0.01em;
+  --label-weight: 500;
+  --control-case: uppercase;
+  --control-tracking: 0em;
+  --control-weight: 500;
+
+  /* ── Shape & depth ───────────────────────────────────────────────── */
+  --radius-panel: 4px;
+  --radius-control: 4px;
+  --radius-badge: 2px;
+  --shadow-panel: 0 0 0 1px rgba(0, 0, 0, 0.08); /* shadow-elevate-panel */
+
+  /* ── Density: Hyperdash is looser than Hyperion (32px rows, 28px tabs) */
+  --gutter: 12px;
+  --panel-pad: 12px;
+  --cell-x: 10px;
+  --cell-y: 6px;
+  --row-h: 32px;
+  --control-sm: 24px;
+  --control-md: 28px;
+  --control-lg: 36px;
+  --tap-min: 28px;
+
+  color-scheme: dark;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+@media (pointer: coarse) {
+  :root[data-theme='hyperdash'] {
+    --cell-y: 10px;
+    --row-h: 40px;
+    --control-sm: 32px;
+    --control-md: 40px;
+    --control-lg: 44px;
+    --tap-min: 44px;
+  }
+}
+
+/* ── Structural hooks ──────────────────────────────────────────────── */
+
+:root[data-theme='hyperdash'] body {
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+/* Top bar: 54px base-colored strip, Geist Mono uppercase nav, active = white
+   text only (no underline — Hyperdash reserves the orange rule for tabs). */
+:root[data-theme='hyperdash'] .app-topbar {
+  height: 54px;
+  padding-left: 12px;
+  padding-right: 12px;
+  border-bottom-color: var(--color-border-subtle);
+}
+:root[data-theme='hyperdash'] .app-wordmark {
+  font-weight: 700;
+  letter-spacing: 0;
+  gap: 1px;
+}
+:root[data-theme='hyperdash'] .app-topbar .app-wordmark {
+  font-size: 15px;
+}
+:root[data-theme='hyperdash'] .app-wordmark-dot {
+  width: 0.55em;
+  height: 0.8em;
+  border-radius: 0;
+}
+:root[data-theme='hyperdash'] .app-nav {
+  gap: 20px;
+  /* Hyperdash seats the nav right after the wordmark; the auto margin eats
+     the justify-between space so the right cluster stays flush right. */
+  margin-left: 34px;
+  margin-right: auto;
+}
+:root[data-theme='hyperdash'] .app-nav-link {
+  font-size: 12px;
+  line-height: 16px;
+  padding-bottom: 0;
+  color: var(--color-text-secondary);
+  border-bottom: 0;
+  transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+:root[data-theme='hyperdash'] .app-nav-link:hover {
+  color: var(--color-text-muted);
+}
+:root[data-theme='hyperdash'] .app-nav-link[aria-current='page'] {
+  color: var(--color-text-primary);
+  border-bottom: 0;
+}
+:root[data-theme='hyperdash'] .app-tabbar {
+  background: var(--color-topbar);
+  border-top-color: var(--color-border-subtle);
+}
+
+/* Panels: subtle surface, 4px corners, near-invisible hairline + dark ring. */
+:root[data-theme='hyperdash'] .panel {
+  border-color: var(--color-border-subtle);
+}
+:root[data-theme='hyperdash'] .panel-header {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-bottom-color: var(--color-border-subtle);
+}
+:root[data-theme='hyperdash'] .panel-title {
+  font-family: var(--font-control);
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+}
+
+/* Labels (form + metric): Geist Mono uppercase, fg-tertiary (hd-text-label). */
+:root[data-theme='hyperdash'] .label {
+  font-family: var(--font-control);
+  letter-spacing: -0.02em;
+  line-height: 1.33;
+}
+
+/* Metric tiles: mono label over a grotesk value (asset header stat strip). */
+:root[data-theme='hyperdash'] .metric {
+  gap: 4px;
+}
+:root[data-theme='hyperdash'] .metric-label {
+  font-weight: 400;
+}
+:root[data-theme='hyperdash'] .metric-value {
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* Buttons. neutral = orange skeuomorphic primary; ghost = raised chip with
+   a strong hairline (hd-btn-secondary); danger = rose "Countertrade" fill. */
+:root[data-theme='hyperdash'] .btn {
+  font-size: 11px;
+  padding-left: 12px;
+  padding-right: 12px;
+  transition:
+    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+:root[data-theme='hyperdash'] .btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+:root[data-theme='hyperdash'] .btn--neutral {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+}
+:root[data-theme='hyperdash'] .btn--neutral:disabled {
+  background: #2f0b00; /* orange-15 */
+  color: rgba(255, 255, 255, 0.4);
+  box-shadow: none;
+}
+:root[data-theme='hyperdash'] .btn--ghost {
+  background: var(--color-elevated);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--color-text-muted);
+}
+:root[data-theme='hyperdash'] .btn--ghost:hover:not(:disabled) {
+  background: #262422;
+  color: var(--color-text-primary);
+}
+:root[data-theme='hyperdash'] .btn--ghost:disabled {
+  background: transparent;
+}
+:root[data-theme='hyperdash'] .btn--danger {
+  background: #51141e; /* btn-red-bg rose-13 */
+  border-color: transparent;
+  color: #f5d2d8; /* btn-red-fg rose-2, 10.3:1 */
+}
+:root[data-theme='hyperdash'] .btn--danger:hover:not(:disabled) {
+  background: #391017; /* rose-14 */
+  color: #da6479;
+}
+:root[data-theme='hyperdash'] .btn--danger:disabled {
+  background: transparent;
+}
+
+/* Badges: tight tinted tags (leverage "50×", "LONG", sentiment pills). */
+:root[data-theme='hyperdash'] .badge {
+  padding: 1px 5px;
+  line-height: 14px;
+  font-size: 10px;
+}
+:root[data-theme='hyperdash'] .badge--gray {
+  background: rgba(255, 255, 255, 0.04); /* badge-neutral-subtle */
+}
+
+/* Sub-tabs (EngineTabs) = hd-tabs-nav-trigger: 12px mono caps, tertiary →
+   primary, 2px orange rule under the active tab. */
+:root[data-theme='hyperdash'] .subtabs {
+  gap: 16px;
+  border-bottom-color: var(--color-border-subtle);
+}
+:root[data-theme='hyperdash'] .subtab {
+  font-size: 12px;
+  padding-left: 0;
+  padding-right: 0;
+  height: 40px;
+  transition:
+    color 200ms ease-in-out,
+    border-color 200ms ease-in-out;
+}
+:root[data-theme='hyperdash'] .subtab:hover {
+  color: var(--color-text-muted);
+}
+:root[data-theme='hyperdash'] .tab-active {
+  border-bottom-width: 2px;
+  border-bottom-color: var(--color-accent);
+}
+
+/* Tables (hd-table-header / hd-table-cell-sans): sans caps 10px header on the
+   panel surface, 32px rows split by 4% hairlines, grotesk tabular cells. */
+:root[data-theme='hyperdash'] .dt {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+:root[data-theme='hyperdash'] .dt thead tr {
+  border-bottom-color: var(--color-border-subtle);
+}
+:root[data-theme='hyperdash'] .dt th {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  padding: 9px var(--cell-x);
+  background: var(--color-panel);
+  white-space: nowrap;
+}
+:root[data-theme='hyperdash'] .dt td {
+  padding-left: var(--cell-x);
+  padding-right: var(--cell-x);
+  color: var(--color-text-primary);
+}
+:root[data-theme='hyperdash'] .dt th:first-child,
+:root[data-theme='hyperdash'] .dt td:first-child {
+  padding-left: 12px;
+}
+:root[data-theme='hyperdash'] .dt th:last-child,
+:root[data-theme='hyperdash'] .dt td:last-child {
+  padding-right: 12px;
+}
+:root[data-theme='hyperdash'] .dt tbody tr {
+  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Provenance tag: mono caps chip, rounded like Hyperdash's "TX"/"LIVE" tags. */
+:root[data-theme='hyperdash'] .src-tag {
+  font-family: var(--font-control);
+  border-radius: 2px;
+  letter-spacing: 0.04em;
+}
+:root[data-theme='hyperdash'] .src-tag--hl {
+  border-color: rgba(61, 205, 177, 0.25);
+}
+
+/* Inputs: input-surface fill, 8% border, grotesk text. */
+:root[data-theme='hyperdash'] input,
+:root[data-theme='hyperdash'] select,
+:root[data-theme='hyperdash'] textarea {
+  font-family: var(--font-sans);
+  letter-spacing: 0.01em;
+}
+:root[data-theme='hyperdash'] input:hover,
+:root[data-theme='hyperdash'] select:hover,
+:root[data-theme='hyperdash'] textarea:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+:root[data-theme='hyperdash'] .theme-switcher {
+  font-family: var(--font-control);
+  text-transform: uppercase;
+}
+
+/* Scrollbar: 8px track, 4px pill thumb inset by a transparent border. */
+:root[data-theme='hyperdash'] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+:root[data-theme='hyperdash'] ::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme='hyperdash'] .btn:active:not(:disabled) {
+    transform: none;
+  }
 }
