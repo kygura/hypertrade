@@ -67,7 +67,8 @@ For looks that tokens alone can't express, a theme may style these classes
 under its own selector (`:root[data-theme='<id>'] .btn--neutral { … }`):
 
 `.panel` `.panel-header` `.panel-title` `.panel-body` · `.btn` `.btn--ghost`
-`.btn--neutral` `.btn--danger` · `.badge` `.badge--{green,red,amber,info,gray}`
+`.btn--neutral` `.btn--danger` · `.badge` `.badge--{green,red,amber,info,gray}` · `.status-dot` `.status-dot--{ok,degraded,down,unknown}`
+· `.state-title`
 · `.dt` (DataTable `<table>`) · `.metric` `.metric-label` `.metric-value` ·
 `.app-topbar` `.app-wordmark` `.app-wordmark-dot` `.app-nav` `.app-nav-link`
 (`[aria-current=page]` when active) `.app-tabbar` `.app-tab` · `.subtabs`

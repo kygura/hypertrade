@@ -46,5 +46,5 @@ const DOT_CLASS: Record<DotStatus, string> = {
 
 // StatusDot — 6x6px square. Always pair with a text label at the call site.
 export function StatusDot({ status, className = '' }: { status: DotStatus; className?: string }) {
-  return <span className={`inline-block w-1.5 h-1.5 flex-shrink-0 ${DOT_CLASS[status]} ${className}`} />
+  return <span className={`status-dot status-dot--${status} inline-block w-1.5 h-1.5 flex-shrink-0 ${DOT_CLASS[status]} ${className}`} />
 }
