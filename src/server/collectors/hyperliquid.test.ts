@@ -49,6 +49,21 @@ describe("buildHyperliquidObservations", () => {
     expect(topCoins.length).toBeLessThanOrEqual(20);
   });
 
+  test("tracked coins outside the top N get an OI snapshot (and only OI)", () => {
+    const mk = (name: string, oi: number): AssetCtx => ({
+      name, szDecimals: 0, markPx: 1, oraclePx: 1, midPx: 1, dayNtlVlm: 0,
+      prevDayPx: 1, openInterest: oi, funding: 0, premium: 0, dayChange: 0, isDelisted: false,
+    });
+    const ctxs = [...Array.from({ length: 25 }, (_, i) => mk(`C${i}`, 1000 - i)), mk("kPEPE", 1)];
+    const { seriesDefs, observations } = buildHyperliquidObservations(ctxs, new Date(), ["kPEPE", "C0", "GONE"]);
+    const ids = seriesDefs.map((s) => s.id);
+    expect(ids).toContain("hl.oi.kPEPE");
+    expect(ids).not.toContain("hl.funding.kPEPE");
+    expect(ids).not.toContain("hl.oi.GONE");
+    expect(ids.filter((i) => i === "hl.oi.C0")).toHaveLength(1); // top-N coin not duplicated
+    expect(observations.find((o) => o.seriesId === "hl.oi.kPEPE")!.value).toBe(1);
+  });
+
   test("all assets delisted or zero-OI -> zero totals, empty topCoins, no per-coin series", () => {
     const ctxs: AssetCtx[] = [
       {

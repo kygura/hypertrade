@@ -9,8 +9,13 @@ import type { CollectorResult } from "./types.js";
 const TOP_N = 20;
 const COLLECTOR = "hyperliquid";
 
-/** Pure transform: raw asset contexts -> series defs + observations. Exported for fixture tests. */
-export function buildHyperliquidObservations(ctxs: AssetCtx[], ts: Date) {
+/**
+ * Pure transform: raw asset contexts -> series defs + observations. Exported
+ * for fixture tests. `extraOiCoins` (core, branch and recently charted coins)
+ * get an hl.oi.<COIN> snapshot even outside the top N: Hyperliquid has no OI
+ * history endpoint, so these snapshots are the chart's only OI history.
+ */
+export function buildHyperliquidObservations(ctxs: AssetCtx[], ts: Date, extraOiCoins: string[] = []) {
   // OI-weighted funding skew, notional OI ranking: delisted and zero-OI assets
   // (thin/post-delist markets) are excluded as noise, mirroring marketstate.
   const live = ctxs
@@ -49,6 +54,14 @@ export function buildHyperliquidObservations(ctxs: AssetCtx[], ts: Date) {
     );
   }
 
+  const topNames = new Set(top.map((c) => c.name));
+  const extras = new Set(extraOiCoins);
+  for (const c of live) {
+    if (topNames.has(c.name) || !extras.has(c.name)) continue;
+    seriesDefs.push({ id: `hl.oi.${c.name}`, source: COLLECTOR, units: "USD", description: `${c.name} open interest (Hyperliquid)` });
+    observations.push({ seriesId: `hl.oi.${c.name}`, ts, value: c.notionalOi });
+  }
+
   return { seriesDefs, observations, totalOiUsd, fundingSkew, topCoins: top.map((c) => c.name) };
 }
 
@@ -56,11 +69,15 @@ export function buildHyperliquidObservations(ctxs: AssetCtx[], ts: Date) {
 export type HlDbDeps = { ensureSeries: typeof ensureSeries; upsertObservations: typeof upsertObservations; recordCollectorRun: typeof recordCollectorRun };
 const defaultDeps: HlDbDeps = { ensureSeries, upsertObservations, recordCollectorRun };
 
-export async function collectHyperliquid(fetchFn: typeof fetch = fetch, deps: HlDbDeps = defaultDeps): Promise<CollectorResult> {
+export async function collectHyperliquid(
+  fetchFn: typeof fetch = fetch,
+  deps: HlDbDeps = defaultDeps,
+  extraOiCoins: string[] = [],
+): Promise<CollectorResult> {
   const startedAt = new Date();
   try {
     const { ctxs } = await fetchPerpMetaAndCtxs(fetchFn);
-    const { seriesDefs, observations } = buildHyperliquidObservations(ctxs, startedAt);
+    const { seriesDefs, observations } = buildHyperliquidObservations(ctxs, startedAt, extraOiCoins);
     await deps.ensureSeries(seriesDefs);
     const written = await deps.upsertObservations(observations);
     await deps.recordCollectorRun(COLLECTOR, startedAt, true);

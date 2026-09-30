@@ -25,6 +25,32 @@ bun run build
 
 Deployed on Vercel + Supabase. Set environment variables from `.env.example` in Vercel project settings.
 
+## Chart history
+
+`/markets/:coin` charts every Hyperliquid perp at `1m 5m 15m 1H 4H 1D 1W 1M`
+with funding, open interest and premium panes. History is stitched from
+layers, newest first (`src/server/market/candleSync.ts`):
+
+1. **Hyperliquid** `candleSnapshot` — native interval, but only the latest
+   5000 bars (3.5 days of 1m, 208 days of 1h). The cron persists them every
+   15 minutes, so LTF history keeps growing past that window.
+2. **Binance spot** (`data-api.binance.vision`, keyless) below HL's floor.
+3. **Bitstamp** below Binance's (BTC reaches 2011).
+
+1W/1M below HL's floor are resampled from stored daily bars on HL's own
+bucket phase. Every external layer must pass a seam check against the bars
+above it (same-ticker impostors are rejected), and HL's zero-volume
+pre-listing bars are dropped. Pages load as the chart scrolls left; the newest
+bar streams over HL's websocket.
+
+Funding is HL `fundingHistory` (hourly, full history) in the `funding` table.
+OI has no history endpoint upstream: it comes from the collector's 15-minute
+`hl.oi.<COIN>` snapshots, taken for the top 20 by OI plus core, branch and
+recently charted coins. Retention: 1m bars 30 days, 5m bars 120 days.
+
+Requires `db/migrations/002_chart_history.sql` (adds `candles.src`,
+`sync_state`, `funding`, and drops the old CoinGecko 4-day rows).
+
 ## Prop-trading contract
 
 `PROP.md` is the operator's own rulebook for trading a Breakout evaluation

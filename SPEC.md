@@ -12,7 +12,7 @@ A single deployable web application merging three prior projects (`../hyperion`,
 ## Runtime shape (decided — do not relitigate)
 
 - **Hosting**: Vercel. Git-connected; pushes to the repo redeploy the app. Routine outputs are committed files, so a routine run = fresh deploy with fresh data.
-- **Frontend**: React 19 + Vite + TypeScript + Tailwind CSS v4 (CSS-native `@theme`, no tailwind.config). Recharts for charts. React Router. Fonts: Geist Mono via `geist` package (self-hosted woff2), monospace everywhere — inherited from Hyperion.
+- **Frontend**: React 19 + Vite + TypeScript + Tailwind CSS v4 (CSS-native `@theme`, no tailwind.config). Recharts for charts (lightweight-charts for the markets drill-in chart). React Router. Fonts: Geist Mono via `geist` package (self-hosted woff2), monospace everywhere — inherited from Hyperion.
 - **Backend**: Hono on Vercel Functions — one catch-all function at `api/index.ts` serving `/api/*`. Runtime: Node (Vercel default), code written to also run under `bun dev` locally.
 - **Database**: Supabase Postgres (hosted; serverless has no disk). Accessed from API routes via `postgres` (postgres.js) with `DATABASE_URL`. No Supabase client SDK needed — plain SQL through a thin data layer.
 - **Scheduling**: Vercel cron cannot run sub-daily on Hobby, so collection is an authenticated endpoint `POST /api/cron/collect` (header `x-cron-token: $CRON_TOKEN`) triggered by a GitHub Actions workflow on `schedule` (every 15 min) living in this repo (`.github/workflows/collect.yml`). A daily Vercel cron entry hits the same endpoint as fallback.
@@ -51,11 +51,13 @@ Ported from marketwatch's "everything is a series" design:
 - `series(id text primary key, source text, units text, description text)`
 - `observations(series_id text references series, ts timestamptz, value double precision, primary key(series_id, ts))`
 - `collector_runs(id bigserial primary key, collector text, started_at timestamptz, finished_at timestamptz, ok boolean, error text)`
-- `candles(coin text, tf text, ts timestamptz, o double precision, h double precision, l double precision, c double precision, v double precision, primary key(coin, tf, ts))` — backfill cache for the simulator and charts
+- `candles(coin text, tf text, ts timestamptz, o double precision, h double precision, l double precision, c double precision, v double precision, src text, primary key(coin, tf, ts))` — chart and simulator history at every timeframe (`1m 5m 15m 1h 4h 1d 1w 1M`); `src` is the venue (`hl`, `binance`, `bitstamp`)
+- `sync_state(coin text, series text, hl_floor timestamptz, ext jsonb, synced_at timestamptz, accessed_at timestamptz, error text, primary key(coin, series))` — per-series sync bookkeeping (series = a timeframe or `funding`)
+- `funding(coin text, ts timestamptz, rate double precision, premium double precision, primary key(coin, ts))` — hourly Hyperliquid funding settlements
 - `branches(id uuid primary key default gen_random_uuid(), name text not null, config jsonb not null, created_at timestamptz default now(), updated_at timestamptz default now())`
 - `branch_results(branch_id uuid references branches on delete cascade, computed_at timestamptz, result jsonb, primary key(branch_id))` — latest simulation output cache
 
-Series naming: `hl.total_oi_usd`, `hl.funding_skew`, `hl.premium.<coin>`, `hl.oi.<coin>`, `hl.funding.<coin>`, `cg.total_mcap_usd`, `cg.btc_dominance`, `fng.value`, `llama.stablecoin_cap_usd`, `fred.<SERIES_ID>` (fred optional — degrade to `skipped:no-key` when `FRED_API_KEY` unset, marketstate pattern).
+Series naming: `hl.total_oi_usd`, `hl.funding_skew`, `hl.premium.<coin>`, `hl.oi.<coin>` (top 20 by OI plus core, branch and recently charted coins — the chart's OI history), `hl.funding.<coin>`, `cg.total_mcap_usd`, `cg.btc_dominance`, `fng.value`, `llama.stablecoin_cap_usd`, `fred.<SERIES_ID>` (fred optional — degrade to `skipped:no-key` when `FRED_API_KEY` unset, marketstate pattern).
 
 ## Branch model (`branches.config` jsonb)
 
@@ -74,7 +76,7 @@ Series naming: `hl.total_oi_usd`, `hl.funding_skew`, `hl.premium.<coin>`, `hl.oi
 }
 ```
 
-Simulation engine (`src/server/sim/`): daily resolution over `candles` (backfilled on demand, CoinGecko `/coins/{id}/ohlc` free tier first, Hyperliquid `candleSnapshot` for perp-listed coins), computes equity curve, max drawdown, CAGR, vs-HODL-BTC and vs-100%-USDC benchmarks; forward monte-carlo (GBM per assumptions) when `scenario` present. Results cached in `branch_results`, recomputed on config change or explicit refresh. USDC/USDT are constant-$1 assets.
+Simulation engine (`src/server/sim/`): daily resolution over `candles` (backfilled on demand by the chart sync engine, `src/server/market/candleSync.ts`: Hyperliquid daily bars, then Binance spot and Bitstamp below HL's listing), computes equity curve, max drawdown, CAGR, vs-HODL-BTC and vs-100%-USDC benchmarks; forward monte-carlo (GBM per assumptions) when `scenario` present. Results cached in `branch_results`, recomputed on config change or explicit refresh. USDC/USDT are constant-$1 assets.
 
 ## Routine Contract (summary — full detail in ROUTINE.md, which is itself a deliverable)
 
@@ -100,7 +102,9 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 - `GET /api/metrics/series/:id?from&to&buckets` — downsampled observations
 - `GET /api/hl/markets` — live pass-through snapshot of Hyperliquid universe (price/OI/funding), short in-memory cache
 - `GET/POST /api/branches`, `GET/PUT/DELETE /api/branches/:id`, `POST /api/branches/:id/run` → simulation result
-- `GET /api/candles/:coin?tf&from` — cached candles, backfilling on miss
+- `GET /api/candles/:coin?tf&before&limit` — one page of chart bars (`tf` ∈ `1m 5m 15m 1h 4h 1d 1w 1M`, default 1d; latest page when `before` omitted; `limit` ≤ 5000, default 1500) with funding/premium/OI joined per bar; syncs the head and backfills older layers on miss → `{coin, tf, bars: [{t,o,h,l,c,v,src,f,p,oi}], hasMore, error, funding: {from, complete}, oi: {from}}`
+- `GET /api/perp/:coin` — live asset context (mark/oracle/mid/premium/funding/OI/volume/impact prices/max leverage), cross-venue predicted funding, OI-cap flag, 24h/7d/30d funding averages, 24h/7d OI change
+- `POST /api/cron/backfill` (x-cron-token) — keeps core, branch and recently charted coins warm: daily history, a head sync of every timeframe, funding pages; prunes 1m (30d) / 5m (120d); deadline-bounded
 - `GET /api/sectors` / `GET /api/marketstate` — serve latest committed data + quant enrichment (sectors joined with live per-token OI/funding aggregates)
 - `POST /api/routines/trigger`
 - `/api/engine/*` — authenticated proxy to the Hyperion strategy core (`${ENGINE_URL}/api/strategy/*`, bearer `ENGINE_TOKEN`); 503 `engine not configured`, 502 `engine unreachable` / `engine timeout`
@@ -113,7 +117,7 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 - `/branches` — list + create; `/branches/:id` — editor (allocation table, rebalance, scenario) + equity curve vs benchmarks + drawdown + forward projection fan chart
 - `/sectors` — mindshare treemap/grid of routine-defined sectors sized by mindshare, colored by momentum; rotations list; per-sector drill-in with token-level OI/funding
 - `/state` — full MarketState briefing (domains, thesis with Observe/Infer/Forecast, risks) + history browser + trigger button
-- `/markets` — Hyperliquid universe table (price, 24h, OI, funding) with candle chart drill-in
+- `/markets` — Hyperliquid universe table (price, 24h, OI, funding) with drill-in: live perp context, multi-timeframe chart (1m–1M, stitched deep history, funding/OI/premium panes), cross-venue funding
 - `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` — the **ENGINE** console: companion to the Hyperion operator terminal for the Jev-driven strategy runtime (configure, dry-run, approve/reject proposals, governor and kill switch, venues). The Overview carries a compact ENGINE card.
 - `/analyst` — **ANALYST**: model/provider selector in the header (`ModelSelector`, popover desktop / bottom sheet mobile, persisted per-browser), question box, quick prompts, streamed answer, collapsible tool trace, citations, the session's turns (in memory, each showing the provider/model/effort that produced it); OfflineBlock when the analyst is not configured (503) or unreachable (502/network).
 

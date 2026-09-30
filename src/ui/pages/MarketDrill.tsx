@@ -1,50 +1,34 @@
-import { useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
-import { Panel, AnimatedDigits, Button, CandleChart, type Candle, type CandleTf } from '../components'
-import { SkeletonRows, ErrorBlock, OfflineBlock, StaleBanner, AgeStamp } from '../components/state'
-import { useApi } from '../lib/api'
-import { fmtPrice, fmtPct, classForPnl, fmtUsd } from '../../shared/format'
-import type { MarketRow } from './Markets'
-
-const STALE_MIN = 5
+import { useNavigate, useParams, useSearchParams } from 'react-router'
+import { Button, Panel } from '../components'
+import { MarketChart } from '../components/charts/MarketChart'
+import { FundingPanel, PerpHeader, usePerpStats } from '../components/market/PerpPanels'
+import { isTimeframe, type Timeframe } from '../../shared/timeframes'
 
 // Markets drill-in — DESIGN.md §10.7. Full view (not an overlay), route
-// /markets/:coin — back-button friendly, linkable. Header pulls from the
-// same /api/hl/markets snapshot (no dedicated single-coin endpoint exists);
-// candles backfill on miss server-side, so a first load can take seconds.
+// /markets/:coin?tf=4h — back-button friendly, linkable. Header: live perp
+// context (mark/oracle/funding/OI over HL's websocket). Chart: every
+// timeframe from 1m to 1M with funding, OI and premium panes; history pages
+// in as you scroll left and the server backfills it on demand.
 
-const TF_TO_QUERY: Record<CandleTf, string> = { '1H': '1h', '4H': '4h', '1D': '1d', '1W': '1w' }
-
-interface RawCandle {
-  ts: string
-  o: number
-  h: number
-  l: number
-  c: number
-  v?: number | null
-}
+const DEFAULT_TF: Timeframe = '1d'
 
 export function MarketDrill() {
-  const { coin: coinParam } = useParams<{ coin: string }>()
-  const coin = (coinParam ?? '').toUpperCase()
+  // HL coin names are case-sensitive ("kPEPE"); the param is passed as-is and
+  // the server resolves it against the live universe.
+  const { coin = '' } = useParams<{ coin: string }>()
   const navigate = useNavigate()
-  const [tf, setTf] = useState<CandleTf>('1D')
+  const [params, setParams] = useSearchParams()
+  const tfParam = params.get('tf')
+  const tf: Timeframe = isTimeframe(tfParam) ? tfParam : DEFAULT_TF
+  const stats = usePerpStats(coin)
+  const name = stats.data?.coin ?? coin
 
-  const { data: marketsData } = useApi<{ fetchedAt: string; markets: MarketRow[] }>('/hl/markets')
-  const row = marketsData?.markets.find((r) => r.coin === coin)
-
-  const {
-    data: rawCandles,
-    loading,
-    error,
-    offline,
-    refetch,
-  } = useApi<RawCandle[]>(coin ? `/candles/${coin}?tf=${TF_TO_QUERY[tf]}` : null)
-
-  const candles = useMemo<Candle[]>(
-    () => (rawCandles ?? []).map((c) => ({ ts: new Date(c.ts).getTime(), o: c.o, h: c.h, l: c.l, c: c.c, v: c.v ?? 0 })),
-    [rawCandles],
-  )
+  const setTf = (next: Timeframe) => {
+    const p = new URLSearchParams(params)
+    if (next === DEFAULT_TF) p.delete('tf')
+    else p.set('tf', next)
+    setParams(p, { replace: true })
+  }
 
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)] flex flex-col gap-3">
@@ -53,44 +37,15 @@ export function MarketDrill() {
       </Button>
 
       <Panel>
-        {marketsData && <StaleBanner generatedAt={marketsData.fetchedAt} thresholdHours={STALE_MIN / 60} noun="snapshot" />}
-        <div className="flex flex-wrap items-baseline gap-3 px-3 py-3 border-b border-border">
-          <span className="text-[16px] uppercase text-text-secondary">{coin}</span>
-          {row ? (
-            <>
-              <AnimatedDigits text={fmtPrice(row.markPx)} className="text-[22px] text-text-primary" />
-              <span className={`text-[12px] tabular ${classForPnl(row.dayChangePct)}`}>
-                {fmtPct(row.dayChangePct, { sign: true })} {row.dayChangePct >= 0 ? '▲' : '▼'}
-              </span>
-            </>
-          ) : (
-            <span className="text-[13px] text-text-secondary">--</span>
-          )}
-          {marketsData && (
-            <AgeStamp generatedAt={marketsData.fetchedAt} thresholdHours={STALE_MIN / 60} />
-          )}
-        </div>
-        {row && (
-          <div className="px-3 py-2 text-[11px] text-text-secondary tabular">
-            OI {fmtUsd(row.openInterestUsd, { compact: true })} · FUND {fmtPct(row.funding, { decimals: 4, sign: true })} · VOL{' '}
-            {fmtUsd(row.dayNtlVlm, { compact: true })}
-          </div>
-        )}
+        <PerpHeader coin={name} stats={stats} />
       </Panel>
 
       <Panel>
-        {offline && candles.length === 0 ? (
-          <OfflineBlock onRetry={refetch} />
-        ) : error && candles.length === 0 ? (
-          <ErrorBlock message={error} onRetry={refetch} />
-        ) : loading && candles.length === 0 ? (
-          <div className="flex flex-col gap-2">
-            <SkeletonRows />
-            <span className="text-[10px] text-text-secondary text-center pulse-label">backfilling candles…</span>
-          </div>
-        ) : (
-          <CandleChart candles={candles} tf={tf} onTfChange={setTf} />
-        )}
+        <MarketChart key={name} coin={name} tf={tf} onTfChange={setTf} />
+      </Panel>
+
+      <Panel>
+        <FundingPanel stats={stats} />
       </Panel>
     </div>
   )
