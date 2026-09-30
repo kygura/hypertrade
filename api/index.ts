@@ -37,5 +37,15 @@ app.route("/metrics", metricsRoutes);
 app.route("/routines", routinesRoutes);
 app.route("/sectors", sectorsRoutes);
 
-export default handle(app);
+// Vercel's Node runtime calls a default export as `(req, res)` and ignores a
+// returned Response, so a default-exported fetch handler never answers. Named
+// HTTP-method exports get the Web signature: Request in, Response out.
+const handler = handle(app);
+export const GET = handler;
+export const POST = handler;
+export const PUT = handler;
+export const PATCH = handler;
+export const DELETE = handler;
+export const OPTIONS = handler;
+export const HEAD = handler;
 export { app };
