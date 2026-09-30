@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Bar, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { fmtPrice } from '../../shared/format'
 import { EmptyBlock } from './state'
+import { Segmented } from './Segmented'
 
 // CandleChart — DESIGN.md §9.4/§11. Reusable presentational chart: the
 // caller fetches candles and owns interval state, this only renders. Custom
@@ -9,7 +10,7 @@ import { EmptyBlock } from './state'
 // ~20% height. isAnimationActive false throughout (§8 motion ceiling).
 
 export type CandleTf = '1H' | '4H' | '1D' | '1W'
-const TFS: CandleTf[] = ['1H', '4H', '1D', '1W']
+const TFS = (['1H', '4H', '1D', '1W'] as const satisfies readonly CandleTf[]).map((v) => ({ value: v, label: v }))
 
 export interface Candle {
   ts: number
@@ -77,19 +78,7 @@ export function CandleChart({
     <div className="flex flex-col">
       <div className="panel-header flex-shrink-0">
         <span className="panel-title">CANDLES</span>
-        <div className="flex border border-border">
-          {TFS.map((iv) => (
-            <button
-              key={iv}
-              onClick={() => onTfChange(iv)}
-              className={`h-[var(--control-sm)] px-2 text-[10px] uppercase tracking-wider transition-colors duration-100 ${
-                iv === tf ? 'bg-selected text-text-primary' : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {iv}
-            </button>
-          ))}
-        </div>
+        <Segmented label="timeframe" options={TFS} value={tf} onChange={onTfChange} />
       </div>
 
       {data.length === 0 ? (

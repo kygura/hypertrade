@@ -7,6 +7,7 @@ import {
   EmptyBlock,
   ErrorBlock,
   OfflineBlock,
+  Segmented,
   SkeletonRows,
 } from '../components'
 import { api, ApiError, useApi } from '../lib/api'
@@ -328,19 +329,13 @@ export function BranchDetail() {
 
               <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
                 <span className="label">REBALANCE</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {REBALANCE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => patch({ rebalance: opt.value })}
-                      className={`h-[var(--control-sm)] px-2 text-[10px] font-mono uppercase border border-border ${
-                        form.rebalance === opt.value ? 'text-text-primary bg-selected' : 'text-text-secondary'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+                <Segmented
+                  label="rebalance"
+                  options={REBALANCE_OPTIONS}
+                  value={form.rebalance}
+                  onChange={(rebalance) => patch({ rebalance })}
+                  className="self-start"
+                />
               </div>
 
               <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">

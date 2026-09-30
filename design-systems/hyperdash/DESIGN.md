@@ -331,8 +331,7 @@ The base unit is 4px (Tailwind `--spacing: .25rem`).
 
 ## 4. Gaps: what the token contract and hooks can't express yet
 
-1. **Segmented control.** Hyperdash's 24H/7D/30D and $/% toggles are pill groups: a black-12% well with 2px padding, 6px radius and a selected item lifted with shadow plus a gradient top-border. HYPERTRADE builds these ad hoc per page, with no class to hook.
-   *Proposal:* add a `Segmented` component with `.seg` / `.seg-item[aria-pressed]` hooks and a `--radius-segment` token.
+1. ~~**Segmented control.**~~ **Resolved.** `components/Segmented.tsx` (a radiogroup with `.seg` / `.seg-item[aria-checked]` hooks and `--seg-*` tokens) now backs the timeframe, effort, rebalance, mode, bool-param and theme toggles. `hyperdash.css` sets the black-12% well, 2px padding, 6px radius and the lifted checked item.
 2. **Sentence-case titles.** Hyperdash panel titles ("Performance", "Cohort bias") and buttons ("Get started") are sentence case in the grotesk. HYPERTRADE hard-codes uppercase strings ("MARKETS", "RETRY"), so CSS cannot recover sentence case. The theme renders them in Geist Mono caps, which matches Hyperdash's mono-caps convention (address-page section heads).
    *Proposal:* store titles and button labels in sentence case and uppercase them via `--label-case` / `--control-case` in the themes that want caps.
 3. **Hatched area fills.** PnL and positioning charts fill under the line with diagonal hatching in the series colour, split at zero into green and red.

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Badge, StatusDot } from '../Badge'
+import { Segmented } from '../Segmented'
 import type { AnalystCatalog, AnalystCatalogModel, AnalystChoice, AnalystEffort, AnalystProviderId } from '../../lib/analyst'
 
 // ModelSelector — Analyst page header control (DESIGN.md language: dark,
@@ -16,7 +17,10 @@ import type { AnalystCatalog, AnalystCatalogModel, AnalystChoice, AnalystEffort,
 // persists it to localStorage (`ht_analyst_model`) and validates it against
 // the catalog on load, falling back to `catalog.default` when stale.
 
-const EFFORT_LEVELS: AnalystEffort[] = ['low', 'medium', 'high', 'xhigh', 'max']
+const EFFORT_OPTIONS = (['low', 'medium', 'high', 'xhigh', 'max'] as const satisfies readonly AnalystEffort[]).map((v) => ({
+  value: v,
+  label: v,
+}))
 
 const TIER_LABEL: Record<AnalystCatalogModel['tier'], string> = {
   frontier: 'FRONTIER',
@@ -183,25 +187,13 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
       {!anyAvailable && reasons && <span className="text-[10px] text-text-secondary normal-case">{reasons}</span>}
 
       {selected?.model.effort && (
-        <div role="radiogroup" aria-label="Reasoning effort" className="flex md:inline-flex border border-border">
-          {EFFORT_LEVELS.map((lvl, i) => {
-            const active = (value?.effort ?? 'medium') === lvl
-            return (
-              <button
-                key={lvl}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => onChange({ provider: selected.providerId, model: selected.model.id, effort: lvl })}
-                className={`px-1.5 h-[var(--control-md)] text-[9px] uppercase tracking-wider transition-colors duration-100 ${
-                  i > 0 ? 'border-l border-border' : ''
-                } ${active ? 'bg-selected text-text-primary' : 'text-text-secondary hover:bg-hover'}`}
-              >
-                {lvl}
-              </button>
-            )
-          })}
-        </div>
+        <Segmented
+          label="Reasoning effort"
+          size="md"
+          options={EFFORT_OPTIONS}
+          value={value?.effort ?? 'medium'}
+          onChange={(effort) => onChange({ provider: selected.providerId, model: selected.model.id, effort })}
+        />
       )}
 
       {open && (
