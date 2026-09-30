@@ -1160,3 +1160,23 @@ Every cell above is one of the §6 named patterns — no bespoke states.
 7. New tokens: momentum ramp (5), projection/benchmark colors (7),
    `--color-src-hl`. All documented in §2; nothing existing changed value
    or meaning.
+
+---
+
+## 15. Themes
+
+Hyperion, as specified above, is the default theme and the reference for
+meaning: state vocabulary, confirmation levels, motion, responsive contract.
+Alternate looks are themes that override tokens only, never behavior. The
+token contract, the structural hook classes a theme may style, and the steps
+to add one live in `src/ui/themes/README.md`.
+
+| Theme | Source design system |
+|---|---|
+| Hyperion (default) | this document |
+| Hyperdash | `design-systems/hyperdash/DESIGN.md` |
+| Trade[XYZ] | `design-systems/tradexyz/DESIGN.md` |
+
+Under any theme the binding rules still hold: color is never the only
+signal (§2.1), projections never wear green/red (§1.6), and every
+API-backed surface keeps its §6 states.
