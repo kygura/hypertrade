@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Timeframe } from "../../shared/timeframes.js";
 import {
+  ensureHistory,
   fillOlder,
   isGap,
   monthStart,
@@ -173,6 +174,36 @@ describe("syncHead", () => {
     expect(ts).toEqual(Array.from({ length: 21 }, (_, i) => i));
     expect(h.store("1h").find((b) => b.t === T0 + 10 * H)!.src).toBe("binance");
     expect(h.store("1h").find((b) => b.t === T0 + H)!.src).toBe("hl"); // existing bars untouched
+  });
+
+  test("past the deadline the hole is left for the next sync", async () => {
+    const h = harness({ now: T0 + 20.5 * H, hl: { "1h": [18, 19, 20].map((i) => bar(T0 + i * H)) } });
+    await h.deps.upsert("BTC", "1h", [bar(T0), bar(T0 + H)]);
+    const bin = venue("binance", Array.from({ length: 21 }, (_, i) => ext(T0 + i * H)), ["1h"], 100);
+    h.deps.sources = [bin];
+    await syncHead("BTC", "1h", h.deps, true, Date.now() - 1);
+    expect(bin.calls).toEqual([]);
+    expect(h.store("1h").map((b) => (b.t - T0) / H)).toEqual([0, 1, 18, 19, 20]);
+  });
+});
+
+describe("ensureHistory", () => {
+  const hlBars = Array.from({ length: 5 }, (_, i) => bar(T0 + (10 + i) * D));
+  const binBars = Array.from({ length: 13 }, (_, i) => ext(T0 + i * D));
+
+  test("walks older layers until coverage reaches `from`", async () => {
+    const bin = venue("binance", binBars, ["1d"], 4);
+    const h = harness({ now: T0 + 14.5 * D, hl: { "1d": hlBars }, sources: [bin] });
+    await ensureHistory("BTC", "1d", T0, h.deps);
+    expect(h.store("1d")[0]!.t).toBe(T0);
+  });
+
+  test("starts no round past the deadline", async () => {
+    const bin = venue("binance", binBars, ["1d"], 4);
+    const h = harness({ now: T0 + 14.5 * D, hl: { "1d": hlBars }, sources: [bin] });
+    await ensureHistory("BTC", "1d", T0, h.deps, { deadline: Date.now() - 1 });
+    expect(bin.calls).toEqual([]);
+    expect(h.store("1d").map((b) => (b.t - T0) / D)).toEqual([10, 11, 12, 13, 14]); // head sync only
   });
 });
 

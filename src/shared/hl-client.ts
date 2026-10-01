@@ -33,6 +33,11 @@ export function weightWaitMs(log: WeightLogEntry[], now: number, budget: number 
   return Math.max(0, oldest + WEIGHT_WINDOW_MS - now);
 }
 
+/** ms the next call would wait on the weight guard right now. Lets a deadline-bound caller skip a call it couldn't finish. */
+export function hlWeightWaitMs(now: number = Date.now()): number {
+  return weightWaitMs(weightLog, now);
+}
+
 function logWeight(weight: number) {
   const now = Date.now();
   weightLog.push({ t: now, weight });

@@ -54,8 +54,10 @@ jobs:
       # Keeps chart history warm for core, branch and recently charted coins:
       # daily history, a head sync of every timeframe (Hyperliquid only serves
       # the latest 5000 bars, so this is what lets 1m-15m history accumulate),
-      # and funding pages. Deadline-bounded server side (230s); coins it
-      # doesn't reach go first-served on the next run.
+      # and funding pages. Deadline-bounded server side (170s); coins it
+      # doesn't reach go first-served on the next run. No curl retries: a
+      # timed-out run keeps going on Vercel, so a retry overlaps it and the two
+      # contend for the same candle rows. The next scheduled run picks it up.
       - name: Backfill candles
         env:
           APP_URL: ${{ secrets.APP_URL }}
@@ -66,7 +68,6 @@ jobs:
           body=$(mktemp)
           code=$(curl -sS -X POST \
             --fail-with-body \
-            --retry 2 --retry-delay 5 --retry-all-errors \
             --max-time 280 \
             -H "x-cron-token: $CRON_TOKEN" \
             -o "$body" -w '%{http_code}' \
