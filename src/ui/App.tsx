@@ -1,11 +1,10 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { AppShell } from './components/AppShell'
 import { api } from './lib/api'
 import { Login } from './pages/Login'
 import { Overview } from './pages/Overview'
 import { Markets } from './pages/Markets'
-import { MarketDrill } from './pages/MarketDrill'
 import { Branches } from './pages/Branches'
 import { BranchDetail } from './pages/BranchDetail'
 import { Sectors } from './pages/Sectors'
@@ -16,6 +15,10 @@ import { Decisions } from './pages/Decisions'
 import { DecisionDetail } from './pages/DecisionDetail'
 import { Governor } from './pages/Governor'
 import { Analyst } from './pages/Analyst'
+import { SkeletonRows } from './components/state'
+
+// The drill-in carries the canvas chart library; load it with the route.
+const MarketDrill = lazy(() => import('./pages/MarketDrill').then((m) => ({ default: m.MarketDrill })))
 
 // Router — SPEC.md route map. All routes except /login render inside
 // AppShell. Auth guard: a session probe on shell mount plus the api.ts
@@ -85,7 +88,9 @@ export default function App() {
           path="/markets/:coin"
           element={
             <Shell>
-              <MarketDrill />
+              <Suspense fallback={<SkeletonRows />}>
+                <MarketDrill />
+              </Suspense>
             </Shell>
           }
         />

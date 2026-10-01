@@ -19,15 +19,17 @@ export interface AnalystUsage {
 
 export type AnalystStreamEvent =
   | { type: 'text'; delta: string }
+  | { type: 'reasoning'; delta: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown; server: boolean }
   | { type: 'tool_result'; id: string; name: string; ok: boolean; summary: string }
   | { type: 'citations'; citations: AnalystCitation[] }
   | { type: 'error'; error: string }
-  | { type: 'done'; usage: AnalystUsage; model: string; provider: string; rounds: number; stop: string; effort?: AnalystEffort }
+  | { type: 'done'; usage: AnalystUsage; model: string; provider: string; label?: string; rounds: number; stop: string; effort?: AnalystEffort }
 
 export interface AnalystStatus {
   configured: boolean
   provider: string
+  label?: string
   model: string
   web_search: boolean
   tools: Array<{ name: string; available: boolean; note?: string }>
@@ -40,7 +42,8 @@ export interface HistoryTurn {
 
 // Model/provider catalog (src/server/llm/catalog.ts) — GET /api/analyst/models,
 // used by ModelSelector (src/ui/components/analyst/ModelSelector.tsx).
-export type AnalystProviderId = 'anthropic' | 'openai-compatible'
+/** anthropic, a vendor preset (openai, google, xai, deepseek, moonshot, qwen, openrouter) or openai-compatible. */
+export type AnalystProviderId = string
 export type AnalystEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 export type AnalystTier = 'frontier' | 'balanced' | 'fast'
 
@@ -50,11 +53,18 @@ export interface AnalystCatalogModel {
   note: string
   tier: AnalystTier
   effort: boolean
+  /** Levels this model accepts, weakest first (all five when absent). */
+  efforts?: AnalystEffort[]
+  defaultEffort?: AnalystEffort
 }
 
 export interface AnalystCatalogProvider {
   id: AnalystProviderId
   label: string
+  /** Short line under the name ("Kimi K3, K2.6"). */
+  blurb?: string
+  /** Provider-hosted web search (Anthropic). */
+  webSearch?: boolean
   available: boolean
   reason?: string
   models: AnalystCatalogModel[]

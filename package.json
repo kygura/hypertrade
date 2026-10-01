@@ -14,6 +14,7 @@
     "@anthropic-ai/sdk": "^0.128.0",
     "geist": "^1.3.1",
     "hono": "^4.7.10",
+    "lightweight-charts": "^5.2.1",
     "postgres": "^3.4.4",
     "react": "^19.0.0-rc-20250804",
     "react-dom": "^19.0.0-rc-20250804",

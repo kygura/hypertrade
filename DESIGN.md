@@ -438,14 +438,16 @@ Sort by clicking headers (Markets and Branches only); sorted header in
 ### 4.5 Charts
 
 All charts are Recharts inside `<ResponsiveContainer width="100%">` with a
-fixed height per breakpoint — height via a wrapper class, not JS:
+fixed height per breakpoint — height via a wrapper class, not JS. One
+exception: the market chart (§9.4) is lightweight-charts (canvas), because
+it holds tens of thousands of bars, pans/zooms and stacks panes:
 
 | Chart | Mobile height | Desktop (`lg:`) height |
 |---|---|---|
 | Equity curve (+benchmarks) | 220px | 300px |
 | Drawdown | 90px | 120px |
 | Monte-carlo fan | 200px | 280px |
-| Candles (drill-in) | 240px | 340px |
+| Market chart price pane (drill-in) | 240px | 340px (+96px per perp pane) |
 | Overview sparkline | 48px | 56px |
 | Metric mini-series (drill) | 160px | 220px |
 
@@ -660,14 +662,35 @@ the combined chart gets cramped — it does not; keep combined). Series from
 - The scenario's assumptions render as text directly under the chart (§10.4).
   A projection without visible assumptions is forbidden (principle 6).
 
-### 9.4 Candles (markets drill-in)
+### 9.4 Market chart (markets drill-in)
 
-Hyperion's recipe: Recharts `ComposedChart` with custom-shape `Bar` bodies +
-1px wick lines; up candles `--color-green`, down `--color-red`; volume bars
-beneath at 20% height, `text-secondary` at 40% opacity. Interval tabs
-`1H 4H 1D 1W` as 22px ghost chips (`--control-sm`), active chip
-`text-primary` + `--color-selected` bg. Crosshair tooltip: dark panel style,
-OHLCV readout.
+`MarketChart` — TradingView lightweight-charts v5, the one non-Recharts
+chart (§4.5). One time axis, stacked panes:
+
+- **Price**: candles, up `--color-green` / down `--color-red`, no borders;
+  volume histogram overlaid on the bottom 18% at 35% opacity (toggle `VOL`).
+  `LOG` toggles a logarithmic price scale.
+- **Funding APR** (`FUND`): histogram of the bar's mean hourly funding × 8760,
+  green ≥ 0 / red < 0 at 60% opacity, zero line.
+- **Open interest** (`OI`): `--color-info` 1px line, USD compact.
+- **Premium** (`PREM`, off by default): `--color-amber` 1px line in bp, zero line.
+
+Timeframe chips `1m 5m 15m 1H 4H 1D 1W 1M` (minutes lowercase so `1m` and
+`1M` never read alike — the theme's control case is overridden on these
+labels only). Pane toggles are a `.seg` group of checkbox chips, persisted
+per browser. A 10px legend row above the canvas reads the hovered bar (or
+the last): time (UTC), OHLC, Δ vs previous close, V, FUND, OI, PREM, and
+`SRC` when the bar isn't Hyperliquid's. Where history switches venue, an
+`arrowUp` marker names the newer venue (`BINANCE`, `HL`), and a footnote row
+states the stitched range (`BITSTAMP 2011-09-13 → BINANCE 2017-08-17 → HL
+2023-05-12`), funding/OI coverage and `scroll left for more` / `full history`.
+
+Paging: the first page is the latest 1500 bars (180 in view); panning
+within 150 bars of the left edge requests the previous page, and the view
+holds still while it lands (`loading history…` pulse top-left). The newest
+bar streams over Hyperliquid's websocket; after a socket drop the latest
+300 bars are refetched. Colors come from the theme tokens and the chart is
+rebuilt on theme change.
 
 ### 9.5 Metric series (metric drill / overview strip tap)
 
@@ -991,20 +1014,32 @@ aligned, 160px).
   trade flag).
 - Row tap → drill-in.
 
-**Drill-in** — route `/markets/:coin`. Desktop AND mobile: a full view (not
-an overlay — back button friendly, linkable):
+**Drill-in** — route `/markets/:coin?tf=4h`. Desktop AND mobile: a full view
+(not an overlay — back button friendly, linkable; `tf` omitted = 1D):
 
 ```
-┌ ← MARKETS   ETH  $3,512.40 (xl, AnimatedDigits)  +2.1% ▲     │
-│ OI $812M · FUND +0.0012% · VOL $1.4B          [1H 4H 1D 1W]  │
-├ CANDLES ─────────────────────────────────────────────────────┤
-│ chart §9.4, 340px lg / 240px mobile                          │
+┌ ← MARKETS ───────────────────────────────────────────────────┐
+│ ETH  $3,512.40 (xl, AnimatedDigits) +2.1% ▲  LIVE  AT OI CAP  25x MAX │
+│ ORACLE | FUNDING 1H | NEXT FUNDING | OPEN INTEREST | OI 7D |   │
+│ 24H VOLUME | IMPACT SPREAD | MID            (MetricStat grid)  │
+├ CHART ── [1m 5m 15m 1H 4H 1D 1W 1M] [VOL FUND OI PREM LOG] ───┤
+│ legend row · price+volume / funding APR / OI / premium panes  │
+│ footnote: sources · funding since · OI snapshots since        │
+├ FUNDING ─────────────────────────────────────────────────────┤
+│ venue | predicted | APR | next    ||  AVG 24H | AVG 7D | AVG 30D │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Data: `GET /api/candles/:coin?tf=…` (backfills on miss — first load of an
-uncached coin may take seconds: SkeletonRows in the chart area with a
-`backfilling candles…` pulse label under it, still no spinner).
+Grid: 8 columns lg, 4 sm, 2 mobile. `LIVE` shows while the websocket feed is
+up (mark/oracle/funding/OI update in place); without it, AgeStamp on the
+60s poll. Funding panel: HL/Binance/Bybit predicted rates from
+`predictedFundings`, annualized per venue interval, with countdowns.
+
+Data: `GET /api/perp/:coin` (60s poll) + websocket `activeAssetCtx`;
+`GET /api/candles/:coin?tf&before&limit` (pages backfill on miss — first
+load of an uncached coin may take seconds: SkeletonRows in the chart area
+with a `backfilling candles…` pulse label under it, still no spinner) +
+websocket `candle`.
 
 Mobile table: COIN, PRICE, 24H% only (§4.4); everything else in the
 drill-in. Filter input goes full-width above the table.
@@ -1016,35 +1051,44 @@ surface, tight threshold).
 ### 10.8 `/analyst` — read-only analyst (phase 2)
 
 ```
-┌ ANALYST ─────────────────────── anthropic · model · [web search] ┐
-│ read-only market intelligence … not financial advice (10px)      │
-│ [What changed since the last briefing?] [Explain the last 5 …]   │
-│ [Which sector is rotating?]                                      │
-│ ┌ textarea (Enter sends, Shift+Enter newline) ┐ [ASK] [STOP]      │
-└──────────────────────────────────────────────────────────────────┘
-SESSION · 2                                                  [CLEAR]
-┌ <question, 12px text-primary> ─────────────────── STREAMING ┐
-│ ▸ TOOL TRACE · 3 calls        (collapsed <details>; rows: name, │
-│                                web tag, ok/error badge, input,  │
-│                                result summary)                  │
-│ answer, 13px text-muted, pre-wrap, streamed as it arrives       │
-│ ErrorBlock (verbatim) when the turn failed                      │
-│ SOURCES 1. title · host  (web citations, info-blue links)       │
-│ model · 1,204 in · 388 out · 2 tool rounds · stop (if not end)  │
-└─────────────────────────────────────────────────────────────────┘
+┌ ANALYST ──────── [● ANTHROPIC · Opus 5.5 FRONTIER] [low|MED|high…] [WEB SEARCH] [CLEAR] ┐ ┌ PROMPTS ─────────┐
+│                                         ┌ question (elevated bubble, right) ┐     │ │ BRIEFING …       │
+│ ● DEEPSEEK · deepseek-v4-pro · HIGH   THINKING…                                     │ │ MARKETS …        │
+│ ▸ REASONING · 412 chars   (open while it streams, collapses once the answer starts) │ │ SECTORS / ENGINE │
+│ TOOLS · 2  [get_hl_markets] [web web_search]   (chips; click to expand inputs)      │ ├ PROVIDERS 3/9 ───┤
+│ answer — markdown: headings, lists, tables (signed cells green/red), code          │ │ ● Anthropic web  │
+│ SOURCES 1. title · host                                                             │ │ ● DeepSeek …     │
+│ 12.8k in · 612 out · 1 tool round · 3.4s · stop      COPY  ASK AGAIN               │ │ ○ OpenAI set …   │
+├─────────────────────────────────────────────────────────────────────────────────────┤ ├ TOOLS · 9 ▸ ─────┤
+│ [ textarea, autosizes to 200px                                ] [ASK | STOP]        │ │ disclaimer       │
+└ Enter to send · Shift+Enter for a new line ─────────────────────────────────────────┘ └──────────────────┘
 ```
 
-Data: `GET /api/analyst/status`, `POST /api/analyst/query` (SSE). Turns live
-in memory for the tab session (survive route changes, not reloads); the last
-10 answered turns are sent back as context.
+Two columns from `lg:` (thread `minmax(0,1fr)`, rail 300px sticky); the
+thread panel fills the viewport height and its composer is sticky at the
+panel's bottom. Empty thread: an "Ask the analyst" intro and the prompt
+library as cards. Each answer is labelled with the provider/model/effort that
+wrote it; a phase label (`WAITING`/`THINKING`/`RUNNING TOOLS`/`WRITING`)
+pulses while it streams. Reasoning is shown only when the model exposes it
+(Anthropic summaries, `reasoning_content` from DeepSeek/Kimi/Qwen).
+
+The model pill (`ModelSelector`) lists configured providers first, then a
+`NOT CONFIGURED · n` group whose header names the env var to set; the
+effort control offers only the levels the selected model takes (DeepSeek and
+Kimi: low/high/max). The rail's PROVIDERS list doubles as setup status and a
+quick provider switch.
+
+Data: `GET /api/analyst/status`, `GET /api/analyst/models`,
+`POST /api/analyst/query` (SSE). The session persists per browser
+(`localStorage`, last 30 turns); the last 10 answered turns go back as
+context.
 
 States: SkeletonRows while the status probe runs; OfflineBlock
-`ANALYST NOT CONFIGURED` / `set ANALYST_API_KEY …` on 503; OfflineBlock
+`ANALYST NOT CONFIGURED` (naming the provider key vars) on 503; OfflineBlock
 `ANALYST UNREACHABLE` on 502 or no network; a per-turn verbatim ErrorBlock
-for timeouts, refusals and provider errors. In-flight indicator is the
-`.pulse-label` on `ASKING…` and on `running…` trace rows — no spinners.
-Mobile: the seventh tab-bar cell (`ASK`, glyph `?`); buttons and textarea
-go full-width, the trace stays collapsed by default.
+for timeouts, refusals and provider errors. No spinners: pulse labels only.
+Mobile: the seventh tab-bar cell (`ASK`, glyph `?`); single column with the
+rail below the thread, and the composer sticks above the tab bar.
 
 ---
 
@@ -1090,7 +1134,7 @@ Ported components keep their Hyperion source semantics (files:
 |---|---|---|
 | `EquityChart` | `history: {ts, equity, btcHodl, usdc}[]`, `projection?: {ts, p10, p50, p90}[]` | §9.1 + §9.3, TODAY divider |
 | `DrawdownChart` | `points: {ts, ddPct}[]`, `maxDd: number` | §9.2 |
-| `CandleChart` | `candles: {ts,o,h,l,c,v}[]`, `tf`, `onTfChange` | §9.4 |
+| `MarketChart` | `coin`, `tf`, `onTfChange` (fetches its own pages) | §9.4, lightweight-charts |
 | `MetricSeriesChart` | `points: {ts, value}[]`, `mean30?: number` | §9.5 |
 
 **View-scoped components** (built per §10, live next to their route)
@@ -1138,7 +1182,8 @@ Non-negotiable, verified before done:
 | Branches list | SkeletonRows | EmptyBlock + `NEW BRANCH` | ErrorBlock | — |
 | Branch results | SkeletonRows (first run) | EmptyBlock (`not simulated yet`) | verbatim ErrorBlock | `COMPUTED <ts>` stamp |
 | Markets table | SkeletonRows | EmptyBlock (filter miss) | ErrorBlock | StaleBanner > 5min |
-| Candle drill-in | SkeletonRows + `backfilling candles…` | — | ErrorBlock | — |
+| Market chart | SkeletonRows + `backfilling candles…` | EmptyBlock (`no candle data`) | ErrorBlock / OfflineBlock | footnote `sync: <error>` (amber) |
+| Perp header | SkeletonRows | — | ErrorBlock | `LIVE` badge, else AgeStamp > 5min |
 | Login | — | — | ErrorBlock (verbatim 401) | — |
 
 Every cell above is one of the §6 named patterns — no bespoke states.

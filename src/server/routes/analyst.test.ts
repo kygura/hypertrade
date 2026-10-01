@@ -81,17 +81,29 @@ function fakeCatalog(): AnalystCatalog {
       {
         id: "anthropic",
         label: "Anthropic",
+        blurb: "b",
         available: true,
+        webSearch: true,
         models: [
           { id: "claude-sonnet-5", label: "Sonnet 5", note: "n", tier: "balanced", effort: true },
           { id: "claude-haiku-4-5", label: "Haiku 4.5", note: "n", tier: "fast", effort: false },
         ],
       },
       {
+        id: "deepseek",
+        label: "DeepSeek",
+        blurb: "b",
+        available: true,
+        webSearch: false,
+        models: [{ id: "deepseek-v4-pro", label: "V4 Pro", note: "n", tier: "frontier", effort: true, efforts: ["low", "high", "max"], defaultEffort: "high" }],
+      },
+      {
         id: "openai-compatible",
         label: "OpenAI-compatible",
+        blurb: "b",
         available: false,
         reason: "set ANALYST_OPENAI_API_KEY and ANALYST_OPENAI_BASE_URL",
+        webSearch: false,
         models: [],
       },
     ],
@@ -238,8 +250,8 @@ describe("GET /analyst/models", () => {
     const unconfigured: AnalystCatalog = {
       default: { provider: "anthropic", model: "claude-opus-5-5" },
       providers: [
-        { id: "anthropic", label: "Anthropic", available: false, reason: "set ANALYST_ANTHROPIC_API_KEY", models: fakeCatalog().providers[0]!.models },
-        { id: "openai-compatible", label: "OpenAI-compatible", available: false, reason: "set ANALYST_OPENAI_API_KEY and ANALYST_OPENAI_BASE_URL", models: [] },
+        { id: "anthropic", label: "Anthropic", blurb: "b", available: false, reason: "set ANALYST_ANTHROPIC_API_KEY", webSearch: true, models: fakeCatalog().providers[0]!.models },
+        { id: "openai-compatible", label: "OpenAI-compatible", blurb: "b", available: false, reason: "set ANALYST_OPENAI_API_KEY and ANALYST_OPENAI_BASE_URL", webSearch: false, models: [] },
       ],
     };
     const app = createAnalystRoutes({ resolve: () => null, catalog: () => unconfigured });
@@ -326,5 +338,58 @@ describe("POST /analyst/query model selection", () => {
     const res = await post(app, { question: "hi", provider: "anthropic" });
     expect(res.status).toBe(200);
     expect(state.picked).toEqual({ provider: "anthropic", model: "claude-sonnet-5", effort: undefined });
+  });
+
+  test("effort outside the model's own levels → 400 naming the levels it takes", async () => {
+    const app = createAnalystRoutes({ resolve: () => null, catalog: fakeCatalog });
+    const res = await post(app, { question: "hi", provider: "deepseek", model: "deepseek-v4-pro", effort: "medium" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "deepseek-v4-pro takes effort low/high/max", field: "effort" });
+  });
+
+  test("no effort named → the model's default effort is used", async () => {
+    let picked: unknown = null;
+    const app = createAnalystRoutes({
+      resolve: () => null,
+      catalog: fakeCatalog,
+      resolveChoice: (choice) => {
+        picked = choice;
+        return new FakeProvider([() => ({ stop: "end", toolCalls: [], usage })], choice);
+      },
+    });
+    expect((await post(app, { question: "hi", provider: "deepseek", model: "deepseek-v4-pro" })).status).toBe(200);
+    expect(picked).toEqual({ provider: "deepseek", model: "deepseek-v4-pro", effort: "high" });
+  });
+});
+
+describe("reasoning events", () => {
+  test("reasoning deltas stream as their own event, ahead of the answer", async () => {
+    const provider = new FakeProvider([
+      (hooks) => {
+        hooks.onReasoning?.("weighing funding vs OI");
+        hooks.onText("Answer.");
+        return { stop: "end", toolCalls: [], usage };
+      },
+    ]);
+    const events: AnalystEvent[] = [];
+    await runAnalyst({ provider, question: "q", deps }, (e) => void events.push(e));
+    expect(events.map((e) => e.type)).toEqual(["reasoning", "text", "done"]);
+    expect(events[0]).toEqual({ type: "reasoning", delta: "weighing funding vs OI" });
+  });
+});
+
+describe("default provider fallback", () => {
+  test("with the server default unconfigured, status and queries use the first ready provider", async () => {
+    const picked: unknown[] = [];
+    const app = createAnalystRoutes({
+      catalog: fakeCatalog,
+      resolveChoice: (choice) => {
+        picked.push(choice);
+        return new FakeProvider([() => ({ stop: "end", toolCalls: [], usage })], choice);
+      },
+    });
+    const status = await app.request("/status");
+    expect(status.status).toBe(200);
+    expect(picked[0]).toEqual({ provider: "anthropic", model: "claude-sonnet-5", effort: undefined });
   });
 });

@@ -10,6 +10,7 @@ import { engineRoutes } from "../src/server/routes/engine.js";
 import { hlRoutes } from "../src/server/routes/hl.js";
 import { marketstateRoutes } from "../src/server/routes/marketstate.js";
 import { metricsRoutes } from "../src/server/routes/metrics.js";
+import { perpRoutes } from "../src/server/routes/perp.js";
 import { routinesRoutes } from "../src/server/routes/routines.js";
 import { sectorsRoutes } from "../src/server/routes/sectors.js";
 
@@ -34,6 +35,7 @@ app.route("/engine", engineRoutes);
 app.route("/hl", hlRoutes);
 app.route("/marketstate", marketstateRoutes);
 app.route("/metrics", metricsRoutes);
+app.route("/perp", perpRoutes);
 app.route("/routines", routinesRoutes);
 app.route("/sectors", sectorsRoutes);
 

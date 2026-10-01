@@ -17,7 +17,7 @@ export type MetricSummary = {
   stddev90: number | null
   z30: number | null
 }
-export type Candle = { coin: string; tf: string; ts: Date | string; o: number; h: number; l: number; c: number; v?: number | null }
+export type Candle = { coin: string; tf: string; ts: Date | string; o: number; h: number; l: number; c: number; v?: number | null; src?: string }
 export type Branch = { id: string; name: string; config: unknown; createdAt: Date; updatedAt: Date }
 export type BranchResult = { branchId: string; computedAt: Date; result: unknown }
 
@@ -210,32 +210,150 @@ export async function recordCollectorRun(
 
 // --------------------------------------------------------------- candles
 
+const UPSERT_CHUNK = 2000
+
 export async function upsertCandles(rows: Candle[]): Promise<number> {
-  if (rows.length === 0) return 0
-  const values = rows.map((r) => ({
-    coin: r.coin, tf: r.tf, ts: r.ts, o: r.o, h: r.h, l: r.l, c: r.c, v: r.v ?? null,
-  }))
-  const res = await sql()`
-    insert into candles ${sql()(values, 'coin', 'tf', 'ts', 'o', 'h', 'l', 'c', 'v')}
-    on conflict (coin, tf, ts) do update set
-      o = excluded.o, h = excluded.h, l = excluded.l, c = excluded.c, v = excluded.v
-  `
-  return res.count
+  let count = 0
+  for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
+    const values = rows.slice(i, i + UPSERT_CHUNK).map((r) => ({
+      coin: r.coin, tf: r.tf, ts: r.ts, o: r.o, h: r.h, l: r.l, c: r.c, v: r.v ?? null, src: r.src ?? 'hl',
+    }))
+    const res = await sql()`
+      insert into candles ${sql()(values, 'coin', 'tf', 'ts', 'o', 'h', 'l', 'c', 'v', 'src')}
+      on conflict (coin, tf, ts) do update set
+        o = excluded.o, h = excluded.h, l = excluded.l, c = excluded.c, v = excluded.v, src = excluded.src
+    `
+    count += res.count
+  }
+  return count
 }
 
 export async function getCandles(coin: string, tf: string, from?: Date | string): Promise<Candle[]> {
   const lo = from ?? null
   return sql()<Candle[]>`
-    select coin, tf, ts, o, h, l, c, v from candles
+    select coin, tf, ts, o, h, l, c, v, src from candles
     where coin = ${coin} and tf = ${tf}
       and (${lo}::timestamptz is null or ts >= ${lo})
     order by ts
   `
 }
 
+/** Candles with from <= ts < to, ascending. */
+export async function getCandlesBetween(coin: string, tf: string, from: Date, to: Date): Promise<Candle[]> {
+  return sql()<Candle[]>`
+    select coin, tf, ts, o, h, l, c, v, src from candles
+    where coin = ${coin} and tf = ${tf} and ts >= ${from} and ts < ${to}
+    order by ts
+  `
+}
+
+/** The `limit` most recent candles with ts < before, returned ascending. */
+export async function getCandlesBefore(coin: string, tf: string, before: Date, limit: number): Promise<Candle[]> {
+  const rows = await sql()<Candle[]>`
+    select coin, tf, ts, o, h, l, c, v, src from candles
+    where coin = ${coin} and tf = ${tf} and ts < ${before}
+    order by ts desc
+    limit ${limit}
+  `
+  return rows.reverse()
+}
+
 export async function candleCoverage(coin: string, tf: string): Promise<{ min: Date; max: Date } | null> {
   const [row] = await sql()<{ min: Date | null; max: Date | null }[]>`
     select min(ts) as min, max(ts) as max from candles where coin = ${coin} and tf = ${tf}
+  `
+  return row?.min && row.max ? { min: row.min, max: row.max } : null
+}
+
+/** Drops bars older than `before` for one timeframe (retention for the finest intervals). */
+export async function pruneCandles(tf: string, before: Date): Promise<number> {
+  const res = await sql()`delete from candles where tf = ${tf} and ts < ${before}`
+  return res.count
+}
+
+// ------------------------------------------------------------ sync state
+
+export type ExtLayerState = { status: 'ok' | 'none'; floor: number | null; exhausted: boolean }
+export type SyncState = {
+  coin: string
+  series: string
+  hlFloor: number | null
+  ext: Partial<Record<string, ExtLayerState>>
+  syncedAt: number | null
+  accessedAt: number | null
+  error: string | null
+}
+
+const ms = (d: Date | null) => (d ? d.getTime() : null)
+const dt = (n: number | null) => (n == null ? null : new Date(n))
+
+export async function getSyncState(coin: string, series: string): Promise<SyncState> {
+  const [row] = await sql()<{ hl_floor: Date | null; ext: SyncState['ext'] | null; synced_at: Date | null; accessed_at: Date | null; error: string | null }[]>`
+    select hl_floor, ext, synced_at, accessed_at, error from sync_state where coin = ${coin} and series = ${series}
+  `
+  return {
+    coin,
+    series,
+    hlFloor: ms(row?.hl_floor ?? null),
+    ext: row?.ext ?? {},
+    syncedAt: ms(row?.synced_at ?? null),
+    accessedAt: ms(row?.accessed_at ?? null),
+    error: row?.error ?? null,
+  }
+}
+
+export async function saveSyncState(s: SyncState): Promise<void> {
+  await sql()`
+    insert into sync_state (coin, series, hl_floor, ext, synced_at, accessed_at, error)
+    values (${s.coin}, ${s.series}, ${dt(s.hlFloor)}, ${sql().json(s.ext as never)}, ${dt(s.syncedAt)}, ${dt(s.accessedAt)}, ${s.error})
+    on conflict (coin, series) do update set
+      hl_floor = excluded.hl_floor, ext = excluded.ext, synced_at = excluded.synced_at,
+      accessed_at = coalesce(excluded.accessed_at, sync_state.accessed_at), error = excluded.error
+  `
+}
+
+export async function touchSyncAccess(coin: string, series: string): Promise<void> {
+  await sql()`
+    insert into sync_state (coin, series, accessed_at) values (${coin}, ${series}, now())
+    on conflict (coin, series) do update set accessed_at = now()
+  `
+}
+
+/** Coins any chart asked for since `since`. */
+export async function recentlyAccessedCoins(since: Date): Promise<string[]> {
+  const rows = await sql()<{ coin: string }[]>`
+    select distinct coin from sync_state where accessed_at >= ${since} order by coin
+  `
+  return rows.map((r) => r.coin)
+}
+
+// --------------------------------------------------------------- funding
+
+export type FundingRow = { ts: Date; rate: number; premium: number }
+
+export async function upsertFunding(coin: string, rows: { t: number; rate: number; premium: number }[]): Promise<number> {
+  let count = 0
+  for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
+    const values = rows.slice(i, i + UPSERT_CHUNK).map((r) => ({ coin, ts: new Date(r.t), rate: r.rate, premium: r.premium }))
+    const res = await sql()`
+      insert into funding ${sql()(values, 'coin', 'ts', 'rate', 'premium')}
+      on conflict (coin, ts) do update set rate = excluded.rate, premium = excluded.premium
+    `
+    count += res.count
+  }
+  return count
+}
+
+/** Funding rows with from <= ts <= to, ascending. */
+export async function getFunding(coin: string, from: Date, to: Date): Promise<FundingRow[]> {
+  return sql()<FundingRow[]>`
+    select ts, rate, premium from funding where coin = ${coin} and ts >= ${from} and ts <= ${to} order by ts
+  `
+}
+
+export async function fundingCoverage(coin: string): Promise<{ min: Date; max: Date } | null> {
+  const [row] = await sql()<{ min: Date | null; max: Date | null }[]>`
+    select min(ts) as min, max(ts) as max from funding where coin = ${coin}
   `
   return row?.min && row.max ? { min: row.min, max: row.max } : null
 }

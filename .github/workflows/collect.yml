@@ -51,9 +51,11 @@ jobs:
             exit 1
           fi
 
-      # Daily candles for the core coins and every coin a branch holds. Already
-      # covered coins cost one coverage query, so running this every cycle is
-      # cheap and new branches get history on the next run.
+      # Keeps chart history warm for core, branch and recently charted coins:
+      # daily history, a head sync of every timeframe (Hyperliquid only serves
+      # the latest 5000 bars, so this is what lets 1m-15m history accumulate),
+      # and funding pages. Deadline-bounded server side (230s); coins it
+      # doesn't reach go first-served on the next run.
       - name: Backfill candles
         env:
           APP_URL: ${{ secrets.APP_URL }}

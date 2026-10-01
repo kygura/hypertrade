@@ -1,4 +1,16 @@
-import { DEFAULT_MODEL, anthropicCredentials, openaiCredentials, type AnalystEnv, type ProviderId } from "./provider.js";
+import type { Effort } from "./provider.js";
+import {
+  DEFAULT_MODEL,
+  anthropicCredentials,
+  openaiCredentials,
+  presetCredentials,
+  rawProviderKind,
+  type AnalystEnv,
+  type ProviderId,
+} from "./provider.js";
+import { PRESETS, parseModelList, type CatalogModel, type Tier } from "./presets.js";
+
+export type { CatalogModel, Tier };
 
 // The analyst's model/provider catalog (GET /api/analyst/models). Lists
 // what a client may pick for POST /api/analyst/query's optional
@@ -6,30 +18,21 @@ import { DEFAULT_MODEL, anthropicCredentials, openaiCredentials, type AnalystEnv
 // all — 200 even when nothing is configured, so the UI can explain what to
 // set (DESIGN.md state vocabulary §6, "unconfigured").
 //
-// Anthropic's catalog is a fixed, hand-maintained list (its capabilities —
-// tier, "best for", effort support — are known ahead of time); the
-// openai-compatible catalog is whatever the deployment names via
-// ANALYST_MODELS/ANALYST_MODEL, since an arbitrary endpoint's model list and
-// capabilities are not knowable here.
-
-export type Tier = "frontier" | "balanced" | "fast";
-
-export interface CatalogModel {
-  id: string;
-  label: string;
-  /** One-line "best for" note. */
-  note: string;
-  tier: Tier;
-  /** Whether this model accepts the query's optional `effort` field. */
-  effort: boolean;
-}
+// Anthropic's list is hand-maintained here; the vendor presets' lists live
+// in presets.ts; the generic openai-compatible slot lists whatever the
+// deployment names via ANALYST_MODELS/ANALYST_MODEL, since an arbitrary
+// endpoint's models are not knowable ahead of time.
 
 export interface ProviderCatalogEntry {
   id: ProviderId;
   label: string;
+  /** Short line under the provider name in the picker. */
+  blurb: string;
   available: boolean;
   /** Present only when unavailable — what env var(s) to set. */
   reason?: string;
+  /** Provider-hosted web search (Anthropic only). */
+  webSearch: boolean;
   models: CatalogModel[];
 }
 
@@ -38,14 +41,15 @@ export interface AnalystCatalog {
   providers: ProviderCatalogEntry[];
 }
 
+const ALL: Effort[] = ["low", "medium", "high", "xhigh", "max"];
+
 /**
- * The selectable Anthropic Claude 5 family. Confirmed against the
- * claude-api skill's current model table (exact ids — no date suffixes).
- * `effort` mirrors the skill's per-model effort support: Fable 5.1, Opus
- * 5.5 and Sonnet 5 all take `low`..`max`; Haiku 4.5 does not (it still
- * takes only the legacy `budget_tokens` thinking knob, which this app does
- * not expose). Update this list when Anthropic ships a new model in the
- * family — re-run the claude-api skill to confirm ids first.
+ * The current Claude lineup, checked against the claude-api skill's model
+ * table (2026-09-25; exact ids, no date suffixes). Fable 5.1, Opus 5.5 and
+ * Sonnet 5.5 take low..max effort — Opus 5.5 defaults to medium, the others
+ * to high. Haiku 4.5 takes no effort level (it still uses budget_tokens
+ * thinking, which this app does not expose). Re-run the skill before
+ * changing ids.
  */
 export const ANTHROPIC_MODELS: CatalogModel[] = [
   {
@@ -54,6 +58,8 @@ export const ANTHROPIC_MODELS: CatalogModel[] = [
     note: "Most capable — hardest reasoning, long multi-tool digs",
     tier: "frontier",
     effort: true,
+    efforts: ALL,
+    defaultEffort: "high",
   },
   {
     id: "claude-opus-5-5",
@@ -61,13 +67,17 @@ export const ANTHROPIC_MODELS: CatalogModel[] = [
     note: "Deep multi-step market reads, cheaper than Fable",
     tier: "frontier",
     effort: true,
+    efforts: ALL,
+    defaultEffort: "medium",
   },
   {
-    id: "claude-sonnet-5",
-    label: "Sonnet 5",
+    id: "claude-sonnet-5-5",
+    label: "Sonnet 5.5",
     note: "Balanced daily driver for most analyst questions",
     tier: "balanced",
     effort: true,
+    efforts: ALL,
+    defaultEffort: "medium",
   },
   {
     id: "claude-haiku-4-5",
@@ -78,64 +88,29 @@ export const ANTHROPIC_MODELS: CatalogModel[] = [
   },
 ];
 
-const PROVIDER_LABEL: Record<ProviderId, string> = {
-  anthropic: "Anthropic",
-  "openai-compatible": "OpenAI-compatible",
-};
-
-function rawProviderKind(env: AnalystEnv): ProviderId | "unknown" {
-  const kind = (env.ANALYST_PROVIDER ?? "anthropic").trim().toLowerCase() || "anthropic";
-  if (kind === "anthropic") return "anthropic";
-  if (kind === "openai-compatible" || kind === "openai") return "openai-compatible";
-  return "unknown";
-}
-
-/** Which provider ANALYST_PROVIDER/ANALYST_MODEL settings apply to (`default`).
- * An unrecognised ANALYST_PROVIDER falls back to "anthropic" here — purely
- * for labelling `default.provider`; it does not grant anthropic the legacy
- * ANALYST_API_KEY fallback (see anthropicCredentials/rawProviderKind). */
+/** Which provider ANALYST_PROVIDER/ANALYST_MODEL apply to (`default`). An
+ * unrecognised value falls back to "anthropic" — purely for labelling; it
+ * does not grant anthropic the legacy ANALYST_API_KEY fallback. */
 function catalogDefaultProvider(env: AnalystEnv): ProviderId {
-  return rawProviderKind(env) === "openai-compatible" ? "openai-compatible" : "anthropic";
+  const raw = rawProviderKind(env);
+  return raw === "unknown" ? "anthropic" : raw;
 }
 
 /**
- * Parses ANALYST_MODELS ("id,id2=Label Two,id3") into catalog entries. When
- * unset, falls back to a single entry from ANALYST_MODEL, but only when
- * openai-compatible is the default provider (ANALYST_MODEL otherwise
- * belongs to the default provider's own settings — see README/.env.example
- * precedence notes).
+ * The generic openai-compatible slot's models: ANALYST_MODELS
+ * ("id,id2=Label Two,id3"), else the single ANALYST_MODEL — but only when
+ * openai-compatible is the default provider (ANALYST_MODEL otherwise belongs
+ * to the default provider's own settings).
  */
 export function parseOpenAIModels(env: AnalystEnv): CatalogModel[] {
-  const toModel = (id: string, label: string): CatalogModel => ({
-    id,
-    label,
-    note: "From ANALYST_MODELS/ANALYST_MODEL — capabilities unknown for this endpoint",
-    tier: "balanced",
-    effort: false,
-  });
-  const raw = env.ANALYST_MODELS?.trim();
-  if (raw) {
-    return raw
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .map((entry) => {
-        const eq = entry.indexOf("=");
-        const id = (eq >= 0 ? entry.slice(0, eq) : entry).trim();
-        const label = (eq >= 0 ? entry.slice(eq + 1) : entry).trim() || id;
-        return toModel(id, label);
-      })
-      .filter((m) => m.id.length > 0);
-  }
+  const note = "From ANALYST_MODELS/ANALYST_MODEL — capabilities unknown for this endpoint";
+  const listed = parseModelList(env.ANALYST_MODELS, note);
+  if (listed.length) return listed;
   if (catalogDefaultProvider(env) === "openai-compatible") {
     const model = env.ANALYST_MODEL?.trim();
-    if (model) return [toModel(model, model)];
+    if (model) return [{ id: model, label: model, note, tier: "balanced", effort: false }];
   }
   return [];
-}
-
-function anthropicReason(apiKey: string | undefined): string | undefined {
-  return apiKey ? undefined : "set ANALYST_ANTHROPIC_API_KEY";
 }
 
 function openaiReason(apiKey: string | undefined, baseURL: string | undefined): string | undefined {
@@ -155,23 +130,42 @@ export function buildCatalog(env: AnalystEnv): AnalystCatalog {
   const providers: ProviderCatalogEntry[] = [
     {
       id: "anthropic",
-      label: PROVIDER_LABEL.anthropic,
+      label: "Anthropic",
+      blurb: "Claude Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 · web search",
       available: !!anthropic.apiKey,
-      reason: anthropicReason(anthropic.apiKey),
+      reason: anthropic.apiKey ? undefined : "set ANALYST_ANTHROPIC_API_KEY",
+      webSearch: true,
       models: ANTHROPIC_MODELS,
     },
+    ...PRESETS.map((p): ProviderCatalogEntry => {
+      const cfg = presetCredentials(p, env);
+      const hasModels = cfg.models.length > 0;
+      const available = !!cfg.apiKey && hasModels;
+      return {
+        id: p.id,
+        label: p.label,
+        blurb: p.blurb,
+        available,
+        reason: !cfg.apiKey ? `set ${p.keyEnv[p.keyEnv.length - 1]}` : !hasModels ? `set ${p.modelsEnv}` : undefined,
+        webSearch: false,
+        models: cfg.models,
+      };
+    }),
     {
       id: "openai-compatible",
-      label: PROVIDER_LABEL["openai-compatible"],
-      available: !!openai.apiKey && !!openai.baseURL,
-      reason: openaiReason(openai.apiKey, openai.baseURL),
+      label: "Custom endpoint",
+      blurb: "Any OpenAI-compatible server (gateway, local model)",
+      available: !!openai.apiKey && !!openai.baseURL && openaiModels.length > 0,
+      reason: openaiReason(openai.apiKey, openai.baseURL) ?? (openaiModels.length ? undefined : "set ANALYST_MODELS"),
+      webSearch: false,
       models: openaiModels,
     },
   ];
 
   const defaultProvider = catalogDefaultProvider(env);
+  const entry = providers.find((p) => p.id === defaultProvider)!;
   const defaultModel =
-    defaultProvider === "anthropic" ? env.ANALYST_MODEL?.trim() || DEFAULT_MODEL : env.ANALYST_MODEL?.trim() || openaiModels[0]?.id || "";
+    defaultProvider === "anthropic" ? env.ANALYST_MODEL?.trim() || DEFAULT_MODEL : env.ANALYST_MODEL?.trim() || entry.models[0]?.id || "";
 
   return { default: { provider: defaultProvider, model: defaultModel }, providers };
 }

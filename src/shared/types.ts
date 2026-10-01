@@ -54,6 +54,12 @@ export interface AssetCtx {
   premium: number;
   dayChange: number; // fraction
   isDelisted: boolean;
+  /** Optional so hand-built test contexts stay small; fetchPerpMetaAndCtxs always sets them. */
+  maxLeverage?: number;
+  dayBaseVlm?: number;
+  /** Impact bid/ask: the prices a standard-size market order would fill at. */
+  impactBidPx?: number | null;
+  impactAskPx?: number | null;
 }
 
 /** Computed (numeric, post-parse) OHLCV candle. */

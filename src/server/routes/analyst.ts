@@ -4,6 +4,7 @@ import { z } from "zod";
 import { buildSystemPrompt } from "../llm/system.js";
 import { buildCatalog, type AnalystCatalog } from "../llm/catalog.js";
 import {
+  isProviderId,
   resolveChosenProvider,
   resolveProvider,
   type AnalystEnv,
@@ -24,11 +25,12 @@ import { TOOL_SPECS, defaultToolDeps, runTool, toolCatalog, type ToolDeps } from
 // POST /analyst/query {question, history?, provider?, model?, effort?} →
 //   text/event-stream:
 //   event: text         {delta}
+//   event: reasoning    {delta}   (thinking text the model exposes)
 //   event: tool_call    {id, name, input, server}
 //   event: tool_result  {id, name, ok, summary}
 //   event: citations    {citations: [{url, title, cited_text?}]}
 //   event: error        {error}
-//   event: done         {usage, model, provider, rounds, stop, effort?}
+//   event: done         {usage, model, provider, label?, rounds, stop, effort?}
 // GET /analyst/status → {configured, provider, model, web_search, tools}
 // GET /analyst/models → {default: {provider, model}, providers: [...]}
 //   (src/server/llm/catalog.ts) — always 200, even fully unconfigured.
@@ -47,18 +49,19 @@ const QueryBody = z.object({
     .optional(),
   // Optional model/provider selection (src/ui/components/analyst/ModelSelector.tsx).
   // Omitted entirely → the server default (resolveProvider), unchanged.
-  provider: z.enum(["anthropic", "openai-compatible"]).optional(),
+  provider: z.string().trim().min(1).max(40).refine(isProviderId, { message: "unknown provider" }).optional(),
   model: z.string().trim().min(1).max(200).optional(),
   effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
 });
 
 export type AnalystEvent =
   | { type: "text"; delta: string }
+  | { type: "reasoning"; delta: string }
   | { type: "tool_call"; id: string; name: string; input: unknown; server: boolean }
   | { type: "tool_result"; id: string; name: string; ok: boolean; summary: string }
   | { type: "citations"; citations: Citation[] }
   | { type: "error"; error: string }
-  | { type: "done"; usage: Usage; model: string; provider: string; rounds: number; stop: string; effort?: Effort };
+  | { type: "done"; usage: Usage; model: string; provider: string; label?: string; rounds: number; stop: string; effort?: Effort };
 
 export interface RunOptions {
   provider: LLMProvider;
@@ -100,6 +103,7 @@ export async function runAnalyst(opts: RunOptions, emit: (e: AnalystEvent) => Pr
   const conv = provider.start(buildSystemPrompt(provider.webSearch), opts.history ?? [], question);
   const hooks = {
     onText: (delta: string) => void emit({ type: "text", delta }),
+    onReasoning: (delta: string) => void emit({ type: "reasoning", delta }),
     onServerToolCall: (c: { id: string; name: string; input: unknown }) =>
       void emit({ type: "tool_call", id: c.id, name: c.name, input: c.input, server: true }),
     onServerToolResult: (id: string, name: string, ok: boolean, summary: string) =>
@@ -162,7 +166,7 @@ export async function runAnalyst(opts: RunOptions, emit: (e: AnalystEvent) => Pr
     opts.signal?.removeEventListener("abort", onOuterAbort);
   }
   if (citations.length) await emit({ type: "citations", citations });
-  await emit({ type: "done", usage, model: provider.model, provider: provider.id, rounds, stop, effort: provider.effort });
+  await emit({ type: "done", usage, model: provider.model, provider: provider.id, label: provider.label, rounds, stop, effort: provider.effort });
 }
 
 /** Provider failures without leaking request details (keys never appear here). */
@@ -190,15 +194,27 @@ export interface AnalystRouteOptions {
 }
 
 export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
-  const resolve = o.resolve ?? (() => resolveProvider());
   const catalog = o.catalog ?? (() => buildCatalog(process.env as AnalystEnv));
   const resolveChoice =
     o.resolveChoice ?? ((choice: { provider: ProviderId; model: string; effort?: Effort }) => resolveChosenProvider(process.env as AnalystEnv, choice));
+  // The server default when it is configured; otherwise the first provider
+  // the catalog has ready — a deployment with only, say, DEEPSEEK_API_KEY
+  // set still has a working analyst without also setting ANALYST_PROVIDER.
+  const resolve =
+    o.resolve ??
+    (() => {
+      const p = resolveProvider();
+      if (p) return p;
+      const first = catalog().providers.find((e) => e.available && e.models.length > 0);
+      if (!first) return null;
+      const m = first.models[0]!;
+      return resolveChoice({ provider: first.id, model: m.id, effort: m.defaultEffort });
+    });
   return new Hono()
     .get("/status", (c) => {
       const p = resolve();
       if (!p) return c.json({ configured: false, error: "analyst not configured" }, 503);
-      return c.json({ configured: true, provider: p.id, model: p.model, web_search: p.webSearch, tools: toolCatalog(p.webSearch) });
+      return c.json({ configured: true, provider: p.id, label: p.label ?? p.id, model: p.model, web_search: p.webSearch, tools: toolCatalog(p.webSearch) });
     })
     .get("/models", (c) => c.json(catalog()))
     .post("/query", async (c) => {
@@ -230,7 +246,10 @@ export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
         if (reqEffort !== undefined && !modelEntry.effort) {
           return c.json({ error: `${modelEntry.id} does not support an effort level`, field: "effort" }, 400);
         }
-        provider = resolveChoice({ provider: providerId, model: modelEntry.id, effort: reqEffort });
+        if (reqEffort !== undefined && modelEntry.efforts && !modelEntry.efforts.includes(reqEffort)) {
+          return c.json({ error: `${modelEntry.id} takes effort ${modelEntry.efforts.join("/")}`, field: "effort" }, 400);
+        }
+        provider = resolveChoice({ provider: providerId, model: modelEntry.id, effort: reqEffort ?? modelEntry.defaultEffort });
         if (!provider) return c.json({ error: entry.reason ?? `provider ${providerId} is not configured`, field: "provider" }, 400);
       } else {
         provider = resolve();

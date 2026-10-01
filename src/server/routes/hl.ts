@@ -7,7 +7,7 @@ import type { AssetCtx } from "../../shared/types.js";
 // fine here, each cold start just misses once.
 
 const CACHE_MS = 60_000;
-let cache: { ts: number; markets: MarketRow[] } | null = null;
+let cache: { ts: number; ctxs: AssetCtx[]; markets: MarketRow[] } | null = null;
 
 export interface MarketsResponse {
   fetchedAt: string;
@@ -41,16 +41,43 @@ export function toMarketRows(ctxs: AssetCtx[]): MarketRow[] {
     .sort((a, b) => b.openInterestUsd - a.openInterestUsd);
 }
 
-/** Cached Hyperliquid universe snapshot (shared by the route and the analyst tools). */
-export async function getMarkets(): Promise<MarketsResponse> {
+async function refresh() {
   if (!cache || Date.now() - cache.ts >= CACHE_MS) {
     const { ctxs } = await fetchPerpMetaAndCtxs();
-    cache = { ts: Date.now(), markets: toMarketRows(ctxs) };
+    cache = { ts: Date.now(), ctxs, markets: toMarketRows(ctxs) };
   }
+  return cache;
+}
+
+/** Cached raw asset contexts (every field, delisted included) and when they were fetched. */
+export async function getCtxs(): Promise<{ fetchedAt: number; ctxs: AssetCtx[] }> {
+  const c = await refresh();
+  return { fetchedAt: c.ts, ctxs: c.ctxs };
+}
+
+/**
+ * Canonical HL coin name for a URL param. Names are case-sensitive upstream
+ * ("kPEPE"), so a case-insensitive match against the universe wins; unknown
+ * names (or HL unreachable) fall back to uppercase.
+ */
+export async function resolveCoin(param: string): Promise<string> {
+  try {
+    const { ctxs } = await getCtxs();
+    const hit = ctxs.find((c) => c.name.toLowerCase() === param.toLowerCase());
+    if (hit) return hit.name;
+  } catch {
+    // HL unreachable: best effort below
+  }
+  return param.toUpperCase();
+}
+
+/** Cached Hyperliquid universe snapshot (shared by the route and the analyst tools). */
+export async function getMarkets(): Promise<MarketsResponse> {
+  const c = await refresh();
   // fetchedAt = when the cached snapshot was actually fetched upstream, not
   // response time — Markets/MarketDrill (DESIGN.md §10.7) stale-check off
   // this, not client poll time.
-  return { fetchedAt: new Date(cache.ts).toISOString(), markets: cache.markets };
+  return { fetchedAt: new Date(c.ts).toISOString(), markets: c.markets };
 }
 
 export const hlRoutes = new Hono().get("/markets", async (c) => {

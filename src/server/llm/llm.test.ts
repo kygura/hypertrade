@@ -56,7 +56,7 @@ describe("system prompt", () => {
     const s = buildSystemPrompt(true);
     for (const part of [HARD_RULE, HEDGE_VOCABULARY, FORECAST_RULE, DISCLAIMER]) expect(s).toContain(part);
     expect(s).toContain("- web_search — provider-hosted web search");
-    expect(buildSystemPrompt(false)).toContain("web_search (unavailable) — not available with the openai-compatible provider");
+    expect(buildSystemPrompt(false)).toContain("web_search (unavailable) — only with Anthropic models");
     expect(s).not.toMatch(/\d{4}-\d{2}-\d{2}T/); // no timestamps: the prefix caches
   });
 });
@@ -64,8 +64,10 @@ describe("system prompt", () => {
 describe("AnthropicProvider", () => {
   test("streams text, surfaces web search and citations, returns tool calls", async () => {
     let sent: any;
+    let headers = new Headers();
     const fakeFetch = (async (_url: string, init: RequestInit) => {
       sent = JSON.parse(String(init.body));
+      headers = new Headers(init.headers);
       return sse([
         { event: "message_start", data: { type: "message_start", message: { id: "m1", type: "message", role: "assistant", model: "claude-opus-5-5", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 100, output_tokens: 0 } } } },
         { event: "content_block_start", data: { type: "content_block_start", index: 0, content_block: { type: "server_tool_use", id: "srv_1", name: "web_search", input: {} } } },
@@ -103,13 +105,56 @@ describe("AnthropicProvider", () => {
     expect(sent.tools.map((t: any) => t.name)).toContain("get_engine_decisions");
     expect(sent.system[0]).toMatchObject({ type: "text", text: "SYSTEM", cache_control: { type: "ephemeral" } });
     expect(sent.messages.map((m: any) => m.role)).toEqual(["user", "assistant", "user"]);
-    expect(sent.thinking).toBeUndefined();
+    // Summarized thinking feeds the reasoning panel; refusal fallbacks are on by default.
+    expect(sent.thinking).toEqual({ type: "adaptive", display: "summarized" });
+    expect(sent.fallbacks).toBe("default");
+    expect(headers.get("anthropic-beta")).toContain("server-side-fallback-2026-07-01");
 
     conv.addToolResults([{ id: "tu_1", name: "get_sectors", content: "{}", isError: false }]);
     await conv.step(TOOL_SPECS, h, { signal: new AbortController().signal, final: true }).catch(() => undefined);
     expect(sent.tool_choice).toEqual({ type: "none" });
     expect(sent.messages.at(-2).role).toBe("assistant");
     expect(sent.messages.at(-1).content[0]).toMatchObject({ type: "tool_result", tool_use_id: "tu_1" });
+  });
+});
+
+describe("AnthropicProvider per-model request shape", () => {
+  const capture = () => {
+    const box: { sent: any; headers: Headers } = { sent: null, headers: new Headers() };
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      box.sent = JSON.parse(String(init.body));
+      box.headers = new Headers(init.headers);
+      return sse([
+        { event: "message_start", data: { type: "message_start", message: { id: "m", type: "message", role: "assistant", model: "x", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } } },
+        { event: "content_block_start", data: { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } } },
+        { event: "content_block_delta", data: { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Checking funding first." } } },
+        { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
+        { event: "message_delta", data: { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 3 } } },
+        { event: "message_stop", data: { type: "message_stop" } },
+      ]);
+    }) as unknown as typeof globalThis.fetch;
+    return { box, fetch: fakeFetch };
+  };
+
+  test("Haiku 4.5: no effort, no adaptive thinking, basic web search, no fallbacks", async () => {
+    const { box, fetch } = capture();
+    const p = new AnthropicProvider({ apiKey: "k", model: "claude-haiku-4-5", effort: "high", fetch });
+    expect(p.effort).toBeUndefined();
+    await p.start("S", [], "q").step(TOOL_SPECS, hooks().h, { signal: new AbortController().signal });
+    expect(box.sent.output_config).toBeUndefined();
+    expect(box.sent.thinking).toBeUndefined();
+    expect(box.sent.fallbacks).toBeUndefined();
+    expect(box.sent.tools.at(-1)).toMatchObject({ type: "web_search_20250305", name: "web_search" });
+  });
+
+  test("thinking summaries stream to onReasoning; a base-URL override drops fallbacks", async () => {
+    const { box, fetch } = capture();
+    const p = new AnthropicProvider({ apiKey: "k", model: "claude-sonnet-5-5", effort: "low", baseURL: "https://proxy.local", fetch });
+    const reasoning: string[] = [];
+    await p.start("S", [], "q").step(TOOL_SPECS, { onText: () => {}, onReasoning: (d) => void reasoning.push(d) }, { signal: new AbortController().signal });
+    expect(reasoning.join("")).toBe("Checking funding first.");
+    expect(box.sent.output_config).toEqual({ effort: "low" });
+    expect(box.sent.fallbacks).toBeUndefined();
   });
 });
 
@@ -150,6 +195,58 @@ describe("OpenAICompatibleProvider", () => {
     const err = await p.start("s", [], "q").step([], hooks().h, { signal: new AbortController().signal }).catch((e) => e as Error);
     expect(String(err)).toContain("HTTP 401");
     expect(String(err)).not.toContain("secret-key");
+  });
+});
+
+describe("OpenAICompatibleProvider presets", () => {
+  test("reasoning streams to onReasoning and is replayed on the assistant message when the preset needs it", async () => {
+    const bodies: any[] = [];
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return sse([
+        { data: { choices: [{ delta: { reasoning_content: "Need markets." } }] } },
+        { data: { choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "get_hl_markets", arguments: "{}" } }] }, finish_reason: "tool_calls" }] } },
+        { data: "[DONE]" },
+      ]);
+    }) as unknown as typeof fetch;
+    const p = new OpenAICompatibleProvider({
+      id: "deepseek",
+      label: "DeepSeek",
+      apiKey: "k",
+      model: "deepseek-v4-pro",
+      baseURL: "https://api.deepseek.com",
+      effort: "high",
+      extraBody: { thinking: { type: "enabled" }, reasoning_effort: "high" },
+      replayReasoning: true,
+      fetch: fakeFetch,
+    });
+    expect(p.id).toBe("deepseek");
+    const conv = p.start("S", [{ role: "user", content: "earlier q" }, { role: "assistant", content: "earlier a" }], "q");
+    const reasoning: string[] = [];
+    await conv.step(TOOL_SPECS, { onText: () => {}, onReasoning: (d) => void reasoning.push(d) }, { signal: new AbortController().signal });
+    expect(reasoning).toEqual(["Need markets."]);
+    expect(bodies[0]).toMatchObject({ thinking: { type: "enabled" }, reasoning_effort: "high", max_tokens: 16000 });
+    // History folds into the opening user message (no reasoning-less assistant turns).
+    expect(bodies[0].messages.map((m: any) => m.role)).toEqual(["system", "user"]);
+    expect(bodies[0].messages[1].content).toContain("Analyst: earlier a");
+    conv.addToolResults([{ id: "c1", name: "get_hl_markets", content: "[]", isError: false }]);
+    await conv.step(TOOL_SPECS, hooks().h, { signal: new AbortController().signal });
+    expect(bodies[1].messages.at(-2)).toMatchObject({ role: "assistant", reasoning_content: "Need markets." });
+  });
+
+  test("OpenAI uses max_completion_tokens and never replays reasoning", async () => {
+    const bodies: any[] = [];
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return sse([{ data: { choices: [{ delta: { reasoning: "x", content: "ok" }, finish_reason: "stop" }] } }, { data: "[DONE]" }]);
+    }) as unknown as typeof fetch;
+    const p = new OpenAICompatibleProvider({ id: "openai", apiKey: "k", model: "gpt-6-luna", baseURL: "https://api.openai.com/v1", maxTokensField: "max_completion_tokens", extraBody: { reasoning_effort: "low" }, fetch: fakeFetch });
+    const conv = p.start("S", [{ role: "user", content: "a" }, { role: "assistant", content: "b" }], "q");
+    await conv.step([], hooks().h, { signal: new AbortController().signal });
+    expect(bodies[0].max_completion_tokens).toBe(16000);
+    expect(bodies[0].max_tokens).toBeUndefined();
+    expect(bodies[0].reasoning_effort).toBe("low");
+    expect(bodies[0].messages.map((m: any) => m.role)).toEqual(["system", "user", "assistant", "user"]);
   });
 });
 
