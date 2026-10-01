@@ -79,3 +79,6 @@ jobs:
             echo "::error::Backfill failed (curl exit $status, HTTP ${code:-none})"
             exit 1
           fi
+          if grep -q '"timedOut":true' "$body"; then
+            echo "::warning::Backfill hit its hard stop; see inFlight above and the [backfill] lines in the Vercel runtime logs."
+          fi
