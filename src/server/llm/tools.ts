@@ -276,6 +276,6 @@ export function toolCatalog(webSearch: boolean): Array<{ name: string; available
     ...TOOL_SPECS.map((t) => ({ name: t.name, available: true })),
     webSearch
       ? { name: "web_search", available: true, note: "provider-hosted web search" }
-      : { name: "web_search", available: false, note: "not available with the openai-compatible provider" },
+      : { name: "web_search", available: false, note: "only with Anthropic models" },
   ];
 }

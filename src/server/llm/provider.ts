@@ -9,10 +9,22 @@
 
 import { AnthropicProvider } from "./anthropic.js";
 import { OpenAICompatibleProvider } from "./openai.js";
+import { presetById, presetConfig, PRESETS, type Preset, type PresetId } from "./presets.js";
 
 export const DEFAULT_MODEL = "claude-opus-5-5";
 
-export type ProviderId = "anthropic" | "openai-compatible";
+/**
+ * anthropic (Messages API), a vendor preset (presets.ts: OpenAI, Gemini,
+ * xAI, DeepSeek, Kimi, Qwen, OpenRouter), or the generic
+ * openai-compatible slot for any other Chat Completions endpoint.
+ */
+export type ProviderId = "anthropic" | "openai-compatible" | PresetId;
+
+export const PROVIDER_IDS: readonly ProviderId[] = ["anthropic", ...PRESETS.map((p) => p.id), "openai-compatible"];
+
+export function isProviderId(v: unknown): v is ProviderId {
+  return typeof v === "string" && (PROVIDER_IDS as readonly string[]).includes(v);
+}
 
 /** A prior turn of the session, as the UI keeps it (text only). */
 export interface Turn {
@@ -67,6 +79,8 @@ export interface StepResult {
 /** Callbacks a provider fires while one step streams. */
 export interface StepHooks {
   onText(delta: string): void;
+  /** Reasoning text the model chose to show (Anthropic summaries, reasoning_content). */
+  onReasoning?(delta: string): void;
   /** Provider-hosted tools (Anthropic web search): call made. */
   onServerToolCall?(call: ToolCall): void;
   /** Provider-hosted tools: result arrived (already summarised). */
@@ -88,14 +102,18 @@ export interface Conversation {
 export interface LLMProvider {
   id: ProviderId;
   model: string;
+  /** Display name for the provider ("Moonshot Kimi"). */
+  label?: string;
   /** Whether the provider hosts a web search tool the analyst can use. */
   webSearch: boolean;
-  /** Reasoning effort actually in force (anthropic only; catalog.ts). */
+  /** Reasoning effort actually in force, when the model takes one (catalog.ts). */
   effort?: Effort;
   start(system: string, history: Turn[], question: string): Conversation;
 }
 
 export interface AnalystEnv {
+  /** Vendor preset keys and overrides (presets.ts keyEnv/baseUrlEnv/modelsEnv). */
+  [key: string]: string | undefined;
   ANALYST_PROVIDER?: string;
   ANALYST_MODEL?: string;
   ANALYST_API_KEY?: string;
@@ -121,12 +139,18 @@ export interface AnalystEnv {
  * The provider ANALYST_PROVIDER names (default "anthropic"), or "unknown"
  * for an unrecognised value — mirrors the pre-multi-provider behaviour
  * where an unrecognised ANALYST_PROVIDER left the analyst unconfigured.
+ * "openai" keeps its historical meaning (the generic openai-compatible
+ * slot); OpenAI's own platform is "openai-platform".
  */
-function rawProviderKind(env: AnalystEnv): ProviderId | "unknown" {
+export function rawProviderKind(env: AnalystEnv): ProviderId | "unknown" {
   const kind = (env.ANALYST_PROVIDER ?? "anthropic").trim().toLowerCase() || "anthropic";
   if (kind === "anthropic") return "anthropic";
   if (kind === "openai-compatible" || kind === "openai") return "openai-compatible";
-  return "unknown";
+  if (kind === "openai-platform") return "openai";
+  if (kind === "gemini") return "google";
+  if (kind === "kimi") return "moonshot";
+  const preset = presetById(kind);
+  return preset ? preset.id : "unknown";
 }
 
 /**
@@ -162,6 +186,17 @@ export function openaiCredentials(env: AnalystEnv): { apiKey?: string; baseURL?:
 }
 
 /**
+ * A vendor preset's credentials: its own key vars (presets.ts keyEnv), else
+ * the legacy ANALYST_API_KEY when ANALYST_PROVIDER names this preset — the
+ * same "default provider's key" rule anthropic and openai-compatible follow.
+ */
+export function presetCredentials(preset: Preset, env: AnalystEnv) {
+  const cfg = presetConfig(preset, env);
+  if (!cfg.apiKey && rawProviderKind(env) === preset.id) cfg.apiKey = env.ANALYST_API_KEY?.trim() || undefined;
+  return cfg;
+}
+
+/**
  * Builds the server-default provider, or null when it is not configured
  * (no key, or openai-compatible without a base URL, or an unrecognised
  * ANALYST_PROVIDER). Keys stay server-side: they are read here and never
@@ -183,6 +218,13 @@ export function resolveProvider(env: AnalystEnv = process.env as AnalystEnv): LL
     const model = env.ANALYST_MODEL?.trim() || DEFAULT_MODEL;
     return new OpenAICompatibleProvider({ apiKey, model, baseURL });
   }
+  if (raw !== "unknown") {
+    const preset = presetById(raw)!;
+    const cfg = presetCredentials(preset, env);
+    const model = env.ANALYST_MODEL?.trim() || cfg.models[0]?.id;
+    if (!model) return null;
+    return resolveChosenProvider(env, { provider: raw, model, effort: env.ANALYST_EFFORT ? parseEffort(env.ANALYST_EFFORT) : undefined });
+  }
   return null;
 }
 
@@ -202,9 +244,30 @@ export function resolveChosenProvider(
     if (!apiKey) return null;
     return new AnthropicProvider({ apiKey, model: choice.model, baseURL, effort: choice.effort ?? parseEffort(env.ANALYST_EFFORT) });
   }
-  const { apiKey, baseURL } = openaiCredentials(env);
-  if (!apiKey || !baseURL) return null;
-  return new OpenAICompatibleProvider({ apiKey, model: choice.model, baseURL });
+  if (choice.provider === "openai-compatible") {
+    const { apiKey, baseURL } = openaiCredentials(env);
+    if (!apiKey || !baseURL) return null;
+    return new OpenAICompatibleProvider({ apiKey, model: choice.model, baseURL });
+  }
+  const preset = presetById(choice.provider);
+  if (!preset) return null;
+  const cfg = presetCredentials(preset, env);
+  if (!cfg.apiKey) return null;
+  // Effort only goes on the wire for models that take one; the catalog
+  // supplies the model's default when the request names none.
+  const entry = cfg.models.find((m) => m.id === choice.model);
+  const effort = entry?.effort ? (choice.effort && entry.efforts?.includes(choice.effort) ? choice.effort : entry.defaultEffort) : undefined;
+  return new OpenAICompatibleProvider({
+    id: preset.id,
+    label: preset.label,
+    apiKey: cfg.apiKey,
+    baseURL: cfg.baseURL,
+    model: choice.model,
+    effort,
+    maxTokensField: preset.maxTokensField,
+    extraBody: preset.reasoningBody?.(effort),
+    replayReasoning: preset.replayReasoning,
+  });
 }
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";

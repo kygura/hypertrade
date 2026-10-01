@@ -1051,35 +1051,44 @@ surface, tight threshold).
 ### 10.8 `/analyst` — read-only analyst (phase 2)
 
 ```
-┌ ANALYST ─────────────────────── anthropic · model · [web search] ┐
-│ read-only market intelligence … not financial advice (10px)      │
-│ [What changed since the last briefing?] [Explain the last 5 …]   │
-│ [Which sector is rotating?]                                      │
-│ ┌ textarea (Enter sends, Shift+Enter newline) ┐ [ASK] [STOP]      │
-└──────────────────────────────────────────────────────────────────┘
-SESSION · 2                                                  [CLEAR]
-┌ <question, 12px text-primary> ─────────────────── STREAMING ┐
-│ ▸ TOOL TRACE · 3 calls        (collapsed <details>; rows: name, │
-│                                web tag, ok/error badge, input,  │
-│                                result summary)                  │
-│ answer, 13px text-muted, pre-wrap, streamed as it arrives       │
-│ ErrorBlock (verbatim) when the turn failed                      │
-│ SOURCES 1. title · host  (web citations, info-blue links)       │
-│ model · 1,204 in · 388 out · 2 tool rounds · stop (if not end)  │
-└─────────────────────────────────────────────────────────────────┘
+┌ ANALYST ──────── [● ANTHROPIC · Opus 5.5 FRONTIER] [low|MED|high…] [WEB SEARCH] [CLEAR] ┐ ┌ PROMPTS ─────────┐
+│                                         ┌ question (elevated bubble, right) ┐     │ │ BRIEFING …       │
+│ ● DEEPSEEK · deepseek-v4-pro · HIGH   THINKING…                                     │ │ MARKETS …        │
+│ ▸ REASONING · 412 chars   (open while it streams, collapses once the answer starts) │ │ SECTORS / ENGINE │
+│ TOOLS · 2  [get_hl_markets] [web web_search]   (chips; click to expand inputs)      │ ├ PROVIDERS 3/9 ───┤
+│ answer — markdown: headings, lists, tables (signed cells green/red), code          │ │ ● Anthropic web  │
+│ SOURCES 1. title · host                                                             │ │ ● DeepSeek …     │
+│ 12.8k in · 612 out · 1 tool round · 3.4s · stop      COPY  ASK AGAIN               │ │ ○ OpenAI set …   │
+├─────────────────────────────────────────────────────────────────────────────────────┤ ├ TOOLS · 9 ▸ ─────┤
+│ [ textarea, autosizes to 200px                                ] [ASK | STOP]        │ │ disclaimer       │
+└ Enter to send · Shift+Enter for a new line ─────────────────────────────────────────┘ └──────────────────┘
 ```
 
-Data: `GET /api/analyst/status`, `POST /api/analyst/query` (SSE). Turns live
-in memory for the tab session (survive route changes, not reloads); the last
-10 answered turns are sent back as context.
+Two columns from `lg:` (thread `minmax(0,1fr)`, rail 300px sticky); the
+thread panel fills the viewport height and its composer is sticky at the
+panel's bottom. Empty thread: an "Ask the analyst" intro and the prompt
+library as cards. Each answer is labelled with the provider/model/effort that
+wrote it; a phase label (`WAITING`/`THINKING`/`RUNNING TOOLS`/`WRITING`)
+pulses while it streams. Reasoning is shown only when the model exposes it
+(Anthropic summaries, `reasoning_content` from DeepSeek/Kimi/Qwen).
+
+The model pill (`ModelSelector`) lists configured providers first, then a
+`NOT CONFIGURED · n` group whose header names the env var to set; the
+effort control offers only the levels the selected model takes (DeepSeek and
+Kimi: low/high/max). The rail's PROVIDERS list doubles as setup status and a
+quick provider switch.
+
+Data: `GET /api/analyst/status`, `GET /api/analyst/models`,
+`POST /api/analyst/query` (SSE). The session persists per browser
+(`localStorage`, last 30 turns); the last 10 answered turns go back as
+context.
 
 States: SkeletonRows while the status probe runs; OfflineBlock
-`ANALYST NOT CONFIGURED` / `set ANALYST_API_KEY …` on 503; OfflineBlock
+`ANALYST NOT CONFIGURED` (naming the provider key vars) on 503; OfflineBlock
 `ANALYST UNREACHABLE` on 502 or no network; a per-turn verbatim ErrorBlock
-for timeouts, refusals and provider errors. In-flight indicator is the
-`.pulse-label` on `ASKING…` and on `running…` trace rows — no spinners.
-Mobile: the seventh tab-bar cell (`ASK`, glyph `?`); buttons and textarea
-go full-width, the trace stays collapsed by default.
+for timeouts, refusals and provider errors. No spinners: pulse labels only.
+Mobile: the seventh tab-bar cell (`ASK`, glyph `?`); single column with the
+rail below the thread, and the composer sticks above the tab bar.
 
 ---
 

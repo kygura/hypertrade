@@ -17,10 +17,12 @@ import type { AnalystCatalog, AnalystCatalogModel, AnalystChoice, AnalystEffort,
 // persists it to localStorage (`ht_analyst_model`) and validates it against
 // the catalog on load, falling back to `catalog.default` when stale.
 
-const EFFORT_OPTIONS = (['low', 'medium', 'high', 'xhigh', 'max'] as const satisfies readonly AnalystEffort[]).map((v) => ({
-  value: v,
-  label: v,
-}))
+const ALL_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const satisfies readonly AnalystEffort[]
+
+/** The levels a model takes (its own list, or all five), as segmented options. */
+function effortOptions(m: AnalystCatalogModel) {
+  return (m.efforts ?? ALL_EFFORTS).map((v) => ({ value: v, label: v }))
+}
 
 const TIER_LABEL: Record<AnalystCatalogModel['tier'], string> = {
   frontier: 'FRONTIER',
@@ -120,7 +122,9 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
   }
 
   const pick = (o: FlatOption) => {
-    onChange({ provider: o.providerId, model: o.model.id, effort: o.model.effort ? (value?.effort ?? 'medium') : undefined })
+    // Keep the current effort when the new model takes it, else its default.
+    const keep = value?.effort && (o.model.efforts ?? ALL_EFFORTS).includes(value.effort) ? value.effort : undefined
+    onChange({ provider: o.providerId, model: o.model.id, effort: o.model.effort ? (keep ?? o.model.defaultEffort ?? 'medium') : undefined })
     setOpen(false)
     triggerRef.current?.focus()
   }
@@ -150,10 +154,58 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
     }
   }
 
-  const reasons = catalog.providers
-    .map((p) => p.reason)
-    .filter((r): r is string => !!r)
-    .join(' · ')
+  const allReasons = catalog.providers.map((p) => p.reason).filter((r): r is string => !!r)
+  // With many providers the full list would swamp the header; the open
+  // picker lists every provider's setup line anyway.
+  const reasons = allReasons.slice(0, 3).join(' · ') + (allReasons.length > 3 ? ` · +${allReasons.length - 3} more` : '')
+  const configured = catalog.providers.filter((p) => p.available)
+  const unconfigured = catalog.providers.filter((p) => !p.available)
+
+  const renderGroup = (p: AnalystCatalog['providers'][number]) => (
+    <div key={p.id} role="group" aria-label={p.label}>
+      <div className={`px-2 py-1 label flex flex-wrap items-center gap-x-2 ${p.available ? '' : 'opacity-60'}`}>
+        <span>{p.label}</span>
+        {p.webSearch && p.available && <span className="src-tag">web</span>}
+        {!p.available && p.reason ? (
+          <span className="normal-case text-text-secondary tracking-normal">{p.reason}</span>
+        ) : (
+          p.blurb && <span className="normal-case text-text-secondary tracking-normal truncate">{p.blurb}</span>
+        )}
+      </div>
+      {p.available &&
+        p.models.map((m) => {
+          const flatIdx = navigable.findIndex((o) => o.providerId === p.id && o.model.id === m.id)
+          const isSelected = value?.provider === p.id && value?.model === m.id
+          return (
+            <div
+              key={m.id}
+              ref={(el) => {
+                if (flatIdx >= 0) optionRefs.current[flatIdx] = el
+              }}
+              role="option"
+              aria-selected={isSelected}
+              tabIndex={flatIdx === activeIndex ? 0 : -1}
+              onClick={() => pick({ providerId: p.id, providerLabel: p.label, model: m })}
+              className={`flex items-center gap-2 px-2 min-h-[var(--row-h)] cursor-pointer hover:bg-hover ${isSelected ? 'bg-selected' : ''}`}
+            >
+              <span className="w-3 shrink-0 text-text-primary">{isSelected ? '✓' : ''}</span>
+              <span className="flex-1 min-w-0 flex flex-col py-1">
+                <span className="text-[12px] text-text-primary">{m.label}</span>
+                <span className="text-[10px] text-text-secondary truncate">{m.note}</span>
+              </span>
+              <TierTag tier={m.tier} />
+            </div>
+          )
+        })}
+      {!p.available &&
+        p.models.map((m) => (
+          <div key={m.id} role="option" aria-selected={false} aria-disabled tabIndex={-1} className="flex items-center gap-2 px-2 min-h-[var(--row-h)] opacity-40 cursor-not-allowed">
+            <span className="w-3 shrink-0" />
+            <span className="flex-1 min-w-0 text-[11px] text-text-secondary truncate">{m.label}</span>
+          </div>
+        ))}
+    </div>
+  )
 
   return (
     // Mobile (<md): stacked column — pill on its own full-width row, effort
@@ -184,14 +236,18 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
         )}
       </button>
 
-      {!anyAvailable && reasons && <span className="text-[10px] text-text-secondary normal-case">{reasons}</span>}
+      {!anyAvailable && reasons && (
+        <span className="text-[10px] text-text-secondary normal-case" title={allReasons.join('\n')}>
+          {reasons}
+        </span>
+      )}
 
       {selected?.model.effort && (
         <Segmented
           label="Reasoning effort"
           size="md"
-          options={EFFORT_OPTIONS}
-          value={value?.effort ?? 'medium'}
+          options={effortOptions(selected.model)}
+          value={value?.effort ?? selected.model.defaultEffort ?? 'medium'}
           onChange={(effort) => onChange({ provider: selected.providerId, model: selected.model.id, effort })}
         />
       )}
@@ -203,44 +259,15 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
             role="listbox"
             aria-label="Select analyst model"
             onKeyDown={onListKeyDown}
-            className="fixed inset-x-0 bottom-0 z-50 md:absolute md:inset-auto md:top-full md:left-0 md:mt-1 md:w-[340px] panel max-h-[70vh] overflow-auto divide-y divide-border-subtle"
+            className="fixed inset-x-0 bottom-0 z-50 md:absolute md:inset-auto md:top-full md:left-0 md:mt-1 md:w-[380px] panel max-h-[70vh] overflow-auto divide-y divide-border-subtle"
           >
-            {catalog.providers.map((p) => (
-              <div key={p.id} role="group" aria-label={p.label}>
-                <div className={`px-2 py-1 label flex flex-wrap items-center gap-2 ${p.available ? '' : 'opacity-50'}`}>
-                  <span>{p.label}</span>
-                  {!p.available && p.reason && <span className="normal-case text-text-secondary tracking-normal">{p.reason}</span>}
-                </div>
-                {p.models.map((m) => {
-                  const flatIdx = navigable.findIndex((o) => o.providerId === p.id && o.model.id === m.id)
-                  const isSelected = value?.provider === p.id && value?.model === m.id
-                  const disabled = !p.available
-                  return (
-                    <div
-                      key={m.id}
-                      ref={(el) => {
-                        if (flatIdx >= 0) optionRefs.current[flatIdx] = el
-                      }}
-                      role="option"
-                      aria-selected={isSelected}
-                      aria-disabled={disabled || undefined}
-                      tabIndex={disabled ? -1 : flatIdx === activeIndex ? 0 : -1}
-                      onClick={() => !disabled && pick({ providerId: p.id, providerLabel: p.label, model: m })}
-                      className={`flex items-center gap-2 px-2 min-h-[var(--row-h)] ${
-                        disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-hover'
-                      } ${isSelected ? 'bg-selected' : ''}`}
-                    >
-                      <span className="w-3 shrink-0 text-text-primary">{isSelected ? '✓' : ''}</span>
-                      <span className="flex-1 min-w-0 flex flex-col py-1">
-                        <span className="text-[12px] text-text-primary">{m.label}</span>
-                        <span className="text-[10px] text-text-secondary truncate">{m.note}</span>
-                      </span>
-                      <TierTag tier={m.tier} />
-                    </div>
-                  )
-                })}
+            {configured.map((p) => renderGroup(p))}
+            {unconfigured.length > 0 && (
+              <div className="px-2 py-1 text-[10px] text-text-secondary uppercase tracking-wider bg-panel-header">
+                Not configured · {unconfigured.length}
               </div>
-            ))}
+            )}
+            {unconfigured.map((p) => renderGroup(p))}
           </div>
         </>
       )}
