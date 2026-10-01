@@ -265,10 +265,17 @@ export async function candleCoverage(coin: string, tf: string): Promise<{ min: D
   return row?.min && row.max ? { min: row.min, max: row.max } : null
 }
 
-/** Drops bars older than `before` for one timeframe (retention for the finest intervals). */
-export async function pruneCandles(tf: string, before: Date): Promise<number> {
-  const res = await sql()`delete from candles where tf = ${tf} and ts < ${before}`
-  return res.count
+/**
+ * Drops bars older than `before` for one timeframe (retention for the finest
+ * intervals). No index leads with tf, so this scans; the local statement
+ * timeout keeps a slow scan from eating the cron's time budget.
+ */
+export async function pruneCandles(tf: string, before: Date, timeoutMs = 15_000): Promise<number> {
+  return sql().begin(async (tx) => {
+    await tx.unsafe(`set local statement_timeout = ${Math.floor(timeoutMs)}`)
+    const res = await tx`delete from candles where tf = ${tf} and ts < ${before}`
+    return res.count
+  }) as Promise<number>
 }
 
 // ------------------------------------------------------------ sync state

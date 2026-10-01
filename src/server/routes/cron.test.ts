@@ -93,6 +93,26 @@ describe("backfillRoute", () => {
     expect(body.results.SOL).toEqual({ ok: false, skipped: true });
   });
 
+  test("a hung step still gets an answer before the platform kills the function", async () => {
+    let release!: () => void;
+    const res = await routeApp({
+      ...base,
+      hardStopMs: 20,
+      warmCoin: async (coin, _start, _deadline, step) => {
+        step(`${coin} head 1m`);
+        if (coin === "ETH") await new Promise<void>((r) => (release = r));
+        return { tfs: 8 };
+      },
+    }).request("/b", { method: "POST" });
+    release();
+    const body = (await res.json()) as { timedOut?: boolean; inFlight?: string; results: Record<string, { ok: boolean; skipped?: boolean; tfs?: number }> };
+    expect(res.status).toBe(200);
+    expect(body.timedOut).toBe(true);
+    expect(body.inFlight).toBe("ETH head 1m");
+    expect(body.results.BTC).toEqual({ ok: true, tfs: 8 });
+    expect(body.results.SOL).toEqual({ ok: false, skipped: true });
+  });
+
   test("rejects an out-of-range days value", async () => {
     expect((await routeApp(base).request("/b?days=0", { method: "POST" })).status).toBe(400);
     expect((await routeApp(base).request("/b?days=abc", { method: "POST" })).status).toBe(400);

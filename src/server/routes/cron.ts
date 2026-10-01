@@ -23,6 +23,12 @@ const RECENT_MS = 7 * DAY_MS;
  * and retry) or external page, plus DB writes, so the budget leaves ~110s.
  */
 const WARM_BUDGET_MS = 170_000;
+/**
+ * Answer by now whatever is still running. If a step hangs past the budget,
+ * the route still returns what it has (and names the step) instead of being
+ * killed at 300s with nothing to show for it.
+ */
+const HARD_STOP_MS = 240_000;
 const FUNDING_PAGES_PER_RUN = 20;
 
 export type WarmResult = { from?: string; to?: string; tfs: number; fundingFrom?: string | null };
@@ -30,11 +36,12 @@ export type WarmResult = { from?: string; to?: string; tfs: number; fundingFrom?
 export type BackfillDeps = {
   listBranches: () => Promise<{ config: unknown }[]>;
   recentCoins: () => Promise<string[]>;
-  /** Daily history to startDate, head sync of every timeframe, funding pages. */
-  warmCoin: (coin: string, startDate: Date, deadline: number) => Promise<WarmResult>;
+  /** Daily history to startDate, head sync of every timeframe, funding pages. Calls `step` before each one. */
+  warmCoin: (coin: string, startDate: Date, deadline: number, step: (label: string) => void) => Promise<WarmResult>;
   /** Retention for the finest timeframes; returns rows dropped per timeframe. */
   prune: () => Promise<Record<string, number>>;
   now: () => number;
+  hardStopMs?: number;
 };
 
 /**
@@ -44,17 +51,31 @@ export type BackfillDeps = {
  */
 const canStart = (deadline: number) => Date.now() + hlWeightWaitMs() < deadline;
 
-export async function warmCoin(coin: string, startDate: Date, deadline: number): Promise<WarmResult> {
-  if (canStart(deadline)) await backfillCoin(coin, startDate, undefined, deadline);
+export async function warmCoin(
+  coin: string,
+  startDate: Date,
+  deadline: number,
+  step: (label: string) => void = () => {},
+): Promise<WarmResult> {
+  if (canStart(deadline)) {
+    step(`${coin} 1d history`);
+    await backfillCoin(coin, startDate, undefined, deadline);
+  }
   // Head sync every timeframe: HL keeps only the latest 5000 bars, so this is
   // what lets 1m/5m/15m history outlive HL's window.
   let tfs = 0;
   for (const tf of TIMEFRAMES) {
     if (!canStart(deadline)) break;
+    step(`${coin} head ${tf}`);
     await syncHead(coin, tf, undefined, true, deadline);
     tfs++;
   }
-  const f = canStart(deadline) ? await syncFunding(coin, 0, { maxPages: FUNDING_PAGES_PER_RUN, deadline }) : null;
+  let f = null;
+  if (canStart(deadline)) {
+    step(`${coin} funding`);
+    f = await syncFunding(coin, 0, { maxPages: FUNDING_PAGES_PER_RUN, deadline });
+  }
+  step(`${coin} coverage`);
   const coverage = await db.candleCoverage(coin, "1d");
   return {
     from: coverage?.min.toISOString(),
@@ -112,18 +133,46 @@ export function backfillRoute(deps: BackfillDeps = defaultBackfillDeps) {
     const coins = backfillCoins(branches.map((b) => b.config), requested, recent);
 
     const results: Record<string, { ok: boolean; skipped?: boolean; error?: string } & Partial<WarmResult>> = {};
-    for (const coin of coins) {
-      if (deps.now() > deadline) {
-        results[coin] = { ok: false, skipped: true };
-        continue;
+    let pruned: Record<string, number> | { error: string } | { skipped: true } = { skipped: true };
+    // Every step is logged with its start offset, so a slow one shows up in
+    // the runtime logs as the gap before the next line.
+    let current = "start";
+    const step = (label: string) => {
+      current = label;
+      console.log(`[backfill] +${((deps.now() - started) / 1000).toFixed(1)}s ${label}`);
+    };
+
+    const work = (async () => {
+      for (const coin of coins) {
+        if (deps.now() > deadline) {
+          results[coin] = { ok: false, skipped: true };
+          continue;
+        }
+        try {
+          results[coin] = { ok: true, ...(await deps.warmCoin(coin, startDate, deadline, step)) };
+        } catch (err) {
+          results[coin] = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
       }
-      try {
-        results[coin] = { ok: true, ...(await deps.warmCoin(coin, startDate, deadline)) };
-      } catch (err) {
-        results[coin] = { ok: false, error: err instanceof Error ? err.message : String(err) };
+      if (deps.now() <= deadline) {
+        step("prune");
+        pruned = await deps.prune().catch((err) => ({ error: err instanceof Error ? err.message : String(err) }));
       }
+      step("done");
+    })();
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const hardStop = new Promise<"stop">((resolve) => {
+      timer = setTimeout(() => resolve("stop"), deps.hardStopMs ?? HARD_STOP_MS);
+    });
+    const outcome = await Promise.race([work.then(() => "done" as const), hardStop]);
+    clearTimeout(timer);
+    if (outcome === "stop") {
+      console.error(`[backfill] hard stop; still in "${current}"`);
+      work.catch((err) => console.error("[backfill] after hard stop:", err));
+      for (const coin of coins) results[coin] ??= { ok: false, skipped: true };
+      return c.json({ days, results, pruned, timedOut: true, inFlight: current });
     }
-    const pruned = await deps.prune().catch((err) => ({ error: err instanceof Error ? err.message : String(err) }));
     return c.json({ days, results, pruned });
   };
 }
