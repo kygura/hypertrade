@@ -83,7 +83,7 @@ describe("backfillRoute", () => {
       ...base,
       now: () => t,
       warmCoin: async () => {
-        t += 200_000; // each coin eats most of the budget
+        t += 100_000; // each coin eats most of the budget
         return { tfs: 8 };
       },
     }).request("/b", { method: "POST" });

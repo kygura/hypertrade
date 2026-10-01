@@ -9,9 +9,9 @@ import { ensureHistory, type SyncDeps } from "../market/candleSync.js";
 export const STABLES = new Set(["USDC", "USDT"]);
 
 /** Ensures daily candle coverage for one coin from startDate to today. No-op for stablecoins. */
-export async function backfillCoin(coin: string, startDate: Date, deps?: SyncDeps): Promise<void> {
+export async function backfillCoin(coin: string, startDate: Date, deps?: SyncDeps, deadline?: number): Promise<void> {
   if (STABLES.has(coin)) return;
-  await ensureHistory(coin, "1d", startDate.getTime(), deps);
+  await ensureHistory(coin, "1d", startDate.getTime(), deps, { deadline });
 }
 
 /** Backfills every non-stable coin in a branch's allocations, sequentially

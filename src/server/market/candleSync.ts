@@ -193,7 +193,13 @@ const HL_WINDOW_BARS = 5000;
  * and HL's window — the cron stopped for longer than 5000 bars — is filled
  * from the external layers. Throttled per series unless `force`.
  */
-export async function syncHead(coin: string, tf: Timeframe, deps: SyncDeps = defaultDeps, force = false): Promise<void> {
+export async function syncHead(
+  coin: string,
+  tf: Timeframe,
+  deps: SyncDeps = defaultDeps,
+  force = false,
+  deadline = Infinity,
+): Promise<void> {
   const now = deps.now();
   const state = await deps.getState(coin, tf);
   if (!force && state.syncedAt != null && now - state.syncedAt < HEAD_MIN_INTERVAL_MS) return;
@@ -210,7 +216,7 @@ export async function syncHead(coin: string, tf: Timeframe, deps: SyncDeps = def
         state.hlFloor = bars[0]!.t;
       }
       if (b != null && isGap(b.max, bars[0]!.t, tf)) {
-        await fillGapExternal(coin, tf, b.max, bars[0]!.t, deps);
+        await fillGapExternal(coin, tf, b.max, bars[0]!.t, deps, deadline);
       }
     }
     state.syncedAt = now;
@@ -222,11 +228,18 @@ export async function syncHead(coin: string, tf: Timeframe, deps: SyncDeps = def
 }
 
 /** Fills (after, before) exclusive from the first external source that passes the seam check. */
-async function fillGapExternal(coin: string, tf: Timeframe, after: number, before: number, deps: SyncDeps): Promise<void> {
+async function fillGapExternal(
+  coin: string,
+  tf: Timeframe,
+  after: number,
+  before: number,
+  deps: SyncDeps,
+  deadline: number,
+): Promise<void> {
   for (const src of deps.sources) {
     if (!src.supports(tf)) continue;
     let end = before - 1;
-    for (let page = 0; page < 5 && end > after; page++) {
+    for (let page = 0; page < 5 && end > after && Date.now() < deadline; page++) {
       const res = await fetchWithRetry(src, coin, tf, end);
       if (res.kind === "unsupported") break;
       const refs = await deps.between(coin, tf, before, nextBarT(before, tf) + 2 * TF_MS[tf]);
@@ -467,15 +480,24 @@ export async function readPage(
 
 /**
  * Ensures stored history reaches back to `from` (bounded work): the
- * simulator's daily backfill and the cron's warm-up use this.
+ * simulator's daily backfill and the cron's warm-up use this. Past
+ * `deadline` no new round or external page starts; the next call resumes.
  */
-export async function ensureHistory(coin: string, tf: Timeframe, from: number, deps: SyncDeps = defaultDeps, maxRounds = 6): Promise<void> {
-  await syncHead(coin, tf, deps);
-  for (let i = 0; i < maxRounds; i++) {
+export async function ensureHistory(
+  coin: string,
+  tf: Timeframe,
+  from: number,
+  deps: SyncDeps = defaultDeps,
+  opts: { maxRounds?: number; deadline?: number } = {},
+): Promise<void> {
+  const { maxRounds = 6, deadline = Infinity } = opts;
+  await syncHead(coin, tf, deps, false, deadline);
+  for (let i = 0; i < maxRounds && Date.now() < deadline; i++) {
     const b = await deps.bounds(coin, tf);
     if (b && b.min <= from + TF_MS[tf]) return;
     const need = Math.ceil(((b ? b.min : deps.now()) - from) / TF_MS[tf]) + 1;
-    const r = await fillOlder(coin, tf, b ? b.min : deps.now() + TF_MS[tf], Math.min(need, HL_WINDOW_BARS), deps);
+    const budget: FillBudget = { extPages: DEFAULT_EXT_PAGES, deadline };
+    const r = await fillOlder(coin, tf, b ? b.min : deps.now() + TF_MS[tf], Math.min(need, HL_WINDOW_BARS), deps, budget);
     if (r.exhausted || r.added === 0) return;
   }
 }

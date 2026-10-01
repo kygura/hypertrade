@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { hlWeightWaitMs } from "../../shared/hl-client.js";
 import { TF_RETENTION_MS, TIMEFRAMES, type Timeframe } from "../../shared/timeframes.js";
 import { requireCronToken } from "../auth.js";
 import { collectCryptoContext } from "../collectors/cryptoContext.js";
@@ -15,8 +16,13 @@ const DEFAULT_BACKFILL_DAYS = 365;
 export const CORE_COINS = ["BTC", "ETH", "SOL", "HYPE"];
 /** A coin charted within this window stays warm (LTF bars, funding, OI snapshots). */
 const RECENT_MS = 7 * DAY_MS;
-/** Stop starting new work after this; the collect workflow's curl gives up at 280s. */
-const WARM_BUDGET_MS = 230_000;
+/**
+ * Stop starting new work after this. Vercel kills the function at 300s and the
+ * collect workflow's curl gives up at 280s. A step already running can still
+ * make one more HL call (up to 60s on the weight guard, then 41s with timeout
+ * and retry) or external page, plus DB writes, so the budget leaves ~110s.
+ */
+const WARM_BUDGET_MS = 170_000;
 const FUNDING_PAGES_PER_RUN = 20;
 
 export type WarmResult = { from?: string; to?: string; tfs: number; fundingFrom?: string | null };
@@ -31,17 +37,24 @@ export type BackfillDeps = {
   now: () => number;
 };
 
+/**
+ * Room to start another step: counts the wait HL's weight guard would impose
+ * first (up to 60s once a run has spent its per-minute budget), which a plain
+ * clock check misses.
+ */
+const canStart = (deadline: number) => Date.now() + hlWeightWaitMs() < deadline;
+
 export async function warmCoin(coin: string, startDate: Date, deadline: number): Promise<WarmResult> {
-  await backfillCoin(coin, startDate);
+  if (canStart(deadline)) await backfillCoin(coin, startDate, undefined, deadline);
   // Head sync every timeframe: HL keeps only the latest 5000 bars, so this is
   // what lets 1m/5m/15m history outlive HL's window.
   let tfs = 0;
   for (const tf of TIMEFRAMES) {
-    if (Date.now() > deadline) break;
-    await syncHead(coin, tf, undefined, true);
+    if (!canStart(deadline)) break;
+    await syncHead(coin, tf, undefined, true, deadline);
     tfs++;
   }
-  const f = Date.now() < deadline ? await syncFunding(coin, 0, { maxPages: FUNDING_PAGES_PER_RUN, deadline }) : null;
+  const f = canStart(deadline) ? await syncFunding(coin, 0, { maxPages: FUNDING_PAGES_PER_RUN, deadline }) : null;
   const coverage = await db.candleCoverage(coin, "1d");
   return {
     from: coverage?.min.toISOString(),
