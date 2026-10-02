@@ -14,9 +14,8 @@ import { perpRoutes } from "../src/server/routes/perp.js";
 import { routinesRoutes } from "../src/server/routes/routines.js";
 import { sectorsRoutes } from "../src/server/routes/sectors.js";
 
-// Fluid compute shares one process across concurrent requests, and Node exits
-// on an unhandled rejection, taking every in-flight request with it. Log it
-// instead; postgres errors carry the failing SQL on `query`.
+// Vercel still exits the process on an unhandled rejection; this only adds
+// the failing SQL (postgres errors carry it on `query`) to the log.
 process.on("unhandledRejection", (err) => {
   console.error("[unhandledRejection]", err, (err as { query?: string })?.query ?? "");
 });

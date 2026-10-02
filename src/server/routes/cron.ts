@@ -100,11 +100,7 @@ export async function pruneRetention(now: number = Date.now()): Promise<Record<s
 }
 
 const defaultBackfillDeps: BackfillDeps = {
-  // First query of the run: check the warm connection before relying on it.
-  listBranches: async () => {
-    await db.ensureLiveConnection();
-    return db.listBranches();
-  },
+  listBranches: db.listBranches,
   recentCoins: () => db.recentlyAccessedCoins(new Date(Date.now() - RECENT_MS)),
   warmCoin,
   prune: () => pruneRetention(),
@@ -206,7 +202,6 @@ async function oiCoins(): Promise<string[]> {
 // same timestamp's values.
 export const cronRoutes = new Hono()
   .post("/collect", requireCronToken, async (c) => {
-    await db.ensureLiveConnection();
     const [hyperliquid, cryptoContext, fred] = await Promise.all([
       oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra)),
       collectCryptoContext(),

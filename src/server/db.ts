@@ -50,30 +50,13 @@ export function sql(): postgres.Sql {
   if (client) return client
   const url = databaseUrl()
   if (!url) throw new Error('DATABASE_URL is not set — database queries are unavailable')
-  // prepare:false is required behind Supabase's transaction pooler; max:1 because
-  // each serverless invocation is its own process.
-  client = postgres(url, { max: 1, prepare: false, idle_timeout: 20 })
+  // prepare:false is required behind Supabase's transaction pooler.
+  // fetch_types:false skips postgres.js's pg_type scan on connect: on Supabase
+  // it can hit the statement timeout, blocking the one connection meanwhile and
+  // then crashing the process with an unhandled rejection. No query here relies
+  // on array types (lists go through `in ${sql()(ids)}`).
+  client = postgres(url, { max: 1, prepare: false, idle_timeout: 20, fetch_types: false })
   return client
-}
-
-/**
- * A warm Fluid instance can resume holding a socket the pooler already
- * dropped; queries on it hang with no error. Ping first and reconnect when
- * the ping doesn't answer in time.
- */
-export async function ensureLiveConnection(timeoutMs = 5_000): Promise<void> {
-  const ping = sql()`select 1`
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const alive = await Promise.race([
-    ping.then(() => true, () => false),
-    new Promise<false>((resolve) => (timer = setTimeout(resolve, timeoutMs, false))),
-  ])
-  clearTimeout(timer)
-  if (alive) return
-  console.warn('[db] connection did not answer a ping; reconnecting')
-  const dead = client
-  client = null
-  await dead?.end({ timeout: 0 }).catch(() => {})
 }
 
 // ---------------------------------------------------------------- series
@@ -108,7 +91,7 @@ export async function latestObservations(seriesIds: string[]): Promise<(Point & 
   const rows = await sql()<{ series_id: string; ts: Date; value: number }[]>`
     select distinct on (series_id) series_id, ts, value
     from observations
-    where series_id = any(${seriesIds}::text[])
+    where series_id in ${sql()(seriesIds)}
     order by series_id, ts desc
   `
   return rows.map((r) => ({ seriesId: r.series_id, ts: r.ts, value: r.value }))
@@ -196,7 +179,7 @@ export async function summaryFor(seriesIds: string[]): Promise<MetricSummary[]> 
       select series_id, ts, value,
              row_number() over (partition by series_id order by ts desc) as rn
       from observations
-      where series_id = any(${seriesIds}::text[])
+      where series_id in ${sql()(seriesIds)}
     )
     select series_id,
            max(ts)    filter (where rn = 1)   as ts,
