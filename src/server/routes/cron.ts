@@ -129,8 +129,7 @@ export function backfillRoute(deps: BackfillDeps = defaultBackfillDeps) {
     if (!Number.isFinite(days) || days < 1 || days > 3650) return c.json({ error: "days must be 1-3650" }, 400);
     const startDate = new Date(started - days * DAY_MS);
     const requested = c.req.query("coins");
-    const [branches, recent] = requested ? [[], []] : await Promise.all([deps.listBranches(), deps.recentCoins().catch(() => [])]);
-    const coins = backfillCoins(branches.map((b) => b.config), requested, recent);
+    let coins: string[] = [];
 
     const results: Record<string, { ok: boolean; skipped?: boolean; error?: string } & Partial<WarmResult>> = {};
     let pruned: Record<string, number> | { error: string } | { skipped: true } = { skipped: true };
@@ -142,7 +141,14 @@ export function backfillRoute(deps: BackfillDeps = defaultBackfillDeps) {
       console.log(`[backfill] +${((deps.now() - started) / 1000).toFixed(1)}s ${label}`);
     };
 
+    // Coin listing runs inside the hard stop too: a hung DB query here used to
+    // leave the route silent until Vercel killed it at 300s.
     const work = (async () => {
+      step("list coins");
+      const [branches, recent] = requested
+        ? [[], []]
+        : await Promise.all([deps.listBranches(), deps.recentCoins().catch(() => [])]);
+      coins = backfillCoins(branches.map((b) => b.config), requested, recent);
       for (const coin of coins) {
         if (deps.now() > deadline) {
           results[coin] = { ok: false, skipped: true };

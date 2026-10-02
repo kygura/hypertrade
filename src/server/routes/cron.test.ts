@@ -113,6 +113,18 @@ describe("backfillRoute", () => {
     expect(body.results.SOL).toEqual({ ok: false, skipped: true });
   });
 
+  test("a hung coin listing also gets an answer", async () => {
+    const res = await routeApp({
+      ...base,
+      hardStopMs: 20,
+      listBranches: () => new Promise(() => {}),
+    }).request("/b", { method: "POST" });
+    const body = (await res.json()) as { timedOut?: boolean; inFlight?: string };
+    expect(res.status).toBe(200);
+    expect(body.timedOut).toBe(true);
+    expect(body.inFlight).toBe("list coins");
+  });
+
   test("rejects an out-of-range days value", async () => {
     expect((await routeApp(base).request("/b?days=0", { method: "POST" })).status).toBe(400);
     expect((await routeApp(base).request("/b?days=abc", { method: "POST" })).status).toBe(400);
