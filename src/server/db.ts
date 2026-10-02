@@ -59,6 +59,18 @@ export function sql(): postgres.Sql {
   return client
 }
 
+/**
+ * Drops the shared client so the next query opens a fresh connection; queries
+ * already in flight get 5s to finish. A connection left idle across a Fluid
+ * suspend can come back unusable (the next query hangs with no error), which
+ * is what Vercel's attachDatabasePool guards against for pg pools.
+ */
+export async function releaseConnection(): Promise<void> {
+  const c = client
+  client = null
+  await c?.end({ timeout: 5 })
+}
+
 // ---------------------------------------------------------------- series
 
 export async function ensureSeries(defs: SeriesDef[]): Promise<void> {

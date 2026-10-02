@@ -201,6 +201,15 @@ async function oiCoins(): Promise<string[]> {
 // and each collector run is independent — a re-trigger just overwrites the
 // same timestamp's values.
 export const cronRoutes = new Hono()
+  // Never leave a cron run's connection idle in a warm instance: the next run
+  // reusing it hung on its first query until the hard stop.
+  .use("*", async (_c, next) => {
+    try {
+      await next();
+    } finally {
+      await db.releaseConnection();
+    }
+  })
   .post("/collect", requireCronToken, async (c) => {
     const [hyperliquid, cryptoContext, fred] = await Promise.all([
       oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra)),
