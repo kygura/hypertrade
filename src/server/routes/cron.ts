@@ -197,20 +197,27 @@ async function oiCoins(): Promise<string[]> {
   return backfillCoins(branches.map((b) => b.config), undefined, recent);
 }
 
+// Cron requests in flight in this process. Vercel Cron and the GitHub
+// workflow can now overlap on one warm instance.
+let activeCronRequests = 0;
+
 // Safe to call repeatedly: observations PK (series_id, ts) dedupes upserts,
 // and each collector run is independent — a re-trigger just overwrites the
 // same timestamp's values.
+// GET is what Vercel Cron sends; POST is what the GitHub workflow sends.
 export const cronRoutes = new Hono()
   // Never leave a cron run's connection idle in a warm instance: the next run
-  // reusing it hung on its first query until the hard stop.
+  // reusing it hung on its first query until the hard stop. Only the last
+  // request out releases it, so one run never cuts off another's queries.
   .use("*", async (_c, next) => {
+    activeCronRequests++;
     try {
       await next();
     } finally {
-      await db.releaseConnection();
+      if (--activeCronRequests === 0) await db.releaseConnection();
     }
   })
-  .post("/collect", requireCronToken, async (c) => {
+  .on(["GET", "POST"], "/collect", requireCronToken, async (c) => {
     const [hyperliquid, cryptoContext, fred] = await Promise.all([
       oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra)),
       collectCryptoContext(),
@@ -218,4 +225,4 @@ export const cronRoutes = new Hono()
     ]);
     return c.json({ hyperliquid, cryptoContext, fred });
   })
-  .post("/backfill", requireCronToken, backfillRoute());
+  .on(["GET", "POST"], "/backfill", requireCronToken, backfillRoute());
