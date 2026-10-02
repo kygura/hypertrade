@@ -56,6 +56,26 @@ export function sql(): postgres.Sql {
   return client
 }
 
+/**
+ * A warm Fluid instance can resume holding a socket the pooler already
+ * dropped; queries on it hang with no error. Ping first and reconnect when
+ * the ping doesn't answer in time.
+ */
+export async function ensureLiveConnection(timeoutMs = 5_000): Promise<void> {
+  const ping = sql()`select 1`
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const alive = await Promise.race([
+    ping.then(() => true, () => false),
+    new Promise<false>((resolve) => (timer = setTimeout(resolve, timeoutMs, false))),
+  ])
+  clearTimeout(timer)
+  if (alive) return
+  console.warn('[db] connection did not answer a ping; reconnecting')
+  const dead = client
+  client = null
+  await dead?.end({ timeout: 0 }).catch(() => {})
+}
+
 // ---------------------------------------------------------------- series
 
 export async function ensureSeries(defs: SeriesDef[]): Promise<void> {
