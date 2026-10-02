@@ -29,7 +29,13 @@ const WARM_BUDGET_MS = 170_000;
  * killed at 300s with nothing to show for it.
  */
 const HARD_STOP_MS = 240_000;
-const FUNDING_PAGES_PER_RUN = 20;
+/**
+ * A full funding page weighs 45 (20 + 1 per 20 rows) against HL's 1000/min
+ * guard; 20 pages stalled each coin ~60s on the guard and starved the rest.
+ * 4 pages still covers the head (one page is ~3 weeks) and walks history
+ * back ~3 months per run.
+ */
+const FUNDING_PAGES_PER_RUN = 4;
 
 export type WarmResult = { from?: string; to?: string; tfs: number; fundingFrom?: string | null };
 

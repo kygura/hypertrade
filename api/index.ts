@@ -14,6 +14,13 @@ import { perpRoutes } from "../src/server/routes/perp.js";
 import { routinesRoutes } from "../src/server/routes/routines.js";
 import { sectorsRoutes } from "../src/server/routes/sectors.js";
 
+// Fluid compute shares one process across concurrent requests, and Node exits
+// on an unhandled rejection, taking every in-flight request with it. Log it
+// instead; postgres errors carry the failing SQL on `query`.
+process.on("unhandledRejection", (err) => {
+  console.error("[unhandledRejection]", err, (err as { query?: string })?.query ?? "");
+});
+
 const app = new Hono({ strict: false }).basePath("/api");
 
 // Auth gate first: everything mounted below is protected by default.
