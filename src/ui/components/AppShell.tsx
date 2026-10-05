@@ -22,6 +22,8 @@ const NAV = [
   { to: '/strategies', label: 'ENGINE', tab: 'ENGIN', glyph: '⚙' },
   // Read-only LLM analyst (SPEC.md "Analyst"); a seventh cell on mobile.
   { to: '/analyst', label: 'ANALYST', tab: 'ASK', glyph: '?' },
+  // Agentic portfolio desk (SPEC.md "Desk"): agent team, governor, paper book.
+  { to: '/desk', label: 'DESK', tab: 'DESK', glyph: '◎' },
 ]
 
 function isActive(pathname: string, to: string): boolean {

@@ -59,6 +59,73 @@ derived from them, the setup ledger, the session protocol and the gates that
 must clear before a fee is paid. The journal that enforces it is T13–T15 in
 `TASKS.md`.
 
+## Desk (optional)
+
+`/desk` is an agentic portfolio desk: a portfolio-manager agent that runs a
+team of specialist agents, answers market questions, proposes and manages
+trades, and alerts you. Code: `src/server/desk/*`, `src/server/routes/desk.ts`,
+`src/ui/pages/Desk.tsx`, `scripts/desk-worker.ts`. Needs
+`db/migrations/003_desk.sql` and any analyst provider key (it reuses the
+analyst's model configuration).
+
+**The team.** The PM (`agents.ts`) calls `consult_specialists` to run several
+specialists in parallel, or `spawn_agent` to start an ad-hoc analyst with a
+mandate and a subset of the read tools. Roster (`prompts.ts`):
+
+| id | role | tools |
+|---|---|---|
+| `flows` | derivatives & flows | `flow_diagnostics`, `market_breadth`, `funding_history`, `price_structure`, HL markets, metrics |
+| `macro` | macro, liquidity & fiscal | `macro_dashboard` (FRED net liquidity, rates, dollar, credit, VIX), web search |
+| `news` | news & geopolitics | briefing, sectors, web search |
+| `onchain` | cycle & on-chain | `cycle_regime` (hl-cycles), metrics, web search |
+| `risk` | risk officer | `portfolio`, `desk_history`, levels, flows |
+| `narratives` | sector rotation | sectors, breadth, markets, flows, web search |
+
+`flow_diagnostics` (`analytics.ts`) is the deterministic core of "is this
+rally a bull trap or real flow": price vs OI change (new longs, short
+covering, liquidation, spot-led), funding z-score vs 30 days, perp premium,
+volume vs the prior window, the share of volume on bars closing with the
+move, and extension, rolled into a 0–100 trap score with each component's
+reason. OI history comes from the collector's `hl.oi.<COIN>` snapshots.
+
+**Acting.** Only the PM holds `propose_trade`, `propose_exit` and
+`send_alert`. A proposal names side, stop, target and `riskPct`; the
+governor (`governor.ts`) computes size from equity and the stop at the live
+mark and enforces the limits (per-trade and open risk, gross and per-coin
+leverage, reward:risk, stop distance, daily loss, one position per coin,
+kill switch). It runs again at execution, so a late approval is checked
+against current prices. `DESK_APPROVAL=manual` queues every entry for you
+(Desk page or Telegram buttons); `auto` (default) executes what the governor
+passes. Exits never wait. The venue is a paper book (`paper.ts`: mark fills
+with slippage and taker fees, stops/targets settled against 5m highs and
+lows). **Live Hyperliquid execution is not wired**: the `Broker` interface in
+`paper.ts` is the seam for it. `DESK_WATCH_ADDRESS` monitors a real
+Hyperliquid account read-only (positions, stops, equity), with no keys.
+
+**Asking.** `POST /api/desk/ask {question, history?, act?}` streams the run
+(SSE). Asks are analysis-only unless `act` is set ("let the desk act" on the
+page). Each run is bounded: 8 agents, 3 spawns, 10 PM rounds, 6 per
+specialist, 3 proposals, 3 alerts, 240 s.
+
+**Watching.** `tick()` (`watch.ts`) settles paper stops, checks the day-loss
+limit, and evaluates triggers: 1h/4h moves, funding extremes, 4h OI surges,
+positions near their stop or without one, breadth shocks. Each alerts once
+per 3h; a trigger (or the scheduled review, `DESK_REVIEW_HOURS`) wakes the
+team for a cycle, capped by `DESK_MAX_CYCLES_PER_DAY` and
+`DESK_CYCLE_COOLDOWN_MIN`. It runs from `collect.yml`'s `desk` job every 15
+minutes (set the repo variable `DESK_ENABLED=true`), or every minute from
+`bun run desk:worker` on any always-on machine.
+
+**Alerts and control.** Telegram (`DESK_TELEGRAM_BOT_TOKEN`,
+`DESK_TELEGRAM_CHAT_ID`): alerts with Approve/Reject buttons, plus `/status`,
+`/pending`, `/approve <id>`, `/reject <id>`, `/kill`, `/resume`, and `/ask`
+(worker only). Use the worker's polling, or set
+`DESK_TELEGRAM_WEBHOOK_SECRET` and register
+`${APP_URL}/api/desk/telegram` with `setWebhook` (`secret_token` = that
+secret). Discord (`DESK_DISCORD_WEBHOOK_URL`) and a generic JSON webhook
+(`DESK_ALERT_WEBHOOK_URL`) also work. Every alert is stored and shown on the
+page. All `DESK_*` settings are listed in `.env.example`.
+
 ## Strategy engine (optional)
 
 The `/strategies`, `/decisions` and `/governor` pages talk to the hyperion core

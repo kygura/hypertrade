@@ -86,6 +86,11 @@ async function post<T>(body: { type: string } & Record<string, unknown>, fetchFn
   return json;
 }
 
+/** Any info request, under the same weight guard and retry as the typed fetchers. */
+export function hlInfo<T>(body: { type: string } & Record<string, unknown>, fetchFn: typeof fetch = fetch): Promise<T> {
+  return post<T>(body, fetchFn);
+}
+
 const num = (s: string | null | undefined): number | null => {
   if (s == null || s === "") return null;
   const n = Number(s);

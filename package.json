@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "bun run scripts/dev-api.ts",
+    "desk:worker": "bun run scripts/desk-worker.ts",
     "build": "bun run typecheck && vite build",
     "test": "bun test src",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
