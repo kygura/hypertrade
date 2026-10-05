@@ -1,3 +1,4 @@
+import type { MarketRef } from "./governor.js";
 import type { Sizing, TradeProposal, AccountState, Position, Side } from "./types.js";
 import type { DeskStore, PaperFill, PaperPosition } from "./store.js";
 
@@ -17,9 +18,17 @@ export interface ExecutionResult {
 
 export interface Broker {
   readonly venue: string;
+  /** True when orders reach a real exchange (testnet included). */
+  readonly live: boolean;
+  /** The venue's own market, when its marks differ from the analysis data (testnet). */
+  market?(coin: string): Promise<MarketRef | null>;
   account(marks: Map<string, number>, now: Date): Promise<AccountState>;
   open(p: TradeProposal, sizing: Sizing, proposalId: string, now: Date): Promise<ExecutionResult>;
   exit(coin: string, size: number, markPx: number, reason: string, proposalId: string | null, now: Date): Promise<ExecutionResult>;
+  /** Paper only: settle stops/targets locally (a live venue holds them on the exchange). */
+  settle?(ranges: Map<string, { low: number; high: number }>, now: Date): Promise<Array<{ coin: string; kind: "stop" | "target"; result: ExecutionResult }>>;
+  /** Paper only. */
+  reset?(): Promise<void>;
 }
 
 interface PaperBook {
@@ -45,6 +54,7 @@ export function protectiveHit(p: Pick<PaperPosition, "side" | "stopPx" | "tpPx">
 
 export class PaperBroker implements Broker {
   readonly venue = "paper";
+  readonly live = false;
   constructor(
     private readonly store: DeskStore,
     private readonly opts: { startingEquity: number; slippage: number; takerFee: number },

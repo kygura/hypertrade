@@ -98,9 +98,24 @@ against current prices. `DESK_APPROVAL=manual` queues every entry for you
 (Desk page or Telegram buttons); `auto` (default) executes what the governor
 passes. Exits never wait. The venue is a paper book (`paper.ts`: mark fills
 with slippage and taker fees, stops/targets settled against 5m highs and
-lows). **Live Hyperliquid execution is not wired**: the `Broker` interface in
-`paper.ts` is the seam for it. `DESK_WATCH_ADDRESS` monitors a real
-Hyperliquid account read-only (positions, stops, equity), with no keys.
+lows). `DESK_WATCH_ADDRESS` monitors a real Hyperliquid account read-only
+(positions, stops, equity), with no keys.
+
+**Live on Hyperliquid testnet** (`hl/`): set `DESK_VENUE=hl-testnet` and
+`DESK_HL_SECRET_KEY` to an API wallet key created at
+app.hyperliquid-testnet.xyz/API (it can trade but not withdraw), plus
+`DESK_HL_ACCOUNT` = the account it trades for. An entry is one signed
+`normalTpsl` action: an IOC limit 1% through the testnet mark, a
+reduce-only market stop at the proposal's stop and a take-profit at its
+target, all resting on the exchange. If the stop is rejected the position is
+flattened at once. The governor sizes from the testnet account's equity and
+the testnet mark (testnet prices can differ from mainnet's; a stop that is
+on the wrong side of the testnet mark is blocked). Exits are reduce-only and
+cancel the leftover triggers when flat. Signing (`hl/signing.ts`) is
+checked against hyperliquid-python-sdk's published vectors. Mainnet is
+refused; a bad key falls back to paper with a note on the page.
+`DESK_HL_LEVERAGE` (cross, default 3) and `DESK_HL_SLIPPAGE_PCT` (default 1)
+tune the orders.
 
 **Asking.** `POST /api/desk/ask {question, history?, act?}` streams the run
 (SSE). Asks are analysis-only unless `act` is set ("let the desk act" on the

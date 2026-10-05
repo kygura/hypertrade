@@ -130,7 +130,7 @@ An agentic portfolio desk inside the app: a PM agent runs a roster of specialist
 
 - **Models**: the analyst's provider configuration (any vendor; web search on Anthropic), `DESK_MODEL` / `DESK_SPECIALIST_MODEL` overrides; PM effort high, specialists medium.
 - **Governor** (`governor.ts`): every proposal is sized and checked by deterministic rules; re-checked at execution. Agents never set size.
-- **Venue**: a paper book (`paper.ts`). Live Hyperliquid execution is not wired; the `Broker` interface is the seam. A Hyperliquid address can be watched read-only (`DESK_WATCH_ADDRESS`).
+- **Venue**: a paper book (`paper.ts`, default) or Hyperliquid **testnet** (`hl/broker.ts`, `DESK_VENUE=hl-testnet`): entries as one signed `normalTpsl` action (IOC entry + reduce-only stop and take-profit on the exchange), flattened if the stop is rejected; the governor uses the venue's marks and equity. Mainnet is refused. A Hyperliquid address can be watched read-only (`DESK_WATCH_ADDRESS`).
 - **Approval**: `auto` (governor-passed entries execute) or `manual` (entries queue for the operator; Telegram buttons or the page). Exits never wait. Kill switch blocks entries.
 - **Watch tick** (`watch.ts`): paper stops/targets, day-loss limit, deterministic triggers with alerts and cooldowns; wakes the team within a daily cap. From `collect.yml` (`desk` job, `vars.DESK_ENABLED`) or the worker.
 - **Data** (`db/migrations/003_desk.sql`): `desk_runs`, `desk_events`, `desk_proposals`, `desk_paper_positions`, `desk_paper_fills`, `desk_alerts`, `desk_state`.
@@ -138,7 +138,7 @@ An agentic portfolio desk inside the app: a PM agent runs a roster of specialist
 
 ## What is explicitly OUT of scope
 
-- Live order signing and Hyperliquid private (exchange) endpoints. The Desk trades paper; the ENGINE pages only proxy operator actions to the Hyperion core, which owns its own governor and venues.
+- Hyperliquid mainnet execution. The Desk trades paper or testnet only; the ENGINE pages only proxy operator actions to the Hyperion core, which owns its own governor and venues.
 - LLM calls anywhere except the Analyst and the Desk. Multi-user/accounts. Telegram delivery. The Go TUI.
 
 ## Environment variables

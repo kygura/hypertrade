@@ -112,12 +112,15 @@ export function toWatchedAccount(state: unknown, orders: unknown, dayStartEquity
   return { venue: "hyperliquid (watch)", equityUsd: equity, dayPnlUsd: dayStartEquity == null ? 0 : equity - dayStartEquity, positions, available: true };
 }
 
-async function readHlAccount(address: string): Promise<AccountState> {
+export type InfoFn = <T>(body: { type: string } & Record<string, unknown>) => Promise<T>;
+
+/** A Hyperliquid account by address, on whichever network `info` talks to. */
+export async function readHlAccount(address: string, info: InfoFn = hlInfo, venue = "hyperliquid (watch)"): Promise<AccountState> {
   try {
     const [state, orders, portfolio] = await Promise.all([
-      hlInfo<unknown>({ type: "clearinghouseState", user: address }),
-      hlInfo<unknown>({ type: "frontendOpenOrders", user: address }),
-      hlInfo<unknown>({ type: "portfolio", user: address }).catch(() => null),
+      info<unknown>({ type: "clearinghouseState", user: address }),
+      info<unknown>({ type: "frontendOpenOrders", user: address }),
+      info<unknown>({ type: "portfolio", user: address }).catch(() => null),
     ]);
     // Day-start equity from HL's own "day" account-value history when present.
     let dayStart: number | null = null;
@@ -126,9 +129,9 @@ async function readHlAccount(address: string): Promise<AccountState> {
       const day = pf.data.find(([k]) => k === "day")?.[1].accountValueHistory;
       if (day?.length) dayStart = day[0]![1];
     }
-    return toWatchedAccount(state, orders, dayStart);
+    return { ...toWatchedAccount(state, orders, dayStart), venue };
   } catch (err) {
-    return { venue: "hyperliquid (watch)", equityUsd: 0, dayPnlUsd: 0, positions: [], available: false, note: err instanceof Error ? err.message : String(err) };
+    return { venue, equityUsd: 0, dayPnlUsd: 0, positions: [], available: false, note: err instanceof Error ? err.message : String(err) };
   }
 }
 

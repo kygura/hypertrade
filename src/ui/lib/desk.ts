@@ -88,7 +88,12 @@ export interface DeskStatus {
   configured: boolean
   model: { provider: string; label: string; pm: string; specialists: string; webSearch: boolean } | null
   venue: string
-  liveVenue: { available: boolean; note: string }
+  /** True when orders reach Hyperliquid (testnet). */
+  live: boolean
+  /** The Hyperliquid account a live venue trades. */
+  venueAccount: string | null
+  /** Why a requested live venue is not in use (bad key, unsupported network). */
+  venueNote: string | null
   approval: 'manual' | 'auto'
   killSwitch: { on: boolean; reason?: string; at?: string }
   limits: Record<string, number | string>

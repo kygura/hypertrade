@@ -107,7 +107,7 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
       <PanelBody className="flex flex-wrap items-center gap-x-5 gap-y-2 p-3">
         <div className="flex items-center gap-2">
           <span className="text-[13px] text-text-primary font-display tracking-wider">DESK</span>
-          <Badge tone="info">{(status?.venue ?? 'paper').toUpperCase()}</Badge>
+          <Badge tone={status?.live ? 'amber' : 'info'}>{(status?.venue ?? 'paper').toUpperCase()}</Badge>
           {kill && <Badge tone="red">KILL SWITCH</Badge>}
         </div>
         <Stat label="EQUITY" value={desk ? fmtUsd(desk.equityUsd) : '—'} />
@@ -132,9 +132,12 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
           </Button>
         </div>
       </PanelBody>
-      {status && !status.liveVenue.available && (
-        <div className="px-3 pb-2 text-[10px] text-text-secondary">{status.liveVenue.note}.</div>
+      {status?.live && (
+        <div className="px-3 pb-2 text-[10px] text-amber break-all">
+          Live orders on Hyperliquid testnet for {status.venueAccount}. Stops and targets rest on the exchange.
+        </div>
       )}
+      {status?.venueNote && <div className="px-3 pb-2 text-[10px] text-red-text">{status.venueNote}.</div>}
       {confirm && (
         <ConfirmDialog
           title={kill ? 'Resume entries' : 'Kill switch'}
@@ -536,7 +539,7 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
       {closing && (
         <ConfirmDialog
           title={`Close ${closing}`}
-          body="Closes the whole position at the live mark on the desk's venue."
+          body="Closes the whole position at the live mark on the desk's venue (a reduce-only market order on a live venue)."
           confirmLabel="CLOSE"
           onConfirm={() => void close(closing)}
           onCancel={() => setClosing(null)}

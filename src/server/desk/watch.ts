@@ -158,8 +158,9 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
   const { ctxs, marks } = await service.marks();
 
   // Paper stops/targets against each held coin's 5m range since the last tick.
-  const held = await service.store.paperPositions();
-  if (held.length) {
+  // Live venues hold stops on the exchange; only the paper book settles here.
+  const held = service.broker.settle ? await service.store.paperPositions() : [];
+  if (held.length && service.broker.settle) {
     const since = Math.max(state.lastTick ? new Date(state.lastTick).getTime() : t - 15 * MIN, t - 24 * HOUR) - 5 * MIN;
     const ranges = new Map<string, { low: number; high: number }>();
     await Promise.all(

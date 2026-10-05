@@ -1,3 +1,4 @@
+import { addressOf, isPrivateKey } from "./hl/signing.js";
 import type { Confidence } from "./types.js";
 
 // Desk settings from the environment (SPEC.md "Desk", .env.example). Every
@@ -5,7 +6,16 @@ import type { Confidence } from "./types.js";
 // paper only, with small risk, and always behind the governor.
 
 export type Approval = "manual" | "auto";
-export type Venue = "paper";
+export type Venue = "paper" | "hl-testnet";
+
+export interface HlVenueConfig {
+  /** API (agent) wallet private key. Server-side only; never serialized. */
+  secretKey: string;
+  /** Master account the agent wallet trades for. */
+  account: string;
+  leverage: number;
+  slippage: number;
+}
 
 export interface GovernorLimits {
   /** Max percent of equity at risk on one new trade. */
@@ -30,6 +40,10 @@ export interface GovernorLimits {
 
 export interface DeskConfig {
   venue: Venue;
+  /** Set when venue is hl-testnet. */
+  hl?: HlVenueConfig;
+  /** Why the requested venue was not used, if it was not. */
+  venueNote?: string;
   approval: Approval;
   limits: GovernorLimits;
   paperStartingEquity: number;
@@ -76,8 +90,9 @@ function list(v: string | undefined, def: string[]): string[] {
 export function loadDeskConfig(env: Env = process.env): DeskConfig {
   const conf = env.DESK_MIN_CONFIDENCE?.trim().toLowerCase();
   const address = env.DESK_WATCH_ADDRESS?.trim();
+  const venue = resolveVenue(env);
   return {
-    venue: "paper",
+    ...venue,
     approval: env.DESK_APPROVAL?.trim().toLowerCase() === "manual" ? "manual" : "auto",
     limits: {
       maxRiskPct: num(env, "DESK_MAX_RISK_PCT", 0.5, 0.05, 2),
@@ -105,6 +120,32 @@ export function loadDeskConfig(env: Env = process.env): DeskConfig {
     approvalTtlMin: num(env, "DESK_APPROVAL_TTL_MIN", 120, 5, 10_080),
     cyclesUrl: env.DESK_CYCLES_URL?.trim().replace(/\/+$/, "") || undefined,
     appUrl: (env.APP_URL ?? env.DESK_APP_URL)?.trim().replace(/\/+$/, "") || undefined,
+  };
+}
+
+/**
+ * DESK_VENUE: "paper" (default) or "hl-testnet". Mainnet is refused on
+ * purpose; a bad or missing key falls back to paper with a note the status
+ * endpoint shows, so a typo never leaves the desk half-live.
+ */
+function resolveVenue(env: Env): Pick<DeskConfig, "venue" | "hl" | "venueNote"> {
+  const want = env.DESK_VENUE?.trim().toLowerCase() || "paper";
+  if (want === "paper") return { venue: "paper" };
+  if (want !== "hl-testnet") {
+    return { venue: "paper", venueNote: `DESK_VENUE=${want} is not supported (paper or hl-testnet); trading paper` };
+  }
+  const key = env.DESK_HL_SECRET_KEY?.trim();
+  if (!isPrivateKey(key)) return { venue: "paper", venueNote: "DESK_VENUE=hl-testnet needs DESK_HL_SECRET_KEY (an API wallet key); trading paper" };
+  const acct = env.DESK_HL_ACCOUNT?.trim();
+  if (acct && !/^0x[0-9a-fA-F]{40}$/.test(acct)) return { venue: "paper", venueNote: "DESK_HL_ACCOUNT is not an address; trading paper" };
+  return {
+    venue: "hl-testnet",
+    hl: {
+      secretKey: key.startsWith("0x") ? key : `0x${key}`,
+      account: (acct ?? addressOf(key)).toLowerCase(),
+      leverage: num(env, "DESK_HL_LEVERAGE", 3, 1, 20),
+      slippage: num(env, "DESK_HL_SLIPPAGE_PCT", 1, 0.1, 5) / 100,
+    },
   };
 }
 

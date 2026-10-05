@@ -100,7 +100,11 @@ const num = (s: string | null | undefined): number | null => {
 export async function fetchPerpMetaAndCtxs(
   fetchFn: typeof fetch = fetch,
 ): Promise<{ meta: HlRawPerpMeta; ctxs: AssetCtx[] }> {
-  const raw = await post<unknown>({ type: "metaAndAssetCtxs" }, fetchFn);
+  return parseMetaAndCtxs(await post<unknown>({ type: "metaAndAssetCtxs" }, fetchFn));
+}
+
+/** Parses a raw metaAndAssetCtxs payload (any network). Universe order is the asset index. */
+export function parseMetaAndCtxs(raw: unknown): { meta: HlRawPerpMeta; ctxs: AssetCtx[] } {
   const [meta, ctxs] = HlMetaAndAssetCtxsResponseSchema.parse(raw);
   const assetCtxs: AssetCtx[] = meta.universe.map((u, i) => {
     const ctx = ctxs[i]!;

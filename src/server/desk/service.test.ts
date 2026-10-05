@@ -85,7 +85,7 @@ describe("DeskService", () => {
   test("paper PnL: a target fill books profit net of fees", async () => {
     const { service, store } = makeService();
     await service.submitOpen(proposal, null);
-    const settled = await service.broker.settle(new Map([["ETH", { low: 4400, high: 4510 }]]), service.now());
+    const settled = await service.broker.settle!(new Map([["ETH", { low: 4400, high: 4510 }]]), service.now());
     expect(settled[0]!.kind).toBe("target");
     const fill = settled[0]!.result.fills[0]!;
     expect(fill.px).toBe(4500);

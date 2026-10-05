@@ -36,7 +36,7 @@ describe("/desk routes", () => {
     const res = await a.request("/desk/status");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toMatchObject({ configured: true, venue: "paper", approval: "auto", killSwitch: { on: false }, liveVenue: { available: false } });
+    expect(body).toMatchObject({ configured: true, venue: "paper", approval: "auto", killSwitch: { on: false }, live: false, venueAccount: null, venueNote: null });
     expect(body.specialists.map((s: { id: string }) => s.id)).toContain("macro");
   });
 

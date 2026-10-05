@@ -111,7 +111,9 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
           configured: !!pm,
           model: pm ? { provider: pm.id, label: pm.label ?? pm.id, pm: pm.model, specialists: specialist?.model ?? pm.model, webSearch: pm.webSearch } : null,
           venue: s.broker.venue,
-          liveVenue: { available: false, note: "live Hyperliquid execution is not wired; the desk trades its paper book" },
+          live: s.broker.live,
+          venueAccount: s.config.hl?.account ?? null,
+          venueNote: s.config.venueNote ?? null,
           approval,
           killSwitch: kill,
           limits: s.config.limits,
@@ -219,7 +221,9 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
       const parsed = z.object({ confirm: z.literal(true) }).safeParse(await body(c));
       if (!parsed.success) return c.json({ error: "send {confirm: true} to reset the paper book" }, 400);
       try {
-        await service().broker.reset();
+        const b = service().broker;
+        if (!b.reset) return c.json({ error: `the ${b.venue} venue has no paper book to reset` }, 409);
+        await b.reset();
         return c.json({ ok: true });
       } catch (err) {
         return deskError(c, err);

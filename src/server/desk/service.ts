@@ -3,7 +3,8 @@ import type { DeskConfig } from "./config.js";
 import type { MarketData } from "./data.js";
 import { evaluateExit, evaluateOpen, type GovernorContext, type MarketRef } from "./governor.js";
 import type { Alert, AlertAction, Notifier } from "./notify.js";
-import { PaperBroker } from "./paper.js";
+import { HlBroker } from "./hl/broker.js";
+import { PaperBroker, type Broker } from "./paper.js";
 import type { DeskStore } from "./store.js";
 import type { AccountState, AlertLevel, ExitProposal, ProposalRecord, TradeProposal, Verdict } from "./types.js";
 
@@ -26,6 +27,8 @@ export interface DeskDeps {
   data: MarketData;
   notifier: Notifier;
   now?: () => Date;
+  /** Overrides the venue the config selects (tests). */
+  broker?: Broker;
 }
 
 export class DeskService {
@@ -33,7 +36,7 @@ export class DeskService {
   readonly store: DeskStore;
   readonly data: MarketData;
   readonly notifier: Notifier;
-  readonly broker: PaperBroker;
+  readonly broker: Broker;
   private readonly clock: () => Date;
 
   constructor(d: DeskDeps) {
@@ -42,11 +45,15 @@ export class DeskService {
     this.data = d.data;
     this.notifier = d.notifier;
     this.clock = d.now ?? (() => new Date());
-    this.broker = new PaperBroker(d.store, {
-      startingEquity: d.config.paperStartingEquity,
-      slippage: d.config.paperSlippage,
-      takerFee: d.config.limits.takerFee,
-    });
+    this.broker =
+      d.broker ??
+      (d.config.venue === "hl-testnet" && d.config.hl
+        ? new HlBroker({ ...d.config.hl, takerFee: d.config.limits.takerFee })
+        : new PaperBroker(d.store, {
+            startingEquity: d.config.paperStartingEquity,
+            slippage: d.config.paperSlippage,
+            takerFee: d.config.limits.takerFee,
+          }));
   }
 
   now(): Date {
@@ -98,7 +105,8 @@ export class DeskService {
     return {
       limits: this.config.limits,
       account,
-      market: DeskService.findMarket(ctxs, coin),
+      // A live venue is checked against its own marks (testnet prices differ from mainnet).
+      market: this.broker.market ? await this.broker.market(coin) : DeskService.findMarket(ctxs, coin),
       killSwitch: (await this.killSwitch()).on,
       now: this.now(),
     };
