@@ -1,3 +1,4 @@
+import { fmtPct } from '../../../shared/format'
 import type { Sector } from '../../../shared/types'
 import { MomentumBadge } from '../MomentumBadge'
 
@@ -14,6 +15,10 @@ export interface SectorTokenRow {
   dayChangePct: number
   openInterestUsd: number
   funding: number
+  /** Elfa, trailing 24h; absent without a recent sample. */
+  mentions24h?: number
+  share24h?: number
+  mentionsChg24h?: number
 }
 
 export type EnrichedSector = Sector & {
@@ -21,6 +26,10 @@ export type EnrichedSector = Sector & {
   avg_funding: number
   names_matched: number
   tokenRows: SectorTokenRow[]
+  /** Measured attention (Elfa) beside the routine's judged mindshare_score; null without data. */
+  social_mentions_24h?: number | null
+  social_share_24h?: number | null
+  social_as_of?: string | null
 }
 
 type Tier = 'lg' | 'md' | 'sm'
@@ -82,7 +91,14 @@ export function MindshareGrid({
           >
             <span className="text-[12px] uppercase text-text-primary line-clamp-2">{s.label}</span>
             <span className="flex items-end justify-between gap-1">
-              <span className="text-[10px] text-text-secondary tabular">MS {s.mindshare_score.toFixed(2)}</span>
+              <span className="text-[10px] text-text-secondary tabular">
+                MS {s.mindshare_score.toFixed(2)}
+                {s.social_share_24h != null && (
+                  <span title="Share of crypto-social mentions, trailing 24h (Elfa). Measured, unlike MS, which is the routine's judgment.">
+                    {' · '}SOC {fmtPct(s.social_share_24h, { decimals: 1 })}
+                  </span>
+                )}
+              </span>
               <MomentumBadge momentum={s.momentum} />
             </span>
           </button>
