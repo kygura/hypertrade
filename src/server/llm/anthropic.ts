@@ -100,11 +100,16 @@ class AnthropicConversation implements Conversation {
       description: t.description,
       input_schema: t.input_schema,
     }));
-    apiTools.push(
-      current
-        ? { type: "web_search_20260209", name: "web_search", max_uses: this.opts.webSearchMaxUses ?? 5 }
-        : { type: "web_search_20250305", name: "web_search", max_uses: this.opts.webSearchMaxUses ?? 5 },
-    );
+    // When the caller already offers its own web_search (the Exa tool,
+    // EXA_API_KEY set), defer to it instead of also registering Anthropic's
+    // native hosted tool under the same name — the API rejects duplicates.
+    if (!tools.some((t) => t.name === "web_search")) {
+      apiTools.push(
+        current
+          ? { type: "web_search_20260209", name: "web_search", max_uses: this.opts.webSearchMaxUses ?? 5 }
+          : { type: "web_search_20250305", name: "web_search", max_uses: this.opts.webSearchMaxUses ?? 5 },
+      );
+    }
     // "default" fallback routing is first-party only: skip it behind a base-URL override.
     const fallbacks = FALLBACK_MODELS.has(model) && !this.opts.baseURL;
 

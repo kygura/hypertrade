@@ -338,7 +338,7 @@ export const READ_TOOLS: DeskTool[] = [
 ];
 
 /** The analyst's read tools (briefing, sectors, metrics, series, HL markets), reused as-is. */
-const REUSED = new Set(["get_marketstate", "get_sectors", "get_metrics_summary", "get_series", "get_hl_markets"]);
+const REUSED = new Set(["get_marketstate", "get_sectors", "get_metrics_summary", "get_series", "get_hl_markets", "web_search"]);
 export const ANALYST_TOOLS: DeskTool[] = ANALYST_SPECS.filter((s) => REUSED.has(s.name)).map((spec) => ({
   spec,
   kind: "read" as const,

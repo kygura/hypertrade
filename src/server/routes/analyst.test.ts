@@ -53,6 +53,7 @@ const deps: ToolDeps = {
   series: async (id) => [{ ts: "2026-09-01", value: 1 }],
   hlMarkets: async () => ({ fetchedAt: "2026-09-23T00:00:00Z", markets: [] }),
   engine: async () => ({ status: 503, json: { error: "engine not configured" } }),
+  exaSearch: async () => [],
 };
 
 /** Parses an SSE body into [{event, data}] and checks the framing. */

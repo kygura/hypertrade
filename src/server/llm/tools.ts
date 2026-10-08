@@ -27,6 +27,21 @@ export const DEFAULT_METRIC_IDS = [
   "llama.stablecoin_cap_usd",
 ];
 
+/** One Exa search result, trimmed for the model. */
+export interface ExaResult {
+  title: string;
+  url: string;
+  publishedDate: string | null;
+  text: string;
+}
+
+export interface ExaSearchInput {
+  query: string;
+  numResults?: number;
+  recencyDays?: number;
+  category?: "news";
+}
+
 /** Data access the tools need; injectable so tests run without DB/network. */
 export interface ToolDeps {
   marketstateLatest(): unknown;
@@ -38,7 +53,55 @@ export interface ToolDeps {
   engine(rest: string): Promise<EngineResult>;
   /** The Lab tool registry (LAB.md); the analyst only sees its read-only tools. Defaults to the shared registry. */
   lab?: ToolDef[];
+  /** Exa-backed real-time search (web_search tool); only called when EXA_API_KEY is set. */
+  exaSearch(input: ExaSearchInput): Promise<ExaResult[]>;
 }
+
+const EXA_SEARCH_URL = "https://api.exa.ai/search";
+const EXA_TIMEOUT_MS = 15_000;
+const EXA_SNIPPET_CHARS = 1_500;
+
+/** Exa's POST /search (docs.exa.ai), cheapest "Instant" type, trimmed text per result. */
+export async function exaSearch(input: ExaSearchInput, apiKey: string, fetchImpl: typeof fetch = fetch): Promise<ExaResult[]> {
+  const body: Record<string, unknown> = {
+    query: input.query,
+    type: "instant",
+    numResults: input.numResults ?? 5,
+    contents: { text: { maxCharacters: EXA_SNIPPET_CHARS } },
+  };
+  if (input.category) body.category = input.category;
+  if (input.recencyDays) body.startPublishedDate = new Date(Date.now() - input.recencyDays * 86_400_000).toISOString();
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), EXA_TIMEOUT_MS);
+  try {
+    const res = await fetchImpl(EXA_SEARCH_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Exa HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
+    }
+    const json = (await res.json()) as { results?: Array<{ title: string; url: string; publishedDate?: string; text?: string }> };
+    return (json.results ?? []).map((r) => ({
+      title: r.title,
+      url: r.url,
+      publishedDate: r.publishedDate ?? null,
+      text: (r.text ?? "").slice(0, EXA_SNIPPET_CHARS),
+    }));
+  } catch (err) {
+    if (ctrl.signal.aborted) throw new Error(`Exa search timed out after ${EXA_TIMEOUT_MS / 1000}s`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Set when EXA_API_KEY is configured; gates web_search out of TOOL_SPECS entirely otherwise. */
+const EXA_API_KEY = process.env.EXA_API_KEY?.trim();
 
 /** The shared Lab registry: building it connects to nothing (the service is lazy). */
 const LAB_TOOLS = labTools();
@@ -63,6 +126,7 @@ export const defaultToolDeps: ToolDeps = {
   hlMarkets: () => getMarkets(),
   engine: (rest) => engineFetch(rest),
   lab: LAB_TOOLS,
+  exaSearch: (input) => exaSearch(input, EXA_API_KEY ?? ""),
 };
 
 const empty = { type: "object" as const, properties: {}, additionalProperties: false };
@@ -142,6 +206,26 @@ export const TOOL_SPECS: ToolSpec[] = [
       additionalProperties: false,
     },
   },
+  ...(EXA_API_KEY
+    ? [
+        {
+          name: "web_search",
+          description:
+            "Real-time web search (Exa), for anything not in the app's own data: breaking news, policy/regulatory moves, narratives, anything time-sensitive. Returns, per result, title, url, published date and a short text snippet.",
+          input_schema: {
+            type: "object" as const,
+            properties: {
+              query: { type: "string", description: "search query" },
+              num_results: { type: "integer", minimum: 1, maximum: 10, description: "default 5" },
+              days_back: { type: "integer", minimum: 1, maximum: 365, description: "only results published in roughly the last N days" },
+              category: { type: "string", enum: ["news"], description: "restrict to news articles" },
+            },
+            required: ["query"],
+            additionalProperties: false,
+          },
+        },
+      ]
+    : []),
   ...analystLabTools().map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema })),
 ];
 
@@ -158,6 +242,14 @@ const inputs = {
   get_engine_strategies: z.object({}).strict(),
   get_engine_decisions: z
     .object({ limit: z.number().int().min(1).max(20).optional(), strategy: z.string().regex(/^[a-z0-9_]+$/).max(64).optional() })
+    .strict(),
+  web_search: z
+    .object({
+      query: z.string().min(1).max(400),
+      num_results: z.number().int().min(1).max(10).optional(),
+      days_back: z.number().int().min(1).max(365).optional(),
+      category: z.enum(["news"]).optional(),
+    })
     .strict(),
 } as const;
 
@@ -280,6 +372,14 @@ async function dispatch(name: ToolName, input: any, deps: ToolDeps): Promise<Too
       }));
       return { content: clip({ decisions }), summary: `${decisions.length} decisions`, isError: false };
     }
+    case "web_search": {
+      try {
+        const results = await deps.exaSearch({ query: input.query, numResults: input.num_results, recencyDays: input.days_back, category: input.category });
+        return { content: clip({ results }), summary: `${results.length} results for "${input.query}"`, isError: false };
+      } catch (err) {
+        return fail(`web_search failed: ${err instanceof Error ? err.message : String(err)}`, { note: "Web search is unavailable right now; say so rather than guessing." });
+      }
+    }
   }
 }
 
@@ -320,12 +420,24 @@ function engineFail(res: EngineResult): ToolRun {
   return fail(`engine: ${msg}`, { status: res.status, note });
 }
 
-/** Human-readable tool list for the status endpoint and the system prompt. */
+/**
+ * Human-readable tool list for the status endpoint and the system prompt.
+ * `web_search` is already one of TOOL_SPECS when EXA_API_KEY is set (real,
+ * available to any provider); otherwise fall back to the per-provider
+ * `webSearch` flag, which stays true only for Anthropic's own native tool.
+ */
 export function toolCatalog(webSearch: boolean): Array<{ name: string; available: boolean; note?: string }> {
+  const specs = TOOL_SPECS.map((t) => ({ name: t.name, available: true }));
+  if (EXA_API_KEY) return specs;
   return [
-    ...TOOL_SPECS.map((t) => ({ name: t.name, available: true })),
+    ...specs,
     webSearch
-      ? { name: "web_search", available: true, note: "provider-hosted web search" }
-      : { name: "web_search", available: false, note: "only with Anthropic models" },
+      ? { name: "web_search", available: true, note: "Anthropic's native web search" }
+      : { name: "web_search", available: false, note: "set EXA_API_KEY, or use an Anthropic model" },
   ];
+}
+
+/** Whether a real web_search tool is available for this provider: Exa (any provider) or Anthropic's own native tool. */
+export function hasWebSearch(provider: { webSearch: boolean }): boolean {
+  return !!EXA_API_KEY || provider.webSearch;
 }
