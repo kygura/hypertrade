@@ -49,18 +49,21 @@ describe("runSearch", () => {
     }
   }, 20_000);
 
-  test("pure noise: rules with walk-forward and holdout Sharpe both > 1 are rare", () => {
-    // Positive WF and holdout Sharpe on noise is a coin flip per rule, so with
-    // ten rules per run "> 0" is not a bar; > 1 in both is. Measured: 0 of 12 seeds.
+  test("pure noise: the documented save bar passes in at most 1 of 10 seeds", () => {
+    // Save bar (tools.ts, LAB.md): walk-forward Sharpe > 1, holdout Sharpe > 0
+    // and tested, deflated Sharpe ≥ 0.95, stability ≥ 0.5. Without the
+    // deflated Sharpe, the rest passed some top-10 rule in 6 of these 10 seeds.
+    const passes = (r: RuleEvaluation) =>
+      r.walkForward!.sharpe > 1 && r.holdout!.sharpe > 0 && !r.holdout!.untested && (r.deflatedSharpe ?? 0) >= 0.95 && r.sensitivity!.stability >= 0.5;
     let survived = 0;
-    for (const seed of [100, 101, 102, 103, 104]) {
+    for (let seed = 100; seed < 110; seed++) {
       const data = synthetic({ seed, drift: 0 });
       const res = runSearch(cfg(data, { seed }), data);
       expect(res.rules.length).toBeGreaterThan(0);
-      if (res.rules.some((r) => r.support >= 30 && r.walkForward!.sharpe > 1 && r.holdout!.sharpe > 1)) survived++;
+      if (res.rules.some(passes)) survived++;
     }
     expect(survived).toBeLessThanOrEqual(1);
-  }, 20_000);
+  }, 60_000);
 
   test("minDeflatedSharpe filters final rules; omitted = no filter", () => {
     const data = synthetic({ seed: 1, drift: 0.012, days: 1500 });
