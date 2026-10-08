@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { SearchConfigSchema, type LabDataset, type RuleEvaluation, type SearchConfigInput } from "../types.js";
+import { inZoneDays } from "./evaluate.js";
+import { conditionsKey } from "./rules.js";
+import { gauss, mulberry32 } from "./rng.js";
 import { runSearch } from "./search.js";
 import { synthetic } from "./testkit.js";
+import { HOLDOUT_FRAC } from "./validate.js";
 
 const cfg = (data: LabDataset, over: Partial<SearchConfigInput> = {}) =>
   SearchConfigSchema.parse({
@@ -95,6 +99,59 @@ describe("runSearch", () => {
     const feats = flagged.rules.flatMap((r) => r.rule.conditions.map((c) => c.feature));
     expect(feats.some((f) => /^syn:[ac]\|raw\|/.test(f))).toBe(false);
     expect(flagged.featureImportance.some((f) => /^syn:[ac]\|raw\|/.test(f.feature))).toBe(false);
+  });
+
+  test("final rules are distinct families: in-sample Jaccard < 0.8, ≤ 2 rules per anchor condition", () => {
+    const data = synthetic({ seed: 1, drift: 0.012, days: 1500 });
+    const res = runSearch(cfg(data, { trials: 4 }), data);
+    expect(res.rules.length).toBeGreaterThan(3);
+    const searchEnd = data.t.length - Math.floor(data.t.length * HOLDOUT_FRAC);
+    const zones = res.rules.map((r) => inZoneDays(r.rule, data).slice(0, searchEnd));
+    for (let i = 0; i < zones.length; i++) {
+      for (let j = 0; j < i; j++) {
+        let both = 0;
+        let any = 0;
+        for (let k = 0; k < searchEnd; k++) {
+          both += +(zones[i]![k]! && zones[j]![k]!);
+          any += +(zones[i]![k]! || zones[j]![k]!);
+        }
+        expect(both / any, `${res.rules[i]!.text} vs ${res.rules[j]!.text}`).toBeLessThan(0.8);
+      }
+    }
+    const anchors = new Map<string, number>();
+    for (const r of res.rules) for (const c of r.rule.conditions) anchors.set(conditionsKey([c]), (anchors.get(conditionsKey([c])) ?? 0) + 1);
+    expect(Math.max(...anchors.values())).toBeLessThanOrEqual(2);
+  });
+
+  test("the holdout cannot influence what the search picks", () => {
+    // Replace the last 20% (prices and every metric) with fresh noise: the
+    // rules, their order and every search-region number must not move.
+    const data = synthetic({ seed: 1, drift: 0.012, days: 1500 });
+    const n = data.t.length;
+    const searchEnd = n - Math.floor(n * HOLDOUT_FRAC);
+    const rng = mulberry32(99);
+    const scrambled: LabDataset = { ...data, price: [...data.price], metrics: Object.fromEntries(Object.entries(data.metrics).map(([k, v]) => [k, [...v]])) };
+    for (let i = searchEnd; i < n; i++) {
+      scrambled.price[i] = scrambled.price[i - 1]! * (1 + 0.05 * gauss(rng));
+      for (const v of Object.values(scrambled.metrics)) v[i] = 3 * gauss(rng);
+    }
+    const a = runSearch(cfg(data, { trials: 6 }), data);
+    const b = runSearch(cfg(scrambled, { trials: 6 }), scrambled);
+    const pick = (r: RuleEvaluation) => ({
+      rule: r.rule,
+      precision: r.precision,
+      support: r.support,
+      inSample: r.inSample,
+      walkForward: r.walkForward,
+      walkForwardFolds: r.walkForwardFolds,
+      deflatedSharpe: r.deflatedSharpe,
+      sensitivity: r.sensitivity,
+    });
+    expect(b.rules.map(pick)).toEqual(a.rules.map(pick));
+    expect(b.trials).toEqual(a.trials);
+    expect(b.featureImportance).toEqual(a.featureImportance);
+    expect(b.variantsScored).toBe(a.variantsScored);
+    expect(b.rules[0]!.holdout).not.toEqual(a.rules[0]!.holdout);
   });
 
   test("deterministic: same seed, same result", () => {

@@ -26,6 +26,10 @@ const MIN_TRAIN_ROWS = 60;
 const BLEND = 3;
 /** Final candidates scored walk-forward (cost bound). */
 const MAX_CANDIDATES = 400;
+/** Final rules whose in-sample in-zone days overlap this much are one family. */
+const FAMILY_JACCARD = 0.8;
+/** At most this many final rules share one exact condition. */
+const MAX_PER_ANCHOR = 2;
 
 export interface SearchOptions {
   /** Stop starting trials once this much time has passed; still returns. */
@@ -222,13 +226,17 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
     })
     .filter((c) => minDsr == null || (c.dsr ?? 0) >= minDsr)
     .sort((a, b) => b.wf - a.wf || a.conds.length - b.conds.length || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  // Rules with identical in-zone days are one rule; keep the best-ranked.
-  const seen = new Set<number>();
+  // One rule per family, best walk-forward first: a rule whose search-region
+  // in-zone days overlap a kept rule's with Jaccard ≥ FAMILY_JACCARD is a
+  // variant of it, and no single condition anchors more than MAX_PER_ANCHOR
+  // rules. Only days [0, searchEnd) count: the holdout never shapes selection.
   const top: typeof candidates = [];
+  const anchors = new Map<string, number>();
   for (const c of candidates) {
-    const h = sigHash(c.sig);
-    if (seen.has(h)) continue;
-    seen.add(h);
+    const keys = c.conds.map((x) => conditionsKey([x]));
+    if (keys.some((k) => (anchors.get(k) ?? 0) >= MAX_PER_ANCHOR)) continue;
+    if (top.some((k) => jaccard(k.sig, c.sig, split.searchEnd) >= FAMILY_JACCARD)) continue;
+    for (const k of keys) anchors.set(k, (anchors.get(k) ?? 0) + 1);
     top.push(c);
     if (top.length >= config.topK) break;
   }
@@ -262,9 +270,13 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
   };
 }
 
-/** FNV-1a over the signal bytes. */
-function sigHash(sig: Uint8Array): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < sig.length; i++) h = Math.imul(h ^ sig[i]!, 0x01000193) >>> 0;
-  return h;
+/** Jaccard of two 0/1 signals over days [0, end); 1 when both are empty (identical). */
+function jaccard(a: Uint8Array, b: Uint8Array, end: number): number {
+  let both = 0;
+  let any = 0;
+  for (let i = 0; i < end; i++) {
+    both += a[i]! & b[i]!;
+    any += a[i]! | b[i]!;
+  }
+  return any ? both / any : 1;
 }
