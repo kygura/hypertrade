@@ -5,9 +5,24 @@ import { z } from "zod";
 
 // ─── Branch model (SPEC.md "Branch model") ───
 
-export const AllocationSchema = z.object({
+// side/leverage default to long/1 (a spot leg); short or leverage > 1 makes it a
+// perp leg. Refined here rather than on BranchConfigSchema so that one stays a
+// plain ZodObject for its callers.
+export const AllocationSchema = z
+  .object({
+    coin: z.string(),
+    weightPct: z.number(),
+    side: z.enum(["long", "short"]).optional(),
+    leverage: z.number().min(1).max(50).optional(),
+  })
+  .refine((a) => !["USDC", "USDT"].includes(a.coin.toUpperCase()) || (a.side !== "short" && (a.leverage ?? 1) === 1), {
+    message: "stablecoins cannot be short or levered",
+  });
+
+export const DcaSchema = z.object({
   coin: z.string(),
-  weightPct: z.number(),
+  amountUsd: z.number().positive(),
+  every: z.enum(["weekly", "monthly"]),
 });
 
 export const ScenarioAssumptionSchema = z.object({
@@ -31,6 +46,7 @@ export const BranchConfigSchema = z.object({
   allocations: z.array(AllocationSchema),
   rebalance: RebalanceSchema,
   scenario: ScenarioSchema.optional(),
+  dca: z.array(DcaSchema).max(8).optional(),
 });
 
 // ─── Routine contract (SPEC.md "Routine Contract") ───

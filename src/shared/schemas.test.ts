@@ -53,6 +53,32 @@ describe("BranchConfigSchema", () => {
     expect(() => BranchConfigSchema.parse(withScenario({ paths: 0 }))).toThrow();
     expect(() => BranchConfigSchema.parse(withScenario({ paths: 1.5 }))).toThrow();
   });
+
+  test("accepts perp legs and DCA", () => {
+    const cfg = {
+      ...valid,
+      allocations: [{ coin: "SOL", weightPct: 30, side: "long", leverage: 3 }, { coin: "BTC", weightPct: 20, side: "short" }, { coin: "USDC", weightPct: 50 }],
+      dca: [{ coin: "ETH", amountUsd: 250, every: "weekly" }],
+    };
+    expect(BranchConfigSchema.parse(cfg)).toMatchObject(cfg);
+  });
+
+  test("rejects short or levered stablecoins", () => {
+    const withAlloc = (a: Record<string, unknown>) => ({ ...valid, allocations: [a] });
+    expect(() => BranchConfigSchema.parse(withAlloc({ coin: "USDC", weightPct: 100, side: "short" }))).toThrow();
+    expect(() => BranchConfigSchema.parse(withAlloc({ coin: "usdt", weightPct: 100, leverage: 2 }))).toThrow();
+    expect(BranchConfigSchema.parse(withAlloc({ coin: "USDC", weightPct: 100, side: "long", leverage: 1 }))).toBeTruthy();
+  });
+
+  test("rejects leverage outside 1..50 and bad DCA entries", () => {
+    const withAlloc = (a: Record<string, unknown>) => ({ ...valid, allocations: [a] });
+    expect(() => BranchConfigSchema.parse(withAlloc({ coin: "ETH", weightPct: 100, leverage: 0 }))).toThrow();
+    expect(() => BranchConfigSchema.parse(withAlloc({ coin: "ETH", weightPct: 100, leverage: 51 }))).toThrow();
+    const dca = { coin: "ETH", amountUsd: 100, every: "weekly" };
+    expect(() => BranchConfigSchema.parse({ ...valid, dca: [{ ...dca, amountUsd: 0 }] })).toThrow();
+    expect(() => BranchConfigSchema.parse({ ...valid, dca: [{ ...dca, every: "daily" }] })).toThrow();
+    expect(() => BranchConfigSchema.parse({ ...valid, dca: Array(9).fill(dca) })).toThrow();
+  });
 });
 
 describe("MarketStateDataSchema", () => {
