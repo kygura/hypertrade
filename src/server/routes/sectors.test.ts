@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { SectorsDataSchema } from "../../shared/schemas.js";
 import latest from "../../../data/sectors/latest.json" with { type: "json" };
-import dated from "../../../data/sectors/2026-08-30.json" with { type: "json" };
+import { SECTORS_HISTORY } from "../../../data/sectors/index.js";
 import { enrichSector, getSectorsPayload, SOCIAL_MAX_AGE_MS, socialFromObservations, type TokenSocial } from "./sectors.js";
 import type { AssetCtx } from "../../shared/types.js";
 
@@ -27,8 +27,9 @@ describe("seed data", () => {
     expect(() => SectorsDataSchema.parse(latest)).not.toThrow();
   });
 
-  test("dated copy matches latest.json", () => {
-    expect(dated).toEqual(latest);
+  test("latest.json matches the newest dated snapshot", () => {
+    const newest = [...SECTORS_HISTORY].sort((a, b) => (a.date < b.date ? -1 : 1)).at(-1)!;
+    expect(SectorsDataSchema.parse(latest)).toEqual(SectorsDataSchema.parse(newest.data));
   });
 });
 
