@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-10-08T06:00:00Z",
-  "headline": "Rates are the dominant driver: 10Y near multi-decade highs after a September Fed hike, equities still near records, crypto data thin",
-  "tldr": "Research was degraded this run (Hyperliquid API and most live quote feeds unreachable; web-search figures partly conflicting), so levels below are low-confidence. Macro: the Fed hiked to 3.75-4.00% on Sep 16 and an Oct 27-28 follow-up is roughly a coin-flip per prediction markets; the 10Y sits around 5.3%, the highest since 2002. Equities: S&P 500 about 7,770-7,810, near a record, led by AI-linked earnings. Crypto: ETH about $2.7K, BTC reported anywhere from the high $60Ks to mid-$80Ks depending on source. Geopolitics: a new Russia/Iran sanctions law carries an Oct 18 implementation deadline with possible tariffs on large importers of Russian energy. Watch: Oct 18 sanctions deadline, September CPI, Oct 27-28 FOMC. Not financial advice.",
+  "generated_at": "2026-10-08T11:28:00Z",
+  "headline": "Rates remain the dominant driver (10Y ~5.3%, highest since 2002), equities near records; Hyperliquid data is back and shows crypto softening, ETH weakest of the majors",
+  "tldr": "Hyperliquid's API was reachable this run, so crypto levels are now measured: BTC ~$82.5K (-1.5% 24h), ETH ~$2,538 (-1.5% 24h, about 7% below the Oct 5 print in the prior brief), total perp OI ~$12.4B across 178 listed markets. Macro and equities are unchanged from the 06:00 run: Fed funds 3.75-4.00% after the Sep 16 hike, 10Y ~5.27-5.34%, S&P 500 7,773.95 at the Oct 5 close (no Oct 6-7 close found). Oil was reported near $107 in late September amid a US-Iran conflict (stale, low-confidence). Watch: Oct 18 Russia/Iran sanctions deadline, September CPI, Oct 27-28 FOMC. Not financial advice.",
   "domains": [
     {
       "domain": "macro",
@@ -62,22 +62,37 @@
     },
     {
       "domain": "crypto",
-      "summary": "Hyperliquid metaAndAssetCtxs was unreachable from this environment, so perp OI and funding are not reported (last public milestone: platform OI record about $18B on Sep 23, two-sided). Spot: ETH about $2,725 as of Oct 5; BTC reported near $84.8K on Oct 4 by one note, though a market-cap figure in another source implies a much lower price, so treat BTC as low-confidence. Sentiment readings could not be dated.",
+      "summary": "Hyperliquid metaAndAssetCtxs fetched live this run. Perp OI totals about $12.4B (BTC ~$3.29B, ETH ~$2.97B, HYPE ~$1.70B, SOL ~$0.65B, ZEC ~$0.57B); this is below the ~$18B platform OI record cited for Sep 23 (the two figures may be computed differently, so we treat the gap as low-confidence). Funding sits at the 0.00125%/h baseline on BTC and most alts while ETH is slightly negative (-0.0002%/h), so ETH is the one major where shorts are paying less than longs elsewhere; we read that as mild relative weakness. 24h moves are red across the majors (BTC -1.5%, ETH -1.5%, SOL -3.1%, HYPE -3.6%, XRP -3.2%). Spot BTC reports of ~$84-87K from Oct 2 are stale versus the $82.5K HL mark. Spot ETF flows were small and positive for BTC early October, ETH ETFs saw outflows. Fear & Greed, DVOL and stablecoin cap were not retrieved.",
       "signals": [
         {
-          "label": "ETH (Oct 5)",
-          "value": "$2,725",
+          "label": "BTC (HL mark, 24h)",
+          "value": "$82,493 -1.5%",
+          "direction": "down"
+        },
+        {
+          "label": "ETH (HL mark, 24h)",
+          "value": "$2,538 -1.5%",
+          "direction": "down"
+        },
+        {
+          "label": "SOL (HL mark, 24h)",
+          "value": "$113.64 -3.1%",
+          "direction": "down"
+        },
+        {
+          "label": "HL perp OI total",
+          "value": "$12.4B",
+          "direction": "down"
+        },
+        {
+          "label": "BTC funding (HL)",
+          "value": "0.00125%/h",
           "direction": "flat"
         },
         {
-          "label": "BTC (Oct 4, low-confidence)",
-          "value": "$84,800",
-          "direction": "flat"
-        },
-        {
-          "label": "HL platform OI record (Sep 23)",
-          "value": "$18B",
-          "direction": "up"
+          "label": "ETH funding (HL)",
+          "value": "-0.0002%/h",
+          "direction": "down"
         }
       ]
     },
@@ -115,15 +130,15 @@
     }
   ],
   "thesis": {
-    "observe": "The Fed hiked to 3.75-4.00% on Sep 16 with most participants projecting more. The 10Y reached about 5.34% on Oct 5, the highest since 2002, then about 5.27% on Oct 6. The S&P 500 is around 7,770-7,810, near its Aug 13 record close. VIX was 15.31 on Oct 2. ETH was about $2,725 on Oct 5. A Russia/Iran sanctions law has an Oct 18 implementation deadline. Hyperliquid data, September CPI, oil and mega-cap quotes were not retrievable.",
-    "infer": "Equities appear to be pricing earnings growth in AI-linked names as outweighing a sharp rise in long-end yields; we read that as a setup sensitive to any further long-yield move. Consensus is pricing roughly even odds of an October hike; the data gap (no September CPI) limits how far we can diverge from that. Crypto reads as range-bound and idiosyncratic, but source conflicts on BTC mean this is a low-confidence read.",
-    "forecast": "Base case (we lean here, low-confidence given degraded data): range-bound equities near highs while long yields stay elevated and the October FOMC odds drift with incoming data. Tail case (low-confidence): a further long-end yield spike or a hot inflation print forces a repricing of hike odds and a volatility jump, with risk skews toward long-duration tech. A second tail case (low-confidence): tariff implementation under the Oct 18 sanctions deadline broadens into a trade shock. Consensus is pricing a split decision in October; we read the risk as dependent on September CPI, which we could not verify.",
+    "observe": "The Fed hiked to 3.75-4.00% on Sep 16. The 10Y was about 5.31% at the Oct 5 close (5.34% intraday high, 5.27% on Oct 6). The S&P 500 closed at 7,773.95 on Oct 5. On Hyperliquid, BTC is $82,493 (-1.5% 24h), ETH $2,538 (-1.5%), SOL $113.64 (-3.1%), HYPE $86.01 (-3.6%); perp OI totals about $12.4B; ETH funding is slightly negative while BTC funding sits at baseline. A Russia/Iran sanctions law has an Oct 18 deadline. September CPI, Oct 6-7 closes, oil, gold and mega-cap quotes were not retrievable.",
+    "infer": "Crypto appears to be softening ahead of, rather than alongside, the equity market, which is still near records; we read that as crypto being more sensitive to the 10Y at ~5.3% than AI-led equities are. Consensus is pricing roughly even odds of an October hike; the missing September CPI limits how far we diverge. Lower measured OI than the Sep 23 record is consistent with de-risking, but the metric difference makes this low-confidence.",
+    "forecast": "Base case (we lean here, low-confidence): range-bound-to-soft crypto while long yields stay elevated, with equities near highs. Tail case (low-confidence): a further long-end yield spike or hot CPI forces a repricing of hike odds, and risk skews toward a sharper leg down in high-beta alts and long-duration tech. Second tail case (low-confidence): tariff implementation under the Oct 18 sanctions deadline broadens into a trade shock. Consensus is pricing a split decision in October; we read the risk as hinging on September CPI.",
     "disclaimer": "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything."
   },
   "risks": [
     "Further long-end yield spike (30Y already above 5.7%) pressuring valuations",
     "Hawkish surprise at the Oct 27-28 FOMC or hot September CPI",
     "Tariff escalation tied to the Oct 18 Russia/Iran sanctions deadline or US-Canada/China trade measures",
-    "Data-quality risk: this run lacked Hyperliquid and several live quote feeds, so levels may be stale"
+    "Data-quality risk: equity, oil, gold and mega-cap levels are from Oct 5 or earlier; only Hyperliquid data is live this run"
   ]
 }
