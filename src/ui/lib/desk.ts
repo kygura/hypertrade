@@ -116,7 +116,7 @@ export interface RunRow {
   id: string
   kind: 'ask' | 'cycle'
   question: string
-  status: 'running' | 'done' | 'error'
+  status: 'running' | 'done' | 'error' | 'timeout'
   answer: string | null
   costUsd: number | null
   error: string | null

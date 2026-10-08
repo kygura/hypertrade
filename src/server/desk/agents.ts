@@ -34,6 +34,8 @@ export const PM_MAX_ROUNDS = 10;
 export const SPECIALIST_MAX_ROUNDS = 6;
 export const MAX_AGENTS_PER_RUN = 8;
 export const MAX_SPAWNS_PER_RUN = 3;
+/** Scouts stop this long before the run's own deadline, so the PM always has time left to read their reports and decide. */
+export const PM_RESERVE_MS = 90_000;
 
 export type ProviderRole = "pm" | "specialist";
 export type ProviderFactory = (role: ProviderRole) => LLMProvider | null;
@@ -99,7 +101,8 @@ interface RunState {
   runId: string | null;
   emit(e: DeskEvent): void;
   makeProvider: ProviderFactory;
-  signal: AbortSignal;
+  /** Scouts' deadline: the run's own signal, tightened by PM_RESERVE_MS so a slow scout never costs the PM its own time. */
+  scoutSignal: AbortSignal;
   budget: ToolContext["budget"];
   agents: number;
   spawns: number;
@@ -123,6 +126,8 @@ interface AgentSpec {
   extra?: { specs: ToolSpec[]; run(name: string, input: unknown): Promise<ToolRun> | null };
   maxRounds: number;
   provider: LLMProvider;
+  /** This agent's own deadline: the PM gets the full run signal, scouts get the tighter scoutSignal. */
+  signal: AbortSignal;
 }
 
 /** One agent's tool loop. Never throws: failures end the agent with stop "error". */
@@ -152,7 +157,7 @@ export async function runAgent(spec: AgentSpec, task: string, st: RunState): Pro
       const final = rounds >= spec.maxRounds;
       // Text before a tool round is narration; the report is the last round's text.
       text = "";
-      const res = await conv.step(specs, hooks, { signal: st.signal, final });
+      const res = await conv.step(specs, hooks, { signal: spec.signal, final });
       const u = st.usage.get(spec.provider.model) ?? { input_tokens: 0, output_tokens: 0 };
       u.input_tokens += res.usage.input_tokens;
       u.output_tokens += res.usage.output_tokens;
@@ -187,8 +192,8 @@ export async function runAgent(spec: AgentSpec, task: string, st: RunState): Pro
       conv.addToolResults(results);
     }
   } catch (err) {
-    stop = st.signal.aborted ? "timeout" : "error";
-    st.emit({ type: "error", agent: spec.id, error: st.signal.aborted ? "out of time" : providerError(err) });
+    stop = spec.signal.aborted ? "timeout" : "error";
+    st.emit({ type: "error", agent: spec.id, error: spec.signal.aborted ? "out of time" : providerError(err) });
   }
   st.emit({ type: "agent_done", agent: spec.id, stop, rounds, report: text.slice(0, 8000) });
   return { text, stop, rounds };
@@ -281,12 +286,19 @@ async function runChild(st: RunState, parent: string, id: string, role: string, 
   // tool list when available; agents that should not browse are told so
   // instead, rather than left to skip the tool on their own.
   const sys = webSearch || !hasWebSearch(provider) ? system : `${system}\n\nDo not use web search for this task; work from your data tools.`;
+  const startedAt = Date.now();
   const res = await runAgent(
-    { id, role, parent, system: sys, tools, maxRounds: SPECIALIST_MAX_ROUNDS, provider },
+    { id, role, parent, system: sys, tools, maxRounds: SPECIALIST_MAX_ROUNDS, provider, signal: st.scoutSignal },
     `[current time ${st.service.now().toISOString()}]\n${task}`,
     st,
   );
-  return { id, report: res.text.trim() || "(no report)", stop: res.stop };
+  // A slow scout must never cost the PM its own time: it is cut off at
+  // scoutSignal, well before the run's own deadline, and reports what it has.
+  const report =
+    res.stop === "timeout"
+      ? `Timed out after ${Math.round((Date.now() - startedAt) / 1000)}s${res.text.trim() ? `; partial findings: ${res.text.trim()}` : ""}.`
+      : res.text.trim() || "(no report)";
+  return { id, report, stop: res.stop };
 }
 
 function pmExtra(st: RunState) {
@@ -331,6 +343,8 @@ export interface DeskRunOptions {
   act: boolean;
   makeProvider?: ProviderFactory;
   timeoutMs?: number;
+  /** Overrides PM_RESERVE_MS (tests only). */
+  pmReserveMs?: number;
   signal?: AbortSignal;
   trigger?: unknown;
 }
@@ -363,17 +377,25 @@ export async function runDesk(o: DeskRunOptions, emit: (e: DeskEvent) => void): 
   };
   const flusher = setInterval(() => void flush(), 2000);
 
+  const timeoutMs = o.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), o.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const onOuter = () => ctrl.abort();
   o.signal?.addEventListener("abort", onOuter);
+
+  // Scouts (consult_specialists, spawn_agent) stop PM_RESERVE_MS before the
+  // run's own deadline, in every round, so a slow one never leaves the PM
+  // without time to read reports and decide.
+  const scoutCtrl = new AbortController();
+  const scoutTimer = setTimeout(() => scoutCtrl.abort(), Math.max(0, timeoutMs - (o.pmReserveMs ?? PM_RESERVE_MS)));
+  const scoutSignal = AbortSignal.any([ctrl.signal, scoutCtrl.signal]);
 
   const st: RunState = {
     service,
     runId,
     emit: record,
     makeProvider,
-    signal: ctrl.signal,
+    scoutSignal,
     budget: { proposals: 0, alerts: 0 },
     agents: 1,
     spawns: 0,
@@ -404,6 +426,7 @@ export async function runDesk(o: DeskRunOptions, emit: (e: DeskEvent) => void): 
         extra: pmExtra(st),
         maxRounds: PM_MAX_ROUNDS,
         provider: pmProvider,
+        signal: ctrl.signal,
       },
       task,
       st,
@@ -414,6 +437,7 @@ export async function runDesk(o: DeskRunOptions, emit: (e: DeskEvent) => void): 
     error = err instanceof Error ? err.message : String(err);
   } finally {
     clearTimeout(timer);
+    clearTimeout(scoutTimer);
     clearInterval(flusher);
     o.signal?.removeEventListener("abort", onOuter);
   }
@@ -423,7 +447,7 @@ export async function runDesk(o: DeskRunOptions, emit: (e: DeskEvent) => void): 
   record({ type: "done", runId, stop, usage: total, costUsd });
   await flush();
   await service.store.finishRun(runId, {
-    status: error || stop === "error" ? "error" : "done",
+    status: error || stop === "error" ? "error" : stop === "timeout" ? "timeout" : "done",
     answer: answer || null,
     usage: Object.fromEntries(st.usage),
     costUsd,

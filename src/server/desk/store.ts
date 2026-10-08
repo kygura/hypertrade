@@ -10,7 +10,7 @@ export interface RunRow {
   kind: "ask" | "cycle";
   question: string;
   trigger: unknown;
-  status: "running" | "done" | "error";
+  status: "running" | "done" | "error" | "timeout";
   answer: string | null;
   usage: unknown;
   costUsd: number | null;
@@ -66,7 +66,7 @@ export type NewProposal = Omit<ProposalRecord, "id" | "createdAt" | "decidedBy" 
 export interface DeskStore {
   createRun(kind: RunRow["kind"], question: string, trigger: unknown): Promise<string>;
   appendEvents(runId: string, events: Array<{ seq: number; agent: string; type: string; data: unknown }>): Promise<void>;
-  finishRun(id: string, f: { status: "done" | "error"; answer: string | null; usage: unknown; costUsd: number | null; error: string | null }): Promise<void>;
+  finishRun(id: string, f: { status: "done" | "error" | "timeout"; answer: string | null; usage: unknown; costUsd: number | null; error: string | null }): Promise<void>;
   listRuns(limit: number): Promise<RunRow[]>;
   getRun(id: string): Promise<(RunRow & { events: EventRow[] }) | null>;
   countRunsSince(kind: RunRow["kind"], since: Date): Promise<number>;
@@ -136,7 +136,7 @@ export class PgStore implements DeskStore {
     const rows = events.map((e) => ({ run_id: runId, seq: e.seq, agent: e.agent, type: e.type, data: sql().json(e.data as any) }));
     await sql()`insert into desk_events ${sql()(rows, "run_id", "seq", "agent", "type", "data")} on conflict do nothing`;
   }
-  async finishRun(id: string, f: { status: "done" | "error"; answer: string | null; usage: unknown; costUsd: number | null; error: string | null }) {
+  async finishRun(id: string, f: { status: "done" | "error" | "timeout"; answer: string | null; usage: unknown; costUsd: number | null; error: string | null }) {
     await sql()`update desk_runs set status = ${f.status}, answer = ${f.answer}, usage = ${sql().json((f.usage ?? null) as any)},
       cost_usd = ${f.costUsd}, error = ${f.error}, finished_at = now() where id = ${id}`;
   }
@@ -279,7 +279,7 @@ export class MemoryStore implements DeskStore {
     if (!run) return;
     for (const e of events) run.events.push({ ...e, ts: this.clock().toISOString() });
   }
-  async finishRun(id: string, f: { status: "done" | "error"; answer: string | null; usage: unknown; costUsd: number | null; error: string | null }) {
+  async finishRun(id: string, f: { status: "done" | "error" | "timeout"; answer: string | null; usage: unknown; costUsd: number | null; error: string | null }) {
     const run = this.runs.get(id);
     if (run) Object.assign(run, f, { finishedAt: this.clock().toISOString() });
   }
