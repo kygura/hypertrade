@@ -4,6 +4,8 @@ import type { ToolInputSchema } from "./types.js";
 
 export const CLI_USAGE = `Usage:
   bun run lab tools                         list tools
+  bun run lab sync [--local] [--force]      collect Lab history into Postgres now
+                                            (needs DATABASE_URL; --force refetches full history)
   bun run lab <tool> [--key value ...]      run a tool
                      [--json '{...}']       arguments as one JSON object (merged in order)
                      [--local]              run in-process even when LAB_URL is set
@@ -104,4 +106,20 @@ export function parseArgs(argv: string[], schema?: ToolInputSchema): CliArgs {
     throw new CliUsageError(`unexpected argument: ${a}`);
   }
   return out;
+}
+
+export const SYNC_REMOTE_MESSAGE =
+  "sync has no remote mode: the deployed cron (/api/cron/collect) collects Lab history daily. Run `bun run lab sync --local` with DATABASE_URL set to collect from this machine.";
+export const SYNC_NO_DB_MESSAGE = "sync --local writes to Postgres: set DATABASE_URL (or DATABASE_POSTGRES_URL / POSTGRES_URL)";
+
+/**
+ * `bun run lab sync`: the Lab collector in-process. Remote when LAB_URL is
+ * set without --local (refused: the cron does it); local needs a database.
+ */
+export function syncPlan(cli: CliArgs, env: Record<string, string | undefined>): { ok: true; force: boolean } | { ok: false; message: string } {
+  const unknown = Object.keys(cli.args).filter((k) => k !== "force");
+  if (unknown.length) return { ok: false, message: `sync: unknown option --${unknown[0]}` };
+  if (env.LAB_URL && !cli.local) return { ok: false, message: SYNC_REMOTE_MESSAGE };
+  if (!(env.DATABASE_URL || env.DATABASE_POSTGRES_URL || env.POSTGRES_URL)) return { ok: false, message: SYNC_NO_DB_MESSAGE };
+  return { ok: true, force: cli.args.force === true };
 }

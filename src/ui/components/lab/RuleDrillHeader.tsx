@@ -3,12 +3,27 @@ import { Badge } from '../Badge'
 import { Button } from '../Button'
 import { FiringBadge } from '../FiringBadge'
 import { RuleText } from '../RuleText'
-import { ddTone, fmtPct0, fmtPctSigned, fmtSigned, holdoutGap, signTone, stabWord, wireText, type MetricDef, type RuleEvaluation, type Sensitivity } from '../../lib/lab'
-import { DirectionWord } from './common'
+import {
+  ddTone,
+  fmtPct0,
+  fmtPctSigned,
+  holdoutGap,
+  sharpeCell,
+  sharpeOf,
+  stabWord,
+  verdictBadge,
+  verdictOf,
+  wireText,
+  type MetricDef,
+  type RuleEvaluation,
+  type Sensitivity,
+} from '../../lib/lab'
+import { DirectionWord, DsrValue, SharpeValue, VerdictBadge } from './common'
 
 // RuleDrillHeader — DESIGN.md §10.9. The rule at lg; walk-forward Sharpe is
 // the view's single xl value with holdout right beside it (rule 1) and the
-// gap badge when due; FIRING; direction/asset/horizon; the RAW wire text.
+// gap badge when due, then DSR; the server verdict Badge with its reasons
+// listed; FIRING; direction/asset/horizon; the RAW wire text.
 // Catalogued rules add the IN CATALOGUE stamp and the Danger REMOVE.
 
 export function RuleDrillHeader({
@@ -17,15 +32,18 @@ export function RuleDrillHeader({
   sensitivity,
   savedAt,
   onRemove,
+  trialsN,
 }: {
   ev: RuleEvaluation
   metrics: readonly MetricDef[]
   sensitivity: Sensitivity | null
   savedAt: string | null
   onRemove: () => void
+  /** N of the deflated Sharpe when known (the run's effective trials; 1 for an explicit evaluation). */
+  trialsN?: number | null
 }) {
-  const wf = ev.walkForward?.sharpe ?? null
-  const ho = ev.holdout?.sharpe ?? null
+  const wf = sharpeCell(ev.walkForward)
+  const verdict = verdictOf(ev)
   // No walk-forward → HIT and MAX DD print `—`, never the in-sample numbers in its place.
   const s = ev.walkForward
   const stab = sensitivity ? stabWord(sensitivity.stability) : null
@@ -36,6 +54,7 @@ export function RuleDrillHeader({
           <RuleText rule={ev.rule} metrics={metrics} size="lg" className="text-text-primary break-words" />
         </h1>
         <div className="flex flex-wrap items-center gap-2 text-sm">
+          <VerdictBadge ev={ev} />
           <FiringBadge firing={ev.firingNow} />
           <DirectionWord direction={ev.rule.direction} />
           <span>{ev.rule.asset.toUpperCase()}</span>
@@ -44,16 +63,20 @@ export function RuleDrillHeader({
       </div>
 
       <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2 tabular">
-        <span className="flex items-baseline gap-1.5" title={wf == null ? 'not enough history' : undefined}>
-          <span className={`text-xl ${signTone(wf)}`}>
-            <AnimatedDigits text={fmtSigned(wf)} />
+        <span className="flex items-baseline gap-1.5" title={wf.title}>
+          <span className={`text-xl ${wf.tone}`}>
+            <AnimatedDigits text={wf.text} />
           </span>
           <span className="text-xs text-text-secondary">WF SHARPE</span>
         </span>
-        <span className="flex items-center gap-1.5" title={ho == null ? 'not enough history' : undefined}>
+        <span className="flex items-center gap-1.5">
           <span className="text-xs text-text-secondary">HOLDOUT</span>
-          <span className={`text-base ${signTone(ho)}`}>{fmtSigned(ho)}</span>
-          {holdoutGap(wf, ho) && <Badge tone="amber">HOLDOUT GAP</Badge>}
+          <SharpeValue stats={ev.holdout} className="text-base" />
+          {holdoutGap(sharpeOf(ev.walkForward), sharpeOf(ev.holdout)) && <Badge tone="amber">HOLDOUT GAP</Badge>}
+        </span>
+        <span className="flex items-baseline gap-1.5 text-sm">
+          <span className="text-xs text-text-secondary">DSR</span>
+          <DsrValue dsr={ev.deflatedSharpe} n={trialsN} />
         </span>
         <span className="flex items-baseline gap-1.5 text-sm" title={s == null ? 'not enough history' : undefined}>
           <span className="text-xs text-text-secondary">HIT</span>
@@ -74,6 +97,17 @@ export function RuleDrillHeader({
           )}
         </span>
       </div>
+
+      {verdict && verdict.reasons.length > 0 && (
+        <ul className="text-xs text-text-secondary flex flex-col gap-0.5" aria-label={`verdict ${verdictBadge(verdict.level).label}`}>
+          {verdict.reasons.map((r) => (
+            <li key={r} className="flex gap-1.5">
+              <span aria-hidden="true">·</span>
+              <span>{r}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <p className="text-xs text-text-secondary tabular break-all">RAW {wireText(ev.rule)}</p>
 

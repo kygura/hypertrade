@@ -10,7 +10,7 @@ import { SignalCard } from '../components/lab/SignalCard'
 import { FeatureImportanceList } from '../components/lab/FeatureImportanceList'
 import { LabFooter } from '../components/lab/common'
 import { searchStore, useSearchStore } from '../components/lab/searchStore'
-import { dateIso, DEFAULT_FILTERS, filterRules, readLocal, validateForm, writeLocal, type Direction, type ResultsFilterState, type RuleEvaluation } from '../lib/lab'
+import { dateIso, DEFAULT_FILTERS, effectiveTrials, filterRules, readLocal, validateForm, writeLocal, type Direction, type ResultsFilterState, type RuleEvaluation } from '../lib/lab'
 
 // SEARCH tab — DESIGN.md §10.9. Form (sticky at lg) + the results of the
 // current/last run in this browser; /lab/runs/:runId loads a stored run's
@@ -41,8 +41,8 @@ export function LabSearch() {
     if (runId) {
       if (s.landed?.runId !== runId && !s.busy) void searchStore.loadRun(runId)
     } else if (!s.landed && !s.busy && !s.runLoad) {
-      const last = searchStore.lastRunId()
-      if (last) void searchStore.loadRun(last, true)
+      // This browser's last run, else the newest stored run (after a reload or on a new device).
+      void searchStore.loadLatest()
     }
   }, [runId])
 
@@ -84,6 +84,7 @@ export function LabSearch() {
   const filtered = result ? filterRules(result.rules, filters) : []
   const rankOf = new Map(result?.rules.map((r, i) => [r.id, i + 1]) ?? [])
   const metricDefs = metrics.data ?? []
+  const trialsN = effectiveTrials(result)
 
   let body: React.ReactNode
   if (store.runLoad?.loading && !landed) {
@@ -147,6 +148,7 @@ export function LabSearch() {
                     selected={store.selectedRuleId === ev.id}
                     onOpen={() => openRule(ev, false)}
                     onSave={() => openRule(ev, true)}
+                    trialsN={trialsN}
                   />
                 </li>
               ))}

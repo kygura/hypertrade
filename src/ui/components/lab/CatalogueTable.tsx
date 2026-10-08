@@ -3,12 +3,13 @@ import { Button } from '../Button'
 import { DataTable, type Column } from '../DataTable'
 import { FiringBadge } from '../FiringBadge'
 import { RuleText } from '../RuleText'
-import { fmtSigned, signTone, type CatalogueHealth, type CatalogueListEntry, type MetricDef } from '../../lib/lab'
-import { DirectionWord } from './common'
+import { fmtSigned, sharpeOf, signTone, type CatalogueHealth, type CatalogueListEntry, type MetricDef } from '../../lib/lab'
+import { DirectionWord, SharpeValue, VerdictBadge } from './common'
 
 // CatalogueTable — DESIGN.md §10.9, §4.4 drop order. Ranked by LIVE SHARPE
-// (the "is it still working" column); HOLDOUT and WF are the numbers at
-// save time, printed as a pair. Per-row REMOVE at lg only.
+// (the "is it still working" column); WF and HOLDOUT are the numbers at
+// save time, printed as a pair and kept at every width, with the server
+// verdict Badge in the NAME cell. Per-row REMOVE at lg only.
 
 const liveOk = (e: CatalogueListEntry) => e.live != null && e.live.days >= 30
 
@@ -41,8 +42,11 @@ export function CatalogueTable({
       priority: 1,
       sortValue: (e) => e.name.toLowerCase(),
       render: (e) => (
-        <div className="flex flex-col py-1 min-w-0 max-w-[48ch]">
-          <span className="text-sm text-text-primary truncate">{e.name}</span>
+        <div className="flex flex-col py-1 min-w-0 max-w-[112px] md:max-w-[48ch]">
+          <span className="flex items-center gap-1.5 min-w-0 flex-wrap">
+            <span className="text-sm text-text-primary truncate min-w-0">{e.name}</span>
+            <VerdictBadge ev={e.saved} />
+          </span>
           <RuleText rule={e.rule} metrics={metrics} size="xs" className="text-text-secondary truncate" />
         </div>
       ),
@@ -63,9 +67,25 @@ export function CatalogueTable({
         ),
     },
     {
+      key: 'wf',
+      label: 'WF',
+      priority: 2,
+      align: 'right',
+      sortValue: (e) => sharpeOf(e.saved.walkForward) ?? -Infinity,
+      render: (e) => <SharpeValue stats={e.saved.walkForward} />,
+    },
+    {
+      key: 'holdout',
+      label: 'HOLDOUT',
+      priority: 2,
+      align: 'right',
+      // Rule 2: holdout never sorts anything — no sortValue, so no sort control.
+      render: (e) => <SharpeValue stats={e.saved.holdout} />,
+    },
+    {
       key: 'firing',
       label: 'FIRING',
-      priority: 2,
+      priority: 3,
       render: (e) => {
         const f = firing?.get(e.id)
         return f == null ? <span className="text-text-secondary">—</span> : <FiringBadge firing={f} />
@@ -74,7 +94,7 @@ export function CatalogueTable({
     {
       key: 'health',
       label: 'HEALTH',
-      priority: 2,
+      priority: 3,
       render: (e) =>
         e.flags.length === 0 ? (
           <span className="text-text-secondary">—</span>
@@ -88,22 +108,6 @@ export function CatalogueTable({
             )}
           </span>
         ),
-    },
-    {
-      key: 'holdout',
-      label: 'HOLDOUT',
-      priority: 3,
-      align: 'right',
-      // Rule 2: holdout never sorts anything — no sortValue, so no sort control.
-      render: (e) => <span className={signTone(e.saved.holdout?.sharpe)}>{fmtSigned(e.saved.holdout?.sharpe)}</span>,
-    },
-    {
-      key: 'wf',
-      label: 'WF',
-      priority: 3,
-      align: 'right',
-      sortValue: (e) => e.saved.walkForward?.sharpe ?? -Infinity,
-      render: (e) => <span className={signTone(e.saved.walkForward?.sharpe)}>{fmtSigned(e.saved.walkForward?.sharpe)}</span>,
     },
     {
       key: 'dirhzn',

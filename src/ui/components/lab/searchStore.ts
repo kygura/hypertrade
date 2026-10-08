@@ -9,6 +9,7 @@ import {
   formFromConfig,
   isAbort,
   lab,
+  latestRunId,
   parseWindows,
   readLocalRaw,
   writeLocal,
@@ -165,6 +166,29 @@ export const searchStore = {
       if (err instanceof ApiError && err.status === 401) return
       set({ runLoad: quiet ? null : { id, loading: false, error: errorText(err), offline: err instanceof NetworkError } })
     }
+  },
+
+  /**
+   * Nothing in memory (reload, new device): this browser's last run, else the
+   * newest stored run (lab_list_runs limit 1 → lab_get_run). Quiet: a failure
+   * leaves the tab on its empty state.
+   */
+  async loadLatest(): Promise<void> {
+    const last = readLocalRaw(LAST_RUN_KEY)
+    if (last) {
+      await searchStore.loadRun(last, true)
+      if (state.landed || state.busy) return
+    }
+    set({ runLoad: { id: '', loading: true, error: null, offline: false } })
+    let id: string | null = null
+    try {
+      id = latestRunId(await lab.listRuns(1))
+    } catch {
+      // quiet
+    }
+    if (state.runLoad?.id !== '') return
+    set({ runLoad: null })
+    if (id && id !== last && !state.landed && !state.busy) await searchStore.loadRun(id, true)
   },
 
   lastRunId: () => readLocalRaw(LAST_RUN_KEY),

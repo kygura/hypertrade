@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
+import { Badge } from '../Badge'
 import { SrcTag, type Source } from '../SrcTag'
-import { isStaleDate, type Direction } from '../../lib/lab'
+import { dsrTitle, dsrTone, fmtDsr, isStaleDate, sharpeCell, verdictBadge, verdictOf, type Direction, type PerfStats } from '../../lib/lab'
 
 // Small pieces every /lab surface repeats (DESIGN.md §10.9).
 
@@ -70,4 +71,35 @@ export function Field({ label, error, children, htmlFor }: { label: ReactNode; e
 /** Inline style that outlines an input the server named in a 400 (unlayered input CSS beats utilities). */
 export function invalidStyle(invalid: boolean): CSSProperties | undefined {
   return invalid ? { borderColor: 'var(--color-red)' } : undefined
+}
+
+/** Server verdict as a Badge, reasons in the title; nothing when the evaluation carries none. */
+export function VerdictBadge({ ev, className = '' }: { ev: object | null | undefined; className?: string }) {
+  const v = verdictOf(ev)
+  if (!v) return null
+  const b = verdictBadge(v.level)
+  return (
+    <span className={`inline-flex ${className}`} title={v.reasons.length ? v.reasons.join('\n') : undefined}>
+      <Badge tone={b.tone}>{b.label}</Badge>
+    </span>
+  )
+}
+
+/** A window's Sharpe: signed + toned, `untested` when the window holds no trade, `—` when missing. */
+export function SharpeValue({ stats, className = '' }: { stats: PerfStats | null | undefined; className?: string }) {
+  const c = sharpeCell(stats)
+  return (
+    <span className={`${c.tone} ${className}`} title={c.title}>
+      {c.text}
+    </span>
+  )
+}
+
+/** Deflated Sharpe, 2 decimals, title naming N. */
+export function DsrValue({ dsr, n, className = '' }: { dsr: number | null | undefined; n?: number | null; className?: string }) {
+  return (
+    <span className={`${dsrTone(dsr)} ${className}`} title={dsrTitle(n)}>
+      {fmtDsr(dsr)}
+    </span>
+  )
 }

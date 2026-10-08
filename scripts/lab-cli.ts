@@ -1,8 +1,10 @@
-// bun run lab tools | bun run lab <tool> [--key value ...] [--json '{...}'] [--local] [--pretty]
+// bun run lab tools | bun run lab sync [--local] [--force] | bun run lab <tool> [--key value ...] [--json '{...}'] [--local] [--pretty]
 // Remote (LAB_URL set, no --local): the deployed REST surface with a bearer.
 // Local: the tool registry in-process (LAB_LOCAL=1), source "cli", no deadline
-// unless LAB_SEARCH_DEADLINE_MS is set. Result JSON on stdout, errors on stderr.
-import { CLI_USAGE, CliUsageError, parseArgs } from "../src/server/mcp/cli.js";
+// unless LAB_SEARCH_DEADLINE_MS is set. `sync` runs the Lab history collector
+// in-process against DATABASE_URL (local only; the deployed cron does it
+// remotely). Result JSON on stdout, errors on stderr.
+import { CLI_USAGE, CliUsageError, parseArgs, syncPlan } from "../src/server/mcp/cli.js";
 import { describeTool, ToolInputError, type ToolDef, type ToolInputSchema } from "../src/server/mcp/types.js";
 
 type Listed = { name: string; inputSchema: ToolInputSchema };
@@ -42,6 +44,20 @@ async function localTools(): Promise<ToolDef[]> {
   return labTools();
 }
 
+async function sync(plan: ReturnType<typeof syncPlan>): Promise<unknown> {
+  if (!plan.ok) throw new CliError(plan.message);
+  process.env.LAB_LOCAL = "1";
+  const { collectLab } = await import("../src/server/lab/collect.js");
+  const db = await import("../src/server/db.js");
+  try {
+    const result = await collectLab(db, { force: plan.force });
+    if (!result.ok) process.exitCode = 1;
+    return result;
+  } finally {
+    await db.releaseConnection().catch(() => {});
+  }
+}
+
 async function main(argv: string[]): Promise<unknown> {
   const first = parseArgs(argv);
   if (first.help || !first.command) {
@@ -49,6 +65,8 @@ async function main(argv: string[]): Promise<unknown> {
     if (!first.help) throw new CliError("missing <tool>");
     return undefined;
   }
+  if (first.command === "sync") return sync(syncPlan(first, process.env));
+
   const isRemote = !!process.env.LAB_URL && !first.local;
   const local = isRemote ? null : await localTools();
   const listing = isRemote ? (((await remote("/tools")) as { tools: Listed[] }).tools ?? []) : local!.map(describeTool);
@@ -76,7 +94,7 @@ const pretty = argv.includes("--pretty");
 try {
   const result = await main(argv);
   if (result !== undefined) await write(process.stdout, `${JSON.stringify(result, null, pretty ? 2 : undefined)}\n`);
-  process.exit(0);
+  process.exit(Number(process.exitCode ?? 0));
 } catch (err) {
   const msg = err instanceof CliError || err instanceof CliUsageError ? err.message : err instanceof Error ? (err.stack ?? err.message) : String(err);
   await write(process.stderr, `lab: ${msg}\n`);

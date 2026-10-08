@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CliUsageError, parseArgs } from "./cli.js";
+import { CliUsageError, parseArgs, SYNC_NO_DB_MESSAGE, SYNC_REMOTE_MESSAGE, syncPlan } from "./cli.js";
 import type { ToolInputSchema } from "./types.js";
 
 const schema: ToolInputSchema = {
@@ -63,5 +63,30 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["t", "--json", "[1]"])).toThrow(CliUsageError);
     expect(() => parseArgs(["t", "--json"])).toThrow(CliUsageError);
     expect(() => parseArgs(["t", "extra"])).toThrow("unexpected argument: extra");
+  });
+});
+
+describe("sync", () => {
+  test("parses as a command with --local / --force", () => {
+    const cli = parseArgs(["sync", "--local", "--force"]);
+    expect(cli.command).toBe("sync");
+    expect(cli.local).toBe(true);
+    expect(syncPlan(cli, { DATABASE_URL: "postgres://x" })).toEqual({ ok: true, force: true });
+  });
+
+  test("local by default without LAB_URL; needs a database", () => {
+    expect(syncPlan(parseArgs(["sync"]), { POSTGRES_URL: "postgres://x" })).toEqual({ ok: true, force: false });
+    expect(syncPlan(parseArgs(["sync"]), {})).toEqual({ ok: false, message: SYNC_NO_DB_MESSAGE });
+    expect(syncPlan(parseArgs(["sync", "--local"]), { LAB_URL: "https://x" })).toEqual({ ok: false, message: SYNC_NO_DB_MESSAGE });
+  });
+
+  test("remote is refused: the deployed cron collects", () => {
+    const plan = syncPlan(parseArgs(["sync"]), { LAB_URL: "https://x", DATABASE_URL: "postgres://x" });
+    expect(plan).toEqual({ ok: false, message: SYNC_REMOTE_MESSAGE });
+    expect(SYNC_REMOTE_MESSAGE).toContain("cron");
+  });
+
+  test("unknown options are refused", () => {
+    expect(syncPlan(parseArgs(["sync", "--asset", "BTC"]), { DATABASE_URL: "postgres://x" })).toEqual({ ok: false, message: "sync: unknown option --asset" });
   });
 });

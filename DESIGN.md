@@ -430,7 +430,7 @@ Per-table drop order (P1 = never dropped):
 | Sector tokens (drill-in) | TOKEN, PRICE | 24H% | OI | FUNDING |
 | Rotations list | FROM→TO, CONF | TRIGGER | NOTE (full) | — |
 | MarketState history | DATE, HEADLINE | — | — | — |
-| Lab catalogue (§10.9) | NAME, LIVE SHARPE | FIRING, HEALTH | HOLDOUT, WF, DIR·HZN | LIVE DAYS, SAVED, ORIGIN |
+| Lab catalogue (§10.9) | NAME (+ verdict Badge), LIVE SHARPE | WF, HOLDOUT | FIRING, HEALTH, DIR·HZN | LIVE DAYS, SAVED, ORIGIN |
 | Lab runs (§10.9) | STARTED, ASSET·DIR·HZN | BEST WF SHARPE, RULES | TRIALS, STATUS | METRICS, DURATION, SOURCE |
 | Lab stats by window (§10.9) | all four windows — `.table-scroll`, sticky first column | | | |
 
@@ -1154,7 +1154,7 @@ bookmarkable page and the browser back button steps between them:
 | Path | Tab | Content |
 |---|---|---|
 | `/lab` | — | redirects to `/lab/search` |
-| `/lab/search` | SEARCH | form + results of the current/last run in this browser |
+| `/lab/search` | SEARCH | form + results of the current/last run in this browser; after a reload with no last run, the newest stored run (`lab_list_runs` limit 1 → `lab_get_run`) |
 | `/lab/runs` | RUNS | recent runs list |
 | `/lab/runs/:runId` | SEARCH | the Search tab with that run's config in the form and its results below; header stamp `RUN 7f3a · 2026-10-08 09:12 UTC` |
 | `/lab/catalogue` | CATALOGUE | saved rules, health, live stats |
@@ -1266,7 +1266,9 @@ searching (inputs `disabled`, not hidden).
 `dataRange.from → to`, `HOLDOUT FROM 2025-04-12` (info-toned), feature
 count, `trialsRun/trials` (amber + Badge `PARTIAL` when `trialsRun <
 trials`), `durationMs` as seconds, AgeStamp of the run, then the rank-key
-label. `warnings[]` render in **LabWarnings** directly below: full-width
+label. When the run reports it, `N≈312` follows the trials: the deflated
+Sharpe's N (`effectiveTrials`, else `variantsScored`), `title` explaining
+DSR; absent on older runs. `warnings[]` render in **LabWarnings** directly below: full-width
 strip, `--color-amber-bg`, one row per warning, 6px amber square bullet,
 verbatim text 11px `text-primary` (sentences, so not the uppercase
 StaleBanner idiom).
@@ -1299,8 +1301,8 @@ off, applied client-side to the chosen window). Right-aligned count
 - Row 2 (xs, secondary): direction (word, green/red text), asset, horizon,
   `PAIR`/`SINGLE`, `SrcTag` per distinct provider in the conditions,
   `PRECISION 0.71`.
-- Stat row: 7 mini cells (label xs secondary over value sm primary,
-  tabular; `grid-cols-7` lg, `grid-cols-4` mobile → 2 rows). `WF SHARPE`
+- Stat row: 8 mini cells (label xs secondary over value sm primary,
+  tabular; `grid-cols-8` lg, `grid-cols-4` mobile → 2 rows), `DSR` third. `WF SHARPE`
   (value at base 13px — the rank key is one step louder) and `HOLDOUT`
   are always adjacent and always both present; `—` when `walkForward`/
   `holdout` is null, with `title` `not enough history`. `HOLDOUT GAP`
@@ -1308,6 +1310,17 @@ off, applied client-side to the chosen window). Right-aligned count
   their sign; Sharpe/return green ≥ 0, red < 0; MAX DD red text below
   −20%. `STAB` prints `0.83` + word: `STABLE` ≥ 0.75, `SOFT` 0.5–0.75
   (amber), `FRAGILE` < 0.5 (red) — absent (`—`) until sensitivity is known.
+- **Robustness elements** (shared by SignalCard, RuleDrillHeader,
+  WindowStatsTable, CatalogueTable): `DSR` — `deflatedSharpe`, 2 decimals,
+  beside WF/HOLDOUT, green ≥ 0.95 (the save bar), amber < 0.5, `—` when
+  absent; `title` `probability the walk-forward Sharpe beats what the best
+  of N effective trials would reach by luck`. **Verdict Badge** — the
+  server's `verdict.level`, never computed client-side: `ROBUST` green,
+  `CANDIDATE` amber, `FRAGILE` red, `WEAK` gray, `FAILS HOLDOUT` red;
+  `reasons` in the `title`; nothing renders without a verdict. On the card
+  it leads row 2. **`untested`** — a window with `PerfStats.untested`
+  prints the word `untested` (secondary) instead of `0.00` wherever its
+  Sharpe would be, and never raises `HOLDOUT GAP`.
 - Hover `--color-hover`; selected (the drill you came back from)
   `--color-selected` + 2px left `--color-red-accent` inset.
 
@@ -1373,12 +1386,15 @@ sensitivity → save form (the decision follows the evidence).
 
 - **RuleDrillHeader**: RuleText at lg; the walk-forward Sharpe is the
   view's single xl (`AnimatedDigits` on refresh); holdout at base right
-  beside it with the gap Badge if due; FiringBadge; direction/asset/horizon
+  beside it with the gap Badge if due, then `DSR`; the verdict Badge
+  before FiringBadge, its `reasons` listed (xs secondary) above `RAW`;
+  FiringBadge; direction/asset/horizon
   words; the `RAW` wire text. Catalogued rules add Badge `IN CATALOGUE ·
   SAVED 2026-08-01` and Danger `REMOVE` (Level 2, below).
 - **RuleEquityChart** (§9.1 variant): strategy `--color-equity` 1.5px;
   benchmark (`HOLD BTC`, or `SHORT BTC` for short rules) `--color-bench-
-  btc` 1px; Y-axis growth multiple (`1.84×`); a `ReferenceArea` from
+  btc` 1px; Y-axis growth multiple (`1.84×`) on a **log scale** (`LOG` at
+  the legend's right; non-positive points are gaps); a `ReferenceArea` from
   `dataRange.holdoutFrom` to the end filled `--color-info-bg` with a 10px
   `HOLDOUT` label at its top-left — the one region the search never saw;
   for catalogued rules a 1px dashed vertical reference at `savedAt`
@@ -1394,7 +1410,13 @@ sensitivity → save form (the decision follows the evidence).
   windows at every width (rule 1), so it is the §4.4 escape hatch: inside
   `.table-scroll`, first column sticky (`position: sticky; left: 0;
   bg-panel`), numeric columns 72px. Walk-forward header carries `RANK KEY`
-  in xs beneath it.
+  in xs beneath it. Under SHARPE (`untested` per window when due): `DSR`
+  (walk-forward column only) and `WF FOLDS` — `walkForwardFolds` as a
+  bar sparkline (decoration, green up / red down) + the signed values +
+  `not ranked` (xs), spanning from the walk-forward column; each row only
+  when the field is present. The drill keeps the search's (or save-time)
+  walk-forward, folds, DSR and verdict over the fresh evaluation's N = 1
+  values.
 - **LatestValuesRow**: one row per condition — feature (RuleText style),
   latest value (sm, tabular, primary), operator, threshold, and `✓` green /
   `✗` gray with the word `MET`/`NOT MET` in `title` and visually-hidden
@@ -1442,7 +1464,7 @@ catalogue`), §4.4 drop order:
 
 | P1 (always) | P2 (always) | P3 (md+) | P4 (lg) |
 |---|---|---|---|
-| NAME (rule text as a 10px second line), LIVE SHARPE | FIRING, HEALTH | HOLDOUT, WF (at save), DIR·HZN | LIVE DAYS, SAVED, ORIGIN |
+| NAME (verdict Badge beside it, rule text as a 10px second line; cell max 112px mobile, 48ch md+), LIVE SHARPE | WF, HOLDOUT (at save) | FIRING, HEALTH, DIR·HZN | LIVE DAYS, SAVED, ORIGIN |
 
 `LIVE SHARPE` is the column that answers "is it still working": signed,
 colored, `—` + `title` `n live days` under 30. `HOLDOUT` and `WF` are the

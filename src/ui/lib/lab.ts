@@ -18,6 +18,7 @@ import type {
   SearchResult,
   Sensitivity,
   Transform,
+  VerdictLevel,
 } from '../../server/lab/types'
 import type { RunSummary, StoredRun } from '../../server/lab/store'
 
@@ -45,6 +46,7 @@ export type {
   Sensitivity,
   StoredRun,
   Transform,
+  VerdictLevel,
 }
 
 export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flags: Array<'decayed' | 'overlap'> }
@@ -479,7 +481,7 @@ export function filterRules(rules: readonly RuleEvaluation[], f: ResultsFilterSt
     if (minSharpe == null && maxDd == null && minHit == null) return true
     const s = statsFor(r, f.window)
     if (!s) return false
-    if (minSharpe != null && !(s.sharpe >= minSharpe)) return false
+    if (minSharpe != null && !(sharpeOf(s) != null && s.sharpe >= minSharpe)) return false
     if (maxDd != null && !(s.maxDrawdown >= -Math.abs(maxDd) / 100)) return false
     if (minHit != null && !(s.hitRate != null && s.hitRate >= minHit / 100)) return false
     return true
@@ -704,4 +706,117 @@ export function runKey(r: Pick<RunSummary, 'asset' | 'direction' | 'horizonDays'
 
 export function runStatus(r: Pick<RunSummary, 'status'>): { label: 'OK' | 'FAILED'; tone: 'gray' | 'red' } {
   return r.status === 'error' ? { label: 'FAILED', tone: 'red' } : { label: 'OK', tone: 'gray' }
+}
+
+// ------------------------------------------------------------------ robustness (§10.9 DSR, verdict, untested, folds)
+
+/** A window's Sharpe, or null when the window is missing or `untested` (no trade: its 0 is not a result). */
+export function sharpeOf(s: PerfStats | null | undefined): number | null {
+  if (!s || s.untested === true || !Number.isFinite(s.sharpe)) return null
+  return s.sharpe
+}
+
+/** One Sharpe cell: signed + toned; `untested` (no trade in the window) or `—` (no window) in secondary. */
+export function sharpeCell(s: PerfStats | null | undefined): { text: string; tone: string; title?: string } {
+  if (!s) return { text: '—', tone: 'text-text-secondary', title: 'not enough history' }
+  if (s.untested === true) return { text: 'untested', tone: 'text-text-secondary', title: 'no trade in this window — not tested, not "no edge"' }
+  return { text: fmtSigned(s.sharpe), tone: signTone(s.sharpe) }
+}
+
+/** Server verdict (LAB.md); the UI renders it, never computes it. */
+export type Verdict = NonNullable<RuleEvaluation['verdict']>
+
+const VERDICT_BADGE: Record<VerdictLevel, { label: string; tone: 'green' | 'amber' | 'red' | 'gray' }> = {
+  robust: { label: 'ROBUST', tone: 'green' },
+  candidate: { label: 'CANDIDATE', tone: 'amber' },
+  fragile: { label: 'FRAGILE', tone: 'red' },
+  weak: { label: 'WEAK', tone: 'gray' },
+  fails_holdout: { label: 'FAILS HOLDOUT', tone: 'red' },
+}
+
+/** The evaluation's server verdict when well-formed; null when absent (older runs) or unknown. */
+export function verdictOf(ev: object | null | undefined): Verdict | null {
+  const v = (ev as { verdict?: unknown } | null | undefined)?.verdict as Partial<Verdict> | null | undefined
+  if (!v || typeof v !== 'object' || typeof v.level !== 'string' || !(v.level in VERDICT_BADGE)) return null
+  const reasons = Array.isArray(v.reasons) ? v.reasons.filter((r): r is string => typeof r === 'string') : []
+  return { level: v.level as VerdictLevel, reasons }
+}
+
+export function verdictBadge(level: VerdictLevel): { label: string; tone: 'green' | 'amber' | 'red' | 'gray' } {
+  return VERDICT_BADGE[level]
+}
+
+/** N of the deflated Sharpe for a search: effective (decorrelated) trials when reported, else variants scored. */
+export function effectiveTrials(result: Pick<SearchResult, 'variantsScored' | 'effectiveTrials'> | null | undefined): number | null {
+  const n = result?.effectiveTrials ?? result?.variantsScored ?? null
+  return n != null && Number.isFinite(n) && n > 0 ? n : null
+}
+
+/** `N≈312` (≥ 1000 → `N≈1.2k`). */
+export function fmtTrialsN(n: number): string {
+  return `N≈${n >= 1000 ? `${Number((n / 1000).toPrecision(2))}k` : Math.round(n)}`
+}
+
+export function fmtDsr(dsr: number | null | undefined): string {
+  return dsr == null || !Number.isFinite(dsr) ? '—' : dsr.toFixed(2)
+}
+
+/** DSR ≥ 0.95 is the save bar (green); below 0.5 the edge is as likely luck as not (amber). */
+export function dsrTone(dsr: number | null | undefined): string {
+  if (dsr == null || !Number.isFinite(dsr)) return 'text-text-secondary'
+  if (dsr >= 0.95) return 'text-green'
+  if (dsr < 0.5) return 'text-amber'
+  return 'text-text-primary'
+}
+
+export function dsrTitle(n: number | null | undefined): string {
+  const of = n != null && Number.isFinite(n) ? `the best of ${fmtTrialsN(n).slice(2)} effective trials` : 'the best of N effective trials'
+  return `deflated Sharpe: probability the walk-forward Sharpe beats what ${of} would reach by luck (≥ 0.95 to save)`
+}
+
+/** Per-fold walk-forward Sharpes → bar geometry for a w×h sparkline (zero line at the middle when signs mix). */
+export function foldBars(folds: readonly number[], w: number, h: number): { zeroY: number; bars: Array<{ x: number; y: number; width: number; height: number; positive: boolean }> } {
+  const vals = folds.filter((f) => Number.isFinite(f))
+  if (vals.length === 0) return { zeroY: h, bars: [] }
+  const max = Math.max(0, ...vals)
+  const min = Math.min(0, ...vals)
+  const span = max - min || 1
+  const zeroY = (max / span) * h
+  const slot = w / vals.length
+  const width = Math.max(1, slot - 2)
+  return {
+    zeroY,
+    bars: vals.map((v, i) => {
+      const len = (Math.abs(v) / span) * h
+      return { x: i * slot + (slot - width) / 2, y: v >= 0 ? zeroY - len : zeroY, width, height: Math.max(len, 0.5), positive: v >= 0 }
+    }),
+  }
+}
+
+/** Equity for a log Y axis: non-positive multiples (a wiped-out short) become null — a gap, not a crash. */
+export function logSafeEquity<P extends { strategy: number; benchmark: number }>(equity: readonly P[]): Array<Omit<P, 'strategy' | 'benchmark'> & { strategy: number | null; benchmark: number | null }> {
+  const pos = (v: number) => (Number.isFinite(v) && v > 0 ? v : null)
+  return equity.map((p) => ({ ...p, strategy: pos(p.strategy), benchmark: pos(p.benchmark) }))
+}
+
+/**
+ * The drill's evaluation: a fresh lab_evaluate_rule, with the walk-forward
+ * fields (and the verdict built on them) of the search or save that found the
+ * rule — a fresh evaluation refits an explicit rule, so its deflated Sharpe
+ * has N = 1 and would read undeflated.
+ */
+export function drillEvaluation(fresh: RuleEvaluation | null, base: RuleEvaluation | null): RuleEvaluation | null {
+  if (!fresh) return base
+  if (!base || base.walkForward == null) return { ...fresh, walkForward: fresh.walkForward ?? null }
+  const out: Record<string, unknown> = { ...fresh, walkForward: base.walkForward }
+  for (const k of ['walkForwardFolds', 'deflatedSharpe', 'verdict']) {
+    if (k in base) out[k] = (base as unknown as Record<string, unknown>)[k]
+    else delete out[k]
+  }
+  return out as unknown as RuleEvaluation
+}
+
+/** The newest run to restore on an empty SEARCH tab (lab_list_runs is newest first). */
+export function latestRunId(runs: readonly Pick<RunSummary, 'id'>[] | null | undefined): string | null {
+  return runs?.[0]?.id ?? null
 }

@@ -7,20 +7,29 @@ import {
   DEFAULT_FILTERS,
   DEFAULT_FORM,
   defaultRuleName,
+  drillEvaluation,
+  dsrTitle,
+  dsrTone,
+  effectiveTrials,
   effortHint,
   estimateFeatures,
   fieldRoot,
   filterRules,
   fmtFeature,
+  fmtDsr,
   fmtFeatureValue,
   fmtPctSigned,
   fmtSig,
   fmtSigned,
+  fmtTrialsN,
+  foldBars,
   formFromConfig,
   holdoutGap,
   isStaleDate,
+  latestRunId,
   leanFill,
   liveCell,
+  logSafeEquity,
   metricAvailable,
   parseFeature,
   parseWindows,
@@ -28,14 +37,19 @@ import {
   ruleTextPlain,
   runKey,
   sensitivityTone,
+  sharpeCell,
+  sharpeOf,
   sortPulse,
   stabWord,
   validateForm,
+  verdictBadge,
+  verdictOf,
   wireText,
   type MetricDef,
   type PerfStats,
   type PulseAsset,
   type RuleEvaluation,
+  type SearchResult,
 } from "./lab";
 
 const M: MetricDef[] = [
@@ -251,5 +265,88 @@ describe("runs table", () => {
   });
   test("best WF Sharpe null prints a dash", () => {
     expect(fmtSigned(null)).toBe("—");
+  });
+});
+
+describe("robustness: untested, DSR, verdict, folds", () => {
+  test("untested windows print `untested`, not a Sharpe 0.00, and never raise a gap", () => {
+    expect(sharpeCell(stats({ sharpe: 0, trades: 0, untested: true })).text).toBe("untested");
+    expect(sharpeCell(stats({ sharpe: 1.234 })).text).toBe("+1.23");
+    expect(sharpeCell(null).text).toBe("—");
+    expect(sharpeOf(stats({ sharpe: 0, untested: true }))).toBeNull();
+    expect(holdoutGap(1.4, sharpeOf(stats({ sharpe: 0, untested: true })))).toBe(false);
+  });
+  test("an untested window fails an active MIN SHARPE filter", () => {
+    const r = [ev({ holdout: stats({ sharpe: 0, untested: true }) })];
+    expect(filterRules(r, { ...DEFAULT_FILTERS, window: "ho", minSharpe: "-1" })).toHaveLength(0);
+    expect(filterRules(r, { ...DEFAULT_FILTERS, window: "ho" })).toHaveLength(1);
+  });
+  test("DSR format, tone and title", () => {
+    expect(fmtDsr(0.9712)).toBe("0.97");
+    expect(fmtDsr(null)).toBe("—");
+    expect(fmtDsr(undefined)).toBe("—");
+    expect(dsrTone(0.95)).toBe("text-green");
+    expect(dsrTone(0.4)).toBe("text-amber");
+    expect(dsrTone(0.7)).toBe("text-text-primary");
+    expect(dsrTitle(312)).toContain("best of 312 effective trials");
+    expect(dsrTitle(null)).toContain("best of N effective trials");
+  });
+  test("N prefers effectiveTrials, then variantsScored; nothing when absent", () => {
+    const r = (x: object) => x as unknown as SearchResult;
+    expect(effectiveTrials(r({ variantsScored: 900, effectiveTrials: 312.4 }))).toBe(312.4);
+    expect(effectiveTrials(r({ variantsScored: 900 }))).toBe(900);
+    expect(effectiveTrials(r({}))).toBeNull();
+    expect(effectiveTrials(null)).toBeNull();
+    expect(fmtTrialsN(312.4)).toBe("N≈312");
+    expect(fmtTrialsN(1234)).toBe("N≈1.2k");
+  });
+  test("verdict is read from the server, never computed; bad shapes render nothing", () => {
+    expect(verdictOf(ev({}))).toBeNull();
+    const v = verdictOf({ ...ev({}), verdict: { level: "fails_holdout", reasons: ["holdout Sharpe −0.20", 3] } });
+    expect(v).toEqual({ level: "fails_holdout", reasons: ["holdout Sharpe −0.20"] });
+    expect(verdictOf({ verdict: { level: "great", reasons: [] } })).toBeNull();
+    expect(verdictBadge("robust")).toEqual({ label: "ROBUST", tone: "green" });
+    expect(verdictBadge("candidate").tone).toBe("amber");
+    expect(verdictBadge("fails_holdout").label).toBe("FAILS HOLDOUT");
+    expect(verdictBadge("weak").tone).toBe("gray");
+  });
+  test("fold sparkline geometry", () => {
+    expect(foldBars([], 24, 14).bars).toEqual([]);
+    const { zeroY, bars } = foldBars([1, -1, 0.5], 24, 14);
+    expect(zeroY).toBe(7);
+    expect(bars.map((b) => b.positive)).toEqual([true, false, true]);
+    expect(bars[0]!.y + bars[0]!.height).toBeCloseTo(7);
+    expect(bars[1]!.y).toBe(7);
+    expect(bars[1]!.height).toBeCloseTo(7);
+    expect(foldBars([2, 1], 16, 10).zeroY).toBe(10);
+  });
+  test("log-safe equity nulls non-positive multiples", () => {
+    expect(logSafeEquity([{ t: 1, strategy: 1.2, benchmark: 0 }, { t: 2, strategy: -0.1, benchmark: 0.5 }])).toEqual([
+      { t: 1, strategy: 1.2, benchmark: null },
+      { t: 2, strategy: null, benchmark: 0.5 },
+    ]);
+  });
+  test("drill keeps the search's walk-forward, folds, DSR and verdict over a fresh N = 1 evaluation", () => {
+    const base = ev({ walkForward: stats({ sharpe: 1.5 }), walkForwardFolds: [1, 2], deflatedSharpe: 0.9, verdict: { level: "candidate", reasons: [] } });
+    const fresh = ev({ walkForward: stats({ sharpe: 2 }), walkForwardFolds: [3], deflatedSharpe: 0.99, holdout: stats({ sharpe: 0.4 }), verdict: { level: "robust", reasons: [] } });
+    const out = drillEvaluation(fresh, base)!;
+    expect(out.walkForward?.sharpe).toBe(1.5);
+    expect(out.walkForwardFolds).toEqual([1, 2]);
+    expect(out.deflatedSharpe).toBe(0.9);
+    expect(verdictOf(out)?.level).toBe("candidate");
+    expect(out.holdout?.sharpe).toBe(0.4);
+    // A base stored before these fields existed: the fresh N = 1 values are dropped, not shown as deflated.
+    const old = ev({ walkForward: stats({ sharpe: 1.5 }) });
+    const out2 = drillEvaluation(fresh, old)!;
+    expect("deflatedSharpe" in out2).toBe(false);
+    expect(verdictOf(out2)).toBeNull();
+    // No search walk-forward at all: the fresh evaluation stands.
+    expect(drillEvaluation(fresh, ev({ walkForward: null }))!.deflatedSharpe).toBe(0.99);
+    expect(drillEvaluation(null, base)).toBe(base);
+  });
+  test("latest run to restore", () => {
+    expect(latestRunId([{ id: "b" }, { id: "a" }])).toBe("b");
+    expect(latestRunId([])).toBeNull();
+    expect(latestRunId(undefined)).toBeNull();
   });
 });

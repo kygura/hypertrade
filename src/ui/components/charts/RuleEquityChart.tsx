@@ -1,7 +1,10 @@
+import { useMemo } from 'react'
 import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { logSafeEquity } from '../../lib/lab'
 
 // Rule equity vs its benchmark — DESIGN.md §10.9 (§9.1 variant). Growth
-// multiple on the Y axis; the holdout region (the one stretch the search
+// multiple on a log Y axis (a 40× benchmark no longer flattens the rule;
+// non-positive values become gaps); the holdout region (the one stretch the search
 // never saw) is shaded `--color-info-bg` with a HOLDOUT label; catalogued
 // rules get a dashed SAVED reference (the §9.1 TODAY idiom). Height per §4.5
 // via the wrapper class (220 mobile / 300 lg).
@@ -14,7 +17,8 @@ export interface RuleEquityPoint {
 
 const day = (t: number) => new Date(t).toISOString().slice(0, 10)
 const month = (t: number) => new Date(t).toISOString().slice(0, 7)
-const mult = (v: number) => `${v.toFixed(2)}×`
+const mult = (v: number) => `${v >= 10 ? v.toFixed(0) : Number(v.toPrecision(2))}×`
+const multExact = (v: number | null) => (v == null ? '—' : `${v.toFixed(2)}×`)
 const toMs = (d: string) => Date.parse(d.length === 10 ? `${d}T00:00:00Z` : d)
 
 export function RuleEquityChart({
@@ -28,6 +32,7 @@ export function RuleEquityChart({
   savedAt?: string
   benchmarkLabel: string
 }) {
+  const data = useMemo(() => logSafeEquity(equity), [equity])
   const first = equity[0]?.t
   const last = equity[equity.length - 1]?.t
   const hoMs = toMs(holdoutFrom)
@@ -52,10 +57,13 @@ export function RuleEquityChart({
             <span aria-hidden="true">┆</span> SAVED
           </span>
         )}
+        <span className="ml-auto" title="growth multiple on a log scale">
+          LOG
+        </span>
       </div>
       <div className="h-[220px] lg:h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={equity} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+          <ComposedChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
             <CartesianGrid vertical={false} stroke="var(--color-border-subtle)" strokeDasharray="3 3" />
             <XAxis
               dataKey="t"
@@ -73,11 +81,13 @@ export function RuleEquityChart({
               tick={{ fontSize: 9, fill: 'var(--color-text-secondary)' }}
               stroke="var(--color-border)"
               width={44}
+              scale="log"
               domain={['auto', 'auto']}
+              allowDataOverflow
             />
             <Tooltip
               labelFormatter={(t: number) => day(t)}
-              formatter={(v: number, name: string) => [mult(v), name === 'strategy' ? 'RULE' : benchmarkLabel]}
+              formatter={(v: number, name: string) => [multExact(v), name === 'strategy' ? 'RULE' : benchmarkLabel]}
               contentStyle={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)', fontSize: 11 }}
             />
             {showHoldout && (

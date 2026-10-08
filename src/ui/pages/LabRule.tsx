@@ -15,6 +15,8 @@ import {
   benchmarkLabel,
   dateIso,
   defaultRuleName,
+  drillEvaluation,
+  effectiveTrials,
   fmtSigned,
   isStaleDate,
   lab,
@@ -77,9 +79,12 @@ export function LabRule() {
   const evaluation = useLab(rule ? () => lab.evaluate({ rule, includeEquity: true, ...(slippageBps != null ? { slippageBps } : {}) }) : null, [ruleKey])
   const sensitivity = useLab(rule ? () => lab.sensitivity({ rule, ...(windows ? { windows } : {}), ...(slippageBps != null ? { slippageBps } : {}) }) : null, [ruleKey])
 
-  // lab_evaluate_rule has no walk-forward (no search to refit): the rank key
-  // stays the run's / the save-time value.
-  const ev = evaluation.data ? { ...evaluation.data, walkForward: evaluation.data.walkForward ?? base?.walkForward ?? null } : base
+  // The rank key, its folds, the deflated Sharpe and the verdict stay the
+  // run's / the save-time values: lab_evaluate_rule refits an explicit rule
+  // (N = 1, so its DSR is not deflated for the search that found it).
+  const ev = drillEvaluation(evaluation.data, base)
+  const fromSearch = base?.walkForward != null
+  const trialsN = fromSearch ? effectiveTrials(run.data?.result) : ev?.walkForward ? 1 : null
   const metricDefs = metrics.data ?? []
   const defaultName = useMemo(() => (rule ? defaultRuleName(rule, metricDefs) : ''), [ruleKey, metrics.data]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -146,7 +151,7 @@ export function LabRule() {
 
       <Panel>
         {isStaleDate(dataTo) && <StaleBanner generatedAt={dateIso(dataTo)} thresholdHours={48} noun="data" />}
-        <RuleDrillHeader ev={ev} metrics={metricDefs} sensitivity={sens} savedAt={entry?.savedAt ?? null} onRemove={() => setRemoving(true)} />
+        <RuleDrillHeader ev={ev} metrics={metricDefs} sensitivity={sens} savedAt={entry?.savedAt ?? null} onRemove={() => setRemoving(true)} trialsN={trialsN} />
       </Panel>
 
       <div className="flex flex-col gap-3 lg:grid lg:grid-cols-12 lg:items-start">
@@ -180,7 +185,7 @@ export function LabRule() {
 
           <Panel className="order-4 lg:order-none">
             <PanelHeader title="STATS BY WINDOW" />
-            <WindowStatsTable ev={ev} live={live} catalogued={entry != null} benchmarkLabel={bench} />
+            <WindowStatsTable ev={ev} live={live} catalogued={entry != null} benchmarkLabel={bench} trialsN={trialsN} />
             <LabFooter dataTo={dataTo} slippageBps={slip} className="px-3 py-2" />
           </Panel>
         </div>

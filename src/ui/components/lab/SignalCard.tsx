@@ -9,19 +9,20 @@ import {
   fmtSigned,
   holdoutGap,
   ruleProviders,
-  signTone,
+  sharpeOf,
   stabWord,
   statsFor,
   type MetricDef,
   type RuleEvaluation,
   type StatsWindow,
 } from '../../lib/lab'
-import { DirectionWord, ProviderTag, StatCell } from './common'
+import { DirectionWord, DsrValue, ProviderTag, SharpeValue, StatCell, VerdictBadge } from './common'
 
 // SignalCard — DESIGN.md §10.9. One RuleEvaluation: rank, the rule in our
 // language (the hero), FIRING/FLAT, SAVE; then the meta line; then seven
-// stat cells. WF SHARPE and HOLDOUT always sit side by side (rule 1) and
-// ignore the stats window; HIT, MAX DD and TR/YR follow it.
+// stat cells. WF SHARPE, HOLDOUT and DSR always sit side by side (rule 1) and
+// ignore the stats window; HIT, MAX DD and TR/YR follow it. The server's
+// verdict Badge leads the meta line.
 
 export function SignalCard({
   rank,
@@ -32,6 +33,7 @@ export function SignalCard({
   selected,
   onOpen,
   onSave,
+  trialsN,
 }: {
   rank: number
   ev: RuleEvaluation
@@ -41,11 +43,11 @@ export function SignalCard({
   selected: boolean
   onOpen: () => void
   onSave: () => void
+  /** N of the deflated Sharpe (the run's effective trials), for the DSR title. */
+  trialsN?: number | null
 }) {
   const s = statsFor(ev, window)
-  const wf = ev.walkForward?.sharpe ?? null
-  const ho = ev.holdout?.sharpe ?? null
-  const gap = holdoutGap(wf, ho)
+  const gap = holdoutGap(sharpeOf(ev.walkForward), sharpeOf(ev.holdout))
   const stab = ev.sensitivity ? stabWord(ev.sensitivity.stability) : null
   const pair = ev.rule.conditions.length > 1
 
@@ -85,6 +87,7 @@ export function SignalCard({
       </div>
 
       <div className="text-xs text-text-secondary flex flex-wrap items-center gap-x-1.5 gap-y-1 pl-6">
+        <VerdictBadge ev={ev} />
         <DirectionWord direction={ev.rule.direction} />
         <span>{ev.rule.asset.toUpperCase()}</span>
         <span>·</span>
@@ -99,13 +102,16 @@ export function SignalCard({
         <span className="tabular">PRECISION {ev.precision.toFixed(2)}</span>
       </div>
 
-      <div className="grid grid-cols-4 lg:grid-cols-7 gap-x-3 gap-y-2 pl-6">
-        <StatCell label="WF SHARPE" title={wf == null ? 'not enough history' : undefined}>
-          <span className={`text-base ${signTone(wf)}`}>{fmtSigned(wf)}</span>
+      <div className="grid grid-cols-4 lg:grid-cols-8 gap-x-3 gap-y-2 pl-6">
+        <StatCell label="WF SHARPE">
+          <SharpeValue stats={ev.walkForward} className="text-base" />
         </StatCell>
-        <StatCell label="HOLDOUT" title={ho == null ? 'not enough history' : undefined}>
-          <span className={signTone(ho)}>{fmtSigned(ho)}</span>
+        <StatCell label="HOLDOUT">
+          <SharpeValue stats={ev.holdout} />
           {gap && <Badge tone="amber">HOLDOUT GAP</Badge>}
+        </StatCell>
+        <StatCell label="DSR">
+          <DsrValue dsr={ev.deflatedSharpe} n={trialsN} />
         </StatCell>
         <StatCell label="HIT">{fmtPct0(s?.hitRate)}</StatCell>
         <StatCell label="MAX DD">

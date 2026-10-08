@@ -1,14 +1,16 @@
 import { Badge } from '../Badge'
 import { AgeStamp } from '../state'
-import { shortId, fmtUtcStamp, type SearchResult } from '../../lib/lab'
+import { dsrTitle, effectiveTrials, fmtTrialsN, shortId, fmtUtcStamp, type SearchResult } from '../../lib/lab'
 
 // ResultsHeader — DESIGN.md §10.9. Run id (4 chars, full in title), config,
-// data range, holdout start, features, trials (PARTIAL when cut short),
-// duration, the run's age, then the rank key named aloud (rule 2).
+// data range, holdout start, features, trials (PARTIAL when cut short), the
+// deflated Sharpe's N (`N≈312`, when reported), duration, the run's age, then
+// the rank key named aloud (rule 2).
 
 export function ResultsHeader({ runId, createdAt, result }: { runId: string | null; createdAt: string; result: SearchResult }) {
   const c = result.config
   const partial = result.trialsRun < c.trials
+  const n = effectiveTrials(result)
   return (
     <div className="flex flex-col gap-1 px-3 py-2 border-b border-border-subtle">
       <div className="text-sm tabular flex flex-wrap gap-x-2">
@@ -33,6 +35,12 @@ export function ResultsHeader({ runId, createdAt, result }: { runId: string | nu
           {result.trialsRun}/{c.trials} TRIALS
         </span>
         {partial && <Badge tone="amber">PARTIAL</Badge>}
+        {n != null && (
+          <>
+            <span>·</span>
+            <span title={`effective trials, the N of the deflated Sharpe — ${dsrTitle(n)}`}>{fmtTrialsN(n)}</span>
+          </>
+        )}
         <span>·</span>
         <span>{(result.durationMs / 1000).toFixed(1)} s</span>
         <span>·</span>
