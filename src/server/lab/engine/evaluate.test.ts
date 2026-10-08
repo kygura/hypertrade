@@ -44,7 +44,29 @@ describe("evaluateRule", () => {
     expect(ev.verdict).toEqual({ level: "robust", reasons: [] });
   });
 
-  test("walk-forward by default: quantile-matched refit over 3 folds, absolute thresholds and id kept", () => {
+  test("explicit walk-forward keeps the thresholds fixed: training-region data cannot move a test block", () => {
+    const rule: Rule = { asset: "SYN", direction: "long", horizonDays: 2, conditions: [{ feature: "syn:b|raw|0", op: ">=", threshold: 0 }] };
+    // Shift syn:b before the first test block (day 300): a per-fold quantile
+    // refit would move fold thresholds; fixed thresholds leave the blocks alone.
+    const shifted: LabDataset = { ...data, metrics: { ...data.metrics, "syn:b": data.metrics["syn:b"]!.map((x, i) => (i < 300 ? x + 10 : x)) } };
+    const a = evaluateRule(rule, data, { slippageBps: 10 });
+    const b = evaluateRule(rule, shifted, { slippageBps: 10 });
+    expect(b.inSample).not.toEqual(a.inSample);
+    expect(b.walkForward).toEqual(a.walkForward);
+    expect(b.walkForwardFolds).toEqual(a.walkForwardFolds);
+  });
+
+  test("a walk-forward block with no trade is null (untested), not a Sharpe of 0", () => {
+    // In zone only inside the first test block [300, 600) (a position entered on day 599 would carry into the next).
+    const zone: LabDataset = { ...data, metrics: { ...data.metrics, "syn:b": data.metrics["syn:b"]!.map((_, i) => (i >= 300 && i < 590 ? 1 : -1)) } };
+    const rule: Rule = { asset: "SYN", direction: "long", horizonDays: 2, conditions: [{ feature: "syn:b|raw|0", op: ">=", threshold: 0 }] };
+    const ev = evaluateRule(rule, zone, { slippageBps: 10 });
+    expect(ev.walkForwardFolds).toHaveLength(3);
+    expect(ev.walkForwardFolds![0]).not.toBeNull();
+    expect(ev.walkForwardFolds!.slice(1)).toEqual([null, null]);
+  });
+
+  test("walk-forward by default: fixed thresholds over 3 folds, absolute thresholds and id kept", () => {
     const ev = evaluateRule(planted, data, { slippageBps: 10 });
     // search region 1200 days → 4 blocks of 300; folds test days [300, 1200)
     expect(ev.walkForward!.days).toBe(900);

@@ -153,13 +153,18 @@ export interface RuleEvaluation {
   support: number;
   inSample: PerfStats;
   walkForward: PerfStats | null;
-  /** Sharpe of each walk-forward test block, oldest first (reported, never ranked on); [] without walk-forward. Absent on evaluations stored before it existed. */
-  walkForwardFolds?: number[];
+  /**
+   * Sharpe of each walk-forward test block, oldest first (reported, never
+   * ranked on); null for a block with no trade (untested, not 0); [] without
+   * walk-forward. Absent on evaluations stored before it existed.
+   */
+  walkForwardFolds?: (number | null)[];
   /**
    * Deflated Sharpe (Bailey & López de Prado) of the concatenated walk-forward
    * returns: probability the true Sharpe beats the best of N noise variants,
    * N = the search's effectiveTrials (1 for an explicit rule unless `trials`
-   * is given). Null without walk-forward; absent on evaluations stored before
+   * is given). Null without walk-forward, or when undefined (extreme
+   * skew/kurtosis: the verdict says so); absent on evaluations stored before
    * it existed.
    */
   deflatedSharpe?: number | null;
@@ -243,8 +248,9 @@ export interface SearchResult {
   variantsScored?: number;
   /**
    * Correlation-adjusted number of independent trials, the N the deflated
-   * Sharpe uses: participation ratio of the variants' search-region return
-   * correlations (LAB.md §7), ≤ variantsScored. Absent on runs stored before it existed.
+   * Sharpe uses: the variants clustered greedily, a variant joining a cluster
+   * when its in-zone days overlap the cluster's representative's by ≥ 0.5
+   * (LAB.md §7, trials.ts); ≤ variantsScored. Absent on runs stored before it existed.
    */
   effectiveTrials?: number;
   bestTrial: TrialRecord | null;

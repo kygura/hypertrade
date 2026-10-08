@@ -45,11 +45,12 @@ export function expectedMaxSharpe(trials: number, trialVar: number): number {
  * for a normal). Trials in a rule search are correlated: a search passes the
  * effective number of independent trials (trials.ts), not the raw count.
  */
-export function deflatedSharpe(sr: number, n: number, skew: number, kurt: number, trials: number, trialVar: number): number {
+export function deflatedSharpe(sr: number, n: number, skew: number, kurt: number, trials: number, trialVar: number): number | null {
   if (!Number.isFinite(sr) || n < 3) return 0;
   const sr0 = expectedMaxSharpe(trials, trialVar);
   const den = 1 - skew * sr + ((kurt - 1) / 4) * sr * sr;
-  if (den <= 0) return 0;
+  // Extreme skew/kurtosis: the Sharpe's standard error is undefined, so is the DSR.
+  if (!(den > 0)) return null;
   return normCdf(((sr - sr0) * Math.sqrt(n - 1)) / Math.sqrt(den));
 }
 
@@ -78,7 +79,7 @@ export function moments(x: ArrayLike<number>): { skew: number; kurt: number } {
 
 /**
  * Deflated Sharpe of a daily return track picked as the best of `trials`
- * variants; null with fewer than 4 days. Trial dispersion under the null is
+ * variants; null with fewer than 4 days or when undefined (extreme skew/kurtosis). Trial dispersion under the null is
  * Var(SR) ≈ 1/(T − 1): the empirical spread of trial Sharpes would also count
  * real signal and the overlap between variants.
  */

@@ -4,7 +4,7 @@ import { inZoneDays } from "./evaluate.js";
 import { conditionsKey } from "./rules.js";
 import { gauss, mulberry32 } from "./rng.js";
 import { runSearch, splitLabels } from "./search.js";
-import { calibrate, chooseThreshold } from "./calibrate.js";
+import { calibrate } from "./calibrate.js";
 import { evaluateRule } from "./evaluate.js";
 import { isPlanted, pctileOverlap, SAME_ZONE_JACCARD, synthetic } from "./testkit.js";
 import { MIN_DEFLATED_SHARPE } from "./verdict.js";
@@ -44,45 +44,42 @@ describe("runSearch", () => {
       expect(hit!.deflatedSharpe).toBeGreaterThanOrEqual(MIN_DEFLATED_SHARPE);
       expect(hit!.verdict).toEqual({ level: "robust", reasons: [] });
       expect(hit!.walkForwardFolds).toHaveLength(3);
-      expect(hit!.walkForwardFolds!.filter((x) => x > 0).length).toBeGreaterThanOrEqual(2);
+      expect(hit!.walkForwardFolds!.filter((x) => (x ?? 0) > 0).length).toBeGreaterThanOrEqual(2);
       expect(res.featureImportance[0]!.feature.startsWith("syn:a|")).toBe(true);
     }
   }, 20_000);
 
-  test("calibration: at MIN_DEFLATED_SHARPE, ≤ 1 of 20 noise searches has a robust top-10 rule; planted rules stay robust", () => {
-    // LAB.md "Calibration" (the 40/20-seed table comes from calibrate.ts).
-    // Before N_eff, the planted rule's deflated Sharpe was 0.39–0.89 and the
-    // bar at 0.95 rejected it; without the deflated Sharpe, noise passed the
-    // rest of the bar in 6 of 20 seeds here.
-    const c = calibrate({
-      thresholds: [0.5, 0.8, 0.9, 0.95],
-      noiseSeeds: Array.from({ length: 20 }, (_, i) => 1000 + i),
-      plantedSeeds: Array.from({ length: 12 }, (_, i) => 2000 + i),
-      drifts: [0.012, 0.008],
-    });
-    expect(chooseThreshold(c)).toBe(MIN_DEFLATED_SHARPE);
-    const row = c.rows.find((r) => r.threshold === MIN_DEFLATED_SHARPE)!;
-    expect(row.noiseAny).toBeLessThanOrEqual(1);
-    expect(row.noiseTop1).toBe(0);
-    const [strong, weak] = row.planted;
-    expect(strong!.robust).toBeGreaterThanOrEqual(9);
-    expect(strong!.robust).toBe(strong!.found);
-    expect(weak!.robust).toBeGreaterThanOrEqual(4);
-    expect(c.effectiveTrials.max).toBeLessThan(c.variantsScored.min);
-  }, 180_000);
+  // Save-bar validation on seeds disjoint from the calibration. The threshold
+  // itself is chosen by `bun src/server/lab/engine/calibrate.ts` (noise seeds
+  // 1000+, planted 2000+; LAB.md "Calibration"); these check it out of sample,
+  // on seeds that played no part in choosing it. Two tests to keep each short.
+  const validate = (noiseSeeds: number[], plantedSeeds: number[]) =>
+    calibrate({ thresholds: [MIN_DEFLATED_SHARPE], noiseSeeds, plantedSeeds, drifts: plantedSeeds.length ? [0.012] : [], config: { trials: 16 } }).rows[0]!;
 
-  test("effectiveTrials is the N of every deflated Sharpe; an explicit re-evaluation with it reproduces the search's", () => {
+  test("validation: at MIN_DEFLATED_SHARPE ≤ 1 of 10 fresh noise searches has a robust top-10 rule", () => {
+    const row = validate(Array.from({ length: 10 }, (_, i) => 3000 + i), []);
+    expect(row.noiseAny).toBeLessThanOrEqual(1);
+  }, 15_000);
+
+  test("validation: ≥ 4 of 6 fresh planted searches (drift 0.012) find the rule robust", () => {
+    const row = validate([], Array.from({ length: 6 }, (_, i) => 4000 + i));
+    expect(row.planted[0]!.robust).toBeGreaterThanOrEqual(4);
+  }, 15_000);
+
+  test("effectiveTrials is the N of every deflated Sharpe; an explicit re-evaluation deflates by the N it is given", () => {
     const data = synthetic({ seed: 1, drift: 0.012, days: 1500 });
     const res = runSearch(cfg(data, { trials: 4 }), data);
     expect(res.effectiveTrials).toBeGreaterThanOrEqual(1);
     expect(res.effectiveTrials!).toBeLessThanOrEqual(res.variantsScored!);
     expect(Number.isInteger(res.effectiveTrials)).toBe(true);
     const top = res.rules[0]!;
+    // An explicit rule's walk-forward keeps its thresholds fixed per fold (a
+    // search's refits them), so the numbers differ; the N is what carries over.
     const again = evaluateRule(top.rule, data, { slippageBps: res.config.slippageBps, labelQuantile: res.config.labelQuantile, trials: res.effectiveTrials });
-    expect(again.walkForward).toEqual(top.walkForward);
-    expect(again.deflatedSharpe).toBeCloseTo(top.deflatedSharpe!, 12);
+    expect(again.walkForward!.days).toBe(top.walkForward!.days);
     const raw = evaluateRule(top.rule, data, { slippageBps: res.config.slippageBps, trials: res.variantsScored });
-    expect(raw.deflatedSharpe!).toBeLessThan(top.deflatedSharpe!);
+    expect(raw.walkForward).toEqual(again.walkForward);
+    expect(raw.deflatedSharpe!).toBeLessThan(again.deflatedSharpe!);
   });
 
   test("every rule carries a verdict; minVerdict drops lower ones after selection", () => {

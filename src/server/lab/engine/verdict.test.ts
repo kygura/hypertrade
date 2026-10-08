@@ -28,7 +28,9 @@ describe("verdict", () => {
 
   test("first failing check sets the level, reasons name every failed check with numbers", () => {
     expect(v({ deflatedSharpe: 0.71 })).toEqual({ level: "candidate", reasons: ["deflated Sharpe 0.71 < 0.9"] });
-    expect(v({ deflatedSharpe: null })).toEqual({ level: "candidate", reasons: ["deflated Sharpe not computed"] });
+    // null with a walk-forward: the DSR is undefined (stats.ts); absent (an old evaluation): not computed.
+    expect(v({ deflatedSharpe: null })).toEqual({ level: "candidate", reasons: ["deflated Sharpe undefined (extreme skew/kurtosis)"] });
+    expect(v({ deflatedSharpe: undefined })).toEqual({ level: "candidate", reasons: ["deflated Sharpe not computed"] });
     expect(v({ deflatedSharpe: 0.8999 }).reasons).toEqual(["deflated Sharpe 0.900 < 0.9"]);
     expect(v({ sensitivity: { ...good.sensitivity!, stability: 0.4 }, deflatedSharpe: 0.5 })).toEqual({
       level: "fragile",

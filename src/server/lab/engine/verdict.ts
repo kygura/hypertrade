@@ -5,7 +5,7 @@ import { VERDICT_LEVELS, type RuleEvaluation, type Verdict, type VerdictLevel } 
 //   fails_holdout  holdout missing, untested (no trade) or Sharpe ≤ 0
 //   weak           walk-forward missing or Sharpe ≤ 1
 //   fragile        stability < 0.5 (only when a sensitivity grid is attached)
-//   candidate      deflated Sharpe missing or below MIN_DEFLATED_SHARPE
+//   candidate      deflated Sharpe missing, undefined or below MIN_DEFLATED_SHARPE
 //   robust         everything passes: the save bar
 
 /**
@@ -41,7 +41,8 @@ export function verdictOf(ev: VerdictInput, minDeflatedSharpe = MIN_DEFLATED_SHA
   const st = ev.sensitivity?.stability;
   if (st != null && !(st >= MIN_STABILITY)) failed.push(["fragile", `stability ${below(st, MIN_STABILITY)} < ${MIN_STABILITY}`]);
   const dsr = ev.deflatedSharpe;
-  if (dsr == null) failed.push(["candidate", "deflated Sharpe not computed"]);
+  // With a walk-forward of 4+ days, null is an undefined DSR (stats.ts); absent (old evaluations) is not computed.
+  if (dsr == null) failed.push(["candidate", dsr === null && wf && wf.days >= 4 ? "deflated Sharpe undefined (extreme skew/kurtosis)" : "deflated Sharpe not computed"]);
   else if (!(dsr >= minDeflatedSharpe)) failed.push(["candidate", `deflated Sharpe ${below(dsr, minDeflatedSharpe)} < ${minDeflatedSharpe}`]);
   const reasons = failed.map(([, r]) => r);
   if (st == null) reasons.push("stability not measured (no sensitivity grid)");

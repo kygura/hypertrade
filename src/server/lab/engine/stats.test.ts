@@ -22,7 +22,13 @@ describe("stats", () => {
     expect(expectedMaxSharpe(1000, 0.0004)).toBeGreaterThan(expectedMaxSharpe(10, 0.0004));
     const few = deflatedSharpe(0.06, 2000, 0, 3, 10, 0.0004);
     const many = deflatedSharpe(0.06, 2000, 0, 3, 10_000, 0.0004);
-    expect(many).toBeLessThan(few);
+    expect(many!).toBeLessThan(few!);
+  });
+
+  test("undefined (null), not 0, when skew/kurtosis leave no standard error", () => {
+    // 1 − skew·SR + (kurt − 1)/4·SR² = 1 − 3 + 0.5 < 0
+    expect(deflatedSharpe(1, 100, 3, 3, 1, 0.01)).toBeNull();
+    expect(deflatedSharpe(0.05, 100, 3, 3, 1, 0.01)).not.toBeNull();
   });
 
   test("deflatedSharpeOf: a strong track survives many trials, noise does not", () => {

@@ -52,10 +52,15 @@ export function matchThresholds(ctx: EvalCtx, conds: Condition[], fromEnd: numbe
   });
 }
 
-/** Test-block segments of a rule refitted per fold by quantile matching. */
-export function walkForwardSegments(ctx: EvalCtx, conds: Condition[], split: Split, dirSign: number, slippageBps: number): Segment[] {
+/**
+ * Test-block segments of a rule's walk-forward. `refit` (a search's rules,
+ * whose thresholds were fitted on [0, basisEnd)): each fold's thresholds are
+ * moved by quantile matching to the fold's own training rows. Without it (an
+ * explicit rule): the absolute thresholds as given, in every test block.
+ */
+export function walkForwardSegments(ctx: EvalCtx, conds: Condition[], split: Split, dirSign: number, slippageBps: number, refit = true): Segment[] {
   return split.folds.map((f) => {
-    const fc = matchThresholds(ctx, conds, split.basisEnd, f.purgedEnd);
+    const fc = refit ? matchThresholds(ctx, conds, split.basisEnd, f.purgedEnd) : conds;
     const sig = ctx.signal(fc, f.testFrom - 1, f.testTo);
     return simulate(ctx.pr, positions(sig, dirSign), f.testFrom, f.testTo, slippageBps);
   });

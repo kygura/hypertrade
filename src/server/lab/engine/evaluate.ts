@@ -16,6 +16,11 @@ export interface EvalInCtxOptions {
   labels: Float64Array;
   slippageBps: number;
   walkForward: boolean;
+  /**
+   * Walk-forward thresholds: true (a search's rule) refits them per fold by
+   * quantile matching; false (an explicit rule) keeps them fixed. Default true.
+   */
+  refitThresholds?: boolean;
   /** N for the deflated Sharpe: effective independent trials of the search that found this rule. Default 1. */
   trials?: number;
   /** Configured windows; when set, a sensitivity grid is attached. */
@@ -52,7 +57,7 @@ export function evaluateInCtx(ctx: EvalCtx, rule: Rule, o: EvalInCtxOptions): Ru
     const x = ctx.col(c.feature)[n - 1]!;
     values[c.feature] = Number.isFinite(x) ? x : null;
   }
-  const wf = o.walkForward && split.folds.length ? walkForwardSegments(ctx, rule.conditions, split, dirSign, o.slippageBps) : null;
+  const wf = o.walkForward && split.folds.length ? walkForwardSegments(ctx, rule.conditions, split, dirSign, o.slippageBps, o.refitThresholds ?? true) : null;
 
   const out: RuleEvaluation = {
     id: ruleId(rule),
@@ -62,7 +67,8 @@ export function evaluateInCtx(ctx: EvalCtx, rule: Rule, o: EvalInCtxOptions): Ru
     support,
     inSample: perfStats(t, [inSeg]),
     walkForward: wf ? perfStats(t, wf) : null,
-    walkForwardFolds: wf ? wf.map((s) => sharpeOf(s.ret)) : [],
+    // A block the rule never trades in is untested, not a Sharpe of 0.
+    walkForwardFolds: wf ? wf.map((s) => (s.held.some((h) => h !== 0) ? sharpeOf(s.ret) : null)) : [],
     deflatedSharpe: wf ? deflatedSharpeOf(concatReturns(wf), o.trials ?? 1) : null,
     holdout,
     benchmark: { inSample: perfStats(t, [inBench]), holdout: benchHoldout },
@@ -90,10 +96,10 @@ export interface EvaluateRuleOptions {
   /** Label quantile for precision; default 0.3. */
   labelQuantile?: number;
   /**
-   * Walk-forward over `folds` blocks of the first 80%: the rule's thresholds
-   * are refitted per fold by quantile matching (as in a search). Default: on
-   * when the first fold has enough purged training rows; true on too little
-   * history is refused.
+   * Walk-forward over `folds` blocks of the first 80%, the rule's absolute
+   * thresholds fixed in every test block (nothing is refitted: the rule is
+   * given, not searched). Default: on when the first fold has enough purged
+   * training rows; true on too little history is refused.
    */
   walkForward?: boolean;
   /** Walk-forward folds; default 3. */
@@ -108,8 +114,8 @@ export interface EvaluateRuleOptions {
 
 /**
  * Scores an explicit rule on a dataset: in-sample = first 80% of the range,
- * holdout = last 20%, walk-forward = quantile-matched threshold refit per
- * fold of the first 80%. Thresholds stay absolute (the rule id is unchanged).
+ * holdout = last 20%, walk-forward = the same fixed thresholds on each test
+ * block of the first 80% (a search's rules instead refit per fold, search.ts).
  */
 export function evaluateRule(input: Rule, data: LabDataset, opts: EvaluateRuleOptions): RuleEvaluation {
   const rule = RuleSchema.parse(input);
@@ -135,6 +141,7 @@ export function evaluateRule(input: Rule, data: LabDataset, opts: EvaluateRuleOp
     labels,
     slippageBps: opts.slippageBps,
     walkForward: opts.walkForward ?? canWalk,
+    refitThresholds: false,
     trials: opts.trials,
     windows: opts.windows,
     includeEquity: opts.includeEquity,
