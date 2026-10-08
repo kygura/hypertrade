@@ -84,14 +84,29 @@ must clear before a fee is paid. The journal that enforces it is T13–T15 in
 ## Desk (optional)
 
 `/desk` is an agentic portfolio desk: a portfolio-manager agent that runs a
-team of specialist agents, answers market questions, proposes and manages
-trades, and alerts you. Code: `src/server/desk/*`, `src/server/routes/desk.ts`,
-`src/ui/pages/Desk.tsx`, `scripts/desk-worker.ts`. Needs
-`db/migrations/003_desk.sql` and any analyst provider key (it reuses the
-analyst's model configuration).
+team of specialist "scout" agents, answers market questions, proposes and
+manages trades, and alerts you. Code: `src/server/desk/*`,
+`src/server/routes/desk.ts`, `src/ui/pages/Desk.tsx`, `scripts/desk-worker.ts`.
+Needs `db/migrations/003_desk.sql` and any analyst provider key.
+
+**Models.** The PM, like the interactive `/analyst`, runs `DESK_ANALYST_MODEL`
+on the server's default provider (frontier-tier). Scouts run on the same
+provider and model unless overridden: `DESK_SCOUT_MODEL` picks a different
+model on that provider, and `DESK_SCOUT_PROVIDER` moves scouts to a different
+provider entirely (any id from the Analyst provider table below) — e.g. a
+cheap model, or one with real web search. If `DESK_SCOUT_PROVIDER` can't
+resolve (no key, unknown provider/model), scouts fall back to the analyst's
+provider and the server logs a warning once. OpenRouter already gives scouts
+real web search with no code change: set `DESK_SCOUT_PROVIDER=openrouter` and
+point `DESK_SCOUT_MODEL` (or `ANALYST_OPENROUTER_MODELS`) at a model id
+suffixed `:online` (e.g. `openai/gpt-6-luna:online`) — OpenRouter runs the
+search server-side before the model answers. Moonshot's own built-in
+`$web_search` tool is not wired up here: Moonshot has flagged it for
+deprecation (retiring 2026-10-20) in favor of standalone search endpoints
+that would need a real integration, not a small change.
 
 **The team.** The PM (`agents.ts`) calls `consult_specialists` to run several
-specialists in parallel, or `spawn_agent` to start an ad-hoc analyst with a
+scouts in parallel, or `spawn_agent` to start an ad-hoc analyst with a
 mandate and a subset of the read tools. Roster (`prompts.ts`):
 
 | id | role | tools |
@@ -222,7 +237,7 @@ custom slot. Curated lists live in `src/server/llm/presets.ts` (vendors) and
   `google`/`gemini`, `openai-platform`, `xai`, `qwen`, `openrouter`), or
   `openai-compatible` (`openai` keeps meaning this, as before). When it isn't
   configured, the first ready provider in the catalog is used instead.
-- `ANALYST_API_KEY` / `ANALYST_BASE_URL` / `ANALYST_MODEL` — the default
+- `ANALYST_API_KEY` / `ANALYST_BASE_URL` / `DESK_ANALYST_MODEL` — the default
   provider's key, base URL and model (the original single-provider settings,
   unchanged).
 - `ANALYST_EFFORT` — effort used for the default provider when a query

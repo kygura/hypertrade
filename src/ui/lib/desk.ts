@@ -86,7 +86,7 @@ export interface AccountState {
 
 export interface DeskStatus {
   configured: boolean
-  model: { provider: string; label: string; pm: string; specialists: string; webSearch: boolean } | null
+  model: { provider: string; label: string; pm: string; scouts: string; scoutProvider: string; webSearch: boolean } | null
   venue: string
   /** True when orders reach Hyperliquid (testnet). */
   live: boolean

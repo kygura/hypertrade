@@ -115,7 +115,7 @@ export interface AnalystEnv {
   /** Vendor preset keys and overrides (presets.ts keyEnv/baseUrlEnv/modelsEnv). */
   [key: string]: string | undefined;
   ANALYST_PROVIDER?: string;
-  ANALYST_MODEL?: string;
+  DESK_ANALYST_MODEL?: string;
   ANALYST_API_KEY?: string;
   ANALYST_BASE_URL?: string;
   ANALYST_EFFORT?: string;
@@ -209,19 +209,19 @@ export function resolveProvider(env: AnalystEnv = process.env as AnalystEnv): LL
   if (raw === "anthropic") {
     const { apiKey, baseURL } = anthropicCredentials(env);
     if (!apiKey) return null;
-    const model = env.ANALYST_MODEL?.trim() || DEFAULT_MODEL;
+    const model = env.DESK_ANALYST_MODEL?.trim() || DEFAULT_MODEL;
     return new AnthropicProvider({ apiKey, model, baseURL, effort: parseEffort(env.ANALYST_EFFORT) });
   }
   if (raw === "openai-compatible") {
     const { apiKey, baseURL } = openaiCredentials(env);
     if (!apiKey || !baseURL) return null;
-    const model = env.ANALYST_MODEL?.trim() || DEFAULT_MODEL;
+    const model = env.DESK_ANALYST_MODEL?.trim() || DEFAULT_MODEL;
     return new OpenAICompatibleProvider({ apiKey, model, baseURL });
   }
   if (raw !== "unknown") {
     const preset = presetById(raw)!;
     const cfg = presetCredentials(preset, env);
-    const model = env.ANALYST_MODEL?.trim() || cfg.models[0]?.id;
+    const model = env.DESK_ANALYST_MODEL?.trim() || cfg.models[0]?.id;
     if (!model) return null;
     return resolveChosenProvider(env, { provider: raw, model, effort: env.ANALYST_EFFORT ? parseEffort(env.ANALYST_EFFORT) : undefined });
   }

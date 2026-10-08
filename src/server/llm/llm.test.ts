@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolveProvider, DEFAULT_MODEL, type StepHooks } from "./provider.js";
 import { AnthropicProvider } from "./anthropic.js";
-import { OpenAICompatibleProvider } from "./openai.js";
+import { OpenAICompatibleProvider, postWithRetry429 } from "./openai.js";
 import { DISCLAIMER, FORECAST_RULE, HARD_RULE, HEDGE_VOCABULARY, buildSystemPrompt } from "./system.js";
 import { LAB_DEADLINE_MS, MAX_TOOL_CHARS, TOOL_SPECS, runLabTool, runTool, type ToolDeps } from "./tools.js";
 import { labTools } from "../lab/tools.js";
@@ -42,10 +42,10 @@ describe("resolveProvider", () => {
     expect(p.model).toBe(DEFAULT_MODEL);
     expect(DEFAULT_MODEL).toBe("claude-opus-5-5");
     expect(p.webSearch).toBe(true);
-    expect(resolveProvider({ ANALYST_API_KEY: "k", ANALYST_MODEL: "claude-fable-5-1" })!.model).toBe("claude-fable-5-1");
+    expect(resolveProvider({ ANALYST_API_KEY: "k", DESK_ANALYST_MODEL: "claude-fable-5-1" })!.model).toBe("claude-fable-5-1");
   });
   test("openai-compatible has no web search", () => {
-    const p = resolveProvider({ ANALYST_PROVIDER: "openai-compatible", ANALYST_API_KEY: "k", ANALYST_BASE_URL: "http://llm.local/v1", ANALYST_MODEL: "m" })!;
+    const p = resolveProvider({ ANALYST_PROVIDER: "openai-compatible", ANALYST_API_KEY: "k", ANALYST_BASE_URL: "http://llm.local/v1", DESK_ANALYST_MODEL: "m" })!;
     expect(p.id).toBe("openai-compatible");
     expect(p.webSearch).toBe(false);
   });
@@ -195,6 +195,47 @@ describe("OpenAICompatibleProvider", () => {
     expect(bodies[1].messages.at(-1)).toEqual({ role: "tool", tool_call_id: "c1", content: "[]" });
   });
 
+  test("429s retry with the Retry-After/hint delay, then succeed", async () => {
+    let calls = 0;
+    const delays: number[] = [];
+    const fakeFetch = (async () => {
+      calls++;
+      if (calls === 1) return new Response("rate limited", { status: 429, headers: { "retry-after": "2" } });
+      if (calls === 2) return new Response('{"error":"Organization Rate limit exceeded, please try again after 1 seconds"}', { status: 429 });
+      return sse([{ data: { choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] } }, { data: "[DONE]" }]);
+    }) as unknown as typeof fetch;
+    const noWait = async (ms: number) => void delays.push(ms);
+    const res = await postWithRetry429(fakeFetch, "http://x/chat/completions", { method: "POST" }, new AbortController().signal, noWait);
+    expect(calls).toBe(3);
+    expect(delays[0]).toBeGreaterThanOrEqual(2000);
+    expect(delays[0]).toBeLessThan(2300);
+    expect(delays[1]).toBeGreaterThanOrEqual(1000);
+    expect(delays[1]).toBeLessThan(1300);
+    expect(res.status).toBe(200);
+  });
+
+  test("429s give up after the retry budget, and other 4xx never retry", async () => {
+    let calls = 0;
+    const fakeFetch = (async () => {
+      calls++;
+      return new Response("still limited", { status: 429 });
+    }) as unknown as typeof fetch;
+    const err = await postWithRetry429(fakeFetch, "http://x", { method: "POST" }, new AbortController().signal, async () => {}).catch((e) => e as Error);
+    expect(String(err)).toContain("HTTP 429");
+    expect(calls).toBe(4); // initial + 3 retries, then give up
+
+    calls = 0;
+    const fakeFetch401 = (async () => {
+      calls++;
+      return new Response("nope", { status: 401 });
+    }) as unknown as typeof fetch;
+    const res = await postWithRetry429(fakeFetch401, "http://x", { method: "POST" }, new AbortController().signal, async () => {
+      throw new Error("must not delay on non-429");
+    });
+    expect(res.status).toBe(401);
+    expect(calls).toBe(1); // no retry at all
+  });
+
   test("HTTP errors throw without echoing the key", async () => {
     const fakeFetch = (async () => new Response("nope", { status: 401 })) as unknown as typeof fetch;
     const p = new OpenAICompatibleProvider({ apiKey: "secret-key", model: "m", baseURL: "http://x", fetch: fakeFetch });
@@ -238,6 +279,21 @@ describe("OpenAICompatibleProvider presets", () => {
     conv.addToolResults([{ id: "c1", name: "get_hl_markets", content: "[]", isError: false }]);
     await conv.step(TOOL_SPECS, hooks().h, { signal: new AbortController().signal });
     expect(bodies[1].messages.at(-2)).toMatchObject({ role: "assistant", reasoning_content: "Need markets." });
+  });
+
+  test("OpenRouter model ids pass through unchanged, including the :online web-search suffix", async () => {
+    // OpenRouter's web search ("web" plugin / :online model suffix) runs
+    // server-side and needs no client wiring: whatever model id the
+    // deployment configures is sent verbatim, so DESK_SCOUT_MODEL=
+    // "vendor/model:online" already gets scouts real search on OpenRouter.
+    const bodies: any[] = [];
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return sse([{ data: { choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] } }, { data: "[DONE]" }]);
+    }) as unknown as typeof fetch;
+    const p = new OpenAICompatibleProvider({ id: "openrouter", apiKey: "k", model: "x/y:online", baseURL: "https://openrouter.ai/api/v1", fetch: fakeFetch });
+    await p.start("S", [], "q").step([], hooks().h, { signal: new AbortController().signal });
+    expect(bodies[0].model).toBe("x/y:online");
   });
 
   test("OpenAI uses max_completion_tokens and never replays reasoning", async () => {
