@@ -20,10 +20,12 @@ const NAV = [
   // Strategy console: one shell entry so the mobile tab bar stays compact;
   // /strategies, /decisions and /governor switch inside via EngineTabs.
   { to: '/strategies', label: 'ENGINE', tab: 'ENGIN', glyph: '⚙' },
-  // Read-only LLM analyst (SPEC.md "Analyst"); a seventh cell on mobile.
-  // Open-data rule research (SPEC.md "Lab"); the eighth cell on mobile.
+  // Open-data rule research (SPEC.md "Lab").
   { to: '/lab', label: 'LAB', tab: 'LAB', glyph: 'Σ' },
+  // Read-only LLM analyst (SPEC.md "Analyst").
   { to: '/analyst', label: 'ANALYST', tab: 'ASK', glyph: '?' },
+  // Agentic portfolio desk (SPEC.md "Desk"): agent team, governor, paper book.
+  { to: '/desk', label: 'DESK', tab: 'DESK', glyph: '◎' },
 ]
 
 function isActive(pathname: string, to: string): boolean {

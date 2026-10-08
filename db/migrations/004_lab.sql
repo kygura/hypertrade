@@ -1,5 +1,5 @@
 -- Lab: saved research rules (the catalogue) and recent search runs.
--- Apply after 002_chart_history.sql. Lab history itself lives in the existing
+-- Apply after 003_desk.sql. Lab history itself lives in the existing
 -- series/observations tables (bc.*, cm.btc.*, fng.value, ...), and per-source
 -- sync bookkeeping in sync_state under coin = '_lab'.
 

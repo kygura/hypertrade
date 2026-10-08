@@ -1118,7 +1118,7 @@ otherwise). Catalogue cards add a footer with the record since saving vs
 buy-and-hold, and a danger DELETE (§7 Level 2 confirm). States: SkeletonRows
 while loading; `SEARCHING…` pulse label during a run (no spinner);
 OfflineBlock `DATABASE NOT CONFIGURED` on 503; verbatim ErrorBlock on 422.
-Mobile: the eighth tab-bar cell (`LAB`, glyph `Σ`); single column.
+Mobile: a tab-bar cell (`LAB`, glyph `Σ`) between ENGIN and ASK; single column.
 
 ---
 

@@ -65,7 +65,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     name: "get_sectors",
     description:
-      "The routine's sector/narrative map (mindshare 0-1, momentum -1..1, rationale, tokens, rotations with confidence) joined with live Hyperliquid aggregates per sector (total OI in USD, average funding, per-token rows).",
+      "The routine's sector/narrative map (mindshare 0-1, momentum -1..1, rationale, tokens, rotations with confidence) joined with live Hyperliquid aggregates per sector (total OI in USD, average funding, per-token rows). When the Elfa collector has a recent sample, sectors also carry social_mentions_24h / social_share_24h (measured crypto-social attention, a count, not a forecast) and token rows carry mentions24h / share24h / mentionsChg24h.",
     input_schema: empty,
   },
   {
@@ -73,7 +73,7 @@ export const TOOL_SPECS: ToolSpec[] = [
     description:
       "Latest value, previous value, delta, 30/90-observation means and z30 for collected series. Default ids: " +
       DEFAULT_METRIC_IDS.join(", ") +
-      ". Other ids follow hl.oi.<COIN>, hl.funding.<COIN>, hl.premium.<COIN>, fred.<SERIES>.",
+      ". Other ids follow hl.oi.<COIN>, hl.funding.<COIN>, hl.premium.<COIN>, fred.<SERIES>, elfa.mentions_24h.<COIN>, elfa.share_24h.<COIN>, elfa.mentions_chg_24h.<COIN>.",
     input_schema: {
       type: "object",
       properties: { ids: { type: "array", items: { type: "string" }, maxItems: 20, description: "series ids; omit for the default strip" } },

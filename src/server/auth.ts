@@ -93,10 +93,19 @@ export function clearSessionCookie(c: Context): void {
   deleteCookie(c, COOKIE_NAME, { path: "/", secure: isSecureRequest(c) });
 }
 
+/**
+ * Two callers: the GitHub workflow sends `x-cron-token: $CRON_TOKEN`; Vercel
+ * Cron sends `Authorization: Bearer $CRON_SECRET` (Vercel's fixed var name).
+ */
 export const requireCronToken: MiddlewareHandler = async (c, next) => {
-  const expected = requireEnv("CRON_TOKEN");
-  const provided = c.req.header("x-cron-token");
-  if (!expected || !provided || !safeEqual(provided, expected)) {
+  const token = c.req.header("x-cron-token");
+  const bearer = c.req.header("authorization")?.match(/^Bearer (.+)$/)?.[1];
+  const matches = (provided: string | undefined, envName: string) => {
+    if (!provided) return false;
+    const expected = requireEnv(envName);
+    return !!expected && safeEqual(provided, expected);
+  };
+  if (!matches(token, "CRON_TOKEN") && !matches(bearer, "CRON_SECRET")) {
     return c.json({ error: "unauthorized" }, 401);
   }
   await next();
@@ -110,7 +119,9 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
   const path = new URL(c.req.url).pathname.replace(/^\/api/, "") || "/";
 
   if (PUBLIC_PATHS.has(path)) return next();
-  if (path.startsWith("/cron/")) return requireCronToken(c, next);
+  if (path.startsWith("/cron/") || path === "/desk/tick") return requireCronToken(c, next);
+  // Telegram's webhook carries its own secret header, checked by the route.
+  if (path === "/desk/telegram") return next();
 
   if (!verifySession(getCookie(c, COOKIE_NAME))) {
     return c.json({ error: "unauthorized" }, 401);

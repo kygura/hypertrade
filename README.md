@@ -51,6 +51,28 @@ recently charted coins. Retention: 1m bars 30 days, 5m bars 120 days.
 Requires `db/migrations/002_chart_history.sql` (adds `candles.src`,
 `sync_state`, `funding`, and drops the old CoinGecko 4-day rows).
 
+## Social attention (optional)
+
+Set `ELFA_API_KEY` and the collect cron adds Elfa's trending-tokens feed:
+mentions in the trailing 24h for every Hyperliquid-listed coin on it, written
+as `elfa.mentions_24h.<COIN>`, `elfa.share_24h.<COIN>` (share of all
+trending-token mentions) and `elfa.mentions_chg_24h.<COIN>` (vs the prior
+24h, as a fraction). `/api/sectors` sums them per sector into
+`social_share_24h` / `social_mentions_24h`, shown as `SOC` next to the
+routine's `MS` on the Sectors grid and as mention columns in the drill-in.
+
+`MS` is the routine's judgment; `SOC` is a count. Neither predicts price.
+Elfa publishes no evidence that its counts lead price moves, and the research
+on social-attention signals in crypto finds small, short-lived effects. The
+point is to see where the two disagree.
+
+Elfa's free plan is 1,000 credits a month, one per call. The collector
+fetches at most once per `ELFA_MIN_INTERVAL_HOURS` (default 8, about 90
+credits a month) however often the cron fires. The key is meant to be
+shared with the provenance repo, whose social yardstick spends most of the
+rest. Without a key the collector records `skipped:no-key` and nothing else
+changes.
+
 ## Prop-trading contract
 
 `PROP.md` is the operator's own rulebook for trading a Breakout evaluation
@@ -58,6 +80,88 @@ with this app as journal and enforcer: the firm's limits, the risk framework
 derived from them, the setup ledger, the session protocol and the gates that
 must clear before a fee is paid. The journal that enforces it is T13–T15 in
 `TASKS.md`.
+
+## Desk (optional)
+
+`/desk` is an agentic portfolio desk: a portfolio-manager agent that runs a
+team of specialist agents, answers market questions, proposes and manages
+trades, and alerts you. Code: `src/server/desk/*`, `src/server/routes/desk.ts`,
+`src/ui/pages/Desk.tsx`, `scripts/desk-worker.ts`. Needs
+`db/migrations/003_desk.sql` and any analyst provider key (it reuses the
+analyst's model configuration).
+
+**The team.** The PM (`agents.ts`) calls `consult_specialists` to run several
+specialists in parallel, or `spawn_agent` to start an ad-hoc analyst with a
+mandate and a subset of the read tools. Roster (`prompts.ts`):
+
+| id | role | tools |
+|---|---|---|
+| `flows` | derivatives & flows | `flow_diagnostics`, `market_breadth`, `funding_history`, `price_structure`, HL markets, metrics |
+| `macro` | macro, liquidity & fiscal | `macro_dashboard` (FRED net liquidity, rates, dollar, credit, VIX), web search |
+| `news` | news & geopolitics | briefing, sectors, web search |
+| `onchain` | cycle & on-chain | `cycle_regime` (hl-cycles), metrics, web search |
+| `risk` | risk officer | `portfolio`, `desk_history`, levels, flows |
+| `narratives` | sector rotation | sectors, breadth, markets, flows, web search |
+
+`flow_diagnostics` (`analytics.ts`) is the deterministic core of "is this
+rally a bull trap or real flow": price vs OI change (new longs, short
+covering, liquidation, spot-led), funding z-score vs 30 days, perp premium,
+volume vs the prior window, the share of volume on bars closing with the
+move, and extension, rolled into a 0–100 trap score with each component's
+reason. OI history comes from the collector's `hl.oi.<COIN>` snapshots.
+
+**Acting.** Only the PM holds `propose_trade`, `propose_exit` and
+`send_alert`. A proposal names side, stop, target and `riskPct`; the
+governor (`governor.ts`) computes size from equity and the stop at the live
+mark and enforces the limits (per-trade and open risk, gross and per-coin
+leverage, reward:risk, stop distance, daily loss, one position per coin,
+kill switch). It runs again at execution, so a late approval is checked
+against current prices. `DESK_APPROVAL=manual` queues every entry for you
+(Desk page or Telegram buttons); `auto` (default) executes what the governor
+passes. Exits never wait. The venue is a paper book (`paper.ts`: mark fills
+with slippage and taker fees, stops/targets settled against 5m highs and
+lows). `DESK_WATCH_ADDRESS` monitors a real Hyperliquid account read-only
+(positions, stops, equity), with no keys.
+
+**Live on Hyperliquid testnet** (`hl/`): set `DESK_VENUE=hl-testnet` and
+`DESK_HL_SECRET_KEY` to an API wallet key created at
+app.hyperliquid-testnet.xyz/API (it can trade but not withdraw), plus
+`DESK_HL_ACCOUNT` = the account it trades for. An entry is one signed
+`normalTpsl` action: an IOC limit 1% through the testnet mark, a
+reduce-only market stop at the proposal's stop and a take-profit at its
+target, all resting on the exchange. If the stop is rejected the position is
+flattened at once. The governor sizes from the testnet account's equity and
+the testnet mark (testnet prices can differ from mainnet's; a stop that is
+on the wrong side of the testnet mark is blocked). Exits are reduce-only and
+cancel the leftover triggers when flat. Signing (`hl/signing.ts`) is
+checked against hyperliquid-python-sdk's published vectors. Mainnet is
+refused; a bad key falls back to paper with a note on the page.
+`DESK_HL_LEVERAGE` (cross, default 3) and `DESK_HL_SLIPPAGE_PCT` (default 1)
+tune the orders.
+
+**Asking.** `POST /api/desk/ask {question, history?, act?}` streams the run
+(SSE). Asks are analysis-only unless `act` is set ("let the desk act" on the
+page). Each run is bounded: 8 agents, 3 spawns, 10 PM rounds, 6 per
+specialist, 3 proposals, 3 alerts, 240 s.
+
+**Watching.** `tick()` (`watch.ts`) settles paper stops, checks the day-loss
+limit, and evaluates triggers: 1h/4h moves, funding extremes, 4h OI surges,
+positions near their stop or without one, breadth shocks. Each alerts once
+per 3h; a trigger (or the scheduled review, `DESK_REVIEW_HOURS`) wakes the
+team for a cycle, capped by `DESK_MAX_CYCLES_PER_DAY` and
+`DESK_CYCLE_COOLDOWN_MIN`. It runs from `collect.yml`'s `desk` job every 15
+minutes (set the repo variable `DESK_ENABLED=true`), or every minute from
+`bun run desk:worker` on any always-on machine.
+
+**Alerts and control.** Telegram (`DESK_TELEGRAM_BOT_TOKEN`,
+`DESK_TELEGRAM_CHAT_ID`): alerts with Approve/Reject buttons, plus `/status`,
+`/pending`, `/approve <id>`, `/reject <id>`, `/kill`, `/resume`, and `/ask`
+(worker only). Use the worker's polling, or set
+`DESK_TELEGRAM_WEBHOOK_SECRET` and register
+`${APP_URL}/api/desk/telegram` with `setWebhook` (`secret_token` = that
+secret). Discord (`DESK_DISCORD_WEBHOOK_URL`) and a generic JSON webhook
+(`DESK_ALERT_WEBHOOK_URL`) also work. Every alert is stored and shown on the
+page. All `DESK_*` settings are listed in `.env.example`.
 
 ## Strategy engine (optional)
 
@@ -87,7 +191,7 @@ never reads. Each rule shows holdout, walk-forward and in-sample stats, a
 deflated Sharpe and threshold stability. Saved rules are re-checked daily on
 data they never saw. Method: SPEC.md "Lab".
 
-Setup: apply `db/migrations/003_lab.sql`. The `/api/cron/collect` run backfills
+Setup: apply `db/migrations/004_lab.sql`. The `/api/cron/collect` run backfills
 every source on its first pass (it may take two runs) and refreshes them daily
 after that. No keys are needed. To backfill by hand:
 

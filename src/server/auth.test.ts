@@ -167,6 +167,18 @@ describe("requireCronToken gate", () => {
     expect((await collect({ cookie })).status).toBe(401);
   });
 
+  test("accepts Vercel Cron's bearer CRON_SECRET, not CRON_TOKEN as a bearer", async () => {
+    process.env.CRON_SECRET = "vercel-secret";
+    try {
+      expect((await collect({ authorization: "Bearer vercel-secret" })).status).toBe(200);
+      expect((await collect({ authorization: "Bearer cron-token-abc" })).status).toBe(401);
+      expect((await collect({ authorization: "vercel-secret" })).status).toBe(401);
+    } finally {
+      delete process.env.CRON_SECRET;
+    }
+    expect((await collect({ authorization: "Bearer vercel-secret" })).status).toBe(401);
+  });
+
   test("fails closed when CRON_TOKEN is unset", async () => {
     const token = process.env.CRON_TOKEN;
     delete process.env.CRON_TOKEN;

@@ -238,7 +238,7 @@ export function Lab() {
                 </table>
               )}
               {features.offline && <OfflineBlock onRetry={features.refetch} />}
-              {noDb && <OfflineBlock title="DATABASE NOT CONFIGURED" message="set DATABASE_URL and apply db/migrations/003_lab.sql" onRetry={features.refetch} />}
+              {noDb && <OfflineBlock title="DATABASE NOT CONFIGURED" message="set DATABASE_URL and apply db/migrations/004_lab.sql" onRetry={features.refetch} />}
               {features.error && !noDb && <ErrorBlock message={features.error} onRetry={features.refetch} />}
               <ul className="flex flex-col">
                 {bases.map((b) => (

@@ -326,6 +326,16 @@ sectors already listed above (`from`/`to` must be ids from `sectors[]`):
 - `note` — hedge-language color, same vocabulary discipline as §d
   (`low-confidence`, `we lean`, etc. apply here too where useful).
 
+**Measured attention sits next to your score.** When the app has an
+`ELFA_API_KEY`, `/api/sectors` adds `social_share_24h`: the share of
+crypto-social mentions over the last 24h for the sector's listed tokens. The
+Sectors grid shows it as `SOC` beside your `MS`. You can't read it from here
+(no database access), and you shouldn't try to reproduce it. Keep
+`mindshare_score` as your own judgment from the research above. Where the two
+disagree, that gap is the information. One consequence: getting `tokens`
+right now matters twice, because the social join matches on the same
+Hyperliquid symbols.
+
 Sectors and rotations are read straight — no financial-advice framing issue
 here since nothing is a buy/sell call, but keep the same intellectual
 honesty: state uncertainty as uncertainty, don't manufacture false

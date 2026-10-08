@@ -56,6 +56,33 @@ export function SectorDrillPanel({ sector, onClose }: { sector: EnrichedSector; 
       render: (r) => <span className={classForPnl(r.funding)}>{fmtPct(r.funding, { decimals: 4, sign: true })}</span>,
     },
   ]
+  // Social columns only when Elfa has a sample for some token here: an
+  // all-dash column would read as "zero attention", not "not collected".
+  if (sector.tokenRows.some((r) => r.mentions24h !== undefined)) {
+    columns.push(
+      {
+        key: 'mentions',
+        label: 'MENTIONS 24H',
+        priority: 3,
+        align: 'right',
+        sortValue: (r) => r.mentions24h ?? -1,
+        render: (r) => (r.mentions24h === undefined ? '—' : r.mentions24h.toLocaleString('en-US')),
+      },
+      {
+        key: 'mentionsChg',
+        label: 'Δ MENTIONS',
+        priority: 4,
+        align: 'right',
+        sortValue: (r) => r.mentionsChg24h ?? Number.NEGATIVE_INFINITY,
+        render: (r) =>
+          r.mentionsChg24h === undefined ? (
+            '—'
+          ) : (
+            <span className={classForPnl(r.mentionsChg24h)}>{fmtPct(r.mentionsChg24h, { decimals: 0, sign: true })}</span>
+          ),
+      },
+    )
+  }
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -83,6 +110,14 @@ export function SectorDrillPanel({ sector, onClose }: { sector: EnrichedSector; 
         <div className="flex items-center gap-2 mb-1.5">
           <span className="label">TOKENS</span>
           <SrcTag source="hl" />
+          {sector.social_share_24h != null && (
+            <>
+              <SrcTag source="elfa" />
+              <span className="text-[11px] text-text-muted tabular">
+                {fmtPct(sector.social_share_24h, { decimals: 1 })} of crypto-social mentions, 24h
+              </span>
+            </>
+          )}
         </div>
         {sector.tokenRows.length > 0 && (
           <DataTable
