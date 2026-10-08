@@ -94,16 +94,18 @@ on the server's default provider (frontier-tier). Scouts run on the same
 provider and model unless overridden: `DESK_SCOUT_MODEL` picks a different
 model on that provider, and `DESK_SCOUT_PROVIDER` moves scouts to a different
 provider entirely (any id from the Analyst provider table below) — e.g. a
-cheap model, or one with real web search. If `DESK_SCOUT_PROVIDER` can't
-resolve (no key, unknown provider/model), scouts fall back to the analyst's
-provider and the server logs a warning once. OpenRouter already gives scouts
-real web search with no code change: set `DESK_SCOUT_PROVIDER=openrouter` and
-point `DESK_SCOUT_MODEL` (or `ANALYST_OPENROUTER_MODELS`) at a model id
-suffixed `:online` (e.g. `openai/gpt-6-luna:online`) — OpenRouter runs the
-search server-side before the model answers. Moonshot's own built-in
-`$web_search` tool is not wired up here: Moonshot has flagged it for
-deprecation (retiring 2026-10-20) in favor of standalone search endpoints
-that would need a real integration, not a small change.
+cheap model. If `DESK_SCOUT_PROVIDER` can't resolve (no key, unknown
+provider/model), scouts fall back to the analyst's provider and the server
+logs a warning once.
+
+**Web search.** Set `EXA_API_KEY` to give both the Analyst and every Desk
+scout a real `web_search` tool (Exa's "Instant" search, `src/server/llm/tools.ts`),
+regardless of provider — this is what makes the `news` and `macro` scouts
+below actually able to search; without it they can only reason over the
+app's own data. Moonshot's own built-in `$web_search` tool is not wired up
+here: Moonshot has flagged it for deprecation (retiring 2026-10-20) in favor
+of standalone search endpoints that would need a real integration, not a
+small change.
 
 **The team.** The PM (`agents.ts`) calls `consult_specialists` to run several
 scouts in parallel, or `spawn_agent` to start an ad-hoc analyst with a
@@ -197,8 +199,10 @@ Upstream failures surface as `502 { "error": "engine unreachable" }` (or
 
 `/analyst` is a read-only natural-language analyst over the app's data
 (briefings, sectors, metrics, Hyperliquid markets, engine strategies and
-decisions), plus web search on Anthropic models. It never places or approves
-anything; Jev and the operator own the trading loop. Server:
+decisions), plus web search — real-time search via Exa (`EXA_API_KEY`, any
+provider) when configured, else Anthropic's own native search on Anthropic
+models only. It never places or approves anything; Jev and the operator own
+the trading loop. Server:
 `src/server/llm/*`, `src/server/routes/analyst.ts` (`POST /api/analyst/query`,
 SSE; `GET /api/analyst/models`, the model catalog). UI: `src/ui/pages/Analyst.tsx`
 and `src/ui/components/analyst/*`.
@@ -211,7 +215,7 @@ curated models appear in the picker.
 
 | Provider (`id`) | Key env var | Models (checked 2026-10-01) | Effort | Notes |
 |---|---|---|---|---|
-| Anthropic (`anthropic`) | `ANALYST_ANTHROPIC_API_KEY` | Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 | low…max (not Haiku) | Web search; refusal fallbacks; summarized thinking |
+| Anthropic (`anthropic`) | `ANALYST_ANTHROPIC_API_KEY` | Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 | low…max (not Haiku) | Native web search (superseded by Exa when `EXA_API_KEY` is set); refusal fallbacks; summarized thinking |
 | OpenAI (`openai`) | `OPENAI_API_KEY` | GPT-6 Astra, GPT-6.1 Sol, GPT-6 Luna | low…max | `max_completion_tokens` |
 | Google Gemini (`google`) | `GEMINI_API_KEY` | Gemini 3.8 Flash, 3.5 Flash-Lite | low/medium/high | OpenAI-compatible endpoint |
 | xAI (`xai`) | `XAI_API_KEY` | Grok 4.7 | — | |

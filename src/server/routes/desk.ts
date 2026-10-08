@@ -12,6 +12,7 @@ import { handleTelegramUpdate, type TelegramUpdate } from "../desk/telegram.js";
 import { SPECIALISTS } from "../desk/prompts.js";
 import { tick } from "../desk/watch.js";
 import { ExitProposalSchema } from "../desk/types.js";
+import { hasWebSearch } from "../llm/tools.js";
 
 // /desk — the agentic portfolio desk (SPEC.md "Desk"). Session-cookie
 // protected by the global gate, except /desk/tick (x-cron-token, like
@@ -109,7 +110,7 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
         const [kill, approval] = await Promise.all([s.killSwitch(), s.approval()]);
         return c.json({
           configured: !!pm,
-          model: pm ? { provider: pm.id, label: pm.label ?? pm.id, pm: pm.model, scouts: specialist?.model ?? pm.model, scoutProvider: specialist?.id ?? pm.id, webSearch: pm.webSearch } : null,
+          model: pm ? { provider: pm.id, label: pm.label ?? pm.id, pm: pm.model, scouts: specialist?.model ?? pm.model, scoutProvider: specialist?.id ?? pm.id, webSearch: hasWebSearch(pm) } : null,
           venue: s.broker.venue,
           live: s.broker.live,
           venueAccount: s.config.hl?.account ?? null,

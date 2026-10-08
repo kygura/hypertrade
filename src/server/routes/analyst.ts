@@ -15,7 +15,7 @@ import {
   type ToolOutcome,
   type Usage,
 } from "../llm/provider.js";
-import { TOOL_SPECS, defaultToolDeps, runTool, toolCatalog, type ToolDeps } from "../llm/tools.js";
+import { TOOL_SPECS, defaultToolDeps, hasWebSearch, runTool, toolCatalog, type ToolDeps } from "../llm/tools.js";
 
 // /analyst — the classic-LLM analyst (SPEC.md "Analyst"). Read-only: it
 // reads the app's data through tools/tools.ts and never places orders; Jev
@@ -100,7 +100,7 @@ export async function runAnalyst(opts: RunOptions, emit: (e: AnalystEvent) => Pr
 
   const now = (opts.now ?? (() => new Date()))();
   const question = `[current time ${now.toISOString()}]\n${opts.question}`;
-  const conv = provider.start(buildSystemPrompt(provider.webSearch), opts.history ?? [], question);
+  const conv = provider.start(buildSystemPrompt(hasWebSearch(provider)), opts.history ?? [], question);
   const hooks = {
     onText: (delta: string) => void emit({ type: "text", delta }),
     onReasoning: (delta: string) => void emit({ type: "reasoning", delta }),
@@ -214,7 +214,7 @@ export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
     .get("/status", (c) => {
       const p = resolve();
       if (!p) return c.json({ configured: false, error: "analyst not configured" }, 503);
-      return c.json({ configured: true, provider: p.id, label: p.label ?? p.id, model: p.model, web_search: p.webSearch, tools: toolCatalog(p.webSearch) });
+      return c.json({ configured: true, provider: p.id, label: p.label ?? p.id, model: p.model, web_search: hasWebSearch(p), tools: toolCatalog(hasWebSearch(p)) });
     })
     .get("/models", (c) => c.json(catalog()))
     .post("/query", async (c) => {
