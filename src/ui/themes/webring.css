@@ -1,0 +1,336 @@
+/* WEBRING — the underground indie web.
+   A hand-coded homepage, not a dashboard product: paper, ink, link blue,
+   visited purple. Times for prose because that is what a <p> looks like
+   before anyone touches it; Courier for anything that has to line up;
+   a bitmap face for the wordmark. Hairlines are solid and 1px, corners
+   are square, depth is a hard offset like a photocopy that slipped.
+   Scoped to :root[data-theme='webring']; redefines only contract tokens
+   plus the structural hooks listed in README.md. */
+
+:root[data-theme='webring'] {
+  /* ---- type ---- */
+  --font-sans: 'Times New Roman', Times, 'Nimbus Roman', 'Liberation Serif', Georgia, serif;
+  --font-mono: 'Courier Prime', 'Courier New', Courier, 'Nimbus Mono PS', monospace;
+  --font-display: 'Silkscreen', 'Courier Prime', monospace;
+  --font-control: 'Courier Prime', 'Courier New', Courier, monospace;
+  --base-font-size: 15px;
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-md: 1.0625rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.625rem;
+
+  --label-case: lowercase;
+  --label-tracking: 0;
+  --label-weight: 400;
+  --control-case: uppercase;
+  --control-tracking: 0.04em;
+  --control-weight: 700;
+
+  /* ---- surfaces: one sheet of paper, no ladder to speak of ---- */
+  --color-body: #f1ead9;
+  --color-panel: #f7f2e6;
+  --color-panel-alt: #ebe3cf;
+  --color-elevated: #fbf8f0;
+  --color-panel-header: #e4dbc3;
+  --color-topbar: #f1ead9;
+  --color-input: #fffdf7;
+  --color-hover: rgba(20, 16, 10, 0.06);
+  --color-active: rgba(20, 16, 10, 0.12);
+  --color-selected: #fff3a6;
+
+  --color-border: #15120c;
+  --color-border-subtle: #9a9079;
+
+  --color-text-primary: #15120c;
+  --color-text-muted: #3d3729;
+  --color-text-secondary: #6b6350;
+  --color-text-disabled: #a89f88;
+
+  /* ---- the two colors every old browser shipped with ---- */
+  --color-accent: #0000ee;
+  --color-on-accent: #ffffff;
+  --color-primary: #15120c;
+  --color-primary-hover: #000000;
+  --color-on-primary: #f7f2e6;
+
+  --color-green: #0b7a2a;
+  --color-green-text: #075c1f;
+  --color-green-bg: #d7f0d9;
+  --color-red: #c4161c;
+  --color-red-text: #9c0f14;
+  --color-red-bg: #fadbd8;
+  --color-red-accent: #ff0040;
+  --color-amber: #b86a00;
+  --color-amber-bg: #ffe9b8;
+  --color-info: #0000ee;
+  --color-info-bg: #dcdcff;
+
+  --color-flash-up: rgba(11, 122, 42, 0.28);
+  --color-flash-down: rgba(196, 22, 28, 0.28);
+
+  --color-scrim: rgba(21, 18, 12, 0.55);
+  --color-focus: #ff00c8;
+  --shadow-overlay: 6px 6px 0 #15120c;
+  --color-scrollbar: #15120c;
+  --color-scrollbar-hover: #0000ee;
+  --color-src-hl: #551a8b;
+
+  /* momentum ramp: ink-wash reds to inks greens, never neon */
+  --color-mom-neg2: #c4161c;
+  --color-mom-neg1: #e89a9c;
+  --color-mom-zero: #d9d0b8;
+  --color-mom-pos1: #9fd3a7;
+  --color-mom-pos2: #0b7a2a;
+
+  /* chart series: projections stay off the up/down axis (link blue + purple) */
+  --color-proj-line: #0000ee;
+  --color-proj-band: rgba(0, 0, 238, 0.14);
+  --color-bench-btc: #b86a00;
+  --color-bench-usdc: #6b6350;
+  --color-equity: #15120c;
+  --color-drawdown-fill: rgba(85, 26, 139, 0.18);
+  --color-drawdown-line: #551a8b;
+
+  /* ---- shape & depth: square, hard ---- */
+  --radius-panel: 0;
+  --radius-control: 0;
+  --radius-badge: 0;
+  --shadow-panel: 3px 3px 0 #15120c;
+
+  /* ---- segmented: a row of boxed cells; the active one is inked in ---- */
+  --seg-track: transparent;
+  --seg-border: #15120c;
+  --seg-divider: #15120c;
+  --seg-pad: 0;
+  --seg-gap: 0;
+  --seg-radius: 0;
+  --seg-active: #15120c;
+  --seg-active-text: #f7f2e6;
+  --seg-active-shadow: none;
+}
+
+/* ---- structural hooks ---- */
+
+/* the page: faint graph-paper grid, like a notebook scan */
+:root[data-theme='webring'] body {
+  background-color: var(--color-body);
+  background-image:
+    linear-gradient(rgba(21, 18, 12, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(21, 18, 12, 0.055) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+:root[data-theme='webring'] .panel {
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-panel);
+}
+:root[data-theme='webring'] .panel-header {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-panel-header);
+}
+:root[data-theme='webring'] .panel-title {
+  font-family: var(--font-control);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+:root[data-theme='webring'] .panel-title::before {
+  content: '* ';
+  color: var(--color-accent);
+}
+
+/* top bar: a thick rule under it, the wordmark in bitmap caps */
+:root[data-theme='webring'] .app-topbar {
+  border-bottom: 2px solid var(--color-border);
+  background: var(--color-topbar);
+}
+:root[data-theme='webring'] .app-wordmark {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+:root[data-theme='webring'] .app-wordmark-dot {
+  background: var(--color-accent);
+  border-radius: 0;
+  animation: webring-blink 1.1s steps(1, end) infinite;
+}
+@keyframes webring-blink {
+  50% { opacity: 0; }
+}
+
+/* nav: real links. underlined, blue, inverted when you are on the page */
+:root[data-theme='webring'] .app-nav-link,
+:root[data-theme='webring'] .app-tab,
+:root[data-theme='webring'] .subtab {
+  font-family: var(--font-control);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+:root[data-theme='webring'] .app-nav-link:hover,
+:root[data-theme='webring'] .app-tab:hover,
+:root[data-theme='webring'] .subtab:hover {
+  color: var(--color-red-accent);
+  background: transparent;
+}
+:root[data-theme='webring'] .app-nav-link[aria-current='page'],
+:root[data-theme='webring'] .app-tab[aria-current='page'],
+:root[data-theme='webring'] .subtab[aria-current='page'],
+:root[data-theme='webring'] .tab-active {
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  text-decoration: none;
+  box-shadow: none;
+  border-color: var(--color-border);
+}
+:root[data-theme='webring'] .app-nav-link[aria-current='page']::before {
+  content: '> ';
+}
+:root[data-theme='webring'] .app-tabbar {
+  border-top: 2px solid var(--color-border);
+  background: var(--color-topbar);
+}
+
+/* buttons: boxed, hard shadow, press = shadow collapses */
+:root[data-theme='webring'] .btn {
+  border: 1px solid var(--color-border);
+  box-shadow: 2px 2px 0 var(--color-border);
+  background: var(--color-panel);
+  color: var(--color-text-primary);
+  transition: none;
+}
+:root[data-theme='webring'] .btn:hover {
+  background: var(--color-selected);
+}
+:root[data-theme='webring'] .btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+:root[data-theme='webring'] .btn--neutral {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+:root[data-theme='webring'] .btn--neutral:hover {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+:root[data-theme='webring'] .btn--ghost {
+  box-shadow: none;
+  border-style: dashed;
+  background: transparent;
+}
+:root[data-theme='webring'] .btn--danger {
+  background: var(--color-red-bg);
+  color: var(--color-red-text);
+}
+:root[data-theme='webring'] .btn:disabled {
+  box-shadow: none;
+  border-style: dotted;
+  color: var(--color-text-disabled);
+}
+
+/* badges: bracketed monospace tags */
+:root[data-theme='webring'] .badge {
+  border: 1px solid currentColor;
+  font-family: var(--font-control);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: transparent;
+}
+
+:root[data-theme='webring'] .badge--gray { color: var(--color-text-secondary); }
+
+/* status: square pips */
+:root[data-theme='webring'] .status-dot {
+  border-radius: 0;
+  outline: 1px solid var(--color-border);
+  outline-offset: 1px;
+}
+
+/* tables: ruled like a ledger, every row a hairline */
+:root[data-theme='webring'] .dt {
+  border: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+}
+:root[data-theme='webring'] .dt th {
+  border-bottom: 2px solid var(--color-border);
+  background: var(--color-panel-header);
+  font-family: var(--font-control);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+:root[data-theme='webring'] .dt td {
+  border-bottom: 1px dotted var(--color-border-subtle);
+}
+:root[data-theme='webring'] .dt tbody tr:hover td {
+  background: var(--color-selected);
+}
+
+/* metrics: label underlined like a form field, value in Courier */
+:root[data-theme='webring'] .metric-label {
+  font-family: var(--font-sans);
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+}
+:root[data-theme='webring'] .metric-value {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+:root[data-theme='webring'] .label {
+  font-family: var(--font-sans);
+  font-style: italic;
+}
+
+:root[data-theme='webring'] .state-title {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+:root[data-theme='webring'] .src-tag {
+  border: 1px solid currentColor;
+  font-family: var(--font-control);
+}
+
+:root[data-theme='webring'] .seg-item[aria-checked='true'][data-tone='green'] {
+  background: var(--color-green);
+  color: #ffffff;
+}
+:root[data-theme='webring'] .seg-item[aria-checked='true'][data-tone='red'] {
+  background: var(--color-red);
+  color: #ffffff;
+}
+
+/* inputs and focus: dotted magenta ring, the way :focus used to look */
+:root[data-theme='webring'] input,
+:root[data-theme='webring'] select,
+:root[data-theme='webring'] textarea {
+  border: 1px solid var(--color-border);
+  background: var(--color-input);
+  font-family: var(--font-mono);
+}
+:root[data-theme='webring'] :focus-visible {
+  outline: 2px dotted var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* text selection: highlighter */
+:root[data-theme='webring'] ::selection {
+  background: var(--color-selected);
+  color: var(--color-text-primary);
+}
+
+/* reduced motion: no blinking cursor */
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme='webring'] .app-wordmark-dot { animation: none; }
+}

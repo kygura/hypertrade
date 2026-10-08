@@ -4,6 +4,7 @@
    :root[data-theme='<id>'] and only redefines tokens declared below. */
 @import './themes/hyperdash.css';
 @import './themes/tradexyz.css';
+@import './themes/webring.css';
 
 @font-face {
   font-family: 'Geist Mono';

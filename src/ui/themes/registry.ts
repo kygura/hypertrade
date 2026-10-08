@@ -18,9 +18,18 @@ export interface ThemeDef {
   fonts?: string[]
 }
 
-export type ThemeId = 'hyperion' | 'hyperdash' | 'tradexyz'
+export type ThemeId = 'hyperion' | 'hyperdash' | 'tradexyz' | 'webring'
 
 export const THEMES: readonly ThemeDef[] = [
+  {
+    id: 'webring',
+    label: 'WEBRING',
+    short: 'WR',
+    scheme: 'light',
+    // Silkscreen (bitmap wordmark) + Courier Prime (numbers, controls);
+    // body text is the browser's own Times.
+    fonts: ['https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap'],
+  },
   {
     id: 'hyperdash',
     label: 'HYPERDASH',
@@ -43,7 +52,7 @@ export const THEMES: readonly ThemeDef[] = [
   { id: 'hyperion', label: 'HYPERION', short: 'HYP', scheme: 'dark' },
 ]
 
-export const DEFAULT_THEME: ThemeId = 'hyperdash'
+export const DEFAULT_THEME: ThemeId = 'webring'
 const STORAGE_KEY = 'hypertrade.theme'
 
 function isThemeId(v: unknown): v is ThemeId {

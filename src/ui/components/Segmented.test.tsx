@@ -65,9 +65,9 @@ describe("Segmented", () => {
 });
 
 describe("theme registry", () => {
-  test("Hyperdash is the default and listed first", () => {
-    expect(DEFAULT_THEME).toBe("hyperdash");
-    expect(THEMES[0]?.id).toBe("hyperdash");
-    expect(THEMES.map((t) => t.id).sort()).toEqual(["hyperdash", "hyperion", "tradexyz"]);
+  test("Webring is the default and listed first", () => {
+    expect(DEFAULT_THEME).toBe("webring");
+    expect(THEMES[0]?.id).toBe("webring");
+    expect(THEMES.map((t) => t.id).sort()).toEqual(["hyperdash", "hyperion", "tradexyz", "webring"]);
   });
 });

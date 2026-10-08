@@ -1,13 +1,14 @@
 # Themes
 
-HYPERTRADE ships three looks. The token defaults in `../index.css` are
+HYPERTRADE ships four looks. The token defaults in `../index.css` are
 Hyperion (DESIGN.md); every other look is a **theme**: one CSS file scoped to
 `:root[data-theme='<id>']` that only redefines tokens from the contract
 below. No component forks, no per-theme JSX.
 
 | id | file | design system |
 |---|---|---|
-| `hyperdash` (default) | `hyperdash.css` | `design-systems/hyperdash/` |
+| `webring` (default) | `webring.css` | `design-systems/webring/` |
+| `hyperdash` | `hyperdash.css` | `design-systems/hyperdash/` |
 | `tradexyz` | `tradexyz.css` | `design-systems/tradexyz/` |
 | `hyperion` | `../index.css` (the unscoped defaults) | `DESIGN.md` |
 
