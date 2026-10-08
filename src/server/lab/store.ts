@@ -68,6 +68,8 @@ export const isRuleId = (s: unknown): s is string => typeof s === "string" && /^
 
 /** Runs kept by the memory and file stores; older ones are dropped. */
 export const LOCAL_RUN_CAP = 200;
+/** Runs kept in Postgres; older ones are pruned on insert. */
+export const PG_RUN_CAP = 500;
 
 const iso = (d: Date | string | null | undefined) => (d == null ? null : new Date(d).toISOString());
 
@@ -154,6 +156,8 @@ export function pgStore(): LabStore {
         insert into lab_runs (source, config, status, error, result, duration_ms)
         values (${r.source}, ${json(r.config)}, ${r.status}, ${r.error}, ${r.result == null ? null : json(r.result)}, ${r.durationMs})
         returning *`;
+      // Keep the newest PG_RUN_CAP; saved rules keep their evaluation (run_id goes null).
+      await sql()`delete from lab_runs where id in (select id from lab_runs order by created_at desc offset ${PG_RUN_CAP})`;
       return toStoredRun(row);
     },
     async getRun(id) {
