@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { DailySeries, LabProvider, MetricCategory, MetricDef } from "../types.js";
-import { clip, getJson, isoDay, toDaily } from "./series.js";
+import type { DailySeries, MetricCategory } from "../types.js";
+import { clip, getJson, isoDay, toDaily, type CollectableProvider, type LabMetricDef } from "./series.js";
 
 // Coin Metrics community API (keyless): the stand-in for Glassnode on-chain
 // data. A metric the community tier refuses comes back 4xx and throws, so the
@@ -8,6 +8,8 @@ import { clip, getJson, isoDay, toDaily } from "./series.js";
 
 export const CM_BASE = "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics";
 const PAGE_SIZE = 10_000;
+/** Before any chain we cover: asking from here means the whole history. */
+const CM_START = Date.UTC(2009, 0, 1);
 const MAX_PAGES = 10;
 
 const CmPageSchema = z.object({
@@ -47,7 +49,10 @@ const DEFS: Array<[key: string, name: string, category: MetricCategory, units: s
   ["TxTfrValAdjUSD", "Transfer value (adj, USD)", "onchain", "USD", "Adjusted USD value transferred that day."],
 ];
 
-const METRICS: MetricDef[] = DEFS.map(([key, name, category, units, description]) => ({
+/** Levels and counts that trend; the rest (MVRV, NVT) are ratios. */
+const LEVELS = new Set(["PriceUSD", "CapMrktCurUSD", "AdrActCnt", "TxCnt", "TxTfrCnt", "HashRate", "FeeTotNtv", "SplyCur", "IssTotNtv", "TxTfrValAdjUSD"]);
+
+const METRICS: LabMetricDef[] = DEFS.map(([key, name, category, units, description]) => ({
   id: `cm:${key}`,
   provider: "cm",
   key,
@@ -57,10 +62,11 @@ const METRICS: MetricDef[] = DEFS.map(([key, name, category, units, description]
   units,
   description,
   lagDays: 1,
+  ...(LEVELS.has(key) ? { stationary: false } : {}),
 }));
 const KEYS = new Set(DEFS.map((d) => d[0]));
 
-export function createCmProvider(fetchFn: typeof fetch = fetch): LabProvider {
+export function createCmProvider(fetchFn: typeof fetch = fetch, now: () => number = Date.now): CollectableProvider {
   return {
     id: "cm",
     name: "Coin Metrics (community)",
@@ -86,6 +92,9 @@ export function createCmProvider(fetchFn: typeof fetch = fetch): LabProvider {
         url = parsed.next;
       }
       return clip(toDaily(points, "last"), fromMs, toMs);
+    },
+    history(key, asset, sinceMs) {
+      return this.fetch(key, asset, sinceMs ?? CM_START, now());
     },
   };
 }

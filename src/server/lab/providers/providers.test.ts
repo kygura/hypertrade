@@ -4,11 +4,15 @@ import cmPage2 from "./fixtures/cm-page2.json" with { type: "json" };
 import fngFixture from "./fixtures/fng-history.json" with { type: "json" };
 import stablesFixture from "./fixtures/llama-stablecoincharts.json" with { type: "json" };
 import tvlFixture from "./fixtures/llama-chain-tvl.json" with { type: "json" };
+import bcFixture from "./fixtures/bc-hash-rate.json" with { type: "json" };
+import dvolFixture from "./fixtures/deribit-dvol.json" with { type: "json" };
+import { bcUrl, createBcProvider, parseBlockchainChart } from "./bc.js";
+import { createDeribitProvider, dvolUrls, parseDvolHistory } from "./deribit.js";
 import { cmAsset, createCmProvider, parseCmPage } from "./cm.js";
 import { createFngProvider, parseFngHistory } from "./fng.js";
 import { createHtProvider, htCoin, type HtDeps } from "./ht.js";
 import { createLlamaProvider, parseChainTvl, parseStablecoinChart } from "./llama.js";
-import { HttpError } from "./series.js";
+import { HttpError, type LabMetricDef } from "./series.js";
 
 const D0 = Date.UTC(2024, 0, 1);
 const DAY = 86_400_000;
@@ -110,6 +114,8 @@ describe("cm", () => {
     expect(m.every((d) => d.lagDays === 1 && d.scope === "asset")).toBe(true);
     expect(m.find((d) => d.key === "PriceUSD")!.category).toBe("price");
     expect(m.find((d) => d.key === "CapMVRVCur")!.category).toBe("onchain");
+    expect(m.find((d) => d.key === "CapMVRVCur")!.stationary).toBeUndefined();
+    expect(m.filter((d) => d.stationary === false).map((d) => d.key)).toHaveLength(10);
   });
 });
 
@@ -207,11 +213,102 @@ describe("ht", () => {
     const ids = createHtProvider(deps()).metrics().map((m) => m.id);
     for (const id of ["ht:price", "ht:volume", "ht:range", "ht:funding", "ht:premium", "ht:oi", "ht:elfa_mentions", "ht:elfa_share", "ht:fng", "ht:btc_dominance", "ht:total_mcap", "ht:stablecoin_cap", "ht:dvol", "ht:fred.WALCL", "ht:fred.net_liquidity"])
       expect(ids).toContain(id);
+    const m = new Map(createHtProvider(deps()).metrics().map((d) => [d.id, d as LabMetricDef]));
+    expect(m.get("ht:stablecoin_cap")!.lagDays).toBe(1); // matches llama:stablecoin_cap
+    expect(m.get("ht:fng")!.lagDays).toBe(0);
+    expect(m.get("ht:fred.WALCL")!.maxFillDays).toBe(8);
+    expect(m.get("ht:fred.DGS10")!.maxFillDays).toBeUndefined();
+    expect(m.get("ht:price")!.stationary).toBe(false);
+    expect(m.get("ht:funding")!.stationary).toBeUndefined();
     expect(htCoin("eth")).toBe("ETH");
     expect(htCoin("kPEPE")).toBe("kPEPE");
   });
 
   test("unknown key throws", async () => {
     await expect(createHtProvider(deps()).fetch("nope", "BTC", ...R)).rejects.toThrow("unknown ht metric");
+  });
+});
+
+describe("history (collector source)", () => {
+  const NOW = D0 + 10 * DAY + 5 * 3_600_000;
+
+  test("cm: since → start_time; null → whole history", async () => {
+    const { fn, urls } = stubFetch([["asset-metrics", cmPage2]]);
+    const p = createCmProvider(fn, () => NOW);
+    await p.history!("CapMVRVCur", "ETH", D0 + 3 * DAY);
+    await p.history!("CapMVRVCur", "ETH", null);
+    expect(new URL(urls[0]!).searchParams.get("start_time")).toBe("2024-01-04");
+    expect(new URL(urls[0]!).searchParams.get("assets")).toBe("eth");
+    expect(new URL(urls[1]!).searchParams.get("start_time")).toBe("2009-01-01");
+    expect(new URL(urls[1]!).searchParams.get("end_time")).toBe("2024-01-11");
+  });
+
+  test("fng: limit sized from since", async () => {
+    const { fn, urls } = stubFetch([["alternative.me", fngFixture]]);
+    const p = createFngProvider(fn, () => NOW);
+    expect((await p.history!("value", "", D0 + 7 * DAY)).v).toEqual([65, 70, 65, 71]);
+    await p.history!("value", "", null);
+    expect(urls[0]).toContain("limit=6&");
+    expect(urls[1]).toContain("limit=0&");
+  });
+
+  test("llama: whole history either way", async () => {
+    const { fn } = stubFetch([["historicalChainTvl", tvlFixture]]);
+    expect((await createLlamaProvider(fn).history!("defi_tvl", "", D0 + DAY)).t).toEqual(days(3));
+  });
+});
+
+describe("bc", () => {
+  test("parses seconds to days and keeps zero values", () => {
+    expect(parseBlockchainChart(bcFixture)).toEqual({ t: days(3), v: [5.1e8, 0, 5.3e8] });
+    expect(() => parseBlockchainChart({ values: "nope" })).toThrow();
+  });
+
+  test("urls come from the chart allow-list; timespan sized from the start", () => {
+    expect(bcUrl("hash_rate", 0, D0)).toBe("https://api.blockchain.info/charts/hash-rate?timespan=all&format=json&sampled=false");
+    expect(bcUrl("tx_volume_usd", D0, D0 + 59 * DAY + 1)).toContain("/estimated-transaction-volume-usd?timespan=61days&");
+    expect(() => bcUrl("../../evil", D0, D0)).toThrow("unknown bc metric");
+  });
+
+  test("fetch clips; history(null) asks for everything; global, lag 1, levels", async () => {
+    const { fn, urls } = stubFetch([["blockchain.info", bcFixture]]);
+    const p = createBcProvider(fn, () => D0 + 3 * DAY);
+    expect(await p.fetch("hash_rate", "ETH", D0 + DAY, D0 + 2 * DAY)).toEqual({ t: [D0 + DAY, D0 + 2 * DAY], v: [0, 5.3e8] });
+    await p.history!("difficulty", "", null);
+    expect(urls[0]).toContain("timespan=3days");
+    expect(urls[1]).toContain("/difficulty?timespan=all");
+    const m = p.metrics() as LabMetricDef[];
+    expect(m.map((d) => d.id)).toEqual(["bc:hash_rate", "bc:miners_revenue", "bc:difficulty", "bc:tx_volume_usd"]);
+    expect(m.every((d) => d.scope === "global" && d.lagDays === 1 && d.stationary === false)).toBe(true);
+  });
+});
+
+describe("deribit", () => {
+  test("parses the daily close", () => {
+    expect(parseDvolHistory(dvolFixture)).toEqual({ t: days(3), v: [51.0, 54.2, 53.5] });
+    expect(() => parseDvolHistory({ result: { data: [[1, 2]] } })).toThrow();
+  });
+
+  test("windows of 900 days from the 2021 epoch, per currency", () => {
+    const urls = dvolUrls("eth_dvol", 0, D0).map((u) => new URL(u));
+    expect(urls).toHaveLength(2);
+    expect(urls[0]!.searchParams.get("currency")).toBe("ETH");
+    expect(urls[0]!.searchParams.get("resolution")).toBe("1D");
+    expect(Number(urls[0]!.searchParams.get("start_timestamp"))).toBe(Date.UTC(2021, 2, 24));
+    expect(Number(urls[1]!.searchParams.get("start_timestamp"))).toBe(Date.UTC(2021, 2, 24) + 900 * DAY);
+    expect(Number(urls[1]!.searchParams.get("end_timestamp"))).toBe(D0);
+    expect(dvolUrls("btc_dvol", D0 - 5 * DAY, D0)).toHaveLength(1);
+    expect(() => dvolUrls("sol_dvol", D0, D0 + DAY)).toThrow("unknown deribit metric");
+  });
+
+  test("fetch clips; global, lag 0, stationary default", async () => {
+    const { fn, urls } = stubFetch([["deribit.com", dvolFixture]]);
+    const p = createDeribitProvider(fn, () => D0 + 3 * DAY);
+    expect(await p.fetch("btc_dvol", "SOL", D0, D0 + DAY)).toEqual({ t: [D0, D0 + DAY], v: [51.0, 54.2] });
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain("currency=BTC");
+    const m = p.metrics() as LabMetricDef[];
+    expect(m.map((d) => d.id)).toEqual(["deribit:btc_dvol", "deribit:eth_dvol"]);
+    expect(m.every((d) => d.scope === "global" && d.lagDays === 0 && d.stationary === undefined)).toBe(true);
   });
 });

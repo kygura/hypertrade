@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { UpstreamError } from "../../mcp/types.js";
 import type { DailySeries, LabProvider, MetricDef } from "../types.js";
-import { alignToCalendar, allMetrics, fetchMetric, getMetric, loadDataset, type RegistryDeps } from "./registry.js";
+import { alignToCalendar, allMetrics, fetchMetric, getMetric, loadDataset, type LabSeriesStore, type RegistryDeps } from "./registry.js";
 import { clip, toDaily } from "./series.js";
 
 const D0 = Date.UTC(2024, 0, 1);
@@ -29,6 +29,9 @@ describe("alignToCalendar", () => {
     const cal = days(10);
     const s = { t: [D0 + DAY, D0 + 2 * DAY], v: [5, 6] };
     expect(alignToCalendar(s, cal)).toEqual([NaN, 5, 6, 6, 6, 6, NaN, NaN, NaN, NaN]);
+  });
+  test("a longer fill limit for weekly series", () => {
+    expect(alignToCalendar({ t: [D0], v: [7] }, days(10), 0, 8)).toEqual([7, 7, 7, 7, 7, 7, 7, 7, 7, NaN]);
   });
   test("lag shifts a value to the day it is known", () => {
     expect(alignToCalendar({ t: days(3), v: [1, 2, 3] }, days(4), 1)).toEqual([NaN, 1, 2, 3]);
@@ -68,7 +71,7 @@ function setup(over: { htPrice?: DailySeries | Error } = {}) {
     calls,
   );
   const g = fakeProvider("fng", [def("fng", "value", { scope: "global", category: "sentiment" })], { value: { t: [D0, D0 + 5 * DAY], v: [50, 60] } }, calls);
-  const deps: RegistryDeps = { providers: [ht, cm, g], cache: new Map(), now: () => D0 + 9 * DAY };
+  const deps: RegistryDeps = { providers: [ht, cm, g], cache: new Map(), now: () => D0 + 10 * DAY };
   return { deps, calls };
 }
 
@@ -167,5 +170,98 @@ describe("loadDataset", () => {
     });
     expect(dataset.metrics).toEqual({});
     expect(warnings).toEqual(["cm:CapMVRVCur: no data for BTC in range; dropped"]);
+  });
+});
+
+describe("point in time", () => {
+  test("today's forming bar is not on the calendar", async () => {
+    const { deps } = setup();
+    const { dataset } = await loadDataset({ asset: "BTC", metrics: ["ht:funding"] }, { ...deps, now: () => D0 + 9 * DAY + 5 * H });
+    expect(dataset.t).toEqual(days(9));
+    expect(dataset.price.at(-1)).toBe(108);
+  });
+
+  test("maxFillDays from the metric def", async () => {
+    const { deps } = setup();
+    const weekly = fakeProvider("w", [{ ...def("w", "walcl", { scope: "global" }), maxFillDays: 8 } as MetricDef], { walcl: { t: [D0], v: [1] } });
+    const { dataset } = await loadDataset({ asset: "BTC", metrics: ["w:walcl"] }, { ...deps, providers: [...deps.providers!, weekly] });
+    expect(dataset.metrics["w:walcl"]).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1, NaN]);
+  });
+
+  test("dataset.stationary carries each kept metric's flag", async () => {
+    const { deps } = setup();
+    const lvl = fakeProvider("l", [def("l", "tvl", { scope: "global", stationary: false }), def("l", "ratio", { scope: "global" })], { tvl: { t: [D0], v: [1] }, ratio: { t: [D0], v: [2] } });
+    const { dataset } = await loadDataset({ asset: "BTC", metrics: ["l:tvl", "l:ratio"] }, { ...deps, providers: [...deps.providers!, lvl] });
+    expect(dataset.stationary).toEqual({ "l:tvl": false });
+  });
+});
+
+describe("stored history first", () => {
+  const NOW = D0 + 9 * DAY + 5 * H;
+  type Pt = { t: number; v: number };
+  function store(rows: Record<string, Pt[]>, fail = false): LabSeriesStore & { reads: string[] } {
+    const reads: string[] = [];
+    return {
+      reads,
+      hasDb: () => true,
+      async coverage(id) {
+        if (fail) throw new Error("db down");
+        const r = rows[id];
+        return r?.length ? { min: r[0]!.t, max: r.at(-1)!.t } : null;
+      },
+      async range(id, from, to) {
+        reads.push(id);
+        return (rows[id] ?? []).filter((p) => p.t >= from && p.t <= to);
+      },
+    };
+  }
+  /** A collectable provider: live data `v = 100 + day`, records each live range. */
+  function live(calls: Array<[string, number]>): LabProvider {
+    const defs = [def("cm", "CapMVRVCur"), def("cm", "Glob", { scope: "global" })];
+    return {
+      id: "cm",
+      name: "cm",
+      notes: "",
+      metrics: () => defs,
+      async fetch(key, asset, from, to) {
+        calls.push([`${key}:${asset}`, from]);
+        const t = days(10).filter((d) => d >= from && d <= to);
+        return { t, v: t.map((d) => 100 + (d - D0) / DAY) };
+      },
+      history: async () => ({ t: [], v: [] }),
+    } as LabProvider;
+  }
+  const pts = (n: number, v = 1): Pt[] => days(n).map((t) => ({ t, v }));
+
+  test("fresh stored series: no live call; asset-scoped ids are lab.<provider>.<key>.<asset>", async () => {
+    const calls: Array<[string, number]> = [];
+    const st = store({ "lab.cm.CapMVRVCur.btc": pts(9), "lab.cm.Glob": pts(8) });
+    const deps = { providers: [live(calls)], cache: new Map(), now: () => NOW, store: st };
+    expect((await fetchMetric("cm:CapMVRVCur", "BTC", D0, D0 + 9 * DAY, deps)).v).toEqual(Array(9).fill(1));
+    expect((await fetchMetric("cm:Glob", "ETH", D0, D0 + 9 * DAY, deps)).t).toEqual(days(8));
+    expect(calls).toEqual([]);
+    expect(st.reads).toEqual(["lab.cm.CapMVRVCur.btc", "lab.cm.Glob"]);
+  });
+
+  test("stale stored series: live tail from the last point minus a week, merged over it", async () => {
+    const calls: Array<[string, number]> = [];
+    const deps = { providers: [live(calls)], cache: new Map(), now: () => NOW + 10 * DAY, store: store({ "lab.cm.CapMVRVCur.btc": pts(9) }) };
+    const s = await fetchMetric("cm:CapMVRVCur", "btc", D0, D0 + 19 * DAY, deps);
+    expect(calls).toEqual([["CapMVRVCur:btc", D0 + DAY]]);
+    expect(s.t).toEqual(days(10));
+    expect(s.v).toEqual([1, 101, 102, 103, 104, 105, 106, 107, 108, 109]);
+  });
+
+  test("nothing stored, a DB error, no DB, or a provider the collector skips → live", async () => {
+    for (const st of [store({}), store({}, true), { ...store({ "lab.cm.CapMVRVCur.btc": pts(9) }), hasDb: () => false }]) {
+      const calls: Array<[string, number]> = [];
+      await fetchMetric("cm:CapMVRVCur", "BTC", D0, D0 + 9 * DAY, { providers: [live(calls)], cache: new Map(), now: () => NOW, store: st });
+      expect(calls).toEqual([["CapMVRVCur:BTC", D0]]);
+    }
+    const { deps, calls } = setup();
+    const st = store({ "lab.cm.CapMVRVCur.btc": pts(9) });
+    await fetchMetric("cm:CapMVRVCur", "BTC", D0, D0 + DAY, { ...deps, store: st }); // fake cm has no history()
+    expect(calls).toEqual(["cm:CapMVRVCur:BTC"]);
+    expect(st.reads).toEqual([]);
   });
 });

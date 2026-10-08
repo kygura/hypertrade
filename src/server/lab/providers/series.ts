@@ -1,4 +1,4 @@
-import { DAY_MS, type DailySeries } from "../types.js";
+import { DAY_MS, type DailySeries, type LabProvider, type MetricDef } from "../types.js";
 
 // Shared helpers for lab providers: daily bucketing, range clipping, and one
 // JSON GET that turns a non-2xx into an error carrying the status.
@@ -67,3 +67,28 @@ export async function getJson(url: string, fetchFn: typeof fetch, label: string,
   if (!res.ok) throw new HttpError(`${label}: HTTP ${res.status}`, res.status);
   return res.json();
 }
+
+/** Registry hints a provider's catalogue may carry beyond MetricDef. */
+export type LabMetricDef = MetricDef & {
+  /** Days a value may be forward-filled on the calendar; default 3 (weekly series: 8). */
+  maxFillDays?: number;
+};
+
+/**
+ * A provider whose history the cron collector stores (src/server/lab/collect.ts)
+ * under `labSeriesId`. `history` is the live source: everything since sinceMs
+ * (null = the source's full history) up to now.
+ */
+export type CollectableProvider = LabProvider & {
+  history?(key: string, asset: string, sinceMs: number | null): Promise<DailySeries>;
+};
+
+export const isCollectable = (p: LabProvider): p is LabProvider & Required<Pick<CollectableProvider, "history">> =>
+  typeof (p as CollectableProvider).history === "function";
+
+/**
+ * Observation series a collected metric is stored under: `lab.<provider>.<key>[.<asset>]`.
+ * Its own namespace, apart from the cryptoContext collector's intraday snapshots.
+ */
+export const labSeriesId = (def: Pick<MetricDef, "provider" | "key" | "scope">, asset: string): string =>
+  `lab.${def.provider}.${def.key}${def.scope === "asset" ? `.${asset.toLowerCase()}` : ""}`;

@@ -1,10 +1,12 @@
 import { z } from "zod";
-import type { DailySeries, LabProvider, MetricDef } from "../types.js";
-import { clip, getJson, toDaily } from "./series.js";
+import { DAY_MS, type DailySeries } from "../types.js";
+import { clip, getJson, toDaily, type CollectableProvider, type LabMetricDef } from "./series.js";
 
 // alternative.me Crypto Fear & Greed, full daily history (2018→), keyless.
 
 export const FNG_URL = "https://api.alternative.me/fng/?limit=0&format=json";
+/** The newest `days` daily values (limit counts back from today). */
+export const fngUrl = (days: number): string => `https://api.alternative.me/fng/?limit=${Math.max(1, Math.floor(days))}&format=json`;
 
 const FngHistorySchema = z.object({
   data: z.array(z.object({ value: z.string(), timestamp: z.string() })),
@@ -19,7 +21,7 @@ export function parseFngHistory(json: unknown): DailySeries {
   );
 }
 
-const METRICS: MetricDef[] = [
+const METRICS: LabMetricDef[] = [
   {
     id: "fng:value",
     provider: "fng",
@@ -33,7 +35,7 @@ const METRICS: MetricDef[] = [
   },
 ];
 
-export function createFngProvider(fetchFn: typeof fetch = fetch): LabProvider {
+export function createFngProvider(fetchFn: typeof fetch = fetch, now: () => number = Date.now): CollectableProvider {
   return {
     id: "fng",
     name: "alternative.me Fear & Greed",
@@ -42,6 +44,11 @@ export function createFngProvider(fetchFn: typeof fetch = fetch): LabProvider {
     async fetch(key, _asset, fromMs, toMs) {
       if (key !== "value") throw new Error(`unknown fng metric: ${key}`);
       return clip(parseFngHistory(await getJson(FNG_URL, fetchFn, "fng")), fromMs, toMs);
+    },
+    async history(key, _asset, sinceMs) {
+      if (key !== "value") throw new Error(`unknown fng metric: ${key}`);
+      const url = sinceMs == null ? FNG_URL : fngUrl(Math.ceil((now() - sinceMs) / DAY_MS) + 2);
+      return parseFngHistory(await getJson(url, fetchFn, "fng"));
     },
   };
 }

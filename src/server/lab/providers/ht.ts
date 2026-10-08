@@ -2,8 +2,8 @@ import { fetchCandles, fetchFundingPage, HL_FUNDING_PAGE, HL_MAX_CANDLES, type F
 import { FRED_SERIES } from "../../collectors/fred.js";
 import { databaseUrl, getCandles, getFunding, seriesRange } from "../../db.js";
 import { ensureHistory } from "../../market/candleSync.js";
-import { DAY_MS, type DailySeries, type LabProvider, type MetricCategory, type MetricDef } from "../types.js";
-import { clip, toDaily, type Agg } from "./series.js";
+import { DAY_MS, type DailySeries, type LabProvider, type MetricCategory } from "../types.js";
+import { clip, toDaily, type Agg, type LabMetricDef } from "./series.js";
 
 // Hypertrade's own data: Postgres (candles, funding, collector observations)
 // with live Hyperliquid fallback for price and funding when there is no DB.
@@ -106,7 +106,8 @@ const GLOBAL: GlobalDef[] = [
   ["fng", "Fear & Greed (stored)", "sentiment", "index", "alternative.me Fear & Greed, as collected.", "fng.value", 0],
   ["btc_dominance", "BTC dominance", "macro", "%", "BTC share of total crypto market cap (CoinGecko).", "cg.btc_dominance", 0],
   ["total_mcap", "Total crypto market cap", "liquidity", "USD", "Total crypto market cap (CoinGecko).", "cg.total_mcap_usd", 0],
-  ["stablecoin_cap", "Stablecoin cap (stored)", "liquidity", "USD", "USD-pegged stablecoin cap (DefiLlama), as collected.", "llama.stablecoin_cap_usd", 0],
+  // Lag 1 like llama:stablecoin_cap: DefiLlama's figure for a day settles after it.
+  ["stablecoin_cap", "Stablecoin cap (stored)", "liquidity", "USD", "USD-pegged stablecoin cap (DefiLlama), as collected.", "llama.stablecoin_cap_usd", 1],
   ["dvol", "BTC DVOL", "derivatives", "index", "Deribit BTC implied volatility index.", "deribit.btc_dvol", 0],
   // FRED observations are stamped with their data date and published a day or more later.
   ...[...FRED_SERIES, "net_liquidity", "spread_2s10s"].map(
@@ -121,8 +122,14 @@ const ASSET_SERIES: Record<string, (coin: string) => string> = {
   elfa_share: (c) => `elfa.share_24h.${c}`,
 };
 
-const METRICS: MetricDef[] = [
-  ...ASSET_DEFS.map(([key, name, category, units, description]): MetricDef => ({
+/** Levels that trend (see LabMetricDef.stationary). */
+const LEVELS = new Set(["price", "volume", "oi", "total_mcap", "stablecoin_cap"]);
+/** Weekly FRED releases: forward-fill across the week (default is 3 days). */
+const WEEKLY = new Set(["fred.WALCL", "fred.WTREGEN", "fred.net_liquidity"]);
+const hints = (key: string) => ({ ...(LEVELS.has(key) ? { stationary: false } : {}), ...(WEEKLY.has(key) ? { maxFillDays: 8 } : {}) });
+
+const METRICS: LabMetricDef[] = [
+  ...ASSET_DEFS.map(([key, name, category, units, description]): LabMetricDef => ({
     id: `ht:${key}`,
     provider: "ht",
     key,
@@ -132,8 +139,9 @@ const METRICS: MetricDef[] = [
     units,
     description,
     lagDays: 0,
+    ...hints(key),
   })),
-  ...GLOBAL.map(([key, name, category, units, description, , lagDays]): MetricDef => ({
+  ...GLOBAL.map(([key, name, category, units, description, , lagDays]): LabMetricDef => ({
     id: `ht:${key}`,
     provider: "ht",
     key,
@@ -143,6 +151,7 @@ const METRICS: MetricDef[] = [
     ...(units ? { units } : {}),
     description,
     lagDays,
+    ...hints(key),
   })),
 ];
 const GLOBAL_SERIES = new Map(GLOBAL.map((g) => [g[0], g[5]]));

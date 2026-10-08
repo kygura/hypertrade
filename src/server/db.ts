@@ -109,6 +109,17 @@ export async function latestObservations(seriesIds: string[]): Promise<(Point & 
   return rows.map((r) => ({ seriesId: r.series_id, ts: r.ts, value: r.value }))
 }
 
+/** First/last observation and row count per series (Lab stored-history check). */
+export async function seriesCoverage(seriesIds: string[]): Promise<{ seriesId: string; min: Date; max: Date; n: number }[]> {
+  if (seriesIds.length === 0) return []
+  const rows = await sql()<{ series_id: string; min: Date; max: Date; n: number }[]>`
+    select series_id, min(ts) as min, max(ts) as max, count(*)::int as n
+    from observations where series_id in ${sql()(seriesIds)}
+    group by series_id
+  `
+  return rows.map((r) => ({ seriesId: r.series_id, min: r.min, max: r.max, n: r.n }))
+}
+
 /**
  * Observations for one series. With `buckets`, downsamples to at most that many
  * equal-width time buckets (plain Postgres width_bucket, no timescale).
