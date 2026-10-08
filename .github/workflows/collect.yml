@@ -82,3 +82,38 @@ jobs:
           if grep -q '"timedOut":true' "$body"; then
             echo "::warning::Backfill hit its hard stop; see inFlight above and the [backfill] lines in the Vercel runtime logs."
           fi
+
+  # The agentic desk's watch tick (SPEC.md "Desk"): settles paper stops,
+  # evaluates triggers, sends alerts, and wakes the agent team when warranted
+  # (within DESK_MAX_CYCLES_PER_DAY). Runs after collection so OI snapshots are
+  # fresh. Opt-in: set the repository variable DESK_ENABLED=true once
+  # db/migrations/003_desk.sql is applied. A cycle can take minutes, hence the
+  # long timeout and no retries (a retry would start a second cycle).
+  desk:
+    needs: collect
+    if: ${{ vars.DESK_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Desk tick
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          set -o pipefail
+          url="${APP_URL%/}/api/desk/tick"
+          body=$(mktemp)
+          code=$(curl -sS -X POST \
+            --fail-with-body \
+            --max-time 295 \
+            -H "x-cron-token: $CRON_TOKEN" \
+            -H "content-type: application/json" \
+            -d '{}' \
+            -o "$body" -w '%{http_code}' \
+            "$url") && status=0 || status=$?
+          echo "POST $url -> HTTP ${code:-none}"
+          cat "$body"
+          echo
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Desk tick failed (curl exit $status, HTTP ${code:-none})"
+            exit 1
+          fi

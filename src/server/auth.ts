@@ -119,7 +119,9 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
   const path = new URL(c.req.url).pathname.replace(/^\/api/, "") || "/";
 
   if (PUBLIC_PATHS.has(path)) return next();
-  if (path.startsWith("/cron/")) return requireCronToken(c, next);
+  if (path.startsWith("/cron/") || path === "/desk/tick") return requireCronToken(c, next);
+  // Telegram's webhook carries its own secret header, checked by the route.
+  if (path === "/desk/telegram") return next();
 
   if (!verifySession(getCookie(c, COOKIE_NAME))) {
     return c.json({ error: "unauthorized" }, 401);

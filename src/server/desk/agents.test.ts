@@ -1,0 +1,134 @@
+import { describe, expect, test } from "bun:test";
+import { estimateCost, MAX_SPAWNS_PER_RUN, runDesk } from "./agents.js";
+import { makeService, ScriptedProvider, type ScriptStep } from "./testkit.js";
+import type { DeskEvent } from "./types.js";
+
+const trade = {
+  coin: "ETH",
+  side: "long",
+  setup: "spot-led breakout retest",
+  thesis: "Flows specialist reads a spot-led rally; macro reads liquidity expanding.",
+  horizon: "swing",
+  confidence: "medium",
+  stop: 3800,
+  target: 4500,
+  riskPct: 0.5,
+  invalidation: "daily close under 3850",
+  evidence: [
+    { source: "flows", point: "spot_led_rally, trap 18" },
+    { source: "macro", point: "net liquidity +3% over 4w" },
+  ],
+};
+
+function team(pm: ScriptStep[]) {
+  return new ScriptedProvider("claude-opus-5-5", (system) => {
+    if (system.includes("portfolio manager (PM) of a crypto desk")) return pm;
+    if (system.includes("Derivatives & flows analyst")) return [{ calls: [{ name: "market_breadth", input: {} }] }, { text: "**Read:** spot-led, medium." }];
+    if (system.includes("Macro, liquidity & fiscal")) return [{ text: "**Read:** liquidity expanding, medium." }];
+    if (system.includes('"eth-unlocks"')) return [{ text: "**Read:** no unlocks this week." }];
+    return [{ text: "ok" }];
+  });
+}
+
+describe("runDesk", () => {
+  test("the PM consults specialists in parallel, proposes through the governor, and the run is recorded", async () => {
+    const { service, store } = makeService();
+    const provider = team([
+      {
+        text: "Consulting the team.",
+        calls: [
+          {
+            name: "consult_specialists",
+            input: {
+              tasks: [
+                { specialist: "flows", task: "Decompose ETH's 72h move: OI, funding, premium." },
+                { specialist: "macro", task: "Does liquidity support risk this month?" },
+              ],
+            },
+          },
+        ],
+      },
+      { calls: [{ name: "propose_trade", input: trade }] },
+      { text: "**Verdict:** genuine spot-led flow, medium confidence. Opened a long." },
+    ]);
+    const events: DeskEvent[] = [];
+    const res = await runDesk({ service, kind: "cycle", input: "ETH +6% in 4h", act: true, makeProvider: () => provider }, (e) => events.push(e));
+
+    expect(res.answer).toContain("**Verdict:**");
+    expect(res.stop).toBe("end");
+    const starts = events.filter((e) => e.type === "agent_start").map((e) => (e as { agent: string }).agent);
+    expect(starts).toEqual(["pm", "flows", "macro"]);
+    // The flows specialist used its own tool.
+    expect(events.some((e) => e.type === "tool_call" && e.agent === "flows" && e.name === "market_breadth")).toBe(true);
+    // Reports came back to the PM as one tool result.
+    const consult = provider.results.find((r) => r[0]?.name === "consult_specialists")![0]!;
+    expect(JSON.parse(consult.content).reports.map((r: { id: string }) => r.id)).toEqual(["flows", "macro"]);
+    // The proposal went through the governor and filled on paper.
+    const proposal = events.find((e) => e.type === "proposal") as Extract<DeskEvent, { type: "proposal" }>;
+    expect(proposal.status).toBe("executed");
+    expect(await store.paperPositions()).toHaveLength(1);
+
+    const run = await store.getRun(res.runId);
+    expect(run!.status).toBe("done");
+    expect(run!.answer).toContain("Verdict");
+    expect(run!.events.some((e) => e.type === "agent_done" && e.agent === "macro")).toBe(true);
+    expect(run!.events.some((e) => e.type === "text")).toBe(false); // deltas are not persisted
+    // 3 agents × their steps at 1000 in / 100 out on Opus 5.5 pricing
+    const done = events.at(-1) as Extract<DeskEvent, { type: "done" }>;
+    expect(done.type).toBe("done");
+    expect(done.costUsd).toBeGreaterThan(0);
+  });
+
+  test("analysis mode has no action tools: a propose_trade call fails as unknown", async () => {
+    const { service, store } = makeService();
+    const provider = team([{ calls: [{ name: "propose_trade", input: trade }] }, { text: "**Verdict:** analysis only." }]);
+    await runDesk({ service, kind: "ask", input: "Is this a bull trap?", act: false, makeProvider: () => provider }, () => {});
+    const r = provider.results[0]![0]!;
+    expect(r.isError).toBe(true);
+    expect(r.content).toContain("unknown tool propose_trade");
+    expect(await store.listProposals({ limit: 10 })).toHaveLength(0);
+    expect(provider.systems[0]).toContain("analysis mode");
+  });
+
+  test("spawn_agent runs an ad-hoc analyst with read tools only and enforces the spawn budget", async () => {
+    const { service } = makeService();
+    const spawn = (name: string, tools: string[]) => ({ name: "spawn_agent", input: { name, mandate: "Token unlock and supply calendar for ETH", task: "Any unlocks this week?", tools } });
+    const provider = team([
+      { calls: [spawn("eth-unlocks", ["get_hl_markets"]), spawn("bad", ["propose_trade"])] },
+      { calls: Array.from({ length: MAX_SPAWNS_PER_RUN + 1 }, (_, i) => spawn(`s${i}`, [])) },
+      { text: "**Verdict:** done." },
+    ]);
+    const events: DeskEvent[] = [];
+    await runDesk({ service, kind: "ask", input: "unlocks?", act: false, makeProvider: () => provider }, (e) => events.push(e));
+    const [first, second] = provider.results;
+    expect(JSON.parse(first![0]!.content).report).toContain("no unlocks");
+    expect(first![1]!.content).toContain("not read tools: propose_trade");
+    const budgetErrors = second!.filter((r) => r.content.includes("spawn budget spent"));
+    expect(budgetErrors.length).toBe(2); // one used above, so only 2 of 4 fit
+  });
+
+  test("a provider failure ends the agent, and the run still finishes", async () => {
+    const { service, store } = makeService();
+    const provider = {
+      id: "anthropic" as const,
+      model: "claude-opus-5-5",
+      webSearch: false,
+      start: () => ({
+        step: async () => {
+          throw Object.assign(new Error("boom"), { status: 429 });
+        },
+        addToolResults: () => {},
+      }),
+    };
+    const events: DeskEvent[] = [];
+    const res = await runDesk({ service, kind: "ask", input: "q", act: false, makeProvider: () => provider }, (e) => events.push(e));
+    expect(res.stop).toBe("error");
+    expect(events.some((e) => e.type === "error" && e.error.includes("rate limiting"))).toBe(true);
+    expect((await store.getRun(res.runId))!.status).toBe("error");
+  });
+});
+
+test("estimateCost prices known models and gives up on unknown ones", () => {
+  expect(estimateCost(new Map([["claude-opus-5-5", { input_tokens: 1_000_000, output_tokens: 100_000 }]]))).toBe(6);
+  expect(estimateCost(new Map([["mystery", { input_tokens: 1, output_tokens: 1 }]]))).toBeNull();
+});
