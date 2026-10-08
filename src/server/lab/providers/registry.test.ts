@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { UpstreamError } from "../../mcp/types.js";
 import type { DailySeries, LabProvider, MetricDef } from "../types.js";
 import { alignToCalendar, allMetrics, fetchMetric, getMetric, loadDataset, type RegistryDeps } from "./registry.js";
 import { clip, toDaily } from "./series.js";
@@ -137,9 +138,17 @@ describe("loadDataset", () => {
   test("falls back when ht price errors too, and throws when nothing has price", async () => {
     const { deps } = setup({ htPrice: new Error("HL 500") });
     const { warnings } = await loadDataset({ asset: "BTC", metrics: [] }, deps);
-    expect(warnings[0]).toBe("ht:price: HL 500");
+    expect(warnings).toEqual(["ht:price unavailable (HL 500); using cm:PriceUSD"]);
     const explicit = setup({ htPrice: { t: [], v: [] } });
-    await expect(loadDataset({ asset: "BTC", metrics: [], price: "ht:price" }, explicit.deps)).rejects.toThrow("no price history for BTC");
+    await expect(loadDataset({ asset: "BTC", metrics: [], price: "ht:price" }, explicit.deps)).rejects.toThrow("no price history for BTC: ht:price: no history");
+  });
+
+  test("every price attempt failing → UpstreamError naming each reason", async () => {
+    const { deps } = setup({ htPrice: new Error("HL 500") });
+    const providers = deps.providers!.map((p) => (p.id === "cm" ? { ...p, fetch: async () => Promise.reject(new Error("cm HTTP 429")) } : p));
+    const err = await loadDataset({ asset: "BTC", metrics: [] }, { ...deps, providers }).catch((e) => e);
+    expect(err).toBeInstanceOf(UpstreamError);
+    expect(err.message).toBe("no price history for BTC: ht:price: HL 500; cm:PriceUSD: cm HTTP 429");
   });
 
   test("a metric with no data in range is dropped with a warning", async () => {

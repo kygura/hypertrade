@@ -39,7 +39,7 @@ export function fakeRegistry() {
         description: "Always fails.",
         inputSchema: { type: "object", properties: {} },
         async run() {
-          throw new Error("db password=hunter2 rejected");
+          throw new Error("db connection refused");
         },
       },
       {

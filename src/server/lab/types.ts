@@ -11,6 +11,15 @@ export interface DailySeries {
   v: number[];
 }
 
+/** YYYY-MM-DD naming a real calendar day (2025-02-30 is refused). */
+export const DaySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD")
+  .refine((s) => {
+    const ms = Date.parse(`${s}T00:00:00Z`);
+    return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === s;
+  }, "not a calendar date");
+
 export type Direction = "long" | "short";
 export type Objective = "sharpe" | "return";
 export const TRANSFORMS = ["raw", "z", "rsi", "ma_ratio", "roc", "vol", "pctile"] as const;
@@ -137,7 +146,7 @@ export const SearchConfigSchema = z.object({
   horizonDays: z.number().int().min(1).max(180).default(14),
   labelQuantile: z.number().min(0.05).max(0.5).default(0.3),
   customZones: z
-    .array(z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .array(z.object({ from: DaySchema, to: DaySchema }))
     .max(50)
     .optional(),
   objective: z.enum(["sharpe", "return"]).default("sharpe"),
@@ -146,8 +155,8 @@ export const SearchConfigSchema = z.object({
   minSupport: z.number().int().min(5).default(30),
   slippageBps: z.number().min(0).max(200).default(10),
   topK: z.number().int().min(1).max(50).default(10),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  from: DaySchema.optional(),
+  to: DaySchema.optional(),
   price: z.string().optional(),
   seed: z.number().int().default(42),
 });

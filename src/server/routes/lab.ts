@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { labDeadlineMs, labRegistry, SERVER_DEADLINE_MS } from "../mcp/lab.js";
-import { describeTool, TOOL_SOURCES, ToolInputError, type Registry, type ToolSource } from "../mcp/types.js";
+import { describeTool, TOOL_SOURCES, ToolInputError, UpstreamError, type Registry, type ToolSource } from "../mcp/types.js";
 
 // /lab — REST face of the lab tool registry (LAB.md "Surfaces"). Cookie or
 // LAB_API_TOKEN bearer, both checked by the global gate in auth.ts.
@@ -8,7 +8,8 @@ import { describeTool, TOOL_SOURCES, ToolInputError, type Registry, type ToolSou
 // GET  /lab/tools        → { tools: [{ name, title, description, inputSchema, annotations }] }
 // POST /lab/tools/:name  JSON args → { ok: true, result }
 //                        | 400 { ok: false, error, field? } (bad args)
-//                        | 404 unknown tool | 500 { ok: false, error }
+//                        | 404 unknown tool | 502 { ok: false, error } (upstream data)
+//                        | 500 { ok: false, error }
 // Header x-lab-source: api|mcp|cli|ui (default api) is passed to the tool.
 
 export interface LabRouteOptions {
@@ -46,6 +47,7 @@ export function labRoutes(registryFactory: () => Registry = labRegistry, opts: L
         if (err instanceof ToolInputError) {
           return c.json({ ok: false, error: err.message, ...(err.field !== undefined && { field: err.field }) }, 400);
         }
+        if (err instanceof UpstreamError) return c.json({ ok: false, error: err.message }, 502);
         console.error(`[lab] ${name}`, err);
         return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
       }

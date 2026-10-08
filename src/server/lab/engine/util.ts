@@ -1,4 +1,18 @@
-// Small numeric helpers shared by the engine modules.
+// Small helpers shared by the engine modules.
+
+/**
+ * The engine declines a request as posed (too many features, too little
+ * history, nothing to label): the caller's input to change, not a failure.
+ * `field` names the argument to change.
+ */
+export class SearchRefused extends Error {
+  readonly field?: string;
+  constructor(message: string, field?: string) {
+    super(message);
+    this.name = "SearchRefused";
+    this.field = field;
+  }
+}
 
 export const isoDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 

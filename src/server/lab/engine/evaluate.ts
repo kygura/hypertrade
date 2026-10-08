@@ -3,7 +3,7 @@ import { equityCurve, perfStats, simulate } from "./backtest.js";
 import { checkDataset, makeCtx, rangeIndices, type EvalCtx } from "./context.js";
 import { makeLabels } from "./labels.js";
 import { ruleId, ruleText } from "./rules.js";
-import { isoDate, parseDay } from "./util.js";
+import { isoDate, parseDay, SearchRefused } from "./util.js";
 import { makeSplit, positions, sensitivity, walkForwardSegments, type Split } from "./validate.js";
 
 // Full evaluation of one rule (LAB.md §6–8), shared by the search (top rules)
@@ -92,7 +92,7 @@ export function evaluateRule(input: Rule, data: LabDataset, opts: EvaluateRuleOp
   checkDataset(data);
   const [lo, hi] = rangeIndices(data.t, opts.from, opts.to);
   const ctx = makeCtx(data, lo, hi);
-  if (ctx.n < 10) throw new Error(`only ${ctx.n} days in range; need at least 10`);
+  if (ctx.n < 10) throw new SearchRefused(`only ${ctx.n} days in range; need at least 10`, "from");
   const split = makeSplit(ctx.n, 0, rule.horizonDays);
   const labels = makeLabels({
     t: ctx.t,

@@ -1,6 +1,17 @@
 import type { z, ZodTypeAny } from "zod";
-import { ToolInputError, type ToolContext } from "../mcp/types.js";
-import { evaluateRule as evaluateRuleOn, inZoneDays, livePerf, parseFeatureId, ruleFiresAt, ruleId, runSearch } from "./engine/index.js";
+import { ToolInputError, UpstreamError, type ToolContext } from "../mcp/types.js";
+import {
+  evaluateRule as evaluateRuleOn,
+  featureSpecs,
+  inZoneDays,
+  livePerf,
+  MAX_FEATURES,
+  parseFeatureId,
+  ruleFiresAt,
+  ruleId,
+  runSearch,
+  SearchRefused,
+} from "./engine/index.js";
 import { allMetrics, getMetric, loadDataset as registryLoadDataset, PROVIDERS, type LoadConfig } from "./providers/registry.js";
 import { defaultStore, type LabStore, type RunSummary, type StoredRun } from "./store.js";
 import {
@@ -21,6 +32,7 @@ import {
   type SearchResult,
   type Sensitivity,
 } from "./types.js";
+import { mapLimit, msg } from "./util.js";
 
 // Lab service (LAB.md "Tool contract"): one method per tool. A thin
 // orchestration layer over the providers (data), the engine (all math) and
@@ -65,8 +77,6 @@ export interface SaveInput {
   origin?: CatalogueEntry["origin"];
 }
 
-const msg = (err: unknown) => (err instanceof Error ? err.message : String(err));
-
 /** Zod parse at the trust boundary: the first issue becomes a ToolInputError naming its field path. */
 export function parseInput<S extends ZodTypeAny>(schema: S, input: unknown, prefix?: string): z.output<S> {
   const r = schema.safeParse(input);
@@ -78,12 +88,9 @@ export function parseInput<S extends ZodTypeAny>(schema: S, input: unknown, pref
   throw new ToolInputError(field ? `${field}: ${text}` : text, field);
 }
 
-async function mapLimit<T>(items: T[], limit: number, fn: (x: T) => Promise<void>): Promise<void> {
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) await fn(items[next++]!);
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+/** An engine refusal is the caller's input to change: a 400, not a failure. */
+function asInputError(err: unknown): unknown {
+  return err instanceof SearchRefused ? new ToolInputError(err.message, err.field) : err;
 }
 
 export function createLabService(partial: Partial<LabServiceDeps> = {}) {
@@ -191,7 +198,8 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         const b = entries[j]!;
         const za = zones.get(a.id);
         const zb = zones.get(b.id);
-        if (!za || !zb || a.rule.asset.toUpperCase() !== b.rule.asset.toUpperCase()) continue;
+        // Opposite sides on the same days are a contradiction, not a duplicate.
+        if (!za || !zb || a.rule.asset.toUpperCase() !== b.rule.asset.toUpperCase() || a.rule.direction !== b.rule.direction) continue;
         let inter = 0;
         let union = 0;
         for (const [t, x] of za) {
@@ -220,14 +228,18 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     // Full history up to `to`: rolling features need warm-up before `from`.
     const { dataset, warnings } = await deps.loadDataset({ asset: rule.asset, metrics, price: rule.price, to: input.to });
     const missing = metrics.filter((m) => !dataset.metrics[m]);
-    if (missing.length) throw new Error(`no data for ${missing.join(", ")} on ${rule.asset}${warnings.length ? ` (${warnings.join("; ")})` : ""}`);
-    return evaluateRuleOn(rule, dataset, {
-      slippageBps: input.slippageBps ?? 10,
-      includeEquity: input.includeEquity ?? false,
-      from: input.from,
-      to: input.to,
-      windows: input.sensitivity ? (input.windows ?? DEFAULT_WINDOWS) : undefined,
-    });
+    if (missing.length) throw new UpstreamError(`no data for ${missing.join(", ")} on ${rule.asset}${warnings.length ? ` (${warnings.join("; ")})` : ""}`);
+    try {
+      return evaluateRuleOn(rule, dataset, {
+        slippageBps: input.slippageBps ?? 10,
+        includeEquity: input.includeEquity ?? false,
+        from: input.from,
+        to: input.to,
+        windows: input.sensitivity ? (input.windows ?? DEFAULT_WINDOWS) : undefined,
+      });
+    } catch (err) {
+      throw asInputError(err);
+    }
   }
 
   return {
@@ -247,6 +259,11 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         if (!known(m)) throw new ToolInputError(`unknown metric ${m} (lab_list_metrics lists them)`, `metrics.${i}`);
       });
       if (config.price && !known(config.price)) throw new ToolInputError(`unknown price metric ${config.price}`, "price");
+      // Refuse before fetching anything (the engine re-checks after dropping empty metrics).
+      const features = featureSpecs(config.metrics, config.transforms, config.windows).length;
+      if (features > MAX_FEATURES) {
+        throw new ToolInputError(`${features} features (metrics × transforms × windows) exceed the cap of ${MAX_FEATURES}: use fewer metrics, transforms or windows`, "metrics");
+      }
 
       const started = deps.now();
       let result: SearchResult;
@@ -257,11 +274,12 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         result = runSearch(config, loaded.dataset, { deadlineMs });
         result.warnings = [...loaded.warnings, ...result.warnings];
       } catch (err) {
-        const error = msg(err);
+        // Refusals and bad input are answered, not recorded as failed runs.
+        if (err instanceof SearchRefused || err instanceof ToolInputError) throw asInputError(err);
         await deps.store
-          .saveRun({ source: ctx.source, config, status: "error", error, result: null, durationMs: deps.now() - started })
+          .saveRun({ source: ctx.source, config, status: "error", error: msg(err), result: null, durationMs: deps.now() - started })
           .catch((e) => console.warn(`[lab] failed run not saved: ${msg(e)}`));
-        throw new Error(error);
+        throw err;
       }
       let runId: string | null = null;
       try {
@@ -310,9 +328,15 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
 
     async catalogueSave(input: SaveInput): Promise<CatalogueEntry> {
       const rule = parseInput(RuleSchema, input.rule, "rule");
-      const saved = await evaluate({ rule, sensitivity: true });
+      if (input.runId && !(await deps.store.getRun(input.runId))) {
+        throw new ToolInputError(`unknown run ${input.runId} (lab_list_runs lists them)`, "runId");
+      }
+      const id = ruleId(rule);
+      // The store keeps an existing entry's evaluation, so only a new rule is evaluated.
+      const existing = await deps.store.getCatalogueEntry(id);
+      const saved = existing?.saved ?? (await evaluate({ rule, sensitivity: true }));
       return deps.store.saveCatalogueEntry({
-        id: ruleId(rule),
+        id,
         name: input.name,
         note: input.note ?? null,
         origin: input.origin ?? "user",

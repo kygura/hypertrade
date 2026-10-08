@@ -7,7 +7,7 @@ import { makeLabels } from "./labels.js";
 import { fork, gauss, mulberry32, randInt, type Rng } from "./rng.js";
 import { conditionsKey, extractRules } from "./rules.js";
 import { binFeatures, growForest, type Binned, type TreeParams } from "./tree.js";
-import { isoDate } from "./util.js";
+import { isoDate, SearchRefused } from "./util.js";
 import { makeSplit, walkForwardScore, walkForwardSegments } from "./validate.js";
 
 // The heuristic search (LAB.md §4–7). Each trial grows a forest per
@@ -76,10 +76,10 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
     warnings.push(`metric ${m} has no data for ${config.asset}; skipped`);
     return false;
   });
-  if (!metrics.length) throw new Error("none of the requested metrics has data");
+  if (!metrics.length) throw new SearchRefused("none of the requested metrics has data", "metrics");
   const specs = featureSpecs(metrics, config.transforms, config.windows);
   if (specs.length > MAX_FEATURES) {
-    throw new Error(`${specs.length} features exceed the cap of ${MAX_FEATURES}: use fewer metrics, transforms or windows`);
+    throw new SearchRefused(`${specs.length} features exceed the cap of ${MAX_FEATURES}: use fewer metrics, transforms or windows`, "metrics");
   }
 
   const [lo, hi] = rangeIndices(data.t, config.from, config.to);
@@ -87,11 +87,11 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
   const n = ctx.n;
   let priceDays = 0;
   for (const p of ctx.price) if (p > 0) priceDays++;
-  if (priceDays < MIN_PRICE_DAYS) throw new Error(`price history has ${priceDays} days; a search needs at least ${MIN_PRICE_DAYS}`);
+  if (priceDays < MIN_PRICE_DAYS) throw new SearchRefused(`price history has ${priceDays} days; a search needs at least ${MIN_PRICE_DAYS}`, "from");
 
   const split = makeSplit(n, config.folds, config.horizonDays);
   if (split.folds[0]!.purgedEnd < MIN_TRAIN_ROWS) {
-    throw new Error(`${n} days is too short for ${config.folds} folds at a ${config.horizonDays}-day horizon; use fewer folds, a shorter horizon or more history`);
+    throw new SearchRefused(`${n} days is too short for ${config.folds} folds at a ${config.horizonDays}-day horizon; use fewer folds, a shorter horizon or more history`, "folds");
   }
   const labels = makeLabels({
     t: ctx.t,
@@ -118,7 +118,7 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
     } else dropped++;
   }
   if (dropped) warnings.push(`${dropped} of ${specs.length} features have under 30 values in the search region; dropped`);
-  if (!ids.length) throw new Error("no feature has enough history in the search region");
+  if (!ids.length) throw new SearchRefused("no feature has enough history in the search region", "metrics");
 
   const dirSign = config.direction === "long" ? 1 : -1;
   const bps = config.slippageBps;
@@ -134,8 +134,8 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
   const final = trainSet(split.basisEnd, split.searchEnd);
   let positives = 0;
   for (const r of final.rows) if (labels[r] === 1) positives++;
-  if (!positives) throw new Error("no day in the search region is labelled good; widen labelQuantile or check customZones");
-  if (positives === final.rows.length) throw new Error("every day in the search region is labelled good; nothing to separate");
+  if (!positives) throw new SearchRefused("no day in the search region is labelled good; widen labelQuantile or check customZones", config.customZones?.length ? "customZones" : "labelQuantile");
+  if (positives === final.rows.length) throw new SearchRefused("every day in the search region is labelled good; nothing to separate", config.customZones?.length ? "customZones" : "labelQuantile");
   const folds = split.folds.map((f) => ({ fold: f, train: trainSet(f.purgedEnd, f.testFrom, final.rows.length) }));
 
   /** Rules with their signal, support and training objective, support-filtered, best first. */

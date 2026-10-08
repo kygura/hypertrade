@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ToolInputError } from "../mcp/types.js";
+import { ToolInputError, UpstreamError } from "../mcp/types.js";
 import { evaluateRule, ruleId } from "./engine/index.js";
 import { synthetic } from "./engine/testkit.js";
 import type { LoadConfig } from "./providers/registry.js";
@@ -120,16 +120,30 @@ describe("lab service: search", () => {
     expect(await store.listRuns(10)).toEqual([]);
   });
 
-  test("load or engine failure → error run persisted, clean Error rethrown", async () => {
+  test("load failure → error run persisted, error rethrown as is", async () => {
     const { service, store } = kit();
     await expect(service.search({ ...searchCfg, asset: "FAIL" }, { source: "mcp" })).rejects.toThrow("upstream down");
-    await expect(service.search({ ...searchCfg, from: "2024-06-01" }, { source: "mcp" })).rejects.toThrow(/at least 365/);
     const runs = await store.listRuns(10);
-    expect(runs.map((r) => [r.status, r.source, r.asset])).toEqual([
-      ["error", "mcp", "SYN"],
-      ["error", "mcp", "FAIL"],
-    ]);
-    expect(runs[1]!.error).toBe("upstream down");
+    expect(runs.map((r) => [r.status, r.source, r.asset, r.error])).toEqual([["error", "mcp", "FAIL", "upstream down"]]);
+  });
+
+  test("engine refusals → ToolInputError with a field; nothing persisted", async () => {
+    const { service, store } = kit();
+    const short = await inputError(service.search({ ...searchCfg, from: "2024-06-01" }, { source: "mcp" }));
+    expect([short.field, short.message]).toEqual(["from", expect.stringMatching(/at least 365/)]);
+    expect((await inputError(service.search({ ...searchCfg, folds: 6, horizonDays: 180, from: "2022-09-01" }, { source: "mcp" }))).field).toBe("folds");
+    expect((await inputError(service.search({ ...searchCfg, metrics: ["syn:e"] }, { source: "mcp" }))).field).toBe("metrics");
+    expect(await store.listRuns(10)).toEqual([]);
+  });
+
+  test("too many features → ToolInputError before any data is loaded", async () => {
+    const keys = Array.from({ length: 20 }, (_, i) => `m${i}`);
+    const wide: LabProvider = { ...synProvider, metrics: () => keys.map(synMetric) };
+    const { service, loads } = kit({ providers: [wide] });
+    // 20 metrics × (raw + 6 transforms × 6 windows) = 740 features
+    const err = await inputError(service.search({ asset: "SYN", metrics: keys.map((k) => `syn:${k}`), windows: [7, 14, 30, 60, 90, 180] }, { source: "api" }));
+    expect([err.field, err.message]).toEqual(["metrics", expect.stringContaining("740 features")]);
+    expect(loads).toEqual([]);
   });
 
   test("a store failure does not fail the search: runId null plus a warning", async () => {
@@ -184,7 +198,10 @@ describe("lab service: evaluate and sensitivity", () => {
     expect((await inputError(service.evaluateRule({ rule: bad("syn:b|zz|3") }))).field).toBe("rule.conditions.1.feature");
     expect((await inputError(service.evaluateRule({ rule: bad("nope:b|raw|0") }))).field).toBe("rule.conditions.1.feature");
     expect((await inputError(service.evaluateRule({ rule: { ...planted, horizonDays: 0 } }))).field).toBe("rule.horizonDays");
-    await expect(service.evaluateRule({ rule: bad("syn:e|raw|0") })).rejects.toThrow(/no data for syn:e/);
+    const missing = await service.evaluateRule({ rule: bad("syn:e|raw|0") }).catch((e) => e);
+    expect(missing).toBeInstanceOf(UpstreamError);
+    expect(missing.message).toMatch(/no data for syn:e/);
+    expect((await inputError(service.evaluateRule({ rule: planted, from: "2024-11-01" }))).field).toBe("from");
   });
 });
 
@@ -213,10 +230,24 @@ describe("lab service: catalogue", () => {
     expect((await service.catalogueList({})).entries).toEqual([]);
   });
 
-  test("save rejects a malformed rule", async () => {
-    const { service } = kit();
+  test("save rejects a malformed rule and an unknown runId", async () => {
+    const { service, loads } = kit();
     expect((await inputError(service.catalogueSave({ rule: { ...planted, conditions: [] }, name: "x" }))).field).toBe("rule.conditions");
+    expect((await inputError(service.catalogueSave({ rule: planted, name: "x", runId: "00000000-0000-4000-8000-000000000000" }))).field).toBe("runId");
+    expect(loads).toEqual([]);
   });
+
+  test("save with a known runId links it; re-saving skips re-evaluation and keeps the original", async () => {
+    const { service, loads } = kit();
+    const { runId } = await service.search(searchCfg, { source: "api" });
+    const first = await service.catalogueSave({ rule: planted, name: "planted", runId: runId! });
+    expect(first.runId).toBe(runId);
+    const loadsAfterFirst = loads.length;
+    const again = await service.catalogueSave({ rule: planted, name: "renamed", note: "n" });
+    expect(loads.length).toBe(loadsAfterFirst);
+    expect(again).toMatchObject({ id: first.id, name: "renamed", note: "n", runId, savedAt: first.savedAt });
+    expect(again.saved).toEqual(first.saved);
+  }, 20_000);
 
   test("health: decay, same-asset overlap, gaps, live map; list carries the flags", async () => {
     const { service, store, loads } = kit();
@@ -243,6 +274,13 @@ describe("lab service: catalogue", () => {
     const { entries } = await service.catalogueList({ asset: "SYN", direction: "long" });
     const flags = Object.fromEntries(entries.map((e) => [e.name, e.flags]));
     expect(flags).toEqual({ planted: ["overlap"], "too good to last": ["decayed", "overlap"], twin: ["overlap"] });
+  });
+
+  test("overlap needs the same direction: a mirrored rule is not a duplicate", async () => {
+    const { service, store } = kit();
+    await seed(store, planted, "planted");
+    await seed(store, { ...planted, direction: "short" }, "mirror");
+    expect((await service.catalogueHealth()).overlaps).toEqual([]);
   });
 
   test("health tolerates entries whose data cannot load", async () => {

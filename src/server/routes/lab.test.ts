@@ -19,7 +19,7 @@ describe("/lab routes", () => {
     const res = await app().app.request("/lab/tools");
     expect(res.status).toBe(200);
     const { tools } = await res.json();
-    expect(tools.map((t: { name: string }) => t.name)).toEqual(["echo", "list", "bad_input", "boom"]);
+    expect(tools.map((t: { name: string }) => t.name)).toEqual(["echo", "list", "bad_input", "boom", "upstream"]);
     expect(tools[0]).toEqual({
       name: "echo",
       title: "Echo",
@@ -70,9 +70,21 @@ describe("/lab routes", () => {
     expect((await res.json()).ok).toBe(false);
   });
 
-  test("other errors → 500 { ok: false, error }", async () => {
-    const res = await app().app.request("/lab/tools/boom", post("{}"));
-    expect(res.status).toBe(500);
+  test("UpstreamError → 502 { ok: false, error }", async () => {
+    const res = await app().app.request("/lab/tools/upstream", post("{}"));
+    expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ ok: false, error: "provider down" });
+  });
+
+  test("other errors → 500 { ok: false, error }", async () => {
+    const orig = console.error;
+    console.error = () => {};
+    try {
+      const res = await app().app.request("/lab/tools/boom", post("{}"));
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ ok: false, error: "db connection refused" });
+    } finally {
+      console.error = orig;
+    }
   });
 });

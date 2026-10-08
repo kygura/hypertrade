@@ -2,7 +2,7 @@ import type { Condition, LabDataset } from "../types.js";
 import { priceReturns } from "./backtest.js";
 import { parseFeatureId, transformSeries } from "./features.js";
 import { conditionSignal } from "./rules.js";
-import { parseDay, sortedFinite } from "./util.js";
+import { parseDay, SearchRefused, sortedFinite } from "./util.js";
 
 // Evaluation context over a [lo, hi] slice of a dataset. Feature columns are
 // computed on the full history (so rolling windows warm up on data before
@@ -40,7 +40,7 @@ export function rangeIndices(t: number[], from?: string, to?: string): [number, 
   while (lo < t.length && t[lo]! < a) lo++;
   let hi = t.length - 1;
   while (hi >= lo && t[hi]! > b) hi--;
-  if (hi < lo) throw new Error(`no data between ${from ?? "start"} and ${to ?? "end"}`);
+  if (hi < lo) throw new SearchRefused(`no data between ${from ?? "start"} and ${to ?? "end"}`, "from");
   return [lo, hi];
 }
 

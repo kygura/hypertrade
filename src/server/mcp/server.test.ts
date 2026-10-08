@@ -110,7 +110,7 @@ describe("tools/call", () => {
     } finally {
       console.error = orig;
     }
-    expect(String((logged[0]![1] as Error).message)).toContain("hunter2");
+    expect(String((logged[0]![1] as Error).message)).toContain("db connection refused");
   });
 
   test("unknown tool, missing name, non-object arguments → -32602", async () => {

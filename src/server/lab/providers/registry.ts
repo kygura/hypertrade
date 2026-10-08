@@ -1,9 +1,12 @@
+import { UpstreamError } from "../../mcp/types.js";
+import { parseDay } from "../engine/util.js";
 import { DAY_MS, type DailySeries, type LabDataset, type LabProvider, type MetricCategory, type MetricDef } from "../types.js";
 import { cmProvider } from "./cm.js";
 import { fngProvider } from "./fng.js";
 import { htProvider } from "./ht.js";
 import { llamaProvider } from "./llama.js";
 import { dayStart } from "./series.js";
+import { mapLimit, msg } from "../util.js";
 
 // Provider registry and dataset loader: resolves metric ids, fetches with a
 // short TTL cache, and aligns everything to the price calendar for the engine.
@@ -82,22 +85,6 @@ export function alignToCalendar(s: DailySeries, calendar: number[], lagDays = 0)
   return out;
 }
 
-async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
-  const out = new Array<R>(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i]!);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return out;
-}
-
-const msg = (err: unknown) => (err instanceof Error ? err.message : String(err));
-const parseDay = (s: string) => Date.parse(`${s}T00:00:00Z`);
-
 export interface LoadConfig {
   asset: string;
   metrics: string[];
@@ -114,29 +101,31 @@ export async function loadDataset(cfg: LoadConfig, deps: RegistryDeps = {}): Pro
   resolve(priceId, providers);
   const fromMs = cfg.from ? parseDay(cfg.from) : DEFAULT_FROM;
   const toMs = cfg.to ? parseDay(cfg.to) : dayStart((deps.now ?? Date.now)());
-  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) throw new Error(`bad date range: ${cfg.from ?? ""}..${cfg.to ?? ""}`);
   const warnings: string[] = [];
 
-  const tryPrice = (id: string) =>
-    fetchMetric(id, cfg.asset, fromMs, toMs, deps).then(
-      (s) => s,
-      (err) => {
-        warnings.push(`${id}: ${msg(err)}`);
-        return { t: [], v: [] } as DailySeries;
-      },
-    );
-  let usedPrice = priceId;
+  // Each attempt's failure is kept: a transport error is not "no history".
+  const reasons: string[] = [];
+  const tryPrice = async (id: string): Promise<{ t: number[]; v: number[]; error?: string }> => {
+    let s: DailySeries;
+    try {
+      s = await fetchMetric(id, cfg.asset, fromMs, toMs, deps);
+    } catch (err) {
+      reasons.push(`${id}: ${msg(err)}`);
+      return { t: [], v: [], error: msg(err) };
+    }
+    // Labels need a positive price; drop anything else from the calendar.
+    const keep = s.v.map((v) => Number.isFinite(v) && v > 0);
+    const out = { t: s.t.filter((_, i) => keep[i]), v: s.v.filter((_, i) => keep[i]) };
+    if (!out.t.length) reasons.push(`${id}: ${s.t.length ? "no positive prices" : "no history"}`);
+    return out;
+  };
   let price = await tryPrice(priceId);
   if (price.t.length === 0 && !cfg.price) {
-    warnings.push(`${priceId} has no history for ${cfg.asset}; using ${FALLBACK_PRICE}`);
-    usedPrice = FALLBACK_PRICE;
+    warnings.push(price.error ? `${priceId} unavailable (${price.error}); using ${FALLBACK_PRICE}` : `${priceId} has no history for ${cfg.asset}; using ${FALLBACK_PRICE}`);
     price = await tryPrice(FALLBACK_PRICE);
   }
-  // Labels need a positive price; drop anything else from the calendar.
-  const keep = price.v.map((v) => Number.isFinite(v) && v > 0);
-  const t = price.t.filter((_, i) => keep[i]);
-  const pv = price.v.filter((_, i) => keep[i]);
-  if (t.length === 0) throw new Error(`no price history for ${cfg.asset} (${usedPrice})`);
+  if (price.t.length === 0) throw new UpstreamError(`no price history for ${cfg.asset}: ${reasons.join("; ")}`);
+  const { t, v: pv } = price;
 
   const metrics: Record<string, number[]> = {};
   const results = await mapLimit(defs, CONCURRENCY, async (def) => {

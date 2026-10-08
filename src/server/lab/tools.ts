@@ -5,7 +5,7 @@
 import { z } from "zod";
 import type { PromptDef, ToolDef, ToolInputSchema } from "../mcp/types.js";
 import { createLabService, parseInput, type LabService } from "./service.js";
-import { RuleSchema, SearchConfigSchema, TRANSFORMS } from "./types.js";
+import { DaySchema, RuleSchema, SearchConfigSchema, TRANSFORMS } from "./types.js";
 
 export type { PromptDef, ToolContext, ToolDef, ToolSource } from "../mcp/types.js";
 export { ToolInputError } from "../mcp/types.js";
@@ -19,7 +19,6 @@ export function getLabService(): LabService {
 
 // ---------------------------------------------------------------- arguments (zod)
 
-const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 const WINDOWS = z.array(z.number().int().min(2).max(365)).min(1).max(6);
 const SLIPPAGE = z.number().min(0).max(200).default(10);
 const CATEGORIES = ["price", "derivatives", "onchain", "sentiment", "macro", "liquidity", "social"] as const;
@@ -32,8 +31,8 @@ const ListRunsArgs = z.object({ limit: z.number().int().min(1).max(200).default(
 const EvaluateArgs = z
   .object({
     rule: RuleSchema,
-    from: DAY.optional(),
-    to: DAY.optional(),
+    from: DaySchema.optional(),
+    to: DaySchema.optional(),
     slippageBps: SLIPPAGE,
     includeEquity: z.boolean().default(false),
     sensitivity: z.boolean().default(false),
