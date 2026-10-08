@@ -8,6 +8,7 @@ A single deployable web application merging three prior projects (`../hyperion`,
 2. **Backfill & Speculation** — historical price data is backfilled (CoinGecko daily OHLC, Hyperliquid candles) so branches show *what would have happened*, and forward projections show *what could happen* under user-set scenario assumptions (asset return/vol assumptions, rotation events).
 3. **Sector Intelligence** — an autonomous layer tracking perp mechanics (open interest, aggregate funding skew, premium) plus a sector/narrative mindshare map. Sector taxonomy is NOT hardcoded: it is produced and re-defined by the cloud routine (see Routine Contract) and enriched server-side with quantitative per-sector metrics from Hyperliquid data. Goal: visualize where mindshare/liquidity is rotating before price follows.
 4. **MarketState Briefing** — the existing marketstate Claude routine, upgraded: runs in the user's Anthropic cloud environment (managed from Claude Desktop), commits its output to this repo, and is triggerable from the app. The app renders the latest briefing and its history.
+5. **Lab** — open-data rule research, our own take on Glassnode's Alpha Lab built only on free sources. Daily BTC on-chain (Coin Metrics community, blockchain.com), sentiment (alternative.me), liquidity (DefiLlama), implied vol (Deribit DVOL) and Hyperliquid funding history feed a search for one- and two-condition threshold rules, validated walk-forward with an untouched holdout. Saved rules are re-checked daily on data they never saw. See "Lab" below.
 
 ## Runtime shape (decided — do not relitigate)
 
@@ -56,6 +57,7 @@ Ported from marketwatch's "everything is a series" design:
 - `funding(coin text, ts timestamptz, rate double precision, premium double precision, primary key(coin, ts))` — hourly Hyperliquid funding settlements
 - `branches(id uuid primary key default gen_random_uuid(), name text not null, config jsonb not null, created_at timestamptz default now(), updated_at timestamptz default now())`
 - `branch_results(branch_id uuid references branches on delete cascade, computed_at timestamptz, result jsonb, primary key(branch_id))` — latest simulation output cache
+- `lab_rules(id uuid, created_at, source text, note text, report jsonb)` — the Lab catalogue; `lab_runs(id uuid, created_at, request jsonb, result jsonb)` — recent searches (`db/migrations/003_lab.sql`)
 
 Series naming: `hl.total_oi_usd`, `hl.funding_skew`, `hl.premium.<coin>`, `hl.oi.<coin>` (top 20 by OI plus core, branch and recently charted coins — the chart's OI history), `hl.funding.<coin>`, `cg.total_mcap_usd`, `cg.btc_dominance`, `fng.value`, `llama.stablecoin_cap_usd`, `fred.<SERIES_ID>` (fred optional — degrade to `skipped:no-key` when `FRED_API_KEY` unset, marketstate pattern).
 
@@ -93,6 +95,33 @@ The cloud routine (managed on Claude Desktop, executed in Anthropic's cloud env,
 
 App-side: `data/**/*.json` files are bundled at build time via static imports — `latest.json` directly, history through routine-maintained `data/*/index.ts` static-import index files (Vercel's bundler ships no directory scans) — no runtime GitHub fetching. "Trigger routine" button → `POST /api/routines/trigger` → if `ROUTINE_WEBHOOK_URL` set, POST `{source:"hypertrade", requested_at}` to it (user wires the webhook to their cloud routine launcher); always records the request; UI shows last trigger + last `generated_at` so staleness is visible.
 
+## Lab
+
+Free, keyless daily history, the same "everything is a series" store:
+
+| Base (`series_id`) | Source | Lag |
+|---|---|---|
+| `px.BTC` | `candles` BTC 1d (HL, Binance, Bitstamp layers) | 0 |
+| `cm.btc.CapMVRVCur`, `cm.btc.AdrActCnt`, `cm.btc.TxCnt`, `cm.btc.FeeTotNtv` | Coin Metrics community API | 1d |
+| `bc.hash-rate`, `bc.miners-revenue`, `bc.difficulty`, `bc.estimated-transaction-volume-usd` | blockchain.com charts | 1d |
+| `fng.value` | alternative.me (full history) | 0 |
+| `llama.stablecoin_cap_usd` | DefiLlama `stablecoincharts/all` | 1d |
+| `deribit.btc_dvol` | Deribit DVOL, 1D resolution (from 2021) | 0 |
+| `fund.BTC` | `funding` table, daily mean, annualized % | 0 |
+
+Lag is publication lag: a value dated day d is first tradable at the close of d + lag. The collector (`src/server/lab/sources.ts`) runs inside `POST /api/cron/collect`, refetches each source at most every 20 h (a week of overlap), backs off 1 h after a failure, and keeps its bookkeeping in `sync_state` under `coin = '_lab'`. The registry is `LAB_BASES` in `src/shared/lab.ts`.
+
+Engine (`src/server/lab/`, pure except `dataset.ts`/`sources.ts`):
+
+- Features: each base × transform (`raw` for stationary levels only, `z90`, `z365`, `pct365`, `roc7/30/90`, `ma30r`, `ma200r`, `ma365r`, `x30_90`, `rsi14`). Every transform is causal.
+- Timing: a signal at close t trades close t → t+1, net of `costBps` per position change; flat cash when out.
+- Split: the last 20% of decision days is a holdout the search never reads. The first 80% is five chronological folds. A condition is (feature, `<`/`>`, quantile level). Walk-forward refits each threshold on folds before the one it trades.
+- Search: every single condition is scored by mean − ½·spread of its per-fold walk-forward Sharpes (consistency, not one good stretch). The best `beam` (quick 12 / standard 30 / deep 60) are ANDed with every other condition. A pair survives only if it beats both parents. Finalists are diversified (≤ 2 per anchoring condition).
+- Report per rule: in-sample, walk-forward and holdout stats (Sharpe, CAGR, max DD, exposure, trades, win rate, buy-and-hold), threshold stability (neighbour quantiles' walk-forward Sharpe, worst / own), deflated Sharpe (Bailey & López de Prado, N = all variants scored, null trial variance 1/(T−1)), firing now, equity curve.
+- Catalogue: saved reports keep their absolute thresholds. `GET /api/lab/catalogue` re-runs each on today's data: firing now, stats since saved (unseen data), full history, and a pulse (active long vs short).
+
+Agents: the analyst gets `lab_features`, `lab_search`, `lab_evaluate_rule`, `lab_catalogue` (read-only; its searches are not persisted). `scripts/lab-mcp.ts` serves the same four plus `lab_save_rule` over MCP stdio for Claude Code/Desktop. `scripts/lab.ts` is the CLI (`sync`, `search`, `evaluate`, `catalogue`).
+
 ## API surface
 
 - `POST /api/auth/login` `{password}` → sets cookie; `POST /api/auth/logout`
@@ -107,6 +136,7 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 - `POST /api/cron/backfill` (x-cron-token) — keeps core, branch and recently charted coins warm: daily history, a head sync of every timeframe, funding pages; prunes 1m (30d) / 5m (120d); deadline-bounded
 - `GET /api/sectors` / `GET /api/marketstate` — serve latest committed data + quant enrichment (sectors joined with live per-token OI/funding aggregates)
 - `POST /api/routines/trigger`
+- `GET /api/lab/features` — Lab bases with coverage and sync errors, transforms; `POST /api/lab/search` `LabSearchRequest` → `LabSearchResult & {runId}` (kept in `lab_runs`, newest 30); `POST /api/lab/evaluate` `{rule, from?, costBps?}` → `LabRuleReport`; `GET /api/lab/runs`, `GET /api/lab/runs/:id`; `GET/POST /api/lab/catalogue`, `DELETE /api/lab/catalogue/:id`. 400 `{error, field}` on bad input, 422 when the data cannot answer (too little history, no data for a base), 409 on a duplicate save, 503 without a database.
 - `/api/engine/*` — authenticated proxy to the Hyperion strategy core (`${ENGINE_URL}/api/strategy/*`, bearer `ENGINE_TOKEN`); 503 `engine not configured`, 502 `engine unreachable` / `engine timeout`
 - `POST /api/analyst/query` `{question, history?, provider?, model?, effort?}` → `text/event-stream` with events `text {delta}`, `reasoning {delta}`, `tool_call {id, name, input, server}`, `tool_result {id, name, ok, summary}`, `citations {citations}`, `error {error}`, `done {usage, model, provider, label?, rounds, stop, effort?}`; `GET /api/analyst/status` → provider, label, model, web search availability, tool list; `GET /api/analyst/models` → `{default: {provider, model}, providers: [{id, label, blurb, available, reason?, webSearch, models: [{id, label, note, tier, effort, efforts?, defaultEffort?}]}]}`, always 200. Server default unconfigured → falls back to the first ready provider; nothing configured → 503 `{ "error": "analyst not configured" }`; an explicit but invalid/unavailable `provider`/`model`/`effort` choice → 400 `{ error, field }`.
 
@@ -119,6 +149,7 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 - `/state` — full MarketState briefing (domains, thesis with Observe/Infer/Forecast, risks) + history browser + trigger button
 - `/markets` — Hyperliquid universe table (price, 24h, OI, funding) with drill-in: live perp context, multi-timeframe chart (1m–1M, stitched deep history, funding/OI/premium panes), cross-venue funding
 - `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` — the **ENGINE** console: companion to the Hyperion operator terminal for the Jev-driven strategy runtime (configure, dry-run, approve/reject proposals, governor and kill switch, venues). The Overview carries a compact ENGINE card.
+- `/lab` — **LAB**: run form (direction, effort, data groups, start date, cost) and data coverage on the left; rule cards (holdout / walk-forward / in-sample / buy-and-hold grid, verdict, deflated Sharpe, stability, log equity curve with the holdout marked, save), the catalogue with live records and the pulse, and recent runs (DESIGN.md §10.9).
 - `/analyst` — **ANALYST**: thread + rail workspace (DESIGN.md §10.8). Model/provider selector in the header (`ModelSelector`, popover desktop / bottom sheet mobile, persisted per-browser, per-model effort levels), streamed markdown answers with the model's reasoning (when exposed), a tool timeline, citations, usage, copy / ask again; rail with the prompt library, provider setup status and the tool list; session persisted per browser; OfflineBlock when no provider is configured (503) or unreachable (502/network).
 
 Design language: iterate on Hyperion (dark-only, Geist Mono, zero radius, dense terminal aesthetic, its exact color tokens as the base) but MUST additionally work on mobile — Hyperion never solved responsive; DESIGN.md must.

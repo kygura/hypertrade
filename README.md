@@ -74,6 +74,39 @@ Upstream failures surface as `502 { "error": "engine unreachable" }` (or
 `"engine timeout"` after 10s). Wire types live in
 `src/shared/strategy-protocol.ts`; fixtures under `src/shared/fixtures/strategy/`.
 
+## Lab
+
+`/lab` searches free daily history for simple BTC rules, our own take on
+Glassnode's Alpha Lab without the paid data. The sources are BTC price,
+Coin Metrics community on-chain (MVRV, active addresses, transactions, fees),
+blockchain.com (hash rate, miner revenue, difficulty, on-chain volume), Fear &
+Greed, stablecoin supply, Deribit DVOL and Hyperliquid funding. A rule has one
+or two threshold conditions on transformed series. The search scores rules
+walk-forward across five folds, and the last 20% of history is a holdout it
+never reads. Each rule shows holdout, walk-forward and in-sample stats, a
+deflated Sharpe and threshold stability. Saved rules are re-checked daily on
+data they never saw. Method: SPEC.md "Lab".
+
+Setup: apply `db/migrations/003_lab.sql`. The `/api/cron/collect` run backfills
+every source on its first pass (it may take two runs) and refreshes them daily
+after that. No keys are needed. To backfill by hand:
+
+```bash
+bun run lab sync --force            # needs DATABASE_URL
+bun run lab search --direction long --effort standard
+bun run lab evaluate '{"direction":"long","conditions":[{"feature":"cm.btc.CapMVRVCur|z365","op":"<","q":0.2}]}'
+```
+
+The analyst can run searches too (`lab_search`, `lab_evaluate_rule`, …), and
+so can any MCP client:
+
+```bash
+claude mcp add hypertrade-lab -e DATABASE_URL=postgres://… -- bun run /path/to/hypertrade/scripts/lab-mcp.ts
+```
+
+Then ask Claude for something like "find a long-only rule on on-chain metrics
+that holds out of sample, stress-test it, and save it if it passes".
+
 ## Analyst (optional)
 
 `/analyst` is a read-only natural-language analyst over the app's data

@@ -21,6 +21,8 @@ const NAV = [
   // /strategies, /decisions and /governor switch inside via EngineTabs.
   { to: '/strategies', label: 'ENGINE', tab: 'ENGIN', glyph: '⚙' },
   // Read-only LLM analyst (SPEC.md "Analyst"); a seventh cell on mobile.
+  // Open-data rule research (SPEC.md "Lab"); the eighth cell on mobile.
+  { to: '/lab', label: 'LAB', tab: 'LAB', glyph: 'Σ' },
   { to: '/analyst', label: 'ANALYST', tab: 'ASK', glyph: '?' },
 ]
 

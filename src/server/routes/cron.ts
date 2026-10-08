@@ -8,6 +8,7 @@ import { collectHyperliquid } from "../collectors/hyperliquid.js";
 import * as db from "../db.js";
 import { syncHead } from "../market/candleSync.js";
 import { syncFunding } from "../market/fundingSync.js";
+import { collectLab } from "../lab/sources.js";
 import { backfillCoin, STABLES } from "../sim/backfill.js";
 
 const DAY_MS = 86400000;
@@ -36,6 +37,8 @@ const HARD_STOP_MS = 240_000;
  * back ~3 months per run.
  */
 const FUNDING_PAGES_PER_RUN = 4;
+/** Lab sources stop starting new fetches after this; the first full backfill may take two runs. */
+const LAB_BUDGET_MS = 150_000;
 
 export type WarmResult = { from?: string; to?: string; tfs: number; fundingFrom?: string | null };
 
@@ -211,11 +214,18 @@ export const cronRoutes = new Hono()
     }
   })
   .post("/collect", requireCronToken, async (c) => {
-    const [hyperliquid, cryptoContext, fred] = await Promise.all([
+    const [hyperliquid, cryptoContext, fred, lab] = await Promise.all([
       oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra)),
       collectCryptoContext(),
       collectFred(),
+      // Daily on-chain history for /lab: a no-op until a source is 20h stale.
+      // Its own failure (DB missing the sync row, an API down) never fails the run.
+      collectLab(fetch, undefined, { deadline: Date.now() + LAB_BUDGET_MS }).catch((err) => ({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+        written: 0,
+      })),
     ]);
-    return c.json({ hyperliquid, cryptoContext, fred });
+    return c.json({ hyperliquid, cryptoContext, fred, lab });
   })
   .post("/backfill", requireCronToken, backfillRoute());

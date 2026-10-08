@@ -15,6 +15,7 @@ import { Decisions } from './pages/Decisions'
 import { DecisionDetail } from './pages/DecisionDetail'
 import { Governor } from './pages/Governor'
 import { Analyst } from './pages/Analyst'
+import { Lab } from './pages/Lab'
 import { SkeletonRows } from './components/state'
 
 // The drill-in carries the canvas chart library; load it with the route.
@@ -131,6 +132,14 @@ export default function App() {
           element={
             <Shell>
               <Governor />
+            </Shell>
+          }
+        />
+        <Route
+          path="/lab"
+          element={
+            <Shell>
+              <Lab />
             </Shell>
           }
         />

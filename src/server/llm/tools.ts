@@ -6,6 +6,7 @@ import { seriesRange, summaryFor } from "../db.js";
 import { engineFetch, type EngineResult } from "../routes/engine.js";
 import { getMarkets, type MarketRow } from "../routes/hl.js";
 import { getSectorsPayload } from "../routes/sectors.js";
+import { defaultLabToolDeps, isLabTool, LAB_READ_TOOL_SPECS, runLabTool, type LabToolDeps } from "../lab/tools.js";
 import type { ToolSpec } from "./provider.js";
 
 // The analyst's tools: read-only views over data the app already serves.
@@ -34,6 +35,8 @@ export interface ToolDeps {
   series(id: string, from: string | undefined, buckets: number): Promise<unknown>;
   hlMarkets(): Promise<{ fetchedAt: string; markets: MarketRow[] }>;
   engine(rest: string): Promise<EngineResult>;
+  /** Lab research tools (read-only subset: the analyst never saves to the catalogue). */
+  lab?: LabToolDeps;
 }
 
 export const defaultToolDeps: ToolDeps = {
@@ -123,6 +126,7 @@ export const TOOL_SPECS: ToolSpec[] = [
       additionalProperties: false,
     },
   },
+  ...LAB_READ_TOOL_SPECS,
 ];
 
 const inputs = {
@@ -160,6 +164,7 @@ function fail(summary: string, detail: Record<string, unknown> = {}): ToolRun {
 
 /** Runs one tool call. Never throws: failures become is_error results the model can read. */
 export async function runTool(name: string, rawInput: unknown, deps: ToolDeps = defaultToolDeps): Promise<ToolRun> {
+  if (isLabTool(name) && name !== "lab_save_rule") return runLabTool(name, rawInput, deps.lab ?? defaultLabToolDeps);
   const schema = (inputs as Record<string, z.ZodTypeAny>)[name];
   if (!schema) return fail(`unknown tool ${name}`);
   const parsed = schema.safeParse(rawInput ?? {});

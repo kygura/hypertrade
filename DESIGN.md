@@ -1090,6 +1090,36 @@ for timeouts, refusals and provider errors. No spinners: pulse labels only.
 Mobile: the seventh tab-bar cell (`ASK`, glyph `?`); single column with the
 rail below the thread, and the composer sticks above the tab bar.
 
+### 10.9 `/lab` — open-data rule research
+
+```
+┌ LAB ──────────────────────────────────────── LONG 2/5  SHORT 0/1  [LEAN +0.33] ┐
+│ one-paragraph method note: holdout, walk-forward, judge on the holdout          │
+└─────────────────────────────────────────────────────────────────────────────────┘
+┌ RUN ──────────────┐ ┌ RESULTS ─────────── LONG · 81,578 VARIANTS · 135 FEATURES · 3.7S ┐
+│ DIRECTION [L|S]   │ │ TRAIN 2015-01-01 → 2024-05-30 · HOLDOUT 2024-05-30 → 2026-10-07   │
+│ EFFORT [Q|STD|D]  │ │ ┌ rule card ───────────────┐ ┌ rule card ───────────────┐       │
+│ GROUPS (toggles)  │ │ │ [LONG] cond AND cond      │ │ …                        │       │
+│ FROM · COST BPS   │ │ │ [VERDICT] [FIRING|IDLE]   │ │                          │       │
+│ [RUN SEARCH]      │ │ │ HOLDOUT WALK-FWD IN-SAMPLE B&H × SHARPE CAGR DD …    │       │
+├ DATA ─────────────┤ │ │ DSR · STABILITY · AS OF   │                                  │
+│ ● MVRV 2013→10-08 │ │ │ log equity, holdout ┆     │                                  │
+│ ● … / error line  │ │ │            [SAVE]         │                                  │
+└───────────────────┘ └───────────────────────────────────────────────────────────────┘
+                      ┌ CATALOGUE ── n SAVED · RE-CHECKED ┐  ┌ RECENT RUNS ┐
+```
+
+Two columns from `lg:` (rail 320px, sticky); cards two-up from `xl:`.
+The holdout column comes first in every stats grid because it is the only
+window the search never saw. Verdict badge: `FAILS HOLDOUT` (red, holdout
+Sharpe ≤ 0), `ROBUST` (green, holdout > 0, deflated Sharpe ≥ 0.95, stability
+≥ 0.5), `FRAGILE` (amber, stability < 0.5), `HOLDS · UNPROVEN` (amber,
+otherwise). Catalogue cards add a footer with the record since saving vs
+buy-and-hold, and a danger DELETE (§7 Level 2 confirm). States: SkeletonRows
+while loading; `SEARCHING…` pulse label during a run (no spinner);
+OfflineBlock `DATABASE NOT CONFIGURED` on 503; verbatim ErrorBlock on 422.
+Mobile: the eighth tab-bar cell (`LAB`, glyph `Σ`); single column.
+
 ---
 
 ## 11. Component inventory

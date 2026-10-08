@@ -447,3 +447,83 @@ export async function getBranchResult(branchId: string): Promise<BranchResult | 
 function toBranch(r: any): Branch {
   return { id: r.id, name: r.name, config: r.config, createdAt: r.created_at, updatedAt: r.updated_at }
 }
+
+// ------------------------------------------------------------------- lab
+
+/** First/last observation and row count per series (Lab coverage strip). */
+export async function seriesCoverage(seriesIds: string[]): Promise<{ seriesId: string; min: Date; max: Date; n: number }[]> {
+  if (seriesIds.length === 0) return []
+  const rows = await sql()<{ series_id: string; min: Date; max: Date; n: number }[]>`
+    select series_id, min(ts) as min, max(ts) as max, count(*)::int as n
+    from observations where series_id in ${sql()(seriesIds)}
+    group by series_id
+  `
+  return rows.map((r) => ({ seriesId: r.series_id, min: r.min, max: r.max, n: r.n }))
+}
+
+/** Mean hourly funding per UTC day for one coin, ascending. */
+export async function dailyFunding(coin: string): Promise<{ ts: Date; rate: number }[]> {
+  return sql()<{ ts: Date; rate: number }[]>`
+    select date_trunc('day', ts at time zone 'UTC') at time zone 'UTC' as ts, avg(rate) as rate
+    from funding where coin = ${coin}
+    group by 1 order by 1
+  `
+}
+
+export type LabRuleRow = { id: string; createdAt: Date; source: string; note: string | null; report: unknown }
+export type LabRunRow = { id: string; createdAt: Date; request: unknown; result: unknown }
+
+/** Runs kept for the "previous attempts" list; older ones are pruned on insert. */
+const LAB_RUNS_KEPT = 30
+
+export async function insertLabRun(request: unknown, result: unknown): Promise<string> {
+  const [row] = await sql()<{ id: string }[]>`
+    insert into lab_runs (request, result) values (${sql().json(request as never)}, ${sql().json(result as never)})
+    returning id
+  `
+  await sql()`
+    delete from lab_runs where id in (select id from lab_runs order by created_at desc offset ${LAB_RUNS_KEPT})
+  `
+  return row!.id
+}
+
+/** Recent runs without their (large) results: request plus a short summary. */
+export async function listLabRuns(limit = 20): Promise<{ id: string; createdAt: Date; request: unknown; summary: unknown }[]> {
+  const rows = await sql()<{ id: string; created_at: Date; request: unknown; summary: unknown }[]>`
+    select id, created_at, request,
+      jsonb_build_object(
+        'trials', result->'trials',
+        'range', result->'range',
+        'top', (select coalesce(jsonb_agg(r->'text'), '[]'::jsonb) from (select jsonb_array_elements(result->'results') as r limit 3) t)
+      ) as summary
+    from lab_runs order by created_at desc limit ${limit}
+  `
+  return rows.map((r) => ({ id: r.id, createdAt: r.created_at, request: r.request, summary: r.summary }))
+}
+
+export async function getLabRun(id: string): Promise<LabRunRow | null> {
+  const [row] = await sql()<{ id: string; created_at: Date; request: unknown; result: unknown }[]>`
+    select id, created_at, request, result from lab_runs where id = ${id}
+  `
+  return row ? { id: row.id, createdAt: row.created_at, request: row.request, result: row.result } : null
+}
+
+export async function insertLabRule(report: unknown, source: string, note: string | null): Promise<LabRuleRow> {
+  const [row] = await sql()<{ id: string; created_at: Date; source: string; note: string | null; report: unknown }[]>`
+    insert into lab_rules (report, source, note) values (${sql().json(report as never)}, ${source}, ${note})
+    returning id, created_at, source, note, report
+  `
+  return { id: row!.id, createdAt: row!.created_at, source: row!.source, note: row!.note, report: row!.report }
+}
+
+export async function listLabRules(): Promise<LabRuleRow[]> {
+  const rows = await sql()<{ id: string; created_at: Date; source: string; note: string | null; report: unknown }[]>`
+    select id, created_at, source, note, report from lab_rules order by created_at desc
+  `
+  return rows.map((r) => ({ id: r.id, createdAt: r.created_at, source: r.source, note: r.note, report: r.report }))
+}
+
+export async function deleteLabRule(id: string): Promise<boolean> {
+  const res = await sql()`delete from lab_rules where id = ${id}`
+  return res.count > 0
+}

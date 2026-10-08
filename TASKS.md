@@ -37,3 +37,4 @@
 | T13 | Journal DB + routes: `db/migrations/002_journal.sql` (trades, sessions, accounts per PROP.md §(e)), `src/server/routes/journal.ts` (CRUD + `/stats`), tests | sonnet | T3,P0 | open |
 | T14 | Journal UI `/journal`: daily check-in, plan-before-trigger form, sizing calculator (PROP.md §(b) formula), setup picker limited to §(c) ledger, server-computed lockout banner, venue tag paper/eval/funded | sonnet | T8,T13 | open |
 | T15 | Gate page: PROP.md §(f) checklist computed from paper record; stays red until cleared; weekly per-setup expectancy review | sonnet | T14 | open |
+| L1 | Lab: free on-chain/sentiment/liquidity/derivatives history collector, rule search engine (walk-forward, holdout, deflated Sharpe, stability), `/api/lab/*`, `003_lab.sql`, analyst tools, MCP server, CLI, `/lab` page | — | V2 for live data | done (live sources unverified from the build sandbox; first cron run after deploy is the check) |
