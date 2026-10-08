@@ -1,0 +1,16 @@
+{
+  "success": true,
+  "data": {
+    "pageSize": 50,
+    "page": 1,
+    "total": 6,
+    "data": [
+      { "token": "btc", "current_count": 4200, "previous_count": 3500, "change_percent": 20 },
+      { "token": "hype", "current_count": 1800, "previous_count": 2400, "change_percent": -25 },
+      { "token": "$pepe", "current_count": 900, "previous_count": 600, "change_percent": 50 },
+      { "token": "notonhl", "current_count": 700, "previous_count": 100, "change_percent": 600 },
+      { "token": "virtual", "current_count": 300, "previous_count": 0, "change_percent": 0 },
+      { "token": "bad ticker!", "current_count": 100, "previous_count": 90, "change_percent": 11 }
+    ]
+  }
+}

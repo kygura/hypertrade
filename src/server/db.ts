@@ -223,6 +223,19 @@ export async function recordCollectorRun(
   `
 }
 
+/**
+ * Start of the latest run that actually fetched: ok, and not a `skipped:*`
+ * record. Keyed collectors on a free quota throttle themselves off this,
+ * since the cron that drives them keeps no state between requests.
+ */
+export async function lastCollectorFetch(collector: string): Promise<Date | null> {
+  const rows = await sql()<{ at: Date | null }[]>`
+    select max(started_at) as at from collector_runs
+    where collector = ${collector} and ok and (error is null or error not like 'skipped:%')
+  `
+  return rows[0]?.at ?? null
+}
+
 // --------------------------------------------------------------- candles
 
 const UPSERT_CHUNK = 2000

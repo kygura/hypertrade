@@ -51,6 +51,28 @@ recently charted coins. Retention: 1m bars 30 days, 5m bars 120 days.
 Requires `db/migrations/002_chart_history.sql` (adds `candles.src`,
 `sync_state`, `funding`, and drops the old CoinGecko 4-day rows).
 
+## Social attention (optional)
+
+Set `ELFA_API_KEY` and the collect cron adds Elfa's trending-tokens feed:
+mentions in the trailing 24h for every Hyperliquid-listed coin on it, written
+as `elfa.mentions_24h.<COIN>`, `elfa.share_24h.<COIN>` (share of all
+trending-token mentions) and `elfa.mentions_chg_24h.<COIN>` (vs the prior
+24h, as a fraction). `/api/sectors` sums them per sector into
+`social_share_24h` / `social_mentions_24h`, shown as `SOC` next to the
+routine's `MS` on the Sectors grid and as mention columns in the drill-in.
+
+`MS` is the routine's judgment; `SOC` is a count. Neither predicts price.
+Elfa publishes no evidence that its counts lead price moves, and the research
+on social-attention signals in crypto finds small, short-lived effects. The
+point is to see where the two disagree.
+
+Elfa's free plan is 1,000 credits a month, one per call. The collector
+fetches at most once per `ELFA_MIN_INTERVAL_HOURS` (default 8, about 90
+credits a month) however often the cron fires. The key is meant to be
+shared with the provenance repo, whose social yardstick spends most of the
+rest. Without a key the collector records `skipped:no-key` and nothing else
+changes.
+
 ## Prop-trading contract
 
 `PROP.md` is the operator's own rulebook for trading a Breakout evaluation
