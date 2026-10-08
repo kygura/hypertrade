@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { DailySeries } from "../types.js";
-import { clip, getJson, toDaily, type CollectableProvider, type LabMetricDef } from "./series.js";
+import { clip, getJson, requestTimeout, toDaily, type CollectableProvider, type LabMetricDef } from "./series.js";
 
 // DefiLlama keyless history: total USD-pegged stablecoin supply and total DeFi TVL.
 
@@ -46,10 +46,10 @@ const METRICS: LabMetricDef[] = [
 ];
 
 export function createLlamaProvider(fetchFn: typeof fetch = fetch): CollectableProvider {
-  async function history(key: string): Promise<DailySeries> {
+  async function history(key: string, deadline?: number): Promise<DailySeries> {
     const src = SOURCES[key];
     if (!src) throw new Error(`unknown llama metric: ${key}`);
-    return src.parse(await getJson(src.url, fetchFn, `llama ${key}`));
+    return src.parse(await getJson(src.url, fetchFn, `llama ${key}`, requestTimeout(deadline, Date.now())));
   }
   return {
     id: "llama",
@@ -60,7 +60,7 @@ export function createLlamaProvider(fetchFn: typeof fetch = fetch): CollectableP
       return clip(await history(key), fromMs, toMs);
     },
     // No windowed endpoint: always the whole (small) history; the collector keeps the tail.
-    history: (key) => history(key),
+    history: (key, _asset, _sinceMs, opts) => history(key, opts?.deadline),
   };
 }
 

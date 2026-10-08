@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DAY_MS, type DailySeries } from "../types.js";
-import { clip, getJson, toDaily, type CollectableProvider, type LabMetricDef } from "./series.js";
+import { clip, getJson, requestTimeout, toDaily, type CollectableProvider, type LabMetricDef } from "./series.js";
 
 // blockchain.com charts (keyless): Bitcoin network history, daily since 2009.
 // Global metrics: they describe the Bitcoin network whatever asset trades.
@@ -44,8 +44,8 @@ const METRICS: LabMetricDef[] = [
 ];
 
 export function createBcProvider(fetchFn: typeof fetch = fetch, now: () => number = Date.now): CollectableProvider {
-  const history = async (key: string, fromMs: number): Promise<DailySeries> =>
-    parseBlockchainChart(await getJson(bcUrl(key, fromMs, now()), fetchFn, `bc ${key}`));
+  const history = async (key: string, fromMs: number, deadline?: number): Promise<DailySeries> =>
+    parseBlockchainChart(await getJson(bcUrl(key, fromMs, now()), fetchFn, `bc ${key}`, requestTimeout(deadline, now())));
   return {
     id: "bc",
     name: "blockchain.com charts",
@@ -54,7 +54,7 @@ export function createBcProvider(fetchFn: typeof fetch = fetch, now: () => numbe
     async fetch(key, _asset, fromMs, toMs) {
       return clip(await history(key, fromMs), fromMs, toMs);
     },
-    history: (key, _asset, sinceMs) => history(key, sinceMs ?? BC_GENESIS),
+    history: (key, _asset, sinceMs, opts) => history(key, sinceMs ?? BC_GENESIS, opts?.deadline),
   };
 }
 

@@ -109,7 +109,7 @@ export function parseArgs(argv: string[], schema?: ToolInputSchema): CliArgs {
 }
 
 export const SYNC_REMOTE_MESSAGE =
-  "sync has no remote mode: the deployed cron (/api/cron/collect) collects Lab history daily. Run `bun run lab sync --local` with DATABASE_URL set to collect from this machine.";
+  "sync has no remote mode: the deployed cron (/api/cron/lab-collect) collects Lab history daily. Run `bun run lab sync --local` with DATABASE_URL set to collect from this machine.";
 export const SYNC_NO_DB_MESSAGE = "sync --local writes to Postgres: set DATABASE_URL (or DATABASE_POSTGRES_URL / POSTGRES_URL)";
 
 /**

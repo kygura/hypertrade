@@ -252,6 +252,36 @@ describe("history (collector source)", () => {
     expect(urls[1]).toContain("limit=0&");
   });
 
+  test("deribit: the deadline stops paging after the first window and marks it partial", async () => {
+    const { fn, urls } = stubFetch([["get_volatility_index_data", dvolFixture]]);
+    let t = Date.UTC(2021, 2, 24) + 2000 * DAY; // three 900-day windows from the epoch
+    const p = createDeribitProvider(fn, () => t);
+    const full = await p.history!("btc_dvol", "", null);
+    expect(urls).toHaveLength(3);
+    expect(full.partial).toBeUndefined();
+    urls.length = 0;
+    const deadline = t + 1;
+    const cut = createDeribitProvider(
+      (async (input: string | URL | Request) => {
+        t = deadline; // the budget runs out during the first request
+        return fn(input);
+      }) as typeof fetch,
+      () => t,
+    );
+    const r = await cut.history!("btc_dvol", "", null, { deadline });
+    expect(urls).toHaveLength(1);
+    expect(r.partial).toBe(true);
+    expect(r.t).toEqual(days(3));
+  });
+
+  test("a request's timeout is capped to the time left before the deadline", async () => {
+    const { requestTimeout, REQUEST_TIMEOUT_MS } = await import("./series.js");
+    expect(requestTimeout(undefined, 0)).toBe(REQUEST_TIMEOUT_MS);
+    expect(requestTimeout(5_000, 0)).toBe(5_000);
+    expect(requestTimeout(60_000, 0)).toBe(REQUEST_TIMEOUT_MS);
+    expect(requestTimeout(0, 10)).toBe(1);
+  });
+
   test("llama: whole history either way", async () => {
     const { fn } = stubFetch([["historicalChainTvl", tvlFixture]]);
     expect((await createLlamaProvider(fn).history!("defi_tvl", "", D0 + DAY)).t).toEqual(days(3));

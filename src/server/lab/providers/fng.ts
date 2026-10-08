@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DAY_MS, type DailySeries } from "../types.js";
-import { clip, getJson, toDaily, type CollectableProvider, type LabMetricDef } from "./series.js";
+import { clip, getJson, requestTimeout, toDaily, type CollectableProvider, type LabMetricDef } from "./series.js";
 
 // alternative.me Crypto Fear & Greed, full daily history (2018→), keyless.
 
@@ -45,10 +45,10 @@ export function createFngProvider(fetchFn: typeof fetch = fetch, now: () => numb
       if (key !== "value") throw new Error(`unknown fng metric: ${key}`);
       return clip(parseFngHistory(await getJson(FNG_URL, fetchFn, "fng")), fromMs, toMs);
     },
-    async history(key, _asset, sinceMs) {
+    async history(key, _asset, sinceMs, opts) {
       if (key !== "value") throw new Error(`unknown fng metric: ${key}`);
       const url = sinceMs == null ? FNG_URL : fngUrl(Math.ceil((now() - sinceMs) / DAY_MS) + 2);
-      return parseFngHistory(await getJson(url, fetchFn, "fng"));
+      return parseFngHistory(await getJson(url, fetchFn, "fng", requestTimeout(opts?.deadline, now())));
     },
   };
 }

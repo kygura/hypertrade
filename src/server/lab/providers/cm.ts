@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { DailySeries, MetricCategory } from "../types.js";
-import { clip, getJson, isoDay, toDaily, type CollectableProvider, type LabMetricDef } from "./series.js";
+import { clip, getJson, isoDay, requestTimeout, toDaily, type CollectableProvider, type HistorySeries, type LabMetricDef } from "./series.js";
 
 // Coin Metrics community API (keyless): the stand-in for Glassnode on-chain
 // data. A metric the community tier refuses comes back 4xx and throws, so the
@@ -67,34 +67,55 @@ const METRICS: LabMetricDef[] = DEFS.map(([key, name, category, units, descripti
 const KEYS = new Set(DEFS.map((d) => d[0]));
 
 export function createCmProvider(fetchFn: typeof fetch = fetch, now: () => number = Date.now): CollectableProvider {
+  /** Pages ascending from fromMs; with a deadline, stops paging there and returns the prefix as `partial`. */
+  async function paged(key: string, asset: string, fromMs: number, toMs: number, deadline?: number): Promise<HistorySeries> {
+    if (!KEYS.has(key)) throw new Error(`unknown cm metric: ${key}`);
+    const params = new URLSearchParams({
+      assets: cmAsset(asset),
+      metrics: key,
+      frequency: "1d",
+      start_time: isoDay(fromMs),
+      end_time: isoDay(toMs),
+      page_size: String(PAGE_SIZE),
+    });
+    let url: string | null = `${CM_BASE}?${params}`;
+    const points: Array<{ t: number; v: number }> = [];
+    let partial = false;
+    for (let page = 0; url && page < MAX_PAGES; page++) {
+      if (page > 0 && deadline !== undefined && now() >= deadline) {
+        partial = true;
+        break;
+      }
+      let json: unknown;
+      try {
+        json = await getJson(url, fetchFn, `cm ${key} ${asset}`, requestTimeout(deadline, now()));
+      } catch (err) {
+        // Cut off by the budget after some pages: keep them, the collector resumes.
+        if (page > 0 && deadline !== undefined && now() >= deadline) {
+          partial = true;
+          break;
+        }
+        throw err;
+      }
+      const parsed = parseCmPage(json, key);
+      points.push(...parsed.points);
+      // Only ever follow pages on the API we called.
+      if (parsed.next && !parsed.next.startsWith(`${CM_BASE}?`)) throw new Error(`cm ${key} ${asset}: unexpected next_page_url ${parsed.next.slice(0, 100)}`);
+      url = parsed.next;
+    }
+    const out: HistorySeries = clip(toDaily(points, "last"), fromMs, toMs);
+    return partial ? { ...out, partial } : out;
+  }
   return {
     id: "cm",
     name: "Coin Metrics (community)",
     notes: "Keyless community API, daily asset metrics; history from each chain's genesis. Some metrics are refused for some assets on the community tier.",
     metrics: () => METRICS,
     async fetch(key, asset, fromMs, toMs): Promise<DailySeries> {
-      if (!KEYS.has(key)) throw new Error(`unknown cm metric: ${key}`);
-      const params = new URLSearchParams({
-        assets: cmAsset(asset),
-        metrics: key,
-        frequency: "1d",
-        start_time: isoDay(fromMs),
-        end_time: isoDay(toMs),
-        page_size: String(PAGE_SIZE),
-      });
-      let url: string | null = `${CM_BASE}?${params}`;
-      const points: Array<{ t: number; v: number }> = [];
-      for (let page = 0; url && page < MAX_PAGES; page++) {
-        const parsed = parseCmPage(await getJson(url, fetchFn, `cm ${key} ${asset}`), key);
-        points.push(...parsed.points);
-        // Only ever follow pages on the API we called.
-        if (parsed.next && !parsed.next.startsWith(`${CM_BASE}?`)) throw new Error(`cm ${key} ${asset}: unexpected next_page_url ${parsed.next.slice(0, 100)}`);
-        url = parsed.next;
-      }
-      return clip(toDaily(points, "last"), fromMs, toMs);
+      return paged(key, asset, fromMs, toMs);
     },
-    history(key, asset, sinceMs) {
-      return this.fetch(key, asset, sinceMs ?? CM_START, now());
+    history(key, asset, sinceMs, opts) {
+      return paged(key, asset, sinceMs ?? CM_START, now(), opts?.deadline);
     },
   };
 }

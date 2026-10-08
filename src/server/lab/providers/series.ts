@@ -61,8 +61,15 @@ export class HttpError extends Error {
   }
 }
 
+/** Default per-request timeout. */
+export const REQUEST_TIMEOUT_MS = 20_000;
+
+/** A request's timeout: REQUEST_TIMEOUT_MS, capped to what is left before `deadline` (at least 1 ms). */
+export const requestTimeout = (deadline: number | undefined, nowMs: number): number =>
+  deadline === undefined ? REQUEST_TIMEOUT_MS : Math.max(1, Math.min(REQUEST_TIMEOUT_MS, deadline - nowMs));
+
 /** GET JSON with a timeout. Non-2xx throws HttpError(`<label>: HTTP <status>`). */
-export async function getJson(url: string, fetchFn: typeof fetch, label: string, timeoutMs = 20_000): Promise<unknown> {
+export async function getJson(url: string, fetchFn: typeof fetch, label: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<unknown> {
   const res = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new HttpError(`${label}: HTTP ${res.status}`, res.status);
   return res.json();
@@ -74,13 +81,24 @@ export type LabMetricDef = MetricDef & {
   maxFillDays?: number;
 };
 
+export type HistoryOptions = {
+  /**
+   * The collector's budget (epoch ms): requests are cut to end by it, and a
+   * paged history stops paging there and returns what it has as `partial`.
+   */
+  deadline?: number;
+};
+
+/** A history; `partial` when the deadline cut paging short (ascending, so it is a prefix). */
+export type HistorySeries = DailySeries & { partial?: boolean };
+
 /**
  * A provider whose history the cron collector stores (src/server/lab/collect.ts)
  * under `labSeriesId`. `history` is the live source: everything since sinceMs
  * (null = the source's full history) up to now.
  */
 export type CollectableProvider = LabProvider & {
-  history?(key: string, asset: string, sinceMs: number | null): Promise<DailySeries>;
+  history?(key: string, asset: string, sinceMs: number | null, opts?: HistoryOptions): Promise<HistorySeries>;
 };
 
 export const isCollectable = (p: LabProvider): p is LabProvider & Required<Pick<CollectableProvider, "history">> =>

@@ -365,12 +365,37 @@ export async function touchSyncAccess(coin: string, series: string): Promise<voi
   `
 }
 
-/** Coins any chart asked for since `since`. */
+/** Coins any chart asked for since `since`. Lab bookkeeping rows (coin '_lab') are not coins. */
 export async function recentlyAccessedCoins(since: Date): Promise<string[]> {
   const rows = await sql()<{ coin: string }[]>`
-    select distinct coin from sync_state where accessed_at >= ${since} order by coin
+    select distinct coin from sync_state where accessed_at >= ${since} and coin <> '_lab' order by coin
   `
   return rows.map((r) => r.coin)
+}
+
+/**
+ * A run lease on a sync_state row: `synced_at` is its expiry, `ext.holder` its
+ * holder. One conditional upsert takes it when the row is new or its lease has
+ * expired, so two concurrent callers cannot both get it. True when `holder`
+ * now holds it until now() + ttlMs.
+ */
+export async function acquireLease(coin: string, series: string, holder: string, ttlMs: number): Promise<boolean> {
+  const rows = await sql()<{ coin: string }[]>`
+    insert into sync_state (coin, series, synced_at, ext)
+    values (${coin}, ${series}, now() + make_interval(secs => ${ttlMs / 1000}::float8), ${sql().json({ holder })})
+    on conflict (coin, series) do update set synced_at = excluded.synced_at, ext = excluded.ext
+      where sync_state.synced_at is null or sync_state.synced_at <= now()
+    returning coin
+  `
+  return rows.length > 0
+}
+
+/** Ends `holder`'s lease now; a lease someone else took after ours expired is left alone. */
+export async function releaseLease(coin: string, series: string, holder: string): Promise<void> {
+  await sql()`
+    update sync_state set synced_at = now()
+    where coin = ${coin} and series = ${series} and ext->>'holder' = ${holder}
+  `
 }
 
 // --------------------------------------------------------------- funding

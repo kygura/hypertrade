@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { backfillCoins, backfillRoute, CORE_COINS, cronRoutes, LAB_BUDGET_MS, runLabCollect } from "./cron.js";
+import { backfillCoins, backfillRoute, CORE_COINS, cronRoutes, LAB_BUDGET_MS, LAB_LEASE_MS, runLabCollect, type LabLease } from "./cron.js";
 
 process.env.CRON_TOKEN = "test-cron-token";
 
@@ -18,6 +18,13 @@ describe("POST /cron/collect", () => {
       headers: { "x-cron-token": "wrong" },
     });
     expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /cron/lab-collect", () => {
+  test("401s without a valid x-cron-token", async () => {
+    expect((await app.request("/cron/lab-collect", { method: "POST" })).status).toBe(401);
+    expect((await app.request("/cron/lab-collect")).status).toBe(401);
   });
 });
 
@@ -131,20 +138,82 @@ describe("backfillRoute", () => {
   });
 });
 
+/** In-memory stand-in for the sync_state lease: free, or held by one holder until `until`. */
+function memoryLease(clock: { t: number }) {
+  let held: { holder: string; until: number } | null = null;
+  const log: string[] = [];
+  const lease: LabLease = {
+    acquire: async (holder, ttlMs) => {
+      if (held && held.until > clock.t) return (log.push("busy"), false);
+      held = { holder, until: clock.t + ttlMs };
+      return (log.push("acquire"), true);
+    },
+    release: async (holder) => {
+      if (held?.holder === holder) held = { holder, until: clock.t };
+      log.push("release");
+    },
+  };
+  return { lease, log, held: () => held };
+}
+
 describe("runLabCollect", () => {
   test("gives the lab collector its own budget and reports its result", async () => {
     let seen: unknown;
-    const res = await runLabCollect(async (_deps, opts) => {
-      seen = opts;
-      return { ok: true, written: 3, sources: { "lab.fng.value": "ok", "lab.bc.hash_rate": "skipped" } };
-    }, 1_000);
+    const { lease, log } = memoryLease({ t: 0 });
+    const res = await runLabCollect(
+      async (_deps, opts) => {
+        seen = opts;
+        return { ok: true, written: 3, sources: { "lab.fng.value": "ok", "lab.bc.hash_rate": "skipped" } };
+      },
+      1_000,
+      lease,
+    );
     expect(seen).toEqual({ deadline: 1_000 + LAB_BUDGET_MS });
-    expect(LAB_BUDGET_MS).toBeLessThanOrEqual(150_000);
+    // Inside Vercel's 300 s and the workflow curl's --max-time 290.
+    expect(LAB_BUDGET_MS).toBeLessThanOrEqual(240_000);
+    expect(LAB_LEASE_MS).toBe(LAB_BUDGET_MS + 60_000);
     expect(res).toEqual({ ok: true, written: 3, sources: { "lab.fng.value": "ok", "lab.bc.hash_rate": "skipped" } });
+    expect(log).toEqual(["acquire", "release"]);
   });
 
-  test("a thrown collector becomes an error result, never a failed run", async () => {
-    const res = await runLabCollect(async () => Promise.reject(new Error("sync_state missing")));
+  test("a thrown collector becomes an error result and still releases the lease", async () => {
+    const { lease, log } = memoryLease({ t: 0 });
+    const res = await runLabCollect(async () => Promise.reject(new Error("sync_state missing")), 0, lease);
     expect(res).toEqual({ ok: false, error: "sync_state missing", written: 0, sources: {} });
+    expect(log).toEqual(["acquire", "release"]);
+  });
+
+  test("an overlapping run gets busy and never starts the collector; the lease frees after the run or its expiry", async () => {
+    const clock = { t: 0 };
+    const { lease } = memoryLease(clock);
+    let runs = 0;
+    let finish!: () => void;
+    const slow = () => {
+      runs++;
+      return new Promise<{ ok: true; written: 0; sources: {} }>((r) => (finish = () => r({ ok: true, written: 0, sources: {} })));
+    };
+    const first = runLabCollect(slow, 0, lease);
+    await Promise.resolve();
+    const second = await runLabCollect(slow, 0, lease);
+    expect(second).toEqual({ ok: true, busy: true, written: 0, sources: {} });
+    expect(runs).toBe(1);
+    finish();
+    await first;
+    expect((await runLabCollect(async () => ({ ok: true, written: 0, sources: {} }), 0, lease)).ok).toBe(true);
+    expect(runs).toBe(1);
+    // A run killed before release: the next one waits out the lease, then runs.
+    const stuck = memoryLease(clock);
+    await stuck.lease.acquire("dead", LAB_LEASE_MS);
+    expect(await runLabCollect(async () => ({ ok: true, written: 1, sources: {} }), 0, stuck.lease)).toMatchObject({ busy: true });
+    clock.t += LAB_LEASE_MS;
+    expect(await runLabCollect(async () => ({ ok: true, written: 1, sources: {} }), 0, stuck.lease)).toEqual({ ok: true, written: 1, sources: {} });
+  });
+
+  test("an unreadable lease is an error result, not a run", async () => {
+    let ran = false;
+    const lease: LabLease = { acquire: () => Promise.reject(new Error("db down")), release: async () => {} };
+    const res = await runLabCollect(async () => ((ran = true), { ok: true, written: 0, sources: {} }), 0, lease);
+    expect(res).toEqual({ ok: false, error: "db down", written: 0, sources: {} });
+    expect(ran).toBe(false);
   });
 });

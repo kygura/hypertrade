@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DAY_MS, type DailySeries } from "../types.js";
-import { clip, getJson, toDaily, type CollectableProvider, type LabMetricDef } from "./series.js";
+import { clip, getJson, requestTimeout, toDaily, type CollectableProvider, type HistorySeries, type LabMetricDef } from "./series.js";
 
 // Deribit DVOL (keyless): 30-day implied volatility index, daily candles since
 // March 2021, for BTC and ETH. Global metrics, so ETH vol can inform any asset.
@@ -47,13 +47,32 @@ const METRICS: LabMetricDef[] = [
 ];
 
 export function createDeribitProvider(fetchFn: typeof fetch = fetch, now: () => number = Date.now): CollectableProvider {
-  async function history(key: string, fromMs: number): Promise<DailySeries> {
+  /** Windows ascending from fromMs; with a deadline, stops there and returns the prefix as `partial`. */
+  async function history(key: string, fromMs: number, deadline?: number): Promise<HistorySeries> {
     const points: Array<{ t: number; v: number }> = [];
-    for (const url of dvolUrls(key, fromMs, now())) {
-      const s = parseDvolHistory(await getJson(url, fetchFn, `deribit ${key}`));
-      for (let i = 0; i < s.t.length; i++) points.push({ t: s.t[i]!, v: s.v[i]! });
+    let partial = false;
+    const urls = dvolUrls(key, fromMs, now());
+    for (let i = 0; i < urls.length; i++) {
+      const cut = () => i > 0 && deadline !== undefined && now() >= deadline;
+      if (cut()) {
+        partial = true;
+        break;
+      }
+      let json: unknown;
+      try {
+        json = await getJson(urls[i]!, fetchFn, `deribit ${key}`, requestTimeout(deadline, now()));
+      } catch (err) {
+        if (cut()) {
+          partial = true;
+          break;
+        }
+        throw err;
+      }
+      const s = parseDvolHistory(json);
+      for (let j = 0; j < s.t.length; j++) points.push({ t: s.t[j]!, v: s.v[j]! });
     }
-    return toDaily(points, "last");
+    const out: HistorySeries = toDaily(points, "last");
+    return partial ? { ...out, partial } : out;
   }
   return {
     id: "deribit",
@@ -63,7 +82,7 @@ export function createDeribitProvider(fetchFn: typeof fetch = fetch, now: () => 
     async fetch(key, _asset, fromMs, toMs) {
       return clip(await history(key, fromMs), fromMs, toMs);
     },
-    history: (key, _asset, sinceMs) => history(key, sinceMs ?? DVOL_EPOCH),
+    history: (key, _asset, sinceMs, opts) => history(key, sinceMs ?? DVOL_EPOCH, opts?.deadline),
   };
 }
 

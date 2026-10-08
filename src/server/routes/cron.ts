@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Hono, type Context } from "hono";
 import { hlWeightWaitMs } from "../../shared/hl-client.js";
 import { TF_RETENTION_MS, TIMEFRAMES, type Timeframe } from "../../shared/timeframes.js";
@@ -7,7 +8,7 @@ import { collectElfa } from "../collectors/elfa.js";
 import { collectFred } from "../collectors/fred.js";
 import { collectHyperliquid } from "../collectors/hyperliquid.js";
 import * as db from "../db.js";
-import { collectLab, type LabCollectResult } from "../lab/collect.js";
+import { collectLab, LAB_SYNC_COIN, type LabCollectResult } from "../lab/collect.js";
 import { syncHead } from "../market/candleSync.js";
 import { syncFunding } from "../market/fundingSync.js";
 import { backfillCoin, STABLES } from "../sim/backfill.js";
@@ -38,8 +39,17 @@ const HARD_STOP_MS = 240_000;
  * back ~3 months per run.
  */
 const FUNDING_PAGES_PER_RUN = 4;
-/** Lab history stops starting new series after this; it runs beside the other collectors. */
-export const LAB_BUDGET_MS = 150_000;
+/**
+ * Lab history (its own route, /cron/lab-collect): no series starts after this
+ * and every upstream request is cut to end by it, so the run ends a little
+ * after (the last DB writes) — well inside Vercel's 300 s and the workflow
+ * curl's 290 s.
+ */
+export const LAB_BUDGET_MS = 200_000;
+/** The run lease outlives the budget by a minute: a run killed mid-way frees it after that. */
+export const LAB_LEASE_MS = LAB_BUDGET_MS + 60_000;
+/** sync_state row (coin '_lab') whose synced_at is the Lab run lease's expiry. */
+export const LAB_LEASE_SERIES = "_lease";
 
 export type WarmResult = { from?: string; to?: string; tfs: number; fundingFrom?: string | null };
 
@@ -201,18 +211,40 @@ async function oiCoins(): Promise<string[]> {
   return backfillCoins(branches.map((b) => b.config), undefined, recent);
 }
 
+export type LabLease = {
+  acquire: (holder: string, ttlMs: number) => Promise<boolean>;
+  release: (holder: string) => Promise<void>;
+};
+
+const dbLabLease: LabLease = {
+  acquire: (holder, ttlMs) => db.acquireLease(LAB_SYNC_COIN, LAB_LEASE_SERIES, holder, ttlMs),
+  release: (holder) => db.releaseLease(LAB_SYNC_COIN, LAB_LEASE_SERIES, holder),
+};
+
+export type LabCollectRun = LabCollectResult | { ok: true; busy: true; written: 0; sources: Record<string, never> };
+
 /**
  * Daily Lab history (src/server/lab/collect.ts): a no-op until a series is
- * 20 h stale. Its own failure (sync_state unreadable, every API down) is
- * reported, never thrown, so it cannot fail the run.
+ * 20 h stale. One run at a time: a lease (LAB_LEASE_MS) keeps a retried or
+ * overlapping trigger from starting a second full backfill; the loser
+ * answers `busy`. Its own failure (lease or sync_state unreadable, every API
+ * down) is reported, never thrown.
  */
-export async function runLabCollect(collect: typeof collectLab = collectLab, now = Date.now()): Promise<LabCollectResult> {
-  return collect(undefined, { deadline: now + LAB_BUDGET_MS }).catch((err) => ({
-    ok: false,
-    error: err instanceof Error ? err.message : String(err),
-    written: 0,
-    sources: {},
-  }));
+export async function runLabCollect(collect: typeof collectLab = collectLab, now = Date.now(), lease: LabLease = dbLabLease): Promise<LabCollectRun> {
+  const holder = randomUUID();
+  const fail = (err: unknown): LabCollectResult => ({ ok: false, error: err instanceof Error ? err.message : String(err), written: 0, sources: {} });
+  let held: boolean;
+  try {
+    held = await lease.acquire(holder, LAB_LEASE_MS);
+  } catch (err) {
+    return fail(err);
+  }
+  if (!held) return { ok: true, busy: true, written: 0, sources: {} };
+  try {
+    return await collect(undefined, { deadline: now + LAB_BUDGET_MS }).catch(fail);
+  } finally {
+    await lease.release(holder).catch((err) => console.error("[lab-collect] lease release:", err));
+  }
 }
 
 // Cron requests in flight in this process. Vercel Cron and the GitHub
@@ -236,13 +268,15 @@ export const cronRoutes = new Hono()
     }
   })
   .on(["GET", "POST"], "/collect", requireCronToken, async (c) => {
-    const [hyperliquid, cryptoContext, fred, elfa, lab] = await Promise.all([
+    const [hyperliquid, cryptoContext, fred, elfa] = await Promise.all([
       oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra)),
       collectCryptoContext(),
       collectFred(),
       collectElfa(),
-      runLabCollect(),
     ]);
-    return c.json({ hyperliquid, cryptoContext, fred, elfa, lab });
+    return c.json({ hyperliquid, cryptoContext, fred, elfa });
   })
+  // Lab history on its own route: a long first backfill must not hold up (or
+  // be retried with) the 15-minute collection. Leased: one run at a time.
+  .on(["GET", "POST"], "/lab-collect", requireCronToken, async (c) => c.json(await runLabCollect()))
   .on(["GET", "POST"], "/backfill", requireCronToken, backfillRoute());

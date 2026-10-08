@@ -83,6 +83,51 @@ jobs:
             echo "::warning::Backfill hit its hard stop; see inFlight above and the [backfill] lines in the Vercel runtime logs."
           fi
 
+  # Lab history (src/server/lab/collect.ts): daily metric history for the
+  # Lab, a no-op until a series is 20 h stale. Its own job so a long first
+  # backfill neither delays nor fails the 15-minute collection. Server side
+  # it is bounded (200 s budget, every upstream request cut to end by it) and
+  # leased: a second run while one holds the lease answers {"busy":true}
+  # without collecting. No curl --retry (it also retries timeouts and 5xx,
+  # and a timed-out run keeps going on Vercel): one retry, and only when the
+  # connection never opened (curl exit 6/7).
+  lab:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect Lab history
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_TOKEN" ]; then
+            echo "::error::Missing APP_URL or CRON_TOKEN repository secret (see the collect job)."
+            exit 1
+          fi
+          set -o pipefail
+          url="${APP_URL%/}/api/cron/lab-collect"
+          body=$(mktemp)
+          post() {
+            curl -sS -X POST \
+              --fail-with-body \
+              --max-time 290 \
+              -H "x-cron-token: $CRON_TOKEN" \
+              -o "$body" -w '%{http_code}' \
+              "$url"
+          }
+          code=$(post) && status=0 || status=$?
+          if [ "$status" -eq 6 ] || [ "$status" -eq 7 ]; then
+            echo "connection failed (curl exit $status); retrying once"
+            sleep 5
+            code=$(post) && status=0 || status=$?
+          fi
+          echo "POST $url -> HTTP ${code:-none}"
+          cat "$body"
+          echo
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Lab collection failed (curl exit $status, HTTP ${code:-none})"
+            exit 1
+          fi
+
   # The agentic desk's watch tick (SPEC.md "Desk"): settles paper stops,
   # evaluates triggers, sends alerts, and wakes the agent team when warranted
   # (within DESK_MAX_CYCLES_PER_DAY). Runs after collection so OI snapshots are

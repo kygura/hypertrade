@@ -23,10 +23,10 @@ function memoryDeps() {
   return { deps, state, rows, chunks, runs };
 }
 
-type Call = { id: string; key: string; asset: string; since: number | null; at: number };
+type Call = { id: string; key: string; asset: string; since: number | null; at: number; deadline?: number };
 
 /** Providers whose history is `days(n)`; `fail` maps a key to the error its history throws. */
-function fakeProviders(calls: Call[], opts: { fail?: Record<string, Error>; n?: number; active?: { cm: number; max: number } } = {}): LabProvider[] {
+function fakeProviders(calls: Call[], opts: { fail?: Record<string, Error>; n?: number; active?: { cm: number; max: number }; partial?: Record<string, number> } = {}): LabProvider[] {
   const mk = (id: string, defs: Array<[string, "asset" | "global"]>): LabProvider =>
     ({
       id,
@@ -34,15 +34,19 @@ function fakeProviders(calls: Call[], opts: { fail?: Record<string, Error>; n?: 
       notes: "",
       metrics: (): MetricDef[] => defs.map(([key, scope]) => ({ id: `${id}:${key}`, provider: id, key, name: key, category: "onchain", scope, description: key, lagDays: 1 })),
       fetch: async () => ({ t: [], v: [] }),
-      async history(key: string, asset: string, since: number | null): Promise<DailySeries> {
-        calls.push({ id, key, asset, since, at: calls.length });
+      async history(key: string, asset: string, since: number | null, o?: { deadline?: number }): Promise<DailySeries & { partial?: boolean }> {
+        calls.push({ id, key, asset, since, at: calls.length, deadline: o?.deadline });
         if (opts.active && id === "cm") opts.active.max = Math.max(opts.active.max, ++opts.active.cm);
         await Promise.resolve();
         if (opts.active && id === "cm") opts.active.cm--;
         const err = opts.fail?.[key];
         if (err) throw err;
-        const t = Array.from({ length: opts.n ?? 4 }, (_, i) => D0 + i * DAY);
-        return { t, v: t.map((_, i) => i + 1) };
+        const all = Array.from({ length: opts.n ?? 4 }, (_, i) => D0 + i * DAY);
+        // `partial[key]` days per call, from `since` on, cut short like a paged history at its deadline.
+        const cut = opts.partial?.[key];
+        const t = cut === undefined ? all : all.filter((x) => x >= (since ?? -Infinity)).slice(0, cut);
+        const series = { t, v: t.map((x) => (x - D0) / DAY + 1) };
+        return cut !== undefined && t.length === cut && t[t.length - 1] !== all[all.length - 1] ? { ...series, partial: true } : series;
       },
     }) as LabProvider;
   return [
@@ -88,8 +92,9 @@ describe("collectLab", () => {
     expect(res.error).toBeUndefined();
     expect(res.sources).toEqual({ "lab.cm.CapMVRVCur.btc": "ok", "lab.cm.TxCnt.btc": "ok", "lab.bc.hash_rate": "ok", "lab.deribit.btc_dvol": "ok" });
     expect(calls.every((c) => c.since === null)).toBe(true);
-    expect(res.written).toBe(16);
-    expect(m.rows.filter((r) => r.seriesId === "lab.bc.hash_rate").map((r) => r.value)).toEqual([1, 2, 3, 4]);
+    // days 0..3 come back; day 3 is today (still forming) and is not stored
+    expect(res.written).toBe(12);
+    expect(m.rows.filter((r) => r.seriesId === "lab.bc.hash_rate").map((r) => r.value)).toEqual([1, 2, 3]);
     expect(m.state.get(`${LAB_SYNC_COIN}/lab.cm.TxCnt.btc`)?.syncedAt).toBe(NOW);
     expect(m.runs).toEqual([{ ok: true, error: null }]);
   });
@@ -111,9 +116,9 @@ describe("collectLab", () => {
     const before = m.rows.length;
     const res = await run(m, labJobs(fakeProviders(calls, { n: 12 }), ["BTC"]), first + REFRESH_MS);
     expect(calls.every((c) => c.since === first - OVERLAP_MS)).toBe(true);
-    // days 0..11 come back; only days 4..11 are ≥ day 3 noon and ≤ now
-    expect(m.rows.length - before).toBe(4 * 8);
-    expect(res.written).toBe(4 * 8);
+    // days 0..11 come back; only days 4..10 are ≥ day 3 noon and before today (day 11)
+    expect(m.rows.length - before).toBe(4 * 7);
+    expect(res.written).toBe(4 * 7);
   });
 
   test("one failing source does not stop the rest; its error is recorded", async () => {
@@ -186,5 +191,34 @@ describe("collectLab", () => {
     expect(res.sources["lab.cm.TxCnt.btc"]).toBe("error");
     expect(res.sources["lab.bc.hash_rate"]).toBe("ok");
     expect(res.ok).toBe(true);
+  });
+
+  test("passes the budget to history as its deadline", async () => {
+    const calls: Call[] = [];
+    await run(memoryDeps(), labJobs(fakeProviders(calls), ["BTC"]), NOW, { deadline: NOW + 1000 });
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((c) => c.deadline === NOW + 1000)).toBe(true);
+  });
+
+  test("a history cut short by the deadline is stored, not marked synced, and resumed next run", async () => {
+    const m = memoryDeps();
+    const jobs = (calls: Call[]) => labJobs(fakeProviders(calls, { n: 10, partial: { hash_rate: 4 } }), ["BTC"]).filter((j) => j.id === "lab.bc.hash_rate");
+    const at = D0 + 10 * DAY + 3_600_000;
+    const first = await run(m, jobs([]), at);
+    expect(first.sources["lab.bc.hash_rate"]).toBe("partial");
+    expect(first.ok).toBe(true);
+    const st = m.state.get(`${LAB_SYNC_COIN}/lab.bc.hash_rate`)!;
+    expect(st.syncedAt).toBeNull();
+    expect(st.error).toBeNull();
+    expect(m.rows.map((r) => r.value)).toEqual([1, 2, 3, 4]);
+    // Next run (even minutes later) resumes from the last stored day.
+    const calls: Call[] = [];
+    await run(m, jobs(calls), at + 60_000);
+    expect(calls[0]!.since).toBe(D0 + 3 * DAY);
+    const done = await run(m, jobs([]), at + 120_000);
+    expect(done.sources["lab.bc.hash_rate"]).toBe("ok");
+    expect(m.state.get(`${LAB_SYNC_COIN}/lab.bc.hash_rate`)!.syncedAt).toBe(at + 120_000);
+    expect(m.state.get(`${LAB_SYNC_COIN}/lab.bc.hash_rate`)!.ext as unknown).toEqual({ lab: { attemptedAt: at + 120_000 } });
+    expect([...new Set(m.rows.map((r) => r.value))].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 });
