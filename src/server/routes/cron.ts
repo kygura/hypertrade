@@ -7,6 +7,7 @@ import { collectElfa } from "../collectors/elfa.js";
 import { collectFred } from "../collectors/fred.js";
 import { collectHyperliquid } from "../collectors/hyperliquid.js";
 import * as db from "../db.js";
+import { collectLab, type LabCollectResult } from "../lab/collect.js";
 import { syncHead } from "../market/candleSync.js";
 import { syncFunding } from "../market/fundingSync.js";
 import { backfillCoin, STABLES } from "../sim/backfill.js";
@@ -37,6 +38,8 @@ const HARD_STOP_MS = 240_000;
  * back ~3 months per run.
  */
 const FUNDING_PAGES_PER_RUN = 4;
+/** Lab history stops starting new series after this; it runs beside the other collectors. */
+export const LAB_BUDGET_MS = 150_000;
 
 export type WarmResult = { from?: string; to?: string; tfs: number; fundingFrom?: string | null };
 
@@ -198,6 +201,20 @@ async function oiCoins(): Promise<string[]> {
   return backfillCoins(branches.map((b) => b.config), undefined, recent);
 }
 
+/**
+ * Daily Lab history (src/server/lab/collect.ts): a no-op until a series is
+ * 20 h stale. Its own failure (sync_state unreadable, every API down) is
+ * reported, never thrown, so it cannot fail the run.
+ */
+export async function runLabCollect(collect: typeof collectLab = collectLab, now = Date.now()): Promise<LabCollectResult> {
+  return collect(undefined, { deadline: now + LAB_BUDGET_MS }).catch((err) => ({
+    ok: false,
+    error: err instanceof Error ? err.message : String(err),
+    written: 0,
+    sources: {},
+  }));
+}
+
 // Cron requests in flight in this process. Vercel Cron and the GitHub
 // workflow can now overlap on one warm instance.
 let activeCronRequests = 0;
@@ -219,12 +236,13 @@ export const cronRoutes = new Hono()
     }
   })
   .on(["GET", "POST"], "/collect", requireCronToken, async (c) => {
-    const [hyperliquid, cryptoContext, fred, elfa] = await Promise.all([
+    const [hyperliquid, cryptoContext, fred, elfa, lab] = await Promise.all([
       oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra)),
       collectCryptoContext(),
       collectFred(),
       collectElfa(),
+      runLabCollect(),
     ]);
-    return c.json({ hyperliquid, cryptoContext, fred, elfa });
+    return c.json({ hyperliquid, cryptoContext, fred, elfa, lab });
   })
   .on(["GET", "POST"], "/backfill", requireCronToken, backfillRoute());

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { backfillCoins, backfillRoute, CORE_COINS, cronRoutes } from "./cron.js";
+import { backfillCoins, backfillRoute, CORE_COINS, cronRoutes, LAB_BUDGET_MS, runLabCollect } from "./cron.js";
 
 process.env.CRON_TOKEN = "test-cron-token";
 
@@ -128,5 +128,23 @@ describe("backfillRoute", () => {
   test("rejects an out-of-range days value", async () => {
     expect((await routeApp(base).request("/b?days=0", { method: "POST" })).status).toBe(400);
     expect((await routeApp(base).request("/b?days=abc", { method: "POST" })).status).toBe(400);
+  });
+});
+
+describe("runLabCollect", () => {
+  test("gives the lab collector its own budget and reports its result", async () => {
+    let seen: unknown;
+    const res = await runLabCollect(async (_deps, opts) => {
+      seen = opts;
+      return { ok: true, written: 3, sources: { "lab.fng.value": "ok", "lab.bc.hash_rate": "skipped" } };
+    }, 1_000);
+    expect(seen).toEqual({ deadline: 1_000 + LAB_BUDGET_MS });
+    expect(LAB_BUDGET_MS).toBeLessThanOrEqual(150_000);
+    expect(res).toEqual({ ok: true, written: 3, sources: { "lab.fng.value": "ok", "lab.bc.hash_rate": "skipped" } });
+  });
+
+  test("a thrown collector becomes an error result, never a failed run", async () => {
+    const res = await runLabCollect(async () => Promise.reject(new Error("sync_state missing")));
+    expect(res).toEqual({ ok: false, error: "sync_state missing", written: 0, sources: {} });
   });
 });
