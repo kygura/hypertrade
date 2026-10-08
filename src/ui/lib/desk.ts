@@ -102,7 +102,7 @@ export interface DeskStatus {
   cyclesConnected: boolean
   channels: string[]
   specialists: Array<{ id: string; role: string; brief: string; webSearch: boolean }>
-  schedule: { reviewEveryHours: number; maxCyclesPerDay: number; cycleCooldownMin: number }
+  schedule: { reviewEveryHours: number; reviewEveryHoursSource: 'ui' | 'env'; maxCyclesPerDay: number; cycleCooldownMin: number }
 }
 
 export interface Portfolio {

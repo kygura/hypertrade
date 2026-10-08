@@ -127,6 +127,7 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
               ]}
             />
           )}
+          <ReviewIntervalControl status={status} onChange={onChange} />
           <Button tier="danger" onClick={() => setConfirm(true)} disabled={!status}>
             {kill ? 'RESUME' : 'KILL'}
           </Button>
@@ -151,6 +152,51 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
         />
       )}
     </Panel>
+  )
+}
+
+const REVIEW_HOURS_OPTIONS = [4, 8, 12, 24, 48, 0] as const
+
+function ReviewIntervalControl({ status, onChange }: { status: DeskStatus | null; onChange: () => void }) {
+  const [pending, setPending] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const effective = status?.schedule.reviewEveryHours ?? null
+  const value = pending ?? effective ?? 0
+  const dirty = pending != null && pending !== effective
+
+  const save = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      await api.put('/desk/settings', { reviewEveryHours: value })
+      setPending(null)
+      onChange()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Segmented
+        label="scheduled review interval"
+        size="sm"
+        value={value}
+        onChange={setPending}
+        disabled={!status}
+        options={REVIEW_HOURS_OPTIONS.map((h) => ({ value: h, label: h === 0 ? 'OFF' : `${h}H`, title: h === 0 ? 'Scheduled reviews off' : `Full review every ${h}h` }))}
+      />
+      {status && status.schedule.reviewEveryHoursSource === 'env' && !dirty && <Badge tone="gray">ENV</Badge>}
+      {dirty && (
+        <Button tier="ghost" onClick={() => void save()} disabled={busy}>
+          SAVE
+        </Button>
+      )}
+      {err && <span className="text-[10px] text-red-text">{err}</span>}
+    </div>
   )
 }
 
