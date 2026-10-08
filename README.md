@@ -292,7 +292,7 @@ flagged non-stationary, so searches skip their raw values.
 
 | env | |
 |---|---|
-| `LAB_API_TOKEN` | comma-separated bearer tokens accepted on `/api/lab/*` and `/api/mcp` (the session cookie also works) |
+| `LAB_API_TOKEN` | comma-separated bearer tokens accepted on `/api/lab/*` and `/api/mcp` (any method), plus `GET /api/metrics/*`, `GET /api/sectors` and `GET /api/marketstate*` (the session cookie also works everywhere) |
 | `LAB_SEARCH_DEADLINE_MS` | server search budget, default 50 000; local CLI/stdio: none unless set |
 | `LAB_URL` | CLI/stdio: deployed origin to proxy to; unset runs the lab in-process |
 | `LAB_STORE_FILE` | local store file, default `~/.hypertrade/lab.json` |

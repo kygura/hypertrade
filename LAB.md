@@ -301,8 +301,10 @@ has the same id in a run, in the catalogue and in a URL.
 
 **Auth.** `/api/lab/*` and `/api/mcp` accept the session cookie *or*
 `Authorization: Bearer <token>` where the token is one of the comma-separated
-`LAB_API_TOKEN` values (constant-time compare). The bearer token grants
-nothing outside those two paths.
+`LAB_API_TOKEN` values (constant-time compare), any HTTP method. The same
+bearer also opens `GET /api/metrics/*`, `GET /api/sectors` and
+`GET /api/marketstate*` (read-only; a write to any of those still needs the
+session cookie). It grants nothing on any other path.
 
 **Bounds.** A search on Vercel runs under a deadline (`LAB_SEARCH_DEADLINE_MS`,
 default 50 000, inside the function's `maxDuration` of 60 s) and returns what

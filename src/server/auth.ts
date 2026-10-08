@@ -111,13 +111,22 @@ export const requireCronToken: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
-/** `/lab`, `/lab/...`, `/mcp`, `/mcp/...` — not `/labx` or `/mcpfoo`. */
+/** `/lab`, `/lab/...`, `/mcp`, `/mcp/...` — not `/labx` or `/mcpfoo`. All methods: the lab's own tools are called over POST. */
 const LAB_PATH = /^\/(lab|mcp)(\/|$)/;
 
 /**
- * Bearer token for the lab surfaces (LAB.md "Auth"): any of the
- * comma-separated LAB_API_TOKEN values. Every configured token is compared, so
- * timing does not reveal which one matched. Unset or empty disables bearer.
+ * `/metrics`, `/sectors`, `/marketstate` and their subpaths — not
+ * `/metricsx`. These routes never write, so the bearer only opens them on
+ * GET; a hypothetical future write under one of these paths still needs the
+ * session cookie.
+ */
+const READ_PATH = /^\/(metrics|sectors|marketstate)(\/|$)/;
+
+/**
+ * Bearer token for the lab surfaces and the read-only paths above (LAB.md
+ * "Auth"): any of the comma-separated LAB_API_TOKEN values. Every configured
+ * token is compared, so timing does not reveal which one matched. Unset or
+ * empty disables bearer.
  */
 function labBearerValid(c: Context): boolean {
   const provided = c.req.header("authorization")?.match(/^Bearer +(\S+) *$/i)?.[1];
@@ -143,11 +152,17 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
   // Telegram's webhook carries its own secret header, checked by the route.
   if (path === "/desk/telegram") return next();
 
-  // Lab REST and MCP: session cookie or a LAB_API_TOKEN bearer. The bearer
-  // grants nothing on any other path.
+  // Lab REST and MCP: session cookie or a LAB_API_TOKEN bearer, any method.
   if (LAB_PATH.test(path)) {
     if (labBearerValid(c) || verifySession(getCookie(c, COOKIE_NAME))) return next();
     if (path.startsWith("/mcp")) c.header("WWW-Authenticate", "Bearer");
+    return c.json({ error: "unauthorized" }, 401);
+  }
+
+  // Metrics/sectors/marketstate: session cookie on any method, or the same
+  // bearer but GET only. The bearer grants nothing on any other path.
+  if (READ_PATH.test(path)) {
+    if ((c.req.method === "GET" && labBearerValid(c)) || verifySession(getCookie(c, COOKIE_NAME))) return next();
     return c.json({ error: "unauthorized" }, 401);
   }
 
