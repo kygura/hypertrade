@@ -242,3 +242,65 @@ DeepSeek and Kimi require their reasoning back during a tool loop; the client
 replays it, and folds earlier session turns into the opening message for
 them (the session history is text-only). Web search is Anthropic-only.
 Each question is bounded to 8 tool rounds and 90 seconds.
+
+## Lab (heuristic research)
+
+`/lab` and its tools search a metric universe for simple, human-readable
+trading rules ("when `cm:CapMVRVCur` z(90) < −1.1 and `ht:funding` ≥ 0, go long
+BTC"), score them as strategies net of slippage, validate them walk-forward and
+on a holdout, and track the ones you save in a catalogue with live
+performance, health checks and a Market Pulse. It rebuilds the methodology
+Glassnode published for Alpha Lab over keyless data. Full spec and the tool
+contract: [`LAB.md`](LAB.md). Results are historical research, not advice.
+
+Providers (all keyless): `ht` (hypertrade DB, live Hyperliquid fallback for
+price/funding), `cm` (Coin Metrics community API), `fng` (alternative.me Fear
+& Greed), `llama` (DefiLlama stablecoins and TVL). Runs and the catalogue live
+in Postgres (`db/migrations/004_lab.sql`; apply it like the others), in a JSON
+file locally, or in memory.
+
+| env | |
+|---|---|
+| `LAB_API_TOKEN` | comma-separated bearer tokens accepted on `/api/lab/*` and `/api/mcp` (the session cookie also works) |
+| `LAB_SEARCH_DEADLINE_MS` | server search budget, default 50 000; local CLI/stdio: none unless set |
+| `LAB_URL` | CLI/stdio: deployed origin to proxy to; unset runs the lab in-process |
+| `LAB_STORE_FILE` | local store file, default `~/.hypertrade/lab.json` |
+| `LAB_ALLOWED_ORIGINS` | extra browser origins allowed on `/api/mcp` |
+
+The same 12 tools (`lab_search`, `lab_evaluate_rule`, `lab_catalogue_*`,
+`lab_market_pulse`, …) are served over every surface, plus an `autoresearch`
+MCP prompt that runs the research loop.
+
+**Claude Code.** The project `.mcp.json` registers `hypertrade-lab` as a stdio
+server (`bun run lab:mcp`): in-process by default, or a proxy to the deployed
+app when `LAB_URL` and `LAB_API_TOKEN` are set in the environment. Or connect
+to the deployment directly over HTTP:
+
+```bash
+claude mcp add --transport http hypertrade-lab https://<app>/api/mcp \
+  --header "Authorization: Bearer $LAB_API_TOKEN"
+```
+
+**Claude routines, claude.ai custom connectors, other remote MCP clients.**
+Remote MCP URL `https://<app>/api/mcp`, authenticated with the header
+`Authorization: Bearer <LAB_API_TOKEN>`. The server does bearer headers only,
+not OAuth: clients that let you set a header (Claude Code, the API's MCP
+connector) work; a connector UI that only offers OAuth will not.
+
+**CLI** (local, or remote with `LAB_URL`):
+
+```bash
+bun run lab tools
+bun run lab lab_list_metrics --provider cm --asset BTC
+bun run lab lab_search --asset BTC --metrics '["cm:CapMVRVCur","ht:funding","fng:value"]' --horizon-days 14
+bun run lab lab_market_pulse --pretty
+```
+
+**REST**: `GET /api/lab/tools` lists definitions; `POST /api/lab/tools/<name>`
+takes the arguments as JSON and answers `{ ok: true, result }` or
+`{ ok: false, error, field? }` (400 on bad arguments):
+
+```bash
+curl -s https://<app>/api/lab/tools/lab_catalogue_health \
+  -H "Authorization: Bearer $LAB_API_TOKEN" -H 'content-type: application/json' -d '{}'
+```
