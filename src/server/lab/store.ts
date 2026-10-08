@@ -28,6 +28,7 @@ export interface RunSummary {
   status: "ok" | "error";
   asset: string;
   direction: Direction;
+  horizonDays: number;
   metrics: number;
   rules: number;
   bestSharpe: number | null;
@@ -78,7 +79,8 @@ function checkEntry(e: NewCatalogueEntry) {
 
 function bestSharpe(result: SearchResult | null): number | null {
   const top = result?.rules[0];
-  return top ? (top.walkForward?.sharpe ?? top.inSample.sharpe) : null;
+  // Walk-forward only: an in-sample number under a WF label would overstate the run.
+  return top?.walkForward?.sharpe ?? null;
 }
 
 /** Summary of a full run. Exported for tests. */
@@ -90,6 +92,7 @@ export function summarize(r: StoredRun): RunSummary {
     status: r.status,
     asset: r.config.asset,
     direction: r.config.direction,
+    horizonDays: r.config.horizonDays,
     metrics: r.config.metrics.length,
     rules: r.result?.rules.length ?? 0,
     bestSharpe: bestSharpe(r.result),
@@ -121,6 +124,7 @@ export function toRunSummary(r: any): RunSummary {
     status: r.status,
     asset: r.asset,
     direction: r.direction,
+    horizonDays: Number(r.horizon_days ?? 0),
     metrics: Number(r.metrics ?? 0),
     rules: Number(r.rules ?? 0),
     bestSharpe: r.best_sharpe == null ? null : Number(r.best_sharpe),
@@ -161,10 +165,10 @@ export function pgStore(): LabStore {
       const rows = await sql()`
         select id, created_at, source, status, error,
                config->>'asset' as asset, config->>'direction' as direction,
+               (config->>'horizonDays')::int as horizon_days,
                coalesce(jsonb_array_length(config->'metrics'), 0) as metrics,
                coalesce(jsonb_array_length(result->'rules'), 0) as rules,
-               coalesce((result->'rules'->0->'walkForward'->>'sharpe')::float8,
-                        (result->'rules'->0->'inSample'->>'sharpe')::float8) as best_sharpe
+               (result->'rules'->0->'walkForward'->>'sharpe')::float8 as best_sharpe
         from lab_runs order by created_at desc limit ${Math.max(0, Math.floor(limit))}`;
       return rows.map(toRunSummary);
     },

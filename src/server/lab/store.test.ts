@@ -109,7 +109,8 @@ function behaves(name: string, make: () => Promise<LabStore>) {
       const c = await s.saveRun(okRun("SOL", [evaluation("x", "SOL", "long", null), evaluation("y")]));
       const list = await s.listRuns(10);
       expect(list.map((r) => r.id)).toEqual([c.id, b.id, a.id]);
-      expect(list[0]).toMatchObject({ asset: "SOL", direction: "long", metrics: 2, rules: 2, bestSharpe: 0.9, status: "ok" });
+      // Top rule has no walk-forward: no in-sample stand-in under the WF column.
+      expect(list[0]).toMatchObject({ asset: "SOL", direction: "long", horizonDays: 14, metrics: 2, rules: 2, bestSharpe: null, status: "ok" });
       expect(list[1]).toMatchObject({ asset: "ETH", rules: 0, bestSharpe: null, status: "error", error: "boom", source: "mcp" });
       expect(list[2]!.bestSharpe).toBe(1.5);
       expect((await s.listRuns(2)).map((r) => r.id)).toEqual([c.id, b.id]);
@@ -312,6 +313,7 @@ describe("pg row mapping", () => {
       error: null,
       asset: "ETH",
       direction: cfg.direction,
+      horizon_days: cfg.horizonDays,
       metrics: 2,
       rules: 1,
       best_sharpe: 1.5,
