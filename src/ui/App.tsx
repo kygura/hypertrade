@@ -20,6 +20,10 @@ import { SkeletonRows } from './components/state'
 
 // The drill-in carries the canvas chart library; load it with the route.
 const MarketDrill = lazy(() => import('./pages/MarketDrill').then((m) => ({ default: m.MarketDrill })))
+// Lab (DESIGN.md §10.9): research view, loaded with its routes.
+const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
+const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
+const LAB_TAB_PATHS = ['/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
 
 // Router — SPEC.md route map. All routes except /login render inside
 // AppShell. Auth guard: a session probe on shell mount plus the api.ts
@@ -148,6 +152,30 @@ export default function App() {
           element={
             <Shell>
               <Desk />
+            </Shell>
+          }
+        />
+        <Route path="/lab" element={<Navigate to="/lab/search" replace />} />
+        {LAB_TAB_PATHS.map((path) => (
+          <Route
+            key={path}
+            path={path}
+            element={
+              <Shell>
+                <Suspense fallback={<SkeletonRows />}>
+                  <Lab />
+                </Suspense>
+              </Shell>
+            }
+          />
+        ))}
+        <Route
+          path="/lab/rules/:id"
+          element={
+            <Shell>
+              <Suspense fallback={<SkeletonRows />}>
+                <LabRule />
+              </Suspense>
             </Shell>
           }
         />
