@@ -57,6 +57,15 @@ describe("evaluateRule", () => {
     expect(ev.inSample.days + ev.holdout!.days).toBe(499);
   });
 
+  test("a holdout without trades is untested", () => {
+    const t = data.t.slice(0, 500);
+    const ramp: LabDataset = { asset: "SYN", t, price: data.price.slice(0, 500), metrics: { "x:ramp": t.map((_, i) => i) } };
+    const ev = evaluateRule({ ...planted, conditions: [{ feature: "x:ramp|raw|0", op: "<", threshold: 300 }] }, ramp, { slippageBps: 10 });
+    expect(ev.holdout!.trades).toBe(0);
+    expect(ev.holdout!.untested).toBe(true);
+    expect(ev.inSample.untested).toBeUndefined();
+  });
+
   test("rejects malformed rules", () => {
     expect(() => evaluateRule({ ...planted, conditions: [] }, data, { slippageBps: 10 })).toThrow();
   });

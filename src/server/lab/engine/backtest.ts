@@ -78,6 +78,21 @@ export function quickScore(
   return v > 1e-18 ? (m / Math.sqrt(v)) * Math.sqrt(365) : 0;
 }
 
+/** Share of return days [a, b) in market and trades entered, for a 0/1 signal (a window starts flat, as in simulate). */
+export function zoneActivity(sig: Uint8Array, a: number, b: number): { exposure: number; trades: number } {
+  a = Math.max(1, a);
+  let inMkt = 0;
+  let trades = 0;
+  let prev = 0;
+  for (let i = a; i < b; i++) {
+    const s = sig[i - 1]!;
+    inMkt += s;
+    if (s && !prev) trades++;
+    prev = s;
+  }
+  return { exposure: b > a ? inMkt / (b - a) : 0, trades };
+}
+
 export function sharpeOf(ret: ArrayLike<number>): number {
   const k = ret.length;
   if (k < 2) return 0;
@@ -175,6 +190,7 @@ export function perfStats(t: number[], segs: Segment[]): PerfStats {
     trades,
     tradesPerYear: years > 0 ? trades / years : 0,
     exposure: days ? inMkt / days : 0,
+    ...(trades ? {} : { untested: true }),
   };
 }
 

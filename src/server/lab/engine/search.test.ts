@@ -65,6 +65,26 @@ describe("runSearch", () => {
     expect(none.warnings.some((w) => /minDeflatedSharpe/.test(w))).toBe(true);
   });
 
+  test("exposure and trade limits: every rule trades enough and is neither always in nor almost never", () => {
+    const data = synthetic({ seed: 4, drift: 0.01, days: 1500 });
+    const res = runSearch(cfg(data, { trials: 4 }), data);
+    const years = res.rules[0]!.inSample.days / 365;
+    for (const r of res.rules) {
+      expect(r.inSample.exposure).toBeGreaterThanOrEqual(0.05);
+      expect(r.inSample.exposure).toBeLessThanOrEqual(0.95);
+      expect(r.inSample.trades).toBeGreaterThanOrEqual(Math.max(3, Math.ceil(0.5 * years)));
+    }
+    const tight = runSearch(cfg(data, { trials: 4, minExposure: 0.3, maxExposure: 0.6 }), data);
+    expect(tight.rules.length).toBeGreaterThan(0);
+    for (const r of tight.rules) {
+      expect(r.inSample.exposure).toBeGreaterThanOrEqual(0.3);
+      expect(r.inSample.exposure).toBeLessThanOrEqual(0.6);
+    }
+    const busy = runSearch(cfg(data, { trials: 4, minTradesPerYear: 40 }), data);
+    for (const r of busy.rules) expect(r.inSample.tradesPerYear).toBeGreaterThanOrEqual(40);
+    expect(() => runSearch(cfg(data, { minExposure: 0.6, maxExposure: 0.5 }), data)).toThrow(/minExposure/);
+  });
+
   test("stationarity: random-walk metrics flagged false never yield raw conditions", () => {
     const data = synthetic({ seed: 3, drift: 0.01, days: 1200 });
     const plain = runSearch(cfg(data, { trials: 4 }), data);

@@ -114,6 +114,8 @@ export interface PerfStats {
   trades: number;
   tradesPerYear: number;
   exposure: number; // share of days in market
+  /** True when the window holds no trade: its Sharpe 0 is "not tested", not "no edge". */
+  untested?: boolean;
 }
 
 export interface SensitivityPoint {
@@ -183,6 +185,12 @@ export const SearchConfigSchema = z.object({
   to: DaySchema.optional(),
   price: z.string().optional(),
   seed: z.number().int().default(42),
+  /** Candidate rules must be in the market on this share of search-region days or more… */
+  minExposure: z.number().min(0).max(1).default(0.05),
+  /** …and at most this share (always-in is the benchmark, not a rule). */
+  maxExposure: z.number().min(0).max(1).default(0.95),
+  /** …and enter at least this many trades per year of search region (and at least 3 in total). */
+  minTradesPerYear: z.number().min(0).max(365).default(0.5),
   /** Drop final rules whose deflated Sharpe is below this (0–1). Default: no filter. */
   minDeflatedSharpe: z.number().min(0).max(1).optional(),
 });

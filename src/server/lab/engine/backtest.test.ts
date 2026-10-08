@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { equityCurve, perfStats, priceReturns, quickScore, sharpeOf, simulate } from "./backtest.js";
+import { equityCurve, perfStats, priceReturns, quickScore, sharpeOf, simulate, zoneActivity } from "./backtest.js";
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2024, 0, 1);
@@ -45,6 +45,22 @@ describe("backtest", () => {
     expect(s.trades).toBe(2);
     expect(s.hitRate).toBe(1);
     expect(perfStats(t, [simulate(pr, [0, 0, 0, 0, 0], 1, 5, 100)]).hitRate).toBeNull();
+  });
+
+  test("a window without trades is flagged untested, not silently Sharpe 0", () => {
+    const flat = perfStats(t, [simulate(pr, [0, 0, 0, 0, 0], 1, 5, 100)]);
+    expect(flat.trades).toBe(0);
+    expect(flat.sharpe).toBe(0);
+    expect(flat.untested).toBe(true);
+    expect(perfStats(t, [simulate(pr, sig, 1, 5, 100)]).untested).toBeUndefined();
+  });
+
+  test("zoneActivity: exposure and entries over return days, matching perfStats", () => {
+    const z = zoneActivity(Uint8Array.from(sig), 1, 5);
+    const s = perfStats(t, [simulate(pr, sig, 1, 5, 100)]);
+    expect(z).toEqual({ exposure: s.exposure, trades: s.trades });
+    // a window starts flat: an open position at its start is an entry
+    expect(zoneActivity(Uint8Array.from([1, 1, 0, 1, 1]), 2, 5)).toEqual({ exposure: 2 / 3, trades: 2 });
   });
 
   test("a window starts flat and segments concatenate", () => {

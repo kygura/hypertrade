@@ -1,5 +1,5 @@
 import { SearchConfigSchema, type Condition, type LabDataset, type Rule, type SearchConfig, type SearchResult, type TrialRecord } from "../types.js";
-import { concatReturns, objectiveOf, quickScore, simulate } from "./backtest.js";
+import { concatReturns, objectiveOf, quickScore, simulate, zoneActivity } from "./backtest.js";
 import { checkDataset, makeCtx, rangeIndices } from "./context.js";
 import { evaluateInCtx } from "./evaluate.js";
 import { featureId, featureSpecs } from "./features.js";
@@ -40,6 +40,8 @@ interface TrainSet {
   minSupport: number;
   /** Return days [1, retEnd) score rules on this training set. */
   retEnd: number;
+  /** Fewest trades entered over those days (exposure/trade limits). */
+  minTrades: number;
   /** Rule key → {signal, support, objective}, reused across trials (binning is fixed per fold). */
   cache: Map<string, { sig: Uint8Array; support: number; score: number }>;
 }
@@ -70,6 +72,7 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
   const started = now();
   const config = SearchConfigSchema.parse(input);
   checkDataset(data);
+  if (config.minExposure > config.maxExposure) throw new SearchRefused("minExposure is above maxExposure", "minExposure");
   const warnings: string[] = [];
 
   const metrics = [...new Set(config.metrics)].filter((m) => {
@@ -130,7 +133,8 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
     for (let i = 0; i < end; i++) if (labels[i] === labels[i]) list.push(i);
     const rows = Int32Array.from(list);
     const minSupport = baseRows ? Math.max(5, Math.round((config.minSupport * rows.length) / baseRows)) : config.minSupport;
-    return { rows, binned: binFeatures(cols, rows), minSupport, retEnd, cache: new Map() };
+    const minTrades = Math.max(3, Math.ceil((config.minTradesPerYear * (retEnd - 1)) / 365));
+    return { rows, binned: binFeatures(cols, rows), minSupport, retEnd, minTrades, cache: new Map() };
   };
   const final = trainSet(split.basisEnd, split.searchEnd);
   let positives = 0;
@@ -139,6 +143,11 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
   if (positives === final.rows.length) throw new SearchRefused("every day in the search region is labelled good; nothing to separate", config.customZones?.length ? "customZones" : "labelQuantile");
   const folds = split.folds.map((f) => ({ fold: f, train: trainSet(f.purgedEnd, f.testFrom, final.rows.length) }));
 
+  /** Exposure and trade-count limits over the training set's return days: a rule that is almost never or almost always in, or trades twice, is not a rule. */
+  const withinLimits = (sig: Uint8Array, ts: TrainSet) => {
+    const { exposure, trades } = zoneActivity(sig, 1, ts.retEnd);
+    return exposure >= config.minExposure && exposure <= config.maxExposure && trades >= ts.minTrades;
+  };
   /** Distinct rule variants scored anywhere in this search: N for the deflated Sharpe. */
   const scored = new Set<string>();
   /** Rules with their signal, support and training objective, support-filtered, best first. */
@@ -151,7 +160,7 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
         const sig = ctx.signal(conds);
         let support = 0;
         for (const r of ts.rows) support += sig[r]!;
-        const score = support >= ts.minSupport ? quickScore(ctx.pr, sig, dirSign, bps, 1, ts.retEnd, objective) : NaN;
+        const score = support >= ts.minSupport && withinLimits(sig, ts) ? quickScore(ctx.pr, sig, dirSign, bps, 1, ts.retEnd, objective) : NaN;
         e = { sig, support, score };
         if (ts.cache.size < 20_000) ts.cache.set(key, e);
       }
@@ -224,7 +233,7 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
     if (top.length >= config.topK) break;
   }
   if (!top.length) {
-    warnings.push(pool.length ? `no rule reached minDeflatedSharpe ${minDsr}` : `no rule reached minSupport ${config.minSupport} in the search region`);
+    warnings.push(pool.length ? `no rule reached minDeflatedSharpe ${minDsr}` : `no rule reached minSupport ${config.minSupport} within the exposure and trade limits in the search region`);
   }
   const rules = top.map((c) => {
     const rule: Rule = { asset: config.asset, direction: config.direction, horizonDays: config.horizonDays, conditions: c.conds };
