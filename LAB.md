@@ -69,27 +69,32 @@ without buying a key.
      into `folds + 1` blocks; fold i trains on blocks 0..i and tests on block
      i+1. Training sets are **purged** of their last `horizonDays` days, whose
      labels look into the test block. Trials are scored on concatenated test
-     blocks. For each final rule the walk-forward stat refits the rule per
-     fold by **quantile matching**: same features and operators, threshold =
-     the same train-set quantile the final threshold sits at. This is a
-     *threshold refit*: the rule's structure (features, operators) was chosen
-     on the whole search region, so a final rule's walk-forward stat is not
-     fully out of sample. The trial score, which regrows forests per fold, is.
+     blocks. **Search rules: threshold-refit per fold.** For each final rule
+     of a search the walk-forward stat refits the rule per fold by **quantile
+     matching**: same features and operators, threshold = the same train-set
+     quantile the final threshold sits at. The rule's structure (features,
+     operators) was chosen on the whole search region, so a final rule's
+     walk-forward stat is not fully out of sample. The trial score, which
+     regrows forests per fold, is. **Explicit rules: fixed thresholds per
+     fold.** `lab_evaluate_rule` applies the rule's absolute thresholds as
+     given in every fold's test block; nothing is fitted to any fold's
+     training rows, since the rule is an input, not a search result.
    - *Live:* once catalogued, a rule is evaluated on data after `savedAt`,
      which could not have influenced its selection.
    Final rules are ranked by walk-forward objective (support-filtered), never by
    holdout. Each also reports `walkForwardFolds` (the Sharpe of every test
-   block, never ranked on) and `deflatedSharpe` (Bailey & López de Prado):
+   block, never ranked on; `null` for a block with no trade: untested, not a
+   Sharpe of 0) and `deflatedSharpe` (Bailey & López de Prado):
    the probability that the concatenated walk-forward returns' daily Sharpe,
    corrected for their skew and kurtosis, beats the expected best of N noise
    strategies, with the null variance of a Sharpe 1/(T − 1). N is
    `effectiveTrials`, not the raw `variantsScored` (see *Effective trials*
-   below). It is a reported field, an optional filter (`minDeflatedSharpe`)
-   and part of the verdict. An explicit rule (`lab_evaluate_rule`) gets the
-   same walk-forward, refitting its thresholds per fold by quantile matching
-   (its own thresholds stay canonical, so its id does not change), with
-   N = `trials` (default 1: not deflated for any search; pass the run's
-   `effectiveTrials`).
+   below). It is `null` when undefined: at extreme skew/kurtosis the
+   Sharpe's standard error term 1 − skew·SR + (kurt − 1)/4·SR² is ≤ 0. It is
+   a reported field, an optional filter (`minDeflatedSharpe`) and part of the
+   verdict. An explicit rule (`lab_evaluate_rule`) gets the same folds with
+   its thresholds fixed (above), with N = `trials` (default 1: not deflated
+   for any search; pass the run's `effectiveTrials`).
    The final list keeps one rule per family: best walk-forward first, a rule
    whose in-zone days over the search region overlap a kept rule's with
    Jaccard ≥ 0.8 is dropped, and no single condition anchors more than two
@@ -122,8 +127,9 @@ without buying a key.
    with its numbers (e.g. "deflated Sharpe 0.71 < 0.9"):
    `fails_holdout` (holdout missing, untested or Sharpe ≤ 0) → `weak`
    (walk-forward missing or Sharpe ≤ 1) → `fragile` (stability < 0.5, when a
-   sensitivity grid is attached) → `candidate` (deflated Sharpe missing or
-   < 0.9) → `robust`. **The save bar is `robust`.** A `candidate` may be
+   sensitivity grid is attached) → `candidate` (deflated Sharpe missing,
+   undefined — reason "deflated Sharpe undefined (extreme skew/kurtosis)" —
+   or < 0.9) → `robust`. **The save bar is `robust`.** A `candidate` may be
    saved only with a note explaining why. The search can return only rules at
    or above `minVerdict`; it filters the selected top K after the fact and
    never reaches deeper candidates, so the holdout still selects nothing.
@@ -132,7 +138,9 @@ without buying a key.
    `candidate`). A catalogue save with a `runId` keeps the run's walk-forward,
    `walkForwardFolds` and deflated Sharpe (the numbers the rule was selected
    on, deflated by the run's `effectiveTrials`), evaluates the rest fresh with
-   N = the run's `effectiveTrials`, and recomputes the verdict.
+   N = the run's `effectiveTrials` over the run's `from`/`to` and slippage
+   (so the fresh holdout is the run's, never inside its search region; the
+   entry's PerfStats `from`/`to` show the range), and recomputes the verdict.
 
    *Calibration* (`engine/calibrate.ts`; `bun src/server/lab/engine/calibrate.ts
    [trials]` reprints it). Synthetic data, 2,500 days: 40 pure-noise seeds
@@ -174,9 +182,21 @@ without buying a key.
    planted rule passes the rest of the bar; the ones lost at 0.9 (2 of 12 at
    0.008 drift and 16 trials, 3 of 11 at 40) fail only the deflated Sharpe: a
    0.008 edge over 2,500 days is near what the bar can tell from the best of
-   ~150 noise clusters. The engine test re-runs this on 20
-   noise and 12 planted seeds per strength and asserts the rule still picks
-   `MIN_DEFLATED_SHARPE`.
+   ~150 noise clusters.
+
+   *How sure is the noise rate?* 1 noise search in 40 passing is a point
+   estimate of 2.5%; its exact (Clopper–Pearson) 95% interval is 0.06%–13%,
+   so 40 seeds show the false-positive rate is below about 13%, not that it
+   is below 5%. At 40 trials 0/40 bounds it below about 9%. More seeds would
+   narrow this; the threshold rests on the two budgets agreeing, not on
+   either table alone.
+
+   The suite does not re-run the calibration (it took ~24 s and tested the
+   seeds the threshold was chosen on). Instead `search.test.ts` validates
+   `MIN_DEFLATED_SHARPE` out of sample on disjoint seeds at 16 trials:
+   noise seeds 3000–3009, at most 1 of 10 with any robust top-10 rule, and
+   planted seeds 4000–4005 at drift 0.012, at least 4 of 6 with the planted
+   rule robust (currently 0/10 and 6/6, ~10 s over two tests).
 
 8. **Sensitivity.** Each condition's threshold is shifted to quantiles
    q ± 0.05 and q ± 0.10, and its window is swapped for neighbouring windows in
@@ -309,7 +329,8 @@ implementations: Postgres (deployed), in-memory (no DB), and JSON file
   asserted in the test) with a `robust` verdict, while on pure-noise data
   the save bar (`robust`: walk-forward Sharpe > 1, holdout Sharpe > 0 and
   tested, stability ≥ 0.5, deflatedSharpe ≥ 0.9 against `effectiveTrials`)
-  passes some top-10 rule in at most 1 of 20 seeds (the calibration test);
+  passes some top-10 rule in at most 1 of 10 fresh seeds (the validation
+  tests; the calibration itself is `bun src/server/lab/engine/calibrate.ts`);
   and replacing the holdout with noise leaves the rules and every
   search-region number, `effectiveTrials` included, unchanged.
 - `bun run typecheck` and `bun run build` green.

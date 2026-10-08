@@ -261,16 +261,25 @@ catalogue live in Postgres (`db/migrations/004_lab.sql`, then
 `005_lab_guard.sql`; apply them like the others; the newest 500 runs are
 kept), in a JSON file locally, or in memory.
 
-**Lab data.** `/api/cron/collect` also runs the Lab collector
-(`src/server/lab/collect.ts`, its own 150 s budget) which stores the daily
-history of every `cm` (per `LAB_ASSETS`, default `BTC,ETH`), `fng`, `llama`,
-`bc` and `deribit` metric in `observations` as `lab.<provider>.<key>[.<asset>]`
-(e.g. `lab.cm.CapMVRVCur.btc`, `lab.bc.hash_rate`). A series' first sync pulls
-its full history; after that it refetches a tail (last sync minus a week) at
-most every 20 h; a failure waits 1 h (a 4xx refusal 20 h) before the next try;
-one dead source never stops the others, and Coin Metrics goes one request at a
-time to stay inside its community rate limit. Bookkeeping is in `sync_state`
-under `coin = '_lab'`. Searches read that stored history first when its last
+**Lab data.** `/api/cron/lab-collect` runs the Lab collector
+(`src/server/lab/collect.ts`) which stores the daily history of every `cm`
+(per `LAB_ASSETS`, default `BTC,ETH`), `fng`, `llama`, `bc` and `deribit`
+metric in `observations` as `lab.<provider>.<key>[.<asset>]` (e.g.
+`lab.cm.CapMVRVCur.btc`, `lab.bc.hash_rate`). The collect workflow calls it
+in its own job every 15 minutes (a no-op for fresh series) and Vercel Cron
+daily at 06:30 UTC as a fallback. A run has a 200 s budget: no series starts
+after it and every upstream request is cut to end by it; a paged history it
+cuts short is stored as far as it got and resumed on the next run. Runs never
+overlap: a lease in `sync_state` (`coin = '_lab'`, `series = '_lease'`,
+`synced_at` = expiry, budget + 60 s) is taken by one conditional upsert, and
+a second trigger answers `{"busy": true}` without collecting. A series' first
+sync pulls its full history; after that it refetches a tail (last sync minus
+a week) at most every 20 h. Only completed UTC days are stored (today's
+value is still forming), and that week of overlap is the revision horizon:
+an upstream revision older than 7 days is not picked up. A failure waits 1 h
+(a 4xx refusal 20 h) before the next try; one dead source never stops the
+others, and Coin Metrics goes one request at a time to stay inside its
+community rate limit. Bookkeeping is in `sync_state` under `coin = '_lab'`. Searches read that stored history first when its last
 point is at most 2 days old, top up a staler one live from its last week, and
 go live for anything not collected or without a DB.
 
@@ -307,8 +316,9 @@ claude mcp add --transport http hypertrade-lab https://<app>/api/mcp \
 Then ask Claude for something like: "Find a long-only rule for BTC with
 `lab_search`, stress-test the best one (walk-forward vs holdout,
 `lab_sensitivity`, a `lab_evaluate_rule` on another window), and
-`lab_catalogue_save` it only if it passes the save bar (walk-forward Sharpe > 1,
-holdout Sharpe > 0, stability ≥ 0.5)." The `/analyst` page can read the same
+`lab_catalogue_save` it only if its verdict is `robust`, the save bar:
+walk-forward Sharpe > 1, holdout Sharpe > 0, stability ≥ 0.5 and deflated
+Sharpe ≥ 0.9." The `/analyst` page can read the same
 lab (runs, evaluations, catalogue, Market Pulse) but never searches or saves.
 
 **Claude routines, claude.ai custom connectors, other remote MCP clients.**
