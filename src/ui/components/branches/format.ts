@@ -30,9 +30,20 @@ export function maxDdClass(magnitudePct: number): string {
   return Math.abs(magnitudePct) >= 20 ? 'text-red-text' : 'text-text-primary'
 }
 
-export function allocationSummary(allocations: Allocation[]): string {
+// A perp leg is SHORT or leveraged; everything else is spot.
+export function hasPerpLeg(allocations: Allocation[]): boolean {
+  return allocations.some((a) => a.side === 'short' || (a.leverage ?? 1) > 1)
+}
+
+export function allocationSummary(allocations: Allocation[], dca?: BranchConfig['dca']): string {
   if (allocations.length === 0) return '—'
-  return allocations.map((a) => `${Math.round(a.weightPct)} ${a.coin || '?'}`).join(' / ')
+  const legs = allocations
+    .map((a) => {
+      const lev = (a.leverage ?? 1) > 1 ? ` ${a.leverage}×` : ''
+      return `${Math.round(a.weightPct)} ${a.coin || '?'}${a.side === 'short' ? ' SHORT' : ''}${lev}`
+    })
+    .join(' / ')
+  return dca?.length ? `${legs} + DCA` : legs
 }
 
 const REBALANCE_LABEL: Record<BranchConfig['rebalance'], string> = {

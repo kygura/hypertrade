@@ -35,7 +35,7 @@ export function Branches() {
         <div className="flex flex-col gap-0.5 py-1">
           <span className="text-text-primary">{b.name}</span>
           <span className="text-[10px] text-text-secondary">
-            {allocationSummary(b.config.allocations)} · {rebalanceLabel(b.config.rebalance)}
+            {allocationSummary(b.config.allocations, b.config.dca)} · {rebalanceLabel(b.config.rebalance)}
           </span>
         </div>
       ),

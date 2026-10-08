@@ -17,13 +17,15 @@ import type { BranchDetail as BranchDetailData, BranchResult } from '../componen
 import { EquityChart } from '../components/charts/EquityChart'
 import { ProjectionAssumptions } from '../components/charts/FanChart'
 import { DrawdownChart } from '../components/branches/DrawdownChart'
-import { maxDdClass, signClass, STABLE_COINS, sumWeights } from '../components/branches/format'
+import { hasPerpLeg, maxDdClass, signClass, STABLE_COINS, sumWeights } from '../components/branches/format'
 import { fmtPct, fmtUsd } from '../../shared/format'
 
 // /branches/:id — DESIGN.md §10.4. Editor (left, 4 cols) + results (right,
 // 8 cols: equity/fan, drawdown, stats), reordered on mobile so results
 // (checked far more often than edited) lead: equity header → chart →
 // config → drawdown → stats.
+
+type Dca = NonNullable<BranchConfig['dca']>[number]
 
 type Busy = 'idle' | 'saving' | 'running'
 
@@ -35,7 +37,21 @@ interface FormState {
   allocations: Allocation[]
   rebalance: BranchConfig['rebalance']
   scenario: Scenario | null
+  dca: Dca[]
 }
+
+const SIDE_OPTIONS: { value: 'long' | 'short'; label: string; short: string }[] = [
+  { value: 'long', label: 'LONG', short: 'L' },
+  { value: 'short', label: 'SHORT', short: 'S' },
+]
+
+const DCA_EVERY_OPTIONS: { value: Dca['every']; label: string; short: string }[] = [
+  { value: 'weekly', label: 'WEEKLY', short: 'WK' },
+  { value: 'monthly', label: 'MONTHLY', short: 'MO' },
+]
+
+const ALLOC_GRID = 'grid grid-cols-[7ch_9ch_auto_8ch_auto] items-center gap-1.5'
+const DCA_GRID = 'grid grid-cols-[7ch_10ch_auto_auto] items-center gap-1.5'
 
 const REBALANCE_OPTIONS: { value: BranchConfig['rebalance']; label: string }[] = [
   { value: 'none', label: 'NONE' },
@@ -69,6 +85,7 @@ export function BranchDetail() {
         allocations: data.config.allocations,
         rebalance: data.config.rebalance,
         scenario: data.config.scenario ?? null,
+        dca: data.config.dca ?? [],
       })
       setResult(data.result)
     }
@@ -102,16 +119,27 @@ export function BranchDetail() {
         description: form.description || undefined,
         startDate: form.startDate,
         initialCapitalUsd: form.initialCapitalUsd,
-        allocations: form.allocations,
+        // long / 1x are the defaults: omit them so legacy branches save unchanged.
+        allocations: form.allocations.map(({ side, leverage, ...a }) => ({
+          ...a,
+          ...(side === 'short' && { side }),
+          ...(leverage !== undefined && leverage !== 1 && { leverage }),
+        })),
         rebalance: form.rebalance,
         scenario: resolvedScenario ?? undefined,
+        dca: form.dca.length ? form.dca.map((d) => ({ ...d, coin: d.coin.trim() })) : undefined,
       }
     : null
 
   const weightSum = form ? sumWeights(form.allocations) : 0
   const weightsValid = Math.abs(weightSum - 100) < 0.01
   const parsedConfig = configCandidate ? BranchConfigSchema.safeParse(configCandidate) : null
-  const canSubmit = weightsValid && !!parsedConfig?.success && busy === 'idle'
+  const levValid = !form || form.allocations.every((a) => (a.leverage ?? 1) >= 1 && (a.leverage ?? 1) <= 50)
+  const dcaValid = !form || form.dca.every((d) => d.coin.trim() !== '' && d.amountUsd > 0)
+  const perp = !!form && hasPerpLeg(form.allocations)
+  const perpConflict = perp && !!form?.scenario
+  const editorOk = levValid && dcaValid && !perpConflict
+  const canSubmit = weightsValid && editorOk && !!parsedConfig?.success && busy === 'idle'
 
   // --- actions ----------------------------------------------------------
   async function run() {
@@ -164,6 +192,11 @@ export function BranchDetail() {
   function removeAllocation(i: number) {
     if (!form) return
     patch({ allocations: form.allocations.filter((_, idx) => idx !== i) })
+  }
+
+  function updateDca(i: number, p: Partial<Dca>) {
+    if (!form) return
+    patch({ dca: form.dca.map((d, idx) => (idx === i ? { ...d, ...p } : d)) })
   }
 
   function updateAssumption(coin: string, p: Partial<{ annualReturnPct: number; annualVolPct: number }>) {
@@ -295,27 +328,71 @@ export function BranchDetail() {
 
               <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
                 <span className="label">ALLOCATIONS</span>
-                <div className="flex flex-col gap-1">
-                  {form.allocations.map((a, i) => (
-                    <div key={i} className="flex items-center gap-1.5">
-                      <input
-                        value={a.coin}
-                        onChange={(e) => updateAllocation(i, { coin: e.target.value.toUpperCase() })}
-                        className="w-[6ch]"
-                        placeholder="COIN"
-                      />
-                      <input
-                        type="number"
-                        value={a.weightPct}
-                        onChange={(e) => updateAllocation(i, { weightPct: Number(e.target.value) })}
-                        className="w-[5ch]"
-                      />
-                      <span className="text-text-secondary text-[11px]">%</span>
-                      <Button tier="danger" className="!px-1.5 ml-auto" onClick={() => removeAllocation(i)}>
-                        ✕
-                      </Button>
+                <div className="table-scroll">
+                  <div className="flex flex-col gap-1 min-w-max">
+                    <div className={`${ALLOC_GRID} label`}>
+                      <span>COIN</span>
+                      <span>WEIGHT</span>
+                      <span>SIDE</span>
+                      <span>LEV</span>
                     </div>
-                  ))}
+                    {form.allocations.map((a, i) => {
+                      const stable = STABLE_COINS.has(a.coin.toUpperCase())
+                      const lock = stable ? 'stablecoins are spot only' : undefined
+                      return (
+                        <div key={i} className={ALLOC_GRID}>
+                          <input
+                            value={a.coin}
+                            onChange={(e) => {
+                              const coin = e.target.value.toUpperCase()
+                              updateAllocation(
+                                i,
+                                STABLE_COINS.has(coin) ? { coin, side: undefined, leverage: undefined } : { coin },
+                              )
+                            }}
+                            className="w-full"
+                            placeholder="COIN"
+                            aria-label="allocation coin"
+                          />
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              value={a.weightPct}
+                              onChange={(e) => updateAllocation(i, { weightPct: Number(e.target.value) })}
+                              className="w-full min-w-0"
+                              aria-label={`${a.coin || 'allocation'} weight`}
+                            />
+                            <span className="text-text-secondary text-[11px]">%</span>
+                          </div>
+                          <Segmented
+                            label={`${a.coin || 'allocation'} side`}
+                            options={SIDE_OPTIONS}
+                            value={a.side ?? 'long'}
+                            onChange={(side) => updateAllocation(i, { side })}
+                            disabled={stable}
+                            className="self-center"
+                          />
+                          <div className="flex items-center gap-1" title={lock}>
+                            <input
+                              type="number"
+                              min={1}
+                              max={50}
+                              step={1}
+                              value={a.leverage ?? 1}
+                              onChange={(e) => updateAllocation(i, { leverage: Number(e.target.value) })}
+                              disabled={stable}
+                              className="w-full min-w-0"
+                              aria-label={`${a.coin || 'allocation'} leverage`}
+                            />
+                            <span className="text-text-secondary text-[11px]">×</span>
+                          </div>
+                          <Button tier="danger" className="!px-1.5" onClick={() => removeAllocation(i)}>
+                            ✕
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <Button tier="ghost" onClick={addAllocation}>
@@ -325,6 +402,79 @@ export function BranchDetail() {
                     {weightsValid ? `Σ ${weightSum}%` : `Σ ${weightSum}% — must equal 100`}
                   </span>
                 </div>
+                {!levValid && <span className="text-[11px] text-red-text">leverage must be 1–50</span>}
+              </div>
+
+              <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
+                <span className="label">DCA</span>
+                {form.dca.length > 0 && (
+                  <div className="table-scroll">
+                    <div className="flex flex-col gap-1 min-w-max">
+                      <div className={`${DCA_GRID} label`}>
+                        <span>COIN</span>
+                        <span>AMOUNT</span>
+                        <span>EVERY</span>
+                      </div>
+                      {form.dca.map((d, i) => (
+                        <div key={i} className={DCA_GRID}>
+                          <input
+                            value={d.coin}
+                            onChange={(e) => updateDca(i, { coin: e.target.value.toUpperCase() })}
+                            className="w-full"
+                            placeholder="COIN"
+                            aria-label="DCA coin"
+                          />
+                          <div className="flex items-center gap-1">
+                            <span className="text-text-secondary text-[11px]">$</span>
+                            <input
+                              type="number"
+                              min={1}
+                              value={d.amountUsd}
+                              onChange={(e) => updateDca(i, { amountUsd: Number(e.target.value) })}
+                              className="w-full min-w-0"
+                              aria-label="DCA amount USD"
+                            />
+                          </div>
+                          <Segmented
+                            label={`DCA ${d.coin || 'row'} every`}
+                            options={DCA_EVERY_OPTIONS}
+                            value={d.every}
+                            onChange={(every) => updateDca(i, { every })}
+                            className="self-center"
+                          />
+                          <Button
+                            tier="danger"
+                            className="!px-1.5"
+                            onClick={() => patch({ dca: form.dca.filter((_, idx) => idx !== i) })}
+                          >
+                            ✕
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <Button
+                    tier="ghost"
+                    disabled={form.dca.length >= 8}
+                    onClick={() =>
+                      patch({
+                        dca: [...form.dca, { coin: '', amountUsd: 100, every: 'weekly' }],
+                        rebalance: 'none',
+                      })
+                    }
+                  >
+                    + ADD DCA
+                  </Button>
+                </div>
+                <span className="text-[10px] text-text-secondary">buys from the USDC/USDT sleeve; stops when it runs out</span>
+                {!dcaValid && (
+                  <span className="text-[11px] text-red-text">each DCA row needs a coin and an amount above $0</span>
+                )}
+                {form.dca.length > 0 && !form.allocations.some((a) => STABLE_COINS.has(a.coin.toUpperCase())) && (
+                  <span className="text-[10px] text-amber">no USDC/USDT allocation — DCA has nothing to spend</span>
+                )}
               </div>
 
               <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
@@ -334,8 +484,14 @@ export function BranchDetail() {
                   options={REBALANCE_OPTIONS}
                   value={form.rebalance}
                   onChange={(rebalance) => patch({ rebalance })}
+                  disabled={form.dca.length > 0}
                   className="self-start"
                 />
+                {form.dca.length > 0 && (
+                  <span className="text-[10px] text-text-secondary">
+                    NONE — DCA needs no rebalance (a rebalance would undo the buys)
+                  </span>
+                )}
               </div>
 
               <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
@@ -343,6 +499,7 @@ export function BranchDetail() {
                 {!form.scenario && (
                   <Button
                     tier="ghost"
+                    disabled={perp}
                     onClick={() =>
                       patch({
                         scenario: {
@@ -356,6 +513,12 @@ export function BranchDetail() {
                     + ADD PROJECTION
                   </Button>
                 )}
+                {perp && (
+                  <span className={perpConflict ? 'text-[11px] text-red-text' : 'text-[10px] text-text-secondary'}>
+                    {perpConflict ? 'remove the projection or the perp leg' : 'projection unavailable'} — Monte Carlo
+                    models unlevered long-only portfolios
+                  </span>
+                )}
                 {form.scenario && (
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center gap-1.5">
@@ -365,6 +528,7 @@ export function BranchDetail() {
                           type="number"
                           min={1}
                           className="w-[6ch]"
+                          disabled={perp}
                           value={form.scenario.horizonDays}
                           onChange={(e) => patch({ scenario: { ...form.scenario!, horizonDays: Number(e.target.value) } })}
                         />
@@ -375,6 +539,7 @@ export function BranchDetail() {
                           type="number"
                           min={1}
                           className="w-[6ch]"
+                          disabled={perp}
                           value={form.scenario.paths}
                           onChange={(e) => patch({ scenario: { ...form.scenario!, paths: Number(e.target.value) } })}
                         />
@@ -386,6 +551,7 @@ export function BranchDetail() {
                         <input
                           type="number"
                           className="w-[6ch]"
+                          disabled={perp}
                           value={a.annualReturnPct}
                           onChange={(e) => updateAssumption(a.coin, { annualReturnPct: Number(e.target.value) })}
                         />
@@ -393,6 +559,7 @@ export function BranchDetail() {
                         <input
                           type="number"
                           className="w-[6ch]"
+                          disabled={perp}
                           value={a.annualVolPct}
                           onChange={(e) => updateAssumption(a.coin, { annualVolPct: Number(e.target.value) })}
                         />
@@ -406,7 +573,7 @@ export function BranchDetail() {
                 )}
               </div>
 
-              <Button tier="neutral" onClick={run} disabled={busy !== 'idle'} style={{ height: 'var(--control-lg)' }}>
+              <Button tier="neutral" onClick={run} disabled={busy !== 'idle' || !editorOk} style={{ height: 'var(--control-lg)' }}>
                 <span className={busy === 'running' ? 'pulse-label' : undefined}>
                   {busy === 'running' ? 'RUNNING…' : 'RUN SIMULATION'}
                 </span>
