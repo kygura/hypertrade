@@ -468,4 +468,19 @@ describe("tools", () => {
     expect(timedOut).toMatchObject({ isError: true, summary: "web_search failed: Exa search timed out after 15s" });
     expect(JSON.parse(timedOut.content).note).toContain("unavailable");
   });
+
+  test("web_search: invalid num_results is rejected before any fetch", async () => {
+    const noFetch = { ...deps, exaSearch: () => { throw new Error("must not be called"); } };
+    for (const num_results of [0, 11, 2.5]) {
+      const res = await runTool("web_search", { query: "q", num_results }, noFetch);
+      expect(res).toMatchObject({ isError: true, summary: "invalid input" });
+    }
+  });
+
+  test("web_search: a non-JSON Exa response is a tool result, not a throw", async () => {
+    const fakeFetch = (async () => new Response("not json", { status: 200 })) as unknown as typeof fetch;
+    const res = await runTool("web_search", { query: "q" }, { ...deps, exaSearch: () => exaSearch({ query: "q" }, "k", fakeFetch) });
+    expect(res.isError).toBe(true);
+    expect(res.summary).toContain("web_search failed");
+  });
 });
