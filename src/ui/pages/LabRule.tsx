@@ -77,7 +77,9 @@ export function LabRule() {
   const evaluation = useLab(rule ? () => lab.evaluate({ rule, includeEquity: true, ...(slippageBps != null ? { slippageBps } : {}) }) : null, [ruleKey])
   const sensitivity = useLab(rule ? () => lab.sensitivity({ rule, ...(windows ? { windows } : {}), ...(slippageBps != null ? { slippageBps } : {}) }) : null, [ruleKey])
 
-  const ev = evaluation.data ?? base
+  // lab_evaluate_rule has no walk-forward (no search to refit): the rank key
+  // stays the run's / the save-time value.
+  const ev = evaluation.data ? { ...evaluation.data, walkForward: evaluation.data.walkForward ?? base?.walkForward ?? null } : base
   const metricDefs = metrics.data ?? []
   const defaultName = useMemo(() => (rule ? defaultRuleName(rule, metricDefs) : ''), [ruleKey, metrics.data]) // eslint-disable-line react-hooks/exhaustive-deps
 
