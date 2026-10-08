@@ -127,6 +127,51 @@ describe("runDesk", () => {
     expect(events.some((e) => e.type === "error" && e.error.includes("rate limiting"))).toBe(true);
     expect((await store.getRun(res.runId))!.status).toBe("error");
   });
+
+  /** A provider whose step() never resolves on its own, only when the signal it's given aborts. */
+  function hangingProvider(model: string) {
+    return {
+      id: "anthropic" as const,
+      model,
+      webSearch: false,
+      start: () => ({
+        step: (_specs: unknown, _hooks: unknown, opts: { signal: AbortSignal }) =>
+          new Promise<never>((_, reject) => opts.signal.addEventListener("abort", () => reject(new Error("aborted")))),
+        addToolResults: () => {},
+      }),
+    };
+  }
+
+  test("a scout that never finishes is cut off at its own deadline; the PM still gets a timeout report and decides", async () => {
+    const pmProvider = new ScriptedProvider("claude-opus-5-5", (system) => {
+      if (system.includes("portfolio manager (PM) of a crypto desk")) {
+        return [
+          { calls: [{ name: "consult_specialists", input: { tasks: [{ specialist: "flows", task: "Why did ETH move 6% in the last 4 hours?" }] } }] },
+          { text: "**Verdict:** decided despite the timeout." },
+        ];
+      }
+      return [{ text: "ok" }];
+    });
+    const { service } = makeService();
+    const res = await runDesk(
+      { service, kind: "ask", input: "why did ETH move?", act: false, timeoutMs: 200, pmReserveMs: 150, makeProvider: (role) => (role === "pm" ? pmProvider : hangingProvider("flows-scout")) },
+      () => {},
+    );
+    expect(res.stop).toBe("end");
+    expect(res.answer).toContain("decided despite the timeout");
+    const consult = pmProvider.results.find((r) => r[0]?.name === "consult_specialists")![0]!;
+    const reports = JSON.parse(consult.content).reports;
+    expect(reports).toHaveLength(1);
+    expect(reports[0].stop).toBe("timeout");
+    expect(reports[0].report).toMatch(/^Timed out after \d+s\.$/);
+  });
+
+  test("a PM that runs out of time stores the run as timeout, not done", async () => {
+    const { service, store } = makeService();
+    const res = await runDesk({ service, kind: "ask", input: "q", act: false, timeoutMs: 30, makeProvider: () => hangingProvider("hanging-pm") }, () => {});
+    expect(res.stop).toBe("timeout");
+    expect((await store.getRun(res.runId))!.status).toBe("timeout");
+  });
 });
 
 describe("deskProviderFactory", () => {
