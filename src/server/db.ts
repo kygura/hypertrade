@@ -22,6 +22,31 @@ export type Branch = { id: string; name: string; config: unknown; createdAt: Dat
 export type BranchResult = { branchId: string; computedAt: Date; result: unknown }
 
 let client: postgres.Sql | null = null
+/** The raw postgres.js client behind `client`; reset() ends this one. */
+let raw: postgres.Sql | null = null
+/** Queries awaited on the current client and not yet settled. */
+let inflight = 0
+/** Wall-clock ms of the client's last activity (created, or a query settled). */
+let lastActive = 0
+
+/**
+ * Longest a query may take, queueing behind others on the one connection
+ * included. postgres.js has no query timeout of its own: a query on a socket
+ * that stopped answering (a dead pooler connection, or one left idle across a
+ * Fluid suspend) waits forever, and with max: 1 so does every query queued
+ * behind it, until Vercel kills the function at 300 s with nothing logged.
+ * Past this the query fails with QueryTimeoutError and the client is dropped,
+ * so the next query opens a fresh connection.
+ */
+export const DEFAULT_QUERY_TIMEOUT_MS = 30_000
+/** Matches postgres.js idle_timeout below (s → ms). */
+const IDLE_MS = 20_000
+
+export class QueryTimeoutError extends Error {
+  readonly code = 'QUERY_TIMEOUT'
+}
+
+const queryTimeoutMs = () => Number(process.env.DB_QUERY_TIMEOUT_MS) || DEFAULT_QUERY_TIMEOUT_MS
 
 /**
  * The connection string. DATABASE_URL wins; otherwise the pooled URL the
@@ -47,6 +72,10 @@ export function databaseUrl(env: Record<string, string | undefined> = process.en
 
 /** Lazy singleton. Nothing connects at import time; builds and tests run without a DB. */
 export function sql(): postgres.Sql {
+  // Idle past idle_timeout and still open: its idle timer never ran, so the
+  // process was suspended in between and the socket may be dead. Replace it
+  // before a query finds out the hard way.
+  if (client && inflight === 0 && Date.now() - lastActive > IDLE_MS) reset()
   if (client) return client
   const url = databaseUrl()
   if (!url) throw new Error('DATABASE_URL is not set — database queries are unavailable')
@@ -55,8 +84,75 @@ export function sql(): postgres.Sql {
   // it can hit the statement timeout, blocking the one connection meanwhile and
   // then crashing the process with an unhandled rejection. No query here relies
   // on array types (lists go through `in ${sql()(ids)}`).
-  client = postgres(url, { max: 1, prepare: false, idle_timeout: 20, fetch_types: false })
+  const c = postgres(url, { max: 1, prepare: false, idle_timeout: IDLE_MS / 1000, fetch_types: false })
+  raw = c
+  inflight = 0
+  lastActive = Date.now()
+  client = withQueryTimeout(c, queryTimeoutMs())
   return client
+}
+
+/** Drops the client now: its connection is closed and its pending queries rejected. */
+function reset(): void {
+  const c = raw
+  client = raw = null
+  c?.end({ timeout: 0 }).catch(() => {})
+}
+
+/**
+ * Wraps a client so every query it runs (tagged templates, unsafe, begin)
+ * rejects with QueryTimeoutError after `ms` and resets the client. Fragments
+ * and helpers pass through untouched: the timer starts when a query is awaited.
+ */
+function withQueryTimeout(c: postgres.Sql, ms: number): postgres.Sql {
+  /** Set once a query on this client timed out; the reset rejects the others with CONNECTION_DESTROYED. */
+  let wedged: string | null = null
+  const guard = <T extends PromiseLike<unknown>>(q: T, label: string): T => {
+    const timedOut = { err: null as QueryTimeoutError | null }
+    let armed = false
+    const then = q.then
+    // postgres.js runs a query on its first then() (await, catch and finally
+    // all go through it), so that is where the clock starts.
+    ;(q as { then: unknown }).then = function (this: T, onOk?: (v: unknown) => unknown, onErr?: (e: unknown) => unknown) {
+      if (!armed) {
+        armed = true
+        inflight++
+        const timer = setTimeout(() => {
+          timedOut.err = new QueryTimeoutError(`query timed out after ${ms / 1000}s: ${label}`)
+          console.error(`[db] ${timedOut.err.message}; resetting the connection`)
+          wedged ??= label
+          if (raw === c) reset()
+        }, ms)
+        const settle = () => {
+          clearTimeout(timer)
+          if (raw === c) (inflight--, (lastActive = Date.now()))
+        }
+        then.call(this, settle, settle)
+      }
+      return then.call(this, onOk, (e: unknown) => {
+        const destroyed = wedged !== null && (e as { code?: string })?.code === 'CONNECTION_DESTROYED'
+        const err = timedOut.err ?? (destroyed ? new QueryTimeoutError(`connection reset after a query timed out (${wedged}): ${label}`) : e)
+        if (onErr) return onErr(err)
+        throw err
+      })
+    }
+    return q
+  }
+  const label = (s: string) => s.replace(/\s+/g, ' ').trim().slice(0, 80)
+  return new Proxy(c, {
+    apply(target, thisArg, args: unknown[]) {
+      const q = Reflect.apply(target, thisArg, args)
+      const strings = args[0] as TemplateStringsArray | undefined
+      // sql()(rows, ...cols) builds a helper, not a query.
+      return Array.isArray(strings?.raw) ? guard(q, label(strings.join('$'))) : q
+    },
+    get(target, prop, receiver) {
+      const v = Reflect.get(target, prop, receiver)
+      if (prop === 'unsafe') return (query: string, ...rest: unknown[]) => guard((v as Function).call(target, query, ...rest), label(query))
+      if (prop === 'begin') return (...args: unknown[]) => guard((v as Function).apply(target, args) as Promise<unknown>, 'begin')
+      return v
+    },
+  })
 }
 
 /**
@@ -66,8 +162,8 @@ export function sql(): postgres.Sql {
  * is what Vercel's attachDatabasePool guards against for pg pools.
  */
 export async function releaseConnection(): Promise<void> {
-  const c = client
-  client = null
+  const c = raw
+  client = raw = null
   await c?.end({ timeout: 5 })
 }
 

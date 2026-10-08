@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { backfillCoins, backfillRoute, CORE_COINS, cronRoutes, LAB_BUDGET_MS, LAB_LEASE_MS, runLabCollect, type LabLease } from "./cron.js";
+import { backfillCoins, backfillRoute, CORE_COINS, cronRoutes, LAB_BUDGET_MS, LAB_HARD_STOP_MS, LAB_LEASE_MS, runLabCollect, type LabLease } from "./cron.js";
 
 process.env.CRON_TOKEN = "test-cron-token";
 
@@ -168,9 +168,10 @@ describe("runLabCollect", () => {
       1_000,
       lease,
     );
-    expect(seen).toEqual({ deadline: 1_000 + LAB_BUDGET_MS });
+    expect(seen).toMatchObject({ deadline: 1_000 + LAB_BUDGET_MS });
     // Inside Vercel's 300 s and the workflow curl's --max-time 290.
     expect(LAB_BUDGET_MS).toBeLessThanOrEqual(240_000);
+    expect(LAB_HARD_STOP_MS).toBeLessThanOrEqual(250_000);
     expect(LAB_LEASE_MS).toBe(LAB_BUDGET_MS + 60_000);
     expect(res).toEqual({ ok: true, written: 3, sources: { "lab.fng.value": "ok", "lab.bc.hash_rate": "skipped" } });
     expect(log).toEqual(["acquire", "release"]);
@@ -207,6 +208,35 @@ describe("runLabCollect", () => {
     expect(await runLabCollect(async () => ({ ok: true, written: 1, sources: {} }), 0, stuck.lease)).toMatchObject({ busy: true });
     clock.t += LAB_LEASE_MS;
     expect(await runLabCollect(async () => ({ ok: true, written: 1, sources: {} }), 0, stuck.lease)).toEqual({ ok: true, written: 1, sources: {} });
+  });
+
+  test("a run still going at the hard stop answers with what finished; the lease is released when it ends", async () => {
+    const { lease, log } = memoryLease({ t: 0 });
+    let finish!: () => void;
+    const res = await runLabCollect(
+      (_deps, opts) => {
+        opts!.progress!.sources["lab.fng.value"] = "ok";
+        opts!.progress!.written = 7;
+        opts!.log!("[lab-collect] +12.0s lab.bc.hash_rate fetch");
+        return new Promise((r) => (finish = () => r({ ok: true, written: 7, sources: {} })));
+      },
+      0,
+      lease,
+      20,
+    );
+    expect(res).toEqual({
+      ok: false,
+      error: "still running after 0s; last: [lab-collect] +12.0s lab.bc.hash_rate fetch",
+      written: 7,
+      sources: { "lab.fng.value": "ok" },
+      timedOut: true,
+      inFlight: "[lab-collect] +12.0s lab.bc.hash_rate fetch",
+    });
+    // Still running: the lease stays held so no second run starts on top of it.
+    expect(log).toEqual(["acquire"]);
+    finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(log).toEqual(["acquire", "release"]);
   });
 
   test("an unreadable lease is an error result, not a run", async () => {
