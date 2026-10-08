@@ -4,7 +4,7 @@ import { resolveProvider, DEFAULT_MODEL, type StepHooks } from "./provider.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OpenAICompatibleProvider, postWithRetry429 } from "./openai.js";
 import { DISCLAIMER, FORECAST_RULE, HARD_RULE, HEDGE_VOCABULARY, buildSystemPrompt } from "./system.js";
-import { LAB_DEADLINE_MS, MAX_TOOL_CHARS, TOOL_SPECS, runLabTool, runTool, type ToolDeps } from "./tools.js";
+import { LAB_DEADLINE_MS, MAX_TOOL_CHARS, TOOL_SPECS, exaSearch, runLabTool, runTool, type ToolDeps } from "./tools.js";
 import { labTools } from "../lab/tools.js";
 import { createLabService } from "../lab/service.js";
 import { memoryStore } from "../lab/store.js";
@@ -59,10 +59,10 @@ describe("system prompt", () => {
     expect(ROUTINE).toContain(DISCLAIMER);
     const s = buildSystemPrompt(true);
     for (const part of [HARD_RULE, HEDGE_VOCABULARY, FORECAST_RULE, DISCLAIMER]) expect(s).toContain(part);
-    expect(s).toContain("- web_search — provider-hosted web search");
+    expect(s).toContain("- web_search — Anthropic's native web search");
     expect(s).toContain("- lab_evaluate_rule\n");
     expect(s).toMatch(/rank and compare rules by walk-forward results; the holdout .* is a one-shot check/);
-    expect(buildSystemPrompt(false)).toContain("web_search (unavailable) — only with Anthropic models");
+    expect(buildSystemPrompt(false)).toContain("web_search (unavailable) — set EXA_API_KEY, or use an Anthropic model");
     expect(s).not.toMatch(/\d{4}-\d{2}-\d{2}T/); // no timestamps: the prefix caches
   });
 });
@@ -121,6 +121,25 @@ describe("AnthropicProvider", () => {
     expect(sent.tool_choice).toEqual({ type: "none" });
     expect(sent.messages.at(-2).role).toBe("assistant");
     expect(sent.messages.at(-1).content[0]).toMatchObject({ type: "tool_result", tool_use_id: "tu_1" });
+  });
+
+  test("defers to a caller-supplied web_search tool (Exa) instead of also registering its own native one", async () => {
+    let sent: any;
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body));
+      return sse([
+        { event: "message_start", data: { type: "message_start", message: { id: "m", type: "message", role: "assistant", model: "x", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } } },
+        { event: "message_delta", data: { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } } },
+        { event: "message_stop", data: { type: "message_stop" } },
+      ]);
+    }) as unknown as typeof fetch;
+    const p = new AnthropicProvider({ apiKey: "k", model: "claude-opus-5-5", fetch: fakeFetch });
+    const exaToolAndOthers = [...TOOL_SPECS, { name: "web_search", description: "Exa search", input_schema: { type: "object" as const, properties: {}, additionalProperties: false } }];
+    await p.start("S", [], "q").step(exaToolAndOthers, hooks().h, { signal: new AbortController().signal });
+    const webSearchTools = sent.tools.filter((t: any) => t.name === "web_search");
+    expect(webSearchTools).toHaveLength(1);
+    expect(webSearchTools[0]).not.toHaveProperty("type"); // the function tool, not web_search_20260209
+    expect(webSearchTools[0]).toMatchObject({ description: "Exa search" });
   });
 });
 
@@ -281,11 +300,10 @@ describe("OpenAICompatibleProvider presets", () => {
     expect(bodies[1].messages.at(-2)).toMatchObject({ role: "assistant", reasoning_content: "Need markets." });
   });
 
-  test("OpenRouter model ids pass through unchanged, including the :online web-search suffix", async () => {
-    // OpenRouter's web search ("web" plugin / :online model suffix) runs
-    // server-side and needs no client wiring: whatever model id the
-    // deployment configures is sent verbatim, so DESK_SCOUT_MODEL=
-    // "vendor/model:online" already gets scouts real search on OpenRouter.
+  test("OpenRouter model ids pass through unchanged, including a :online suffix", async () => {
+    // Whatever model id the deployment configures is sent verbatim — no
+    // client-side parsing or rewriting of the id, :online suffix included.
+    // (web_search itself is now the app's own Exa tool, see llm/tools.ts.)
     const bodies: any[] = [];
     const fakeFetch = (async (_url: string, init: RequestInit) => {
       bodies.push(JSON.parse(String(init.body)));
@@ -329,6 +347,7 @@ describe("tools", () => {
         : rest === "configs"
           ? { status: 200, json: { strategies: [{ manifest: { id: "funding_skew", cadence: "5m" }, config: { enabled: true, venue: "paper" }, last_action: "hold" }] } }
           : { status: 200, json: { mode: "manual" } },
+    exaSearch: async () => [],
   };
 
   test("marketstate latest + dated", async () => {
@@ -414,5 +433,54 @@ describe("tools", () => {
     } finally {
       console.error = orig;
     }
+  });
+
+  test("web_search: request shape, trims to numResults/days_back/category, and caps text length", async () => {
+    let sent: any;
+    const fakeFetch = (async (url: string, init: RequestInit) => {
+      expect(url).toBe("https://api.exa.ai/search");
+      expect((init.headers as Record<string, string>)["x-api-key"]).toBe("exa-key");
+      sent = JSON.parse(String(init.body));
+      return new Response(
+        JSON.stringify({ results: [{ title: "Fed holds rates", url: "https://ex.com/a", publishedDate: "2026-10-01", text: "x".repeat(2000) }] }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const results = await exaSearch({ query: "fed rate decision", numResults: 3, recencyDays: 7, category: "news" }, "exa-key", fakeFetch);
+    expect(sent).toMatchObject({ query: "fed rate decision", type: "instant", numResults: 3, category: "news" });
+    expect(sent.contents).toEqual({ text: { maxCharacters: 1500 } });
+    expect(sent.startPublishedDate).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(results).toEqual([{ title: "Fed holds rates", url: "https://ex.com/a", publishedDate: "2026-10-01", text: "x".repeat(1500) }]);
+
+    const web = await runTool("web_search", { query: "fed rate decision", num_results: 3, days_back: 7, category: "news" }, { ...deps, exaSearch: () => exaSearch({ query: "fed rate decision" }, "exa-key", fakeFetch) });
+    expect(web.isError).toBe(false);
+    expect(JSON.parse(web.content).results).toHaveLength(1);
+    expect(web.summary).toContain("fed rate decision");
+  });
+
+  test("web_search: an Exa error or timeout is returned as a tool result, not thrown", async () => {
+    const httpError = await runTool("web_search", { query: "q" }, { ...deps, exaSearch: () => exaSearch({ query: "q" }, "k", (async () => new Response("nope", { status: 401 })) as unknown as typeof fetch) });
+    expect(httpError).toMatchObject({ isError: true });
+    expect(httpError.content).toContain("Exa HTTP 401");
+
+    const timedOut = await runTool("web_search", { query: "q" }, { ...deps, exaSearch: () => Promise.reject(new Error("Exa search timed out after 15s")) });
+    expect(timedOut).toMatchObject({ isError: true, summary: "web_search failed: Exa search timed out after 15s" });
+    expect(JSON.parse(timedOut.content).note).toContain("unavailable");
+  });
+
+  test("web_search: invalid num_results is rejected before any fetch", async () => {
+    const noFetch = { ...deps, exaSearch: () => { throw new Error("must not be called"); } };
+    for (const num_results of [0, 11, 2.5]) {
+      const res = await runTool("web_search", { query: "q", num_results }, noFetch);
+      expect(res).toMatchObject({ isError: true, summary: "invalid input" });
+    }
+  });
+
+  test("web_search: a non-JSON Exa response is a tool result, not a throw", async () => {
+    const fakeFetch = (async () => new Response("not json", { status: 200 })) as unknown as typeof fetch;
+    const res = await runTool("web_search", { query: "q" }, { ...deps, exaSearch: () => exaSearch({ query: "q" }, "k", fakeFetch) });
+    expect(res.isError).toBe(true);
+    expect(res.summary).toContain("web_search failed");
   });
 });

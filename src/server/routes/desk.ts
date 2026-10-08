@@ -12,6 +12,7 @@ import { handleTelegramUpdate, type TelegramUpdate } from "../desk/telegram.js";
 import { SPECIALISTS } from "../desk/prompts.js";
 import { tick } from "../desk/watch.js";
 import { ExitProposalSchema } from "../desk/types.js";
+import { hasWebSearch } from "../llm/tools.js";
 
 // /desk — the agentic portfolio desk (SPEC.md "Desk"). Session-cookie
 // protected by the global gate, except /desk/tick (x-cron-token, like
@@ -26,7 +27,8 @@ import { ExitProposalSchema } from "../desk/types.js";
 //      /desk/proposals?status · /desk/alerts
 // POST /desk/proposals/:id/approve · /desk/proposals/:id/reject
 // POST /desk/exit {coin, fraction, reason} · /desk/kill {on, reason}
-// PUT  /desk/approval {approval} · POST /desk/paper/reset {confirm: true}
+// PUT  /desk/approval {approval} · PUT /desk/settings {reviewEveryHours}
+//      · POST /desk/paper/reset {confirm: true}
 // POST /desk/tick {runCycle?, forceReview?} (x-cron-token)
 // POST /desk/telegram (X-Telegram-Bot-Api-Secret-Token)
 
@@ -106,10 +108,10 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
       const pm = makeProvider("pm");
       const specialist = makeProvider("specialist");
       try {
-        const [kill, approval] = await Promise.all([s.killSwitch(), s.approval()]);
+        const [kill, approval, review] = await Promise.all([s.killSwitch(), s.approval(), s.reviewEveryHours()]);
         return c.json({
           configured: !!pm,
-          model: pm ? { provider: pm.id, label: pm.label ?? pm.id, pm: pm.model, scouts: specialist?.model ?? pm.model, scoutProvider: specialist?.id ?? pm.id, webSearch: pm.webSearch } : null,
+          model: pm ? { provider: pm.id, label: pm.label ?? pm.id, pm: pm.model, scouts: specialist?.model ?? pm.model, scoutProvider: specialist?.id ?? pm.id, webSearch: hasWebSearch(pm) } : null,
           venue: s.broker.venue,
           live: s.broker.live,
           venueAccount: s.config.hl?.account ?? null,
@@ -122,7 +124,7 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
           cyclesConnected: !!s.config.cyclesUrl,
           channels: s.notifier.channels,
           specialists: SPECIALISTS.map((x) => ({ id: x.id, role: x.role, brief: x.brief, webSearch: x.webSearch })),
-          schedule: { reviewEveryHours: s.config.reviewEveryHours, maxCyclesPerDay: s.config.maxCyclesPerDay, cycleCooldownMin: s.config.cycleCooldownMin },
+          schedule: { reviewEveryHours: review.hours, reviewEveryHoursSource: review.source, maxCyclesPerDay: s.config.maxCyclesPerDay, cycleCooldownMin: s.config.cycleCooldownMin },
         });
       } catch (err) {
         return deskError(c, err);
@@ -213,6 +215,16 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
       try {
         await service().setApproval(parsed.data.approval, "operator");
         return c.json({ approval: await service().approval() });
+      } catch (err) {
+        return deskError(c, err);
+      }
+    })
+    .put("/settings", async (c) => {
+      const parsed = z.object({ reviewEveryHours: z.number().int().min(0).max(168) }).safeParse(await body(c));
+      if (!parsed.success) return c.json({ error: "reviewEveryHours must be an integer 0-168" }, 400);
+      try {
+        await service().setReviewEveryHours(parsed.data.reviewEveryHours, "operator");
+        return c.json(await service().reviewEveryHours());
       } catch (err) {
         return deskError(c, err);
       }

@@ -12,6 +12,7 @@ import {
   type ToolSpec,
   type Usage,
 } from "../llm/provider.js";
+import { hasWebSearch } from "../llm/tools.js";
 import { pmSystem, spawnedSystem, SPECIALISTS, specialistSystem, cycleTask } from "./prompts.js";
 import type { DeskService } from "./service.js";
 import { ACTION_TOOLS, ALL_READ_TOOLS, READ_TOOL_NAMES, type DeskTool, type ToolContext, type ToolRun } from "./tools.js";
@@ -276,9 +277,10 @@ async function runChild(st: RunState, parent: string, id: string, role: string, 
   const provider = st.makeProvider("specialist");
   if (!provider) return { id, report: "", stop: "no model configured" };
   st.agents++;
-  // Anthropic attaches web search to every request; agents that should not
-  // browse are told so instead.
-  const sys = webSearch || !provider.webSearch ? system : `${system}\n\nDo not use web search for this task; work from your data tools.`;
+  // web_search (Exa, or Anthropic's own native tool) is on every scout's
+  // tool list when available; agents that should not browse are told so
+  // instead, rather than left to skip the tool on their own.
+  const sys = webSearch || !hasWebSearch(provider) ? system : `${system}\n\nDo not use web search for this task; work from your data tools.`;
   const res = await runAgent(
     { id, role, parent, system: sys, tools, maxRounds: SPECIALIST_MAX_ROUNDS, provider },
     `[current time ${st.service.now().toISOString()}]\n${task}`,

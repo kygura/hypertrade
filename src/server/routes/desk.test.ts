@@ -75,6 +75,23 @@ describe("/desk routes", () => {
     expect((await exit.json()).status).toBe("executed");
   });
 
+  test("review interval settings: round trip, validation, and status reflects the source", async () => {
+    const kit = app({ env: { DESK_REVIEW_HOURS: "8" } });
+    const status1 = await (await kit.app.request("/desk/status")).json();
+    expect(status1.schedule).toMatchObject({ reviewEveryHours: 8, reviewEveryHoursSource: "env" });
+
+    for (const bad of [-1, 169, 2.5]) {
+      const res = await kit.app.request("/desk/settings", { ...json({ reviewEveryHours: bad }), method: "PUT" });
+      expect(res.status).toBe(400);
+    }
+
+    const ok = await kit.app.request("/desk/settings", { ...json({ reviewEveryHours: 24 }), method: "PUT" });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ hours: 24, source: "ui" });
+    const status2 = await (await kit.app.request("/desk/status")).json();
+    expect(status2.schedule).toMatchObject({ reviewEveryHours: 24, reviewEveryHoursSource: "ui" });
+  });
+
   test("kill switch and paper reset", async () => {
     const kit = app();
     expect((await (await kit.app.request("/desk/kill", json({ on: true, reason: "test" }))).json()).on).toBe(true);
@@ -102,10 +119,12 @@ describe("auth gate", () => {
       a.post("/desk/tick", (c) => c.json({ ok: true }));
       a.post("/desk/telegram", (c) => c.json({ ok: true }));
       a.get("/desk/status", (c) => c.json({ ok: true }));
+      a.put("/desk/settings", (c) => c.json({ ok: true }));
       expect((await a.request("/api/desk/tick", { method: "POST" })).status).toBe(401);
       expect((await a.request("/api/desk/tick", { method: "POST", headers: { "x-cron-token": "cron-token" } })).status).toBe(200);
       expect((await a.request("/api/desk/telegram", { method: "POST" })).status).toBe(200);
       expect((await a.request("/api/desk/status")).status).toBe(401);
+      expect((await a.request("/api/desk/settings", { method: "PUT" })).status).toBe(401);
     } finally {
       process.env.CRON_TOKEN = prev.CRON_TOKEN;
       process.env.CRON_SECRET = prev.CRON_SECRET;

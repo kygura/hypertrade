@@ -16,7 +16,7 @@ import {
   type ToolSpec,
   type Usage,
 } from "../llm/provider.js";
-import { TOOL_SPECS, defaultToolDeps, runTool, toolCatalog, type ToolDeps, type ToolRun } from "../llm/tools.js";
+import { TOOL_SPECS, defaultToolDeps, hasWebSearch, runTool, toolCatalog, type ToolDeps, type ToolRun } from "../llm/tools.js";
 import { SIM_TOOL_SPEC, buildSimSystemPrompt, realSimDeps, runSimTool } from "../llm/sim.js";
 import type { IntentDeps } from "../sim/intent.js";
 import type { SimBranchOutcome, SimIntent } from "../../shared/intent.js";
@@ -111,7 +111,7 @@ export async function runAnalyst(opts: RunOptions, emit: (e: AnalystEvent) => Pr
 
   const now = (opts.now ?? (() => new Date()))();
   const question = `[current time ${now.toISOString()}]\n${opts.question}`;
-  const conv = provider.start(opts.system ?? buildSystemPrompt(provider.webSearch), opts.history ?? [], question);
+  const conv = provider.start(opts.system ?? buildSystemPrompt(hasWebSearch(provider)), opts.history ?? [], question);
   const hooks = {
     onText: (delta: string) => void emit({ type: "text", delta }),
     onReasoning: (delta: string) => void emit({ type: "reasoning", delta }),
@@ -227,7 +227,7 @@ export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
     .get("/status", (c) => {
       const p = resolve();
       if (!p) return c.json({ configured: false, error: "analyst not configured" }, 503);
-      return c.json({ configured: true, provider: p.id, label: p.label ?? p.id, model: p.model, web_search: p.webSearch, tools: toolCatalog(p.webSearch) });
+      return c.json({ configured: true, provider: p.id, label: p.label ?? p.id, model: p.model, web_search: hasWebSearch(p), tools: toolCatalog(hasWebSearch(p)) });
     })
     .get("/models", (c) => c.json(catalog()))
     .post("/query", async (c) => {
@@ -284,7 +284,7 @@ export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
           const simDeps = o.simDeps ?? (await realSimDeps());
           const toolDeps = o.deps ?? defaultToolDeps;
           sim = {
-            system: buildSimSystemPrompt(provider.webSearch),
+            system: buildSimSystemPrompt(hasWebSearch(provider)),
             tools: [...TOOL_SPECS, SIM_TOOL_SPEC],
             runTool: (call) => (call.name === SIM_TOOL_SPEC.name ? runSimTool(call, simDeps, emit) : runTool(call.name, call.input, toolDeps)),
           };

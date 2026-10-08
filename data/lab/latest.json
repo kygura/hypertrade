@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-10-08T06:00:00Z",
+  "note": "seed — no prior routine run yet; the routine reads this file at the start of each run, diffs against it, and overwrites it at the end. This field is dropped once a real run has populated the file.",
+  "pulse": {},
+  "catalogue_ids": [],
+  "hl_cycles": {
+    "regime_state": null,
+    "as_of": null
+  }
+}
