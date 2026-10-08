@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Button, ErrorBlock, OfflineBlock, SkeletonRows, StatusDot } from '../components'
+import { Badge, Button, ErrorBlock, OfflineBlock, Segmented, SkeletonRows, StatusDot } from '../components'
 import { Markdown } from '../components/analyst/Markdown'
 import { ModelSelector } from '../components/analyst/ModelSelector'
+import { PathCard, PathPending } from '../components/paths/PathCard'
 import { ApiError, NetworkError } from '../lib/api'
 import {
   getAnalystModels,
   getAnalystStatus,
   streamAnalyst,
+  compactSim,
   type AnalystCatalog,
+  type AnalystMode,
   type AnalystChoice,
   type AnalystCitation,
   type AnalystStatus,
   type AnalystStreamEvent,
   type AnalystUsage,
   type HistoryTurn,
+  type SimResultEvent,
 } from '../lib/analyst'
 
 // /analyst — natural-language analyst over the app's data (SPEC.md
@@ -34,6 +38,9 @@ const MODEL_STORAGE_KEY = 'ht_analyst_model'
 const SESSION_STORAGE_KEY = 'ht_analyst_session_v2'
 const HISTORY_TURNS = 10 // prior turns sent back as context
 const STORED_TURNS = 30
+const MODE_STORAGE_KEY = 'ht_analyst_mode'
+const SIM_SESSION_STORAGE_KEY = 'ht_paths_session_v1'
+const SIM_STORED_TURNS = 10 // sim cards carry equity arrays
 
 const PROMPTS: Array<{ group: string; items: string[] }> = [
   { group: 'Briefing', items: ['What changed since the last briefing?', 'Summarize the market state in five bullets, with the numbers.'] },
@@ -41,6 +48,30 @@ const PROMPTS: Array<{ group: string; items: string[] }> = [
   { group: 'Sectors', items: ['Which sector is rotating, and on what evidence?'] },
   { group: 'Engine', items: ['Explain the last 5 engine decisions.'] },
 ]
+
+const SIM_PROMPTS: Array<{ group: string; items: string[] }> = [
+  { group: 'Perps', items: ["What if I'd put 30% of my stack into SOL perps at 3x and DCA'd ETH weekly since January?"] },
+  { group: 'Hedge', items: ['Hedge my ETH with a short BTC position.'] },
+  { group: 'Compare', items: ['Compare 60/40 ETH/USDC against 100% BTC since 2023.'] },
+  { group: 'Leverage', items: ['Same 50/50 BTC/ETH portfolio at 1x, 2x and 5x since 2024.'] },
+  { group: 'DCA', items: ['DCA $200 a month into BTC from a USDC stack since 2022.'] },
+]
+
+const MODE_OPTIONS = [
+  { value: 'ask', label: 'ASK', title: 'Ask about the market' },
+  { value: 'sim', label: 'SIMULATE', short: 'SIM', title: 'Simulate what-if portfolios' },
+] as const
+
+const ASK_PLACEHOLDER = "Ask about the tape, sectors, or the engine's decisions"
+const SIM_PLACEHOLDER = 'Describe a what-if — "30% of my stack in SOL perps at 3x since January"'
+
+function loadStoredMode(): AnalystMode {
+  try {
+    return localStorage.getItem(MODE_STORAGE_KEY) === 'sim' ? 'sim' : 'ask'
+  } catch {
+    return 'ask'
+  }
+}
 
 // ─── choice persistence ───
 
@@ -104,6 +135,10 @@ export interface TurnState {
   answer: string
   reasoning: string
   trace: TraceItem[]
+  /** simulate_paths results (sim mode), in arrival order. */
+  sims: SimResultEvent[]
+  /** "<simId>#<branchIndex>" → saved branch id (survives reload: no duplicate saves). */
+  saved: Record<string, string>
   citations: AnalystCitation[]
   error: string | null
   done: { usage: AnalystUsage; model: string; provider: string; label?: string; effort?: string; rounds: number; stop: string } | null
@@ -112,31 +147,46 @@ export interface TurnState {
   finishedAt: number | null
 }
 
-function loadSession(): TurnState[] {
+function loadSession(key: string): TurnState[] {
   try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+    const raw = localStorage.getItem(key)
     const v = raw ? (JSON.parse(raw) as TurnState[]) : []
-    return Array.isArray(v) ? v.filter((t) => t && typeof t.question === 'string').map((t) => ({ ...t, streaming: false })) : []
+    return Array.isArray(v)
+      ? v.filter((t) => t && typeof t.question === 'string').map((t) => ({ ...t, sims: t.sims ?? [], saved: t.saved ?? {}, streaming: false }))
+      : []
   } catch {
     return []
   }
 }
 
-function saveSession(turns: TurnState[]) {
-  try {
-    const keep = turns
-      .filter((t) => !t.streaming)
-      .slice(-STORED_TURNS)
-      .map((t) => ({ ...t, reasoning: t.reasoning.slice(0, 4000) }))
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(keep))
-  } catch {
-    // Storage full or blocked: the session still lives for this tab.
+function saveSession(key: string, max: number, turns: TurnState[]) {
+  const keep = turns
+    .filter((t) => !t.streaming)
+    .slice(-max)
+    .map((t) => ({ ...t, reasoning: t.reasoning.slice(0, 4000), sims: t.sims.map(compactSim) }))
+  // Quota: drop the oldest turn and retry; the session still lives for the tab.
+  for (let from = 0; from <= keep.length; from++) {
+    try {
+      localStorage.setItem(key, JSON.stringify(keep.slice(from)))
+      return
+    } catch {
+      // Storage full or blocked.
+    }
   }
 }
 
-// Session memory across route changes; seeded from localStorage on first load.
-let sessionTurns: TurnState[] | null = null
 let nextId = 1
+
+// Module-level store: keeps in-flight/unsaved turns alive across route changes. React state mirrors it.
+let sessionThreads: Record<AnalystMode, TurnState[]> | null = null
+
+function seedThreads(): Record<AnalystMode, TurnState[]> {
+  if (!sessionThreads) {
+    sessionThreads = { ask: loadSession(SESSION_STORAGE_KEY), sim: loadSession(SIM_SESSION_STORAGE_KEY) }
+    nextId = Math.max(nextId, 0, ...sessionThreads.ask.map((t) => t.id), ...sessionThreads.sim.map((t) => t.id)) + 1
+  }
+  return sessionThreads
+}
 
 export function applyEvent(t: TurnState, e: AnalystStreamEvent, now = Date.now()): TurnState {
   switch (e.type) {
@@ -148,6 +198,8 @@ export function applyEvent(t: TurnState, e: AnalystStreamEvent, now = Date.now()
       return { ...t, trace: [...t.trace, { id: e.id, name: e.name, server: e.server, input: e.input }] }
     case 'tool_result':
       return { ...t, trace: t.trace.map((x) => (x.id === e.id ? { ...x, result: { ok: e.ok, summary: e.summary } } : x)) }
+    case 'sim_result':
+      return { ...t, sims: [...t.sims, e] }
     case 'citations':
       return { ...t, citations: e.citations }
     case 'error':
@@ -163,11 +215,16 @@ export function applyEvent(t: TurnState, e: AnalystStreamEvent, now = Date.now()
   return t
 }
 
-function toHistory(turns: TurnState[]): HistoryTurn[] {
+/** Sim turns end their assistant content with a "[paths]" trailer of each path's normalized {name, config} (SPEC decision 8). */
+export function toHistory(turns: TurnState[], mode: AnalystMode = 'ask'): HistoryTurn[] {
   const out: HistoryTurn[] = []
   for (const t of turns.slice(-HISTORY_TURNS)) {
-    if (!t.answer.trim() || t.streaming) continue
-    out.push({ role: 'user', content: t.question }, { role: 'assistant', content: t.answer })
+    if ((!t.answer.trim() && !t.sims.length) || t.streaming) continue
+    const trailer =
+      mode === 'sim' && t.sims.length
+        ? `\n\n[paths]\n${t.sims.flatMap((s) => s.branches.map((b) => JSON.stringify({ name: b.name, config: b.config }))).join('\n')}`
+        : ''
+    out.push({ role: 'user', content: t.question }, { role: 'assistant', content: t.answer + trailer })
   }
   return out
 }
@@ -286,7 +343,21 @@ function Sources({ items }: { items: AnalystCitation[] }) {
   )
 }
 
-function Turn({ t, onRetry, busy, labelFor }: { t: TurnState; onRetry: (q: string) => void; busy: boolean; labelFor: (provider: string) => string }) {
+function Turn({
+  t,
+  onRetry,
+  busy,
+  labelFor,
+  onSaved,
+  onFork,
+}: {
+  t: TurnState
+  onRetry: (q: string) => void
+  busy: boolean
+  labelFor: (provider: string) => string
+  onSaved: (turnId: number, key: string, branchId: string) => void
+  onFork: (name: string) => void
+}) {
   const [copied, setCopied] = useState(false)
   const who = t.done ?? t.asked
   const copy = () => {
@@ -315,6 +386,13 @@ function Turn({ t, onRetry, busy, labelFor }: { t: TurnState; onRetry: (q: strin
         </div>
         <Reasoning t={t} />
         <Timeline trace={t.trace} />
+        {t.sims.map((sim) => (
+          <PathCard key={sim.id} sim={sim} saved={t.saved} onSaved={(key, id) => onSaved(t.id, key, id)} onFork={onFork} />
+        ))}
+        {t.streaming &&
+          t.trace
+            .filter((x) => x.name === 'simulate_paths' && !x.result && !t.sims.some((s) => s.id === x.id))
+            .map((x) => <PathPending key={x.id} input={x.input} />)}
         {t.answer ? <Markdown text={t.answer} /> : t.streaming && !t.reasoning && t.trace.length === 0 && <SkeletonRows rows={2} />}
         {t.error && <ErrorBlock message={t.error} />}
         <Sources items={t.citations} />
@@ -348,7 +426,7 @@ function Turn({ t, onRetry, busy, labelFor }: { t: TurnState; onRetry: (q: strin
   )
 }
 
-function Composer({ draft, setDraft, busy, onAsk, onStop, disabled }: { draft: string; setDraft: (s: string) => void; busy: boolean; onAsk: () => void; onStop: () => void; disabled: boolean }) {
+function Composer({ draft, setDraft, busy, onAsk, onStop, disabled, mode }: { draft: string; setDraft: (s: string) => void; busy: boolean; onAsk: () => void; onStop: () => void; disabled: boolean; mode: AnalystMode }) {
   const ref = useRef<HTMLTextAreaElement | null>(null)
   useEffect(() => {
     const el = ref.current
@@ -383,7 +461,7 @@ function Composer({ draft, setDraft, busy, onAsk, onStop, disabled }: { draft: s
           }}
           rows={1}
           maxLength={4000}
-          placeholder="Ask about the tape, sectors, or the engine's decisions"
+          placeholder={mode === 'sim' ? SIM_PLACEHOLDER : ASK_PLACEHOLDER}
           className="flex-1 min-w-0 bg-input border border-border px-2 py-1.5 text-[13px] text-text-primary resize-none focus:outline-none focus:border-text-secondary disabled:opacity-50"
         />
         {busy ? (
@@ -392,7 +470,7 @@ function Composer({ draft, setDraft, busy, onAsk, onStop, disabled }: { draft: s
           </Button>
         ) : (
           <Button tier="neutral" type="submit" disabled={disabled || !draft.trim()}>
-            ASK
+            {mode === 'sim' ? 'SIMULATE' : 'ASK'}
           </Button>
         )}
       </div>
@@ -404,18 +482,20 @@ function Composer({ draft, setDraft, busy, onAsk, onStop, disabled }: { draft: s
   )
 }
 
-function EmptyThread({ onAsk, disabled }: { onAsk: (q: string) => void; disabled: boolean }) {
+function EmptyThread({ onAsk, disabled, mode }: { onAsk: (q: string) => void; disabled: boolean; mode: AnalystMode }) {
+  const sim = mode === 'sim'
   return (
     <div className="flex flex-col gap-3 py-6 md:py-10">
       <div className="flex flex-col gap-1">
-        <span className="text-[16px] text-text-primary">Ask the analyst</span>
+        <span className="text-[16px] text-text-primary">{sim ? 'Simulate a path' : 'Ask the analyst'}</span>
         <span className="text-[11px] text-text-secondary max-w-[560px]">
-          It reads the briefing and its history, the sector map, collected metrics, the live Hyperliquid universe and the engine's decisions, then
-          answers with its sources. Read-only, and not financial advice.
+          {sim
+            ? 'Describe a what-if in plain words — sizes, leverage, shorts, DCA, a start date. It becomes one to four branches, backtested on daily candles against HODL BTC and USDC, with every assumption it made listed on the card. Historical simulation, not advice.'
+            : "It reads the briefing and its history, the sector map, collected metrics, the live Hyperliquid universe and the engine's decisions, then answers with its sources. Read-only, and not financial advice."}
         </span>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
-        {PROMPTS.flatMap((g) => g.items.map((q) => ({ g: g.group, q }))).map(({ g, q }) => (
+        {(sim ? SIM_PROMPTS : PROMPTS).flatMap((g) => g.items.map((q) => ({ g: g.group, q }))).map(({ g, q }) => (
           <button
             key={q}
             type="button"
@@ -439,6 +519,7 @@ function Rail({
   status,
   busy,
   onAsk,
+  mode,
 }: {
   catalog: AnalystCatalog | null
   choice: AnalystChoice | null
@@ -446,6 +527,7 @@ function Rail({
   status: AnalystStatus | null
   busy: boolean
   onAsk: (q: string) => void
+  mode: AnalystMode
 }) {
   return (
     <aside className="flex flex-col gap-3 lg:sticky lg:top-3">
@@ -454,7 +536,7 @@ function Rail({
           <span className="panel-title">PROMPTS</span>
         </div>
         <div className="panel-body p-2 flex flex-col gap-2">
-          {PROMPTS.map((g) => (
+          {(mode === 'sim' ? SIM_PROMPTS : PROMPTS).map((g) => (
             <div key={g.group} className="flex flex-col gap-1">
               <span className="text-[10px] uppercase tracking-wider text-text-secondary">{g.group}</span>
               {g.items.map((q) => (
@@ -522,7 +604,9 @@ function Rail({
       )}
 
       <p className="text-[10px] text-text-secondary px-1">
-        Read-only market intelligence. It cannot trade or change strategies; Jev and the operator do that on the engine pages. Not financial advice.
+        {mode === 'sim'
+          ? "Historical simulation on daily candles. Perp legs ignore funding, fees and slippage and liquidate at 100% margin loss on the day's low or high. Saving creates a branch; nothing is traded. Not financial advice."
+          : 'Read-only market intelligence. It cannot trade or change strategies; Jev and the operator do that on the engine pages. Not financial advice.'}
       </p>
     </aside>
   )
@@ -534,13 +618,14 @@ export function Analyst() {
   const [status, setStatus] = useState<AnalystStatus | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
   const [offline, setOffline] = useState<Offline>(null)
-  const [turns, setTurns] = useState<TurnState[]>(() => {
-    if (!sessionTurns) {
-      sessionTurns = loadSession()
-      nextId = Math.max(0, ...sessionTurns.map((t) => t.id)) + 1
-    }
-    return sessionTurns
-  })
+  const [mode, setModeState] = useState<AnalystMode>(loadStoredMode)
+  const [threads, setThreads] = useState<Record<AnalystMode, TurnState[]>>(seedThreads)
+  const turns = threads[mode]
+  const setTurnsFor = useCallback((m: AnalystMode, fn: (ts: TurnState[]) => TurnState[]) => {
+    const th = seedThreads()
+    sessionThreads = { ...th, [m]: fn(th[m]) }
+    setThreads(sessionThreads)
+  }, [])
   const [draft, setDraft] = useState('')
   const [catalog, setCatalog] = useState<AnalystCatalog | null>(null)
   const [catalogError, setCatalogError] = useState<string | null>(null)
@@ -550,9 +635,33 @@ export function Analyst() {
   const busy = turns.some((t) => t.streaming)
 
   useEffect(() => {
-    sessionTurns = turns
-    if (!busy) saveSession(turns)
-  }, [turns, busy])
+    if (!busy) {
+      saveSession(SESSION_STORAGE_KEY, STORED_TURNS, threads.ask)
+      saveSession(SIM_SESSION_STORAGE_KEY, SIM_STORED_TURNS, threads.sim)
+    }
+  }, [threads, busy])
+
+  const setMode = (m: AnalystMode) => {
+    setModeState(m)
+    try {
+      localStorage.setItem(MODE_STORAGE_KEY, m)
+    } catch {
+      // Best-effort only.
+    }
+  }
+
+  const fork = (name: string) => {
+    const prefix = `Fork "${name}": `
+    setDraft((d) => prefix + d.replace(/^Fork "[^"]*": /, ''))
+    requestAnimationFrame(() => {
+      const el = document.getElementById('analyst-q') as HTMLTextAreaElement | null
+      el?.focus()
+      el?.setSelectionRange(el.value.length, el.value.length)
+    })
+  }
+
+  const onSaved = (turnId: number, key: string, branchId: string) =>
+    setTurnsFor(mode, (ts) => ts.map((t) => (t.id === turnId ? { ...t, saved: { ...t.saved, [key]: branchId } } : t)))
 
   const probe = useCallback(() => {
     setStatusLoading(true)
@@ -604,7 +713,8 @@ export function Analyst() {
       const q = question.trim()
       if (!q || busy) return
       const id = nextId++
-      const history = toHistory(turns)
+      const m = mode
+      const history = toHistory(turns, m)
       const fresh: TurnState = {
         id,
         question: q,
@@ -612,6 +722,8 @@ export function Analyst() {
         answer: '',
         reasoning: '',
         trace: [],
+        sims: [],
+        saved: {},
         citations: [],
         error: null,
         done: null,
@@ -619,14 +731,14 @@ export function Analyst() {
         startedAt: Date.now(),
         finishedAt: null,
       }
-      setTurns((ts) => [...ts, fresh])
+      setTurnsFor(m, (ts) => [...ts, fresh])
       setDraft('')
       const ctrl = new AbortController()
       abortRef.current = ctrl
-      const update = (fn: (t: TurnState) => TurnState) => setTurns((ts) => ts.map((t) => (t.id === id ? fn(t) : t)))
+      const update = (fn: (t: TurnState) => TurnState) => setTurnsFor(m, (ts) => ts.map((t) => (t.id === id ? fn(t) : t)))
       try {
         // choice is undefined until the catalog loads — the server then uses its own default.
-        await streamAnalyst(q, history, (e) => update((t) => applyEvent(t, e)), ctrl.signal, choice ?? undefined)
+        await streamAnalyst(q, history, (e) => update((t) => applyEvent(t, e)), ctrl.signal, choice ?? undefined, m)
         update((t) =>
           t.streaming
             ? { ...t, streaming: false, finishedAt: Date.now(), error: t.error ?? (ctrl.signal.aborted ? 'stopped' : 'stream ended without a done event') }
@@ -640,7 +752,7 @@ export function Analyst() {
         if (abortRef.current === ctrl) abortRef.current = null
       }
     },
-    [busy, turns, choice],
+    [busy, turns, choice, mode, setTurnsFor],
   )
 
   const stop = () => abortRef.current?.abort()
@@ -651,7 +763,17 @@ export function Analyst() {
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)] grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
       <section className="panel flex flex-col min-w-0 lg:min-h-[calc(100dvh_-_120px)]!">
         <div className="panel-header flex-col items-start justify-start gap-2 md:flex-row md:items-center md:justify-between">
-          <span className="panel-title">ANALYST</span>
+          <span className="flex items-center gap-2" title={busy ? 'wait for the answer or STOP' : undefined}>
+            <span className="panel-title">ANALYST</span>
+            <Segmented
+              options={MODE_OPTIONS}
+              value={mode}
+              onChange={setMode}
+              label="analyst mode"
+              size="sm"
+              disabled={busy}
+            />
+          </span>
           <div className="flex flex-col items-start gap-2 w-full md:w-auto md:flex-row md:items-center">
             {catalogError ? (
               <button type="button" onClick={loadCatalog} className="text-[10px] uppercase tracking-wider text-red-text underline underline-offset-2">
@@ -664,7 +786,7 @@ export function Analyst() {
               <span className="flex items-center gap-1.5">
                 <Badge tone={selectedProvider.webSearch ? 'info' : 'gray'}>{selectedProvider.webSearch ? 'web search' : 'app data only'}</Badge>
                 {turns.length > 0 && (
-                  <Button tier="ghost" disabled={busy} onClick={() => setTurns([])}>
+                  <Button tier="ghost" disabled={busy} onClick={() => setTurnsFor(mode, () => [])}>
                     CLEAR
                   </Button>
                 )}
@@ -676,17 +798,17 @@ export function Analyst() {
         <div className="flex-1 p-3 md:p-4 flex flex-col gap-6">
           {statusLoading && !status && !offline && <SkeletonRows rows={3} />}
           {offline && <OfflineBlock title={offline.title} message={offline.message} onRetry={probe} />}
-          {!offline && turns.length === 0 && status && <EmptyThread onAsk={(q) => void ask(q)} disabled={busy} />}
+          {!offline && turns.length === 0 && status && <EmptyThread onAsk={(q) => void ask(q)} disabled={busy} mode={mode} />}
           {turns.map((t) => (
-            <Turn key={t.id} t={t} busy={busy} onRetry={(q) => void ask(q)} labelFor={labelFor} />
+            <Turn key={t.id} t={t} busy={busy} onRetry={(q) => void ask(q)} labelFor={labelFor} onSaved={onSaved} onFork={fork} />
           ))}
           <div ref={endRef} />
         </div>
 
-        <Composer draft={draft} setDraft={setDraft} busy={busy} onAsk={() => void ask(draft)} onStop={stop} disabled={!ready} />
+        <Composer draft={draft} setDraft={setDraft} busy={busy} onAsk={() => void ask(draft)} onStop={stop} disabled={!ready} mode={mode} />
       </section>
 
-      <Rail catalog={catalog} choice={choice} onPick={onModelChange} status={status} busy={busy || !ready} onAsk={(q) => void ask(q)} />
+      <Rail catalog={catalog} choice={choice} onPick={onModelChange} status={status} busy={busy || !ready} onAsk={(q) => void ask(q)} mode={mode} />
     </div>
   )
 }

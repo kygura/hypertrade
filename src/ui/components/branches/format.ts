@@ -11,8 +11,6 @@
 import type { Allocation, BranchConfig } from '../../../shared/types'
 import type { EquityPoint } from './types'
 
-export const STABLE_COINS = new Set(['USDC', 'USDT'])
-
 export function fmtUsdCompact(value: number): string {
   const sign = value < 0 ? '-' : ''
   return `${sign}$${new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Math.abs(value))}`
@@ -30,9 +28,15 @@ export function maxDdClass(magnitudePct: number): string {
   return Math.abs(magnitudePct) >= 20 ? 'text-red-text' : 'text-text-primary'
 }
 
-export function allocationSummary(allocations: Allocation[]): string {
+export function allocationSummary(allocations: Allocation[], dca?: BranchConfig['dca']): string {
   if (allocations.length === 0) return '—'
-  return allocations.map((a) => `${Math.round(a.weightPct)} ${a.coin || '?'}`).join(' / ')
+  const legs = allocations
+    .map((a) => {
+      const lev = (a.leverage ?? 1) > 1 ? ` ${a.leverage}×` : ''
+      return `${Math.round(a.weightPct)} ${a.coin || '?'}${a.side === 'short' ? ' SHORT' : ''}${lev}`
+    })
+    .join(' / ')
+  return dca?.length ? `${legs} + DCA` : legs
 }
 
 const REBALANCE_LABEL: Record<BranchConfig['rebalance'], string> = {

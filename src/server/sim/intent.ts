@@ -1,0 +1,110 @@
+// Middleware adapter between untrusted LLM intents and the engine (SPEC.md "Paths", decision 4).
+// Deterministic, no LLM, no network: all I/O comes in through deps.
+import { SimIntentSchema, type SimBranchOutcome, type SimIntent, type SimRunResult } from "../../shared/intent.js";
+import type { BranchConfig } from "../../shared/types.js";
+import { isPerp, STABLES } from "../../shared/schemas.js";
+import { simulateLoaded, type RunDeps } from "./run.js";
+import { NoPriceDataError } from "./engine.js";
+import { UpstreamError } from "../mcp/types.js";
+
+export interface IntentDeps extends RunDeps {
+  maxLeverage?(coin: string): number | undefined;
+  /** Canonical Hyperliquid name for a coin (case-insensitive), undefined when HL does not list it.
+   * Absent when the universe is unavailable: coins are then just uppercased. */
+  resolveCoin?(coin: string): string | undefined;
+}
+
+const PERP_CAVEAT = "perp legs: no funding, no fees, liquidation on daily lows/highs only";
+const fmt = (n: number) => String(Math.round(n * 100) / 100);
+
+async function runBranch(
+  name: string,
+  input: BranchConfig,
+  deps: IntentDeps,
+  deadline: number,
+): Promise<SimBranchOutcome> {
+  const warnings: string[] = [];
+  const unknown: string[] = [];
+  const norm = (coin: string) => {
+    const up = coin.toUpperCase();
+    if (STABLES.has(up) || !deps.resolveCoin) return up;
+    const hit = deps.resolveCoin(coin);
+    if (!hit) unknown.push(coin);
+    return hit ?? up;
+  };
+  const config: BranchConfig = {
+    ...input,
+    allocations: input.allocations.map((a) => ({ ...a, coin: norm(a.coin) })),
+    dca: input.dca?.map((d) => ({ ...d, coin: norm(d.coin) })),
+  };
+  if (!config.dca?.length) delete config.dca;
+  if (Date.now() >= deadline) return { name, config, warnings, error: "deadline exceeded" };
+  if (unknown.length) return { name, config, warnings, error: `unknown coin ${unknown[0]}` };
+  // Two spot legs on one coin would share one quantity in the engine and be counted twice.
+  // (A spot leg plus a perp leg on the same coin, i.e. a hedge, is fine.)
+  const spot = config.allocations.filter((a) => !isPerp(a)).map((a) => a.coin);
+  const dup = spot.find((c, i) => spot.indexOf(c) !== i);
+  if (dup) return { name, config, warnings, error: `duplicate coin ${dup}` };
+  try {
+    const sum = config.allocations.reduce((s, a) => s + a.weightPct, 0);
+    if (!(sum > 0)) return { name, config, warnings, error: "allocation weights must sum to more than 0" };
+    if (Math.abs(sum - 100) > 0.01) {
+      const before = config.allocations.map((a) => `${a.coin} ${fmt(a.weightPct)}`).join(", ");
+      config.allocations = config.allocations.map((a) => ({ ...a, weightPct: (a.weightPct / sum) * 100 }));
+      const after = config.allocations.map((a) => `${a.coin} ${fmt(a.weightPct)}`).join(", ");
+      warnings.push(`weights summed to ${fmt(sum)}%, normalized to 100% (${before} -> ${after})`);
+    }
+    config.allocations = config.allocations.map((a) => {
+      const max = deps.maxLeverage?.(a.coin);
+      if (max === undefined || (a.leverage ?? 1) <= max) return a;
+      warnings.push(`${a.coin} leverage ${a.leverage}x clamped to ${max}x (max on Hyperliquid)`);
+      return { ...a, leverage: max };
+    });
+    if (config.dca && config.rebalance !== "none") {
+      warnings.push(`rebalance "${config.rebalance}" forced to "none" because DCA is present`);
+      config.rebalance = "none";
+    }
+
+    await deps.backfill(config, deadline);
+    const candles = await deps.loadCandles(config);
+
+    // Listing clamp: the engine extrapolates flat before a coin's first candle, which flatters CAGR.
+    const firsts = [...config.allocations.map((a) => a.coin), ...(config.dca ?? []).map((d) => d.coin)]
+      .filter((c) => !STABLES.has(c) && candles[c]?.length)
+      .map((c) => candles[c]![0]!.ts);
+    const listing = Math.max(...firsts, -Infinity);
+    if (Date.parse(config.startDate) < listing) {
+      const iso = new Date(listing).toISOString().slice(0, 10);
+      warnings.push(`startDate ${config.startDate} moved to ${iso}, the first day all coins have price data`);
+      config.startDate = iso;
+    }
+
+    const perp = config.allocations.some(isPerp);
+    if (perp) {
+      warnings.push(PERP_CAVEAT);
+      if (config.scenario) {
+        delete config.scenario;
+        warnings.push("projection skipped — Monte Carlo models unlevered long-only portfolios");
+      }
+    }
+    return { name, config, result: simulateLoaded(config, candles, deps.now()), warnings };
+  } catch (err) {
+    if (err instanceof NoPriceDataError || err instanceof UpstreamError) return { name, config, warnings, error: err.message };
+    // Anything else is a bug or an unexpected upstream failure: log it, don't hand internals to the model.
+    console.error(`[sim] branch "${name}" failed:`, err);
+    return { name, config, warnings, error: "internal error" };
+  }
+}
+
+/** Never throws for a bad branch (that branch gets `error`; branches not started by `deadline`, ms epoch,
+ * get "deadline exceeded"). An invalid intent returns `{ error }`
+ * (zod message) so callers can hand it back to the model. */
+export async function runIntent(intent: unknown, deps: IntentDeps, deadline = Infinity): Promise<SimRunResult | { error: string }> {
+  const parsed = SimIntentSchema.safeParse(intent);
+  if (!parsed.success) {
+    return { error: `invalid intent: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}` };
+  }
+  const branches: SimBranchOutcome[] = [];
+  for (const b of parsed.data.branches) branches.push(await runBranch(b.name, b.config, deps, deadline));
+  return { intent: parsed.data as SimIntent, branches };
+}

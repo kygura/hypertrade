@@ -5,32 +5,63 @@ import { z } from "zod";
 
 // ─── Branch model (SPEC.md "Branch model") ───
 
-export const AllocationSchema = z.object({
-  coin: z.string(),
-  weightPct: z.number(),
-});
+// side/leverage default to long/1 (a spot leg); short or leverage > 1 makes it a
+// perp leg. Refined here rather than on BranchConfigSchema so that one stays a
+// plain ZodObject for its callers.
+// Hyperliquid coin names: letters/digits, optionally "dex:"-prefixed (HIP-3), e.g. kPEPE, xyz:TSLA.
+export const STABLES = new Set(["USDC", "USDT"]);
+/** A perp leg is short or leveraged; everything else is spot. */
+export const isPerp = (a: { side?: string; leverage?: number }) => a.side === "short" || (a.leverage ?? 1) > 1;
 
-export const ScenarioAssumptionSchema = z.object({
-  coin: z.string(),
-  annualReturnPct: z.number(),
-  annualVolPct: z.number(),
-});
+const CoinSchema = z.string().max(24).regex(/^([A-Za-z0-9]+:)?[A-Za-z0-9]+$/, "invalid coin name");
 
-export const ScenarioSchema = z.object({
-  horizonDays: z.number().int().min(1),
-  assumptions: z.array(ScenarioAssumptionSchema),
-  paths: z.number().int().min(1),
-});
+export const AllocationSchema = z
+  .object({
+    coin: CoinSchema,
+    weightPct: z.number().finite().min(0),
+    side: z.enum(["long", "short"]).optional(),
+    leverage: z.number().min(1).max(50).optional(),
+  })
+  .strict()
+  .refine((a) => !STABLES.has(a.coin.toUpperCase()) || (a.side !== "short" && (a.leverage ?? 1) === 1), {
+    message: "stablecoins cannot be short or levered",
+  });
+
+export const DcaSchema = z
+  .object({
+    coin: CoinSchema,
+    amountUsd: z.number().finite().positive(),
+    every: z.enum(["weekly", "monthly"]),
+  })
+  .strict();
+
+export const ScenarioAssumptionSchema = z
+  .object({
+    coin: z.string(),
+    annualReturnPct: z.number().finite(),
+    annualVolPct: z.number().finite(),
+  })
+  .strict();
+
+// horizonDays is capped because runMonteCarlo is synchronous: no deadline can interrupt it.
+export const ScenarioSchema = z
+  .object({
+    horizonDays: z.number().int().min(1).max(3650),
+    assumptions: z.array(ScenarioAssumptionSchema),
+    paths: z.number().int().min(1),
+  })
+  .strict();
 
 export const RebalanceSchema = z.enum(["none", "monthly", "weekly", "threshold5pct"]);
 
 export const BranchConfigSchema = z.object({
   description: z.string().optional(),
   startDate: z.string().refine((s) => !Number.isNaN(Date.parse(s)), { message: "invalid date" }),
-  initialCapitalUsd: z.number(),
-  allocations: z.array(AllocationSchema),
+  initialCapitalUsd: z.number().finite().positive().max(1e12),
+  allocations: z.array(AllocationSchema).max(10),
   rebalance: RebalanceSchema,
   scenario: ScenarioSchema.optional(),
+  dca: z.array(DcaSchema).max(8).optional(),
 });
 
 // ─── Routine contract (SPEC.md "Routine Contract") ───

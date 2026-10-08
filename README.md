@@ -262,6 +262,39 @@ replays it, and folds earlier session turns into the opening message for
 them (the session history is text-only). Web search is Anthropic-only.
 Each question is bounded to 8 tool rounds and 90 seconds.
 
+## Paths (simulate mode)
+
+`/analyst` has a `SIMULATE` toggle next to `ASK`. Type a loose intent and get
+simulated wealth paths: one or more branches, each with an equity curve against
+the BTC/USDC benchmarks, drawdown and stats. Historical simulation, not advice.
+
+Example prompts:
+
+- "what if I'd put 30% of my stack into SOL perps at 3x and DCA'd ETH weekly since January"
+- "hedge my ETH with a short BTC position"
+- "compare 60/40 ETH/USDC against 100% BTC since 2023"
+
+How it works:
+
+- LLM calls `simulate_paths`; the JSON is validated with zod (`SimIntentSchema`), normalized by the `runIntent` adapter (`src/server/sim/intent.ts`), then run by the engine (`src/server/sim/engine.ts`).
+- Each result streams to the thread as a `sim_result` SSE event (one card per call, branches side by side).
+- `SAVE AS BRANCH` posts to the existing `POST /api/branches`; the saved branch opens at `/branches/:id`.
+- A follow-up message forks the previous intent ("same but 5x") instead of re-guessing it.
+
+New branch config fields (all optional, old configs unchanged):
+
+- `allocations[].side`: `"long"` (default) or `"short"`; short makes a perp leg.
+- `allocations[].leverage`: 1–50, default 1; above 1 makes a perp leg.
+- `dca`: `[{ coin, amountUsd, every: "weekly" | "monthly" }]`, funded from the USDC/USDT sleeve; forces `rebalance: "none"`.
+
+Limits:
+
+- Simulation only: no orders, no Desk, no paper or testnet trades.
+- Default stack $10,000 unless the user states an amount; inferred holdings are shown as assumptions.
+- Perp legs ignore funding and fees, have no maintenance margin, and liquidate on the daily low/high (close when unavailable).
+- Monte Carlo is skipped for branches with perp legs.
+- The `simulate_paths` tool has a 40 s deadline; on timeout the model gets an error instead.
+
 ## Lab (heuristic research)
 
 `/lab` and its tools search a metric universe for simple, human-readable

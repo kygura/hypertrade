@@ -120,6 +120,7 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 - `/markets` — Hyperliquid universe table (price, 24h, OI, funding) with drill-in: live perp context, multi-timeframe chart (1m–1M, stitched deep history, funding/OI/premium panes), cross-venue funding
 - `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` — the **ENGINE** console: companion to the Hyperion operator terminal for the Jev-driven strategy runtime (configure, dry-run, approve/reject proposals, governor and kill switch, venues). The Overview carries a compact ENGINE card.
 - `/desk` — **DESK**: agentic portfolio desk (§ Desk). Header strip (venue, equity, day PnL, model, approval mode, kill switch), ask panel with agent lanes per run (PM + specialists, tool chips, reports) and the streamed answer, runs history with replay, proposals queue (approve/reject, governor verdict, sizing), book (paper + watched HL account, close), alerts feed.
+- `/analyst` (SIMULATE mode) — **PATHS**: semantic simulation chat, see § Paths and DESIGN-chat.md.
 - `/analyst` — **ANALYST**: thread + rail workspace (DESIGN.md §10.8). Model/provider selector in the header (`ModelSelector`, popover desktop / bottom sheet mobile, persisted per-browser, per-model effort levels), streamed markdown answers with the model's reasoning (when exposed), a tool timeline, citations, usage, copy / ask again; rail with the prompt library, provider setup status and the tool list; session persisted per browser; OfflineBlock when no provider is configured (503) or unreachable (502/network).
 
 Design language: iterate on Hyperion (dark-only, Geist Mono, zero radius, dense terminal aesthetic, its exact color tokens as the base) but MUST additionally work on mobile — Hyperion never solved responsive; DESIGN.md must.
@@ -146,10 +147,78 @@ Pillar: find simple, human-readable trading rules ("when `cm:CapMVRVCur` z(90) <
 - **Data** (`db/migrations/004_lab.sql`): `lab_runs` (stored searches), `lab_rules` (the catalogue: rule, evaluation at save, archived_at). Collected history the lab reads lives in `observations` under `lab.*` series ids, written by `POST /api/cron/lab-collect` (own route and workflow job, lease-guarded against overlapping runs; daily Vercel cron fallback) and by `bun run lab sync --local`.
 - **Honesty**: rank by walk-forward; the holdout never selects. Results are historical research, not advice.
 
+## Paths — semantic simulation chat (phase 4)
+
+The operator types a loose intention in chat — "what if I'd put 30% of my stack into SOL perps at 3x and DCA'd ETH weekly since January", "hedge my ETH with a short BTC position", "compare 60/40 ETH/USDC against 100% BTC since 2023" — and gets back simulated wealth paths: one or more branches, each with an equity curve against the BTC/USDC benchmarks, a drawdown, stats, and (for unlevered long-only branches with a scenario) a Monte Carlo fan. Any path can be saved as a regular branch with one click, or forked by a follow-up message. It is a **mode of the Analyst** (`/analyst`, toggle `ASK | SIMULATE`), not a new page; split it out only if it grows.
+
+### Flow
+
+```
+chat text ──LLM (sim mode)──► simulate_paths tool call (JSON)
+          ──zod (SimIntentSchema)──► SimIntent
+          ──middleware adapter runIntent()──► normalized BranchConfigs + warnings
+          ──runBranchConfig() (backfill → candles → simulate → montecarlo)──► results
+          ──SSE `sim_result` event──► PathCard(s) in the thread
+          ──compact stats as the tool result──► LLM narrates (hedged, with caveats)
+SAVE AS BRANCH (user click) ──► existing POST /api/branches
+```
+
+### Decisions (pinned — do not relitigate)
+
+1. **One engine.** `BranchConfigSchema` is extended additively; every new field is optional and the old shape still parses and simulates bit-for-bit identically (existing engine tests stay green unchanged). A saved intent is just a branch, so `/branches/:id` renders it.
+   - `allocations[].side`: `"long" | "short"`, default `"long"`. `allocations[].leverage`: number, 1–50, default 1. An allocation with `side: "short"` or `leverage > 1` is a **perp leg**; stablecoins can be neither.
+   - Perp leg accounting (engine-internal state per leg: `margin`, `entryPx`, `side`, `leverage`): `notional = margin × leverage`; `pnl = sign × notional × (px / entryPx − 1)`; leg value = `max(0, margin + pnl)`. **Liquidation**: when `margin + pnl ≤ 0` the leg is zeroed and stays zero (no re-entry until the next rebalance re-funds it from the rest of the portfolio). The check uses the day's **low for longs / high for shorts** when the candle carries `l`/`h` (DailyClose gets optional `l`, `h`), else the close. `// ponytail:` ceilings, stated in code and surfaced as warnings: no maintenance margin (liquidation at 100% margin loss), no funding payments, no fees/slippage.
+   - Spot legs (long, leverage 1) keep the existing `qty` accounting. Portfolio value = Σ spot value + Σ stables + Σ perp leg value — never notional.
+   - Rebalance with perp legs: realize each leg's PnL, set its margin to `weight × portfolio value`, re-enter at the current price.
+   - `dca`: optional array `[{ coin, amountUsd, every: "weekly" | "monthly" }]`. Self-financing: each period (same bucket boundaries as the rebalance rules) it moves `amountUsd` from the portfolio's stablecoin sleeve (USDC, then USDT) into spot `coin`; when the sleeve is exhausted, it buys with what is left and then stops. No external cash is ever added, so CAGR stays honest. DCA into a coin that is not in `allocations` is allowed (the coin is held as a spot position from its first buy). A branch with `dca` should use `rebalance: "none"` (a rebalance undoes the DCA) — the adapter forces it and warns.
+   - Discrete open/close dates per position are **out of v1** (`startDate` covers "since January").
+2. **Chat backend = `mode: "sim"` on the Analyst route.** `POST /api/analyst/query` accepts `mode?: "ask" | "sim"` (default `ask`, unchanged behaviour). Sim mode reuses provider/model/effort choice and validation, SSE, the 90 s/8-round bounds and the abort handling; it swaps the system prompt (sim prompt, `src/server/llm/sim.ts`) and the tool set (the existing read-only market tools + `simulate_paths`). `runAnalyst` gains optional `system`, `tools` and `runTool` overrides; the analyst default path is untouched. A new event `sim_result` joins the `AnalystEvent` union.
+3. **Intent shape** (`src/shared/intent.ts`, zod, the trust-boundary validator — the tool's hand-written JSON schema is only a hint to the model, zod is the authority; unknown keys rejected with `.strict()`):
+   ```jsonc
+   {
+     "title": "SOL 3x perp + weekly ETH DCA since Jan",   // 1..120 chars
+     "assumptions": ["stack assumed $10,000 (not stated)", "DCA $250/week funded from the USDC sleeve"],  // 0..12, what the model inferred from loose wording
+     "branches": [                                       // 1..4 alternative paths, compared side by side
+       { "name": "30% SOL 3x + ETH DCA", "config": { /* extended BranchConfig */ } }
+     ]
+   }
+   ```
+4. **Middleware adapter** — `src/server/sim/intent.ts`, `runIntent(intent, deps) → SimRunResult`. One deep module, the seam every test goes through; deterministic, no LLM, no network in tests (`deps` = `{ backfill(config), loadCandles(config), now(), maxLeverage?(coin) }`). Per branch it:
+   - re-validates with zod (input may come from any caller);
+   - normalizes weights that do not sum to 100 (scale proportionally, warn); coins uppercased; unknown coin / no candle data → that branch fails with a per-branch error, the others still run;
+   - clamps leverage to the coin's Hyperliquid max leverage when `maxLeverage` is provided (warn), else the schema's 50;
+   - forces `rebalance: "none"` when `dca` is present (warn);
+   - **listing clamp**: moves `startDate` to the latest first-candle date across the branch's non-stable coins when the requested start precedes it (warn) — the engine's flat backward extrapolation would otherwise flatter CAGR;
+   - drops `scenario` for branches with any perp leg (warn: "projection skipped — Monte Carlo models unlevered long-only portfolios"); otherwise runs `runMonteCarlo` exactly as `/branches/:id/run` does;
+   - attaches engine-generated caveats (perp legs → "no funding, no fees, liquidation on daily lows/highs only"); the LLM never authors these.
+   - Output per branch: `{ name, config (normalized), result?: BranchResult & { montecarlo? }, warnings: string[], error?: string }`.
+   - The simulate step is shared with the branches route: `src/server/sim/run.ts` `runBranchConfig(config, deps)` (backfill → load candles incl. l/h → simulate → montecarlo) replaces the inline code in `routes/branches.ts` `POST /:id/run` (same responses, same caching).
+5. **Trust boundary.** LLM output is untrusted input: it only ever reaches `runIntent` through zod. The sim tool set has no write tool — no DB writes, no Desk, no paper or testnet order, no governor call. Saving a branch is a user click on the card that calls the existing `POST /api/branches` (its own zod validation). The Desk bridge ("paper this leg") is **out of v1**. `simulate_paths` runs under its own deadline (`withDeadline`, 40 s) and returns `{error}` to the model on timeout or missing data rather than eating the whole 90 s question budget.
+6. **"My stack"**: there is no reliable holdings source (the Desk's paper book is the desk's, not the operator's). Default `initialCapitalUsd` 10 000 unless the user states an amount; implicit holdings ("hedge my ETH") become explicit allocations. Every such inference goes in `assumptions` — the sim prompt requires it, and the card renders them.
+7. **Tool result to the model** is compact (per branch: name, final value, total return, CAGR, max DD, vs BTC, warnings, error) — never the equity arrays. The full result goes only to the UI via `sim_result {id, intent, branches}`.
+8. **Forks**: in sim mode, prior assistant turns sent back as `history` carry a compact trailer with each path's normalized config JSON, so "same but 5x" / "now without the DCA" modifies the previous intent instead of re-guessing it.
+9. **Sim prompt rules**: the same hard rule, hedge vocabulary and disclaimer as the Analyst (`system.ts`); results are historical simulation, not advice; always call `simulate_paths` before quoting numbers; prefer 2–3 contrasting branches when the intention is open-ended ("hedge my ETH" → unhedged vs 50% hedge vs full hedge); ask a one-line clarifying question only when no reasonable default exists.
+
+### API delta
+
+- `POST /api/analyst/query` body gains `mode?: "ask" | "sim"`. New SSE event (sim mode only): `sim_result {id, intent: SimIntent, branches: [{name, config, result?, warnings, error?}]}`, emitted once per `simulate_paths` call, before that call's `tool_result`.
+- `GET /api/analyst/status` unchanged. No new routes.
+
+### UI delta
+
+`/analyst` gains a mode `Segmented` (`ASK | SIMULATE`), sim example prompts in the rail, and **PathCard** results inline in the thread (one card per `sim_result`, branches compared within it): equity vs benchmarks (existing `EquityChart`, fan when present), drawdown, stats, assumptions and warnings visible (a path without visible assumptions is forbidden, principle 6), `SAVE AS BRANCH` per branch (→ `/branches/:id` link once saved) and `FORK` (prefills the composer). Layout, states and mobile behaviour: **DESIGN-chat.md** (binding for this feature, extends DESIGN.md). `/branches/:id` shows and preserves the new fields (side, leverage, DCA) so a saved path round-trips through the editor.
+
+### Done
+
+- `bun test` green, including: engine tests for short/levered/liquidated/DCA cases with hand-computed fixtures; adapter tests with fixture intents (normalization, listing clamp, leverage clamp, DCA→rebalance none, per-branch error isolation, scenario skip on perp legs); sim-mode loop tests with a fake provider (tool call → zod reject → error result; valid call → `sim_result` event + compact tool result; analyst default mode unchanged).
+- `bun run typecheck` and `bun run build` green.
+- With a provider configured and candles reachable, typing the example intents in `/analyst` SIMULATE mode renders PathCards; `SAVE AS BRANCH` creates a branch that opens and re-runs in `/branches/:id`.
+
 ## What is explicitly OUT of scope
 
 - Hyperliquid mainnet execution. The Desk trades paper or testnet only; the ENGINE pages only proxy operator actions to the Hyperion core, which owns its own governor and venues.
-- LLM calls anywhere except the Analyst and the Desk. Multi-user/accounts. Telegram delivery. The Go TUI.
+- LLM calls anywhere except the Analyst (incl. its SIMULATE mode) and the Desk. Multi-user/accounts. Telegram delivery. The Go TUI.
+- Paths v1: the Desk/paper bridge, per-position open/close dates, funding and fee modelling, Monte Carlo for levered or short branches.
 
 ## Environment variables
 

@@ -1,3 +1,4 @@
+import type { SimBranchOutcome, SimIntent } from '../../shared/intent'
 import { ApiError, NetworkError } from './api'
 
 // Client for /api/analyst (SPEC.md "Analyst"). The query endpoint is a POST
@@ -22,9 +23,13 @@ export type AnalystStreamEvent =
   | { type: 'reasoning'; delta: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown; server: boolean }
   | { type: 'tool_result'; id: string; name: string; ok: boolean; summary: string }
+  | { type: 'sim_result'; id: string; intent: SimIntent; branches: SimBranchOutcome[] }
   | { type: 'citations'; citations: AnalystCitation[] }
   | { type: 'error'; error: string }
   | { type: 'done'; usage: AnalystUsage; model: string; provider: string; label?: string; rounds: number; stop: string; effort?: AnalystEffort }
+
+export type SimResultEvent = Extract<AnalystStreamEvent, { type: 'sim_result' }>
+export type AnalystMode = 'ask' | 'sim'
 
 export interface AnalystStatus {
   configured: boolean
@@ -136,6 +141,39 @@ export function splitFrames(buf: string): [Array<{ event: string; data: string }
   return [frames, rest]
 }
 
+/** POST /api/analyst/query body; `mode` is only sent for sim (ask stays byte-identical). */
+export function queryBody(question: string, history: HistoryTurn[], choice?: AnalystChoice, mode: AnalystMode = 'ask') {
+  return { question, history, ...choice, ...(mode === 'sim' ? { mode } : {}) }
+}
+
+/** Evenly thins a series to at most 200 points, always keeping the first and last. */
+export function downsample<T>(pts: T[]): T[] {
+  const max = 200
+  if (pts.length <= max) return pts
+  return Array.from({ length: max }, (_, i) => pts[Math.round((i * (pts.length - 1)) / (max - 1))]!)
+}
+
+/** Copy of a sim_result with every stored series capped for localStorage. */
+export function compactSim(s: SimResultEvent): SimResultEvent {
+  return {
+    ...s,
+    branches: s.branches.map((b) => {
+      const r = b.result
+      if (!r) return b
+      const mc = r.montecarlo
+      return {
+        ...b,
+        result: {
+          ...r,
+          equity: downsample(r.equity),
+          benchmarks: { btc: downsample(r.benchmarks.btc), usdc: downsample(r.benchmarks.usdc) },
+          ...(mc ? { montecarlo: { median: downsample(mc.median), p10: downsample(mc.p10), p90: downsample(mc.p90) } } : {}),
+        },
+      }
+    }),
+  }
+}
+
 /**
  * Streams one question. Calls onEvent for every server event in order and
  * resolves when the stream ends. Throws ApiError (503/502/4xx before the
@@ -147,6 +185,7 @@ export async function streamAnalyst(
   onEvent: (e: AnalystStreamEvent) => void,
   signal?: AbortSignal,
   choice?: AnalystChoice,
+  mode: AnalystMode = 'ask',
 ): Promise<void> {
   let res: Response
   try {
@@ -154,7 +193,7 @@ export async function streamAnalyst(
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ question, history, ...choice }),
+      body: JSON.stringify(queryBody(question, history, choice, mode)),
       signal,
     })
   } catch (err) {

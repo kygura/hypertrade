@@ -27,6 +27,7 @@ export function DataTable<T>({
   rows,
   rowKey,
   onRowClick,
+  isSelected,
   emptyLabel,
   sortable,
   defaultSort,
@@ -35,6 +36,8 @@ export function DataTable<T>({
   rows: T[]
   rowKey: (row: T) => string
   onRowClick?: (row: T) => void
+  /** Marks a row selected: bg-selected + aria-selected. */
+  isSelected?: (row: T) => boolean
   emptyLabel?: ReactNode
   sortable?: boolean
   defaultSort?: { key: string; dir: 'asc' | 'desc' }
@@ -87,7 +90,8 @@ export function DataTable<T>({
           {sortedRows.map((row) => (
             <tr
               key={rowKey(row)}
-              className={`border-b border-border-subtle ${onRowClick ? 'cursor-pointer hover:bg-hover' : ''}`}
+              className={`border-b border-border-subtle ${onRowClick ? 'cursor-pointer hover:bg-hover' : ''} ${isSelected?.(row) ? 'bg-selected' : ''}`}
+              aria-selected={isSelected ? isSelected(row) : undefined}
               style={{ height: 'var(--row-h)' }}
               tabIndex={onRowClick ? 0 : undefined}
               onClick={onRowClick ? () => onRowClick(row) : undefined}

@@ -45,6 +45,10 @@ describe("backfillCoins", () => {
     expect(coins).toEqual([...CORE_COINS, "PENDLE", "kPEPE"]);
   });
 
+  test("dca coins are included", () => {
+    expect(backfillCoins([{ allocations: [{ coin: "BTC" }], dca: [{ coin: "pendle" }] }])).toEqual([...CORE_COINS, "PENDLE"]);
+  });
+
   test("an explicit list replaces the defaults", () => {
     expect(backfillCoins([{ allocations: [{ coin: "PENDLE" }] }], "btc, arb,,BTC", ["DOGE"])).toEqual(["BTC", "ARB"]);
   });

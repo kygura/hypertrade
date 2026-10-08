@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { splitFrames } from "./analyst";
+import { queryBody, splitFrames } from "./analyst";
 
 describe("splitFrames", () => {
   test("splits complete SSE frames and keeps the partial tail", () => {
@@ -13,5 +13,12 @@ describe("splitFrames", () => {
   test("joins multi-line data and defaults the event name", () => {
     const [frames] = splitFrames("data: line1\ndata: line2\n\n");
     expect(frames).toEqual([{ event: "message", data: "line1\nline2" }]);
+  });
+});
+
+describe("queryBody", () => {
+  test("sends mode only for sim", () => {
+    expect(queryBody("q", [], undefined, "sim").mode).toBe("sim");
+    expect("mode" in queryBody("q", [])).toBe(false);
   });
 });
