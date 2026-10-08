@@ -123,6 +123,27 @@ tool is defined once with one JSON schema and one handler.
 | `lab_catalogue_health` | decay, overlap, gaps |
 | `lab_market_pulse` | which catalogued rules fire now, per-asset lean |
 
+**Tool contract** (args → result; shapes from `src/server/lab/types.ts` and
+`src/server/lab/store.ts`). Every client, including the UI, depends on this.
+
+| tool | args | result |
+|---|---|---|
+| `lab_list_providers` | `{}` | `{ providers: [{ id, name, notes, metrics: number }] }` |
+| `lab_list_metrics` | `{ provider?, category?, asset? }` | `{ metrics: MetricDef[] }` |
+| `lab_search` | `SearchConfigInput` | `{ runId: string \| null, result: SearchResult }` |
+| `lab_get_run` | `{ id }` | `StoredRun` |
+| `lab_list_runs` | `{ limit? = 20 }` | `{ runs: RunSummary[] }` |
+| `lab_evaluate_rule` | `{ rule: Rule, from?, to?, slippageBps? = 10, includeEquity? = false, sensitivity? = false, windows? }` | `RuleEvaluation` |
+| `lab_sensitivity` | `{ rule: Rule, windows?, slippageBps? }` | `Sensitivity` |
+| `lab_catalogue_list` | `{ asset?, direction?, live? = true }` | `{ entries: Array<CatalogueEntry & { live: PerfStats \| null; flags: Array<"decayed" \| "overlap"> }> }` |
+| `lab_catalogue_save` | `{ rule: Rule, name, note?, runId?, origin? = "user" }` | `CatalogueEntry` |
+| `lab_catalogue_remove` | `{ id }` | `{ removed: boolean }` |
+| `lab_catalogue_health` | `{}` | `CatalogueHealth` |
+| `lab_market_pulse` | `{ asset? }` | `MarketPulse` |
+
+The rule id is `RuleEvaluation.id` (a stable hash of the rule), so the same rule
+has the same id in a run, in the catalogue and in a URL.
+
 - **REST**: `GET /api/lab/tools` (definitions), `POST /api/lab/tools/:name`
   (JSON args → `{ ok: true, result }` or `{ ok: false, error, field? }`, 400 on
   bad args).
