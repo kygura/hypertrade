@@ -54,6 +54,6 @@ Harness: Claude Code (cloud), native subagents only (no Codex/OpenCode/Pi bridge
 | L3a | `004_lab.sql` + LabStore (pg / memory / file) | opus | L0 | done |
 | L4a | MCP JSON-RPC core, `/api/mcp`, `/api/lab/tools`, bearer auth, CLI, stdio | opus | L0 | done |
 | D2 | DESIGN.md §10.9 `/lab` brief | fable | L0 | done (LAB = 9th nav cell; tabs SEARCH·RUNS·CATALOGUE·PULSE) |
-| L3b | Lab service + tool registry (12 tools, autoresearch prompt), catalogue health, pulse; mount in api/index.ts | opus | L1,L2,L3a,L4a | frontier |
-| U1 | `/lab` page per §10.9 | opus (ui-impl) | D2 (built against the pinned tool contract, parallel to L3b) | frontier |
-| V3 | Verification gate: tests/build, reviewer (fable), drift check, fix loops ≤3 | mixed | all | blocked |
+| L3b | Lab service + tool registry (12 tools, autoresearch prompt), catalogue health, pulse; mount in api/index.ts | opus | L1,L2,L3a,L4a | done |
+| U1 | `/lab` page per §10.9 | opus (ui-impl) | D2 (built against the pinned tool contract, parallel to L3b) | done |
+| V3 | Verification gate: tests/build, reviewer (fable), drift check, fix loops ≤3 | mixed | all | done (1 loop: MCP batch DoS capped, upstream errors → 502 with cause, refusals → 400 unstored, origin allow-list, asset charset, Vercel maxDuration 60; UI: holdout unsortable, WF-only stats, a11y/tokens. 588 tests green) |
