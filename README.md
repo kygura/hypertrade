@@ -255,9 +255,31 @@ contract: [`LAB.md`](LAB.md). Results are historical research, not advice.
 
 Providers (all keyless): `ht` (hypertrade DB, live Hyperliquid fallback for
 price/funding), `cm` (Coin Metrics community API), `fng` (alternative.me Fear
-& Greed), `llama` (DefiLlama stablecoins and TVL). Runs and the catalogue live
-in Postgres (`db/migrations/004_lab.sql`; apply it like the others), in a JSON
-file locally, or in memory.
+& Greed), `llama` (DefiLlama stablecoins and TVL), `bc` (blockchain.com
+Bitcoin network charts), `deribit` (BTC and ETH DVOL history). Runs and the
+catalogue live in Postgres (`db/migrations/004_lab.sql`, then
+`005_lab_guard.sql`; apply them like the others; the newest 500 runs are
+kept), in a JSON file locally, or in memory.
+
+**Lab data.** `/api/cron/collect` also runs the Lab collector
+(`src/server/lab/collect.ts`, its own 150 s budget) which stores the daily
+history of every `cm` (per `LAB_ASSETS`, default `BTC,ETH`), `fng`, `llama`,
+`bc` and `deribit` metric in `observations` as `lab.<provider>.<key>[.<asset>]`
+(e.g. `lab.cm.CapMVRVCur.btc`, `lab.bc.hash_rate`). A series' first sync pulls
+its full history; after that it refetches a tail (last sync minus a week) at
+most every 20 h; a failure waits 1 h (a 4xx refusal 20 h) before the next try;
+one dead source never stops the others, and Coin Metrics goes one request at a
+time to stay inside its community rate limit. Bookkeeping is in `sync_state`
+under `coin = '_lab'`. Searches read that stored history first when its last
+point is at most 2 days old, top up a staler one live from its last week, and
+go live for anything not collected or without a DB.
+
+Point in time: every metric is shifted by its publication lag (`lagDays`), and
+the calendar ends at the last *completed* UTC day: today's forming bar is
+dropped, so a rule "firing now" fires as of the last daily close. Gaps are
+forward-filled up to 3 days (8 for weekly FRED series such as WALCL, WTREGEN
+and net liquidity). Level metrics (price, supply, hash rate, TVL, …) are
+flagged non-stationary, so searches skip their raw values.
 
 | env | |
 |---|---|
@@ -265,6 +287,7 @@ file locally, or in memory.
 | `LAB_SEARCH_DEADLINE_MS` | server search budget, default 50 000; local CLI/stdio: none unless set |
 | `LAB_URL` | CLI/stdio: deployed origin to proxy to; unset runs the lab in-process |
 | `LAB_STORE_FILE` | local store file, default `~/.hypertrade/lab.json` |
+| `LAB_ASSETS` | assets the cron collector stores `cm` history for, default `BTC,ETH` |
 | `LAB_ALLOWED_ORIGINS` | extra browser origins allowed on `/api/mcp` (besides `APP_URL` and localhost) |
 
 The same 12 tools (`lab_search`, `lab_evaluate_rule`, `lab_catalogue_*`,
