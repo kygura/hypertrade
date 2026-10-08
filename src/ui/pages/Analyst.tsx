@@ -175,16 +175,17 @@ function saveSession(key: string, max: number, turns: TurnState[]) {
   }
 }
 
-// Session memory across route changes; seeded from localStorage on first load.
-const sessionTurns: Record<AnalystMode, TurnState[] | null> = { ask: null, sim: null }
 let nextId = 1
 
-function sessionFor(mode: AnalystMode): TurnState[] {
-  if (!sessionTurns[mode]) {
-    sessionTurns[mode] = loadSession(mode === 'sim' ? SIM_SESSION_STORAGE_KEY : SESSION_STORAGE_KEY)
-    nextId = Math.max(nextId, 0, ...sessionTurns[mode]!.map((t) => t.id)) + 1
+// Module-level store: keeps in-flight/unsaved turns alive across route changes. React state mirrors it.
+let sessionThreads: Record<AnalystMode, TurnState[]> | null = null
+
+function seedThreads(): Record<AnalystMode, TurnState[]> {
+  if (!sessionThreads) {
+    sessionThreads = { ask: loadSession(SESSION_STORAGE_KEY), sim: loadSession(SIM_SESSION_STORAGE_KEY) }
+    nextId = Math.max(nextId, 0, ...sessionThreads.ask.map((t) => t.id), ...sessionThreads.sim.map((t) => t.id)) + 1
   }
-  return sessionTurns[mode]!
+  return sessionThreads
 }
 
 export function applyEvent(t: TurnState, e: AnalystStreamEvent, now = Date.now()): TurnState {
@@ -218,7 +219,7 @@ export function applyEvent(t: TurnState, e: AnalystStreamEvent, now = Date.now()
 export function toHistory(turns: TurnState[], mode: AnalystMode = 'ask'): HistoryTurn[] {
   const out: HistoryTurn[] = []
   for (const t of turns.slice(-HISTORY_TURNS)) {
-    if (!t.answer.trim() || t.streaming) continue
+    if ((!t.answer.trim() && !t.sims.length) || t.streaming) continue
     const trailer =
       mode === 'sim' && t.sims.length
         ? `\n\n[paths]\n${t.sims.flatMap((s) => s.branches.map((b) => JSON.stringify({ name: b.name, config: b.config }))).join('\n')}`
@@ -618,9 +619,13 @@ export function Analyst() {
   const [statusLoading, setStatusLoading] = useState(true)
   const [offline, setOffline] = useState<Offline>(null)
   const [mode, setModeState] = useState<AnalystMode>(loadStoredMode)
-  const [threads, setThreads] = useState<Record<AnalystMode, TurnState[]>>(() => ({ ask: sessionFor('ask'), sim: sessionFor('sim') }))
+  const [threads, setThreads] = useState<Record<AnalystMode, TurnState[]>>(seedThreads)
   const turns = threads[mode]
-  const setTurnsFor = useCallback((m: AnalystMode, fn: (ts: TurnState[]) => TurnState[]) => setThreads((th) => ({ ...th, [m]: fn(th[m]) })), [])
+  const setTurnsFor = useCallback((m: AnalystMode, fn: (ts: TurnState[]) => TurnState[]) => {
+    const th = seedThreads()
+    sessionThreads = { ...th, [m]: fn(th[m]) }
+    setThreads(sessionThreads)
+  }, [])
   const [draft, setDraft] = useState('')
   const [catalog, setCatalog] = useState<AnalystCatalog | null>(null)
   const [catalogError, setCatalogError] = useState<string | null>(null)
@@ -630,8 +635,6 @@ export function Analyst() {
   const busy = turns.some((t) => t.streaming)
 
   useEffect(() => {
-    sessionTurns.ask = threads.ask
-    sessionTurns.sim = threads.sim
     if (!busy) {
       saveSession(SESSION_STORAGE_KEY, STORED_TURNS, threads.ask)
       saveSession(SIM_SESSION_STORAGE_KEY, SIM_STORED_TURNS, threads.sim)
@@ -649,7 +652,7 @@ export function Analyst() {
 
   const fork = (name: string) => {
     const prefix = `Fork "${name}": `
-    setDraft((d) => (d.startsWith(prefix) ? d : prefix + d))
+    setDraft((d) => prefix + d.replace(/^Fork "[^"]*": /, ''))
     requestAnimationFrame(() => {
       const el = document.getElementById('analyst-q') as HTMLTextAreaElement | null
       el?.focus()

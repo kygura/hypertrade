@@ -1,10 +1,11 @@
 import { expect, test } from 'bun:test'
-import { allocationSummary, hasPerpLeg } from './format'
+import { allocationSummary } from './format'
+import { isPerp } from '../../../shared/schemas'
 
 test('perp legs and list summary', () => {
-  expect(hasPerpLeg([{ coin: 'BTC', weightPct: 100 }])).toBe(false)
-  expect(hasPerpLeg([{ coin: 'BTC', weightPct: 100, leverage: 2 }])).toBe(true)
-  expect(hasPerpLeg([{ coin: 'BTC', weightPct: 100, side: 'short' }])).toBe(true)
+  expect(isPerp({})).toBe(false)
+  expect(isPerp({ leverage: 2 })).toBe(true)
+  expect(isPerp({ side: 'short' })).toBe(true)
   const allocs = [
     { coin: 'SOL', weightPct: 30, leverage: 3 },
     { coin: 'BTC', weightPct: 30, side: 'short' as const },

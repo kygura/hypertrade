@@ -92,6 +92,10 @@ describe("sim_result", () => {
     expect(sims).toContain(JSON.stringify({ name: "SOL 3x", config: cfg }));
     expect(toHistory([t])[1]!.content).toBe("done");
   });
+  test("toHistory keeps a finished sim turn with an empty answer", () => {
+    const t = { ...applyEvent(turn(), sim), answer: "", streaming: false };
+    expect(toHistory([t], "sim")[1]!.content).toContain("[paths]");
+  });
   test("downsample caps at 200 and keeps endpoints", () => {
     const d = downsample(pts(1000));
     expect(d.length).toBe(200);

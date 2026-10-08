@@ -11,13 +11,13 @@ import {
   SkeletonRows,
 } from '../components'
 import { api, ApiError, useApi } from '../lib/api'
-import { BranchConfigSchema } from '../../shared/schemas'
+import { BranchConfigSchema, isPerp, STABLES } from '../../shared/schemas'
 import type { Allocation, BranchConfig, Scenario } from '../../shared/types'
 import type { BranchDetail as BranchDetailData, BranchResult } from '../components/branches/types'
 import { EquityChart } from '../components/charts/EquityChart'
 import { ProjectionAssumptions } from '../components/charts/FanChart'
 import { DrawdownChart } from '../components/branches/DrawdownChart'
-import { hasPerpLeg, maxDdClass, signClass, STABLE_COINS, sumWeights } from '../components/branches/format'
+import { maxDdClass, signClass, sumWeights } from '../components/branches/format'
 import { fmtPct, fmtUsd } from '../../shared/format'
 
 // /branches/:id — DESIGN.md §10.4. Editor (left, 4 cols) + results (right,
@@ -100,7 +100,7 @@ export function BranchDetail() {
 
   // --- derived config -------------------------------------------------
   const nonStableCoins = form
-    ? [...new Set(form.allocations.map((a) => a.coin.toUpperCase()).filter((c) => c && !STABLE_COINS.has(c)))]
+    ? [...new Set(form.allocations.map((a) => a.coin.toUpperCase()).filter((c) => c && !STABLES.has(c)))]
     : []
 
   const resolvedScenario: Scenario | null = form?.scenario
@@ -136,7 +136,7 @@ export function BranchDetail() {
   const parsedConfig = configCandidate ? BranchConfigSchema.safeParse(configCandidate) : null
   const levValid = !form || form.allocations.every((a) => (a.leverage ?? 1) >= 1 && (a.leverage ?? 1) <= 50)
   const dcaValid = !form || form.dca.every((d) => d.coin.trim() !== '' && d.amountUsd > 0)
-  const perp = !!form && hasPerpLeg(form.allocations)
+  const perp = !!form && form.allocations.some(isPerp)
   const perpConflict = perp && !!form?.scenario
   const editorOk = levValid && dcaValid && !perpConflict
   const canSubmit = weightsValid && editorOk && !!parsedConfig?.success && busy === 'idle'
@@ -337,7 +337,7 @@ export function BranchDetail() {
                       <span>LEV</span>
                     </div>
                     {form.allocations.map((a, i) => {
-                      const stable = STABLE_COINS.has(a.coin.toUpperCase())
+                      const stable = STABLES.has(a.coin.toUpperCase())
                       const lock = stable ? 'stablecoins are spot only' : undefined
                       return (
                         <div key={i} className={ALLOC_GRID}>
@@ -347,7 +347,7 @@ export function BranchDetail() {
                               const coin = e.target.value.toUpperCase()
                               updateAllocation(
                                 i,
-                                STABLE_COINS.has(coin) ? { coin, side: undefined, leverage: undefined } : { coin },
+                                STABLES.has(coin) ? { coin, side: undefined, leverage: undefined } : { coin },
                               )
                             }}
                             className="w-full"
@@ -364,14 +364,15 @@ export function BranchDetail() {
                             />
                             <span className="text-text-secondary text-[11px]">%</span>
                           </div>
-                          <Segmented
-                            label={`${a.coin || 'allocation'} side`}
-                            options={SIDE_OPTIONS}
-                            value={a.side ?? 'long'}
-                            onChange={(side) => updateAllocation(i, { side })}
-                            disabled={stable}
-                            className="self-center"
-                          />
+                          <div className="self-center" title={lock}>
+                            <Segmented
+                              label={`${a.coin || 'allocation'} side`}
+                              options={SIDE_OPTIONS}
+                              value={a.side ?? 'long'}
+                              onChange={(side) => updateAllocation(i, { side })}
+                              disabled={stable}
+                            />
+                          </div>
                           <div className="flex items-center gap-1" title={lock}>
                             <input
                               type="number"
@@ -472,7 +473,7 @@ export function BranchDetail() {
                 {!dcaValid && (
                   <span className="text-[11px] text-red-text">each DCA row needs a coin and an amount above $0</span>
                 )}
-                {form.dca.length > 0 && !form.allocations.some((a) => STABLE_COINS.has(a.coin.toUpperCase())) && (
+                {form.dca.length > 0 && !form.allocations.some((a) => STABLES.has(a.coin.toUpperCase())) && (
                   <span className="text-[10px] text-amber">no USDC/USDT allocation — DCA has nothing to spend</span>
                 )}
               </div>

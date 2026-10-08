@@ -2,7 +2,7 @@
 // Deterministic, no LLM, no network: all I/O comes in through deps.
 import { SimIntentSchema, type SimBranchOutcome, type SimIntent, type SimRunResult } from "../../shared/intent.js";
 import type { BranchConfig } from "../../shared/types.js";
-import { STABLES } from "./backfill.js";
+import { isPerp, STABLES } from "../../shared/schemas.js";
 import { simulateLoaded, type RunDeps } from "./run.js";
 import { NoPriceDataError } from "./engine.js";
 import { UpstreamError } from "../mcp/types.js";
@@ -42,7 +42,7 @@ async function runBranch(
   if (unknown.length) return { name, config, warnings, error: `unknown coin ${unknown[0]}` };
   // Two spot legs on one coin would share one quantity in the engine and be counted twice.
   // (A spot leg plus a perp leg on the same coin, i.e. a hedge, is fine.)
-  const spot = config.allocations.filter((a) => a.side !== "short" && (a.leverage ?? 1) === 1).map((a) => a.coin);
+  const spot = config.allocations.filter((a) => !isPerp(a)).map((a) => a.coin);
   const dup = spot.find((c, i) => spot.indexOf(c) !== i);
   if (dup) return { name, config, warnings, error: `duplicate coin ${dup}` };
   try {
@@ -79,7 +79,7 @@ async function runBranch(
       config.startDate = iso;
     }
 
-    const perp = config.allocations.some((a) => a.side === "short" || (a.leverage ?? 1) > 1);
+    const perp = config.allocations.some(isPerp);
     if (perp) {
       warnings.push(PERP_CAVEAT);
       if (config.scenario) {

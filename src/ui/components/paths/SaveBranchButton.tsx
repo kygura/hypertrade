@@ -35,10 +35,10 @@ export function SaveBranchButton({
     try {
       const b = await api.post<{ id: string }>('/branches', { name, config: { ...config, description } })
       justSaved.current = true
+      // Awaited so SAVED only shows once the result is cached; a run failure is
+      // ignored (the branch is saved, /branches/:id shows "not simulated yet").
+      await api.post(`/branches/${b.id}/run`).catch(() => {})
       onSaved(b.id)
-      // Fire-and-forget: the branch opens with a cached result; if this fails
-      // /branches/:id shows its normal "not simulated yet" state.
-      api.post(`/branches/${b.id}/run`).catch(() => {})
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {

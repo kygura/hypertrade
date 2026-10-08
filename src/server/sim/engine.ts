@@ -1,5 +1,6 @@
 // Pure branch simulation engine — no I/O. See SPEC.md "Branch model".
 import type { Allocation, BranchConfig } from "../../shared/types.js";
+import { isPerp, STABLES } from "../../shared/schemas.js";
 
 export interface DailyClose {
   ts: number; // ms epoch
@@ -27,7 +28,6 @@ export interface BranchResult {
   stats: BranchStats;
 }
 
-const STABLES = new Set(["USDC", "USDT"]);
 const DAY_MS = 86400000;
 
 /** Thrown by simulate() when an allocation coin has no candle data at all —
@@ -72,7 +72,6 @@ interface PerpLeg {
   lev: number;
 }
 
-const isPerp = (a: Allocation) => a.side === "short" || (a.leverage ?? 1) > 1;
 
 /** margin + pnl; can go negative (the leg is then liquidated / floored at 0). */
 function legEquity(leg: PerpLeg, px: number): number {
@@ -186,7 +185,7 @@ function runPortfolio(
     for (const d of dca) {
       if (!shouldRebalance(d.every, prevTs, ts)) continue;
       let spent = 0;
-      for (const s of ["USDC", "USDT"]) {
+      for (const s of STABLES) {
         const take = Math.min(d.amountUsd - spent, qty.get(s) ?? 0);
         if (take <= 0) continue;
         qty.set(s, qty.get(s)! - take);

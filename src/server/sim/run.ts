@@ -5,7 +5,8 @@ import type { BranchConfig } from "../../shared/types.js";
 import type { SimResult } from "../../shared/intent.js";
 import { simulate, type DailyClose } from "./engine.js";
 import { runMonteCarlo } from "./montecarlo.js";
-import { backfillBranch, STABLES } from "./backfill.js";
+import { backfillBranch } from "./backfill.js";
+import { STABLES } from "../../shared/schemas.js";
 
 export type CandlesByCoin = Record<string, DailyClose[]>;
 

@@ -4,9 +4,8 @@
 // This replaced CoinGecko's free OHLC endpoint, which returns 4-day bars for
 // any range over 30 days. Stablecoins are a constant $1 and never backfilled.
 import type { BranchConfig } from "../../shared/types.js";
+import { STABLES } from "../../shared/schemas.js";
 import { ensureHistory, type SyncDeps } from "../market/candleSync.js";
-
-export const STABLES = new Set(["USDC", "USDT"]);
 
 /** Ensures daily candle coverage for one coin from startDate to today. No-op for stablecoins. */
 export async function backfillCoin(coin: string, startDate: Date, deps?: SyncDeps, deadline?: number): Promise<void> {

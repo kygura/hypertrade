@@ -50,7 +50,9 @@ export const branchesRoutes = new Hono()
   .post("/:id/run", async (c) => {
     const branch = await db.getBranch(c.req.param("id"));
     if (!branch) return c.json({ error: "not found" }, 404);
-    const config = BranchConfigSchema.parse(branch.config);
+    const parsed = BranchConfigSchema.safeParse(branch.config);
+    if (!parsed.success) return c.json({ error: "stored config is invalid", details: parsed.error.flatten() }, 422);
+    const config = parsed.data;
 
     let full;
     try {

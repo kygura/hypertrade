@@ -11,7 +11,8 @@ import * as db from "../db.js";
 import { collectLab, LAB_SYNC_COIN, type LabCollectResult, type LabProgress } from "../lab/collect.js";
 import { syncHead } from "../market/candleSync.js";
 import { syncFunding } from "../market/fundingSync.js";
-import { backfillCoin, STABLES } from "../sim/backfill.js";
+import { backfillCoin } from "../sim/backfill.js";
+import { STABLES } from "../../shared/schemas.js";
 
 const DAY_MS = 86400000;
 const DEFAULT_BACKFILL_DAYS = 365;
@@ -132,8 +133,8 @@ export function backfillCoins(branchConfigs: unknown[], requested?: string, rece
   if (requested) return [...new Set(requested.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))];
   const coins = new Set(CORE_COINS);
   for (const config of branchConfigs) {
-    const allocations = (config as { allocations?: { coin?: unknown }[] } | null)?.allocations ?? [];
-    for (const a of allocations) if (typeof a.coin === "string") coins.add(a.coin.toUpperCase());
+    const c = config as { allocations?: { coin?: unknown }[]; dca?: { coin?: unknown }[] } | null;
+    for (const a of [...(c?.allocations ?? []), ...(c?.dca ?? [])]) if (typeof a.coin === "string") coins.add(a.coin.toUpperCase());
   }
   for (const c of recent) coins.add(c);
   return [...coins].filter((c) => !STABLES.has(c));

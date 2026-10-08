@@ -9,6 +9,10 @@ import { z } from "zod";
 // perp leg. Refined here rather than on BranchConfigSchema so that one stays a
 // plain ZodObject for its callers.
 // Hyperliquid coin names: letters/digits, optionally "dex:"-prefixed (HIP-3), e.g. kPEPE, xyz:TSLA.
+export const STABLES = new Set(["USDC", "USDT"]);
+/** A perp leg is short or leveraged; everything else is spot. */
+export const isPerp = (a: { side?: string; leverage?: number }) => a.side === "short" || (a.leverage ?? 1) > 1;
+
 const CoinSchema = z.string().max(24).regex(/^([A-Za-z0-9]+:)?[A-Za-z0-9]+$/, "invalid coin name");
 
 export const AllocationSchema = z
@@ -19,7 +23,7 @@ export const AllocationSchema = z
     leverage: z.number().min(1).max(50).optional(),
   })
   .strict()
-  .refine((a) => !["USDC", "USDT"].includes(a.coin.toUpperCase()) || (a.side !== "short" && (a.leverage ?? 1) === 1), {
+  .refine((a) => !STABLES.has(a.coin.toUpperCase()) || (a.side !== "short" && (a.leverage ?? 1) === 1), {
     message: "stablecoins cannot be short or levered",
   });
 

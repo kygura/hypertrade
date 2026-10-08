@@ -146,8 +146,9 @@ export function queryBody(question: string, history: HistoryTurn[], choice?: Ana
   return { question, history, ...choice, ...(mode === 'sim' ? { mode } : {}) }
 }
 
-/** Evenly thins a series to at most `max` points, always keeping the first and last. */
-export function downsample<T>(pts: T[], max = 200): T[] {
+/** Evenly thins a series to at most 200 points, always keeping the first and last. */
+export function downsample<T>(pts: T[]): T[] {
+  const max = 200
   if (pts.length <= max) return pts
   return Array.from({ length: max }, (_, i) => pts[Math.round((i * (pts.length - 1)) / (max - 1))]!)
 }

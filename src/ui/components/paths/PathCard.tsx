@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Allocation, BranchConfig } from '../../../shared/types'
+import { isPerp } from '../../../shared/schemas'
 import type { SimBranchOutcome, SimResult } from '../../../shared/intent'
 import { fmtPct, fmtUsd } from '../../../shared/format'
 import type { SimResultEvent } from '../../lib/analyst'
@@ -21,10 +22,10 @@ const fmtLev = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
 function PathLegs({ config }: { config: BranchConfig }) {
   const leg = (a: Allocation) => {
     const lev = a.leverage ?? 1
-    const perp = a.side === 'short' || lev > 1
+    const perp = isPerp(a)
     return (
       <span key={a.coin} className="inline-flex items-center gap-1">
-        {a.coin} {a.weightPct}%{perp && <Badge tone="gray">{`${a.side === 'short' ? 'SHORT' : 'LONG'} ${fmtLev(lev)}×`}</Badge>}
+        {a.coin} {Number(a.weightPct.toFixed(1))}%{perp && <Badge tone="gray">{`${a.side === 'short' ? 'SHORT' : 'LONG'} ${fmtLev(lev)}×`}</Badge>}
       </span>
     )
   }
@@ -59,9 +60,9 @@ function Cell({ label, className, children }: { label: string; className?: strin
   )
 }
 
-function PathStats({ result, initialCapitalUsd }: { result: SimResult; initialCapitalUsd: number }) {
+function PathStats({ result, config }: { result: SimResult; config: BranchConfig }) {
   const s = result.stats
-  const ret = (s.finalValue / initialCapitalUsd - 1) * 100
+  const ret = returnPct(result, config)
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
       <Cell label="FINAL">{fmtUsd(s.finalValue, { decimals: 0 })}</Cell>
@@ -108,7 +109,7 @@ function PathBranch({
       {branch.error && <ErrorBlock message={branch.error} />}
       {result && !branch.error && (
         <>
-          <PathStats result={result} initialCapitalUsd={config.initialCapitalUsd} />
+          <PathStats result={result} config={config} />
           <EquityChart equity={result.equity} btc={result.benchmarks.btc} usdc={result.benchmarks.usdc} projection={result.montecarlo} height={220} />
           {result.montecarlo && config.scenario && <ProjectionAssumptions scenario={config.scenario} />}
           <div className="flex items-baseline justify-between">

@@ -11,15 +11,15 @@ import { UpstreamError } from "../mcp/types.js";
 // below is only a hint for the model; SimIntentSchema (zod, inside runIntent) is
 // the authority.
 
-export const SIM_DEADLINE_MS = 40_000;
+const SIM_DEADLINE_MS = 40_000;
 
 const allocation = {
   type: "object",
   additionalProperties: false,
   required: ["coin", "weightPct"],
   properties: {
-    coin: { type: "string", description: "Hyperliquid coin symbol (BTC, ETH, SOL, ...) or USDC/USDT for cash." },
-    weightPct: { type: "number", description: "Percent of starting capital (weights should sum to 100). For a perp leg this is the margin put up." },
+    coin: { type: "string", maxLength: 24, pattern: "^([A-Za-z0-9]+:)?[A-Za-z0-9]+$", description: "Hyperliquid coin symbol (BTC, ETH, SOL, ...) or USDC/USDT for cash." },
+    weightPct: { type: "number", minimum: 0, description: "Percent of starting capital (weights should sum to 100). For a perp leg this is the margin put up." },
     side: { type: "string", enum: ["long", "short"], description: "Default long. short makes it a perp leg. Stablecoins cannot be short." },
     leverage: { type: "number", minimum: 1, maximum: 50, description: "Default 1 (spot). Above 1 makes it a perp leg: notional = margin x leverage. Stablecoins cannot be levered." },
   },
@@ -58,8 +58,8 @@ export const SIM_TOOL_SPEC: ToolSpec = {
               properties: {
                 description: { type: "string" },
                 startDate: { type: "string", description: "ISO date, e.g. 2025-01-01. Moved forward if a coin has no earlier price data." },
-                initialCapitalUsd: { type: "number", description: "Default 10000 when the user states no amount." },
-                allocations: { type: "array", items: allocation },
+                initialCapitalUsd: { type: "number", exclusiveMinimum: 0, maximum: 1e12, description: "Default 10000 when the user states no amount." },
+                allocations: { type: "array", maxItems: 10, items: allocation },
                 rebalance: { type: "string", enum: ["none", "monthly", "weekly", "threshold5pct"], description: "Forced to none when dca is present." },
                 dca: {
                   type: "array",
@@ -70,7 +70,7 @@ export const SIM_TOOL_SPEC: ToolSpec = {
                     additionalProperties: false,
                     required: ["coin", "amountUsd", "every"],
                     properties: {
-                      coin: { type: "string" },
+                      coin: { type: "string", maxLength: 24, pattern: "^([A-Za-z0-9]+:)?[A-Za-z0-9]+$" },
                       amountUsd: { type: "number", exclusiveMinimum: 0 },
                       every: { type: "string", enum: ["weekly", "monthly"] },
                     },
@@ -82,7 +82,7 @@ export const SIM_TOOL_SPEC: ToolSpec = {
                   required: ["horizonDays", "assumptions", "paths"],
                   description: "Forward Monte Carlo fan; only for unlevered long-only branches (dropped otherwise).",
                   properties: {
-                    horizonDays: { type: "integer", minimum: 1 },
+                    horizonDays: { type: "integer", minimum: 1, maximum: 3650 },
                     paths: { type: "integer", minimum: 1 },
                     assumptions: {
                       type: "array",

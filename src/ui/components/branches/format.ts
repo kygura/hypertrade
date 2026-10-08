@@ -11,8 +11,6 @@
 import type { Allocation, BranchConfig } from '../../../shared/types'
 import type { EquityPoint } from './types'
 
-export const STABLE_COINS = new Set(['USDC', 'USDT'])
-
 export function fmtUsdCompact(value: number): string {
   const sign = value < 0 ? '-' : ''
   return `${sign}$${new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Math.abs(value))}`
@@ -28,11 +26,6 @@ export function signClass(value: number): string {
 // Engine reports maxDrawdownPct as a positive magnitude.
 export function maxDdClass(magnitudePct: number): string {
   return Math.abs(magnitudePct) >= 20 ? 'text-red-text' : 'text-text-primary'
-}
-
-// A perp leg is SHORT or leveraged; everything else is spot.
-export function hasPerpLeg(allocations: Allocation[]): boolean {
-  return allocations.some((a) => a.side === 'short' || (a.leverage ?? 1) > 1)
 }
 
 export function allocationSummary(allocations: Allocation[], dca?: BranchConfig['dca']): string {

@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { Hono } from "hono";
+import * as db from "../db.js";
 import { branchesRoutes } from "./branches.js";
 
 const app = new Hono().route("/branches", branchesRoutes);
@@ -30,5 +31,19 @@ describe("POST /branches", () => {
     });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("invalid config");
+  });
+});
+
+describe("POST /branches/:id/run", () => {
+  afterEach(() => {
+    spy.mockRestore();
+  });
+  let spy: ReturnType<typeof spyOn>;
+
+  test("422s instead of 500 when the stored config fails the current schema", async () => {
+    spy = spyOn(db, "getBranch").mockResolvedValue({ id: "b1", name: "old", config: { ...validConfig, allocations: Array(11).fill({ coin: "BTC", weightPct: 1 }) } } as never);
+    const res = await app.request("/branches/b1/run", { method: "POST" });
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toBe("stored config is invalid");
   });
 });
