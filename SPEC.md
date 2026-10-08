@@ -128,7 +128,7 @@ Design language: iterate on Hyperion (dark-only, Geist Mono, zero radius, dense 
 
 An agentic portfolio desk inside the app: a PM agent runs a roster of specialist agents (flows, macro/fiscal, news, on-chain, risk, narratives) and can spawn ad-hoc ones, answers operator questions ("is this rally a bull trap or genuine flow, does macro and fiscal policy support it"), and in autonomous cycles proposes entries, exits and alerts. Code: `src/server/desk/`, `src/server/routes/desk.ts`, `src/ui/pages/Desk.tsx`, `scripts/desk-worker.ts`; README.md "Desk" has the detail.
 
-- **Models**: the analyst's provider configuration (any vendor; web search on Anthropic), `DESK_MODEL` / `DESK_SPECIALIST_MODEL` overrides; PM effort high, specialists medium.
+- **Models**: the PM (and `/analyst`) run on `DESK_ANALYST_MODEL` (any vendor; web search on Anthropic); scouts run on the same provider unless `DESK_SCOUT_PROVIDER` / `DESK_SCOUT_MODEL` override them. PM effort high, scouts medium.
 - **Governor** (`governor.ts`): every proposal is sized and checked by deterministic rules; re-checked at execution. Agents never set size.
 - **Venue**: a paper book (`paper.ts`, default) or Hyperliquid **testnet** (`hl/broker.ts`, `DESK_VENUE=hl-testnet`): entries as one signed `normalTpsl` action (IOC entry + reduce-only stop and take-profit on the exchange), flattened if the stop is rejected; the governor uses the venue's marks and equity. Mainnet is refused. A Hyperliquid address can be watched read-only (`DESK_WATCH_ADDRESS`).
 - **Approval**: `auto` (governor-passed entries execute) or `manual` (entries queue for the operator; Telegram buttons or the page). Exits never wait. Kill switch blocks entries.
@@ -153,7 +153,7 @@ Pillar: find simple, human-readable trading rules ("when `cm:CapMVRVCur` z(90) <
 
 ## Environment variables
 
-`DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `CRON_TOKEN`, `FRED_API_KEY` (optional), `ELFA_API_KEY` / `ELFA_MIN_INTERVAL_HOURS` (optional), `ROUTINE_WEBHOOK_URL` (optional), `ENGINE_URL` / `ENGINE_TOKEN` (optional, engine console), `ANALYST_PROVIDER` / `ANALYST_MODEL` / `ANALYST_API_KEY` / `ANALYST_BASE_URL` / `ANALYST_EFFORT` / `ANALYST_ANTHROPIC_API_KEY` / `ANALYST_OPENAI_API_KEY` / `ANALYST_OPENAI_BASE_URL` / `ANALYST_MODELS`, and the vendor keys `OPENAI_API_KEY` / `GEMINI_API_KEY` / `XAI_API_KEY` / `DEEPSEEK_API_KEY` / `MOONSHOT_API_KEY` / `DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY` (all optional, analyst — see README.md "Analyst" for precedence and per-preset overrides)
+`DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `CRON_TOKEN`, `FRED_API_KEY` (optional), `ELFA_API_KEY` / `ELFA_MIN_INTERVAL_HOURS` (optional), `ROUTINE_WEBHOOK_URL` (optional), `ENGINE_URL` / `ENGINE_TOKEN` (optional, engine console), `ANALYST_PROVIDER` / `DESK_ANALYST_MODEL` / `ANALYST_API_KEY` / `ANALYST_BASE_URL` / `ANALYST_EFFORT` / `ANALYST_ANTHROPIC_API_KEY` / `ANALYST_OPENAI_API_KEY` / `ANALYST_OPENAI_BASE_URL` / `ANALYST_MODELS`, and the vendor keys `OPENAI_API_KEY` / `GEMINI_API_KEY` / `XAI_API_KEY` / `DEEPSEEK_API_KEY` / `MOONSHOT_API_KEY` / `DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY` (all optional, analyst — see README.md "Analyst" for precedence and per-preset overrides)
 
 GitHub Actions repository secrets (Settings > Secrets and variables > Actions), used by `.github/workflows/collect.yml`:
 

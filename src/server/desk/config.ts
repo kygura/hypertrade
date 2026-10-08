@@ -53,9 +53,9 @@ export interface DeskConfig {
   watchAddress?: string;
   /** Coins the watch tick always checks, beyond held positions. */
   watchlist: string[];
-  /** Agent model overrides; default: the analyst's server default. */
-  orchestratorModel?: string;
-  specialistModel?: string;
+  /** Scout model/provider overrides; default: the analyst's server default. */
+  scoutModel?: string;
+  scoutProvider?: string;
   /** Upper bound on autonomous cycles per UTC day (LLM cost guard). */
   maxCyclesPerDay: number;
   /** Minimum minutes between two trigger-fired cycles. */
@@ -112,8 +112,8 @@ export function loadDeskConfig(env: Env = process.env): DeskConfig {
     paperSlippage: 0.0005,
     watchAddress: address && /^0x[0-9a-fA-F]{40}$/.test(address) ? address.toLowerCase() : undefined,
     watchlist: list(env.DESK_WATCHLIST, ["BTC", "ETH", "SOL", "HYPE"]),
-    orchestratorModel: env.DESK_MODEL?.trim() || undefined,
-    specialistModel: env.DESK_SPECIALIST_MODEL?.trim() || undefined,
+    scoutModel: env.DESK_SCOUT_MODEL?.trim() || undefined,
+    scoutProvider: env.DESK_SCOUT_PROVIDER?.trim() || undefined,
     maxCyclesPerDay: num(env, "DESK_MAX_CYCLES_PER_DAY", 8, 0, 96),
     cycleCooldownMin: num(env, "DESK_CYCLE_COOLDOWN_MIN", 60, 5, 1440),
     reviewEveryHours: num(env, "DESK_REVIEW_HOURS", 8, 0, 168),

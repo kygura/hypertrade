@@ -109,7 +109,7 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
         const [kill, approval] = await Promise.all([s.killSwitch(), s.approval()]);
         return c.json({
           configured: !!pm,
-          model: pm ? { provider: pm.id, label: pm.label ?? pm.id, pm: pm.model, specialists: specialist?.model ?? pm.model, webSearch: pm.webSearch } : null,
+          model: pm ? { provider: pm.id, label: pm.label ?? pm.id, pm: pm.model, scouts: specialist?.model ?? pm.model, scoutProvider: specialist?.id ?? pm.id, webSearch: pm.webSearch } : null,
           venue: s.broker.venue,
           live: s.broker.live,
           venueAccount: s.config.hl?.account ?? null,

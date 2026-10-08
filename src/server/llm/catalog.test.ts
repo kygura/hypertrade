@@ -23,7 +23,7 @@ describe("buildCatalog", () => {
   });
 
   test("legacy single-provider config: ANALYST_API_KEY configures the default provider only", () => {
-    const anthropicDefault = buildCatalog({ ANALYST_API_KEY: "k", ANALYST_MODEL: "claude-fable-5-1" });
+    const anthropicDefault = buildCatalog({ ANALYST_API_KEY: "k", DESK_ANALYST_MODEL: "claude-fable-5-1" });
     expect(anthropicDefault.default).toEqual({ provider: "anthropic", model: "claude-fable-5-1" });
     expect(anthropicDefault.providers.find((p) => p.id === "anthropic")!.available).toBe(true);
     expect(anthropicDefault.providers.find((p) => p.id === "openai-compatible")!.available).toBe(false);
@@ -32,12 +32,12 @@ describe("buildCatalog", () => {
       ANALYST_PROVIDER: "openai-compatible",
       ANALYST_API_KEY: "k",
       ANALYST_BASE_URL: "http://llm.local/v1",
-      ANALYST_MODEL: "local-model",
+      DESK_ANALYST_MODEL: "local-model",
     });
     expect(openaiDefault.default).toEqual({ provider: "openai-compatible", model: "local-model" });
     expect(openaiDefault.providers.find((p) => p.id === "openai-compatible")!.available).toBe(true);
     expect(openaiDefault.providers.find((p) => p.id === "openai-compatible")!.models).toEqual([
-      { id: "local-model", label: "local-model", note: "From ANALYST_MODELS/ANALYST_MODEL — capabilities unknown for this endpoint", tier: "balanced", effort: false },
+      { id: "local-model", label: "local-model", note: "From ANALYST_MODELS/DESK_ANALYST_MODEL — capabilities unknown for this endpoint", tier: "balanced", effort: false },
     ]);
     // The legacy ANALYST_API_KEY belongs to the default provider only.
     expect(openaiDefault.providers.find((p) => p.id === "anthropic")!.available).toBe(false);
@@ -84,11 +84,11 @@ describe("buildCatalog", () => {
 });
 
 describe("parseOpenAIModels", () => {
-  test("ANALYST_MODELS takes precedence over ANALYST_MODEL", () => {
-    expect(parseOpenAIModels({ ANALYST_MODELS: "a,b=B", ANALYST_MODEL: "c" }).map((m) => m.id)).toEqual(["a", "b"]);
+  test("ANALYST_MODELS takes precedence over DESK_ANALYST_MODEL", () => {
+    expect(parseOpenAIModels({ ANALYST_MODELS: "a,b=B", DESK_ANALYST_MODEL: "c" }).map((m) => m.id)).toEqual(["a", "b"]);
   });
-  test("no ANALYST_MODELS + not the default provider → empty (ANALYST_MODEL belongs to the default)", () => {
-    expect(parseOpenAIModels({ ANALYST_PROVIDER: "anthropic", ANALYST_MODEL: "c" })).toEqual([]);
+  test("no ANALYST_MODELS + not the default provider → empty (DESK_ANALYST_MODEL belongs to the default)", () => {
+    expect(parseOpenAIModels({ ANALYST_PROVIDER: "anthropic", DESK_ANALYST_MODEL: "c" })).toEqual([]);
   });
 });
 

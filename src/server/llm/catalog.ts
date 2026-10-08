@@ -20,7 +20,7 @@ export type { CatalogModel, Tier };
 //
 // Anthropic's list is hand-maintained here; the vendor presets' lists live
 // in presets.ts; the generic openai-compatible slot lists whatever the
-// deployment names via ANALYST_MODELS/ANALYST_MODEL, since an arbitrary
+// deployment names via ANALYST_MODELS/DESK_ANALYST_MODEL, since an arbitrary
 // endpoint's models are not knowable ahead of time.
 
 export interface ProviderCatalogEntry {
@@ -88,7 +88,7 @@ export const ANTHROPIC_MODELS: CatalogModel[] = [
   },
 ];
 
-/** Which provider ANALYST_PROVIDER/ANALYST_MODEL apply to (`default`). An
+/** Which provider ANALYST_PROVIDER/DESK_ANALYST_MODEL apply to (`default`). An
  * unrecognised value falls back to "anthropic" — purely for labelling; it
  * does not grant anthropic the legacy ANALYST_API_KEY fallback. */
 function catalogDefaultProvider(env: AnalystEnv): ProviderId {
@@ -98,16 +98,16 @@ function catalogDefaultProvider(env: AnalystEnv): ProviderId {
 
 /**
  * The generic openai-compatible slot's models: ANALYST_MODELS
- * ("id,id2=Label Two,id3"), else the single ANALYST_MODEL — but only when
- * openai-compatible is the default provider (ANALYST_MODEL otherwise belongs
+ * ("id,id2=Label Two,id3"), else the single DESK_ANALYST_MODEL — but only when
+ * openai-compatible is the default provider (DESK_ANALYST_MODEL otherwise belongs
  * to the default provider's own settings).
  */
 export function parseOpenAIModels(env: AnalystEnv): CatalogModel[] {
-  const note = "From ANALYST_MODELS/ANALYST_MODEL — capabilities unknown for this endpoint";
+  const note = "From ANALYST_MODELS/DESK_ANALYST_MODEL — capabilities unknown for this endpoint";
   const listed = parseModelList(env.ANALYST_MODELS, note);
   if (listed.length) return listed;
   if (catalogDefaultProvider(env) === "openai-compatible") {
-    const model = env.ANALYST_MODEL?.trim();
+    const model = env.DESK_ANALYST_MODEL?.trim();
     if (model) return [{ id: model, label: model, note, tier: "balanced", effort: false }];
   }
   return [];
@@ -165,7 +165,7 @@ export function buildCatalog(env: AnalystEnv): AnalystCatalog {
   const defaultProvider = catalogDefaultProvider(env);
   const entry = providers.find((p) => p.id === defaultProvider)!;
   const defaultModel =
-    defaultProvider === "anthropic" ? env.ANALYST_MODEL?.trim() || DEFAULT_MODEL : env.ANALYST_MODEL?.trim() || entry.models[0]?.id || "";
+    defaultProvider === "anthropic" ? env.DESK_ANALYST_MODEL?.trim() || DEFAULT_MODEL : env.DESK_ANALYST_MODEL?.trim() || entry.models[0]?.id || "";
 
   return { default: { provider: defaultProvider, model: defaultModel }, providers };
 }

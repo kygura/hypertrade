@@ -113,7 +113,7 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
         <Stat label="EQUITY" value={desk ? fmtUsd(desk.equityUsd) : '—'} />
         <Stat label="DAY" value={desk ? fmtUsd(desk.dayPnlUsd) : '—'} tone={desk ? (desk.dayPnlUsd >= 0 ? 'text-green' : 'text-red-text') : undefined} />
         <Stat label="POSITIONS" value={desk ? String(desk.positions.length) : '—'} />
-        <Stat label="MODEL" value={status?.model ? `${status.model.pm}${status.model.specialists !== status.model.pm ? ` / ${status.model.specialists}` : ''}` : 'not configured'} />
+        <Stat label="MODEL" value={status?.model ? `${status.model.pm}${status.model.scouts !== status.model.pm ? ` / ${status.model.scouts}` : ''}` : 'not configured'} />
         <div className="flex items-center gap-2 ml-auto">
           {status && (
             <Segmented

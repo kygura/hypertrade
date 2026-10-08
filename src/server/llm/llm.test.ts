@@ -42,10 +42,10 @@ describe("resolveProvider", () => {
     expect(p.model).toBe(DEFAULT_MODEL);
     expect(DEFAULT_MODEL).toBe("claude-opus-5-5");
     expect(p.webSearch).toBe(true);
-    expect(resolveProvider({ ANALYST_API_KEY: "k", ANALYST_MODEL: "claude-fable-5-1" })!.model).toBe("claude-fable-5-1");
+    expect(resolveProvider({ ANALYST_API_KEY: "k", DESK_ANALYST_MODEL: "claude-fable-5-1" })!.model).toBe("claude-fable-5-1");
   });
   test("openai-compatible has no web search", () => {
-    const p = resolveProvider({ ANALYST_PROVIDER: "openai-compatible", ANALYST_API_KEY: "k", ANALYST_BASE_URL: "http://llm.local/v1", ANALYST_MODEL: "m" })!;
+    const p = resolveProvider({ ANALYST_PROVIDER: "openai-compatible", ANALYST_API_KEY: "k", ANALYST_BASE_URL: "http://llm.local/v1", DESK_ANALYST_MODEL: "m" })!;
     expect(p.id).toBe("openai-compatible");
     expect(p.webSearch).toBe(false);
   });
@@ -238,6 +238,21 @@ describe("OpenAICompatibleProvider presets", () => {
     conv.addToolResults([{ id: "c1", name: "get_hl_markets", content: "[]", isError: false }]);
     await conv.step(TOOL_SPECS, hooks().h, { signal: new AbortController().signal });
     expect(bodies[1].messages.at(-2)).toMatchObject({ role: "assistant", reasoning_content: "Need markets." });
+  });
+
+  test("OpenRouter model ids pass through unchanged, including the :online web-search suffix", async () => {
+    // OpenRouter's web search ("web" plugin / :online model suffix) runs
+    // server-side and needs no client wiring: whatever model id the
+    // deployment configures is sent verbatim, so DESK_SCOUT_MODEL=
+    // "vendor/model:online" already gets scouts real search on OpenRouter.
+    const bodies: any[] = [];
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return sse([{ data: { choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] } }, { data: "[DONE]" }]);
+    }) as unknown as typeof fetch;
+    const p = new OpenAICompatibleProvider({ id: "openrouter", apiKey: "k", model: "x/y:online", baseURL: "https://openrouter.ai/api/v1", fetch: fakeFetch });
+    await p.start("S", [], "q").step([], hooks().h, { signal: new AbortController().signal });
+    expect(bodies[0].model).toBe("x/y:online");
   });
 
   test("OpenAI uses max_completion_tokens and never replays reasoning", async () => {

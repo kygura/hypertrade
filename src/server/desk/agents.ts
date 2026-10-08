@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { buildCatalog } from "../llm/catalog.js";
 import {
+  isProviderId,
   resolveChosenProvider,
   resolveProvider,
   type AnalystEnv,
@@ -56,11 +57,16 @@ export function estimateCost(byModel: Map<string, Usage>): number | null {
 }
 
 /**
- * Providers for the desk: the analyst's configuration (any vendor), with
- * DESK_MODEL / DESK_SPECIALIST_MODEL overriding the model and a per-role
- * effort (PM high, specialists medium) where the model takes one.
+ * Providers for the desk: the PM runs the analyst's configuration as-is
+ * (any vendor, DESK_ANALYST_MODEL — same model the interactive analyst
+ * uses). Scouts run on the same provider by default, with DESK_SCOUT_MODEL
+ * overriding the model; DESK_SCOUT_PROVIDER additionally moves scouts to a
+ * different provider (e.g. one with web search). When the scout provider
+ * can't resolve (no key, unknown model/provider), scouts fall back to the
+ * analyst's provider and a warning is logged once.
  */
 export function deskProviderFactory(env: AnalystEnv = process.env as AnalystEnv): ProviderFactory {
+  let warnedScout = false;
   return (role) => {
     let base = resolveProvider(env);
     if (!base) {
@@ -69,9 +75,21 @@ export function deskProviderFactory(env: AnalystEnv = process.env as AnalystEnv)
       base = resolveChosenProvider(env, { provider: first.id, model: first.models[0]!.id, effort: first.models[0]!.defaultEffort });
       if (!base) return null;
     }
-    const model = (role === "pm" ? env.DESK_MODEL : env.DESK_SPECIALIST_MODEL ?? env.DESK_MODEL)?.trim() || base.model;
-    const effort: Effort = role === "pm" ? "high" : "medium";
-    return resolveChosenProvider(env, { provider: base.id, model, effort }) ?? base;
+    if (role === "pm") return resolveChosenProvider(env, { provider: base.id, model: base.model, effort: "high" }) ?? base;
+
+    const effort: Effort = "medium";
+    const scoutModel = env.DESK_SCOUT_MODEL?.trim();
+    const scoutProviderId = env.DESK_SCOUT_PROVIDER?.trim();
+    if (scoutProviderId) {
+      const model = scoutModel || buildCatalog(env).providers.find((p) => p.id === scoutProviderId)?.models[0]?.id;
+      const scout = model && isProviderId(scoutProviderId) ? resolveChosenProvider(env, { provider: scoutProviderId, model, effort }) : null;
+      if (scout) return scout;
+      if (!warnedScout) {
+        warnedScout = true;
+        console.warn(`[desk] DESK_SCOUT_PROVIDER=${scoutProviderId} could not resolve (unknown provider, no key, or unknown model) — scouts fall back to the analyst's provider`);
+      }
+    }
+    return resolveChosenProvider(env, { provider: base.id, model: scoutModel || base.model, effort }) ?? base;
   };
 }
 
