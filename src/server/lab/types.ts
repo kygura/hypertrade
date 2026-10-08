@@ -1,0 +1,221 @@
+import { z } from "zod";
+
+// LAB.md contract. Shared by the engine (pure), providers (I/O), the service,
+// the tool registry and the UI (via the tool results). Keep wire shapes here.
+
+export const DAY_MS = 86_400_000;
+
+/** UTC-daily series: t[i] is a UTC midnight in ms, ascending, unique; v[i] finite. */
+export interface DailySeries {
+  t: number[];
+  v: number[];
+}
+
+export type Direction = "long" | "short";
+export type Objective = "sharpe" | "return";
+export const TRANSFORMS = ["raw", "z", "rsi", "ma_ratio", "roc", "vol", "pctile"] as const;
+export type Transform = (typeof TRANSFORMS)[number];
+
+export type MetricCategory =
+  | "price"
+  | "derivatives"
+  | "onchain"
+  | "sentiment"
+  | "macro"
+  | "liquidity"
+  | "social";
+
+export interface MetricDef {
+  /** `<provider>:<key>`, e.g. `cm:CapMVRVCur`, `ht:funding`. */
+  id: string;
+  provider: string;
+  key: string;
+  name: string;
+  category: MetricCategory;
+  /** `asset` metrics need an asset; `global` ones ignore it. */
+  scope: "asset" | "global";
+  /** Assets the metric exists for (lower/upper case as the provider uses); omitted = any. */
+  assets?: string[];
+  units?: string;
+  description: string;
+  /** Publication lag in days; the engine shifts the series forward by this. */
+  lagDays: number;
+}
+
+export interface LabProvider {
+  id: string;
+  name: string;
+  /** Free text: source, key requirements, history depth. */
+  notes: string;
+  metrics(): MetricDef[];
+  /** Daily series for [fromMs, toMs]; empty series when there is no data. Throws on transport errors. */
+  fetch(key: string, asset: string, fromMs: number, toMs: number): Promise<DailySeries>;
+}
+
+// ------------------------------------------------------------------ rules
+
+/** Feature id: `${metricId}|${transform}|${window}` (window 0 for raw). */
+export interface FeatureSpec {
+  metric: string;
+  transform: Transform;
+  window: number;
+}
+
+export const ConditionSchema = z.object({
+  feature: z.string().min(3),
+  op: z.enum(["<", ">="]),
+  threshold: z.number().finite(),
+});
+export type Condition = z.infer<typeof ConditionSchema>;
+
+export const RuleSchema = z.object({
+  asset: z.string().min(1).max(20),
+  direction: z.enum(["long", "short"]),
+  horizonDays: z.number().int().min(1).max(180),
+  conditions: z.array(ConditionSchema).min(1).max(2),
+  /** Price metric the rule trades; defaults to `ht:price`. */
+  price: z.string().optional(),
+});
+export type Rule = z.infer<typeof RuleSchema>;
+
+export interface PerfStats {
+  from: string; // YYYY-MM-DD
+  to: string;
+  days: number;
+  totalReturn: number; // fraction
+  cagr: number; // fraction
+  sharpe: number;
+  maxDrawdown: number; // fraction, ≤ 0
+  hitRate: number | null; // closed trades with net return > 0; null when no trades
+  trades: number;
+  tradesPerYear: number;
+  exposure: number; // share of days in market
+}
+
+export interface SensitivityPoint {
+  condition: number; // index into rule.conditions
+  kind: "threshold" | "window";
+  /** quantile shift (±0.05, ±0.10) or the swapped window. */
+  shift: number;
+  rule: Rule;
+  sharpe: number;
+  totalReturn: number;
+}
+
+export interface Sensitivity {
+  base: { sharpe: number; totalReturn: number };
+  stability: number; // 0..1
+  points: SensitivityPoint[];
+}
+
+export interface RuleEvaluation {
+  id: string; // stable hash of the rule
+  rule: Rule;
+  /** Human-readable, e.g. "cm:CapMVRVCur z(90) < -1.12 AND ht:funding raw ≥ 0.0003". */
+  text: string;
+  precision: number;
+  support: number;
+  inSample: PerfStats;
+  walkForward: PerfStats | null;
+  holdout: PerfStats | null;
+  benchmark: { inSample: PerfStats; holdout: PerfStats | null };
+  sensitivity?: Sensitivity;
+  firingNow: boolean;
+  /** Latest feature values used by the conditions, with their date. */
+  latest: { date: string; values: Record<string, number | null> };
+  equity?: Array<{ t: number; strategy: number; benchmark: number }>;
+}
+
+// ------------------------------------------------------------------ search
+
+export const SearchConfigSchema = z.object({
+  asset: z.string().min(1).max(20),
+  direction: z.enum(["long", "short"]).default("long"),
+  metrics: z.array(z.string().min(3)).min(1).max(40),
+  transforms: z.array(z.enum(TRANSFORMS)).min(1).default(["raw", "z", "rsi", "ma_ratio", "roc", "vol", "pctile"]),
+  windows: z.array(z.number().int().min(2).max(365)).min(1).max(6).default([7, 30, 90]),
+  horizonDays: z.number().int().min(1).max(180).default(14),
+  labelQuantile: z.number().min(0.05).max(0.5).default(0.3),
+  customZones: z
+    .array(z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .max(50)
+    .optional(),
+  objective: z.enum(["sharpe", "return"]).default("sharpe"),
+  trials: z.number().int().min(1).max(200).default(40),
+  folds: z.number().int().min(2).max(6).default(3),
+  minSupport: z.number().int().min(5).default(30),
+  slippageBps: z.number().min(0).max(200).default(10),
+  topK: z.number().int().min(1).max(50).default(10),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  price: z.string().optional(),
+  seed: z.number().int().default(42),
+});
+export type SearchConfig = z.infer<typeof SearchConfigSchema>;
+export type SearchConfigInput = z.input<typeof SearchConfigSchema>;
+
+/** Aligned engine input: every series on the price calendar, NaN where missing. */
+export interface LabDataset {
+  asset: string;
+  t: number[]; // daily UTC ms, ascending
+  price: number[];
+  /** metricId → values aligned to t (already lag-shifted), NaN = missing. */
+  metrics: Record<string, number[]>;
+}
+
+export interface TrialRecord {
+  trial: number;
+  params: { featureFrac: number; minLeaf: number; bootstrapFrac: number; trees: number };
+  score: number; // walk-forward objective
+  rules: number;
+}
+
+export interface SearchResult {
+  config: SearchConfig;
+  dataRange: { from: string; to: string; days: number; holdoutFrom: string };
+  featureCount: number;
+  trialsRun: number;
+  bestTrial: TrialRecord | null;
+  trials: TrialRecord[];
+  rules: RuleEvaluation[];
+  featureImportance: Array<{ feature: string; score: number }>;
+  warnings: string[];
+  durationMs: number;
+}
+
+// ------------------------------------------------------------------ catalogue
+
+export interface CatalogueEntry {
+  id: string; // rule id
+  name: string;
+  note: string | null;
+  origin: "user" | "agent" | "seed";
+  runId: string | null;
+  rule: Rule;
+  /** Evaluation at save time. */
+  saved: RuleEvaluation;
+  savedAt: string; // ISO
+}
+
+export interface CatalogueHealth {
+  decayed: Array<{ id: string; name: string; liveDays: number; liveSharpe: number; holdoutSharpe: number | null }>;
+  overlaps: Array<{ a: string; b: string; jaccard: number }>;
+  gaps: Array<{ asset: string; direction: Direction }>;
+  live: Record<string, PerfStats | null>;
+}
+
+export interface PulseAsset {
+  asset: string;
+  longActive: number;
+  longTotal: number;
+  shortActive: number;
+  shortTotal: number;
+  lean: number; // -1..1
+  rules: Array<{ id: string; name: string; direction: Direction; firing: boolean; text: string }>;
+}
+
+export interface MarketPulse {
+  asOf: string;
+  assets: PulseAsset[];
+  warnings: string[];
+}
