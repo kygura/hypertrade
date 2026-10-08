@@ -143,7 +143,7 @@ Pillar: find simple, human-readable trading rules ("when `cm:CapMVRVCur` z(90) <
 - **Tools**: one registry (`src/server/lab/tools.ts`) serves REST, MCP (HTTP and stdio), the CLI and the UI. The Analyst also gets its read-only tools (no `lab_search`, save or remove).
 - **API**: `GET /api/lab/tools`, `POST /api/lab/tools/:name` → `{ok, result}` / `{ok: false, error, field?}`; `/api/mcp` is MCP over HTTP. Both accept the session cookie or `Authorization: Bearer <LAB_API_TOKEN>` (the token is valid on those paths only).
 - **Route**: `/lab` — see LAB.md and DESIGN.md §10.9.
-- **Data** (`db/migrations/004_lab.sql`): `lab_runs` (stored searches), `lab_rules` (the catalogue: rule, evaluation at save, archived_at). Collected history the lab reads lives in `observations` under `lab.*` series ids.
+- **Data** (`db/migrations/004_lab.sql`): `lab_runs` (stored searches), `lab_rules` (the catalogue: rule, evaluation at save, archived_at). Collected history the lab reads lives in `observations` under `lab.*` series ids, written by `POST /api/cron/lab-collect` (own route and workflow job, lease-guarded against overlapping runs; daily Vercel cron fallback) and by `bun run lab sync --local`.
 - **Honesty**: rank by walk-forward; the holdout never selects. Results are historical research, not advice.
 
 ## What is explicitly OUT of scope
