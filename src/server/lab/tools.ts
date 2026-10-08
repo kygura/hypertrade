@@ -5,7 +5,7 @@
 import { z } from "zod";
 import type { PromptDef, ToolDef, ToolInputSchema } from "../mcp/types.js";
 import { createLabService, parseInput, type LabService } from "./service.js";
-import { DaySchema, RuleSchema, SearchConfigSchema, TRANSFORMS } from "./types.js";
+import { ASSET_PATTERN, DaySchema, RuleSchema, SearchConfigSchema, TRANSFORMS } from "./types.js";
 
 export type { PromptDef, ToolContext, ToolDef, ToolSource } from "../mcp/types.js";
 export { ToolInputError } from "../mcp/types.js";
@@ -78,7 +78,7 @@ const ruleSchema = {
   description:
     "A rule, usually copied verbatim from a lab_search result (result.rules[i].rule) or a catalogue entry. In zone when every condition holds at the close of day t; then position +1 (long) or −1 (short) over day t+1.",
   properties: {
-    asset: { type: "string", minLength: 1, maxLength: 20, description: "Asset symbol, e.g. BTC." },
+    asset: { type: "string", pattern: ASSET_PATTERN.source, description: "Asset symbol, e.g. BTC." },
     direction: { type: "string", enum: ["long", "short"] },
     horizonDays: { type: "integer", minimum: 1, maximum: 180, description: "Label horizon the rule was searched with (used for precision)." },
     conditions: {
@@ -105,7 +105,7 @@ const ruleSchema = {
 
 const searchSchema = obj(
   {
-    asset: assetSchema("Asset to research, e.g. BTC, ETH, SOL."),
+    asset: { type: "string", pattern: ASSET_PATTERN.source, description: "Asset to research, e.g. BTC, ETH, SOL." },
     direction: { type: "string", enum: ["long", "short"], description: "Side the rules trade. Default long." },
     metrics: {
       type: "array",

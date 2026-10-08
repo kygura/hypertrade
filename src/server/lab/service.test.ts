@@ -5,7 +5,7 @@ import { synthetic } from "./engine/testkit.js";
 import type { LoadConfig } from "./providers/registry.js";
 import { createLabService, type LabServiceDeps } from "./service.js";
 import { memoryStore, type LabStore } from "./store.js";
-import { DAY_MS, type LabProvider, type MetricDef, type Rule } from "./types.js";
+import { DAY_MS, RuleSchema, type LabProvider, type MetricDef, type Rule } from "./types.js";
 
 const base = synthetic({ seed: 1, drift: 0.012 });
 const T0 = base.t[0]!;
@@ -117,6 +117,8 @@ describe("lab service: search", () => {
     expect((await inputError(service.search({ ...searchCfg, horizonDays: 999 }, { source: "api" }))).field).toBe("horizonDays");
     expect((await inputError(service.search({ ...searchCfg, metrics: ["syn:a", "nope:x"] }, { source: "api" }))).field).toBe("metrics.1");
     expect((await inputError(service.search({ ...searchCfg, price: "nope:p" }, { source: "api" }))).field).toBe("price");
+    expect((await inputError(service.search({ ...searchCfg, asset: "BTC&x=1" }, { source: "api" }))).field).toBe("asset");
+    expect((await inputError(service.search({ ...searchCfg, from: "2023-02-30" }, { source: "api" }))).field).toBe("from");
     expect(await store.listRuns(10)).toEqual([]);
   });
 
@@ -198,6 +200,8 @@ describe("lab service: evaluate and sensitivity", () => {
     expect((await inputError(service.evaluateRule({ rule: bad("syn:b|zz|3") }))).field).toBe("rule.conditions.1.feature");
     expect((await inputError(service.evaluateRule({ rule: bad("nope:b|raw|0") }))).field).toBe("rule.conditions.1.feature");
     expect((await inputError(service.evaluateRule({ rule: { ...planted, horizonDays: 0 } }))).field).toBe("rule.horizonDays");
+    expect((await inputError(service.evaluateRule({ rule: { ...planted, asset: "../btc" } }))).field).toBe("rule.asset");
+    expect(RuleSchema.safeParse({ ...planted, asset: "kPEPE" }).success).toBe(true);
     const missing = await service.evaluateRule({ rule: bad("syn:e|raw|0") }).catch((e) => e);
     expect(missing).toBeInstanceOf(UpstreamError);
     expect(missing.message).toMatch(/no data for syn:e/);

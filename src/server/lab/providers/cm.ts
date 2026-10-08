@@ -81,6 +81,8 @@ export function createCmProvider(fetchFn: typeof fetch = fetch): LabProvider {
       for (let page = 0; url && page < MAX_PAGES; page++) {
         const parsed = parseCmPage(await getJson(url, fetchFn, `cm ${key} ${asset}`), key);
         points.push(...parsed.points);
+        // Only ever follow pages on the API we called.
+        if (parsed.next && !parsed.next.startsWith(`${CM_BASE}?`)) throw new Error(`cm ${key} ${asset}: unexpected next_page_url ${parsed.next.slice(0, 100)}`);
         url = parsed.next;
       }
       return clip(toDaily(points, "last"), fromMs, toMs);

@@ -87,6 +87,13 @@ describe("cm", () => {
     expect(first.searchParams.get("frequency")).toBe("1d");
   });
 
+  test("a next_page_url off the CM API stops paging with an error", async () => {
+    const evil = { ...cmPage1, next_page_url: "https://evil.test/v4/timeseries/asset-metrics?next_page_token=x" };
+    const { fn, urls } = stubFetch([["asset-metrics", evil]]);
+    await expect(createCmProvider(fn).fetch("CapMVRVCur", "BTC", D0, D0 + 3 * DAY)).rejects.toThrow("unexpected next_page_url");
+    expect(urls).toHaveLength(1);
+  });
+
   test("a refused metric throws with the status", async () => {
     const { fn } = stubFetch([["asset-metrics", { error: { type: "forbidden" } }, 403]]);
     const err = await createCmProvider(fn).fetch("HashRate", "ETH", D0, D0 + DAY).catch((e) => e);

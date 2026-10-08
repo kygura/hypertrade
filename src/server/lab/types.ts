@@ -20,6 +20,10 @@ export const DaySchema = z
     return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === s;
   }, "not a calendar date");
 
+/** A ticker (BTC, kPEPE): letters and digits only, so it is safe in any provider URL. */
+export const ASSET_PATTERN = /^[A-Za-z0-9]{1,20}$/;
+const AssetSchema = z.string().regex(ASSET_PATTERN, "expected a ticker of 1–20 letters or digits, e.g. BTC");
+
 export type Direction = "long" | "short";
 export type Objective = "sharpe" | "return";
 export const TRANSFORMS = ["raw", "z", "rsi", "ma_ratio", "roc", "vol", "pctile"] as const;
@@ -78,7 +82,7 @@ export const ConditionSchema = z.object({
 export type Condition = z.infer<typeof ConditionSchema>;
 
 export const RuleSchema = z.object({
-  asset: z.string().min(1).max(20),
+  asset: AssetSchema,
   direction: z.enum(["long", "short"]),
   horizonDays: z.number().int().min(1).max(180),
   conditions: z.array(ConditionSchema).min(1).max(2),
@@ -138,7 +142,7 @@ export interface RuleEvaluation {
 // ------------------------------------------------------------------ search
 
 export const SearchConfigSchema = z.object({
-  asset: z.string().min(1).max(20),
+  asset: AssetSchema,
   direction: z.enum(["long", "short"]).default("long"),
   metrics: z.array(z.string().min(3)).min(1).max(40),
   transforms: z.array(z.enum(TRANSFORMS)).min(1).default(["raw", "z", "rsi", "ma_ratio", "roc", "vol", "pctile"]),
