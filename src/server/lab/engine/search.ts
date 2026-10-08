@@ -3,13 +3,13 @@ import { concatReturns, objectiveOf, quickScore, simulate, zoneActivity } from "
 import { checkDataset, makeCtx, rangeIndices } from "./context.js";
 import { evaluateInCtx } from "./evaluate.js";
 import { featureId, featureSpecs } from "./features.js";
-import { makeLabels } from "./labels.js";
+import { makeLabels, type LabelOptions } from "./labels.js";
 import { fork, gauss, mulberry32, randInt, type Rng } from "./rng.js";
 import { conditionsKey, extractRules } from "./rules.js";
 import { deflatedSharpeOf } from "./stats.js";
 import { binFeatures, growForest, type Binned, type TreeParams } from "./tree.js";
 import { isoDate, SearchRefused } from "./util.js";
-import { makeSplit, MIN_TRAIN_ROWS, walkForwardScore, walkForwardSegments } from "./validate.js";
+import { makeSplit, MIN_TRAIN_ROWS, walkForwardScore, walkForwardSegments, type Split } from "./validate.js";
 
 // The heuristic search (LAB.md §4–7). Each trial grows a forest per
 // walk-forward fold on the purged training rows, takes the best rules by
@@ -38,6 +38,8 @@ export interface SearchOptions {
 
 interface TrainSet {
   rows: Int32Array;
+  /** Labels of this training set (threshold from its own rows only). */
+  labels: Float64Array;
   binned: Binned;
   minSupport: number;
   /** Return days [1, retEnd) score rules on this training set. */
@@ -67,6 +69,16 @@ function perturb(p: TreeParams, rng: Rng): TreeParams {
     bootstrapFrac: r3(clamp(p.bootstrapFrac + 0.1 * gauss(rng), 0.3, 1)),
     trees: Math.round(clamp(p.trees * Math.exp(0.25 * gauss(rng)), 5, 100)),
   };
+}
+
+/**
+ * Labels for the final refit (quantile over the search region) and for each
+ * walk-forward fold (quantile over that fold's training region only, whose
+ * forward windows end at the test block's edge), so no fold's labels see the
+ * forward returns of a later test block.
+ */
+export function splitLabels(o: Omit<LabelOptions, "end">, split: Split): { final: Float64Array; folds: Float64Array[] } {
+  return { final: makeLabels({ ...o, end: split.searchEnd }), folds: split.folds.map((f) => makeLabels({ ...o, end: f.testFrom })) };
 }
 
 export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOptions = {}): SearchResult {
@@ -99,15 +111,10 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
   if (split.folds[0]!.purgedEnd < MIN_TRAIN_ROWS) {
     throw new SearchRefused(`${n} days is too short for ${config.folds} folds at a ${config.horizonDays}-day horizon; use fewer folds, a shorter horizon or more history`, "folds");
   }
-  const labels = makeLabels({
-    t: ctx.t,
-    price: ctx.price,
-    horizonDays: config.horizonDays,
-    direction: config.direction,
-    quantile: config.labelQuantile,
-    end: split.searchEnd,
-    customZones: config.customZones,
-  });
+  const { final: labels, folds: foldLabels } = splitLabels(
+    { t: ctx.t, price: ctx.price, horizonDays: config.horizonDays, direction: config.direction, quantile: config.labelQuantile, customZones: config.customZones },
+    split,
+  );
 
   // Features with too little history in the search region cannot split.
   const ids: string[] = [];
@@ -130,20 +137,20 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
   const bps = config.slippageBps;
   const objective = config.objective;
 
-  const trainSet = (end: number, retEnd: number, baseRows?: number): TrainSet => {
+  const trainSet = (end: number, retEnd: number, y: Float64Array, baseRows?: number): TrainSet => {
     const list: number[] = [];
-    for (let i = 0; i < end; i++) if (labels[i] === labels[i]) list.push(i);
+    for (let i = 0; i < end; i++) if (y[i] === y[i]) list.push(i);
     const rows = Int32Array.from(list);
     const minSupport = baseRows ? Math.max(5, Math.round((config.minSupport * rows.length) / baseRows)) : config.minSupport;
     const minTrades = Math.max(3, Math.ceil((config.minTradesPerYear * (retEnd - 1)) / 365));
-    return { rows, binned: binFeatures(cols, rows), minSupport, retEnd, minTrades, cache: new Map() };
+    return { rows, labels: y, binned: binFeatures(cols, rows), minSupport, retEnd, minTrades, cache: new Map() };
   };
-  const final = trainSet(split.basisEnd, split.searchEnd);
+  const final = trainSet(split.basisEnd, split.searchEnd, labels);
   let positives = 0;
   for (const r of final.rows) if (labels[r] === 1) positives++;
   if (!positives) throw new SearchRefused("no day in the search region is labelled good; widen labelQuantile or check customZones", config.customZones?.length ? "customZones" : "labelQuantile");
   if (positives === final.rows.length) throw new SearchRefused("every day in the search region is labelled good; nothing to separate", config.customZones?.length ? "customZones" : "labelQuantile");
-  const folds = split.folds.map((f) => ({ fold: f, train: trainSet(f.purgedEnd, f.testFrom, final.rows.length) }));
+  const folds = split.folds.map((f, k) => ({ fold: f, train: trainSet(f.purgedEnd, f.testFrom, foldLabels[k]!, final.rows.length) }));
 
   /** Exposure and trade-count limits over the training set's return days: a rule that is almost never or almost always in, or trades twice, is not a rule. */
   const withinLimits = (sig: Uint8Array, ts: TrainSet) => {
@@ -179,7 +186,7 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
     const rets: number[] = [];
     let rules = 0;
     for (const { fold, train } of folds) {
-      const forest = growForest(train.binned, labels, train.rows, params, rng);
+      const forest = growForest(train.binned, train.labels, train.rows, params, rng);
       const ranked = scoreRules(train, extractRules(forest, ids));
       rules += ranked.length;
       // Blend the best few rules with a positive training objective; none = flat.

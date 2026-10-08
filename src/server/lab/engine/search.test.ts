@@ -3,9 +3,9 @@ import { SearchConfigSchema, type LabDataset, type RuleEvaluation, type SearchCo
 import { inZoneDays } from "./evaluate.js";
 import { conditionsKey } from "./rules.js";
 import { gauss, mulberry32 } from "./rng.js";
-import { runSearch } from "./search.js";
+import { runSearch, splitLabels } from "./search.js";
 import { synthetic } from "./testkit.js";
-import { HOLDOUT_FRAC } from "./validate.js";
+import { HOLDOUT_FRAC, makeSplit } from "./validate.js";
 
 const cfg = (data: LabDataset, over: Partial<SearchConfigInput> = {}) =>
   SearchConfigSchema.parse({
@@ -17,11 +17,16 @@ const cfg = (data: LabDataset, over: Partial<SearchConfigInput> = {}) =>
     ...over,
   });
 
-/** The planted zone: z(a, 30) < −1 AND b ≥ 0 (b iid normal, so its z is b rescaled). */
+/**
+ * The planted zone: z(a, 30) < −1 AND b ≥ 0 (b iid normal, so its z is b
+ * rescaled). a's 30-day percentile rank is the same zone read as a rank:
+ * pctile(30) below 0.3 counts too.
+ */
 function isPlanted(r: RuleEvaluation): boolean {
-  const a = r.rule.conditions.find((c) => c.feature === "syn:a|z|30");
+  const a = r.rule.conditions.find((c) => c.feature === "syn:a|z|30" || c.feature === "syn:a|pctile|30");
   const b = r.rule.conditions.find((c) => /^syn:b\|(raw|z)\|/.test(c.feature));
-  return !!a && !!b && a.op === "<" && Math.abs(a.threshold + 1) <= 0.4 && b.op === ">=" && Math.abs(b.threshold) <= 0.35;
+  const aOk = !!a && a.op === "<" && (a.feature === "syn:a|z|30" ? Math.abs(a.threshold + 1) <= 0.4 : a.threshold <= 0.3);
+  return aOk && !!b && b.op === ">=" && Math.abs(b.threshold) <= 0.35;
 }
 
 describe("runSearch", () => {
@@ -121,6 +126,25 @@ describe("runSearch", () => {
     const anchors = new Map<string, number>();
     for (const r of res.rules) for (const c of r.rule.conditions) anchors.set(conditionsKey([c]), (anchors.get(conditionsKey([c])) ?? 0) + 1);
     expect(Math.max(...anchors.values())).toBeLessThanOrEqual(2);
+  });
+
+  test("fold labels use the fold's own training rows: later test blocks never move them", () => {
+    const data = synthetic({ seed: 8, drift: 0, days: 1200 });
+    const split = makeSplit(1200, 3, 5);
+    const o = { t: data.t, horizonDays: 5, direction: "long" as const, quantile: 0.3 };
+    const a = splitLabels({ ...o, price: data.price }, split);
+    const f0 = split.folds[0]!;
+    // Training rows of fold 0 are labelled, everything from the purge on is not.
+    expect(Number.isNaN(a.folds[0]![f0.purgedEnd - 1]!)).toBe(false);
+    expect(Number.isNaN(a.folds[0]![f0.purgedEnd]!)).toBe(true);
+    // A wild regime after fold 0's training edge: fold 0 labels identical, the
+    // whole-region quantile (the final refit's) moves.
+    const price = data.price.map((p, i) => (i >= f0.testFrom ? p * (1 + 0.5 * Math.sin(i)) : p));
+    const b = splitLabels({ ...o, price }, split);
+    expect(Array.from(b.folds[0]!)).toEqual(Array.from(a.folds[0]!));
+    const differ = (x: Float64Array, y: Float64Array) => x.some((v, i) => i < f0.purgedEnd && !Object.is(v, y[i]));
+    expect(differ(b.final, a.final)).toBe(true);
+    expect(differ(a.final, a.folds[0]!)).toBe(true);
   });
 
   test("the holdout cannot influence what the search picks", () => {
