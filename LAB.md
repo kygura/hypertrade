@@ -60,7 +60,10 @@ without buying a key.
      labels look into the test block. Trials are scored on concatenated test
      blocks. For each final rule the walk-forward stat refits the rule per
      fold by **quantile matching**: same features and operators, threshold =
-     the same train-set quantile the final threshold sits at.
+     the same train-set quantile the final threshold sits at. This is a
+     *threshold refit*: the rule's structure (features, operators) was chosen
+     on the whole search region, so a final rule's walk-forward stat is not
+     fully out of sample. The trial score, which regrows forests per fold, is.
    - *Live:* once catalogued, a rule is evaluated on data after `savedAt`,
      which could not have influenced its selection.
    Final rules are ranked by walk-forward objective (support-filtered), never by
@@ -146,12 +149,17 @@ has the same id in a run, in the catalogue and in a URL.
 
 - **REST**: `GET /api/lab/tools` (definitions), `POST /api/lab/tools/:name`
   (JSON args → `{ ok: true, result }` or `{ ok: false, error, field? }`, 400 on
-  bad args).
+  bad args or a refused search, 502 when upstream data is unavailable).
 - **MCP over HTTP**: `POST /api/mcp`, stateless Streamable HTTP (JSON
   responses, no SSE; `GET` → 405). Methods: `initialize` (with `instructions`
   describing the research loop), `ping`, `tools/list`, `tools/call`,
   `prompts/list`, `prompts/get` (prompt `autoresearch`), and notifications
-  (202). Hand-rolled JSON-RPC: no SDK dependency for four methods.
+  (202). Hand-rolled JSON-RPC: no SDK dependency for four methods. Batches
+  are refused for clients declaring `MCP-Protocol-Version` 2025-06-18+ (which
+  removed them); older clients may send up to 8, run one at a time. A browser
+  `Origin` must be `APP_URL`, one of `LAB_ALLOWED_ORIGINS` or localhost;
+  requests without one (non-browser clients) pass. Unexpected tool failures
+  reach the model as "Internal error" and are logged.
 - **MCP over stdio**: `bun run lab:mcp`. With `LAB_URL` set, it proxies to a
   deployed instance. Without it, the engine runs in-process against local env
   (DB if `DATABASE_URL` is set, otherwise keyless providers plus live
@@ -167,10 +175,12 @@ has the same id in a run, in the catalogue and in a URL.
 nothing outside those two paths.
 
 **Bounds.** A search on Vercel runs under a deadline (`LAB_SEARCH_DEADLINE_MS`,
-default 50 000) and returns what it has, with `trialsRun < trials` and a
-warning. Hard caps: `trials` ≤ 200, metrics ≤ 40, features ≤ 600, history ≥ 365
-days of price, or the search is refused with a clear error. Locally (CLI or
-stdio) there is no deadline unless one is set.
+default 50 000, inside the function's `maxDuration` of 60 s) and returns what
+it has, with `trialsRun < trials` and a warning. Trials stop 5 s before the
+deadline to leave room for the refit, and the ht candle backfill is capped at
+4 s. Hard caps: `trials` ≤ 200, metrics ≤ 40, features ≤ 600, history ≥ 365
+days of price, or the search is refused with a clear error (400, not stored
+as a run). Locally (CLI or stdio) there is no deadline unless one is set.
 
 ## Persistence
 

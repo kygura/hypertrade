@@ -186,7 +186,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_search",
       title: "Search for trading heuristics",
       description:
-        "Searches the chosen metrics for simple one- or two-condition rules (\"when feature A < x and B ≥ y, go long\") that predict good forward returns, scored as strategies net of slippage. Fetches data from external providers and runs a seeded random-forest search: typically 5–50 s (server deadline ~50 s; it then returns the trials completed, with a warning). Returns { runId, result }: result.rules ranked by walk-forward objective, each with precision, support, inSample, walkForward, holdout (most recent 20%, never used for ranking), benchmark, sensitivity.stability and firingNow; plus featureImportance and warnings. The run is stored (runId). Next: compare walkForward vs holdout and stability on the top rules, then refine metrics/windows, lab_evaluate_rule a rule, or lab_catalogue_save the robust ones. " +
+        "Searches the chosen metrics for simple one- or two-condition rules (\"when feature A < x and B ≥ y, go long\") that predict good forward returns, scored as strategies net of slippage. Fetches data from external providers and runs a seeded random-forest search: typically 5–50 s (server deadline ~50 s; it then returns the trials completed, with a warning). Returns { runId, result }: result.rules ranked by walk-forward objective, each with precision, support, inSample, walkForward, holdout (most recent 20%, never used for ranking), benchmark, sensitivity.stability and firingNow; plus featureImportance and warnings. A rule's walk-forward = threshold-refit per fold (features and operators were chosen on the whole search region); the trial score is fully out-of-sample, and the holdout is the clean check. The run is stored (runId). Next: compare walkForward vs holdout and stability on the top rules, then refine metrics/windows, lab_evaluate_rule a rule, or lab_catalogue_save the robust ones. " +
         HONESTY,
       inputSchema: searchSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -220,7 +220,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_evaluate_rule",
       title: "Evaluate a rule",
       description:
-        "Scores one explicit rule over its full history (or from/to): in-sample = first 80%, holdout = last 20%, benchmark (buy-and-hold or short-and-hold), precision, support, firingNow and the latest feature values. No walk-forward (there is no search to refit). Optional equity curve and sensitivity grid. Fetches data: a few seconds. Returns RuleEvaluation. Use it to test a hand-edited rule or a different window. " +
+        "Scores one explicit rule over its full history (or from/to): in-sample = first 80%, holdout = last 20%, benchmark (buy-and-hold or short-and-hold), precision, support, firingNow and the latest feature values. No walk-forward (there is no search to refit; in lab_search, walk-forward = threshold-refit per fold, while the trial score is fully out-of-sample). Optional equity curve and sensitivity grid. Fetches data: a few seconds. Returns RuleEvaluation. Use it to test a hand-edited rule or a different window. " +
         HONESTY,
       inputSchema: obj(
         {
@@ -269,7 +269,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_catalogue_save",
       title: "Save a rule to My Catalogue",
       description:
-        "Saves a rule to the catalogue under its stable id (the same id as in search results). The rule is re-evaluated on current data and that evaluation is stored; live tracking starts now. Saving an existing rule updates its name/note and keeps its original savedAt. Returns CatalogueEntry. Save only rules that held up out of sample (walk-forward Sharpe > 1, holdout Sharpe > 0, stability ≥ 0.5). Agents: pass origin \"agent\" and the runId.",
+        "Saves a rule to the catalogue under its stable id (the same id as in search results). A new rule is evaluated on current data and that evaluation is stored; live tracking starts now. Saving an existing rule only updates its name/note: it keeps its original evaluation and savedAt. An unknown runId is rejected. Returns CatalogueEntry. Save only rules that held up out of sample (walk-forward Sharpe > 1, holdout Sharpe > 0, stability ≥ 0.5). Agents: pass origin \"agent\" and the runId.",
       inputSchema: obj(
         {
           rule: ruleSchema,

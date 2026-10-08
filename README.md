@@ -265,7 +265,7 @@ file locally, or in memory.
 | `LAB_SEARCH_DEADLINE_MS` | server search budget, default 50 000; local CLI/stdio: none unless set |
 | `LAB_URL` | CLI/stdio: deployed origin to proxy to; unset runs the lab in-process |
 | `LAB_STORE_FILE` | local store file, default `~/.hypertrade/lab.json` |
-| `LAB_ALLOWED_ORIGINS` | extra browser origins allowed on `/api/mcp` |
+| `LAB_ALLOWED_ORIGINS` | extra browser origins allowed on `/api/mcp` (besides `APP_URL` and localhost) |
 
 The same 12 tools (`lab_search`, `lab_evaluate_rule`, `lab_catalogue_*`,
 `lab_market_pulse`, …) are served over every surface, plus an `autoresearch`
