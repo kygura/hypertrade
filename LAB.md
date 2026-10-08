@@ -82,17 +82,102 @@ without buying a key.
    block, never ranked on) and `deflatedSharpe` (Bailey & López de Prado):
    the probability that the concatenated walk-forward returns' daily Sharpe,
    corrected for their skew and kurtosis, beats the expected best of N noise
-   strategies, with N = `variantsScored`, the distinct rule variants the
-   search scored over all trials and the final refit, and the null variance
-   of a Sharpe 1/(T − 1). Variants overlap heavily, so this is conservative;
-   it is a reported field and an optional filter (`minDeflatedSharpe`), not a
-   gate. An explicit rule (`lab_evaluate_rule`) gets the same walk-forward,
-   refitting its thresholds per fold by quantile matching (its own
-   thresholds stay canonical, so its id does not change), with N = 1.
+   strategies, with the null variance of a Sharpe 1/(T − 1). N is
+   `effectiveTrials`, not the raw `variantsScored` (see *Effective trials*
+   below). It is a reported field, an optional filter (`minDeflatedSharpe`)
+   and part of the verdict. An explicit rule (`lab_evaluate_rule`) gets the
+   same walk-forward, refitting its thresholds per fold by quantile matching
+   (its own thresholds stay canonical, so its id does not change), with
+   N = `trials` (default 1: not deflated for any search; pass the run's
+   `effectiveTrials`).
    The final list keeps one rule per family: best walk-forward first, a rule
    whose in-zone days over the search region overlap a kept rule's with
    Jaccard ≥ 0.8 is dropped, and no single condition anchors more than two
    rules. Holdout days never enter this comparison.
+
+   *Effective trials.* A search scores thousands of distinct rule variants
+   (`variantsScored`, 2,100–5,000 at 16 trials on the synthetic tests,
+   4,100–11,600 at 40), but most are threshold neighbours and family members
+   whose return tracks are nearly identical, so counting each as an
+   independent trial over-deflates: with raw N the planted rule's deflated
+   Sharpe was 0.39–0.89 and a 0.95 bar rejected it. Following López de
+   Prado, N is the number of correlation clusters among the variants:
+   greedy, in scoring order, a variant joins the largest cluster whose
+   representative's search-region return track it correlates with at ≥ 0.5,
+   else starts a new one. For tracks r = s·x (s the in-zone flag, x the
+   day's return, mean ≈ 0) that correlation is the overlap of in-zone days
+   |A ∩ B| / √(|A|·|B|), computed by popcount on bitsets packed once when a
+   variant is first scored: N_eff matched exact return-correlation
+   clustering within ±8%, and the whole step costs 1–4% of a search's time.
+   Only search-region days count (the holdout never moves N). Typical
+   `effectiveTrials`: 92–181 at 16 trials, 132–234 at 40. A participation
+   ratio (Σλ)²/Σλ² was tried and rejected: cluster sizes are heavy-tailed
+   (one family often holds a third of all variants), and the ratio, in effect
+   a Simpson index of cluster shares, came out at 6–7 for searches with
+   100+ distinct clusters. Above 20,000 variants a seeded sample of 20,000 is
+   clustered and the count scaled by N / 20,000.
+
+   *Verdict.* Every evaluation carries `verdict { level, reasons }`; the
+   first failing check sets the level, `reasons` names every failed check
+   with its numbers (e.g. "deflated Sharpe 0.71 < 0.9"):
+   `fails_holdout` (holdout missing, untested or Sharpe ≤ 0) → `weak`
+   (walk-forward missing or Sharpe ≤ 1) → `fragile` (stability < 0.5, when a
+   sensitivity grid is attached) → `candidate` (deflated Sharpe missing or
+   < 0.9) → `robust`. **The save bar is `robust`.** A `candidate` may be
+   saved only with a note explaining why. The search can return only rules at
+   or above `minVerdict`; it filters the selected top K after the fact and
+   never reaches deeper candidates, so the holdout still selects nothing.
+   Catalogue entries and runs stored before verdicts existed get one
+   computed on read (their stored deflated Sharpe used raw N, so they lean
+   `candidate`). A catalogue save with a `runId` keeps the run's walk-forward,
+   `walkForwardFolds` and deflated Sharpe (the numbers the rule was selected
+   on, deflated by the run's `effectiveTrials`), evaluates the rest fresh with
+   N = the run's `effectiveTrials`, and recomputes the verdict.
+
+   *Calibration* (`engine/calibrate.ts`; `bun src/server/lab/engine/calibrate.ts
+   [trials]` reprints it). Synthetic data, 2,500 days: 40 pure-noise seeds
+   and 20 planted seeds at each of two strengths (next-day drift 0.012 and
+   0.008 while z(a, 30) < −1 and b ≥ 0, daily noise 0.02). For each
+   deflated-Sharpe cut-off, the full bar is applied to the top 10 rules;
+   "planted rule robust" counts searches whose top 10 holds the planted rule
+   and it is `robust` ("found" = in the top 10 at all).
+
+   16 trials (the test configuration):
+
+   | DSR ≥ | noise: any top-10 robust | noise: top-1 robust | drift 0.012: planted rule robust | drift 0.012: any top-10 robust | drift 0.008: planted rule robust | drift 0.008: any top-10 robust |
+   |---|---|---|---|---|---|---|
+   | (none) | 14/40 | 5/40 | 17/20 (found 17) | 20/20 | 12/20 (found 12) | 20/20 |
+   | 0.50 | 3/40 | 2/40 | 17/20 (found 17) | 20/20 | 10/20 (found 12) | 19/20 |
+   | 0.80 | 1/40 | 0/40 | 17/20 (found 17) | 20/20 | 10/20 (found 12) | 15/20 |
+   | **0.90** | **1/40** | **0/40** | **17/20 (found 17)** | **20/20** | **10/20 (found 12)** | **15/20** |
+   | 0.95 | 0/40 | 0/40 | 16/20 (found 17) | 19/20 | 9/20 (found 12) | 13/20 |
+
+   40 trials (the tool default):
+
+   | DSR ≥ | noise: any top-10 robust | noise: top-1 robust | drift 0.012: planted rule robust | drift 0.012: any top-10 robust | drift 0.008: planted rule robust | drift 0.008: any top-10 robust |
+   |---|---|---|---|---|---|---|
+   | (none) | 13/40 | 7/40 | 17/20 (found 17) | 20/20 | 11/20 (found 11) | 20/20 |
+   | 0.50 | 3/40 | 2/40 | 17/20 (found 17) | 20/20 | 10/20 (found 11) | 19/20 |
+   | 0.80 | 1/40 | 0/40 | 17/20 (found 17) | 20/20 | 9/20 (found 11) | 14/20 |
+   | **0.90** | **0/40** | **0/40** | **17/20 (found 17)** | **20/20** | **8/20 (found 11)** | **13/20** |
+   | 0.95 | 0/40 | 0/40 | 17/20 (found 17) | 20/20 | 5/20 (found 11) | 11/20 |
+
+   Rule: the cut-off keeps noise searches with any robust top-10 rule at
+   ≤ 1 in 20 and, among those that do, keeps the most planted rules robust
+   (ties to the stricter). At 16 trials 0.8 and 0.9 tie and 0.9 is chosen;
+   at 40 trials the rule alone would pick 0.8, by one weak-drift seed in 20.
+   **`MIN_DEFLATED_SHARPE` = 0.9** (`engine/verdict.ts`): it meets the noise
+   limit at both budgets (1/40 and 0/40, against 1/40 and 1/40 for 0.8) and
+   keeps every found strong planted rule. 0.95 gives up more weak planted rules
+   for no measurable noise gain. Without the deflated Sharpe the rest of the
+   bar passes some top-10 rule in a third of noise searches. Every found
+   planted rule passes the rest of the bar; the ones lost at 0.9 (2 of 12 at
+   0.008 drift and 16 trials, 3 of 11 at 40) fail only the deflated Sharpe: a
+   0.008 edge over 2,500 days is near what the bar can tell from the best of
+   ~150 noise clusters. The engine test re-runs this on 20
+   noise and 12 planted seeds per strength and asserts the rule still picks
+   `MIN_DEFLATED_SHARPE`.
+
 8. **Sensitivity.** Each condition's threshold is shifted to quantiles
    q ± 0.05 and q ± 0.10, and its window is swapped for neighbouring windows in
    the config. `stability` = share of perturbations whose search-region Sharpe
@@ -161,7 +246,7 @@ tool is defined once with one JSON schema and one handler.
 | `lab_search` | `SearchConfigInput` | `{ runId: string \| null, result: SearchResult }` |
 | `lab_get_run` | `{ id }` | `StoredRun` |
 | `lab_list_runs` | `{ limit? = 20 }` | `{ runs: RunSummary[] }` |
-| `lab_evaluate_rule` | `{ rule: Rule, from?, to?, slippageBps? = 10, includeEquity? = false, sensitivity? = false, windows? }` | `RuleEvaluation` |
+| `lab_evaluate_rule` | `{ rule: Rule, from?, to?, slippageBps? = 10, includeEquity? = false, sensitivity? = false, windows?, trials? = 1 }` | `RuleEvaluation` |
 | `lab_sensitivity` | `{ rule: Rule, windows?, slippageBps? }` | `Sensitivity` |
 | `lab_catalogue_list` | `{ asset?, direction?, live? = true }` | `{ entries: Array<CatalogueEntry & { live: PerfStats \| null; flags: Array<"decayed" \| "overlap"> }> }` |
 | `lab_catalogue_save` | `{ rule: Rule, name, note?, runId?, origin? = "user" }` | `CatalogueEntry` |
@@ -219,11 +304,14 @@ implementations: Postgres (deployed), in-memory (no DB), and JSON file
 
 - `bun test src` green, including planted-signal tests: synthetic data where a
   known two-condition rule drives returns, and the search recovers it (same
-  features, thresholds within tolerance) with positive holdout Sharpe, while
-  on pure-noise data the save bar (walk-forward Sharpe > 1, holdout Sharpe >
-  0 and tested, deflatedSharpe ≥ 0.95, stability ≥ 0.5) passes some top
-  rule in at most 1 of 10 seeds; and replacing the holdout with noise
-  leaves the rules and every search-region number unchanged.
+  features, thresholds within tolerance; a's pctile(30) counts as the same
+  zone only when its in-zone days overlap z(30) < −1 with Jaccard ≥ 0.7,
+  asserted in the test) with a `robust` verdict, while on pure-noise data
+  the save bar (`robust`: walk-forward Sharpe > 1, holdout Sharpe > 0 and
+  tested, stability ≥ 0.5, deflatedSharpe ≥ 0.9 against `effectiveTrials`)
+  passes some top-10 rule in at most 1 of 20 seeds (the calibration test);
+  and replacing the holdout with noise leaves the rules and every
+  search-region number, `effectiveTrials` included, unchanged.
 - `bun run typecheck` and `bun run build` green.
 - `POST /api/mcp` answers `initialize`, `tools/list` and `tools/call` per the
   MCP 2025-06-18 schema. `bun run lab tools` and
