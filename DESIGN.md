@@ -430,6 +430,9 @@ Per-table drop order (P1 = never dropped):
 | Sector tokens (drill-in) | TOKEN, PRICE | 24H% | OI | FUNDING |
 | Rotations list | FROM→TO, CONF | TRIGGER | NOTE (full) | — |
 | MarketState history | DATE, HEADLINE | — | — | — |
+| Lab catalogue (§10.9) | NAME, LIVE SHARPE | FIRING, HEALTH | HOLDOUT, WF, DIR·HZN | LIVE DAYS, SAVED, ORIGIN |
+| Lab runs (§10.9) | STARTED, ASSET·DIR·HZN | BEST WF SHARPE, RULES | TRIALS, STATUS | METRICS, DURATION, SOURCE |
+| Lab stats by window (§10.9) | all four windows — `.table-scroll`, sticky first column | | | |
 
 Numeric columns right-aligned, tabular-nums, always. COIN/NAME left-aligned.
 Sort by clicking headers (Markets and Branches only); sorted header in
@@ -475,17 +478,22 @@ not a different product.
 
 ## 5. App shell and navigation
 
-Six destinations post-login: Overview `/`, Branches `/branches`, Sectors
-`/sectors`, State `/state`, Markets `/markets` — five nav items — plus
-Logout. `/login` renders outside the shell entirely.
+Destinations post-login: Overview `/`, Branches `/branches`, Sectors
+`/sectors`, State `/state`, Markets `/markets` — the original five — plus
+the later shell entries Engine `/strategies` (grouping `/decisions` and
+`/governor`), Analyst `/analyst`, Desk `/desk` and Lab `/lab` (§10.9) —
+nine nav items — plus Logout. `/login` renders outside the shell entirely.
 
 ### 5.1 Desktop / mid (≥768px): TopBar, 40px, sticky
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│ HYPERTRADE ▪ │ OVERVIEW  BRANCHES  SECTORS  STATE  MARKETS │  ● DATA 12:41 │ LOGOUT │
+│ HYPERTRADE ▪ │ OVERVIEW  BRANCHES  SECTORS  STATE  MARKETS  ENGINE  ANALYST  DESK  LAB │ ● DATA 12:41 │ LOGOUT │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+`LAB` is the last route (research sits after the surfaces it researches);
+active on `/lab` and every `/lab/*` path, including `/lab/rules/:id`.
 
 Left → right:
 
@@ -510,26 +518,44 @@ Top strip (40px, sticky): wordmark left, freshness dot + LOGOUT right.
 Route links move to a **bottom tab bar**:
 
 ```
-┌───────────────────────────────────────────────┐
-│  OVIEW   BRNCH   SECTR   STATE   MKTS         │  56px + safe-area
-└───────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ OVIEW BRNCH SECTR STATE MKTS  ENGIN  ASK  DESK  LAB         │  56px + safe-area
+└─────────────────────────────────────────────────────────────┘
 ```
 
 - `position: fixed; bottom: 0`, full width, `bg-panel-alt`, 1px top border,
   height `calc(56px + env(safe-area-inset-bottom))` with the inset as
   padding-bottom.
-- Five equal cells, each a flex column: a 12px glyph over a 9px uppercase
-  label. Glyphs are text characters, no icon library: `◈` Overview,
-  `⑂` Branches, `▦` Sectors, `☰` State, `≋` Markets.
+- Equal cells (`flex: 1`), each a flex column: a 12px glyph over a 9px
+  uppercase label. Glyphs are text characters, no icon library: `◈`
+  Overview, `⑂` Branches, `▦` Sectors, `☰` State, `≋` Markets, `⚙` Engine,
+  `?` Analyst, `◎` Desk, `⚗` Lab.
 - Active cell: `text-primary` + a 2px `--color-red-accent` top border on the
   cell (the underline idiom, flipped to the touchable edge).
   Inactive: `text-secondary`.
-- Labels: `OVIEW / BRNCH / SECTR / STATE / MKTS` — 5 chars max so five cells
-  fit 320px.
+- Labels: `OVIEW / BRNCH / SECTR / STATE / MKTS / ENGIN / ASK / DESK / LAB`
+  — 5 chars max, `letter-spacing` ≤ 0.02em on the tab bar only (the theme's
+  control tracking would push a 5-char label past a 35px cell).
 - Whole cell is the target (≥56px tall — over `--tap-min`).
 
-No hamburger, no drawer. Five destinations fit a tab bar; a drawer would hide
-the map of the product behind a tap.
+No hamburger, no drawer. A drawer would hide the map of the product behind
+a tap.
+
+**Nine cells is the ceiling — decision and arithmetic.** LAB was added as a
+ninth cell rather than merged, because its one plausible host, ENGINE,
+groups the strategy console (strategies, decisions, governor); Lab is
+research that feeds strategies, not a console tab, and hiding it one level
+down on mobile while it is a top-bar route on desktop would make the two
+shells disagree. At 320px nine cells are 35px wide; a 5-char label at 9px
+Geist Mono is ≈27px, so labels fit without abbreviating further. Cells are
+56px tall: the target is 35×56, above WCAG 2.5.8's 24×24 and the iOS
+tab-bar norm, but below the 44px `--tap-min` horizontally — accepted for
+this one surface because neighbouring cells are separated by the full cell
+boundary (a mis-tap lands on a route, never on an action). A tenth
+destination may not add a cell: it merges into an existing one the way
+ENGINE already does, or replaces one. Rejected: a scrolling tab bar (hidden
+cells defeat the map, §4.3's argument) and 4-char labels (no legibility
+gain at 35px; they would rename eight settled labels).
 
 ### 5.3 Route guard
 
@@ -703,7 +729,9 @@ delta, z30.
 ## 10. Views
 
 Route map: `/login`, `/` (Overview), `/branches`, `/branches/:id`,
-`/sectors`, `/state`, `/markets`. Every view gets: purpose, mobile layout,
+`/sectors`, `/state`, `/markets`, `/markets/:coin`, `/analyst`, and the
+lab family `/lab/{search,runs,catalogue,pulse}`, `/lab/runs/:runId`,
+`/lab/rules/:id` (§10.9). Every view gets: purpose, mobile layout,
 desktop layout, components with data fields, states, interactions.
 
 ### 10.1 `/login`
@@ -1090,6 +1118,409 @@ for timeouts, refusals and provider errors. No spinners: pulse labels only.
 Mobile: the seventh tab-bar cell (`ASK`, glyph `?`); single column with the
 rail below the thread, and the composer sticks above the tab bar.
 
+### 10.9 `/lab` — heuristic research
+
+Purpose: LAB.md's research loop as a page — search a metric universe for
+one- or two-condition rules, read them with their out-of-sample numbers
+beside the in-sample ones, keep the good ones, and see which are firing
+today. Everything renders from the lab tool results (`src/server/lab/
+types.ts`): `SearchResult`, `RuleEvaluation`, `PerfStats`, `Sensitivity`,
+`CatalogueEntry`, `CatalogueHealth`, `MarketPulse`. Nothing here trades;
+the heaviest action is removing a catalogued rule.
+
+**Three honesty rules, binding on every surface in this view.**
+
+1. **Holdout sits next to in-sample, always.** Wherever a Sharpe or return
+   is printed for a rule, the holdout value is printed in the same row at
+   the same size. No card, table or header may show in-sample or
+   walk-forward alone. When holdout Sharpe has the opposite sign to
+   walk-forward, or is below half of it, an amber Badge `HOLDOUT GAP`
+   accompanies the pair — the overfit flag.
+2. **The rank key is named.** Results and catalogue headers carry the
+   `.label` line `RANKED BY WALK-FORWARD SHARPE` (or `RETURN` when that was
+   the objective). Holdout never sorts anything; a sort control over holdout
+   does not exist.
+3. **Disclaimer + data age on every result surface.** Footer line, 10px
+   `text-secondary`: `historical research, not advice · net of 10 bps
+   slippage · data to 2026-10-07`. The `data to` date is an AgeStamp
+   (threshold 2 days → amber; StaleBanner on the panel when > 2 days).
+
+#### Sub-navigation and URLs
+
+Path-based, like the ENGINE console (`/strategies`, `/decisions`,
+`/governor` under one shell entry), not query tabs — each tab is a
+bookmarkable page and the browser back button steps between them:
+
+| Path | Tab | Content |
+|---|---|---|
+| `/lab` | — | redirects to `/lab/search` |
+| `/lab/search` | SEARCH | form + results of the current/last run in this browser |
+| `/lab/runs` | RUNS | recent runs list |
+| `/lab/runs/:runId` | SEARCH | the Search tab with that run's config in the form and its results below; header stamp `RUN 7f3a · 2026-10-08 09:12 UTC` |
+| `/lab/catalogue` | CATALOGUE | saved rules, health, live stats |
+| `/lab/pulse` | PULSE | Market Pulse board |
+| `/lab/rules/:id` | (drill) | rule detail; `?run=<runId>` when the rule is not catalogued; `?from=catalogue\|results\|pulse` sets the back link |
+
+**LabTabs**: one `Segmented` (`size: 'md'`) directly under the shell:
+`SEARCH · RUNS · CATALOGUE · PULSE`, in workflow order (search → its
+history → what you kept → what it says today). Default `SEARCH`: the page
+exists to run searches; the glanceable Pulse is one tap away and also has
+an Overview tile. Mobile: four segments fit 320px with `short` labels
+`SRCH · RUNS · CTLG · PULSE`; the tab row is `position: sticky; top: 40px`
+under the top strip. The catalogue segment carries a count suffix
+(`CATALOGUE · 7`) at md+; the Pulse segment carries a 6px dot, green if any
+rule fires, gray otherwise (number + word remain inside the tab).
+
+Rule detail is a **full view route** (the markets-drill pattern, §10.7),
+not the sectors inline panel: it is tall (chart, drawdown, two tables, a
+grid), must be linkable from MCP/CLI output, and must be back-button
+friendly. Header: ghost `← RESULTS` / `← CATALOGUE` / `← PULSE` per
+`?from`.
+
+#### SEARCH tab
+
+Desktop (`lg:`, 12-col grid, gutter 12px). The form column is
+`position: sticky; top: 92px` (40px bar + 52px tab row) so RUN and the
+filters stay in reach while scrolling cards:
+
+```
+┌ SEARCH ──────────────── 4 ┬ RESULTS ────────────────────────────────── 8 ┐
+│ ASSET  [BTC   ] (datalist)│ RUN 7f3a · BTC LONG 14D · 2019-03-01→2026-10-07 │
+│ DIRECTION [LONG | SHORT]  │ 312 FEATURES · 40/40 TRIALS · 23.4 s · GEN 2M AGO│
+│ METRICS  [6 METRICS   ▾]  │ RANKED BY WALK-FORWARD SHARPE                   │
+│  ▪ MVRV ✕ ▪ funding ✕ …   │ ┌ warnings strip (amber, verbatim) when any ┐   │
+│ HORIZON [7D|14D|30D|60D|…]│ [ALL|PAIRS|SINGLE] [IS|WF|HO] MIN SHARPE [1.0]   │
+│ OBJECTIVE [SHARPE|RETURN] │ MAX DD [−30%] MIN HIT [50%]        12 OF 18 RULES│
+│ EFFORT [20|40|100|200]    ├──────────────────────────────────────────────────┤
+│  ~10 s · ~25 s · ~60 s    │ #1 z(90) MVRV < −1.12 AND funding ≥ 0.03% ●FIRING│
+│ ▸ ADVANCED                │    LONG BTC · 14D · PAIR · CM HT           [SAVE]│
+│ ───────────────────────── │  WF SHARPE +1.42 │ HOLDOUT +0.97 │ HIT 61% │ …   │
+│ [      RUN SEARCH       ] │ #2 …                                             │
+│ historical research, not  ├ FEATURE IMPORTANCE ──────────────────────────────┤
+│ advice                    │ cm:CapMVRVCur z(90) ████████████ 0.31            │
+└───────────────────────────┴──────────────────────────────────────────────────┘
+```
+
+Mobile: single column — **LabSearchForm**, then results. After a run lands
+the form collapses to **SearchSummaryBar** (40px, sticky under the tab row,
+`bg-panel-alt`): `BTC · LONG · 14D · 6 METRICS · 40 TRIALS` + ghost `EDIT`
+(re-expands the form); results scroll into view once (`scrollIntoView`,
+never again on refetch).
+
+**LabSearchForm** (Easy mode, top → bottom; every field has a visible
+`.label`):
+
+- `ASSET`: uppercase text input, 8ch, `<datalist>` of the HL universe
+  (`GET /api/hl/markets`) — free text allowed (the engine validates).
+- `DIRECTION`: `Segmented` `LONG | SHORT`, `tone` green/red; the word is the
+  signal, the tint is decoration.
+- `METRICS`: **MetricPicker** trigger — a ghost-styled field reading
+  `6 METRICS ▾` (`0 METRICS` in `text-secondary` when empty; `40/40` amber
+  at the cap). Selected metrics render below as removable chips (xs, name +
+  `SrcTag` provider + `✕`, chip height `--control-sm`). The picker opens
+  as a popover under the field at md+ (360px wide, max-height 420px,
+  `--shadow-overlay`) and as a bottom sheet on mobile (full width, 80dvh,
+  focus-trapped, `role="dialog"`, title `METRICS`). Inside: search input
+  (autofocus, filters by name/id/description), then groups
+  `PROVIDER · CATEGORY · n` (`.label` rows, collapsible, counts of visible
+  metrics), then one checkbox row per metric (`--row-h`): name (sm,
+  primary), `SrcTag` (`ht`/`cm`/`fng`/`llama`), units (xs, secondary),
+  `LAG 1D` (xs) when `lagDays > 0`. Metrics whose `assets[]` excludes the
+  typed asset are hidden; a footer line counts them (`3 hidden — not
+  available for SOL`). A provider reported unreachable by
+  `lab_list_providers` gets a gray StatusDot + `UNREACHABLE` in its group
+  header; its metrics stay selectable (the engine warns, never fails).
+  At 40 selected, unchecked rows disable. `Esc` closes; selection applies
+  live (no OK button).
+- `HORIZON`: `Segmented` `7D | 14D | 30D | 60D | …`; `…` reveals a numeric
+  input (1–180). Default 14D.
+- `OBJECTIVE`: `Segmented` `SHARPE | RETURN`.
+- `EFFORT`: `Segmented` `20 | 40 | 100 | 200` (trials) with a 10px
+  `text-secondary` hint under it from the last known duration per trial
+  (`~10 s · ~25 s · ~60 s · ~2 min`; on Vercel the 200 label adds `capped at
+  50 s`, since the deadline will truncate it — say so before, not after).
+- `▸ ADVANCED` disclosure (collapsed by default, state remembered per
+  browser): `TRANSFORMS` 7 checkbox chips (`raw z rsi ma roc vol pctile`,
+  min 1); `WINDOWS` text input `7, 30, 90` (2–365, max 6, validated on
+  blur); `LABEL QUANTILE` 0.05–0.5; `FOLDS` 2–6; `MIN SUPPORT` ≥ 5;
+  `SLIPPAGE BPS` 0–200; `TOP K` 1–50; `FROM` / `TO` date inputs; `SEED`.
+  `customZones` and `price` are not exposed in v1 (CLI/MCP only). An
+  amber dot on the `ADVANCED` label when any value differs from default.
+- Validation: inline 11px `--color-red-text` under the field (`pick at
+  least one metric`, `windows: 400 is above 365`); RUN disabled while any
+  field is invalid or asset/metrics are empty — never a dialog.
+- `RUN SEARCH`: Neutral, `--control-lg`, full width (the view's primary
+  action). Disclaimer line beneath (10px, secondary).
+
+**Busy state** (a search takes 5–50 s; the API is one POST with no
+progress stream, so nothing pretends to know progress): RUN reads
+`SEARCHING…` with `.pulse-label`, disabled; under it a tabular 11px
+elapsed counter `12 s · 40 trials over ~300 features` (elapsed, not
+percent — a progress bar would be a lie). Ghost `STOP WAITING` aborts the
+fetch client-side; its hint reads `the run still finishes and lands in
+RUNS`. Previous results stay at 70% opacity until the new ones land
+(§10.4 precedent); no skeleton flash on re-run. The form is read-only while
+searching (inputs `disabled`, not hidden).
+
+**ResultsHeader**: run id (first 4 chars, `title` = full), config summary,
+`dataRange.from → to`, `HOLDOUT FROM 2025-04-12` (info-toned), feature
+count, `trialsRun/trials` (amber + Badge `PARTIAL` when `trialsRun <
+trials`), `durationMs` as seconds, AgeStamp of the run, then the rank-key
+label. `warnings[]` render in **LabWarnings** directly below: full-width
+strip, `--color-amber-bg`, one row per warning, 6px amber square bullet,
+verbatim text 11px `text-primary` (sentences, so not the uppercase
+StaleBanner idiom).
+
+**ResultsFilters** (one row, wraps on mobile into two): `Segmented`
+`ALL | PAIRS | SINGLE` (by `conditions.length`); `Segmented` `IS | WF | HO`
+— the **stats window**, which chooses where HIT, MAX DD, TRADES/YR and the
+filters read from (default `WF`; the two Sharpe cells on every card ignore
+it — rule 1); numeric inputs `MIN SHARPE`, `MAX DD`, `MIN HIT` (blank =
+off, applied client-side to the chosen window). Right-aligned count
+`12 OF 18 RULES` (xs secondary). Filters persist per browser.
+
+**SignalCard** (one per `RuleEvaluation`, single column, full width; a
+`<article>` with `tabindex=0`, Enter → drill):
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ #1  z(90) MVRV < −1.12  AND  funding ≥ 0.03%              ● FIRING  [SAVE]│
+│     LONG BTC · 14D · PAIR · CM HT · PRECISION 0.71                       │
+│ WF SHARPE  HOLDOUT  HIT   MAX DD   TR/YR  SUPPORT  STAB                  │
+│ +1.42      +0.97    61%   −18.4%   6.2    212      0.83 STABLE           │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+- Row 1: rank `#1` (xs, secondary) · **RuleText** (lg 16px, primary — the
+  hero; wraps to 2 lines on mobile, never truncates) · **FiringBadge**
+  (`● FIRING` green Badge when `firingNow`, `○ FLAT` gray otherwise; the
+  dot is a text glyph) · ghost `SAVE` (→ drill's save form, pre-focused;
+  reads `SAVED ✓`, disabled, when the id is already catalogued).
+- Row 2 (xs, secondary): direction (word, green/red text), asset, horizon,
+  `PAIR`/`SINGLE`, `SrcTag` per distinct provider in the conditions,
+  `PRECISION 0.71`.
+- Stat row: 7 mini cells (label xs secondary over value sm primary,
+  tabular; `grid-cols-7` lg, `grid-cols-4` mobile → 2 rows). `WF SHARPE`
+  (value at base 13px — the rank key is one step louder) and `HOLDOUT`
+  are always adjacent and always both present; `—` when `walkForward`/
+  `holdout` is null, with `title` `not enough history`. `HOLDOUT GAP`
+  Badge appears after the holdout cell per rule 1. Signed values print
+  their sign; Sharpe/return green ≥ 0, red < 0; MAX DD red text below
+  −20%. `STAB` prints `0.83` + word: `STABLE` ≥ 0.75, `SOFT` 0.5–0.75
+  (amber), `FRAGILE` < 0.5 (red) — absent (`—`) until sensitivity is known.
+- Hover `--color-hover`; selected (the drill you came back from)
+  `--color-selected` + 2px left `--color-red-accent` inset.
+
+**RuleText** formats `rule.conditions` in our language, not the wire text:
+metric display name from the catalogue (`MVRV`, `funding`, `F&G`),
+transform as `z(90)`, `rsi(14)`, `ma(30)` (ma_ratio), `roc(7)`, `vol(30)`,
+`pct(90)`, raw with no prefix; thresholds formatted by `units` (funding
+fraction → `0.03%`, USD compact, else 3 significant figures); `≥` and `<`
+as typeset glyphs; `AND` in `text-secondary`. The wire `text` lives in the
+`title` tooltip and in the drill's `RAW` line so nothing is hidden.
+
+**FeatureImportanceList** (own panel under the cards; desktop right
+column, mobile after the cards): top 10 of `featureImportance`, each row
+feature (sm, formatted by RuleText rules) + a CSS bar (height 8px, width
+`score / max`, fill `--color-selected`, 1px right edge `--color-info`) +
+score (xs, tabular). No chart library; color is not the signal, the number
+is.
+
+States (search tab): providers/metrics loading → SkeletonRows inside the
+picker, RUN disabled; metrics fetch failed → ErrorBlock inside the picker
+with `RETRY`; offline → OfflineBlock replaces the tab body; results never
+run → EmptyBlock `no results yet — run a search`; search failed → verbatim
+ErrorBlock under RUN (`400` with `field` also outlines that input in
+`--color-red`); zero rules → EmptyBlock `no rule survived — try more
+metrics, a longer horizon or a lower min support`; partial →
+`PARTIAL` Badge + LabWarnings; stale → AgeStamp/StaleBanner on `data to`.
+On completion one `aria-live="polite"` status line announces
+`18 rules · 40 of 40 trials` (the only live region in the view besides
+ErrorBlocks).
+
+#### Rule detail `/lab/rules/:id`
+
+Resolution: catalogue entry by id → else `?run=` → `lab_get_run` and find
+the rule → else EmptyBlock `rule not found — it was never saved and its run
+is unknown` + ghost `SEARCH`. Then `lab_evaluate_rule` (with equity) and
+`lab_sensitivity` refresh the numbers; the grid shows SkeletonRows with a
+`computing sensitivity…` pulse while the second call runs.
+
+Desktop (`lg:`, 12-col):
+
+```
+┌ ← RESULTS ─────────────────────────────────────────────────────────────────┐
+│ z(90) MVRV < −1.12 AND funding ≥ 0.03%   (lg 16px)    ● FIRING  LONG BTC 14D│
+│ +1.42 (xl, WF SHARPE)   HOLDOUT +0.97   HIT 61%   MAX DD −18.4%   STAB 0.83 │
+│ RAW cm:CapMVRVCur|z|90 < -1.12 AND ht:funding|raw|0 >= 0.0003  (xs, secondary)│
+├ EQUITY VS HOLD BTC ───────────────────────────── 8 ┬ LATEST VS THRESHOLDS ── 4 ┤
+│ legend: — RULE  — HOLD BTC  ▒ HOLDOUT  ┆ SAVED       │ AS OF 2026-10-07        │
+│ chart 300px, holdout region shaded from holdoutFrom │ z(90) MVRV −1.31 < −1.12 ✓│
+├ DRAWDOWN ────────── MAX DD −18.4% ─────────────── 8 ┤ funding 0.021% ≥ 0.03% ✗ │
+│ chart 120px                                         ├ SAVE TO CATALOGUE ──────┤
+├ STATS BY WINDOW ──────────────────────────────── 8 ┤ NAME [MVRV deep value  ] │
+│          IN-SAMPLE  WALK-FWD  HOLDOUT  LIVE         │ NOTE [                 ] │
+│ SHARPE   +1.88      +1.42     +0.97    +0.41        │ [ SAVE TO CATALOGUE ]    │
+│ RETURN   +212%      +96%      +31%     +4.2%        ├ SENSITIVITY · 0.83 STABLE┤
+│ MAX DD   −14.1%     −18.4%    −22.0%   −6.1%        │ grid (below on mobile)   │
+│ HIT      66%        61%       58%      50%          │                          │
+│ TR/YR … EXPOSURE … DAYS … RANGE …  HOLD BTC rows    │                          │
+└─────────────────────────────────────────────────────┴──────────────────────────┘
+```
+
+Mobile order: header → latest values → equity → drawdown → stats table →
+sensitivity → save form (the decision follows the evidence).
+
+- **RuleDrillHeader**: RuleText at lg; the walk-forward Sharpe is the
+  view's single xl (`AnimatedDigits` on refresh); holdout at base right
+  beside it with the gap Badge if due; FiringBadge; direction/asset/horizon
+  words; the `RAW` wire text. Catalogued rules add Badge `IN CATALOGUE ·
+  SAVED 2026-08-01` and Danger `REMOVE` (Level 2, below).
+- **RuleEquityChart** (§9.1 variant): strategy `--color-equity` 1.5px;
+  benchmark (`HOLD BTC`, or `SHORT BTC` for short rules) `--color-bench-
+  btc` 1px; Y-axis growth multiple (`1.84×`); a `ReferenceArea` from
+  `dataRange.holdoutFrom` to the end filled `--color-info-bg` with a 10px
+  `HOLDOUT` label at its top-left — the one region the search never saw;
+  for catalogued rules a 1px dashed vertical reference at `savedAt`
+  labeled `SAVED` (the §9.1 `TODAY` idiom). Heights per §4.5 (220/300).
+  Legend row above per §4.5.
+- **DrawdownChart** §9.2, strategy only; `MAX DD` in the header.
+- **WindowStatsTable**: rows TOTAL RETURN, CAGR, SHARPE, MAX DD, HIT RATE,
+  TRADES, TRADES/YR, EXPOSURE, DAYS, RANGE (`from → to`, xs); columns
+  `IN-SAMPLE · WALK-FWD · HOLDOUT · LIVE`, then two benchmark rows (`HOLD
+  BTC SHARPE`, `HOLD BTC RETURN`, in-sample and holdout only — `—`
+  elsewhere). `LIVE` is `—` with `title` `not catalogued` for unsaved rules
+  and `n/a — 12 live days` under 30 days. This table must keep all four
+  windows at every width (rule 1), so it is the §4.4 escape hatch: inside
+  `.table-scroll`, first column sticky (`position: sticky; left: 0;
+  bg-panel`), numeric columns 72px. Walk-forward header carries `RANK KEY`
+  in xs beneath it.
+- **LatestValuesRow**: one row per condition — feature (RuleText style),
+  latest value (sm, tabular, primary), operator, threshold, and `✓` green /
+  `✗` gray with the word `MET`/`NOT MET` in `title` and visually-hidden
+  text. `AS OF <latest.date>` AgeStamp (2-day threshold). A null value
+  prints `—` + `no data` and the row is gray.
+- **SensitivityGrid**: per condition, two labelled rows. `THRESHOLD`:
+  cells `q−0.10 · q−0.05 · BASE · q+0.05 · q+0.10`; `WINDOW`: one cell per
+  swapped window in the config (`w7 · w30 · w90`, base marked). Cell
+  content: Sharpe (sm, tabular, signed) over total return (xs). Background
+  by `sharpe / base.sharpe`: < 0 → `--color-mom-neg2`; 0–0.5 →
+  `--color-mom-neg1`; 0.5–1 → `--color-mom-zero`; ≥ 1 → `--color-mom-pos1`
+  (never `pos2`: beating the base is noise, not merit). Base cell gets the
+  2px `--color-red-accent` left inset. Panel header prints `STABILITY 0.83
+  STABLE` with the SignalCard `STAB` word/tone. A `<table>` with row/column
+  headers; each cell `aria-label` `threshold −0.10 quantile: sharpe +1.21`.
+  Mobile: cells are 1fr of the panel width (5 across ≈ 70px at 390px).
+- **SaveToCatalogueForm** (inline panel, not a dialog): `NAME` input
+  (default: RuleText truncated to 40ch), `NOTE` textarea (3 rows), Neutral
+  `SAVE TO CATALOGUE` (Level 1; in flight `SAVING…` pulse), verbatim
+  ErrorBlock on failure. On success the panel becomes the `IN CATALOGUE`
+  stamp + ghost `OPEN CATALOGUE →`; the SEARCH tab's card shows `SAVED ✓`.
+- **REMOVE** (catalogued only): Danger, Level 2 ConfirmDialog — title
+  `REMOVE RULE`, body `Remove "MVRV deep value"? Its live record since
+  2026-08-01 stops here; the rule can be saved again from run 7f3a.`,
+  confirm `REMOVE RULE`, cancel focused. On success navigate to
+  `/lab/catalogue`.
+
+States: SkeletonRows per panel on first load; ErrorBlock per panel
+(sensitivity failing does not blank the chart); EmptyBlock for a missing
+rule; AgeStamp/StaleBanner on `latest.date` and `dataRange.to`.
+
+#### CATALOGUE tab
+
+**CatalogueHealthStrip** above the table (from `lab_catalogue_health`):
+three counters as ghost toggles — `DECAYED 1 · OVERLAPS 2 · GAPS 3` —
+amber text when > 0, gray `0` otherwise. Toggling one expands a list
+below: decayed → `name · live 94d · live +0.08 vs holdout +0.97` with a
+`DECAYED` amber Badge; overlaps → `name A ↔ name B · J 0.72`; gaps →
+`ETH SHORT — no active rule` + ghost `SEARCH →` that opens `/lab/search`
+with asset/direction prefilled. Health is computed on request; its
+AgeStamp sits in the strip's right edge.
+
+**CatalogueTable** (`DataTable`, row tap → `/lab/rules/:id?from=
+catalogue`), §4.4 drop order:
+
+| P1 (always) | P2 (always) | P3 (md+) | P4 (lg) |
+|---|---|---|---|
+| NAME (rule text as a 10px second line), LIVE SHARPE | FIRING, HEALTH | HOLDOUT, WF (at save), DIR·HZN | LIVE DAYS, SAVED, ORIGIN |
+
+`LIVE SHARPE` is the column that answers "is it still working": signed,
+colored, `—` + `title` `n live days` under 30. `HOLDOUT` and `WF` are the
+numbers at save time, printed as a pair (rule 1). `HEALTH` cell: Badges
+`DECAYED` (amber), `OVERLAP` (gray, `title` names the partner), or `—`.
+`ORIGIN`: `user`/`agent`/`seed` as gray Badge — rules an MCP agent saved
+are marked so. Default sort LIVE SHARPE desc; sortable headers. Per-row
+Danger `REMOVE` at lg only (mobile removes from the drill). Header:
+`CATALOGUE · 7` + `RANKED BY LIVE SHARPE` label (a different rank key than
+search — said aloud) + disclaimer footer.
+
+States: SkeletonRows; EmptyBlock `no saved rules — search, then SAVE one`
++ ghost `SEARCH`; ErrorBlock; health failing → the strip shows an
+ErrorBlock, the table still renders; StaleBanner on live `to` > 2 days.
+
+#### PULSE tab
+
+**PulseBoard** (from `lab_market_pulse`): header `MARKET PULSE` + AgeStamp
+on `asOf` + `LabWarnings` when any. One **PulseAssetRow** per asset,
+sorted by |lean| desc:
+
+```
+│ BTC   ◀━━━━━━━┿━━━━━━━▶  LEAN +0.33   LONG 2/3 · SHORT 0/2        ▸ │
+│   ▸ expanded: ● MVRV deep value   LONG   z(90) MVRV < −1.12 AND …    │
+│               ○ Funding squeeze   SHORT  pct(30) funding ≥ 0.9       │
+```
+
+- **LeanBar**: 120px × 8px (full width on mobile, max 200px), 1px
+  `--color-border` center tick; fill grows from the center, right
+  `--color-green` for lean > 0, left `--color-red` for lean < 0, width
+  `|lean| × 50%`. The number `LEAN +0.33` (sm, signed, colored) always
+  prints beside it; 0 prints `LEAN 0.00` gray.
+- Counts `LONG 2/3 · SHORT 0/2` (xs; active over total, `text-primary`
+  numerator when active > 0).
+- Chevron toggles the rule list (rows at `--row-h`): FiringBadge dot,
+  name (sm), direction word (green/red), RuleText (xs, secondary, one
+  line, ellipsis). Row tap → `/lab/rules/:id?from=pulse`.
+- Mobile: asset + LeanBar on line 1, counts + chevron on line 2.
+
+States: SkeletonRows; EmptyBlock `no catalogued rules — nothing to
+pulse` + ghost `SEARCH`; ErrorBlock; StaleBanner when `asOf` > 2 days.
+
+**PulseTile** (Overview `/`, optional, describe-only): a card under SECTOR
+HEAT in the 5-col column (mobile: after Sector heat) — header `LAB PULSE`
++ AgeStamp; up to 4 assets, each `BTC` + 80px LeanBar + `+0.33`; footer
+ghost `LAB →` to `/lab/pulse`. EmptyBlock `no rules catalogued` when
+empty. Not rendered at all if `lab_market_pulse` is unreachable (Overview
+stays a 30-second read; no error noise from an optional tile).
+
+#### RUNS tab
+
+**RunsTable** (`DataTable`, `lab_list_runs`, newest first, row tap →
+`/lab/runs/:runId`): P1 `STARTED` (relative + `title` ISO), `ASSET·DIR·HZN`;
+P2 `BEST WF SHARPE` (signed), `RULES`; P3 `TRIALS` (`31/40` amber when
+partial), `STATUS` Badge (`OK` gray, `PARTIAL` amber, `FAILED` red,
+`RUNNING` pulse); P4 `METRICS n`, `DURATION`, `SOURCE` (`ui`/`mcp`/`cli`
+gray Badge). States: SkeletonRows; EmptyBlock `no runs yet`; ErrorBlock.
+A failed run opens with its verbatim error in the results area and the
+config loaded for correction.
+
+#### Keyboard and a11y (view-specific, on top of §12)
+
+- `LabTabs` is the §15 `Segmented` radiogroup (arrows move, Enter not
+  needed). Tab order on SEARCH: form fields → RUN → filters → cards →
+  importance list.
+- `SignalCard` `tabindex=0`, Enter/Space → drill; the card's `SAVE` is its
+  own stop. Cards are an `<ol>` so the rank is announced.
+- MetricPicker: `Esc` closes and restores focus to the trigger; the
+  bottom sheet traps focus; checkbox rows are real `<input type=
+  checkbox>` with the metric name as label; group headers are buttons
+  with `aria-expanded`.
+- Tables are real `<table>`s; the sticky first column keeps its `<th
+  scope="row">`. Sensitivity cells carry `aria-label`s (above).
+- Color never alone: direction words, `✓/✗` with hidden text, Badge words
+  on every tinted cell, printed numbers in every ramp cell.
+- `prefers-reduced-motion`: the elapsed counter still ticks (it is
+  content), the pulse becomes `…`.
+
 ---
 
 ## 11. Component inventory
@@ -1119,7 +1550,11 @@ Ported components keep their Hyperion source semantics (files:
 | `AppShell` | `children` | TopBar ≥768 / TopStrip + BottomTabBar <768 (§5); freshness cluster; route guard redirect |
 | `StaleBanner` | `generatedAt: string`, `thresholdHours: number`, `noun: string` | §6; renders nothing under threshold |
 | `AgeStamp` | `generatedAt: string`, `thresholdHours: number` | §6; xs, gray→amber; `title` = full timestamp |
-| `SrcTag` | `source: 'hl'\|'cg'\|'fred'\|'routine'` | §2 `.src-tag`; `hl` gets jade |
+| `SrcTag` | `source: 'hl'\|'cg'\|'fred'\|'routine'\|'ht'\|'cm'\|'fng'\|'llama'` | §2 `.src-tag`; `hl` gets jade; the four lab providers (§10.9) render gray like `cg` |
+| `LabWarnings` | `warnings: string[]` | §10.9; amber-bg strip, one verbatim 11px `text-primary` row per warning with a 6px amber square; renders nothing when empty |
+| `LeanBar` | `lean: number` (−1..1), `width?: number` | §10.9 Pulse; bipolar fill from a center tick, green right / red left, always paired with the printed signed number by its caller |
+| `RuleText` | `rule: Rule`, `metrics: MetricDef[]`, `size?: 'xs'\|'sm'\|'lg'` | §10.9; conditions typeset in our language (`z(90) MVRV < −1.12 AND funding ≥ 0.03%`); wire text in `title` |
+| `FiringBadge` | `firing: boolean` | §10.9; `● FIRING` green / `○ FLAT` gray Badge, glyph + word |
 | `ConfirmDialog` | `title`, `body`, `confirmLabel`, `onConfirm`, `onCancel`, `error?` | §7 Level 2; centered lg / bottom sheet mobile; focus trap; stays open on error |
 | `DataTable` | `columns: {key, label, priority: 1\|2\|3\|4, align, render}[]`, `rows`, `onRowClick?`, `sortable?` | §4.4 priority hiding via `hidden md:table-cell`/`hidden lg:table-cell`; row height `var(--row-h)`; focusable rows |
 | `MetricStat` | `label`, `value`, `delta?`, `z30?`, `unit?` | §10.2 cell |
@@ -1136,6 +1571,7 @@ Ported components keep their Hyperion source semantics (files:
 | `DrawdownChart` | `points: {ts, ddPct}[]`, `maxDd: number` | §9.2 |
 | `MarketChart` | `coin`, `tf`, `onTfChange` (fetches its own pages) | §9.4, lightweight-charts |
 | `MetricSeriesChart` | `points: {ts, value}[]`, `mean30?: number` | §9.5 |
+| `RuleEquityChart` | `equity: {t, strategy, benchmark}[]`, `holdoutFrom: string`, `savedAt?: string`, `benchmarkLabel: string` | §10.9 rule drill; §9.1 geometry, growth-multiple axis, holdout `ReferenceArea` in `--color-info-bg`, dashed `SAVED` reference |
 
 **View-scoped components** (built per §10, live next to their route)
 
@@ -1145,6 +1581,14 @@ Ported components keep their Hyperion source semantics (files:
 `SectorCell`); `RotationsPanel`; `SectorDrillPanel`; `ThesisBlock`;
 `DomainCard` (+ `SignalRow`); `RisksList`; `HistoryStepper`;
 `TriggerRoutineButton`; `MarketsTable`; `MarketDrillHeader`.
+
+Lab (§10.9, under `src/ui/components/lab/`): `LabTabs`; `LabSearchForm`
+(+ `MetricPicker`, `AdvancedDisclosure`, `SearchSummaryBar`);
+`ResultsHeader`; `ResultsFilters`; `SignalCard`; `FeatureImportanceList`;
+`RuleDrill` (+ `RuleDrillHeader`, `WindowStatsTable`, `SensitivityGrid`,
+`LatestValuesRow`, `SaveToCatalogueForm`); `CatalogueHealthStrip`;
+`CatalogueTable`; `PulseBoard` (+ `PulseAssetRow`); `PulseTile` (Overview,
+optional); `RunsTable`.
 
 ---
 
@@ -1185,6 +1629,12 @@ Non-negotiable, verified before done:
 | Market chart | SkeletonRows + `backfilling candles…` | EmptyBlock (`no candle data`) | ErrorBlock / OfflineBlock | footnote `sync: <error>` (amber) |
 | Perp header | SkeletonRows | — | ErrorBlock | `LIVE` badge, else AgeStamp > 5min |
 | Login | — | — | ErrorBlock (verbatim 401) | — |
+| Lab search form | SkeletonRows in MetricPicker, RUN disabled | — | ErrorBlock in picker; verbatim ErrorBlock under RUN (field outlined) | — |
+| Lab results | `SEARCHING…` pulse + elapsed counter, previous results at 70% | EmptyBlock (`no results yet` / `no rule survived`) | ErrorBlock / OfflineBlock | AgeStamp `data to` > 2d + StaleBanner; `PARTIAL` Badge + LabWarnings |
+| Rule drill | SkeletonRows per panel, `computing sensitivity…` pulse | EmptyBlock (`rule not found`) | ErrorBlock per panel | AgeStamp on `latest.date` and `data to` |
+| Catalogue | SkeletonRows | EmptyBlock (`no saved rules`) + `SEARCH` | ErrorBlock (health strip fails independently) | StaleBanner live `to` > 2d; `DECAYED` Badges |
+| Market Pulse / tile | SkeletonRows | EmptyBlock (`no catalogued rules`) | ErrorBlock (tile: not rendered) | StaleBanner `asOf` > 2d + LabWarnings |
+| Runs | SkeletonRows | EmptyBlock (`no runs yet`) | ErrorBlock | `PARTIAL`/`FAILED` Badges |
 
 Every cell above is one of the §6 named patterns — no bespoke states.
 
