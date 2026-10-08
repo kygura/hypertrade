@@ -5,6 +5,7 @@ import { getCtxs } from "../routes/hl.js";
 import { runIntent, type IntentDeps } from "../sim/intent.js";
 import { realDeps } from "../sim/run.js";
 import type { SimBranchOutcome, SimIntent } from "../../shared/intent.js";
+import { UpstreamError } from "../mcp/types.js";
 
 // Sim mode of the analyst (SPEC.md "Paths", decisions 2/5/7/9). The JSON schema
 // below is only a hint for the model; SimIntentSchema (zod, inside runIntent) is
@@ -134,16 +135,19 @@ ${tools}
 - simulate_paths — historical portfolio simulation (1-4 branches)`;
 }
 
-/** Real deps for sim mode; the HL max-leverage map comes from the cached universe fetch, undefined on failure. */
-export async function realSimDeps(): Promise<IntentDeps> {
-  let max: Map<string, number | undefined> | undefined;
+/** Real deps for sim mode; the HL universe (canonical names, max leverage) comes from the cached
+ * universe fetch, bounded to `ms`; on failure or timeout coins are just uppercased and the schema cap (50x) applies. */
+export async function realSimDeps(load = getCtxs, ms = 5000): Promise<IntentDeps> {
+  let byName: Map<string, { name: string; maxLeverage?: number }> | undefined;
   try {
-    const { ctxs } = await getCtxs();
-    max = new Map(ctxs.map((c) => [c.name.toUpperCase(), c.maxLeverage]));
+    const { ctxs } = await withDeadline(load(), ms, "hyperliquid universe");
+    byName = new Map(ctxs.map((c) => [c.name.toUpperCase(), c]));
   } catch {
-    // HL unreachable: schema cap (50x) applies
+    // HL unreachable or slow: no coin check, schema cap applies
   }
-  return { ...realDeps, maxLeverage: (coin) => max?.get(coin.toUpperCase()) };
+  if (!byName) return { ...realDeps };
+  const map = byName;
+  return { ...realDeps, maxLeverage: (coin) => map.get(coin.toUpperCase())?.maxLeverage, resolveCoin: (coin) => map.get(coin.toUpperCase())?.name };
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -169,13 +173,17 @@ export async function runSimTool(
   call: { id: string; input: unknown },
   deps: IntentDeps,
   emitResult: (e: { type: "sim_result"; id: string; intent: SimIntent; branches: SimBranchOutcome[] }) => Promise<void> | void,
+  ms = SIM_DEADLINE_MS,
 ): Promise<ToolRun> {
   const fail = (message: string): ToolRun => ({ content: JSON.stringify({ error: message }), summary: message, isError: true });
   let out;
   try {
-    out = await withDeadline(runIntent(call.input, deps), SIM_DEADLINE_MS, "simulate_paths");
+    // The deadline also goes into runIntent so the work itself stops (no new branch or fetch), not just our wait.
+    out = await withDeadline(runIntent(call.input, deps, Date.now() + ms), ms, "simulate_paths");
   } catch (err) {
-    return fail(err instanceof Error ? err.message : String(err));
+    if (err instanceof UpstreamError) return fail(err.message);
+    console.error("[sim] simulate_paths failed:", err);
+    return fail("internal error");
   }
   if ("error" in out) return fail(out.error);
   await emitResult({ type: "sim_result", id: call.id, intent: out.intent, branches: out.branches });

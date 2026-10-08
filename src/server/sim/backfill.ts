@@ -16,10 +16,10 @@ export async function backfillCoin(coin: string, startDate: Date, deps?: SyncDep
 
 /** Backfills every non-stable coin in a branch's allocations and DCA legs, sequentially
  * (rate-limit courtesy — no parallel fetch storm against public APIs). */
-export async function backfillBranch(config: BranchConfig, deps?: SyncDeps): Promise<void> {
+export async function backfillBranch(config: BranchConfig, deps?: SyncDeps, deadline?: number): Promise<void> {
   const startDate = new Date(config.startDate);
   const coins = new Set([...config.allocations.map((a) => a.coin), ...(config.dca ?? []).map((d) => d.coin)]);
   for (const coin of coins) {
-    await backfillCoin(coin, startDate, deps);
+    await backfillCoin(coin, startDate, deps, deadline);
   }
 }

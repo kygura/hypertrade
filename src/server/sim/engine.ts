@@ -34,8 +34,8 @@ const DAY_MS = 86400000;
  * priceAt() would fall back to 0 for it, and dividing initial capital by that
  * 0 poisons the whole equity curve with Infinity/NaN. Fail fast instead. */
 export class NoPriceDataError extends Error {
-  constructor(public readonly coin: string) {
-    super(`no price data for ${coin}`);
+  constructor(public readonly coin: string, message = `no price data for ${coin}`) {
+    super(message);
     this.name = "NoPriceDataError";
   }
 }
@@ -156,21 +156,25 @@ function runPortfolio(
 
     let value = 0;
     for (let i = 0; i < allocations.length; i++) value += holding(i, ts);
-    for (const c of dcaOnly) value += qty.get(c)! * price(c, ts);
+    // Coins held only via DCA sit outside the weighted allocations: a rebalance leaves them alone.
+    let dcaValue = 0;
+    for (const c of dcaOnly) dcaValue += qty.get(c)! * price(c, ts);
+    const base = value;
+    value += dcaValue;
 
     const drifted = shouldRebalance(rebalance, prevTs, ts);
     const thresholdBreached =
       rebalance === "threshold5pct" &&
-      allocations.some((a, i) => Math.abs(holding(i, ts) / value - a.weightPct / 100) > 0.05);
+      allocations.some((a, i) => Math.abs(holding(i, ts) / base - a.weightPct / 100) > 0.05);
 
     if (drifted || thresholdBreached) {
       // Perp legs realize their PnL into the total and re-enter at today's price.
       allocations.forEach((a, i) => {
         const leg = legs[i];
         if (leg) {
-          leg.margin = (a.weightPct / 100) * value;
+          leg.margin = (a.weightPct / 100) * base;
           leg.entryPx = price(a.coin, ts);
-        } else qty.set(a.coin, ((a.weightPct / 100) * value) / price(a.coin, ts));
+        } else qty.set(a.coin, ((a.weightPct / 100) * base) / price(a.coin, ts));
       });
     }
 
@@ -221,6 +225,7 @@ export function simulate(config: BranchConfig, candlesByCoin: Record<string, Dai
 
   const startMs = Date.parse(config.startDate);
   const grid = buildGrid(candlesByCoin, startMs);
+  if (grid.length === 0) throw new NoPriceDataError("BTC", "no price history in range");
 
   const equity = runPortfolio(config.allocations, config.rebalance, config.initialCapitalUsd, grid, candlesByCoin, config.dca);
   const btc = runPortfolio([{ coin: "BTC", weightPct: 100 }], "none", config.initialCapitalUsd, grid, candlesByCoin);

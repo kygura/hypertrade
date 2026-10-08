@@ -4,9 +4,14 @@ import { SimIntentSchema, type SimBranchOutcome, type SimIntent, type SimRunResu
 import type { BranchConfig } from "../../shared/types.js";
 import { STABLES } from "./backfill.js";
 import { simulateLoaded, type RunDeps } from "./run.js";
+import { NoPriceDataError } from "./engine.js";
+import { UpstreamError } from "../mcp/types.js";
 
 export interface IntentDeps extends RunDeps {
   maxLeverage?(coin: string): number | undefined;
+  /** Canonical Hyperliquid name for a coin (case-insensitive), undefined when HL does not list it.
+   * Absent when the universe is unavailable: coins are then just uppercased. */
+  resolveCoin?(coin: string): string | undefined;
 }
 
 const PERP_CAVEAT = "perp legs: no funding, no fees, liquidation on daily lows/highs only";
@@ -16,14 +21,30 @@ async function runBranch(
   name: string,
   input: BranchConfig,
   deps: IntentDeps,
+  deadline: number,
 ): Promise<SimBranchOutcome> {
   const warnings: string[] = [];
+  const unknown: string[] = [];
+  const norm = (coin: string) => {
+    const up = coin.toUpperCase();
+    if (STABLES.has(up) || !deps.resolveCoin) return up;
+    const hit = deps.resolveCoin(coin);
+    if (!hit) unknown.push(coin);
+    return hit ?? up;
+  };
   const config: BranchConfig = {
     ...input,
-    allocations: input.allocations.map((a) => ({ ...a, coin: a.coin.toUpperCase() })),
-    dca: input.dca?.map((d) => ({ ...d, coin: d.coin.toUpperCase() })),
+    allocations: input.allocations.map((a) => ({ ...a, coin: norm(a.coin) })),
+    dca: input.dca?.map((d) => ({ ...d, coin: norm(d.coin) })),
   };
-  if (!config.dca) delete config.dca;
+  if (!config.dca?.length) delete config.dca;
+  if (Date.now() >= deadline) return { name, config, warnings, error: "deadline exceeded" };
+  if (unknown.length) return { name, config, warnings, error: `unknown coin ${unknown[0]}` };
+  // Two spot legs on one coin would share one quantity in the engine and be counted twice.
+  // (A spot leg plus a perp leg on the same coin, i.e. a hedge, is fine.)
+  const spot = config.allocations.filter((a) => a.side !== "short" && (a.leverage ?? 1) === 1).map((a) => a.coin);
+  const dup = spot.find((c, i) => spot.indexOf(c) !== i);
+  if (dup) return { name, config, warnings, error: `duplicate coin ${dup}` };
   try {
     const sum = config.allocations.reduce((s, a) => s + a.weightPct, 0);
     if (!(sum > 0)) return { name, config, warnings, error: "allocation weights must sum to more than 0" };
@@ -44,7 +65,7 @@ async function runBranch(
       config.rebalance = "none";
     }
 
-    await deps.backfill(config);
+    await deps.backfill(config, deadline);
     const candles = await deps.loadCandles(config);
 
     // Listing clamp: the engine extrapolates flat before a coin's first candle, which flatters CAGR.
@@ -68,18 +89,22 @@ async function runBranch(
     }
     return { name, config, result: simulateLoaded(config, candles, deps.now()), warnings };
   } catch (err) {
-    return { name, config, warnings, error: err instanceof Error ? err.message : String(err) };
+    if (err instanceof NoPriceDataError || err instanceof UpstreamError) return { name, config, warnings, error: err.message };
+    // Anything else is a bug or an unexpected upstream failure: log it, don't hand internals to the model.
+    console.error(`[sim] branch "${name}" failed:`, err);
+    return { name, config, warnings, error: "internal error" };
   }
 }
 
-/** Never throws for a bad branch (that branch gets `error`). An invalid intent returns `{ error }`
+/** Never throws for a bad branch (that branch gets `error`; branches not started by `deadline`, ms epoch,
+ * get "deadline exceeded"). An invalid intent returns `{ error }`
  * (zod message) so callers can hand it back to the model. */
-export async function runIntent(intent: unknown, deps: IntentDeps): Promise<SimRunResult | { error: string }> {
+export async function runIntent(intent: unknown, deps: IntentDeps, deadline = Infinity): Promise<SimRunResult | { error: string }> {
   const parsed = SimIntentSchema.safeParse(intent);
   if (!parsed.success) {
     return { error: `invalid intent: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}` };
   }
   const branches: SimBranchOutcome[] = [];
-  for (const b of parsed.data.branches) branches.push(await runBranch(b.name, b.config, deps));
+  for (const b of parsed.data.branches) branches.push(await runBranch(b.name, b.config, deps, deadline));
   return { intent: parsed.data as SimIntent, branches };
 }

@@ -347,4 +347,54 @@ describe("simulate — perp legs and DCA", () => {
     };
     expect(() => simulate(config, { BTC: flatBtc(2) })).toThrow(NoPriceDataError);
   });
+
+  test("monthly rebalance leaves DCA-only coins alone (no value created from nothing)", () => {
+    const ts = ["2024-01-31", "2024-02-01", "2024-03-01", "2024-04-01"].map(Date.parse);
+    const config: BranchConfig = {
+      startDate: "2024-01-31",
+      initialCapitalUsd: 1000,
+      allocations: [{ coin: "USDC", weightPct: 100 }],
+      rebalance: "monthly",
+      dca: [{ coin: "ETH", amountUsd: 100, every: "monthly" }],
+    };
+    const flat = ts.map((t) => ({ ts: t, c: 100 }));
+    const r = simulate(config, { BTC: flat, ETH: flat });
+    expect(r.equity.map((p) => p.value)).toEqual([1000, 1000, 1000, 1000]);
+  });
+
+  test("DCA falls back to the USDT sleeve once USDC is exhausted", () => {
+    const ts = ["2024-01-31", "2024-02-01", "2024-03-01", "2024-04-01"].map(Date.parse);
+    const config: BranchConfig = {
+      startDate: "2024-01-31",
+      initialCapitalUsd: 200,
+      allocations: [{ coin: "USDC", weightPct: 25 }, { coin: "USDT", weightPct: 75 }],
+      rebalance: "none",
+      dca: [{ coin: "ETH", amountUsd: 100, every: "monthly" }],
+    };
+    const ethPx = [100, 100, 100, 200];
+    const r = simulate(config, { BTC: ts.map((t) => ({ ts: t, c: 100 })), ETH: ts.map((t, i) => ({ ts: t, c: ethPx[i]! })) });
+    // Feb: 50 USDC + 50 USDT -> 1 ETH. Mar: 100 USDT -> 1 ETH (sleeve empty). Apr: 2 ETH @200 = 400.
+    expect(r.equity.at(-1)!.value).toBeCloseTo(400, 6);
+  });
+
+  test("liquidation without l/h falls back to the close", () => {
+    const config: BranchConfig = {
+      startDate: "2024-01-01",
+      initialCapitalUsd: 1000,
+      allocations: [{ coin: "ETH", weightPct: 50, leverage: 2 }, { coin: "USDC", weightPct: 50 }],
+      rebalance: "none",
+    };
+    const r = simulate(config, { BTC: flatBtc(3), ETH: candles([100, 40, 100]) });
+    expect(r.equity.map((p) => p.value)).toEqual([1000, 500, 500]);
+  });
+
+  test("a startDate after the last candle is an error, not a flat result", () => {
+    const config: BranchConfig = {
+      startDate: "2030-01-01",
+      initialCapitalUsd: 1000,
+      allocations: [{ coin: "BTC", weightPct: 100 }],
+      rebalance: "none",
+    };
+    expect(() => simulate(config, { BTC: flatBtc(3) })).toThrow("no price history in range");
+  });
 });

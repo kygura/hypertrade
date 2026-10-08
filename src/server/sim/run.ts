@@ -10,13 +10,14 @@ import { backfillBranch, STABLES } from "./backfill.js";
 export type CandlesByCoin = Record<string, DailyClose[]>;
 
 export interface RunDeps {
-  backfill(config: BranchConfig): Promise<void>;
+  /** `deadline` (ms epoch): no new upstream fetch starts after it. */
+  backfill(config: BranchConfig, deadline?: number): Promise<void>;
   loadCandles(config: BranchConfig): Promise<CandlesByCoin>;
   now(): number;
 }
 
 export const realDeps: RunDeps = {
-  backfill: (config) => backfillBranch(config),
+  backfill: (config, deadline) => backfillBranch(config, undefined, deadline),
   async loadCandles(config) {
     const coins = new Set([...config.allocations.map((a) => a.coin), ...(config.dca ?? []).map((d) => d.coin), "BTC"]);
     const out: CandlesByCoin = {};

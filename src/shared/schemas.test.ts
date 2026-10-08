@@ -79,6 +79,29 @@ describe("BranchConfigSchema", () => {
     expect(() => BranchConfigSchema.parse({ ...valid, dca: [{ ...dca, every: "daily" }] })).toThrow();
     expect(() => BranchConfigSchema.parse({ ...valid, dca: Array(9).fill(dca) })).toThrow();
   });
+
+  test("bounds untrusted sizes and numbers", () => {
+    const ok = (o: Record<string, unknown>) => BranchConfigSchema.safeParse({ ...valid, ...o }).success;
+    const scenario = (s: Record<string, unknown>) => ({ scenario: { horizonDays: 180, assumptions: [], paths: 200, ...s } });
+    expect(ok(scenario({ horizonDays: 3650 }))).toBe(true);
+    expect(ok(scenario({ horizonDays: 3651 }))).toBe(false);
+    expect(ok(scenario({ assumptions: [{ coin: "ETH", annualReturnPct: Infinity, annualVolPct: 50 }] }))).toBe(false);
+    expect(ok({ allocations: Array(11).fill({ coin: "ETH", weightPct: 1 }) })).toBe(false);
+    for (const coin of ["kPEPE", "xyz:TSLA", "1000BONK"]) expect(ok({ allocations: [{ coin, weightPct: 100 }] })).toBe(true);
+    for (const coin of ["", "BTC; drop", "a:b:c", "X".repeat(25), "ETH/USDC"]) expect(ok({ allocations: [{ coin, weightPct: 100 }] })).toBe(false);
+    expect(ok({ dca: [{ coin: "<script>", amountUsd: 1, every: "weekly" }] })).toBe(false);
+    for (const weightPct of [-1, NaN, Infinity]) expect(ok({ allocations: [{ coin: "ETH", weightPct }] })).toBe(false);
+    for (const initialCapitalUsd of [0, -5, 1e13, Infinity]) expect(ok({ initialCapitalUsd })).toBe(false);
+    expect(ok({ dca: [{ coin: "ETH", amountUsd: Infinity, every: "weekly" }] })).toBe(false);
+  });
+
+  test("nested objects reject unknown keys instead of silently dropping them", () => {
+    const ok = (o: Record<string, unknown>) => BranchConfigSchema.safeParse({ ...valid, ...o }).success;
+    expect(ok({ allocations: [{ coin: "ETH", weightPct: 100, direction: "short" }] })).toBe(false);
+    expect(ok({ dca: [{ coin: "ETH", amountUsd: 1, every: "weekly", start: "2024-02-01" }] })).toBe(false);
+    expect(ok({ scenario: { horizonDays: 30, assumptions: [], paths: 10, seed: 1 } })).toBe(false);
+    expect(ok({ scenario: { horizonDays: 30, assumptions: [{ coin: "ETH", annualReturnPct: 1, annualVolPct: 1, drift: 1 }], paths: 10 } })).toBe(false);
+  });
 });
 
 describe("MarketStateDataSchema", () => {

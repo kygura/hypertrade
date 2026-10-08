@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { createAnalystRoutes } from "../routes/analyst.js";
-import { SIM_TOOL_SPEC, buildSimSystemPrompt } from "./sim.js";
+import { SIM_TOOL_SPEC, buildSimSystemPrompt, realSimDeps, runSimTool } from "./sim.js";
 import { SimIntentSchema } from "../../shared/intent.js";
 import { AllocationSchema } from "../../shared/schemas.js";
 import type { Conversation, LLMProvider, StepResult, ToolOutcome, ToolSpec } from "./provider.js";
 import type { IntentDeps } from "../sim/intent.js";
 import type { DailyClose } from "../sim/engine.js";
+import type { AssetCtx } from "../../shared/types.js";
 
 const DAY = 86400000;
 const t0 = Date.parse("2024-01-01");
@@ -88,6 +89,37 @@ describe("analyst sim mode", () => {
     expect(p.tools.map((t) => t.name)).not.toContain("simulate_paths");
     const { res } = await query({}, "bogus");
     expect(res.status).toBe(400);
+  });
+
+  test("a failed branch's error reaches the model in the compact result", async () => {
+    const bad = { ...valid, branches: [...valid.branches, { name: "x", config: { ...valid.branches[0]!.config, allocations: [{ coin: "NOPE", weightPct: 100 }] } }] };
+    const { p } = await query(bad);
+    const out = p.results[0]![0]!;
+    expect(out.isError).toBe(false);
+    expect(JSON.parse(out.content).branches[1].error).toContain("NOPE");
+  });
+
+  test("tool deadline: isError result, and the remaining branches never start", async () => {
+    let fetched = 0;
+    const slow: IntentDeps = { ...simDeps, backfill: () => new Promise((r) => setTimeout(() => r(void fetched++), 40)) };
+    const run = await runSimTool({ id: "c1", input: { ...valid, branches: [valid.branches[0], valid.branches[0]] } }, slow, () => {}, 10);
+    expect(run.isError).toBe(true);
+    expect(run.content).toContain("timed out");
+    await new Promise((r) => setTimeout(r, 120));
+    expect(fetched).toBe(1);
+  });
+
+  test("realSimDeps: canonical HL names; a slow universe fetch falls back without blocking", async () => {
+    const ctx = (name: string, maxLeverage: number) => ({ name, maxLeverage }) as AssetCtx;
+    const d = await realSimDeps(async () => ({ fetchedAt: 0, ctxs: [ctx("kPEPE", 10), ctx("BTC", 40)] }));
+    expect(d.resolveCoin!("kpepe")).toBe("kPEPE");
+    expect(d.resolveCoin!("FAKE")).toBeUndefined();
+    expect(d.maxLeverage!("btc")).toBe(40);
+    const t = Date.now();
+    const slow = await realSimDeps(() => new Promise(() => {}), 20);
+    expect(Date.now() - t).toBeLessThan(1000);
+    expect(slow.resolveCoin).toBeUndefined();
+    expect(slow.maxLeverage?.("BTC")).toBeUndefined();
   });
 
   test("prompt keeps the disclaimer", () => {
