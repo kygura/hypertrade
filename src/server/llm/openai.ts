@@ -40,6 +40,8 @@ export interface OpenAICompatibleOptions {
   replayReasoning?: boolean;
   fetch?: typeof fetch;
   maxTokens?: number;
+  /** Injected delay (tests skip real waiting). */
+  retryDelay?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
 type ChatMessage =
@@ -94,25 +96,31 @@ class OpenAIConversation implements Conversation {
 
   async step(tools: ToolSpec[], hooks: StepHooks, opts: StepOptions): Promise<StepResult> {
     const doFetch = this.opts.fetch ?? fetch;
-    const res = await doFetch(`${this.opts.baseURL.replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${this.opts.apiKey}` },
-      body: JSON.stringify({
-        ...this.opts.extraBody,
-        model: this.opts.model,
-        // Thinking models spend part of the cap on reasoning.
-        [this.opts.maxTokensField ?? "max_tokens"]: this.opts.maxTokens ?? 16000,
-        stream: true,
-        stream_options: { include_usage: true },
-        messages: this.messages,
-        tools: tools.map((t) => ({
-          type: "function",
-          function: { name: t.name, description: t.description, parameters: t.input_schema },
-        })),
-        tool_choice: opts.final ? "none" : "auto",
-      }),
-      signal: opts.signal,
-    });
+    const res = await postWithRetry429(
+      doFetch,
+      `${this.opts.baseURL.replace(/\/+$/, "")}/chat/completions`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${this.opts.apiKey}` },
+        body: JSON.stringify({
+          ...this.opts.extraBody,
+          model: this.opts.model,
+          // Thinking models spend part of the cap on reasoning.
+          [this.opts.maxTokensField ?? "max_tokens"]: this.opts.maxTokens ?? 16000,
+          stream: true,
+          stream_options: { include_usage: true },
+          messages: this.messages,
+          tools: tools.map((t) => ({
+            type: "function",
+            function: { name: t.name, description: t.description, parameters: t.input_schema },
+          })),
+          tool_choice: opts.final ? "none" : "auto",
+        }),
+        signal: opts.signal,
+      },
+      opts.signal,
+      this.opts.retryDelay,
+    );
     if (!res.ok || !res.body) {
       const text = await res.text().catch(() => "");
       throw new Error(`provider HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
@@ -173,6 +181,55 @@ class OpenAIConversation implements Conversation {
   addToolResults(results: ToolOutcome[]): void {
     for (const r of results) this.messages.push({ role: "tool", tool_call_id: r.id, content: r.content });
   }
+}
+
+const MAX_429_RETRIES = 3;
+const MAX_429_TOTAL_MS = 20_000;
+
+/**
+ * Retries only HTTP 429 (organization rate limit / concurrency), honoring
+ * Retry-After or a "try again after N seconds" hint in the body, with
+ * jitter; up to MAX_429_RETRIES or MAX_429_TOTAL_MS total wait. Any other
+ * status (including other 4xx) is returned as-is for the caller to handle.
+ */
+export async function postWithRetry429(
+  doFetch: typeof fetch,
+  url: string,
+  init: RequestInit,
+  signal: AbortSignal,
+  delay: (ms: number, signal: AbortSignal) => Promise<void> = sleep,
+): Promise<Response> {
+  let waited = 0;
+  for (let attempt = 0; ; attempt++) {
+    const res = await doFetch(url, init);
+    if (res.status !== 429) return res;
+    const text = await res.text().catch(() => "");
+    const wait = retryAfterMs(res, text) + Math.floor(Math.random() * 300);
+    if (attempt >= MAX_429_RETRIES || waited + wait > MAX_429_TOTAL_MS) {
+      throw new Error(`provider HTTP 429${text ? `: ${text.slice(0, 200)}` : ""}`);
+    }
+    await delay(wait, signal);
+    waited += wait;
+  }
+}
+
+function retryAfterMs(res: Response, text: string): number {
+  const raw = res.headers.get("retry-after");
+  const header = raw === null ? NaN : Number(raw);
+  if (Number.isFinite(header) && header >= 0) return header * 1000;
+  const hint = text.match(/try again after (\d+(?:\.\d+)?)\s*second/i);
+  if (hint) return Number(hint[1]) * 1000;
+  return 1000;
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(t);
+      reject(new Error("aborted"));
+    });
+  });
 }
 
 interface ChatChunk {

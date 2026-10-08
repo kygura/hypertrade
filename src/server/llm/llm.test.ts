@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolveProvider, DEFAULT_MODEL, type StepHooks } from "./provider.js";
 import { AnthropicProvider } from "./anthropic.js";
-import { OpenAICompatibleProvider } from "./openai.js";
+import { OpenAICompatibleProvider, postWithRetry429 } from "./openai.js";
 import { DISCLAIMER, FORECAST_RULE, HARD_RULE, HEDGE_VOCABULARY, buildSystemPrompt } from "./system.js";
 import { LAB_DEADLINE_MS, MAX_TOOL_CHARS, TOOL_SPECS, runLabTool, runTool, type ToolDeps } from "./tools.js";
 import { labTools } from "../lab/tools.js";
@@ -193,6 +193,47 @@ describe("OpenAICompatibleProvider", () => {
     expect(bodies[1].tool_choice).toBe("none");
     expect(bodies[1].messages.at(-2)).toMatchObject({ role: "assistant", tool_calls: [{ id: "c1" }] });
     expect(bodies[1].messages.at(-1)).toEqual({ role: "tool", tool_call_id: "c1", content: "[]" });
+  });
+
+  test("429s retry with the Retry-After/hint delay, then succeed", async () => {
+    let calls = 0;
+    const delays: number[] = [];
+    const fakeFetch = (async () => {
+      calls++;
+      if (calls === 1) return new Response("rate limited", { status: 429, headers: { "retry-after": "2" } });
+      if (calls === 2) return new Response('{"error":"Organization Rate limit exceeded, please try again after 1 seconds"}', { status: 429 });
+      return sse([{ data: { choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] } }, { data: "[DONE]" }]);
+    }) as unknown as typeof fetch;
+    const noWait = async (ms: number) => void delays.push(ms);
+    const res = await postWithRetry429(fakeFetch, "http://x/chat/completions", { method: "POST" }, new AbortController().signal, noWait);
+    expect(calls).toBe(3);
+    expect(delays[0]).toBeGreaterThanOrEqual(2000);
+    expect(delays[0]).toBeLessThan(2300);
+    expect(delays[1]).toBeGreaterThanOrEqual(1000);
+    expect(delays[1]).toBeLessThan(1300);
+    expect(res.status).toBe(200);
+  });
+
+  test("429s give up after the retry budget, and other 4xx never retry", async () => {
+    let calls = 0;
+    const fakeFetch = (async () => {
+      calls++;
+      return new Response("still limited", { status: 429 });
+    }) as unknown as typeof fetch;
+    const err = await postWithRetry429(fakeFetch, "http://x", { method: "POST" }, new AbortController().signal, async () => {}).catch((e) => e as Error);
+    expect(String(err)).toContain("HTTP 429");
+    expect(calls).toBe(4); // initial + 3 retries, then give up
+
+    calls = 0;
+    const fakeFetch401 = (async () => {
+      calls++;
+      return new Response("nope", { status: 401 });
+    }) as unknown as typeof fetch;
+    const res = await postWithRetry429(fakeFetch401, "http://x", { method: "POST" }, new AbortController().signal, async () => {
+      throw new Error("must not delay on non-429");
+    });
+    expect(res.status).toBe(401);
+    expect(calls).toBe(1); // no retry at all
   });
 
   test("HTTP errors throw without echoing the key", async () => {
