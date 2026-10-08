@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hypertrade-lab": {
+      "command": "bun",
+      "args": ["run", "scripts/lab-mcp.ts"]
+    }
+  }
+}

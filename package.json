@@ -6,6 +6,8 @@
     "dev": "vite",
     "dev:api": "bun run scripts/dev-api.ts",
     "desk:worker": "bun run scripts/desk-worker.ts",
+    "lab": "bun run scripts/lab-cli.ts",
+    "lab:mcp": "bun run scripts/lab-mcp.ts",
     "build": "bun run typecheck && vite build",
     "test": "bun test src",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",

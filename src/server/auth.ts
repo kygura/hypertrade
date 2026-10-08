@@ -111,6 +111,26 @@ export const requireCronToken: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
+/** `/lab`, `/lab/...`, `/mcp`, `/mcp/...` — not `/labx` or `/mcpfoo`. */
+const LAB_PATH = /^\/(lab|mcp)(\/|$)/;
+
+/**
+ * Bearer token for the lab surfaces (LAB.md "Auth"): any of the
+ * comma-separated LAB_API_TOKEN values. Every configured token is compared, so
+ * timing does not reveal which one matched. Unset or empty disables bearer.
+ */
+function labBearerValid(c: Context): boolean {
+  const provided = c.req.header("authorization")?.match(/^Bearer +(\S+) *$/i)?.[1];
+  if (!provided) return false;
+  const tokens = (process.env.LAB_API_TOKEN ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  let ok = false;
+  for (const t of tokens) ok = safeEqual(provided, t) || ok;
+  return ok;
+}
+
 /**
  * Single auth gate for the whole API. Mounted once, before any route, so route
  * modules added later are protected by default without touching this file.
@@ -122,6 +142,14 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
   if (path.startsWith("/cron/") || path === "/desk/tick") return requireCronToken(c, next);
   // Telegram's webhook carries its own secret header, checked by the route.
   if (path === "/desk/telegram") return next();
+
+  // Lab REST and MCP: session cookie or a LAB_API_TOKEN bearer. The bearer
+  // grants nothing on any other path.
+  if (LAB_PATH.test(path)) {
+    if (labBearerValid(c) || verifySession(getCookie(c, COOKIE_NAME))) return next();
+    if (path.startsWith("/mcp")) c.header("WWW-Authenticate", "Bearer");
+    return c.json({ error: "unauthorized" }, 401);
+  }
 
   if (!verifySession(getCookie(c, COOKIE_NAME))) {
     return c.json({ error: "unauthorized" }, 401);
