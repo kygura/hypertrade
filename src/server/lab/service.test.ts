@@ -263,6 +263,19 @@ describe("lab service: catalogue", () => {
     expect(again.saved).toEqual(first.saved);
   }, 20_000);
 
+  test("save from a run carries the search's walk-forward onto the entry; without a run it stays null", async () => {
+    const { service } = kit();
+    const { runId, result } = await service.search(searchCfg, { source: "api" });
+    const found = result.rules.find((r) => r.walkForward);
+    expect(found).toBeDefined();
+    const entry = await service.catalogueSave({ rule: found!.rule, name: "from run", runId: runId! });
+    expect(entry.saved.walkForward).toEqual(found!.walkForward);
+    for (const k of ["walkForwardFolds", "deflatedSharpe"]) if (k in found!) expect((entry.saved as any)[k]).toEqual((found as any)[k]);
+    expect(entry.saved.sensitivity).toBeDefined(); // the rest is the fresh evaluation
+    const bare = await kit().service.catalogueSave({ rule: found!.rule, name: "bare" });
+    expect(bare.saved.walkForward).toBeNull();
+  }, 20_000);
+
   test("health: decay, same-asset overlap, gaps, live map; list carries the flags", async () => {
     const { service, store, loads } = kit();
     const good = await seed(store, planted, "planted");

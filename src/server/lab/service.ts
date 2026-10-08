@@ -95,6 +95,17 @@ function asInputError(err: unknown): unknown {
   return err instanceof SearchRefused ? new ToolInputError(err.message, err.field) : err;
 }
 
+/** Fields only a search can compute (an explicit-rule evaluation has no folds to refit). */
+const SEARCH_ONLY_FIELDS = ["walkForward", "walkForwardFolds", "deflatedSharpe"] as const;
+
+/** A fresh evaluation, with the walk-forward fields of the search that found the rule when there is one. */
+function withSearchWalkForward(fresh: RuleEvaluation, fromSearch: RuleEvaluation | undefined): RuleEvaluation {
+  if (!fromSearch) return fresh;
+  const out: Record<string, unknown> = { ...fresh };
+  for (const k of SEARCH_ONLY_FIELDS) if (k in fromSearch) out[k] = (fromSearch as unknown as Record<string, unknown>)[k];
+  return out as unknown as RuleEvaluation;
+}
+
 export function createLabService(partial: Partial<LabServiceDeps> = {}) {
   const deps: LabServiceDeps = {
     store: partial.store ?? defaultStore(),
@@ -338,13 +349,12 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
 
     async catalogueSave(input: SaveInput): Promise<CatalogueEntry> {
       const rule = parseInput(RuleSchema, input.rule, "rule");
-      if (input.runId && !(await deps.store.getRun(input.runId))) {
-        throw new ToolInputError(`unknown run ${input.runId} (lab_list_runs lists them)`, "runId");
-      }
+      const run = input.runId ? await deps.store.getRun(input.runId) : null;
+      if (input.runId && !run) throw new ToolInputError(`unknown run ${input.runId} (lab_list_runs lists them)`, "runId");
       const id = ruleId(rule);
       // The store keeps an existing entry's evaluation, so only a new rule is evaluated.
       const existing = await deps.store.getCatalogueEntry(id);
-      const saved = existing?.saved ?? (await evaluate({ rule, sensitivity: true }));
+      const saved = existing?.saved ?? withSearchWalkForward(await evaluate({ rule, sensitivity: true }), run?.result?.rules.find((r) => r.id === id));
       return deps.store.saveCatalogueEntry({
         id,
         name: input.name,

@@ -6,6 +6,8 @@ import { seriesRange, summaryFor } from "../db.js";
 import { engineFetch, type EngineResult } from "../routes/engine.js";
 import { getMarkets, type MarketRow } from "../routes/hl.js";
 import { getSectorsPayload } from "../routes/sectors.js";
+import { labTools } from "../lab/tools.js";
+import { ToolInputError, UpstreamError, type ToolDef } from "../mcp/types.js";
 import type { ToolSpec } from "./provider.js";
 
 // The analyst's tools: read-only views over data the app already serves.
@@ -34,6 +36,22 @@ export interface ToolDeps {
   series(id: string, from: string | undefined, buckets: number): Promise<unknown>;
   hlMarkets(): Promise<{ fetchedAt: string; markets: MarketRow[] }>;
   engine(rest: string): Promise<EngineResult>;
+  /** The Lab tool registry (LAB.md); the analyst only sees its read-only tools. Defaults to the shared registry. */
+  lab?: ToolDef[];
+}
+
+/** The shared Lab registry: building it connects to nothing (the service is lazy). */
+const LAB_TOOLS = labTools();
+/** Per-call budget for a Lab tool, inside the analyst's 90 s request budget. */
+export const LAB_DEADLINE_MS = 40_000;
+
+/**
+ * The Lab tools the analyst may call: the registry's readOnlyHint tools, as-is.
+ * This leaves out lab_search (writes a run, up to ~50 s) and the catalogue
+ * save/remove tools.
+ */
+export function analystLabTools(tools: ToolDef[] = LAB_TOOLS): ToolDef[] {
+  return tools.filter((t) => t.annotations?.readOnlyHint === true);
 }
 
 export const defaultToolDeps: ToolDeps = {
@@ -44,6 +62,7 @@ export const defaultToolDeps: ToolDeps = {
   series: (id, from, buckets) => seriesRange(id, from, undefined, buckets),
   hlMarkets: () => getMarkets(),
   engine: (rest) => engineFetch(rest),
+  lab: LAB_TOOLS,
 };
 
 const empty = { type: "object" as const, properties: {}, additionalProperties: false };
@@ -123,6 +142,7 @@ export const TOOL_SPECS: ToolSpec[] = [
       additionalProperties: false,
     },
   },
+  ...analystLabTools().map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema })),
 ];
 
 const inputs = {
@@ -160,6 +180,8 @@ function fail(summary: string, detail: Record<string, unknown> = {}): ToolRun {
 
 /** Runs one tool call. Never throws: failures become is_error results the model can read. */
 export async function runTool(name: string, rawInput: unknown, deps: ToolDeps = defaultToolDeps): Promise<ToolRun> {
+  const lab = analystLabTools(deps.lab).find((t) => t.name === name);
+  if (lab) return runLabTool(lab, rawInput);
   const schema = (inputs as Record<string, z.ZodTypeAny>)[name];
   if (!schema) return fail(`unknown tool ${name}`);
   const parsed = schema.safeParse(rawInput ?? {});
@@ -258,6 +280,18 @@ async function dispatch(name: ToolName, input: any, deps: ToolDeps): Promise<Too
       }));
       return { content: clip({ decisions }), summary: `${decisions.length} decisions`, isError: false };
     }
+  }
+}
+
+async function runLabTool(tool: ToolDef, rawInput: unknown): Promise<ToolRun> {
+  try {
+    const out = await tool.run(rawInput ?? {}, { source: "api", deadlineMs: LAB_DEADLINE_MS });
+    return { content: clip(out), summary: tool.title ?? tool.name, isError: false };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (err instanceof ToolInputError) return fail("invalid input", { issues: [message] });
+    if (err instanceof UpstreamError) return fail(`${tool.name}: ${message}`, { note: "A Lab data source failed; say so rather than guessing." });
+    return fail(`${tool.name} failed: ${message}`);
   }
 }
 

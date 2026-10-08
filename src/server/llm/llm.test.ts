@@ -4,7 +4,11 @@ import { resolveProvider, DEFAULT_MODEL, type StepHooks } from "./provider.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OpenAICompatibleProvider } from "./openai.js";
 import { DISCLAIMER, FORECAST_RULE, HARD_RULE, HEDGE_VOCABULARY, buildSystemPrompt } from "./system.js";
-import { TOOL_SPECS, runTool, type ToolDeps } from "./tools.js";
+import { LAB_DEADLINE_MS, MAX_TOOL_CHARS, TOOL_SPECS, runTool, type ToolDeps } from "./tools.js";
+import { labTools } from "../lab/tools.js";
+import { createLabService } from "../lab/service.js";
+import { memoryStore } from "../lab/store.js";
+import { ToolInputError, UpstreamError, type ToolContext, type ToolDef } from "../mcp/types.js";
 
 const ROUTINE = readFileSync(new URL("../../../ROUTINE.md", import.meta.url), "utf8");
 
@@ -56,6 +60,8 @@ describe("system prompt", () => {
     const s = buildSystemPrompt(true);
     for (const part of [HARD_RULE, HEDGE_VOCABULARY, FORECAST_RULE, DISCLAIMER]) expect(s).toContain(part);
     expect(s).toContain("- web_search — provider-hosted web search");
+    expect(s).toContain("- lab_evaluate_rule\n");
+    expect(s).toMatch(/rank and compare rules by walk-forward results; the holdout .* is a one-shot check/);
     expect(buildSystemPrompt(false)).toContain("web_search (unavailable) — only with Anthropic models");
     expect(s).not.toMatch(/\d{4}-\d{2}-\d{2}T/); // no timestamps: the prefix caches
   });
@@ -293,5 +299,46 @@ describe("tools", () => {
     expect(d.extra).toBeUndefined();
     expect(TOOL_SPECS.some((t) => /approve|reject|kill|put|order/i.test(t.name))).toBe(false);
     expect((await runTool("get_engine_decisions", { strategy: "../kill" }, deps)).isError).toBe(true);
+  });
+
+  test("lab: the analyst gets the registry's read-only tools, schemas as-is; no search, save or remove", () => {
+    const registry = labTools(createLabService({ store: memoryStore() }));
+    const readOnly = registry.filter((t) => t.annotations?.readOnlyHint === true);
+    const specs = TOOL_SPECS.filter((t) => t.name.startsWith("lab_"));
+    expect(specs.map((t) => t.name)).toEqual(readOnly.map((t) => t.name));
+    for (const name of ["lab_search", "lab_catalogue_save", "lab_catalogue_remove"]) expect(specs.some((t) => t.name === name)).toBe(false);
+    for (const t of readOnly) expect(specs.find((s) => s.name === t.name)).toEqual({ name: t.name, description: t.description, input_schema: t.inputSchema });
+  });
+
+  test("lab: calls run through the registry; errors become is_error results; output is clipped", async () => {
+    const real = labTools(createLabService({ store: memoryStore() }));
+    const labDeps = { ...deps, lab: real };
+    expect(JSON.parse((await runTool("lab_list_runs", {}, labDeps)).content)).toEqual({ runs: [] });
+    const bad = await runTool("lab_get_run", { id: "nope" }, labDeps);
+    expect(bad).toMatchObject({ isError: true, summary: "invalid input" });
+    expect(JSON.parse(bad.content).issues[0]).toContain("no run with id nope");
+    expect((await runTool("lab_list_runs", { limit: 0 }, labDeps)).isError).toBe(true);
+    expect((await runTool("lab_catalogue_save", { rule: {}, name: "x" }, labDeps)).summary).toBe("unknown tool lab_catalogue_save");
+    expect((await runTool("lab_search", { asset: "BTC", metrics: ["ht:funding"] }, labDeps)).summary).toBe("unknown tool lab_search");
+
+    const ctxs: ToolContext[] = [];
+    const fake = (name: string, run: () => Promise<unknown>): ToolDef => ({
+      name,
+      description: name,
+      inputSchema: { type: "object", properties: {} },
+      annotations: { readOnlyHint: true },
+      run: (_a, ctx) => (ctxs.push(ctx), run()),
+    });
+    const fakes = { ...deps, lab: [
+      fake("lab_market_pulse", async () => ({ big: "x".repeat(MAX_TOOL_CHARS * 2) })),
+      fake("lab_evaluate_rule", async () => { throw new UpstreamError("no data for cm:PriceUSD"); }),
+      fake("lab_sensitivity", async () => { throw new ToolInputError("rule.conditions: bad", "rule.conditions"); }),
+    ] };
+    const big = await runTool("lab_market_pulse", undefined, fakes);
+    expect(big.isError).toBe(false);
+    expect(big.content).toContain("[truncated");
+    expect(ctxs[0]).toEqual({ source: "api", deadlineMs: LAB_DEADLINE_MS });
+    expect(await runTool("lab_evaluate_rule", {}, fakes)).toMatchObject({ isError: true, summary: "lab_evaluate_rule: no data for cm:PriceUSD" });
+    expect(await runTool("lab_sensitivity", {}, fakes)).toMatchObject({ isError: true, summary: "invalid input" });
   });
 });

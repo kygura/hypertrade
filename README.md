@@ -281,6 +281,13 @@ claude mcp add --transport http hypertrade-lab https://<app>/api/mcp \
   --header "Authorization: Bearer $LAB_API_TOKEN"
 ```
 
+Then ask Claude for something like: "Find a long-only rule for BTC with
+`lab_search`, stress-test the best one (walk-forward vs holdout,
+`lab_sensitivity`, a `lab_evaluate_rule` on another window), and
+`lab_catalogue_save` it only if it passes the save bar (walk-forward Sharpe > 1,
+holdout Sharpe > 0, stability ≥ 0.5)." The `/analyst` page can read the same
+lab (runs, evaluations, catalogue, Market Pulse) but never searches or saves.
+
 **Claude routines, claude.ai custom connectors, other remote MCP clients.**
 Remote MCP URL `https://<app>/api/mcp`, authenticated with the header
 `Authorization: Bearer <LAB_API_TOKEN>`. The server does bearer headers only,
