@@ -242,3 +242,105 @@ DeepSeek and Kimi require their reasoning back during a tool loop; the client
 replays it, and folds earlier session turns into the opening message for
 them (the session history is text-only). Web search is Anthropic-only.
 Each question is bounded to 8 tool rounds and 90 seconds.
+
+## Lab (heuristic research)
+
+`/lab` and its tools search a metric universe for simple, human-readable
+trading rules ("when `cm:CapMVRVCur` z(90) < −1.1 and `ht:funding` ≥ 0, go long
+BTC"), score them as strategies net of slippage, validate them walk-forward and
+on a holdout, and track the ones you save in a catalogue with live
+performance, health checks and a Market Pulse. It rebuilds the methodology
+Glassnode published for Alpha Lab over keyless data. Full spec and the tool
+contract: [`LAB.md`](LAB.md). Results are historical research, not advice.
+
+Providers (all keyless): `ht` (hypertrade DB, live Hyperliquid fallback for
+price/funding), `cm` (Coin Metrics community API), `fng` (alternative.me Fear
+& Greed), `llama` (DefiLlama stablecoins and TVL), `bc` (blockchain.com
+Bitcoin network charts), `deribit` (BTC and ETH DVOL history). Runs and the
+catalogue live in Postgres (`db/migrations/004_lab.sql`, then
+`005_lab_guard.sql`; apply them like the others; the newest 500 runs are
+kept), in a JSON file locally, or in memory.
+
+**Lab data.** `/api/cron/lab-collect` runs the Lab collector
+(`src/server/lab/collect.ts`) which stores the daily history of every `cm`
+(per `LAB_ASSETS`, default `BTC,ETH`), `fng`, `llama`, `bc` and `deribit`
+metric in `observations` as `lab.<provider>.<key>[.<asset>]` (e.g.
+`lab.cm.CapMVRVCur.btc`, `lab.bc.hash_rate`). The collect workflow calls it
+in its own job every 15 minutes (a no-op for fresh series) and Vercel Cron
+daily at 06:30 UTC as a fallback. A run has a 200 s budget: no series starts
+after it and every upstream request is cut to end by it; a paged history it
+cuts short is stored as far as it got and resumed on the next run. Runs never
+overlap: a lease in `sync_state` (`coin = '_lab'`, `series = '_lease'`,
+`synced_at` = expiry, budget + 60 s) is taken by one conditional upsert, and
+a second trigger answers `{"busy": true}` without collecting. A series' first
+sync pulls its full history; after that it refetches a tail (last sync minus
+a week) at most every 20 h. Only completed UTC days are stored (today's
+value is still forming), and that week of overlap is the revision horizon:
+an upstream revision older than 7 days is not picked up. A failure waits 1 h
+(a 4xx refusal 20 h) before the next try; one dead source never stops the
+others, and Coin Metrics goes one request at a time to stay inside its
+community rate limit. Bookkeeping is in `sync_state` under `coin = '_lab'`. Searches read that stored history first when its last
+point is at most 2 days old, top up a staler one live from its last week, and
+go live for anything not collected or without a DB.
+
+Point in time: every metric is shifted by its publication lag (`lagDays`), and
+the calendar ends at the last *completed* UTC day: today's forming bar is
+dropped, so a rule "firing now" fires as of the last daily close. Gaps are
+forward-filled up to 3 days (8 for weekly FRED series such as WALCL, WTREGEN
+and net liquidity). Level metrics (price, supply, hash rate, TVL, …) are
+flagged non-stationary, so searches skip their raw values.
+
+| env | |
+|---|---|
+| `LAB_API_TOKEN` | comma-separated bearer tokens accepted on `/api/lab/*` and `/api/mcp` (the session cookie also works) |
+| `LAB_SEARCH_DEADLINE_MS` | server search budget, default 50 000; local CLI/stdio: none unless set |
+| `LAB_URL` | CLI/stdio: deployed origin to proxy to; unset runs the lab in-process |
+| `LAB_STORE_FILE` | local store file, default `~/.hypertrade/lab.json` |
+| `LAB_ASSETS` | assets the cron collector stores `cm` history for, default `BTC,ETH` |
+| `LAB_ALLOWED_ORIGINS` | extra browser origins allowed on `/api/mcp` (besides `APP_URL` and localhost) |
+
+The same 12 tools (`lab_search`, `lab_evaluate_rule`, `lab_catalogue_*`,
+`lab_market_pulse`, …) are served over every surface, plus an `autoresearch`
+MCP prompt that runs the research loop.
+
+**Claude Code.** The project `.mcp.json` registers `hypertrade-lab` as a stdio
+server (`bun run lab:mcp`): in-process by default, or a proxy to the deployed
+app when `LAB_URL` and `LAB_API_TOKEN` are set in the environment. Or connect
+to the deployment directly over HTTP:
+
+```bash
+claude mcp add --transport http hypertrade-lab https://<app>/api/mcp \
+  --header "Authorization: Bearer $LAB_API_TOKEN"
+```
+
+Then ask Claude for something like: "Find a long-only rule for BTC with
+`lab_search`, stress-test the best one (walk-forward vs holdout,
+`lab_sensitivity`, a `lab_evaluate_rule` on another window), and
+`lab_catalogue_save` it only if its verdict is `robust`, the save bar:
+walk-forward Sharpe > 1, holdout Sharpe > 0, stability ≥ 0.5 and deflated
+Sharpe ≥ 0.9." The `/analyst` page can read the same
+lab (runs, evaluations, catalogue, Market Pulse) but never searches or saves.
+
+**Claude routines, claude.ai custom connectors, other remote MCP clients.**
+Remote MCP URL `https://<app>/api/mcp`, authenticated with the header
+`Authorization: Bearer <LAB_API_TOKEN>`. The server does bearer headers only,
+not OAuth: clients that let you set a header (Claude Code, the API's MCP
+connector) work; a connector UI that only offers OAuth will not.
+
+**CLI** (local, or remote with `LAB_URL`):
+
+```bash
+bun run lab tools
+bun run lab lab_list_metrics --provider cm --asset BTC
+bun run lab lab_search --asset BTC --metrics '["cm:CapMVRVCur","ht:funding","fng:value"]' --horizon-days 14
+bun run lab lab_market_pulse --pretty
+```
+
+**REST**: `GET /api/lab/tools` lists definitions; `POST /api/lab/tools/<name>`
+takes the arguments as JSON and answers `{ ok: true, result }` or
+`{ ok: false, error, field? }` (400 on bad arguments):
+
+```bash
+curl -s https://<app>/api/lab/tools/lab_catalogue_health \
+  -H "Authorization: Bearer $LAB_API_TOKEN" -H 'content-type: application/json' -d '{}'
+```

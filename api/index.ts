@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
 import { requireAuth } from "../src/server/auth.js";
+import { mcpRoutes } from "../src/server/mcp/http.js";
+import { labRegistry } from "../src/server/mcp/lab.js";
 import { analystRoutes } from "../src/server/routes/analyst.js";
 import { authRoutes } from "../src/server/routes/auth.js";
 import { branchesRoutes } from "../src/server/routes/branches.js";
@@ -9,6 +11,7 @@ import { cronRoutes } from "../src/server/routes/cron.js";
 import { deskRoutes } from "../src/server/routes/desk.js";
 import { engineRoutes } from "../src/server/routes/engine.js";
 import { hlRoutes } from "../src/server/routes/hl.js";
+import { labRoutes } from "../src/server/routes/lab.js";
 import { marketstateRoutes } from "../src/server/routes/marketstate.js";
 import { metricsRoutes } from "../src/server/routes/metrics.js";
 import { perpRoutes } from "../src/server/routes/perp.js";
@@ -20,6 +23,11 @@ import { sectorsRoutes } from "../src/server/routes/sectors.js";
 process.on("unhandledRejection", (err) => {
   console.error("[unhandledRejection]", err, (err as { query?: string })?.query ?? "");
 });
+
+// Vercel function limit (s). One function serves every route: the cron
+// backfill is budgeted against 300 s (routes/cron.ts); the lab search keeps
+// its own 50 s deadline inside this.
+export const maxDuration = 300;
 
 const app = new Hono({ strict: false }).basePath("/api");
 
@@ -41,6 +49,8 @@ app.route("/cron", cronRoutes);
 app.route("/desk", deskRoutes);
 app.route("/engine", engineRoutes);
 app.route("/hl", hlRoutes);
+app.route("/lab", labRoutes());
+app.route("/mcp", mcpRoutes(labRegistry));
 app.route("/marketstate", marketstateRoutes);
 app.route("/metrics", metricsRoutes);
 app.route("/perp", perpRoutes);

@@ -39,3 +39,36 @@
 | T15 | Gate page: PROP.md §(f) checklist computed from paper record; stays red until cleared; weekly per-setup expectancy review | sonnet | T14 | open |
 | D1x | Desk (phase 3): agent team (PM + 6 specialists + spawn), flow diagnostics, macro/structure/breadth tools, governor, paper broker, watch tick + triggers, alerts (Telegram/Discord/webhook), Telegram control, `/api/desk/*`, `/desk` page, worker, `003_desk.sql`, tests | opus | T5,T9 | done (paper venue; live testnet in D2x) |
 | D2x | Live Hyperliquid broker behind the governor (agent-wallet signing, entry + reduce-only TP/SL, position sync), testnet first | opus | D1x | done (testnet; signing pinned to the Python SDK vectors; mainnet refused) |
+
+## Lab — heuristic research engine (LAB.md)
+
+Destination: an Alpha Lab equivalent (LAB.md) exposed once as a tool registry and served over REST `/api/lab/tools`, MCP `/api/mcp` (HTTP) and stdio, a CLI, and the `/lab` page.
+
+Harness: Claude Code (cloud), native subagents only (no Codex/OpenCode/Pi bridges on PATH; subagent depth 1, so the top session plans). Stack: lead opus · heavy opus · worker opus · designer fable · ui-impl opus · reviewer fable (all implementers are opus). Provider decision: keyless sources only (operator declined a Glassnode key).
+
+| # | Task | Model | Depends on | Status |
+|---|------|-------|-----------|--------|
+| L0 | LAB.md spec + `src/server/lab/types.ts` contract | planner | — | done |
+| L1 | Engine (pure): features, labels, depth-2 forest, rule extraction, backtest, walk-forward/holdout/sensitivity, trial search; planted-signal + noise tests | opus (heavy) | L0 | done (34 tests; 3000d×95 features ≈1.7 s, ×589 ≈8 s; noise bar = WF and holdout Sharpe > 1, 0/12 seeds) |
+| L2 | Providers: ht (DB + live HL), cm (Coin Metrics community), fng, llama; registry + `loadDataset` | opus | L0 | done (30 fixture tests) |
+| L3a | `004_lab.sql` + LabStore (pg / memory / file) | opus | L0 | done |
+| L4a | MCP JSON-RPC core, `/api/mcp`, `/api/lab/tools`, bearer auth, CLI, stdio | opus | L0 | done |
+| D2 | DESIGN.md §10.9 `/lab` brief | fable | L0 | done (LAB = 9th nav cell; tabs SEARCH·RUNS·CATALOGUE·PULSE) |
+| L3b | Lab service + tool registry (12 tools, autoresearch prompt), catalogue health, pulse; mount in api/index.ts | opus | L1,L2,L3a,L4a | done |
+| U1 | `/lab` page per §10.9 | opus (ui-impl) | D2 (built against the pinned tool contract, parallel to L3b) | done |
+| V3 | Verification gate: tests/build, reviewer (fable), drift check, fix loops ≤3 | mixed | all | done (1 loop: MCP batch DoS capped, upstream errors → 502 with cause, refusals → 400 unstored, origin allow-list, asset charset, Vercel maxDuration 60; UI: holdout unsortable, WF-only stats, a11y/tokens. 588 tests green) |
+
+## Lab merge — #16 × #18 (selective)
+
+Two sessions built the same feature: #16 (this branch) and #18 (`ccr-7914c036-6dny4g`). Three cross-checked explorers (engine: Fable, benchmarked both engines on shared synthetic data; data: Opus, live Postgres 16; surfaces: Opus, both UIs rendered in Chromium at 1440 and 375 px) put #16 at the base of every layer. From #18 we port its statistical controls, its persisted data collector and its Analyst wiring.
+
+| # | Port from #18 | Model | Status |
+|---|---|---|---|
+| X0 | `summaryFor` SQL fix (master bug, 500 on /api/metrics/summary) — cherry-picked 4411eae; `maxDuration` 300 (cron backfill budget) | planner | done |
+| X1 | Engine: deflated Sharpe (only control that stopped noise: 0/10 seeds vs 3/10), stationarity flag, exposure/trade limits, per-fold WF, family dedupe, WF for explicit rules, holdout-scramble + save-bar noise tests, pair-beats-parents, per-fold label quantiles (base leak fix) | opus | frontier |
+| X2 | Data: blockchain.com + Deribit DVOL providers, cron collector into `observations` (`lab.*`), read-stored-first, drop the unfinished day, per-metric fill limits, run retention, 005 guard | opus | frontier |
+| X3 | Analyst gets #16's read-only lab tools via an adapter; catalogue keeps search WF; SPEC/README | opus | frontier |
+| X4 | UI: deflated Sharpe + verdict badge, log-scale equity, catalogue WF, CLI `sync` | opus | blocked on X1, X2 |
+| X5 | Verification gate + close-out note for #18 | mixed | blocked |
+
+Not taken from #18 (with evidence in the explorer reports): consistency ranking key (missed its own planted rule), fixed transform vocabulary, grid+beam engine, RESTful routes/409, stdio-only non-compliant MCP, BTC-only dataset, its 004 migration, single-page UI.

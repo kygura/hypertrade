@@ -1,0 +1,6 @@
+[
+  { "date": "1704067200", "totalCirculating": { "peggedUSD": 130100000000 }, "totalCirculatingUSD": { "peggedUSD": 130000000000, "peggedEUR": 150000000 } },
+  { "date": "1704153600", "totalCirculating": { "peggedUSD": 130600000000 }, "totalCirculatingUSD": { "peggedUSD": 130500000000 } },
+  { "date": "1704240000", "totalCirculatingUSD": { "peggedEUR": 151000000 } },
+  { "date": "1704326400", "totalCirculatingUSD": { "peggedUSD": 131200000000 } }
+]

@@ -24,6 +24,8 @@ const NAV = [
   { to: '/analyst', label: 'ANALYST', tab: 'ASK', glyph: '?' },
   // Agentic portfolio desk (SPEC.md "Desk"): agent team, governor, paper book.
   { to: '/desk', label: 'DESK', tab: 'DESK', glyph: '◎' },
+  // Heuristic research (DESIGN.md §10.9); the ninth and last cell.
+  { to: '/lab', label: 'LAB', tab: 'LAB', glyph: '⚗' },
 ]
 
 function isActive(pathname: string, to: string): boolean {
@@ -107,7 +109,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               }`}
             >
               <span className="text-[12px] leading-none">{item.glyph}</span>
-              <span className="text-[9px] font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)] font-[number:var(--control-weight)]">{item.tab}</span>
+              <span className="text-[9px] font-control [text-transform:var(--control-case)] tracking-[min(var(--control-tracking),0.02em)] font-[number:var(--control-weight)]">{item.tab}</span>
             </Link>
           )
         })}

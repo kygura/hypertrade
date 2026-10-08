@@ -78,7 +78,8 @@ export const binance: ExternalSource = {
   async fetchBefore(coin, tf, endTime, limit, fetchFn = fetch) {
     const m = externalBase(coin);
     if (!m) return { kind: "unsupported" };
-    const url = `${BINANCE_KLINES}?symbol=${m.base}USDT&interval=${tf}&endTime=${endTime}&limit=${Math.min(limit, 1000)}`;
+    const q = new URLSearchParams({ symbol: `${m.base}USDT`, interval: tf, endTime: String(endTime), limit: String(Math.min(limit, 1000)) });
+    const url = `${BINANCE_KLINES}?${q}`;
     const res = await fetchFn(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (res.status === 400) {
       // -1121 "Invalid symbol": no USDT market. Anything else is our bug; surface it.

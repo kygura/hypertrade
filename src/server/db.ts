@@ -109,6 +109,17 @@ export async function latestObservations(seriesIds: string[]): Promise<(Point & 
   return rows.map((r) => ({ seriesId: r.series_id, ts: r.ts, value: r.value }))
 }
 
+/** First/last observation and row count per series (Lab stored-history check). */
+export async function seriesCoverage(seriesIds: string[]): Promise<{ seriesId: string; min: Date; max: Date; n: number }[]> {
+  if (seriesIds.length === 0) return []
+  const rows = await sql()<{ series_id: string; min: Date; max: Date; n: number }[]>`
+    select series_id, min(ts) as min, max(ts) as max, count(*)::int as n
+    from observations where series_id in ${sql()(seriesIds)}
+    group by series_id
+  `
+  return rows.map((r) => ({ seriesId: r.series_id, min: r.min, max: r.max, n: r.n }))
+}
+
 /**
  * Observations for one series. With `buckets`, downsamples to at most that many
  * equal-width time buckets (plain Postgres width_bucket, no timescale).
@@ -199,7 +210,7 @@ export async function summaryFor(seriesIds: string[]): Promise<MetricSummary[]> 
            max(value) filter (where rn = 2)   as previous,
            avg(value)        filter (where rn <= 30) as mean30,
            stddev_pop(value) filter (where rn <= 30) as stddev30,
-           count(*)::int     filter (where rn <= 30) as n30,
+           (count(*) filter (where rn <= 30))::int as n30,
            avg(value)        filter (where rn <= 90) as mean90,
            stddev_pop(value) filter (where rn <= 90) as stddev90
     from ranked
@@ -354,12 +365,37 @@ export async function touchSyncAccess(coin: string, series: string): Promise<voi
   `
 }
 
-/** Coins any chart asked for since `since`. */
+/** Coins any chart asked for since `since`. Lab bookkeeping rows (coin '_lab') are not coins. */
 export async function recentlyAccessedCoins(since: Date): Promise<string[]> {
   const rows = await sql()<{ coin: string }[]>`
-    select distinct coin from sync_state where accessed_at >= ${since} order by coin
+    select distinct coin from sync_state where accessed_at >= ${since} and coin <> '_lab' order by coin
   `
   return rows.map((r) => r.coin)
+}
+
+/**
+ * A run lease on a sync_state row: `synced_at` is its expiry, `ext.holder` its
+ * holder. One conditional upsert takes it when the row is new or its lease has
+ * expired, so two concurrent callers cannot both get it. True when `holder`
+ * now holds it until now() + ttlMs.
+ */
+export async function acquireLease(coin: string, series: string, holder: string, ttlMs: number): Promise<boolean> {
+  const rows = await sql()<{ coin: string }[]>`
+    insert into sync_state (coin, series, synced_at, ext)
+    values (${coin}, ${series}, now() + make_interval(secs => ${ttlMs / 1000}::float8), ${sql().json({ holder })})
+    on conflict (coin, series) do update set synced_at = excluded.synced_at, ext = excluded.ext
+      where sync_state.synced_at is null or sync_state.synced_at <= now()
+    returning coin
+  `
+  return rows.length > 0
+}
+
+/** Ends `holder`'s lease now; a lease someone else took after ours expired is left alone. */
+export async function releaseLease(coin: string, series: string, holder: string): Promise<void> {
+  await sql()`
+    update sync_state set synced_at = now()
+    where coin = ${coin} and series = ${series} and ext->>'holder' = ${holder}
+  `
 }
 
 // --------------------------------------------------------------- funding

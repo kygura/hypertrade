@@ -1,0 +1,8 @@
+{
+  "data": [
+    { "asset": "btc", "time": "2024-01-01T00:00:00.000000000Z", "CapMVRVCur": "1.92" },
+    { "asset": "btc", "time": "2024-01-02T00:00:00.000000000Z", "CapMVRVCur": "1.98" }
+  ],
+  "next_page_token": "0.MjAyNC0wMS0wMlQwMDowMDowMFo",
+  "next_page_url": "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&metrics=CapMVRVCur&frequency=1d&start_time=2024-01-01&end_time=2024-01-04&page_size=2&next_page_token=0.MjAyNC0wMS0wMlQwMDowMDowMFo"
+}

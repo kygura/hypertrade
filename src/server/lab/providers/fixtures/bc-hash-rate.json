@@ -1,0 +1,21 @@
+{
+  "status": "ok",
+  "name": "Hash Rate",
+  "unit": "Hash Rate TH/s",
+  "period": "day",
+  "description": "The estimated number of terahashes per second the bitcoin network is performing in the last 24 hours.",
+  "values": [
+    {
+      "x": 1704067200,
+      "y": 510000000.0
+    },
+    {
+      "x": 1704153600,
+      "y": 0
+    },
+    {
+      "x": 1704240000,
+      "y": 530000000.0
+    }
+  ]
+}

@@ -14,6 +14,9 @@ testApp.use("*", requireAuth);
 testApp.get("/health", (c) => c.json({ ok: true }));
 testApp.get("/branches", (c) => c.json({ protected: true }));
 testApp.post("/cron/collect", (c) => c.json({ collected: true }));
+for (const p of ["/lab", "/lab/tools", "/mcp", "/mcp/x", "/labx", "/mcpfoo", "/labx/tools"]) {
+  testApp.all(p, (c) => c.json({ reached: p }));
+}
 
 describe("session token", () => {
   test("signs and verifies a roundtrip", () => {
@@ -188,4 +191,81 @@ describe("requireCronToken gate", () => {
       process.env.CRON_TOKEN = token;
     }
   });
+});
+
+describe("lab bearer (LAB_API_TOKEN)", () => {
+  const req = (path: string, headers: Record<string, string> = {}, method = "GET") =>
+    testApp.request(`/api${path}`, { method, headers });
+  const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
+  const withTokens = async (value: string | undefined, fn: () => Promise<void>) => {
+    const prev = process.env.LAB_API_TOKEN;
+    if (value === undefined) delete process.env.LAB_API_TOKEN;
+    else process.env.LAB_API_TOKEN = value;
+    try {
+      await fn();
+    } finally {
+      if (prev === undefined) delete process.env.LAB_API_TOKEN;
+      else process.env.LAB_API_TOKEN = prev;
+    }
+  };
+
+  test("any listed token opens /lab, /lab/*, /mcp and /mcp/*", () =>
+    withTokens(" tok-one , tok-two ", async () => {
+      for (const path of ["/lab", "/lab/tools", "/mcp", "/mcp/x"]) {
+        expect((await req(path, bearer("tok-one"))).status).toBe(200);
+        expect((await req(path, bearer("tok-two"), "POST")).status).toBe(200);
+      }
+      expect((await req("/lab/tools", { authorization: "bearer tok-two" })).status).toBe(200);
+    }));
+
+  test("wrong, partial, padded-list or malformed tokens are rejected", () =>
+    withTokens("tok-one,tok-two", async () => {
+      for (const auth of ["Bearer wrong", "Bearer tok-on", "Bearer tok-one,tok-two", "Bearer ", "tok-one", "Basic tok-one", "Bearer tok-one extra"]) {
+        expect((await req("/lab/tools", { authorization: auth })).status).toBe(401);
+      }
+    }));
+
+  test("a valid token grants nothing outside the lab paths", () =>
+    withTokens("tok-one", async () => {
+      expect((await req("/branches", bearer("tok-one"))).status).toBe(401);
+      expect((await req("/cron/collect", bearer("tok-one"), "POST")).status).toBe(401);
+    }));
+
+  test("prefix look-alikes are not lab paths", () =>
+    withTokens("tok-one", async () => {
+      for (const path of ["/labx", "/mcpfoo", "/labx/tools"]) {
+        expect((await req(path, bearer("tok-one"))).status).toBe(401);
+      }
+    }));
+
+  test("empty entries never match an empty or blank bearer", () =>
+    withTokens(" , ,,", async () => {
+      expect((await req("/lab/tools", { authorization: "Bearer " })).status).toBe(401);
+      expect((await req("/lab/tools", { authorization: "Bearer  " })).status).toBe(401);
+      expect((await req("/lab/tools", bearer(","))).status).toBe(401);
+    }));
+
+  test("unset LAB_API_TOKEN disables bearer; the cookie still works", () =>
+    withTokens(undefined, async () => {
+      expect((await req("/lab/tools", bearer("undefined"))).status).toBe(401);
+      expect((await req("/lab/tools", bearer(""))).status).toBe(401);
+      const cookie = (await postLogin("correct-horse")).headers.get("set-cookie")!.split(";")[0];
+      expect((await req("/lab/tools", { cookie })).status).toBe(200);
+      expect((await req("/mcp", { cookie }, "POST")).status).toBe(200);
+    }));
+
+  test("cookie works alongside configured tokens, even with a wrong bearer", () =>
+    withTokens("tok-one", async () => {
+      const cookie = (await postLogin("correct-horse")).headers.get("set-cookie")!.split(";")[0];
+      expect((await req("/lab/tools", { cookie, ...bearer("wrong") })).status).toBe(200);
+    }));
+
+  test("/mcp 401s carry WWW-Authenticate: Bearer", () =>
+    withTokens("tok-one", async () => {
+      const res = await req("/mcp", bearer("wrong"), "POST");
+      expect(res.status).toBe(401);
+      expect(res.headers.get("www-authenticate")).toBe("Bearer");
+      expect(await res.json()).toEqual({ error: "unauthorized" });
+      expect((await req("/lab/tools")).status).toBe(401);
+    }));
 });

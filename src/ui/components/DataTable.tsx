@@ -8,7 +8,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 
 export interface Column<T> {
   key: string
-  label: string
+  label: ReactNode
   priority: 1 | 2 | 3 | 4
   align?: 'left' | 'right'
   render: (row: T) => ReactNode
