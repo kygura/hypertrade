@@ -8,6 +8,8 @@ import { ecdf, quantileSorted } from "./util.js";
 // quantile-matched refits and threshold/window sensitivity.
 
 export const HOLDOUT_FRAC = 0.2;
+/** Minimum purged training rows in the first walk-forward fold. */
+export const MIN_TRAIN_ROWS = 60;
 
 export interface Fold {
   /** Training rows are [0, purgedEnd): the block edge minus horizonDays. */

@@ -5,7 +5,7 @@ import { makeLabels } from "./labels.js";
 import { ruleId, ruleText } from "./rules.js";
 import { deflatedSharpeOf } from "./stats.js";
 import { isoDate, parseDay, SearchRefused } from "./util.js";
-import { makeSplit, positions, sensitivity, walkForwardSegments, type Split } from "./validate.js";
+import { makeSplit, MIN_TRAIN_ROWS, positions, sensitivity, walkForwardSegments, type Split } from "./validate.js";
 
 // Full evaluation of one rule (LAB.md §6–8), shared by the search (top rules)
 // and by explicit rule evaluation outside a search.
@@ -87,11 +87,23 @@ export interface EvaluateRuleOptions {
   windows?: number[];
   /** Label quantile for precision; default 0.3. */
   labelQuantile?: number;
+  /**
+   * Walk-forward over `folds` blocks of the first 80%: the rule's thresholds
+   * are refitted per fold by quantile matching (as in a search). Default: on
+   * when the first fold has enough purged training rows; true on too little
+   * history is refused.
+   */
+  walkForward?: boolean;
+  /** Walk-forward folds; default 3. */
+  folds?: number;
+  /** N for the deflated Sharpe (variants tried to find this rule); default 1. */
+  trials?: number;
 }
 
 /**
  * Scores an explicit rule on a dataset: in-sample = first 80% of the range,
- * holdout = last 20%. No walk-forward (there is no search to refit).
+ * holdout = last 20%, walk-forward = quantile-matched threshold refit per
+ * fold of the first 80%. Thresholds stay absolute (the rule id is unchanged).
  */
 export function evaluateRule(input: Rule, data: LabDataset, opts: EvaluateRuleOptions): RuleEvaluation {
   const rule = RuleSchema.parse(input);
@@ -99,7 +111,11 @@ export function evaluateRule(input: Rule, data: LabDataset, opts: EvaluateRuleOp
   const [lo, hi] = rangeIndices(data.t, opts.from, opts.to);
   const ctx = makeCtx(data, lo, hi);
   if (ctx.n < 10) throw new SearchRefused(`only ${ctx.n} days in range; need at least 10`, "from");
-  const split = makeSplit(ctx.n, 0, rule.horizonDays);
+  const folds = opts.folds ?? 3;
+  if (!Number.isInteger(folds) || folds < 2 || folds > 6) throw new SearchRefused("folds must be an integer from 2 to 6", "folds");
+  const split = makeSplit(ctx.n, folds, rule.horizonDays);
+  const canWalk = split.folds[0]!.purgedEnd >= MIN_TRAIN_ROWS;
+  if (opts.walkForward && !canWalk) throw new SearchRefused(`${ctx.n} days is too short for walk-forward at a ${rule.horizonDays}-day horizon`, "from");
   const labels = makeLabels({
     t: ctx.t,
     price: ctx.price,
@@ -112,7 +128,8 @@ export function evaluateRule(input: Rule, data: LabDataset, opts: EvaluateRuleOp
     split,
     labels,
     slippageBps: opts.slippageBps,
-    walkForward: false,
+    walkForward: opts.walkForward ?? canWalk,
+    trials: opts.trials,
     windows: opts.windows,
     includeEquity: opts.includeEquity,
   });

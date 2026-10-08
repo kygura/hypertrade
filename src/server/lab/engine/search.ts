@@ -9,7 +9,7 @@ import { conditionsKey, extractRules } from "./rules.js";
 import { deflatedSharpeOf } from "./stats.js";
 import { binFeatures, growForest, type Binned, type TreeParams } from "./tree.js";
 import { isoDate, SearchRefused } from "./util.js";
-import { makeSplit, walkForwardScore, walkForwardSegments } from "./validate.js";
+import { makeSplit, MIN_TRAIN_ROWS, walkForwardScore, walkForwardSegments } from "./validate.js";
 
 // The heuristic search (LAB.md §4–7). Each trial grows a forest per
 // walk-forward fold on the purged training rows, takes the best rules by
@@ -20,8 +20,6 @@ import { makeSplit, walkForwardScore, walkForwardSegments } from "./validate.js"
 
 export const MAX_FEATURES = 600;
 export const MIN_PRICE_DAYS = 365;
-/** Minimum purged training rows in the first fold. */
-const MIN_TRAIN_ROWS = 60;
 /** Rules blended per fold when scoring a trial. */
 const BLEND = 3;
 /** Final candidates scored walk-forward (cost bound). */

@@ -27,7 +27,6 @@ describe("evaluateRule", () => {
   test("scores an explicit rule: 80/20 split, benchmark, sensitivity, equity", () => {
     const ev = evaluateRule(planted, data, { slippageBps: 10, includeEquity: true, windows: [7, 30, 90] });
     expect(ev.text).toBe("syn:a z(30) < -1 AND syn:b raw ≥ 0");
-    expect(ev.walkForward).toBeNull();
     expect(ev.inSample.days + ev.holdout!.days).toBe(1499);
     expect(ev.holdout!.days).toBe(300);
     expect(ev.inSample.sharpe).toBeGreaterThan(1.5);
@@ -41,6 +40,34 @@ describe("evaluateRule", () => {
     expect(s.points.filter((p) => p.kind === "threshold").length).toBe(8);
     expect(s.points.filter((p) => p.kind === "window").map((p) => p.shift)).toEqual([7, 90]);
     expect(s.stability).toBeGreaterThan(0.5);
+  });
+
+  test("walk-forward by default: quantile-matched refit over 3 folds, absolute thresholds and id kept", () => {
+    const ev = evaluateRule(planted, data, { slippageBps: 10 });
+    // search region 1200 days → 4 blocks of 300; folds test days [300, 1200)
+    expect(ev.walkForward!.days).toBe(900);
+    expect(ev.walkForward!.from).toBe(isoDate(data.t[300]!));
+    expect(ev.walkForward!.sharpe).toBeGreaterThan(1);
+    expect(ev.walkForwardFolds).toHaveLength(3);
+    expect(ev.deflatedSharpe!).toBeGreaterThan(0.95); // N = 1: probabilistic Sharpe vs 0
+    expect(ev.rule).toEqual(planted);
+    const off = evaluateRule(planted, data, { slippageBps: 10, walkForward: false });
+    expect(off.id).toBe(ev.id);
+    expect(off.walkForward).toBeNull();
+    expect(off.walkForwardFolds).toEqual([]);
+    expect(off.deflatedSharpe).toBeNull();
+    expect(off.inSample).toEqual(ev.inSample);
+    expect(off.holdout).toEqual(ev.holdout);
+    // Counting the variants tried deflates it.
+    expect(evaluateRule(planted, data, { slippageBps: 10, trials: 5000 }).deflatedSharpe!).toBeLessThan(ev.deflatedSharpe!);
+    expect(evaluateRule(planted, data, { slippageBps: 10, folds: 4 }).walkForwardFolds).toHaveLength(4);
+    expect(() => evaluateRule(planted, data, { slippageBps: 10, folds: 1 })).toThrow(/folds/);
+  });
+
+  test("short history: no walk-forward by default, refused when asked for", () => {
+    const short = slice(data, 200);
+    expect(evaluateRule(planted, short, { slippageBps: 10 }).walkForward).toBeNull();
+    expect(() => evaluateRule(planted, short, { slippageBps: 10, walkForward: true })).toThrow(/too short for walk-forward/);
   });
 
   test("builds only the features the rule names", () => {
