@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ToolInputError, UpstreamError } from "../mcp/types.js";
-import { evaluateRule, ruleId } from "./engine/index.js";
+import { evaluateRule, ruleId, verdictOf } from "./engine/index.js";
 import { synthetic } from "./engine/testkit.js";
 import type { LoadConfig } from "./providers/registry.js";
 import { createLabService, SEARCH_FINISH_MS, type LabServiceDeps } from "./service.js";
@@ -276,6 +276,41 @@ describe("lab service: catalogue", () => {
     // An explicit evaluation refits the rule per fold itself, deflated with N = 1.
     expect(bare.saved.walkForward).not.toBeNull();
     expect(bare.saved.deflatedSharpe).not.toBe(found!.deflatedSharpe);
+  }, 20_000);
+
+  test("save from a run deflates by the run's effectiveTrials and recomputes the verdict on the carried-over fields", async () => {
+    const { service } = kit();
+    const { runId, result } = await service.search(searchCfg, { source: "api" });
+    expect(result.effectiveTrials).toBeGreaterThanOrEqual(1);
+    expect(result.effectiveTrials!).toBeLessThanOrEqual(result.variantsScored!);
+    const found = result.rules[0]!;
+    expect(found.verdict).toBeDefined();
+    const entry = await service.catalogueSave({ rule: found.rule, name: "from run", runId: runId! });
+    expect(entry.saved.deflatedSharpe).toBe(found.deflatedSharpe);
+    expect(entry.saved.verdict).toEqual(verdictOf(entry.saved));
+    // A rule the run did not return (hand-edited) keeps its own walk-forward, deflated for the run's search.
+    const edited: Rule = { ...planted, conditions: [{ ...planted.conditions[0]!, threshold: -1.07 }, planted.conditions[1]!] };
+    const own = await service.catalogueSave({ rule: edited, name: "edited", runId: runId! });
+    const ds = { ...base, metrics: { "syn:a": base.metrics["syn:a"]!, "syn:b": base.metrics["syn:b"]! } };
+    expect(own.saved.deflatedSharpe).toBeCloseTo(evaluateRule(edited, ds, { slippageBps: 10, trials: result.effectiveTrials }).deflatedSharpe!, 12);
+    expect(own.saved.deflatedSharpe!).toBeLessThan(evaluateRule(edited, ds, { slippageBps: 10 }).deflatedSharpe!);
+  }, 20_000);
+
+  test("entries and runs stored before verdicts get one on read", async () => {
+    const { service, store } = kit();
+    const { verdict: _drop, ...bare } = evaluateRule(planted, base, { slippageBps: 10 });
+    const old = await store.saveCatalogueEntry({ id: ruleId(planted), name: "old", note: null, origin: "user", runId: null, rule: planted, saved: bare, savedAt: day(2000) });
+    expect((await store.getCatalogueEntry(old.id))!.saved.verdict).toBeUndefined();
+    const [listed] = (await service.catalogueList({ live: false })).entries;
+    expect(listed!.saved.verdict).toEqual(verdictOf(bare));
+    const resaved = await service.catalogueSave({ rule: planted, name: "renamed" });
+    expect(resaved.saved.verdict).toEqual(listed!.saved.verdict);
+
+    const { runId, result } = await service.search(searchCfg, { source: "api" });
+    const stripped = { ...result, rules: result.rules.map(({ verdict: _v, ...r }) => r) };
+    const stored = await store.saveRun({ source: "api", config: result.config, status: "ok", error: null, result: stripped as typeof result, durationMs: 1 });
+    expect((await service.getRun(stored.id)).result!.rules.map((r) => r.verdict)).toEqual(result.rules.map((r) => r.verdict));
+    expect((await service.getRun(runId!)).result!.rules).toEqual(result.rules);
   }, 20_000);
 
   test("health: decay, same-asset overlap, gaps, live map; list carries the flags", async () => {

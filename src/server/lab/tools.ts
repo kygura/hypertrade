@@ -5,7 +5,8 @@
 import { z } from "zod";
 import type { PromptDef, ToolDef, ToolInputSchema } from "../mcp/types.js";
 import { createLabService, parseInput, type LabService } from "./service.js";
-import { ASSET_PATTERN, DaySchema, RuleSchema, SearchConfigSchema, TRANSFORMS } from "./types.js";
+import { MIN_DEFLATED_SHARPE, MIN_STABILITY, MIN_WALK_FORWARD_SHARPE } from "./engine/verdict.js";
+import { ASSET_PATTERN, DaySchema, RuleSchema, SearchConfigSchema, TRANSFORMS, VERDICT_LEVELS } from "./types.js";
 
 export type { PromptDef, ToolContext, ToolDef, ToolSource } from "../mcp/types.js";
 export { ToolInputError } from "../mcp/types.js";
@@ -37,6 +38,7 @@ const EvaluateArgs = z
     includeEquity: z.boolean().default(false),
     sensitivity: z.boolean().default(false),
     windows: WINDOWS.optional(),
+    trials: z.number().min(1).max(1e6).optional(),
   })
   .strict();
 const SensitivityArgs = z.object({ rule: RuleSchema, windows: WINDOWS.optional(), slippageBps: SLIPPAGE }).strict();
@@ -149,6 +151,12 @@ const searchSchema = obj(
     maxExposure: { type: "number", minimum: 0, maximum: 1, description: "…and at most this share (always-in is the benchmark). Default 0.95." },
     minTradesPerYear: { type: "number", minimum: 0, maximum: 365, description: "…and enter at least this many trades per year (and at least 3 in total). Default 0.5." },
     minDeflatedSharpe: { type: "number", minimum: 0, maximum: 1, description: "Drop final rules whose deflatedSharpe is below this. Default: no filter (the field is always reported)." },
+    minVerdict: {
+      type: "string",
+      enum: [...VERDICT_LEVELS],
+      description:
+        "Return only top rules whose verdict is at least this level (robust > candidate > fragile > weak > fails_holdout). Applied after selection to the top K, never reaching deeper candidates. Default: no filter.",
+    },
   },
   ["asset", "metrics"],
 );
@@ -156,6 +164,11 @@ const searchSchema = obj(
 // ---------------------------------------------------------------- tools
 
 const HONESTY = "Results are historical research, net of slippage, not trading advice.";
+
+/** The save bar in words (engine/verdict.ts holds the numbers). */
+const BAR = `verdict.level "robust": walk-forward Sharpe > ${MIN_WALK_FORWARD_SHARPE}, holdout Sharpe > 0 (not untested), stability ≥ ${MIN_STABILITY} and deflatedSharpe ≥ ${MIN_DEFLATED_SHARPE}`;
+const CANDIDATE = `A "candidate" (passes everything but the deflated Sharpe: could be the best of many noise variants) may be saved only with a note explaining why it is worth tracking anyway; never save "fragile", "weak" or "fails_holdout".`;
+const VERDICT = `verdict { level: robust | candidate | fragile | weak | fails_holdout, reasons: the failed checks with numbers }`;
 
 export function labTools(service: LabService = getLabService()): ToolDef[] {
   return [
@@ -190,7 +203,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_search",
       title: "Search for trading heuristics",
       description:
-        "Searches the chosen metrics for simple one- or two-condition rules (\"when feature A < x and B ≥ y, go long\") that predict good forward returns, scored as strategies net of slippage. Fetches data from external providers and runs a seeded random-forest search: typically 5–50 s (server deadline ~50 s; it then returns the trials completed, with a warning). Returns { runId, result }: result.rules ranked by walk-forward objective, one per family (overlapping in-zone days collapse), each with precision, support, inSample, walkForward, walkForwardFolds (Sharpe per fold), deflatedSharpe (probability the walk-forward Sharpe beats the best of result.variantsScored noise variants), holdout (most recent 20%, never used for ranking; untested = no trade in it), benchmark, sensitivity.stability and firingNow; plus featureImportance and warnings. Candidates must trade (exposure 5–95%, ≥ 0.5 trades/yr, ≥ 3 trades). A rule's walk-forward = threshold-refit per fold (features and operators were chosen on the whole search region); the trial score is fully out-of-sample, and the holdout is the clean check. The run is stored (runId). Next: compare walkForward vs holdout and stability on the top rules, then refine metrics/windows, lab_evaluate_rule a rule, or lab_catalogue_save only rules with walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), deflatedSharpe ≥ 0.95 and stability ≥ 0.5. " +
+        `Searches the chosen metrics for simple one- or two-condition rules ("when feature A < x and B ≥ y, go long") that predict good forward returns, scored as strategies net of slippage. Fetches data from external providers and runs a seeded random-forest search: typically 5–50 s (server deadline ~50 s; it then returns the trials completed, with a warning). Returns { runId, result }: result.rules ranked by walk-forward objective, one per family (overlapping in-zone days collapse), each with precision, support, inSample, walkForward, walkForwardFolds (Sharpe per fold), deflatedSharpe (probability the walk-forward Sharpe beats the best of result.effectiveTrials independent noise trials: the result.variantsScored variants clustered by return correlation), holdout (most recent 20%, never used for ranking; untested = no trade in it), benchmark, sensitivity.stability, firingNow and ${VERDICT}; plus featureImportance and warnings. Candidates must trade (exposure 5–95%, ≥ 0.5 trades/yr, ≥ 3 trades). A rule's walk-forward = threshold-refit per fold (features and operators were chosen on the whole search region); the trial score is fully out-of-sample, and the holdout is the clean check. The run is stored (runId). Next: compare walkForward vs holdout and stability on the top rules, then refine metrics/windows, lab_evaluate_rule a rule, or lab_catalogue_save only rules with ${BAR}. ${CANDIDATE} ` +
         HONESTY,
       inputSchema: searchSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -224,7 +237,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_evaluate_rule",
       title: "Evaluate a rule",
       description:
-        "Scores one explicit rule over its full history (or from/to): in-sample = first 80%, holdout = last 20%, walk-forward (thresholds refitted per fold of the first 80% by quantile matching; walkForwardFolds per fold; deflatedSharpe with N = 1, so it is not deflated for any search that found the rule), benchmark (buy-and-hold or short-and-hold), precision, support, firingNow and the latest feature values. Optional equity curve and sensitivity grid. Fetches data: a few seconds. Returns RuleEvaluation. Use it to test a hand-edited rule or a different window. " +
+        "Scores one explicit rule over its full history (or from/to): in-sample = first 80%, holdout = last 20%, walk-forward (thresholds refitted per fold of the first 80% by quantile matching; walkForwardFolds per fold; deflatedSharpe with N = trials, default 1, i.e. not deflated for any search that found the rule: pass the run's result.effectiveTrials), benchmark (buy-and-hold or short-and-hold), precision, support, firingNow, the latest feature values and the save-bar verdict (without sensitivity, stability is not checked). Optional equity curve and sensitivity grid. Fetches data: a few seconds. Returns RuleEvaluation. Use it to test a hand-edited rule or a different window. " +
         HONESTY,
       inputSchema: obj(
         {
@@ -235,6 +248,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
           includeEquity: { type: "boolean", description: "Include the daily equity curve (strategy and benchmark). Default false; large." },
           sensitivity: { type: "boolean", description: "Attach the parameter-sensitivity grid and stability score. Default false." },
           windows: windowsSchema("Windows swapped in for the sensitivity grid. Default [7, 30, 90]."),
+          trials: { type: "number", minimum: 1, maximum: 1000000, description: "N for the deflated Sharpe: the effectiveTrials of the search that found the rule. Default 1 (not deflated)." },
         },
         ["rule"],
       ),
@@ -273,7 +287,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_catalogue_save",
       title: "Save a rule to My Catalogue",
       description:
-        "Saves a rule to the catalogue under its stable id (the same id as in search results). A new rule is evaluated on current data and that evaluation is stored; live tracking starts now. Saving an existing rule only updates its name/note: it keeps its original evaluation and savedAt. An unknown runId is rejected. Returns CatalogueEntry. Save only rules with walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), deflatedSharpe ≥ 0.95 and stability ≥ 0.5 (from the search that found them). Agents: pass origin \"agent\" and the runId.",
+        `Saves a rule to the catalogue under its stable id (the same id as in search results). A new rule is evaluated on current data and that evaluation is stored; live tracking starts now. Saving an existing rule only updates its name/note: it keeps its original evaluation and savedAt. An unknown runId is rejected. With a runId the stored walk-forward, walkForwardFolds and deflatedSharpe are the run's (deflated by its effectiveTrials) and the verdict is recomputed on them. Returns CatalogueEntry. Save only rules with ${BAR} (from the search that found them). ${CANDIDATE} Agents: pass origin "agent" and the runId.`,
       inputSchema: obj(
         {
           rule: ruleSchema,
@@ -351,11 +365,11 @@ export function labPrompts(): PromptDef[] {
           "Loop:",
           `1. lab_list_metrics { "asset": "${asset}" }. Group the metrics by category (onchain, derivatives, sentiment, macro, liquidity, price).`,
           `2. lab_search { "asset": "${asset}", "direction": "${direction}", "objective": "${objective}", "metrics": [one group of 3–10 metrics] } (default horizonDays 14, trials 40; 5–50 s). Keep the runId.`,
-          "3. For the top rules, check: walkForward vs holdout Sharpe (a big drop means overfit; holdout untested = no trade, not a pass), walkForwardFolds (one strong fold carrying the rest is luck), deflatedSharpe (below 0.95 = could be the best of many noise variants), support and trades (too few = noise), sensitivity.stability (below 0.5 = fragile; lab_sensitivity if missing), and the benchmark.",
+          `3. For the top rules, check: walkForward vs holdout Sharpe (a big drop means overfit; holdout untested = no trade, not a pass), walkForwardFolds (one strong fold carrying the rest is luck), deflatedSharpe (below ${MIN_DEFLATED_SHARPE} = could be the best of many noise variants), support and trades (too few = noise), sensitivity.stability (below ${MIN_STABILITY} = fragile; lab_sensitivity if missing), and the benchmark. verdict.level and verdict.reasons sum these up.`,
           "4. Refine: drop metrics absent from featureImportance, try another group or a mix of the strongest features, change windows or horizonDays. Write down what you changed and why.",
           `5. Repeat steps 2–4, at most ${MAX_ROUNDS} searches in total.`,
-          `6. Save with lab_catalogue_save (origin "agent", runId, a note with the evidence) ONLY rules with walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), deflatedSharpe ≥ 0.95 and stability ≥ 0.5. Then lab_catalogue_health: if a new rule overlaps an existing one, keep the better and remove the other.`,
-          "7. Report: rules saved (text, walk-forward and holdout Sharpe, stability, trades per year, firingNow), promising rules rejected and why, and what to try next.",
+          `6. Save with lab_catalogue_save (origin "agent", runId, a note with the evidence) ONLY rules with ${BAR}. ${CANDIDATE} Then lab_catalogue_health: if a new rule overlaps an existing one, keep the better and remove the other.`,
+          "7. Report: rules saved (text, verdict, walk-forward and holdout Sharpe, deflatedSharpe, stability, trades per year, firingNow), promising rules rejected and why (verdict.reasons), and what to try next.",
           "",
           "Rules: rank and choose by walk-forward results only; the holdout confirms, it never selects. Do not re-run searches to chase a better holdout number. Say plainly when nothing passed. Results are historical research, not trading advice.",
         ].join("\n");
@@ -368,4 +382,4 @@ export const LAB_INSTRUCTIONS = `Hypertrade Lab finds simple, human-readable tra
 
 Loop: lab_list_metrics → lab_search with a small related metric group (5–50 s) → inspect walk-forward vs holdout and stability of the top rules → refine metrics, windows or horizon → lab_catalogue_save only rules that hold up → lab_catalogue_health and lab_market_pulse to monitor. The autoresearch prompt walks through it.
 
-Honesty rules: rank and select by walk-forward results. The holdout (most recent 20%) is never used for selection; treat it as a one-shot check. Save only rules with walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), deflatedSharpe ≥ 0.95 and stability ≥ 0.5. Low support, few trades, deflatedSharpe below 0.95 or stability below 0.5 mean the rule is likely noise. Every number is historical research, not investment advice.`;
+Honesty rules: rank and select by walk-forward results. The holdout (most recent 20%) is never used for selection; treat it as a one-shot check. Every rule carries a save-bar verdict; save only rules with ${BAR}. ${CANDIDATE} Low support, few trades, deflatedSharpe below ${MIN_DEFLATED_SHARPE} or stability below ${MIN_STABILITY} mean the rule is likely noise. Every number is historical research, not investment advice.`;

@@ -5,10 +5,11 @@ import { handleJsonRpc } from "../mcp/server.js";
 import { ToolInputError, type Registry, type ToolDef } from "../mcp/types.js";
 import { labRoutes } from "../routes/lab.js";
 import { synthetic } from "./engine/testkit.js";
+import { MIN_DEFLATED_SHARPE } from "./engine/verdict.js";
 import { createLabService } from "./service.js";
 import { memoryStore } from "./store.js";
 import { LAB_INSTRUCTIONS, labPrompts, labTools } from "./tools.js";
-import type { LabProvider, MetricDef } from "./types.js";
+import { SearchConfigSchema, VERDICT_LEVELS, type LabProvider, type MetricDef } from "./types.js";
 
 const base = synthetic({ seed: 1, drift: 0.012 });
 const synProvider: LabProvider = {
@@ -94,8 +95,12 @@ describe("lab tools: definitions", () => {
       lab_market_pulse: [],
     });
     expect(Object.keys(tool("lab_search").inputSchema.properties).sort()).toEqual(
-      ["asset", "direction", "metrics", "transforms", "windows", "horizonDays", "labelQuantile", "customZones", "objective", "trials", "folds", "minSupport", "slippageBps", "topK", "from", "to", "price", "seed", "minExposure", "maxExposure", "minTradesPerYear", "minDeflatedSharpe"].sort(),
+      ["asset", "direction", "metrics", "transforms", "windows", "horizonDays", "labelQuantile", "customZones", "objective", "trials", "folds", "minSupport", "slippageBps", "topK", "from", "to", "price", "seed", "minExposure", "maxExposure", "minTradesPerYear", "minDeflatedSharpe", "minVerdict"].sort(),
     );
+    // Every zod search field has a JSON-schema property, and the verdict enum matches.
+    expect(Object.keys(SearchConfigSchema.shape).sort()).toEqual(Object.keys(tool("lab_search").inputSchema.properties).sort());
+    expect((tool("lab_search").inputSchema.properties as any).minVerdict.enum).toEqual([...VERDICT_LEVELS]);
+    expect(Object.keys(tool("lab_evaluate_rule").inputSchema.properties)).toContain("trials");
   });
 
   test("annotations: read-only vs writing tools", () => {
@@ -119,6 +124,8 @@ describe("lab tools: argument validation", () => {
     expect(await fieldOf("lab_get_run", {})).toBe("id");
     expect(await fieldOf("lab_evaluate_rule", { rule: { ...rule, direction: "up" } })).toBe("rule.direction");
     expect(await fieldOf("lab_evaluate_rule", { rule, from: "June 1" })).toBe("from");
+    expect(await fieldOf("lab_evaluate_rule", { rule, trials: 0 })).toBe("trials");
+    expect(await fieldOf("lab_search", { ...search, minVerdict: "great" })).toBe("minVerdict");
     expect(await fieldOf("lab_catalogue_save", { rule, name: " " })).toBe("name");
     expect(await fieldOf("lab_catalogue_save", { rule, name: "x", runId: "run-1" })).toBe("runId");
     expect(await fieldOf("lab_catalogue_list", { direction: "sideways" })).toBe("direction");
@@ -185,7 +192,18 @@ describe("lab tools: end to end", () => {
     expect(text).toContain("Research short heuristics for ETH");
     expect(text).toContain("Goal: fade euphoria.");
     expect(text).toContain('"direction": "short"');
-    expect(text).toContain("walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), deflatedSharpe ≥ 0.95 and stability ≥ 0.5");
+    // The save bar is the robust verdict, with the calibrated deflated-Sharpe cut-off.
+    const bar = `verdict.level "robust": walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), stability ≥ 0.5 and deflatedSharpe ≥ ${MIN_DEFLATED_SHARPE}`;
+    expect(text).toContain(bar);
+    expect(text).toContain('A "candidate"');
+    expect(text).toContain("only with a note explaining why");
+    expect(LAB_INSTRUCTIONS).toContain(bar);
+    expect(LAB_INSTRUCTIONS).toContain("only with a note explaining why");
+    for (const name of ["lab_search", "lab_catalogue_save"]) {
+      expect(tool(name).description).toContain(bar);
+      expect(tool(name).description).toContain("only with a note explaining why");
+    }
+    expect(`${LAB_INSTRUCTIONS}${text}${tools.map((t) => t.description).join("")}`).not.toContain("0.95 and");
     expect(text).toContain("at most 5 searches");
     expect(LAB_INSTRUCTIONS).toContain("never used for selection");
 

@@ -11,6 +11,7 @@ import {
   ruleId,
   runSearch,
   SearchRefused,
+  withVerdict,
 } from "./engine/index.js";
 import { allMetrics, getMetric, loadDataset as registryLoadDataset, PROVIDERS, type LoadConfig } from "./providers/registry.js";
 import { defaultStore, type LabStore, type RunSummary, type StoredRun } from "./store.js";
@@ -69,6 +70,8 @@ export interface EvaluateInput {
   includeEquity?: boolean;
   sensitivity?: boolean;
   windows?: number[];
+  /** N for the deflated Sharpe (e.g. a run's effectiveTrials); default 1. */
+  trials?: number;
 }
 
 export interface SaveInput {
@@ -95,15 +98,36 @@ function asInputError(err: unknown): unknown {
   return err instanceof SearchRefused ? new ToolInputError(err.message, err.field) : err;
 }
 
-/** Fields only a search can compute (an explicit-rule evaluation has no folds to refit). */
-const SEARCH_ONLY_FIELDS = ["walkForward", "walkForwardFolds", "deflatedSharpe"] as const;
+/**
+ * Fields a catalogue save takes from the search run that found the rule.
+ * An explicit evaluation computes its own walk-forward too, but the run's is
+ * what the rule was selected on, over the run's date range, and its deflated
+ * Sharpe is deflated by the run's effectiveTrials. (The fresh evaluation is
+ * also deflated by them when a run is given; without a run its N is 1, so it
+ * is not deflated for any search — the asymmetry is deliberate: no run, no
+ * known search to deflate for.)
+ */
+const SEARCH_FIELDS = ["walkForward", "walkForwardFolds", "deflatedSharpe"] as const;
 
-/** A fresh evaluation, with the walk-forward fields of the search that found the rule when there is one. */
+/** A fresh evaluation, with the walk-forward fields of the search that found the rule when there is one; the verdict is recomputed on the result. */
 function withSearchWalkForward(fresh: RuleEvaluation, fromSearch: RuleEvaluation | undefined): RuleEvaluation {
   if (!fromSearch) return fresh;
   const out: Record<string, unknown> = { ...fresh };
-  for (const k of SEARCH_ONLY_FIELDS) if (k in fromSearch) out[k] = (fromSearch as unknown as Record<string, unknown>)[k];
-  return out as unknown as RuleEvaluation;
+  for (const k of SEARCH_FIELDS) if (k in fromSearch) out[k] = (fromSearch as unknown as Record<string, unknown>)[k];
+  return withVerdict(out as unknown as RuleEvaluation);
+}
+
+/** Search N for a run: its effectiveTrials, or the raw variant count for runs stored before it existed (stricter). */
+function runTrials(result: SearchResult | null | undefined): number | undefined {
+  return result ? (result.effectiveTrials ?? result.variantsScored) : undefined;
+}
+
+/** Entries and run results stored before verdicts existed get one computed on read. */
+function ensureVerdict<T extends RuleEvaluation>(ev: T): T {
+  return ev.verdict ? ev : withVerdict(ev);
+}
+function withEntryVerdict<T extends CatalogueEntry>(e: T): T {
+  return e.saved.verdict ? e : { ...e, saved: withVerdict(e.saved) };
 }
 
 export function createLabService(partial: Partial<LabServiceDeps> = {}) {
@@ -249,6 +273,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         from: input.from,
         to: input.to,
         windows: input.sensitivity ? (input.windows ?? DEFAULT_WINDOWS) : undefined,
+        trials: input.trials,
       });
     } catch (err) {
       throw asInputError(err);
@@ -314,7 +339,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     async getRun(id: string): Promise<StoredRun> {
       const run = await deps.store.getRun(id);
       if (!run) throw new ToolInputError(`no run with id ${id} (lab_list_runs lists them)`, "id");
-      return run;
+      return run.result && run.result.rules.some((r) => !r.verdict) ? { ...run, result: { ...run.result, rules: run.result.rules.map(ensureVerdict) } } : run;
     },
 
     async listRuns(limit = 20): Promise<{ runs: RunSummary[] }> {
@@ -329,7 +354,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     },
 
     async catalogueList(input: { asset?: string; direction?: Direction; live?: boolean } = {}): Promise<{ entries: CatalogueListEntry[] }> {
-      const all = await deps.store.listCatalogue();
+      const all = (await deps.store.listCatalogue()).map(withEntryVerdict);
       const sameAsset = (e: CatalogueEntry) => !input.asset || e.rule.asset.toUpperCase() === input.asset.toUpperCase();
       const listed = all.filter((e) => sameAsset(e) && (!input.direction || e.rule.direction === input.direction));
       if (input.live === false || !listed.length) return { entries: listed.map((e) => ({ ...e, live: null, flags: [] })) };
@@ -354,8 +379,9 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       const id = ruleId(rule);
       // The store keeps an existing entry's evaluation, so only a new rule is evaluated.
       const existing = await deps.store.getCatalogueEntry(id);
-      const saved = existing?.saved ?? withSearchWalkForward(await evaluate({ rule, sensitivity: true }), run?.result?.rules.find((r) => r.id === id));
-      return deps.store.saveCatalogueEntry({
+      const saved =
+        existing?.saved ?? withSearchWalkForward(await evaluate({ rule, sensitivity: true, trials: runTrials(run?.result) }), run?.result?.rules.find((r) => r.id === id));
+      return withEntryVerdict(await deps.store.saveCatalogueEntry({
         id,
         name: input.name,
         note: input.note ?? null,
@@ -363,7 +389,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         runId: input.runId ?? null,
         rule,
         saved,
-      });
+      }));
     },
 
     async catalogueRemove(id: string): Promise<{ removed: boolean }> {
