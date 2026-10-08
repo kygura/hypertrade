@@ -82,6 +82,15 @@ describe("DeskService", () => {
     expect(await service.store.paperPositions()).toHaveLength(0);
   });
 
+  test("reviewEveryHours: an operator override beats the env default; no override falls back to it", async () => {
+    const { service } = makeService({ env: { DESK_REVIEW_HOURS: "8" } });
+    expect(await service.reviewEveryHours()).toEqual({ hours: 8, source: "env" });
+    await service.setReviewEveryHours(24, "operator");
+    expect(await service.reviewEveryHours()).toEqual({ hours: 24, source: "ui" });
+    await service.setReviewEveryHours(0, "operator");
+    expect(await service.reviewEveryHours()).toEqual({ hours: 0, source: "ui" }); // 0 = scheduled reviews off
+  });
+
   test("paper PnL: a target fill books profit net of fees", async () => {
     const { service, store } = makeService();
     await service.submitOpen(proposal, null);

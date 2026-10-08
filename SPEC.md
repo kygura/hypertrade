@@ -134,7 +134,7 @@ An agentic portfolio desk inside the app: a PM agent runs a roster of specialist
 - **Approval**: `auto` (governor-passed entries execute) or `manual` (entries queue for the operator; Telegram buttons or the page). Exits never wait. Kill switch blocks entries.
 - **Watch tick** (`watch.ts`): paper stops/targets, day-loss limit, deterministic triggers with alerts and cooldowns; wakes the team within a daily cap. From `collect.yml` (`desk` job, `vars.DESK_ENABLED`) or the worker.
 - **Data** (`db/migrations/003_desk.sql`): `desk_runs`, `desk_events`, `desk_proposals`, `desk_paper_positions`, `desk_paper_fills`, `desk_alerts`, `desk_state`.
-- **API**: `POST /api/desk/ask` and `/review` (SSE of run events), `GET /status /portfolio /runs /runs/:id /proposals /alerts`, `POST /proposals/:id/approve|reject /exit /kill /paper/reset`, `PUT /approval`, `POST /tick` (x-cron-token), `POST /telegram` (Telegram secret header).
+- **API**: `POST /api/desk/ask` and `/review` (SSE of run events), `GET /status /portfolio /runs /runs/:id /proposals /alerts`, `POST /proposals/:id/approve|reject /exit /kill /paper/reset`, `PUT /approval`, `PUT /settings` (review interval override), `POST /tick` (x-cron-token), `POST /telegram` (Telegram secret header).
 
 ## Lab (heuristic research)
 

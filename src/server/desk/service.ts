@@ -20,6 +20,7 @@ import type { AccountState, AlertLevel, ExitProposal, ProposalRecord, TradePropo
 
 export const KILL_KEY = "kill_switch";
 export const APPROVAL_KEY = "approval_override";
+export const REVIEW_HOURS_KEY = "review_hours_override";
 
 export interface DeskDeps {
   config: DeskConfig;
@@ -77,6 +78,16 @@ export class DeskService {
 
   async setApproval(approval: "manual" | "auto", by: string): Promise<void> {
     await this.store.setState(APPROVAL_KEY, { approval, by, at: this.now().toISOString() });
+  }
+
+  /** Scheduled-review interval in force: an operator override from the UI, else the env default. 0 disables scheduled reviews. */
+  async reviewEveryHours(): Promise<{ hours: number; source: "ui" | "env" }> {
+    const o = await this.store.getState<{ hours: number }>(REVIEW_HOURS_KEY);
+    return o ? { hours: o.hours, source: "ui" } : { hours: this.config.reviewEveryHours, source: "env" };
+  }
+
+  async setReviewEveryHours(hours: number, by: string): Promise<void> {
+    await this.store.setState(REVIEW_HOURS_KEY, { hours, by, at: this.now().toISOString() });
   }
 
   async marks(): Promise<{ ctxs: AssetCtx[]; marks: Map<string, number> }> {

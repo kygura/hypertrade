@@ -225,13 +225,14 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
 
   // Should the agents run?
   const cfg = service.config;
+  const { hours: reviewEveryHours } = await service.reviewEveryHours();
   const lastCycle = state.lastCycleAt ? new Date(state.lastCycleAt).getTime() : 0;
   const wake = result.triggers.filter((x) => x.wake);
-  const reviewDue = cfg.reviewEveryHours > 0 && t - lastCycle >= cfg.reviewEveryHours * HOUR;
+  const reviewDue = reviewEveryHours > 0 && t - lastCycle >= reviewEveryHours * HOUR;
   let reason: string | null = null;
   if (opts.forceReview) reason = "operator-requested review";
   else if (wake.length && t - lastCycle >= cfg.cycleCooldownMin * MIN) reason = wake.map((x) => `${x.title} (${x.detail})`).join("; ");
-  else if (reviewDue) reason = `scheduled review (every ${cfg.reviewEveryHours}h)`;
+  else if (reviewDue) reason = `scheduled review (every ${reviewEveryHours}h)`;
 
   state.lastTick = now.toISOString();
   if (reason && opts.runCycle !== false) {

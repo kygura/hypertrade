@@ -61,6 +61,21 @@ describe("tick", () => {
     expect(third.cycle).toEqual({ skipped: "daily cycle cap reached (1)" });
   });
 
+  test("a scheduled-review override fires a cycle at the overridden interval, not the env default", async () => {
+    const clock = { now: new Date(NOW) };
+    const { service, store } = makeService({ now: () => clock.now, env: { DESK_REVIEW_HOURS: "0", DESK_WATCHLIST: "BTC" } });
+    await service.setReviewEveryHours(4, "operator");
+    await store.setState(WATCH_KEY, { lastCycleAt: new Date(NOW - 5 * HOUR).toISOString() } satisfies WatchState);
+    const provider = new ScriptedProvider("claude-opus-5-5", () => [{ text: "**Log:** scheduled check, no action." }]);
+
+    const due = await tick(service, { makeProvider: () => provider });
+    expect(due.cycle).toMatchObject({ reason: "scheduled review (every 4h)" });
+
+    // Right after running, the next tick isn't due yet (lastCycleAt just moved).
+    const notYet = await tick(service, { makeProvider: () => provider });
+    expect(notYet.cycle).toBeNull();
+  });
+
   test("settles paper stops against the bars since the last tick", async () => {
     const { service, store, data } = makeService({ env: { DESK_REVIEW_HOURS: "0" } });
     await service.submitOpen(
