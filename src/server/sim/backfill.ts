@@ -14,11 +14,12 @@ export async function backfillCoin(coin: string, startDate: Date, deps?: SyncDep
   await ensureHistory(coin, "1d", startDate.getTime(), deps, { deadline });
 }
 
-/** Backfills every non-stable coin in a branch's allocations, sequentially
+/** Backfills every non-stable coin in a branch's allocations and DCA legs, sequentially
  * (rate-limit courtesy — no parallel fetch storm against public APIs). */
 export async function backfillBranch(config: BranchConfig, deps?: SyncDeps): Promise<void> {
   const startDate = new Date(config.startDate);
-  for (const a of config.allocations) {
-    await backfillCoin(a.coin, startDate, deps);
+  const coins = new Set([...config.allocations.map((a) => a.coin), ...(config.dca ?? []).map((d) => d.coin)]);
+  for (const coin of coins) {
+    await backfillCoin(coin, startDate, deps);
   }
 }
