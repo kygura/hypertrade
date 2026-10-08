@@ -13,9 +13,13 @@ import {
   type LLMProvider,
   type ProviderId,
   type ToolOutcome,
+  type ToolSpec,
   type Usage,
 } from "../llm/provider.js";
-import { TOOL_SPECS, defaultToolDeps, runTool, toolCatalog, type ToolDeps } from "../llm/tools.js";
+import { TOOL_SPECS, defaultToolDeps, runTool, toolCatalog, type ToolDeps, type ToolRun } from "../llm/tools.js";
+import { SIM_TOOL_SPEC, buildSimSystemPrompt, realSimDeps, runSimTool } from "../llm/sim.js";
+import type { IntentDeps } from "../sim/intent.js";
+import type { SimBranchOutcome, SimIntent } from "../../shared/intent.js";
 
 // /analyst — the classic-LLM analyst (SPEC.md "Analyst"). Read-only: it
 // reads the app's data through tools/tools.ts and never places orders; Jev
@@ -28,6 +32,7 @@ import { TOOL_SPECS, defaultToolDeps, runTool, toolCatalog, type ToolDeps } from
 //   event: reasoning    {delta}   (thinking text the model exposes)
 //   event: tool_call    {id, name, input, server}
 //   event: tool_result  {id, name, ok, summary}
+//   event: sim_result   {id, intent, branches}   (mode "sim" only, before that call's tool_result)
 //   event: citations    {citations: [{url, title, cited_text?}]}
 //   event: error        {error}
 //   event: done         {usage, model, provider, label?, rounds, stop, effort?}
@@ -43,6 +48,7 @@ export const MAX_TOOL_ROUNDS = 8;
 
 const QueryBody = z.object({
   question: z.string().trim().min(1).max(4000),
+  mode: z.enum(["ask", "sim"]).optional(),
   history: z
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(20_000) }))
     .max(40)
@@ -59,6 +65,7 @@ export type AnalystEvent =
   | { type: "reasoning"; delta: string }
   | { type: "tool_call"; id: string; name: string; input: unknown; server: boolean }
   | { type: "tool_result"; id: string; name: string; ok: boolean; summary: string }
+  | { type: "sim_result"; id: string; intent: SimIntent; branches: SimBranchOutcome[] }
   | { type: "citations"; citations: Citation[] }
   | { type: "error"; error: string }
   | { type: "done"; usage: Usage; model: string; provider: string; label?: string; rounds: number; stop: string; effort?: Effort };
@@ -73,6 +80,10 @@ export interface RunOptions {
   now?: () => Date;
   /** Aborts from outside (client disconnect). */
   signal?: AbortSignal;
+  /** Sim mode overrides; defaults are the ask-mode prompt, TOOL_SPECS and runTool. */
+  system?: string;
+  tools?: ToolSpec[];
+  runTool?: (call: { id: string; name: string; input: unknown }) => Promise<ToolRun>;
 }
 
 /**
@@ -100,7 +111,7 @@ export async function runAnalyst(opts: RunOptions, emit: (e: AnalystEvent) => Pr
 
   const now = (opts.now ?? (() => new Date()))();
   const question = `[current time ${now.toISOString()}]\n${opts.question}`;
-  const conv = provider.start(buildSystemPrompt(provider.webSearch), opts.history ?? [], question);
+  const conv = provider.start(opts.system ?? buildSystemPrompt(provider.webSearch), opts.history ?? [], question);
   const hooks = {
     onText: (delta: string) => void emit({ type: "text", delta }),
     onReasoning: (delta: string) => void emit({ type: "reasoning", delta }),
@@ -119,7 +130,7 @@ export async function runAnalyst(opts: RunOptions, emit: (e: AnalystEvent) => Pr
   try {
     for (;;) {
       const final = rounds >= maxRounds;
-      const res = await conv.step(TOOL_SPECS, hooks, { signal: ctrl.signal, final });
+      const res = await conv.step(opts.tools ?? TOOL_SPECS, hooks, { signal: ctrl.signal, final });
       usage.input_tokens += res.usage.input_tokens;
       usage.output_tokens += res.usage.output_tokens;
       if (res.stop === "pause") {
@@ -144,7 +155,7 @@ export async function runAnalyst(opts: RunOptions, emit: (e: AnalystEvent) => Pr
       }
       const results: ToolOutcome[] = await Promise.all(
         res.toolCalls.map(async (call) => {
-          const r = await runTool(call.name, call.input, deps);
+          const r = await (opts.runTool ? opts.runTool(call) : runTool(call.name, call.input, deps));
           await emit({ type: "tool_result", id: call.id, name: call.name, ok: !r.isError, summary: r.summary });
           return { id: call.id, name: call.name, content: r.content, isError: r.isError };
         }),
@@ -189,6 +200,8 @@ export interface AnalystRouteOptions {
   /** Builds a specific, already-validated provider/model/effort choice. */
   resolveChoice?: (choice: { provider: ProviderId; model: string; effort?: Effort }) => LLMProvider | null;
   deps?: ToolDeps;
+  /** Sim mode's simulation deps (tests inject fixtures). Default: real backfill/candles + HL max leverage. */
+  simDeps?: IntentDeps;
   timeoutMs?: number;
   maxRounds?: number;
 }
@@ -261,9 +274,25 @@ export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
       return streamSSE(c, async (stream) => {
         const disconnect = new AbortController();
         stream.onAbort(() => disconnect.abort());
+        const emit = async (e: AnalystEvent) => {
+          if (disconnect.signal.aborted) return;
+          const { type, ...data } = e;
+          await stream.writeSSE({ event: type, data: JSON.stringify(data) });
+        };
+        let sim: Pick<RunOptions, "system" | "tools" | "runTool"> = {};
+        if (parsed.data.mode === "sim") {
+          const simDeps = o.simDeps ?? (await realSimDeps());
+          const toolDeps = o.deps ?? defaultToolDeps;
+          sim = {
+            system: buildSimSystemPrompt(provider.webSearch),
+            tools: [...TOOL_SPECS, SIM_TOOL_SPEC],
+            runTool: (call) => (call.name === SIM_TOOL_SPEC.name ? runSimTool(call, simDeps, emit) : runTool(call.name, call.input, toolDeps)),
+          };
+        }
         await runAnalyst(
           {
             provider,
+            ...sim,
             question: parsed.data.question,
             history: parsed.data.history,
             deps: o.deps,
@@ -271,11 +300,7 @@ export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
             maxRounds: o.maxRounds,
             signal: disconnect.signal,
           },
-          async (e) => {
-            if (disconnect.signal.aborted) return;
-            const { type, ...data } = e;
-            await stream.writeSSE({ event: type, data: JSON.stringify(data) });
-          },
+          emit,
         );
       });
     });
