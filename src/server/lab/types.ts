@@ -135,6 +135,15 @@ export interface RuleEvaluation {
   support: number;
   inSample: PerfStats;
   walkForward: PerfStats | null;
+  /** Sharpe of each walk-forward test block, oldest first (reported, never ranked on); [] without walk-forward. Absent on evaluations stored before it existed. */
+  walkForwardFolds?: number[];
+  /**
+   * Deflated Sharpe (Bailey & López de Prado) of the concatenated walk-forward
+   * returns: probability the true Sharpe beats the best of N noise variants,
+   * N = distinct variants the search scored (1 for an explicit rule). Null
+   * without walk-forward; absent on evaluations stored before it existed.
+   */
+  deflatedSharpe?: number | null;
   holdout: PerfStats | null;
   benchmark: { inSample: PerfStats; holdout: PerfStats | null };
   sensitivity?: Sensitivity;
@@ -168,6 +177,8 @@ export const SearchConfigSchema = z.object({
   to: DaySchema.optional(),
   price: z.string().optional(),
   seed: z.number().int().default(42),
+  /** Drop final rules whose deflated Sharpe is below this (0–1). Default: no filter. */
+  minDeflatedSharpe: z.number().min(0).max(1).optional(),
 });
 export type SearchConfig = z.infer<typeof SearchConfigSchema>;
 export type SearchConfigInput = z.input<typeof SearchConfigSchema>;
@@ -193,6 +204,8 @@ export interface SearchResult {
   dataRange: { from: string; to: string; days: number; holdoutFrom: string };
   featureCount: number;
   trialsRun: number;
+  /** Distinct rule variants scored across all trials and the final refit: the N of the deflated Sharpe. */
+  variantsScored?: number;
   bestTrial: TrialRecord | null;
   trials: TrialRecord[];
   rules: RuleEvaluation[];

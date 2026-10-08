@@ -1,8 +1,9 @@
 import { RuleSchema, type LabDataset, type PerfStats, type Rule, type RuleEvaluation } from "../types.js";
-import { equityCurve, perfStats, simulate } from "./backtest.js";
+import { concatReturns, equityCurve, perfStats, sharpeOf, simulate } from "./backtest.js";
 import { checkDataset, makeCtx, rangeIndices, type EvalCtx } from "./context.js";
 import { makeLabels } from "./labels.js";
 import { ruleId, ruleText } from "./rules.js";
+import { deflatedSharpeOf } from "./stats.js";
 import { isoDate, parseDay, SearchRefused } from "./util.js";
 import { makeSplit, positions, sensitivity, walkForwardSegments, type Split } from "./validate.js";
 
@@ -14,6 +15,8 @@ export interface EvalInCtxOptions {
   labels: Float64Array;
   slippageBps: number;
   walkForward: boolean;
+  /** N for the deflated Sharpe: distinct variants scored to find this rule. Default 1. */
+  trials?: number;
   /** Configured windows; when set, a sensitivity grid is attached. */
   windows?: readonly number[];
   includeEquity?: boolean;
@@ -48,6 +51,7 @@ export function evaluateInCtx(ctx: EvalCtx, rule: Rule, o: EvalInCtxOptions): Ru
     const x = ctx.col(c.feature)[n - 1]!;
     values[c.feature] = Number.isFinite(x) ? x : null;
   }
+  const wf = o.walkForward && split.folds.length ? walkForwardSegments(ctx, rule.conditions, split, dirSign, o.slippageBps) : null;
 
   const out: RuleEvaluation = {
     id: ruleId(rule),
@@ -56,7 +60,9 @@ export function evaluateInCtx(ctx: EvalCtx, rule: Rule, o: EvalInCtxOptions): Ru
     precision: support ? good / support : 0,
     support,
     inSample: perfStats(t, [inSeg]),
-    walkForward: o.walkForward && split.folds.length ? perfStats(t, walkForwardSegments(ctx, rule.conditions, split, dirSign, o.slippageBps)) : null,
+    walkForward: wf ? perfStats(t, wf) : null,
+    walkForwardFolds: wf ? wf.map((s) => sharpeOf(s.ret)) : [],
+    deflatedSharpe: wf ? deflatedSharpeOf(concatReturns(wf), o.trials ?? 1) : null,
     holdout,
     benchmark: { inSample: perfStats(t, [inBench]), holdout: benchHoldout },
     firingNow: sig[n - 1] === 1,

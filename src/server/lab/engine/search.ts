@@ -1,11 +1,12 @@
 import { SearchConfigSchema, type Condition, type LabDataset, type Rule, type SearchConfig, type SearchResult, type TrialRecord } from "../types.js";
-import { objectiveOf, quickScore, simulate } from "./backtest.js";
+import { concatReturns, objectiveOf, quickScore, simulate } from "./backtest.js";
 import { checkDataset, makeCtx, rangeIndices } from "./context.js";
 import { evaluateInCtx } from "./evaluate.js";
 import { featureId, featureSpecs } from "./features.js";
 import { makeLabels } from "./labels.js";
 import { fork, gauss, mulberry32, randInt, type Rng } from "./rng.js";
 import { conditionsKey, extractRules } from "./rules.js";
+import { deflatedSharpeOf } from "./stats.js";
 import { binFeatures, growForest, type Binned, type TreeParams } from "./tree.js";
 import { isoDate, SearchRefused } from "./util.js";
 import { makeSplit, walkForwardScore, walkForwardSegments } from "./validate.js";
@@ -138,6 +139,8 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
   if (positives === final.rows.length) throw new SearchRefused("every day in the search region is labelled good; nothing to separate", config.customZones?.length ? "customZones" : "labelQuantile");
   const folds = split.folds.map((f) => ({ fold: f, train: trainSet(f.purgedEnd, f.testFrom, final.rows.length) }));
 
+  /** Distinct rule variants scored anywhere in this search: N for the deflated Sharpe. */
+  const scored = new Set<string>();
   /** Rules with their signal, support and training objective, support-filtered, best first. */
   const scoreRules = (ts: TrainSet, rules: Condition[][]) => {
     const out: Array<{ key: string; conds: Condition[]; sig: Uint8Array; score: number }> = [];
@@ -152,7 +155,10 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
         e = { sig, support, score };
         if (ts.cache.size < 20_000) ts.cache.set(key, e);
       }
-      if (e.score === e.score) out.push({ key, conds, sig: e.sig, score: e.score });
+      if (e.score === e.score) {
+        scored.add(key);
+        out.push({ key, conds, sig: e.sig, score: e.score });
+      }
     }
     out.sort((a, b) => b.score - a.score || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     return out;
@@ -197,9 +203,15 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
   // At least 100 trees: more trees only widen the candidate pool, and a
   // planted two-condition rule was often missing from a 30-tree refit.
   const forest = growForest(final.binned, labels, final.rows, { ...best!.params, trees: Math.max(100, best!.params.trees) }, mulberry32((config.seed ^ 0x5bd1e995) >>> 0));
-  const candidates = scoreRules(final, extractRules(forest, ids))
-    .slice(0, MAX_CANDIDATES)
-    .map((c) => ({ ...c, wf: walkForwardScore(walkForwardSegments(ctx, c.conds, split, dirSign, bps), objective) }))
+  const pool = scoreRules(final, extractRules(forest, ids)).slice(0, MAX_CANDIDATES);
+  const variantsScored = scored.size;
+  const minDsr = config.minDeflatedSharpe;
+  const candidates = pool
+    .map((c) => {
+      const segs = walkForwardSegments(ctx, c.conds, split, dirSign, bps);
+      return { ...c, wf: walkForwardScore(segs, objective), dsr: deflatedSharpeOf(concatReturns(segs), variantsScored) };
+    })
+    .filter((c) => minDsr == null || (c.dsr ?? 0) >= minDsr)
     .sort((a, b) => b.wf - a.wf || a.conds.length - b.conds.length || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   // Rules with identical in-zone days are one rule; keep the best-ranked.
   const seen = new Set<number>();
@@ -211,11 +223,13 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
     top.push(c);
     if (top.length >= config.topK) break;
   }
-  if (!top.length) warnings.push(`no rule reached minSupport ${config.minSupport} in the search region`);
+  if (!top.length) {
+    warnings.push(pool.length ? `no rule reached minDeflatedSharpe ${minDsr}` : `no rule reached minSupport ${config.minSupport} in the search region`);
+  }
   const rules = top.map((c) => {
     const rule: Rule = { asset: config.asset, direction: config.direction, horizonDays: config.horizonDays, conditions: c.conds };
     if (config.price) rule.price = config.price;
-    return evaluateInCtx(ctx, rule, { split, labels, slippageBps: bps, walkForward: true, windows: config.windows });
+    return evaluateInCtx(ctx, rule, { split, labels, slippageBps: bps, walkForward: true, trials: variantsScored, windows: config.windows });
   });
 
   const total = forest.importance.reduce((a, b) => a + b, 0);
@@ -229,6 +243,7 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
     dataRange: { from: isoDate(ctx.t[0]!), to: isoDate(ctx.t[n - 1]!), days: n, holdoutFrom: isoDate(ctx.t[split.searchEnd]!) },
     featureCount: ids.length,
     trialsRun: trials.length,
+    variantsScored,
     bestTrial: best,
     trials,
     rules,

@@ -31,6 +31,11 @@ describe("runSearch", () => {
       expect(hit!.walkForward!.sharpe).toBeGreaterThan(1);
       expect(hit!.support).toBeGreaterThanOrEqual(30);
       expect(hit!.sensitivity!.points.length).toBeGreaterThan(0);
+      // Deflated against every variant the search scored; per-fold Sharpes reported.
+      expect(res.variantsScored).toBeGreaterThan(500);
+      expect(hit!.deflatedSharpe).toBeGreaterThan(0.5);
+      expect(hit!.walkForwardFolds).toHaveLength(3);
+      expect(hit!.walkForwardFolds!.filter((x) => x > 0).length).toBeGreaterThanOrEqual(2);
       expect(res.featureImportance[0]!.feature.startsWith("syn:a|")).toBe(true);
     }
   }, 20_000);
@@ -47,6 +52,18 @@ describe("runSearch", () => {
     }
     expect(survived).toBeLessThanOrEqual(1);
   }, 20_000);
+
+  test("minDeflatedSharpe filters final rules; omitted = no filter", () => {
+    const data = synthetic({ seed: 1, drift: 0.012, days: 1500 });
+    const all = runSearch(cfg(data, { trials: 4 }), data);
+    expect(all.rules.some((r) => r.deflatedSharpe! < 0.99)).toBe(true);
+    const some = runSearch(cfg(data, { trials: 4, minDeflatedSharpe: 0.99 }), data);
+    expect(some.rules.length).toBeGreaterThan(0);
+    for (const r of some.rules) expect(r.deflatedSharpe!).toBeGreaterThanOrEqual(0.99);
+    const none = runSearch(cfg(data, { trials: 4, minDeflatedSharpe: 1 }), data);
+    expect(none.rules).toEqual([]);
+    expect(none.warnings.some((w) => /minDeflatedSharpe/.test(w))).toBe(true);
+  });
 
   test("deterministic: same seed, same result", () => {
     const data = synthetic({ seed: 2, drift: 0.01, days: 1200 });

@@ -7,6 +7,7 @@ export * from "./labels.js";
 export * from "./rng.js";
 export * from "./rules.js";
 export * from "./search.js";
+export * from "./stats.js";
 export * from "./tree.js";
 export * from "./util.js";
 export * from "./validate.js";
