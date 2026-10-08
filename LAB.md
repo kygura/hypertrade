@@ -20,9 +20,13 @@ without buying a key.
    (number of trials).
 2. **Labels define truth.** Each day in the history is marked good (1) or not
    (0) by what the price did next: forward return over `horizonDays`. Long:
-   good = forward return ≥ the `labelQuantile` upper quantile of the search
-   region *and* > 0. Short: ≤ the lower quantile *and* < 0. Default quantile
-   0.3. `customZones` (date ranges) replace this: days inside a zone are 1.
+   good = forward return ≥ the `labelQuantile` upper quantile *and* > 0.
+   Short: ≤ the lower quantile *and* < 0. Default quantile 0.3. The quantile
+   is read only from the rows being trained on: each walk-forward fold labels
+   with its own training region (forward windows ending at its test block),
+   the final refit with the whole search region, so no fold's labels see the
+   return distribution of a later test block. `customZones` (date ranges)
+   replace this: days inside a zone are 1.
 3. **Feature expansion.** Each metric is expanded into transformed versions:
    `raw`, `z` (rolling z-score), `rsi`, `ma_ratio` (value / SMA − 1), `roc`
    (rate of change), `vol` (rolling stdev of log changes), `pctile` (rolling
@@ -30,6 +34,9 @@ without buying a key.
    `[7, 30, 90]`; `raw` has no window). Every transform at day t uses only
    data ≤ t. Each metric carries `lagDays` (publication lag; on-chain data
    lands a day late) and is shifted by it before anything else happens.
+   Metrics flagged `stationary: false` (trending levels: price, market cap,
+   supply) get no `raw` feature, since an absolute threshold on a level that
+   drifts across years is a date filter, not a condition.
 4. **Search.** A random forest of depth-2 CART trees (gini, quantile-binned
    thresholds, bootstrap rows, feature subsampling) is grown per trial. A
    seeded optimizer runs a fixed budget of `trials`: the first half samples
@@ -42,7 +49,10 @@ without buying a key.
    prefixes are kept as rules too, so a pair can be read whole or split into
    single-metric rules. Each rule is judged on **precision** (share of in-zone
    days labelled good) and **support** (in-zone days); rules below `minSupport`
-   are dropped and duplicates merged.
+   are dropped and duplicates merged. A candidate must also trade: in the
+   market on `minExposure`–`maxExposure` of the training days (default
+   5–95%) and entering at least max(3, `minTradesPerYear` × years) trades
+   (default 0.5 a year); otherwise it is not scored.
 6. **Strategy scoring.** A rule is a daily signal: in zone at the close of day
    t means position +1 (long) or −1 (short) over day t+1, else flat. Cost =
    `slippageBps` × |position change|. Reported per window: total return,
@@ -50,7 +60,8 @@ without buying a key.
    closed trades, i.e. contiguous in-zone episodes, with positive net
    return), trades per year, exposure (share of days in market), and an equity
    curve on request. A buy-and-hold benchmark (or short-and-hold for short)
-   is reported for the same windows. All numbers are net of slippage.
+   is reported for the same windows. All numbers are net of slippage. A
+   window with no trade is flagged `untested` (its Sharpe 0 is not a result).
 7. **Validation, three stages.**
    - *Holdout:* the most recent 20% of history is cut off before the search
      and used only to evaluate final rules. Never used for ranking.
@@ -67,7 +78,21 @@ without buying a key.
    - *Live:* once catalogued, a rule is evaluated on data after `savedAt`,
      which could not have influenced its selection.
    Final rules are ranked by walk-forward objective (support-filtered), never by
-   holdout.
+   holdout. Each also reports `walkForwardFolds` (the Sharpe of every test
+   block, never ranked on) and `deflatedSharpe` (Bailey & López de Prado):
+   the probability that the concatenated walk-forward returns' daily Sharpe,
+   corrected for their skew and kurtosis, beats the expected best of N noise
+   strategies, with N = `variantsScored`, the distinct rule variants the
+   search scored over all trials and the final refit, and the null variance
+   of a Sharpe 1/(T − 1). Variants overlap heavily, so this is conservative;
+   it is a reported field and an optional filter (`minDeflatedSharpe`), not a
+   gate. An explicit rule (`lab_evaluate_rule`) gets the same walk-forward,
+   refitting its thresholds per fold by quantile matching (its own
+   thresholds stay canonical, so its id does not change), with N = 1.
+   The final list keeps one rule per family: best walk-forward first, a rule
+   whose in-zone days over the search region overlap a kept rule's with
+   Jaccard ≥ 0.8 is dropped, and no single condition anchors more than two
+   rules. Holdout days never enter this comparison.
 8. **Sensitivity.** Each condition's threshold is shifted to quantiles
    q ± 0.05 and q ± 0.10, and its window is swapped for neighbouring windows in
    the config. `stability` = share of perturbations whose search-region Sharpe
@@ -195,8 +220,10 @@ implementations: Postgres (deployed), in-memory (no DB), and JSON file
 - `bun test src` green, including planted-signal tests: synthetic data where a
   known two-condition rule drives returns, and the search recovers it (same
   features, thresholds within tolerance) with positive holdout Sharpe, while
-  pure-noise data yields no rule that passes `minSupport` and positive
-  walk-forward plus holdout Sharpe in more than a small share of seeds.
+  on pure-noise data the save bar (walk-forward Sharpe > 1, holdout Sharpe >
+  0 and tested, deflatedSharpe ≥ 0.95, stability ≥ 0.5) passes some top
+  rule in at most 1 of 10 seeds; and replacing the holdout with noise
+  leaves the rules and every search-region number unchanged.
 - `bun run typecheck` and `bun run build` green.
 - `POST /api/mcp` answers `initialize`, `tools/list` and `tools/call` per the
   MCP 2025-06-18 schema. `bun run lab tools` and

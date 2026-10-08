@@ -94,7 +94,7 @@ describe("lab tools: definitions", () => {
       lab_market_pulse: [],
     });
     expect(Object.keys(tool("lab_search").inputSchema.properties).sort()).toEqual(
-      ["asset", "direction", "metrics", "transforms", "windows", "horizonDays", "labelQuantile", "customZones", "objective", "trials", "folds", "minSupport", "slippageBps", "topK", "from", "to", "price", "seed"].sort(),
+      ["asset", "direction", "metrics", "transforms", "windows", "horizonDays", "labelQuantile", "customZones", "objective", "trials", "folds", "minSupport", "slippageBps", "topK", "from", "to", "price", "seed", "minExposure", "maxExposure", "minTradesPerYear", "minDeflatedSharpe"].sort(),
     );
   });
 
@@ -185,7 +185,7 @@ describe("lab tools: end to end", () => {
     expect(text).toContain("Research short heuristics for ETH");
     expect(text).toContain("Goal: fade euphoria.");
     expect(text).toContain('"direction": "short"');
-    expect(text).toContain("walkForward Sharpe > 1, holdout Sharpe > 0 and stability ≥ 0.5");
+    expect(text).toContain("walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), deflatedSharpe ≥ 0.95 and stability ≥ 0.5");
     expect(text).toContain("at most 5 searches");
     expect(LAB_INSTRUCTIONS).toContain("never used for selection");
 

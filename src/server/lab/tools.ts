@@ -145,6 +145,10 @@ const searchSchema = obj(
     to: daySchema("End of history, YYYY-MM-DD. Default: today."),
     price: { type: "string", description: "Price metric for labels and returns. Default ht:price, falling back to cm:PriceUSD." },
     seed: { type: "integer", description: "PRNG seed; the same config on the same data gives the same rules. Default 42." },
+    minExposure: { type: "number", minimum: 0, maximum: 1, description: "Candidate rules must be in the market on at least this share of search-region days. Default 0.05." },
+    maxExposure: { type: "number", minimum: 0, maximum: 1, description: "…and at most this share (always-in is the benchmark). Default 0.95." },
+    minTradesPerYear: { type: "number", minimum: 0, maximum: 365, description: "…and enter at least this many trades per year (and at least 3 in total). Default 0.5." },
+    minDeflatedSharpe: { type: "number", minimum: 0, maximum: 1, description: "Drop final rules whose deflatedSharpe is below this. Default: no filter (the field is always reported)." },
   },
   ["asset", "metrics"],
 );
@@ -186,7 +190,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_search",
       title: "Search for trading heuristics",
       description:
-        "Searches the chosen metrics for simple one- or two-condition rules (\"when feature A < x and B ≥ y, go long\") that predict good forward returns, scored as strategies net of slippage. Fetches data from external providers and runs a seeded random-forest search: typically 5–50 s (server deadline ~50 s; it then returns the trials completed, with a warning). Returns { runId, result }: result.rules ranked by walk-forward objective, each with precision, support, inSample, walkForward, holdout (most recent 20%, never used for ranking), benchmark, sensitivity.stability and firingNow; plus featureImportance and warnings. A rule's walk-forward = threshold-refit per fold (features and operators were chosen on the whole search region); the trial score is fully out-of-sample, and the holdout is the clean check. The run is stored (runId). Next: compare walkForward vs holdout and stability on the top rules, then refine metrics/windows, lab_evaluate_rule a rule, or lab_catalogue_save the robust ones. " +
+        "Searches the chosen metrics for simple one- or two-condition rules (\"when feature A < x and B ≥ y, go long\") that predict good forward returns, scored as strategies net of slippage. Fetches data from external providers and runs a seeded random-forest search: typically 5–50 s (server deadline ~50 s; it then returns the trials completed, with a warning). Returns { runId, result }: result.rules ranked by walk-forward objective, one per family (overlapping in-zone days collapse), each with precision, support, inSample, walkForward, walkForwardFolds (Sharpe per fold), deflatedSharpe (probability the walk-forward Sharpe beats the best of result.variantsScored noise variants), holdout (most recent 20%, never used for ranking; untested = no trade in it), benchmark, sensitivity.stability and firingNow; plus featureImportance and warnings. Candidates must trade (exposure 5–95%, ≥ 0.5 trades/yr, ≥ 3 trades). A rule's walk-forward = threshold-refit per fold (features and operators were chosen on the whole search region); the trial score is fully out-of-sample, and the holdout is the clean check. The run is stored (runId). Next: compare walkForward vs holdout and stability on the top rules, then refine metrics/windows, lab_evaluate_rule a rule, or lab_catalogue_save only rules with walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), deflatedSharpe ≥ 0.95 and stability ≥ 0.5. " +
         HONESTY,
       inputSchema: searchSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -220,7 +224,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_evaluate_rule",
       title: "Evaluate a rule",
       description:
-        "Scores one explicit rule over its full history (or from/to): in-sample = first 80%, holdout = last 20%, benchmark (buy-and-hold or short-and-hold), precision, support, firingNow and the latest feature values. No walk-forward (there is no search to refit; in lab_search, walk-forward = threshold-refit per fold, while the trial score is fully out-of-sample). Optional equity curve and sensitivity grid. Fetches data: a few seconds. Returns RuleEvaluation. Use it to test a hand-edited rule or a different window. " +
+        "Scores one explicit rule over its full history (or from/to): in-sample = first 80%, holdout = last 20%, walk-forward (thresholds refitted per fold of the first 80% by quantile matching; walkForwardFolds per fold; deflatedSharpe with N = 1, so it is not deflated for any search that found the rule), benchmark (buy-and-hold or short-and-hold), precision, support, firingNow and the latest feature values. Optional equity curve and sensitivity grid. Fetches data: a few seconds. Returns RuleEvaluation. Use it to test a hand-edited rule or a different window. " +
         HONESTY,
       inputSchema: obj(
         {
@@ -269,7 +273,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_catalogue_save",
       title: "Save a rule to My Catalogue",
       description:
-        "Saves a rule to the catalogue under its stable id (the same id as in search results). A new rule is evaluated on current data and that evaluation is stored; live tracking starts now. Saving an existing rule only updates its name/note: it keeps its original evaluation and savedAt. An unknown runId is rejected. Returns CatalogueEntry. Save only rules that held up out of sample (walk-forward Sharpe > 1, holdout Sharpe > 0, stability ≥ 0.5). Agents: pass origin \"agent\" and the runId.",
+        "Saves a rule to the catalogue under its stable id (the same id as in search results). A new rule is evaluated on current data and that evaluation is stored; live tracking starts now. Saving an existing rule only updates its name/note: it keeps its original evaluation and savedAt. An unknown runId is rejected. Returns CatalogueEntry. Save only rules with walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), deflatedSharpe ≥ 0.95 and stability ≥ 0.5 (from the search that found them). Agents: pass origin \"agent\" and the runId.",
       inputSchema: obj(
         {
           rule: ruleSchema,
@@ -347,10 +351,10 @@ export function labPrompts(): PromptDef[] {
           "Loop:",
           `1. lab_list_metrics { "asset": "${asset}" }. Group the metrics by category (onchain, derivatives, sentiment, macro, liquidity, price).`,
           `2. lab_search { "asset": "${asset}", "direction": "${direction}", "objective": "${objective}", "metrics": [one group of 3–10 metrics] } (default horizonDays 14, trials 40; 5–50 s). Keep the runId.`,
-          "3. For the top rules, check: walkForward vs holdout Sharpe (a big drop means overfit), support and trades (too few = noise), sensitivity.stability (below 0.5 = fragile; lab_sensitivity if missing), and the benchmark.",
+          "3. For the top rules, check: walkForward vs holdout Sharpe (a big drop means overfit; holdout untested = no trade, not a pass), walkForwardFolds (one strong fold carrying the rest is luck), deflatedSharpe (below 0.95 = could be the best of many noise variants), support and trades (too few = noise), sensitivity.stability (below 0.5 = fragile; lab_sensitivity if missing), and the benchmark.",
           "4. Refine: drop metrics absent from featureImportance, try another group or a mix of the strongest features, change windows or horizonDays. Write down what you changed and why.",
           `5. Repeat steps 2–4, at most ${MAX_ROUNDS} searches in total.`,
-          `6. Save with lab_catalogue_save (origin "agent", runId, a note with the evidence) ONLY rules with walkForward Sharpe > 1, holdout Sharpe > 0 and stability ≥ 0.5. Then lab_catalogue_health: if a new rule overlaps an existing one, keep the better and remove the other.`,
+          `6. Save with lab_catalogue_save (origin "agent", runId, a note with the evidence) ONLY rules with walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), deflatedSharpe ≥ 0.95 and stability ≥ 0.5. Then lab_catalogue_health: if a new rule overlaps an existing one, keep the better and remove the other.`,
           "7. Report: rules saved (text, walk-forward and holdout Sharpe, stability, trades per year, firingNow), promising rules rejected and why, and what to try next.",
           "",
           "Rules: rank and choose by walk-forward results only; the holdout confirms, it never selects. Do not re-run searches to chase a better holdout number. Say plainly when nothing passed. Results are historical research, not trading advice.",
@@ -364,4 +368,4 @@ export const LAB_INSTRUCTIONS = `Hypertrade Lab finds simple, human-readable tra
 
 Loop: lab_list_metrics → lab_search with a small related metric group (5–50 s) → inspect walk-forward vs holdout and stability of the top rules → refine metrics, windows or horizon → lab_catalogue_save only rules that hold up → lab_catalogue_health and lab_market_pulse to monitor. The autoresearch prompt walks through it.
 
-Honesty rules: rank and select by walk-forward results. The holdout (most recent 20%) is never used for selection; treat it as a one-shot check. Low support, few trades or stability below 0.5 mean the rule is likely noise. Every number is historical research, not investment advice.`;
+Honesty rules: rank and select by walk-forward results. The holdout (most recent 20%) is never used for selection; treat it as a one-shot check. Save only rules with walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), deflatedSharpe ≥ 0.95 and stability ≥ 0.5. Low support, few trades, deflatedSharpe below 0.95 or stability below 0.5 mean the rule is likely noise. Every number is historical research, not investment advice.`;
