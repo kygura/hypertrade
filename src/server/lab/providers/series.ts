@@ -1,0 +1,69 @@
+import { DAY_MS, type DailySeries } from "../types.js";
+
+// Shared helpers for lab providers: daily bucketing, range clipping, and one
+// JSON GET that turns a non-2xx into an error carrying the status.
+
+export type Agg = "last" | "sum" | "mean";
+
+/** UTC midnight of the day containing t. */
+export const dayStart = (t: number): number => Math.floor(t / DAY_MS) * DAY_MS;
+
+/** YYYY-MM-DD of a UTC ms timestamp. */
+export const isoDay = (t: number): string => new Date(t).toISOString().slice(0, 10);
+
+/** Buckets points into UTC days: ascending, unique, finite values only. `last` keeps the latest point by time. */
+export function toDaily(points: Array<{ t: number; v: number }>, agg: Agg): DailySeries {
+  const buckets = new Map<number, { last: number; lastT: number; sum: number; n: number }>();
+  for (const p of points) {
+    if (!Number.isFinite(p.t) || !Number.isFinite(p.v)) continue;
+    const d = dayStart(p.t);
+    const b = buckets.get(d);
+    if (!b) buckets.set(d, { last: p.v, lastT: p.t, sum: p.v, n: 1 });
+    else {
+      if (p.t >= b.lastT) {
+        b.last = p.v;
+        b.lastT = p.t;
+      }
+      b.sum += p.v;
+      b.n += 1;
+    }
+  }
+  const days = [...buckets.keys()].sort((a, b) => a - b);
+  const v = days.map((d) => {
+    const b = buckets.get(d)!;
+    return agg === "last" ? b.last : agg === "sum" ? b.sum : b.sum / b.n;
+  });
+  return { t: days, v };
+}
+
+/** Points with fromMs <= t <= toMs (both snapped to their UTC day). */
+export function clip(series: DailySeries, fromMs: number, toMs: number): DailySeries {
+  const lo = dayStart(fromMs);
+  const hi = dayStart(toMs);
+  const t: number[] = [];
+  const v: number[] = [];
+  for (let i = 0; i < series.t.length; i++) {
+    const ti = series.t[i]!;
+    if (ti >= lo && ti <= hi) {
+      t.push(ti);
+      v.push(series.v[i]!);
+    }
+  }
+  return { t, v };
+}
+
+export class HttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+/** GET JSON with a timeout. Non-2xx throws HttpError(`<label>: HTTP <status>`). */
+export async function getJson(url: string, fetchFn: typeof fetch, label: string, timeoutMs = 20_000): Promise<unknown> {
+  const res = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!res.ok) throw new HttpError(`${label}: HTTP ${res.status}`, res.status);
+  return res.json();
+}
