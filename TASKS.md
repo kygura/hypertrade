@@ -39,3 +39,21 @@
 | T15 | Gate page: PROP.md §(f) checklist computed from paper record; stays red until cleared; weekly per-setup expectancy review | sonnet | T14 | open |
 | D1x | Desk (phase 3): agent team (PM + 6 specialists + spawn), flow diagnostics, macro/structure/breadth tools, governor, paper broker, watch tick + triggers, alerts (Telegram/Discord/webhook), Telegram control, `/api/desk/*`, `/desk` page, worker, `003_desk.sql`, tests | opus | T5,T9 | done (paper venue; live testnet in D2x) |
 | D2x | Live Hyperliquid broker behind the governor (agent-wallet signing, entry + reduce-only TP/SL, position sync), testnet first | opus | D1x | done (testnet; signing pinned to the Python SDK vectors; mainnet refused) |
+
+## Lab — heuristic research engine (LAB.md)
+
+Destination: an Alpha Lab equivalent (LAB.md) exposed once as a tool registry and served over REST `/api/lab/tools`, MCP `/api/mcp` (HTTP) and stdio, a CLI, and the `/lab` page.
+
+Harness: Claude Code (cloud), native subagents only (no Codex/OpenCode/Pi bridges on PATH; subagent depth 1, so the top session plans). Stack: lead opus · heavy opus · worker opus · designer fable · ui-impl opus · reviewer fable (all implementers are opus). Provider decision: keyless sources only (operator declined a Glassnode key).
+
+| # | Task | Model | Depends on | Status |
+|---|------|-------|-----------|--------|
+| L0 | LAB.md spec + `src/server/lab/types.ts` contract | planner | — | done |
+| L1 | Engine (pure): features, labels, depth-2 forest, rule extraction, backtest, walk-forward/holdout/sensitivity, trial search; planted-signal + noise tests | opus (heavy) | L0 | frontier |
+| L2 | Providers: ht (DB + live HL), cm (Coin Metrics community), fng, llama; registry + `loadDataset` | opus | L0 | frontier |
+| L3a | `004_lab.sql` + LabStore (pg / memory / file) | opus | L0 | frontier |
+| L4a | MCP JSON-RPC core, `/api/mcp`, `/api/lab/tools`, bearer auth, CLI, stdio | opus | L0 | frontier |
+| D2 | DESIGN.md §10.9 `/lab` brief | fable | L0 | frontier |
+| L3b | Lab service + tool registry (12 tools, autoresearch prompt), catalogue health, pulse; mount in api/index.ts | opus | L1,L2,L3a,L4a | blocked |
+| U1 | `/lab` page per §10.9 | opus (ui-impl) | D2,L3b | blocked |
+| V3 | Verification gate: tests/build, reviewer (fable), drift check, fix loops ≤3 | mixed | all | blocked |
