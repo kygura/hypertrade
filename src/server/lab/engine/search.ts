@@ -78,7 +78,7 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
     return false;
   });
   if (!metrics.length) throw new SearchRefused("none of the requested metrics has data", "metrics");
-  const specs = featureSpecs(metrics, config.transforms, config.windows);
+  const specs = featureSpecs(metrics, config.transforms, config.windows, data.stationary);
   if (specs.length > MAX_FEATURES) {
     throw new SearchRefused(`${specs.length} features exceed the cap of ${MAX_FEATURES}: use fewer metrics, transforms or windows`, "metrics");
   }

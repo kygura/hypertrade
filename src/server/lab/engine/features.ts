@@ -24,13 +24,23 @@ export function parseFeatureId(id: string): FeatureSpec {
   return { metric, transform, window };
 }
 
-/** Specs in a stable order: metric, then transform, then window. */
-export function featureSpecs(metrics: readonly string[], transforms: readonly Transform[], windows: readonly number[]): FeatureSpec[] {
+/**
+ * Specs in a stable order: metric, then transform, then window. Metrics mapped
+ * to false in `stationary` (trending levels) get no `raw` spec.
+ */
+export function featureSpecs(
+  metrics: readonly string[],
+  transforms: readonly Transform[],
+  windows: readonly number[],
+  stationary?: Readonly<Record<string, boolean>>,
+): FeatureSpec[] {
   const out: FeatureSpec[] = [];
   const ws = [...new Set(windows)];
   for (const metric of new Set(metrics)) {
     for (const transform of new Set(transforms)) {
-      if (transform === "raw") out.push({ metric, transform, window: 0 });
+      if (transform === "raw") {
+        if (stationary?.[metric] !== false) out.push({ metric, transform, window: 0 });
+      }
       else for (const window of ws) out.push({ metric, transform, window });
     }
   }
@@ -168,7 +178,7 @@ export function buildFeatures(
   windows: readonly number[],
   metrics: readonly string[] = Object.keys(data.metrics),
 ): FeatureSet {
-  const specs = featureSpecs(metrics, transforms, windows);
+  const specs = featureSpecs(metrics, transforms, windows, data.stationary);
   const columns = specs.map((s) => {
     const vals = data.metrics[s.metric];
     if (!vals) throw new Error(`metric ${s.metric} is not in the dataset`);

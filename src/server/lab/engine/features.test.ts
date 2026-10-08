@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { TRANSFORMS } from "../types.js";
-import { buildFeatures, featureId, parseFeatureId, transformSeries } from "./features.js";
+import { buildFeatures, featureId, featureSpecs, parseFeatureId, transformSeries } from "./features.js";
 import { gauss, mulberry32 } from "./rng.js";
 
 function series(seed: number, n: number, nanEvery = 0): number[] {
@@ -74,5 +74,15 @@ describe("transforms", () => {
     expect(fs.ids[0]).toBe("a:x|raw|0");
     expect(fs.ids).toContain("b:y|pctile|30");
     expect(fs.columns.every((c) => c.length === n)).toBe(true);
+  });
+
+  test("non-stationary metrics (a random walk flagged false) get no raw feature", () => {
+    const n = 120;
+    const t = Array.from({ length: n }, (_, i) => i * 86_400_000);
+    const metrics = { "a:walk": series(4, n), "b:y": series(5, n) };
+    const fs = buildFeatures({ asset: "X", t, price: series(3, n), metrics, stationary: { "a:walk": false, "b:y": true } }, ["raw", "z"], [7]);
+    expect(fs.ids).toEqual(["a:walk|z|7", "b:y|raw|0", "b:y|z|7"]);
+    expect(featureSpecs(["a:walk"], ["raw"], [7], { "a:walk": false })).toEqual([]);
+    expect(featureSpecs(["a:walk"], ["raw"], [7])).toEqual([{ metric: "a:walk", transform: "raw", window: 0 }]);
   });
 });

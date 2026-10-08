@@ -65,6 +65,18 @@ describe("runSearch", () => {
     expect(none.warnings.some((w) => /minDeflatedSharpe/.test(w))).toBe(true);
   });
 
+  test("stationarity: random-walk metrics flagged false never yield raw conditions", () => {
+    const data = synthetic({ seed: 3, drift: 0.01, days: 1200 });
+    const plain = runSearch(cfg(data, { trials: 4 }), data);
+    const flagged = runSearch(cfg(data, { trials: 4 }), { ...data, stationary: { "syn:a": false, "syn:c": false } });
+    // 4 metrics × (raw + z, pctile at 3 windows) = 28; minus raw for a and c.
+    expect(plain.featureCount).toBe(28);
+    expect(flagged.featureCount).toBe(26);
+    const feats = flagged.rules.flatMap((r) => r.rule.conditions.map((c) => c.feature));
+    expect(feats.some((f) => /^syn:[ac]\|raw\|/.test(f))).toBe(false);
+    expect(flagged.featureImportance.some((f) => /^syn:[ac]\|raw\|/.test(f.feature))).toBe(false);
+  });
+
   test("deterministic: same seed, same result", () => {
     const data = synthetic({ seed: 2, drift: 0.01, days: 1200 });
     const strip = (r: ReturnType<typeof runSearch>) => JSON.stringify({ ...r, durationMs: 0 });

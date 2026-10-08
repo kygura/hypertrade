@@ -53,6 +53,12 @@ export interface MetricDef {
   description: string;
   /** Publication lag in days; the engine shifts the series forward by this. */
   lagDays: number;
+  /**
+   * False for level series that trend or random-walk (price, market cap,
+   * supply): their `raw` value is not comparable across years, so the search
+   * skips the `raw` transform for them. Default true.
+   */
+  stationary?: boolean;
 }
 
 export interface FetchOptions {
@@ -190,6 +196,8 @@ export interface LabDataset {
   price: number[];
   /** metricId → values aligned to t (already lag-shifted), NaN = missing. */
   metrics: Record<string, number[]>;
+  /** metricId → MetricDef.stationary; a metric mapped to false gets no `raw` feature in a search. Omitted = stationary. */
+  stationary?: Record<string, boolean>;
 }
 
 export interface TrialRecord {
