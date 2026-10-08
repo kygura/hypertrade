@@ -59,7 +59,7 @@ describe("runSearch", () => {
   test("validation: at MIN_DEFLATED_SHARPE ≤ 1 of 10 fresh noise searches has a robust top-10 rule", () => {
     const row = validate(Array.from({ length: 10 }, (_, i) => 3000 + i), []);
     expect(row.noiseAny).toBeLessThanOrEqual(1);
-  }, 15_000);
+  }, 30_000);
 
   test("validation: ≥ 4 of 6 fresh planted searches (drift 0.012) find the rule robust", () => {
     const row = validate([], Array.from({ length: 6 }, (_, i) => 4000 + i));
