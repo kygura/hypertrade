@@ -55,6 +55,8 @@ const LOAD_CONCURRENCY = 4;
 const DECAY_MIN_LIVE_DAYS = 30;
 const DECAY_HOLDOUT_SHARE = 0.25;
 const OVERLAP_JACCARD = 0.6;
+/** Kept back from a search deadline for the work after the last trial (refit, ranking, persisting). */
+export const SEARCH_FINISH_MS = 5_000;
 
 export type CatalogueFlag = "decayed" | "overlap";
 export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flags: CatalogueFlag[] };
@@ -268,9 +270,17 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       const started = deps.now();
       let result: SearchResult;
       try {
-        const loaded = await deps.loadDataset({ asset: config.asset, metrics: config.metrics, price: config.price, from: config.from, to: config.to });
-        // The deadline covers the whole call, so data loading spends part of it.
-        const deadlineMs = ctx.deadlineMs == null ? undefined : Math.max(1, ctx.deadlineMs - (deps.now() - started));
+        const loaded = await deps.loadDataset({
+          asset: config.asset,
+          metrics: config.metrics,
+          price: config.price,
+          from: config.from,
+          to: config.to,
+          ...(ctx.deadlineMs != null && { deadline: true }),
+        });
+        // The deadline covers the whole call: data loading spends part of it,
+        // and the refit after the last trial needs the rest.
+        const deadlineMs = ctx.deadlineMs == null ? undefined : Math.max(1, ctx.deadlineMs - (deps.now() - started) - SEARCH_FINISH_MS);
         result = runSearch(config, loaded.dataset, { deadlineMs });
         result.warnings = [...loaded.warnings, ...result.warnings];
       } catch (err) {

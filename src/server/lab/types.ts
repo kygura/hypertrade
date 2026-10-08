@@ -55,6 +55,11 @@ export interface MetricDef {
   lagDays: number;
 }
 
+export interface FetchOptions {
+  /** The caller runs under a wall-clock deadline: keep optional work (ht's backfill) short. */
+  deadline?: boolean;
+}
+
 export interface LabProvider {
   id: string;
   name: string;
@@ -62,7 +67,7 @@ export interface LabProvider {
   notes: string;
   metrics(): MetricDef[];
   /** Daily series for [fromMs, toMs]; empty series when there is no data. Throws on transport errors. */
-  fetch(key: string, asset: string, fromMs: number, toMs: number): Promise<DailySeries>;
+  fetch(key: string, asset: string, fromMs: number, toMs: number, opts?: FetchOptions): Promise<DailySeries>;
 }
 
 // ------------------------------------------------------------------ rules

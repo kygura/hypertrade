@@ -24,6 +24,9 @@ process.on("unhandledRejection", (err) => {
   console.error("[unhandledRejection]", err, (err as { query?: string })?.query ?? "");
 });
 
+// Vercel function limit (s); the lab search budget (50 s) fits inside it.
+export const maxDuration = 60;
+
 const app = new Hono({ strict: false }).basePath("/api");
 
 // Auth gate first: everything mounted below is protected by default.

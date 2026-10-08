@@ -143,6 +143,14 @@ describe("loadDataset", () => {
     await expect(loadDataset({ asset: "BTC", metrics: [], price: "ht:price" }, explicit.deps)).rejects.toThrow("no price history for BTC: ht:price: no history");
   });
 
+  test("deadline reaches every provider fetch", async () => {
+    const { deps } = setup();
+    const seen: unknown[] = [];
+    const providers = deps.providers!.map((p) => ({ ...p, fetch: (...a: Parameters<typeof p.fetch>) => (seen.push(a[4]), p.fetch(...a)) }));
+    await loadDataset({ asset: "BTC", metrics: ["ht:funding"], deadline: true }, { ...deps, providers });
+    expect(seen).toEqual([{ deadline: true }, { deadline: true }]);
+  });
+
   test("every price attempt failing → UpstreamError naming each reason", async () => {
     const { deps } = setup({ htPrice: new Error("HL 500") });
     const providers = deps.providers!.map((p) => (p.id === "cm" ? { ...p, fetch: async () => Promise.reject(new Error("cm HTTP 429")) } : p));

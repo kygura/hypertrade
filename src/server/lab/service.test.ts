@@ -3,7 +3,7 @@ import { ToolInputError, UpstreamError } from "../mcp/types.js";
 import { evaluateRule, ruleId } from "./engine/index.js";
 import { synthetic } from "./engine/testkit.js";
 import type { LoadConfig } from "./providers/registry.js";
-import { createLabService, type LabServiceDeps } from "./service.js";
+import { createLabService, SEARCH_FINISH_MS, type LabServiceDeps } from "./service.js";
 import { memoryStore, type LabStore } from "./store.js";
 import { DAY_MS, RuleSchema, type LabProvider, type MetricDef, type Rule } from "./types.js";
 
@@ -147,6 +147,16 @@ describe("lab service: search", () => {
     expect([err.field, err.message]).toEqual(["metrics", expect.stringContaining("740 features")]);
     expect(loads).toEqual([]);
   });
+
+  test("a deadline: providers are told, and the refit margin comes off the trial budget", async () => {
+    const { service, loads } = kit();
+    const { result } = await service.search(searchCfg, { source: "mcp", deadlineMs: SEARCH_FINISH_MS });
+    expect(loads[0]!.deadline).toBe(true);
+    expect(result.trialsRun).toBe(1);
+    expect(result.warnings).toContain("deadline of 1 ms reached after 1 of 4 trials; results use the completed trials");
+    await service.search(searchCfg, { source: "cli" });
+    expect(loads[1]!.deadline).toBeUndefined();
+  }, 20_000);
 
   test("a store failure does not fail the search: runId null plus a warning", async () => {
     const store: LabStore = {

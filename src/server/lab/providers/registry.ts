@@ -1,6 +1,6 @@
 import { UpstreamError } from "../../mcp/types.js";
 import { parseDay } from "../engine/util.js";
-import { DAY_MS, type DailySeries, type LabDataset, type LabProvider, type MetricCategory, type MetricDef } from "../types.js";
+import { DAY_MS, type DailySeries, type FetchOptions, type LabDataset, type LabProvider, type MetricCategory, type MetricDef } from "../types.js";
 import { cmProvider } from "./cm.js";
 import { fngProvider } from "./fng.js";
 import { htProvider } from "./ht.js";
@@ -53,14 +53,14 @@ function resolve(id: string, providers: LabProvider[]): { def: MetricDef; provid
 }
 
 /** Raw (un-shifted) daily series for one metric over [fromMs, toMs], cached for 10 minutes. */
-export function fetchMetric(id: string, asset: string, fromMs: number, toMs: number, deps: RegistryDeps = {}): Promise<DailySeries> {
+export function fetchMetric(id: string, asset: string, fromMs: number, toMs: number, deps: RegistryDeps = {}, opts?: FetchOptions): Promise<DailySeries> {
   const { def, provider } = resolve(id, deps.providers ?? PROVIDERS);
   const cache = deps.cache ?? sharedCache;
   const now = (deps.now ?? Date.now)();
   const key = `${id}|${def.scope === "global" ? "*" : asset}|${fromMs}|${toMs}`;
   const hit = cache.get(key);
   if (hit && now - hit.at < CACHE_TTL_MS) return hit.p;
-  const p = provider.fetch(def.key, asset, fromMs, toMs);
+  const p = provider.fetch(def.key, asset, fromMs, toMs, opts);
   cache.set(key, { at: now, p });
   p.catch(() => cache.delete(key));
   if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
@@ -91,6 +91,8 @@ export interface LoadConfig {
   price?: string;
   from?: string; // YYYY-MM-DD
   to?: string;
+  /** Under a request deadline: providers skip slow optional work. */
+  deadline?: boolean;
 }
 
 /** Fetches price + metrics and aligns them to the price calendar. Per-metric failures become warnings. */
@@ -102,13 +104,14 @@ export async function loadDataset(cfg: LoadConfig, deps: RegistryDeps = {}): Pro
   const fromMs = cfg.from ? parseDay(cfg.from) : DEFAULT_FROM;
   const toMs = cfg.to ? parseDay(cfg.to) : dayStart((deps.now ?? Date.now)());
   const warnings: string[] = [];
+  const opts: FetchOptions = { deadline: cfg.deadline };
 
   // Each attempt's failure is kept: a transport error is not "no history".
   const reasons: string[] = [];
   const tryPrice = async (id: string): Promise<{ t: number[]; v: number[]; error?: string }> => {
     let s: DailySeries;
     try {
-      s = await fetchMetric(id, cfg.asset, fromMs, toMs, deps);
+      s = await fetchMetric(id, cfg.asset, fromMs, toMs, deps, opts);
     } catch (err) {
       reasons.push(`${id}: ${msg(err)}`);
       return { t: [], v: [], error: msg(err) };
@@ -130,7 +133,7 @@ export async function loadDataset(cfg: LoadConfig, deps: RegistryDeps = {}): Pro
   const metrics: Record<string, number[]> = {};
   const results = await mapLimit(defs, CONCURRENCY, async (def) => {
     try {
-      return { def, s: await fetchMetric(def.id, cfg.asset, fromMs, toMs, deps) };
+      return { def, s: await fetchMetric(def.id, cfg.asset, fromMs, toMs, deps, opts) };
     } catch (err) {
       warnings.push(`${def.id}: ${msg(err)}; dropped`);
       return null;

@@ -10,7 +10,9 @@ import { clip, toDaily, type Agg } from "./series.js";
 // Stored series only reach back to when collection started.
 
 const HOUR_MS = 3_600_000;
-const ENSURE_MS = 8_000;
+/** Backfill cap; under a request deadline (lab search on the server) the short one. */
+const ENSURE_MS = 10_000;
+const ENSURE_DEADLINE_MS = 4_000;
 const ENSURE_TTL_MS = 10 * 60_000;
 const LIVE_FUNDING_PAGES = 24; // × 500 hourly rows ≈ 500 days
 
@@ -26,8 +28,8 @@ export interface Ohlcv {
 /** Everything ht touches, injectable so tests never need a DB or network. */
 export interface HtDeps {
   hasDb(): boolean;
-  /** Best-effort backfill of stored 1d candles down to fromMs. Never throws. */
-  ensureHistory(coin: string, fromMs: number): Promise<void>;
+  /** Best-effort backfill of stored 1d candles down to fromMs, within capMs. Never throws. */
+  ensureHistory(coin: string, fromMs: number, capMs: number): Promise<void>;
   /** Stored 1d candles with t >= fromMs, ascending. */
   candles(coin: string, fromMs: number): Promise<Ohlcv[]>;
   /** Stored hourly funding settlements in [fromMs, toMs]. */
@@ -43,9 +45,10 @@ const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T | void> =>
 
 export const defaultHtDeps: HtDeps = {
   hasDb: () => Boolean(databaseUrl()),
-  async ensureHistory(coin, fromMs) {
-    const deadline = Date.now() + ENSURE_MS;
-    await withTimeout(ensureHistory(coin, "1d", fromMs, undefined, { deadline }), ENSURE_MS + 2_000).catch(() => {});
+  async ensureHistory(coin, fromMs, capMs) {
+    // Stop starting pages 2 s before the cap; the cap itself is hard.
+    const deadline = Date.now() + capMs - 2_000;
+    await withTimeout(ensureHistory(coin, "1d", fromMs, undefined, { deadline }), capMs).catch(() => {});
   },
   async candles(coin, fromMs) {
     return (await getCandles(coin, "1d", new Date(fromMs))).map((c) => ({
@@ -150,17 +153,17 @@ export const htCoin = (asset: string): string => (/^k[A-Z]/.test(asset) ? asset 
 export function createHtProvider(deps: HtDeps = defaultHtDeps): LabProvider {
   const ensured = new Map<string, { fromMs: number; at: number; p: Promise<void> }>();
 
-  function ensure(coin: string, fromMs: number): Promise<void> {
+  function ensure(coin: string, fromMs: number, capMs: number): Promise<void> {
     const prev = ensured.get(coin);
     if (prev && prev.fromMs <= fromMs && Date.now() - prev.at < ENSURE_TTL_MS) return prev.p;
-    const p = deps.ensureHistory(coin, fromMs).catch(() => {});
+    const p = deps.ensureHistory(coin, fromMs, capMs).catch(() => {});
     ensured.set(coin, { fromMs, at: Date.now(), p });
     return p;
   }
 
-  async function candles(coin: string, fromMs: number, toMs: number): Promise<Ohlcv[]> {
+  async function candles(coin: string, fromMs: number, toMs: number, capMs: number): Promise<Ohlcv[]> {
     if (deps.hasDb()) {
-      await ensure(coin, fromMs);
+      await ensure(coin, fromMs, capMs);
       const stored = await deps.candles(coin, fromMs).catch(() => []);
       if (stored.length) return stored;
     }
@@ -186,14 +189,14 @@ export function createHtProvider(deps: HtDeps = defaultHtDeps): LabProvider {
     notes:
       "Hypertrade Postgres (candles, funding, collector observations) with live Hyperliquid fallback for price and funding when no DB is configured. Stored series start when collection started.",
     metrics: () => METRICS,
-    async fetch(key, asset, fromMs, toMs) {
+    async fetch(key, asset, fromMs, toMs, opts) {
       const coin = htCoin(asset);
       const global = GLOBAL_SERIES.get(key);
       let out: DailySeries;
       if (global) out = await stored(global, fromMs, toMs, "last");
       else if (ASSET_SERIES[key]) out = await stored(ASSET_SERIES[key](coin), fromMs, toMs, "last");
       else if (key === "price" || key === "volume" || key === "range") {
-        const bars = await candles(coin, fromMs, toMs);
+        const bars = await candles(coin, fromMs, toMs, opts?.deadline ? ENSURE_DEADLINE_MS : ENSURE_MS);
         const value = (b: Ohlcv) => (key === "price" ? b.c : key === "volume" ? b.v * b.c : b.c > 0 ? (b.h - b.l) / b.c : NaN);
         out = toDaily(
           bars.map((b) => ({ t: b.t, v: value(b) })),

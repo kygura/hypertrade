@@ -120,7 +120,7 @@ describe("ht", () => {
     return {
       calls,
       hasDb: () => true,
-      ensureHistory: async (coin) => void calls.push(`ensure:${coin}`),
+      ensureHistory: async (coin, _from, capMs) => void calls.push(`ensure:${coin}`, `cap:${capMs}`),
       candles: async () => [
         { t: D0, o: 100, h: 110, l: 90, c: 100, v: 2 },
         { t: D0 + DAY, o: 100, h: 105, l: 95, c: 102, v: 3 },
@@ -158,6 +158,13 @@ describe("ht", () => {
     expect((await p.fetch("volume", "BTC", ...R)).v).toEqual([200, 306]);
     expect((await p.fetch("range", "BTC", ...R)).v).toEqual([0.2, 10 / 102]);
     expect(d.calls.filter((c) => c === "ensure:BTC")).toHaveLength(1); // memoized per coin
+    expect(d.calls).toContain("cap:10000");
+  });
+
+  test("under a request deadline the backfill is capped at 4 s", async () => {
+    const d = deps();
+    await createHtProvider(d).fetch("price", "BTC", ...R, { deadline: true });
+    expect(d.calls).toEqual(["ensure:BTC", "cap:4000"]);
   });
 
   test("funding is a daily sum, premium a daily mean", async () => {
