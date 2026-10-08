@@ -1,4 +1,4 @@
-import { describeTool, ToolInputError, type Registry, type ToolContext } from "./types.js";
+import { describeTool, ToolInputError, UpstreamError, type Registry, type ToolContext } from "./types.js";
 
 // Hand-rolled MCP server core (LAB.md "Surfaces"): JSON-RPC 2.0 in, JSON-RPC
 // out, no transport. HTTP (http.ts) and stdio (scripts/lab-mcp.ts) wrap it.
@@ -11,6 +11,11 @@ export const INVALID_REQUEST = -32600;
 export const METHOD_NOT_FOUND = -32601;
 export const INVALID_PARAMS = -32602;
 export const INTERNAL_ERROR = -32603;
+
+/** Largest JSON-RPC batch accepted from pre-2025-06-18 clients; elements run one at a time. */
+export const MAX_BATCH = 8;
+/** Protocol version that removed JSON-RPC batching. */
+const NO_BATCH_VERSION = "2025-06-18";
 
 export type JsonRpcId = string | number | null;
 
@@ -67,13 +72,22 @@ export async function handleJsonRpcText(registry: Registry, text: string, ctx: T
 
 /**
  * One message or a batch. Returns null when nothing is owed (notifications,
- * client responses, or a batch made only of those).
+ * client responses, or a batch made only of those). Batches are refused when
+ * the client declared 2025-06-18+ (which removed them); older clients get at
+ * most MAX_BATCH elements, run sequentially.
  */
 export async function handleJsonRpc(registry: Registry, message: unknown, ctx: ToolContext): Promise<JsonRpcReply> {
   if (Array.isArray(message)) {
+    if (ctx.protocolVersion !== undefined && ctx.protocolVersion >= NO_BATCH_VERSION) {
+      return rpcError(null, INVALID_REQUEST, `Invalid Request: batching is not supported in protocol ${ctx.protocolVersion}`);
+    }
     if (message.length === 0) return rpcError(null, INVALID_REQUEST, "Invalid Request: empty batch");
-    const replies = await Promise.all(message.map((m) => handleOne(registry, m, ctx)));
-    const owed = replies.filter((r): r is JsonRpcResponse => r !== null);
+    if (message.length > MAX_BATCH) return rpcError(null, INVALID_REQUEST, `Invalid Request: batch of ${message.length} exceeds ${MAX_BATCH}`);
+    const owed: JsonRpcResponse[] = [];
+    for (const m of message) {
+      const r = await handleOne(registry, m, ctx);
+      if (r !== null) owed.push(r);
+    }
     return owed.length ? owed : null;
   }
   return handleOne(registry, message, ctx);
@@ -91,6 +105,7 @@ async function handleOne(registry: Registry, msg: unknown, ctx: ToolContext): Pr
     return rpcError(id, INVALID_REQUEST, "Invalid Request");
   }
   if (typeof msg.method !== "string") return rpcError(id, INVALID_REQUEST, "Invalid Request");
+  if (hasId && msg.id === null) return rpcError(null, INVALID_REQUEST, "Invalid Request: id must not be null");
   if (msg.params !== undefined && !isObject(msg.params) && !Array.isArray(msg.params)) {
     return rpcError(id, INVALID_REQUEST, "Invalid Request: params must be an object");
   }
@@ -155,13 +170,15 @@ async function callTool(registry: Registry, params: Record<string, unknown>, ctx
       isError: false,
     };
   } catch (err) {
-    // Tool failures go back to the model as a result it can read and correct.
-    const text =
-      err instanceof ToolInputError
-        ? `Invalid arguments${err.field ? ` (${err.field})` : ""}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : String(err);
+    // Tool failures go back to the model as a result it can read and correct;
+    // anything unexpected stays in the server log.
+    let text: string;
+    if (err instanceof ToolInputError) text = `Invalid arguments${err.field ? ` (${err.field})` : ""}: ${err.message}`;
+    else if (err instanceof UpstreamError) text = err.message;
+    else {
+      console.error(`[mcp] ${tool.name}`, err);
+      text = "Internal error";
+    }
     return { content: [{ type: "text", text }], isError: true };
   }
 }

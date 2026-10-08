@@ -43,9 +43,12 @@ describe("POST /mcp", () => {
     expect(await res.text()).toBe("");
   });
 
-  test("batch → array", async () => {
-    const res = await app().app.request("http://lab.test/mcp", post([{ jsonrpc: "2.0", id: 1, method: "ping" }, { jsonrpc: "2.0", method: "notifications/initialized" }]));
+  test("batch → array without a version header; refused at 2025-06-18", async () => {
+    const batch = [{ jsonrpc: "2.0", id: 1, method: "ping" }, { jsonrpc: "2.0", method: "notifications/initialized" }];
+    const res = await app().app.request("http://lab.test/mcp", post(batch));
     expect(await res.json()).toEqual([{ jsonrpc: "2.0", id: 1, result: {} }]);
+    const refused = await app().app.request("http://lab.test/mcp", post(batch, { "mcp-protocol-version": "2025-06-18" }));
+    expect((await refused.json()).error.code).toBe(-32600);
   });
 
   test("malformed JSON → 400 parse error", async () => {
@@ -65,16 +68,24 @@ describe("POST /mcp", () => {
     expect((await app().app.request("http://lab.test/mcp", post(ping, { "mcp-protocol-version": "1999-01-01" }))).status).toBe(400);
   });
 
-  test("Origin: same host and listed origins pass, others → 403", async () => {
+  test("Origin: APP_URL, listed origins and localhost pass; absent passes; others → 403", async () => {
     const ping = { jsonrpc: "2.0", id: 1, method: "ping" };
-    const a = app({ LAB_ALLOWED_ORIGINS: " https://claude.ai/ , https://other.test" }).app;
-    expect((await a.request("http://lab.test/mcp", post(ping, { origin: "http://lab.test" }))).status).toBe(200);
-    expect((await a.request("http://lab.test/mcp", post(ping, { origin: "https://claude.ai" }))).status).toBe(200);
-    expect((await a.request("http://lab.test/mcp", post(ping, { origin: "https://other.test" }))).status).toBe(200);
-    expect((await a.request("http://lab.test/mcp", post(ping, { origin: "https://evil.test" }))).status).toBe(403);
-    expect((await a.request("http://lab.test/mcp", post(ping, { origin: "null" }))).status).toBe(403);
-    expect((await a.request("http://lab.test/mcp", post(ping, { origin: "http://lab.test.evil.test" }))).status).toBe(403);
-    expect((await app().app.request("http://lab.test/mcp", post(ping, { origin: "https://claude.ai" }))).status).toBe(403);
+    const status = async (a: Hono, headers: Record<string, string>) => (await a.request("http://lab.test/mcp", post(ping, headers))).status;
+    const a = app({ APP_URL: "https://lab.test/", LAB_ALLOWED_ORIGINS: " https://claude.ai/ , https://other.test" }).app;
+    expect(await status(a, {})).toBe(200);
+    expect(await status(a, { origin: "https://lab.test" })).toBe(200);
+    expect(await status(a, { origin: "https://claude.ai" })).toBe(200);
+    expect(await status(a, { origin: "https://other.test" })).toBe(200);
+    expect(await status(a, { origin: "http://localhost:5173" })).toBe(200);
+    expect(await status(a, { origin: "http://127.0.0.1:3000" })).toBe(200);
+    expect(await status(a, { origin: "http://lab.test" })).toBe(403); // scheme differs from APP_URL
+    expect(await status(a, { origin: "https://evil.test" })).toBe(403);
+    expect(await status(a, { origin: "null" })).toBe(403);
+    expect(await status(a, { origin: "https://lab.test.evil.test" })).toBe(403);
+    expect(await status(a, { origin: "http://localhost.evil.test" })).toBe(403);
+    // DNS rebinding: the Host header matches the Origin, but neither is ours.
+    expect(await status(app().app, { origin: "http://rebound.test", host: "rebound.test" })).toBe(403);
+    expect(await status(app().app, { origin: "https://claude.ai" })).toBe(403);
   });
 
   test("GET and DELETE → 405 with Allow: POST", async () => {

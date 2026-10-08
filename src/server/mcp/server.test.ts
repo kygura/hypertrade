@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { handleJsonRpc, handleJsonRpcText, LATEST_PROTOCOL_VERSION } from "./server.js";
+import { handleJsonRpc, handleJsonRpcText, LATEST_PROTOCOL_VERSION, MAX_BATCH } from "./server.js";
 import { fakeRegistry } from "./testkit.js";
 import type { ToolContext } from "./types.js";
 
@@ -42,7 +42,7 @@ describe("ping and listing", () => {
 
   test("tools/list describes every tool without handlers", async () => {
     const { tools } = (await call("tools/list")).result;
-    expect(tools.map((t: { name: string }) => t.name)).toEqual(["echo", "list", "bad_input", "boom"]);
+    expect(tools.map((t: { name: string }) => t.name)).toEqual(["echo", "list", "bad_input", "boom", "upstream"]);
     expect(tools[0]).toEqual({
       name: "echo",
       title: "Echo",
@@ -95,9 +95,22 @@ describe("tools/call", () => {
     expect(res.result.content[0].text).toBe("Invalid arguments (asset): asset is required");
   });
 
-  test("thrown Error → isError result with its message", async () => {
-    const res = await call("tools/call", { name: "boom" });
+  test("UpstreamError → isError result with its message", async () => {
+    const res = await call("tools/call", { name: "upstream" });
     expect(res.result).toEqual({ content: [{ type: "text", text: "provider down" }], isError: true });
+  });
+
+  test("unexpected Error → generic isError text; details only in the log", async () => {
+    const logged: unknown[][] = [];
+    const orig = console.error;
+    console.error = (...a: unknown[]) => void logged.push(a);
+    try {
+      const res = await call("tools/call", { name: "boom" });
+      expect(res.result).toEqual({ content: [{ type: "text", text: "Internal error" }], isError: true });
+    } finally {
+      console.error = orig;
+    }
+    expect(String((logged[0]![1] as Error).message)).toContain("hunter2");
   });
 
   test("unknown tool, missing name, non-object arguments → -32602", async () => {
@@ -153,6 +166,13 @@ describe("JSON-RPC envelope", () => {
     expect(((await handleJsonRpc(registry, { jsonrpc: "2.0", id: {}, method: "ping" }, ctx)) as any).id).toBeNull();
   });
 
+  test("a request with id null → -32600 and runs nothing", async () => {
+    const { registry: r, calls } = fakeRegistry();
+    const res = (await handleJsonRpc(r, { jsonrpc: "2.0", id: null, method: "tools/call", params: { name: "echo" } }, ctx)) as any;
+    expect(res).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request: id must not be null" } });
+    expect(calls).toHaveLength(0);
+  });
+
   test("parse error → -32700 with null id", async () => {
     expect(await handleJsonRpcText(registry, "{nope", ctx)).toEqual({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
   });
@@ -173,5 +193,38 @@ describe("JSON-RPC envelope", () => {
   test("batch of notifications → null; empty batch → -32600", async () => {
     expect(await handleJsonRpc(registry, [{ jsonrpc: "2.0", method: "notifications/initialized" }], ctx)).toBeNull();
     expect(((await handleJsonRpc(registry, [], ctx)) as any).error.code).toBe(-32600);
+  });
+
+  test("batch over MAX_BATCH → -32600 and runs nothing", async () => {
+    const { registry: r, calls } = fakeRegistry();
+    const batch = Array.from({ length: MAX_BATCH + 1 }, (_, i) => req("tools/call", { name: "echo" }, i + 1));
+    expect(((await handleJsonRpc(r, batch, ctx)) as any).error.code).toBe(-32600);
+    expect(calls).toHaveLength(0);
+    expect(await handleJsonRpc(r, batch.slice(0, MAX_BATCH), ctx)).toHaveLength(MAX_BATCH);
+  });
+
+  test("batch elements run one at a time", async () => {
+    let active = 0;
+    let peak = 0;
+    const { registry: r } = fakeRegistry();
+    r.tools.push({
+      name: "slow",
+      description: "Sleeps.",
+      inputSchema: { type: "object", properties: {} },
+      async run() {
+        peak = Math.max(peak, ++active);
+        await new Promise((ok) => setTimeout(ok, 5));
+        active--;
+        return {};
+      },
+    });
+    await handleJsonRpc(r, [1, 2, 3].map((id) => req("tools/call", { name: "slow" }, id)), ctx);
+    expect(peak).toBe(1);
+  });
+
+  test("protocol 2025-06-18+ → batches refused; older versions accepted", async () => {
+    const batch = [req("ping", undefined, 1)];
+    expect(((await handleJsonRpc(registry, batch, { ...ctx, protocolVersion: "2025-06-18" })) as any).error.code).toBe(-32600);
+    expect(await handleJsonRpc(registry, batch, { ...ctx, protocolVersion: "2025-03-26" })).toEqual([{ jsonrpc: "2.0", id: 1, result: {} }]);
   });
 });

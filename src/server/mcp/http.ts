@@ -11,20 +11,28 @@ export interface McpRouteOptions {
   env?: Record<string, string | undefined>;
 }
 
+/** APP_URL's origin plus LAB_ALLOWED_ORIGINS (comma-separated). */
 function allowedOrigins(env: Record<string, string | undefined>): Set<string> {
-  return new Set(
-    (env.LAB_ALLOWED_ORIGINS ?? "")
-      .split(",")
-      .map((o) => o.trim().replace(/\/+$/, ""))
-      .filter(Boolean),
-  );
+  const out = new Set<string>();
+  for (const o of [env.APP_URL ?? "", ...(env.LAB_ALLOWED_ORIGINS ?? "").split(",")]) {
+    try {
+      if (o.trim()) out.add(new URL(o.trim()).origin);
+    } catch {
+      // a malformed entry allows nothing
+    }
+  }
+  return out;
 }
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
+
 /**
- * Spec's DNS-rebinding guard: a browser-sent Origin must be this host or an
- * operator-listed origin. Non-browser clients send no Origin and pass.
+ * Spec's DNS-rebinding guard: a browser-sent Origin must be the app's own
+ * origin (APP_URL), an operator-listed origin or localhost on any port. The
+ * request's Host is not trusted (a rebound name sends its own). Non-browser
+ * clients send no Origin and pass.
  */
-function originAllowed(origin: string | undefined, requestUrl: string, host: string | undefined, env: Record<string, string | undefined>): boolean {
+function originAllowed(origin: string | undefined, env: Record<string, string | undefined>): boolean {
   if (origin === undefined) return true;
   let parsed: URL;
   try {
@@ -32,8 +40,7 @@ function originAllowed(origin: string | undefined, requestUrl: string, host: str
   } catch {
     return false; // includes the opaque "null" origin
   }
-  const self = host ?? new URL(requestUrl).host;
-  if (parsed.host === self) return true;
+  if ((parsed.protocol === "http:" || parsed.protocol === "https:") && LOCAL_HOSTS.has(parsed.hostname)) return true;
   return allowedOrigins(env).has(parsed.origin);
 }
 
@@ -41,7 +48,7 @@ export function mcpRoutes(registryFactory: () => Registry, opts: McpRouteOptions
   const env = opts.env ?? process.env;
   return new Hono()
     .post("/", async (c) => {
-      if (!originAllowed(c.req.header("origin"), c.req.url, c.req.header("host"), env)) {
+      if (!originAllowed(c.req.header("origin"), env)) {
         return c.json(rpcError(null, INVALID_REQUEST, "Forbidden origin"), 403);
       }
       const version = c.req.header("mcp-protocol-version");
@@ -54,6 +61,7 @@ export function mcpRoutes(registryFactory: () => Registry, opts: McpRouteOptions
       const reply = await handleJsonRpcText(registryFactory(), await c.req.text(), {
         source: "mcp",
         deadlineMs: labDeadlineMs(env, SERVER_DEADLINE_MS),
+        ...(version !== undefined && { protocolVersion: version }),
       });
       if (reply === null) return c.body(null, 202);
       const status = !Array.isArray(reply) && "error" in reply && reply.error.code === PARSE_ERROR ? 400 : 200;

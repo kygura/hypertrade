@@ -8,6 +8,8 @@ export interface ToolContext {
   source: ToolSource;
   /** Wall-clock budget for long tools (search); undefined = no deadline. */
   deadlineMs?: number;
+  /** MCP-Protocol-Version the client declared (HTTP header); undefined = not declared. */
+  protocolVersion?: string;
 }
 
 export interface ToolInputSchema {
@@ -40,6 +42,14 @@ export class ToolInputError extends Error {
     super(message);
     this.name = "ToolInputError";
     this.field = field;
+  }
+}
+
+/** An upstream data source failed or returned nothing usable: REST answers 502, MCP an isError tool result. */
+export class UpstreamError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UpstreamError";
   }
 }
 

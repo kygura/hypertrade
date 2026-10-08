@@ -1,4 +1,4 @@
-import { ToolInputError, type Registry, type ToolContext } from "./types.js";
+import { ToolInputError, UpstreamError, type Registry, type ToolContext } from "./types.js";
 
 /** Fake registry for transport tests; records the contexts tools ran with. */
 export function fakeRegistry() {
@@ -39,7 +39,15 @@ export function fakeRegistry() {
         description: "Always fails.",
         inputSchema: { type: "object", properties: {} },
         async run() {
-          throw new Error("provider down");
+          throw new Error("db password=hunter2 rejected");
+        },
+      },
+      {
+        name: "upstream",
+        description: "Upstream data failure.",
+        inputSchema: { type: "object", properties: {} },
+        async run() {
+          throw new UpstreamError("provider down");
         },
       },
     ],
