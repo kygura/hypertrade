@@ -42,8 +42,8 @@ export function expectedMaxSharpe(trials: number, trialVar: number): number {
  * Deflated Sharpe ratio (Bailey & López de Prado, 2014): the probability the
  * true Sharpe exceeds what the best of `trials` noise strategies would show.
  * Sharpes are per-period (daily), not annualised; `kurt` is raw kurtosis (3
- * for a normal). Trials in a rule search are correlated, so counting every
- * one makes this conservative.
+ * for a normal). Trials in a rule search are correlated: a search passes the
+ * effective number of independent trials (trials.ts), not the raw count.
  */
 export function deflatedSharpe(sr: number, n: number, skew: number, kurt: number, trials: number, trialVar: number): number {
   if (!Number.isFinite(sr) || n < 3) return 0;

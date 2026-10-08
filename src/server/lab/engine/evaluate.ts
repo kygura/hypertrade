@@ -4,6 +4,7 @@ import { checkDataset, makeCtx, rangeIndices, type EvalCtx } from "./context.js"
 import { makeLabels } from "./labels.js";
 import { ruleId, ruleText } from "./rules.js";
 import { deflatedSharpeOf } from "./stats.js";
+import { verdictOf } from "./verdict.js";
 import { isoDate, parseDay, SearchRefused } from "./util.js";
 import { makeSplit, MIN_TRAIN_ROWS, positions, sensitivity, walkForwardSegments, type Split } from "./validate.js";
 
@@ -15,7 +16,7 @@ export interface EvalInCtxOptions {
   labels: Float64Array;
   slippageBps: number;
   walkForward: boolean;
-  /** N for the deflated Sharpe: distinct variants scored to find this rule. Default 1. */
+  /** N for the deflated Sharpe: effective independent trials of the search that found this rule. Default 1. */
   trials?: number;
   /** Configured windows; when set, a sensitivity grid is attached. */
   windows?: readonly number[];
@@ -74,6 +75,7 @@ export function evaluateInCtx(ctx: EvalCtx, rule: Rule, o: EvalInCtxOptions): Ru
   if (o.includeEquity) {
     out.equity = equityCurve(t, simulate(ctx.pr, pos, 1, n, o.slippageBps), simulate(ctx.pr, bench, 1, n, o.slippageBps));
   }
+  out.verdict = verdictOf(out);
   return out;
 }
 
@@ -96,7 +98,11 @@ export interface EvaluateRuleOptions {
   walkForward?: boolean;
   /** Walk-forward folds; default 3. */
   folds?: number;
-  /** N for the deflated Sharpe (variants tried to find this rule); default 1. */
+  /**
+   * N for the deflated Sharpe: the effective trials of the search that found
+   * the rule (SearchResult.effectiveTrials); default 1, i.e. not deflated for
+   * any search.
+   */
   trials?: number;
 }
 

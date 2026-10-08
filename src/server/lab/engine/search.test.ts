@@ -4,7 +4,10 @@ import { inZoneDays } from "./evaluate.js";
 import { conditionsKey } from "./rules.js";
 import { gauss, mulberry32 } from "./rng.js";
 import { runSearch, splitLabels } from "./search.js";
-import { synthetic } from "./testkit.js";
+import { calibrate, chooseThreshold } from "./calibrate.js";
+import { evaluateRule } from "./evaluate.js";
+import { isPlanted, pctileOverlap, SAME_ZONE_JACCARD, synthetic } from "./testkit.js";
+import { MIN_DEFLATED_SHARPE } from "./verdict.js";
 import { HOLDOUT_FRAC, makeSplit } from "./validate.js";
 
 const cfg = (data: LabDataset, over: Partial<SearchConfigInput> = {}) =>
@@ -17,61 +20,93 @@ const cfg = (data: LabDataset, over: Partial<SearchConfigInput> = {}) =>
     ...over,
   });
 
-/**
- * The planted zone: z(a, 30) < −1 AND b ≥ 0 (b iid normal, so its z is b
- * rescaled). a's 30-day percentile rank is the same zone read as a rank:
- * pctile(30) below 0.3 counts too.
- */
-function isPlanted(r: RuleEvaluation): boolean {
-  const a = r.rule.conditions.find((c) => c.feature === "syn:a|z|30" || c.feature === "syn:a|pctile|30");
-  const b = r.rule.conditions.find((c) => /^syn:b\|(raw|z)\|/.test(c.feature));
-  const aOk = !!a && a.op === "<" && (a.feature === "syn:a|z|30" ? Math.abs(a.threshold + 1) <= 0.4 : a.threshold <= 0.3);
-  return aOk && !!b && b.op === ">=" && Math.abs(b.threshold) <= 0.35;
-}
-
 describe("runSearch", () => {
   test("recovers a planted two-condition rule in the top 3 with positive holdout Sharpe", () => {
     for (const seed of [1, 5]) {
       const data = synthetic({ seed, drift: 0.012 });
       const res = runSearch(cfg(data, { seed }), data);
-      const hit = res.rules.slice(0, 3).find(isPlanted);
+      // The matcher also accepts a's pctile(30) as the planted z(30) < −1
+      // zone; justified only while the two forms' in-zone days overlap.
+      expect(pctileOverlap(data, 0.3)).toBeGreaterThanOrEqual(SAME_ZONE_JACCARD);
+      const hit = res.rules.slice(0, 3).find((r) => isPlanted(r, data));
       expect(hit, `seed ${seed}: ${res.rules.slice(0, 3).map((r) => r.text).join(" | ")}`).toBeDefined();
       expect(hit!.holdout!.sharpe).toBeGreaterThan(0);
       expect(hit!.walkForward!.sharpe).toBeGreaterThan(1);
       expect(hit!.support).toBeGreaterThanOrEqual(30);
       expect(hit!.sensitivity!.points.length).toBeGreaterThan(0);
-      // Deflated against every variant the search scored; per-fold Sharpes reported.
+      const a = hit!.rule.conditions.find((c) => c.feature.startsWith("syn:a|"))!;
+      if (a.feature === "syn:a|pctile|30") expect(pctileOverlap(data, a.threshold)).toBeGreaterThanOrEqual(SAME_ZONE_JACCARD);
+      // Deflated against the effective (clustered) trials, far fewer than the
+      // raw variants; the planted rule clears the whole save bar.
       expect(res.variantsScored).toBeGreaterThan(500);
-      expect(hit!.deflatedSharpe).toBeGreaterThan(0.5);
+      expect(res.effectiveTrials).toBeGreaterThan(20);
+      expect(res.effectiveTrials!).toBeLessThan(res.variantsScored! / 5);
+      expect(hit!.deflatedSharpe).toBeGreaterThanOrEqual(MIN_DEFLATED_SHARPE);
+      expect(hit!.verdict).toEqual({ level: "robust", reasons: [] });
       expect(hit!.walkForwardFolds).toHaveLength(3);
       expect(hit!.walkForwardFolds!.filter((x) => x > 0).length).toBeGreaterThanOrEqual(2);
       expect(res.featureImportance[0]!.feature.startsWith("syn:a|")).toBe(true);
     }
   }, 20_000);
 
-  test("pure noise: the documented save bar passes in at most 1 of 10 seeds", () => {
-    // Save bar (tools.ts, LAB.md): walk-forward Sharpe > 1, holdout Sharpe > 0
-    // and tested, deflated Sharpe ≥ 0.95, stability ≥ 0.5. Without the
-    // deflated Sharpe, the rest passed some top-10 rule in 6 of these 10 seeds.
-    const passes = (r: RuleEvaluation) =>
-      r.walkForward!.sharpe > 1 && r.holdout!.sharpe > 0 && !r.holdout!.untested && (r.deflatedSharpe ?? 0) >= 0.95 && r.sensitivity!.stability >= 0.5;
-    let survived = 0;
-    for (let seed = 100; seed < 110; seed++) {
-      const data = synthetic({ seed, drift: 0 });
-      const res = runSearch(cfg(data, { seed }), data);
-      expect(res.rules.length).toBeGreaterThan(0);
-      if (res.rules.some(passes)) survived++;
-    }
-    expect(survived).toBeLessThanOrEqual(1);
-  }, 60_000);
+  test("calibration: at MIN_DEFLATED_SHARPE, ≤ 1 of 20 noise searches has a robust top-10 rule; planted rules stay robust", () => {
+    // LAB.md "Calibration" (the 40/20-seed table comes from calibrate.ts).
+    // Before N_eff, the planted rule's deflated Sharpe was 0.39–0.89 and the
+    // bar at 0.95 rejected it; without the deflated Sharpe, noise passed the
+    // rest of the bar in 6 of 20 seeds here.
+    const c = calibrate({
+      thresholds: [0.5, 0.8, 0.9, 0.95],
+      noiseSeeds: Array.from({ length: 20 }, (_, i) => 1000 + i),
+      plantedSeeds: Array.from({ length: 12 }, (_, i) => 2000 + i),
+      drifts: [0.012, 0.008],
+    });
+    expect(chooseThreshold(c)).toBe(MIN_DEFLATED_SHARPE);
+    const row = c.rows.find((r) => r.threshold === MIN_DEFLATED_SHARPE)!;
+    expect(row.noiseAny).toBeLessThanOrEqual(1);
+    expect(row.noiseTop1).toBe(0);
+    const [strong, weak] = row.planted;
+    expect(strong!.robust).toBeGreaterThanOrEqual(9);
+    expect(strong!.robust).toBe(strong!.found);
+    expect(weak!.robust).toBeGreaterThanOrEqual(4);
+    expect(c.effectiveTrials.max).toBeLessThan(c.variantsScored.min);
+  }, 180_000);
+
+  test("effectiveTrials is the N of every deflated Sharpe; an explicit re-evaluation with it reproduces the search's", () => {
+    const data = synthetic({ seed: 1, drift: 0.012, days: 1500 });
+    const res = runSearch(cfg(data, { trials: 4 }), data);
+    expect(res.effectiveTrials).toBeGreaterThanOrEqual(1);
+    expect(res.effectiveTrials!).toBeLessThanOrEqual(res.variantsScored!);
+    expect(Number.isInteger(res.effectiveTrials)).toBe(true);
+    const top = res.rules[0]!;
+    const again = evaluateRule(top.rule, data, { slippageBps: res.config.slippageBps, labelQuantile: res.config.labelQuantile, trials: res.effectiveTrials });
+    expect(again.walkForward).toEqual(top.walkForward);
+    expect(again.deflatedSharpe).toBeCloseTo(top.deflatedSharpe!, 12);
+    const raw = evaluateRule(top.rule, data, { slippageBps: res.config.slippageBps, trials: res.variantsScored });
+    expect(raw.deflatedSharpe!).toBeLessThan(top.deflatedSharpe!);
+  });
+
+  test("every rule carries a verdict; minVerdict drops lower ones after selection", () => {
+    const data = synthetic({ seed: 1, drift: 0.006, days: 1500 });
+    const all = runSearch(cfg(data, { trials: 4 }), data);
+    for (const r of all.rules) expect(r.verdict!.level).toMatch(/^(robust|candidate|fragile|weak|fails_holdout)$/);
+    expect(new Set(all.rules.map((r) => r.verdict!.level)).size).toBeGreaterThan(1);
+    const robust = runSearch(cfg(data, { trials: 4, minVerdict: "robust" }), data);
+    expect(robust.rules.map((r) => r.id)).toEqual(all.rules.filter((r) => r.verdict!.level === "robust").map((r) => r.id));
+    expect(robust.warnings.some((w) => /below minVerdict robust/.test(w))).toBe(true);
+    const cand = runSearch(cfg(data, { trials: 4, minVerdict: "candidate" }), data);
+    const kept = all.rules.filter((r) => ["robust", "candidate"].includes(r.verdict!.level));
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept.length).toBeLessThan(all.rules.length);
+    expect(cand.rules.map((r) => r.id)).toEqual(kept.map((r) => r.id));
+  });
 
   test("minDeflatedSharpe filters final rules; omitted = no filter", () => {
-    const data = synthetic({ seed: 1, drift: 0.012, days: 1500 });
+    const data = synthetic({ seed: 1, drift: 0.006, days: 1500 });
     const all = runSearch(cfg(data, { trials: 4 }), data);
-    expect(all.rules.some((r) => r.deflatedSharpe! < 0.99)).toBe(true);
-    const some = runSearch(cfg(data, { trials: 4, minDeflatedSharpe: 0.99 }), data);
+    expect(all.rules.some((r) => r.deflatedSharpe! < 0.8)).toBe(true);
+    const some = runSearch(cfg(data, { trials: 4, minDeflatedSharpe: 0.8 }), data);
     expect(some.rules.length).toBeGreaterThan(0);
-    for (const r of some.rules) expect(r.deflatedSharpe!).toBeGreaterThanOrEqual(0.99);
+    for (const r of some.rules) expect(r.deflatedSharpe!).toBeGreaterThanOrEqual(0.8);
     const none = runSearch(cfg(data, { trials: 4, minDeflatedSharpe: 1 }), data);
     expect(none.rules).toEqual([]);
     expect(none.warnings.some((w) => /minDeflatedSharpe/.test(w))).toBe(true);
@@ -178,6 +213,7 @@ describe("runSearch", () => {
     expect(b.trials).toEqual(a.trials);
     expect(b.featureImportance).toEqual(a.featureImportance);
     expect(b.variantsScored).toBe(a.variantsScored);
+    expect(b.effectiveTrials).toBe(a.effectiveTrials);
     expect(b.rules[0]!.holdout).not.toEqual(a.rules[0]!.holdout);
   });
 

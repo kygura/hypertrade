@@ -134,6 +134,16 @@ export interface Sensitivity {
   points: SensitivityPoint[];
 }
 
+/** Save-bar verdict levels, best first (LAB.md §7 "Verdict"). */
+export const VERDICT_LEVELS = ["robust", "candidate", "fragile", "weak", "fails_holdout"] as const;
+export type VerdictLevel = (typeof VERDICT_LEVELS)[number];
+
+export interface Verdict {
+  level: VerdictLevel;
+  /** Failed checks with their numbers, e.g. "deflated Sharpe 0.71 < 0.9"; [] for a clean robust. */
+  reasons: string[];
+}
+
 export interface RuleEvaluation {
   id: string; // stable hash of the rule
   rule: Rule;
@@ -148,8 +158,9 @@ export interface RuleEvaluation {
   /**
    * Deflated Sharpe (Bailey & López de Prado) of the concatenated walk-forward
    * returns: probability the true Sharpe beats the best of N noise variants,
-   * N = distinct variants the search scored (1 for an explicit rule). Null
-   * without walk-forward; absent on evaluations stored before it existed.
+   * N = the search's effectiveTrials (1 for an explicit rule unless `trials`
+   * is given). Null without walk-forward; absent on evaluations stored before
+   * it existed.
    */
   deflatedSharpe?: number | null;
   holdout: PerfStats | null;
@@ -159,6 +170,8 @@ export interface RuleEvaluation {
   /** Latest feature values used by the conditions, with their date. */
   latest: { date: string; values: Record<string, number | null> };
   equity?: Array<{ t: number; strategy: number; benchmark: number }>;
+  /** Save-bar verdict; absent on evaluations stored before it existed (the service recomputes it on read). */
+  verdict?: { level: VerdictLevel; reasons: string[] };
 }
 
 // ------------------------------------------------------------------ search
@@ -193,6 +206,12 @@ export const SearchConfigSchema = z.object({
   minTradesPerYear: z.number().min(0).max(365).default(0.5),
   /** Drop final rules whose deflated Sharpe is below this (0–1). Default: no filter. */
   minDeflatedSharpe: z.number().min(0).max(1).optional(),
+  /**
+   * Drop returned rules whose verdict is below this level. Applied after
+   * selection to the top K only (it never reaches deeper candidates, so the
+   * holdout still picks nothing). Default: no filter.
+   */
+  minVerdict: z.enum(VERDICT_LEVELS).optional(),
 });
 export type SearchConfig = z.infer<typeof SearchConfigSchema>;
 export type SearchConfigInput = z.input<typeof SearchConfigSchema>;
@@ -220,8 +239,14 @@ export interface SearchResult {
   dataRange: { from: string; to: string; days: number; holdoutFrom: string };
   featureCount: number;
   trialsRun: number;
-  /** Distinct rule variants scored across all trials and the final refit: the N of the deflated Sharpe. */
+  /** Distinct rule variants scored across all trials and the final refit (raw N). */
   variantsScored?: number;
+  /**
+   * Correlation-adjusted number of independent trials, the N the deflated
+   * Sharpe uses: participation ratio of the variants' search-region return
+   * correlations (LAB.md §7), ≤ variantsScored. Absent on runs stored before it existed.
+   */
+  effectiveTrials?: number;
   bestTrial: TrialRecord | null;
   trials: TrialRecord[];
   rules: RuleEvaluation[];

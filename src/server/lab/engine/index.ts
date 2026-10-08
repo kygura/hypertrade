@@ -11,3 +11,5 @@ export * from "./stats.js";
 export * from "./tree.js";
 export * from "./util.js";
 export * from "./validate.js";
+export * from "./trials.js";
+export * from "./verdict.js";

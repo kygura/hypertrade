@@ -40,6 +40,8 @@ describe("evaluateRule", () => {
     expect(s.points.filter((p) => p.kind === "threshold").length).toBe(8);
     expect(s.points.filter((p) => p.kind === "window").map((p) => p.shift)).toEqual([7, 90]);
     expect(s.stability).toBeGreaterThan(0.5);
+    // N = 1 here, so the deflated Sharpe barely deflates: the save bar passes.
+    expect(ev.verdict).toEqual({ level: "robust", reasons: [] });
   });
 
   test("walk-forward by default: quantile-matched refit over 3 folds, absolute thresholds and id kept", () => {
@@ -56,6 +58,9 @@ describe("evaluateRule", () => {
     expect(off.walkForward).toBeNull();
     expect(off.walkForwardFolds).toEqual([]);
     expect(off.deflatedSharpe).toBeNull();
+    expect(off.verdict!.level).toBe("weak");
+    expect(off.verdict!.reasons).toContain("no walk-forward");
+    expect(ev.verdict!.reasons).toEqual(["stability not measured (no sensitivity grid)"]);
     expect(off.inSample).toEqual(ev.inSample);
     expect(off.holdout).toEqual(ev.holdout);
     // Counting the variants tried deflates it.
