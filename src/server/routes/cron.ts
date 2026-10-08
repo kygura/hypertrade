@@ -8,7 +8,7 @@ import { collectElfa } from "../collectors/elfa.js";
 import { collectFred } from "../collectors/fred.js";
 import { collectHyperliquid } from "../collectors/hyperliquid.js";
 import * as db from "../db.js";
-import { collectLab, LAB_SYNC_COIN, type LabCollectResult } from "../lab/collect.js";
+import { collectLab, LAB_SYNC_COIN, type LabCollectResult, type LabProgress } from "../lab/collect.js";
 import { syncHead } from "../market/candleSync.js";
 import { syncFunding } from "../market/fundingSync.js";
 import { backfillCoin, STABLES } from "../sim/backfill.js";
@@ -48,6 +48,12 @@ const FUNDING_PAGES_PER_RUN = 4;
 export const LAB_BUDGET_MS = 200_000;
 /** The run lease outlives the budget by a minute: a run killed mid-way frees it after that. */
 export const LAB_LEASE_MS = LAB_BUDGET_MS + 60_000;
+/**
+ * Answer by now whatever is still running: the last series' DB writes after
+ * the budget each get up to the 30 s query timeout (src/server/db.ts), and a
+ * hang there must still end in a response, not Vercel's 300 s kill.
+ */
+export const LAB_HARD_STOP_MS = LAB_BUDGET_MS + 40_000;
 /** sync_state row (coin '_lab') whose synced_at is the Lab run lease's expiry. */
 export const LAB_LEASE_SERIES = "_lease";
 
@@ -221,16 +227,26 @@ const dbLabLease: LabLease = {
   release: (holder) => db.releaseLease(LAB_SYNC_COIN, LAB_LEASE_SERIES, holder),
 };
 
-export type LabCollectRun = LabCollectResult | { ok: true; busy: true; written: 0; sources: Record<string, never> };
+export type LabCollectRun =
+  | LabCollectResult
+  | { ok: true; busy: true; written: 0; sources: Record<string, never> }
+  | (LabCollectResult & { timedOut: true; inFlight: string });
 
 /**
  * Daily Lab history (src/server/lab/collect.ts): a no-op until a series is
  * 20 h stale. One run at a time: a lease (LAB_LEASE_MS) keeps a retried or
  * overlapping trigger from starting a second full backfill; the loser
  * answers `busy`. Its own failure (lease or sync_state unreadable, every API
- * down) is reported, never thrown.
+ * down) is reported, never thrown. Still running at LAB_HARD_STOP_MS, it
+ * answers with what has finished (`timedOut`, and the last line logged as
+ * `inFlight`); the lease is then released when the run ends, or expires.
  */
-export async function runLabCollect(collect: typeof collectLab = collectLab, now = Date.now(), lease: LabLease = dbLabLease): Promise<LabCollectRun> {
+export async function runLabCollect(
+  collect: typeof collectLab = collectLab,
+  now = Date.now(),
+  lease: LabLease = dbLabLease,
+  hardStopMs = LAB_HARD_STOP_MS,
+): Promise<LabCollectRun> {
   const holder = randomUUID();
   const fail = (err: unknown): LabCollectResult => ({ ok: false, error: err instanceof Error ? err.message : String(err), written: 0, sources: {} });
   let held: boolean;
@@ -240,11 +256,27 @@ export async function runLabCollect(collect: typeof collectLab = collectLab, now
     return fail(err);
   }
   if (!held) return { ok: true, busy: true, written: 0, sources: {} };
-  try {
-    return await collect(undefined, { deadline: now + LAB_BUDGET_MS }).catch(fail);
-  } finally {
-    await lease.release(holder).catch((err) => console.error("[lab-collect] lease release:", err));
-  }
+  const progress: LabProgress = { sources: {}, written: 0 };
+  let inFlight = "start";
+  const log = (line: string) => ((inFlight = line), console.log(line));
+  const release = () => lease.release(holder).catch((err) => console.error("[lab-collect] lease release:", err));
+  const work = (async () => {
+    try {
+      return await collect(undefined, { deadline: now + LAB_BUDGET_MS, progress, log }).catch(fail);
+    } finally {
+      await release();
+    }
+  })();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const hardStop = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), hardStopMs);
+  });
+  const done = await Promise.race([work, hardStop]);
+  clearTimeout(timer);
+  if (done) return done;
+  console.error(`[lab-collect] hard stop; last: ${inFlight}`);
+  const error = `still running after ${Math.round(hardStopMs / 1000)}s; last: ${inFlight}`;
+  return { ok: false, error, written: progress.written, sources: { ...progress.sources }, timedOut: true, inFlight };
 }
 
 // Cron requests in flight in this process. Vercel Cron and the GitHub

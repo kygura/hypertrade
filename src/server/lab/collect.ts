@@ -71,7 +71,13 @@ export interface LabCollectOptions {
   force?: boolean;
   jobs?: LabJob[];
   sleep?: (ms: number) => Promise<void>;
+  /** Filled in as series finish, so a caller that stops waiting can still report them. */
+  progress?: LabProgress;
+  /** One line per series started and finished (default console.log): a stall shows up in the runtime logs as the series left open. */
+  log?: (line: string) => void;
 }
+
+export type LabProgress = { sources: Record<string, LabSourceStatus>; written: number };
 
 /** `partial`: the budget cut a paged history short; what came back is stored and the next run resumes. */
 export type LabSourceStatus = "ok" | "partial" | "skipped" | "error";
@@ -88,9 +94,11 @@ export async function collectLab(deps: LabCollectDeps = db, opts: LabCollectOpti
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const startedAt = new Date(now());
   const jobs = opts.jobs ?? labJobs();
-  const sources: Record<string, LabSourceStatus> = {};
+  const progress = opts.progress ?? { sources: {}, written: 0 };
+  const { sources } = progress;
   const errors: string[] = [];
-  let written = 0;
+  const log = opts.log ?? ((line: string) => console.log(line));
+  const say = (line: string) => log(`[lab-collect] +${((now() - startedAt.getTime()) / 1000).toFixed(1)}s ${line}`);
 
   /** Syncs one series if due; false when it was skipped (no request made). */
   async function run(job: LabJob): Promise<boolean> {
@@ -107,6 +115,7 @@ export async function collectLab(deps: LabCollectDeps = db, opts: LabCollectOpti
       if (!opts.force && (fresh || backingOff)) return skip();
       const ext = (lab: LabExt["lab"]) => ({ ...state.ext, lab }) as unknown as SyncState["ext"];
       const since = opts.force ? null : (lab?.resumeFrom ?? (state.syncedAt === null ? null : state.syncedAt - OVERLAP_MS));
+      say(`${job.id} fetch`);
       try {
         const s = await job.provider.history(job.def.key, job.asset, since, { deadline: opts.deadline });
         const floor = since ?? -Infinity;
@@ -124,7 +133,7 @@ export async function collectLab(deps: LabCollectDeps = db, opts: LabCollectOpti
         // Ascending chunks: a run cut short leaves a stale tail, which readers treat as missing.
         for (let i = 0; i < rows.length; i += OBS_CHUNK) {
           const n = await deps.upsertObservations(rows.slice(i, i + OBS_CHUNK));
-          written += n; // not `written += await`: that reads `written` before other lanes add to it
+          progress.written += n; // not `+= await`: that reads `written` before other lanes add to it
         }
         if (s.partial) {
           // Not a sync: syncedAt stays, so the next run comes back and resumes.
@@ -135,16 +144,19 @@ export async function collectLab(deps: LabCollectDeps = db, opts: LabCollectOpti
           await deps.saveSyncState({ ...state, ext: ext({ attemptedAt: t0 }), syncedAt: t0, error: null });
           sources[job.id] = "ok";
         }
+        say(`${job.id} ${sources[job.id]} ${rows.length} rows`);
       } catch (err) {
         const e = `${job.id}: ${msg(err)}`.slice(0, 500);
         errors.push(e);
         sources[job.id] = "error";
+        say(`${job.id} error: ${msg(err)}`);
         await deps.saveSyncState({ ...state, ext: ext({ attemptedAt: t0, retryAfter: t0 + backoffMs(err) }), error: e }).catch(() => {});
       }
     } catch (err) {
       // sync_state itself unreadable: report, carry on with the rest.
       errors.push(`${job.id}: ${msg(err)}`);
       sources[job.id] = "error";
+      say(`${job.id} error: ${msg(err)}`);
     }
     return true;
   }
@@ -165,8 +177,9 @@ export async function collectLab(deps: LabCollectDeps = db, opts: LabCollectOpti
   ]);
 
   const attempted = Object.values(sources).filter((s) => s !== "skipped").length;
+  say(`done: ${attempted} attempted, ${errors.length} failed, ${progress.written} rows`);
   const ok = errors.length === 0 || errors.length < attempted;
   const error = errors.length ? errors.join("; ") : undefined;
   await deps.recordCollectorRun(COLLECTOR, startedAt, ok, error ?? null).catch(() => {});
-  return { ok, ...(error ? { error } : {}), written, sources };
+  return { ok, ...(error ? { error } : {}), written: progress.written, sources };
 }

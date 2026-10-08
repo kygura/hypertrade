@@ -62,7 +62,7 @@ function fakeProviders(calls: Call[], opts: { fail?: Record<string, Error>; n?: 
 }
 
 const run = (m: ReturnType<typeof memoryDeps>, jobs: LabJob[], now: number, extra: Partial<Parameters<typeof collectLab>[1]> = {}) =>
-  collectLab(m.deps, { jobs, now: () => now, sleep: async () => {}, ...extra });
+  collectLab(m.deps, { jobs, now: () => now, sleep: async () => {}, log: () => {}, ...extra });
 
 describe("labJobs", () => {
   test("asset metrics per asset, globals once, non-collectable providers skipped", () => {
@@ -97,6 +97,35 @@ describe("collectLab", () => {
     expect(m.rows.filter((r) => r.seriesId === "lab.bc.hash_rate").map((r) => r.value)).toEqual([1, 2, 3]);
     expect(m.state.get(`${LAB_SYNC_COIN}/lab.cm.TxCnt.btc`)?.syncedAt).toBe(NOW);
     expect(m.runs).toEqual([{ ok: true, error: null }]);
+  });
+
+  test("logs each series as it starts and ends, and fills the caller's progress as it goes", async () => {
+    const m = memoryDeps();
+    const lines: string[] = [];
+    const progress = { sources: {}, written: 0 };
+    const jobs = labJobs(fakeProviders([], { fail: { hash_rate: new Error("HTTP 503") } }), ["BTC"]);
+    const res = await run(m, jobs, NOW, { log: (l) => lines.push(l), progress });
+    expect(lines).toContain("[lab-collect] +0.0s lab.cm.TxCnt.btc fetch");
+    expect(lines).toContain("[lab-collect] +0.0s lab.cm.TxCnt.btc ok 3 rows");
+    expect(lines).toContain("[lab-collect] +0.0s lab.bc.hash_rate error: HTTP 503");
+    expect(lines.at(-1)).toBe("[lab-collect] +0.0s done: 4 attempted, 1 failed, 9 rows");
+    // One start and one end line per series, plus the summary.
+    expect(lines).toHaveLength(2 * jobs.length + 1);
+    expect(progress).toEqual({ sources: res.sources, written: res.written });
+  });
+
+  test("a series whose DB write fails (a query timeout) is an error; the rest carry on", async () => {
+    const m = memoryDeps();
+    const upsert = m.deps.upsertObservations;
+    m.deps.upsertObservations = async (rows) => {
+      if (rows[0]?.seriesId === "lab.bc.hash_rate") throw new Error("query timed out after 30s: insert into observations");
+      return upsert(rows);
+    };
+    const res = await run(m, labJobs(fakeProviders([]), ["BTC"]), NOW);
+    expect(res.sources["lab.bc.hash_rate"]).toBe("error");
+    expect(res.sources["lab.deribit.btc_dvol"]).toBe("ok");
+    expect(res.error).toContain("query timed out");
+    expect(m.state.get(`${LAB_SYNC_COIN}/lab.bc.hash_rate`)?.ext).toMatchObject({ lab: { retryAfter: NOW + RETRY_MS } });
   });
 
   test("inside the refresh window nothing is fetched", async () => {
