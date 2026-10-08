@@ -26,7 +26,8 @@ export function RuleDrillHeader({
 }) {
   const wf = ev.walkForward?.sharpe ?? null
   const ho = ev.holdout?.sharpe ?? null
-  const s = ev.walkForward ?? ev.inSample
+  // No walk-forward → HIT and MAX DD print `—`, never the in-sample numbers in its place.
+  const s = ev.walkForward
   const stab = sensitivity ? stabWord(sensitivity.stability) : null
   return (
     <div className="flex flex-col gap-2 p-3">
@@ -54,13 +55,13 @@ export function RuleDrillHeader({
           <span className={`text-base ${signTone(ho)}`}>{fmtSigned(ho)}</span>
           {holdoutGap(wf, ho) && <Badge tone="amber">HOLDOUT GAP</Badge>}
         </span>
-        <span className="flex items-baseline gap-1.5 text-sm">
+        <span className="flex items-baseline gap-1.5 text-sm" title={s == null ? 'not enough history' : undefined}>
           <span className="text-xs text-text-secondary">HIT</span>
-          {fmtPct0(s.hitRate)}
+          {fmtPct0(s?.hitRate)}
         </span>
-        <span className="flex items-baseline gap-1.5 text-sm">
+        <span className="flex items-baseline gap-1.5 text-sm" title={s == null ? 'not enough history' : undefined}>
           <span className="text-xs text-text-secondary">MAX DD</span>
-          <span className={ddTone(s.maxDrawdown)}>{fmtPctSigned(s.maxDrawdown)}</span>
+          <span className={ddTone(s?.maxDrawdown)}>{fmtPctSigned(s?.maxDrawdown)}</span>
         </span>
         <span className="flex items-baseline gap-1.5 text-sm">
           <span className="text-xs text-text-secondary">STAB</span>

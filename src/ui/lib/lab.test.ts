@@ -26,6 +26,7 @@ import {
   parseWindows,
   ruleProviders,
   ruleTextPlain,
+  runKey,
   sensitivityTone,
   sortPulse,
   stabWord,
@@ -240,5 +241,15 @@ describe("search form → args", () => {
     const now = Date.parse("2026-10-08T09:00:00Z");
     expect(isStaleDate("2026-10-07", now)).toBe(false);
     expect(isStaleDate("2026-10-05", now)).toBe(true);
+  });
+});
+
+describe("runs table", () => {
+  test("ASSET·DIR·HZN key", () => {
+    expect(runKey({ asset: "btc", direction: "long", horizonDays: 14 })).toBe("BTC·L·14D");
+    expect(runKey({ asset: "ETH", direction: "short", horizonDays: 7 })).toBe("ETH·S·7D");
+  });
+  test("best WF Sharpe null prints a dash", () => {
+    expect(fmtSigned(null)).toBe("—");
   });
 });

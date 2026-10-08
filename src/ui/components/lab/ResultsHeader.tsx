@@ -38,7 +38,9 @@ export function ResultsHeader({ runId, createdAt, result }: { runId: string | nu
         <span>·</span>
         <AgeStamp generatedAt={createdAt} thresholdHours={48} />
       </div>
-      <span className="label">RANKED BY WALK-FORWARD {c.objective === 'return' ? 'RETURN' : 'SHARPE'}</span>
+      <span className="label" title="walk-forward: thresholds refit per fold">
+        RANKED BY WALK-FORWARD {c.objective === 'return' ? 'RETURN' : 'SHARPE'}
+      </span>
     </div>
   )
 }

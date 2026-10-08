@@ -43,7 +43,7 @@ export function WindowStatsTable({
   const lc = liveCell(live, catalogued)
   const cols: Col[] = [
     { key: 'is', label: 'IN-SAMPLE', stats: ev.inSample },
-    { key: 'wf', label: 'WALK-FWD', sub: 'RANK KEY', stats: ev.walkForward, title: ev.walkForward ? undefined : 'not enough history' },
+    { key: 'wf', label: 'WALK-FWD', sub: 'RANK KEY', stats: ev.walkForward, title: ev.walkForward ? 'walk-forward: thresholds refit per fold' : 'not enough history' },
     { key: 'ho', label: 'HOLDOUT', stats: ev.holdout, title: ev.holdout ? undefined : 'not enough history' },
     { key: 'live', label: 'LIVE', sub: lc.text && lc.text !== '—' ? lc.text : undefined, stats: lc.stats, title: lc.title },
   ]
@@ -65,7 +65,7 @@ export function WindowStatsTable({
             {cols.map((c) => (
               <th key={c.key} scope="col" className="px-2 py-1.5 text-right label min-w-[72px] align-bottom" title={c.title}>
                 {c.label}
-                {c.sub && <span className="block text-[10px] text-text-secondary whitespace-nowrap">{c.sub}</span>}
+                {c.sub && <span className="block text-xs text-text-secondary whitespace-nowrap">{c.sub}</span>}
               </th>
             ))}
           </tr>

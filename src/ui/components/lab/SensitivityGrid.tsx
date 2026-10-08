@@ -16,7 +16,7 @@ function Cell({ label, aria, sharpe, totalReturn, base, isBase }: { label: strin
   if (sharpe == null) {
     return (
       <td className="p-1 align-top text-center bg-panel-alt" aria-label={`${aria}: no data`}>
-        <span className="block text-[9px] text-text-secondary">{label}</span>
+        <span className="block text-2xs text-text-secondary">{label}</span>
         <span className="text-text-secondary">—</span>
       </td>
     )
@@ -27,7 +27,7 @@ function Cell({ label, aria, sharpe, totalReturn, base, isBase }: { label: strin
       style={isBase ? { boxShadow: 'inset 2px 0 0 var(--color-red-accent)' } : undefined}
       aria-label={`${aria}: sharpe ${fmtSigned(sharpe)}`}
     >
-      <span className="block text-[9px] text-text-secondary">{label}</span>
+      <span className="block text-2xs text-text-secondary">{label}</span>
       <span className="block text-sm tabular">{fmtSigned(sharpe)}</span>
       <span className="block text-xs tabular text-text-secondary">{totalReturn == null ? '—' : fmtPctSigned(totalReturn)}</span>
     </td>
@@ -45,9 +45,17 @@ export function SensitivityGrid({ rule, sensitivity, metrics }: { rule: Rule; se
         return (
           <table key={i} className="w-full table-fixed border-separate border-spacing-0.5">
             <caption className="text-left text-xs text-text-primary pb-1 tabular">{fmtFeature(c.feature, metrics)}</caption>
+            <thead className="sr-only">
+              <tr>
+                <th scope="col">sweep</th>
+                {SHIFTS.map((_, k) => (
+                  <th key={k} scope="col">{`variant ${k + 1}`}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
               <tr>
-                <th scope="row" className="w-[52px] text-left text-[9px] text-text-secondary font-normal align-middle">
+                <th scope="row" className="w-[52px] text-left text-2xs text-text-secondary font-normal align-middle">
                   THRESHOLD
                 </th>
                 {SHIFTS.map((s) => {
@@ -68,7 +76,7 @@ export function SensitivityGrid({ rule, sensitivity, metrics }: { rule: Rule; se
               </tr>
               {windows.length > 1 && (
                 <tr>
-                  <th scope="row" className="text-left text-[9px] text-text-secondary font-normal align-middle">
+                  <th scope="row" className="text-left text-2xs text-text-secondary font-normal align-middle">
                     WINDOW
                   </th>
                   {windows.map((w) => {

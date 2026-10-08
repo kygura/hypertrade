@@ -8,7 +8,7 @@ export function LabWarnings({ warnings }: { warnings: readonly string[] }) {
     <ul aria-label="warnings" className="bg-amber-bg px-3 py-1.5 flex flex-col gap-1">
       {warnings.map((w, i) => (
         <li key={i} className="flex items-start gap-2 text-sm text-text-primary">
-          <span aria-hidden="true" className="mt-[5px] inline-block w-1.5 h-1.5 flex-shrink-0 bg-amber" />
+          <span aria-hidden="true" className="mt-1 inline-block w-1.5 h-1.5 flex-shrink-0 bg-amber" />
           <span>{w}</span>
         </li>
       ))}

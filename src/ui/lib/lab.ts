@@ -697,6 +697,11 @@ export function liveCell(live: PerfStats | null | undefined, catalogued: boolean
   return { stats: live, text: null, title: `${live.from} → ${live.to}` }
 }
 
+/** RUNS `ASSET·DIR·HZN` cell (§4.4): `BTC·L·14D`. */
+export function runKey(r: Pick<RunSummary, 'asset' | 'direction' | 'horizonDays'>): string {
+  return `${r.asset.toUpperCase()}·${r.direction === 'short' ? 'S' : 'L'}·${r.horizonDays}D`
+}
+
 export function runStatus(r: Pick<RunSummary, 'status'>): { label: 'OK' | 'FAILED'; tone: 'gray' | 'red' } {
   return r.status === 'error' ? { label: 'FAILED', tone: 'red' } : { label: 'OK', tone: 'gray' }
 }

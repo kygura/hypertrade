@@ -98,12 +98,23 @@ export function LabRule() {
   const wrap = (children: ReactNode) => <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)] flex flex-col gap-3">{children}</div>
 
   if (resolving) {
+    // First load: SkeletonRows per panel (§13), in the drill's own layout.
+    const skel = (title: string, rows?: number) => (
+      <Panel key={title}>
+        <PanelHeader title={title} />
+        <SkeletonRows rows={rows} />
+      </Panel>
+    )
     return wrap(
       <>
         {backButton}
         <Panel>
           <SkeletonRows />
         </Panel>
+        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-12 lg:items-start">
+          <div className="flex flex-col gap-3 lg:col-span-8">{[skel('EQUITY'), skel('DRAWDOWN', 2), skel('STATS BY WINDOW')]}</div>
+          <div className="flex flex-col gap-3 lg:col-span-4">{[skel('LATEST VS THRESHOLDS', 2), skel('SAVE TO CATALOGUE', 2), skel('SENSITIVITY')]}</div>
+        </div>
       </>,
     )
   }
@@ -162,7 +173,7 @@ export function LabRule() {
               ) : evaluation.loading ? (
                 <SkeletonRows rows={2} />
               ) : (
-                <EmptyBlock label="no equity curve" />
+                failed(evaluation) ?? <EmptyBlock label="no equity curve" />
               )}
             </div>
           </Panel>

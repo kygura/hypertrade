@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '../Button'
 import { Segmented } from '../Segmented'
 import { ErrorBlock, OfflineBlock } from '../state'
+import { useApi } from '../../lib/api'
 import {
   advancedDiffers,
   configSummary,
@@ -56,6 +57,8 @@ export function LabSearchForm({
   const [customHorizon, setCustomHorizon] = useState(!(HORIZONS as readonly number[]).includes(form.horizonDays))
   const invalid = Object.keys(errors).length > 0
   const canRun = !busy && !invalid && !(metrics.loading && !metrics.data)
+  // ASSET datalist: the HL universe; on failure there is no list and the field stays free text.
+  const universe = useApi<{ markets: { coin: string }[] }>('/hl/markets').data?.markets ?? null
 
   useEffect(() => {
     if (!(HORIZONS as readonly number[]).includes(form.horizonDays)) setCustomHorizon(true)
@@ -73,7 +76,7 @@ export function LabSearchForm({
       <Field label="ASSET" htmlFor="lab-asset" error={err('asset')}>
         <input
           id="lab-asset"
-          list="lab-asset-list"
+          list={universe ? 'lab-asset-list' : undefined}
           value={form.asset}
           disabled={busy}
           onChange={(e) => setForm({ asset: e.target.value.toUpperCase() })}
@@ -84,6 +87,13 @@ export function LabSearchForm({
           aria-invalid={bad('asset') || undefined}
           style={invalidStyle(bad('asset'))}
         />
+        {universe && (
+          <datalist id="lab-asset-list">
+            {universe.map((m) => (
+              <option key={m.coin} value={m.coin} />
+            ))}
+          </datalist>
+        )}
       </Field>
 
       <Field label="DIRECTION">

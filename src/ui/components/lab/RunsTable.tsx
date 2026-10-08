@@ -1,10 +1,11 @@
 import { Badge } from '../Badge'
 import { DataTable, type Column } from '../DataTable'
-import { fmtSigned, relTime, runStatus, signTone, type RunSummary } from '../../lib/lab'
+import { fmtSigned, relTime, runKey, runStatus, signTone, type RunSummary } from '../../lib/lab'
 
 // RunsTable — DESIGN.md §10.9, §4.4 drop order. Newest first; a row opens
 // /lab/runs/:runId. Columns are limited to what RunSummary carries (no
-// horizon, trial counts or duration in the summary).
+// trial counts or duration in the summary). BEST WF SHARPE is walk-forward
+// only: `—` when the run has none (never the in-sample number).
 
 export function RunsTable({ runs, onOpen }: { runs: RunSummary[]; onOpen: (r: RunSummary) => void }) {
   const columns: Column<RunSummary>[] = [
@@ -16,12 +17,10 @@ export function RunsTable({ runs, onOpen }: { runs: RunSummary[]; onOpen: (r: Ru
     },
     {
       key: 'asset',
-      label: 'ASSET·DIR',
+      label: 'ASSET·DIR·HZN',
       priority: 1,
       render: (r) => (
-        <span>
-          {r.asset.toUpperCase()} · <span className={r.direction === 'long' ? 'text-green' : 'text-red-text'}>{r.direction.toUpperCase()}</span>
-        </span>
+        <span title={`${r.asset.toUpperCase()} ${r.direction.toUpperCase()} ${r.horizonDays}D`}>{runKey(r)}</span>
       ),
     },
     {
@@ -29,7 +28,14 @@ export function RunsTable({ runs, onOpen }: { runs: RunSummary[]; onOpen: (r: Ru
       label: 'BEST WF SHARPE',
       priority: 2,
       align: 'right',
-      render: (r) => <span className={signTone(r.bestSharpe)}>{fmtSigned(r.bestSharpe)}</span>,
+      render: (r) =>
+        r.bestSharpe == null ? (
+          <span className="text-text-secondary" title="no walk-forward">
+            —
+          </span>
+        ) : (
+          <span className={signTone(r.bestSharpe)}>{fmtSigned(r.bestSharpe)}</span>
+        ),
     },
     { key: 'rules', label: 'RULES', priority: 2, align: 'right', render: (r) => (r.status === 'error' ? '—' : r.rules) },
     {

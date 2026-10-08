@@ -34,6 +34,7 @@ export function LabTabs() {
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden="true" className={`inline-block w-1.5 h-1.5 ${firing ? 'bg-green' : 'bg-text-secondary/40'}`} />
           PULSE
+          {firing && <span className="sr-only"> · rule firing</span>}
         </span>
       ),
       title: firing ? 'a catalogued rule is firing' : 'no catalogued rule is firing',

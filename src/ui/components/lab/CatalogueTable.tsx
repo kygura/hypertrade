@@ -94,7 +94,7 @@ export function CatalogueTable({
       label: 'HOLDOUT',
       priority: 3,
       align: 'right',
-      sortValue: (e) => e.saved.holdout?.sharpe ?? -Infinity,
+      // Rule 2: holdout never sorts anything — no sortValue, so no sort control.
       render: (e) => <span className={signTone(e.saved.holdout?.sharpe)}>{fmtSigned(e.saved.holdout?.sharpe)}</span>,
     },
     {
@@ -133,7 +133,7 @@ export function CatalogueTable({
     { key: 'origin', label: 'ORIGIN', priority: 4, render: (e) => <Badge tone="gray">{e.origin}</Badge> },
     {
       key: 'remove',
-      label: '',
+      label: <span className="sr-only">actions</span>,
       priority: 4,
       align: 'right',
       render: (e) => (
