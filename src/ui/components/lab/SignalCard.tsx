@@ -111,7 +111,7 @@ export function SignalCard({
           {gap && <Badge tone="amber">HOLDOUT GAP</Badge>}
         </StatCell>
         <StatCell label="DSR">
-          <DsrValue dsr={ev.deflatedSharpe} n={trialsN} />
+          <DsrValue ev={ev} n={trialsN} />
         </StatCell>
         <StatCell label="HIT">{fmtPct0(s?.hitRate)}</StatCell>
         <StatCell label="MAX DD">

@@ -1312,9 +1312,16 @@ off, applied client-side to the chosen window). Right-aligned count
   (amber), `FRAGILE` < 0.5 (red) — absent (`—`) until sensitivity is known.
 - **Robustness elements** (shared by SignalCard, RuleDrillHeader,
   WindowStatsTable, CatalogueTable): `DSR` — `deflatedSharpe`, 2 decimals,
-  beside WF/HOLDOUT, green ≥ 0.95 (the save bar), amber < 0.5, `—` when
-  absent; `title` `probability the walk-forward Sharpe beats what the best
-  of N effective trials would reach by luck`. **Verdict Badge** — the
+  beside WF/HOLDOUT, green ≥ `MIN_DEFLATED_SHARPE` (0.9, the save bar —
+  `lib/lab.ts` mirrors the engine constant in `engine/verdict.ts` and a
+  test pins them equal), amber < 0.5; `title` `probability the walk-forward
+  Sharpe beats what the best of N effective trials would reach by luck
+  (≥ 0.90 to save)`. The title never implies deflation that did not
+  happen: N = 1 reads `deflated against N=1 (undeflated)`; an unknown N
+  (pruned run) reads `N unknown`, or `deflated against N=1 (undeflated)` +
+  why when the server fell back to N = 1. `—` without walk-forward (`title`
+  `not enough history`) and `—` with `title` `undefined (extreme
+  skew/kurtosis)` when the server returns `null` beside a walk-forward. **Verdict Badge** — the
   server's `verdict.level`, never computed client-side: `ROBUST` green,
   `CANDIDATE` amber, `FRAGILE` red, `WEAK` gray, `FAILS HOLDOUT` red;
   `reasons` in the `title`; nothing renders without a verdict. On the card
@@ -1355,9 +1362,15 @@ ErrorBlocks).
 
 Resolution: catalogue entry by id → else `?run=` → `lab_get_run` and find
 the rule → else EmptyBlock `rule not found — it was never saved and its run
-is unknown` + ghost `SEARCH`. Then `lab_evaluate_rule` (with equity) and
-`lab_sensitivity` refresh the numbers; the grid shows SkeletonRows with a
-`computing sensitivity…` pulse while the second call runs.
+is unknown` + ghost `SEARCH`. Then one `lab_evaluate_rule` (with equity
+and the sensitivity grid, `trials` = the search's N) refreshes the
+numbers: the server computes today's verdict and DSR for the search that
+found the rule (the stability check needs the grid). N is the `?run`'s
+`effectiveTrials` (else `variantsScored`); for a catalogue entry its
+`runId`'s run is fetched for it; 1 when saved without a run; unknown when
+the run is gone (the call then omits `trials`, the server uses N = 1 and
+the DSR title says so). The call waits for N. The grid shows SkeletonRows
+with a `computing sensitivity…` pulse while it runs.
 
 Desktop (`lg:`, 12-col):
 
@@ -1387,7 +1400,15 @@ sensitivity → save form (the decision follows the evidence).
 - **RuleDrillHeader**: RuleText at lg; the walk-forward Sharpe is the
   view's single xl (`AnimatedDigits` on refresh); holdout at base right
   beside it with the gap Badge if due, then `DSR`; the verdict Badge
-  before FiringBadge, its `reasons` listed (xs secondary) above `RAW`;
+  before FiringBadge, its `reasons` listed (xs secondary) above `RAW`.
+  Badge, DSR, WF and holdout are the fresh evaluation's (server verdict,
+  never computed client-side); an `AT SEARCH` line (`AT SAVE` for a
+  catalogue drill) — xs secondary: `AT SEARCH  WF +1.52 · DSR 0.93 ·
+  [CANDIDATE]` — keeps the numbers the rule was found or saved with, since
+  today's walk-forward is re-run and can differ (explicit rules may use
+  fixed thresholds per fold where the search refit them). Until the fresh
+  evaluation lands, or when it fails, the search-time numbers fill the
+  header with the `AT SEARCH` tag before the badge;
   FiringBadge; direction/asset/horizon
   words; the `RAW` wire text. Catalogued rules add Badge `IN CATALOGUE ·
   SAVED 2026-08-01` and Danger `REMOVE` (Level 2, below).
@@ -1403,20 +1424,23 @@ sensitivity → save form (the decision follows the evidence).
 - **DrawdownChart** §9.2, strategy only; `MAX DD` in the header.
 - **WindowStatsTable**: rows TOTAL RETURN, CAGR, SHARPE, MAX DD, HIT RATE,
   TRADES, TRADES/YR, EXPOSURE, DAYS, RANGE (`from → to`, xs); columns
-  `IN-SAMPLE · WALK-FWD · HOLDOUT · LIVE`, then two benchmark rows (`HOLD
+  `IN-SAMPLE · WALK-FWD AT SEARCH · WALK-FWD NOW · HOLDOUT · LIVE`, then two benchmark rows (`HOLD
   BTC SHARPE`, `HOLD BTC RETURN`, in-sample and holdout only — `—`
   elsewhere). `LIVE` is `—` with `title` `not catalogued` for unsaved rules
   and `n/a — 12 live days` under 30 days. This table must keep all four
   windows at every width (rule 1), so it is the §4.4 escape hatch: inside
   `.table-scroll`, first column sticky (`position: sticky; left: 0;
-  bg-panel`), numeric columns 72px. Walk-forward header carries `RANK KEY`
-  in xs beneath it. Under SHARPE (`untested` per window when due): `DSR`
-  (walk-forward column only) and `WF FOLDS` — `walkForwardFolds` as a
-  bar sparkline (decoration, green up / red down) + the signed values +
-  `not ranked` (xs), spanning from the walk-forward column; each row only
-  when the field is present. The drill keeps the search's (or save-time)
-  walk-forward, folds, DSR and verdict over the fresh evaluation's N = 1
-  values.
+  bg-panel`), numeric columns 72px. Walk-forward headers carry a sub-label
+  in xs beneath them: `AT SEARCH` (`AT SAVE` for a catalogue drill) on
+  the search-time column — the rank key — and `NOW` on today's re-run,
+  which stays adjacent to HOLDOUT. While the fresh evaluation is missing
+  the search column drops and the remaining one is tagged `AT SEARCH`. Under SHARPE (`untested` per window when due):
+  `DSR` (walk-forward columns only) and `WF FOLDS` (`WF FOLDS AT SEARCH`
+  / `WF FOLDS NOW` when both exist) — `walkForwardFolds` as a bar
+  sparkline (decoration, green up / red down) + the signed values + `not
+  ranked` (xs), spanning from its walk-forward column; a `null` fold
+  prints `untested` and is a gap in the sparkline; each row only when the
+  field is present.
 - **LatestValuesRow**: one row per condition — feature (RuleText style),
   latest value (sm, tabular, primary), operator, threshold, and `✓` green /
   `✗` gray with the word `MET`/`NOT MET` in `title` and visually-hidden

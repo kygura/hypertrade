@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { Badge } from '../Badge'
 import { SrcTag, type Source } from '../SrcTag'
-import { dsrTitle, dsrTone, fmtDsr, isStaleDate, sharpeCell, verdictBadge, verdictOf, type Direction, type PerfStats } from '../../lib/lab'
+import { dsrCell, isStaleDate, sharpeCell, verdictBadge, verdictOf, type Direction, type PerfStats } from '../../lib/lab'
 
 // Small pieces every /lab surface repeats (DESIGN.md §10.9).
 
@@ -95,11 +95,22 @@ export function SharpeValue({ stats, className = '' }: { stats: PerfStats | null
   )
 }
 
-/** Deflated Sharpe, 2 decimals, title naming N. */
-export function DsrValue({ dsr, n, className = '' }: { dsr: number | null | undefined; n?: number | null; className?: string }) {
+/** Deflated Sharpe, 2 decimals, title naming N (or why there is none: no walk-forward, undefined moments). */
+export function DsrValue({
+  ev,
+  n,
+  assumedOne,
+  className = '',
+}: {
+  ev: { deflatedSharpe?: number | null; walkForward?: PerfStats | null }
+  n?: number | null
+  assumedOne?: boolean
+  className?: string
+}) {
+  const c = dsrCell(ev, { n, assumedOne })
   return (
-    <span className={`${dsrTone(dsr)} ${className}`} title={dsrTitle(n)}>
-      {fmtDsr(dsr)}
+    <span className={`${c.tone} ${className}`} title={c.title}>
+      {c.text}
     </span>
   )
 }

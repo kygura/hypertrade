@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { MIN_DEFLATED_SHARPE as ENGINE_MIN_DEFLATED_SHARPE } from "../../server/lab/engine/verdict";
 import {
   advancedDiffers,
   buildSearchArgs,
@@ -7,7 +8,9 @@ import {
   DEFAULT_FILTERS,
   DEFAULT_FORM,
   defaultRuleName,
-  drillEvaluation,
+  drillEvaluateArgs,
+  drillTrialsN,
+  dsrCell,
   dsrTitle,
   dsrTone,
   effectiveTrials,
@@ -23,6 +26,9 @@ import {
   fmtSigned,
   fmtTrialsN,
   foldBars,
+  foldCell,
+  freshDsrN,
+  MIN_DEFLATED_SHARPE,
   formFromConfig,
   holdoutGap,
   isStaleDate,
@@ -289,7 +295,29 @@ describe("robustness: untested, DSR, verdict, folds", () => {
     expect(dsrTone(0.4)).toBe("text-amber");
     expect(dsrTone(0.7)).toBe("text-text-primary");
     expect(dsrTitle(312)).toContain("best of 312 effective trials");
-    expect(dsrTitle(null)).toContain("best of N effective trials");
+    expect(dsrTitle(312)).toContain("≥ 0.90 to save");
+  });
+  test("the save bar's DSR cut-off mirrors the engine's, and colours green from it", () => {
+    expect(MIN_DEFLATED_SHARPE).toBe(ENGINE_MIN_DEFLATED_SHARPE);
+    expect(dsrTone(MIN_DEFLATED_SHARPE)).toBe("text-green");
+    expect(dsrTone(MIN_DEFLATED_SHARPE - 0.001)).toBe("text-text-primary");
+  });
+  test("DSR title never implies deflation that did not happen", () => {
+    expect(dsrTitle(1)).toContain("deflated against N=1 (undeflated)");
+    expect(dsrTitle(null)).toContain("N unknown");
+    expect(dsrTitle(undefined)).toContain("N unknown");
+    expect(dsrTitle(null, { assumedOne: true })).toContain("deflated against N=1 (undeflated)");
+    expect(dsrTitle(null, { assumedOne: true })).toContain("N is unknown");
+  });
+  test("DSR cell: no walk-forward, absent, undefined (null) and a value", () => {
+    const wf = stats({ sharpe: 1.2 });
+    expect(dsrCell({ walkForward: null, deflatedSharpe: null }, { n: 5 })).toMatchObject({ text: "—", title: "no walk-forward — not enough history" });
+    expect(dsrCell({ walkForward: wf, deflatedSharpe: null }, { n: 5 })).toMatchObject({ text: "—", title: "undefined (extreme skew/kurtosis)" });
+    expect(dsrCell({ walkForward: wf }, { n: 5 }).text).toBe("—");
+    const c = dsrCell({ walkForward: wf, deflatedSharpe: 0.93 }, { n: 1 });
+    expect(c).toMatchObject({ text: "0.93", tone: "text-green" });
+    expect(c.title).toContain("N=1 (undeflated)");
+    expect(dsrCell({ walkForward: wf, deflatedSharpe: 0.93 }, { n: 312 }).title).toContain("best of 312");
   });
   test("N prefers effectiveTrials, then variantsScored; nothing when absent", () => {
     const r = (x: object) => x as unknown as SearchResult;
@@ -320,29 +348,44 @@ describe("robustness: untested, DSR, verdict, folds", () => {
     expect(bars[1]!.height).toBeCloseTo(7);
     expect(foldBars([2, 1], 16, 10).zeroY).toBe(10);
   });
+  test("a null (untested) fold keeps its slot as a gap and prints untested", () => {
+    const { bars } = foldBars([1, null, -1], 24, 14);
+    expect(bars.map((b) => b.i)).toEqual([0, 2]);
+    expect(bars[1]!.x).toBeGreaterThan(16);
+    expect(foldBars([null, null], 16, 10).bars).toEqual([]);
+    expect(foldCell(null)).toMatchObject({ text: "untested", tone: "text-text-secondary" });
+    expect(foldCell(-0.5).text).toBe(fmtSigned(-0.5));
+  });
   test("log-safe equity nulls non-positive multiples", () => {
     expect(logSafeEquity([{ t: 1, strategy: 1.2, benchmark: 0 }, { t: 2, strategy: -0.1, benchmark: 0.5 }])).toEqual([
       { t: 1, strategy: 1.2, benchmark: null },
       { t: 2, strategy: null, benchmark: 0.5 },
     ]);
   });
-  test("drill keeps the search's walk-forward, folds, DSR and verdict over a fresh N = 1 evaluation", () => {
-    const base = ev({ walkForward: stats({ sharpe: 1.5 }), walkForwardFolds: [1, 2], deflatedSharpe: 0.9, verdict: { level: "candidate", reasons: [] } });
-    const fresh = ev({ walkForward: stats({ sharpe: 2 }), walkForwardFolds: [3], deflatedSharpe: 0.99, holdout: stats({ sharpe: 0.4 }), verdict: { level: "robust", reasons: [] } });
-    const out = drillEvaluation(fresh, base)!;
-    expect(out.walkForward?.sharpe).toBe(1.5);
-    expect(out.walkForwardFolds).toEqual([1, 2]);
-    expect(out.deflatedSharpe).toBe(0.9);
-    expect(verdictOf(out)?.level).toBe("candidate");
-    expect(out.holdout?.sharpe).toBe(0.4);
-    // A base stored before these fields existed: the fresh N = 1 values are dropped, not shown as deflated.
-    const old = ev({ walkForward: stats({ sharpe: 1.5 }) });
-    const out2 = drillEvaluation(fresh, old)!;
-    expect("deflatedSharpe" in out2).toBe(false);
-    expect(verdictOf(out2)).toBeNull();
-    // No search walk-forward at all: the fresh evaluation stands.
-    expect(drillEvaluation(fresh, ev({ walkForward: null }))!.deflatedSharpe).toBe(0.99);
-    expect(drillEvaluation(null, base)).toBe(base);
+  test("drill N: the run's trials, 1 without a run, unknown when the run is gone, pending while it loads", () => {
+    const run = (x: object) => ({ result: x as unknown as SearchResult });
+    expect(drillTrialsN({ runId: "r", run: run({ variantsScored: 900, effectiveTrials: 312 }), runSettled: true })).toBe(312);
+    expect(drillTrialsN({ runId: "r", run: run({ variantsScored: 900 }), runSettled: true })).toBe(900);
+    expect(drillTrialsN({ runId: null, run: null, runSettled: true })).toBe(1);
+    expect(drillTrialsN({ runId: "r", run: null, runSettled: true })).toBeNull();
+    expect(drillTrialsN({ runId: "r", run: { result: null }, runSettled: true })).toBeNull();
+    expect(drillTrialsN({ runId: "r", run: null, runSettled: false })).toBeUndefined();
+  });
+  test("drill re-evaluates with the search's N and a sensitivity grid, so the server's fresh verdict is complete", () => {
+    const rule = ev({}).rule;
+    expect(drillEvaluateArgs(rule, { trialsN: 312, slippageBps: 5, windows: [7, 30] })).toEqual({
+      rule,
+      includeEquity: true,
+      sensitivity: true,
+      trials: 312,
+      slippageBps: 5,
+      windows: [7, 30],
+    });
+    const unknown = drillEvaluateArgs(rule, { trialsN: null });
+    expect("trials" in unknown).toBe(false);
+    expect("trials" in drillEvaluateArgs(rule, { trialsN: 1 })).toBe(false);
+    expect(freshDsrN(312)).toEqual({ n: 312 });
+    expect(freshDsrN(null)).toEqual({ n: 1, assumedOne: true });
   });
   test("latest run to restore", () => {
     expect(latestRunId([{ id: "b" }, { id: "a" }])).toBe("b");

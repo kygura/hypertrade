@@ -15,8 +15,9 @@ import {
   benchmarkLabel,
   dateIso,
   defaultRuleName,
-  drillEvaluation,
-  effectiveTrials,
+  drillEvaluateArgs,
+  drillTrialsN,
+  freshDsrN,
   fmtSigned,
   isStaleDate,
   lab,
@@ -24,15 +25,19 @@ import {
   useLab,
   type CatalogueEntry,
   type CatalogueListEntry,
+  type DsrN,
   type LabState,
 } from '../lib/lab'
+import type { AtSearch } from '../components/lab/WindowStatsTable'
 
 // /lab/rules/:id — rule drill (DESIGN.md §10.9). Full-view route like the
 // markets drill: linkable from MCP/CLI output, back-button friendly.
 // Resolution: ?run=<runId> → lab_get_run and that run's rule with this id;
-// else the catalogue entry with this id; else `rule not found`. Then
-// lab_evaluate_rule (with equity) and lab_sensitivity refresh the numbers in
-// parallel, each in its own panel so one failing never blanks the other.
+// else the catalogue entry with this id; else `rule not found`. Then one
+// lab_evaluate_rule (equity + sensitivity, `trials` = the search's N) gives
+// today's numbers and the server's fresh verdict and DSR; the search-time
+// (save-time) walk-forward, DSR and verdict stay beside them, labelled
+// AT SEARCH (AT SAVE). The UI never computes a verdict.
 
 const BACK: Record<string, { label: string; to: string }> = {
   results: { label: '← RESULTS', to: '/lab/search' },
@@ -72,19 +77,34 @@ export function LabRule() {
   const slippageBps = run.data?.config.slippageBps
   const windows = run.data?.config.windows
 
-  const runSettled = !runId || run.data != null || run.error != null || run.offline
-  const catSettled = catalogue.data != null || catalogue.error != null || catalogue.offline
+  const settled = (s: Pick<LabState<unknown>, 'data' | 'error' | 'offline'>) => s.data != null || s.error != null || s.offline
+  const runSettled = !runId || settled(run)
+  const catSettled = settled(catalogue)
   const resolving = !base && (!runSettled || !catSettled)
 
-  const evaluation = useLab(rule ? () => lab.evaluate({ rule, includeEquity: true, ...(slippageBps != null ? { slippageBps } : {}) }) : null, [ruleKey])
-  const sensitivity = useLab(rule ? () => lab.sensitivity({ rule, ...(windows ? { windows } : {}), ...(slippageBps != null ? { slippageBps } : {}) }) : null, [ruleKey])
+  // N of the search behind `base`: the ?run's, else the catalogue entry's run
+  // (fetched for its effective trials; 1 when saved without a run, unknown
+  // when the run is gone).
+  const sourceRunId = runRule ? runId : (listed?.runId ?? null)
+  const reuseRun = sourceRunId != null && sourceRunId === runId
+  const entryRun = useLab(sourceRunId && !reuseRun ? () => lab.getRun(sourceRunId) : null, [sourceRunId, reuseRun])
+  const sourceRun = reuseRun ? run : entryRun
+  const trialsN = drillTrialsN({ runId: sourceRunId, run: sourceRun.data, runSettled: settled(sourceRun) })
 
-  // The rank key, its folds, the deflated Sharpe and the verdict stay the
-  // run's / the save-time values: lab_evaluate_rule refits an explicit rule
-  // (N = 1, so its DSR is not deflated for the search that found it).
-  const ev = drillEvaluation(evaluation.data, base)
-  const fromSearch = base?.walkForward != null
-  const trialsN = fromSearch ? effectiveTrials(run.data?.result) : ev?.walkForward ? 1 : null
+  // Waits for N so the server deflates the fresh DSR (and builds the fresh
+  // verdict) for the search that found the rule.
+  const evaluation = useLab(
+    rule && trialsN !== undefined ? () => lab.evaluate(drillEvaluateArgs(rule, { trialsN, slippageBps, windows })) : null,
+    [ruleKey, trialsN],
+  )
+
+  const fresh = evaluation.data
+  const evaluating = evaluation.loading || (rule != null && trialsN === undefined)
+  const current = fresh != null
+  const ev = fresh ?? base
+  const baseDsrN: DsrN = { n: trialsN ?? null }
+  const dsrN: DsrN = current ? freshDsrN(trialsN ?? null) : baseDsrN
+  const atSearch: AtSearch | null = base ? { label: runRule ? 'AT SEARCH' : 'AT SAVE', ev: base, dsrN: baseDsrN } : null
   const metricDefs = metrics.data ?? []
   const defaultName = useMemo(() => (rule ? defaultRuleName(rule, metricDefs) : ''), [ruleKey, metrics.data]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -140,7 +160,7 @@ export function LabRule() {
   const holdoutFrom = ev.holdout?.from ?? run.data?.result?.dataRange.holdoutFrom ?? null
   const equity = evaluation.data?.equity ?? null
   const maxDd = equity ? computeDrawdown(equity.map((p) => ({ ts: p.t, value: p.strategy }))).reduce((m, p) => Math.min(m, p.value), 0) : 0
-  const sens = sensitivity.data
+  const sens = fresh?.sensitivity ?? (evaluating ? null : (base?.sensitivity ?? null))
   const stab = sens ? stabWord(sens.stability) : null
   const slip = slippageBps ?? 10
   const live = listed?.live ?? null
@@ -151,7 +171,16 @@ export function LabRule() {
 
       <Panel>
         {isStaleDate(dataTo) && <StaleBanner generatedAt={dateIso(dataTo)} thresholdHours={48} noun="data" />}
-        <RuleDrillHeader ev={ev} metrics={metricDefs} sensitivity={sens} savedAt={entry?.savedAt ?? null} onRemove={() => setRemoving(true)} trialsN={trialsN} />
+        <RuleDrillHeader
+          ev={ev}
+          metrics={metricDefs}
+          sensitivity={sens ?? null}
+          savedAt={entry?.savedAt ?? null}
+          onRemove={() => setRemoving(true)}
+          dsrN={dsrN}
+          current={current}
+          atSearch={atSearch}
+        />
       </Panel>
 
       <div className="flex flex-col gap-3 lg:grid lg:grid-cols-12 lg:items-start">
@@ -161,7 +190,7 @@ export function LabRule() {
             <div className="p-2">
               {equity && holdoutFrom ? (
                 <RuleEquityChart equity={equity} holdoutFrom={holdoutFrom} savedAt={entry?.savedAt} benchmarkLabel={bench} />
-              ) : evaluation.loading ? (
+              ) : evaluating ? (
                 <SkeletonRows />
               ) : (
                 failed(evaluation) ?? <EmptyBlock label="no equity curve" />
@@ -175,7 +204,7 @@ export function LabRule() {
             <div className="p-2">
               {equity ? (
                 <DrawdownChart equity={equity.map((p) => ({ ts: p.t, value: p.strategy }))} />
-              ) : evaluation.loading ? (
+              ) : evaluating ? (
                 <SkeletonRows rows={2} />
               ) : (
                 failed(evaluation) ?? <EmptyBlock label="no equity curve" />
@@ -185,7 +214,15 @@ export function LabRule() {
 
           <Panel className="order-4 lg:order-none">
             <PanelHeader title="STATS BY WINDOW" />
-            <WindowStatsTable ev={ev} live={live} catalogued={entry != null} benchmarkLabel={bench} trialsN={trialsN} />
+            <WindowStatsTable
+              ev={ev}
+              live={live}
+              catalogued={entry != null}
+              benchmarkLabel={bench}
+              dsrN={dsrN}
+              wfSub={current ? 'NOW' : atSearch?.label}
+              atSearch={current ? atSearch : null}
+            />
             <LabFooter dataTo={dataTo} slippageBps={slip} className="px-3 py-2" />
           </Panel>
         </div>
@@ -232,7 +269,7 @@ export function LabRule() {
             </PanelHeader>
             {sens ? (
               <SensitivityGrid rule={rule} sensitivity={sens} metrics={metricDefs} />
-            ) : sensitivity.loading ? (
+            ) : evaluating ? (
               <>
                 <SkeletonRows />
                 <p className="px-3 pb-2 text-xs text-text-secondary">
@@ -240,7 +277,7 @@ export function LabRule() {
                 </p>
               </>
             ) : (
-              failed(sensitivity) ?? <EmptyBlock label="no sensitivity" />
+              failed(evaluation) ?? <EmptyBlock label="no sensitivity" />
             )}
           </Panel>
         </div>

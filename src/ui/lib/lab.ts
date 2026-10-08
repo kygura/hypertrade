@@ -103,7 +103,7 @@ export const lab = {
     labCall<{ runId: string | null; result: SearchResult }>('lab_search', config, signal),
   getRun: (id: string) => labCall<StoredRun>('lab_get_run', { id }),
   listRuns: (limit?: number) => labCall<{ runs: RunSummary[] }>('lab_list_runs', limit ? { limit } : {}).then((r) => r.runs),
-  evaluate: (args: { rule: Rule; slippageBps?: number; includeEquity?: boolean }) =>
+  evaluate: (args: { rule: Rule; slippageBps?: number; includeEquity?: boolean; sensitivity?: boolean; windows?: number[]; trials?: number }) =>
     labCall<RuleEvaluation>('lab_evaluate_rule', args),
   sensitivity: (args: { rule: Rule; windows?: number[]; slippageBps?: number }) => labCall<Sensitivity>('lab_sensitivity', args),
   catalogue: () => labCall<{ entries: CatalogueListEntry[] }>('lab_catalogue_list', {}).then((r) => r.entries),
@@ -761,36 +761,76 @@ export function fmtDsr(dsr: number | null | undefined): string {
   return dsr == null || !Number.isFinite(dsr) ? '—' : dsr.toFixed(2)
 }
 
-/** DSR ≥ 0.95 is the save bar (green); below 0.5 the edge is as likely luck as not (amber). */
+/**
+ * The save bar's deflated-Sharpe cut-off. Mirrors MIN_DEFLATED_SHARPE in
+ * src/server/lab/engine/verdict.ts (a value import would pull zod and the
+ * server types module into the bundle); lab.test.ts asserts they are equal.
+ */
+export const MIN_DEFLATED_SHARPE = 0.9
+
+/** DSR ≥ MIN_DEFLATED_SHARPE is the save bar (green); below 0.5 the edge is as likely luck as not (amber). */
 export function dsrTone(dsr: number | null | undefined): string {
   if (dsr == null || !Number.isFinite(dsr)) return 'text-text-secondary'
-  if (dsr >= 0.95) return 'text-green'
+  if (dsr >= MIN_DEFLATED_SHARPE) return 'text-green'
   if (dsr < 0.5) return 'text-amber'
   return 'text-text-primary'
 }
 
-export function dsrTitle(n: number | null | undefined): string {
-  const of = n != null && Number.isFinite(n) ? `the best of ${fmtTrialsN(n).slice(2)} effective trials` : 'the best of N effective trials'
-  return `deflated Sharpe: probability the walk-forward Sharpe beats what ${of} would reach by luck (≥ 0.95 to save)`
+/**
+ * N context of a deflated Sharpe. `n`: the N it was deflated against (1 =
+ * undeflated), null/undefined when unknown. `assumedOne`: the search's N is
+ * unknown and the server deflated against its default N = 1.
+ */
+export type DsrN = { n: number | null | undefined; assumedOne?: boolean }
+
+export function dsrTitle(n: number | null | undefined, opts: { assumedOne?: boolean } = {}): string {
+  const bar = `(≥ ${MIN_DEFLATED_SHARPE.toFixed(2)} to save)`
+  if (opts.assumedOne) return `deflated against N=1 (undeflated): the search's N is unknown (its run is no longer stored), so this reads higher than a deflated DSR ${bar}`
+  if (n == null || !Number.isFinite(n)) return `deflated Sharpe, N unknown (the search's trial count is not available) ${bar}`
+  if (n <= 1) return `deflated against N=1 (undeflated): no search to deflate for, so this reads higher than a searched rule's DSR ${bar}`
+  return `deflated Sharpe: probability the walk-forward Sharpe beats what the best of ${fmtTrialsN(n).slice(2)} effective trials would reach by luck ${bar}`
 }
 
-/** Per-fold walk-forward Sharpes → bar geometry for a w×h sparkline (zero line at the middle when signs mix). */
-export function foldBars(folds: readonly number[], w: number, h: number): { zeroY: number; bars: Array<{ x: number; y: number; width: number; height: number; positive: boolean }> } {
-  const vals = folds.filter((f) => Number.isFinite(f))
+/**
+ * One DSR cell. `—` without walk-forward; `—` "undefined" when the server
+ * returns null beside a walk-forward (the moments make the statistic
+ * undefined); else 2 decimals, toned against the save bar, title naming N.
+ */
+export function dsrCell(ev: { deflatedSharpe?: number | null; walkForward?: PerfStats | null }, ctx: DsrN): { text: string; tone: string; title: string } {
+  const dsr = ev.deflatedSharpe
+  if (ev.walkForward == null) return { text: '—', tone: 'text-text-secondary', title: 'no walk-forward — not enough history' }
+  if (dsr === undefined) return { text: '—', tone: 'text-text-secondary', title: 'not reported (evaluation stored before the deflated Sharpe existed)' }
+  if (dsr === null || !Number.isFinite(dsr)) return { text: '—', tone: 'text-text-secondary', title: 'undefined (extreme skew/kurtosis)' }
+  return { text: fmtDsr(dsr), tone: dsrTone(dsr), title: dsrTitle(ctx.n, { assumedOne: ctx.assumedOne }) }
+}
+
+/**
+ * Per-fold walk-forward Sharpes → bar geometry for a w×h sparkline (zero line
+ * at the middle when signs mix). Every fold keeps its slot; a null fold
+ * (`untested`, no trade) is a gap.
+ */
+export function foldBars(folds: readonly (number | null)[], w: number, h: number): { zeroY: number; bars: Array<{ i: number; x: number; y: number; width: number; height: number; positive: boolean }> } {
+  const vals = folds.filter((f): f is number => f != null && Number.isFinite(f))
   if (vals.length === 0) return { zeroY: h, bars: [] }
   const max = Math.max(0, ...vals)
   const min = Math.min(0, ...vals)
   const span = max - min || 1
   const zeroY = (max / span) * h
-  const slot = w / vals.length
+  const slot = w / folds.length
   const width = Math.max(1, slot - 2)
-  return {
-    zeroY,
-    bars: vals.map((v, i) => {
-      const len = (Math.abs(v) / span) * h
-      return { x: i * slot + (slot - width) / 2, y: v >= 0 ? zeroY - len : zeroY, width, height: Math.max(len, 0.5), positive: v >= 0 }
-    }),
-  }
+  const bars: Array<{ i: number; x: number; y: number; width: number; height: number; positive: boolean }> = []
+  folds.forEach((v, i) => {
+    if (v == null || !Number.isFinite(v)) return
+    const len = (Math.abs(v) / span) * h
+    bars.push({ i, x: i * slot + (slot - width) / 2, y: v >= 0 ? zeroY - len : zeroY, width, height: Math.max(len, 0.5), positive: v >= 0 })
+  })
+  return { zeroY, bars }
+}
+
+/** One fold's printed value: signed + toned, `untested` (secondary) for a null fold. */
+export function foldCell(f: number | null | undefined): { text: string; tone: string; title?: string } {
+  if (f == null || !Number.isFinite(f)) return { text: 'untested', tone: 'text-text-secondary', title: 'no trade in this fold — not tested, not "no edge"' }
+  return { text: fmtSigned(f), tone: signTone(f) }
 }
 
 /** Equity for a log Y axis: non-positive multiples (a wiped-out short) become null — a gap, not a crash. */
@@ -800,20 +840,44 @@ export function logSafeEquity<P extends { strategy: number; benchmark: number }>
 }
 
 /**
- * The drill's evaluation: a fresh lab_evaluate_rule, with the walk-forward
- * fields (and the verdict built on them) of the search or save that found the
- * rule — a fresh evaluation refits an explicit rule, so its deflated Sharpe
- * has N = 1 and would read undeflated.
+ * N of the search behind a drill: the run's effective trials; 1 for a rule
+ * saved without a run (its evaluation was never deflated); null when unknown
+ * (run pruned, failed or older than the count); undefined while the run is
+ * still loading. `runId` is `?run=` or the catalogue entry's run.
  */
-export function drillEvaluation(fresh: RuleEvaluation | null, base: RuleEvaluation | null): RuleEvaluation | null {
-  if (!fresh) return base
-  if (!base || base.walkForward == null) return { ...fresh, walkForward: fresh.walkForward ?? null }
-  const out: Record<string, unknown> = { ...fresh, walkForward: base.walkForward }
-  for (const k of ['walkForwardFolds', 'deflatedSharpe', 'verdict']) {
-    if (k in base) out[k] = (base as unknown as Record<string, unknown>)[k]
-    else delete out[k]
+export function drillTrialsN(o: { runId: string | null; run: Pick<StoredRun, 'result'> | null | undefined; runSettled: boolean }): number | null | undefined {
+  if (o.runId == null) return 1
+  if (o.run) return effectiveTrials(o.run.result)
+  return o.runSettled ? null : undefined
+}
+
+/**
+ * lab_evaluate_rule args for the drill's fresh evaluation: the search's N
+ * (`trials`), so the server's deflated Sharpe and verdict are deflated for
+ * the search that found the rule, and a sensitivity grid, so the verdict's
+ * stability check runs. Unknown N → no `trials` (server default N = 1).
+ */
+export function drillEvaluateArgs(rule: Rule, o: { trialsN: number | null; slippageBps?: number; windows?: number[] }): {
+  rule: Rule
+  includeEquity: true
+  sensitivity: true
+  trials?: number
+  slippageBps?: number
+  windows?: number[]
+} {
+  return {
+    rule,
+    includeEquity: true,
+    sensitivity: true,
+    ...(o.trialsN != null && o.trialsN > 1 ? { trials: o.trialsN } : {}),
+    ...(o.slippageBps != null ? { slippageBps: o.slippageBps } : {}),
+    ...(o.windows ? { windows: o.windows } : {}),
   }
-  return out as unknown as RuleEvaluation
+}
+
+/** DSR N context of the fresh evaluation (computed with `trials` = the search's N, or the server's N = 1 when unknown). */
+export function freshDsrN(trialsN: number | null): DsrN {
+  return trialsN == null ? { n: 1, assumedOne: true } : { n: trialsN }
 }
 
 /** The newest run to restore on an empty SEARCH tab (lab_list_runs is newest first). */
