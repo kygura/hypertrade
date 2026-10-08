@@ -57,3 +57,18 @@ Harness: Claude Code (cloud), native subagents only (no Codex/OpenCode/Pi bridge
 | L3b | Lab service + tool registry (12 tools, autoresearch prompt), catalogue health, pulse; mount in api/index.ts | opus | L1,L2,L3a,L4a | done |
 | U1 | `/lab` page per §10.9 | opus (ui-impl) | D2 (built against the pinned tool contract, parallel to L3b) | done |
 | V3 | Verification gate: tests/build, reviewer (fable), drift check, fix loops ≤3 | mixed | all | done (1 loop: MCP batch DoS capped, upstream errors → 502 with cause, refusals → 400 unstored, origin allow-list, asset charset, Vercel maxDuration 60; UI: holdout unsortable, WF-only stats, a11y/tokens. 588 tests green) |
+
+## Lab merge — #16 × #18 (selective)
+
+Two sessions built the same feature: #16 (this branch) and #18 (`ccr-7914c036-6dny4g`). Three cross-checked explorers (engine: Fable, benchmarked both engines on shared synthetic data; data: Opus, live Postgres 16; surfaces: Opus, both UIs rendered in Chromium at 1440 and 375 px) put #16 at the base of every layer. From #18 we port its statistical controls, its persisted data collector and its Analyst wiring.
+
+| # | Port from #18 | Model | Status |
+|---|---|---|---|
+| X0 | `summaryFor` SQL fix (master bug, 500 on /api/metrics/summary) — cherry-picked 4411eae; `maxDuration` 300 (cron backfill budget) | planner | done |
+| X1 | Engine: deflated Sharpe (only control that stopped noise: 0/10 seeds vs 3/10), stationarity flag, exposure/trade limits, per-fold WF, family dedupe, WF for explicit rules, holdout-scramble + save-bar noise tests, pair-beats-parents, per-fold label quantiles (base leak fix) | opus | frontier |
+| X2 | Data: blockchain.com + Deribit DVOL providers, cron collector into `observations` (`lab.*`), read-stored-first, drop the unfinished day, per-metric fill limits, run retention, 005 guard | opus | frontier |
+| X3 | Analyst gets #16's read-only lab tools via an adapter; catalogue keeps search WF; SPEC/README | opus | frontier |
+| X4 | UI: deflated Sharpe + verdict badge, log-scale equity, catalogue WF, CLI `sync` | opus | blocked on X1, X2 |
+| X5 | Verification gate + close-out note for #18 | mixed | blocked |
+
+Not taken from #18 (with evidence in the explorer reports): consistency ranking key (missed its own planted rule), fixed transform vocabulary, grid+beam engine, RESTful routes/409, stdio-only non-compliant MCP, BTC-only dataset, its 004 migration, single-page UI.
