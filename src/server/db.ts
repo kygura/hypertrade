@@ -199,7 +199,7 @@ export async function summaryFor(seriesIds: string[]): Promise<MetricSummary[]> 
            max(value) filter (where rn = 2)   as previous,
            avg(value)        filter (where rn <= 30) as mean30,
            stddev_pop(value) filter (where rn <= 30) as stddev30,
-           count(*)::int     filter (where rn <= 30) as n30,
+           (count(*) filter (where rn <= 30))::int as n30,
            avg(value)        filter (where rn <= 90) as mean90,
            stddev_pop(value) filter (where rn <= 90) as stddev90
     from ranked
