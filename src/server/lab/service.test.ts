@@ -273,9 +273,26 @@ describe("lab service: catalogue", () => {
     for (const k of ["walkForwardFolds", "deflatedSharpe"]) if (k in found!) expect((entry.saved as any)[k]).toEqual((found as any)[k]);
     expect(entry.saved.sensitivity).toBeDefined(); // the rest is the fresh evaluation
     const bare = await kit().service.catalogueSave({ rule: found!.rule, name: "bare" });
-    // An explicit evaluation refits the rule per fold itself, deflated with N = 1.
+    // An explicit evaluation runs its own walk-forward (fixed thresholds per fold), deflated with N = 1.
     expect(bare.saved.walkForward).not.toBeNull();
     expect(bare.saved.deflatedSharpe).not.toBe(found!.deflatedSharpe);
+  }, 20_000);
+
+  test("save from a from/to-restricted run evaluates over the run's range: its holdout, never its search region", async () => {
+    const { service, loads } = kit();
+    const from = day(600).slice(0, 10);
+    const to = day(2200).slice(0, 10);
+    const { runId, result } = await service.search({ ...searchCfg, from, to }, { source: "api" });
+    const found = result.rules[0]!;
+    const entry = await service.catalogueSave({ rule: found.rule, name: "ranged", runId: runId! });
+    expect(entry.saved.inSample.from).toBe(found.inSample.from);
+    expect(entry.saved.holdout!.from).toBe(result.dataRange.holdoutFrom);
+    expect(entry.saved.holdout!.to).toBe(to);
+    expect(entry.saved.holdout).toEqual(found.holdout);
+    expect(loads[loads.length - 1]!.to).toBe(to);
+    // Without a run: the full history.
+    const bare = await kit().service.catalogueSave({ rule: found.rule, name: "bare" });
+    expect(bare.saved.holdout!.from > result.dataRange.holdoutFrom).toBe(true);
   }, 20_000);
 
   test("save from a run deflates by the run's effectiveTrials and recomputes the verdict on the carried-over fields", async () => {

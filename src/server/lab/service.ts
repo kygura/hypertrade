@@ -59,6 +59,10 @@ const OVERLAP_JACCARD = 0.6;
 /** Kept back from a search deadline for the work after the last trial (refit, ranking, persisting). */
 export const SEARCH_FINISH_MS = 5_000;
 
+/** A caller's wall-clock budget: under one, data loads skip slow optional work (LoadConfig.deadline). */
+export type CallBudget = Pick<ToolContext, "deadlineMs">;
+const underDeadline = (ctx?: CallBudget) => (ctx?.deadlineMs != null ? { deadline: true } : {});
+
 export type CatalogueFlag = "decayed" | "overlap";
 export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flags: CatalogueFlag[] };
 
@@ -162,7 +166,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
    * with the union of their metrics. Entries that cannot be served are left
    * out with a warning; nothing throws.
    */
-  async function loadEntries(entries: CatalogueEntry[], warnings: string[]): Promise<Map<string, LabDataset>> {
+  async function loadEntries(entries: CatalogueEntry[], warnings: string[], ctx?: CallBudget): Promise<Map<string, LabDataset>> {
     const groups = new Map<string, { asset: string; price?: string; metrics: Set<string>; entries: Array<{ e: CatalogueEntry; metrics: string[] }> }>();
     for (const e of entries) {
       let metrics: string[];
@@ -182,7 +186,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     await mapLimit([...groups.values()], LOAD_CONCURRENCY, async (g) => {
       let loaded: Awaited<ReturnType<LoadDatasetFn>>;
       try {
-        loaded = await deps.loadDataset({ asset: g.asset, metrics: [...g.metrics], price: g.price });
+        loaded = await deps.loadDataset({ asset: g.asset, metrics: [...g.metrics], price: g.price, ...underDeadline(ctx) });
       } catch (err) {
         for (const { e } of g.entries) warnings.push(`${e.name} (${e.id}): ${msg(err)}`);
         return;
@@ -200,9 +204,9 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
   }
 
   /** Live stats, decay, overlap and gaps over a set of entries (LAB.md §9). */
-  async function analyse(entries: CatalogueEntry[]): Promise<CatalogueHealth> {
+  async function analyse(entries: CatalogueEntry[], ctx?: CallBudget): Promise<CatalogueHealth> {
     const warnings: string[] = [];
-    const data = await loadEntries(entries, warnings);
+    const data = await loadEntries(entries, warnings, ctx);
     const live: Record<string, PerfStats | null> = {};
     const zones = new Map<string, Map<number, boolean>>();
     for (const e of entries) {
@@ -259,11 +263,11 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     return { decayed, overlaps, gaps, live };
   }
 
-  async function evaluate(input: EvaluateInput): Promise<RuleEvaluation> {
+  async function evaluate(input: EvaluateInput, ctx?: CallBudget): Promise<RuleEvaluation> {
     const rule = parseInput(RuleSchema, input.rule, "rule");
     const metrics = ruleMetrics(rule);
     // Full history up to `to`: rolling features need warm-up before `from`.
-    const { dataset, warnings } = await deps.loadDataset({ asset: rule.asset, metrics, price: rule.price, to: input.to });
+    const { dataset, warnings } = await deps.loadDataset({ asset: rule.asset, metrics, price: rule.price, to: input.to, ...underDeadline(ctx) });
     const missing = metrics.filter((m) => !dataset.metrics[m]);
     if (missing.length) throw new UpstreamError(`no data for ${missing.join(", ")} on ${rule.asset}${warnings.length ? ` (${warnings.join("; ")})` : ""}`);
     try {
@@ -348,19 +352,19 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
 
     evaluateRule: evaluate,
 
-    async sensitivity(input: { rule: Rule; windows?: number[]; slippageBps?: number }): Promise<Sensitivity> {
-      const ev = await evaluate({ rule: input.rule, slippageBps: input.slippageBps, sensitivity: true, windows: input.windows });
+    async sensitivity(input: { rule: Rule; windows?: number[]; slippageBps?: number }, ctx?: CallBudget): Promise<Sensitivity> {
+      const ev = await evaluate({ rule: input.rule, slippageBps: input.slippageBps, sensitivity: true, windows: input.windows }, ctx);
       return ev.sensitivity!;
     },
 
-    async catalogueList(input: { asset?: string; direction?: Direction; live?: boolean } = {}): Promise<{ entries: CatalogueListEntry[] }> {
+    async catalogueList(input: { asset?: string; direction?: Direction; live?: boolean } = {}, ctx?: CallBudget): Promise<{ entries: CatalogueListEntry[] }> {
       const all = (await deps.store.listCatalogue()).map(withEntryVerdict);
       const sameAsset = (e: CatalogueEntry) => !input.asset || e.rule.asset.toUpperCase() === input.asset.toUpperCase();
       const listed = all.filter((e) => sameAsset(e) && (!input.direction || e.rule.direction === input.direction));
       if (input.live === false || !listed.length) return { entries: listed.map((e) => ({ ...e, live: null, flags: [] })) };
       // Flags compare against every rule on the listed assets, not only the listed direction.
       const assets = new Set(listed.map((e) => e.rule.asset.toUpperCase()));
-      const health = await analyse(all.filter((e) => assets.has(e.rule.asset.toUpperCase())));
+      const health = await analyse(all.filter((e) => assets.has(e.rule.asset.toUpperCase())), ctx);
       const decayed = new Set(health.decayed.map((d) => d.id));
       const overlapping = new Set(health.overlaps.flatMap((o) => [o.a, o.b]));
       return {
@@ -372,15 +376,21 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       };
     },
 
-    async catalogueSave(input: SaveInput): Promise<CatalogueEntry> {
+    async catalogueSave(input: SaveInput, ctx?: CallBudget): Promise<CatalogueEntry> {
       const rule = parseInput(RuleSchema, input.rule, "rule");
       const run = input.runId ? await deps.store.getRun(input.runId) : null;
       if (input.runId && !run) throw new ToolInputError(`unknown run ${input.runId} (lab_list_runs lists them)`, "runId");
       const id = ruleId(rule);
       // The store keeps an existing entry's evaluation, so only a new rule is evaluated.
       const existing = await deps.store.getCatalogueEntry(id);
+      // With a run: over the run's range and slippage, so the fresh holdout is
+      // the run's (never inside its search region) and the PerfStats from/to
+      // on the entry say which range that was. A rule from the run already
+      // carries the run's price metric (search.ts sets rule.price).
+      const range = run ? { from: run.config.from, to: run.config.to, slippageBps: run.config.slippageBps } : {};
       const saved =
-        existing?.saved ?? withSearchWalkForward(await evaluate({ rule, sensitivity: true, trials: runTrials(run?.result) }), run?.result?.rules.find((r) => r.id === id));
+        existing?.saved ??
+        withSearchWalkForward(await evaluate({ rule, sensitivity: true, trials: runTrials(run?.result), ...range }, ctx), run?.result?.rules.find((r) => r.id === id));
       return withEntryVerdict(await deps.store.saveCatalogueEntry({
         id,
         name: input.name,
@@ -396,14 +406,14 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       return { removed: await deps.store.archiveCatalogueEntry(id) };
     },
 
-    async catalogueHealth(): Promise<CatalogueHealth> {
-      return analyse(await deps.store.listCatalogue());
+    async catalogueHealth(ctx?: CallBudget): Promise<CatalogueHealth> {
+      return analyse(await deps.store.listCatalogue(), ctx);
     },
 
-    async marketPulse(input: { asset?: string } = {}): Promise<MarketPulse> {
+    async marketPulse(input: { asset?: string } = {}, ctx?: CallBudget): Promise<MarketPulse> {
       const entries = (await deps.store.listCatalogue()).filter((e) => !input.asset || e.rule.asset.toUpperCase() === input.asset.toUpperCase());
       const warnings: string[] = [];
-      const data = await loadEntries(entries, warnings);
+      const data = await loadEntries(entries, warnings, ctx);
       const byAsset = new Map<string, PulseAsset>();
       for (const e of entries) {
         const ds = data.get(e.id);

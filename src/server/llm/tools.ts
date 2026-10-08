@@ -283,15 +283,31 @@ async function dispatch(name: ToolName, input: any, deps: ToolDeps): Promise<Too
   }
 }
 
-async function runLabTool(tool: ToolDef, rawInput: unknown): Promise<ToolRun> {
+/**
+ * `p`, or an UpstreamError once `ms` have passed. The tool's own work is not
+ * cancelled (it finishes, unobserved); the analyst's turn moves on in time.
+ */
+export function withDeadline<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new UpstreamError(`${label} timed out after ${Math.round(ms / 1000)} s`)), ms);
+  });
+  p.catch(() => {}); // a rejection after the deadline is not unhandled
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+
+export async function runLabTool(tool: ToolDef, rawInput: unknown, deadlineMs = LAB_DEADLINE_MS): Promise<ToolRun> {
   try {
-    const out = await tool.run(rawInput ?? {}, { source: "api", deadlineMs: LAB_DEADLINE_MS });
+    // deadlineMs also tells the service to load data under a deadline (providers skip slow optional work).
+    const out = await withDeadline(Promise.resolve().then(() => tool.run(rawInput ?? {}, { source: "api", deadlineMs })), deadlineMs, tool.name);
     return { content: clip(out), summary: tool.title ?? tool.name, isError: false };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (err instanceof ToolInputError) return fail("invalid input", { issues: [message] });
-    if (err instanceof UpstreamError) return fail(`${tool.name}: ${message}`, { note: "A Lab data source failed; say so rather than guessing." });
-    return fail(`${tool.name} failed: ${message}`);
+    if (err instanceof UpstreamError) return fail(`${tool.name}: ${message}`, { note: "A Lab data source failed or timed out; say so rather than guessing." });
+    // Anything else is a bug, not something the model should read or act on.
+    console.error(`[analyst] ${tool.name} failed:`, err);
+    return fail(`${tool.name}: internal error`);
   }
 }
 

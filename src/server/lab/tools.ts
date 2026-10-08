@@ -203,7 +203,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_search",
       title: "Search for trading heuristics",
       description:
-        `Searches the chosen metrics for simple one- or two-condition rules ("when feature A < x and B ≥ y, go long") that predict good forward returns, scored as strategies net of slippage. Fetches data from external providers and runs a seeded random-forest search: typically 5–50 s (server deadline ~50 s; it then returns the trials completed, with a warning). Returns { runId, result }: result.rules ranked by walk-forward objective, one per family (overlapping in-zone days collapse), each with precision, support, inSample, walkForward, walkForwardFolds (Sharpe per fold), deflatedSharpe (probability the walk-forward Sharpe beats the best of result.effectiveTrials independent noise trials: the result.variantsScored variants clustered by return correlation), holdout (most recent 20%, never used for ranking; untested = no trade in it), benchmark, sensitivity.stability, firingNow and ${VERDICT}; plus featureImportance and warnings. Candidates must trade (exposure 5–95%, ≥ 0.5 trades/yr, ≥ 3 trades). A rule's walk-forward = threshold-refit per fold (features and operators were chosen on the whole search region); the trial score is fully out-of-sample, and the holdout is the clean check. The run is stored (runId). Next: compare walkForward vs holdout and stability on the top rules, then refine metrics/windows, lab_evaluate_rule a rule, or lab_catalogue_save only rules with ${BAR}. ${CANDIDATE} ` +
+        `Searches the chosen metrics for simple one- or two-condition rules ("when feature A < x and B ≥ y, go long") that predict good forward returns, scored as strategies net of slippage. Fetches data from external providers and runs a seeded random-forest search: typically 5–50 s (server deadline ~50 s; it then returns the trials completed, with a warning). Returns { runId, result }: result.rules ranked by walk-forward objective, one per family (overlapping in-zone days collapse), each with precision, support, inSample, walkForward, walkForwardFolds (Sharpe per fold, null = no trade in that block), deflatedSharpe (null = undefined at extreme skew/kurtosis; else the probability the walk-forward Sharpe beats the best of result.effectiveTrials independent noise trials: the result.variantsScored variants clustered by return correlation), holdout (most recent 20%, never used for ranking; untested = no trade in it), benchmark, sensitivity.stability, firingNow and ${VERDICT}; plus featureImportance and warnings. Candidates must trade (exposure 5–95%, ≥ 0.5 trades/yr, ≥ 3 trades). A search rule's walk-forward = threshold-refit per fold by quantile matching (features and operators were chosen on the whole search region; lab_evaluate_rule instead keeps an explicit rule's thresholds fixed per fold); the trial score is fully out-of-sample, and the holdout is the clean check. The run is stored (runId). Next: compare walkForward vs holdout and stability on the top rules, then refine metrics/windows, lab_evaluate_rule a rule, or lab_catalogue_save only rules with ${BAR}. ${CANDIDATE} ` +
         HONESTY,
       inputSchema: searchSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -237,7 +237,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_evaluate_rule",
       title: "Evaluate a rule",
       description:
-        "Scores one explicit rule over its full history (or from/to): in-sample = first 80%, holdout = last 20%, walk-forward (thresholds refitted per fold of the first 80% by quantile matching; walkForwardFolds per fold; deflatedSharpe with N = trials, default 1, i.e. not deflated for any search that found the rule: pass the run's result.effectiveTrials), benchmark (buy-and-hold or short-and-hold), precision, support, firingNow, the latest feature values and the save-bar verdict (without sensitivity, stability is not checked). Optional equity curve and sensitivity grid. Fetches data: a few seconds. Returns RuleEvaluation. Use it to test a hand-edited rule or a different window. " +
+        "Scores one explicit rule over its full history (or from/to): in-sample = first 80%, holdout = last 20%, walk-forward (explicit rules: the same fixed thresholds on each fold's test block of the first 80%, nothing refitted; walkForwardFolds per fold, null = no trade in that block; deflatedSharpe with N = trials, default 1, i.e. not deflated for any search that found the rule: pass the run's result.effectiveTrials), benchmark (buy-and-hold or short-and-hold), precision, support, firingNow, the latest feature values and the save-bar verdict (without sensitivity, stability is not checked). Optional equity curve and sensitivity grid. Fetches data: a few seconds. Returns RuleEvaluation. Use it to test a hand-edited rule or a different window. " +
         HONESTY,
       inputSchema: obj(
         {
@@ -253,8 +253,8 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
         ["rule"],
       ),
       annotations: { readOnlyHint: true, openWorldHint: true },
-      async run(args) {
-        return service.evaluateRule(parseInput(EvaluateArgs, args));
+      async run(args, ctx) {
+        return service.evaluateRule(parseInput(EvaluateArgs, args), ctx);
       },
     },
     {
@@ -264,8 +264,8 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
         "Parameter-sensitivity grid for a rule: each threshold shifted to quantiles q ± 0.05 and q ± 0.10, each window swapped for its neighbours. Returns Sensitivity { base, stability (0–1, share of perturbations that keep the Sharpe sign and at least half its size), points }. Stability below 0.5 means the rule only works at one exact setting. Fetches data: a few seconds.",
       inputSchema: obj({ rule: ruleSchema, windows: windowsSchema("Windows to swap in. Default [7, 30, 90]."), slippageBps: slippageSchema }, ["rule"]),
       annotations: { readOnlyHint: true, openWorldHint: true },
-      async run(args) {
-        return service.sensitivity(parseInput(SensitivityArgs, args));
+      async run(args, ctx) {
+        return service.sensitivity(parseInput(SensitivityArgs, args), ctx);
       },
     },
     {
@@ -279,15 +279,15 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
         live: { type: "boolean", description: "Compute live performance and flags. Default true." },
       }),
       annotations: { readOnlyHint: true, openWorldHint: true },
-      async run(args) {
-        return service.catalogueList(parseInput(CatalogueListArgs, args));
+      async run(args, ctx) {
+        return service.catalogueList(parseInput(CatalogueListArgs, args), ctx);
       },
     },
     {
       name: "lab_catalogue_save",
       title: "Save a rule to My Catalogue",
       description:
-        `Saves a rule to the catalogue under its stable id (the same id as in search results). A new rule is evaluated on current data and that evaluation is stored; live tracking starts now. Saving an existing rule only updates its name/note: it keeps its original evaluation and savedAt. An unknown runId is rejected. With a runId the stored walk-forward, walkForwardFolds and deflatedSharpe are the run's (deflated by its effectiveTrials) and the verdict is recomputed on them. Returns CatalogueEntry. Save only rules with ${BAR} (from the search that found them). ${CANDIDATE} Agents: pass origin "agent" and the runId.`,
+        `Saves a rule to the catalogue under its stable id (the same id as in search results). A new rule is evaluated on current data and that evaluation is stored; live tracking starts now. Saving an existing rule only updates its name/note: it keeps its original evaluation and savedAt. An unknown runId is rejected. With a runId the rule is evaluated over the run's from/to and slippage (so the holdout is the run's), the stored walk-forward, walkForwardFolds and deflatedSharpe are the run's (deflated by its effectiveTrials) and the verdict is recomputed on them. Returns CatalogueEntry. Save only rules with ${BAR} (from the search that found them). ${CANDIDATE} Agents: pass origin "agent" and the runId.`,
       inputSchema: obj(
         {
           rule: ruleSchema,
@@ -299,8 +299,8 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
         ["rule", "name"],
       ),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
-      async run(args) {
-        return service.catalogueSave(parseInput(SaveArgs, args));
+      async run(args, ctx) {
+        return service.catalogueSave(parseInput(SaveArgs, args), ctx);
       },
     },
     {
@@ -320,9 +320,9 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
         "Checks the whole catalogue. Returns CatalogueHealth: decayed (≥ 30 live days and live Sharpe < max(0, 0.25 × holdout Sharpe)), overlaps (same-asset pairs whose in-zone days have Jaccard ≥ 0.6), gaps (asset × direction with no rule) and live (id → PerfStats | null). Fetches data per asset: seconds. Next: remove decayed rules, keep one of each overlapping pair, lab_search to fill gaps.",
       inputSchema: obj({}),
       annotations: { readOnlyHint: true, openWorldHint: true },
-      async run(args) {
+      async run(args, ctx) {
         parseInput(Empty, args);
-        return service.catalogueHealth();
+        return service.catalogueHealth(ctx);
       },
     },
     {
@@ -333,8 +333,8 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
         HONESTY,
       inputSchema: obj({ asset: assetSchema("Only this asset. Default: every asset in the catalogue.") }),
       annotations: { readOnlyHint: true, openWorldHint: true },
-      async run(args) {
-        return service.marketPulse(parseInput(PulseArgs, args));
+      async run(args, ctx) {
+        return service.marketPulse(parseInput(PulseArgs, args), ctx);
       },
     },
   ];

@@ -4,7 +4,7 @@ import { resolveProvider, DEFAULT_MODEL, type StepHooks } from "./provider.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OpenAICompatibleProvider } from "./openai.js";
 import { DISCLAIMER, FORECAST_RULE, HARD_RULE, HEDGE_VOCABULARY, buildSystemPrompt } from "./system.js";
-import { LAB_DEADLINE_MS, MAX_TOOL_CHARS, TOOL_SPECS, runTool, type ToolDeps } from "./tools.js";
+import { LAB_DEADLINE_MS, MAX_TOOL_CHARS, TOOL_SPECS, runLabTool, runTool, type ToolDeps } from "./tools.js";
 import { labTools } from "../lab/tools.js";
 import { createLabService } from "../lab/service.js";
 import { memoryStore } from "../lab/store.js";
@@ -340,5 +340,23 @@ describe("tools", () => {
     expect(ctxs[0]).toEqual({ source: "api", deadlineMs: LAB_DEADLINE_MS });
     expect(await runTool("lab_evaluate_rule", {}, fakes)).toMatchObject({ isError: true, summary: "lab_evaluate_rule: no data for cm:PriceUSD" });
     expect(await runTool("lab_sensitivity", {}, fakes)).toMatchObject({ isError: true, summary: "invalid input" });
+  });
+
+  test("lab: a call past its deadline is an UpstreamError timeout; other errors reach the model as \"internal error\" only", async () => {
+    const tool = (run: () => Promise<unknown>): ToolDef => ({ name: "lab_market_pulse", description: "", inputSchema: { type: "object", properties: {} }, annotations: { readOnlyHint: true }, run });
+    const slow = await runLabTool(tool(() => new Promise(() => {})), {}, 20);
+    expect(slow).toMatchObject({ isError: true, summary: "lab_market_pulse: lab_market_pulse timed out after 0 s" });
+    expect(JSON.parse(slow.content).note).toContain("timed out");
+    const errors: unknown[][] = [];
+    const orig = console.error;
+    console.error = (...a: unknown[]) => void errors.push(a);
+    try {
+      const bug = await runLabTool(tool(async () => { throw new TypeError("cannot read x of undefined at /srv/secret/path.ts"); }), {});
+      expect(bug).toMatchObject({ isError: true, summary: "lab_market_pulse: internal error" });
+      expect(bug.content).not.toContain("secret");
+      expect(String(errors[0]?.[0])).toContain("lab_market_pulse");
+    } finally {
+      console.error = orig;
+    }
   });
 });
