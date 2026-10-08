@@ -194,6 +194,8 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
 
   // Refit the best parameters on the whole search region, then rank its
   // rules by quantile-matched walk-forward objective (never by holdout).
+  // At least 100 trees: more trees only widen the candidate pool, and a
+  // planted two-condition rule was often missing from a 30-tree refit.
   const forest = growForest(final.binned, labels, final.rows, { ...best!.params, trees: Math.max(100, best!.params.trees) }, mulberry32((config.seed ^ 0x5bd1e995) >>> 0));
   const candidates = scoreRules(final, extractRules(forest, ids))
     .slice(0, MAX_CANDIDATES)
