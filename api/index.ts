@@ -24,8 +24,10 @@ process.on("unhandledRejection", (err) => {
   console.error("[unhandledRejection]", err, (err as { query?: string })?.query ?? "");
 });
 
-// Vercel function limit (s); the lab search budget (50 s) fits inside it.
-export const maxDuration = 60;
+// Vercel function limit (s). One function serves every route: the cron
+// backfill is budgeted against 300 s (routes/cron.ts); the lab search keeps
+// its own 50 s deadline inside this.
+export const maxDuration = 300;
 
 const app = new Hono({ strict: false }).basePath("/api");
 
