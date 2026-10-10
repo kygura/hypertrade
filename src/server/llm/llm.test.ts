@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { resolveProvider, DEFAULT_MODEL, type StepHooks } from "./provider.js";
+import { resolveChosenProvider, resolveProvider, DEFAULT_MODEL, type StepHooks } from "./provider.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OpenAICompatibleProvider, postWithRetry429 } from "./openai.js";
 import { DISCLAIMER, FORECAST_RULE, HARD_RULE, HEDGE_VOCABULARY, buildSystemPrompt } from "./system.js";
@@ -68,6 +68,18 @@ describe("system prompt", () => {
 });
 
 describe("AnthropicProvider", () => {
+  test("ANTHROPIC_WORKSPACE_ID is sent as anthropic-workspace-id", async () => {
+    let headers = new Headers();
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      headers = new Headers(init.headers);
+      throw new Error("stop");
+    }) as unknown as typeof fetch;
+    const p = resolveChosenProvider({ ANTHROPIC_API_KEY: "sk-ant-usr-x", ANTHROPIC_WORKSPACE_ID: "wrkspc_1" }, { provider: "anthropic", model: "claude-opus-5-5" }) as AnthropicProvider;
+    const withFetch = new AnthropicProvider({ ...(p as any).opts, fetch: fakeFetch });
+    await withFetch.start("S", [], "q").step(TOOL_SPECS, hooks().h, { signal: new AbortController().signal }).catch(() => {});
+    expect(headers.get("anthropic-workspace-id")).toBe("wrkspc_1");
+  });
+
   test("streams text, surfaces web search and citations, returns tool calls", async () => {
     let sent: any;
     let headers = new Headers();

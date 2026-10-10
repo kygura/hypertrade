@@ -34,6 +34,8 @@ export interface AnthropicProviderOptions {
   apiKey: string;
   model: string;
   baseURL?: string;
+  /** Sent as anthropic-workspace-id; required by keys not scoped to a workspace (sk-ant-usr-…). */
+  workspaceId?: string;
   effort?: Effort;
   /** Injected transport (tests). */
   fetch?: typeof fetch;
@@ -68,6 +70,7 @@ export class AnthropicProvider implements LLMProvider {
       apiKey: opts.apiKey,
       baseURL: opts.baseURL,
       fetch: opts.fetch,
+      defaultHeaders: opts.workspaceId ? { "anthropic-workspace-id": opts.workspaceId } : undefined,
       // The analyst route owns the overall 90 s budget and aborts via the
       // signal; one SDK retry covers a transient 429/5xx inside it.
       maxRetries: 1,

@@ -125,6 +125,10 @@ export interface AnalystEnv {
    * resolveProvider/anthropicCredentials below and catalog.ts).
    */
   ANALYST_ANTHROPIC_API_KEY?: string;
+  /** The standard Anthropic key name; same standing as ANALYST_ANTHROPIC_API_KEY. */
+  ANTHROPIC_API_KEY?: string;
+  /** Workspace for Anthropic keys not scoped to one (sk-ant-usr-…). */
+  ANTHROPIC_WORKSPACE_ID?: string;
   /** openai-compatible-specific key/base URL, same purpose as above. */
   ANALYST_OPENAI_API_KEY?: string;
   ANALYST_OPENAI_BASE_URL?: string;
@@ -155,8 +159,9 @@ export function rawProviderKind(env: AnalystEnv): ProviderId | "unknown" {
 
 /**
  * Anthropic credentials, precedence order:
- *   1. ANALYST_ANTHROPIC_API_KEY — works whether or not anthropic is the
- *      server default, so both providers can be configured at once.
+ *   1. ANALYST_ANTHROPIC_API_KEY, then the standard ANTHROPIC_API_KEY — work
+ *      whether or not anthropic is the server default, so both providers can
+ *      be configured at once.
  *   2. ANALYST_API_KEY — only when ANALYST_PROVIDER selects anthropic (the
  *      legacy single-provider setting, unchanged).
  * Base URL only ever comes from the legacy ANALYST_BASE_URL, and only when
@@ -164,11 +169,12 @@ export function rawProviderKind(env: AnalystEnv): ProviderId | "unknown" {
  * ANALYST_ANTHROPIC_BASE_URL (anthropic's own endpoint needs no override in
  * the common case).
  */
-export function anthropicCredentials(env: AnalystEnv): { apiKey?: string; baseURL?: string } {
+export function anthropicCredentials(env: AnalystEnv): { apiKey?: string; baseURL?: string; workspaceId?: string } {
   const isDefault = rawProviderKind(env) === "anthropic";
-  const apiKey = env.ANALYST_ANTHROPIC_API_KEY?.trim() || (isDefault ? env.ANALYST_API_KEY?.trim() : undefined) || undefined;
+  const apiKey =
+    env.ANALYST_ANTHROPIC_API_KEY?.trim() || env.ANTHROPIC_API_KEY?.trim() || (isDefault ? env.ANALYST_API_KEY?.trim() : undefined) || undefined;
   const baseURL = (isDefault ? env.ANALYST_BASE_URL?.trim() : undefined) || undefined;
-  return { apiKey, baseURL };
+  return { apiKey, baseURL, workspaceId: env.ANTHROPIC_WORKSPACE_ID?.trim() || undefined };
 }
 
 /**
@@ -207,10 +213,10 @@ export function presetCredentials(preset: Preset, env: AnalystEnv) {
 export function resolveProvider(env: AnalystEnv = process.env as AnalystEnv): LLMProvider | null {
   const raw = rawProviderKind(env);
   if (raw === "anthropic") {
-    const { apiKey, baseURL } = anthropicCredentials(env);
+    const { apiKey, baseURL, workspaceId } = anthropicCredentials(env);
     if (!apiKey) return null;
     const model = env.DESK_ANALYST_MODEL?.trim() || DEFAULT_MODEL;
-    return new AnthropicProvider({ apiKey, model, baseURL, effort: parseEffort(env.ANALYST_EFFORT) });
+    return new AnthropicProvider({ apiKey, model, baseURL, workspaceId, effort: parseEffort(env.ANALYST_EFFORT) });
   }
   if (raw === "openai-compatible") {
     const { apiKey, baseURL } = openaiCredentials(env);
@@ -240,9 +246,9 @@ export function resolveChosenProvider(
   choice: { provider: ProviderId; model: string; effort?: Effort },
 ): LLMProvider | null {
   if (choice.provider === "anthropic") {
-    const { apiKey, baseURL } = anthropicCredentials(env);
+    const { apiKey, baseURL, workspaceId } = anthropicCredentials(env);
     if (!apiKey) return null;
-    return new AnthropicProvider({ apiKey, model: choice.model, baseURL, effort: choice.effort ?? parseEffort(env.ANALYST_EFFORT) });
+    return new AnthropicProvider({ apiKey, model: choice.model, baseURL, workspaceId, effort: choice.effort ?? parseEffort(env.ANALYST_EFFORT) });
   }
   if (choice.provider === "openai-compatible") {
     const { apiKey, baseURL } = openaiCredentials(env);

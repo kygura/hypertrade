@@ -89,14 +89,20 @@ manages trades, and alerts you. Code: `src/server/desk/*`,
 `src/server/routes/desk.ts`, `src/ui/pages/Desk.tsx`, `scripts/desk-worker.ts`.
 Needs `db/migrations/003_desk.sql` and any analyst provider key.
 
-**Models.** The PM, like the interactive `/analyst`, runs `DESK_ANALYST_MODEL`
-on the server's default provider (frontier-tier). Scouts run on the same
-provider and model unless overridden: `DESK_SCOUT_MODEL` picks a different
-model on that provider, and `DESK_SCOUT_PROVIDER` moves scouts to a different
-provider entirely (any id from the Analyst provider table below) — e.g. a
-cheap model. If `DESK_SCOUT_PROVIDER` can't resolve (no key, unknown
-provider/model), scouts fall back to the analyst's provider and the server
-logs a warning once.
+**Models.** Anthropic goes first. With an Anthropic key (`ANTHROPIC_API_KEY`
+or `ANALYST_ANTHROPIC_API_KEY`) the PM runs Claude Opus 5.5 at high effort and
+scouts run Claude Sonnet 5.5 at medium, whatever `ANALYST_PROVIDER` and
+`DESK_SCOUT_PROVIDER` say. `DESK_ANALYST_MODEL` / `DESK_SCOUT_MODEL` still pick
+the model when they name a Claude model. `DESK_ANTHROPIC_FIRST=false` turns
+this off.
+
+Without an Anthropic key (or with it turned off), the PM, like the interactive
+`/analyst`, runs `DESK_ANALYST_MODEL` on the server's default provider. Scouts
+run on the same provider and model unless overridden: `DESK_SCOUT_MODEL` picks
+a different model on that provider, and `DESK_SCOUT_PROVIDER` moves scouts to a
+different provider entirely (any id from the Analyst provider table below).
+If `DESK_SCOUT_PROVIDER` can't resolve (no key, unknown provider/model), scouts
+fall back to the analyst's provider and the server logs a warning once.
 
 **Web search.** Set `EXA_API_KEY` to give both the Analyst and every Desk
 scout a real `web_search` tool (Exa's "Instant" search, `src/server/llm/tools.ts`),
@@ -215,7 +221,7 @@ curated models appear in the picker.
 
 | Provider (`id`) | Key env var | Models (checked 2026-10-01) | Effort | Notes |
 |---|---|---|---|---|
-| Anthropic (`anthropic`) | `ANALYST_ANTHROPIC_API_KEY` | Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 | low…max (not Haiku) | Native web search (superseded by Exa when `EXA_API_KEY` is set); refusal fallbacks; summarized thinking |
+| Anthropic (`anthropic`) | `ANALYST_ANTHROPIC_API_KEY` or `ANTHROPIC_API_KEY` | Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 | low…max (not Haiku) | Native web search (superseded by Exa when `EXA_API_KEY` is set); refusal fallbacks; summarized thinking |
 | OpenAI (`openai`) | `OPENAI_API_KEY` | GPT-6 Astra, GPT-6.1 Sol, GPT-6 Luna | low…max | `max_completion_tokens` |
 | Google Gemini (`google`) | `GEMINI_API_KEY` | Gemini 3.8 Flash, 3.5 Flash-Lite | low/medium/high | OpenAI-compatible endpoint |
 | xAI (`xai`) | `XAI_API_KEY` | Grok 4.7 | — | |
