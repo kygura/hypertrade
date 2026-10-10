@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { buildCatalog } from "../llm/catalog.js";
 import {
+  DEFAULT_MODEL,
   isProviderId,
   resolveChosenProvider,
   resolveProvider,
@@ -59,18 +60,39 @@ export function estimateCost(byModel: Map<string, Usage>): number | null {
   return Math.round(total * 10_000) / 10_000;
 }
 
+/** Scouts' default model when the desk runs Anthropic-first. */
+export const ANTHROPIC_SCOUT_MODEL = "claude-sonnet-5-5";
+
 /**
- * Providers for the desk: the PM runs the analyst's configuration as-is
- * (any vendor, DESK_ANALYST_MODEL — same model the interactive analyst
- * uses). Scouts run on the same provider by default, with DESK_SCOUT_MODEL
- * overriding the model; DESK_SCOUT_PROVIDER additionally moves scouts to a
- * different provider (e.g. one with web search). When the scout provider
- * can't resolve (no key, unknown model/provider), scouts fall back to the
- * analyst's provider and a warning is logged once.
+ * Providers for the desk. Anthropic goes first: when an Anthropic key is set
+ * (ANTHROPIC_API_KEY or ANALYST_ANTHROPIC_API_KEY), the PM runs Claude
+ * (DESK_ANALYST_MODEL when it names a Claude model, else DEFAULT_MODEL) and
+ * scouts run Claude (DESK_SCOUT_MODEL when it names a Claude model, else
+ * ANTHROPIC_SCOUT_MODEL), whatever ANALYST_PROVIDER / DESK_SCOUT_PROVIDER
+ * say. Those two only apply when there is no Anthropic key, or when
+ * DESK_ANTHROPIC_FIRST=false turns the rule off.
+ *
+ * Without Anthropic-first, the PM runs the analyst's configuration as-is
+ * (any vendor, DESK_ANALYST_MODEL). Scouts run on the same provider by
+ * default, with DESK_SCOUT_MODEL overriding the model; DESK_SCOUT_PROVIDER
+ * additionally moves scouts to a different provider. When the scout
+ * provider can't resolve (no key, unknown model/provider), scouts fall back
+ * to the analyst's provider and a warning is logged once.
  */
 export function deskProviderFactory(env: AnalystEnv = process.env as AnalystEnv): ProviderFactory {
   let warnedScout = false;
+  const anthropicFirst = !/^(0|false|no|off)$/i.test(env.DESK_ANTHROPIC_FIRST?.trim() ?? "");
+  const claude = (m: string | undefined) => (m?.trim().startsWith("claude-") ? m.trim() : undefined);
   return (role) => {
+    if (anthropicFirst) {
+      const model =
+        role === "pm"
+          ? (claude(env.DESK_ANALYST_MODEL) ?? DEFAULT_MODEL)
+          : (claude(env.DESK_SCOUT_MODEL) ?? ANTHROPIC_SCOUT_MODEL);
+      const p = resolveChosenProvider(env, { provider: "anthropic", model, effort: role === "pm" ? "high" : "medium" });
+      if (p) return p;
+    }
+
     let base = resolveProvider(env);
     if (!base) {
       const first = buildCatalog(env).providers.find((p) => p.available && p.models.length > 0);

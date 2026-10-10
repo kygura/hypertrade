@@ -236,7 +236,7 @@ function offlineFrom(err: unknown): Offline {
     return {
       title: 'ANALYST NOT CONFIGURED',
       message:
-        'set at least one provider key on the server: ANALYST_ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, XAI_API_KEY, DEEPSEEK_API_KEY, MOONSHOT_API_KEY, DASHSCOPE_API_KEY or OPENROUTER_API_KEY (README "Analyst")',
+        'set at least one provider key on the server: ANTHROPIC_API_KEY (or ANALYST_ANTHROPIC_API_KEY), OPENAI_API_KEY, GEMINI_API_KEY, XAI_API_KEY, DEEPSEEK_API_KEY, MOONSHOT_API_KEY, DASHSCOPE_API_KEY or OPENROUTER_API_KEY (README "Analyst")',
     }
   }
   if (err instanceof NetworkError || (err instanceof ApiError && err.status === 502)) {

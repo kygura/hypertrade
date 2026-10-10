@@ -133,7 +133,7 @@ export function buildCatalog(env: AnalystEnv): AnalystCatalog {
       label: "Anthropic",
       blurb: "Claude Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 4.5 · web search",
       available: !!anthropic.apiKey,
-      reason: anthropic.apiKey ? undefined : "set ANALYST_ANTHROPIC_API_KEY",
+      reason: anthropic.apiKey ? undefined : "set ANTHROPIC_API_KEY or ANALYST_ANTHROPIC_API_KEY",
       webSearch: true,
       models: ANTHROPIC_MODELS,
     },

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { deskProviderFactory, estimateCost, MAX_SPAWNS_PER_RUN, runDesk } from "./agents.js";
+import { ANTHROPIC_SCOUT_MODEL, deskProviderFactory, estimateCost, MAX_SPAWNS_PER_RUN, runDesk } from "./agents.js";
 import { DEFAULT_MODEL } from "../llm/provider.js";
 import { makeService, ScriptedProvider, type ScriptStep } from "./testkit.js";
 import type { DeskEvent } from "./types.js";
@@ -175,8 +175,39 @@ describe("runDesk", () => {
 });
 
 describe("deskProviderFactory", () => {
+  test("an Anthropic key puts the PM on Claude Opus 5.5 at high effort and scouts on Sonnet 5.5 at medium, whatever ANALYST_PROVIDER says", () => {
+    const factory = deskProviderFactory({ ANTHROPIC_API_KEY: "k", ANALYST_PROVIDER: "openrouter", OPENROUTER_API_KEY: "ork", DESK_ANALYST_MODEL: "x/y" });
+    const pm = factory("pm")!;
+    const scout = factory("specialist")!;
+    expect([pm.id, pm.model, pm.effort]).toEqual(["anthropic", DEFAULT_MODEL, "high"]);
+    expect([scout.id, scout.model, scout.effort]).toEqual(["anthropic", ANTHROPIC_SCOUT_MODEL, "medium"]);
+  });
+
+  test("Anthropic-first beats DESK_SCOUT_PROVIDER, and keeps Claude models named in DESK_ANALYST_MODEL / DESK_SCOUT_MODEL", () => {
+    const factory = deskProviderFactory({
+      ANALYST_ANTHROPIC_API_KEY: "k",
+      OPENROUTER_API_KEY: "ork",
+      DESK_SCOUT_PROVIDER: "openrouter",
+      DESK_ANALYST_MODEL: "claude-fable-5-1",
+      DESK_SCOUT_MODEL: "claude-haiku-4-5",
+    });
+    expect(factory("pm")!.model).toBe("claude-fable-5-1");
+    expect([factory("specialist")!.id, factory("specialist")!.model]).toEqual(["anthropic", "claude-haiku-4-5"]);
+  });
+
+  test("with no Anthropic key the desk falls through to the configured provider", () => {
+    const factory = deskProviderFactory({ OPENROUTER_API_KEY: "ork", ANALYST_PROVIDER: "openrouter", DESK_ANALYST_MODEL: "x/y" });
+    expect([factory("pm")!.id, factory("pm")!.model]).toEqual(["openrouter", "x/y"]);
+    expect(factory("specialist")!.id).toBe("openrouter");
+  });
+
+  test("DESK_ANTHROPIC_FIRST=false restores the analyst's provider order", () => {
+    const factory = deskProviderFactory({ ANTHROPIC_API_KEY: "k", ANALYST_PROVIDER: "openrouter", OPENROUTER_API_KEY: "ork", DESK_ANALYST_MODEL: "x/y", DESK_ANTHROPIC_FIRST: "false" });
+    expect(factory("pm")!.id).toBe("openrouter");
+  });
+
   test("PM always runs the analyst's provider at high effort; scouts default to medium on the same provider", () => {
-    const factory = deskProviderFactory({ ANALYST_API_KEY: "k", DESK_ANALYST_MODEL: "claude-fable-5-1" });
+    const factory = deskProviderFactory({ DESK_ANTHROPIC_FIRST: "false", ANALYST_API_KEY: "k", DESK_ANALYST_MODEL: "claude-fable-5-1" });
     const pm = factory("pm")!;
     const scout = factory("specialist")!;
     expect(pm.model).toBe("claude-fable-5-1");
@@ -186,7 +217,7 @@ describe("deskProviderFactory", () => {
   });
 
   test("DESK_SCOUT_MODEL overrides only the scout's model, same provider", () => {
-    const factory = deskProviderFactory({ ANALYST_API_KEY: "k", DESK_SCOUT_MODEL: "claude-sonnet-5-5" });
+    const factory = deskProviderFactory({ DESK_ANTHROPIC_FIRST: "false", ANALYST_API_KEY: "k", DESK_SCOUT_MODEL: "claude-sonnet-5-5" });
     expect(factory("pm")!.model).toBe(DEFAULT_MODEL);
     const scout = factory("specialist")!;
     expect(scout.id).toBe("anthropic");
@@ -194,7 +225,7 @@ describe("deskProviderFactory", () => {
   });
 
   test("DESK_SCOUT_PROVIDER moves scouts to a different provider; the PM stays on the analyst's", () => {
-    const factory = deskProviderFactory({ ANALYST_API_KEY: "k", OPENROUTER_API_KEY: "ork", DESK_SCOUT_PROVIDER: "openrouter", DESK_SCOUT_MODEL: "x/y:online" });
+    const factory = deskProviderFactory({ DESK_ANTHROPIC_FIRST: "false", ANALYST_API_KEY: "k", OPENROUTER_API_KEY: "ork", DESK_SCOUT_PROVIDER: "openrouter", DESK_SCOUT_MODEL: "x/y:online" });
     expect(factory("pm")!.id).toBe("anthropic");
     const scout = factory("specialist")!;
     expect(scout.id).toBe("openrouter");
@@ -206,7 +237,7 @@ describe("deskProviderFactory", () => {
     const orig = console.warn;
     console.warn = (...a: unknown[]) => void warnings.push(a);
     try {
-      const factory = deskProviderFactory({ ANALYST_API_KEY: "k", DESK_SCOUT_PROVIDER: "openrouter" }); // no OPENROUTER_API_KEY
+      const factory = deskProviderFactory({ DESK_ANTHROPIC_FIRST: "false", ANALYST_API_KEY: "k", DESK_SCOUT_PROVIDER: "openrouter" }); // no OPENROUTER_API_KEY
       expect(factory("specialist")!.id).toBe("anthropic");
       expect(factory("specialist")!.id).toBe("anthropic");
       expect(warnings.length).toBe(1);
@@ -222,7 +253,7 @@ describe("deskProviderFactory", () => {
     console.warn = (...a: unknown[]) => void warnings.push(a);
     try {
       // openrouter's curated list is empty by default; no DESK_SCOUT_MODEL/ANALYST_OPENROUTER_MODELS leaves no model to resolve.
-      const factory = deskProviderFactory({ ANALYST_API_KEY: "k", OPENROUTER_API_KEY: "ork", DESK_SCOUT_PROVIDER: "openrouter" });
+      const factory = deskProviderFactory({ DESK_ANTHROPIC_FIRST: "false", ANALYST_API_KEY: "k", OPENROUTER_API_KEY: "ork", DESK_SCOUT_PROVIDER: "openrouter" });
       expect(factory("specialist")!.id).toBe("anthropic");
       expect(warnings.length).toBe(1);
     } finally {
@@ -235,7 +266,7 @@ describe("deskProviderFactory", () => {
     const orig = console.warn;
     console.warn = (...a: unknown[]) => void warnings.push(a);
     try {
-      const factory = deskProviderFactory({ ANALYST_API_KEY: "k", DESK_SCOUT_PROVIDER: "not-a-real-provider", DESK_SCOUT_MODEL: "m" });
+      const factory = deskProviderFactory({ DESK_ANTHROPIC_FIRST: "false", ANALYST_API_KEY: "k", DESK_SCOUT_PROVIDER: "not-a-real-provider", DESK_SCOUT_MODEL: "m" });
       expect(factory("specialist")!.id).toBe("anthropic");
       expect(warnings.length).toBe(1);
     } finally {

@@ -125,6 +125,8 @@ export interface AnalystEnv {
    * resolveProvider/anthropicCredentials below and catalog.ts).
    */
   ANALYST_ANTHROPIC_API_KEY?: string;
+  /** The standard Anthropic key name; same standing as ANALYST_ANTHROPIC_API_KEY. */
+  ANTHROPIC_API_KEY?: string;
   /** openai-compatible-specific key/base URL, same purpose as above. */
   ANALYST_OPENAI_API_KEY?: string;
   ANALYST_OPENAI_BASE_URL?: string;
@@ -155,8 +157,9 @@ export function rawProviderKind(env: AnalystEnv): ProviderId | "unknown" {
 
 /**
  * Anthropic credentials, precedence order:
- *   1. ANALYST_ANTHROPIC_API_KEY — works whether or not anthropic is the
- *      server default, so both providers can be configured at once.
+ *   1. ANALYST_ANTHROPIC_API_KEY, then the standard ANTHROPIC_API_KEY — work
+ *      whether or not anthropic is the server default, so both providers can
+ *      be configured at once.
  *   2. ANALYST_API_KEY — only when ANALYST_PROVIDER selects anthropic (the
  *      legacy single-provider setting, unchanged).
  * Base URL only ever comes from the legacy ANALYST_BASE_URL, and only when
@@ -166,7 +169,8 @@ export function rawProviderKind(env: AnalystEnv): ProviderId | "unknown" {
  */
 export function anthropicCredentials(env: AnalystEnv): { apiKey?: string; baseURL?: string } {
   const isDefault = rawProviderKind(env) === "anthropic";
-  const apiKey = env.ANALYST_ANTHROPIC_API_KEY?.trim() || (isDefault ? env.ANALYST_API_KEY?.trim() : undefined) || undefined;
+  const apiKey =
+    env.ANALYST_ANTHROPIC_API_KEY?.trim() || env.ANTHROPIC_API_KEY?.trim() || (isDefault ? env.ANALYST_API_KEY?.trim() : undefined) || undefined;
   const baseURL = (isDefault ? env.ANALYST_BASE_URL?.trim() : undefined) || undefined;
   return { apiKey, baseURL };
 }

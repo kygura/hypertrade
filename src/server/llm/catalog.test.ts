@@ -14,7 +14,7 @@ describe("buildCatalog", () => {
     expect(cat.providers.every((p) => !p.available && p.reason)).toBe(true);
     const anthropic = cat.providers.find((p) => p.id === "anthropic")!;
     expect(anthropic.available).toBe(false);
-    expect(anthropic.reason).toBe("set ANALYST_ANTHROPIC_API_KEY");
+    expect(anthropic.reason).toBe("set ANTHROPIC_API_KEY or ANALYST_ANTHROPIC_API_KEY");
     expect(anthropic.models).toEqual(ANTHROPIC_MODELS);
     const openai = cat.providers.find((p) => p.id === "openai-compatible")!;
     expect(openai.available).toBe(false);
