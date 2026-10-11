@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-09T06:00:00Z",
+  "generated_at": "2026-10-11T06:10:00Z",
   "sectors": [
     {
       "id": "rwa-stablecoins",
@@ -19,8 +19,8 @@
       "id": "perp-dex-defi",
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.65,
-      "momentum": 0,
-      "rationale": "HYPE $85.50 (-2.2%), OI $1.68B (z30 -1.5); platform OI $11.9B (z30 -2.1) is the lowest in the 30-day window, so building momentum remains cooled. Low-confidence.",
+      "momentum": 0.05,
+      "rationale": "HYPE $84.68 (+0.7%), HYPE OI $1.70B (z30 -0.5); platform OI $12.0B (z30 -0.7) has recovered from last run's 30-day low (z30 -2.1), so attention is stabilising rather than building. Low-confidence.",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -37,8 +37,8 @@
       "id": "l1-majors",
       "label": "L1 Majors",
       "mindshare_score": 0.5,
-      "momentum": -0.35,
-      "rationale": "ETH -3.0% and SOL -4.2% versus prior-day px on HL while BTC only -0.6%; ETH OI z30 -2.3 and SOL OI z30 -2.6 mean leverage is leaving the non-BTC majors fastest. Measured social share unavailable (no Elfa data).",
+      "momentum": -0.1,
+      "rationale": "BTC/ETH marks +0.3% and SOL -0.4% vs prior-day px; ETH OI z30 -0.8 and SOL OI z30 -0.5, so the non-BTC leverage flush of last run has eased. BTC funding z30 -3.2 is the unusual reading. Measured social share unavailable (no Elfa data).",
       "tokens": [
         "BTC",
         "ETH",
@@ -105,7 +105,7 @@
       "to": "perp-dex-defi",
       "confidence": 0.25,
       "trigger": "HL OI stabilises or rises while PUMP/meme OI keeps falling",
-      "note": "Low-confidence; weaker than last run because HYPE itself is -3.6% on the day."
+      "note": "Low-confidence; platform OI has stabilised (z30 -0.7) but HYPE has not yet led."
     },
     {
       "from": "privacy",

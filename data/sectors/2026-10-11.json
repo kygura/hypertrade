@@ -1,0 +1,118 @@
+{
+  "generated_at": "2026-10-11T06:10:00Z",
+  "sectors": [
+    {
+      "id": "rwa-stablecoins",
+      "label": "RWA & Stablecoins",
+      "mindshare_score": 0.6,
+      "momentum": 0.2,
+      "rationale": "Sources describe RWA as showing the clearest institutional flow in 2026 alongside stablecoin/stablechain narratives; no single dominant narrative this period. Low-confidence, undated sources. ONDO confirmed listed on HL this run; no fresh flow data.",
+      "tokens": [
+        "ONDO"
+      ],
+      "sources": [
+        "web narrative roundups (coingecko, tiger research)",
+        "hyperliquid universe check (live)"
+      ]
+    },
+    {
+      "id": "perp-dex-defi",
+      "label": "Perp DEX & DeFi",
+      "mindshare_score": 0.65,
+      "momentum": 0.05,
+      "rationale": "HYPE $84.68 (+0.7%), HYPE OI $1.70B (z30 -0.5); platform OI $12.0B (z30 -0.7) has recovered from last run's 30-day low (z30 -2.1), so attention is stabilising rather than building. Low-confidence.",
+      "tokens": [
+        "HYPE",
+        "AAVE",
+        "UNI",
+        "ENA",
+        "PENDLE"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "hypertrade rolling baselines (z30)"
+      ]
+    },
+    {
+      "id": "l1-majors",
+      "label": "L1 Majors",
+      "mindshare_score": 0.5,
+      "momentum": -0.1,
+      "rationale": "BTC/ETH marks +0.3% and SOL -0.4% vs prior-day px; ETH OI z30 -0.8 and SOL OI z30 -0.5, so the non-BTC leverage flush of last run has eased. BTC funding z30 -3.2 is the unusual reading. Measured social share unavailable (no Elfa data).",
+      "tokens": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "price roundup search"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "label": "AI & Agents",
+      "mindshare_score": 0.45,
+      "momentum": 0.1,
+      "rationale": "AI remains the dominant equity theme (AI-linked >80% of S&P gains per Jefferies); crypto-side AI narratives (agentic economy, AI x DePIN) appear mostly in promotional posts, so crypto attention is uncertain.",
+      "tokens": [
+        "FET",
+        "TAO",
+        "VIRTUAL"
+      ],
+      "sources": [
+        "equity research summaries",
+        "binance square posts (low reliability)",
+        "hyperliquid universe check (live)"
+      ]
+    },
+    {
+      "id": "memecoins",
+      "label": "Memecoins",
+      "mindshare_score": 0.3,
+      "momentum": -0.25,
+      "rationale": "PUMP -8.8% 24h (OI ~$278M), DOGE -2.0%; memes weaker than majors on the day with no fresh euphoric run found. Low-confidence.",
+      "tokens": [
+        "WIF",
+        "DOGE",
+        "PUMP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "coingecko narratives page"
+      ]
+    },
+    {
+      "id": "privacy",
+      "label": "Privacy",
+      "mindshare_score": 0.4,
+      "momentum": -0.3,
+      "rationale": "ZEC is the 5th-largest HL OI (~$566M) at $1,207 but -6.8% 24h, the sharpest drop among the large-OI markets; prior coverage describes a multi-month privacy run, which now appears to be unwinding on the day. Low-confidence, coverage undated.",
+      "tokens": [
+        "ZEC",
+        "XMR"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "blockworks research notes (undated)"
+      ]
+    }
+  ],
+  "rotations": [
+    {
+      "from": "memecoins",
+      "to": "perp-dex-defi",
+      "confidence": 0.25,
+      "trigger": "HL OI stabilises or rises while PUMP/meme OI keeps falling",
+      "note": "Low-confidence; platform OI has stabilised (z30 -0.7) but HYPE has not yet led."
+    },
+    {
+      "from": "privacy",
+      "to": "l1-majors",
+      "confidence": 0.2,
+      "trigger": "ZEC OI drops below ~$400M while BTC/ETH OI holds",
+      "note": "Very low-confidence; we lean toward de-risking from high-beta rather than a clean rotation."
+    }
+  ]
+}
