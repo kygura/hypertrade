@@ -1,4 +1,11 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "claude-code/*": false,
+      "ccr-*": false,
+      "routine/*": false
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
