@@ -1,0 +1,154 @@
+{
+  "generated_at": "2026-10-12T06:13:00Z",
+  "headline": "Crypto leverage normalises (HL OI $12.4B, z30 +0.8; BTC funding back positive) with BTC dominance unusually high (z30 +2.2); hl-cycles stays mild risk-on while macro stays restrictive",
+  "tldr": "Per the app's 30-day baselines: HL perp OI is about $12.4B (z30 +0.8) and BTC hourly funding on HL flipped back to slightly positive (z30 +0.7, from z30 -3.2 last run). The one unusual reading is BTC dominance at 59.6% (z30 +2.2). BTC $83,873, ETH $2,559, SOL $112.46, HYPE $87.56 (HL marks). Fear & Greed 69 (z30 +1.5). hl-cycles is unchanged at mild risk-on (66% BTC, 1 of 6 stress conditions on: ETF 7d outflow); Macro lens 34 (Restrictive). No fresh equity, yield or oil data could be found for Oct 12, so those domains carry forward the Oct 9 closes. Watch: Sep CPI Oct 14, FOMC Oct 27-28. Not financial advice.",
+  "domains": [
+    {
+      "domain": "macro",
+      "summary": "Policy is tightening: the FOMC raised the target range 25bp to 3.75-4.00% on Sep 16 (first hike since 2023) and 16 of 18 participants projected at least one more hike this year. Long yields spiked on Oct 5 (10Y about 5.34%, 30Y about 5.70%, highest since 2002) and eased slightly on Oct 6 (10Y about 5.27%). We read the liquidity backdrop as tightening. No September CPI print or current oil/dollar levels could be verified this run. Update: a prediction-market snapshot from Oct 2 put the odds of an October hike near 26% while another source says roughly even, so we treat hike odds as unresolved; September CPI is scheduled for Oct 14 (August headline was 3.4% YoY). Brent was reported above $100 in early October and slipped below on Oct 6 (low-confidence, secondary sources). hl-cycles Macro lens is 32 (Restrictive), -21 points over 30 days. Update Oct 11: the 10Y closed Oct 9 near 5.24% after swinging intraday, still close to its highest since 2002. Current Brent and October hike odds could not be verified this run (latest sources are from September, when Brent was above $100 on US-Iran tensions); we treat both as unresolved. Update Oct 12: searches returned no new October data on yields, oil or hike odds; figures above are carried forward and treated as unverified for today.",
+      "signals": [
+        {
+          "label": "Fed funds target",
+          "value": "3.75-4.00%",
+          "direction": "up"
+        },
+        {
+          "label": "10Y yield",
+          "value": "5.24% (Oct 9)",
+          "direction": "up"
+        },
+        {
+          "label": "30Y yield",
+          "value": "5.70%",
+          "direction": "up"
+        },
+        {
+          "label": "Core inflation YoY (Aug)",
+          "value": "2.4%",
+          "direction": "down"
+        },
+        {
+          "label": "hl-cycles Macro lens",
+          "value": "31.6 Restrictive (-21.2 30d)",
+          "direction": "down"
+        },
+        {
+          "label": "Sep CPI release",
+          "value": "Oct 14",
+          "direction": "flat"
+        }
+      ]
+    },
+    {
+      "domain": "equities",
+      "summary": "US cash markets closed for the weekend; levels are as of the Oct 9 close (AP-based report). The S&P 500 rose 0.6% to 7,811.54, just short of its all-time high set three days earlier; Nasdaq +0.6% and Dow +0.8%. No VIX or put/call reading found this run. AI-linked names remain the main driver of 2026 index gains per Jefferies. Update Oct 12: no newer quotes found; levels remain the Oct 9 close.",
+      "signals": [
+        {
+          "label": "S&P 500 (Oct 9)",
+          "value": "7,811.54",
+          "direction": "up"
+        },
+        {
+          "label": "Nasdaq Comp (Oct 9)",
+          "value": "27,366.17",
+          "direction": "up"
+        },
+        {
+          "label": "Dow (Oct 9)",
+          "value": "51,654.95",
+          "direction": "up"
+        }
+      ]
+    },
+    {
+      "domain": "crypto",
+      "summary": "Live Hyperliquid snapshot plus the app's rolling baselines. Perp OI totals about $12.4B (z30 +0.8, 30-day mean about $12.1B); BTC OI $3.22B (z30 -0.1), ETH OI $2.83B (z30 -0.2), SOL OI $0.64B (z30 +0.5), HYPE OI $1.74B (z30 +1.4). BTC hourly funding on HL is +0.0011%/h (z30 +0.7), up from the unusual negative reading last run; funding skew z30 +1.7. Marks: BTC $83,873, ETH $2,559, SOL $112.46, HYPE $87.56. Fear & Greed 69 (from 61; z30 +1.5), DVOL 37.5 (z30 +0.4), total crypto mcap $2.82T (z30 +0.4), BTC dominance 59.6% (z30 +2.2, the only |z30| >= 2 reading), stablecoin cap $312B (z30 -0.1). We read this as leverage rebuilding from a defensive tilt with BTC outperforming alts; low-confidence on direction.",
+      "signals": [
+        {
+          "label": "BTC (HL mark)",
+          "value": "$83,873",
+          "direction": "up"
+        },
+        {
+          "label": "ETH (HL mark)",
+          "value": "$2,559",
+          "direction": "up"
+        },
+        {
+          "label": "SOL (HL mark)",
+          "value": "$112.46",
+          "direction": "up"
+        },
+        {
+          "label": "HL perp OI total (z30 +0.8)",
+          "value": "$12.4B",
+          "direction": "up"
+        },
+        {
+          "label": "BTC funding HL (z30 +0.7)",
+          "value": "+0.0011%/h",
+          "direction": "up"
+        },
+        {
+          "label": "BTC dominance (z30 +2.2)",
+          "value": "59.6%",
+          "direction": "up"
+        },
+        {
+          "label": "Fear & Greed",
+          "value": "69",
+          "direction": "up"
+        },
+        {
+          "label": "BTC DVOL",
+          "value": "37.5",
+          "direction": "flat"
+        }
+      ]
+    },
+    {
+      "domain": "tech",
+      "summary": "Individual mega-cap quotes for Oct 9 could not be found this run, so dispersion is not assessed. Context: AI-linked stocks drove more than 80% of S&P 500 gains in 2026 per Jefferies, hyperscaler 2026 capex estimates run $520-725B depending on scope, and NVDA is about 22% of SMH, keeping semis breadth concentrated. Oct 2 coverage described semis as split.",
+      "signals": [
+        {
+          "label": "AI share of S&P 2026 gains",
+          "value": ">80%",
+          "direction": "up"
+        },
+        {
+          "label": "NVDA weight in SMH",
+          "value": "21.7%",
+          "direction": "flat"
+        }
+      ]
+    },
+    {
+      "domain": "geopolitics",
+      "summary": "The Graham Sanctioning Russia and Iran Act (signed Sep 18) requires implementation within 30 days (Oct 18), with authority for tariffs up to 100% on top importers of Russian energy, subject to waivers. Separately reported: US-Canada 50% tariffs after talks broke down (undated roundup), prospective new China overcapacity tariffs, new Iran-related Treasury sanctions, and an Iran-Oman Hormuz transit framework. Current Brent/WTI and OPEC+ news not found. Reporting this run adds that the US earlier threatened 50% tariffs on arms suppliers to Iran and that the Supreme Court struck down most reciprocal tariffs in February with the White House rebuilding via Section 301 (secondary sources; no fresh dated item for this week found).",
+      "signals": [
+        {
+          "label": "Russia sanctions deadline",
+          "value": "Oct 18",
+          "direction": "flat"
+        },
+        {
+          "label": "FOMC",
+          "value": "Oct 27-28",
+          "direction": "flat"
+        }
+      ]
+    }
+  ],
+  "thesis": {
+    "observe": "HL OI $12.4B (z30 +0.8), BTC funding slightly positive (z30 +0.7), BTC dominance 59.6% (z30 +2.2), Fear & Greed 69, BTC $83,873. hl-cycles: mild risk-on, Compass 48 (Neutral), Macro lens 34 (Restrictive). US equity and yield data are carried forward from the Oct 9 close.",
+    "infer": "Crypto leverage is subdued but no longer falling sharply (OI z-scores have normalised from about -2 to about -0.7) while equities sit near records despite a 5.2% 10Y. We read the hl-cycles downgrade to mild risk-on as a momentum cooling (+22 vs +55 a week ago) rather than a trend break, since price holds above the STH cost basis ($73.8K). Consensus is pricing an uncertain October FOMC; we read September CPI as the swing input. Low-confidence.",
+    "forecast": "Base case (we lean here, low-confidence): range-bound crypto with subdued leverage while long yields stay elevated. Tail case (low-confidence): a hot CPI or further long-end spike forces a repricing, and risk skews toward a sharper leg down in high-beta alts; hl-cycles lists a daily close below $81.6K (ETF cost basis) as invalidating its read, about 1.7% below the current mark. Second tail case (low-confidence): the Oct 18 sanctions deadline broadens into a trade shock. Consensus is pricing a split October decision; we read the risk as hinging on September CPI.",
+    "disclaimer": "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything."
+  },
+  "risks": [
+    "Hot September CPI (Oct 14) or a further long-end yield spike (30Y above 5.7%)",
+    "Daily BTC close below ~$81.6K (ETF cost basis, per hl-cycles) would invalidate its risk-on read",
+    "Tariff/sanctions escalation around the Oct 18 deadline",
+    "Data-quality risk: oil, mega-cap and VIX levels are stale or unverified; Elfa/FRED series not available from the app this run; NVTAdj metric 403 in the Lab"
+  ]
+}
