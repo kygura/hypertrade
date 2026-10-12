@@ -1,5 +1,12 @@
 # ROUTINE.md — hypertrade cloud routine contract
 
+> **Read `CLAUDE.md` first.** It is the step-by-step runbook for the routine
+> and overrides this file where they differ. This file still owns the output
+> contract: schemas (§c), domain playbook and hedge vocabulary (§d), sector
+> rules (§e) and validation (§f). §(a)'s "no database access / no z-scores"
+> and §(b)'s date and commit-message rules are superseded: the routine now
+> reads the app's baselines with `LAB_API_TOKEN`.
+
 This file is the operating contract for the **hypertrade routine**: a Claude
 session that runs in the user's Anthropic cloud environment (managed from
 Claude Desktop), checks out this repository, does live market research, and
