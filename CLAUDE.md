@@ -374,6 +374,13 @@ add `"note": "lab skipped: LAB_API_TOKEN not set"`.
    and name the failing check in the brief. Master must never go red from a
    data commit. If the push fails on the network, retry once; keep the local
    commit either way.
+   If the session may only push to its own branch (a `claude-code/*` branch
+   rather than `master`), push the commit there, open a PR into `master` with
+   `mcp__github__create_pull_request`, then call
+   `mcp__github__enable_pr_auto_merge`. GitHub merges it when the required
+   `build` check passes, and the merge deploys to production. If enabling
+   auto-merge is refused (the repo setting or branch protection is off), leave
+   the PR open and put its link in the brief. Never merge it yourself.
 5. Anything else on GitHub (PRs, check status) goes through the
    `mcp__github__*` tools. `gh` is blocked here.
 
