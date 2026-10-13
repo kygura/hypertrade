@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Protocol Blog</title>
+  <link href="https://blog.example.org/" rel="alternate"/>
+  <updated>2026-10-13T10:00:00Z</updated>
+  <entry>
+    <title type="html">USDe supply drops 8% as funding turns negative</title>
+    <link rel="self" href="https://blog.example.org/api/entries/42"/>
+    <link rel="alternate" type="text/html" href="https://blog.example.org/usde-supply?a=1&amp;b=2"/>
+    <id>tag:blog.example.org,2026:entry-42</id>
+    <published>2026-10-13T07:15:00+02:00</published>
+    <updated>2026-10-13T07:45:00+02:00</updated>
+    <summary type="html">&lt;p&gt;Redemptions picked up&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>Hyperliquid upgrade scheduled</title>
+    <link href='https://blog.example.org/hl-upgrade'/>
+    <id>urn:uuid:7f1c</id>
+    <updated>2026-10-12T22:00:00Z</updated>
+    <content type="html"><![CDATA[<div>Validators vote on <i>HIP-9</i> next week.</div>]]></content>
+  </entry>
+</feed>
