@@ -45,7 +45,7 @@ reproduce Hyperion exactly.
 | `--color-primary`, `--color-primary-hover`, `--color-on-primary` | neutral-tier (primary submit) button |
 | `--color-green`, `--color-green-text`, `--color-green-bg` | up / positive |
 | `--color-red`, `--color-red-text`, `--color-red-bg`, `--color-red-accent` | down / negative / danger |
-| `--color-amber`, `--color-amber-bg`, `--color-info`, `--color-info-bg` | warning, informational |
+| `--color-amber`, `--color-amber-bg`, `--color-info`, `--color-info-bg` | warning, informational; info also marks model inference (HYP claims, LLM-proposed edges) |
 | `--color-flash-up`, `--color-flash-down` | tick flash |
 | `--color-scrim`, `--color-focus`, `--shadow-overlay` | modal scrim, focus ring, overlay shadow |
 | `--color-scrollbar`, `--color-scrollbar-hover` | scrollbar thumb |
