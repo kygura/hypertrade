@@ -49,6 +49,10 @@ describe("backfillCoins", () => {
     expect(backfillCoins([{ allocations: [{ coin: "BTC" }], dca: [{ coin: "pendle" }] }])).toEqual([...CORE_COINS, "PENDLE"]);
   });
 
+  test("Intel held ∪ watched coins join the set", () => {
+    expect(backfillCoins([], undefined, ["DOGE"], ["kPEPE", "BTC", "USDC"])).toEqual([...CORE_COINS, "DOGE", "kPEPE"]);
+  });
+
   test("an explicit list replaces the defaults", () => {
     expect(backfillCoins([{ allocations: [{ coin: "PENDLE" }] }], "btc, arb,,BTC", ["DOGE"])).toEqual(["BTC", "ARB"]);
   });
@@ -70,6 +74,7 @@ describe("backfillRoute", () => {
       ...base,
       listBranches: async () => [{ config: { allocations: [{ coin: "PENDLE" }] } }],
       recentCoins: async () => ["DOGE"],
+      intelCoins: async () => ["WIF"],
       warmCoin: async (coin, startDate) => {
         seen.push(coin);
         if (coin === "ETH") throw new Error("HL 429");
@@ -80,7 +85,7 @@ describe("backfillRoute", () => {
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { days: number; results: Record<string, { ok: boolean; error?: string; to?: string }>; pruned: unknown };
-    expect(seen).toEqual([...CORE_COINS, "PENDLE", "DOGE"]);
+    expect(seen).toEqual([...CORE_COINS, "PENDLE", "DOGE", "WIF"]);
     expect(body.days).toBe(30);
     expect(body.results.ETH).toEqual({ ok: false, error: "HL 429" });
     expect(body.results.BTC?.ok).toBe(true);
