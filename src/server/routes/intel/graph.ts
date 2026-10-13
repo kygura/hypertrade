@@ -1,12 +1,12 @@
 import { Hono, type Context } from "hono";
 import { EDGE_TYPE_WEIGHT, EdgeKeySchema, GraphQuerySchema, UserEdgeInputSchema, type Edge, type GraphResponse } from "../../../shared/intel.js";
 import { walk } from "../../intel/graph.js";
-import type { IntelStore } from "../../intel/store.js";
+import type { IntelStore, NewEdge } from "../../intel/store.js";
 
 // /intel/graph — the exposure graph (SPEC.md § Intel I0.8, I2).
 //
 // GET    /graph?asset=SOL   → {asset, edges touching it, best ≤2-hop paths from it to held/watched assets}
-// POST   /graph/edges       {src, dst, type, weight?, source} → 201 the user edge (https source required)
+// POST   /graph/edges       {src, dst, type, weight?, source} → 201 Edge (the stored user edge; https source required)
 // DELETE /graph/edges       {src, dst, type} → {deleted: true}; seed and LLM edges are refused (400)
 
 export interface GraphRouteDeps {
@@ -56,11 +56,10 @@ export function createGraphRoutes(deps: GraphRouteDeps) {
       const e = parsed.data;
       if (!e.source) return c.json({ error: "an https source URL is required", field: "source" }, 400);
       try {
-        await deps.store.upsertEdges([
-          { src: e.src, dst: e.dst, type: e.type, weight: e.weight ?? EDGE_TYPE_WEIGHT[e.type], source: e.source, lastVerified: now().toISOString(), origin: "user" },
-        ]);
+        const row: NewEdge = { src: e.src, dst: e.dst, type: e.type, weight: e.weight ?? EDGE_TYPE_WEIGHT[e.type], source: e.source, lastVerified: now().toISOString(), origin: "user" };
+        await deps.store.upsertEdges([row]);
         const saved = (await deps.store.listEdges()).find((x: Edge) => x.src === e.src && x.dst === e.dst && x.type === e.type);
-        return c.json({ edge: saved ?? null }, 201);
+        return saved ? c.json(saved, 201) : c.json({ error: "edge not stored" }, 500);
       } catch (err) {
         return graphError(c, err);
       }

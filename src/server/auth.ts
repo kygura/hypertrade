@@ -115,12 +115,12 @@ export const requireCronToken: MiddlewareHandler = async (c, next) => {
 const LAB_PATH = /^\/(lab|mcp)(\/|$)/;
 
 /**
- * `/metrics`, `/sectors`, `/marketstate` and their subpaths — not
- * `/metricsx`. These routes never write, so the bearer only opens them on
- * GET; a hypothetical future write under one of these paths still needs the
- * session cookie.
+ * `/metrics`, `/sectors`, `/marketstate`, `/intel` and their subpaths — not
+ * `/metricsx`. The bearer only opens them on GET, so the routine can read;
+ * every write under these paths (Intel's positions, orders, watches…) still
+ * needs the session cookie.
  */
-const READ_PATH = /^\/(metrics|sectors|marketstate)(\/|$)/;
+const READ_PATH = /^\/(metrics|sectors|marketstate|intel)(\/|$)/;
 
 /**
  * Bearer token for the lab surfaces and the read-only paths above (LAB.md
@@ -159,7 +159,7 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
     return c.json({ error: "unauthorized" }, 401);
   }
 
-  // Metrics/sectors/marketstate: session cookie on any method, or the same
+  // Metrics/sectors/marketstate/intel: session cookie on any method, or the same
   // bearer but GET only. The bearer grants nothing on any other path.
   if (READ_PATH.test(path)) {
     if ((c.req.method === "GET" && labBearerValid(c)) || verifySession(getCookie(c, COOKIE_NAME))) return next();

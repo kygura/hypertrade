@@ -48,7 +48,7 @@ describe("/intel/graph routes", () => {
 
     const ok = await a.request("/intel/graph/edges", send("POST", { src: "PURR", dst: "Hyperliquid", type: "primary_venue", source: "https://hyperliquid.xyz/purr" }));
     expect(ok.status).toBe(201);
-    expect((await ok.json()).edge).toMatchObject({ src: "PURR", dst: "Hyperliquid", type: "primary_venue", weight: 0.4, origin: "user", lastVerified: "2026-10-13T12:00:00.000Z" });
+    expect(await ok.json()).toMatchObject({ src: "PURR", dst: "Hyperliquid", type: "primary_venue", weight: 0.4, origin: "user", lastVerified: "2026-10-13T12:00:00.000Z" });
     expect((await store.listEdges()).filter((e) => e.origin === "user")).toHaveLength(1);
     const paths = (await (await a.request("/intel/graph?asset=USDC")).json()).paths;
     expect(paths).toEqual([

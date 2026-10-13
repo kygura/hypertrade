@@ -1,6 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { backfillCoins, backfillRoute, CORE_COINS, cronRoutes, LAB_BUDGET_MS, LAB_HARD_STOP_MS, LAB_LEASE_MS, runLabCollect, type LabLease } from "./cron.js";
+import {
+  backfillCoins,
+  backfillRoute,
+  CORE_COINS,
+  cronRoutes,
+  INTEL_BUDGET_MS,
+  INTEL_HARD_STOP_MS,
+  INTEL_LEASE_MS,
+  intelCronRoute,
+  intelSettingKey,
+  LAB_BUDGET_MS,
+  LAB_HARD_STOP_MS,
+  LAB_LEASE_MS,
+  runLabCollect,
+  type IntelCronDeps,
+  type IntelJob,
+  type IntelJobRun,
+  type LabLease,
+} from "./cron.js";
 
 process.env.CRON_TOKEN = "test-cron-token";
 
@@ -254,5 +272,150 @@ describe("runLabCollect", () => {
     const res = await runLabCollect(async () => ((ran = true), { ok: true, written: 0, sources: {} }), 0, lease);
     expect(res).toEqual({ ok: false, error: "db down", written: 0, sources: {} });
     expect(ran).toBe(false);
+  });
+});
+
+describe("Intel cron routes", () => {
+  test("401 without a valid x-cron-token, on GET and POST", async () => {
+    for (const job of ["ingest", "brief", "graph", "watch"]) {
+      expect((await app.request(`/cron/intel/${job}`, { method: "POST" })).status).toBe(401);
+      expect((await app.request(`/cron/intel/${job}`, { headers: { "x-cron-token": "wrong" } })).status).toBe(401);
+    }
+  });
+
+  const H = 3_600_000;
+  function intelApp(o: { env?: Record<string, string>; run?: Partial<Record<IntelJob, IntelJobRun>>; hardStopMs?: number; clock?: { t: number } } = {}) {
+    const clock = o.clock ?? { t: Date.parse("2026-10-13T12:00:00Z") };
+    const leases = new Map<string, ReturnType<typeof memoryLease>>();
+    const settings = new Map<string, unknown>();
+    const calls: Array<{ job: IntelJob; budgetMs: number; aborted: boolean }> = [];
+    const ok: IntelJobRun = async () => ({ ok: true, complete: true, result: { n: 1 } });
+    const track = (job: IntelJob): IntelJobRun => async (opts) => {
+      calls.push({ job, budgetMs: opts.budgetMs, aborted: opts.signal.aborted });
+      return (o.run?.[job] ?? ok)(opts);
+    };
+    const deps: IntelCronDeps = {
+      lease: (job) => {
+        if (!leases.has(job)) leases.set(job, memoryLease(clock));
+        return leases.get(job)!.lease;
+      },
+      settings: {
+        getSetting: async <T,>(k: string) => (settings.get(k) as T) ?? null,
+        setSetting: async (k: string, v: unknown) => void settings.set(k, v),
+      },
+      run: { ingest: track("ingest"), brief: track("brief"), graph: track("graph"), watch: track("watch") },
+      env: o.env ?? {},
+      now: () => clock.t,
+      hardStopMs: o.hardStopMs,
+    };
+    const a = new Hono();
+    for (const job of ["ingest", "brief", "graph", "watch"] as IntelJob[]) a.post(`/cron/intel/${job}`, intelCronRoute(job, () => deps));
+    const post = async (job: IntelJob) => {
+      const res = await a.request(`/cron/intel/${job}`, { method: "POST" });
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+    return { post, calls, settings, leases, clock };
+  }
+
+  test("each job runs under its lease with the 200 s budget and answers its summary", async () => {
+    expect(INTEL_BUDGET_MS).toBeLessThanOrEqual(200_000);
+    expect(INTEL_HARD_STOP_MS).toBeLessThanOrEqual(250_000);
+    expect(INTEL_LEASE_MS).toBe(INTEL_BUDGET_MS + 60_000);
+    const { post, calls, leases } = intelApp();
+    for (const job of ["ingest", "brief", "graph", "watch"] as IntelJob[]) {
+      const r = await post(job);
+      expect(r.status).toBe(200);
+      expect(r.body).toMatchObject({ job, ok: true, result: { n: 1 } });
+      expect(leases.get(job)!.log).toEqual(["acquire", "release"]);
+    }
+    expect(calls.map((c) => [c.job, c.budgetMs])).toEqual([
+      ["ingest", INTEL_BUDGET_MS],
+      ["brief", INTEL_BUDGET_MS],
+      ["graph", INTEL_BUDGET_MS],
+      ["watch", INTEL_BUDGET_MS],
+    ]);
+  });
+
+  test("a held lease answers 200 skipped and never starts the job", async () => {
+    const { post, calls, leases } = intelApp();
+    await post("ingest");
+    await leases.get("ingest")!.lease.acquire("other", INTEL_LEASE_MS);
+    const r = await post("ingest");
+    expect(r).toEqual({ status: 200, body: { job: "ingest", ok: true, skipped: "lease held" } });
+    expect(calls).toHaveLength(1);
+  });
+
+  test("brief self-throttles to INTEL_BRIEF_HOURS (default 6) from the last completed run", async () => {
+    const { post, calls, settings, clock } = intelApp();
+    expect((await post("brief")).body).toMatchObject({ ok: true });
+    expect(settings.get(intelSettingKey("brief"))).toBe(new Date(clock.t).toISOString());
+    clock.t += 2 * H;
+    expect(await post("brief")).toMatchObject({ status: 200, body: { job: "brief", skipped: "throttled" } });
+    clock.t += 4 * H - 60_000; // 6 h minus a minute: within the slack of a 15-minute schedule
+    expect((await post("brief")).body).toMatchObject({ ok: true });
+    expect(calls.filter((c) => c.job === "brief")).toHaveLength(2);
+
+    const two = intelApp({ env: { INTEL_BRIEF_HOURS: "2" } });
+    await two.post("brief");
+    two.clock.t += 2 * H;
+    expect((await two.post("brief")).body).toMatchObject({ ok: true });
+    expect(two.calls).toHaveLength(2);
+  });
+
+  test("a failed brief is a 500 and does not stamp the throttle", async () => {
+    const { post, calls, settings } = intelApp({ run: { brief: async () => ({ ok: false, complete: false, result: { ok: false, error: "db down" } }) } });
+    expect(await post("brief")).toMatchObject({ status: 500, body: { ok: false, result: { error: "db down" } } });
+    expect(settings.size).toBe(0);
+    await post("brief");
+    expect(calls).toHaveLength(2);
+  });
+
+  test("graph throttles daily, but an incomplete run (budget ran out) lets the next call continue", async () => {
+    let complete = false;
+    const { post, calls, clock } = intelApp({ run: { graph: async () => ({ ok: true, complete, result: {} }) } });
+    await post("graph");
+    clock.t += 15 * 60_000;
+    complete = true;
+    await post("graph");
+    clock.t += 15 * 60_000;
+    expect((await post("graph")).body).toMatchObject({ skipped: "throttled" });
+    clock.t += 24 * H;
+    await post("graph");
+    expect(calls).toHaveLength(3);
+  });
+
+  test("ingest and watch are not throttled (they are cheap no-ops when nothing is due)", async () => {
+    const { post, calls } = intelApp();
+    await post("watch");
+    await post("watch");
+    await post("ingest");
+    await post("ingest");
+    expect(calls).toHaveLength(4);
+  });
+
+  test("a thrown job is a 500 with the error; the lease is still released", async () => {
+    const { post, leases } = intelApp({ run: { ingest: () => Promise.reject(new Error("intel tables missing")) } });
+    expect(await post("ingest")).toEqual({ status: 500, body: { job: "ingest", ok: false, error: "intel tables missing" } });
+    expect(leases.get("ingest")!.log).toEqual(["acquire", "release"]);
+  });
+
+  test("a job still running at the hard stop answers, aborts its signal, and releases the lease when it ends", async () => {
+    let finish!: () => void;
+    let signal!: AbortSignal;
+    const { post, leases } = intelApp({
+      hardStopMs: 20,
+      run: {
+        watch: (o) => {
+          signal = o.signal;
+          return new Promise((r) => (finish = () => r({ ok: true, complete: true, result: {} })));
+        },
+      },
+    });
+    expect(await post("watch")).toMatchObject({ status: 500, body: { job: "watch", ok: false, timedOut: true } });
+    expect(signal.aborted).toBe(true);
+    expect(leases.get("watch")!.log).toEqual(["acquire"]);
+    finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(leases.get("watch")!.log).toEqual(["acquire", "release"]);
   });
 });

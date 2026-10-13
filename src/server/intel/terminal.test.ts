@@ -168,6 +168,25 @@ describe("buildBrief", () => {
     expect(h.store.briefs).toHaveLength(1);
   });
 
+  test("brief hook: runs with the brief when items cleared; skipped when silent; a failing hook never fails the brief", async () => {
+    const seen: string[][] = [];
+    const h = harness({ price: (b) => b * Math.exp(0.1), replies: [{ text: "no json" }, { text: "still none" }] });
+    await h.init();
+    h.deps.onBrief = async (b) => void seen.push(b.items.map((i) => i.asset));
+    await buildBrief(h.deps, { surface: "cron" });
+    expect(seen).toEqual([["SOL"]]);
+    h.deps.onBrief = async () => Promise.reject(new Error("thesis store down"));
+    const brief = await buildBrief(h.deps, { surface: "ui" });
+    expect(brief.items).toHaveLength(1);
+    expect(h.store.reviews.at(-1)).toMatchObject({ briefId: brief.id });
+
+    const quiet = harness({ price: (b) => b });
+    await quiet.init();
+    quiet.deps.onBrief = async () => void seen.push(["called"]);
+    await buildBrief(quiet.deps, { surface: "ui" });
+    expect(seen).toEqual([["SOL"]]);
+  });
+
   test("a batched alert alone breaks the silence", async () => {
     const h = harness({ price: (b) => b, replies: [{ emit: { lines: [{ tag: "hypothesis", text: "Long SOL: an exploit headline maps to it." }] } }] });
     await h.init();

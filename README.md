@@ -186,6 +186,40 @@ secret). Discord (`DESK_DISCORD_WEBHOOK_URL`) and a generic JSON webhook
 (`DESK_ALERT_WEBHOOK_URL`) also work. Every alert is stored and shown on the
 page. All `DESK_*` settings are listed in `.env.example`.
 
+## Intel (optional)
+
+The Terminal (`/` and `/journal`, `/theses`, `/query`, `/order`, `/watch`;
+SPEC.md § Intel) reads `/api/intel/*`. Code: `src/server/intel/*`,
+`src/server/routes/intel/*`. Needs `db/migrations/007_intel.sql`; LLM features
+use the Desk's model resolution and alerts go through the Desk notifier.
+Orders from `/order` go to the Desk venue only (paper or testnet), always
+preview → confirm. `GET /api/intel/*` also accepts the `LAB_API_TOKEN` bearer;
+writes need the session cookie.
+
+Background jobs: `POST /api/cron/intel/{ingest,brief,graph,watch}`
+(x-cron-token), each leased and budgeted to 200 s. `collect.yml`'s `intel` job
+calls all four after `collect` every 15 minutes once the repo variable
+`INTEL_ENABLED=true` is set; brief self-throttles to `INTEL_BRIEF_HOURS`,
+graph to once a day, watch rechecks a watch at most hourly. Vercel Cron runs
+ingest once a day as a fallback.
+
+| env | |
+|---|---|
+| `INTEL_MIN_Z` | \|z\| a change must clear to reach the brief, default 2 |
+| `INTEL_TOP_K` | brief items kept after ranking, default 5 |
+| `INTEL_PUSH_MATERIALITY` | mapper alerts at or above this push to Telegram now, else wait for the brief; default 0.35 |
+| `INTEL_LLM_DAILY_CAP` | Intel LLM calls per day before failing closed, default 200 |
+| `INTEL_BRIEF_HOURS` | cron brief at most every N hours, default 6 |
+| `INTEL_TZ` | journal session clock (asia/eu/us by hour), default UTC |
+| `INTEL_RSS_FEEDS` | comma-separated RSS/Atom URLs; default a built-in keyless list |
+| `INTEL_SNAPSHOT_SPACES` | Snapshot governance map `ASSET=space.eth,…`; replaces the built-in map |
+| `INTEL_WEBSEARCH` | `true` enables the hourly LLM web-search headline sweep |
+| `INTEL_TG_CHANNELS` | comma-separated public Telegram channels (read via `t.me/s/<channel>`) |
+| `X_BEARER_TOKEN`, `INTEL_X_LIST_ID` | X list timeline ingest; both required |
+| `INTEL_RPC_<CHAIN>` | RPC override for the contract/wallet watcher (`ETHEREUM`, `ARBITRUM`, `BASE`, `OPTIMISM`, `POLYGON`, `BSC`, `AVALANCHE`, `HYPEREVM`); default public RPCs |
+| `DATABASE_URL_READONLY` | read-only Postgres role for `/api/intel/query/run`; default the main connection |
+| repo var `INTEL_ENABLED` | `true` turns on the workflow's `intel` job |
+
 ## Strategy engine (optional)
 
 The `/strategies`, `/decisions` and `/governor` pages talk to the hyperion core
@@ -350,7 +384,7 @@ flagged non-stationary, so searches skip their raw values.
 
 | env | |
 |---|---|
-| `LAB_API_TOKEN` | comma-separated bearer tokens accepted on `/api/lab/*` and `/api/mcp` (any method), plus `GET /api/metrics/*`, `GET /api/sectors` and `GET /api/marketstate*` (the session cookie also works everywhere) |
+| `LAB_API_TOKEN` | comma-separated bearer tokens accepted on `/api/lab/*` and `/api/mcp` (any method), plus `GET /api/metrics/*`, `GET /api/sectors`, `GET /api/marketstate*` and `GET /api/intel/*` (the session cookie also works everywhere) |
 | `LAB_SEARCH_DEADLINE_MS` | server search budget, default 50 000; local CLI/stdio: none unless set |
 | `LAB_URL` | CLI/stdio: deployed origin to proxy to; unset runs the lab in-process |
 | `LAB_STORE_FILE` | local store file, default `~/.hypertrade/lab.json` |

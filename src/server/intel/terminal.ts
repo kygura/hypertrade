@@ -69,6 +69,8 @@ export interface TerminalDeps {
   llm: LlmDeps;
   thresholds: Thresholds;
   now(): Date;
+  /** Runs after a brief with items is stored (thesis recheck). Best-effort: a failure never fails the brief. */
+  onBrief?(brief: Brief): Promise<void>;
 }
 
 export interface BriefOptions {
@@ -286,6 +288,13 @@ export async function buildBrief(deps: TerminalDeps, o: BriefOptions): Promise<B
     ...(narration ? { trace: narration.trace } : {}),
   });
   if (o.surface === "ui") await deps.store.logReview({ via: o.via ?? "ui", briefId: brief.id });
+  if (deps.onBrief && brief.items.length) {
+    try {
+      await deps.onBrief(brief);
+    } catch (e) {
+      console.warn("[intel] brief hook failed:", e instanceof Error ? e.message : e);
+    }
+  }
   return brief;
 }
 
@@ -350,11 +359,17 @@ export async function loadIngestHealth(): Promise<IngestHealth[]> {
   }));
 }
 
-/** Production wiring. `deskAccount` is DeskService.account (injected so Intel never constructs the Desk). */
-export function defaultTerminalDeps(o: { env?: Record<string, string | undefined>; deskAccount?: () => Promise<AccountState>; watchAddress?: string } = {}): TerminalDeps {
+/**
+ * Production wiring. `deskAccount` is DeskService.account (injected so Intel
+ * never constructs the Desk); `ctxs` lets the caller share a cached
+ * metaAndAssetCtxs (routes/hl.ts getCtxs), else each call fetches.
+ */
+export function defaultTerminalDeps(
+  o: { env?: Record<string, string | undefined>; deskAccount?: () => Promise<AccountState>; watchAddress?: string; ctxs?: () => Promise<AssetCtx[]> } = {},
+): TerminalDeps {
   const env = o.env ?? process.env;
   const store = new PgIntelStore();
-  const ctxs = async () => (await fetchPerpMetaAndCtxs()).ctxs;
+  const ctxs = o.ctxs ?? (async () => (await fetchPerpMetaAndCtxs()).ctxs);
   return {
     store,
     exposure: (marks) =>

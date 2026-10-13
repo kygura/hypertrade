@@ -781,7 +781,8 @@ export const OrderVerdictSchema = z.object({
   warnings: z.array(z.string()),
   /** The governor's clip warning, when it reduced the order. */
   clip: z.string().optional(),
-  sizing: z.record(Num).optional(),
+  /** Governor sizing; `rr` is null when the order has no target (R:R not checked). */
+  sizing: z.record(Num.nullable()).optional(),
   equityUsd: Num,
   checkedAt: Iso,
 });
@@ -796,7 +797,7 @@ export function toOrderVerdict(v: { approved: boolean; reasons: string[]; warnin
     reasons: v.reasons,
     warnings: v.warnings,
     ...(clip ? { clip } : {}),
-    ...(v.sizing ? { sizing: v.sizing as Record<string, number> } : {}),
+    ...(v.sizing ? { sizing: v.sizing as Record<string, number | null> } : {}),
     equityUsd: v.equityUsd,
     checkedAt: v.checkedAt,
   };
