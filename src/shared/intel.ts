@@ -803,6 +803,10 @@ export const OrderPreviewSchema = z.object({
   }),
   verdict: OrderVerdictSchema,
   warnings: z.array(z.string()),
+  /** How each resolved number was derived ("stop = yesterday's low 61,240 (2026-10-12 UTC candle)"). */
+  notes: z.array(z.string()).optional(),
+  /** Defaults the parser filled in for fields the text left out (text previews only). */
+  assumptions: z.array(z.string()).optional(),
   venue: z.string(),
   /** Binds confirm to this preview's marks and time (409 when stale); DeskService.previewOperatorOrder's hash. */
   previewHash: z.string(),
