@@ -92,6 +92,8 @@ export interface StepOptions {
   signal: AbortSignal;
   /** Last round: the model must answer without calling tools. */
   final?: boolean;
+  /** false: do not register the provider-hosted web search (Intel calls). Default on. */
+  webSearch?: boolean;
 }
 
 export interface Conversation {

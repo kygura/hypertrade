@@ -153,6 +153,17 @@ describe("AnthropicProvider", () => {
     expect(webSearchTools[0]).not.toHaveProperty("type"); // the function tool, not web_search_20260209
     expect(webSearchTools[0]).toMatchObject({ description: "Exa search" });
   });
+
+  test("webSearch: false leaves the hosted web search out", async () => {
+    let sent: any;
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body));
+      throw new Error("stop");
+    }) as unknown as typeof fetch;
+    const p = new AnthropicProvider({ apiKey: "k", model: "claude-opus-5-5", fetch: fakeFetch });
+    await p.start("S", [], "q").step(TOOL_SPECS, hooks().h, { signal: new AbortController().signal, webSearch: false }).catch(() => {});
+    expect(sent.tools.some((t: any) => t.name === "web_search")).toBe(false);
+  });
 });
 
 describe("AnthropicProvider per-model request shape", () => {
