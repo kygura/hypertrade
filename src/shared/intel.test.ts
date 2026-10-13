@@ -9,6 +9,8 @@ import {
   ScreenerDslSchema,
   ThesisCheckSchema,
   ThesisClaimSchema,
+  ThesisSchema,
+  toOrderVerdict,
   UserEdgeInputSchema,
   WatchInputSchema,
   WatchlistPutSchema,
@@ -105,13 +107,23 @@ describe("thesis checks", () => {
     bad(ThesisCheckSchema, { kind: "oi_change", asset: "SOL", window_h: 24, op: ">", pct: 5, extra: 1 });
   });
   test("claim carries an optional sourced evidence claim", () => {
-    ok(ThesisClaimSchema, {
+    const claim = {
+      kind: "claim",
       text: "BTC holds above 80k",
       check: { kind: "price_vs_level", asset: "BTC", op: ">", level: 80000 },
       status: "supported",
-      evidence: { tag: "observed", text: "BTC 83,900", source: { label: "snapshot", url: "/markets/BTC" }, ts: "2026-10-13T00:00:00Z" },
+      evidence: { value: 83900, source: { label: "snapshot", url: "/markets/BTC" }, ts: "2026-10-13T00:00:00Z" },
+    };
+    ok(ThesisClaimSchema, claim);
+    ok(ThesisClaimSchema, { kind: "assumption", text: "ETF flows stay positive", check: { kind: "unknown" }, status: "unknown" });
+    bad(ThesisClaimSchema, { ...claim, kind: "guess" });
+    bad(ThesisClaimSchema, { ...claim, evidence: { value: 1, source: { label: "x" } } });
+    bad(ThesisClaimSchema, { kind: "claim", text: "x", check: { kind: "unknown" }, status: "maybe" });
+    ok(ThesisSchema, {
+      id: "t1", text: "BTC grinds up", assets: ["BTC"], claims: [claim], createdAt: "2026-10-13T00:00:00Z", checkedAt: null,
+      invalidation: [{ text: "Daily close below 80k", status: "clear" }, { text: "Funding flips negative" }],
+      wrongIf: [{ tag: "hypothesis", text: "Spot demand fades while OI keeps rising." }],
     });
-    bad(ThesisClaimSchema, { text: "x", check: { kind: "unknown" }, status: "maybe" });
   });
 });
 
@@ -131,6 +143,18 @@ describe("order intent", () => {
     bad(OrderIntentSchema, { ...intent, venue: "mainnet" });
     bad(OrderPreviewRequestSchema, { text: "long eth", intent });
     ok(OrderPreviewRequestSchema, { text: "long eth 3x, 1k, stop 2%" });
+  });
+});
+
+describe("toOrderVerdict", () => {
+  const v = { approved: true, reasons: [], warnings: [] as string[], equityUsd: 10_000, checkedAt: "2026-10-13T00:00:00.000Z" };
+  test("approve, clip, reject", () => {
+    expect(toOrderVerdict(v)).toMatchObject({ decision: "approve", approved: true });
+    expect(toOrderVerdict(v).clip).toBeUndefined();
+    const clipped = toOrderVerdict({ ...v, warnings: ["risk 2% clipped to the 0.5% per-trade limit: notional reduced"] });
+    expect(clipped.decision).toBe("clip");
+    expect(clipped.clip).toContain("clipped");
+    expect(toOrderVerdict({ ...v, approved: false, reasons: ["kill switch on"] })).toMatchObject({ decision: "reject", reasons: ["kill switch on"] });
   });
 });
 
@@ -165,11 +189,15 @@ describe("misc request schemas", () => {
       createdAt: "2026-10-13T12:00:00.000Z",
       surface: "ui",
       since: "2026-10-13T06:00:00.000Z",
-      items: [{ asset: "SOL", metric: "oi_usd", from: 1e9, to: 1.2e9, delta: 2e8, z: 2.4, materiality: 1.1, exposureWeight: 0.5, stopProximity: 1, ts: "2026-10-13T12:00:00.000Z", baselineTs: "2026-10-13T06:00:00.000Z" }],
+      items: [{ asset: "SOL", metric: "oi_usd", held: true, from: 1e9, to: 1.2e9, delta: 20, deltaUnit: "pct", z: 2.4, materiality: 1.1, exposureWeight: 0.5, stopProximity: 1.4, stopDistPct: 3.1, stopDistAtr: 1.2, ts: "2026-10-13T12:00:00.000Z", baselineTs: "2026-10-13T06:00:00.000Z" }],
       alerts: [],
       catalysts: [],
       lines: [{ tag: "hypothesis", text: "Leverage is building into SOL." }],
       silent: false,
+      threshold: { minZ: 2, pushMateriality: 0.35 },
+      ingest: [{ source: "rss", ok: true, lastRunAt: "2026-10-13T11:45:00.000Z" }, { source: "telegram", ok: false, lastRunAt: null, error: "HTTP 403" }],
+      diffedCount: 44,
+      trace: { promptVersion: "brief.v1", tier: "strong", model: null, inputs: {}, output: null, usage: {}, ms: 0, dropped: 1, error: "LLM cap reached" },
     };
     expect(BriefSchema.parse(brief)).toEqual(brief as never);
     bad(BriefSchema, { ...brief, lines: [{ tag: "observed", text: "no source" }] });

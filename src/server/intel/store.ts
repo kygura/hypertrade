@@ -40,7 +40,7 @@ export type NewReport = DistributiveOmit<Report, "id" | "createdAt">;
 export type NewThesis = Omit<Thesis, "id" | "createdAt">;
 export type ThesisPatch = Partial<Pick<Thesis, "assets" | "claims" | "invalidation" | "wrongIf" | "checkedAt" | "trace">>;
 export type WatchState = Pick<Watch, "lastHash" | "lastSnapshot" | "checkedAt" | "error">;
-export type NewWatchChange = Omit<WatchChange, "id" | "ts"> & { ts?: string };
+export type NewWatchChange = Omit<WatchChange, "id" | "ts" | "alertedAssets"> & { ts?: string; alertedAssets?: string[] };
 export type SnapshotSide = "nearest" | "before" | "after";
 
 export interface IntelStore {
@@ -118,6 +118,8 @@ export interface IntelStore {
   updateWatchState(id: string, s: WatchState): Promise<void>;
   deleteWatch(id: string): Promise<boolean>;
   insertWatchChange(c: NewWatchChange): Promise<WatchChange>;
+  /** Records which exposed assets the mapper alerted for a change. */
+  setWatchChangeAlerted(id: string, assets: string[]): Promise<void>;
   listWatchChanges(watchId: string, limit: number): Promise<WatchChange[]>;
 
   getSetting<T>(key: string): Promise<T | null>;
@@ -239,6 +241,8 @@ function toAlert(r: any): Alert {
     path: r.path,
     edgeType: r.edge_type,
     hops: r.hops,
+    pathWeight: r.path_weight,
+    sources: r.sources,
     materiality: r.materiality,
     pricedIn: r.priced_in,
     route: r.route,
@@ -294,8 +298,10 @@ function toWatchChange(r: any): WatchChange {
     fromHash: r.from_hash,
     toHash: r.to_hash,
     diff: r.diff,
+    facts: r.facts,
     detail: r.detail,
     lines: r.lines,
+    alertedAssets: r.alerted_assets,
     ...(r.trace ? { trace: r.trace } : {}),
   };
 }
@@ -485,9 +491,9 @@ export class PgIntelStore implements IntelStore {
 
   async insertAlert(a: NewAlert) {
     const [row] = await sql()`insert into intel_alerts
-      (kind, ref, time_window, asset, title, event_type, line, path, edge_type, hops, materiality, priced_in, route, trace)
+      (kind, ref, time_window, asset, title, event_type, line, path, edge_type, hops, path_weight, sources, materiality, priced_in, route, trace)
       values (${a.kind}, ${a.ref}, ${a.window ?? ""}, ${a.asset}, ${a.title}, ${a.eventType}, ${json(a.line)}, ${json(a.path)},
-        ${a.edgeType}, ${a.hops}, ${a.materiality}, ${json(a.pricedIn)}, ${a.route}, ${json(a.trace)})
+        ${a.edgeType}, ${a.hops}, ${a.pathWeight}, ${json(a.sources)}, ${a.materiality}, ${json(a.pricedIn)}, ${a.route}, ${json(a.trace)})
       on conflict (kind, ref, asset, time_window) do nothing
       returning *`;
     return row ? toAlert(row) : null;
@@ -538,7 +544,7 @@ export class PgIntelStore implements IntelStore {
   }
   async putTradeNote(n: Omit<TradeNote, "updatedAt">) {
     const [row] = await sql()`insert into intel_trade_notes (trade_id, note, tag, summary, updated_at)
-      values (${n.tradeId}, ${n.note}, ${n.tag}, ${n.summary}, now())
+      values (${n.tradeId}, ${n.note}, ${n.tag}, ${json(n.summary)}, now())
       on conflict (trade_id) do update set note = excluded.note, tag = excluded.tag, summary = excluded.summary, updated_at = now()
       returning *`;
     return toTradeNote(row);
@@ -604,10 +610,14 @@ export class PgIntelStore implements IntelStore {
     return res.count > 0;
   }
   async insertWatchChange(c: NewWatchChange) {
-    const [row] = await sql()`insert into intel_watch_changes (watch_id, ts, from_hash, to_hash, diff, detail, lines, trace)
-      values (${c.watchId}, ${c.ts ?? new Date().toISOString()}, ${c.fromHash}, ${c.toHash}, ${c.diff}, ${json(c.detail)}, ${json(c.lines)}, ${json(c.trace)})
+    const [row] = await sql()`insert into intel_watch_changes (watch_id, ts, from_hash, to_hash, diff, facts, detail, lines, alerted_assets, trace)
+      values (${c.watchId}, ${c.ts ?? new Date().toISOString()}, ${c.fromHash}, ${c.toHash}, ${c.diff}, ${json(c.facts)}, ${json(c.detail)},
+        ${json(c.lines)}, ${json(c.alertedAssets ?? [])}, ${json(c.trace)})
       returning *`;
     return toWatchChange(row);
+  }
+  async setWatchChangeAlerted(id: string, assets: string[]) {
+    await sql()`update intel_watch_changes set alerted_assets = ${json(assets)} where id = ${id}`;
   }
   async listWatchChanges(watchId: string, limit: number) {
     const rows = await sql()`select * from intel_watch_changes where watch_id = ${watchId} order by ts desc limit ${limit}`;
@@ -941,9 +951,13 @@ export class MemoryIntelStore implements IntelStore {
   }
   async insertWatchChange(c: NewWatchChange) {
     if (!this.watches.has(c.watchId)) throw new Error(`watch ${c.watchId} not found`);
-    const row: WatchChange = { ...clone(c), id: this.id(), ts: iso(c.ts) ?? this.now() };
+    const row: WatchChange = { ...clone(c), id: this.id(), ts: iso(c.ts) ?? this.now(), alertedAssets: clone(c.alertedAssets) ?? [] };
     this.changes.push(row);
     return clone(row);
+  }
+  async setWatchChangeAlerted(id: string, assets: string[]) {
+    const c = this.changes.find((x) => x.id === id);
+    if (c) c.alertedAssets = [...assets];
   }
   async listWatchChanges(watchId: string, limit: number) {
     return this.changes

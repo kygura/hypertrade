@@ -120,6 +120,8 @@ create table if not exists intel_alerts (
   path        jsonb not null default '[]'::jsonb,
   edge_type   text,
   hops        integer not null default 0,
+  path_weight double precision not null default 1,
+  sources     jsonb not null default '[]'::jsonb,
   materiality double precision not null,
   priced_in   jsonb,
   route       text not null check (route in ('push', 'batch')),
@@ -157,7 +159,7 @@ create table if not exists intel_trade_notes (
   trade_id   text primary key,
   note       text,
   tag        text,
-  summary    text,
+  summary    jsonb,
   updated_at timestamptz not null default now()
 );
 
@@ -200,10 +202,12 @@ create table if not exists intel_watch_changes (
   watch_id  uuid not null references intel_watches on delete cascade,
   ts        timestamptz not null default now(),
   from_hash text,
-  to_hash   text not null,
-  diff      text not null,
-  detail    jsonb,
-  lines     jsonb not null default '[]'::jsonb,
+  to_hash        text not null,
+  diff           text,
+  facts          jsonb not null default '[]'::jsonb,
+  detail         jsonb,
+  lines          jsonb not null default '[]'::jsonb,
+  alerted_assets jsonb not null default '[]'::jsonb,
   trace     jsonb
 );
 create index if not exists intel_watch_changes_watch_idx on intel_watch_changes (watch_id, ts desc);

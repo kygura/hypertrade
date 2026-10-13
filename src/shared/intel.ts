@@ -57,12 +57,14 @@ export type SourceHealth = z.infer<typeof SourceHealthSchema>;
 export const LlmTraceSchema = z.object({
   promptVersion: z.string(),
   tier: z.enum(["cheap", "strong"]),
-  model: z.string(),
+  /** Null when no provider was called (cache hit, not configured, cap). */
+  model: z.string().nullable(),
   inputs: z.unknown(),
   output: z.unknown(),
   usage: z.unknown(),
   ms: Num,
   cached: z.boolean().optional(),
+  attempts: z.number().int().optional(),
   /** Claim lines dropped by the validator (I0.7). */
   dropped: z.number().int().nonnegative().optional(),
   error: z.string().optional(),
@@ -196,16 +198,28 @@ export const SnapshotRowSchema = z.object({
 });
 export type SnapshotRow = z.infer<typeof SnapshotRowSchema>;
 
+/** How DiffItem.delta reads: percent change, basis points, USD, or the raw metric unit. */
+export const DeltaUnitSchema = z.enum(["pct", "bps", "usd", "abs"]);
+export type DeltaUnit = z.infer<typeof DeltaUnitSchema>;
+
 export const DiffItemSchema = z.object({
   asset: z.string(),
   metric: SnapshotMetricSchema,
+  /** True when any position source holds the asset (false: watchlist only). */
+  held: z.boolean(),
+  /** Baseline value (at baselineTs). */
   from: Num,
+  /** Current value (at ts). */
   to: Num,
   delta: Num,
+  deltaUnit: DeltaUnitSchema,
   z: Num,
   materiality: Num,
   exposureWeight: Num,
   stopProximity: Num,
+  /** Distance from mark to the nearest known stop, in percent and in ATR14(1h); absent without a stop. */
+  stopDistPct: Num.optional(),
+  stopDistAtr: Num.optional(),
   ts: Iso,
   baselineTs: Iso,
 });
@@ -424,6 +438,10 @@ export const AlertSchema = z.object({
   path: z.array(PathEdgeSchema),
   edgeType: EdgeTypeSchema.nullable(),
   hops: z.number().int().min(0).max(2),
+  /** Π(edge type weight) × 0.5^(hops−1); 1 for a direct hit (SPEC I0.8). */
+  pathWeight: Num,
+  /** Evidence behind the triggering event or change. */
+  sources: z.array(EventSourceSchema),
   materiality: Num,
   pricedIn: PricedInSchema.nullable(),
   route: z.enum(["push", "batch"]),
@@ -453,6 +471,15 @@ export type FeedbackBucket = z.infer<typeof FeedbackBucketSchema>;
 export const BriefSurfaceSchema = z.enum(["ui", "cron"]);
 export type BriefSurface = z.infer<typeof BriefSurfaceSchema>;
 
+/** Last run per ingest source (collector_runs `intel:<source>`). */
+export const IngestHealthSchema = z.object({
+  source: z.string(),
+  ok: z.boolean(),
+  lastRunAt: Iso.nullable(),
+  error: z.string().optional(),
+});
+export type IngestHealth = z.infer<typeof IngestHealthSchema>;
+
 export const BriefSchema = z.object({
   id: z.string(),
   createdAt: Iso,
@@ -465,6 +492,11 @@ export const BriefSchema = z.object({
   lines: z.array(ClaimSchema),
   /** Nothing cleared the thresholds. */
   silent: z.boolean(),
+  /** Thresholds in force (INTEL_MIN_Z, INTEL_PUSH_MATERIALITY). */
+  threshold: z.object({ minZ: Num, pushMateriality: Num }).optional(),
+  ingest: z.array(IngestHealthSchema).optional(),
+  /** Asset × metric pairs that had a z (diffed), cleared or not. */
+  diffedCount: z.number().int().nonnegative().optional(),
   trace: LlmTraceSchema.optional(),
 });
 export type Brief = z.infer<typeof BriefSchema>;
@@ -493,12 +525,14 @@ export const TradeSchema = z.object({
   session: SessionSchema,
   stopPx: Num.nullable(),
   r: Num.nullable(),
-  maePct: Num.nullable(),
-  mfePct: Num.nullable(),
+  /** Max adverse / favourable excursion from 1h candles, in maeUnit (R when a stop is known, else percent). */
+  mae: Num.nullable(),
+  mfe: Num.nullable(),
+  maeUnit: z.enum(["r", "pct"]),
   entryState: z.object({ fundingZ: Num.nullable(), oiZ: Num.nullable(), change24hPct: Num.nullable() }),
   tag: z.string().nullable(),
   note: z.string().nullable(),
-  noteSummary: z.string().nullable(),
+  noteSummary: ClaimSchema.nullable(),
 });
 export type Trade = z.infer<typeof TradeSchema>;
 
@@ -525,7 +559,7 @@ export const TradeNoteSchema = z.object({
   tradeId: z.string(),
   note: z.string().nullable(),
   tag: z.string().nullable(),
-  summary: z.string().nullable(),
+  summary: ClaimSchema.nullable(),
   updatedAt: Iso,
 });
 export type TradeNote = z.infer<typeof TradeNoteSchema>;
@@ -581,14 +615,24 @@ export const ThesisCheckSchema = z.discriminatedUnion("kind", [
 ]);
 export type ThesisCheck = z.infer<typeof ThesisCheckSchema>;
 
+/** What a check evaluated to, and where the number came from. */
+export const ThesisEvidenceSchema = z
+  .object({
+    value: z.union([Num, z.string(), z.null()]),
+    source: z.object({ label: Text(120), url: z.string().trim().max(2000).optional() }).strict(),
+    ts: Iso,
+  })
+  .strict();
+export type ThesisEvidence = z.infer<typeof ThesisEvidenceSchema>;
+
 export const ThesisClaimSchema = z
   .object({
+    /** claim: stated in the thesis; assumption: an unstated premise it relies on. */
+    kind: z.enum(["claim", "assumption"]),
     text: Text(600),
-    /** An unstated premise the thesis relies on, rather than a stated claim. */
-    assumption: z.boolean().optional(),
     check: ThesisCheckSchema,
     status: z.enum(["supported", "contradicted", "unknown"]),
-    evidence: ClaimSchema.optional(),
+    evidence: ThesisEvidenceSchema.optional(),
   })
   .strict();
 export type ThesisClaim = z.infer<typeof ThesisClaimSchema>;
@@ -598,8 +642,10 @@ export const ThesisSchema = z.object({
   text: z.string(),
   assets: z.array(z.string()),
   claims: z.array(ThesisClaimSchema),
-  invalidation: z.array(z.string()),
-  wrongIf: z.array(z.string()),
+  /** Levels/conditions that would invalidate the thesis; status once code could evaluate them. */
+  invalidation: z.array(z.object({ text: z.string(), status: z.enum(["triggered", "clear", "unknown"]).optional() })),
+  /** "What has to be true for this to be wrong", claim-tagged. */
+  wrongIf: z.array(ClaimSchema),
   createdAt: Iso,
   checkedAt: Iso.nullable(),
   trace: LlmTraceSchema.optional(),
@@ -711,15 +757,38 @@ export const OrderPreviewRequestSchema = z.union([
 ]);
 export type OrderPreviewRequest = z.infer<typeof OrderPreviewRequestSchema>;
 
-/** Mirror of the Desk governor's Verdict (src/server/desk/types.ts). */
+/**
+ * The Desk governor's Verdict (src/server/desk/types.ts) plus the copilot's
+ * reading of it: reject when not approved, clip when approved with a
+ * "clipped" warning, approve otherwise. Built by toOrderVerdict.
+ */
 export const OrderVerdictSchema = z.object({
+  decision: z.enum(["approve", "clip", "reject"]),
   approved: z.boolean(),
   reasons: z.array(z.string()),
   warnings: z.array(z.string()),
+  /** The governor's clip warning, when it reduced the order. */
+  clip: z.string().optional(),
   sizing: z.record(Num).optional(),
   equityUsd: Num,
   checkedAt: Iso,
 });
+export type OrderVerdict = z.infer<typeof OrderVerdictSchema>;
+
+/** Maps a governor Verdict (structurally) onto OrderVerdict. Pure. */
+export function toOrderVerdict(v: { approved: boolean; reasons: string[]; warnings: string[]; sizing?: object; equityUsd: number; checkedAt: string }): OrderVerdict {
+  const clip = v.warnings.find((w) => /\bclipped\b/.test(w));
+  return {
+    decision: !v.approved ? "reject" : clip ? "clip" : "approve",
+    approved: v.approved,
+    reasons: v.reasons,
+    warnings: v.warnings,
+    ...(clip ? { clip } : {}),
+    ...(v.sizing ? { sizing: v.sizing as Record<string, number> } : {}),
+    equityUsd: v.equityUsd,
+    checkedAt: v.checkedAt,
+  };
+}
 
 export const OrderPreviewSchema = z.object({
   intent: OrderIntentSchema,
@@ -735,8 +804,12 @@ export const OrderPreviewSchema = z.object({
   verdict: OrderVerdictSchema,
   warnings: z.array(z.string()),
   venue: z.string(),
-  /** Binds confirm to this preview's marks and time (409 when stale). */
+  /** Binds confirm to this preview's marks and time (409 when stale); DeskService.previewOperatorOrder's hash. */
   previewHash: z.string(),
+  /** Venue mark the verdict was sized at (null when the coin is not listed). */
+  markPx: Num.nullable(),
+  /** Confirm after this is refused (preview TTL). */
+  expiresAt: Iso,
   trace: LlmTraceSchema.optional(),
 });
 export type OrderPreview = z.infer<typeof OrderPreviewSchema>;
@@ -783,10 +856,15 @@ export const WatchChangeSchema = z.object({
   ts: Iso,
   fromHash: z.string().nullable(),
   toHash: z.string(),
-  /** Line diff (url) or slot/balance changes (evm), as text. */
-  diff: z.string(),
+  /** Line diff (url pages); null for evm watches, whose changes are in facts. */
+  diff: z.string().nullable(),
+  /** Code-detected changes, one plain line each ("implementation slot 0xab… → 0xcd…", "nonce 41 → 42"). */
+  facts: z.array(z.string()),
   detail: z.unknown(),
+  /** LLM summary of what changed and why it matters, claim-tagged. */
   lines: z.array(ClaimSchema),
+  /** Exposed assets the mapper alerted for this change. */
+  alertedAssets: z.array(z.string()),
   trace: LlmTraceSchema.optional(),
 });
 export type WatchChange = z.infer<typeof WatchChangeSchema>;

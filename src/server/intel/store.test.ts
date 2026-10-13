@@ -18,6 +18,8 @@ const alert = (over: Partial<NewAlert> = {}): NewAlert => ({
   path: [{ from: "Jito", to: "SOL", type: "collateral" }],
   edgeType: "collateral",
   hops: 1,
+  pathWeight: 0.8,
+  sources: [{ label: "rekt.news", url: "https://rekt.news/jito" }],
   materiality: 0.4,
   pricedIn: null,
   route: "push",
@@ -150,9 +152,11 @@ describe("MemoryIntelStore graph, events, cache", () => {
     await s.setSetting("x", { n: 1 });
     expect(await s.getSetting<{ n: number }>("x")).toEqual({ n: 1 });
     const w = await s.insertWatch({ kind: "evm_wallet", target: "0x" + "b".repeat(40), chain: "base", label: "treasury" });
-    await s.insertWatchChange({ watchId: w.id, fromHash: null, toHash: "h1", diff: "nonce 1 → 2", detail: null, lines: [] });
-    expect(await s.listWatchChanges(w.id, 10)).toHaveLength(1);
-    await expect(s.insertWatchChange({ watchId: "nope", fromHash: null, toHash: "h", diff: "", detail: null, lines: [] })).rejects.toThrow();
+    const ch = await s.insertWatchChange({ watchId: w.id, fromHash: null, toHash: "h1", diff: null, facts: ["nonce 1 → 2"], detail: null, lines: [] });
+    expect(ch.alertedAssets).toEqual([]);
+    await s.setWatchChangeAlerted(ch.id, ["ETH"]);
+    expect((await s.listWatchChanges(w.id, 10))[0]).toMatchObject({ facts: ["nonce 1 → 2"], alertedAssets: ["ETH"] });
+    await expect(s.insertWatchChange({ watchId: "nope", fromHash: null, toHash: "h", diff: null, facts: [], detail: null, lines: [] })).rejects.toThrow();
     expect(await s.deleteWatch(w.id)).toBe(true);
     expect(await s.listWatchChanges(w.id, 10)).toHaveLength(0);
   });

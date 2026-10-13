@@ -139,7 +139,7 @@ never dimmed except the 70% "superseded" precedents (§1.5, §6, §7.4).
 | POSITIONS | last successful `/positions` | > 5 min | > 30 min, noun `positions` |
 | EXPOSURE | each edge's `last_verified` | > 48 h (per edge, ClaimAge amber) | — |
 | Journal report | `createdAt` | > 7 days | — |
-| Thesis detail | `lastCheckedAt` | > 24 h | — |
+| Thesis detail | `checkedAt` | > 24 h | — |
 | Watch row | `checked_at` | > 2 h | > 6 h (row Badge `STALE`, amber) |
 | Order preview | preview receipt | `VALID` countdown < 15 s (amber) | expired at 60 s → stale state |
 
@@ -521,7 +521,7 @@ then the detail only; on mobile, selecting from the list sets `?id` with
   new thesis. Verbatim ErrorBlock under the button. Disabled when empty.
 - **ThesisList**: rows (`--row-h`, focusable, `aria-selected`): `▸` on the
   selected row, first line of the text (ellipsis, `title` full), counts as
-  `1✗ 4✓ 2?` with visually hidden words, ClaimAge of `lastCheckedAt`.
+  `1✗ 4✓ 2?` with visually hidden words, ClaimAge of `checkedAt`.
   Contradicted count > 0 → its number in red-text.
 - **ThesisDetail**:
   - Thesis text verbatim, base 13px, `text-muted`.
@@ -836,23 +836,24 @@ text, 409 messages) render **verbatim**; the UI never rewrites them.
 
 ## 13. Fields the UI reads that SPEC I2 does not name
 
-The worker pins these in `src/shared/intel.ts` (the contract both sides
-import). If the server cannot provide one, the UI omits the element as stated.
+Pinned in `src/shared/intel.ts` (the contract both sides import); names
+below are the contract's. If the server cannot provide one, the UI omits the
+element as stated.
 
 | Field | Used by | If absent |
 |---|---|---|
-| `DiffItem {asset, metric, held: boolean, delta, deltaUnit, z, materiality, now, baseline, stopDistPct?, stopDistAtr?, weight, ts}` | DiffTable, snapshot age | `ts` absent → snapshot age from the newest observed `snapshot` claim |
+| `DiffItem {asset, metric, held: boolean, from (baseline value), to (current value), delta, deltaUnit: 'pct'\|'bps'\|'usd'\|'abs', z, materiality, exposureWeight, stopProximity, stopDistPct?, stopDistAtr?, ts, baselineTs}` | DiffTable, snapshot age | `ts` absent → snapshot age from the newest observed `snapshot` claim |
 | `Brief.threshold? {minZ, pushMateriality}` | silent copy, amber MAT | generic silent copy; MAT never amber |
-| `Brief.trace.error?`, `Brief.trace.dropped?` | no-narration row, dropped footer | generic reason; no footer |
-| `Brief.ingest? [{source, ok, lastRunAt, error?}]` | NEWS dot, news staleness | NEWS dot omitted; staleness from newest alert |
+| `Brief.trace.error?`, `Brief.trace.dropped?` (`trace.model` is null when no provider was called) | no-narration row, dropped footer | generic reason; no footer |
+| `Brief.ingest? [{source, ok, lastRunAt: string\|null, error?}]` | NEWS dot, news staleness | NEWS dot omitted; staleness from newest alert |
 | `Brief.diffedCount?` | silent sub-line | sub-line omitted |
-| `Alert {id, kind, asset, line: Claim, path: [{src, type, dst}], pathWeight, pricedIn? {pricePct, oiPct}, materiality, routed: 'push'\|'batch', vote: 1\|-1\|null, sources: [{label, url}], createdAt}` | AlertItem | — |
-| `Catalyst {id, title, scheduledAt, assets[], origin, size?, directionHypothesis?, source?}` | CatalystRow | — |
+| `Alert {id, kind, asset, title, line: Claim, path: [{from, to, type}], hops, pathWeight, pricedIn: {pricePct, oiPct: number\|null, since}\|null, materiality, route: 'push'\|'batch', feedback: 1\|-1\|null, sources: [{label, url?}], window: '24h'\|'1h'\|null, createdAt}` (vote is the request body of `POST /alerts/:id/feedback`) | AlertItem | — |
+| `Catalyst {eventId, title, type, scheduledAt, assets[], exposed[], origin, catalyst: {size?, directionHypothesis?}\|null, tag, sources: [{label, url?}]}` (first source is the link) | CatalystRow | — |
 | `GET /watchlist` → `fallback: boolean` | FALLBACK badge | badge omitted |
-| `Trade {id, venue, coin, side, openedAt, closedAt, holdMs, r, mae, mfe, maeUnit, pnl, session, entryState {fundingZ, oiZ, chg24h}, tags[], note?, noteSummary?: Claim}` | trades table, detail | — |
-| `Thesis {id, text, createdAt, lastCheckedAt, checks: [{kind: 'claim'\|'assumption', text, check, status, evidence? {value, source, ts}}], invalidation: [{text, status?}], wrongIf: Claim[]}` | theses | — |
-| `order/preview` → `previewHash`, `verdict {decision: 'approve'\|'clip'\|'reject', reasons[], clip?}` | PreviewCard, confirm | — |
-| `Watch` / `WatchChange {id, detectedAt, summary: Claim[], facts: string[], diff?: string, alertedAssets[]}` | watch view | — |
+| `Trade {id, venue, asset, side, openedAt, closedAt, holdMs, r, mae, mfe, maeUnit: 'r'\|'pct', pnlUsd, feesUsd, session, entryState {fundingZ, oiZ, change24hPct}, tag: string\|null, note: string\|null, noteSummary: Claim\|null}` (one setup tag per trade) | trades table, detail | — |
+| `Thesis {id, text, assets[], createdAt, checkedAt, claims: [{kind: 'claim'\|'assumption', text, check, status, evidence? {value, source: {label, url?}, ts}}], invalidation: [{text, status?: 'triggered'\|'clear'\|'unknown'}], wrongIf: Claim[]}` | theses | — |
+| `order/preview` → `previewHash`, `markPx`, `expiresAt`, `venue`, `verdict {decision: 'approve'\|'clip'\|'reject', reasons[], warnings[], clip?: string}` (the Desk governor Verdict mapped by `toOrderVerdict`) | PreviewCard, confirm | — |
+| `Watch` / `WatchChange {id, ts (detected at), lines: Claim[] (summary), facts: string[], diff: string\|null, alertedAssets[]}` | watch view | — |
 
 ---
 
@@ -868,7 +869,7 @@ Route pages under `src/ui/pages/terminal/`; panels and cards under
 | `ClaimAge` | `components/intel/ClaimAge.tsx` | `ts: string`, `thresholdHours?: number`, `prefix?: string` |
 | `SourceLink` | `components/intel/SourceLink.tsx` | `source: {label: string, url?: string}` |
 | `VenueBadge` | `components/intel/VenueBadge.tsx` | `venue: 'paper' \| 'testnet' \| null` |
-| `ExposurePathChips` | `components/intel/ExposurePathChips.tsx` | `path: {src, type, dst}[]`, `weight?: number` |
+| `ExposurePathChips` | `components/intel/ExposurePathChips.tsx` | `path: {from, to, type}[]`, `weight?: number` |
 | `ReviewStrip` | `components/intel/ReviewStrip.tsx` | `brief: Brief \| null`, `reviewing: boolean`, `sources`, `alertsCount`, `nextCatalyst?`, `fromTelegram: boolean`, `onReview()` |
 | `WhatChangedPanel` / `DiffTable` | `components/intel/WhatChangedPanel.tsx`, `DiffTable.tsx` | `brief: Brief \| null`, `loading`, `error?`, `onRetry()` / `items: DiffItem[]` |
 | `NewsFeedPanel` / `AlertItem` | `components/intel/NewsFeedPanel.tsx`, `AlertItem.tsx` | `since: string` (fetches alerts) / `alert: Alert`, `onVote(vote: 1 \| -1)` |
