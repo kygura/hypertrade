@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Example Crypto News</title>
+    <link>https://news.example.com</link>
+    <atom:link href="https://news.example.com/rss" rel="self" type="application/rss+xml"/>
+    <item>
+      <title><![CDATA[Jito restaking vault exploited for $10M & counting]]></title>
+      <link>https://news.example.com/jito-exploit</link>
+      <guid isPermaLink="false">jito-1234</guid>
+      <pubDate>Tue, 13 Oct 2026 09:30:00 +0000</pubDate>
+      <description><![CDATA[<p>Attackers drained <b>jitoSOL</b> from a vault &amp; bridged out.</p>]]></description>
+    </item>
+    <item>
+      <title>SEC &amp; CFTC issue joint statement on &#8220;perp&#8221; venues</title>
+      <link>https://news.example.com/sec-cftc</link>
+      <dc:date>2026-10-13T08:00:00Z</dc:date>
+      <description>&lt;p&gt;Regulators said &lt;a href="https://x.example"&gt;more&lt;/a&gt; is coming&#x2026;&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title></title>
+      <link>https://news.example.com/untitled</link>
+    </item>
+  </channel>
+</rss>
