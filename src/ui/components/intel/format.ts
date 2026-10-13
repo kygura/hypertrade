@@ -32,7 +32,12 @@ export const METRIC_LABEL: Record<SnapshotMetric, string> = {
 const RATE_METRICS = new Set<SnapshotMetric>(['funding', 'premium', 'basis'])
 const USD_METRICS = new Set<SnapshotMetric>(['oi_usd', 'vol24h', 'depth_bid_1', 'depth_ask_1', 'depth_bid_2', 'depth_ask_2'])
 
-/** Signed change in the metric's unit: `+18.4%`, `+0.012%`, `+2.1 bp`, `+$1.20K`. */
+/**
+ * Signed change in the metric's unit: `+18.4%`, `+0.0125%`, `+2.1 bp`, `+$1.20K`.
+ * Rate metrics (funding, premium, basis) arrive in bp of a fraction but print
+ * as % with 4 decimals, like their NOW/BASE levels (fmtMetricValue): an hourly
+ * funding move is a few hundredths of a bp, which "+0.0 bp" would hide.
+ */
 export function fmtDelta(item: Pick<DiffItem, 'metric' | 'delta' | 'deltaUnit'>): string {
   const d = item.delta
   if (!Number.isFinite(d)) return '—'
@@ -40,7 +45,7 @@ export function fmtDelta(item: Pick<DiffItem, 'metric' | 'delta' | 'deltaUnit'>)
     case 'pct':
       return fmtSigned(d, 1, '%')
     case 'bps':
-      return fmtSigned(d, 1, ' bp')
+      return RATE_METRICS.has(item.metric) ? fmtSigned(d / 100, 4, '%') : fmtSigned(d, 1, ' bp')
     case 'usd':
       return `${d > 0 ? '+' : d < 0 ? MINUS : ''}${fmtUsd(Math.abs(d), { compact: true })}`
     case 'abs':

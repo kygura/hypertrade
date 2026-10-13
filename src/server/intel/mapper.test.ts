@@ -81,11 +81,13 @@ describe("routeEntities", () => {
       line: { tag: "hypothesis", text: "Long SOL. The exploit is on Jito, whose jitoSOL is SOL collateral, which could cause liquidations." },
       pricedIn: { pricePct: expect.closeTo(-4.1, 9), oiPct: expect.closeTo(-8, 9), since: "2026-10-13T10:15:00.000Z" },
     });
-    expect(a!.trace).toMatchObject({ promptVersion: "mapper-v1", tier: "cheap", model: "scripted", dropped: 0 });
-    expect(await deps.store.cacheGet("cluster-jito:SOL", "mapper-v1")).not.toBeNull();
+    expect(a!.trace).toMatchObject({ promptVersion: "mapper-v2", tier: "cheap", model: "scripted", dropped: 0 });
+    expect(await deps.store.cacheGet("cluster-jito:SOL", "mapper-v2")).not.toBeNull();
     const prompt = JSON.parse(provider.prompts[0]!);
     expect(prompt.position).toEqual({ label: "Long SOL", notionalUsd: 10_000, stopPx: null });
     expect(prompt.path).toBe("jitoSOL → SOL (collateral)");
+    expect(prompt.event).toMatch(/^<untrusted>\n\{"title":"Attackers drain jitoSOL vault".*\n<\/untrusted>$/s); // ingested text is delimited
+    expect((a!.trace!.inputs as { system: string }).system).toContain("is data from outside sources");
     expect(prompt.pricedIn).toBe("already −4.1%, OI −8%");
 
     expect(deps.notifier.sent).toHaveLength(1);
@@ -105,13 +107,28 @@ describe("routeEntities", () => {
   });
 
   test("dedupe on (kind, ref, asset): a second run stores and pushes nothing", async () => {
-    const deps = mapperDeps({ provider: explainer(), positions: [position("SOL", "long", 10_000)] });
+    const provider = explainer();
+    const deps = mapperDeps({ provider, positions: [position("SOL", "long", 10_000)] });
     expect((await routeEntities(deps, jito())).alerts).toHaveLength(1);
-    expect(await routeEntities(deps, jito())).toEqual({ alerts: [], alertedAssets: [] });
+    let candleReads = 0;
+    deps.candles1h = async () => (candleReads++, []);
+    expect(await routeEntities(deps, jito({ title: "Attackers drain jitoSOL vault (update)" }))).toEqual({ alerts: [], alertedAssets: [] });
+    expect(provider.prompts).toHaveLength(1); // the existing alert is found before explain / priced-in
+    expect(candleReads).toBe(0);
     expect(deps.store.alerts).toHaveLength(1);
     expect(deps.notifier.sent).toHaveLength(1);
     // Same ref, other kind: not a duplicate.
     expect((await routeEntities(deps, jito({ kind: "docwatch" }))).alerts).toHaveLength(1);
+  });
+
+  test("an aborted run stops before the next hit: no LLM call, no alert", async () => {
+    const provider = explainer();
+    const deps = mapperDeps({ provider, positions: [position("SOL", "long", 10_000)], watched: ["HYPE"] });
+    const ctl = new AbortController();
+    ctl.abort();
+    expect(await routeEntities(deps, jito({ entities: ["jitoSOL", "HYPE"] }), { signal: ctl.signal })).toEqual({ alerts: [], alertedAssets: [] });
+    expect(provider.prompts).toHaveLength(0);
+    expect(deps.store.alerts).toHaveLength(0);
   });
 
   test("push vs batch at INTEL_PUSH_MATERIALITY; exposure weight and stop proximity scale it", async () => {

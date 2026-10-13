@@ -127,6 +127,13 @@ describe("MemoryIntelStore graph, events, cache", () => {
     expect(await s.deleteManualEvent(cats[0]!.id)).toBe(true);
   });
 
+  test("event scheduledAt is normalized to ISO UTC like firstSeen (offset input)", async () => {
+    const s = new MemoryIntelStore();
+    const [e] = await s.upsertEvents([event("off", { origin: "manual", firstSeen: "2026-10-13T02:00:00+02:00", scheduledAt: "2026-10-20T14:00:00+02:00" })]);
+    expect(e).toMatchObject({ firstSeen: "2026-10-13T00:00:00.000Z", scheduledAt: "2026-10-20T12:00:00.000Z" });
+    expect((await s.listCatalysts(new Date("2026-10-20T11:59:00Z"), new Date("2026-10-20T12:01:00Z")))[0]?.scheduledAt).toBe("2026-10-20T12:00:00.000Z");
+  });
+
   test("LLM cache keys on (key, promptVersion) and counts calls since a time", async () => {
     let now = new Date("2026-10-13T00:00:00Z");
     const s = new MemoryIntelStore(() => now);

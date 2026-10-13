@@ -22,16 +22,49 @@ export interface FeedItem {
   summary: string | null;
 }
 
-function inner(body: string, tag: string): string | null {
-  const m = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, "i").exec(body);
-  return m ? m[1]! : null;
+/**
+ * Inner text of each `<tag …>…</tag>` (not nested), in order, at most `limit`.
+ * A linear indexOf scan: feeds are untrusted and lazy `[\s\S]*?` regexes go
+ * quadratic on many unclosed openers. Once an opener has no `>` or no closer,
+ * no later one can have either, so the scan stops.
+ */
+function elements(xml: string, tag: string, limit = Infinity): string[] {
+  const open = new RegExp(`<${tag}(?=[\\s>])`, "gi");
+  const close = new RegExp(`</${tag}>`, "gi");
+  const out: string[] = [];
+  for (let m = open.exec(xml); m && out.length < limit; m = open.exec(xml)) {
+    const gt = xml.indexOf(">", open.lastIndex);
+    if (gt < 0) break;
+    close.lastIndex = gt + 1;
+    const c = close.exec(xml);
+    if (!c) break;
+    out.push(xml.slice(gt + 1, c.index));
+    open.lastIndex = c.index + c[0].length;
+  }
+  return out;
+}
+
+const inner = (body: string, tag: string): string | null => elements(body, tag, 1)[0] ?? null;
+
+/** CDATA sections → their literal text, re-escaped so the entity decode below is a no-op on it. Linear. */
+function unwrapCdata(raw: string): string {
+  const out: string[] = [];
+  let i = 0;
+  for (;;) {
+    const a = raw.indexOf("<![CDATA[", i);
+    const b = a < 0 ? -1 : raw.indexOf("]]>", a + 9);
+    if (b < 0) break;
+    out.push(raw.slice(i, a), raw.slice(a + 9, b).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+    i = b + 3;
+  }
+  out.push(raw.slice(i));
+  return out.join("");
 }
 
 /** Element text: CDATA is literal, anything else is entity-encoded; either may hold HTML. */
 function text(raw: string | null, max: number): string | null {
   if (raw == null) return null;
-  const unwrapped = raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, (_, c: string) => c.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"));
-  const s = plain(decodeEntities(unwrapped), max);
+  const s = plain(decodeEntities(unwrapCdata(raw)), max);
   return s || null;
 }
 
@@ -46,16 +79,28 @@ function isoDate(raw: string | null): string | null {
   return Number.isFinite(t) ? new Date(t).toISOString() : null;
 }
 
+/** `<link …>` tags, linear; tags over 2 KB are skipped (the attr regex would rescan them). */
+function linkTags(body: string): string[] {
+  const open = /<link\b/gi;
+  const out: string[] = [];
+  for (let m = open.exec(body); m; m = open.exec(body)) {
+    const gt = body.indexOf(">", open.lastIndex);
+    if (gt < 0) break;
+    if (gt - m.index <= 2048) out.push(body.slice(m.index, gt + 1));
+    open.lastIndex = gt + 1;
+  }
+  return out;
+}
+
 function atomLink(body: string): string | null {
-  const links = body.match(/<link\b[^>]*>/gi) ?? [];
+  const links = linkTags(body);
   const pick = links.find((l) => !attr(l, "rel") || attr(l, "rel") === "alternate") ?? links[0];
   return pick ? attr(pick, "href") : null;
 }
 
 export function parseFeed(xml: string): FeedItem[] {
   const out: FeedItem[] = [];
-  for (const m of xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)) {
-    const b = m[1]!;
+  for (const b of elements(xml, "item")) {
     const title = text(inner(b, "title"), 300);
     if (!title) continue;
     out.push({
@@ -66,8 +111,7 @@ export function parseFeed(xml: string): FeedItem[] {
       summary: text(inner(b, "description"), 600),
     });
   }
-  for (const m of xml.matchAll(/<entry\b[^>]*>([\s\S]*?)<\/entry>/gi)) {
-    const b = m[1]!;
+  for (const b of elements(xml, "entry")) {
     const title = text(inner(b, "title"), 300);
     if (!title) continue;
     out.push({

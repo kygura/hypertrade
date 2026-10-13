@@ -52,4 +52,19 @@ describe("order routes", () => {
     expect(await store.listFills(10)).toHaveLength(0);
     expect((await post("/order/preview", { text: "long eth 3x 800" })).status).toBe(503);
   });
+
+  test("unexpected errors → generic 500, detail only in the log", async () => {
+    const routes = createOrderRoutes(() => {
+      throw new Error("relation desk_fills: password=hunter2");
+    });
+    const orig = console.error;
+    console.error = () => {};
+    try {
+      const res = await routes.request("/order/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent }) });
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "order error" });
+    } finally {
+      console.error = orig;
+    }
+  });
 });

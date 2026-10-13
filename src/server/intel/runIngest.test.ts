@@ -8,12 +8,12 @@ const now = new Date("2026-10-13T12:00:00Z");
 const feed = `<rss version="2.0"><channel><item><title>Attackers drain jitoSOL vault on Solana</title>
 <link>https://news.example.net/drain</link><pubDate>Tue, 13 Oct 2026 10:00:00 GMT</pubDate></item></channel></rss>`;
 
+const extraction = { type: "exploit", entities: ["Jito", "jitoSOL"], assets: [], magnitude: "high", summary: "A jitoSOL vault was drained.", scheduledAt: null, catalyst: null };
+
 /** Answers cluster extraction (a "Headlines:" prompt) and mapper explanations (JSON with a position). */
 const provider = () =>
   new EmitProvider((prompt) => {
-    if (prompt.startsWith("Headlines:")) {
-      return { type: "exploit", entities: ["Jito", "jitoSOL"], assets: [], magnitude: "high", summary: "A jitoSOL vault was drained.", scheduledAt: null, catalyst: null };
-    }
+    if (prompt.startsWith("Headlines:")) return extraction;
     const p = JSON.parse(prompt) as { position: { label: string } };
     return { line: { tag: "hypothesis", text: `${p.position.label}. jitoSOL is SOL collateral; the drain could force liquidations.` } };
   });
@@ -32,7 +32,7 @@ function setup() {
 }
 
 describe("runIntelIngest", () => {
-  test("sources → mapper → catalysts → weekly feedback report", async () => {
+  test("sources → catalysts → mapper → weekly feedback report", async () => {
     const { deps, store, notifier, runs } = setup();
     const r = await runIntelIngest(deps, { budgetMs: 30_000 });
     expect(r.errors).toEqual([]);
@@ -68,10 +68,30 @@ describe("runIntelIngest", () => {
     expect((await store.getCluster("left-over"))!.mappedAt).toBe(now.toISOString());
   });
 
+  test("catalysts run before the mapper, so a mapper that eats the budget cannot starve a T−24 h / T−1 h alert", async () => {
+    const ctl = new AbortController();
+    const base = mapperDeps({
+      provider: new EmitProvider((prompt) => {
+        if (prompt.startsWith("Headlines:")) return extraction;
+        ctl.abort(); // the mapper's first explanation uses up the run
+        return { line: { tag: "hypothesis", text: "Long SOL. Slow." } };
+      }),
+      positions: [position("SOL", "long", 10_000)],
+      clock: { now },
+    });
+    const deps: IntelIngestDeps = { ...setup().deps, ...base };
+    await base.store.upsertEvents([
+      { key: "unlock", type: "unlock", title: "SOL unlock", summary: null, entities: ["SOL"], assets: ["SOL"], magnitude: "med", sources: [{ label: "calendar" }], origin: "manual", firstSeen: "2026-10-13T08:00:00Z", scheduledAt: "2026-10-13T15:00:00Z", catalyst: null, tag: "observed" },
+    ]);
+    const r = await runIntelIngest(deps, { budgetMs: 30_000, signal: ctl.signal });
+    expect(r.catalystAlerts).toBe(1);
+    expect(r.skipped).toEqual(["feedback"]);
+  });
+
   test("budget cut: no stage starts without budget; a failing stage is reported and later stages still run", async () => {
     const { deps, store } = setup();
     const cut = await runIntelIngest(deps, { budgetMs: 0 });
-    expect(cut.skipped).toEqual(["ingest", "mapper", "catalysts", "feedback"]);
+    expect(cut.skipped).toEqual(["ingest", "catalysts", "mapper", "feedback"]);
     expect(cut.ingest).toBeNull();
     expect(store.events.size).toBe(0);
 

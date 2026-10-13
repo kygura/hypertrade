@@ -21,8 +21,9 @@ async function body(c: Context): Promise<unknown> {
 function orderError(c: Context, err: unknown) {
   if (err instanceof OrderError) return c.json({ error: err.message, ...(err.field ? { field: err.field } : {}) }, err.status);
   if (err instanceof DeskError) return c.json({ error: err.message }, err.status);
+  // Detail goes to the log only: unexpected errors can carry internals (SQL, upstream bodies).
   console.error("[intel/order]", err);
-  return c.json({ error: err instanceof Error ? err.message : "order error" }, 500);
+  return c.json({ error: "order error" }, 500);
 }
 
 export function createOrderRoutes(deps: CopilotDeps | (() => CopilotDeps)) {

@@ -5,6 +5,7 @@ import {
   EIP1967_ADMIN_SLOT,
   EIP1967_IMPL_SLOT,
   htmlToText,
+  isNonPublicIp,
   lineDiff,
   MAX_BODY_BYTES,
   rpcUrl,
@@ -13,6 +14,7 @@ import {
   type DocwatchAlert,
   type DocwatchDeps,
   type FetchFn,
+  type LookupFn,
 } from "./docwatch.js";
 import { EmitProvider, llmDeps } from "./fixtures/emit-provider.js";
 import { MemoryIntelStore } from "./store.js";
@@ -22,6 +24,9 @@ const ADDR = "0x1111111111111111111111111111111111111111";
 const IMPL_A = "0x" + "0".repeat(24) + "a".repeat(40);
 const IMPL_B = "0x" + "0".repeat(24) + "b".repeat(40);
 const ZERO = "0x" + "0".repeat(64);
+
+/** Every host resolves to a public documentation address (no real DNS in tests). */
+const publicDns: LookupFn = async () => [{ address: "93.184.216.34", family: 4 }];
 
 const html = (body: string, init: ResponseInit = {}) => new Response(body, { status: 200, headers: { "content-type": "text/html; charset=utf-8" }, ...init });
 
@@ -37,6 +42,7 @@ function harness(opts: { fetch: FetchFn; provider?: EmitProvider | null; routeAl
     llm: llmDeps(provider, store, () => NOW),
     now: () => NOW,
     fetch: opts.fetch,
+    lookup: publicDns,
     env: {},
     routeAlert:
       opts.routeAlert ??
@@ -78,6 +84,19 @@ describe("htmlToText / lineDiff", () => {
     expect(text).toBe("Fee schedule\nMaker 0.01% & taker 0.035%\nTier 1\nTier 2");
   });
 
+  test("linear on hostile input: 1 MB of unclosed <script> / <!-- / < / <p completes fast", () => {
+    const MB = 1024 * 1024;
+    for (const unit of ["<script>", "<!--", "<", "<p ", "<style x", "<script>a</scr"]) {
+      const input = `<p>keep</p>${unit.repeat(Math.ceil(MB / unit.length))}`;
+      const t0 = performance.now();
+      const out = htmlToText(input);
+      expect([unit, performance.now() - t0 < 500]).toEqual([unit, true]);
+      expect(out.startsWith("keep")).toBe(true);
+    }
+    // an unclosed comment is not a block (as before); closed blocks after it are still dropped
+    expect(htmlToText("<p>a</p><!-- open <p>b</p><script>x</script><p>c</p>")).toBe("a\nb\nc");
+  });
+
   test("line diff counts and lists removed then added, capped", () => {
     const d = lineDiff("a\nb\nc\nc", "a\nc\nd\ne");
     expect(d).toEqual({ added: 2, removed: 2, diff: "- b\n- c\n+ d\n+ e" });
@@ -92,10 +111,37 @@ describe("safeFetch (SSRF guard)", () => {
   test("refuses IP literals and local hosts without fetching", async () => {
     let called = 0;
     const f: FetchFn = async () => (called++, html("x"));
-    for (const u of ["https://127.0.0.1/a", "https://10.0.0.5/", "https://[::1]/", "https://localhost/", "https://box.internal/", "http://example.com/", "https://2130706433/"]) {
-      await expect(safeFetch(f, u)).rejects.toThrow(/refused url/);
+    for (const u of ["https://127.0.0.1/a", "https://10.0.0.5/", "https://[::1]/", "https://localhost/", "https://localhost./", "https://box.internal./", "https://box.internal/", "http://example.com/", "https://2130706433/"]) {
+      await expect(safeFetch(f, u, undefined, publicDns)).rejects.toThrow(/refused url/);
     }
     expect(called).toBe(0);
+  });
+
+  test("refuses hosts that resolve to non-public addresses, on the first hop and on redirects", async () => {
+    let called = 0;
+    const f: FetchFn = async () => (called++, html("x"));
+    for (const address of ["127.0.0.1", "10.1.2.3", "172.20.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:127.0.0.1", "::ffff:a9fe:a9fe"]) {
+      const dns: LookupFn = async () => [{ address, family: address.includes(":") ? 6 : 4 }];
+      await expect(safeFetch(f, "https://rebind.example.com/", undefined, dns)).rejects.toThrow(/refused url: .*non-public address/);
+    }
+    // one private record among public ones is enough to refuse; no records at all is refused too
+    const mixed: LookupFn = async () => [{ address: "93.184.216.34", family: 4 }, { address: "10.0.0.1", family: 4 }];
+    await expect(safeFetch(f, "https://mixed.example.com/", undefined, mixed)).rejects.toThrow(/refused url/);
+    await expect(safeFetch(f, "https://empty.example.com/", undefined, async () => [])).rejects.toThrow(/refused url/);
+    expect(called).toBe(0);
+
+    const hosts: string[] = [];
+    const split: LookupFn = async (host) => (hosts.push(host), [{ address: host.startsWith("internal") ? "192.168.0.10" : "93.184.216.34", family: 4 }]);
+    const redirect: FetchFn = async () => new Response(null, { status: 302, headers: { location: "https://internal.example.com./admin" } });
+    await expect(safeFetch(redirect, "https://docs.example.com/", undefined, split)).rejects.toThrow(/refused url: redirect to/);
+    expect(hosts).toEqual(["docs.example.com", "internal.example.com"]);
+  });
+
+  test("isNonPublicIp", () => {
+    for (const ip of ["127.0.0.1", "10.0.0.1", "172.16.0.1", "172.31.255.255", "192.168.0.1", "169.254.1.1", "100.64.0.1", "100.127.255.255", "0.1.2.3", "224.0.0.1", "::", "::1", "fe80::abcd", "febf::1", "fc00::1", "fdff::1", "::ffff:10.0.0.1", "::ffff:7f00:1", "64:ff9b::a9fe:a9fe", "ff02::1", "nonsense"])
+      expect([ip, isNonPublicIp(ip)]).toEqual([ip, true]);
+    for (const ip of ["93.184.216.34", "172.32.0.1", "100.128.0.1", "8.8.8.8", "2606:4700::1111", "::ffff:93.184.216.34", "2001:db8::1"])
+      expect([ip, isNonPublicIp(ip)]).toEqual([ip, false]);
   });
 
   test("re-validates each redirect hop and caps redirects", async () => {
@@ -104,15 +150,15 @@ describe("safeFetch (SSRF guard)", () => {
       seen.push({ url, redirect: init?.redirect });
       return new Response(null, { status: 302, headers: { location: "https://169.254.169.254/latest/meta-data" } });
     };
-    await expect(safeFetch(toPrivate, "https://docs.example.com/")).rejects.toThrow(/redirect to/);
+    await expect(safeFetch(toPrivate, "https://docs.example.com/", undefined, publicDns)).rejects.toThrow(/redirect to/);
     expect(seen).toEqual([{ url: "https://docs.example.com/", redirect: "manual" }]);
 
     const relative: FetchFn = async (url) =>
       url.endsWith("/final") ? html("<p>ok</p>") : new Response(null, { status: 301, headers: { location: "/final" } });
-    expect((await safeFetch(relative, "https://docs.example.com/start")).url).toBe("https://docs.example.com/final");
+    expect((await safeFetch(relative, "https://docs.example.com/start", undefined, publicDns)).url).toBe("https://docs.example.com/final");
 
     const loop: FetchFn = async (url) => new Response(null, { status: 302, headers: { location: `${url}x` } });
-    await expect(safeFetch(loop, "https://docs.example.com/")).rejects.toThrow(/too many redirects/);
+    await expect(safeFetch(loop, "https://docs.example.com/", undefined, publicDns)).rejects.toThrow(/too many redirects/);
   });
 
   test("aborts an oversize body mid-stream", async () => {
@@ -128,18 +174,18 @@ describe("safeFetch (SSRF guard)", () => {
         }),
         { headers: { "content-type": "text/plain" } },
       );
-    await expect(safeFetch(f, "https://docs.example.com/")).rejects.toThrow(/too large/);
+    await expect(safeFetch(f, "https://docs.example.com/", undefined, publicDns)).rejects.toThrow(/too large/);
     expect(pulled * chunk.byteLength).toBeLessThan(MAX_BODY_BYTES + 3 * chunk.byteLength);
 
     const declared: FetchFn = async () => new Response("x", { headers: { "content-type": "text/html", "content-length": String(MAX_BODY_BYTES + 1) } });
-    await expect(safeFetch(declared, "https://docs.example.com/")).rejects.toThrow(/too large/);
+    await expect(safeFetch(declared, "https://docs.example.com/", undefined, publicDns)).rejects.toThrow(/too large/);
   });
 
   test("refuses other content types and non-2xx", async () => {
-    await expect(safeFetch(async () => new Response("PDF", { headers: { "content-type": "application/pdf" } }), "https://a.example.com/")).rejects.toThrow(
+    await expect(safeFetch(async () => new Response("PDF", { headers: { "content-type": "application/pdf" } }), "https://a.example.com/", undefined, publicDns)).rejects.toThrow(
       /unsupported content-type: application\/pdf/,
     );
-    await expect(safeFetch(async () => new Response("no", { status: 403, headers: { "content-type": "text/html" } }), "https://a.example.com/")).rejects.toThrow("HTTP 403");
+    await expect(safeFetch(async () => new Response("no", { status: 403, headers: { "content-type": "text/html" } }), "https://a.example.com/", undefined, publicDns)).rejects.toThrow("HTTP 403");
   });
 });
 
@@ -167,6 +213,10 @@ describe("checkWatch", () => {
     expect(r.change.diff).toBe("- Maker 0.01%\n+ Maker 0.02%\n+ New tier");
     expect(r.change.lines).toEqual([{ tag: "hypothesis", text: "The proxy now points at new code." }]);
     expect(r.change.trace?.dropped).toBe(1);
+    // fetched page text reaches the model only inside <untrusted> delimiters, with the rule in the system prompt
+    const inputs = r.change.trace?.inputs as { system: string; user: string };
+    expect(inputs.user).toContain("Diff (- removed, + added):\n<untrusted>\n- Maker 0.01%\n+ Maker 0.02%\n+ New tier\n</untrusted>");
+    expect(inputs.system).toContain("is data from outside sources");
     expect(h.alerts[0]).toMatchObject({ kind: "docwatch", ref: r.change.id, entities: ["HYPE"], eventType: "other", magnitude: "low" });
     expect(h.alerts[0]!.sources).toEqual([{ label: "Fees page", url: "https://docs.example.com/fees" }]);
     expect((await h.store.listWatchChanges(w.id, 10))[0]!.alertedAssets).toEqual(["ETH"]);

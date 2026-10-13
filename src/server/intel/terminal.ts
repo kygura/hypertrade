@@ -130,7 +130,11 @@ async function assetInput(
 ): Promise<AssetDiffInput | null> {
   const asset = ctx.name;
   const from = new Date(now.getTime() - WINDOW_MS);
-  const [baseline, history] = await Promise.all([deps.store.nearestSnapshot(asset, baselineTs), deps.store.snapshotRange(asset, from, now)]);
+  // Baseline = latest snapshot at or before the review; the first one after only when none precedes it (SPEC I0.4).
+  const [baseline, history] = await Promise.all([
+    deps.store.nearestSnapshot(asset, baselineTs, "before").then((b) => b ?? deps.store.nearestSnapshot(asset, baselineTs, "after")),
+    deps.store.snapshotRange(asset, from, now),
+  ]);
   if (!baseline) return null;
   const last = history.at(-1);
   const book = last && now.getTime() - Date.parse(last.ts) <= BOOK_FRESH_MS ? last : null;

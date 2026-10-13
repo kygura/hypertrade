@@ -126,6 +126,22 @@ describe("buildBrief", () => {
     ]);
   });
 
+  test("baseline is the latest snapshot at or before the review, the first after only when none precedes it", async () => {
+    const h = harness({ price: (b) => b * Math.exp(0.1), replies: [{ emit: good }, { emit: good }] });
+    await h.init();
+    h.clock.t = NOW - 4.4 * H; // nearer to the NOW−4h snapshot, but that one is after the review
+    await h.store.logReview({ via: "ui" });
+    h.clock.t = NOW;
+    expect((await buildBrief(h.deps, { surface: "ui" })).items[0]).toMatchObject({ asset: "SOL", metric: "price", baselineTs: iso(NOW - 5 * H) });
+
+    const early = harness({ price: (b) => b * Math.exp(0.2), replies: [{ emit: good }] });
+    await early.init();
+    early.clock.t = NOW - 60 * H; // before every snapshot
+    await early.store.logReview({ via: "ui" });
+    early.clock.t = NOW;
+    expect((await buildBrief(early.deps, { surface: "ui" })).items[0]).toMatchObject({ asset: "SOL", baselineTs: iso(NOW - 48 * H) });
+  });
+
   test("ranked items, merged alerts and catalysts, validated narration", async () => {
     const h = harness({ price: (b) => b * Math.exp(0.1), replies: [{ emit: good }] });
     await h.init();

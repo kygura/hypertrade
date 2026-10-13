@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import type { DiffItem } from "../../../shared/intel";
 import { DiffTable, diffColumns } from "./DiffTable";
+import { fmtDelta } from "./format";
 
 // Render-check (react-dom/server, no jsdom), same approach as
 // Segmented.test.tsx: DESIGN-terminal §3.4 column priorities and markers.
@@ -59,6 +60,14 @@ describe("DiffTable", () => {
     expect(html).toContain("z +3.1");
     expect(html).toContain("−3.1% · 0.8×ATR");
     expect(html).toContain('title="0.05 floor"');
+  });
+
+  test("rate deltas keep their precision (no \"+0.0 bp\"); spread stays in bp", () => {
+    // funding 0.0100% → 0.0125% per hour: the server sends +0.25 bp
+    expect(fmtDelta({ metric: "funding", delta: 0.25, deltaUnit: "bps" })).toBe("+0.0025%");
+    expect(fmtDelta({ metric: "premium", delta: -0.04, deltaUnit: "bps" })).toBe("−0.0004%");
+    expect(fmtDelta({ metric: "basis", delta: 12.5, deltaUnit: "bps" })).toBe("+0.1250%");
+    expect(fmtDelta({ metric: "spread_bps", delta: 2.14, deltaUnit: "bps" })).toBe("+2.1 bp");
   });
 
   test("non-finite z prints — with the sample note", () => {

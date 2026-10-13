@@ -44,9 +44,11 @@ describe("returnZ (price, oi_usd)", () => {
     const z = returnZ({ t: T - 4 * H, v: 100 }, { t: T, v: 100 * Math.exp(0.04) }, history);
     expect(z).toBeCloseTo(0.04 / (0.01 * 2), 9);
   });
-  test("h is capped at 24", () => {
+  test("h is the real elapsed time (no 24 h cap) and is floored at 0.25 h", () => {
     const z = returnZ({ t: T - 72 * H, v: 100 }, { t: T, v: 100 * Math.exp(0.1) }, history);
-    expect(z).toBeCloseTo(0.1 / (0.01 * Math.sqrt(24)), 9);
+    expect(z).toBeCloseTo(0.1 / (0.01 * Math.sqrt(72)), 9);
+    const fast = returnZ({ t: T - 60_000, v: 100 }, { t: T, v: 100 * Math.exp(0.005) }, history);
+    expect(fast).toBeCloseTo(0.005 / (0.01 * Math.sqrt(0.25)), 9);
   });
   test("fewer than 24 samples → null; history older than 7 days does not count", () => {
     expect(returnZ({ t: T - H, v: 100 }, { t: T, v: 101 }, zigzag(24))).toBeNull();

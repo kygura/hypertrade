@@ -171,6 +171,8 @@ describe("watches", () => {
     bad(WatchInputSchema, { kind: "evm_wallet", target: "0x" + "a".repeat(40), chain: "solana", label: "x" });
     bad(WatchInputSchema, { kind: "evm_wallet", target: "0x" + "a".repeat(40), label: "x" });
     bad(HttpsUrlSchema, "javascript:alert(1)");
+    for (const u of ["https://localhost./x", "https://localhost../x", "https://box.internal./", "https://127.0.0.1./", "https://printer.lan./"]) bad(HttpsUrlSchema, u);
+    ok(HttpsUrlSchema, "https://docs.example.com./terms");
   });
 });
 

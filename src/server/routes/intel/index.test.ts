@@ -51,7 +51,7 @@ function setup() {
     journal: { store, llm, now: () => NOW, deskFills: async () => [] },
     thesis: { store, llm: { ...llm, makeProvider: () => thesisProvider }, now: () => NOW, ctxs: async () => [sol] },
     copilot: () => ({ llm, desk: kit.service }),
-    docwatch: { store, llm, now: () => NOW, env: {}, fetch: async () => new Response("<p>v1</p>", { headers: { "content-type": "text/html" } }), routeAlert: async () => ({ alertedAssets: [] }) },
+    docwatch: { store, llm, now: () => NOW, env: {}, fetch: async () => new Response("<p>v1</p>", { headers: { "content-type": "text/html" } }), lookup: async () => [{ address: "93.184.216.34", family: 4 }], routeAlert: async () => ({ alertedAssets: [] }) },
     queryClient: () => failing,
   };
   const app = new Hono().basePath("/api").route("/intel", createIntelRoutes(deps));

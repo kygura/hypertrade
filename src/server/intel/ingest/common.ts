@@ -48,12 +48,57 @@ export async function recordRun(result: Pick<AdapterResult, "source" | "ok" | "e
   }
 }
 
-/** GET/POST with a timeout; non-2xx throws `HTTP <status>`. */
+/** Response bodies above this are refused (streamed, so the cap holds without a content-length). */
+export const MAX_FETCH_BYTES = 5 * 1024 * 1024;
+const TEXTISH = /^(text\/[\w.+-]+|application\/([\w.-]+\+)?(json|xml))$/;
+
+/**
+ * GET/POST with a timeout; non-2xx throws `HTTP <status>`. A declared
+ * content type must be text-ish (text/*, JSON, XML; an absent header is read,
+ * since some feeds omit it) and the body is capped at MAX_FETCH_BYTES.
+ */
 export async function fetchText(f: typeof fetch, url: string, init: RequestInit = {}, signal?: AbortSignal, timeoutMs = FETCH_TIMEOUT_MS): Promise<string> {
   const timeout = AbortSignal.timeout(timeoutMs);
   const res = await f(url, { ...init, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.text();
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const type = (res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+  if (type && !TEXTISH.test(type)) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error(`unsupported content-type: ${type}`);
+  }
+  return readCapped(res, MAX_FETCH_BYTES);
+}
+
+/** Streams the body, aborting once it passes `max` bytes (a declared content-length over `max` is refused up front). */
+export async function readCapped(res: Response, max: number): Promise<string> {
+  if (Number(res.headers.get("content-length") ?? 0) > max) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error("response too large");
+  }
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      throw new Error("response too large");
+    }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(size);
+  let off = 0;
+  for (const c of chunks) {
+    buf.set(c, off);
+    off += c.byteLength;
+  }
+  return new TextDecoder().decode(buf);
 }
 
 export const hashKey = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 24);
@@ -70,7 +115,27 @@ export function decodeEntities(s: string): string {
   });
 }
 
-export const stripTags = (s: string) => s.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, " ");
+/**
+ * Tags → " ", or "\n" for tag names in `breaks`. A linear indexOf scan (no
+ * regex backtracking: feeds and pages are untrusted, and `<[^>]*>` over many
+ * unclosed `<` is quadratic). An unclosed `<` stays text, like the regex did.
+ */
+export function stripTags(s: string, breaks: ReadonlySet<string> = BR): string {
+  const out: string[] = [];
+  let i = 0;
+  for (;;) {
+    const lt = s.indexOf("<", i);
+    const gt = lt < 0 ? -1 : s.indexOf(">", lt + 1);
+    if (gt < 0) {
+      out.push(s.slice(i));
+      return out.join("");
+    }
+    const name = /^\/?([a-z][a-z0-9]*)/i.exec(s.slice(lt + 1, Math.min(gt, lt + 16)))?.[1]?.toLowerCase();
+    out.push(s.slice(i, lt), name && breaks.has(name) ? "\n" : " ");
+    i = gt + 1;
+  }
+}
+const BR: ReadonlySet<string> = new Set(["br"]);
 
 /** HTML fragment → one line of plain text, capped. */
 export function plain(html: string, max: number): string {

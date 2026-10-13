@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { EmitProvider, llmDeps } from "../fixtures/emit-provider.js";
 import { MemoryIntelStore } from "../store.js";
-import { decodeEntities, recordRun } from "./common.js";
+import { decodeEntities, fetchText, MAX_FETCH_BYTES, recordRun } from "./common.js";
 import { DEFAULT_SNAPSHOT_SPACES, fetchGovernance, parseSnapshotProposals, snapshotSpaces } from "./governance.js";
 import { feedUrls, fetchRss, parseFeed } from "./rss.js";
 import { fetchTelegram, parseTelegramChannel, tgChannels } from "./telegram.js";
@@ -54,8 +54,59 @@ describe("parseFeed", () => {
     ]);
   });
 
+  test("linear on hostile feeds: 1 MB of unclosed <item> / <entry> / CDATA / <title> / <link completes fast", () => {
+    const MB = 1024 * 1024;
+    const fill = (unit: string) => unit.repeat(Math.ceil(MB / unit.length));
+    const ok = "<item><title>Real headline</title></item>";
+    const cases = [
+      fill("<item>"),
+      fill("<entry>"),
+      fill("<item><title>"),
+      `<item><title>${fill("<![CDATA[")}</title></item>`,
+      `<item><title>${fill("<title>")}</title></item>`,
+      `<item><title>x</title><description>${fill("<")}</description></item>`,
+      `<entry><title>x</title>${fill("<link ")}</entry>`,
+      `<entry><title>x</title>${fill('<link rel="')}></entry>`,
+    ];
+    for (const [i, xml] of cases.entries()) {
+      const t0 = performance.now();
+      const items = parseFeed(ok + xml);
+      expect([i, performance.now() - t0 < 500]).toEqual([i, true]);
+      expect(items[0]?.title).toBe("Real headline");
+    }
+  });
+
   test("decodeEntities leaves unknown and out-of-range references alone", () => {
     expect(decodeEntities("&amp;&#65;&#x42;&bogus;&#9999999;")).toBe("&AB&bogus;&#9999999;");
+  });
+});
+
+describe("fetchText", () => {
+  test("streams with a 5 MB cap and refuses non-text content types", async () => {
+    let pulled = 0;
+    const chunk = new Uint8Array(512 * 1024).fill(97);
+    const endless = fakeFetch(
+      () =>
+        new Response(
+          new ReadableStream({
+            pull(ctl) {
+              pulled++;
+              ctl.enqueue(chunk);
+            },
+          }),
+          { headers: { "content-type": "application/rss+xml" } },
+        ),
+    );
+    await expect(fetchText(endless, "https://a.example.com/rss")).rejects.toThrow(/too large/);
+    expect(pulled * chunk.byteLength).toBeLessThan(MAX_FETCH_BYTES + 3 * chunk.byteLength);
+    const declared = fakeFetch(() => new Response("x", { headers: { "content-type": "text/xml", "content-length": String(MAX_FETCH_BYTES + 1) } }));
+    await expect(fetchText(declared, "https://a.example.com/rss")).rejects.toThrow(/too large/);
+    for (const type of ["application/octet-stream", "image/png", "application/pdf"]) {
+      await expect(fetchText(fakeFetch(() => new Response("x", { headers: { "content-type": type } })), "https://a.example.com/")).rejects.toThrow(`unsupported content-type: ${type}`);
+    }
+    for (const type of ["text/html; charset=utf-8", "application/json", "application/atom+xml", "application/ld+json", "text/xml"]) {
+      expect(await fetchText(fakeFetch(() => new Response("ok", { headers: { "content-type": type } })), "https://a.example.com/")).toBe("ok");
+    }
   });
 });
 

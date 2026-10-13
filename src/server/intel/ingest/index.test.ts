@@ -70,7 +70,8 @@ describe("runIngestSources", () => {
     const drainEvent = [...store.events.values()].find((e) => e.title.startsWith("Attackers drain"))!;
     expect(drainEvent.clusterId).toBe(jitoEvent.clusterId);
     expect(r.newClusters).toContain(jitoEvent.clusterId!);
-    expect(jitoEvent).toMatchObject({ type: "exploit", entities: ["Jito", "jitoSOL"], assets: ["SOL"], magnitude: "high", tag: "observed" });
+    // The model said "high", but the cluster had one source host when extracted: capped at "med".
+    expect(jitoEvent).toMatchObject({ type: "exploit", entities: ["Jito", "jitoSOL"], assets: ["SOL"], magnitude: "med", tag: "observed" });
     const loser = [...store.clusters.values()].find((c) => c.label?.startsWith("merged into"))!;
     expect(loser.label).toBe(`merged into ${jitoEvent.clusterId}`);
     expect(loser.mappedAt).toBe(now.toISOString());

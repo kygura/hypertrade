@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { EVENT_TYPES, EventExtractionSchema, type EventExtraction, type EventType, type IntelEvent } from "../../shared/intel.js";
-import { completeStructured, type LlmDeps, type StructuredResult } from "./llm.js";
+import { hostLabel } from "./ingest/common.js";
+import { completeStructured, untrusted, UNTRUSTED_RULE, type LlmDeps, type StructuredResult } from "./llm.js";
 
 // Headline clustering (SPEC.md § Intel I0.9). Pure, no embeddings
 // (`// ponytail:` no keyless embedding source). Two passes:
@@ -181,7 +182,7 @@ export function entityMerges(clusters: MergeCandidate[], opts: { minOverlap?: nu
 
 // ---------------------------------------------------------------- extraction
 
-export const EXTRACT_PROMPT_VERSION = "extract-v1";
+export const EXTRACT_PROMPT_VERSION = "extract-v2";
 const MAX_HEADLINES = 8;
 
 export const eventExtractionJsonSchema = {
@@ -210,24 +211,34 @@ export const eventExtractionJsonSchema = {
 
 const EXTRACT_SYSTEM = `You turn a group of near-duplicate crypto/macro headlines into one structured event for a risk tool.
 Classify the event type, list the entities and coin tickers involved, size the magnitude (low/med/high) of the event itself, and summarise what happened in one or two plain sentences using only what the headlines say.
-Set scheduledAt only for a dated future event. Never predict prices; catalyst.directionHypothesis is a labelled guess and may be "unclear".`;
+Set scheduledAt only for a dated future event. Never predict prices; catalyst.directionHypothesis is a labelled guess and may be "unclear".
+${UNTRUSTED_RULE}`;
 
 export interface ExtractInput {
   id: string;
   events: Array<Pick<IntelEvent, "title" | "summary" | "sources" | "firstSeen">>;
 }
 
-/** Cheap-tier extraction, cached per cluster id. */
-export function extractCluster(deps: { llm: LlmDeps; signal?: AbortSignal; deadlineMs?: number }, cluster: ExtractInput): Promise<StructuredResult<EventExtraction>> {
+/** Distinct source hosts (url hostname, else label) across a cluster's events. */
+export function sourceHosts(events: ExtractInput["events"]): number {
+  return new Set(events.flatMap((e) => e.sources.map((s) => (s.url ? hostLabel(s.url, s.label) : s.label).toLowerCase()))).size;
+}
+
+/**
+ * Cheap-tier extraction, cached per cluster id. The model's magnitude is
+ * capped at "med" unless ≥ 2 distinct source hosts carry the story: one
+ * (possibly injected or planted) item cannot push a "high" on its own.
+ */
+export async function extractCluster(deps: { llm: LlmDeps; signal?: AbortSignal; deadlineMs?: number }, cluster: ExtractInput): Promise<StructuredResult<EventExtraction>> {
   const lines = cluster.events.slice(0, MAX_HEADLINES).map((e) => {
     const src = e.sources.map((s) => s.label).join(", ") || "unknown source";
     const summary = e.summary ? `\n  ${e.summary.slice(0, 300)}` : "";
     return `- [${e.firstSeen}] ${e.title.slice(0, 300)} (${src})${summary}`;
   });
-  return completeStructured({
+  const res = await completeStructured({
     tier: "cheap",
     system: EXTRACT_SYSTEM,
-    user: `Headlines:\n${lines.join("\n")}`,
+    user: `Headlines:\n${untrusted(lines.join("\n"))}`,
     schema: EventExtractionSchema,
     jsonSchema: eventExtractionJsonSchema,
     promptVersion: EXTRACT_PROMPT_VERSION,
@@ -236,4 +247,6 @@ export function extractCluster(deps: { llm: LlmDeps; signal?: AbortSignal; deadl
     deadlineMs: deps.deadlineMs,
     deps: deps.llm,
   });
+  if (res.ok && res.value.magnitude === "high" && sourceHosts(cluster.events) < 2) return { ...res, value: { ...res.value, magnitude: "med" } };
+  return res;
 }

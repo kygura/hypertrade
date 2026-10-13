@@ -3,7 +3,8 @@ import type { SnapshotMetric } from "../../shared/intel.js";
 // Normalized deltas (SPEC.md § Intel I0.4). Pure. Each metric family has its
 // own z so a 3% move on a quiet coin and on a wild one do not read the same:
 //   price, oi_usd       z = Δ_h / (σ_1h · √h), Δ = log change, σ_1h from
-//                       hourly log changes over the 7-day history, h ≤ 24
+//                       hourly log changes over the 7-day history, h the
+//                       real elapsed hours (no cap), floored at 0.25
 //   funding, premium,   level z of the current value vs the 7-day mean/σ
 //   basis               (funding is hourly-stepped, so Δ means little)
 //   vol24h, depth_*,    log(now / 7d median) over the 7d σ of that same
@@ -17,7 +18,8 @@ export type Point = { t: number; v: number };
 const HOUR_MS = 3_600_000;
 export const WINDOW_MS = 7 * 24 * HOUR_MS;
 export const MIN_SAMPLES = 24;
-export const MAX_H = 24;
+/** Floor on h: a baseline minutes old would otherwise blow a tick of noise up into a large z. */
+export const MIN_H = 0.25;
 
 export type MetricFamily = "return" | "level" | "ratio";
 
@@ -62,8 +64,10 @@ export function hourlyLogChanges(points: Point[]): number[] {
 /** price, oi_usd: the log change from→to over σ_1h · √h. */
 export function returnZ(from: Point, to: Point, history: Point[]): number | null {
   if (!(from.v > 0) || !(to.v > 0)) return null;
-  const h = Math.min(MAX_H, (to.t - from.t) / HOUR_MS);
-  if (!(h > 0)) return null;
+  const elapsed = (to.t - from.t) / HOUR_MS;
+  if (!(elapsed > 0)) return null;
+  // No cap: capping h while keeping the full Δ would inflate z by √(h/24) (SPEC I0.4).
+  const h = Math.max(MIN_H, elapsed);
   const changes = hourlyLogChanges(inWindow(history, to.t));
   if (changes.length < MIN_SAMPLES) return null;
   const sigma = stddev(changes);

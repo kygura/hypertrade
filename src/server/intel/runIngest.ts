@@ -5,8 +5,9 @@ import { runIngestSources, type IngestDeps, type IngestSummary } from "./ingest/
 import { mapClusters, type MapperDeps } from "./mapper.js";
 
 // The ingest cron cycle (SPEC.md § Intel I2 `POST /cron/intel/ingest`):
-// sources → mapper (this run's new clusters plus recent ones still unmapped)
-// → catalyst alerts → the weekly feedback report when a week has passed
+// sources → catalyst alerts (first: they are time-boxed T−24 h / T−1 h
+// windows a slow mapper must not starve) → mapper (this run's new clusters
+// plus recent ones still unmapped) → the weekly feedback report when a week has passed
 // (timestamp in intel_settings). Each stage starts only while budget is
 // left; a stage that is cut or fails is listed, and the next stage still
 // runs if there is time. Never throws.
@@ -15,7 +16,7 @@ export const FEEDBACK_SETTING = "feedback_report_at";
 
 export type IntelIngestDeps = IngestDeps & MapperDeps;
 
-export type IngestStage = "ingest" | "mapper" | "catalysts" | "feedback";
+export type IngestStage = "ingest" | "catalysts" | "mapper" | "feedback";
 
 export interface IntelIngestSummary {
   ingest: IngestSummary | null;
@@ -53,6 +54,13 @@ export async function runIntelIngest(deps: IntelIngestDeps, opts: { budgetMs: nu
     out.ingest = await runIngestSources(deps, { budgetMs: left(), signal });
   });
 
+  await stage("catalysts", async () => {
+    const res = await catalystAlerts(deps, deps.now());
+    out.catalystAlerts = res.alerts.length;
+    out.alerts += res.alerts.length;
+    out.pushed += res.alerts.length;
+  });
+
   await stage("mapper", async () => {
     const now = deps.now();
     const pending = (await deps.store.listClusters(new Date(now.getTime() - CLUSTER_WINDOW_MS))).filter((c) => c.extraction && !c.mappedAt).map((c) => c.id);
@@ -61,13 +69,6 @@ export async function runIntelIngest(deps: IntelIngestDeps, opts: { budgetMs: nu
     out.unmapped = res.skipped;
     out.alerts += res.alerts.length;
     out.pushed += res.alerts.filter((a) => a.route === "push").length;
-  });
-
-  await stage("catalysts", async () => {
-    const res = await catalystAlerts(deps, deps.now());
-    out.catalystAlerts = res.alerts.length;
-    out.alerts += res.alerts.length;
-    out.pushed += res.alerts.length;
   });
 
   await stage("feedback", async () => {

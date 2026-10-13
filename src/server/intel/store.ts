@@ -90,6 +90,8 @@ export interface IntelStore {
 
   /** Null when (kind, ref, asset, window) already exists (SPEC I0.11 / I0.13). */
   insertAlert(a: NewAlert): Promise<Alert | null>;
+  /** True when an alert with insertAlert's dedupe key (kind, ref, asset, window) exists. */
+  alertExists(k: Pick<NewAlert, "kind" | "ref" | "asset" | "window">): Promise<boolean>;
   getAlert(id: string): Promise<Alert | null>;
   listAlerts(opts: { since?: Date; kind?: AlertKind; route?: Alert["route"]; limit: number }): Promise<Alert[]>;
   setAlertFeedback(id: string, vote: 1 | -1 | null): Promise<Alert | null>;
@@ -498,6 +500,11 @@ export class PgIntelStore implements IntelStore {
       returning *`;
     return row ? toAlert(row) : null;
   }
+  async alertExists(k: Pick<NewAlert, "kind" | "ref" | "asset" | "window">) {
+    const [row] = await sql()`select 1 from intel_alerts
+      where kind = ${k.kind} and ref = ${k.ref} and asset = ${k.asset} and time_window = ${k.window ?? ""} limit 1`;
+    return !!row;
+  }
   async getAlert(id: string) {
     const [row] = await sql()`select * from intel_alerts where id = ${id}`;
     return row ? toAlert(row) : null;
@@ -652,6 +659,8 @@ export class PgIntelStore implements IntelStore {
 const clone = <T>(v: T): T => (v === undefined ? v : structuredClone(v));
 
 /** In-process store for tests and local runs without a database. */
+const alertKey = (x: { kind: string; ref: string; asset: string; window?: string | null }) => `${x.kind}|${x.ref}|${x.asset}|${x.window ?? ""}`;
+
 export class MemoryIntelStore implements IntelStore {
   positions = new Map<string, ManualPosition>();
   watchlist: WatchlistItem[] = [];
@@ -778,6 +787,7 @@ export class MemoryIntelStore implements IntelStore {
         id: cur?.id ?? this.id(),
         clusterId: e.clusterId ?? cur?.clusterId ?? null,
         firstSeen: cur?.firstSeen ?? iso(e.firstSeen)!,
+        scheduledAt: iso(e.scheduledAt),
       };
       this.events.set(row.id, row);
       out.push(clone(row));
@@ -830,9 +840,11 @@ export class MemoryIntelStore implements IntelStore {
       .map(clone);
   }
 
+  async alertExists(k: Pick<NewAlert, "kind" | "ref" | "asset" | "window">) {
+    return this.alerts.some((x) => alertKey(x) === alertKey(k));
+  }
   async insertAlert(a: NewAlert) {
-    const key = (x: { kind: string; ref: string; asset: string; window: string | null }) => `${x.kind}|${x.ref}|${x.asset}|${x.window ?? ""}`;
-    if (this.alerts.some((x) => key(x) === key(a))) return null;
+    if (await this.alertExists(a)) return null;
     const row: Alert = { ...clone(a), id: this.id(), feedback: null, createdAt: this.now() };
     if (row.trace === undefined) delete row.trace;
     this.alerts.push(row);

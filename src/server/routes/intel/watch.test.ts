@@ -10,7 +10,15 @@ const NOW = new Date("2026-10-13T12:00:00Z");
 function app(fetchFn: FetchFn) {
   const store = new MemoryIntelStore(() => NOW);
   const provider = new EmitProvider(() => ({ summary: [{ tag: "hypothesis", text: "Fee terms changed." }] }));
-  const deps: DocwatchDeps = { store, llm: llmDeps(provider, store, () => NOW), now: () => NOW, fetch: fetchFn, env: {}, routeAlert: async () => ({ alertedAssets: ["HYPE"] }) };
+  const deps: DocwatchDeps = {
+    store,
+    llm: llmDeps(provider, store, () => NOW),
+    now: () => NOW,
+    fetch: fetchFn,
+    lookup: async () => [{ address: "93.184.216.34", family: 4 }],
+    env: {},
+    routeAlert: async () => ({ alertedAssets: ["HYPE"] }),
+  };
   return { store, app: new Hono().route("/api/intel", createWatchRoutes(deps)) };
 }
 
@@ -45,6 +53,33 @@ describe("/api/intel/watches", () => {
     expect((await a.request(`/api/intel/watches/${w.id}`, { method: "DELETE" })).status).toBe(404);
     expect((await a.request(`/api/intel/watches/${w.id}/changes`)).status).toBe(404);
     expect((await a.request(`/api/intel/watches/${w.id}/check`, { method: "POST" })).status).toBe(404);
+  });
+
+  test("watch bodies never carry the stored page snapshot", async () => {
+    const { app: a, store } = app(async () => new Response("<p>secret page text</p>", { headers: { "content-type": "text/html" } }));
+    const w = await (await a.request("/api/intel/watches", post({ kind: "url", target: "https://docs.example.com/", label: "Docs" }))).json();
+    expect("lastSnapshot" in w).toBe(false);
+    const checked = await (await a.request(`/api/intel/watches/${w.id}/check`, { method: "POST" })).json();
+    expect(checked.watch.lastHash).toMatch(/^[0-9a-f]{64}$/);
+    expect("lastSnapshot" in checked.watch).toBe(false);
+    const list = await (await a.request("/api/intel/watches")).json();
+    expect(list.watches[0]).toMatchObject({ id: w.id, lastHash: checked.watch.lastHash });
+    expect(JSON.stringify(list)).not.toContain("secret page text");
+    expect((await store.getWatch(w.id))!.lastSnapshot).toBe("secret page text"); // kept server-side
+  });
+
+  test("500s do not leak error details", async () => {
+    const { app: a, store } = app(async () => new Response(""));
+    store.listWatches = async () => Promise.reject(new Error("connect ECONNREFUSED postgres://admin:hunter2@db.internal:5432/app"));
+    const orig = console.error;
+    console.error = () => {};
+    try {
+      const res = await a.request("/api/intel/watches");
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "watches error" });
+    } finally {
+      console.error = orig;
+    }
   });
 
   test("check of an unreachable page reports the error on the watch", async () => {

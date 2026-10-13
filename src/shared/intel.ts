@@ -20,7 +20,12 @@ const Text = (max: number) => z.string().trim().min(1).max(max);
 export const SideSchema = z.enum(["long", "short"]);
 export type Side = z.infer<typeof SideSchema>;
 
-/** Public https URL. IP literals and local hostnames are refused: watches and catalysts get fetched server-side. */
+/**
+ * Public https URL. IP literals and local hostnames are refused (trailing
+ * dots stripped first: `localhost.` is localhost): watches and catalysts get
+ * fetched server-side. Hostname-only; docwatch's safeFetch also refuses
+ * hosts that resolve to non-public addresses.
+ */
 export const HttpsUrlSchema = z
   .string()
   .trim()
@@ -29,7 +34,7 @@ export const HttpsUrlSchema = z
   .refine((s) => {
     try {
       const u = new URL(s);
-      const host = u.hostname.toLowerCase();
+      const host = u.hostname.toLowerCase().replace(/\.+$/, "");
       return (
         u.protocol === "https:" &&
         !u.username &&
@@ -860,6 +865,7 @@ export const WatchSchema = z.object({
   asset: z.string().nullable(),
   label: z.string(),
   lastHash: z.string().nullable(),
+  /** Server-side only: GET/POST /watches omit it (it can hold 200 KB of page text). */
   lastSnapshot: z.unknown(),
   checkedAt: Iso.nullable(),
   error: z.string().nullable(),
