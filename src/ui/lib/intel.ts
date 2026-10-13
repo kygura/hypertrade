@@ -78,6 +78,10 @@ function parse<S extends z.ZodTypeAny>(schema: S, body: unknown): z.infer<S> {
 /** `GET /journal/report/latest` mirrors `GET /brief/latest`: `{report: JournalReport | null}`. */
 const JournalReportLatestSchema = z.object({ report: JournalReportSchema.nullable() })
 
+/** `POST /journal/tag` answers `{tagged, failed, error?}` (routes/intel/journal.ts); `error` is the first model failure, verbatim. */
+const JournalTagResultSchema = JournalTagResponseSchema.extend({ failed: z.number().int().default(0), error: z.string().optional() })
+export type JournalTagResult = z.infer<typeof JournalTagResultSchema>
+
 const base = '/intel'
 const enc = encodeURIComponent
 
@@ -133,7 +137,9 @@ export const intel = {
   journal: async (days = 30): Promise<JournalResponse> => parse(JournalResponseSchema, await api.get(`${base}/journal${qs({ days })}`)),
   saveNote: async (tradeId: string, note: string): Promise<TradeNote> =>
     parse(TradeNoteSchema, await api.put(`${base}/journal/${enc(tradeId)}/note`, { note })),
-  tagUntagged: async (): Promise<number> => parse(JournalTagResponseSchema, await api.post(`${base}/journal/tag`)).tagged,
+  /** Tags untagged trades in the window (≤ 25 per call). 503 = no LLM configured. */
+  tagUntagged: async (days?: number): Promise<JournalTagResult> =>
+    parse(JournalTagResultSchema, await api.post(`${base}/journal/tag`, days == null ? {} : { days })),
   latestReport: async (): Promise<JournalReport | null> =>
     parse(JournalReportLatestSchema, await api.get(`${base}/journal/report/latest`)).report,
   generateReport: async (): Promise<JournalReport> => parse(JournalReportSchema, await api.post(`${base}/journal/report`)),
