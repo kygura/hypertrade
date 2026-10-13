@@ -17,7 +17,10 @@ language. What is new:
    specifies both layouts.
 2. **No money paths.** There is no execution, no wallet, no signing. The
    Money and Arm button tiers and the typed-word confirmation level are
-   retired. The heaviest action in this product is deleting a branch.
+   retired. The heaviest action in this product is deleting a branch. The
+   Intel order copilot (`/order`) places operator-confirmed orders on the
+   Desk venue (paper/testnet) only; it uses the Level 2 confirm + a
+   VenueBadge, not a Money tier (DESIGN-terminal.md §7.1).
 3. **Fixed layouts.** No react-grid-layout, no draggable panels. Fixed
    responsive CSS grid per view.
 4. **New data shapes** need new visual vocabulary: a sector momentum ramp, a
@@ -99,7 +102,7 @@ scroll (§4.1).
   /* ── Hyperion additive layer, verbatim (meanings preserved) ──── */
   --color-green-text: #38a67c;
   --color-red-text: #e8677d;
-  --color-info: #6ea8d8;
+  --color-info: #6ea8d8;                   /* also marks model inference (HYP claims, LLM-proposed edges) */
   --color-text-disabled: #5c5751;
   --color-active: rgba(255, 255, 255, 0.08);
   --color-selected: rgba(255, 255, 255, 0.06);
@@ -478,19 +481,25 @@ not a different product.
 
 ## 5. App shell and navigation
 
-Destinations post-login: Overview `/`, Branches `/branches`, Sectors
-`/sectors`, State `/state`, Markets `/markets` — the original five — plus
-the later shell entries Engine `/strategies` (grouping `/decisions` and
-`/governor`), Analyst `/analyst`, Desk `/desk` and Lab `/lab` (§10.9) —
-nine nav items — plus Logout. `/login` renders outside the shell entirely.
+Destinations post-login: Terminal `/` (grouping `/journal`, `/theses`,
+`/query`, `/order`, `/watch` and `/overview` under TerminalTabs,
+DESIGN-terminal.md §1), Branches `/branches`, Sectors `/sectors`, State
+`/state`, Markets `/markets` — plus the later shell entries Engine
+`/strategies` (grouping `/decisions` and `/governor`), Analyst `/analyst`,
+Desk `/desk` and Lab `/lab` (§10.9) — nine nav items — plus Logout.
+`/login` renders outside the shell entirely.
 
 ### 5.1 Desktop / mid (≥768px): TopBar, 40px, sticky
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│ HYPERTRADE ▪ │ OVERVIEW  BRANCHES  SECTORS  STATE  MARKETS  ENGINE  ANALYST  DESK  LAB │ ● DATA 12:41 │ LOGOUT │
+│ HYPERTRADE ▪ │ TERMINAL  BRANCHES  SECTORS  STATE  MARKETS  ENGINE  ANALYST  DESK  LAB │ ● DATA 12:41 │ LOGOUT │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+`TERMINAL` is the first route; active on the whole Terminal family (`/`,
+`/journal`, `/theses`, `/query`, `/order`, `/watch`, `/overview` —
+`isTerminalPath`). The old Overview is the `/overview` sub-tab destination.
 
 `LAB` is the last route (research sits after the surfaces it researches);
 active on `/lab` and every `/lab/*` path, including `/lab/rules/:id`.
@@ -519,7 +528,7 @@ Route links move to a **bottom tab bar**:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ OVIEW BRNCH SECTR STATE MKTS  ENGIN  ASK  DESK  LAB         │  56px + safe-area
+│ TERM  BRNCH SECTR STATE MKTS  ENGIN  ASK  DESK  LAB         │  56px + safe-area
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -527,13 +536,13 @@ Route links move to a **bottom tab bar**:
   height `calc(56px + env(safe-area-inset-bottom))` with the inset as
   padding-bottom.
 - Equal cells (`flex: 1`), each a flex column: a 12px glyph over a 9px
-  uppercase label. Glyphs are text characters, no icon library: `◈`
-  Overview, `⑂` Branches, `▦` Sectors, `☰` State, `≋` Markets, `⚙` Engine,
+  uppercase label. Glyphs are text characters, no icon library: `▣`
+  Terminal, `⑂` Branches, `▦` Sectors, `☰` State, `≋` Markets, `⚙` Engine,
   `?` Analyst, `◎` Desk, `⚗` Lab.
 - Active cell: `text-primary` + a 2px `--color-red-accent` top border on the
   cell (the underline idiom, flipped to the touchable edge).
   Inactive: `text-secondary`.
-- Labels: `OVIEW / BRNCH / SECTR / STATE / MKTS / ENGIN / ASK / DESK / LAB`
+- Labels: `TERM / BRNCH / SECTR / STATE / MKTS / ENGIN / ASK / DESK / LAB`
   — 5 chars max, `letter-spacing` ≤ 0.02em on the tab bar only (the theme's
   control tracking would push a 5-char label past a 35px cell).
 - Whole cell is the target (≥56px tall — over `--tap-min`).
@@ -728,11 +737,14 @@ delta, z30.
 
 ## 10. Views
 
-Route map: `/login`, `/` (Overview), `/branches`, `/branches/:id`,
-`/sectors`, `/state`, `/markets`, `/markets/:coin`, `/analyst`, and the
-lab family `/lab/{search,runs,catalogue,pulse}`, `/lab/runs/:runId`,
-`/lab/rules/:id` (§10.9). Every view gets: purpose, mobile layout,
-desktop layout, components with data fields, states, interactions.
+Route map: `/login`, the Terminal family `/` (Terminal), `/journal`,
+`/theses`, `/query`, `/order`, `/watch`, `/overview` (DESIGN-terminal.md is
+binding for all of them; `/overview` is §10.2 below), `/branches`,
+`/branches/:id`, `/sectors`, `/state`, `/markets`, `/markets/:coin`,
+`/analyst`, and the lab family `/lab/{search,runs,catalogue,pulse}`,
+`/lab/runs/:runId`, `/lab/rules/:id` (§10.9). Every view gets: purpose,
+mobile layout, desktop layout, components with data fields, states,
+interactions.
 
 ### 10.1 `/login`
 
@@ -758,7 +770,11 @@ All widths: a single centered panel, max-width 320px, vertically centered
 - Success → redirect to the remembered path or `/`.
 - States: only idle/in-flight/error — no skeletons here.
 
-### 10.2 `/` — Overview
+### 10.2 `/overview` — Overview
+
+Moved from `/` unchanged; it now renders under TerminalTabs
+(DESIGN-terminal.md §9) and is reached through the sub-tab strip. Layout,
+components and states below are untouched.
 
 Purpose: 30-second morning read — where is the market, what does the routine
 think, how are my branches doing. Everything links deeper; nothing is edited
@@ -1596,7 +1612,12 @@ Ported components keep their Hyperion source semantics (files:
 | `AppShell` | `children` | TopBar ≥768 / TopStrip + BottomTabBar <768 (§5); freshness cluster; route guard redirect |
 | `StaleBanner` | `generatedAt: string`, `thresholdHours: number`, `noun: string` | §6; renders nothing under threshold |
 | `AgeStamp` | `generatedAt: string`, `thresholdHours: number` | §6; xs, gray→amber; `title` = full timestamp |
-| `SrcTag` | `source: 'hl'\|'cg'\|'fred'\|'routine'\|'ht'\|'cm'\|'fng'\|'llama'` | §2 `.src-tag`; `hl` gets jade; the four lab providers (§10.9) render gray like `cg` |
+| `SrcTag` | `source: 'hl'\|'cg'\|'fred'\|'routine'\|'ht'\|'cm'\|'fng'\|'llama'\|'manual'\|'desk'\|'snap'` | §2 `.src-tag`; `hl` gets jade; the four lab providers (§10.9) and the Intel sources `manual`/`desk`/`snap` (DESIGN-terminal §1.6) render gray like `cg` |
+| `ClaimLine` | `claim: Claim`, `as?: 'li'\|'div'` | DESIGN-terminal §2.1; gray `OBS` / info `HYP` prefix badge, hypothesis text muted with a 2px info rule, observed `SourceLink · ClaimAge` |
+| `ClaimList` | `claims: Claim[]`, `dropped?: number` | DESIGN-terminal §2.4; `<ol>` in server order, `n lines dropped — no source or tag` footer |
+| `ClaimAge` | `ts: string`, `thresholdHours?: number`, `prefix?: string` | DESIGN-terminal §2.3; `40S`/`12M`/`3H`/`2D`, amber over threshold, `title` full UTC |
+| `SourceLink` | `source: {label, url?}` | DESIGN-terminal §2.2; `.src-tag`; internal → router Link, external → new tab + `↗`, `snapshot` → `SNAP` |
+| `VenueBadge` | `venue: 'paper'\|'testnet'\|null` | DESIGN-terminal §7.1; `PAPER` info, `TESTNET` amber, `VENUE …` gray |
 | `LabWarnings` | `warnings: string[]` | §10.9; amber-bg strip, one verbatim 11px `text-primary` row per warning with a 6px amber square; renders nothing when empty |
 | `LeanBar` | `lean: number` (−1..1), `width?: number` | §10.9 Pulse; bipolar fill from a center tick, green right / red left, always paired with the printed signed number by its caller |
 | `RuleText` | `rule: Rule`, `metrics: MetricDef[]`, `size?: 'xs'\|'sm'\|'lg'` | §10.9; conditions typeset in our language (`z(90) MVRV < −1.12 AND funding ≥ 0.03%`); wire text in `title` |
@@ -1635,6 +1656,19 @@ Lab (§10.9, under `src/ui/components/lab/`): `LabTabs`; `LabSearchForm`
 `LatestValuesRow`, `SaveToCatalogueForm`); `CatalogueHealthStrip`;
 `CatalogueTable`; `PulseBoard` (+ `PulseAssetRow`); `PulseTile` (Overview,
 optional); `RunsTable`.
+
+Intel (DESIGN-terminal.md §14, under `src/ui/components/intel/`; pages under
+`src/ui/pages/terminal/`): `TerminalTabs` (+ `terminalTabOf`,
+`isTerminalPath`); `ExposurePathChips`; `ReviewStrip`; `WhatChangedPanel` (+
+`DiffTable`); `NewsFeedPanel` (+ `AlertItem`); `CatalystsPanel` (+
+`CatalystRow`, `CatalystForm`); `PositionsPanel` (+ `PositionsTable`,
+`PositionForm`, `WatchlistEditor`); `ExposurePanel` (+ `ExposureAssetRow`);
+`JournalBar`; `TradesTable`; `TradeDetail` (+ `NoteEditor`);
+`TagStatsTable`; `ReportCard` (+ `TradeIdLinks`); `ThesisComposer`;
+`ThesisList`; `ThesisDetail` (+ `CheckRow`); `QueryInput`; `DslEditor`;
+`SqlBlock`; `ResultTable`; `OrderBanner`; `OrderComposer` (+
+`AdjustDisclosure`); `PreviewCard`; `OrderResult`; `WatchesTable`;
+`WatchForm`; `WatchChanges` (+ `ChangeEntry`).
 
 ---
 
@@ -1681,6 +1715,12 @@ Non-negotiable, verified before done:
 | Catalogue | SkeletonRows | EmptyBlock (`no saved rules`) + `SEARCH` | ErrorBlock (health strip fails independently) | StaleBanner live `to` > 2d; `DECAYED` Badges |
 | Market Pulse / tile | SkeletonRows | EmptyBlock (`no catalogued rules`) | ErrorBlock (tile: not rendered) | StaleBanner `asOf` > 2d + LabWarnings |
 | Runs | SkeletonRows | EmptyBlock (`no runs yet`) | ErrorBlock | `PARTIAL`/`FAILED` Badges |
+| Terminal `/` (review strip, what changed, news, catalysts, positions, watchlist, exposure) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |
+| Journal `/journal` (trades, tag stats, report) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |
+| Theses `/theses` (composer, list, detail) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |
+| Query `/query` (DSL/SQL, result) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 |
+| Order `/order` (composer, preview, banner venue) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §7.4 / §10 |
+| Watch `/watch` (watches, changes) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |
 
 Every cell above is one of the §6 named patterns — no bespoke states.
 

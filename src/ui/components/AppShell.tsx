@@ -4,6 +4,7 @@ import { Button } from './Button'
 import { StatusDot, type DotStatus } from './Badge'
 import { api, useApi } from '../lib/api'
 import { isEnginePath } from './strategy/EngineTabs'
+import { isTerminalPath } from './intel/TerminalTabs'
 import { ThemeSwitcher } from './ThemeSwitcher'
 
 // AppShell — DESIGN.md §5. TopBar (>=768) / TopStrip + bottom tab bar
@@ -12,7 +13,9 @@ import { ThemeSwitcher } from './ThemeSwitcher'
 // heartbeat: green <30min, amber 30min-2h, red >2h or fetch failed.
 
 const NAV = [
-  { to: '/', label: 'OVERVIEW', tab: 'OVIEW', glyph: '◈' },
+  // Intel Terminal family (DESIGN-terminal.md §1.2): one entry; /journal,
+  // /theses, /query, /order, /watch and /overview switch inside via TerminalTabs.
+  { to: '/', label: 'TERMINAL', tab: 'TERM', glyph: '▣' },
   { to: '/branches', label: 'BRANCHES', tab: 'BRNCH', glyph: '⑂' },
   { to: '/sectors', label: 'SECTORS', tab: 'SECTR', glyph: '▦' },
   { to: '/state', label: 'STATE', tab: 'STATE', glyph: '☰' },
@@ -29,7 +32,7 @@ const NAV = [
 ]
 
 function isActive(pathname: string, to: string): boolean {
-  if (to === '/') return pathname === '/'
+  if (to === '/') return isTerminalPath(pathname)
   if (to === '/strategies') return isEnginePath(pathname)
   return pathname === to || pathname.startsWith(`${to}/`)
 }
