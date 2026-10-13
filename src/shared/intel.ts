@@ -643,7 +643,15 @@ export const ThesisSchema = z.object({
   assets: z.array(z.string()),
   claims: z.array(ThesisClaimSchema),
   /** Levels/conditions that would invalidate the thesis; status once code could evaluate them. */
-  invalidation: z.array(z.object({ text: z.string(), status: z.enum(["triggered", "clear", "unknown"]).optional() })),
+  invalidation: z.array(
+    z.object({
+      text: z.string(),
+      /** The condition as a check (supported → triggered); kept so a recheck needs no LLM call. */
+      check: ThesisCheckSchema.optional(),
+      status: z.enum(["triggered", "clear", "unknown"]).optional(),
+      evidence: ThesisEvidenceSchema.optional(),
+    }),
+  ),
   /** "What has to be true for this to be wrong", claim-tagged. */
   wrongIf: z.array(ClaimSchema),
   createdAt: Iso,
