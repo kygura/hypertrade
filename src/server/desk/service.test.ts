@@ -118,6 +118,7 @@ describe("DeskService", () => {
 
 describe("operator orders (copilot)", () => {
   const order: OperatorOrder = { coin: "eth", side: "long", stop: 3800, target: 4500, notionalUsd: 800, source: "copilot" };
+  const BY = "operator:copilot";
   const status = (p: Promise<unknown>) =>
     p.then(
       () => 0,
@@ -131,15 +132,40 @@ describe("operator orders (copilot)", () => {
     expect(pv.verdict.sizing).toMatchObject({ size: 0.2, notionalUsd: 800, riskUsd: 40, rr: 2.5 });
     expect(pv.verdict.warnings.join()).toContain("800 USD notional");
 
-    const rec = await service.submitOperatorOrder(order, { previewHash: pv.previewHash });
-    expect(rec).toMatchObject({ kind: "open", status: "executed", venue: "paper", decidedBy: "operator:copilot", proposal: { coin: "ETH", source: "copilot", riskPct: 0.4 } });
+    const rec = await service.submitOperatorOrder(order, { previewHash: pv.previewHash }, BY);
+    expect(rec).toMatchObject({ kind: "open", status: "executed", venue: "paper", decidedBy: "operator:copilot", proposal: { coin: "ETH", source: "copilot", resolvedRiskPct: 0.4 } });
+    expect("riskPct" in rec.proposal).toBe(false);
     const fills = await store.listFills(10);
     expect(fills).toHaveLength(1);
     expect(fills[0]).toMatchObject({ coin: "ETH", side: "buy", size: 0.2, reason: "entry", proposalId: rec.id });
     expect(await store.paperPositions()).toMatchObject([{ coin: "ETH", stopPx: 3800, tpPx: 4500, proposalId: rec.id }]);
     expect(notifier.sent.at(-1)!.title).toContain("Opened long ETH (paper)");
     // One submit per preview.
-    expect(await status(service.submitOperatorOrder(order, { previewHash: pv.previewHash }))).toBe(409);
+    expect(await status(service.submitOperatorOrder(order, { previewHash: pv.previewHash }, BY))).toBe(409);
+  });
+
+  test("two concurrent submits of one preview: exactly one executes", async () => {
+    const { service, store } = makeService();
+    const pv = await service.previewOperatorOrder(order);
+    const out = await Promise.allSettled([service.submitOperatorOrder(order, pv, BY), service.submitOperatorOrder(order, pv, BY)]);
+    expect(out.filter((r) => r.status === "fulfilled" && r.value.status === "executed")).toHaveLength(1);
+    expect(out.filter((r) => r.status === "rejected" && r.reason instanceof DeskError && r.reason.status === 409)).toHaveLength(1);
+    expect(await store.listFills(10)).toHaveLength(1);
+  });
+
+  test("takeState hands a preview to one caller only (MemoryStore)", async () => {
+    const { store } = makeService();
+    await store.setState("k", { hash: "h", v: 1 });
+    expect(await store.takeState("k", "other")).toBeNull();
+    const [a, b] = await Promise.all([store.takeState<{ hash: string; v: number }>("k", "h"), store.takeState<{ hash: string; v: number }>("k", "h")]);
+    expect([a, b].filter(Boolean)).toEqual([{ hash: "h", v: 1 }]);
+    expect(await store.getState("k")).toBeNull();
+  });
+
+  test("records the confirming operator as the decision", async () => {
+    const { service } = makeService();
+    const pv = await service.previewOperatorOrder(order);
+    expect((await service.submitOperatorOrder(order, pv, "operator:test")).decidedBy).toBe("operator:test");
   });
 
   test("an order without a target fills with no take-profit", async () => {
@@ -147,7 +173,7 @@ describe("operator orders (copilot)", () => {
     const { target: _t, ...noTarget } = order;
     const pv = await service.previewOperatorOrder(noTarget);
     expect(pv.verdict.warnings).toContain("no target: reward:risk not checked");
-    expect((await service.submitOperatorOrder(noTarget, pv)).status).toBe("executed");
+    expect((await service.submitOperatorOrder(noTarget, pv, BY)).status).toBe("executed");
     expect(await store.paperPositions()).toMatchObject([{ coin: "ETH", tpPx: null }]);
   });
 
@@ -155,10 +181,10 @@ describe("operator orders (copilot)", () => {
     const t = { now: new Date("2026-10-05T12:00:00Z") };
     const { service, store } = makeService({ now: () => t.now });
     const pv = await service.previewOperatorOrder(order);
-    expect(await status(service.submitOperatorOrder(order, { previewHash: "0".repeat(64) }))).toBe(409);
-    expect(await status(service.submitOperatorOrder({ ...order, notionalUsd: 8000 }, pv))).toBe(409);
+    expect(await status(service.submitOperatorOrder(order, { previewHash: "0".repeat(64) }, BY))).toBe(409);
+    expect(await status(service.submitOperatorOrder({ ...order, notionalUsd: 8000 }, pv, BY))).toBe(409);
     t.now = new Date("2026-10-05T12:01:01Z");
-    expect(await status(service.submitOperatorOrder(order, pv))).toBe(409);
+    expect(await status(service.submitOperatorOrder(order, pv, BY))).toBe(409);
     expect(await store.listFills(10)).toHaveLength(0);
     expect(await store.listProposals({ limit: 10 })).toHaveLength(0);
   });
@@ -167,12 +193,12 @@ describe("operator orders (copilot)", () => {
     const { service, store, data } = makeService();
     const pv = await service.previewOperatorOrder(order);
     data.setMark("ETH", 4030); // +0.75%
-    expect(await status(service.submitOperatorOrder(order, pv))).toBe(409);
+    expect(await status(service.submitOperatorOrder(order, pv, BY))).toBe(409);
     expect(await store.listFills(10)).toHaveLength(0);
 
     const pv2 = await service.previewOperatorOrder(order);
     data.setMark("ETH", 4040); // +0.25% from the new preview: still within bounds
-    expect((await service.submitOperatorOrder(order, pv2)).status).toBe("executed");
+    expect((await service.submitOperatorOrder(order, pv2, BY)).status).toBe("executed");
   });
 
   test("a governor reject is recorded as blocked and never fills", async () => {
@@ -180,7 +206,7 @@ describe("operator orders (copilot)", () => {
     const bad = { ...order, stop: 4100 };
     const pv = await service.previewOperatorOrder(bad);
     expect(pv.verdict.approved).toBe(false);
-    const rec = await service.submitOperatorOrder(bad, pv);
+    const rec = await service.submitOperatorOrder(bad, pv, BY);
     expect(rec).toMatchObject({ status: "blocked", decidedBy: "governor (at operator:copilot)" });
     expect(rec.verdict.reasons.join()).toContain("wrong side");
     expect(await store.listFills(10)).toHaveLength(0);
@@ -190,7 +216,7 @@ describe("operator orders (copilot)", () => {
     const { service, store } = makeService();
     const pv = await service.previewOperatorOrder(order);
     await service.setKillSwitch(true, "test", "operator");
-    const rec = await service.submitOperatorOrder(order, pv);
+    const rec = await service.submitOperatorOrder(order, pv, BY);
     expect(rec.status).toBe("blocked");
     expect(rec.verdict.reasons.join()).toContain("kill switch");
     expect(await store.listFills(10)).toHaveLength(0);
@@ -200,7 +226,7 @@ describe("operator orders (copilot)", () => {
   test("manual approval mode: the confirm is the approval, so it executes", async () => {
     const { service } = makeService({ env: { DESK_APPROVAL: "manual" } });
     const pv = await service.previewOperatorOrder(order);
-    expect((await service.submitOperatorOrder(order, pv)).status).toBe("executed");
+    expect((await service.submitOperatorOrder(order, pv, BY)).status).toBe("executed");
   });
 
   test("a preview alone executes nothing and records nothing", async () => {
@@ -233,7 +259,7 @@ describe("operator orders (copilot)", () => {
     expect(service.broker).toMatchObject({ venue: "paper", live: false });
     const pv = await service.previewOperatorOrder(order);
     expect(pv.venue).toBe("paper");
-    const rec = await service.submitOperatorOrder(order, pv);
+    const rec = await service.submitOperatorOrder(order, pv, BY);
     expect(rec).toMatchObject({ status: "executed", venue: "paper" });
     expect(await store.listFills(10)).toHaveLength(1);
   });

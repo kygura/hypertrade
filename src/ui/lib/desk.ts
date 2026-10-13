@@ -13,7 +13,8 @@ export interface Sizing {
   notionalUsd: number
   riskUsd: number
   stopDistPct: number
-  rr: number
+  /** Null when the order had no target. */
+  rr: number | null
   feeUsd: number
   grossLeverageAfter: number
 }
@@ -48,13 +49,27 @@ export interface ExitProposal {
   reason: string
 }
 
+/** An order the operator confirmed through the copilot (no thesis or confidence). */
+export interface OperatorOrderRecord {
+  coin: string
+  side: Side
+  stop: number
+  target?: number
+  riskPct?: number
+  entryLimit?: number
+  leverage?: number
+  notionalUsd?: number
+  source: 'copilot'
+  resolvedRiskPct: number
+}
+
 export interface ProposalRecord {
   id: string
   runId: string | null
   kind: 'open' | 'exit'
   status: ProposalStatus
   venue: string
-  proposal: TradeProposal | ExitProposal
+  proposal: TradeProposal | ExitProposal | OperatorOrderRecord
   verdict: Verdict
   execution: { ok: boolean; fills: Array<{ side: string; size: number; px: number; fee: number; pnl: number }>; error?: string } | null
   decidedBy: string | null

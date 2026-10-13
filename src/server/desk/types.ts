@@ -65,6 +65,8 @@ export const OperatorOrderSchema = RiskOrderSchema.extend({
   .strict()
   .refine((o) => o.riskPct != null || o.notionalUsd != null || o.leverage != null, { message: "give riskPct, notionalUsd or leverage" });
 export type OperatorOrder = z.infer<typeof OperatorOrderSchema>;
+/** An operator order as recorded: the order as confirmed plus the risk percent the governor sized it at. */
+export type OperatorOrderRecord = OperatorOrder & { resolvedRiskPct: number };
 
 /** What an agent submits through propose_exit. */
 export const ExitProposalSchema = z
@@ -129,7 +131,7 @@ export interface ProposalRecord {
   kind: "open" | "exit";
   status: ProposalStatus;
   venue: string;
-  proposal: TradeProposal | ExitProposal | OperatorOrder;
+  proposal: TradeProposal | ExitProposal | OperatorOrderRecord;
   verdict: Verdict;
   execution: unknown;
   decidedBy: string | null;

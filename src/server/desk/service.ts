@@ -13,6 +13,7 @@ import {
   type AlertLevel,
   type ExitProposal,
   type OperatorOrder,
+  type OperatorOrderRecord,
   type ProposalRecord,
   type RiskOrder,
   type Sizing,
@@ -42,7 +43,6 @@ export const OPERATOR_PREVIEW_KEY = "operator_preview";
 /** A preview can be submitted for this long, while the mark stays within OPERATOR_MAX_MOVE of it. */
 export const OPERATOR_PREVIEW_TTL_MS = 60_000;
 export const OPERATOR_MAX_MOVE = 0.005;
-const OPERATOR = "operator:copilot";
 
 export interface OperatorPreview {
   verdict: Verdict;
@@ -92,6 +92,8 @@ export class DeskService {
   readonly notifier: Notifier;
   readonly broker: Broker;
   private readonly clock: () => Date;
+  /** Serializes operator submits in this process (the store's takeState guards across processes). */
+  private operatorLock: Promise<unknown> = Promise.resolve();
 
   constructor(d: DeskDeps) {
     this.config = d.config;
@@ -240,15 +242,23 @@ export class DeskService {
    * Executes a previewed operator order on the desk's venue. 409 when the
    * order or hash does not match the latest preview, the preview is over 60 s
    * old, or the mark moved more than 0.5% since; the governor re-checks on
-   * fresh marks and a blocked verdict is recorded, never executed.
+   * fresh marks and a blocked verdict is recorded, never executed. `by` is
+   * the operator who confirmed; it is recorded as the decision.
    */
-  async submitOperatorOrder(input: OperatorOrder, confirm: { previewHash: string }): Promise<ProposalRecord> {
+  submitOperatorOrder(input: OperatorOrder, confirm: { previewHash: string }, by: string): Promise<ProposalRecord> {
+    const run = this.operatorLock.then(() => this.submitOperatorOrderNow(input, confirm, by));
+    this.operatorLock = run.catch(() => undefined);
+    return run;
+  }
+
+  private async submitOperatorOrderNow(input: OperatorOrder, confirm: { previewHash: string }, by: string): Promise<ProposalRecord> {
     const order = parseOperatorOrder(input);
-    const stored = await this.store.getState<StoredPreview>(OPERATOR_PREVIEW_KEY);
-    if (!stored || stored.hash !== confirm.previewHash || operatorPreviewHash(order, stored.markPx, Date.parse(stored.at)) !== stored.hash) {
-      throw new DeskError(409, "order does not match the latest preview: preview it again");
-    }
-    await this.store.setState(OPERATOR_PREVIEW_KEY, null); // one submit per preview
+    const mismatch = () => new DeskError(409, "order does not match the latest preview: preview it again");
+    const latest = await this.store.getState<StoredPreview>(OPERATOR_PREVIEW_KEY);
+    if (!latest || latest.hash !== confirm.previewHash || operatorPreviewHash(order, latest.markPx, Date.parse(latest.at)) !== latest.hash) throw mismatch();
+    // One submit per preview: only the caller that removes it goes on.
+    const stored = await this.store.takeState<StoredPreview>(OPERATOR_PREVIEW_KEY, confirm.previewHash);
+    if (!stored) throw mismatch();
     const ageMs = this.now().getTime() - Date.parse(stored.at);
     if (ageMs > OPERATOR_PREVIEW_TTL_MS) throw new DeskError(409, `preview is ${Math.round(ageMs / 1000)} s old, over the ${OPERATOR_PREVIEW_TTL_MS / 1000} s limit: preview it again`);
     const { ctx, risk, verdict } = await this.operatorVerdict(order);
@@ -256,15 +266,15 @@ export class DeskService {
     if (mark != null && (stored.markPx == null || Math.abs(mark / stored.markPx - 1) > OPERATOR_MAX_MOVE)) {
       throw new DeskError(409, `mark moved from ${stored.markPx == null ? "none" : fmtPx(stored.markPx)} to ${fmtPx(mark)} since the preview (limit ${OPERATOR_MAX_MOVE * 100}%): preview it again`);
     }
-    const proposal: OperatorOrder = { ...order, coin: risk.coin, riskPct: risk.riskPct };
+    const proposal: OperatorOrderRecord = { ...order, coin: risk.coin, resolvedRiskPct: risk.riskPct };
     const base = { runId: null, kind: "open" as const, venue: this.broker.venue, proposal, verdict, execution: null };
     if (!verdict.approved || !verdict.sizing) {
-      const rec = await this.store.insertProposal({ ...base, status: "blocked", expiresAt: null, decidedBy: `governor (at ${OPERATOR})` });
+      const rec = await this.store.insertProposal({ ...base, status: "blocked", expiresAt: null, decidedBy: `governor (at ${by})` });
       await this.alert("info", `Blocked: ${risk.side} ${risk.coin} (copilot)`, verdict.reasons.join("\n"));
       return rec;
     }
     const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt: null });
-    return this.fillOpen(rec, risk, verdict, verdict.sizing, OPERATOR, "operator order (copilot)");
+    return this.fillOpen(rec, risk, verdict, verdict.sizing, by, "operator order (copilot)");
   }
 
   async approve(id: string, by: string): Promise<ProposalRecord> {
