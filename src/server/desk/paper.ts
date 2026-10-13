@@ -1,5 +1,5 @@
 import type { MarketRef } from "./governor.js";
-import type { Sizing, TradeProposal, AccountState, Position, Side } from "./types.js";
+import type { Sizing, RiskOrder, AccountState, Position, Side } from "./types.js";
 import type { DeskStore, PaperFill, PaperPosition } from "./store.js";
 
 // The paper broker: fills at the live mark plus slippage and the taker fee,
@@ -23,7 +23,7 @@ export interface Broker {
   /** The venue's own market, when its marks differ from the analysis data (testnet). */
   market?(coin: string): Promise<MarketRef | null>;
   account(marks: Map<string, number>, now: Date): Promise<AccountState>;
-  open(p: TradeProposal, sizing: Sizing, proposalId: string, now: Date): Promise<ExecutionResult>;
+  open(p: RiskOrder, sizing: Sizing, proposalId: string, now: Date): Promise<ExecutionResult>;
   exit(coin: string, size: number, markPx: number, reason: string, proposalId: string | null, now: Date): Promise<ExecutionResult>;
   /** Paper only: settle stops/targets locally (a live venue holds them on the exchange). */
   settle?(ranges: Map<string, { low: number; high: number }>, now: Date): Promise<Array<{ coin: string; kind: "stop" | "target"; result: ExecutionResult }>>;
@@ -90,7 +90,7 @@ export class PaperBroker implements Broker {
     return { venue: this.venue, equityUsd: equity, dayPnlUsd: equity - book.dayAnchor.equity, positions, available: true };
   }
 
-  async open(p: TradeProposal, sizing: Sizing, proposalId: string, now: Date): Promise<ExecutionResult> {
+  async open(p: RiskOrder, sizing: Sizing, proposalId: string, now: Date): Promise<ExecutionResult> {
     const existing = (await this.store.paperPositions()).find((x) => x.coin === p.coin);
     if (existing) return { ok: false, venue: this.venue, fills: [], error: `already holding ${p.coin}` };
     const side: "buy" | "sell" = p.side === "long" ? "buy" : "sell";
@@ -105,7 +105,7 @@ export class PaperBroker implements Broker {
       size: sizing.size,
       entryPx: px,
       stopPx: p.stop,
-      tpPx: p.target,
+      tpPx: p.target ?? null,
       proposalId,
       openedAt: now.toISOString(),
     });

@@ -463,7 +463,7 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
               <p className="text-[11px] text-text-primary whitespace-pre-wrap break-words">{open_.thesis}</p>
               <p className="text-[10px] text-text-secondary">Invalidation: {open_.invalidation}</p>
               <ul className="text-[10px] text-text-secondary">
-                {open_.evidence.map((e, i) => (
+                {(open_.evidence ?? []).map((e, i) => (
                   <li key={i} className="break-words">
                     [{e.source}] {e.point}
                   </li>

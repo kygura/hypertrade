@@ -1,12 +1,24 @@
+import { createHash } from "node:crypto";
 import type { AssetCtx } from "../../shared/types.js";
 import type { DeskConfig } from "./config.js";
 import type { MarketData } from "./data.js";
-import { evaluateExit, evaluateOpen, type GovernorContext, type MarketRef } from "./governor.js";
+import { evaluateExit, evaluateOpen, evaluateRisk, operatorRiskOrder, type GovernorContext, type MarketRef } from "./governor.js";
 import type { Alert, AlertAction, Notifier } from "./notify.js";
 import { HlBroker } from "./hl/broker.js";
 import { PaperBroker, type Broker } from "./paper.js";
 import type { DeskStore } from "./store.js";
-import type { AccountState, AlertLevel, ExitProposal, ProposalRecord, TradeProposal, Verdict } from "./types.js";
+import {
+  OperatorOrderSchema,
+  type AccountState,
+  type AlertLevel,
+  type ExitProposal,
+  type OperatorOrder,
+  type ProposalRecord,
+  type RiskOrder,
+  type Sizing,
+  type TradeProposal,
+  type Verdict,
+} from "./types.js";
 
 // The desk service: the single path from a proposal to the book.
 //
@@ -15,12 +27,53 @@ import type { AccountState, AlertLevel, ExitProposal, ProposalRecord, TradePropo
 //     approval "manual" → pending; alert with approve/reject; approve() re-runs
 //                         the governor on fresh prices before executing
 //
+//   operator (copilot) → previewOperatorOrder() → governor verdict + previewHash
+//                      → submitOperatorOrder(hash) → governor again on fresh
+//                        marks → execute. The confirm is the operator's
+//                        approval, so the approval mode does not apply.
+//
 // The kill switch blocks every new entry (exits stay allowed). Every
 // decision, fill and failure raises a stored alert.
 
 export const KILL_KEY = "kill_switch";
 export const APPROVAL_KEY = "approval_override";
 export const REVIEW_HOURS_KEY = "review_hours_override";
+export const OPERATOR_PREVIEW_KEY = "operator_preview";
+/** A preview can be submitted for this long, while the mark stays within OPERATOR_MAX_MOVE of it. */
+export const OPERATOR_PREVIEW_TTL_MS = 60_000;
+export const OPERATOR_MAX_MOVE = 0.005;
+const OPERATOR = "operator:copilot";
+
+export interface OperatorPreview {
+  verdict: Verdict;
+  previewHash: string;
+  /** The venue mark the verdict was sized at (null when the coin is not listed). */
+  markPx: number | null;
+  venue: string;
+  expiresAt: string;
+}
+
+/** The latest preview; only it can be submitted, once. */
+interface StoredPreview {
+  hash: string;
+  markPx: number | null;
+  at: string;
+}
+
+/** Binds an operator order to the mark it was previewed at (6 significant digits) and the second it was shown. */
+export function operatorPreviewHash(o: OperatorOrder, markPx: number | null, atMs: number): string {
+  const order = [o.coin, o.side, o.stop, o.target ?? null, o.riskPct ?? null, o.entryLimit ?? null, o.leverage ?? null, o.notionalUsd ?? null, o.source];
+  const mark = markPx == null ? null : Number(markPx.toPrecision(6));
+  return createHash("sha256")
+    .update(JSON.stringify([order, mark, Math.floor(atMs / 1000)]))
+    .digest("hex");
+}
+
+function parseOperatorOrder(input: unknown): OperatorOrder {
+  const r = OperatorOrderSchema.safeParse(input);
+  if (!r.success) throw new DeskError(400, r.error.issues.map((i) => `${i.path.join(".") || "order"}: ${i.message}`).join("; "));
+  return r.data;
+}
 
 export interface DeskDeps {
   config: DeskConfig;
@@ -164,6 +217,56 @@ export class DeskService {
     return this.executeExit(rec, "auto");
   }
 
+  /** Operator order sizing at the venue's current mark: the order's risk (from notional or leverage) through the governor. */
+  private async operatorVerdict(order: OperatorOrder): Promise<{ ctx: GovernorContext; risk: RiskOrder; verdict: Verdict }> {
+    const ctx = await this.governorContext(order.coin);
+    const { order: risk, warnings } = operatorRiskOrder(order, ctx);
+    const v = evaluateRisk(risk, ctx);
+    return { ctx, risk, verdict: { ...v, warnings: [...warnings, ...v.warnings] } };
+  }
+
+  /** What the governor would do with an operator order right now. Executes nothing. */
+  async previewOperatorOrder(input: OperatorOrder): Promise<OperatorPreview> {
+    const order = parseOperatorOrder(input);
+    const { ctx, verdict } = await this.operatorVerdict(order);
+    const at = this.now();
+    const markPx = ctx.market?.markPx ?? null;
+    const preview: StoredPreview = { hash: operatorPreviewHash(order, markPx, at.getTime()), markPx, at: at.toISOString() };
+    await this.store.setState(OPERATOR_PREVIEW_KEY, preview);
+    return { verdict, previewHash: preview.hash, markPx, venue: this.broker.venue, expiresAt: new Date(at.getTime() + OPERATOR_PREVIEW_TTL_MS).toISOString() };
+  }
+
+  /**
+   * Executes a previewed operator order on the desk's venue. 409 when the
+   * order or hash does not match the latest preview, the preview is over 60 s
+   * old, or the mark moved more than 0.5% since; the governor re-checks on
+   * fresh marks and a blocked verdict is recorded, never executed.
+   */
+  async submitOperatorOrder(input: OperatorOrder, confirm: { previewHash: string }): Promise<ProposalRecord> {
+    const order = parseOperatorOrder(input);
+    const stored = await this.store.getState<StoredPreview>(OPERATOR_PREVIEW_KEY);
+    if (!stored || stored.hash !== confirm.previewHash || operatorPreviewHash(order, stored.markPx, Date.parse(stored.at)) !== stored.hash) {
+      throw new DeskError(409, "order does not match the latest preview: preview it again");
+    }
+    await this.store.setState(OPERATOR_PREVIEW_KEY, null); // one submit per preview
+    const ageMs = this.now().getTime() - Date.parse(stored.at);
+    if (ageMs > OPERATOR_PREVIEW_TTL_MS) throw new DeskError(409, `preview is ${Math.round(ageMs / 1000)} s old, over the ${OPERATOR_PREVIEW_TTL_MS / 1000} s limit: preview it again`);
+    const { ctx, risk, verdict } = await this.operatorVerdict(order);
+    const mark = ctx.market?.markPx;
+    if (mark != null && (stored.markPx == null || Math.abs(mark / stored.markPx - 1) > OPERATOR_MAX_MOVE)) {
+      throw new DeskError(409, `mark moved from ${stored.markPx == null ? "none" : fmtPx(stored.markPx)} to ${fmtPx(mark)} since the preview (limit ${OPERATOR_MAX_MOVE * 100}%): preview it again`);
+    }
+    const proposal: OperatorOrder = { ...order, coin: risk.coin, riskPct: risk.riskPct };
+    const base = { runId: null, kind: "open" as const, venue: this.broker.venue, proposal, verdict, execution: null };
+    if (!verdict.approved || !verdict.sizing) {
+      const rec = await this.store.insertProposal({ ...base, status: "blocked", expiresAt: null, decidedBy: `governor (at ${OPERATOR})` });
+      await this.alert("info", `Blocked: ${risk.side} ${risk.coin} (copilot)`, verdict.reasons.join("\n"));
+      return rec;
+    }
+    const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt: null });
+    return this.fillOpen(rec, risk, verdict, verdict.sizing, OPERATOR, "operator order (copilot)");
+  }
+
   async approve(id: string, by: string): Promise<ProposalRecord> {
     const rec = await this.store.getProposal(id);
     if (!rec) throw new DeskError(404, "proposal not found");
@@ -193,14 +296,20 @@ export class DeskService {
       await this.alert("warn", `Blocked at execution: ${p.side} ${p.coin}`, verdict.reasons.join("\n"), rec.runId);
       return out!;
     }
-    const result = await this.broker.open(p, verdict.sizing, rec.id, this.now());
+    return this.fillOpen(rec, p, verdict, verdict.sizing, by, p.setup);
+  }
+
+  /** Sends an approved, sized entry to the venue and records the outcome. */
+  private async fillOpen(rec: ProposalRecord, p: RiskOrder, verdict: Verdict, sizing: Sizing, by: string, note: string): Promise<ProposalRecord> {
+    const decidedAt = this.now().toISOString();
+    const result = await this.broker.open(p, sizing, rec.id, this.now());
     const out = await this.store.updateProposal(rec.id, { status: result.ok ? "executed" : "failed", verdict, execution: result, decidedBy: by, decidedAt });
     const fill = result.fills[0];
     await this.alert(
       result.ok ? "info" : "warn",
       result.ok ? `Opened ${p.side} ${p.coin} (${this.broker.venue})` : `Open failed: ${p.coin}`,
       result.ok && fill
-        ? `${fill.size} @ ${fmtPx(fill.px)} · stop ${fmtPx(p.stop)} · target ${fmtPx(p.target)} · risk $${verdict.sizing.riskUsd} · R:R ${verdict.sizing.rr}\n${p.setup}`
+        ? `${fill.size} @ ${fmtPx(fill.px)} · stop ${fmtPx(p.stop)} · target ${p.target != null ? fmtPx(p.target) : "none"} · risk $${sizing.riskUsd} · R:R ${sizing.rr ?? "n/a"}\n${note}`
         : (result.error ?? "unknown error"),
       rec.runId,
     );
