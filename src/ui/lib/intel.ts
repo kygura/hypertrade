@@ -8,6 +8,7 @@ import {
   CatalystsResponseSchema,
   EdgeSchema,
   EventsResponseSchema,
+  FeedbackReportSchema,
   GraphResponseSchema,
   JournalReportSchema,
   JournalResponseSchema,
@@ -34,6 +35,7 @@ import {
   type Edge,
   type EdgeKey,
   type EventType,
+  type FeedbackReport,
   type GraphResponse,
   type IntelEvent,
   type JournalReport,
@@ -77,6 +79,9 @@ function parse<S extends z.ZodTypeAny>(schema: S, body: unknown): z.infer<S> {
 
 /** `GET /journal/report/latest` mirrors `GET /brief/latest`: `{report: JournalReport | null}`. */
 const JournalReportLatestSchema = z.object({ report: JournalReportSchema.nullable() })
+
+/** `GET /feedback/report/latest`: `{report: FeedbackReport | null}` (SPEC I0.12). */
+const FeedbackReportLatestSchema = z.object({ report: FeedbackReportSchema.nullable() })
 
 /** `POST /journal/tag` answers `{tagged, failed, error?}` (routes/intel/journal.ts); `error` is the first model failure, verbatim. */
 const JournalTagResultSchema = JournalTagResponseSchema.extend({ failed: z.number().int().default(0), error: z.string().optional() })
@@ -126,6 +131,9 @@ export const intel = {
   addCatalyst: (input: ManualCatalystInput): Promise<void> => api.post(`${base}/catalysts`, input).then(done),
   /** Manual catalysts only; `id` is the catalyst's `eventId`. */
   deleteCatalyst: (id: string): Promise<void> => api.del(`${base}/catalysts/${enc(id)}`).then(done),
+  /** Weekly feedback report (worst buckets first), or null before the first one. */
+  feedbackReport: async (): Promise<FeedbackReport | null> =>
+    parse(FeedbackReportLatestSchema, await api.get(`${base}/feedback/report/latest`)).report,
 
   // ── exposure graph (I0.8) ──
   graph: async (asset: string): Promise<GraphResponse> => parse(GraphResponseSchema, await api.get(`${base}/graph${qs({ asset })}`)),

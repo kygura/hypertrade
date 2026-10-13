@@ -1,7 +1,7 @@
 import type { ThesisCheck, ThesisClaim, ThesisEvidence } from '../../../shared/intel'
 import { Badge, type Tone } from '../Badge'
 import { ClaimAge } from './ClaimAge'
-import { fmtLevel, fmtOp, fmtPctNum } from './format'
+import { fmtLevel, fmtOp, fmtSigned } from './format'
 import { SourceLink } from './SourceLink'
 
 // CheckRow — DESIGN-terminal §5.2. One extracted claim/assumption: status
@@ -33,7 +33,7 @@ export function fmtCheck(c: ThesisCheck): string {
     case 'funding_sign':
       return `${c.asset} funding ${c.sign}`
     case 'oi_change':
-      return `${c.asset} OI change ${c.window_h}h ${fmtOp(c.op)} ${fmtPctNum(c.pct, Number.isInteger(c.pct) ? 0 : 1)}`
+      return `${c.asset} OI change ${c.window_h}h ${fmtOp(c.op)} ${fmtSigned(c.pct, Number.isInteger(c.pct) ? 0 : 1, '%')}`
     case 'event_exists':
       return `event since ${c.since_h}h: "${c.query}"`
     case 'unknown':
@@ -49,7 +49,7 @@ export function fmtEvidenceValue(c: ThesisCheck, v: ThesisEvidence['value']): st
     case 'price_vs_level':
       return fmtLevel(v)
     case 'oi_change':
-      return fmtPctNum(v, 1)
+      return fmtSigned(v, 1, '%')
     case 'funding_sign':
       return `${v > 0 ? '+' : v < 0 ? '−' : ''}${(Math.abs(v) * 100).toFixed(4)}%/h`
     default:

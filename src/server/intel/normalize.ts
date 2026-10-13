@@ -1,4 +1,5 @@
 import type { SnapshotMetric } from "../../shared/intel.js";
+import { mean, median, stdev } from "./util.js";
 
 // Normalized deltas (SPEC.md § Intel I0.4). Pure. Each metric family has its
 // own z so a 3% move on a quiet coin and on a wild one do not read the same:
@@ -27,17 +28,6 @@ export function metricFamily(metric: SnapshotMetric): MetricFamily {
   if (metric === "price" || metric === "oi_usd") return "return";
   if (metric === "funding" || metric === "premium" || metric === "basis") return "level";
   return "ratio";
-}
-
-function stddev(xs: number[]): number {
-  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
-  return Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / xs.length);
-}
-
-function median(xs: number[]): number {
-  const s = [...xs].sort((a, b) => a - b);
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
 }
 
 /** Points in the 7 days up to and including `t`, finite values only, ascending. */
@@ -70,7 +60,7 @@ export function returnZ(from: Point, to: Point, history: Point[]): number | null
   const h = Math.max(MIN_H, elapsed);
   const changes = hourlyLogChanges(inWindow(history, to.t));
   if (changes.length < MIN_SAMPLES) return null;
-  const sigma = stddev(changes);
+  const sigma = stdev(changes);
   if (!(sigma > 0)) return null;
   return Math.log(to.v / from.v) / (sigma * Math.sqrt(h));
 }
@@ -80,9 +70,9 @@ export function levelZ(to: Point, history: Point[]): number | null {
   if (!Number.isFinite(to.v)) return null;
   const xs = inWindow(history, to.t).map((p) => p.v);
   if (xs.length < MIN_SAMPLES) return null;
-  const sigma = stddev(xs);
+  const sigma = stdev(xs);
   if (!(sigma > 0)) return null;
-  return (to.v - xs.reduce((a, b) => a + b, 0) / xs.length) / sigma;
+  return (to.v - mean(xs)) / sigma;
 }
 
 /** vol24h, depth_*, spread_bps: log(now / 7d median) / 7d σ of log(x / 7d median). */
@@ -93,7 +83,7 @@ export function ratioZ(to: Point, history: Point[]): number | null {
     .filter((v) => v > 0);
   if (xs.length < MIN_SAMPLES) return null;
   const med = median(xs);
-  const sigma = stddev(xs.map((v) => Math.log(v / med)));
+  const sigma = stdev(xs.map((v) => Math.log(v / med)));
   if (!(sigma > 0)) return null;
   return Math.log(to.v / med) / sigma;
 }

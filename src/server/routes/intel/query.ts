@@ -1,9 +1,9 @@
-import { Hono, type Context } from "hono";
-import type { ZodError } from "zod";
+import { Hono } from "hono";
 import { QueryParseRequestSchema, QueryRunRequestSchema } from "../../../shared/intel.js";
 import type { LlmDeps } from "../../intel/llm.js";
 import { CompileError, compile, parseQuery, runQuery, sanitizeDbError, screenerClient, type ReadClient } from "../../intel/screener.js";
 import { llmErrorStatus } from "./theses.js";
+import { body, invalid } from "./http.js";
 
 // /api/intel/query — NL screener (SPEC.md § Intel I0.17, I2).
 // POST /query/parse {question} → {dsl, sql, params, trace}
@@ -15,19 +15,6 @@ export interface QueryRouteDeps {
   /** Read client; defaults to DATABASE_URL_READONLY or the main sql(). */
   client?: () => ReadClient;
 }
-
-async function body(c: Context): Promise<unknown> {
-  try {
-    return await c.req.json();
-  } catch {
-    return {};
-  }
-}
-
-const invalid = (c: Context, e: ZodError) => {
-  const issue = e.issues[0];
-  return c.json({ error: `invalid request: ${issue?.message ?? "bad body"}`, field: issue?.path.join(".") || undefined }, 400);
-};
 
 export function createQueryRoutes(deps: QueryRouteDeps) {
   const client = deps.client ?? (() => screenerClient());

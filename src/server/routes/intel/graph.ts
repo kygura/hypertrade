@@ -1,7 +1,8 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import { EDGE_TYPE_WEIGHT, EdgeKeySchema, GraphQuerySchema, UserEdgeInputSchema, type Edge, type GraphResponse } from "../../../shared/intel.js";
 import { walk } from "../../intel/graph.js";
 import type { IntelStore, NewEdge } from "../../intel/store.js";
+import { body, failure } from "./http.js";
 
 // /intel/graph — the exposure graph (SPEC.md § Intel I0.8, I2).
 //
@@ -16,20 +17,7 @@ export interface GraphRouteDeps {
   now?: () => Date;
 }
 
-async function body(c: Context): Promise<unknown> {
-  try {
-    return await c.req.json();
-  } catch {
-    return {};
-  }
-}
-
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
-
-function graphError(c: Context, err: unknown) {
-  console.error("[intel:graph]", err);
-  return c.json({ error: err instanceof Error ? err.message : "graph error" }, 500);
-}
 
 export function createGraphRoutes(deps: GraphRouteDeps) {
   const now = deps.now ?? (() => new Date());
@@ -47,7 +35,7 @@ export function createGraphRoutes(deps: GraphRouteDeps) {
         };
         return c.json(res);
       } catch (err) {
-        return graphError(c, err);
+        return failure(c, err, "intel:graph");
       }
     })
     .post("/graph/edges", async (c) => {
@@ -61,7 +49,7 @@ export function createGraphRoutes(deps: GraphRouteDeps) {
         const saved = (await deps.store.listEdges()).find((x: Edge) => x.src === e.src && x.dst === e.dst && x.type === e.type);
         return saved ? c.json(saved, 201) : c.json({ error: "edge not stored" }, 500);
       } catch (err) {
-        return graphError(c, err);
+        return failure(c, err, "intel:graph");
       }
     })
     .delete("/graph/edges", async (c) => {
@@ -74,7 +62,7 @@ export function createGraphRoutes(deps: GraphRouteDeps) {
         if (existing) return c.json({ error: `${existing.origin} edges cannot be deleted; only user edges`, field: "type" }, 400);
         return c.json({ error: "edge not found" }, 404);
       } catch (err) {
-        return graphError(c, err);
+        return failure(c, err, "intel:graph");
       }
     });
 }

@@ -1,10 +1,10 @@
-import type { Alert, IngestHealth } from '../../../shared/intel'
-import { intel, type IntelState } from '../../lib/intel'
+import type { Alert, FeedbackReport, IngestHealth } from '../../../shared/intel'
+import { intel, useIntel, type IntelState } from '../../lib/intel'
 import { Panel, PanelBody, PanelHeader } from '../Panel'
 import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows, StaleBanner } from '../state'
 import { AlertItem } from './AlertItem'
 import { ClaimAge, claimAgeText } from './ClaimAge'
-import { newestTs } from './format'
+import { fmtSigned, newestTs } from './format'
 
 // NewsFeedPanel (NEWS → POSITIONS) — DESIGN-terminal §3.5. Alerts since
 // brief.since (polled 60 s by the page) plus the batched alerts merged into
@@ -17,6 +17,46 @@ export function mergeAlerts(polled: Alert[] | null, batched: Alert[] = []): Aler
   for (const a of batched) byId.set(a.id, a)
   for (const a of polled ?? []) byId.set(a.id, a) // the poll carries the fresher feedback
   return [...byId.values()].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+}
+
+type Bucket = FeedbackReport['buckets'][number]
+
+/** Net vote share in percent: (up − down) / votes. */
+function bucketNet(b: Pick<Bucket, 'up' | 'down'>): number {
+  const n = b.up + b.down
+  return n > 0 ? ((b.up - b.down) / n) * 100 : 0
+}
+
+/** FEEDBACK · 7D — the latest weekly report's worst buckets (SPEC I0.12). Read-only: the operator tunes by hand. */
+function FeedbackBlock() {
+  const report = useIntel(() => intel.feedbackReport(), [])
+  const buckets = report.data?.buckets ?? []
+  return (
+    <section className="flex flex-col gap-1 border-t border-border-subtle px-2 py-2" aria-label="feedback, last 7 days">
+      <h3 className="label">FEEDBACK · 7D</h3>
+      {report.offline && !report.data ? (
+        <OfflineBlock message={report.offline} onRetry={report.refetch} />
+      ) : report.error && !report.data ? (
+        <ErrorBlock message={report.error} onRetry={report.refetch} />
+      ) : report.loading && !report.data ? (
+        <SkeletonRows rows={2} />
+      ) : buckets.length === 0 ? (
+        <EmptyBlock label="no noisy buckets this week" />
+      ) : (
+        <ol className="flex flex-col gap-1.5">
+          {buckets.map((b) => (
+            <li key={`${b.eventType}|${b.edgeType}|${b.hops}`} className="flex flex-col gap-0.5">
+              <span className="text-[11px] tabular text-text-primary">
+                {b.eventType ?? 'unclassified'} · {b.edgeType ?? 'direct'} · {b.hops} {b.hops === 1 ? 'hop' : 'hops'} · n {b.up + b.down} · net{' '}
+                {fmtSigned(bucketNet(b), 0, '%')}
+              </span>
+              <span className="text-[11px] text-text-muted">{b.suggestion}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  )
 }
 
 export function NewsFeedPanel({
@@ -58,6 +98,7 @@ export function NewsFeedPanel({
             ))}
           </div>
         )}
+        <FeedbackBlock />
       </PanelBody>
     </Panel>
   )

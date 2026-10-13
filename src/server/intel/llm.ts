@@ -157,6 +157,12 @@ function zodMessage(e: ZodError): string {
     .slice(0, 1000);
 }
 
+/** Whether the tier's provider runs hosted web search (LLMProvider.webSearch); null when none is configured. */
+export function webSearchAvailable(deps: Pick<LlmDeps, "makeProvider">, tier: LlmTier): boolean | null {
+  const p = deps.makeProvider(tier);
+  return p ? p.webSearch : null;
+}
+
 /** Tier → the Desk's model resolution: cheap = specialist, strong = pm. */
 export function intelProviderFactory(env: AnalystEnv = process.env as AnalystEnv): (tier: LlmTier) => LLMProvider | null {
   const desk = deskProviderFactory(env);

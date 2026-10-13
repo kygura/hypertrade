@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { EmitProvider } from "./fixtures/emit-provider.js";
 import { mapperDeps, position } from "./fixtures/mapper-deps.js";
-import { FEEDBACK_SETTING, runIntelIngest, type IntelIngestDeps } from "./runIngest.js";
+import type { MemoryIntelStore } from "./store.js";
+import type { PaperFill } from "../desk/store.js";
+import { FEEDBACK_SETTING, JOURNAL_SETTING, runIntelIngest, type IntelIngestDeps } from "./runIngest.js";
 
 const now = new Date("2026-10-13T12:00:00Z");
 
@@ -85,23 +87,48 @@ describe("runIntelIngest", () => {
     ]);
     const r = await runIntelIngest(deps, { budgetMs: 30_000, signal: ctl.signal });
     expect(r.catalystAlerts).toBe(1);
-    expect(r.skipped).toEqual(["feedback"]);
+    expect(r.skipped).toEqual(["feedback", "journal"]);
   });
 
   test("budget cut: no stage starts without budget; a failing stage is reported and later stages still run", async () => {
     const { deps, store } = setup();
     const cut = await runIntelIngest(deps, { budgetMs: 0 });
-    expect(cut.skipped).toEqual(["ingest", "catalysts", "mapper", "feedback"]);
+    expect(cut.skipped).toEqual(["ingest", "catalysts", "mapper", "feedback", "journal"]);
     expect(cut.ingest).toBeNull();
     expect(store.events.size).toBe(0);
 
     const ctl = new AbortController();
     ctl.abort();
-    expect((await runIntelIngest(deps, { budgetMs: 30_000, signal: ctl.signal })).skipped).toHaveLength(4);
+    expect((await runIntelIngest(deps, { budgetMs: 30_000, signal: ctl.signal })).skipped).toHaveLength(5);
 
     deps.exposure = async () => Promise.reject(new Error("positions down"));
     const failing = await runIntelIngest(deps, { budgetMs: 30_000 });
     expect(failing.errors).toEqual([{ stage: "mapper", error: "positions down" }]);
     expect(failing.feedbackReportId).not.toBeNull();
+  });
+
+  test("journal: weekly report only when a trade closed in the last 7 d; stamped either way; a failure never fails the ingest", async () => {
+    const fill = (id: number, ts: string, side: "buy" | "sell", pnl: number): PaperFill => ({ id, ts, coin: "ETH", side, size: 1, px: 3000, fee: 0, pnl, reason: side === "buy" ? "entry" : "target", proposalId: null });
+    let fills: PaperFill[] = [fill(1, "2026-09-01T10:00:00Z", "buy", 0), fill(2, "2026-09-02T10:00:00Z", "sell", 50)]; // closed weeks ago
+    const { deps, store } = setup();
+    deps.journal = () => ({ store, llm: deps.llm, now: deps.now, deskFills: async () => fills });
+
+    const quiet = await runIntelIngest(deps, { budgetMs: 30_000 });
+    expect(quiet).toMatchObject({ journalReportId: null, errors: [] });
+    expect(await store.getSetting<string>(JOURNAL_SETTING)).toBe(now.toISOString());
+
+    await store.setSetting(JOURNAL_SETTING, null);
+    fills = [fill(3, "2026-10-12T10:00:00Z", "buy", 0), fill(4, "2026-10-12T14:00:00Z", "sell", 40)];
+    const due = await runIntelIngest(deps, { budgetMs: 30_000 });
+    expect(due.journalReportId).not.toBeNull();
+    expect((await store.latestReport("journal_weekly"))?.id).toBe(due.journalReportId!);
+    // Not due again inside the week.
+    expect((await runIntelIngest(deps, { budgetMs: 30_000 })).journalReportId).toBeNull();
+
+    await store.setSetting(JOURNAL_SETTING, null);
+    deps.journal = () => ({ store: { ...store, insertReport: async () => Promise.reject(new Error("reports down")) } as unknown as MemoryIntelStore, llm: deps.llm, now: deps.now, deskFills: async () => fills });
+    const failing = await runIntelIngest(deps, { budgetMs: 30_000 });
+    expect(failing.errors).toEqual([{ stage: "journal", error: "reports down" }]);
+    expect(failing.skipped).toEqual([]);
   });
 });

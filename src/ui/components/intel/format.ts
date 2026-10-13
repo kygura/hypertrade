@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { fmtPct, fmtPrice, fmtUsd } from '../../../shared/format'
+import { classForPnl, fmtPct, fmtPrice, fmtUsd } from '../../../shared/format'
 import type { DiffItem, SnapshotMetric } from '../../../shared/intel'
 
 // Small helpers shared by the TERMINAL panels (DESIGN-terminal §3). Signs use
@@ -8,11 +8,16 @@ import type { DiffItem, SnapshotMetric } from '../../../shared/intel'
 
 export const MINUS = '−'
 
-export function fmtSigned(n: number, decimals = 1, suffix = ''): string {
-  if (!Number.isFinite(n)) return '—'
-  const sign = n > 0 ? '+' : n < 0 ? MINUS : ''
-  return `${sign}${Math.abs(n).toFixed(decimals)}${suffix}`
+/** The one signed-number formatter: `+1.4`, `−0.38%`; a value that rounds to zero prints unsigned (`0.0`); null/NaN → `—`. */
+export function fmtSigned(n: number | null | undefined, decimals = 1, suffix = ''): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  const body = Math.abs(n).toFixed(decimals)
+  const sign = Number(body) === 0 ? '' : n > 0 ? '+' : MINUS
+  return `${sign}${body}${suffix}`
 }
+
+/** lg breakpoint (Tailwind `lg:`, 1024px): desktop layouts in the TERMINAL family. */
+export const isDesktop = (): boolean => typeof window !== 'undefined' && !!window.matchMedia?.('(min-width: 1024px)').matches
 
 /** DiffTable METRIC display names (§3.4). Depth keeps its side so bid and ask rows stay apart. */
 export const METRIC_LABEL: Record<SnapshotMetric, string> = {
@@ -47,7 +52,7 @@ export function fmtDelta(item: Pick<DiffItem, 'metric' | 'delta' | 'deltaUnit'>)
     case 'bps':
       return RATE_METRICS.has(item.metric) ? fmtSigned(d / 100, 4, '%') : fmtSigned(d, 1, ' bp')
     case 'usd':
-      return `${d > 0 ? '+' : d < 0 ? MINUS : ''}${fmtUsd(Math.abs(d), { compact: true })}`
+      return fmtUsdSigned(d, true)
     case 'abs':
       // Rates are fractions (0.00012 = 0.012%).
       if (RATE_METRICS.has(item.metric)) return fmtSigned(d * 100, 3, '%')
@@ -160,30 +165,15 @@ export function commaList(s: string): string[] {
 // computed number prints its sign (DESIGN §2.1); the minus is U+2212.
 // Timestamps are UTC.
 
-
-/** Signed number: `+1.40`, `−0.38`, `0.00`. */
-export function fmtSignedNum(n: number | null | undefined, decimals = 2): string {
-  if (n == null || !Number.isFinite(n)) return '—'
-  const v = Number(n.toFixed(decimals))
-  const body = Math.abs(v).toFixed(decimals)
-  return v > 0 ? `+${body}` : v < 0 ? `${MINUS}${body}` : body
-}
-
 /** Signed R multiple: `+1.4R`. */
 export function fmtR(r: number | null | undefined, decimals = 1): string {
-  return r == null || !Number.isFinite(r) ? '—' : `${fmtSignedNum(r, decimals)}R`
+  return r == null || !Number.isFinite(r) ? '—' : fmtSigned(r, decimals, 'R')
 }
 
-/** Signed percent from an already-scaled percent number: `−3.2%`. */
-export function fmtPctNum(p: number | null | undefined, decimals = 1): string {
-  return p == null || !Number.isFinite(p) ? '—' : `${fmtSignedNum(p, decimals)}%`
-}
-
-/** Signed USD: `+$12.30`, `−$4.00`. */
-export function fmtUsdSigned2(n: number | null | undefined): string {
+/** Signed USD (shared fmtUsd, U+2212 minus): `+$12.30`, `−$4.00`, `$0.00`; `compact` → `+$1.20K`. */
+export function fmtUsdSigned(n: number | null | undefined, compact = false): string {
   if (n == null || !Number.isFinite(n)) return '—'
-  const body = `$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  return n > 0 ? `+${body}` : n < 0 ? `${MINUS}${body}` : body
+  return `${n > 0 ? '+' : n < 0 ? MINUS : ''}${fmtUsd(Math.abs(n), { compact })}`
 }
 
 /** Hold duration: `45M`, `3H`, `2D 4H`. */
@@ -224,8 +214,7 @@ export function fmtOp(op: string): string {
   return op === '>=' ? '≥' : op === '<=' ? '≤' : op === '!=' ? '≠' : op
 }
 
-/** Tailwind class for a signed value (green / red / quiet). The sign always prints too. */
+/** Tailwind class for a signed value (shared classForPnl; null/NaN quiet). The sign always prints too. */
 export function signClass(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n) || n === 0) return 'text-text-secondary'
-  return n > 0 ? 'text-green' : 'text-red-text'
+  return n == null || !Number.isFinite(n) ? 'text-text-secondary' : classForPnl(n)
 }

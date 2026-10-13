@@ -4,7 +4,7 @@ import { classForPnl } from '../../../shared/format'
 import { SrcTag } from '../SrcTag'
 import { fmtTs } from '../strategy/format'
 import { ClaimLine } from './ClaimLine'
-import { fmtHold, fmtPctNum, fmtSignedNum, fmtUsdSigned2 } from './format'
+import { fmtHold, fmtSigned, fmtUsdSigned } from './format'
 import { NoteEditor } from './NoteEditor'
 import { RCell, SideWord, fmtExcursion } from './TradesTable'
 
@@ -25,8 +25,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 const px = (n: number | null) => (n == null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 6 }))
 
 export function entryStateText(s: Trade['entryState']): string {
-  const z = (v: number | null) => (v == null ? '—' : fmtSignedNum(v, 1))
-  return `FUNDING z ${z(s.fundingZ)} · OI z ${z(s.oiZ)} · 24H ${fmtPctNum(s.change24hPct, 1)}`
+  return `FUNDING z ${fmtSigned(s.fundingZ, 1)} · OI z ${fmtSigned(s.oiZ, 1)} · 24H ${fmtSigned(s.change24hPct, 1, '%')}`
 }
 
 export function TradeDetail({ trade, onNoteSaved }: { trade: Trade; onNoteSaved: (n: TradeNote) => void }) {
@@ -50,9 +49,9 @@ export function TradeDetail({ trade, onNoteSaved }: { trade: Trade; onNoteSaved:
           <RCell r={trade.r} />
         </Row>
         <Row label="PNL">
-          <span className={classForPnl(trade.pnlUsd)}>{fmtUsdSigned2(trade.pnlUsd)}</span>
+          <span className={classForPnl(trade.pnlUsd)}>{fmtUsdSigned(trade.pnlUsd)}</span>
         </Row>
-        <Row label="FEES">{fmtUsdSigned2(-Math.abs(trade.feesUsd))}</Row>
+        <Row label="FEES">{fmtUsdSigned(-Math.abs(trade.feesUsd))}</Row>
         <Row label="OPENED">{fmtTs(trade.openedAt)}</Row>
         <Row label="CLOSED">{trade.closedAt ? fmtTs(trade.closedAt) : <span className="text-amber">OPEN</span>}</Row>
         <Row label="HOLD">{fmtHold(trade.holdMs)}</Row>

@@ -6,7 +6,7 @@ import { MemoryIntelStore } from "../store.js";
 import { decodeEntities, fetchText, MAX_FETCH_BYTES, recordRun } from "./common.js";
 import { DEFAULT_SNAPSHOT_SPACES, fetchGovernance, parseSnapshotProposals, snapshotSpaces } from "./governance.js";
 import { feedUrls, fetchRss, parseFeed } from "./rss.js";
-import { fetchTelegram, parseTelegramChannel, tgChannels } from "./telegram.js";
+import { fetchTelegram, parseTelegramChannel, TG_BLOCK_MS, tgBlockedKey, tgChannels } from "./telegram.js";
 import { fetchWebsearch, sweepEvents, WEBSEARCH_SETTING } from "./websearch.js";
 import { fetchX, parseXList } from "./x.js";
 
@@ -189,20 +189,48 @@ describe("telegram", () => {
   });
 
   test("gated on INTEL_TG_CHANNELS; a blocked channel is recorded as a failure", async () => {
-    expect(await fetchTelegram({ env: {}, now: () => now, fetch: fakeFetch(() => new Response("")) })).toMatchObject({ ok: true, error: "skipped:no-channels" });
+    expect(await fetchTelegram({ env: {}, now: () => now, store: new MemoryIntelStore(), fetch: fakeFetch(() => new Response("")) })).toMatchObject({ ok: true, error: "skipped:no-channels" });
     expect(tgChannels({ INTEL_TG_CHANNELS: "@wublockchain, bad/../x, ok_chan" })).toEqual(["wublockchain", "ok_chan"]);
     const calls: string[] = [];
-    const r = await fetchTelegram({
-      env: { INTEL_TG_CHANNELS: "wublockchain,blocked_one" },
-      now: () => now,
-      fetch: fakeFetch((u) => {
-        calls.push(u);
-        return new Response(u.includes("blocked") ? "<html>Please verify</html>" : fixture("telegram.html"));
-      }),
-    });
-    expect(r).toMatchObject({ ok: false, error: "blocked_one: no messages in page (blocked?)" });
+    const store = new MemoryIntelStore();
+    const clock = { now };
+    const run = () =>
+      fetchTelegram({
+        env: { INTEL_TG_CHANNELS: "wublockchain,blocked_one,gone_chan" },
+        now: () => clock.now,
+        store,
+        fetch: fakeFetch((u) => {
+          calls.push(u);
+          if (u.includes("gone_chan")) return new Response("", { status: 403 });
+          return new Response(u.includes("blocked") ? "<html>Please verify</html>" : fixture("telegram.html"));
+        }),
+      });
+    const r = await run();
+    expect(r.ok).toBe(false);
+    expect(r.error).toContain("blocked_one: no messages in page (blocked?)");
+    expect(r.error).toContain("gone_chan: HTTP 403");
     expect(r.items).toHaveLength(1);
-    expect(calls).toHaveLength(2); // no retry
+    expect(calls).toHaveLength(3); // no retry
+    expect(await store.getSetting<string>(tgBlockedKey("blocked_one"))).toBe(now.toISOString());
+    expect(await store.getSetting<string>(tgBlockedKey("gone_chan"))).toBe(now.toISOString());
+    expect(await store.getSetting<string>(tgBlockedKey("wublockchain"))).toBeNull();
+
+    // Inside 24 h the refused channels are skipped (still reported), the healthy one is fetched.
+    clock.now = new Date(now.getTime() + 23 * 3_600_000);
+    const skipped = await run();
+    expect(calls).toHaveLength(4);
+    expect(skipped.error).toContain("blocked_one: blocked, retry after 2026-");
+    // After 24 h they are tried again.
+    clock.now = new Date(now.getTime() + TG_BLOCK_MS + 1);
+    await run();
+    expect(calls).toHaveLength(7);
+  });
+
+  test("a 'preview unavailable' page counts as a refusal", async () => {
+    const store = new MemoryIntelStore();
+    const r = await fetchTelegram({ env: { INTEL_TG_CHANNELS: "hidden_chan" }, now: () => now, store, fetch: fakeFetch(() => new Response("<div>Channel preview is unavailable</div>")) });
+    expect(r).toMatchObject({ ok: false, error: "hidden_chan: preview unavailable" });
+    expect(await store.getSetting<string>(tgBlockedKey("hidden_chan"))).toBe(now.toISOString());
   });
 });
 

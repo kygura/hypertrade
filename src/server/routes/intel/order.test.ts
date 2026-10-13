@@ -7,7 +7,7 @@ const intent: OrderIntent = { asset: "ETH", side: "long", leverage: 3, size: { u
 
 function app() {
   const kit = makeService();
-  const routes = createOrderRoutes({ llm: { makeProvider: () => null, cache: { cacheGet: async () => null, cachePut: async () => {}, callsSince: async () => 0 }, now: () => new Date(), dailyCap: 10 }, desk: kit.service });
+  const routes = createOrderRoutes(() => ({ llm: { makeProvider: () => null, cache: { cacheGet: async () => null, cachePut: async () => {}, callsSince: async () => 0 }, now: () => new Date(), dailyCap: 10 }, desk: kit.service }));
   const post = (path: string, body: unknown) => routes.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { ...kit, post };
 }

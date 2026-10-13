@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import type { OrderPreview } from "../../../shared/intel";
 import { PreviewCard } from "./PreviewCard";
-import { confirmBlock, createSingleFlight, fmtCountdown, previewRemainingMs, STALE_TEXT, venueOf } from "./order";
+import { confirmBlock, confirmBody, createSingleFlight, fmtPreviewClock, previewRemainingMs, STALE_TEXT, venueOf } from "./order";
 
 // Render-check (react-dom/server, no jsdom), the ClaimLine.test.tsx approach:
 // DESIGN-terminal §7.3/§7.4 markup, plus the pure confirm gates.
@@ -105,8 +105,8 @@ describe("order gates", () => {
     expect(previewRemainingMs(exp, at, at + 45_500)).toBe(14_500);
     expect(previewRemainingMs(exp, at, at + 61_000)).toBe(0);
     expect(previewRemainingMs(new Date(at + 30_000).toISOString(), at, at + 31_000)).toBe(0);
-    expect(fmtCountdown(42_000)).toBe("0:42");
-    expect(fmtCountdown(0)).toBe("0:00");
+    expect(fmtPreviewClock(42_000)).toBe("0:42");
+    expect(fmtPreviewClock(0)).toBe("0:00");
   });
 
   test("venue mapping and confirm block", () => {
@@ -117,6 +117,14 @@ describe("order gates", () => {
     expect(confirmBlock(p, "paper", null)).toBeNull();
     expect(confirmBlock(p, "testnet", null)).toBe("venue unknown — open DESK to check");
     expect(confirmBlock(p, null, "DESK_VENUE=mainnet is not supported")).toBe("DESK_VENUE=mainnet is not supported");
+  });
+
+  test("confirm dialog body names the order and reads as irreversible (§7.1 item 4)", () => {
+    expect(confirmBody(preview(), "paper")).toBe(
+      "LONG 0.42 ETH (≈ $1,512.00) at market on PAPER, stop $3,412.5, liq $2,431.0. Risks 0.8% of the book ($78.90). Nothing goes to mainnet. " +
+        "This places the order on PAPER now and can't be undone.",
+    );
+    expect(confirmBody(preview(), "testnet")).toEndWith("This places the order on TESTNET now and can't be undone.");
   });
 });
 

@@ -23,14 +23,14 @@ const macro = (h: number): NewEvent => ({
   tag: "observed",
 });
 
-function setup() {
+function setup(pushMateriality = 0.2) {
   const clock = { now: new Date(T0) };
-  const deps = mapperDeps({ provider: null, clock, positions: [position("SOL", "long", 5_000), position("BTC", "long", 5_000)], watched: ["HYPE"] });
+  const deps = mapperDeps({ provider: null, clock, pushMateriality, positions: [position("SOL", "long", 5_000), position("BTC", "long", 5_000)], watched: ["HYPE"] });
   return { clock, deps, store: deps.store };
 }
 
 describe("catalystAlerts", () => {
-  test("T−24h and T−1h windows for exposed assets, one push per event, dedupe per window", async () => {
+  test("T−24h and T−1h windows for exposed assets, routed like the mapper, dedupe per window", async () => {
     const { clock, deps, store } = setup();
     const unlock = await addManualCatalyst(store, { title: "SOL unlock", assets: ["SOL"], scheduledAt: at(20), type: "unlock", url: "https://example.com/unlock" }, clock.now);
     const soon = await addManualCatalyst(store, { title: "HYPE upgrade", assets: ["HYPE"], scheduledAt: at(0.5), type: "upgrade" }, clock.now);
@@ -41,9 +41,9 @@ describe("catalystAlerts", () => {
     const r = await catalystAlerts(deps, clock.now);
     const rows = r.alerts.map((a) => [a.title, a.asset, a.window, a.hops, a.route]);
     expect(rows).toEqual([
-      ["HYPE upgrade", "HYPE", "1h", 0, "push"],
-      ["US CPI release", "BTC", "24h", 1, "push"],
-      ["SOL unlock", "SOL", "24h", 0, "push"],
+      ["HYPE upgrade", "HYPE", "1h", 0, "batch"], // 0.6 × 1 × 0.05 watch floor
+      ["US CPI release", "BTC", "24h", 1, "batch"], // 1 × 0.3 × 0.5
+      ["SOL unlock", "SOL", "24h", 0, "push"], // 0.6 × 1 × 0.5 ≥ 0.2
     ]);
     const byTitle = Object.fromEntries(r.alerts.map((a) => [a.title, a]));
     expect(byTitle["SOL unlock"]!.line).toEqual({
@@ -58,13 +58,13 @@ describe("catalystAlerts", () => {
     expect(byTitle["US CPI release"]).toMatchObject({ ref: cpi!.id, edgeType: "macro_beta", pathWeight: 0.3, materiality: expect.closeTo(1 * 0.3 * 0.5, 9), pricedIn: null });
     expect(byTitle["US CPI release"]!.line.tag).toBe("observed");
 
-    expect(deps.notifier.sent.map((s) => s.title)).toEqual(["T−1h: HYPE upgrade", "T−24h: US CPI release", "T−24h: SOL unlock"]);
-    expect(deps.notifier.sent[2]!.body).toContain("https://app.example.com/?review=1");
+    expect(deps.notifier.sent.map((s) => s.title)).toEqual(["T−24h: SOL unlock"]);
+    expect(deps.notifier.sent[0]!.body).toContain("https://app.example.com/?review=1");
 
     // Same windows again: nothing new.
     clock.now = new Date(T0 + 10 * 60_000);
     expect((await catalystAlerts(deps, clock.now)).alerts).toEqual([]);
-    expect(deps.notifier.sent).toHaveLength(3);
+    expect(deps.notifier.sent).toHaveLength(1);
 
     // The unlock enters its last hour (T−1h fires once); the event at +30 h is now inside 24 h.
     clock.now = new Date(T0 + 19.5 * H);
@@ -74,6 +74,21 @@ describe("catalystAlerts", () => {
       ["Too far", "24h"],
     ]);
     expect((await catalystAlerts(deps, clock.now)).alerts).toEqual([]);
+  });
+
+  test("feedback dampening batches a catalyst push, same as the mapper", async () => {
+    const { clock, deps, store } = setup();
+    for (const i of [1, 2, 3, 4, 5]) {
+      const a = await store.insertAlert({
+        kind: "catalyst", ref: `old-${i}`, window: "24h", asset: "SOL", title: "t", eventType: "unlock", line: { tag: "hypothesis", text: "x" },
+        path: [], edgeType: null, hops: 0, pathWeight: 1, sources: [], materiality: 0.3, pricedIn: null, route: "push",
+      });
+      await store.setAlertFeedback(a!.id, -1);
+    }
+    await addManualCatalyst(store, { title: "SOL unlock", assets: ["SOL"], scheduledAt: at(20), type: "unlock" }, clock.now);
+    const r = await catalystAlerts(deps, clock.now);
+    expect(r.alerts.map((a) => [a.asset, a.route])).toEqual([["SOL", "batch"]]);
+    expect(deps.notifier.sent).toHaveLength(0);
   });
 
   test("estimated (hypothesis) events stay hypotheses even with a URL; nothing scheduled → no context load", async () => {

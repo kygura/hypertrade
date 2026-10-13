@@ -47,7 +47,7 @@ function app(provider: EmitProvider | null = null) {
     llm: { makeProvider: () => provider, cache: store, now: () => NOW, dailyCap: 200 },
     now: () => NOW,
   };
-  return { store, app: new Hono().route("/api/intel", createJournalRoutes(deps)) };
+  return { store, app: new Hono().route("/api/intel", createJournalRoutes(() => deps)) };
 }
 
 const send = (method: string, body: unknown) => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });

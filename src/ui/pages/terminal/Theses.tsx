@@ -3,6 +3,7 @@ import { Button, Panel, PanelHeader } from '../../components'
 import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../../components/state'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { ClaimAge } from '../../components/intel/ClaimAge'
+import { isDesktop } from '../../components/intel/format'
 import { ThesisComposer } from '../../components/intel/ThesisComposer'
 import { ThesisDetail, THESIS_STALE_H } from '../../components/intel/ThesisDetail'
 import { ThesisList } from '../../components/intel/ThesisList'
@@ -14,8 +15,6 @@ import type { Thesis } from '../../../shared/intel'
 // saved list (4) beside the detail (8). Mobile: without `?id` compose then
 // saved; with `?id` a `← THESES` back button then the detail only, and list
 // picks push history (the one exception to §1.1) so Back returns to the list.
-
-const isDesktop = () => typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1024px)').matches
 
 export function Theses() {
   const [params, setParams] = useSearchParams()

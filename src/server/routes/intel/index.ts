@@ -12,7 +12,7 @@ import type { IntelIngestDeps } from "../../intel/runIngest.js";
 import type { ReadClient } from "../../intel/screener.js";
 import { focusAssets } from "../../intel/snapshot.js";
 import { recheckForAssets, type ThesisDeps } from "../../intel/thesis.js";
-import { defaultTerminalDeps } from "../../intel/terminal.js";
+import { briefAssets, defaultTerminalDeps } from "../../intel/terminal.js";
 import { defaultDeskService } from "../desk.js";
 import { getCtxs } from "../hl.js";
 import { createAlertsRoutes } from "./alerts.js";
@@ -33,9 +33,10 @@ import { createWatchRoutes } from "./watch.js";
 // Desk service is only constructed when a request first needs it.
 
 export interface IntelDeps extends TerminalRouteDeps {
-  journal: JournalDeps | (() => JournalDeps);
+  /** Built on first use (the Desk store is only opened when a journal request needs it). */
+  journal: () => JournalDeps;
   thesis: ThesisDeps;
-  copilot: CopilotDeps | (() => CopilotDeps);
+  copilot: () => CopilotDeps;
   docwatch: DocwatchDeps;
   /** Screener read client; defaults to DATABASE_URL_READONLY or the main sql(). */
   queryClient?: () => ReadClient;
@@ -121,9 +122,9 @@ export function defaultIntelDeps(env: Record<string, string | undefined> = proce
   prod = {
     ...terminal,
     env,
-    // Brief hook (SPEC I0.16): a brief that flags changes rechecks the theses on those assets.
+    // Brief hook (SPEC I0.16): a brief that flags changes or alerts rechecks the theses on those assets.
     onBrief: async (brief: Brief) => {
-      await recheckForAssets(thesis, [...new Set(brief.items.map((i) => i.asset))]);
+      await recheckForAssets(thesis, briefAssets(brief));
     },
     journal,
     thesis,
@@ -132,7 +133,7 @@ export function defaultIntelDeps(env: Record<string, string | undefined> = proce
     notifier,
     appUrl: desk.appUrl,
     mapper,
-    ingest: { ...mapper, fetch, env, targets },
+    ingest: { ...mapper, fetch, env, targets, journal },
     graph: { store, llm, targets, now },
   };
   return prod;

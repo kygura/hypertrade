@@ -9,6 +9,7 @@ import { atr } from "../desk/tools.js";
 import type { OperatorOrder } from "../desk/types.js";
 import type { ToolSpec } from "../llm/provider.js";
 import { completeStructured, type LlmDeps, type LlmTrace } from "./llm.js";
+import { round } from "./util.js";
 
 // Order copilot (SPEC.md § Intel I0.18, DESIGN-terminal.md §7).
 //
@@ -39,8 +40,6 @@ export class OrderError extends Error {
 }
 
 const DAY = 86_400_000;
-const r2 = (x: number) => Math.round(x * 100) / 100;
-const r4 = (x: number) => Math.round(x * 10_000) / 10_000;
 /** Hyperliquid prices carry at most 5 significant figures. */
 const sig5 = (x: number) => Number(x.toPrecision(5));
 const px = (x: number) => x.toLocaleString("en-US", { maximumSignificantDigits: 6 });
@@ -209,7 +208,7 @@ export function resolveOrder(intent: OrderIntent, m: OrderMarket): Resolution {
   notes.push(`${how} (${long ? "−" : "+"}${stopDistPct.toFixed(2)}% from entry)`);
 
   // pctBook is rounded to whole dollars so small equity drift between preview and confirm keeps the same order.
-  const notionalUsd = "usd" in intent.size ? r2(intent.size.usd) : Math.round((intent.size.pctBook / 100) * m.equityUsd);
+  const notionalUsd = "usd" in intent.size ? round(intent.size.usd, 2) : Math.round((intent.size.pctBook / 100) * m.equityUsd);
   if ("pctBook" in intent.size) notes.push(`size = ${intent.size.pctBook}% of the Desk book (${fmtUsd(m.equityUsd)}) as notional: ${fmtUsd(notionalUsd)}`);
   const size = floorToDecimals(notionalUsd / entryPx, m.szDecimals);
   if (!(size > 0)) return fail("size", `${fmtUsd(notionalUsd)} is under one ${m.coin} size step at ${px(entryPx)}`);
@@ -237,7 +236,7 @@ export function resolveOrder(intent: OrderIntent, m: OrderMarket): Resolution {
   const riskUsd = size * Math.abs(entryPx - stopPx);
   return {
     ok: true,
-    resolved: { stopPx, entryPx, size, notionalUsd, liqPx, riskPct: r4((riskUsd / m.equityUsd) * 100), riskUsd: r2(riskUsd) },
+    resolved: { stopPx, entryPx, size, notionalUsd, liqPx, riskPct: round((riskUsd / m.equityUsd) * 100, 4), riskUsd: round(riskUsd, 2) },
     leverage,
     warnings,
     notes,

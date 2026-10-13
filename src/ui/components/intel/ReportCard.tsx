@@ -5,7 +5,7 @@ import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
 import { ClaimAge } from './ClaimAge'
 import { ClaimLine } from './ClaimLine'
 import { ClaimList } from './ClaimList'
-import { fmtR, fmtUsdSigned2, signClass } from './format'
+import { fmtR, fmtUsdSigned, signClass } from './format'
 import { TradeIdLinks } from './TradeIdLinks'
 
 // ReportCard — DESIGN-terminal §4.2. `WEEKLY REPORT · WEEK OF <date>` +
@@ -29,7 +29,7 @@ function Finding({ f, onPickTrade }: { f: ReportFinding; onPickTrade: (id: strin
         {f.expectancyR != null ? (
           <span className={signClass(f.expectancyR)}>{fmtR(f.expectancyR, 2)}</span>
         ) : (
-          <span className={signClass(f.expectancyUsd)}>{fmtUsdSigned2(f.expectancyUsd)}</span>
+          <span className={signClass(f.expectancyUsd)}>{fmtUsdSigned(f.expectancyUsd)}</span>
         )}
       </span>
       {f.line && <ClaimLine claim={f.line} />}

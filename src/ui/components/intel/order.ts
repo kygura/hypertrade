@@ -1,4 +1,6 @@
+import { fmtPrice as fmtPriceRaw, fmtUsd } from '../../../shared/format'
 import type { OrderIntent, OrderPreview } from '../../../shared/intel'
+import { fmtSigned, MINUS } from './format'
 
 // Pure helpers behind the order copilot view (DESIGN-terminal §7): venue
 // mapping, the 60 s preview countdown, confirm gating and the single-flight
@@ -32,8 +34,8 @@ export function previewRemainingMs(expiresAt: string, receivedAt: number, now: n
   return Math.max(0, end - now)
 }
 
-/** `0:42` (tabular, whole seconds, rounded up so 0:00 means expired). */
-export function fmtCountdown(ms: number): string {
+/** Preview validity clock `0:42` (tabular, whole seconds, rounded up so 0:00 means expired). */
+export function fmtPreviewClock(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
@@ -61,23 +63,18 @@ export function confirmBlock(
   return null
 }
 
-// ── formatting ──
+// ── formatting (shared/format.ts underneath) ──
 
-const minus = (n: number) => (n < 0 ? '−' : '+')
-
-export function fmtSignedPct(n: number, digits = 1): string {
-  return `${minus(n)}${Math.abs(n).toFixed(digits)}%`
-}
-
+/** `$3,412.5`, `$3.412`, `$0.01234` (1 decimal ≥ 1000, 3 under; shared default below 1). */
 export function fmtPrice(x: number | null | undefined): string {
   if (x == null || !Number.isFinite(x)) return '—'
   const a = Math.abs(x)
-  const body = a >= 1000 ? x.toLocaleString('en-US', { maximumFractionDigits: 1 }) : a >= 1 ? x.toFixed(3) : x.toPrecision(4)
-  return `$${body}`
+  return `$${fmtPriceRaw(x, a >= 1000 ? 1 : a >= 1 ? 3 : undefined)}`
 }
 
+/** `$1,512.00`; negative with U+2212. */
 export function fmtUsd2(x: number): string {
-  return `${x < 0 ? '−' : ''}$${Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `${x < 0 ? MINUS : ''}${fmtUsd(Math.abs(x))}`
 }
 
 export function fmtSize(x: number): string {
@@ -87,7 +84,7 @@ export function fmtSize(x: number): string {
 /** `−5.2%` from entry for a level (stop, liq), signed by direction. */
 export function distFromEntry(px: number, entryPx: number): string {
   if (!(entryPx > 0)) return '—'
-  return fmtSignedPct((px / entryPx - 1) * 100)
+  return fmtSigned((px / entryPx - 1) * 100, 1, '%')
 }
 
 /** How the stop was resolved: the copilot's own `stop = …` note when present, else the intent's kind. */
@@ -99,7 +96,7 @@ export function stopResolution(intent: OrderIntent, notes: readonly string[] | u
     case 'price':
       return 'as given'
     case 'pct':
-      return `${intent.side === 'long' ? '−' : '+'}${s.pct}% from entry`
+      return `${intent.side === 'long' ? MINUS : '+'}${s.pct}% from entry`
     case 'prev_day_low':
       return 'prev-day low'
     case 'prev_day_high':
@@ -109,15 +106,17 @@ export function stopResolution(intent: OrderIntent, notes: readonly string[] | u
   }
 }
 
-/** The body of the Level 2 dialog: names everything (DESIGN-terminal §7.3). */
+/** The body of the Level 2 dialog: names everything and reads as irreversible (DESIGN-terminal §7.1 item 4, §7.3). */
 export function confirmBody(p: OrderPreview, venue: DeskVenue | null): string {
   const r = p.resolved
   const side = p.intent.side.toUpperCase()
   const at = p.intent.entry.type === 'limit' ? `limit ${fmtPrice(p.intent.entry.px)}` : 'market'
   const liq = r.liqPx != null ? `, liq ${fmtPrice(r.liqPx)}` : ''
+  const v = venue === 'testnet' ? 'TESTNET' : 'PAPER'
   return (
-    `${side} ${fmtSize(r.size)} ${p.intent.asset} (≈ ${fmtUsd2(r.notionalUsd)}) at ${at} on ${venue === 'testnet' ? 'TESTNET' : 'PAPER'}, ` +
-    `stop ${fmtPrice(r.stopPx)}${liq}. Risks ${r.riskPct.toFixed(1)}% of the book (${fmtUsd2(r.riskUsd)}). Nothing goes to mainnet.`
+    `${side} ${fmtSize(r.size)} ${p.intent.asset} (≈ ${fmtUsd2(r.notionalUsd)}) at ${at} on ${v}, ` +
+    `stop ${fmtPrice(r.stopPx)}${liq}. Risks ${r.riskPct.toFixed(1)}% of the book (${fmtUsd2(r.riskUsd)}). Nothing goes to mainnet. ` +
+    `This places the order on ${v} now and can't be undone.`
   )
 }
 

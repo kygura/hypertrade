@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { ExposurePosition } from "../../shared/intel.js";
+import type { Brief, ExposurePosition } from "../../shared/intel.js";
 import type { AssetCtx } from "../../shared/types.js";
 import type { Notifier } from "../desk/notify.js";
 import type { Conversation, LLMProvider, StepResult } from "../llm/provider.js";
 import { formatIntel, sendIntel } from "./notify.js";
 import { MemoryIntelStore, type NewAlert } from "./store.js";
-import { buildBrief, FALLBACK_BASELINE_MS, itemLine, loadThresholds, runIntelBrief, type TerminalDeps } from "./terminal.js";
+import { briefAssets, buildBrief, FALLBACK_BASELINE_MS, itemLine, loadThresholds, runIntelBrief, type TerminalDeps } from "./terminal.js";
 
 const H = 3_600_000;
 const NOW = Date.UTC(2026, 9, 13, 12);
@@ -213,6 +213,20 @@ describe("buildBrief", () => {
     expect(brief).toMatchObject({ silent: false, items: [] });
     expect(brief.alerts).toHaveLength(1);
     expect(h.provider.steps).toBe(1);
+  });
+
+  test("brief hook: an alert-only brief still rechecks — assets are items ∪ alerts", async () => {
+    const h = harness({ price: (b) => b, replies: [{ emit: { lines: [{ tag: "hypothesis", text: "Long SOL: an exploit headline maps to it." }] } }] });
+    await h.init();
+    h.clock.t = NOW - H;
+    await h.store.insertAlert(alert("SOL", "batch"));
+    h.clock.t = NOW;
+    const seen: string[][] = [];
+    h.deps.onBrief = async (b) => void seen.push(briefAssets(b));
+    const brief = await buildBrief(h.deps, { surface: "ui" });
+    expect(brief.items).toEqual([]);
+    expect(seen).toEqual([["SOL"]]);
+    expect(briefAssets({ items: [{ asset: "ETH" }, { asset: "SOL" }] as Brief["items"], alerts: brief.alerts })).toEqual(["ETH", "SOL"]);
   });
 
   test("cron: baseline is the previous cron brief (6 h fallback); never logs a review", async () => {

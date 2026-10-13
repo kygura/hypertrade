@@ -57,8 +57,8 @@ const TEXTISH = /^(text\/[\w.+-]+|application\/([\w.-]+\+)?(json|xml))$/;
  * content type must be text-ish (text/*, JSON, XML; an absent header is read,
  * since some feeds omit it) and the body is capped at MAX_FETCH_BYTES.
  */
-export async function fetchText(f: typeof fetch, url: string, init: RequestInit = {}, signal?: AbortSignal, timeoutMs = FETCH_TIMEOUT_MS): Promise<string> {
-  const timeout = AbortSignal.timeout(timeoutMs);
+export async function fetchText(f: typeof fetch, url: string, init: RequestInit = {}, signal?: AbortSignal): Promise<string> {
+  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
   const res = await f(url, { ...init, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
   if (!res.ok) {
     await res.body?.cancel().catch(() => {});

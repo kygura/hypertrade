@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { EDGE_TYPE_WEIGHT, EDGE_TYPES, EdgeTypeSchema, EntitySchema, HttpsUrlSchema, type Edge, type GraphPath } from "../../shared/intel.js";
 import { SEED_EDGES } from "./graph-seed.js";
-import { completeStructured, LLM_DEADLINE_MS, type LlmDeps } from "./llm.js";
+import { completeStructured, LLM_DEADLINE_MS, webSearchAvailable, type LlmDeps } from "./llm.js";
 import type { IntelStore, NewEdge } from "./store.js";
+import { norm } from "./util.js";
 
 // Exposure graph (SPEC.md § Intel I0.8): the pure walk, the seed upsert and
 // the daily LLM refresh.
@@ -17,7 +18,6 @@ import type { IntelStore, NewEdge } from "./store.js";
 // handles it (hops 0, weight 1) and walk leaves it out.
 
 const SAME_DAY = (d: Date) => d.toISOString().slice(0, 10);
-const norm = (s: string) => s.trim().toLowerCase();
 
 type Step = { node: string; edge: Edge };
 
@@ -85,6 +85,7 @@ export function ensureSeedEdges(store: Pick<IntelStore, "upsertEdges">): Promise
 // ---------------------------------------------------------------- refresh
 
 export const GRAPH_PROMPT_VERSION = "graph-v1";
+export const GRAPH_NO_WEB_SEARCH = "provider has no web search; graph refresh skipped";
 const MAX_PROPOSED = 15;
 
 /** Lenient on purpose: bad items are dropped and counted, not a reason to fail the call. */
@@ -154,6 +155,8 @@ export interface GraphRefreshSummary {
   stored: number;
   /** Proposed edges refused: no https source, bad node name, self loop, or not touching the asset. */
   dropped: number;
+  /** Set when the refresh could not run at all (the day is not done: the cron must not stamp it). */
+  warning?: string;
 }
 
 /** Validates proposed edges for `asset`; returns the rows to store and how many were refused. */
@@ -173,7 +176,8 @@ export function acceptProposals(asset: string, proposed: z.infer<typeof Proposal
 
 /**
  * Daily refresh: one strong, web-searching call per held ∪ watched asset,
- * sequential, stopping when the budget runs out. Calls are cached per asset
+ * sequential, stopping when the budget runs out. A strong-tier provider
+ * without web search skips the whole refresh with a warning. Calls are cached per asset
  * per UTC day, so a re-run the same day only spends on assets it has not
  * reached yet.
  */
@@ -183,6 +187,8 @@ export async function refreshGraph(deps: GraphRefreshDeps, opts: { budgetMs: num
   const seeded = await ensureSeedEdges(deps.store);
   const assets = [...new Set((await deps.targets()).map((a) => a.trim()).filter(Boolean))];
   const out: GraphRefreshSummary = { assets, done: [], skipped: [], failed: [], seeded, stored: 0, dropped: 0 };
+  // Edges need sources found on the web; a provider without hosted search would only guess.
+  if (webSearchAvailable(deps.llm, "strong") === false) return { ...out, skipped: assets, warning: GRAPH_NO_WEB_SEARCH };
 
   for (const [i, asset] of assets.entries()) {
     if (left() <= 0 || opts.signal?.aborted) {

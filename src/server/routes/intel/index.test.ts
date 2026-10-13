@@ -48,7 +48,7 @@ function setup() {
     llm,
     thresholds: { minZ: 2, topK: 5, pushMateriality: 0.35 },
     now: () => NOW,
-    journal: { store, llm, now: () => NOW, deskFills: async () => [] },
+    journal: () => ({ store, llm, now: () => NOW, deskFills: async () => [] }),
     thesis: { store, llm: { ...llm, makeProvider: () => thesisProvider }, now: () => NOW, ctxs: async () => [sol] },
     copilot: () => ({ llm, desk: kit.service }),
     docwatch: { store, llm, now: () => NOW, env: {}, fetch: async () => new Response("<p>v1</p>", { headers: { "content-type": "text/html" } }), lookup: async () => [{ address: "93.184.216.34", family: 4 }], routeAlert: async () => ({ alertedAssets: [] }) },
@@ -108,6 +108,9 @@ describe("createIntelRoutes ↔ ui/lib/intel.ts", () => {
     const cats = (await call(() => intel.catalysts(14))) as Array<{ eventId: string; exposed: string[] }>;
     expect(cats).toMatchObject([{ exposed: ["SOL"] }]);
     await call(() => intel.deleteCatalyst(cats[0]!.eventId));
+    expect(await call(() => intel.feedbackReport())).toBeNull();
+    await h.store.insertReport({ kind: "feedback_weekly", buckets: [{ eventType: "hack", edgeType: "collateral", hops: 1, up: 0, down: 3, total: 3, suggestion: "lower the collateral edge weight" }] });
+    expect(await call(() => intel.feedbackReport())).toMatchObject({ kind: "feedback_weekly", buckets: [{ eventType: "hack", hops: 1 }] });
 
     expect(await call(() => intel.graph("SOL"))).toMatchObject({ asset: "SOL" });
     expect(await call(() => intel.addEdge({ src: "PURR", dst: "SOL", type: "narrative", source: "https://example.com/purr" }))).toMatchObject({ origin: "user", src: "PURR" });
@@ -144,7 +147,7 @@ describe("createIntelRoutes ↔ ui/lib/intel.ts", () => {
     for (const ep of [
       "POST /api/intel/positions", "PUT /api/intel/positions/:id", "DELETE /api/intel/positions/:id", "GET /api/intel/positions",
       "GET /api/intel/watchlist", "PUT /api/intel/watchlist", "POST /api/intel/brief", "GET /api/intel/brief/latest", "GET /api/intel/reviews",
-      "GET /api/intel/alerts", "POST /api/intel/alerts/:id/feedback", "GET /api/intel/events", "GET /api/intel/catalysts", "POST /api/intel/catalysts", "DELETE /api/intel/catalysts/:id",
+      "GET /api/intel/alerts", "POST /api/intel/alerts/:id/feedback", "GET /api/intel/events", "GET /api/intel/catalysts", "POST /api/intel/catalysts", "DELETE /api/intel/catalysts/:id", "GET /api/intel/feedback/report/latest",
       "GET /api/intel/graph", "POST /api/intel/graph/edges", "DELETE /api/intel/graph/edges",
       "GET /api/intel/journal", "PUT /api/intel/journal/desk%3AETH%3A1/note", "POST /api/intel/journal/tag", "GET /api/intel/journal/report/latest", "POST /api/intel/journal/report",
       "GET /api/intel/theses", "POST /api/intel/theses", "POST /api/intel/theses/:id/check", "DELETE /api/intel/theses/:id",

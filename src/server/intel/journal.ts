@@ -8,6 +8,8 @@ import type { DeskStore, PaperFill } from "../desk/store.js";
 import { claimsJsonSchema, validateClaims } from "./claims.js";
 import { completeStructured, type LlmDeps, type LlmTrace } from "./llm.js";
 import type { IntelStore } from "./store.js";
+import { message } from "./ingest/common.js";
+import { meanOrNull, round } from "./util.js";
 
 // Trade journal reviewer (SPEC.md § Intel I0.15). Code reconstructs round
 // trips from fills (HL userFills of the watched address, Desk paper fills)
@@ -336,7 +338,6 @@ export function enrich(t: RoundTrip, x: EnrichInput, now: Date, tz = "UTC"): Tra
 // ─── Stats (pure) ───
 
 export const UNTAGGED = "untagged";
-const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 const known = <T>(xs: Array<T | null>): T[] => xs.filter((x): x is T => x != null);
 
 /**
@@ -351,16 +352,16 @@ export function tagStats(trades: Trade[]): TagStats[] {
     groups.set(k, [...(groups.get(k) ?? []), t]);
   }
   const stats = [...groups].map(([tag, ts]): TagStats => {
-    const avgR = mean(known(ts.map((t) => t.r)));
+    const avgR = meanOrNull(known(ts.map((t) => t.r)));
     return {
       tag,
       trades: ts.length,
       winRate: ts.filter((t) => t.pnlUsd > 0).length / ts.length,
       avgR,
-      avgHoldMs: mean(known(ts.map((t) => t.holdMs))),
-      avgMaePct: mean(known(ts.map((t) => excursionPct(t, t.mae)))),
-      avgMfePct: mean(known(ts.map((t) => excursionPct(t, t.mfe)))),
-      expectancyUsd: mean(ts.map((t) => t.pnlUsd)) ?? 0,
+      avgHoldMs: meanOrNull(known(ts.map((t) => t.holdMs))),
+      avgMaePct: meanOrNull(known(ts.map((t) => excursionPct(t, t.mae)))),
+      avgMfePct: meanOrNull(known(ts.map((t) => excursionPct(t, t.mfe)))),
+      expectancyUsd: meanOrNull(ts.map((t) => t.pnlUsd)) ?? 0,
       expectancyR: avgR,
     };
   });
@@ -391,8 +392,6 @@ export interface JournalLoad {
   sources: SourceHealth[];
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const round = (x: number, dp = 4) => Math.round(x * 10 ** dp) / 10 ** dp;
 const NO_STATE: EntryState = { fundingZ: null, oiZ: null, change24hPct: null };
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {

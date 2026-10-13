@@ -10,7 +10,7 @@ import {
   confirmBlock,
   confirmLabel,
   distFromEntry,
-  fmtCountdown,
+  fmtPreviewClock,
   fmtPrice,
   fmtSize,
   fmtUsd2,
@@ -108,7 +108,7 @@ export function PreviewCard({
           <span className="text-[10px] tabular text-amber">STALE</span>
         ) : (
           <span className={`text-[10px] tabular ${remaining < PREVIEW_AMBER_MS ? 'text-amber' : 'text-text-secondary'}`} title="confirm is refused after 60 s">
-            VALID {fmtCountdown(remaining)}
+            VALID {fmtPreviewClock(remaining)}
           </span>
         )}
       </PanelHeader>

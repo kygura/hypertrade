@@ -4,7 +4,7 @@ import { DataTable, type Column } from '../DataTable'
 import { EmptyBlock } from '../state'
 import { SrcTag } from '../SrcTag'
 import { fmtTs } from '../strategy/format'
-import { fmtHold, fmtMdHm, fmtR, fmtSignedNum, fmtUsdSigned2, signClass } from './format'
+import { fmtHold, fmtMdHm, fmtR, fmtSigned, fmtUsdSigned, signClass } from './format'
 
 // TradesTable — DESIGN-terminal §4.2. Newest close first (open round trips on
 // top), `isSelected` = the `?trade` row; row tap/Enter selects. Each row
@@ -31,8 +31,8 @@ export function sortTrades(trades: Trade[]): Trade[] {
 export function fmtExcursion(t: Pick<Trade, 'mae' | 'mfe' | 'maeUnit'>): string {
   if (t.mae == null && t.mfe == null) return '—'
   const unit = t.maeUnit === 'r' ? 'R' : '%'
-  const mae = t.mae == null ? '—' : fmtSignedNum(-Math.abs(t.mae), 1)
-  const mfe = t.mfe == null ? '—' : fmtSignedNum(Math.abs(t.mfe), 1)
+  const mae = t.mae == null ? '—' : fmtSigned(-Math.abs(t.mae), 1)
+  const mfe = t.mfe == null ? '—' : fmtSigned(Math.abs(t.mfe), 1)
   return `${mae} / ${mfe}${unit}`
 }
 
@@ -86,7 +86,7 @@ const COLUMNS: Column<Trade>[] = [
   { key: 'hold', label: 'HOLD', priority: 2, align: 'right', render: (t) => <span className="whitespace-nowrap">{fmtHold(t.holdMs)}</span> },
   { key: 'mae', label: 'MAE/MFE', priority: 3, align: 'right', render: (t) => <span className="whitespace-nowrap">{fmtExcursion(t)}</span> },
   { key: 'tags', label: 'TAGS', priority: 3, render: (t) => <TagChips tag={t.tag} /> },
-  { key: 'pnl', label: 'PNL', priority: 4, align: 'right', render: (t) => <span className={classForPnl(t.pnlUsd)}>{fmtUsdSigned2(t.pnlUsd)}</span> },
+  { key: 'pnl', label: 'PNL', priority: 4, align: 'right', render: (t) => <span className={classForPnl(t.pnlUsd)}>{fmtUsdSigned(t.pnlUsd)}</span> },
   {
     key: 'opened',
     label: 'OPENED',

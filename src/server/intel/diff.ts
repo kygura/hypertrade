@@ -1,5 +1,6 @@
 import { SNAPSHOT_METRICS, type DeltaUnit, type DiffItem, type ExposurePosition, type SnapshotMetric, type SnapshotRow } from "../../shared/intel.js";
 import { metricZ, type Point } from "./normalize.js";
+import { atr as atrOf } from "../desk/tools.js";
 
 // Diff items, materiality and ranking (SPEC.md § Intel I0.5). Pure.
 //   materiality    = |z| × exposure_weight × stop_proximity
@@ -54,19 +55,6 @@ export function delta(metric: SnapshotMetric, from: number, to: number): { delta
   return { delta: from !== 0 ? ((to - from) / Math.abs(from)) * 100 : 0, deltaUnit: "pct" };
 }
 
-/** Mean true range over the last 14 bars (needs 15: each TR uses the previous close). */
-export function atr14(bars: Bar[]): number | null {
-  if (bars.length < 15) return null;
-  const tail = bars.slice(-15);
-  let sum = 0;
-  for (let i = 1; i < tail.length; i++) {
-    const { h, l } = tail[i]!;
-    const pc = tail[i - 1]!.c;
-    sum += Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
-  }
-  return sum / 14;
-}
-
 /**
  * Distance from `mark` to the nearest known stop, in price units, on the
  * losing side of each position: a stop already crossed counts as 0.
@@ -100,7 +88,7 @@ export function buildDiffItems(inputs: AssetDiffInput[], totalNotionalUsd: numbe
     const weight = exposureWeight(a.positions, totalNotionalUsd);
     const mark = a.current.price;
     const dist = stopDistance(mark, a.positions);
-    const atr = a.candles1h ? atr14(a.candles1h) : null;
+    const atr = a.candles1h ? atrOf(a.candles1h) : null;
     const proximity = stopProximity(dist, atr);
     const stop =
       dist == null ? {} : { stopDistPct: mark > 0 ? (dist / mark) * 100 : 0, ...(atr != null && atr > 0 ? { stopDistAtr: dist / atr } : {}) };

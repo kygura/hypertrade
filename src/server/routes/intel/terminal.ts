@@ -1,5 +1,4 @@
 import { Hono, type Context } from "hono";
-import type { ZodError } from "zod";
 import {
   BriefLatestQuerySchema,
   BriefRequestSchema,
@@ -10,6 +9,7 @@ import {
 } from "../../../shared/intel.js";
 import { loadDeskConfig } from "../../desk/config.js";
 import { buildBrief, type TerminalDeps } from "../../intel/terminal.js";
+import { body, failure, invalid } from "./http.js";
 
 // /api/intel terminal endpoints (SPEC.md § Intel I2). Session-cookie auth
 // comes from the global gate. Mounted by the intel aggregator.
@@ -30,25 +30,6 @@ export interface TerminalRouteDeps extends TerminalDeps {
 }
 
 const MANUAL_ID = /^[0-9a-f-]{36}$/i;
-
-async function body(c: Context): Promise<unknown> {
-  try {
-    return await c.req.json();
-  } catch {
-    return {};
-  }
-}
-
-function invalid(c: Context, err: ZodError, what: string) {
-  const issue = err.issues[0];
-  const field = issue?.path.join(".");
-  return c.json({ error: `invalid ${what}${issue ? `: ${issue.message}` : ""}`, ...(field ? { field } : {}) }, 400);
-}
-
-function failure(c: Context, err: unknown) {
-  console.error("[intel]", err);
-  return c.json({ error: err instanceof Error ? err.message : "intel error" }, 500);
-}
 
 /** hl:/desk: positions are read-only views of other books; anything else that is not a uuid is not an id at all. */
 function manualId(c: Context): string | Response {
@@ -72,7 +53,7 @@ export function createTerminalRoutes(deps: TerminalRouteDeps) {
       try {
         return c.json(await deps.exposure());
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel");
       }
     })
     .post("/positions", async (c) => {
@@ -81,7 +62,7 @@ export function createTerminalRoutes(deps: TerminalRouteDeps) {
       try {
         return c.json(await store.createManualPosition(parsed.data), 201);
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel");
       }
     })
     .put("/positions/:id", async (c) => {
@@ -93,7 +74,7 @@ export function createTerminalRoutes(deps: TerminalRouteDeps) {
         const row = await store.updateManualPosition(id, parsed.data);
         return row ? c.json(row) : c.json({ error: "position not found" }, 404);
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel");
       }
     })
     .delete("/positions/:id", async (c) => {
@@ -102,14 +83,14 @@ export function createTerminalRoutes(deps: TerminalRouteDeps) {
       try {
         return (await store.deleteManualPosition(id)) ? c.json({ ok: true }) : c.json({ error: "position not found" }, 404);
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel");
       }
     })
     .get("/watchlist", async (c) => {
       try {
         return c.json(await watchlist());
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel");
       }
     })
     .put("/watchlist", async (c) => {
@@ -119,7 +100,7 @@ export function createTerminalRoutes(deps: TerminalRouteDeps) {
         await store.putWatchlist(parsed.data.items);
         return c.json(await watchlist());
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel");
       }
     })
     .post("/brief", async (c) => {
@@ -130,7 +111,7 @@ export function createTerminalRoutes(deps: TerminalRouteDeps) {
       try {
         return c.json(await buildBrief(deps, { surface: "ui", via: parsed.data.via }));
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel");
       }
     })
     .get("/brief/latest", async (c) => {
@@ -139,7 +120,7 @@ export function createTerminalRoutes(deps: TerminalRouteDeps) {
       try {
         return c.json({ brief: await store.latestBrief(parsed.data.surface) });
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel");
       }
     })
     .get("/reviews", async (c) => {
@@ -148,7 +129,7 @@ export function createTerminalRoutes(deps: TerminalRouteDeps) {
       try {
         return c.json({ reviews: await store.listReviews(parsed.data.limit) });
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel");
       }
     });
 }

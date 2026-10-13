@@ -7,6 +7,7 @@ import { JournalBar, type JournalDays } from '../../components/intel/JournalBar'
 import { ReportCard } from '../../components/intel/ReportCard'
 import { TagStatsTable } from '../../components/intel/TagStatsTable'
 import { TradeDetail } from '../../components/intel/TradeDetail'
+import { isDesktop } from '../../components/intel/format'
 import { TradesTable, matchesTag, tradeAnchorId, UNTAGGED_TAG } from '../../components/intel/TradesTable'
 import { useAction } from '../../components/intel/useAction'
 import { intel, useIntel } from '../../lib/intel'
@@ -35,8 +36,6 @@ function writeDays(d: JournalDays): void {
     // storage unavailable: the window just isn't remembered
   }
 }
-
-const isDesktop = () => typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1024px)').matches
 
 export function Journal() {
   const [params, setParams] = useSearchParams()

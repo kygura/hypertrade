@@ -107,8 +107,10 @@ interval, then resumes. Unmounted routes never poll. Refetches update in place.
 `POST /brief` logs a review, so it must fire only on a real open:
 
 - **Mount of `/`** → `POST /brief` once, unless this tab posted one in the
-  last 5 minutes (in-memory module cache, not localStorage), so hopping
-  between sub-tabs does not reset the baseline.
+  last 5 minutes (in-memory module cache mirrored to sessionStorage, so it is
+  per tab and survives a reload; every storage access is in try/catch and the
+  module cache alone still throttles; never localStorage), so hopping between
+  sub-tabs does not reset the baseline.
 - **`REVIEW NOW`** (ghost) → `POST /brief`; `title` `marks now as reviewed —
   the next brief diffs from here`.
 - **`/?review=1`** → `POST /brief`, bypassing the cache; once sent, the param
@@ -254,8 +256,7 @@ width; POSITIONS and CATALYSTS stacked; EXPOSURE full width.
 ### 3.2 Mobile order (<768)
 
 REVIEW STRIP (xl + `THINGS CHANGED` / `SINCE` + `REVIEW NOW` / source chips,
-wrapping) → WHAT CHANGED → NEWS → POSITIONS → CATALYSTS → POSITIONS &
-WATCHLIST → EXPOSURE. The question first; the book and the map follow.
+wrapping) → WHAT CHANGED → NEWS → POSITIONS → CATALYSTS → EXPOSURE. The question first; the book and the map follow.
 
 ### 3.3 ReviewStrip
 
@@ -332,6 +333,12 @@ Each alert is an **AlertItem** (`<article>`, hairline separated):
   as noise`, `aria-pressed` = stored vote, voted one reads `✓ USEFUL` in
   `text-primary`. Level 1, optimistic; failure reverts + compact ErrorBlock.
   No un-vote (no endpoint).
+
+At the panel's foot, **FEEDBACK · 7D** (`GET /feedback/report/latest`, on
+mount): the weekly report's worst buckets, one row each, 11px tabular
+`<event type> · <edge type> · <n> hops · n <votes> · net −60%`, then the
+code-written suggestion verbatim in `text-muted`. Read-only (SPEC I0.12: the
+operator tunes by hand). States per §10.
 
 ### 3.6 CatalystsPanel (CATALYSTS · 14D)
 
@@ -611,7 +618,8 @@ still cannot be undone, so it is signalled by **words and placement**:
 1. **OrderBanner** (persistent, top of the view, all breakpoints, not
    dismissible): full-width strip, `bg-panel-alt`, 1px border, 11px
    `text-muted`: `[VENUE] Operator orders only — preview, then your confirm,
-   then the Desk venue. No autonomous execution. Mainnet is refused.`
+   then the Desk venue. No autonomous execution. Paper or testnet only.
+   Mainnet is refused.`
 2. **VenueBadge**, the Desk page precedent: `PAPER` info Badge; `TESTNET`
    amber Badge (a live exchange, even if test funds). Shown in the banner,
    the preview header, the dialog title and the confirm label.
@@ -769,13 +777,14 @@ that this table cannot hold. `RETRY` accompanies every ErrorBlock/OfflineBlock.
 | Surface | Loading | Empty | Error | Stale / other |
 |---|---|---|---|---|
 | ReviewStrip | SkeletonRows (1 row); last brief at 70% + `REVIEWING…` | xl `0` + `NOTHING CLEARED THE THRESHOLD` | ErrorBlock (brief POST failed) | source dots; `FROM TELEGRAM` |
-| What changed | SkeletonRows; last brief at 70% | EmptyBlock silent copy (§3.4) | ErrorBlock / OfflineBlock | ClaimAge amber > 30 min; StaleBanner `snapshots Nh old` > 2 h; no-narration row |
+| What changed | SkeletonRows; last brief at 70% | EmptyBlock silent copy (§3.4); EmptyBlock `no brief yet` before the first brief | ErrorBlock / OfflineBlock | ClaimAge amber > 30 min; StaleBanner `snapshots Nh old` > 2 h; no-narration row |
 | News → positions | SkeletonRows | EmptyBlock `no news touched your positions since <age>` | ErrorBlock | StaleBanner `news ingest Nh old` > 2 h |
+| News feedback (FEEDBACK · 7D) | SkeletonRows (2) | EmptyBlock `no noisy buckets this week` | ErrorBlock / OfflineBlock | — |
 | Catalysts | SkeletonRows | EmptyBlock `no catalysts in the next 14 days` + `ADD CATALYST` | ErrorBlock | countdown amber < 24 h |
 | Positions | SkeletonRows | EmptyBlock `no positions — add one, or set DESK_WATCH_ADDRESS` + `ADD POSITION` (only when every source is ok and empty) | per-source ErrorBlock; OfflineBlock when `/positions` is unreachable | StaleBanner `positions Nh old` > 30 min |
 | Watchlist | SkeletonRows | `FALLBACK` Badge + `empty — using DESK_WATCHLIST` | ErrorBlock under the chips | — |
 | Exposure | SkeletonRows per asset row | panel: EmptyBlock `hold a position to see its exposure`; row: EmptyBlock `no edges — the daily refresh adds them for held and watched assets` | ErrorBlock per row, others unaffected | edge ClaimAge amber > 48 h |
-| Journal trades | SkeletonRows | EmptyBlock `no closed trades in <window>` | ErrorBlock / OfflineBlock | failed source inline in JournalBar |
+| Journal trades | SkeletonRows | EmptyBlock `no closed trades in <window>` (the selected window: `7 days`, `30 days`, `90 days`) | ErrorBlock / OfflineBlock | failed source inline in JournalBar |
 | Journal tag stats | SkeletonRows | EmptyBlock `no tagged trades — TAG UNTAGGED` | ErrorBlock | `FEW` Badge for N < 5 |
 | Journal report | SkeletonRows; `GENERATING…` | EmptyBlock `no report yet` + `GENERATE REPORT` | verbatim ErrorBlock (LLM failure, cap) | ClaimAge amber > 7 d |
 | Thesis composer | `EXTRACTING…` | — | verbatim ErrorBlock under STRESS-TEST | — |

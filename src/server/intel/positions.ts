@@ -3,6 +3,7 @@ import { loadDeskConfig } from "../desk/config.js";
 import { readHlAccount } from "../desk/data.js";
 import type { AccountState } from "../desk/types.js";
 import type { IntelStore } from "./store.js";
+import { message } from "./ingest/common.js";
 
 // Three position sources unified at read time (SPEC.md § Intel I0.2):
 // manual (intel_positions), hl (the watched address, read-only) and desk
@@ -19,8 +20,6 @@ export interface ExposureDeps {
   deskAccount?: () => Promise<AccountState>;
   readHl?: (address: string) => Promise<AccountState>;
 }
-
-const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 function fromManual(p: ManualPosition, mark: number | undefined): ExposurePosition {
   const px = mark != null && Number.isFinite(mark) && mark > 0 ? mark : null;

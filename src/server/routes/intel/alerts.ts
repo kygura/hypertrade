@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { z, type ZodError } from "zod";
+import { z } from "zod";
 import {
   AlertFeedbackInputSchema,
   AlertsQuerySchema,
@@ -10,6 +10,7 @@ import {
 import { addManualCatalyst, deleteManualCatalyst } from "../../intel/catalysts.js";
 import type { IntelStore } from "../../intel/store.js";
 import { toCatalyst } from "../../intel/terminal.js";
+import { body, failure, invalid } from "./http.js";
 
 // /api/intel alerts, events, catalysts and feedback (SPEC.md § Intel I0.11–I0.13, I2).
 // Session-cookie auth comes from the global gate. Mounted by the intel aggregator.
@@ -37,25 +38,6 @@ const RECENT_PAST_MS = 3_600_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CatalystsDaysSchema = CatalystsQuerySchema.extend({ days: z.coerce.number().int().min(1).max(60).default(14) });
 
-async function body(c: Context): Promise<unknown> {
-  try {
-    return await c.req.json();
-  } catch {
-    return {};
-  }
-}
-
-function invalid(c: Context, err: ZodError, what: string) {
-  const issue = err.issues[0];
-  const field = issue?.path.join(".");
-  return c.json({ error: `invalid ${what}${issue ? `: ${issue.message}` : ""}`, ...(field ? { field } : {}) }, 400);
-}
-
-function failure(c: Context, err: unknown) {
-  console.error("[intel:alerts]", err);
-  return c.json({ error: err instanceof Error ? err.message : "intel error" }, 500);
-}
-
 const id = (c: Context): string | null => {
   const v = c.req.param("id") ?? "";
   return UUID.test(v) ? v : null;
@@ -71,7 +53,7 @@ export function createAlertsRoutes(deps: AlertsRouteDeps) {
         const alerts = await deps.store.listAlerts({ since: q.data.since ? new Date(q.data.since) : undefined, kind: q.data.kind, limit: LIST_LIMIT });
         return c.json({ alerts });
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel:alerts");
       }
     })
     .post("/alerts/:id/feedback", async (c) => {
@@ -83,7 +65,7 @@ export function createAlertsRoutes(deps: AlertsRouteDeps) {
         const alert = await deps.store.setAlertFeedback(alertId, parsed.data.vote);
         return alert ? c.json({ alert }) : c.json({ error: "alert not found" }, 404);
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel:alerts");
       }
     })
     .get("/events", async (c) => {
@@ -93,7 +75,7 @@ export function createAlertsRoutes(deps: AlertsRouteDeps) {
         const events = await deps.store.listEvents({ since: q.data.since ? new Date(q.data.since) : undefined, type: q.data.type, limit: LIST_LIMIT });
         return c.json({ events });
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel:alerts");
       }
     })
     .get("/catalysts", async (c) => {
@@ -108,7 +90,7 @@ export function createAlertsRoutes(deps: AlertsRouteDeps) {
         const focus = new Set(targets);
         return c.json({ catalysts: events.map((e) => toCatalyst(e, focus)) });
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel:alerts");
       }
     })
     .post("/catalysts", async (c) => {
@@ -120,7 +102,7 @@ export function createAlertsRoutes(deps: AlertsRouteDeps) {
         const [event, targets] = await Promise.all([addManualCatalyst(deps.store, parsed.data, at), deps.targets()]);
         return c.json({ catalyst: toCatalyst(event, new Set(targets)) }, 201);
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel:alerts");
       }
     })
     .delete("/catalysts/:id", async (c) => {
@@ -132,14 +114,14 @@ export function createAlertsRoutes(deps: AlertsRouteDeps) {
         if (r === "not_manual") return c.json({ error: "only manual catalysts can be deleted", field: "id" }, 400);
         return c.json({ deleted: true });
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel:alerts");
       }
     })
     .get("/feedback/report/latest", async (c) => {
       try {
         return c.json({ report: await deps.store.latestReport("feedback_weekly") });
       } catch (err) {
-        return failure(c, err);
+        return failure(c, err, "intel:alerts");
       }
     });
 }

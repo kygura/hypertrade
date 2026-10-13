@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { EDGE_TYPE_WEIGHT, type Edge, type EdgeType } from "../../shared/intel.js";
 import { EmitProvider, llmDeps } from "./fixtures/emit-provider.js";
 import { SEED_EDGES } from "./graph-seed.js";
-import { ensureSeedEdges, refreshGraph, walk } from "./graph.js";
+import { ensureSeedEdges, GRAPH_NO_WEB_SEARCH, refreshGraph, walk } from "./graph.js";
 import { MemoryIntelStore } from "./store.js";
 
 let n = 0;
@@ -111,6 +111,14 @@ describe("refreshGraph", () => {
     const s = await refreshGraph({ store, llm: llmDeps(provider, store, now), targets: async () => ["SOL", "BTC"], now }, { budgetMs: 0 });
     expect(s).toMatchObject({ done: [], skipped: ["SOL", "BTC"] });
     expect(s.seeded).toBe(SEED_EDGES.length);
+    expect(provider.prompts).toHaveLength(0);
+  });
+
+  test("a provider without web search skips the refresh with a warning (seeds still land)", async () => {
+    const store = new MemoryIntelStore();
+    const provider = Object.assign(new EmitProvider(() => ({ edges: [] })), { webSearch: false });
+    const s = await refreshGraph({ store, llm: llmDeps(provider, store, now), targets: async () => ["SOL"], now }, { budgetMs: 10_000 });
+    expect(s).toMatchObject({ done: [], skipped: ["SOL"], warning: GRAPH_NO_WEB_SEARCH, seeded: SEED_EDGES.length });
     expect(provider.prompts).toHaveLength(0);
   });
 

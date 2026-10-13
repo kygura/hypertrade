@@ -2,7 +2,7 @@ import type { Claim } from "../../shared/claims.js";
 import type { Alert, CatalystWindow, IntelEvent, ManualCatalystInputSchema } from "../../shared/intel.js";
 import type { z } from "zod";
 import { hostLabel } from "./ingest/common.js";
-import { assetExposure, deepLink, exposureHits, loadContext, MAGNITUDE_WEIGHT, pathText, type MapperDeps } from "./mapper.js";
+import { assetExposure, deepLink, exposureHits, loadContext, MAGNITUDE_WEIGHT, pathText, routeFor, type MapperDeps } from "./mapper.js";
 import { sendIntel } from "./notify.js";
 import type { IntelStore } from "./store.js";
 
@@ -11,14 +11,16 @@ import type { IntelStore } from "./store.js";
 // graph walk as the mapper, no LLM): T−24 h when first seen more than an hour
 // out, T−1 h inside the last hour. An event first seen inside the last hour
 // only gets the T−1 h alert, so nothing is pushed twice in one run. Dedupe on
-// (kind, event id, asset, window). Always pushed; the line is the event
-// itself, `observed` with its source when that source has a URL and the
-// event is not an estimate, else `hypothesis`.
+// (kind, event id, asset, window). Routed like the mapper (routeFor:
+// materiality ≥ INTEL_PUSH_MATERIALITY and not feedback-dampened → push, else
+// batch into the next brief); the line is the event itself, `observed` with
+// its source when that source has a URL and the event is not an estimate,
+// else `hypothesis`.
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
 
-export type CatalystDeps = Omit<MapperDeps, "llm" | "pushMateriality">;
+export type CatalystDeps = Omit<MapperDeps, "llm">;
 
 const utc = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 
@@ -36,7 +38,7 @@ export async function catalystAlerts(deps: CatalystDeps, now: Date): Promise<{ a
   const t = now.getTime();
   const events = (await deps.store.listCatalysts(now, new Date(t + DAY_MS))).filter((e) => Date.parse(e.scheduledAt!) > t);
   if (!events.length) return { alerts: [] };
-  const ctx = await loadContext(deps, false);
+  const ctx = await loadContext(deps);
   const alerts: Alert[] = [];
   for (const e of events) {
     const until = Date.parse(e.scheduledAt!) - t;
@@ -45,6 +47,7 @@ export async function catalystAlerts(deps: CatalystDeps, now: Date): Promise<{ a
     for (const hit of exposureHits(ctx.edges, [...e.entities, ...e.assets], ctx.targets)) {
       const exp = await assetExposure(deps, ctx, hit.asset);
       const text = `${e.title} at ${utc(e.scheduledAt!)} (${countdown(until)}). ${exp.label}; exposed via ${pathText(hit)}.`.slice(0, 600);
+      const materiality = MAGNITUDE_WEIGHT[e.magnitude] * hit.pathWeight * exp.weight * exp.proximity;
       const alert = await deps.store.insertAlert({
         kind: "catalyst",
         ref: e.id,
@@ -58,16 +61,17 @@ export async function catalystAlerts(deps: CatalystDeps, now: Date): Promise<{ a
         hops: hit.hops,
         pathWeight: hit.pathWeight,
         sources: e.sources,
-        materiality: MAGNITUDE_WEIGHT[e.magnitude] * hit.pathWeight * exp.weight * exp.proximity,
+        materiality,
         pricedIn: null,
-        route: "push",
+        route: routeFor(deps.pushMateriality, ctx.feedback, materiality, { eventType: e.type, edgeType: hit.edgeType, hops: hit.hops }),
       });
       if (alert) inserted.push(alert);
     }
-    if (inserted.length) {
-      await sendIntel(deps.notifier, { title: `T−${window}: ${e.title}`.slice(0, 200), lines: inserted.map((a) => a.line), link: deepLink(deps.appUrl) });
-      alerts.push(...inserted);
+    const pushed = inserted.filter((a) => a.route === "push");
+    if (pushed.length) {
+      await sendIntel(deps.notifier, { title: `T−${window}: ${e.title}`.slice(0, 200), lines: pushed.map((a) => a.line), link: deepLink(deps.appUrl) });
     }
+    alerts.push(...inserted);
   }
   return { alerts };
 }

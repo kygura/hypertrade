@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { DiffItem, SnapshotRow } from "../../shared/intel.js";
-import { atr14, buildDiffItems, delta, exposureWeight, rankDiffs, stopDistance, stopProximity, WATCH_FLOOR, type AssetDiffInput } from "./diff.js";
+import { atr as atr14 } from "../desk/tools.js";
+import { buildDiffItems, delta, exposureWeight, rankDiffs, stopDistance, stopProximity, WATCH_FLOOR, type AssetDiffInput } from "./diff.js";
 
 const H = 3_600_000;
 const T = Date.UTC(2026, 9, 13, 12);

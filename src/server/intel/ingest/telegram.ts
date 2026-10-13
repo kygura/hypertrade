@@ -3,9 +3,15 @@ import { fetchText, fresh, headlineEvent, message, pastIso, plain, type AdapterR
 
 // Telegram public channels (SPEC.md § Intel I0.10) via the t.me/s/<channel>
 // web preview, regex-scraped. Behind INTEL_TG_CHANNELS (comma list). Vercel
-// IPs are often refused: a failure is recorded, never retried.
+// IPs are often refused: a failure is recorded, never retried, and a refusal
+// (non-2xx, "preview unavailable", a page with no messages) stamps
+// `tg_blocked_<channel>` in intel_settings so that channel is skipped (and
+// reported as failing) for 24 h.
 
 const CHANNEL = /^[A-Za-z][A-Za-z0-9_]{3,63}$/;
+export const TG_BLOCK_MS = 24 * 3_600_000;
+export const tgBlockedKey = (channel: string) => `tg_blocked_${channel}`;
+const REFUSAL = /^HTTP \d+$|^preview unavailable$|^no messages in page/;
 
 export function tgChannels(env: Record<string, string | undefined>): string[] {
   return (env.INTEL_TG_CHANNELS ?? "")
@@ -40,7 +46,7 @@ export function parseTelegramChannel(html: string, channel: string, now: Date): 
   return out;
 }
 
-export async function fetchTelegram(deps: Pick<IngestDeps, "fetch" | "env" | "now" | "signal">): Promise<AdapterResult> {
+export async function fetchTelegram(deps: Pick<IngestDeps, "fetch" | "env" | "now" | "signal" | "store">): Promise<AdapterResult> {
   const channels = tgChannels(deps.env);
   if (!channels.length) return { source: "telegram", ok: true, items: [], error: "skipped:no-channels" };
   const now = deps.now();
@@ -48,14 +54,19 @@ export async function fetchTelegram(deps: Pick<IngestDeps, "fetch" | "env" | "no
   const failures: string[] = [];
   await Promise.all(
     channels.map(async (ch) => {
+      const blockedAt = await deps.store.getSetting<string>(tgBlockedKey(ch)).catch(() => null);
+      const until = blockedAt ? Date.parse(blockedAt) + TG_BLOCK_MS : NaN;
+      if (until > now.getTime()) return void failures.push(`${ch}: blocked, retry after ${new Date(until).toISOString()}`);
       try {
         const html = await fetchText(deps.fetch, `https://t.me/s/${ch}`, { headers: { accept: "text/html" } }, deps.signal);
         const parsed = parseTelegramChannel(html, ch, now);
         // A refused or bot-walled request often comes back 200 with no messages at all.
+        if (!parsed.length && /preview[^<]{0,40}unavailable/i.test(html)) throw new Error("preview unavailable");
         if (!parsed.length && !html.includes("tgme_widget_message")) throw new Error("no messages in page (blocked?)");
         items.push(...parsed);
       } catch (e) {
         failures.push(`${ch}: ${message(e)}`);
+        if (REFUSAL.test(message(e))) await deps.store.setSetting(tgBlockedKey(ch), now.toISOString()).catch(() => {});
       }
     }),
   );

@@ -426,7 +426,7 @@ const defaultIntelCronDeps = (): IntelCronDeps => {
       },
       graph: async (o) => {
         const r = await refreshGraph(d.graph, o);
-        return { ok: true, complete: r.skipped.length === 0, result: r };
+        return { ok: true, complete: r.skipped.length === 0 && !r.warning, result: r };
       },
       watch: async (o) => ({ ok: true, complete: true, result: await runIntelWatch(d.docwatch, o) }),
     },

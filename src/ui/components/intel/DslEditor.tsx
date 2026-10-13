@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { ScreenerDslSchema, type ScreenerDsl } from '../../../shared/intel'
+import { isDesktop } from './format'
 
 // DslEditor — DESIGN-terminal §6.2. The parsed DSL pretty-printed in an
 // editable monospace textarea (14 rows lg / 10 mobile, spellcheck off), with
@@ -41,8 +42,6 @@ export function validateDsl(text: string): DslValidation {
 export function prettyDsl(dsl: unknown): string {
   return JSON.stringify(dsl, null, 2)
 }
-
-const isDesktop = () => typeof window !== 'undefined' && !!window.matchMedia?.('(min-width: 1024px)').matches
 
 export function DslEditor({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string | null }) {
   const id = useId()

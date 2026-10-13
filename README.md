@@ -200,8 +200,8 @@ Background jobs: `POST /api/cron/intel/{ingest,brief,graph,watch}`
 (x-cron-token), each leased and budgeted to 200 s. `collect.yml`'s `intel` job
 calls all four after `collect` every 15 minutes once the repo variable
 `INTEL_ENABLED=true` is set; brief self-throttles to `INTEL_BRIEF_HOURS`,
-graph to once a day, watch rechecks a watch at most hourly. Vercel Cron runs
-ingest once a day as a fallback.
+graph to once a day, watch rechecks a watch at most hourly. There is no
+Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 
 | env | |
 |---|---|
@@ -284,8 +284,8 @@ cached in `intel_llm_cache`. Web search is off unless a call asks for it. Over
 clears the threshold, and it never marks a review. Graph runs once a day, and
 watch checks each watch at most hourly. The `intel` job in
 `.github/workflows/collect.yml` calls all four after `collect`, and only when
-the repo variable `INTEL_ENABLED` is `true`. Vercel Cron runs ingest daily at
-07:00 UTC as a fallback.
+the repo variable `INTEL_ENABLED` is `true`. Vercel Cron does not run any
+intel job, so nothing bypasses that gate.
 
 **Setup.** Apply `db/migrations/007_intel.sql` before enabling anything. It
 creates every `intel_*` table the Terminal reads, and the routes do not work

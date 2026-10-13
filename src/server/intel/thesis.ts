@@ -14,6 +14,7 @@ import type { AssetCtx } from "../../shared/types.js";
 import { claimsJsonSchema, validateClaims } from "./claims.js";
 import { completeStructured, type LlmDeps, type LlmTrace } from "./llm.js";
 import type { IntelStore } from "./store.js";
+import { iso, round } from "./util.js";
 
 // Thesis stress-tester (SPEC.md § Intel I0.16). The strong model only turns
 // free text into claims, assumptions, invalidation conditions and "wrong if"
@@ -64,8 +65,6 @@ export interface CheckData {
 }
 
 const H = 3600_000;
-const round = (x: number, dp = 4) => Math.round(x * 10 ** dp) / 10 ** dp;
-const iso = (d: Date | string) => new Date(d).toISOString();
 const priorKey = (asset: string, h: number) => `${asset}|${h}`;
 
 function cmp(a: number, op: ">" | ">=" | "<" | "<=", b: number): boolean {

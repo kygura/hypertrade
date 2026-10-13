@@ -28,6 +28,7 @@ import { sendIntel } from "./notify.js";
 import { loadExposure, watchedAssets } from "./positions.js";
 import { snapshotRow } from "./snapshot.js";
 import { PgIntelStore, type IntelStore } from "./store.js";
+import { round } from "./util.js";
 
 // Terminal brief (SPEC.md § Intel I0.14). Code diffs held ∪ watched assets
 // against a baseline, ranks by materiality and merges batched alerts and the
@@ -69,7 +70,7 @@ export interface TerminalDeps {
   llm: LlmDeps;
   thresholds: Thresholds;
   now(): Date;
-  /** Runs after a brief with items is stored (thesis recheck). Best-effort: a failure never fails the brief. */
+  /** Runs after a brief that flags any asset (items or alerts) is stored (thesis recheck). Best-effort: a failure never fails the brief. */
   onBrief?(brief: Brief): Promise<void>;
 }
 
@@ -193,8 +194,6 @@ Write 3 to 5 short lines, most important first. Each line is one object:
 Rules: use only the numbers given and do not invent any. Name the position side for held assets ("Long SOL: ..."). Never predict direction, never give price targets, never tell the trader to buy, sell, close or size anything.`;
 
 const sig = (n: number) => Number(n.toPrecision(6));
-const r2 = (n: number) => Math.round(n * 100) / 100;
-
 function narrationInput(since: Date, now: Date, items: DiffItem[], alerts: Alert[], catalysts: Catalyst[], exposure: PositionsResponse): string {
   const assets = new Set([...items.map((i) => i.asset), ...alerts.map((a) => a.asset), ...catalysts.flatMap((c) => c.exposed)]);
   return JSON.stringify({
@@ -209,12 +208,12 @@ function narrationInput(since: Date, now: Date, items: DiffItem[], alerts: Alert
       held: i.held,
       from: sig(i.from),
       to: sig(i.to),
-      delta: r2(i.delta),
+      delta: round(i.delta, 2),
       deltaUnit: i.deltaUnit,
-      z: r2(i.z),
-      materiality: r2(i.materiality),
-      ...(i.stopDistPct != null ? { stopDistPct: r2(i.stopDistPct) } : {}),
-      ...(i.stopDistAtr != null ? { stopDistAtr: r2(i.stopDistAtr) } : {}),
+      z: round(i.z, 2),
+      materiality: round(i.materiality, 2),
+      ...(i.stopDistPct != null ? { stopDistPct: round(i.stopDistPct, 2) } : {}),
+      ...(i.stopDistAtr != null ? { stopDistAtr: round(i.stopDistAtr, 2) } : {}),
       ts: i.ts,
     })),
     alerts: alerts.map((a) => ({ asset: a.asset, title: a.title, line: a.line.text, sources: a.sources, createdAt: a.createdAt })),
@@ -292,7 +291,7 @@ export async function buildBrief(deps: TerminalDeps, o: BriefOptions): Promise<B
     ...(narration ? { trace: narration.trace } : {}),
   });
   if (o.surface === "ui") await deps.store.logReview({ via: o.via ?? "ui", briefId: brief.id });
-  if (deps.onBrief && brief.items.length) {
+  if (deps.onBrief && briefAssets(brief).length) {
     try {
       await deps.onBrief(brief);
     } catch (e) {
@@ -300,6 +299,11 @@ export async function buildBrief(deps: TerminalDeps, o: BriefOptions): Promise<B
     }
   }
   return brief;
+}
+
+/** Assets a brief flags: its diff items ∪ its merged alerts, deduped (thesis recheck, SPEC I0.16). */
+export function briefAssets(brief: Pick<Brief, "items" | "alerts">): string[] {
+  return [...new Set([...brief.items.map((i) => i.asset), ...brief.alerts.map((a) => a.asset)])];
 }
 
 const fmt = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;

@@ -23,6 +23,7 @@ import type {
   WatchlistItem,
 } from "../../shared/intel.js";
 import { sql } from "../db.js";
+import { iso } from "./util.js";
 
 // Intel persistence (db/migrations/007_intel.sql). Routes, crons and pure
 // modules run against IntelStore: MemoryIntelStore in tests, PgIntelStore in
@@ -135,7 +136,7 @@ export interface IntelStore {
 
 // ---------------------------------------------------------------- shared
 
-const iso = (d: Date | string | null | undefined) => (d == null ? null : new Date(d).toISOString());
+const isoOrNull = (d: Date | string | null | undefined) => (d == null ? null : iso(d));
 const json = (v: unknown) => sql().json((v ?? null) as any);
 const SNAPSHOT_CHUNK = 2000;
 
@@ -167,19 +168,19 @@ function toPosition(r: any): ManualPosition {
     stopPx: r.stop_px,
     leverage: r.leverage,
     venue: r.venue,
-    createdAt: iso(r.created_at)!,
-    updatedAt: iso(r.updated_at)!,
+    createdAt: isoOrNull(r.created_at)!,
+    updatedAt: isoOrNull(r.updated_at)!,
   };
 }
 
 function toReview(r: any): Review {
-  return { id: r.id, ts: iso(r.ts)!, via: r.via, briefId: r.brief_id };
+  return { id: r.id, ts: isoOrNull(r.ts)!, via: r.via, briefId: r.brief_id };
 }
 
 function toSnapshot(r: any): SnapshotRow {
   return {
     asset: r.asset,
-    ts: iso(r.ts)!,
+    ts: isoOrNull(r.ts)!,
     price: r.price,
     vol24h: r.vol24h,
     funding: r.funding,
@@ -195,7 +196,7 @@ function toSnapshot(r: any): SnapshotRow {
 }
 
 function toEdge(r: any): Edge {
-  return { id: r.id, src: r.src, dst: r.dst, type: r.type, weight: r.weight, source: r.source, lastVerified: iso(r.last_verified), origin: r.origin };
+  return { id: r.id, src: r.src, dst: r.dst, type: r.type, weight: r.weight, source: r.source, lastVerified: isoOrNull(r.last_verified), origin: r.origin };
 }
 
 function toEvent(r: any): IntelEvent {
@@ -211,8 +212,8 @@ function toEvent(r: any): IntelEvent {
     magnitude: r.magnitude,
     sources: r.sources,
     origin: r.origin,
-    firstSeen: iso(r.first_seen)!,
-    scheduledAt: iso(r.scheduled_at),
+    firstSeen: isoOrNull(r.first_seen)!,
+    scheduledAt: isoOrNull(r.scheduled_at),
     catalyst: r.catalyst,
     tag: r.tag,
   };
@@ -224,9 +225,9 @@ function toCluster(r: any): Cluster {
     label: r.label,
     entities: r.entities,
     extraction: r.extraction,
-    firstSeen: iso(r.first_seen)!,
-    lastSeen: iso(r.last_seen)!,
-    mappedAt: iso(r.mapped_at),
+    firstSeen: isoOrNull(r.first_seen)!,
+    lastSeen: isoOrNull(r.last_seen)!,
+    mappedAt: isoOrNull(r.mapped_at),
   };
 }
 
@@ -249,17 +250,17 @@ function toAlert(r: any): Alert {
     pricedIn: r.priced_in,
     route: r.route,
     feedback: r.feedback == null ? null : (Number(r.feedback) as 1 | -1),
-    createdAt: iso(r.created_at)!,
+    createdAt: isoOrNull(r.created_at)!,
     ...(r.trace ? { trace: r.trace } : {}),
   };
 }
 
 function toBrief(r: any): Brief {
-  return { id: r.id, createdAt: iso(r.created_at)!, surface: r.surface, since: iso(r.since)!, silent: r.silent, ...r.body };
+  return { id: r.id, createdAt: isoOrNull(r.created_at)!, surface: r.surface, since: isoOrNull(r.since)!, silent: r.silent, ...r.body };
 }
 
 function toReport(r: any): Report {
-  return { ...r.body, id: r.id, kind: r.kind, createdAt: iso(r.created_at)! };
+  return { ...r.body, id: r.id, kind: r.kind, createdAt: isoOrNull(r.created_at)! };
 }
 
 function toThesis(r: any): Thesis {
@@ -270,8 +271,8 @@ function toThesis(r: any): Thesis {
     claims: r.claims,
     invalidation: r.invalidation,
     wrongIf: r.wrong_if,
-    createdAt: iso(r.created_at)!,
-    checkedAt: iso(r.checked_at),
+    createdAt: isoOrNull(r.created_at)!,
+    checkedAt: isoOrNull(r.checked_at),
     ...(r.trace ? { trace: r.trace } : {}),
   };
 }
@@ -286,9 +287,9 @@ function toWatch(r: any): Watch {
     label: r.label,
     lastHash: r.last_hash,
     lastSnapshot: r.last_snapshot,
-    checkedAt: iso(r.checked_at),
+    checkedAt: isoOrNull(r.checked_at),
     error: r.error,
-    createdAt: iso(r.created_at)!,
+    createdAt: isoOrNull(r.created_at)!,
   };
 }
 
@@ -296,7 +297,7 @@ function toWatchChange(r: any): WatchChange {
   return {
     id: r.id,
     watchId: r.watch_id,
-    ts: iso(r.ts)!,
+    ts: isoOrNull(r.ts)!,
     fromHash: r.from_hash,
     toHash: r.to_hash,
     diff: r.diff,
@@ -309,7 +310,7 @@ function toWatchChange(r: any): WatchChange {
 }
 
 function toTradeNote(r: any): TradeNote {
-  return { tradeId: r.trade_id, note: r.note, tag: r.tag, summary: r.summary, updatedAt: iso(r.updated_at)! };
+  return { tradeId: r.trade_id, note: r.note, tag: r.tag, summary: r.summary, updatedAt: isoOrNull(r.updated_at)! };
 }
 
 export class PgIntelStore implements IntelStore {
@@ -735,7 +736,7 @@ export class MemoryIntelStore implements IntelStore {
   }
   async insertSnapshots(rows: SnapshotRow[]) {
     const all = lastByKey(rows, (r) => `${r.asset}|${Date.parse(r.ts)}`);
-    for (const r of all) this.snapshots.set(`${r.asset}|${Date.parse(r.ts)}`, { ...r, ts: iso(r.ts)! });
+    for (const r of all) this.snapshots.set(`${r.asset}|${Date.parse(r.ts)}`, { ...r, ts: isoOrNull(r.ts)! });
     return all.length;
   }
   async nearestSnapshot(asset: string, ts: Date, side: SnapshotSide = "nearest") {
@@ -786,8 +787,8 @@ export class MemoryIntelStore implements IntelStore {
         ...clone(e),
         id: cur?.id ?? this.id(),
         clusterId: e.clusterId ?? cur?.clusterId ?? null,
-        firstSeen: cur?.firstSeen ?? iso(e.firstSeen)!,
-        scheduledAt: iso(e.scheduledAt),
+        firstSeen: cur?.firstSeen ?? isoOrNull(e.firstSeen)!,
+        scheduledAt: isoOrNull(e.scheduledAt),
       };
       this.events.set(row.id, row);
       out.push(clone(row));
@@ -963,7 +964,7 @@ export class MemoryIntelStore implements IntelStore {
   }
   async insertWatchChange(c: NewWatchChange) {
     if (!this.watches.has(c.watchId)) throw new Error(`watch ${c.watchId} not found`);
-    const row: WatchChange = { ...clone(c), id: this.id(), ts: iso(c.ts) ?? this.now(), alertedAssets: clone(c.alertedAssets) ?? [] };
+    const row: WatchChange = { ...clone(c), id: this.id(), ts: isoOrNull(c.ts) ?? this.now(), alertedAssets: clone(c.alertedAssets) ?? [] };
     this.changes.push(row);
     return clone(row);
   }

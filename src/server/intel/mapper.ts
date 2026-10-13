@@ -16,12 +16,14 @@ import {
 } from "../../shared/intel.js";
 import type { Notifier } from "../desk/notify.js";
 import { claimsJsonSchema, validateClaims } from "./claims.js";
-import { atr14, exposureWeight, stopDistance, stopProximity, type Bar } from "./diff.js";
+import { atr } from "../desk/tools.js";
+import { exposureWeight, stopDistance, stopProximity, type Bar } from "./diff.js";
 import { seedEdges, walk } from "./graph.js";
 import { completeStructured, untrusted, UNTRUSTED_RULE, type LlmDeps } from "./llm.js";
 import { sendIntel } from "./notify.js";
 import { loadPricedIn, pricedInText } from "./pricedIn.js";
 import type { IntelStore } from "./store.js";
+import { norm } from "./util.js";
 
 // News → position mapper (SPEC.md § Intel I0.11). Code does the routing:
 // walk the exposure graph (stored edges over the seed) from the event's
@@ -109,7 +111,6 @@ export interface RoutingContext {
   feedback: FeedbackBucket[];
 }
 
-const norm = (s: string) => s.trim().toLowerCase();
 const edgeKey = (e: { src: string; dst: string; type: string }) => `${e.src}|${e.dst}|${e.type}`;
 
 /** Seed edges overlaid by stored ones (store wins on the same (src, dst, type)). */
@@ -168,7 +169,7 @@ export async function assetExposure(deps: Pick<MapperDeps, "candles1h" | "now">,
   if (main && positions.some((p) => p.stopPx != null)) {
     const now = deps.now();
     const bars = await deps.candles1h(asset, new Date(now.getTime() - ATR_LOOKBACK_MS), now).catch(() => []);
-    proximity = stopProximity(stopDistance(main.markPx, positions), atr14(bars));
+    proximity = stopProximity(stopDistance(main.markPx, positions), atr(bars));
   }
   return { positions, label, weight: exposureWeight(positions, ctx.exposure.totalNotionalUsd), proximity };
 }
@@ -185,6 +186,16 @@ export function dampened(stats: FeedbackBucket[], eventType: string | null, edge
   if (!b) return false;
   const votes = b.up + b.down;
   return votes >= DAMPEN_MIN_VOTES && (b.up - b.down) / votes <= DAMPEN_NET;
+}
+
+/** Push/batch decision shared by the mapper and catalysts: ≥ pushMateriality pushes unless feedback dampens the bucket. Pure. */
+export function routeFor(
+  pushMateriality: number,
+  feedback: FeedbackBucket[],
+  materiality: number,
+  bucket: { eventType: string | null; edgeType: EdgeType | null; hops: number },
+): "push" | "batch" {
+  return materiality >= pushMateriality && !dampened(feedback, bucket.eventType, bucket.edgeType, bucket.hops) ? "push" : "batch";
 }
 
 // ---------------------------------------------------------------- explanation
@@ -275,8 +286,7 @@ async function routeWith(deps: MapperDeps, ctx: RoutingContext, input: RouteInpu
     const pricedIn = await loadPricedIn(deps, hit.asset, input.firstSeen);
     const suffix = pricedIn ? pricedInText(pricedIn) : null;
     const materiality = MAGNITUDE_WEIGHT[input.magnitude] * hit.pathWeight * exp.weight * exp.proximity;
-    const wantsPush = materiality >= deps.pushMateriality;
-    const route = wantsPush && !dampened(ctx.feedback, input.eventType, hit.edgeType, hit.hops) ? "push" : "batch";
+    const route = routeFor(deps.pushMateriality, ctx.feedback, materiality, { eventType: input.eventType, edgeType: hit.edgeType, hops: hit.hops });
     const { line, trace } = await explain(deps, input, hit, exp, suffix, signal);
     const alert = await deps.store.insertAlert({
       kind: input.kind,
