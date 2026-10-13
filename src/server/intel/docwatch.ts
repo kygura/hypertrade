@@ -1,0 +1,464 @@
+import { createHash } from "node:crypto";
+import { z } from "zod";
+import { HttpsUrlSchema, type Chain, type EventSource, type EventType, type Magnitude, type Watch, type WatchChange } from "../../shared/intel.js";
+import { claimsJsonSchema, validateClaims } from "./claims.js";
+import { decodeEntities, message } from "./ingest/common.js";
+import { completeStructured, type LlmDeps } from "./llm.js";
+import type { IntelStore, WatchState } from "./store.js";
+
+// Doc/contract watcher (SPEC.md § Intel I0.19). Code detects change: `url`
+// pages are fetched through safeFetch (public https only, re-validated on
+// every redirect hop, size/time/content-type capped), stripped to text,
+// hashed and line-diffed; `evm_contract` reads the bytecode hash and the
+// EIP-1967 implementation/admin slots; `evm_wallet` reads balance + nonce.
+// The first check is a baseline. On a later change the cheap model
+// summarizes it (claim-tagged; a failure leaves the code facts standing) and
+// the injected `routeAlert` (the mapper's graph walk from watch.asset)
+// decides which exposed assets alert. RPC URLs come only from config/env.
+// ponytail: JS-rendered or bot-blocked pages fail visibly (HTTP code / empty text), they are not rendered.
+
+export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
+
+export const FETCH_TIMEOUT_MS = 10_000;
+export const MAX_BODY_BYTES = 2 * 1024 * 1024;
+export const MAX_REDIRECTS = 3;
+export const SNAPSHOT_MAX_CHARS = 200_000;
+export const DIFF_MAX_CHARS = 20_000;
+export const RECHECK_AFTER_MS = 55 * 60_000;
+export const WATCH_CONCURRENCY = 3;
+export const DOCWATCH_PROMPT_VERSION = "docwatch.v1";
+const ALLOWED_TYPES = ["text/html", "text/plain", "application/json"];
+
+export const EIP1967_IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
+export const EIP1967_ADMIN_SLOT = "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
+
+/** Public RPC per chain; `INTEL_RPC_<CHAIN>` overrides. Never taken from user input. */
+export const DEFAULT_RPC: Record<Chain, string> = {
+  ethereum: "https://ethereum-rpc.publicnode.com",
+  arbitrum: "https://arb1.arbitrum.io/rpc",
+  base: "https://mainnet.base.org",
+  optimism: "https://mainnet.optimism.io",
+  polygon: "https://polygon-bor-rpc.publicnode.com",
+  bsc: "https://bsc-rpc.publicnode.com",
+  avalanche: "https://api.avax.network/ext/bc/C/rpc",
+  hyperevm: "https://rpc.hyperliquid.xyz/evm",
+};
+
+const EXPLORER: Record<Chain, string> = {
+  ethereum: "https://etherscan.io/address/",
+  arbitrum: "https://arbiscan.io/address/",
+  base: "https://basescan.org/address/",
+  optimism: "https://optimistic.etherscan.io/address/",
+  polygon: "https://polygonscan.com/address/",
+  bsc: "https://bscscan.com/address/",
+  avalanche: "https://snowtrace.io/address/",
+  hyperevm: "https://hyperevmscan.io/address/",
+};
+
+export function rpcUrl(chain: Chain, env: Record<string, string | undefined> = process.env): string {
+  return env[`INTEL_RPC_${chain.toUpperCase()}`]?.trim() || DEFAULT_RPC[chain];
+}
+
+/** What docwatch hands the mapper; `routeAlert` answers with the assets it alerted. */
+export interface DocwatchAlert {
+  kind: "docwatch";
+  /** Watch change id (alert dedupe ref). */
+  ref: string;
+  entities: string[];
+  eventType: EventType;
+  magnitude: Magnitude;
+  title: string;
+  sources: EventSource[];
+  firstSeen: string;
+}
+
+export interface DocwatchDeps {
+  store: Pick<
+    IntelStore,
+    "listWatches" | "getWatch" | "insertWatch" | "deleteWatch" | "updateWatchState" | "insertWatchChange" | "setWatchChangeAlerted" | "listWatchChanges"
+  >;
+  llm: LlmDeps;
+  now(): Date;
+  fetch?: FetchFn;
+  env?: Record<string, string | undefined>;
+  routeAlert(a: DocwatchAlert): Promise<{ alertedAssets: string[] }>;
+  signal?: AbortSignal;
+}
+
+const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
+const short = (h: string) => `${h.slice(0, 10)}…`;
+
+// ─── Safe fetch ───
+
+/**
+ * GET a public https URL. Every hop (the first and each redirect Location)
+ * must pass HttpsUrlSchema; at most MAX_REDIRECTS hops; 10 s overall; the
+ * body is streamed and aborted past MAX_BODY_BYTES; only text/html,
+ * text/plain and application/json are read.
+ */
+export async function safeFetch(f: FetchFn, url: string, signal?: AbortSignal): Promise<{ text: string; contentType: string; url: string }> {
+  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  let current = url;
+  for (let hop = 0; ; hop++) {
+    if (!HttpsUrlSchema.safeParse(current).success) throw new Error(`refused url: ${hop ? "redirect to " : ""}non-public or non-https target`);
+    const res = await f(current, { redirect: "manual", signal: sig, headers: { accept: ALLOWED_TYPES.join(", "), "user-agent": "hypertrade-docwatch/1" } });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      await res.body?.cancel().catch(() => {});
+      if (!loc) throw new Error(`HTTP ${res.status} without location`);
+      if (hop >= MAX_REDIRECTS) throw new Error(`too many redirects (> ${MAX_REDIRECTS})`);
+      current = new URL(loc, current).toString();
+      continue;
+    }
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => {});
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const contentType = (res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+    if (!ALLOWED_TYPES.includes(contentType)) {
+      await res.body?.cancel().catch(() => {});
+      throw new Error(`unsupported content-type: ${contentType || "(none)"}`);
+    }
+    if (Number(res.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
+      await res.body?.cancel().catch(() => {});
+      throw new Error("response too large");
+    }
+    return { text: await readCapped(res, MAX_BODY_BYTES), contentType, url: current };
+  }
+}
+
+async function readCapped(res: Response, max: number): Promise<string> {
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => {});
+      throw new Error("response too large");
+    }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(size);
+  let off = 0;
+  for (const c of chunks) {
+    buf.set(c, off);
+    off += c.byteLength;
+  }
+  return new TextDecoder().decode(buf);
+}
+
+// ─── Text normalization and diff (pure) ───
+
+const BLOCK = /<\/?(p|div|li|ul|ol|h[1-6]|tr|td|th|table|section|article|header|footer|nav|main|aside|pre|blockquote|dt|dd|dl|hr|br)\b[^>]*>/gi;
+
+/** HTML → plain text: scripts/styles/comments dropped, block tags become line breaks, whitespace collapsed per line. */
+export function htmlToText(html: string): string {
+  const stripped = html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style|noscript|template|svg)\b[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(BLOCK, "\n")
+    .replace(/<[^>]*>/g, " ");
+  return collapse(decodeEntities(stripped));
+}
+
+const collapse = (s: string) =>
+  s
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+
+/** Fetched body → the text that gets hashed and diffed. */
+export function normalizeBody(text: string, contentType: string): string {
+  if (contentType === "text/html") return htmlToText(text);
+  if (contentType === "application/json") {
+    try {
+      return collapse(JSON.stringify(JSON.parse(text), null, 1));
+    } catch {
+      // not JSON after all: diff it as text
+    }
+  }
+  return collapse(text);
+}
+
+/** Line-multiset diff: lines gone from `before` (old order) then lines new in `after`, capped. */
+export function lineDiff(before: string, after: string, maxChars = DIFF_MAX_CHARS): { added: number; removed: number; diff: string } {
+  const a = before ? before.split("\n") : [];
+  const b = after ? after.split("\n") : [];
+  const left = new Map<string, number>();
+  for (const l of a) left.set(l, (left.get(l) ?? 0) + 1);
+  const added: string[] = [];
+  for (const l of b) {
+    const n = left.get(l) ?? 0;
+    if (n > 0) left.set(l, n - 1);
+    else added.push(l);
+  }
+  const removed: string[] = [];
+  for (const l of a) {
+    const n = left.get(l) ?? 0;
+    if (n > 0) {
+      removed.push(l);
+      left.set(l, n - 1);
+    }
+  }
+  let diff = [...removed.map((l) => `- ${l}`), ...added.map((l) => `+ ${l}`)].join("\n");
+  if (diff.length > maxChars) diff = `${diff.slice(0, maxChars)}\n… (truncated)`;
+  return { added: added.length, removed: removed.length, diff };
+}
+
+// ─── Detectors ───
+
+/** One detector reading: `hash` decides change, `snapshot` is stored, `compare` turns the previous snapshot into facts. */
+interface Reading {
+  hash: string;
+  snapshot: unknown;
+  source: EventSource;
+}
+
+interface ContractSnap {
+  codeHash: string;
+  codeBytes: number;
+  implementation: string;
+  admin: string;
+}
+interface WalletSnap {
+  balanceWei: string;
+  nonce: number;
+}
+
+async function rpc(f: FetchFn, url: string, method: string, params: unknown[], signal?: AbortSignal): Promise<string> {
+  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const res = await f(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
+  if (!res.ok) throw new Error(`${method}: HTTP ${res.status}`);
+  const body = (await res.json()) as { result?: unknown; error?: { message?: string } };
+  if (body.error) throw new Error(`${method}: ${body.error.message ?? "rpc error"}`);
+  if (typeof body.result !== "string" || !/^0x[0-9a-fA-F]*$/.test(body.result)) throw new Error(`${method}: bad result`);
+  return body.result.toLowerCase();
+}
+
+/** 32-byte storage word → the address in its low 20 bytes (0x000… when unset). */
+const slotAddress = (word: string) => `0x${word.slice(2).padStart(64, "0").slice(-40)}`;
+
+function formatWei(wei: bigint): string {
+  const neg = wei < 0n;
+  const abs = neg ? -wei : wei;
+  const whole = abs / 10n ** 18n;
+  const frac = ((abs % 10n ** 18n) / 10n ** 14n).toString().padStart(4, "0").replace(/0+$/, "");
+  return `${neg ? "-" : ""}${whole}${frac ? `.${frac}` : ""}`;
+}
+
+async function readWatch(deps: DocwatchDeps, watch: Watch): Promise<Reading> {
+  const f = deps.fetch ?? (fetch as FetchFn);
+  if (watch.kind === "url") {
+    const { text, contentType } = await safeFetch(f, watch.target, deps.signal);
+    const body = normalizeBody(text, contentType);
+    if (!body) throw new Error("empty page after stripping (JS-rendered or blocked?)");
+    return { hash: sha256(body), snapshot: body.slice(0, SNAPSHOT_MAX_CHARS), source: { label: watch.label, url: watch.target } };
+  }
+  if (!watch.chain) throw new Error("watch has no chain");
+  const url = rpcUrl(watch.chain, deps.env);
+  const addr = watch.target.toLowerCase();
+  const source = { label: `${watch.label} (${watch.chain})`, url: `${EXPLORER[watch.chain]}${watch.target}` };
+  if (watch.kind === "evm_contract") {
+    const code = await rpc(f, url, "eth_getCode", [addr, "latest"], deps.signal);
+    const impl = await rpc(f, url, "eth_getStorageAt", [addr, EIP1967_IMPL_SLOT, "latest"], deps.signal);
+    const admin = await rpc(f, url, "eth_getStorageAt", [addr, EIP1967_ADMIN_SLOT, "latest"], deps.signal);
+    const snap: ContractSnap = { codeHash: sha256(code), codeBytes: (code.length - 2) / 2, implementation: slotAddress(impl), admin: slotAddress(admin) };
+    return { hash: sha256(JSON.stringify(snap)), snapshot: snap, source };
+  }
+  const bal = await rpc(f, url, "eth_getBalance", [addr, "latest"], deps.signal);
+  const nonce = await rpc(f, url, "eth_getTransactionCount", [addr, "latest"], deps.signal);
+  const snap: WalletSnap = { balanceWei: BigInt(bal === "0x" ? "0x0" : bal).toString(), nonce: Number(BigInt(nonce === "0x" ? "0x0" : nonce)) };
+  return { hash: sha256(JSON.stringify(snap)), snapshot: snap, source };
+}
+
+interface Classified {
+  facts: string[];
+  diff: string | null;
+  eventType: EventType;
+  magnitude: Magnitude;
+}
+
+/** Pure: previous vs current snapshot → code-written facts, event type and magnitude. */
+export function classifyChange(kind: Watch["kind"], prev: unknown, next: unknown): Classified {
+  if (kind === "url") {
+    const d = lineDiff(typeof prev === "string" ? prev : "", typeof next === "string" ? next : "");
+    const note = d.added || d.removed ? "" : " (change beyond the stored first 200 KB)";
+    return { facts: [`+${d.added} −${d.removed} lines${note}`], diff: d.diff || null, eventType: "other", magnitude: "low" };
+  }
+  if (kind === "evm_contract") {
+    const p = (prev ?? {}) as Partial<ContractSnap>;
+    const n = next as ContractSnap;
+    const facts: string[] = [];
+    let eventType: EventType = "upgrade";
+    if (p.implementation !== n.implementation) facts.push(`implementation slot changed ${p.implementation ?? "?"}→${n.implementation}`);
+    if (p.admin !== n.admin) {
+      facts.push(`admin slot changed ${p.admin ?? "?"}→${n.admin}`);
+      if (p.implementation === n.implementation && p.codeHash === n.codeHash) eventType = "governance";
+    }
+    if (p.codeHash !== n.codeHash) facts.push(`bytecode changed (sha256 ${short(p.codeHash ?? "?")}→${short(n.codeHash)}, ${p.codeBytes ?? "?"}→${n.codeBytes} bytes)`);
+    return { facts, diff: null, eventType, magnitude: "high" };
+  }
+  const p = (prev ?? {}) as Partial<WalletSnap>;
+  const n = next as WalletSnap;
+  const facts: string[] = [];
+  if (p.nonce !== n.nonce) facts.push(`nonce ${p.nonce ?? "?"}→${n.nonce}`);
+  if (p.balanceWei !== n.balanceWei) {
+    const delta = p.balanceWei === undefined ? null : BigInt(n.balanceWei) - BigInt(p.balanceWei);
+    const from = p.balanceWei === undefined ? "?" : formatWei(BigInt(p.balanceWei));
+    facts.push(`native balance ${from}→${formatWei(BigInt(n.balanceWei))}${delta === null ? "" : ` (${delta > 0n ? "+" : ""}${formatWei(delta)})`}`);
+  }
+  return { facts, diff: null, eventType: "other", magnitude: "med" };
+}
+
+// ─── LLM summary ───
+
+const SummarySchema = z.object({ summary: z.array(z.unknown()).max(6) });
+const summaryJsonSchema = { type: "object" as const, properties: { summary: claimsJsonSchema }, required: ["summary"], additionalProperties: false };
+
+const DOCWATCH_SYSTEM = `You summarize a detected change on a watched document, smart contract or wallet for a crypto trader.
+Write 1 to 4 short lines: what changed, then why it could matter for the related asset.
+Restating the given facts or diff is "observed" (use the given source label/url and timestamp). Anything about meaning, intent or market impact is a "hypothesis".
+Never invent numbers, addresses or events that are not in the input.`;
+
+async function summarize(deps: DocwatchDeps, watch: Watch, c: Classified, source: EventSource, ts: string, toHash: string) {
+  const user = [
+    `Watch: ${watch.label} (${watch.kind}${watch.chain ? `, ${watch.chain}` : ""})`,
+    `Target: ${watch.target}`,
+    `Related asset: ${watch.asset ?? "(none)"}`,
+    `Source: label=${source.label}${source.url ? ` url=${source.url}` : ""} ts=${ts}`,
+    `Facts:\n${c.facts.map((f) => `- ${f}`).join("\n")}`,
+    c.diff ? `Diff (- removed, + added):\n${c.diff.slice(0, 6000)}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const res = await completeStructured({
+    tier: "cheap",
+    system: DOCWATCH_SYSTEM,
+    user,
+    schema: SummarySchema,
+    jsonSchema: summaryJsonSchema,
+    promptVersion: DOCWATCH_PROMPT_VERSION,
+    cacheKey: `docwatch:${watch.id}:${toHash}`,
+    signal: deps.signal,
+    deps: deps.llm,
+  });
+  if (!res.ok) return { lines: [], trace: { ...res.trace, error: res.error } };
+  const { claims, dropped } = validateClaims(res.value.summary);
+  return { lines: claims, trace: { ...res.trace, dropped, cached: res.cached } };
+}
+
+// ─── Check ───
+
+export type CheckResult =
+  | { status: "baseline" | "unchanged"; watchId: string }
+  | { status: "changed"; watchId: string; change: WatchChange; routeError?: string }
+  | { status: "error"; watchId: string; error: string };
+
+/**
+ * One check. Baseline on the first successful read; afterwards a hash change
+ * records a WatchChange and routes it. Detection errors only update the
+ * watch's `error` (no change event, last hash kept). Store errors throw.
+ */
+export async function checkWatch(deps: DocwatchDeps, watch: Watch): Promise<CheckResult> {
+  const checkedAt = deps.now().toISOString();
+  let r: Reading;
+  try {
+    r = await readWatch(deps, watch);
+  } catch (e) {
+    const error = message(e).slice(0, 500);
+    await deps.store.updateWatchState(watch.id, { lastHash: watch.lastHash, lastSnapshot: watch.lastSnapshot, checkedAt, error });
+    return { status: "error", watchId: watch.id, error };
+  }
+  const next: WatchState = { lastHash: r.hash, lastSnapshot: r.snapshot, checkedAt, error: null };
+  if (watch.lastHash === null || watch.lastHash === r.hash) {
+    await deps.store.updateWatchState(watch.id, next);
+    return { status: watch.lastHash === null ? "baseline" : "unchanged", watchId: watch.id };
+  }
+
+  const c = classifyChange(watch.kind, watch.lastSnapshot, r.snapshot);
+  const { lines, trace } = await summarize(deps, watch, c, r.source, checkedAt, r.hash);
+  const change = await deps.store.insertWatchChange({
+    watchId: watch.id,
+    ts: checkedAt,
+    fromHash: watch.lastHash,
+    toHash: r.hash,
+    diff: c.diff,
+    facts: c.facts,
+    detail: { before: watch.kind === "url" ? null : watch.lastSnapshot, after: watch.kind === "url" ? null : r.snapshot, eventType: c.eventType, magnitude: c.magnitude },
+    lines,
+    trace,
+  });
+
+  let routeError: string | undefined;
+  if (watch.asset) {
+    try {
+      const { alertedAssets } = await deps.routeAlert({
+        kind: "docwatch",
+        ref: change.id,
+        entities: [watch.asset],
+        eventType: c.eventType,
+        magnitude: c.magnitude,
+        title: `${watch.label}: ${c.facts[0] ?? "changed"}`.slice(0, 200),
+        sources: [r.source],
+        firstSeen: change.ts,
+      });
+      await deps.store.setWatchChangeAlerted(change.id, alertedAssets);
+      change.alertedAssets = [...alertedAssets];
+    } catch (e) {
+      routeError = `alert routing failed: ${message(e)}`.slice(0, 500);
+    }
+  }
+  await deps.store.updateWatchState(watch.id, { ...next, error: routeError ?? null });
+  return routeError ? { status: "changed", watchId: watch.id, change, routeError } : { status: "changed", watchId: watch.id, change };
+}
+
+// ─── Cron run ───
+
+export interface WatchRunSummary {
+  due: number;
+  checked: number;
+  changed: number;
+  failed: Array<{ id: string; error: string }>;
+  /** Due but not reached before the budget ran out or the run was aborted. */
+  skipped: number;
+}
+
+/** Hourly: checks watches not checked in the last 55 min, oldest first, WATCH_CONCURRENCY at a time, within the budget. */
+export async function runIntelWatch(deps: DocwatchDeps, opts: { budgetMs: number; signal?: AbortSignal }): Promise<WatchRunSummary> {
+  const t0 = Date.now();
+  const nowMs = deps.now().getTime();
+  const due = (await deps.store.listWatches())
+    .filter((w) => w.checkedAt === null || nowMs - Date.parse(w.checkedAt) >= RECHECK_AFTER_MS)
+    .sort((a, b) => (a.checkedAt ? Date.parse(a.checkedAt) : 0) - (b.checkedAt ? Date.parse(b.checkedAt) : 0));
+  const out: WatchRunSummary = { due: due.length, checked: 0, changed: 0, failed: [], skipped: 0 };
+  const d = opts.signal ? { ...deps, signal: deps.signal ? AbortSignal.any([deps.signal, opts.signal]) : opts.signal } : deps;
+  let next = 0;
+  const worker = async () => {
+    while (next < due.length) {
+      if (Date.now() - t0 >= opts.budgetMs || opts.signal?.aborted) return;
+      const w = due[next++]!;
+      try {
+        const r = await checkWatch(d, w);
+        out.checked++;
+        if (r.status === "changed") out.changed++;
+        if (r.status === "error") out.failed.push({ id: w.id, error: r.error });
+      } catch (e) {
+        out.failed.push({ id: w.id, error: message(e) });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(WATCH_CONCURRENCY, due.length) }, worker));
+  out.skipped = due.length - next;
+  return out;
+}
