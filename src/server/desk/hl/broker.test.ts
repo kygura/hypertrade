@@ -103,6 +103,13 @@ describe("HlBroker (testnet)", () => {
     expect(posted[1]!.vaultAddress).toBeNull();
   });
 
+  test("an order without a target sends entry + stop only", async () => {
+    const { broker, posted } = fakeTestnet({ orderStatuses: [[{ filled: { totalSz: "0.25", avgPx: "4001.5", oid: 77 } }, { resting: { oid: 78 } }]] });
+    const r = await broker.open({ coin: "ETH", side: "long", stop: 3800, riskPct: 0.5 }, { ...sizing, rr: null });
+    expect(r).toMatchObject({ ok: true, note: "oid 77" });
+    expect(posted[1]!.action.orders.map((o: any) => o.t.trigger?.tpsl ?? "entry")).toEqual(["entry", "sl"]);
+  });
+
   test("an unfilled IOC entry is a failed execution", async () => {
     const { broker } = fakeTestnet({ orderStatuses: [[{ error: "Order could not immediately match against any resting orders." }, { resting: { oid: 2 } }, { resting: { oid: 3 } }]] });
     const r = await broker.open(long, sizing);
