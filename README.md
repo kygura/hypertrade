@@ -186,7 +186,7 @@ secret). Discord (`DESK_DISCORD_WEBHOOK_URL`) and a generic JSON webhook
 (`DESK_ALERT_WEBHOOK_URL`) also work. Every alert is stored and shown on the
 page. All `DESK_*` settings are listed in `.env.example`.
 
-## Intel (optional)
+## Intel (the Terminal)
 
 The Terminal (`/` and `/journal`, `/theses`, `/query`, `/order`, `/watch`;
 SPEC.md § Intel) reads `/api/intel/*`. Code: `src/server/intel/*`,
@@ -219,6 +219,123 @@ ingest once a day as a fallback.
 | `INTEL_RPC_<CHAIN>` | RPC override for the contract/wallet watcher (`ETHEREUM`, `ARBITRUM`, `BASE`, `OPTIMISM`, `POLYGON`, `BSC`, `AVALANCHE`, `HYPEREVM`); default public RPCs |
 | `DATABASE_URL_READONLY` | read-only Postgres role for `/api/intel/query/run`; default the main connection |
 | repo var `INTEL_ENABLED` | `true` turns on the workflow's `intel` job |
+
+### How the Terminal works
+
+`/` is now the Terminal. It shows what changed since your last look, measured
+against your positions and watchlist: a ranked diff, the alerts and catalysts
+that touch those assets, and a short brief. The Overview that used to live at
+`/` moved unchanged to `/overview`. Design: `DESIGN-terminal.md`. Spec: SPEC.md
+§ Intel. Code: `src/server/intel/*`, `src/server/routes/intel/*`,
+`src/ui/pages/terminal/*`.
+
+**Routes.** Seven, sharing one sub-tab strip:
+
+| route | what it does |
+|---|---|
+| `/` | Terminal: brief, alerts, catalysts, exposure. A UI open logs a review. |
+| `/journal` | Round trips from the watched address and the Desk paper book, with session, hold time, R, MAE/MFE, per-tag stats and a weekly report. |
+| `/theses` | Paste a thesis. The LLM extracts claims; code checks each against a fixed catalogue. |
+| `/query` | Natural language to a screener DSL over the snapshot store. The DSL is editable; the SQL is shown read-only. |
+| `/order` | Order copilot, preview then confirm (below). |
+| `/watch` | Watches on URLs, EVM contracts and EVM wallets. Changes are summarised and routed to exposed assets only. |
+| `/overview` | The former Overview, unchanged. |
+
+Telegram deep links to `/?review=1` open the Terminal and log a review.
+
+**Positions.** Three sources, unified at read time into one shape. `manual`
+rows live in `intel_positions` and are edited from the Terminal. `hl` is the
+account at `DESK_WATCH_ADDRESS`, read-only. `desk` is the Desk's paper or
+testnet book. A source that fails is listed in `sources` with its error and
+contributes nothing; the page still loads. The watchlist is `intel_watchlist`,
+falling back to `DESK_WATCHLIST` when it is empty.
+
+**Snapshot store.** `intel_snapshots` holds one row per asset per tick: price,
+24 h volume, funding, open interest, premium, basis, and book depth and spread.
+`POST /api/cron/collect` writes it every 15 minutes from the `metaAndAssetCtxs`
+fetch it already makes. Assets are held, watched, and the top 20 by open
+interest. Order book depth comes from `l2Book` for held and watched coins only
+(at most 25). Rows are kept 90 days and pruned by the backfill job. A metric
+with fewer than 24 samples gets no z-score and is skipped, not read as zero.
+
+**What the LLM does.** It turns text into structure: extracts events and
+clusters from feeds, writes one line on how a change touches a position,
+extracts thesis claims, parses queries and order intents, proposes exposure
+edges, summarises watched contract changes, narrates the brief and tags journal
+trades. It does not predict direction, set price targets, size positions,
+send orders, or decide what is material. Materiality is code:
+`|z| × exposure weight × stop proximity`. Only a change clearing `INTEL_MIN_Z`
+reaches the brief, and if nothing does, the brief is silent.
+
+Every LLM line carries a claim tag. `observed` (shown as OBS) needs a source
+and a timestamp. `hypothesis` (shown as HYP) needs neither. Lines with no tag,
+or an `observed` tag without a source and timestamp, are dropped before display
+and counted in the trace. If every line is dropped, the brief shows the ranked
+table without prose. Calls go through `completeStructured`
+(`src/server/intel/llm.ts`) on the Desk's model resolution: the cheap tier for
+extraction and tagging, the strong tier for narration and parsing. Results are
+cached in `intel_llm_cache`. Web search is off unless a call asks for it. Over
+`INTEL_LLM_DAILY_CAP` calls a day, calls fail closed and the UI says so.
+
+**Cron.** `POST /api/cron/intel/{ingest,brief,graph,watch}` with
+`x-cron-token`. Each takes a lease and stops within 200 s. Ingest runs every
+15 minutes (sources, mapper, catalyst alerts). Brief runs every
+`INTEL_BRIEF_HOURS` (default 6). It messages Telegram only when something
+clears the threshold, and it never marks a review. Graph runs once a day, and
+watch checks each watch at most hourly. The `intel` job in
+`.github/workflows/collect.yml` calls all four after `collect`, and only when
+the repo variable `INTEL_ENABLED` is `true`. Vercel Cron runs ingest daily at
+07:00 UTC as a fallback.
+
+**Setup.** Apply `db/migrations/007_intel.sql` before enabling anything. It
+creates every `intel_*` table the Terminal reads, and the routes do not work
+without it. Environment variables are in the table under
+[Intel (optional)](#intel-optional), which also covers `INTEL_ENABLED`;
+`.env.example` lists the same keys.
+
+**Order copilot.** Paper or Hyperliquid testnet only. Mainnet is not
+selectable; the Desk venue config refuses it.
+
+1. `POST /api/intel/order/preview` takes text or a parsed intent (asset, side,
+   size, entry, stop, optional target). It resolves the stop from candles and
+   returns size, liquidation price, risk as a percentage of the book, and the
+   governor verdict with its warnings. A missing target skips the reward:risk
+   check and warns.
+2. `POST /api/intel/order/confirm` takes the intent and the preview hash. Only
+   this call executes anything, and only on the operator's click in the UI.
+   It re-resolves on fresh data. It answers 409 if the preview is stale (the
+   live mark has moved more than 0.5%) or the hash does not match.
+
+The governor's rules run again at confirm, through `evaluateRisk` (extracted
+from `evaluateOpen`). Operator orders are recorded as `operator:copilot`. The
+Desk's approval mode does not change this path. Nothing executes autonomously.
+
+**Known limits.**
+
+- No embeddings, because there is no keyless embedding source. Clustering uses
+  token-shingle Jaccard ≥ 0.5 within 48 h, then merges on shared entities.
+  Two headlines with different words about the same event may not cluster.
+- Hyperliquid journal trades carry no stop, so their R is blank. The journal's
+  stop lookup for `hl` is not wired. Desk trades take R from the proposal's
+  stop.
+- The macro calendar (`src/server/intel/calendar.ts`) is static: FOMC, CPI
+  and NFP dates for 2026 and 2027 only, and the 2027 BLS dates are estimates.
+  Check it against the published calendars each year and add the next one.
+  After 2027 the calendar is empty.
+- Snapshots are 15 minutes apart. Five-minute ticks were rejected because
+  Actions jitter makes them unreliable.
+- Feedback (up or down per alert) feeds a weekly report. Thresholds and
+  weights are not tuned automatically. The one automatic effect: a bucket with
+  at least 5 votes in 30 days and a net score of −60% or worse has its pushes
+  demoted to the brief. It is never dropped.
+- The doc watcher does not render JavaScript pages. Bot-blocked and
+  JS-rendered pages fail visibly with the HTTP code or empty text.
+- X and Telegram ingest are optional. X needs `X_BEARER_TOKEN` and
+  `INTEL_X_LIST_ID`. Telegram channels (`INTEL_TG_CHANNELS`) are read from
+  `t.me/s/<channel>`. Vercel IPs are often refused there; the failure is
+  recorded, not retried. The Terminal works without either.
+- Intel messages go through the Desk notifier, so nothing is sent to Telegram
+  or Discord unless the Desk's alert settings are configured.
 
 ## Strategy engine (optional)
 
