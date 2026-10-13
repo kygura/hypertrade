@@ -19,10 +19,10 @@ Destination: `/` becomes the Intel Terminal (SPEC.md § Intel): all eight module
 
 ## Tasks
 - [x] P0 Plan — SPEC.md § Intel, src/shared/claims.ts, TASKS.v2.md archived — opus (planner) + fable second opinion
-- [ ] D1 Design pass → DESIGN-terminal.md — opus — frontier
-- [ ] T1 Contract: 007_intel.sql, src/shared/intel.ts (all API types), IntelStore (Pg + Memory), positions.ts — opus — frontier
-- [ ] T2 LLM: completeStructured + cache + trace + cap, provider web-search opt-out, claims validator — opus — frontier
-- [ ] T3 Governor refactor: evaluateRisk + DeskService.submitOperatorOrder — opus (heavy) — frontier
+- [x] D1 Design pass → DESIGN-terminal.md — opus — done
+- [x] T1 Contract: 007_intel.sql, src/shared/intel.ts (all API types), IntelStore (Pg + Memory), positions.ts — opus — done
+- [x] T2 LLM: completeStructured + cache + trace + cap, provider web-search opt-out, claims validator — opus — done
+- [x] T3 Governor refactor: evaluateRisk + DeskService.submitOperatorOrder — opus (heavy) — done
 - [ ] T4 Snapshot store + normalize/diff + terminal brief + collect/backfill hooks — opus — deps T1, T2
 - [ ] T5 Graph + cluster + ingest adapters + calendar — opus — deps T1, T2
 - [ ] T6 Mapper + priced-in + catalysts + feedback + notify — opus — deps T4, T5
@@ -41,3 +41,8 @@ Destination: `/` becomes the Intel Terminal (SPEC.md § Intel): all eight module
 ## Decisions so far
 - P0: baseline 769 pass, typecheck green. Workers do not commit; planner commits per task with explicit paths. Native Claude workers only.
 - P0 (fable second opinion adopted): snapshot written inside /cron/collect; metric-specific normalization (price/OI hourly-σ scaled, funding/premium level z, volume/depth log-ratio); separate leased cron routes gated by INTEL_ENABLED; reuse DESK_WATCH_ADDRESS + Desk model resolution; static macro calendar; only UI open logs a review; governor refactored into evaluateRisk, copilot via submitOperatorOrder (always confirm); DSL-only screener; real routes for sub-tabs.
+- T2 (opus): completeStructured never throws; StepOptions.webSearch opt-out (default on); emit tool + fenced-JSON fallback + one retry; cap via callsSince. 786 green.
+- T3 (opus): evaluateRisk extracted, evaluateOpen output identical; previewOperatorOrder/submitOperatorOrder(order, {previewHash}, by); records in desk_proposals decidedBy operator:copilot. Review (fable): HIGH double-exec race → fixed with atomic takeState + mutex; `by` required; resolvedRiskPct; Desk.tsx renders copilot rows. Open: one testnet smoke for no-target normalTpsl.
+- T1 (opus): 16 tables, lists as jsonb; alert dedupe key (kind, ref, asset, time_window); HttpsUrlSchema blocks IP/local hosts (SSRF); aligned to DESIGN-terminal §13 (design doc renamed to contract names). 836 green.
+- D1 (opus): OBS gray / HYP info-blue badges; 4-char sub-tabs no scroll; nav ▣ TERM; review once per tab per 5 min; order confirm Level 2 with venue badge, no Money tier.
+- Wave 2 launched in worktrees: T4, T5, T7, T8, T9, U1.
