@@ -501,6 +501,10 @@ export const BriefSchema = z.object({
 });
 export type Brief = z.infer<typeof BriefSchema>;
 export const BriefLatestResponseSchema = z.object({ brief: BriefSchema.nullable() });
+export const BriefLatestQuerySchema = z.object({ surface: BriefSurfaceSchema.optional() });
+/** POST /brief body (optional): `deeplink` when the open came from Telegram's `/?review=1`. */
+export const BriefRequestSchema = z.object({ via: ReviewSchema.shape.via.default("ui") }).strict();
+export type BriefRequest = z.input<typeof BriefRequestSchema>;
 
 // ─── Journal (I0.15) ───
 

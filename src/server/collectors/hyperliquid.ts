@@ -73,10 +73,13 @@ export async function collectHyperliquid(
   fetchFn: typeof fetch = fetch,
   deps: HlDbDeps = defaultDeps,
   extraOiCoins: string[] = [],
+  /** Handed the parsed contexts (Intel snapshots reuse this fetch). Called synchronously; must not throw. */
+  onCtxs?: (ctxs: AssetCtx[], ts: Date) => void,
 ): Promise<CollectorResult> {
   const startedAt = new Date();
   try {
     const { ctxs } = await fetchPerpMetaAndCtxs(fetchFn);
+    onCtxs?.(ctxs, startedAt);
     const { seriesDefs, observations } = buildHyperliquidObservations(ctxs, startedAt, extraOiCoins);
     await deps.ensureSeries(seriesDefs);
     const written = await deps.upsertObservations(observations);

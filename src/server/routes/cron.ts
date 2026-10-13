@@ -13,6 +13,12 @@ import { syncHead } from "../market/candleSync.js";
 import { syncFunding } from "../market/fundingSync.js";
 import { backfillCoin } from "../sim/backfill.js";
 import { STABLES } from "../../shared/schemas.js";
+import type { AssetCtx } from "../../shared/types.js";
+import { loadDeskConfig } from "../desk/config.js";
+import { loadExposure, watchedAssets } from "../intel/positions.js";
+import { collectIntelSnapshots, fetchL2Book, focusAssets, SNAPSHOT_RETENTION_DAYS, type SnapshotResult } from "../intel/snapshot.js";
+import { PgIntelStore } from "../intel/store.js";
+import { defaultDeskService } from "./desk.js";
 
 const DAY_MS = 86400000;
 const DEFAULT_BACKFILL_DAYS = 365;
@@ -63,6 +69,8 @@ export type WarmResult = { from?: string; to?: string; tfs: number; fundingFrom?
 export type BackfillDeps = {
   listBranches: () => Promise<{ config: unknown }[]>;
   recentCoins: () => Promise<string[]>;
+  /** Intel held ∪ watched coins (candles for ATR, priced-in and journal stats). */
+  intelCoins?: () => Promise<string[]>;
   /** Daily history to startDate, head sync of every timeframe, funding pages. Calls `step` before each one. */
   warmCoin: (coin: string, startDate: Date, deadline: number, step: (label: string) => void) => Promise<WarmResult>;
   /** Retention for the finest timeframes; returns rows dropped per timeframe. */
@@ -120,23 +128,62 @@ export async function pruneRetention(now: number = Date.now()): Promise<Record<s
   return out;
 }
 
+const intelStore = new PgIntelStore();
+
+/** Intel held ∪ watched assets. Only the coin set matters here, so manual positions go unpriced. */
+function intelFocus() {
+  return focusAssets(
+    () => loadExposure({ store: intelStore, marks: async () => ({}), watchAddress: loadDeskConfig().watchAddress, deskAccount: () => defaultDeskService().account() }),
+    () => watchedAssets(intelStore),
+  );
+}
+
+async function intelCoins(): Promise<string[]> {
+  const f = await intelFocus();
+  return [...new Set([...f.held, ...f.watched])];
+}
+
+/** Candle retention, plus Intel snapshots past SNAPSHOT_RETENTION_DAYS (reported as `intel_snapshots`). */
+async function pruneAll(now: number = Date.now()): Promise<Record<string, number>> {
+  const out = await pruneRetention(now);
+  try {
+    out.intel_snapshots = await intelStore.pruneSnapshots(new Date(now - SNAPSHOT_RETENTION_DAYS * DAY_MS));
+  } catch (err) {
+    console.error("[backfill] intel snapshot prune:", err instanceof Error ? err.message : err);
+  }
+  return out;
+}
+
+/** Book fetches for the snapshot rows stop starting after this; the rows are written regardless. */
+const SNAPSHOT_BOOK_BUDGET_MS = 60_000;
+
+/** Intel snapshot rows from the collect's own metaAndAssetCtxs. Never throws (failures land in collector_runs). */
+function runIntelSnapshots(ctxs: AssetCtx[], ts: Date): Promise<SnapshotResult> {
+  return collectIntelSnapshots(
+    { store: intelStore, focus: intelFocus, l2Book: (coin) => fetchL2Book(coin), recordRun: db.recordCollectorRun, deadline: Date.now() + SNAPSHOT_BOOK_BUDGET_MS },
+    ctxs,
+    ts,
+  );
+}
+
 const defaultBackfillDeps: BackfillDeps = {
   listBranches: db.listBranches,
   recentCoins: () => db.recentlyAccessedCoins(new Date(Date.now() - RECENT_MS)),
+  intelCoins,
   warmCoin,
-  prune: () => pruneRetention(),
+  prune: () => pruneAll(),
   now: () => Date.now(),
 };
 
-/** Core coins, then every coin a saved branch allocates to, then recently charted coins. Deduped, stables dropped. */
-export function backfillCoins(branchConfigs: unknown[], requested?: string, recent: string[] = []): string[] {
+/** Core coins, then every coin a saved branch allocates to, then recently charted coins, then Intel held ∪ watched. Deduped, stables dropped. */
+export function backfillCoins(branchConfigs: unknown[], requested?: string, recent: string[] = [], intel: string[] = []): string[] {
   if (requested) return [...new Set(requested.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))];
   const coins = new Set(CORE_COINS);
   for (const config of branchConfigs) {
     const c = config as { allocations?: { coin?: unknown }[]; dca?: { coin?: unknown }[] } | null;
     for (const a of [...(c?.allocations ?? []), ...(c?.dca ?? [])]) if (typeof a.coin === "string") coins.add(a.coin.toUpperCase());
   }
-  for (const c of recent) coins.add(c);
+  for (const c of [...recent, ...intel]) coins.add(c);
   return [...coins].filter((c) => !STABLES.has(c));
 }
 
@@ -172,10 +219,10 @@ export function backfillRoute(deps: BackfillDeps = defaultBackfillDeps) {
     // leave the route silent until Vercel killed it at 300s.
     const work = (async () => {
       step("list coins");
-      const [branches, recent] = requested
-        ? [[], []]
-        : await Promise.all([deps.listBranches(), deps.recentCoins().catch(() => [])]);
-      coins = backfillCoins(branches.map((b) => b.config), requested, recent);
+      const [branches, recent, intel] = requested
+        ? [[], [], []]
+        : await Promise.all([deps.listBranches(), deps.recentCoins().catch(() => []), (deps.intelCoins?.() ?? Promise.resolve([])).catch(() => [])]);
+      coins = backfillCoins(branches.map((b) => b.config), requested, recent, intel);
       for (const coin of coins) {
         if (deps.now() > deadline) {
           results[coin] = { ok: false, skipped: true };
@@ -211,11 +258,12 @@ export function backfillRoute(deps: BackfillDeps = defaultBackfillDeps) {
 }
 
 async function oiCoins(): Promise<string[]> {
-  const [branches, recent] = await Promise.all([
+  const [branches, recent, intel] = await Promise.all([
     db.listBranches().catch(() => []),
     db.recentlyAccessedCoins(new Date(Date.now() - RECENT_MS)).catch(() => []),
+    intelCoins().catch(() => []),
   ]);
-  return backfillCoins(branches.map((b) => b.config), undefined, recent);
+  return backfillCoins(branches.map((b) => b.config), undefined, recent, intel);
 }
 
 export type LabLease = {
@@ -301,13 +349,17 @@ export const cronRoutes = new Hono()
     }
   })
   .on(["GET", "POST"], "/collect", requireCronToken, async (c) => {
+    // Intel snapshots ride on the same metaAndAssetCtxs fetch; their failure
+    // is reported (and recorded), never a failed collect.
+    let snapshots: Promise<SnapshotResult> | undefined;
     const [hyperliquid, cryptoContext, fred, elfa] = await Promise.all([
-      oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra)),
+      oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra, (ctxs, ts) => void (snapshots = runIntelSnapshots(ctxs, ts)))),
       collectCryptoContext(),
       collectFred(),
       collectElfa(),
     ]);
-    return c.json({ hyperliquid, cryptoContext, fred, elfa });
+    const intelSnapshots = snapshots ? await snapshots : { ok: false, written: 0, error: "no asset contexts (hyperliquid collect failed)" };
+    return c.json({ hyperliquid, cryptoContext, fred, elfa, intelSnapshots });
   })
   // Lab history on its own route: a long first backfill must not hold up (or
   // be retried with) the 15-minute collection. Leased: one run at a time.
