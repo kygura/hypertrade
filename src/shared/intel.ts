@@ -160,7 +160,7 @@ export type WatchlistResponse = z.infer<typeof WatchlistResponseSchema>;
 export const ReviewSchema = z.object({
   id: z.string(),
   ts: Iso,
-  via: z.enum(["ui", "deeplink"]),
+  via: z.enum(["ui", "deeplink", "telegram_digest"]),
   briefId: z.string().nullable(),
 });
 export type Review = z.infer<typeof ReviewSchema>;

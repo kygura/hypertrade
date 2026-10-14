@@ -314,6 +314,11 @@ export function itemLine(i: DiffItem): string {
   return `${i.held ? "held" : "watched"} ${i.asset} ${i.metric} ${fmt(i.delta)}${unit} (z ${fmt(i.z)})`;
 }
 
+/** The narration, or (narration failed, timed out or capped) the ranked raw-number items and alert lines. */
+export function briefLines(brief: Pick<Brief, "lines" | "items" | "alerts">): Array<Claim | string> {
+  return brief.lines.length ? brief.lines : [...brief.items.map(itemLine), ...brief.alerts.map((a) => a.line)];
+}
+
 export interface IntelBriefRun {
   ok: boolean;
   briefId?: string;
@@ -343,7 +348,7 @@ export async function runIntelBrief(
     const narrationError = brief.trace?.error ? { narrationError: brief.trace.error } : {};
     if (brief.silent) return { ...base, sent: [], ...narrationError };
     const n = brief.items.length + brief.alerts.length;
-    const lines: Array<Claim | string> = brief.lines.length ? brief.lines : [...brief.items.map(itemLine), ...brief.alerts.map((a) => a.line)];
+    const lines = briefLines(brief);
     const link = deps.appUrl ? `${deps.appUrl.replace(/\/+$/, "")}/?review=1` : undefined;
     const title = n === 1 ? "1 thing changed that touches your positions" : `${n} things changed that touch your positions`;
     const sent = await sendIntel(deps.notifier, { title, lines, link });

@@ -8,7 +8,7 @@ import { liveMarketData } from "../desk/data.js";
 import { createNotifier } from "../desk/notify.js";
 import { DeskError, DeskService } from "../desk/service.js";
 import { PgStore } from "../desk/store.js";
-import { handleTelegramUpdate, type TelegramUpdate } from "../desk/telegram.js";
+import { handleTelegramUpdate, type TelegramIntel, type TelegramUpdate } from "../desk/telegram.js";
 import { SPECIALISTS } from "../desk/prompts.js";
 import { tick } from "../desk/watch.js";
 import { ExitProposalSchema } from "../desk/types.js";
@@ -48,6 +48,8 @@ export interface DeskRouteOptions {
   makeProvider?: ProviderFactory;
   timeoutMs?: number;
   env?: Record<string, string | undefined>;
+  /** Intel /digest + 👍/👎 for the Telegram webhook (SPEC F0.6); absent → Desk-only. */
+  intel?: () => TelegramIntel;
 }
 
 let shared: DeskService | null = null;
@@ -268,7 +270,7 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
       if (!safeEqual(got, secret)) return c.json({ error: "unauthorized" }, 401);
       const update = (await body(c)) as TelegramUpdate;
       try {
-        await handleTelegramUpdate(service(), update, { token, chatId });
+        await handleTelegramUpdate(service(), update, { token, chatId, intel: o.intel?.() });
       } catch (err) {
         console.error("[desk] telegram update failed", err);
       }
@@ -276,5 +278,3 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
       return c.json({ ok: true });
     });
 }
-
-export const deskRoutes = createDeskRoutes();

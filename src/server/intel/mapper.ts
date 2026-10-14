@@ -20,7 +20,7 @@ import { atr } from "../desk/tools.js";
 import { exposureWeight, stopDistance, stopProximity, type Bar } from "./diff.js";
 import { seedEdges, walk } from "./graph.js";
 import { completeStructured, untrusted, UNTRUSTED_RULE, type LlmDeps } from "./llm.js";
-import { sendIntel } from "./notify.js";
+import { feedbackActions, sendIntel } from "./notify.js";
 import { loadPricedIn, pricedInText } from "./pricedIn.js";
 import type { IntelStore } from "./store.js";
 import { norm } from "./util.js";
@@ -309,7 +309,7 @@ async function routeWith(deps: MapperDeps, ctx: RoutingContext, input: RouteInpu
     if (!alert) continue;
     alerts.push(alert);
     if (route === "push") {
-      await sendIntel(deps.notifier, { title: `${exp.label}: ${input.title}`.slice(0, 200), lines: suffix ? [line, suffix] : [line], link: deepLink(deps.appUrl) });
+      await sendIntel(deps.notifier, { title: `${exp.label}: ${input.title}`.slice(0, 200), lines: suffix ? [line, suffix] : [line], link: deepLink(deps.appUrl), actions: feedbackActions([alert]) });
     }
   }
   return { alerts, alertedAssets: [...new Set(alerts.map((a) => a.asset))] };
