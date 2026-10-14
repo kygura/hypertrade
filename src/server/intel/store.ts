@@ -142,10 +142,15 @@ export interface IntelStore {
   setSetting(key: string, value: unknown): Promise<void>;
 
   cacheGet(key: string, promptVersion: string): Promise<unknown | null>;
-  cachePut(key: string, promptVersion: string, output: unknown, usage: unknown): Promise<void>;
+  cachePut(key: string, promptVersion: string, output: unknown, usage: unknown, model?: string): Promise<void>;
   /** LLM calls recorded (cache rows written) since `since`: the daily cap counter. */
   callsSince(since: Date): Promise<number>;
+  /** Stored usage rows (with `model`) since `since`: the dollar caps (F0.7). */
+  usageSince(since: Date): Promise<unknown[]>;
 }
+
+/** The model rides inside the usage json (no schema change) so spend can be priced. */
+const withModel = (usage: unknown, model?: string) => (model && usage && typeof usage === "object" ? { ...usage, model } : usage);
 
 // ---------------------------------------------------------------- shared
 
@@ -702,13 +707,16 @@ export class PgIntelStore implements IntelStore {
     const [row] = await sql()`select output from intel_llm_cache where key = ${key} and prompt_version = ${promptVersion}`;
     return row ? (row.output as unknown) : null;
   }
-  async cachePut(key: string, promptVersion: string, output: unknown, usage: unknown) {
-    await sql()`insert into intel_llm_cache (key, prompt_version, output, usage) values (${key}, ${promptVersion}, ${json(output)}, ${json(usage)})
+  async cachePut(key: string, promptVersion: string, output: unknown, usage: unknown, model?: string) {
+    await sql()`insert into intel_llm_cache (key, prompt_version, output, usage) values (${key}, ${promptVersion}, ${json(output)}, ${json(withModel(usage, model))})
       on conflict (key, prompt_version) do update set output = excluded.output, usage = excluded.usage, created_at = now()`;
   }
   async callsSince(since: Date) {
     const [row] = await sql()`select count(*)::int as n from intel_llm_cache where created_at >= ${since}`;
     return row!.n as number;
+  }
+  async usageSince(since: Date) {
+    return (await sql()`select usage from intel_llm_cache where created_at >= ${since}`).map((r) => r.usage as unknown);
   }
 }
 
@@ -1067,10 +1075,13 @@ export class MemoryIntelStore implements IntelStore {
     const hit = this.cache.get(JSON.stringify([key, promptVersion]));
     return hit ? clone(hit.output) : null;
   }
-  async cachePut(key: string, promptVersion: string, output: unknown, usage: unknown) {
-    this.cache.set(JSON.stringify([key, promptVersion]), { output: clone(output), usage: clone(usage), createdAt: this.clock().getTime() });
+  async cachePut(key: string, promptVersion: string, output: unknown, usage: unknown, model?: string) {
+    this.cache.set(JSON.stringify([key, promptVersion]), { output: clone(output), usage: clone(withModel(usage, model)), createdAt: this.clock().getTime() });
   }
   async callsSince(since: Date) {
     return [...this.cache.values()].filter((c) => c.createdAt >= since.getTime()).length;
+  }
+  async usageSince(since: Date) {
+    return [...this.cache.values()].filter((c) => c.createdAt >= since.getTime()).map((c) => clone(c.usage));
   }
 }

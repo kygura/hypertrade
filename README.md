@@ -209,6 +209,7 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 | `INTEL_TOP_K` | brief items kept after ranking, default 5 |
 | `INTEL_PUSH_MATERIALITY` | mapper alerts at or above this push to Telegram now, else wait for the brief; default 0.35 |
 | `INTEL_LLM_DAILY_CAP` | Intel LLM calls per day before failing closed, default 200 |
+| `INTEL_LLM_DAILY_USD` | Intel LLM spend per UTC day (usage × model price) before failing closed, default 2.00 |
 | `INTEL_BRIEF_HOURS` | cron brief at most every N hours, default 6 |
 | `INTEL_TZ` | journal session clock (asia/eu/us by hour), default UTC |
 | `INTEL_RSS_FEEDS` | comma-separated RSS/Atom URLs; default a built-in keyless list |

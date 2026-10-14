@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { ClaimSchema, type Claim } from "../../shared/claims.js";
+import type { Claim } from "../../shared/claims.js";
 import { hlInfo } from "../../shared/hl-client.js";
 import type { JournalReport, ReportFinding, Session, SourceHealth, TagStats, Trade, TradeNote } from "../../shared/intel.js";
 import type { ToolSpec } from "../llm/provider.js";
 import type { DeskStore, PaperFill } from "../desk/store.js";
-import { claimsJsonSchema, validateClaims } from "./claims.js";
+import { claimsJsonSchema, validateLines } from "./claims.js";
 import { completeStructured, type LlmDeps, type LlmTrace } from "./llm.js";
 import type { IntelStore } from "./store.js";
 import { message } from "./ingest/common.js";
@@ -546,7 +546,7 @@ export async function tagTrades(deps: Pick<JournalDeps, "store" | "llm">, trades
       error ??= res.error;
       return;
     }
-    const summary = note?.note ? (validateClaims([res.value.noteSummary]).claims[0] ?? null) : null;
+    const summary = note?.note ? (validateLines([res.value.noteSummary], facts).claims[0] ?? null) : null;
     try {
       await deps.store.putTradeNote({ tradeId: t.id, note: note?.note ?? null, tag: res.value.setup, summary });
       tagged++;
@@ -623,20 +623,29 @@ const TRADE_ID_IN_TEXT = /\b(?:hl|desk):(?:[A-Za-z0-9]+:)?[A-Za-z0-9]+:[A-Za-z0-
  * subset of that finding's ids, whose text mentions no other trade id, and whose
  * claim passes the validator. Returns the kept claims per tag and the drop count.
  */
-export function validateNarration(raw: z.infer<typeof NarrationSchema>["lines"], findings: ReportFinding[]): { byTag: Map<string, Claim[]>; lines: Claim[]; dropped: number } {
+export function validateNarration(
+  raw: z.infer<typeof NarrationSchema>["lines"],
+  findings: ReportFinding[],
+  payload: unknown = findings,
+): { byTag: Map<string, Claim[]>; lines: Claim[]; dropped: number; numbersRejected: number; adviceRejected: number } {
   const ids = new Map(findings.map((f) => [f.tag, new Set(f.tradeIds)]));
   const byTag = new Map<string, Claim[]>();
   const lines: Claim[] = [];
+  let numbersRejected = 0;
+  let adviceRejected = 0;
   for (const l of raw) {
     const allowed = ids.get(l.tag);
     if (!allowed || !l.tradeIds.length || !l.tradeIds.every((id) => allowed.has(id))) continue;
-    const claim = ClaimSchema.safeParse(l.claim);
-    if (!claim.success) continue;
-    if ((claim.data.text.match(TRADE_ID_IN_TEXT) ?? []).some((id) => !allowed.has(id))) continue;
-    lines.push(claim.data);
-    byTag.set(l.tag, [...(byTag.get(l.tag) ?? []), claim.data]);
+    const v = validateLines([l.claim], payload);
+    numbersRejected += v.numbersRejected;
+    adviceRejected += v.adviceRejected;
+    const claim = v.claims[0];
+    if (!claim) continue;
+    if ((claim.text.match(TRADE_ID_IN_TEXT) ?? []).some((id) => !allowed.has(id))) continue;
+    lines.push(claim);
+    byTag.set(l.tag, [...(byTag.get(l.tag) ?? []), claim]);
   }
-  return { byTag, lines, dropped: raw.length - lines.length };
+  return { byTag, lines, dropped: raw.length - lines.length, numbersRejected, adviceRejected };
 }
 
 /** Builds, narrates and stores the journal_weekly report. Narration failing leaves the code findings with no lines (trace records why). */
@@ -670,10 +679,10 @@ export async function weeklyReport(deps: JournalDeps, periodDays = 7, signal?: A
       deps: deps.llm,
     });
     if (res.ok) {
-      const v = validateNarration(res.value.lines, findings);
+      const v = validateNarration(res.value.lines, findings, input);
       lines = v.lines;
       for (const f of findings) f.line = v.byTag.get(f.tag)?.[0] ?? null;
-      trace = { ...res.trace, dropped: v.dropped };
+      trace = { ...res.trace, dropped: v.dropped, numbersRejected: v.numbersRejected, adviceRejected: v.adviceRejected };
     } else {
       trace = { ...res.trace, error: res.error };
     }

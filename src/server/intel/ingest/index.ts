@@ -31,7 +31,7 @@ export { recordRun } from "./common.js";
 const UNSTRUCTURED = new Set<NewEvent["origin"]>(["rss", "websearch", "x", "telegram"]);
 const KNOWN_KEYS_LOOKBACK_MS = 7 * 86_400_000;
 const RECENT_LIMIT = 5000;
-const STOP_ERRORS = new Set(["llm not configured", "LLM cap reached"]);
+const STOP_ERRORS = /^(?:llm not configured|LLM cap reached)/;
 
 export interface IngestSummary {
   sources: SourceHealth[];
@@ -117,7 +117,7 @@ export async function runIngestSources(deps: IngestDeps, opts: { budgetMs: numbe
     if (!res.ok) {
       extractFailed++;
       console.warn(`[intel] extraction failed for cluster ${c.id}: ${res.error}`);
-      if (STOP_ERRORS.has(res.error)) break;
+      if (STOP_ERRORS.test(res.error)) break;
       continue;
     }
     const x = res.value;
