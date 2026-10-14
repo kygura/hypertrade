@@ -11,7 +11,7 @@ import {
   type HeatmapResponse,
 } from "../../../shared/intel.js";
 import { COINALYZE_COLLECTOR } from "../../collectors/coinalyze.js";
-import { assetFlags, flowOptions, loadAssetFlow } from "../../intel/flowEvents.js";
+import { assetFlags, FLOW_ACTIVE_SETTING, flowOptions, loadAssetFlow } from "../../intel/flowEvents.js";
 import { walk } from "../../intel/graph.js";
 import { assetExposure, graphEdges, type RoutingContext } from "../../intel/mapper.js";
 import { FALLBACK_BASELINE_MS, toCatalyst } from "../../intel/terminal.js";
@@ -42,8 +42,33 @@ const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLow
 export function createFlowRoutes(deps: FlowRouteDeps) {
   const { store } = deps;
   const env = deps.env ?? process.env;
-  /** researchId is read-time only (SPEC S1): the stored flag JSON is never touched. */
-  const withResearch = (flags: FlowFlag[]) => Promise.all(flags.map(async (f) => ({ ...f, researchId: (await store.researchForFlag(f.id))?.id ?? null })));
+  /**
+   * A live flag's id embeds the request time, so it never equals the stored flag's. For an episode still active in
+   * FLOW_ACTIVE_SETTING (same name, asset, kind and window) the stored flag's id is used; with no stored episode the live id stays.
+   */
+  const storedIds = async (flags: FlowFlag[]): Promise<FlowFlag[]> => {
+    const active = (await store.getSetting<Record<string, string>>(FLOW_ACTIVE_SETTING)) ?? {};
+    const eventIds = [...new Set(flags.flatMap((f) => active[`${f.name}|${f.asset}`] ?? []))];
+    const stored = new Map((await Promise.all(eventIds.map((id) => store.getEvent(id)))).flatMap((e) => (e?.flag ? [[e.id, e.flag] as [string, FlowFlag]] : [])));
+    return flags.map((f) => {
+      const s = stored.get(active[`${f.name}|${f.asset}`] ?? "");
+      return s && s.kind === f.kind && s.window === f.window ? { ...f, id: s.id } : f;
+    });
+  };
+  /**
+   * researchId is read-time only (SPEC S1): the stored flag JSON is never touched. One batched query; the main screen
+   * must never fail because of intel_research, so any error leaves every researchId null.
+   */
+  const withResearch = async (flags: FlowFlag[], live = false): Promise<FlowFlag[]> => {
+    try {
+      const ids = live ? await storedIds(flags) : flags;
+      const found = await store.researchForFlags(ids.map((f) => f.id));
+      return ids.map((f) => ({ ...f, researchId: found.get(f.id)?.id ?? null }));
+    } catch (err) {
+      console.warn("[intel:flow] research join skipped:", err instanceof Error ? err.message : err);
+      return flags.map((f) => ({ ...f, researchId: null }));
+    }
+  };
 
   return new Hono()
     .get("/heatmap", async (c) => {
@@ -78,7 +103,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
         rows.sort((a, b) => b.materiality - a.materiality);
         const run = health.find((h) => h.source === FLOW_SOURCE);
         const flowStatus = !env.COINALYZE_API_KEY?.trim() ? { ok: false, error: "no_source" } : run ? { ok: run.ok, ...(run.error ? { error: run.error } : {}) } : { ok: true };
-        const res: HeatmapResponse = { rows, metrics: [...HEATMAP_METRICS], cells, flags: await withResearch(flags), flow: flowStatus, asOf: now.toISOString() };
+        const res: HeatmapResponse = { rows, metrics: [...HEATMAP_METRICS], cells, flags: await withResearch(flags, true), flow: flowStatus, asOf: now.toISOString() };
         return c.json(res);
       } catch (err) {
         return failure(c, err, "intel:heatmap", "heatmap unavailable");
@@ -120,7 +145,10 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
             const url = e.sources.find((s) => s.url)?.url;
             return { ts: e.scheduledAt!, kind: "catalyst", title: e.title, tag: e.tag, ...(url ? { url } : {}) };
           }),
-          ...research.map((r): AssetEvent => ({ ts: r.createdAt, kind: "research", title: r.question, tag: r.status === "found" ? "observed" : "hypothesis", research: r })),
+          // Only answers belong on the timeline: failed, capped and running rows are not findings.
+          ...research
+            .filter((r) => r.status === "found" || r.status === "no_cause")
+            .map((r): AssetEvent => ({ ts: r.createdAt, kind: "research", title: r.question, tag: r.status === "found" ? "observed" : "hypothesis", research: r })),
         ].sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
         const res: AssetDetailResponse = {
           snapshots,

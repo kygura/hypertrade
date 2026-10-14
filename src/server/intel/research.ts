@@ -88,6 +88,8 @@ export interface ResearchInput {
   trigger: ResearchResult["trigger"];
   /** The flag that started the run (a chip-started run is trigger "manual" with this set). */
   flag?: FlowFlag;
+  /** Caller's abort (the cron's hard stop), combined with the run's own deadline. */
+  signal?: AbortSignal;
 }
 
 /** What the provider exposed per result URL. Bodies are encrypted, so `cited` (citation texts) is the only readable excerpt. */
@@ -226,7 +228,8 @@ export async function runResearch(deps: ResearchDeps, input: ResearchInput): Pro
   if (!lock) return null;
   // One deadline for the whole run, started before any read, shared by the reads and the LLM call.
   const t0 = Date.now();
-  const signal = AbortSignal.timeout(RESEARCH_DEADLINE_MS);
+  const deadline = AbortSignal.timeout(RESEARCH_DEADLINE_MS);
+  const signal = input.signal ? AbortSignal.any([input.signal, deadline]) : deadline;
   const spent = { searches: 0, costUsd: 0, model: "" };
   const finish = async (r: NewResearch): Promise<ResearchResult> => {
     try {
@@ -324,42 +327,63 @@ export function researchDeps(d: { store: ResearchDeps["store"]; llm: LlmDeps; ex
 
 const NEWS_WINDOW_MS = 6 * 3_600_000;
 
+/** A run only starts with the deadline plus this much left, so a slow finish cannot outlive the job's budget. */
+export const AUTO_RESEARCH_MARGIN_MS = 15_000;
+
 export interface AutoResearchDeps {
-  store: ResearchDeps["store"] & Pick<IntelStore, "listAlerts" | "listEvents" | "researchCountSince" | "researchForFlag">;
+  store: ResearchDeps["store"] & Pick<IntelStore, "listAlerts" | "getEvent" | "listResearch" | "researchCountSince" | "researchForFlags">;
   llm: LlmDeps;
   exposure(): Promise<PositionsResponse>;
   now(): Date;
   pushMateriality: number;
   env?: Record<string, string | undefined>;
+  /** The caller's remaining budget in ms. */
+  left(): number;
+  /** The job's abort (hard stop); combined with each run's own deadline. */
+  signal?: AbortSignal;
+}
+
+export interface AutoResearchRun {
+  /** Runs that reached the provider (capped ones don't count). */
+  ran: number;
+  statuses: { found: number; no_cause: number; failed: number };
+  stopped: "cap" | "lock" | "budget" | "limit" | "none";
 }
 
 /**
  * Researches the strongest unexplained flow flags (S0.3): materiality >= the push threshold, no news alert on the
- * asset in the last 6 h, no result yet, at most INTEL_RESEARCH_AUTO_DAILY "flag" runs per UTC day. `left()` is the
- * caller's remaining budget; a run only starts while more than the research deadline is left. Returns runs started.
+ * asset in the last 6 h, no result yet, one attempt per flag per UTC day, at most INTEL_RESEARCH_AUTO_DAILY runs
+ * per UTC day (failed runs that billed count). Stops on the first capped result or held lock, and when the budget
+ * left is not more than the deadline plus a margin.
  */
-export async function autoResearch(deps: AutoResearchDeps, left: () => number): Promise<number> {
+export async function autoResearch(deps: AutoResearchDeps): Promise<AutoResearchRun> {
+  const out: AutoResearchRun = { ran: 0, statuses: { found: 0, no_cause: 0, failed: 0 }, stopped: "none" };
   const now = deps.now();
+  const day = utcDayStart(now);
   const since = new Date(now.getTime() - NEWS_WINDOW_MS);
-  let room = researchAutoLimit(deps.env ?? {}) - (await deps.store.researchCountSince(utcDayStart(now), "flag", true));
-  if (room <= 0) return 0;
-  const [alerts, events] = await Promise.all([deps.store.listAlerts({ since, limit: 500 }), deps.store.listEvents({ since, type: "data", limit: 500 })]);
-  const newsAssets = new Set(alerts.filter((a) => alertSource(a) === "news").map((a) => a.asset.toLowerCase()));
-  const flags = new Map<string, FlowFlag>();
-  for (const e of events) if (e.flag) flags.set(e.id, e.flag);
-  const candidates = alerts
-    .filter((a) => a.kind === "flow" && a.materiality >= deps.pushMateriality && !newsAssets.has(a.asset.toLowerCase()) && flags.has(a.ref))
-    .sort((a, b) => b.materiality - a.materiality);
+  let room = researchAutoLimit(deps.env ?? {}) - (await deps.store.researchCountSince(day, "flag"));
+  if (room <= 0) return { ...out, stopped: "limit" };
+  // Flow and news alerts are read apart, so a busy news feed cannot push flow alerts out of one mixed page.
+  const [flowAlerts, ...news] = await Promise.all([
+    deps.store.listAlerts({ since, kind: "flow", limit: 500 }),
+    ...(["mapper", "catalyst", "docwatch"] as const).map((kind) => deps.store.listAlerts({ since, kind, limit: 200 })),
+  ]);
+  const newsAssets = new Set(news.flat().filter((a) => alertSource(a) === "news").map((a) => a.asset.toLowerCase()));
+  const candidates = flowAlerts.filter((a) => a.materiality >= deps.pushMateriality && !newsAssets.has(a.asset.toLowerCase())).sort((a, b) => b.materiality - a.materiality);
+  const tried = new Set((await deps.store.listResearch({ since: day, limit: 500 })).flatMap((r) => (r.flagId ? [r.flagId] : [])));
   const rd = researchDeps(deps);
-  let ran = 0;
   for (const a of candidates) {
-    if (room <= 0 || left() <= RESEARCH_DEADLINE_MS) break;
-    const flag = flags.get(a.ref)!;
-    if (await deps.store.researchForFlag(flag.id)) continue;
-    const res = await runResearch(rd, { question: `Why did ${flag.asset} show ${flag.name.replace(/_/g, " ")} (${flag.window})?`, asset: flag.asset, trigger: "flag", flag });
-    if (!res) break; // another run holds the lock
-    ran++;
+    if (room <= 0) return { ...out, stopped: "limit" };
+    if (deps.left() <= RESEARCH_DEADLINE_MS + AUTO_RESEARCH_MARGIN_MS) return { ...out, stopped: "budget" };
+    const flag = (await deps.store.getEvent(a.ref))?.flag;
+    if (!flag || tried.has(flag.id) || (await deps.store.researchForFlags([flag.id])).has(flag.id)) continue;
+    const res = await runResearch(rd, { question: `Why did ${flag.asset} show ${flag.name.replace(/_/g, " ")} (${flag.window})?`, asset: flag.asset, trigger: "flag", flag, signal: deps.signal });
+    if (!res) return { ...out, stopped: "lock" };
+    if (res.status === "capped") return { ...out, stopped: "cap" };
+    if (res.status === "found" || res.status === "no_cause" || res.status === "failed") out.statuses[res.status]++;
+    out.ran++;
     room--;
   }
-  return ran;
+  return out;
 }
+

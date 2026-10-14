@@ -313,17 +313,19 @@ describe("MemoryIntelStore research", () => {
     const s = new MemoryIntelStore(() => clock.t);
     await s.insertResearch(rs({ status: "found", flagId: "f8" }));
     await s.insertResearch(rs({ status: "capped", flagId: "f7" }));
-    await s.insertResearch(rs({ status: "failed" }));
+    await s.insertResearch(rs({ status: "failed" })); // never called out: free
+    await s.insertResearch(rs({ status: "failed", costUsd: 0.2, flagId: "f6" })); // billed
     clock.t = new Date("2026-10-15T12:00:00Z");
     await s.insertResearch(rs({ trigger: "flag", asset: "BTC", flagId: "f9", status: "no_cause" }));
     const day = new Date("2026-10-15T00:00:00Z");
     expect(await s.researchCountSince(day)).toBe(1);
-    expect(await s.researchCountSince(new Date(0))).toBe(2); // capped and failed runs don't use the daily budget
-    expect(await s.researchCountSince(new Date(0), "manual")).toBe(1);
+    expect(await s.researchCountSince(new Date(0))).toBe(3); // capped and free failures don't use the daily budget; billed failures do
+    expect(await s.researchCountSince(new Date(0), "manual")).toBe(2);
+    expect([...(await s.researchForFlags(["f8", "f7", "f6", "f9", "nope"])).keys()].sort()).toEqual(["f8", "f9"]); // failed and capped stay out of the join
     expect(await s.researchForFlag("f7")).toBeNull(); // capped: the chip may offer a retry
     expect((await s.listResearch({ asset: "BTC", limit: 5 })).map((r) => r.flagId)).toEqual(["f9"]);
-    expect((await s.listResearch({ limit: 5 })).map((r) => r.asset)).toEqual(["BTC", "SOL", "SOL", "SOL"]); // newest first
-    expect(await s.pruneResearch(day)).toBe(3);
+    expect((await s.listResearch({ limit: 5 })).map((r) => r.asset)).toEqual(["BTC", "SOL", "SOL", "SOL", "SOL"]); // newest first
+    expect(await s.pruneResearch(day)).toBe(4);
     expect(await s.listResearch({ limit: 5 })).toHaveLength(1);
   });
 });

@@ -12,14 +12,14 @@ import type { TerminalRouteDeps } from "./terminal.js";
 //     INTEL_RESEARCH_DAILY manual runs since UTC midnight, 200 with status "capped" over the dollar cap.
 // GET  /research?asset&limit=20 → {items, usedToday, limit}
 
-const FLAG_LOOKBACK_MS = 7 * 86_400_000;
-
+// Uppercased at the boundary so stored rows match the case-insensitive asset filters elsewhere.
+const Asset = AssetSchema.transform((a) => a.toUpperCase());
 const RequestSchema = z.object({
   question: z.string().trim().min(3).max(500),
-  asset: AssetSchema.optional(),
+  asset: Asset.optional(),
   flagId: z.string().min(1).max(200).optional(),
 });
-const ListQuerySchema = z.object({ asset: AssetSchema.optional(), limit: z.coerce.number().int().min(1).max(100).default(20) });
+const ListQuerySchema = z.object({ asset: Asset.optional(), limit: z.coerce.number().int().min(1).max(100).default(20) });
 
 export type ResearchRouteDeps = Pick<TerminalRouteDeps, "store" | "exposure" | "llm" | "now" | "env">;
 
@@ -36,7 +36,7 @@ export function createResearchRoutes(deps: ResearchRouteDeps) {
       try {
         const now = deps.now();
         if ((await store.researchCountSince(utcDayStart(now), "manual")) >= limit) return c.json({ error: `daily research limit reached (${limit})` }, 429);
-        const flag = flagId ? (await store.listEvents({ since: new Date(now.getTime() - FLAG_LOOKBACK_MS), type: "data", limit: 500 })).find((e) => e.flag?.id === flagId)?.flag : undefined;
+        const flag = flagId ? (await store.getEventByKey(`flow:${flagId}`))?.flag : undefined;
         if (flagId && !flag) return c.json({ error: "unknown flag", field: "flagId" }, 404);
         const result = await runResearch(researchDeps(deps), { question, asset: parsed.data.asset ?? flag?.asset ?? null, trigger: "manual", flag });
         return result ? c.json(result) : c.json({ error: "a research run is already in flight" }, 409);
