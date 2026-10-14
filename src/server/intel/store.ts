@@ -103,8 +103,8 @@ export interface IntelStore {
   finishResearch(id: string, r: NewResearch): Promise<ResearchResult | null>;
   /** createdAt >= since, newest first. */
   listResearch(opts: { asset?: string; since?: Date; limit: number }): Promise<ResearchResult[]>;
-  /** Runs that used or hold the budget (running, found, no_cause) since `since`: the daily limits. Capped and failed rows don't count. */
-  researchCountSince(since: Date, trigger?: ResearchResult["trigger"]): Promise<number>;
+  /** Runs that used or hold the budget (running, found, no_cause) since `since`: the daily limits. Capped rows never count; failed rows only with `withFailed` (they were billed: the auto cap). */
+  researchCountSince(since: Date, trigger?: ResearchResult["trigger"], withFailed?: boolean): Promise<number>;
   /** Newest result carrying the flag id, whatever its trigger; failed and capped runs excluded (they may be retried). */
   researchForFlag(flagId: string): Promise<ResearchResult | null>;
   pruneResearch(before: Date): Promise<number>;
@@ -553,8 +553,8 @@ export class PgIntelStore implements IntelStore {
       order by created_at desc, id limit ${o.limit}`;
     return rows.map(toResearch);
   }
-  async researchCountSince(since: Date, trigger?: ResearchResult["trigger"]) {
-    const [row] = await sql()`select count(*)::int as n from intel_research where created_at >= ${since} and status in ('running', 'found', 'no_cause') and (${trigger ?? null}::text is null or trigger = ${trigger ?? null})`;
+  async researchCountSince(since: Date, trigger?: ResearchResult["trigger"], withFailed = false) {
+    const [row] = await sql()`select count(*)::int as n from intel_research where created_at >= ${since} and (status in ('running', 'found', 'no_cause') or (${withFailed}::boolean and status = 'failed')) and (${trigger ?? null}::text is null or trigger = ${trigger ?? null})`;
     return row!.n as number;
   }
   async researchForFlag(flagId: string) {
@@ -1010,8 +1010,8 @@ export class MemoryIntelStore implements IntelStore {
       .slice(0, o.limit)
       .map(clone);
   }
-  async researchCountSince(since: Date, trigger?: ResearchResult["trigger"]) {
-    return this.research.filter((x) => Date.parse(x.createdAt) >= since.getTime() && x.status !== "capped" && x.status !== "failed" && (!trigger || x.trigger === trigger)).length;
+  async researchCountSince(since: Date, trigger?: ResearchResult["trigger"], withFailed = false) {
+    return this.research.filter((x) => Date.parse(x.createdAt) >= since.getTime() && x.status !== "capped" && (withFailed || x.status !== "failed") && (!trigger || x.trigger === trigger)).length;
   }
   async researchForFlag(flagId: string) {
     return clone([...this.research].reverse().find((x) => x.flagId === flagId && x.status !== "failed" && x.status !== "capped") ?? null);

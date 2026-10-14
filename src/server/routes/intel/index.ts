@@ -22,6 +22,7 @@ import { createGraphRoutes } from "./graph.js";
 import { createJournalRoutes } from "./journal.js";
 import { createOrderRoutes } from "./order.js";
 import { createQueryRoutes } from "./query.js";
+import { createResearchRoutes } from "./research.js";
 import { createTerminalRoutes, type TerminalRouteDeps } from "./terminal.js";
 import { createThesesRoutes } from "./theses.js";
 import { createWatchRoutes } from "./watch.js";
@@ -57,6 +58,7 @@ export function createIntelRoutes(deps: IntelDeps) {
     .route("/", createAlertsRoutes({ store: deps.store, targets, now: deps.now }))
     .route("/", createGraphRoutes({ store: deps.store, targets, now: deps.now }))
     .route("/", createFlowRoutes(deps))
+    .route("/", createResearchRoutes(deps))
     .route("/", createJournalRoutes(deps.journal))
     .route("/", createThesesRoutes(deps.thesis))
     .route("/", createQueryRoutes({ llm: deps.llm, client: deps.queryClient }))

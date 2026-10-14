@@ -18,6 +18,7 @@ import type { AssetCtx } from "../../shared/types.js";
 import { runIntelWatch } from "../intel/docwatch.js";
 import { flowAlerts } from "../intel/flowEvents.js";
 import { refreshGraph } from "../intel/graph.js";
+import { autoResearch, RESEARCH_DEADLINE_MS } from "../intel/research.js";
 import { runIntelIngest } from "../intel/runIngest.js";
 import { collectIntelSnapshots, fetchL2Book, focusAssets, SNAPSHOT_RETENTION_DAYS, STOP_RETENTION_DAYS, type SnapshotResult } from "../intel/snapshot.js";
 import type { IntelStore } from "../intel/store.js";
@@ -456,12 +457,22 @@ const defaultIntelCronDeps = (): IntelCronDeps => {
     run: {
       // Flow detector events (SPEC F0.4) ride on the ingest job, after the mapper; code only, no LLM.
       ingest: async (o) => {
+        const t0 = Date.now();
+        const left = () => o.budgetMs - (Date.now() - t0);
         const result = await runIntelIngest(d.ingest, o);
         const flows = await flowAlerts(d.ingest, new Date()).then(
           (r) => ({ events: r.events.length, alerts: r.alerts.length, pushed: r.alerts.filter((a) => a.route === "push").length, errors: r.errors }),
           (e) => ({ events: 0, alerts: 0, pushed: 0, errors: [e instanceof Error ? e.message : String(e)] }),
         );
-        return { ok: true, complete: true, result: { ...result, flows } };
+        // Automatic research (SPEC S0.3) is the last stage: it needs this run's flow alerts and more than its own deadline of budget. Never fatal.
+        const research: { ran: number; skipped?: true; error?: string } =
+          left() > RESEARCH_DEADLINE_MS
+            ? await autoResearch(d.ingest, left).then(
+                (ran) => ({ ran }),
+                (e) => ({ ran: 0, error: e instanceof Error ? e.message : String(e) }),
+              )
+            : { ran: 0, skipped: true };
+        return { ok: true, complete: true, result: { ...result, flows, research } };
       },
       brief: async (o) => {
         const r = await runIntelBrief({ ...d, notifier: d.notifier, appUrl: d.appUrl }, o);

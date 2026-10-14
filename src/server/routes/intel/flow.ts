@@ -42,6 +42,8 @@ const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLow
 export function createFlowRoutes(deps: FlowRouteDeps) {
   const { store } = deps;
   const env = deps.env ?? process.env;
+  /** researchId is read-time only (SPEC S1): the stored flag JSON is never touched. */
+  const withResearch = (flags: FlowFlag[]) => Promise.all(flags.map(async (f) => ({ ...f, researchId: (await store.researchForFlag(f.id))?.id ?? null })));
 
   return new Hono()
     .get("/heatmap", async (c) => {
@@ -76,7 +78,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
         rows.sort((a, b) => b.materiality - a.materiality);
         const run = health.find((h) => h.source === FLOW_SOURCE);
         const flowStatus = !env.COINALYZE_API_KEY?.trim() ? { ok: false, error: "no_source" } : run ? { ok: run.ok, ...(run.error ? { error: run.error } : {}) } : { ok: true };
-        const res: HeatmapResponse = { rows, metrics: [...HEATMAP_METRICS], cells, flags, flow: flowStatus, asOf: now.toISOString() };
+        const res: HeatmapResponse = { rows, metrics: [...HEATMAP_METRICS], cells, flags: await withResearch(flags), flow: flowStatus, asOf: now.toISOString() };
         return c.json(res);
       } catch (err) {
         return failure(c, err, "intel:heatmap", "heatmap unavailable");
@@ -91,7 +93,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
       try {
         const now = deps.now();
         const since = new Date(now.getTime() - q.data.days * DAY_MS);
-        const [snapshots, flow, flowEvents, alerts, scheduled, edges, exposure, watched] = await Promise.all([
+        const [snapshots, flow, flowEvents, alerts, scheduled, edges, exposure, watched, research] = await Promise.all([
           store.snapshotRange(asset, since, now),
           store.flowSeries(asset, null, since),
           store.listEvents({ since, type: "data", limit: LIST_LIMIT }),
@@ -100,6 +102,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
           graphEdges(store),
           deps.exposure(),
           deps.watched(),
+          store.listResearch({ asset, since, limit: LIST_LIMIT }),
         ]);
         const targets = [...new Set([...exposure.positions.map((p) => p.asset), ...watched])];
         const mine = scheduled.filter((e) => e.assets.some((a) => same(a, asset)));
@@ -117,6 +120,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
             const url = e.sources.find((s) => s.url)?.url;
             return { ts: e.scheduledAt!, kind: "catalyst", title: e.title, tag: e.tag, ...(url ? { url } : {}) };
           }),
+          ...research.map((r): AssetEvent => ({ ts: r.createdAt, kind: "research", title: r.question, tag: r.status === "found" ? "observed" : "hypothesis", research: r })),
         ].sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
         const res: AssetDetailResponse = {
           snapshots,
@@ -135,7 +139,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
       if (!q.success) return invalid(c, q.error, "since");
       try {
         const events = await store.listEvents({ since: q.data.since ? new Date(q.data.since) : undefined, type: "data", limit: LIST_LIMIT });
-        const res: { flags: FlowFlag[] } = { flags: events.flatMap((e) => (e.flag ? [e.flag] : [])) };
+        const res: { flags: FlowFlag[] } = { flags: await withResearch(events.flatMap((e) => (e.flag ? [e.flag] : []))) };
         return c.json(res);
       } catch (err) {
         return failure(c, err, "intel:flows", "flows unavailable");

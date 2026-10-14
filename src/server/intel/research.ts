@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { HttpsUrlSchema, type FlowFlag, type ResearchEvidence, type ResearchResult } from "../../shared/intel.js";
+import { HttpsUrlSchema, type FlowFlag, type PositionsResponse, type ResearchEvidence, type ResearchResult } from "../../shared/intel.js";
+import { alertSource } from "./diff.js";
 import { completeStructured, untrusted, usageCost, UNTRUSTED_RULE, webSearchAvailable, type LlmDeps } from "./llm.js";
 import { lineVerdict, payloadNumbers, stripExempt } from "./numbers.js";
 import type { IntelStore, NewResearch } from "./store.js";
@@ -297,4 +298,68 @@ export async function runResearch(deps: ResearchDeps, input: ResearchInput): Pro
   } catch (e) {
     return await finish({ ...base, ...spent, explanation: e instanceof Error ? e.message : String(e) });
   }
+}
+
+// ─── Limits, wiring and the automatic stage (SPEC.md § Scout S0.3) ───
+
+const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : def);
+/** INTEL_RESEARCH_DAILY (10): manual runs per UTC day. */
+export const researchDailyLimit = (env: Record<string, string | undefined>) => intEnv(env.INTEL_RESEARCH_DAILY, 10);
+/** INTEL_RESEARCH_AUTO_DAILY (3): automatic (flag) runs per UTC day. */
+export const researchAutoLimit = (env: Record<string, string | undefined>) => intEnv(env.INTEL_RESEARCH_AUTO_DAILY, 3);
+export const utcDayStart = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+
+/** The engine's deps from a route's or the ingest job's: positions slimmed to what the prompt needs. */
+export function researchDeps(d: { store: ResearchDeps["store"]; llm: LlmDeps; exposure(): Promise<PositionsResponse>; now(): Date }): ResearchDeps {
+  return {
+    store: d.store,
+    llm: d.llm,
+    now: d.now,
+    exposure: async (asset) =>
+      (await d.exposure()).positions
+        .filter((p) => !asset || p.asset.toLowerCase() === asset.toLowerCase())
+        .map((p) => ({ asset: p.asset, side: p.side, notionalUsd: p.notionalUsd, leverage: p.leverage })),
+  };
+}
+
+const NEWS_WINDOW_MS = 6 * 3_600_000;
+
+export interface AutoResearchDeps {
+  store: ResearchDeps["store"] & Pick<IntelStore, "listAlerts" | "listEvents" | "researchCountSince" | "researchForFlag">;
+  llm: LlmDeps;
+  exposure(): Promise<PositionsResponse>;
+  now(): Date;
+  pushMateriality: number;
+  env?: Record<string, string | undefined>;
+}
+
+/**
+ * Researches the strongest unexplained flow flags (S0.3): materiality >= the push threshold, no news alert on the
+ * asset in the last 6 h, no result yet, at most INTEL_RESEARCH_AUTO_DAILY "flag" runs per UTC day. `left()` is the
+ * caller's remaining budget; a run only starts while more than the research deadline is left. Returns runs started.
+ */
+export async function autoResearch(deps: AutoResearchDeps, left: () => number): Promise<number> {
+  const now = deps.now();
+  const since = new Date(now.getTime() - NEWS_WINDOW_MS);
+  let room = researchAutoLimit(deps.env ?? {}) - (await deps.store.researchCountSince(utcDayStart(now), "flag", true));
+  if (room <= 0) return 0;
+  const [alerts, events] = await Promise.all([deps.store.listAlerts({ since, limit: 500 }), deps.store.listEvents({ since, type: "data", limit: 500 })]);
+  const newsAssets = new Set(alerts.filter((a) => alertSource(a) === "news").map((a) => a.asset.toLowerCase()));
+  const flags = new Map<string, FlowFlag>();
+  for (const e of events) if (e.flag) flags.set(e.id, e.flag);
+  const candidates = alerts
+    .filter((a) => a.kind === "flow" && a.materiality >= deps.pushMateriality && !newsAssets.has(a.asset.toLowerCase()) && flags.has(a.ref))
+    .sort((a, b) => b.materiality - a.materiality);
+  const rd = researchDeps(deps);
+  let ran = 0;
+  for (const a of candidates) {
+    if (room <= 0 || left() <= RESEARCH_DEADLINE_MS) break;
+    const flag = flags.get(a.ref)!;
+    if (await deps.store.researchForFlag(flag.id)) continue;
+    const res = await runResearch(rd, { question: `Why did ${flag.asset} show ${flag.name.replace(/_/g, " ")} (${flag.window})?`, asset: flag.asset, trigger: "flag", flag });
+    if (!res) break; // another run holds the lock
+    ran++;
+    room--;
+  }
+  return ran;
 }
