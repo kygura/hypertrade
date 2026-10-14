@@ -4,6 +4,7 @@
 // workflow" for the exact append instructions the routine follows each run.
 import d20260830 from "./2026-08-30.json" with { type: "json" };
 import d20261008 from "./2026-10-08.json" with { type: "json" };
+import d20261014 from "./2026-10-14.json" with { type: "json" };
 import d20261009 from "./2026-10-09.json" with { type: "json" };
 import d20261011 from "./2026-10-11.json" with { type: "json" };
 import d20261012 from "./2026-10-12.json" with { type: "json" };
@@ -16,4 +17,5 @@ export const MARKETSTATE_HISTORY: Array<{ date: string; data: unknown }> = [
   { date: "2026-10-11", data: d20261011 },
   { date: "2026-10-12", data: d20261012 },
   { date: "2026-10-13", data: d20261013 },
+  { date: "2026-10-14", data: d20261014 },
 ];
