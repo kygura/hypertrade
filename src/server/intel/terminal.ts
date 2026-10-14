@@ -21,7 +21,7 @@ import * as db from "../db.js";
 import type { AccountState } from "../desk/types.js";
 import type { Notifier } from "../desk/notify.js";
 import { claimsJsonSchema, validateLines } from "./claims.js";
-import { buildDiffItems, rankDiffs, type AssetDiffInput, type Bar } from "./diff.js";
+import { activeSources, buildDiffItems, rankDiffs, type AssetDiffInput, type Bar } from "./diff.js";
 import { completeStructured, intelProviderFactory, type LlmDeps } from "./llm.js";
 import { hasSamples, WINDOW_MS, type Point } from "./normalize.js";
 import { sendIntel } from "./notify.js";
@@ -52,6 +52,8 @@ export interface Thresholds {
   minZ: number;
   topK: number;
   pushMateriality: number;
+  /** INTEL_DIGEST_MATERIALITY: below it an item or batched alert stays logged but out of the digest. */
+  digestMateriality: number;
 }
 
 export interface TerminalDeps {
@@ -86,12 +88,13 @@ function envNum(env: Record<string, string | undefined>, key: string, def: numbe
   return env[key]?.trim() && Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
 }
 
-/** INTEL_MIN_Z (2.0), INTEL_TOP_K (5), INTEL_PUSH_MATERIALITY (0.35). */
+/** INTEL_MIN_Z (2.0), INTEL_TOP_K (5), INTEL_PUSH_MATERIALITY (0.35), INTEL_DIGEST_MATERIALITY (0.10). */
 export function loadThresholds(env: Record<string, string | undefined> = process.env): Thresholds {
   return {
     minZ: envNum(env, "INTEL_MIN_Z", 2, 0, 10),
     topK: Math.round(envNum(env, "INTEL_TOP_K", 5, 1, 20)),
     pushMateriality: envNum(env, "INTEL_PUSH_MATERIALITY", 0.35, 0, 10),
+    digestMateriality: envNum(env, "INTEL_DIGEST_MATERIALITY", 0.1, 0, 10),
   };
 }
 
@@ -266,6 +269,7 @@ export async function buildBrief(deps: TerminalDeps, o: BriefOptions): Promise<B
   const { items: all, diffed } = buildDiffItems(
     inputs.filter((i): i is AssetDiffInput => i != null),
     exposure.totalNotionalUsd,
+    await activeSources(deps.store, now).catch(() => new Map()),
   );
   const items = rankDiffs(all, deps.thresholds);
 
@@ -273,7 +277,7 @@ export async function buildBrief(deps: TerminalDeps, o: BriefOptions): Promise<B
     deps.store.listAlerts({ since, route: "batch", limit: 100 }),
     deps.store.listCatalysts(now, new Date(now.getTime() + CATALYST_AHEAD_MS)),
   ]);
-  const alerts = batched.filter((a) => focus.has(a.asset));
+  const alerts = batched.filter((a) => focus.has(a.asset) && a.materiality >= deps.thresholds.digestMateriality);
   const catalysts = scheduled.map((e) => toCatalyst(e, focus)).filter((c) => c.exposed.length > 0);
   const silent = items.length === 0 && alerts.length === 0;
 
@@ -286,7 +290,7 @@ export async function buildBrief(deps: TerminalDeps, o: BriefOptions): Promise<B
     catalysts,
     lines: narration?.lines ?? [],
     silent,
-    threshold: { minZ: deps.thresholds.minZ, pushMateriality: deps.thresholds.pushMateriality },
+    threshold: { minZ: deps.thresholds.minZ, pushMateriality: deps.thresholds.pushMateriality, digestMateriality: deps.thresholds.digestMateriality },
     ingest,
     diffedCount: diffed,
     ...(narration ? { trace: narration.trace } : {}),

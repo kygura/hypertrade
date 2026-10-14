@@ -151,6 +151,12 @@ async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
     await s.deleteUserEdge({ src: "Jito", dst: "SOL", type: "collateral" }),
   ]);
 
+  put("edge.deleteLlm", [
+    await s.deleteLlmEdges([{ src: "USDC", dst: "HYPE", type: "settles_on" }]), // seed: left alone
+    await s.deleteLlmEdges([{ src: "ETH", dst: "SOL", type: "macro_beta" }, { src: "ETH", dst: "SOL", type: "macro_beta" }]),
+    await s.listEdges(),
+  ]);
+
   // events + clusters
   put("ev.empty", await s.upsertEvents([]));
   const [e1] = await s.upsertEvents([event("k1", { entities: ["Jito", "Solana"], assets: ["SOL"], sources: [{ label: "rss", url: "https://a.io/1" }] })]);

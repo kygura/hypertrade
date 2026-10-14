@@ -42,7 +42,7 @@ function setup(env: Record<string, string> = {}) {
     funding: async () => [],
     ingestHealth: async () => [{ source: "flow:coinalyze", ok: false, lastRunAt: NOW.toISOString(), error: "future-markets: HTTP 401" }],
     llm,
-    thresholds: { minZ: 2, topK: 5, pushMateriality: 0.35 },
+    thresholds: { minZ: 2, topK: 5, pushMateriality: 0.35, digestMateriality: 0.1 },
     now: () => NOW,
   } as unknown as IntelDeps; // journal/thesis/copilot/docwatch are not reached by these routes
   const app = new Hono().basePath("/api").route("/intel", createIntelRoutes(deps));

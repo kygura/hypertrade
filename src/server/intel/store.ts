@@ -97,6 +97,8 @@ export interface IntelStore {
   edgesFor(nodes: string[]): Promise<Edge[]>;
   /** Deletes a user edge; seed and LLM edges are left alone (false). */
   deleteUserEdge(key: EdgeKey): Promise<boolean>;
+  /** Deletes LLM-origin edges by key (graph diff-review); seed and user edges are left alone. Returns how many went. */
+  deleteLlmEdges(keys: EdgeKey[]): Promise<number>;
 
   /** Upsert on `key`: id, firstSeen and an assigned cluster survive re-ingest. Duplicate keys in one call: last wins. */
   upsertEvents(events: NewEvent[]): Promise<IntelEvent[]>;
@@ -527,6 +529,11 @@ export class PgIntelStore implements IntelStore {
     const res = await sql()`delete from intel_edges where src = ${k.src} and dst = ${k.dst} and type = ${k.type} and origin = 'user'`;
     return res.count > 0;
   }
+  async deleteLlmEdges(keys: EdgeKey[]) {
+    let n = 0;
+    for (const k of keys) n += (await sql()`delete from intel_edges where src = ${k.src} and dst = ${k.dst} and type = ${k.type} and origin = 'llm'`).count;
+    return n;
+  }
 
   async upsertEvents(events: NewEvent[]) {
     if (!events.length) return [];
@@ -934,6 +941,14 @@ export class MemoryIntelStore implements IntelStore {
   async deleteUserEdge(k: EdgeKey) {
     const key = `${k.src}|${k.dst}|${k.type}`;
     return this.edges.get(key)?.origin === "user" ? this.edges.delete(key) : false;
+  }
+  async deleteLlmEdges(keys: EdgeKey[]) {
+    let n = 0;
+    for (const k of keys) {
+      const key = `${k.src}|${k.dst}|${k.type}`;
+      if (this.edges.get(key)?.origin === "llm") n += Number(this.edges.delete(key));
+    }
+    return n;
   }
 
   async upsertEvents(events: NewEvent[]) {

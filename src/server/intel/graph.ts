@@ -138,11 +138,21 @@ Edge types (src is exposed to dst):
 Use web search. Every edge needs an https source URL that documents it; leave out anything you cannot source. Use Hyperliquid tickers for coins. Do not predict prices.`;
 
 export interface GraphRefreshDeps {
-  store: Pick<IntelStore, "upsertEdges" | "edgesFor">;
+  store: Pick<IntelStore, "upsertEdges" | "edgesFor" | "deleteLlmEdges">;
   llm: LlmDeps;
   /** Held ∪ watched assets. */
   targets(): Promise<string[]>;
   now(): Date;
+  /** collector_runs writer; the per-asset diffs are recorded under `graph:diff`. Best-effort. */
+  recordRun?(collector: string, startedAt: Date, ok: boolean, error?: string | null): Promise<void>;
+}
+
+/** What one asset's rebuild changed, as `src -type-> dst` labels. `refused` counts proposals dropped by validation. */
+export interface AssetGraphDiff {
+  added: string[];
+  removed: string[];
+  changed: string[];
+  refused: number;
 }
 
 export interface GraphRefreshSummary {
@@ -155,23 +165,38 @@ export interface GraphRefreshSummary {
   stored: number;
   /** Proposed edges refused: no https source, bad node name, self loop, or not touching the asset. */
   dropped: number;
+  /** Per asset rebuilt successfully (SPEC.md § Scout S0.7). */
+  diffs: Record<string, AssetGraphDiff>;
   /** Set when the refresh could not run at all (the day is not done: the cron must not stamp it). */
   warning?: string;
 }
 
-/** Validates proposed edges for `asset`; returns the rows to store and how many were refused. */
-export function acceptProposals(asset: string, proposed: z.infer<typeof ProposalSchema>["edges"], now: Date): { edges: NewEdge[]; dropped: number } {
+/**
+ * Validates proposed edges for `asset`; returns the rows to store and how many were refused.
+ * `shaped` lists the labels of refused proposals that were well-formed relationships (refused for
+ * their source only): the model still believes in them, so a rebuild must not delete them.
+ */
+export function acceptProposals(
+  asset: string,
+  proposed: z.infer<typeof ProposalSchema>["edges"],
+  now: Date,
+): { edges: NewEdge[]; dropped: number; shaped: string[] } {
   const edges: NewEdge[] = [];
+  const shaped: string[] = [];
   for (const p of proposed.slice(0, MAX_PROPOSED)) {
     const src = EntitySchema.safeParse(p.src);
     const dst = EntitySchema.safeParse(p.dst);
     const source = HttpsUrlSchema.safeParse(p.source ?? "");
-    if (!src.success || !dst.success || !source.success) continue;
+    if (!src.success || !dst.success) continue;
     if (norm(src.data) === norm(dst.data)) continue;
     if (norm(src.data) !== norm(asset) && norm(dst.data) !== norm(asset)) continue;
+    if (!source.success) {
+      shaped.push(label({ src: src.data, dst: dst.data, type: p.type }));
+      continue;
+    }
     edges.push({ src: src.data, dst: dst.data, type: p.type, weight: EDGE_TYPE_WEIGHT[p.type], source: source.data, lastVerified: now.toISOString(), origin: "llm" });
   }
-  return { edges, dropped: proposed.length - edges.length };
+  return { edges, dropped: proposed.length - edges.length, shaped };
 }
 
 /**
@@ -186,39 +211,78 @@ export async function refreshGraph(deps: GraphRefreshDeps, opts: { budgetMs: num
   const left = () => opts.budgetMs - (Date.now() - t0);
   const seeded = await ensureSeedEdges(deps.store);
   const assets = [...new Set((await deps.targets()).map((a) => a.trim()).filter(Boolean))];
-  const out: GraphRefreshSummary = { assets, done: [], skipped: [], failed: [], seeded, stored: 0, dropped: 0 };
+  const out: GraphRefreshSummary = { assets, done: [], skipped: [], failed: [], seeded, stored: 0, dropped: 0, diffs: {} };
   // Edges need sources found on the web; a provider without hosted search would only guess.
   if (webSearchAvailable(deps.llm, "strong") === false) return { ...out, skipped: assets, warning: GRAPH_NO_WEB_SEARCH };
 
-  for (const [i, asset] of assets.entries()) {
-    if (left() <= 0 || opts.signal?.aborted) {
-      out.skipped.push(...assets.slice(i));
-      break;
+  const keep = new Set<string>();
+  const rebuilt = new Set<string>(); // successful, non-empty rebuilds
+  let threw: unknown = null;
+  try {
+    for (const [i, asset] of assets.entries()) {
+      if (left() <= 0 || opts.signal?.aborted) {
+        out.skipped.push(...assets.slice(i));
+        break;
+      }
+      const now = deps.now();
+      const known = await deps.store.edgesFor([asset]);
+      const knownText = known.length ? known.map((e) => `${e.src} -${e.type}-> ${e.dst}`).join("\n") : "(none)";
+      const res = await completeStructured({
+        tier: "strong",
+        system: GRAPH_SYSTEM,
+        user: `Asset: ${asset}\nKnown edges:\n${knownText}\n\nPropose up to ${MAX_PROPOSED} edges that touch ${asset} (as src or dst), including ones already known if you can source them.`,
+        schema: ProposalSchema,
+        jsonSchema: proposalJsonSchema,
+        promptVersion: GRAPH_PROMPT_VERSION,
+        cacheKey: `graph:${asset}:${SAME_DAY(now)}`,
+        webSearch: true,
+        signal: opts.signal,
+        deadlineMs: Math.max(1, Math.min(LLM_DEADLINE_MS, left())),
+        deps: deps.llm,
+      });
+      if (!res.ok) {
+        out.failed.push({ asset, error: res.error });
+        continue;
+      }
+      const { edges, dropped, shaped } = acceptProposals(asset, res.value.edges, now);
+      out.dropped += dropped;
+      const have = new Map(known.map((e) => [label(e), e]));
+      out.diffs[asset] = {
+        added: edges.filter((e) => !have.has(label(e))).map(label),
+        removed: [],
+        changed: edges.filter((e) => have.get(label(e))?.source != null && have.get(label(e))!.source !== e.source).map(label),
+        refused: dropped,
+      };
+      for (const l of [...edges.map(label), ...shaped]) keep.add(l);
+      if (edges.length) rebuilt.add(norm(asset));
+      out.stored += edges.length ? await deps.store.upsertEdges(edges) : 0;
+      out.done.push(asset);
     }
-    const now = deps.now();
-    const known = await deps.store.edgesFor([asset]);
-    const knownText = known.length ? known.map((e) => `${e.src} -${e.type}-> ${e.dst}`).join("\n") : "(none)";
-    const res = await completeStructured({
-      tier: "strong",
-      system: GRAPH_SYSTEM,
-      user: `Asset: ${asset}\nKnown edges:\n${knownText}\n\nPropose up to ${MAX_PROPOSED} edges that touch ${asset} (as src or dst), including ones already known if you can source them.`,
-      schema: ProposalSchema,
-      jsonSchema: proposalJsonSchema,
-      promptVersion: GRAPH_PROMPT_VERSION,
-      cacheKey: `graph:${asset}:${SAME_DAY(now)}`,
-      webSearch: true,
-      signal: opts.signal,
-      deadlineMs: Math.max(1, Math.min(LLM_DEADLINE_MS, left())),
-      deps: deps.llm,
-    });
-    if (!res.ok) {
-      out.failed.push({ asset, error: res.error });
-      continue;
+    // Deletes come once, after every upsert: an edge only goes when no asset's rebuild kept it
+    // and every target it touches rebuilt successfully this run.
+    const targets = new Set(assets.map(norm));
+    const stale = rebuilt.size
+      ? (await deps.store.edgesFor(assets)).filter((e) => {
+          if (e.origin !== "llm" || keep.has(label(e))) return false;
+          const touched = [e.src, e.dst].map(norm).filter((n) => targets.has(n));
+          return touched.length > 0 && touched.every((n) => rebuilt.has(n));
+        })
+      : [];
+    if (stale.length) {
+      await deps.store.deleteLlmEdges(stale);
+      for (const e of stale) for (const n of [e.src, e.dst]) out.diffs[assets.find((a) => norm(a) === norm(n)) ?? ""]?.removed.push(label(e));
     }
-    const { edges, dropped } = acceptProposals(asset, res.value.edges, now);
-    out.dropped += dropped;
-    out.stored += edges.length ? await deps.store.upsertEdges(edges) : 0;
-    out.done.push(asset);
+  } catch (e) {
+    threw = e;
+    throw e;
+  } finally {
+    if (out.done.length || threw) {
+      const detail = JSON.stringify(out.diffs);
+      await deps.recordRun?.("graph:diff", new Date(t0), !threw, threw ? `${threw instanceof Error ? threw.message : String(threw)} ${detail}` : detail).catch(() => {});
+    }
   }
   return out;
 }
+
+const label = (e: { src: string; dst: string; type: string }) => `${e.src} -${e.type}-> ${e.dst}`;
+

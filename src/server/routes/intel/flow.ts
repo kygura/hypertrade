@@ -54,7 +54,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
         const [exposure, watched, review, health] = await Promise.all([deps.exposure(), deps.watched(), store.lastReview(), deps.ingestHealth().catch(() => [])]);
         const held = new Set(exposure.positions.map((p) => p.asset));
         const targets = [...new Set([...held, ...watched])];
-        const ctx: RoutingContext = { exposure, targets, edges: [], feedback: [] };
+        const ctx: RoutingContext = { exposure, targets, edges: [], feedback: [], sources: new Map() };
         const span = window === "review" ? Math.max(HOUR_MS, t - (review ? Date.parse(review.ts) : t - FALLBACK_BASELINE_MS)) : null;
         const o = flowOptions(env);
         const rows: HeatmapResponse["rows"] = [];

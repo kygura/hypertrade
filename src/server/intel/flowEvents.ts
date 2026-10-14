@@ -1,6 +1,7 @@
 import type { Claim } from "../../shared/claims.js";
 import type { Alert, EventSource, FlowFlag, FlowMetric, HeatmapMetric, IntelEvent } from "../../shared/intel.js";
 import type { CatalystDeps } from "./catalysts.js";
+import { confluenceK, materiality as materialityOf, noteSource, type SignalSource } from "./diff.js";
 import { DELEV_OI_PCT, detectFlows } from "./flows.js";
 import { assetExposure, deepLink, loadContext, routeFor } from "./mapper.js";
 import { feedbackActions, sendIntel } from "./notify.js";
@@ -14,8 +15,8 @@ import { computeWindows, LOOKBACK, parseThresholds, regimeFlags, seriesFromRows,
 // conditions clear (the set firing last run lives in intel_settings):
 //   event   intel_events type "data", origin "flow", tag observed, the FlowFlag
 //           attached; source = snapshot (HL-only inputs) or coinalyze:<venue>
-//   alert   kind "flow", ref = event id, materiality = score × exposure_weight
-//           × stop_proximity (mapper/diff helpers), routed like the mapper:
+//   alert   kind "flow", ref = event id, materiality = diff.materiality (score ×
+//           exposure_weight × stop_proximity × confluence), routed like the mapper:
 //           ≥ INTEL_PUSH_MATERIALITY → Telegram now, else batched into the
 //           next brief (which merges batched alerts).
 // No INTEL_MIN_Z gate: the detector's own conditions are the gate.
@@ -121,6 +122,9 @@ export async function flowAlerts(deps: FlowDeps, now: Date): Promise<FlowRun> {
       const cur = best.get(f.name);
       if (!cur || f.score > cur.score) best.set(f.name, f);
     }
+    const classOf = (f: FlowFlag): SignalSource => (f.kind === "detector" ? "flow" : "regime");
+    // Every class firing now is known before any alert is routed, so siblings get the same k in any order.
+    for (const f of best.values()) if (!prev[`${f.name}|${asset}`]) noteSource(ctx.sources, asset, classOf(f));
     for (const f of best.values()) {
       const k = `${f.name}|${asset}`;
       if (prev[k]) {
@@ -151,7 +155,8 @@ export async function flowAlerts(deps: FlowDeps, now: Date): Promise<FlowRun> {
       active[k] = event!.id;
       out.events.push(event!);
       const line: Claim = { tag: "observed", text, source, ts: f.ts };
-      const materiality = f.score * exp.weight * exp.proximity;
+      const own = classOf(f);
+      const materiality = materialityOf({ surprise: f.score, exposure: exp.weight, proximity: exp.proximity }, confluenceK(ctx.sources.get(asset), own));
       const alert = await deps.store.insertAlert({
         kind: "flow",
         ref: event!.id,
