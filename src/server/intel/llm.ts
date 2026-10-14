@@ -14,8 +14,11 @@ export type LlmTier = "cheap" | "strong";
 /** Implemented by IntelStore (store.ts). */
 export interface LlmCacheStore {
   cacheGet(key: string, promptVersion: string): Promise<unknown | null>;
-  cachePut(key: string, promptVersion: string, output: unknown, usage: unknown): Promise<void>;
+  /** `model` is stored inside the usage json, so spend can be priced later. */
+  cachePut(key: string, promptVersion: string, output: unknown, usage: unknown, model?: string): Promise<void>;
   callsSince(since: Date): Promise<number>;
+  /** Stored usage rows since a time (dollar caps); a store without it skips them. */
+  usageSince?(since: Date): Promise<unknown[]>;
 }
 
 export interface LlmDeps {
@@ -23,6 +26,25 @@ export interface LlmDeps {
   cache: LlmCacheStore;
   now(): Date;
   dailyCap: number;
+  /** Dollar cap per UTC day (SPEC F0.7); default $2.00. */
+  dailyUsd?: number;
+}
+
+/** $/MTok (input, output). Unknown model → the priciest row (SPEC F0.7). */
+export const LLM_PRICES: Record<string, [number, number]> = {
+  "claude-fable-5-1": [10, 50],
+  "claude-opus-5-5": [4, 20],
+  "claude-opus-5": [5, 25],
+  "claude-sonnet-5-5": [2, 10],
+  "claude-haiku-4-5": [1, 5],
+};
+const TOP_PRICE = Object.values(LLM_PRICES).reduce((a, b) => (a[1] >= b[1] ? a : b));
+
+/** Dollars for one stored usage row ({input_tokens, output_tokens, model?}). */
+export function usageCost(usage: unknown): number {
+  const u = (usage ?? {}) as { input_tokens?: unknown; output_tokens?: unknown; model?: unknown };
+  const [i, o] = (typeof u.model === "string" && LLM_PRICES[u.model]) || TOP_PRICE;
+  return ((Number(u.input_tokens) || 0) * i + (Number(u.output_tokens) || 0) * o) / 1e6;
 }
 
 export interface LlmTrace {
@@ -35,8 +57,11 @@ export interface LlmTrace {
   usage: Usage;
   ms: number;
   attempts: number;
-  /** Claim lines dropped by validateClaims; set by the caller. */
+  /** Claim lines dropped by validateLines (any reason); set by the caller. */
   dropped?: number;
+  /** Of those, lines citing a number not in the payload / giving advice (F0.5). */
+  numbersRejected?: number;
+  adviceRejected?: number;
 }
 
 export type StructuredResult<T> = { ok: true; value: T; trace: LlmTrace; cached: boolean } | { ok: false; error: string; trace: LlmTrace };
@@ -101,6 +126,11 @@ export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Pr
     const now = deps.now();
     const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     if ((await race(deps.cache.callsSince(dayStart))) >= deps.dailyCap) return fail("LLM cap reached");
+    if (deps.cache.usageSince) {
+      const limit = deps.dailyUsd ?? 2;
+      const spent = (await race(deps.cache.usageSince(dayStart))).reduce<number>((s, u) => s + usageCost(u), 0);
+      if (spent >= limit) return fail(`LLM cap reached ($${spent.toFixed(2)} / $${limit.toFixed(2)})`);
+    }
 
     const emit: ToolSpec = { name: EMIT_TOOL, description: "Emit the final structured answer. Call exactly once.", input_schema: jsonSchema };
     let lastError = "";
@@ -123,7 +153,7 @@ export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Pr
         lastError = zodMessage(parsed.error);
         continue;
       }
-      await race(deps.cache.cachePut(cacheKey ?? `nocache:${crypto.randomUUID()}`, promptVersion, parsed.data, trace.usage)).catch((e) =>
+      await race(deps.cache.cachePut(cacheKey ?? `nocache:${crypto.randomUUID()}`, promptVersion, parsed.data, trace.usage, provider.model)).catch((e) =>
         console.warn(`[intel] llm cache write failed: ${e instanceof Error ? e.message : String(e)}`),
       );
       return { ok: true, value: parsed.data, trace: { ...trace, ms: Date.now() - t0 }, cached: false };

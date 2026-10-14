@@ -20,7 +20,7 @@ import type { AssetCtx } from "../../shared/types.js";
 import * as db from "../db.js";
 import type { AccountState } from "../desk/types.js";
 import type { Notifier } from "../desk/notify.js";
-import { claimsJsonSchema, validateClaims } from "./claims.js";
+import { claimsJsonSchema, validateLines } from "./claims.js";
 import { buildDiffItems, rankDiffs, type AssetDiffInput, type Bar } from "./diff.js";
 import { completeStructured, intelProviderFactory, type LlmDeps } from "./llm.js";
 import { hasSamples, WINDOW_MS, type Point } from "./normalize.js";
@@ -45,7 +45,7 @@ const CATALYST_AHEAD_MS = 24 * HOUR_MS;
 /** A stored snapshot this fresh lends its book depth/spread to the live row (books are only fetched by collect). */
 const BOOK_FRESH_MS = 30 * 60_000;
 const ATR_LOOKBACK_MS = 48 * HOUR_MS;
-export const BRIEF_PROMPT_VERSION = "terminal-brief-v1";
+export const BRIEF_PROMPT_VERSION = "terminal-brief-v2";
 const MAX_LINES = 5;
 
 export interface Thresholds {
@@ -191,7 +191,7 @@ Write 3 to 5 short lines, most important first. Each line is one object:
 - A fact read from the data: {"tag": "observed", "text", "source": {"label", "url"}, "ts"}. For a snapshot change use source {"label": "snapshot", "url": "/markets/<COIN>"} and that change's ts. For an alert or catalyst, restate it with its own first source and its createdAt / scheduledAt as ts.
 - Anything interpretive (why it matters, what it could mean for the position): {"tag": "hypothesis", "text"}.
 
-Rules: use only the numbers given and do not invent any. Name the position side for held assets ("Long SOL: ..."). Never predict direction, never give price targets, never tell the trader to buy, sell, close or size anything.`;
+Rules: reuse the numbers given exactly as written; never compute, convert or invent one (funding is given as %/8h in fromPct8h/toPct8h, deltas are in deltaUnit). Name the position side for held assets ("Long SOL: ..."). Never predict direction, never give price targets, never tell the trader to buy, sell, close or size anything.`;
 
 const sig = (n: number) => Number(n.toPrecision(6));
 function narrationInput(since: Date, now: Date, items: DiffItem[], alerts: Alert[], catalysts: Catalyst[], exposure: PositionsResponse): string {
@@ -208,6 +208,7 @@ function narrationInput(since: Date, now: Date, items: DiffItem[], alerts: Alert
       held: i.held,
       from: sig(i.from),
       to: sig(i.to),
+      ...(i.metric === "funding" ? { fromPct8h: round(i.from * 800, 4), toPct8h: round(i.to * 800, 4) } : {}),
       delta: round(i.delta, 2),
       deltaUnit: i.deltaUnit,
       z: round(i.z, 2),
@@ -238,8 +239,8 @@ async function narrate(
     deps: deps.llm,
   });
   if (!r.ok) return { lines: [], trace: { ...r.trace, error: r.error } };
-  const { claims, dropped } = validateClaims(r.value.lines);
-  return { lines: claims.slice(0, MAX_LINES), trace: { ...r.trace, cached: r.cached, dropped } };
+  const { claims, ...counts } = validateLines(r.value.lines, input);
+  return { lines: claims.slice(0, MAX_LINES), trace: { ...r.trace, cached: r.cached, ...counts } };
 }
 
 export async function buildBrief(deps: TerminalDeps, o: BriefOptions): Promise<Brief> {
@@ -402,7 +403,13 @@ export function defaultTerminalDeps(
     observations: async (id, from, to) => (await db.seriesRange(id, from, to)).map((p) => ({ t: new Date(p.ts).getTime(), v: p.value })),
     funding: async (coin, from, to) => (await db.getFunding(coin, from, to)).map((f) => ({ t: new Date(f.ts).getTime(), rate: f.rate, premium: f.premium })),
     ingestHealth: loadIngestHealth,
-    llm: { makeProvider: intelProviderFactory(env), cache: store, now: () => new Date(), dailyCap: Math.round(envNum(env, "INTEL_LLM_DAILY_CAP", 200, 0, 100_000)) },
+    llm: {
+      makeProvider: intelProviderFactory(env),
+      cache: store,
+      now: () => new Date(),
+      dailyCap: Math.round(envNum(env, "INTEL_LLM_DAILY_CAP", 200, 0, 100_000)),
+      dailyUsd: envNum(env, "INTEL_LLM_DAILY_USD", 2, 0, 100_000),
+    },
     thresholds: loadThresholds(env),
     now: () => new Date(),
   };

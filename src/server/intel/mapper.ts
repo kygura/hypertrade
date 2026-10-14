@@ -15,7 +15,7 @@ import {
   type PositionsResponse,
 } from "../../shared/intel.js";
 import type { Notifier } from "../desk/notify.js";
-import { claimsJsonSchema, validateClaims } from "./claims.js";
+import { claimsJsonSchema, validateLines } from "./claims.js";
 import { atr } from "../desk/tools.js";
 import { exposureWeight, stopDistance, stopProximity, type Bar } from "./diff.js";
 import { seedEdges, walk } from "./graph.js";
@@ -253,8 +253,8 @@ async function explain(
     deps: deps.llm,
   });
   if (!r.ok) return { line: fallback, trace: { ...r.trace, error: r.error } };
-  const { claims, dropped } = validateClaims([r.value.line]);
-  const trace: LlmTrace = { ...r.trace, cached: r.cached, dropped };
+  const { claims, ...counts } = validateLines([r.value.line], user);
+  const trace: LlmTrace = { ...r.trace, cached: r.cached, ...counts };
   const claim = claims[0];
   if (!claim) return { line: fallback, trace };
   // The side is the one thing the line must carry; code adds it when the model left it out.

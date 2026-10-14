@@ -72,6 +72,9 @@ export const LlmTraceSchema = z.object({
   attempts: z.number().int().optional(),
   /** Claim lines dropped by the validator (I0.7). */
   dropped: z.number().int().nonnegative().optional(),
+  /** Of those, lines with a number not in the payload / with advice language (F0.5). */
+  numbersRejected: z.number().int().nonnegative().optional(),
+  adviceRejected: z.number().int().nonnegative().optional(),
   error: z.string().optional(),
 });
 export type LlmTrace = z.infer<typeof LlmTraceSchema>;

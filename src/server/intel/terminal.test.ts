@@ -168,7 +168,7 @@ describe("buildBrief", () => {
     expect(brief.alerts.map((a) => [a.asset, a.ref])).toEqual([["SOL", "later"]]);
     expect(brief.catalysts.map((c) => [c.title, c.exposed])).toEqual([["soon unlock", ["SOL"]]]);
     expect(brief.lines.map((l) => l.tag)).toEqual(["observed", "hypothesis"]);
-    expect(brief.trace).toMatchObject({ tier: "strong", model: "fake-strong", dropped: 1, promptVersion: "terminal-brief-v1" });
+    expect(brief.trace).toMatchObject({ tier: "strong", model: "fake-strong", dropped: 1, promptVersion: "terminal-brief-v2" });
     expect(h.provider.steps).toBe(1);
     expect(h.store.reviews.at(-1)).toMatchObject({ via: "deeplink", briefId: brief.id });
     expect(await h.store.latestBrief()).toEqual(brief);
