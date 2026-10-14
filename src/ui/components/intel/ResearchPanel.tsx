@@ -6,7 +6,6 @@ import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
 import { ClaimAge } from './ClaimAge'
 import { ResearchAsk } from './ResearchAsk'
 import { ResearchCard } from './ResearchCard'
-import { askState } from './research'
 
 // ResearchPanel — DESIGN-terminal §16.1. RESEARCH · NEWEST FIRST, the usage
 // line (`3 / 10 TODAY`, amber at the limit), the ask box (always rendered),
@@ -40,7 +39,7 @@ export function ResearchPanel({
   highlightId: string | null
   disabledReason: string | null
   flagText?: (flagId: string) => string | undefined
-  onAsk: (input: { question: string; asset?: string }) => void
+  onAsk: (input: { question: string; asset?: string }, onResult?: () => void) => boolean
 }) {
   const d = state.data
   const atLimit = d?.usedToday != null && d.limit != null && d.usedToday >= d.limit
@@ -80,7 +79,6 @@ export function ResearchPanel({
           error={ask.error}
           status={ask.status}
           offline={ask.offline}
-          state={askState(ask)}
           onSubmit={onAsk}
         />
         <div className="border-t border-border-subtle">

@@ -5,7 +5,7 @@ import { Button } from '../Button'
 import { SkeletonRows } from '../state'
 import { ClaimAge } from './ClaimAge'
 import { ClaimList } from './ClaimList'
-import { fmtCost, statusTone, statusWord, toClaim } from './research'
+import { fmtCost, STATUS_TONE, STATUS_WORD, toClaim } from './research'
 
 // ResearchCard — DESIGN-terminal §16.2. Status line, EXPLANATION (verbatim
 // prose, never a Claim), evidence as a ClaimList (OBS/HYP via §2), OPEN
@@ -30,7 +30,7 @@ export function ResearchCard({
 }) {
   const navigate = useNavigate()
   const answered = r.status === 'found' || r.status === 'no_cause'
-  const word = statusWord(r.status)
+  const word = STATUS_WORD[r.status]
   const meta = [r.trigger === 'flag' ? (flagText ? `FLAG · ${flagText}` : 'FLAG') : 'MANUAL', `${r.searches} SEARCHES`, fmtCost(r.costUsd), r.model].filter(Boolean)
 
   return (
@@ -42,7 +42,7 @@ export function ResearchCard({
     >
       {!compact && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Badge tone={statusTone(r.status)}>{r.status === 'running' ? <span className="pulse-label">{word}</span> : word}</Badge>
+          <Badge tone={STATUS_TONE[r.status]}>{r.status === 'running' ? <span className="pulse-label">{word}</span> : word}</Badge>
           {r.asset && <span className="text-sm text-text-primary">{r.asset}</span>}
           {r.asset && (
             <span aria-hidden="true" className="text-text-secondary">

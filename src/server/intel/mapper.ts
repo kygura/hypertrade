@@ -20,6 +20,7 @@ import { atr } from "../desk/tools.js";
 import { activeSources, confluenceK, exposureWeight, materiality as materialityOf, stopDistance, stopProximity, type ActiveSources, type Bar } from "./diff.js";
 import { seedEdges, walk } from "./graph.js";
 import { completeStructured, untrusted, UNTRUSTED_RULE, type LlmDeps } from "./llm.js";
+import { lineVerdict } from "./numbers.js";
 import { feedbackActions, sendIntel } from "./notify.js";
 import { loadPricedIn, pricedInText } from "./pricedIn.js";
 import type { IntelStore } from "./store.js";
@@ -359,7 +360,7 @@ export async function mapClusters(deps: MapperDeps, clusterIds: string[], opts: 
         entities: [...new Set([...x.entities, ...x.assets])],
         eventType: x.type,
         magnitude: x.magnitude,
-        title: c.label ?? events[0]?.title ?? x.summary,
+        title: c.label ?? events[0]?.title ?? (lineVerdict(x.summary, []) === null ? x.summary : "Event"),
         sources: events.flatMap((e) => e.sources),
         firstSeen: c.firstSeen,
       },

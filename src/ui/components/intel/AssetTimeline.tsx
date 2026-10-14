@@ -95,6 +95,9 @@ export function markerStroke(e: Pick<AssetEvent, 'kind'>, hot: boolean): string 
 export const eventKey = (e: AssetEvent) => `${e.kind}:${e.ts}:${e.title}`
 
 const MARGIN = { top: 4, right: 8, left: 0, bottom: 0 }
+/** recharts 2.15 treats an explicit `yAxisId={undefined}` as a real id and throws; omit the prop instead. */
+export const yAxisIdProp = (id?: string) => (id ? { yAxisId: id } : {})
+
 const TICK = { fontSize: 9, fill: 'var(--color-text-secondary)' }
 const pct = (v: number | null | undefined, d = 4) => (v == null ? '—' : `${fmtSigned(v, d)}%`)
 const usd = (v: number | null | undefined) => (v == null ? '—' : fmtUsd(v, { compact: true }))
@@ -169,7 +172,7 @@ export function AssetTimeline({
     />
   )
   const y = (fmt: (v: number) => string, id?: string) => (
-    <YAxis yAxisId={id} tickFormatter={fmt} tick={TICK} stroke="var(--color-border)" width={44} />
+    <YAxis {...yAxisIdProp(id)} tickFormatter={fmt} tick={TICK} stroke="var(--color-border)" width={44} />
   )
   const chart = { data: rows, syncId: 'asset', syncMethod: 'value' as const, margin: MARGIN }
   const small = 'h-[90px] lg:h-[120px]'

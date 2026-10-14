@@ -28,7 +28,6 @@ const EXEMPT = [
 const NUMBER = /(?<![\w.]|[A-Za-z][-:])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:\s?(%|bps?\b|thousand\b|million\b|billion\b|trillion\b)|(bn|mn|[kmb])(?![A-Za-z]))?/gi;
 const SCALE: Record<string, number> = { k: 1e3, thousand: 1e3, m: 1e6, mn: 1e6, million: 1e6, b: 1e9, bn: 1e9, billion: 1e9, trillion: 1e12 };
 
-/** Numeric tokens of an LLM line, exempt ones skipped. Signs are dropped (direction is usually in words). */
 /** `text` with the exempt spans (dates, times, list markers) blanked out, length preserved. */
 export function stripExempt(text: string): string {
   let t = text;
@@ -36,6 +35,7 @@ export function stripExempt(text: string): string {
   return t;
 }
 
+/** Numeric tokens of an LLM line, exempt ones skipped. Signs are dropped (direction is usually in words). */
 export function extractNumbers(text: string): NumToken[] {
   const t = stripExempt(text);
   const out: NumToken[] = [];
@@ -54,12 +54,17 @@ export function extractNumbers(text: string): NumToken[] {
 
 const PLAIN = /\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g;
 
-/** Every number in a call's input payload, absolute: numeric fields, and numbers inside strings (JSON strings are parsed). */
+// Identifier/timestamp/link fields and values: digits there are not market data.
+const SKIP_KEY = /^(?:id|ref|ts|url|source)$|(?:Id|At|_at|_ts)$/;
+const SKIP_VALUE = /^(?:\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|https?:\/\/\S+)$/i;
+
+/** Every number in a call's input payload, absolute: numeric fields, and numbers inside strings (JSON strings are parsed). Ids, timestamps and URLs are skipped. */
 export function payloadNumbers(payload: unknown, out: number[] = []): number[] {
   if (typeof payload === "number") {
     if (Number.isFinite(payload)) out.push(Math.abs(payload));
   } else if (typeof payload === "string") {
     const s = payload.trim();
+    if (SKIP_VALUE.test(s)) return out;
     if (s.startsWith("{") || s.startsWith("[")) {
       try {
         return payloadNumbers(JSON.parse(s), out);
@@ -70,13 +75,13 @@ export function payloadNumbers(payload: unknown, out: number[] = []): number[] {
     for (const m of s.match(PLAIN) ?? []) out.push(Number(m.replace(/,/g, "")));
     for (const n of extractNumbers(s)) out.push(n.value);
   } else if (payload && typeof payload === "object") {
-    for (const v of Object.values(payload)) payloadNumbers(v, out);
+    for (const [k, v] of Object.entries(payload)) if (!SKIP_KEY.test(k)) payloadNumbers(v, out);
   }
   return out;
 }
 
 const VERB = "(?:buy|sell|enter|exit)";
-const NOT_NOUN = "(?!-|\\s+(?:liquidity|volume|pressure|side|walls?|orders?|flows?|ratio|signals?|interest)\\b)";
+const NOT_NOUN = "(?!-|/|\\s+(?:liquidity|volume|pressure|side|walls?|orders?|flows?|ratio|signals?|interest|squeezes?|positioning|positions?|liquidations?|bias|skew|term)\\b)";
 const ADVICE = [
   // ponytail: imperative = verb at a clause start or after an advisory lead-in; a parser would catch more phrasings.
   new RegExp(`(?:^[\\s\\-•*]*|[.!?:;—–]\\s*)${VERB}\\b${NOT_NOUN}`, "i"),
@@ -84,6 +89,8 @@ const ADVICE = [
   /\btargets?\b|\bwill\s+reach\b/i,
   // Imperatives with no buy/sell verb. Bare "long"/"short" stay legal ("long/short ratio", "crowded long").
   /\b(?:go\s+(?:long|short)|take\s+profits?|add\s+(?:to\s+)?exposure|trim|short\s+it|long\s+it)\b/i,
+  // Sentence-initial imperatives: "Close the SOL long…", "Short SOL now." ("Long SOL." / "Long SOL:" is the position-label form and stays legal.)
+  new RegExp(`(?:^[\\s\\-•*]*|[.!?:;—–]\\s*)(?:close|trim|reduce|add to|size (?:up|down)|take profit|consider (?:closing|selling|buying|shorting)|(?:short|long)(?!\\s+[\\w:]+\\s*[.:(]))\\b${NOT_NOUN}`, "im"),
   /\bTP\d?\b/,
 ];
 

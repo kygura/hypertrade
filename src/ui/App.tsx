@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AppShell } from './components/AppShell'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { api } from './lib/api'
 import { Login } from './pages/Login'
 import { Overview } from './pages/Overview'
@@ -53,7 +54,12 @@ function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     api.get('/auth/me').catch(() => {}) // 401 redirect handled in api.ts
   }, [])
-  return <AppShell>{children}</AppShell>
+  const { pathname } = useLocation()
+  return (
+    <AppShell>
+      <ErrorBoundary key={pathname}>{children}</ErrorBoundary>
+    </AppShell>
+  )
 }
 
 export default function App() {
