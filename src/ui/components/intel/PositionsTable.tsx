@@ -5,7 +5,7 @@ import { Badge } from '../Badge'
 import { Button } from '../Button'
 import { DataTable, type Column } from '../DataTable'
 import { SrcTag } from '../SrcTag'
-import { fmtStopDist, MINUS } from './format'
+import { fmtLeverage, fmtStopDist, MINUS } from './format'
 
 // PositionsTable — DESIGN-terminal §3.7. Rows = positions[] across all three
 // sources, default sort notional desc. Row tap/Enter → /markets/:coin. Only
@@ -36,7 +36,7 @@ export function positionColumns(onEdit: (p: ExposurePosition) => void): Column<E
             <SrcTag source={p.source} />
           </span>
           <span className={`text-[9px] uppercase tracking-wider ${p.side === 'long' ? 'text-green' : 'text-red-text'}`}>
-            {p.side === 'long' ? 'LONG' : 'SHORT'} {p.leverage}×
+            {p.side === 'long' ? 'LONG' : 'SHORT'} {fmtLeverage(p.leverage)}
           </span>
         </span>
       ),

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { SnapshotRow } from "../../shared/intel.js";
-import { MemoryIntelStore, type NewAlert, type NewEvent } from "./store.js";
+import { MemoryIntelStore, PgIntelStore, type NewAlert, type NewEvent } from "./store.js";
 
 const snap = (asset: string, ts: string, price: number): SnapshotRow => ({
   asset, ts, price, vol24h: null, funding: null, oiUsd: null, premium: null, basis: null,
@@ -166,5 +166,53 @@ describe("MemoryIntelStore graph, events, cache", () => {
     await expect(s.insertWatchChange({ watchId: "nope", fromHash: null, toHash: "h", diff: null, facts: [], detail: null, lines: [] })).rejects.toThrow();
     expect(await s.deleteWatch(w.id)).toBe(true);
     expect(await s.listWatchChanges(w.id, 10)).toHaveLength(0);
+  });
+});
+
+// Live Postgres run (store.pg.test.ts): Postgres returns every timestamptz as
+// ISO UTC; the memory store echoed the caller's spelling for these fields.
+describe("MemoryIntelStore timestamp parity with Postgres", () => {
+  test("cluster, edge, brief, thesis and watch timestamps come back as ISO UTC", async () => {
+    const s = new MemoryIntelStore();
+    const c = await s.upsertCluster({ label: null, entities: [], extraction: null, firstSeen: "2026-10-13T02:00:00+02:00", lastSeen: "2026-10-13T06:00:00+02:00", mappedAt: "2026-10-13T05:00:00Z" });
+    expect(c).toMatchObject({ firstSeen: "2026-10-13T00:00:00.000Z", lastSeen: "2026-10-13T04:00:00.000Z", mappedAt: "2026-10-13T05:00:00.000Z" });
+    await s.upsertEdges([{ src: "A", dst: "B", type: "direct", weight: 1, source: null, lastVerified: "2026-10-13T02:00:00+02:00", origin: "seed" }]);
+    expect((await s.listEdges())[0]!.lastVerified).toBe("2026-10-13T00:00:00.000Z");
+    const b = await s.insertBrief({ surface: "ui", since: "2026-10-13T02:00:00+02:00", items: [], alerts: [], catalysts: [], lines: [], silent: true });
+    expect(b.since).toBe("2026-10-13T00:00:00.000Z");
+    const t = await s.insertThesis({ text: "x", assets: [], claims: [], invalidation: [], wrongIf: [], checkedAt: "2026-10-13T02:00:00+02:00" });
+    expect(t.checkedAt).toBe("2026-10-13T00:00:00.000Z");
+    expect((await s.updateThesis(t.id, { checkedAt: "2026-10-14T02:00:00+02:00" }))!.checkedAt).toBe("2026-10-14T00:00:00.000Z");
+    const w = await s.insertWatch({ kind: "evm_wallet", target: "0x" + "c".repeat(40), chain: "base", label: "w" });
+    await s.updateWatchState(w.id, { lastHash: "h", lastSnapshot: null, checkedAt: "2026-10-13T02:00:00+02:00", error: null });
+    expect((await s.getWatch(w.id))!.checkedAt).toBe("2026-10-13T00:00:00.000Z");
+  });
+});
+
+describe("PgIntelStore ids that are not uuids", () => {
+  // Postgres rejects them with a cast error (a 500 through any route that
+  // passes an id straight through); they read as missing, like the memory
+  // store, and no query is sent (DATABASE_URL may be unset here).
+  test("read as missing without touching the database", async () => {
+    const s = new PgIntelStore();
+    const bad = "------------------------------------";
+    expect(await s.getManualPosition(bad)).toBeNull();
+    expect(await s.updateManualPosition(bad, { asset: "SOL", side: "long", size: 1, entryPx: 1, leverage: 1, venue: "v" })).toBeNull();
+    expect(await s.deleteManualPosition("nope")).toBe(false);
+    expect(await s.getAlert("nope")).toBeNull();
+    expect(await s.setAlertFeedback("nope", 1)).toBeNull();
+    expect(await s.getEvent("nope")).toBeNull();
+    expect(await s.deleteManualEvent("nope")).toBe(false);
+    expect(await s.getCluster("nope")).toBeNull();
+    expect(await s.eventsByCluster("nope")).toEqual([]);
+    await s.setEventCluster(["nope"], "nope");
+    expect(await s.getThesis("nope")).toBeNull();
+    expect(await s.updateThesis("nope", { checkedAt: null })).toBeNull();
+    expect(await s.deleteThesis("nope")).toBe(false);
+    expect(await s.getWatch("nope")).toBeNull();
+    await s.updateWatchState("nope", { lastHash: null, lastSnapshot: null, checkedAt: null, error: null });
+    expect(await s.deleteWatch("nope")).toBe(false);
+    await s.setWatchChangeAlerted("nope", []);
+    expect(await s.listWatchChanges("nope", 5)).toEqual([]);
   });
 });

@@ -139,6 +139,9 @@ export interface IntelStore {
 const isoOrNull = (d: Date | string | null | undefined) => (d == null ? null : iso(d));
 const json = (v: unknown) => sql().json((v ?? null) as any);
 const SNAPSHOT_CHUNK = 2000;
+/** Ids are uuid columns: anything else would be a Postgres cast error, so it reads as missing (as in the memory store). */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (id: string) => UUID.test(id);
 
 /** Duplicate keys in one batch would make Postgres' upsert fail; keep the last of each. */
 function lastByKey<T>(items: T[], key: (t: T) => string): T[] {
@@ -319,6 +322,7 @@ export class PgIntelStore implements IntelStore {
     return rows.map(toPosition);
   }
   async getManualPosition(id: string) {
+    if (!isUuid(id)) return null;
     const [row] = await sql()`select * from intel_positions where id = ${id}`;
     return row ? toPosition(row) : null;
   }
@@ -328,11 +332,13 @@ export class PgIntelStore implements IntelStore {
     return toPosition(row);
   }
   async updateManualPosition(id: string, p: ManualPositionData) {
+    if (!isUuid(id)) return null;
     const [row] = await sql()`update intel_positions set asset = ${p.asset}, side = ${p.side}, size = ${p.size}, entry_px = ${p.entryPx},
       stop_px = ${p.stopPx ?? null}, leverage = ${p.leverage}, venue = ${p.venue}, updated_at = now() where id = ${id} returning *`;
     return row ? toPosition(row) : null;
   }
   async deleteManualPosition(id: string) {
+    if (!isUuid(id)) return false;
     const res = await sql()`delete from intel_positions where id = ${id}`;
     return res.count > 0;
   }
@@ -448,6 +454,7 @@ export class PgIntelStore implements IntelStore {
     return out.map(toEvent);
   }
   async getEvent(id: string) {
+    if (!isUuid(id)) return null;
     const [row] = await sql()`select * from intel_events where id = ${id}`;
     return row ? toEvent(row) : null;
   }
@@ -460,18 +467,21 @@ export class PgIntelStore implements IntelStore {
     return rows.map(toEvent);
   }
   async eventsByCluster(clusterId: string) {
+    if (!isUuid(clusterId)) return [];
     const rows = await sql()`select * from intel_events where cluster_id = ${clusterId} order by first_seen`;
     return rows.map(toEvent);
   }
   async setEventCluster(eventIds: string[], clusterId: string) {
-    if (!eventIds.length) return;
-    await sql()`update intel_events set cluster_id = ${clusterId} where id in ${sql()(eventIds)}`;
+    const ids = eventIds.filter(isUuid);
+    if (!ids.length || !isUuid(clusterId)) return;
+    await sql()`update intel_events set cluster_id = ${clusterId} where id in ${sql()(ids)}`;
   }
   async listCatalysts(from: Date, to: Date) {
     const rows = await sql()`select * from intel_events where scheduled_at >= ${from} and scheduled_at <= ${to} order by scheduled_at`;
     return rows.map(toEvent);
   }
   async deleteManualEvent(id: string) {
+    if (!isUuid(id)) return false;
     const res = await sql()`delete from intel_events where id = ${id} and origin = 'manual'`;
     return res.count > 0;
   }
@@ -484,6 +494,7 @@ export class PgIntelStore implements IntelStore {
     return toCluster(row);
   }
   async getCluster(id: string) {
+    if (!isUuid(id)) return null;
     const [row] = await sql()`select * from intel_clusters where id = ${id}`;
     return row ? toCluster(row) : null;
   }
@@ -507,6 +518,7 @@ export class PgIntelStore implements IntelStore {
     return !!row;
   }
   async getAlert(id: string) {
+    if (!isUuid(id)) return null;
     const [row] = await sql()`select * from intel_alerts where id = ${id}`;
     return row ? toAlert(row) : null;
   }
@@ -521,6 +533,7 @@ export class PgIntelStore implements IntelStore {
     return rows.map(toAlert);
   }
   async setAlertFeedback(id: string, vote: 1 | -1 | null) {
+    if (!isUuid(id)) return null;
     const [row] = await sql()`update intel_alerts set feedback = ${vote} where id = ${id} returning *`;
     return row ? toAlert(row) : null;
   }
@@ -573,6 +586,7 @@ export class PgIntelStore implements IntelStore {
     return rows.map(toThesis);
   }
   async getThesis(id: string) {
+    if (!isUuid(id)) return null;
     const [row] = await sql()`select * from intel_theses where id = ${id}`;
     return row ? toThesis(row) : null;
   }
@@ -591,6 +605,7 @@ export class PgIntelStore implements IntelStore {
     return row ? toThesis(row) : null;
   }
   async deleteThesis(id: string) {
+    if (!isUuid(id)) return false;
     const res = await sql()`delete from intel_theses where id = ${id}`;
     return res.count > 0;
   }
@@ -600,6 +615,7 @@ export class PgIntelStore implements IntelStore {
     return rows.map(toWatch);
   }
   async getWatch(id: string) {
+    if (!isUuid(id)) return null;
     const [row] = await sql()`select * from intel_watches where id = ${id}`;
     return row ? toWatch(row) : null;
   }
@@ -610,10 +626,12 @@ export class PgIntelStore implements IntelStore {
     return toWatch(row);
   }
   async updateWatchState(id: string, s: WatchState) {
+    if (!isUuid(id)) return;
     await sql()`update intel_watches set last_hash = ${s.lastHash}, last_snapshot = ${json(s.lastSnapshot)}, checked_at = ${s.checkedAt},
       error = ${s.error} where id = ${id}`;
   }
   async deleteWatch(id: string) {
+    if (!isUuid(id)) return false;
     const res = await sql()`delete from intel_watches where id = ${id}`;
     return res.count > 0;
   }
@@ -625,9 +643,11 @@ export class PgIntelStore implements IntelStore {
     return toWatchChange(row);
   }
   async setWatchChangeAlerted(id: string, assets: string[]) {
+    if (!isUuid(id)) return;
     await sql()`update intel_watch_changes set alerted_assets = ${json(assets)} where id = ${id}`;
   }
   async listWatchChanges(watchId: string, limit: number) {
+    if (!isUuid(watchId)) return [];
     const rows = await sql()`select * from intel_watch_changes where watch_id = ${watchId} order by ts desc limit ${limit}`;
     return rows.map(toWatchChange);
   }
@@ -762,7 +782,7 @@ export class MemoryIntelStore implements IntelStore {
       const k = `${e.src}|${e.dst}|${e.type}`;
       const cur = this.edges.get(k);
       if (cur && cur.origin === "user" && e.origin !== "user") continue;
-      this.edges.set(k, { ...clone(e), id: cur?.id ?? this.id() });
+      this.edges.set(k, { ...clone(e), lastVerified: isoOrNull(e.lastVerified), id: cur?.id ?? this.id() });
       n++;
     }
     return n;
@@ -827,7 +847,7 @@ export class MemoryIntelStore implements IntelStore {
     return this.events.get(id)?.origin === "manual" ? this.events.delete(id) : false;
   }
   async upsertCluster(c: ClusterInput) {
-    const row: Cluster = { ...clone(c), id: c.id ?? crypto.randomUUID() };
+    const row: Cluster = { ...clone(c), id: c.id ?? crypto.randomUUID(), firstSeen: iso(c.firstSeen), lastSeen: iso(c.lastSeen), mappedAt: isoOrNull(c.mappedAt) };
     this.clusters.set(row.id, row);
     return clone(row);
   }
@@ -882,7 +902,7 @@ export class MemoryIntelStore implements IntelStore {
   }
 
   async insertBrief(b: NewBrief) {
-    const row: Brief = { ...clone(b), id: this.id(), createdAt: this.now() };
+    const row: Brief = { ...clone(b), since: iso(b.since), id: this.id(), createdAt: this.now() };
     this.briefs.push(row);
     return clone(row);
   }
@@ -916,7 +936,7 @@ export class MemoryIntelStore implements IntelStore {
     return clone(this.theses.get(id) ?? null);
   }
   async insertThesis(t: NewThesis) {
-    const row: Thesis = { ...clone(t), id: this.id(), createdAt: this.now() };
+    const row: Thesis = { ...clone(t), checkedAt: isoOrNull(t.checkedAt), id: this.id(), createdAt: this.now() };
     this.theses.set(row.id, row);
     return clone(row);
   }
@@ -924,6 +944,7 @@ export class MemoryIntelStore implements IntelStore {
     const cur = this.theses.get(id);
     if (!cur) return null;
     const row = { ...cur, ...clone(patch) };
+    row.checkedAt = isoOrNull(row.checkedAt);
     this.theses.set(id, row);
     return clone(row);
   }
@@ -956,7 +977,7 @@ export class MemoryIntelStore implements IntelStore {
   }
   async updateWatchState(id: string, s: WatchState) {
     const w = this.watches.get(id);
-    if (w) Object.assign(w, clone(s));
+    if (w) Object.assign(w, clone(s), { checkedAt: isoOrNull(s.checkedAt) });
   }
   async deleteWatch(id: string) {
     this.changes = this.changes.filter((c) => c.watchId !== id);

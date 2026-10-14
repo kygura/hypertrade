@@ -89,7 +89,7 @@ export function ReviewStrip({
             <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1.5 ${superseded ? 'opacity-70' : ''}`}>
               <span className="inline-flex items-baseline gap-2">
                 <AnimatedDigits text={String(silent ? 0 : brief.items.length)} className="text-xl tabular text-text-primary" />
-                <span className="label">{silent ? 'NOTHING CLEARED THE THRESHOLD' : 'THINGS CHANGED'}</span>
+                <span className="label">{silent ? 'NOTHING CLEARED THE THRESHOLD' : brief.items.length === 1 ? 'THING CHANGED' : 'THINGS CHANGED'}</span>
               </span>
               {superseded ? (
                 <span className="label pulse-label">LAST BRIEF · {claimAgeText(brief.createdAt)} OLD — REVIEWING…</span>

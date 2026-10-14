@@ -176,6 +176,11 @@ export function fmtUsdSigned(n: number | null | undefined, compact = false): str
   return `${n > 0 ? '+' : n < 0 ? MINUS : ''}${fmtUsd(Math.abs(n), { compact })}`
 }
 
+/** Leverage: `3×`, `0.02×` (desk positions report notional / equity, an arbitrary float). */
+export function fmtLeverage(n: number): string {
+  return `${Number(n.toFixed(2))}×`
+}
+
 /** Hold duration: `45M`, `3H`, `2D 4H`. */
 export function fmtHold(ms: number | null | undefined): string {
   if (ms == null || !Number.isFinite(ms) || ms < 0) return '—'
