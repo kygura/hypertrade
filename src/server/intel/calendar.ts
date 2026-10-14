@@ -4,10 +4,23 @@ import type { NewEvent } from "./store.js";
 // Static US macro calendar (SPEC.md § Intel I0.10, I0.13): FOMC decisions,
 // CPI and the Employment Situation (NFP) for 2026 and 2027, as scheduled
 // catalysts. CHECK THESE DATES EVERY YEAR against the schedule pages below:
-// agencies revise them (the 2025 shutdown moved several 2026 BLS releases),
-// and the 2027 BLS dates here are estimates until BLS publishes its calendar.
-// Estimated dates are tagged `hypothesis`; published ones `observed` with the
-// schedule page as the source.
+// agencies revise them (the 2025 shutdown moved several 2026 BLS releases).
+// Estimated dates (`estimated: true`) are tagged `hypothesis`; dates the
+// agency has published are `observed` with the schedule page as the source.
+//
+// Verified against federalreserve.gov/monetarypolicy/fomccalendars.htm (2026
+// and 2027), bls.gov/schedule/news_release/cpi.htm and empsit.htm (reference
+// months Oct 2026 onward, i.e. releases from 2026-11 through 2027-12) and
+// bls.gov/schedule/2026/home.htm (all twelve 2026 CPI and NFP releases) on
+// 2026-10-14. No date is currently estimated. Notes from that check:
+//  - The Fed marks every 2027 date "tentative until confirmed at the meeting
+//    immediately preceding it"; they are published, so tagged observed, but
+//    could still move.
+//  - BLS pages carry no shutdown notes; the 2026 corrections below (CPI Feb
+//    13, NFP Feb 11) came from the BLS 2026 schedule.
+//  - The per-release pages list only upcoming releases, so past 2026 dates
+//    were confirmed from the 2026 schedule page instead (same BLS site).
+//  - All BLS releases 08:30 ET; FOMC statement 14:00 ET (see KIND below).
 
 export const SCHEDULE_URL = {
   fomc: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
@@ -33,18 +46,18 @@ const KIND: Record<MacroKind, KindSpec> = {
 
 /** Decision/release days (US Eastern dates). `estimated` = not yet published by the agency. */
 export const MACRO_DATES: Record<MacroKind, Array<{ date: string; estimated?: boolean }>> = {
-  // Second day of each two-day meeting, from the Fed's published schedule (2027 is tentative there too).
+  // Second day of each two-day meeting, from the Fed's published schedule (2027 is tentative there).
   fomc: [
     ...["2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17", "2026-07-29", "2026-09-16", "2026-10-28", "2026-12-09"].map((date) => ({ date })),
-    ...["2027-01-27", "2027-03-17", "2027-04-28", "2027-06-09", "2027-07-28", "2027-09-22", "2027-10-27", "2027-12-08"].map((date) => ({ date, estimated: true })),
+    ...["2027-01-27", "2027-03-17", "2027-04-28", "2027-06-09", "2027-07-28", "2027-09-15", "2027-10-27", "2027-12-08"].map((date) => ({ date })),
   ],
   cpi: [
-    ...["2026-01-13", "2026-02-11", "2026-03-11", "2026-04-10", "2026-05-12", "2026-06-10", "2026-07-14", "2026-08-12", "2026-09-11", "2026-10-14", "2026-11-10", "2026-12-10"].map((date) => ({ date })),
-    ...["2027-01-13", "2027-02-10", "2027-03-10", "2027-04-13", "2027-05-12", "2027-06-10", "2027-07-14", "2027-08-11", "2027-09-14", "2027-10-13", "2027-11-10", "2027-12-10"].map((date) => ({ date, estimated: true })),
+    ...["2026-01-13", "2026-02-13", "2026-03-11", "2026-04-10", "2026-05-12", "2026-06-10", "2026-07-14", "2026-08-12", "2026-09-11", "2026-10-14", "2026-11-10", "2026-12-10"].map((date) => ({ date })),
+    ...["2027-01-13", "2027-02-11", "2027-03-10", "2027-04-13", "2027-05-12", "2027-06-10", "2027-07-14", "2027-08-11", "2027-09-14", "2027-10-14", "2027-11-10", "2027-12-10"].map((date) => ({ date })),
   ],
   nfp: [
-    ...["2026-01-09", "2026-02-06", "2026-03-06", "2026-04-03", "2026-05-08", "2026-06-05", "2026-07-02", "2026-08-07", "2026-09-04", "2026-10-02", "2026-11-06", "2026-12-04"].map((date) => ({ date })),
-    ...["2027-01-08", "2027-02-05", "2027-03-05", "2027-04-02", "2027-05-07", "2027-06-04", "2027-07-02", "2027-08-06", "2027-09-03", "2027-10-08", "2027-11-05", "2027-12-03"].map((date) => ({ date, estimated: true })),
+    ...["2026-01-09", "2026-02-11", "2026-03-06", "2026-04-03", "2026-05-08", "2026-06-05", "2026-07-02", "2026-08-07", "2026-09-04", "2026-10-02", "2026-11-06", "2026-12-04"].map((date) => ({ date })),
+    ...["2027-01-08", "2027-02-05", "2027-03-05", "2027-04-02", "2027-05-07", "2027-06-04", "2027-07-02", "2027-08-06", "2027-09-03", "2027-10-08", "2027-11-05", "2027-12-03"].map((date) => ({ date })),
   ],
 };
 

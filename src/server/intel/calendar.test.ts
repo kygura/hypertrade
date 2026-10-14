@@ -16,6 +16,16 @@ describe("macro calendar", () => {
     for (const d of Object.values(MACRO_DATES).flat()) expect([0, 6]).not.toContain(new Date(`${d.date}T12:00:00Z`).getUTCDay());
   });
 
+  test("dates corrected against the official schedules (2026-10-14 check)", () => {
+    const has = (kind: "fomc" | "cpi" | "nfp", date: string) => MACRO_DATES[kind].some((d) => d.date === date);
+    expect(has("cpi", "2026-02-13")).toBe(true); // was 2026-02-11
+    expect(has("nfp", "2026-02-11")).toBe(true); // was 2026-02-06
+    expect(has("fomc", "2027-09-15")).toBe(true); // was 2027-09-22
+    expect(has("cpi", "2027-02-11")).toBe(true); // was 2027-02-10
+    expect(has("cpi", "2027-10-14")).toBe(true); // was 2027-10-13
+    for (const d of ["2026-02-11", "2027-02-10", "2027-10-13"]) expect(has("cpi", d)).toBe(false);
+  });
+
   test("Eastern release times convert across daylight time", () => {
     expect(easternToUtc("2026-01-28", 14, 0)).toBe("2026-01-28T19:00:00.000Z");
     expect(easternToUtc("2026-10-28", 14, 0)).toBe("2026-10-28T18:00:00.000Z");
@@ -34,8 +44,16 @@ describe("macro calendar", () => {
     }
     const next = events[0]!;
     expect(next).toMatchObject({ key: "calendar:cpi:2026-10-14", title: "US CPI release", tag: "observed", scheduledAt: "2026-10-14T12:30:00.000Z", entities: ["CPI", "USD", "DXY", "NASDAQ"] });
-    const est = events.find((e) => e.key === "calendar:nfp:2027-01-08")!;
-    expect(est).toMatchObject({ tag: "hypothesis", title: "US jobs report (NFP) (estimated date)" });
+    // All dates are currently published (verified 2026-10-14), so none is a hypothesis.
+    expect(events.filter((e) => e.tag === "hypothesis")).toHaveLength(0);
+    // An estimated date is tagged hypothesis (temporary entry; no real date is estimated today).
+    MACRO_DATES.nfp.push({ date: "2028-01-07", estimated: true });
+    try {
+      const est = calendarEvents(now, now).find((e) => e.key === "calendar:nfp:2028-01-07")!;
+      expect(est).toMatchObject({ tag: "hypothesis", title: "US jobs report (NFP) (estimated date)" });
+    } finally {
+      MACRO_DATES.nfp.pop();
+    }
     expect(calendarEvents(now)).toHaveLength(Object.values(MACRO_DATES).flat().length);
   });
 });
