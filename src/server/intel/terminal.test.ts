@@ -158,6 +158,25 @@ describe("buildBrief", () => {
     expect(loadThresholds({ INTEL_DIGEST_MATERIALITY: "0.2", INTEL_PUSH_MATERIALITY: "0.5" })).toMatchObject({ digestMateriality: 0.2, pushMateriality: 0.5 });
   });
 
+  test("confluence: a flow alert inside the window boosts the snapshot z item; none, or one outside the window, does not", async () => {
+    const item = async (flowAgoH?: number) => {
+      const h = harness({ price: (b) => b * Math.exp(0.1), replies: [{ emit: good }] });
+      await h.init();
+      if (flowAgoH != null) {
+        h.clock.t = NOW - flowAgoH * H;
+        await h.store.insertAlert({ ...alert("SOL", "batch"), kind: "flow", eventType: "crowded_long", ref: "f1" });
+      }
+      h.clock.t = NOW;
+      return (await buildBrief(h.deps, { surface: "cron" })).items[0]!;
+    };
+    const lone = await item();
+    expect(lone.confluence).toBe(1);
+    const boosted = await item(1);
+    expect(boosted.confluence).toBe(1.25);
+    expect(boosted.materiality).toBeCloseTo(lone.materiality * 1.25, 9);
+    expect((await item(7)).confluence).toBe(1);
+  });
+
   test("ranked items, merged alerts and catalysts, validated narration", async () => {
     const h = harness({ price: (b) => b * Math.exp(0.1), replies: [{ emit: good }] });
     await h.init();

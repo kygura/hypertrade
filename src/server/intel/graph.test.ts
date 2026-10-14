@@ -157,6 +157,58 @@ describe("refreshGraph", () => {
       expect(await llmEdges(store)).toEqual(["SOL>Helius", "SOL>Pyth"]);
     });
 
+    const llmEdge = (src: string, dst: string, type: EdgeType = "narrative") => ({ src, dst, type, weight: 0.3, source: "https://old.example.com", lastVerified: null, origin: "llm" as const });
+    const pair = (reply: (asset: string) => unknown) => new EmitProvider((prompt) => reply(prompt.includes("Asset: BTC") ? "BTC" : "ETH"));
+
+    test("an edge another target's rebuild kept survives; a stale edge of two succeeded targets goes at the end", async () => {
+      const store = new MemoryIntelStore();
+      await store.upsertEdges([llmEdge("BTC", "ETH"), llmEdge("ETH", "Old")]);
+      const provider = pair((a) =>
+        a === "BTC"
+          ? { edges: [{ src: "BTC", dst: "ETH", type: "narrative", source: "https://a.example.com" }] }
+          : { edges: [{ src: "ETH", dst: "Bar", type: "narrative", source: "https://b.example.com" }] },
+      );
+      const s = await refreshGraph({ store, llm: llmDeps(provider, store, now), targets: async () => ["BTC", "ETH"], now }, { budgetMs: 10_000 });
+      expect(await llmEdges(store)).toEqual(["BTC>ETH", "ETH>Bar"]);
+      expect(s.diffs.ETH!.removed).toEqual(["ETH -narrative-> Old"]);
+    });
+
+    test("an edge touching a target whose rebuild failed survives", async () => {
+      const store = new MemoryIntelStore();
+      await store.upsertEdges([llmEdge("BTC", "ETH")]);
+      const provider = pair((a) => (a === "BTC" ? { edges: [{ src: "BTC", dst: "Foo", type: "narrative", source: "https://a.example.com" }] } : { bad: 1 }));
+      const s = await refreshGraph({ store, llm: llmDeps(provider, store, now), targets: async () => ["BTC", "ETH"], now }, { budgetMs: 10_000 });
+      expect(s.failed.map((f) => f.asset)).toEqual(["ETH"]);
+      expect(await llmEdges(store)).toEqual(["BTC>ETH", "BTC>Foo"]);
+    });
+
+    test("a known edge re-proposed with a refused (http) source survives", async () => {
+      const store = new MemoryIntelStore();
+      await store.upsertEdges([llmEdge("SOL", "Pyth", "depends_on_stable")]);
+      const provider = new EmitProvider(() => ({
+        edges: [
+          { src: "SOL", dst: "Pyth", type: "depends_on_stable", source: "http://pyth.network" },
+          { src: "SOL", dst: "Jito", type: "collateral", source: "https://jito.network" },
+        ],
+      }));
+      const s = await refreshGraph({ store, llm: llmDeps(provider, store, now), targets: async () => ["SOL"], now }, { budgetMs: 10_000 });
+      expect(await llmEdges(store)).toEqual(["SOL>Jito", "SOL>Pyth"]);
+      expect(s.diffs.SOL!.removed).toEqual([]);
+    });
+
+    test("the graph:diff run is recorded as failed when the run throws, after the upserts", async () => {
+      const store = new MemoryIntelStore();
+      store.deleteLlmEdges = async () => Promise.reject(new Error("db down"));
+      await store.upsertEdges([llmEdge("SOL", "Old")]);
+      const provider = new EmitProvider(() => ({ edges: [{ src: "SOL", dst: "Jito", type: "collateral", source: "https://jito.network" }] }));
+      const runs: Array<[string, boolean, string | null | undefined]> = [];
+      const recordRun = async (c: string, _t: Date, ok: boolean, err?: string | null) => void runs.push([c, ok, err]);
+      await expect(refreshGraph({ store, llm: llmDeps(provider, store, now), targets: async () => ["SOL"], now, recordRun }, { budgetMs: 10_000 })).rejects.toThrow("db down");
+      expect(runs).toHaveLength(1);
+      expect(runs[0]!.slice(0, 2)).toEqual(["graph:diff", false]);
+      expect(await llmEdges(store)).toEqual(["SOL>Jito", "SOL>Old"]); // upsert landed, delete did not
+    });
+
     test("a successful rebuild removes llm edges it no longer proposes, never seed or user ones; the diff is recorded", async () => {
       const store = await seeded();
       await store.upsertEdges([{ src: "SOL", dst: "Manual", type: "narrative", weight: 0.3, source: "https://example.com/m", lastVerified: null, origin: "user" }]);

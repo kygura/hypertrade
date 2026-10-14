@@ -122,6 +122,9 @@ export async function flowAlerts(deps: FlowDeps, now: Date): Promise<FlowRun> {
       const cur = best.get(f.name);
       if (!cur || f.score > cur.score) best.set(f.name, f);
     }
+    const classOf = (f: FlowFlag): SignalSource => (f.kind === "detector" ? "flow" : "regime");
+    // Every class firing now is known before any alert is routed, so siblings get the same k in any order.
+    for (const f of best.values()) if (!prev[`${f.name}|${asset}`]) noteSource(ctx.sources, asset, classOf(f));
     for (const f of best.values()) {
       const k = `${f.name}|${asset}`;
       if (prev[k]) {
@@ -152,7 +155,7 @@ export async function flowAlerts(deps: FlowDeps, now: Date): Promise<FlowRun> {
       active[k] = event!.id;
       out.events.push(event!);
       const line: Claim = { tag: "observed", text, source, ts: f.ts };
-      const own: SignalSource = f.kind === "detector" ? "flow" : "regime";
+      const own = classOf(f);
       const materiality = materialityOf({ surprise: f.score, exposure: exp.weight, proximity: exp.proximity }, confluenceK(ctx.sources.get(asset), own));
       const alert = await deps.store.insertAlert({
         kind: "flow",
@@ -172,7 +175,6 @@ export async function flowAlerts(deps: FlowDeps, now: Date): Promise<FlowRun> {
         route: routeFor(deps.pushMateriality, ctx.feedback, materiality, { eventType: f.name, edgeType: null, hops: 0 }),
       });
       if (!alert) continue;
-      noteSource(ctx.sources, asset, own);
       out.alerts.push(alert);
       if (alert.route === "push") {
         await sendIntel(deps.notifier, { title: `${exp.label}: ${f.name.replace(/_/g, " ")}`, lines: [line], link: deepLink(deps.appUrl), actions: feedbackActions([alert]) });

@@ -134,7 +134,8 @@ export function stopProximity(dist: number | null, atr: number | null): number {
 export function exposureWeight(positions: AssetDiffInput["positions"], totalNotionalUsd: number): number {
   if (!positions.length) return WATCH_FLOOR;
   if (!(totalNotionalUsd > 0)) return 0;
-  return positions.reduce((s, p) => s + Math.abs(p.notionalUsd), 0) / totalNotionalUsd;
+  // A held position never weighs less than a watch-only asset.
+  return Math.max(WATCH_FLOOR, positions.reduce((s, p) => s + Math.abs(p.notionalUsd), 0) / totalNotionalUsd);
 }
 
 /** Every asset × metric pair that has a z. `diffed` counts them (cleared or not). */

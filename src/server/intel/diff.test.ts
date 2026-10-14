@@ -99,6 +99,24 @@ describe("buildDiffItems", () => {
   });
 });
 
+describe("held floor", () => {
+  test("a held position never weighs less than a watch-only asset, and a small one still reaches the digest", () => {
+    expect(exposureWeight([{ side: "long", stopPx: null, notionalUsd: 300 }], 10_000)).toBe(WATCH_FLOOR);
+    const hist = history("SOL");
+    const baseline = hist.at(-4)!;
+    const sol: AssetDiffInput = {
+      asset: "SOL",
+      current: row("SOL", T, { price: baseline.price * Math.exp(0.05) }), // z 2.5
+      baseline: { ...baseline, ts: iso(T - 4 * H) },
+      history: hist,
+      positions: [{ side: "long", stopPx: null, notionalUsd: 300 }], // 3 % of the book
+    };
+    const ranked = rankDiffs(buildDiffItems([sol], 10_000).items, { minZ: 2, topK: 5, digestMateriality: 0.1 });
+    expect(ranked.map((i) => i.metric)).toEqual(["price"]);
+    expect(ranked[0]!.materiality).toBeCloseTo(2.5 * WATCH_FLOOR, 9);
+  });
+});
+
 describe("confluence", () => {
   test("1 for a lone signal, +0.25 per further source, capped at 1.5", () => {
     expect([1, 2, 3, 4, 9].map(confluence)).toEqual([1, 1.25, 1.5, 1.5, 1.5]);
