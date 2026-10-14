@@ -37,6 +37,37 @@ export const TradeProposalSchema = z
   .strict();
 export type TradeProposal = z.infer<typeof TradeProposalSchema>;
 
+/** The fields the governor's risk checks need from any order (evaluateRisk). */
+const RiskOrderSchema = z
+  .object({
+    coin: z.string().trim().min(1).max(20),
+    side: SideSchema,
+    stop: price,
+    /** Optional: without it the reward:risk check is skipped, with a warning. */
+    target: price.optional(),
+    riskPct: z.number().min(0.05).max(2),
+    entryLimit: price.optional(),
+  })
+  .strict();
+export type RiskOrder = z.infer<typeof RiskOrderSchema>;
+
+/**
+ * An order the operator confirms through the copilot (preview, then submit).
+ * Sized by notionalUsd, else leverage × equity, else riskPct; the governor
+ * clips it either way. `leverage` is a sizing request, not the venue's leverage.
+ */
+export const OperatorOrderSchema = RiskOrderSchema.extend({
+  riskPct: RiskOrderSchema.shape.riskPct.optional(),
+  leverage: z.number().positive().max(50).optional(),
+  notionalUsd: z.number().finite().positive().optional(),
+  source: z.literal("copilot"),
+})
+  .strict()
+  .refine((o) => o.riskPct != null || o.notionalUsd != null || o.leverage != null, { message: "give riskPct, notionalUsd or leverage" });
+export type OperatorOrder = z.infer<typeof OperatorOrderSchema>;
+/** An operator order as recorded: the order as confirmed plus the risk percent the governor sized it at. */
+export type OperatorOrderRecord = OperatorOrder & { resolvedRiskPct: number };
+
 /** What an agent submits through propose_exit. */
 export const ExitProposalSchema = z
   .object({
@@ -53,7 +84,8 @@ export interface Sizing {
   notionalUsd: number;
   riskUsd: number;
   stopDistPct: number;
-  rr: number;
+  /** Null when the order has no target (reward:risk not checked). */
+  rr: number | null;
   feeUsd: number;
   grossLeverageAfter: number;
 }
@@ -99,7 +131,7 @@ export interface ProposalRecord {
   kind: "open" | "exit";
   status: ProposalStatus;
   venue: string;
-  proposal: TradeProposal | ExitProposal;
+  proposal: TradeProposal | ExitProposal | OperatorOrderRecord;
   verdict: Verdict;
   execution: unknown;
   decidedBy: string | null;

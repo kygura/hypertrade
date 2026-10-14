@@ -162,3 +162,60 @@ jobs:
             echo "::error::Desk tick failed (curl exit $status, HTTP ${code:-none})"
             exit 1
           fi
+
+  # Intel (SPEC.md § Intel I2): ingest (news sources, mapper, catalyst
+  # alerts), the cron brief to Telegram, the daily exposure-graph refresh and
+  # the doc/contract watcher, in that order. Each endpoint is leased and
+  # budgeted server side (200 s) and self-throttles: brief to
+  # INTEL_BRIEF_HOURS (default 6), graph to once a day, watch only checks
+  # watches not checked in the last hour, so calling all four every 15
+  # minutes is cheap. "lease held" and "throttled" answer 200. Opt-in: set the
+  # repository variable INTEL_ENABLED=true once db/migrations/007_intel.sql is
+  # applied. No curl --retry (a timed-out run keeps going on Vercel): one
+  # retry, and only when the connection never opened (curl exit 6/7). A failed
+  # endpoint does not stop the next one; the job fails at the end if any did.
+  intel:
+    needs: collect
+    if: ${{ vars.INTEL_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Intel ingest, brief, graph, watch
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_TOKEN" ]; then
+            echo "::error::Missing APP_URL or CRON_TOKEN repository secret (see the collect job)."
+            exit 1
+          fi
+          set -o pipefail
+          failed=""
+          body=$(mktemp)
+          for job in ingest brief graph watch; do
+            url="${APP_URL%/}/api/cron/intel/$job"
+            post() {
+              curl -sS -X POST \
+                --fail-with-body \
+                --max-time 290 \
+                -H "x-cron-token: $CRON_TOKEN" \
+                -o "$body" -w '%{http_code}' \
+                "$url"
+            }
+            code=$(post) && status=0 || status=$?
+            if [ "$status" -eq 6 ] || [ "$status" -eq 7 ]; then
+              echo "connection failed (curl exit $status); retrying once"
+              sleep 5
+              code=$(post) && status=0 || status=$?
+            fi
+            echo "POST $url -> HTTP ${code:-none}"
+            cat "$body"
+            echo
+            if [ "$status" -ne 0 ]; then
+              echo "::error::Intel $job failed (curl exit $status, HTTP ${code:-none})"
+              failed="$failed $job"
+            fi
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Intel endpoints failed:$failed"
+            exit 1
+          fi

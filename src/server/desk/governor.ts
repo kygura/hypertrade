@@ -1,5 +1,5 @@
 import { confidenceAtLeast, type GovernorLimits } from "./config.js";
-import type { AccountState, ExitProposal, Sizing, TradeProposal, Verdict } from "./types.js";
+import type { AccountState, ExitProposal, OperatorOrder, RiskOrder, Sizing, TradeProposal, Verdict } from "./types.js";
 
 // The governor: deterministic risk rules between the agents and the book.
 // No model output reaches an order without passing here, and the governor
@@ -36,7 +36,22 @@ export function openRiskUsd(p: AccountState["positions"][number]): number {
   return Math.max(0, p.side === "long" ? (p.markPx - p.stopPx) * p.size : (p.stopPx - p.markPx) * p.size);
 }
 
+/** A trade proposal: its proposal-only check (confidence), then every risk check. */
 export function evaluateOpen(p: TradeProposal, ctx: GovernorContext): Verdict {
+  const conf = confidenceAtLeast(p.confidence, ctx.limits.minConfidence) ? [] : [`confidence ${p.confidence} is below the ${ctx.limits.minConfidence} floor`];
+  return assess(p, ctx, conf);
+}
+
+/**
+ * Every risk, sizing, exposure, kill-switch and market check, for any order
+ * (agent proposal or operator order). Without a target the reward:risk check
+ * is skipped with a warning, and sizing.rr is null.
+ */
+export function evaluateRisk(order: RiskOrder, ctx: GovernorContext): Verdict {
+  return assess(order, ctx, []);
+}
+
+function assess(p: RiskOrder, ctx: GovernorContext, proposalReasons: string[]): Verdict {
   const { limits, account, market } = ctx;
   const reasons: string[] = [];
   const warnings: string[] = [];
@@ -58,7 +73,7 @@ export function evaluateOpen(p: TradeProposal, ctx: GovernorContext): Verdict {
     return verdict();
   }
   if (market.isDelisted) reasons.push(`${p.coin} is delisted`);
-  if (!confidenceAtLeast(p.confidence, limits.minConfidence)) reasons.push(`confidence ${p.confidence} is below the ${limits.minConfidence} floor`);
+  reasons.push(...proposalReasons);
 
   const dayLossPct = equity > 0 ? (-account.dayPnlUsd / equity) * 100 : 0;
   if (dayLossPct >= limits.dailyLossLimitPct) reasons.push(`day loss ${r2(dayLossPct)}% has hit the ${limits.dailyLossLimitPct}% limit`);
@@ -70,7 +85,7 @@ export function evaluateOpen(p: TradeProposal, ctx: GovernorContext): Verdict {
   const mark = market.markPx;
   const long = p.side === "long";
   if (long ? !(p.stop < mark) : !(p.stop > mark)) reasons.push(`stop ${p.stop} is on the wrong side of the mark ${mark} for a ${p.side}`);
-  if (long ? !(p.target > mark) : !(p.target < mark)) reasons.push(`target ${p.target} is on the wrong side of the mark ${mark} for a ${p.side}`);
+  if (p.target != null && (long ? !(p.target > mark) : !(p.target < mark))) reasons.push(`target ${p.target} is on the wrong side of the mark ${mark} for a ${p.side}`);
   if (p.entryLimit != null && (long ? mark > p.entryLimit : mark < p.entryLimit)) {
     reasons.push(`mark ${mark} is already past the entry limit ${p.entryLimit}`);
   }
@@ -79,8 +94,9 @@ export function evaluateOpen(p: TradeProposal, ctx: GovernorContext): Verdict {
   const stopDistPct = (Math.abs(mark - p.stop) / mark) * 100;
   if (stopDistPct < limits.minStopPct) reasons.push(`stop is ${r2(stopDistPct)}% away, under the ${limits.minStopPct}% minimum (noise, and fees eat it)`);
   if (stopDistPct > limits.maxStopPct) reasons.push(`stop is ${r2(stopDistPct)}% away, over the ${limits.maxStopPct}% maximum`);
-  const rr = Math.abs(p.target - mark) / Math.abs(mark - p.stop);
-  if (rr < limits.minRewardRisk) reasons.push(`reward:risk ${r2(rr)} at the current mark is under ${limits.minRewardRisk}`);
+  const rr = p.target != null ? Math.abs(p.target - mark) / Math.abs(mark - p.stop) : null;
+  if (rr == null) warnings.push("no target: reward:risk not checked");
+  else if (rr < limits.minRewardRisk) reasons.push(`reward:risk ${r2(rr)} at the current mark is under ${limits.minRewardRisk}`);
 
   // Size from risk, then cap by leverage limits and the open-risk budget.
   let riskPct = p.riskPct;
@@ -116,10 +132,32 @@ export function evaluateOpen(p: TradeProposal, ctx: GovernorContext): Verdict {
     notionalUsd: r2(notional),
     riskUsd: r2(riskUsd),
     stopDistPct: r2(stopDistPct),
-    rr: r2(rr),
+    rr: rr == null ? null : r2(rr),
     feeUsd: r2(feeUsd),
     grossLeverageAfter: equity > 0 ? r2((gross + notional) / equity) : 0,
   });
+}
+
+/**
+ * An operator order sized by notional (or leverage × equity) becomes the
+ * riskPct that notional implies at the current stop distance, clipped to the
+ * per-trade limit with a warning; evaluateRisk then applies every other cap.
+ * Without notional or leverage the order's own riskPct stands.
+ */
+export function operatorRiskOrder(o: OperatorOrder, ctx: GovernorContext): { order: RiskOrder; warnings: string[] } {
+  const base = { coin: ctx.market?.coin ?? o.coin, side: o.side, stop: o.stop, target: o.target, entryLimit: o.entryLimit };
+  const equity = ctx.account.equityUsd;
+  const notional = o.notionalUsd ?? (o.leverage != null ? o.leverage * equity : null);
+  if (notional == null) return { order: { ...base, riskPct: o.riskPct! }, warnings: [] };
+  const mark = ctx.market?.markPx;
+  // No market or no equity: evaluateRisk rejects with its own reason.
+  if (!mark || !(equity > 0)) return { order: { ...base, riskPct: 0 }, warnings: [] };
+  const stopDistPct = (Math.abs(mark - o.stop) / mark) * 100;
+  const want = (notional * stopDistPct) / equity;
+  const riskPct = Math.min(want, ctx.limits.maxRiskPct);
+  const warnings = [`requested ${r2(notional)} USD notional${o.notionalUsd == null ? ` (${o.leverage}x equity)` : ""} at a ${r2(stopDistPct)}% stop risks ${r2(want)}% of equity`];
+  if (want > riskPct) warnings.push(`risk ${r2(want)}% clipped to the ${ctx.limits.maxRiskPct}% per-trade limit: notional reduced`);
+  return { order: { ...base, riskPct }, warnings };
 }
 
 /** Exits only reduce risk, so the only checks are that the position exists and the size rounds. */

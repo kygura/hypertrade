@@ -17,7 +17,7 @@ testApp.post("/cron/collect", (c) => c.json({ collected: true }));
 for (const p of ["/lab", "/lab/tools", "/mcp", "/mcp/x", "/labx", "/mcpfoo", "/labx/tools"]) {
   testApp.all(p, (c) => c.json({ reached: p }));
 }
-for (const p of ["/metrics/summary", "/sectors", "/marketstate", "/metricsx", "/sectorsfoo", "/marketstatex"]) {
+for (const p of ["/metrics/summary", "/sectors", "/marketstate", "/metricsx", "/sectorsfoo", "/marketstatex", "/intel", "/intel/positions", "/intelx/positions"]) {
   testApp.all(p, (c) => c.json({ reached: p }));
 }
 
@@ -236,14 +236,14 @@ describe("lab bearer (LAB_API_TOKEN)", () => {
 
   test("prefix look-alikes are not lab or read paths", () =>
     withTokens("tok-one", async () => {
-      for (const path of ["/labx", "/mcpfoo", "/labx/tools", "/metricsx", "/sectorsfoo", "/marketstatex"]) {
+      for (const path of ["/labx", "/mcpfoo", "/labx/tools", "/metricsx", "/sectorsfoo", "/marketstatex", "/intelx/positions"]) {
         expect((await req(path, bearer("tok-one"))).status).toBe(401);
       }
     }));
 
-  test("the bearer also opens GET /metrics, /sectors and /marketstate", () =>
+  test("the bearer also opens GET /metrics, /sectors, /marketstate and /intel", () =>
     withTokens("tok-one", async () => {
-      for (const path of ["/metrics/summary", "/sectors", "/marketstate"]) {
+      for (const path of ["/metrics/summary", "/sectors", "/marketstate", "/intel", "/intel/positions"]) {
         expect((await req(path, bearer("tok-one"))).status).toBe(200);
         expect((await req(path, bearer("tok-two"))).status).toBe(401); // not a configured token
       }
@@ -253,6 +253,10 @@ describe("lab bearer (LAB_API_TOKEN)", () => {
     withTokens("tok-one", async () => {
       for (const path of ["/metrics/summary", "/sectors", "/marketstate"]) {
         expect((await req(path, bearer("tok-one"), "POST")).status).toBe(401);
+      }
+      // Intel writes (positions, orders, briefs, watches) stay cookie-only.
+      for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
+        expect((await req("/intel/positions", bearer("tok-one"), method)).status).toBe(401);
       }
       // the cookie still works on any method there
       const cookie = (await postLogin("correct-horse")).headers.get("set-cookie")!.split(";")[0];

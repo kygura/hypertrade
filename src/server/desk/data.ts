@@ -76,6 +76,8 @@ const OpenOrdersSchema = z.array(
     isTrigger: z.boolean().optional(),
     triggerPx: Num.optional(),
     orderType: z.string().optional(),
+    /** "sl" | "tp" when present; it decides over the orderType label ("Stop Market", "Take Profit Limit"…). */
+    tpsl: z.string().optional(),
     reduceOnly: z.boolean().optional(),
   }),
 );
@@ -93,8 +95,8 @@ export function toWatchedAccount(state: unknown, orders: unknown, dayStartEquity
       const side = p.szi >= 0 ? ("long" as const) : ("short" as const);
       const markPx = size > 0 ? p.positionValue / size : 0;
       const mine = triggers.filter((t) => t.coin === p.coin);
-      const stop = mine.find((t) => /stop/i.test(t.orderType ?? ""));
-      const tp = mine.find((t) => /take profit/i.test(t.orderType ?? ""));
+      const stop = mine.find((t) => (t.tpsl ? t.tpsl === "sl" : /stop/i.test(t.orderType ?? "")));
+      const tp = mine.find((t) => (t.tpsl ? t.tpsl === "tp" : /take profit/i.test(t.orderType ?? "")));
       return {
         coin: p.coin,
         side,

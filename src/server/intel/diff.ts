@@ -1,0 +1,152 @@
+import { SNAPSHOT_METRICS, type DeltaUnit, type DiffItem, type ExposurePosition, type SnapshotMetric, type SnapshotRow } from "../../shared/intel.js";
+import { baselineZ, metricZ, type Point } from "./normalize.js";
+import { atr as atrOf } from "../desk/tools.js";
+
+// Diff items, materiality and ranking (SPEC.md § Intel I0.5). Pure.
+//   materiality    = |z| × exposure_weight × stop_proximity
+//   exposure_weight = asset notional / Σ notional (all three sources);
+//                    watchlist-only assets get WATCH_FLOOR
+//   stop_proximity = 1 + 2 · max(0, 1 − dist_to_stop / (2 · ATR14_1h)) with a
+//                    known stop, else 1
+// An item clears at |z| ≥ minZ; the cleared ones rank by materiality and the
+// top k go into the brief. Nothing clears → silent. A level or ratio z is a
+// state, not a change, so it also has to have changed since the baseline
+// (changedSinceBaseline, SPEC I0.4).
+
+export const WATCH_FLOOR = 0.05;
+/** A level/ratio z already past minZ at the baseline clears only if it moved at least this much. */
+export const LEVEL_Z_MOVE = 1;
+
+/** DiffItem plus the baseline z (level/ratio only). Internal: rankDiffs strips it. */
+export type RawDiffItem = DiffItem & { zBase?: number };
+
+export type Bar = { h: number; l: number; c: number };
+
+export interface AssetDiffInput {
+  asset: string;
+  current: SnapshotRow;
+  baseline: SnapshotRow;
+  /** Snapshot history (≥ 7 days before current.ts when available). */
+  history: SnapshotRow[];
+  /** Per-metric stand-in series while the snapshot store is young (normalize.metricZ). */
+  coldStart?: Partial<Record<SnapshotMetric, Point[]>>;
+  /** 1h candles, ascending, for ATR14. */
+  candles1h?: Bar[];
+  /** Positions in this asset across all sources; empty → watchlist only. */
+  positions: Pick<ExposurePosition, "side" | "stopPx" | "notionalUsd">[];
+}
+
+const FIELD: Record<SnapshotMetric, keyof SnapshotRow> = {
+  price: "price",
+  oi_usd: "oiUsd",
+  funding: "funding",
+  premium: "premium",
+  basis: "basis",
+  vol24h: "vol24h",
+  depth_bid_1: "depthBid1",
+  depth_ask_1: "depthAsk1",
+  depth_bid_2: "depthBid2",
+  depth_ask_2: "depthAsk2",
+  spread_bps: "spreadBps",
+};
+
+export function metricValue(row: SnapshotRow, metric: SnapshotMetric): number | null {
+  const v = row[FIELD[metric]];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/** pct for levels that scale (price, OI, volume, depth), bps for rates and the spread. */
+export function delta(metric: SnapshotMetric, from: number, to: number): { delta: number; deltaUnit: DeltaUnit } {
+  if (metric === "funding" || metric === "premium" || metric === "basis") return { delta: (to - from) * 1e4, deltaUnit: "bps" };
+  if (metric === "spread_bps") return { delta: to - from, deltaUnit: "bps" };
+  return { delta: from !== 0 ? ((to - from) / Math.abs(from)) * 100 : 0, deltaUnit: "pct" };
+}
+
+/**
+ * Distance from `mark` to the nearest known stop, in price units, on the
+ * losing side of each position: a stop already crossed counts as 0.
+ */
+export function stopDistance(mark: number, positions: AssetDiffInput["positions"]): number | null {
+  let best: number | null = null;
+  for (const p of positions) {
+    if (p.stopPx == null || !(p.stopPx > 0)) continue;
+    const d = Math.max(0, p.side === "long" ? mark - p.stopPx : p.stopPx - mark);
+    best = best == null ? d : Math.min(best, d);
+  }
+  return best;
+}
+
+export function stopProximity(dist: number | null, atr: number | null): number {
+  if (dist == null || atr == null || !(atr > 0)) return 1;
+  return 1 + 2 * Math.max(0, 1 - dist / (2 * atr));
+}
+
+export function exposureWeight(positions: AssetDiffInput["positions"], totalNotionalUsd: number): number {
+  if (!positions.length) return WATCH_FLOOR;
+  if (!(totalNotionalUsd > 0)) return 0;
+  return positions.reduce((s, p) => s + Math.abs(p.notionalUsd), 0) / totalNotionalUsd;
+}
+
+/** Every asset × metric pair that has a z. `diffed` counts them (cleared or not). */
+export function buildDiffItems(inputs: AssetDiffInput[], totalNotionalUsd: number): { items: RawDiffItem[]; diffed: number } {
+  const items: RawDiffItem[] = [];
+  for (const a of inputs) {
+    const held = a.positions.length > 0;
+    const weight = exposureWeight(a.positions, totalNotionalUsd);
+    const mark = a.current.price;
+    const dist = stopDistance(mark, a.positions);
+    const atr = a.candles1h ? atrOf(a.candles1h) : null;
+    const proximity = stopProximity(dist, atr);
+    const stop =
+      dist == null ? {} : { stopDistPct: mark > 0 ? (dist / mark) * 100 : 0, ...(atr != null && atr > 0 ? { stopDistAtr: dist / atr } : {}) };
+    const t = Date.parse(a.current.ts);
+    const t0 = Date.parse(a.baseline.ts);
+    for (const metric of SNAPSHOT_METRICS) {
+      const to = metricValue(a.current, metric);
+      const from = metricValue(a.baseline, metric);
+      if (to == null || from == null) continue;
+      const history = a.history.flatMap((r) => {
+        const v = metricValue(r, metric);
+        return v == null ? [] : [{ t: Date.parse(r.ts), v }];
+      });
+      const zIn = { from: { t: t0, v: from }, to: { t, v: to }, history, coldStart: a.coldStart?.[metric] };
+      const z = metricZ(metric, zIn);
+      if (z == null) continue;
+      const zBase = baselineZ(metric, zIn);
+      items.push({
+        asset: a.asset,
+        metric,
+        held,
+        from,
+        to,
+        ...delta(metric, from, to),
+        z,
+        materiality: Math.abs(z) * weight * proximity,
+        exposureWeight: weight,
+        stopProximity: proximity,
+        ...stop,
+        ts: a.current.ts,
+        baselineTs: a.baseline.ts,
+        ...(zBase != null ? { zBase } : {}),
+      });
+    }
+  }
+  return { items, diffed: items.length };
+}
+
+/**
+ * Level/ratio gate: the z crossed minZ since the baseline (|zBase| < minZ) or
+ * moved ≥ LEVEL_Z_MOVE. No zBase (returns, or no baseline z) → passes.
+ */
+export function changedSinceBaseline(z: number, zBase: number | undefined, minZ: number): boolean {
+  return zBase == null || Math.abs(zBase) < minZ || Math.abs(z - zBase) >= LEVEL_Z_MOVE;
+}
+
+/** Items with |z| ≥ minZ that changed since the baseline, by materiality (then |z|) descending, at most topK. */
+export function rankDiffs(items: RawDiffItem[], o: { minZ: number; topK: number }): DiffItem[] {
+  return items
+    .filter((i) => Math.abs(i.z) >= o.minZ && changedSinceBaseline(i.z, i.zBase, o.minZ))
+    .sort((a, b) => b.materiality - a.materiality || Math.abs(b.z) - Math.abs(a.z))
+    .slice(0, Math.max(0, o.topK))
+    .map(({ zBase: _, ...i }) => i);
+}

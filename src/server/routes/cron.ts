@@ -13,6 +13,14 @@ import { syncHead } from "../market/candleSync.js";
 import { syncFunding } from "../market/fundingSync.js";
 import { backfillCoin } from "../sim/backfill.js";
 import { STABLES } from "../../shared/schemas.js";
+import type { AssetCtx } from "../../shared/types.js";
+import { runIntelWatch } from "../intel/docwatch.js";
+import { refreshGraph } from "../intel/graph.js";
+import { runIntelIngest } from "../intel/runIngest.js";
+import { collectIntelSnapshots, fetchL2Book, focusAssets, SNAPSHOT_RETENTION_DAYS, STOP_RETENTION_DAYS, type SnapshotResult } from "../intel/snapshot.js";
+import type { IntelStore } from "../intel/store.js";
+import { runIntelBrief } from "../intel/terminal.js";
+import { defaultIntelDeps } from "./intel/index.js";
 
 const DAY_MS = 86400000;
 const DEFAULT_BACKFILL_DAYS = 365;
@@ -63,6 +71,8 @@ export type WarmResult = { from?: string; to?: string; tfs: number; fundingFrom?
 export type BackfillDeps = {
   listBranches: () => Promise<{ config: unknown }[]>;
   recentCoins: () => Promise<string[]>;
+  /** Intel held ∪ watched coins (candles for ATR, priced-in and journal stats). */
+  intelCoins?: () => Promise<string[]>;
   /** Daily history to startDate, head sync of every timeframe, funding pages. Calls `step` before each one. */
   warmCoin: (coin: string, startDate: Date, deadline: number, step: (label: string) => void) => Promise<WarmResult>;
   /** Retention for the finest timeframes; returns rows dropped per timeframe. */
@@ -120,23 +130,63 @@ export async function pruneRetention(now: number = Date.now()): Promise<Record<s
   return out;
 }
 
+/** Intel held ∪ watched assets. Only the coin set matters here, so manual positions go unpriced (empty marks). */
+function intelFocus() {
+  const intel = defaultIntelDeps();
+  return focusAssets(() => intel.exposure({}), () => intel.watched());
+}
+
+async function intelCoins(): Promise<string[]> {
+  const f = await intelFocus();
+  return [...new Set([...f.held, ...f.watched])];
+}
+
+/** Candle retention, plus Intel snapshots past SNAPSHOT_RETENTION_DAYS and stops past STOP_RETENTION_DAYS (`intel_snapshots`, `intel_stops`). */
+async function pruneAll(now: number = Date.now()): Promise<Record<string, number>> {
+  const out = await pruneRetention(now);
+  try {
+    out.intel_snapshots = await defaultIntelDeps().store.pruneSnapshots(new Date(now - SNAPSHOT_RETENTION_DAYS * DAY_MS));
+  } catch (err) {
+    console.error("[backfill] intel snapshot prune:", err instanceof Error ? err.message : err);
+  }
+  try {
+    out.intel_stops = await defaultIntelDeps().store.pruneStops(new Date(now - STOP_RETENTION_DAYS * DAY_MS));
+  } catch (err) {
+    console.error("[backfill] intel stop prune:", err instanceof Error ? err.message : err);
+  }
+  return out;
+}
+
+/** Book fetches for the snapshot rows stop starting after this; the rows are written regardless. */
+const SNAPSHOT_BOOK_BUDGET_MS = 60_000;
+
+/** Intel snapshot rows from the collect's own metaAndAssetCtxs. Never throws (failures land in collector_runs). */
+function runIntelSnapshots(ctxs: AssetCtx[], ts: Date): Promise<SnapshotResult> {
+  return collectIntelSnapshots(
+    { store: defaultIntelDeps().store, focus: intelFocus, l2Book: (coin) => fetchL2Book(coin), recordRun: db.recordCollectorRun, deadline: Date.now() + SNAPSHOT_BOOK_BUDGET_MS },
+    ctxs,
+    ts,
+  );
+}
+
 const defaultBackfillDeps: BackfillDeps = {
   listBranches: db.listBranches,
   recentCoins: () => db.recentlyAccessedCoins(new Date(Date.now() - RECENT_MS)),
+  intelCoins,
   warmCoin,
-  prune: () => pruneRetention(),
+  prune: () => pruneAll(),
   now: () => Date.now(),
 };
 
-/** Core coins, then every coin a saved branch allocates to, then recently charted coins. Deduped, stables dropped. */
-export function backfillCoins(branchConfigs: unknown[], requested?: string, recent: string[] = []): string[] {
+/** Core coins, then every coin a saved branch allocates to, then recently charted coins, then Intel held ∪ watched. Deduped, stables dropped. */
+export function backfillCoins(branchConfigs: unknown[], requested?: string, recent: string[] = [], intel: string[] = []): string[] {
   if (requested) return [...new Set(requested.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))];
   const coins = new Set(CORE_COINS);
   for (const config of branchConfigs) {
     const c = config as { allocations?: { coin?: unknown }[]; dca?: { coin?: unknown }[] } | null;
     for (const a of [...(c?.allocations ?? []), ...(c?.dca ?? [])]) if (typeof a.coin === "string") coins.add(a.coin.toUpperCase());
   }
-  for (const c of recent) coins.add(c);
+  for (const c of [...recent, ...intel]) coins.add(c);
   return [...coins].filter((c) => !STABLES.has(c));
 }
 
@@ -172,10 +222,10 @@ export function backfillRoute(deps: BackfillDeps = defaultBackfillDeps) {
     // leave the route silent until Vercel killed it at 300s.
     const work = (async () => {
       step("list coins");
-      const [branches, recent] = requested
-        ? [[], []]
-        : await Promise.all([deps.listBranches(), deps.recentCoins().catch(() => [])]);
-      coins = backfillCoins(branches.map((b) => b.config), requested, recent);
+      const [branches, recent, intel] = requested
+        ? [[], [], []]
+        : await Promise.all([deps.listBranches(), deps.recentCoins().catch(() => []), (deps.intelCoins?.() ?? Promise.resolve([])).catch(() => [])]);
+      coins = backfillCoins(branches.map((b) => b.config), requested, recent, intel);
       for (const coin of coins) {
         if (deps.now() > deadline) {
           results[coin] = { ok: false, skipped: true };
@@ -211,11 +261,12 @@ export function backfillRoute(deps: BackfillDeps = defaultBackfillDeps) {
 }
 
 async function oiCoins(): Promise<string[]> {
-  const [branches, recent] = await Promise.all([
+  const [branches, recent, intel] = await Promise.all([
     db.listBranches().catch(() => []),
     db.recentlyAccessedCoins(new Date(Date.now() - RECENT_MS)).catch(() => []),
+    intelCoins().catch(() => []),
   ]);
-  return backfillCoins(branches.map((b) => b.config), undefined, recent);
+  return backfillCoins(branches.map((b) => b.config), undefined, recent, intel);
 }
 
 export type LabLease = {
@@ -280,6 +331,120 @@ export async function runLabCollect(
   return { ok: false, error, written: progress.written, sources: { ...progress.sources }, timedOut: true, inFlight };
 }
 
+// ── Intel cron jobs (SPEC.md § Intel I2) ──
+//
+// ingest (sources + mapper + catalyst alerts), brief (cron-surface brief to
+// Telegram), graph (seed edges + daily LLM refresh) and watch (doc/contract
+// watcher). Each runs under its own lease (sync_state coin '_intel', series =
+// job) and the shared 200 s budget; brief and graph also self-throttle on an
+// intel_settings timestamp written when a run completes, so the workflow can
+// call all four every 15 minutes. "lease held" and "throttled" answer 200.
+
+export const INTEL_BUDGET_MS = 200_000;
+export const INTEL_LEASE_MS = INTEL_BUDGET_MS + 60_000;
+export const INTEL_HARD_STOP_MS = INTEL_BUDGET_MS + 40_000;
+export const INTEL_LEASE_COIN = "_intel";
+/** A run due at 6 h on a 15-minute schedule should not slip a whole tick. */
+const THROTTLE_SLACK_MS = 5 * 60_000;
+
+export type IntelJob = "ingest" | "brief" | "graph" | "watch";
+
+/** `complete: false` leaves the throttle timestamp alone, so the next call picks up the rest. */
+export type IntelJobRun = (o: { budgetMs: number; signal: AbortSignal }) => Promise<{ ok: boolean; complete: boolean; result: unknown }>;
+
+export interface IntelCronDeps {
+  lease(job: IntelJob): LabLease;
+  settings: Pick<IntelStore, "getSetting" | "setSetting">;
+  run: Record<IntelJob, IntelJobRun>;
+  env: Record<string, string | undefined>;
+  now(): number;
+  hardStopMs?: number;
+}
+
+export const intelSettingKey = (job: IntelJob) => `cron_${job}_at`;
+
+/** Minimum gap between runs: brief INTEL_BRIEF_HOURS (default 6, 1–168), graph daily, the rest none. */
+export function intelThrottleMs(job: IntelJob, env: Record<string, string | undefined>): number {
+  if (job === "graph") return DAY_MS;
+  if (job !== "brief") return 0;
+  const h = Number(env.INTEL_BRIEF_HOURS);
+  return (env.INTEL_BRIEF_HOURS?.trim() && Number.isFinite(h) ? Math.min(168, Math.max(1, h)) : 6) * 3_600_000;
+}
+
+/** One leased, budgeted Intel job. Never throws; a thrown run or lease error is a 500 body. */
+export async function runIntelJob(job: IntelJob, deps: IntelCronDeps): Promise<{ status: 200 | 500; body: Record<string, unknown> }> {
+  const holder = randomUUID();
+  const lease = deps.lease(job);
+  const fail = (err: unknown) => ({ status: 500 as const, body: { job, ok: false, error: err instanceof Error ? err.message : String(err) } });
+  try {
+    if (!(await lease.acquire(holder, INTEL_LEASE_MS))) return { status: 200, body: { job, ok: true, skipped: "lease held" } };
+  } catch (err) {
+    return fail(err);
+  }
+  const release = () => lease.release(holder).catch((err) => console.error(`[intel:${job}] lease release:`, err));
+  const started = deps.now();
+  const hardStopMs = deps.hardStopMs ?? INTEL_HARD_STOP_MS;
+  const abort = new AbortController();
+  const work = (async () => {
+    try {
+      const gap = intelThrottleMs(job, deps.env);
+      if (gap) {
+        const last = await deps.settings.getSetting<string>(intelSettingKey(job));
+        if (last && started - Date.parse(last) < gap - THROTTLE_SLACK_MS) return { status: 200 as const, body: { job, ok: true, skipped: "throttled", lastRunAt: last } };
+      }
+      const r = await deps.run[job]({ budgetMs: INTEL_BUDGET_MS, signal: abort.signal });
+      if (gap && r.complete) await deps.settings.setSetting(intelSettingKey(job), new Date(started).toISOString());
+      return { status: r.ok ? (200 as const) : (500 as const), body: { job, ok: r.ok, ms: deps.now() - started, result: r.result } };
+    } catch (err) {
+      return fail(err);
+    } finally {
+      await release();
+    }
+  })();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const hardStop = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), hardStopMs);
+  });
+  const done = await Promise.race([work, hardStop]);
+  clearTimeout(timer);
+  if (done) return done;
+  abort.abort();
+  console.error(`[intel:${job}] hard stop after ${Math.round(hardStopMs / 1000)}s`);
+  return { status: 500, body: { job, ok: false, timedOut: true, error: `still running after ${Math.round(hardStopMs / 1000)}s` } };
+}
+
+const defaultIntelCronDeps = (): IntelCronDeps => {
+  const d = defaultIntelDeps();
+  return {
+    lease: (job) => ({
+      acquire: (holder, ttlMs) => db.acquireLease(INTEL_LEASE_COIN, job, holder, ttlMs),
+      release: (holder) => db.releaseLease(INTEL_LEASE_COIN, job, holder),
+    }),
+    settings: d.store,
+    env: d.env ?? process.env,
+    now: () => Date.now(),
+    run: {
+      ingest: async (o) => ({ ok: true, complete: true, result: await runIntelIngest(d.ingest, o) }),
+      brief: async (o) => {
+        const r = await runIntelBrief({ ...d, notifier: d.notifier, appUrl: d.appUrl }, o);
+        return { ok: r.ok, complete: r.ok, result: r };
+      },
+      graph: async (o) => {
+        const r = await refreshGraph(d.graph, o);
+        return { ok: true, complete: r.skipped.length === 0 && !r.warning, result: r };
+      },
+      watch: async (o) => ({ ok: true, complete: true, result: await runIntelWatch(d.docwatch, o) }),
+    },
+  };
+};
+
+export function intelCronRoute(job: IntelJob, deps: () => IntelCronDeps = defaultIntelCronDeps) {
+  return async (c: Context) => {
+    const { status, body } = await runIntelJob(job, deps());
+    return c.json(body, status);
+  };
+}
+
 // Cron requests in flight in this process. Vercel Cron and the GitHub
 // workflow can now overlap on one warm instance.
 let activeCronRequests = 0;
@@ -301,15 +466,23 @@ export const cronRoutes = new Hono()
     }
   })
   .on(["GET", "POST"], "/collect", requireCronToken, async (c) => {
+    // Intel snapshots ride on the same metaAndAssetCtxs fetch; their failure
+    // is reported (and recorded), never a failed collect.
+    let snapshots: Promise<SnapshotResult> | undefined;
     const [hyperliquid, cryptoContext, fred, elfa] = await Promise.all([
-      oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra)),
+      oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra, (ctxs, ts) => void (snapshots = runIntelSnapshots(ctxs, ts)))),
       collectCryptoContext(),
       collectFred(),
       collectElfa(),
     ]);
-    return c.json({ hyperliquid, cryptoContext, fred, elfa });
+    const intelSnapshots = snapshots ? await snapshots : { ok: false, written: 0, error: "no asset contexts (hyperliquid collect failed)" };
+    return c.json({ hyperliquid, cryptoContext, fred, elfa, intelSnapshots });
   })
   // Lab history on its own route: a long first backfill must not hold up (or
   // be retried with) the 15-minute collection. Leased: one run at a time.
   .on(["GET", "POST"], "/lab-collect", requireCronToken, async (c) => c.json(await runLabCollect()))
-  .on(["GET", "POST"], "/backfill", requireCronToken, backfillRoute());
+  .on(["GET", "POST"], "/backfill", requireCronToken, backfillRoute())
+  .on(["GET", "POST"], "/intel/ingest", requireCronToken, intelCronRoute("ingest"))
+  .on(["GET", "POST"], "/intel/brief", requireCronToken, intelCronRoute("brief"))
+  .on(["GET", "POST"], "/intel/graph", requireCronToken, intelCronRoute("graph"))
+  .on(["GET", "POST"], "/intel/watch", requireCronToken, intelCronRoute("watch"));

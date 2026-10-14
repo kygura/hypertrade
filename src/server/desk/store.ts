@@ -87,6 +87,8 @@ export interface DeskStore {
 
   getState<T>(key: string): Promise<T | null>;
   setState(key: string, value: unknown): Promise<void>;
+  /** Atomically removes and returns the value when its `hash` field equals `hash`; null otherwise (a one-shot token). */
+  takeState<T extends { hash: string }>(key: string, hash: string): Promise<T | null>;
 }
 
 // ---------------------------------------------------------------- postgres
@@ -237,6 +239,10 @@ export class PgStore implements DeskStore {
     await sql()`insert into desk_state (key, value, updated_at) values (${key}, ${sql().json(value as any)}, now())
       on conflict (key) do update set value = excluded.value, updated_at = now()`;
   }
+  async takeState<T extends { hash: string }>(key: string, hash: string) {
+    const [row] = await sql()`delete from desk_state where key = ${key} and value->>'hash' = ${hash} returning value`;
+    return row ? (row.value as T) : null;
+  }
 }
 
 // ---------------------------------------------------------------- memory
@@ -345,5 +351,11 @@ export class MemoryStore implements DeskStore {
   }
   async setState(key: string, value: unknown) {
     this.state.set(key, value);
+  }
+  async takeState<T extends { hash: string }>(key: string, hash: string) {
+    const v = this.state.get(key) as T | undefined;
+    if (v?.hash !== hash) return null;
+    this.state.delete(key);
+    return v;
   }
 }

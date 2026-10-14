@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
 import type { z } from 'zod'
 import { api, ApiError, NetworkError } from './api'
+import { errorMessage, usePoll, type PollState } from './poll'
 import {
   DecisionRecordSchema,
   DecisionsResponseSchema,
@@ -88,29 +88,14 @@ export function isEngineOffline(err: unknown): boolean {
   return err instanceof ApiError && (err.status === 502 || err.status === 503)
 }
 
-export function errorMessage(err: unknown, fallback = 'request failed'): string {
-  return err instanceof Error && err.message ? err.message : fallback
-}
+export { errorMessage }
 
-export interface EngineState<T> {
-  data: T | null
-  loading: boolean
-  /** Server responded with a failure (verbatim message) — DESIGN.md §6 ErrorBlock. */
-  error: string | null
-  /** Proxy says the engine is unreachable/not configured — OfflineBlock. Message is the verbatim reason. */
-  offline: string | null
-  /** Last successful fetch, for the age stamp. */
-  fetchedAt: number | null
-  refetch: () => void
-  /** Replace the cached data locally (after a PUT/POST returned the new record). */
-  setData: (data: T) => void
-}
+export type EngineState<T> = PollState<T>
 
 export const ENGINE_POLL_MS = 5_000
 
-// useEngine — run `fetcher` now and every `intervalMs` while the tab is
-// visible. Refetches update in place: `data` is kept during a failed poll so
-// the surface never flashes back to a skeleton (§6). Pass `enabled=false` to
+// useEngine — usePoll (lib/poll.ts) with the engine defaults: 5 s cadence,
+// and the proxy's 502/503 answers read as offline. Pass `enabled=false` to
 // skip (e.g. missing route param).
 export function useEngine<T>(
   fetcher: () => Promise<T>,
@@ -118,74 +103,6 @@ export function useEngine<T>(
   opts: { intervalMs?: number | null; enabled?: boolean } = {},
 ): EngineState<T> {
   const { intervalMs = ENGINE_POLL_MS, enabled = true } = opts
-  const [state, setState] = useState<Omit<EngineState<T>, 'refetch' | 'setData'>>({
-    data: null,
-    loading: enabled,
-    error: null,
-    offline: null,
-    fetchedAt: null,
-  })
-  const fetcherRef = useRef(fetcher)
-  fetcherRef.current = fetcher
-  const inflight = useRef(false)
-
-  const load = useCallback(async () => {
-    if (!enabled || inflight.current) return
-    inflight.current = true
-    try {
-      const data = await fetcherRef.current()
-      setState({ data, loading: false, error: null, offline: null, fetchedAt: Date.now() })
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) return // redirect in flight
-      setState((s) => ({
-        ...s,
-        loading: false,
-        error: isEngineOffline(err) ? null : errorMessage(err),
-        offline: isEngineOffline(err) ? errorMessage(err, 'engine unreachable') : null,
-      }))
-    } finally {
-      inflight.current = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, ...deps])
-
-  useEffect(() => {
-    if (!enabled) return
-    setState((s) => ({ ...s, loading: s.data == null }))
-    void load()
-    if (intervalMs == null) return
-
-    let timer: ReturnType<typeof setInterval> | null = null
-    const start = () => {
-      if (timer == null) timer = setInterval(() => void load(), intervalMs)
-    }
-    const stop = () => {
-      if (timer != null) clearInterval(timer)
-      timer = null
-    }
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') stop()
-      else {
-        void load()
-        start()
-      }
-    }
-    if (document.visibilityState !== 'hidden') start()
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => {
-      stop()
-      document.removeEventListener('visibilitychange', onVisibility)
-    }
-  }, [load, enabled, intervalMs])
-
-  const refetch = useCallback(() => {
-    setState((s) => ({ ...s, loading: s.data == null, error: null, offline: null }))
-    void load()
-  }, [load])
-
-  const setData = useCallback((data: T) => {
-    setState((s) => ({ ...s, data, loading: false, error: null, offline: null, fetchedAt: Date.now() }))
-  }, [])
-
-  return { ...state, refetch, setData }
+  return usePoll(fetcher, deps, { intervalMs, enabled, isOffline: isEngineOffline, offlineFallback: 'engine unreachable' })
 }
+

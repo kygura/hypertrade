@@ -106,7 +106,8 @@ class AnthropicConversation implements Conversation {
     // When the caller already offers its own web_search (the Exa tool,
     // EXA_API_KEY set), defer to it instead of also registering Anthropic's
     // native hosted tool under the same name — the API rejects duplicates.
-    if (!tools.some((t) => t.name === "web_search")) {
+    // Intel opts out per step (webSearch: false).
+    if (opts.webSearch !== false && !tools.some((t) => t.name === "web_search")) {
       apiTools.push(
         current
           ? { type: "web_search_20260209", name: "web_search", max_uses: this.opts.webSearchMaxUses ?? 5 }

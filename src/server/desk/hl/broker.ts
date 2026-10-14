@@ -4,7 +4,7 @@ import type { AssetCtx } from "../../../shared/types.js";
 import { readHlAccount, type InfoFn } from "../data.js";
 import type { MarketRef } from "../governor.js";
 import type { Broker, ExecutionResult } from "../paper.js";
-import type { AccountState, Sizing, TradeProposal } from "../types.js";
+import type { AccountState, RiskOrder, Sizing } from "../types.js";
 import { addressOf, signL1Action } from "./signing.js";
 import { cancelAction, orderAction, roundPerpPx, slippagePx, updateLeverageAction, type OrderRequest } from "./wire.js";
 
@@ -20,7 +20,7 @@ import { cancelAction, orderAction, roundPerpPx, slippagePx, updateLeverageActio
 // An entry is one signed action, grouping "normalTpsl":
 //   [0] IOC limit `slippage` through the venue mark      (the entry)
 //   [1] reduce-only market stop at the proposal's stop  (tpsl "sl")
-//   [2] reduce-only market take-profit at its target    (tpsl "tp")
+//   [2] reduce-only market take-profit at its target    (tpsl "tp"; omitted without a target)
 // If the entry fills but the stop is rejected, the position is flattened at
 // once: the desk never holds a live position without an exchange-side stop.
 
@@ -119,7 +119,7 @@ export class HlBroker implements Broker {
     return readHlAccount(this.address, this.info, this.venue);
   }
 
-  async open(p: TradeProposal, sizing: Sizing): Promise<ExecutionResult> {
+  async open(p: RiskOrder, sizing: Sizing): Promise<ExecutionResult> {
     try {
       const { index, ctx } = await this.asset(p.coin);
       const isBuy = p.side === "long";
@@ -137,15 +137,17 @@ export class HlBroker implements Broker {
           reduceOnly: true,
           orderType: { trigger: { isMarket: true, triggerPx: roundPerpPx(p.stop, ctx.szDecimals), tpsl: "sl" } },
         },
-        {
+      ];
+      if (p.target != null) {
+        legs.push({
           asset: index,
           isBuy: !isBuy,
           limitPx: slippagePx(p.target, !isBuy, this.o.slippage, ctx.szDecimals),
           sz,
           reduceOnly: true,
           orderType: { trigger: { isMarket: true, triggerPx: roundPerpPx(p.target, ctx.szDecimals), tpsl: "tp" } },
-        },
-      ];
+        });
+      }
       const res = OrderResponseSchema.safeParse(await this.exchange(orderAction(legs, "normalTpsl")));
       if (!res.success) return { ok: false, venue: this.venue, fills: [], error: "order rejected by the exchange" };
       const [entry, stop, target] = res.data.response.data.statuses;
@@ -161,7 +163,7 @@ export class HlBroker implements Broker {
         const flat = await this.exit(p.coin, size, px);
         return { ok: false, venue: this.venue, fills: [fill, ...flat.fills], error: `stop order rejected (${stopErr}); position flattened${flat.ok ? "" : ` — FLATTEN FAILED: ${flat.error}`}` };
       }
-      const tpErr = statusError(target);
+      const tpErr = p.target != null ? statusError(target) : null;
       return { ok: true, venue: this.venue, fills: [fill], note: `oid ${entry.filled.oid}${tpErr ? `; take-profit rejected (${tpErr}), stop is live` : ""}` };
     } catch (err) {
       return { ok: false, venue: this.venue, fills: [], error: err instanceof Error ? err.message : String(err) };

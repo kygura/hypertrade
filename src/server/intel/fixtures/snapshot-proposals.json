@@ -1,0 +1,33 @@
+{
+  "data": {
+    "proposals": [
+      {
+        "id": "0xabc123",
+        "title": "[ARFC] Raise   wstETH supply cap on Aave v3",
+        "created": 1791800000,
+        "end": 1792150000,
+        "state": "active",
+        "link": "https://snapshot.box/#/s:aave.eth/proposal/0xabc123",
+        "space": { "id": "aave.eth", "name": "Aave" }
+      },
+      {
+        "id": "0xdef456",
+        "title": "Fund the Arbitrum gaming catalyst",
+        "created": 1791700000,
+        "end": 1791760000,
+        "state": "closed",
+        "link": null,
+        "space": { "id": "arbitrumfoundation.eth", "name": "Arbitrum DAO" }
+      },
+      {
+        "id": "0x999",
+        "title": "Unmapped space proposal",
+        "created": 1791700000,
+        "end": 1791760000,
+        "state": "active",
+        "link": null,
+        "space": { "id": "someone-else.eth", "name": "Other" }
+      }
+    ]
+  }
+}

@@ -13,6 +13,7 @@ import {
   type DeskEvent,
   type DeskStatus,
   type ExitProposal,
+  type OperatorOrderRecord,
   type Portfolio,
   type ProposalRecord,
   type RunRow,
@@ -438,22 +439,27 @@ function ApprovalsPanel({ proposals, loading, onChange }: { proposals: ProposalR
 function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean; onDecide: (v: 'approve' | 'reject') => void }) {
   const [open, setOpen] = useState(p.status === 'pending')
   const s = p.verdict.sizing
-  const open_ = p.kind === 'open' ? (p.proposal as TradeProposal) : null
+  // An operator (copilot) order carries no thesis, setup or confidence.
+  const op = p.kind === 'open' && 'source' in p.proposal ? (p.proposal as OperatorOrderRecord) : null
+  const open_ = p.kind === 'open' && !op ? (p.proposal as TradeProposal) : null
+  const entry = op ?? open_
   const exit = p.kind === 'exit' ? (p.proposal as ExitProposal) : null
   return (
     <div className="border-b border-border-subtle p-3 flex flex-col gap-1.5 min-w-0">
       <button className="flex items-center gap-2 text-left min-w-0" onClick={() => setOpen((o) => !o)}>
         <Badge tone={STATUS_TONE[p.status] ?? 'gray'}>{p.status.toUpperCase()}</Badge>
-        <span className={`text-[12px] ${open_?.side === 'short' ? 'text-red-text' : 'text-green'}`}>
-          {open_ ? `${open_.side.toUpperCase()} ${open_.coin}` : `EXIT ${Math.round((exit?.fraction ?? 0) * 100)}% ${exit?.coin}`}
+        <span className={`text-[12px] ${entry?.side === 'short' ? 'text-red-text' : 'text-green'}`}>
+          {entry ? `${entry.side.toUpperCase()} ${entry.coin}` : `EXIT ${Math.round((exit?.fraction ?? 0) * 100)}% ${exit?.coin}`}
         </span>
-        <span className="text-[10px] text-text-secondary truncate">{open_?.setup ?? exit?.reason}</span>
+        <span className="text-[10px] text-text-secondary truncate">{op ? 'operator order (copilot)' : (open_?.setup ?? exit?.reason)}</span>
         <span className="text-[10px] text-text-secondary ml-auto shrink-0 tabular">{new Date(p.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
       </button>
       {s && (
         <div className="text-[10px] text-text-secondary tabular">
           mark {fmtPx(s.markPx)}
-          {open_ && ` · stop ${fmtPx(open_.stop)} (${s.stopDistPct}%) · target ${fmtPx(open_.target)} · R:R ${s.rr} · risk ${fmtUsd(s.riskUsd)}`} · size {s.size} ({fmtUsd(s.notionalUsd)})
+          {entry &&
+            ` · stop ${fmtPx(entry.stop)} (${s.stopDistPct}%) · target ${entry.target != null ? fmtPx(entry.target) : 'none'} · R:R ${s.rr ?? 'n/a'} · risk ${fmtUsd(s.riskUsd)}`}{' '}
+          · size {s.size} ({fmtUsd(s.notionalUsd)})
         </div>
       )}
       {open && (
@@ -473,6 +479,12 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
                 {open_.horizon} · confidence {open_.confidence} · asked {open_.riskPct}% risk
               </span>
             </>
+          )}
+          {op && (
+            <span className="text-[10px] text-text-secondary">
+              asked {op.notionalUsd != null ? `${fmtUsd(op.notionalUsd)} notional` : op.leverage != null ? `${op.leverage}x equity` : `${op.riskPct}% risk`} · sized at{' '}
+              {op.resolvedRiskPct.toFixed(2)}% risk
+            </span>
           )}
           {p.verdict.reasons.map((r) => (
             <span key={r} className="text-[10px] text-red-text">

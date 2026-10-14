@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { loadDeskConfig } from "./config.js";
-import { evaluateExit, evaluateOpen, floorToDecimals, type GovernorContext } from "./governor.js";
-import type { AccountState, TradeProposal } from "./types.js";
+import { evaluateExit, evaluateOpen, evaluateRisk, floorToDecimals, operatorRiskOrder, type GovernorContext } from "./governor.js";
+import type { AccountState, OperatorOrder, RiskOrder, TradeProposal } from "./types.js";
 
 const limits = loadDeskConfig({}).limits;
 const NOW = new Date("2026-10-05T12:00:00Z");
@@ -93,6 +93,65 @@ describe("evaluateOpen", () => {
     const v = evaluateOpen({ ...long, side: "short", stop: 4200, target: 3500 }, gctx());
     expect(v.approved).toBe(true);
     expect(v.sizing!.rr).toBe(2.5);
+  });
+});
+
+describe("evaluateRisk", () => {
+  const order: RiskOrder = { coin: "ETH", side: "long", stop: 3800, target: 4500, riskPct: 0.5 };
+
+  test("matches evaluateOpen on the risk fields of a full proposal", () => {
+    expect(evaluateRisk(order, gctx())).toEqual(evaluateOpen(long, gctx()));
+    for (const patch of [{ stop: 4100 }, { target: 4200 }, { riskPct: 2 }, { entryLimit: 3950 }]) {
+      expect(evaluateRisk({ ...order, ...patch }, gctx())).toEqual(evaluateOpen({ ...long, ...patch }, gctx()));
+    }
+  });
+
+  test("has no proposal-only checks: confidence belongs to evaluateOpen", () => {
+    expect(evaluateOpen({ ...long, confidence: "low" }, gctx()).approved).toBe(false);
+    expect(evaluateRisk(order, gctx()).approved).toBe(true);
+  });
+
+  test("no target: reward:risk is skipped with a warning and rr is null", () => {
+    const { target: _t, ...noTarget } = order;
+    const v = evaluateRisk(noTarget, gctx());
+    expect(v.approved).toBe(true);
+    expect(v.warnings).toContain("no target: reward:risk not checked");
+    expect(v.sizing).toMatchObject({ size: 0.25, notionalUsd: 1000, riskUsd: 50, rr: null });
+  });
+
+  test("blocks under the kill switch and for a stop on the wrong side", () => {
+    expect(evaluateRisk(order, gctx({ killSwitch: true })).reasons.join()).toContain("kill switch");
+    const v = evaluateRisk({ ...order, side: "short" }, gctx());
+    expect(v.approved).toBe(false);
+    expect(v.reasons.join()).toContain("stop 3800 is on the wrong side");
+  });
+
+  test("clips riskPct to the per-trade limit", () => {
+    const v = evaluateRisk({ ...order, riskPct: 1.5 }, gctx());
+    expect(v.approved).toBe(true);
+    expect(v.sizing!.riskUsd).toBe(50);
+    expect(v.warnings.join()).toContain("clipped to the 0.5% per-trade limit");
+  });
+});
+
+describe("operatorRiskOrder", () => {
+  const base: OperatorOrder = { coin: "eth", side: "long", stop: 3800, target: 4500, source: "copilot" };
+
+  test("notional at the stop distance becomes riskPct (800 USD × 5% / 10k = 0.4%)", () => {
+    const { order, warnings } = operatorRiskOrder({ ...base, notionalUsd: 800 }, gctx());
+    expect(order).toMatchObject({ coin: "ETH", riskPct: 0.4 });
+    expect(warnings.join()).toContain("risks 0.4% of equity");
+    expect(evaluateRisk(order, gctx()).sizing).toMatchObject({ size: 0.2, notionalUsd: 800 });
+  });
+
+  test("leverage means leverage × equity; over the limit it is clipped with a warning", () => {
+    const { order, warnings } = operatorRiskOrder({ ...base, leverage: 1 }, gctx());
+    expect(order.riskPct).toBe(0.5);
+    expect(warnings.join(" | ")).toContain("risk 5% clipped to the 0.5% per-trade limit");
+  });
+
+  test("without notional or leverage the order's riskPct stands", () => {
+    expect(operatorRiskOrder({ ...base, riskPct: 0.3 }, gctx())).toEqual({ order: { coin: "ETH", side: "long", stop: 3800, target: 4500, entryLimit: undefined, riskPct: 0.3 }, warnings: [] });
   });
 });
 

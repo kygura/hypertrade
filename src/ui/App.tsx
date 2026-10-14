@@ -17,6 +17,7 @@ import { Governor } from './pages/Governor'
 import { Analyst } from './pages/Analyst'
 import { Desk } from './pages/Desk'
 import { SkeletonRows } from './components/state'
+import { TerminalTabs } from './components/intel/TerminalTabs'
 
 // The drill-in carries the canvas chart library; load it with the route.
 const MarketDrill = lazy(() => import('./pages/MarketDrill').then((m) => ({ default: m.MarketDrill })))
@@ -24,6 +25,22 @@ const MarketDrill = lazy(() => import('./pages/MarketDrill').then((m) => ({ defa
 const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
 const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
 const LAB_TAB_PATHS = ['/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
+// Terminal family (DESIGN-terminal.md §1.1): `/` is the Terminal; each sub-tab
+// is its own route, loaded with it. `/overview` is the old `/` under TerminalTabs.
+const Terminal = lazy(() => import('./pages/terminal/Terminal').then((m) => ({ default: m.Terminal })))
+const Journal = lazy(() => import('./pages/terminal/Journal').then((m) => ({ default: m.Journal })))
+const Theses = lazy(() => import('./pages/terminal/Theses').then((m) => ({ default: m.Theses })))
+const Query = lazy(() => import('./pages/terminal/Query').then((m) => ({ default: m.Query })))
+const Order = lazy(() => import('./pages/terminal/Order').then((m) => ({ default: m.Order })))
+const Watch = lazy(() => import('./pages/terminal/Watch').then((m) => ({ default: m.Watch })))
+const TERMINAL_PAGES = [
+  { path: '/', Page: Terminal },
+  { path: '/journal', Page: Journal },
+  { path: '/theses', Page: Theses },
+  { path: '/query', Page: Query },
+  { path: '/order', Page: Order },
+  { path: '/watch', Page: Watch },
+]
 
 // Router — SPEC.md route map. All routes except /login render inside
 // AppShell. Auth guard: a session probe on shell mount plus the api.ts
@@ -41,10 +58,26 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        {TERMINAL_PAGES.map(({ path, Page }) => (
+          <Route
+            key={path}
+            path={path}
+            element={
+              <Shell>
+                <Suspense fallback={<SkeletonRows />}>
+                  <Page />
+                </Suspense>
+              </Shell>
+            }
+          />
+        ))}
         <Route
-          path="/"
+          path="/overview"
           element={
             <Shell>
+              <div className="max-w-[1440px] mx-auto px-3 md:px-[var(--gutter)]">
+                <TerminalTabs />
+              </div>
               <Overview />
             </Shell>
           }
