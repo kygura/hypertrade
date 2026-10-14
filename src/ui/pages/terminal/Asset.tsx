@@ -6,6 +6,7 @@ import { Badge } from '../../components/Badge'
 import { Button } from '../../components/Button'
 import { AssetTimeline, paneOf, timelineRows } from '../../components/intel/AssetTimeline'
 import { ClaimAge } from '../../components/intel/ClaimAge'
+import { ResearchSuffix } from '../../components/intel/DetectorChips'
 import { EventList } from '../../components/intel/EventList'
 import { ExposureGraph } from '../../components/intel/ExposureGraph'
 import { firingChips, flagWord, FLOW_NO_SOURCE, flowSourceText } from '../../components/intel/flow'
@@ -113,6 +114,7 @@ function AssetHeader({
               {flags.map((f) => (
                 <Badge key={f.id} tone="gray">
                   {flagWord(f).toLowerCase()}
+                  {f.researchId && <ResearchSuffix />}
                 </Badge>
               ))}
             </span>

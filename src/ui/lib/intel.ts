@@ -20,6 +20,7 @@ import {
   PositionsResponseSchema,
   QueryParseResponseSchema,
   QueryResultSchema,
+  ResearchResultSchema,
   ReviewsResponseSchema,
   ThesesResponseSchema,
   ThesisSchema,
@@ -52,6 +53,7 @@ import {
   type PositionsResponse,
   type QueryParseResponse,
   type QueryResult,
+  type ResearchResult,
   type Review,
   type ScreenerDslInput,
   type Thesis,
@@ -88,6 +90,19 @@ const FeedbackReportLatestSchema = z.object({ report: FeedbackReportSchema.nulla
 /** `POST /journal/tag` answers `{tagged, failed, error?}` (routes/intel/journal.ts); `error` is the first model failure, verbatim. */
 const JournalTagResultSchema = JournalTagResponseSchema.extend({ failed: z.number().int().default(0), error: z.string().optional() })
 export type JournalTagResult = z.infer<typeof JournalTagResultSchema>
+
+/** `GET /research` (SPEC S1). `usedToday`/`limit` may be absent: usage line omitted, box never limit-gated (DESIGN-terminal §16.6). */
+export const ResearchListResponseSchema = z.object({
+  items: z.array(ResearchResultSchema),
+  usedToday: z.number().int().optional(),
+  limit: z.number().int().optional(),
+})
+export type ResearchListResponse = z.infer<typeof ResearchListResponseSchema>
+export interface ResearchAskInput {
+  question: string
+  asset?: string
+  flagId?: string
+}
 
 const base = '/intel'
 const enc = encodeURIComponent
@@ -184,6 +199,12 @@ export const intel = {
     parse(HeatmapResponseSchema, await api.get(`${base}/heatmap${qs({ window })}`)),
   asset: async (coin: string, days: number): Promise<AssetDetailResponse> =>
     parse(AssetDetailResponseSchema, await api.get(`${base}/asset/${enc(coin)}${qs({ days })}`)),
+
+  // ── scout research (SPEC § Scout S1) ──
+  research: async (q: { asset?: string; limit?: number } = {}): Promise<ResearchListResponse> =>
+    parse(ResearchListResponseSchema, await api.get(`${base}/research${qs(q)}`)),
+  /** Synchronous up to ~45 s. 409 = a run in flight, 429 = daily limit (askState in components/intel/research.ts); over the $ cap → 200 `capped`. */
+  ask: async (input: ResearchAskInput): Promise<ResearchResult> => parse(ResearchResultSchema, await api.post(`${base}/research`, input)),
 }
 
 /** 409 from `POST /order/confirm`: marks moved > 0.5% or > 60 s (DESIGN-terminal §7.4). */
@@ -204,6 +225,9 @@ export const INTEL_POLL_MS = {
   /** 15-min data (DESIGN-terminal §15.2, §15.8). */
   heatmap: 300_000,
   asset: 300_000,
+  /** DESIGN-terminal §16.6: 60 s, 15 s while a row is running. */
+  research: 60_000,
+  researchRunning: 15_000,
 } as const
 
 export type IntelState<T> = PollState<T>

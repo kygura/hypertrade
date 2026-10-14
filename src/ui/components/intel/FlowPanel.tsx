@@ -5,7 +5,7 @@ import { Segmented, type SegmentOption } from '../Segmented'
 import { SrcTag } from '../SrcTag'
 import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows, StaleBanner } from '../state'
 import { ClaimAge } from './ClaimAge'
-import { DetectorChips } from './DetectorChips'
+import { DetectorChips, type ChipResearchActions } from './DetectorChips'
 import { FlowHeatmap } from './FlowHeatmap'
 
 // FlowPanel — DESIGN-terminal §15.1. FLOW · RANKED BY MATERIALITY, the window
@@ -41,7 +41,18 @@ export function writeFlowWindow(w: HeatmapWindow): void {
   }
 }
 
-export function FlowPanel({ state, window, onWindow }: { state: IntelState<HeatmapResponse>; window: HeatmapWindow; onWindow: (w: HeatmapWindow) => void }) {
+export function FlowPanel({
+  state,
+  window,
+  onWindow,
+  research,
+}: {
+  state: IntelState<HeatmapResponse>
+  window: HeatmapWindow
+  onWindow: (w: HeatmapWindow) => void
+  /** §16.3 chip actions, wired by Terminal. */
+  research?: ChipResearchActions
+}) {
   const d = state.data
   return (
     <Panel>
@@ -68,7 +79,7 @@ export function FlowPanel({ state, window, onWindow }: { state: IntelState<Heatm
         ) : (
           <>
             {(state.error || state.offline) && <ErrorBlock message={state.error ?? state.offline ?? ''} onRetry={state.refetch} />}
-            <DetectorChips flags={d.flags} materiality={new Map(d.rows.map((r) => [r.asset, r.materiality]))} />
+            <DetectorChips flags={d.flags} materiality={new Map(d.rows.map((r) => [r.asset, r.materiality]))} {...research} />
             <FlowHeatmap data={d} window={window} />
           </>
         )}

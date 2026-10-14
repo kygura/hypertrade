@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router'
 import { classForPnl } from '../../../shared/format'
 import type { DiffItem } from '../../../shared/intel'
 import { DataTable, type Column } from '../DataTable'
+import { ConfluenceBadge } from './ConfluenceBadge'
 import { fmtDelta, fmtMetricValue, fmtSigned, fmtStopDist, METRIC_LABEL } from './format'
 
 // DiffTable — DESIGN-terminal §3.4. Rows = brief.items in server order, not
@@ -31,8 +32,11 @@ export function diffColumns(pushMateriality?: number): Column<DiffItem>[] {
       priority: 1,
       align: 'right',
       render: (i) => (
-        <span className={pushMateriality != null && i.materiality >= pushMateriality ? 'text-amber' : 'text-text-primary'}>
-          {i.materiality.toFixed(2)}
+        <span className="inline-flex items-center justify-end gap-1 whitespace-nowrap">
+          <span className={pushMateriality != null && i.materiality >= pushMateriality ? 'text-amber' : 'text-text-primary'}>
+            {i.materiality.toFixed(2)}
+          </span>
+          <ConfluenceBadge factor={i.confluence} asset={i.asset} />
         </span>
       ),
     },

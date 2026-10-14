@@ -1,8 +1,8 @@
-import type { Claim } from '../../../shared/claims'
+import type { Claim, HypothesisClaim, ObservedClaim } from '../../../shared/claims'
 import { Badge } from '../Badge'
 import { fmtTs } from '../strategy/format'
 import { ClaimAge } from './ClaimAge'
-import { SourceLink } from './SourceLink'
+import { SourceLink, type SourceRef } from './SourceLink'
 
 // ClaimLine — DESIGN-terminal §2.1. Every model-written line is a Claim:
 // observed (text + source + ts) or hypothesis (text only). The two read apart
@@ -16,14 +16,22 @@ import { SourceLink } from './SourceLink'
 //   hypothesis prints nothing there; the empty slot is part of the signal.
 // Rendered as <li> inside ClaimList; standalone (an alert's line, a note
 // summary) it is a <div>.
+// Research evidence (§16.2) widens this: an observed ts may be null (no
+// ClaimAge), and a hypothesis may keep the url the provider saw — rendered
+// inside the muted block after the text, never in the right-hand source slot.
 
-export function ClaimLine({ claim, as: Tag = 'div' }: { claim: Claim; as?: 'li' | 'div' }) {
+export type LineClaim =
+  | Claim
+  | (Omit<ObservedClaim, 'ts'> & { ts: string | null })
+  | (HypothesisClaim & { source?: SourceRef })
+
+export function ClaimLine({ claim, as: Tag = 'div' }: { claim: LineClaim; as?: 'li' | 'div' }) {
   const observed = claim.tag === 'observed'
   return (
     <Tag className="claim-line flex items-start gap-2 text-[12px] leading-snug" data-claim={claim.tag}>
       <span
         className="w-[4ch] flex-shrink-0 pt-px"
-        title={observed ? `observed: ${claim.source.label}, ${fmtTs(claim.ts)}` : 'inference by the model — not an observed fact'}
+        title={observed ? `observed: ${claim.source.label}${claim.ts ? `, ${fmtTs(claim.ts)}` : ''}` : 'inference by the model — not an observed fact'}
       >
         <span aria-hidden="true">
           <Badge tone={observed ? 'gray' : 'info'}>{observed ? 'OBS' : 'HYP'}</Badge>
@@ -35,14 +43,26 @@ export function ClaimLine({ claim, as: Tag = 'div' }: { claim: Claim; as?: 'li' 
           <span className="basis-full md:basis-auto min-w-0 break-words text-text-primary">{claim.text}</span>
           <span className="inline-flex items-center gap-1 whitespace-nowrap">
             <SourceLink source={claim.source} />
-            <span aria-hidden="true" className="text-[10px] text-text-secondary">
-              ·
-            </span>
-            <ClaimAge ts={claim.ts} />
+            {claim.ts && (
+              <>
+                <span aria-hidden="true" className="text-[10px] text-text-secondary">
+                  ·
+                </span>
+                <ClaimAge ts={claim.ts} />
+              </>
+            )}
           </span>
         </span>
       ) : (
-        <span className="min-w-0 flex-1 break-words text-text-muted pl-1.5 shadow-[inset_2px_0_0_var(--color-info)]">{claim.text}</span>
+        <span className="min-w-0 flex-1 break-words text-text-muted pl-1.5 shadow-[inset_2px_0_0_var(--color-info)]">
+          {claim.text}
+          {'source' in claim && claim.source && (
+            <>
+              {' '}
+              <SourceLink source={claim.source} />
+            </>
+          )}
+        </span>
       )}
     </Tag>
   )

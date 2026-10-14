@@ -10,11 +10,52 @@ import { chipText, degradedChips, firingChips, numbersLine } from './flow'
 // `+N MORE`. Hover = numbers line + age; tap/Enter expands one line under
 // the row (Esc collapses). Degraded detectors get one dashed summary chip
 // each: "cannot fire", never "did not fire".
+// §16.3: the expanded line gains RESEARCH (no result yet: one-click ask with
+// the chip's question) or SEE RESEARCH → (scroll + highlight on `/`); a flag
+// with research carries a `·R` suffix. Degraded chips have no action.
+
+export interface ChipResearchActions {
+  onResearch?: (flag: FlowFlag) => void
+  onSeeResearch?: (researchId: string, asset: string) => void
+  askDisabledReason?: string | null
+}
+
+/** `·R` — research available (chips and the asset header flags). */
+export function ResearchSuffix() {
+  return (
+    <span className="text-[9px] text-text-secondary" title="research available">
+      ·R
+    </span>
+  )
+}
+
+/** The §16.3 switch in the expanded line: RESEARCH (no result yet) or SEE RESEARCH →. */
+export function ChipResearchAction({ flag, onResearch, onSeeResearch, askDisabledReason = null }: { flag: FlowFlag } & ChipResearchActions) {
+  if (flag.researchId) {
+    const id = flag.researchId
+    return onSeeResearch ? (
+      <Button tier="ghost" onClick={() => onSeeResearch(id, flag.asset)}>
+        SEE RESEARCH →
+      </Button>
+    ) : null
+  }
+  return onResearch ? (
+    <Button tier="ghost" disabled={!!askDisabledReason} title={askDisabledReason ?? undefined} onClick={() => onResearch(flag)}>
+      RESEARCH
+    </Button>
+  ) : null
+}
 
 const MAX_VISIBLE = 8
 const CHIP = 'badge inline-flex items-center px-1.5 py-0.5 text-[10px] rounded-badge font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)]'
 
-export function DetectorChips({ flags, materiality }: { flags: FlowFlag[]; materiality: Map<string, number> }) {
+export function DetectorChips({
+  flags,
+  materiality,
+  onResearch,
+  onSeeResearch,
+  askDisabledReason = null,
+}: { flags: FlowFlag[]; materiality: Map<string, number> } & ChipResearchActions) {
   const navigate = useNavigate()
   const [open, setOpen] = useState<string | null>(null)
   const [all, setAll] = useState(false)
@@ -40,6 +81,12 @@ export function DetectorChips({ flags, materiality }: { flags: FlowFlag[]; mater
             className={`${CHIP} border border-transparent bg-elevated text-text-secondary hover:text-text-primary`}
           >
             {chipText(f)}
+            {f.researchId && (
+              <>
+                {' '}
+                <ResearchSuffix />
+              </>
+            )}
           </button>
         ))}
         {firing.length > MAX_VISIBLE && (
@@ -67,6 +114,7 @@ export function DetectorChips({ flags, materiality }: { flags: FlowFlag[]; mater
           <Button tier="ghost" onClick={() => navigate(`/asset/${encodeURIComponent(openFlag.asset)}`)}>
             OPEN {openFlag.asset} →
           </Button>
+          <ChipResearchAction flag={openFlag} onResearch={onResearch} onSeeResearch={onSeeResearch} askDisabledReason={askDisabledReason} />
         </p>
       )}
       {openDegraded && (
