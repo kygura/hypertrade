@@ -108,8 +108,6 @@ export interface IntelStore {
    * that cost something (a failed run still billed its provider calls); capped rows and free failures never count.
    */
   researchCountSince(since: Date, trigger?: ResearchResult["trigger"]): Promise<number>;
-  /** Newest result carrying the flag id, whatever its trigger; failed and capped runs excluded (they may be retried). */
-  researchForFlag(flagId: string): Promise<ResearchResult | null>;
   /** The read-time join: newest found / no_cause result per flag id. Failed, capped and running rows are excluded. */
   researchForFlags(flagIds: string[]): Promise<Map<string, ResearchResult>>;
   pruneResearch(before: Date): Promise<number>;
@@ -146,6 +144,8 @@ export interface IntelStore {
   getAlert(id: string): Promise<Alert | null>;
   listAlerts(opts: { since?: Date; kind?: AlertKind; route?: Alert["route"]; limit: number }): Promise<Alert[]>;
   setAlertFeedback(id: string, vote: 1 | -1 | null): Promise<Alert | null>;
+  /** Moves alerts to another route (a push that reached no channel goes to the next brief). */
+  setAlertRoute(ids: string[], route: Alert["route"]): Promise<void>;
   /** Votes per (event type, edge type, hops), most downvoted first. */
   feedbackStats(since?: Date): Promise<FeedbackBucket[]>;
 
@@ -563,10 +563,6 @@ export class PgIntelStore implements IntelStore {
     const [row] = await sql()`select count(*)::int as n from intel_research where created_at >= ${since} and (status in ('running', 'found', 'no_cause') or (status = 'failed' and coalesce((body->>'costUsd')::float8, 0) > 0)) and (${trigger ?? null}::text is null or trigger = ${trigger ?? null})`;
     return row!.n as number;
   }
-  async researchForFlag(flagId: string) {
-    const [row] = await sql()`select * from intel_research where flag_id = ${flagId} and status not in ('failed', 'capped') order by created_at desc limit 1`;
-    return row ? toResearch(row) : null;
-  }
   async researchForFlags(flagIds: string[]) {
     if (!flagIds.length) return new Map<string, ResearchResult>();
     const rows = await sql()`select distinct on (flag_id) * from intel_research where flag_id = any(${flagIds}::text[]) and status in ('found', 'no_cause') order by flag_id, created_at desc`;
@@ -611,18 +607,20 @@ export class PgIntelStore implements IntelStore {
 
   async upsertEvents(events: NewEvent[]) {
     if (!events.length) return [];
-    const rows = lastByKey(events, (e) => e.key).map((e) => ({
+    const kept = lastByKey(events, (e) => e.key);
+    const withFlag = kept.some((e) => e.flag); // pre-009 schemas have no flag column
+    const rows = kept.map((e) => ({
       key: e.key, cluster_id: e.clusterId ?? null, type: e.type, title: e.title, summary: e.summary,
       entities: json(e.entities), assets: json(e.assets), magnitude: e.magnitude, sources: json(e.sources), origin: e.origin,
-      first_seen: e.firstSeen, scheduled_at: e.scheduledAt, catalyst: json(e.catalyst), tag: e.tag, flag: json(e.flag),
+      first_seen: e.firstSeen, scheduled_at: e.scheduledAt, catalyst: json(e.catalyst), tag: e.tag, ...(withFlag ? { flag: json(e.flag) } : {}),
     }));
     const out = await sql()`
-      insert into intel_events ${sql()(rows, "key", "cluster_id", "type", "title", "summary", "entities", "assets", "magnitude", "sources", "origin", "first_seen", "scheduled_at", "catalyst", "tag", "flag")}
+      insert into intel_events ${sql()(rows)}
       on conflict (key) do update set
         cluster_id = coalesce(excluded.cluster_id, intel_events.cluster_id), type = excluded.type, title = excluded.title,
         summary = excluded.summary, entities = excluded.entities, assets = excluded.assets, magnitude = excluded.magnitude,
-        sources = excluded.sources, origin = excluded.origin, scheduled_at = excluded.scheduled_at, catalyst = excluded.catalyst, tag = excluded.tag,
-        flag = excluded.flag
+        sources = excluded.sources, origin = excluded.origin, scheduled_at = excluded.scheduled_at, catalyst = excluded.catalyst, tag = excluded.tag
+        ${withFlag ? sql()`, flag = excluded.flag` : sql()``}
       returning *
     `;
     return out.map(toEvent);
@@ -714,6 +712,10 @@ export class PgIntelStore implements IntelStore {
     if (!isUuid(id)) return null;
     const [row] = await sql()`update intel_alerts set feedback = ${vote} where id = ${id} returning *`;
     return row ? toAlert(row) : null;
+  }
+  async setAlertRoute(ids: string[], route: Alert["route"]) {
+    const valid = ids.filter(isUuid);
+    if (valid.length) await sql()`update intel_alerts set route = ${route} where id = any(${valid}::uuid[])`;
   }
   async feedbackStats(since?: Date) {
     const lo = since ?? null;
@@ -1028,9 +1030,6 @@ export class MemoryIntelStore implements IntelStore {
   async researchCountSince(since: Date, trigger?: ResearchResult["trigger"]) {
     return this.research.filter((x) => Date.parse(x.createdAt) >= since.getTime() && x.status !== "capped" && (x.status !== "failed" || x.costUsd > 0) && (!trigger || x.trigger === trigger)).length;
   }
-  async researchForFlag(flagId: string) {
-    return clone([...this.research].reverse().find((x) => x.flagId === flagId && x.status !== "failed" && x.status !== "capped") ?? null);
-  }
   async researchForFlags(flagIds: string[]) {
     const out = new Map<string, ResearchResult>();
     for (const x of this.research) {
@@ -1166,6 +1165,9 @@ export class MemoryIntelStore implements IntelStore {
     if (!a) return null;
     a.feedback = vote;
     return clone(a);
+  }
+  async setAlertRoute(ids: string[], route: Alert["route"]) {
+    for (const a of this.alerts) if (ids.includes(a.id)) a.route = route;
   }
   async feedbackStats(since?: Date) {
     const buckets = new Map<string, FeedbackBucket>();

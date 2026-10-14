@@ -11,7 +11,7 @@ import { computeWindows, LOOKBACK, parseThresholds, regimeFlags, seriesFromRows,
 // Flow detector pipeline (SPEC.md § Flow F0.4). Runs as a stage of the ingest
 // cron (every 15 min, after collect). Per held ∪ watched asset: series from
 // snapshots + flow rows → fixed windows → detectors, flips and crossings.
-// A hit that is not degraded becomes, once per (name, asset) until its
+// A hit that is not degraded becomes, once per episode (episodeKey) until its
 // conditions clear (the set firing last run lives in intel_settings):
 //   event   intel_events type "data", origin "flow", tag observed, the FlowFlag
 //           attached; source = snapshot (HL-only inputs) or coinalyze:<venue>
@@ -24,6 +24,12 @@ import { computeWindows, LOOKBACK, parseThresholds, regimeFlags, seriesFromRows,
 export const FLOW_ACTIVE_SETTING = "flow_active";
 export const FLOW_PROVIDER = "coinalyze";
 const DAY_MS = 86_400_000;
+
+/** One episode per (name, asset); a flip also carries its direction (sign of `to`), so a flip back inside the window alerts again. */
+export function episodeKey(f: FlowFlag): string {
+  const to = f.kind === "flip" ? f.numbers.to : undefined;
+  return `${f.name}${to == null ? "" : to > 0 ? ":+" : ":-"}|${f.asset}`;
+}
 
 /** Flow metrics seriesFromRows reads (flow OI, funding and buy volume are not heatmap inputs). */
 const SERIES_FLOW_METRICS: FlowMetric[] = ["long_short_ratio", "liq_long_usd", "liq_short_usd", "perp_volume_usd", "spot_volume_usd"];
@@ -98,87 +104,101 @@ export interface FlowRun {
   errors: string[];
 }
 
-export async function flowAlerts(deps: FlowDeps, now: Date): Promise<FlowRun> {
+/** `left` = ms of budget remaining; the run stops starting assets once it is spent or `signal` aborts. */
+export async function flowAlerts(deps: FlowDeps, now: Date, o: { signal?: AbortSignal; left?: () => number } = {}): Promise<FlowRun> {
   const out: FlowRun = { events: [], alerts: [], errors: [] };
-  const o = flowOptions(deps.env);
+  const opts = flowOptions(deps.env);
   const ctx = await loadContext(deps);
   const prev = (await deps.store.getSetting<Record<string, string>>(FLOW_ACTIVE_SETTING)) ?? {};
   const active: Record<string, string> = {};
-  for (const asset of ctx.targets) {
-    let flags: FlowFlag[];
-    let flow: AssetFlow;
+  // Unknown this run (failed, out of budget): keep the asset's open episodes so they are not re-alerted next run.
+  const keep = (asset: string) => {
+    for (const [k, id] of Object.entries(prev)) if (k.endsWith(`|${asset}`)) active[k] ??= id;
+  };
+  // Persisted after every push: a crash mid-run must not re-push what already went out. Unprocessed assets keep their previous entries.
+  const persist = () => deps.store.setSetting(FLOW_ACTIVE_SETTING, { ...prev, ...active });
+  for (const [n, asset] of ctx.targets.entries()) {
+    if (o.signal?.aborted || (o.left && o.left() <= 0)) {
+      const rest = ctx.targets.slice(n);
+      rest.forEach(keep);
+      out.errors.push(`time budget: skipped ${rest.join(", ")}`);
+      break;
+    }
     try {
-      flow = await loadAssetFlow(deps.store, asset, now);
-      flags = assetFlags(asset, flow, now, o).filter((f) => !f.degraded);
-    } catch (e) {
-      // Unknown this run: keep the asset's open episodes so they are not re-alerted next run.
-      for (const [k, id] of Object.entries(prev)) if (k.endsWith(`|${asset}`)) active[k] = id;
-      out.errors.push(`${asset}: ${e instanceof Error ? e.message : String(e)}`);
-      continue;
-    }
-    // One per name: the strongest window.
-    const best = new Map<string, FlowFlag>();
-    for (const f of flags) {
-      const cur = best.get(f.name);
-      if (!cur || f.score > cur.score) best.set(f.name, f);
-    }
-    const classOf = (f: FlowFlag): SignalSource => (f.kind === "detector" ? "flow" : "regime");
-    // Every class firing now is known before any alert is routed, so siblings get the same k in any order.
-    for (const f of best.values()) if (!prev[`${f.name}|${asset}`]) noteSource(ctx.sources, asset, classOf(f));
-    for (const f of best.values()) {
-      const k = `${f.name}|${asset}`;
-      if (prev[k]) {
-        active[k] = prev[k];
-        continue;
+      const flow = await loadAssetFlow(deps.store, asset, now);
+      const flags = assetFlags(asset, flow, now, opts).filter((f) => !f.degraded);
+      // One per episode: the strongest window.
+      const best = new Map<string, FlowFlag>();
+      for (const f of flags) {
+        const cur = best.get(episodeKey(f));
+        if (!cur || f.score > cur.score) best.set(episodeKey(f), f);
       }
-      const exp = await assetExposure(deps, ctx, asset);
-      const source = flagSource(f, flow.venues);
-      const text = flagText(exp.label, f);
-      const [event] = await deps.store.upsertEvents([
-        {
-          key: `flow:${f.id}`,
-          type: "data",
-          title: `${f.name} ${asset} (${f.window})`,
-          summary: text,
-          entities: [asset],
-          assets: [asset],
-          magnitude: "med",
+      const classOf = (f: FlowFlag): SignalSource => (f.kind === "detector" ? "flow" : "regime");
+      // Every class firing now is known before any alert is routed, so siblings get the same k in any order.
+      for (const [k, f] of best) if (!prev[k]) noteSource(ctx.sources, asset, classOf(f));
+      for (const [k, f] of best) {
+        if (prev[k]) {
+          active[k] = prev[k];
+          continue;
+        }
+        const exp = await assetExposure(deps, ctx, asset);
+        const source = flagSource(f, flow.venues);
+        const text = flagText(exp.label, f);
+        const [event] = await deps.store.upsertEvents([
+          {
+            key: `flow:${f.id}`,
+            type: "data",
+            title: `${f.name} ${asset} (${f.window})`,
+            summary: text,
+            entities: [asset],
+            assets: [asset],
+            magnitude: "med",
+            sources: [source],
+            origin: "flow",
+            firstSeen: f.ts,
+            scheduledAt: null,
+            catalyst: null,
+            tag: "observed",
+            flag: f,
+          },
+        ]);
+        out.events.push(event!);
+        const line: Claim = { tag: "observed", text, source, ts: f.ts };
+        const materiality = materialityOf({ surprise: f.score, exposure: exp.weight, proximity: exp.proximity }, confluenceK(ctx.sources.get(asset), classOf(f)));
+        const alert = await deps.store.insertAlert({
+          kind: "flow",
+          ref: event!.id,
+          window: null,
+          asset,
+          title: event!.title,
+          eventType: f.name,
+          line,
+          path: [],
+          edgeType: null,
+          hops: 0,
+          pathWeight: 1,
           sources: [source],
-          origin: "flow",
-          firstSeen: f.ts,
-          scheduledAt: null,
-          catalyst: null,
-          tag: "observed",
-          flag: f,
-        },
-      ]);
-      active[k] = event!.id;
-      out.events.push(event!);
-      const line: Claim = { tag: "observed", text, source, ts: f.ts };
-      const own = classOf(f);
-      const materiality = materialityOf({ surprise: f.score, exposure: exp.weight, proximity: exp.proximity }, confluenceK(ctx.sources.get(asset), own));
-      const alert = await deps.store.insertAlert({
-        kind: "flow",
-        ref: event!.id,
-        window: null,
-        asset,
-        title: event!.title,
-        eventType: f.name,
-        line,
-        path: [],
-        edgeType: null,
-        hops: 0,
-        pathWeight: 1,
-        sources: [source],
-        materiality,
-        pricedIn: null,
-        route: routeFor(deps.pushMateriality, ctx.feedback, materiality, { eventType: f.name, edgeType: null, hops: 0 }),
-      });
-      if (!alert) continue;
-      out.alerts.push(alert);
-      if (alert.route === "push") {
-        await sendIntel(deps.notifier, { title: `${exp.label}: ${f.name.replace(/_/g, " ")}`, lines: [line], link: deepLink(deps.appUrl), actions: feedbackActions([alert]) });
+          materiality,
+          pricedIn: null,
+          route: routeFor(deps.pushMateriality, ctx.feedback, materiality, { eventType: f.name, edgeType: null, hops: 0 }),
+        });
+        active[k] = event!.id;
+        if (alert) {
+          out.alerts.push(alert);
+          if (alert.route === "push") {
+            const sent = await sendIntel(deps.notifier, { title: `${exp.label}: ${f.name.replace(/_/g, " ")}`, lines: [line], link: deepLink(deps.appUrl), actions: feedbackActions([alert]) });
+            if (!sent.length) {
+              // Nothing reached a channel: the next brief carries it.
+              await deps.store.setAlertRoute([alert.id], "batch");
+              alert.route = "batch";
+            }
+          }
+        }
+        await persist();
       }
+    } catch (e) {
+      keep(asset);
+      out.errors.push(`${asset}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   await deps.store.setSetting(FLOW_ACTIVE_SETTING, active);

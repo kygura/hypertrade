@@ -27,7 +27,7 @@ async function seed(store: MemoryIntelStore) {
   await store.insertFlow([{ asset: "SOL", venue: "agg", metric: "liq_long_usd", value: 5e4, ts: NOW.toISOString() }]);
 }
 
-function setup(env: Record<string, string> = {}) {
+function setup(env: Record<string, string> = {}, health: Array<{ source: string; ok: boolean; lastRunAt: string; error?: string }> = [{ source: "flow:coinalyze", ok: false, lastRunAt: NOW.toISOString(), error: "future-markets: HTTP 401" }]) {
   const store = new MemoryIntelStore(() => NOW);
   const llm: LlmDeps = { makeProvider: () => null, cache: store, now: () => NOW, dailyCap: 200 };
   const positions = [position("SOL", "long", 10_000)];
@@ -40,7 +40,7 @@ function setup(env: Record<string, string> = {}) {
     candles1h: async () => [],
     observations: async () => [],
     funding: async () => [],
-    ingestHealth: async () => [{ source: "flow:coinalyze", ok: false, lastRunAt: NOW.toISOString(), error: "future-markets: HTTP 401" }],
+    ingestHealth: async () => health,
     llm,
     thresholds: { minZ: 2, topK: 5, pushMateriality: 0.35, digestMateriality: 0.1 },
     now: () => NOW,
@@ -87,6 +87,24 @@ describe("GET /heatmap", () => {
     expect(h.cells.find((c) => c.asset === "SOL" && c.metric === "price")!.delta).toBeCloseTo(10, 0);
     expect(h.flow).toEqual({ ok: false, error: "future-markets: HTTP 401" });
     expect((await get("/heatmap?window=2h")).status).toBe(400);
+  });
+
+  test("a key but no collector run yet → not_run", async () => {
+    const { store, get } = setup({ COINALYZE_API_KEY: "k" }, []);
+    await seed(store);
+    expect(HeatmapResponseSchema.parse((await get("/heatmap?window=1h")).body).flow).toEqual({ ok: false, error: "not_run" });
+  });
+
+  test("an unreadable flow table degrades that row to snapshot-only cells; the heatmap still answers", async () => {
+    const { store, get } = setup({ COINALYZE_API_KEY: "k" }, [{ source: "flow:coinalyze", ok: true, lastRunAt: NOW.toISOString() }]);
+    await seed(store);
+    store.flowSeries = async () => Promise.reject(new Error('relation "intel_flow" does not exist'));
+    const { status, body } = await get("/heatmap?window=1h");
+    expect(status).toBe(200);
+    const h = HeatmapResponseSchema.parse(body);
+    expect(h.cells.find((c) => c.asset === "SOL" && c.metric === "price")!.delta).toBeCloseTo(10, 0); // snapshot cells survive
+    expect(h.cells.find((c) => c.asset === "SOL" && c.metric === "liq_usd")).toMatchObject({ z: null, delta: null });
+    expect(h.flow).toEqual({ ok: false, error: "flow_unavailable: SOL, ETH" });
   });
 });
 

@@ -305,8 +305,8 @@ describe("MemoryIntelStore research", () => {
     expect(await s.finishResearch(first!.id, rs({ status: "found" }))).toBeNull(); // no longer running: cannot be overwritten
     await s.finishResearch(second!.id, rs({ flagId: "f1", status: "found", explanation: "x" }));
     expect(await s.finishResearch(second!.id, rs({ status: "failed" }))).toBeNull(); // finished once
-    expect((await s.researchForFlag("f1"))?.id).toBe(second!.id); // trigger is "manual": found all the same
-    expect(await s.researchForFlag("f2")).toBeNull();
+    expect((await s.researchForFlags(["f1", "f2"])).get("f1")?.id).toBe(second!.id); // trigger is "manual": found all the same
+    expect((await s.researchForFlags(["f2"])).size).toBe(0);
   });
 
   test("counts and lists by asset, since and trigger; prune by age", async () => {
@@ -322,7 +322,6 @@ describe("MemoryIntelStore research", () => {
     expect(await s.researchCountSince(new Date(0))).toBe(3); // capped and free failures don't use the daily budget; billed failures do
     expect(await s.researchCountSince(new Date(0), "manual")).toBe(2);
     expect([...(await s.researchForFlags(["f8", "f7", "f6", "f9", "nope"])).keys()].sort()).toEqual(["f8", "f9"]); // failed and capped stay out of the join
-    expect(await s.researchForFlag("f7")).toBeNull(); // capped: the chip may offer a retry
     expect((await s.listResearch({ asset: "BTC", limit: 5 })).map((r) => r.flagId)).toEqual(["f9"]);
     expect((await s.listResearch({ limit: 5 })).map((r) => r.asset)).toEqual(["BTC", "SOL", "SOL", "SOL", "SOL"]); // newest first
     expect(await s.pruneResearch(day)).toBe(4);

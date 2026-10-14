@@ -11,11 +11,11 @@ import {
   type HeatmapResponse,
 } from "../../../shared/intel.js";
 import { COINALYZE_COLLECTOR } from "../../collectors/coinalyze.js";
-import { assetFlags, FLOW_ACTIVE_SETTING, flowOptions, loadAssetFlow } from "../../intel/flowEvents.js";
+import { type AssetFlow, assetFlags, episodeKey, FLOW_ACTIVE_SETTING, flowOptions, loadAssetFlow } from "../../intel/flowEvents.js";
 import { walk } from "../../intel/graph.js";
 import { assetExposure, graphEdges, type RoutingContext } from "../../intel/mapper.js";
 import { FALLBACK_BASELINE_MS, toCatalyst } from "../../intel/terminal.js";
-import { pickWindow, spanResult } from "../../intel/windows.js";
+import { computeWindows, LOOKBACK, pickWindow, seriesFromRows, spanResult } from "../../intel/windows.js";
 import { failure, invalid } from "./http.js";
 import type { TerminalRouteDeps } from "./terminal.js";
 
@@ -44,14 +44,14 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
   const env = deps.env ?? process.env;
   /**
    * A live flag's id embeds the request time, so it never equals the stored flag's. For an episode still active in
-   * FLOW_ACTIVE_SETTING (same name, asset, kind and window) the stored flag's id is used; with no stored episode the live id stays.
+   * FLOW_ACTIVE_SETTING (same episode key, kind and window) the stored flag's id is used; with no stored episode the live id stays.
    */
   const storedIds = async (flags: FlowFlag[]): Promise<FlowFlag[]> => {
     const active = (await store.getSetting<Record<string, string>>(FLOW_ACTIVE_SETTING)) ?? {};
-    const eventIds = [...new Set(flags.flatMap((f) => active[`${f.name}|${f.asset}`] ?? []))];
+    const eventIds = [...new Set(flags.flatMap((f) => active[episodeKey(f)] ?? []))];
     const stored = new Map((await Promise.all(eventIds.map((id) => store.getEvent(id)))).flatMap((e) => (e?.flag ? [[e.id, e.flag] as [string, FlowFlag]] : [])));
     return flags.map((f) => {
-      const s = stored.get(active[`${f.name}|${f.asset}`] ?? "");
+      const s = stored.get(active[episodeKey(f)] ?? "");
       return s && s.kind === f.kind && s.window === f.window ? { ...f, id: s.id } : f;
     });
   };
@@ -78,6 +78,8 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
       try {
         const now = deps.now();
         const t = now.getTime();
+        const t0 = Date.now();
+        const degraded: string[] = [];
         const [exposure, watched, review, health] = await Promise.all([deps.exposure(), deps.watched(), store.lastReview(), deps.ingestHealth().catch(() => [])]);
         const held = new Set(exposure.positions.map((p) => p.asset));
         const targets = [...new Set([...held, ...watched])];
@@ -88,7 +90,17 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
         const cells: HeatmapResponse["cells"] = [];
         const flags: FlowFlag[] = [];
         for (const asset of targets) {
-          const flow = await loadAssetFlow(store, asset, now);
+          let flow: AssetFlow;
+          try {
+            flow = await loadAssetFlow(store, asset, now);
+          } catch (err) {
+            // Flow rows unreadable (e.g. intel_flow missing): snapshot-only cells, flagged below.
+            console.warn(`[intel:heatmap] ${asset}: flow unavailable:`, err instanceof Error ? err.message : err);
+            degraded.push(asset);
+            const snapshots = await store.snapshotRange(asset, new Date(t - LOOKBACK["24h"].days * DAY_MS), now).catch(() => []);
+            const series = seriesFromRows(snapshots, []);
+            flow = { series, windows: computeWindows(series, t), venues: {} };
+          }
           const own = assetFlags(asset, flow, now, o);
           const mine = HEATMAP_METRICS.map((metric) => {
             const r = span != null ? spanResult(metric, flow.series[metric], t, span) : pickWindow(flow.windows, metric, window as Exclude<typeof window, "review">)!;
@@ -102,7 +114,9 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
         }
         rows.sort((a, b) => b.materiality - a.materiality);
         const run = health.find((h) => h.source === FLOW_SOURCE);
-        const flowStatus = !env.COINALYZE_API_KEY?.trim() ? { ok: false, error: "no_source" } : run ? { ok: run.ok, ...(run.error ? { error: run.error } : {}) } : { ok: true };
+        const sourceStatus = !env.COINALYZE_API_KEY?.trim() ? { ok: false, error: "no_source" } : run ? { ok: run.ok, ...(run.error ? { error: run.error } : {}) } : { ok: false, error: "not_run" };
+        const flowStatus = degraded.length && sourceStatus.ok ? { ok: false, error: `flow_unavailable: ${degraded.join(", ")}` } : sourceStatus;
+        console.log(`[intel:heatmap] ${window} ${targets.length} assets ${Date.now() - t0}ms${degraded.length ? ` degraded ${degraded.join(",")}` : ""}`);
         const res: HeatmapResponse = { rows, metrics: [...HEATMAP_METRICS], cells, flags: await withResearch(flags, true), flow: flowStatus, asOf: now.toISOString() };
         return c.json(res);
       } catch (err) {

@@ -98,3 +98,63 @@ describe("flowAlerts", () => {
     expect(await store.listEvents({ limit: 10 })).toEqual([]);
   });
 });
+
+describe("flowAlerts: episodes, partial failure, failed push", () => {
+  const fundingRow = (t: number, funding: number): SnapshotRow => ({ ...snap("SOL", t, 1e6), funding });
+
+  test("a flip back inside 24 h is a new episode (direction is part of the key)", async () => {
+    const { deps, store, notifier } = setup();
+    const rows: SnapshotRow[] = [];
+    for (let i = 24; i >= 1; i--) rows.push(fundingRow(NOW.getTime() - i * H, 1e-5));
+    rows.push(fundingRow(NOW.getTime(), -1e-5));
+    await store.insertSnapshots(rows);
+    const first = await flowAlerts(deps, NOW);
+    expect(first.alerts.map((a) => a.eventType)).toEqual(["funding_flip"]);
+
+    const t2 = new Date(NOW.getTime() + 2 * H);
+    await store.insertSnapshots([fundingRow(NOW.getTime() + H, -1e-5), fundingRow(t2.getTime(), 1e-5)]);
+    const back = await flowAlerts(deps, t2);
+    expect(back.alerts.map((a) => a.eventType)).toEqual(["funding_flip"]);
+    expect(back.events[0]!.flag!.numbers.to!).toBeGreaterThan(0);
+    expect(notifier.sent.length + (await store.listAlerts({ route: "batch", limit: 10 })).length).toBe(2);
+  });
+
+  test("a failing asset does not stop the others, and what already went out is not re-pushed next run", async () => {
+    const { deps, store, notifier } = setup({ watched: ["ETH"] });
+    await depthHistory(store, "SOL", 4e5);
+    await depthHistory(store, "ETH", 4e5);
+    const insert = store.insertAlert.bind(store);
+    store.insertAlert = async (a) => (a.asset === "ETH" ? Promise.reject(new Error("db down")) : insert(a));
+    const r1 = await flowAlerts(deps, NOW);
+    expect(r1.alerts.map((a) => a.asset)).toEqual(["SOL"]);
+    expect(r1.errors).toEqual(["ETH: db down"]);
+    expect(notifier.sent).toHaveLength(1);
+
+    store.insertAlert = insert;
+    const r2 = await flowAlerts(deps, NOW);
+    expect(r2.alerts.map((a) => a.asset)).toEqual(["ETH"]); // SOL stays an open episode
+    expect(notifier.sent).toHaveLength(1);
+  });
+
+  test("a push that reached no channel is re-routed to the next brief", async () => {
+    const { deps, store, notifier } = setup();
+    notifier.send = async () => [];
+    await depthHistory(store, "SOL", 4e5);
+    const r = await flowAlerts(deps, NOW);
+    expect(r.alerts[0]!.route).toBe("batch");
+    expect((await store.listAlerts({ route: "batch", limit: 10 })).map((a) => a.asset)).toEqual(["SOL"]);
+    expect(await store.listAlerts({ route: "push", limit: 10 })).toEqual([]);
+  });
+
+  test("an exhausted budget stops cleanly and keeps the open episodes of the assets it skipped", async () => {
+    const { deps, store } = setup({ watched: ["ETH"] });
+    await depthHistory(store, "SOL", 4e5);
+    await depthHistory(store, "ETH", 4e5);
+    await flowAlerts(deps, NOW);
+    const open = await store.getSetting<Record<string, string>>(FLOW_ACTIVE_SETTING);
+    const r = await flowAlerts(deps, NOW, { left: () => 0 });
+    expect(r.alerts).toEqual([]);
+    expect(r.errors[0]).toStartWith("time budget: skipped");
+    expect(await store.getSetting<Record<string, string>>(FLOW_ACTIVE_SETTING)).toEqual(open);
+  });
+});

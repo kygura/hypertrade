@@ -78,7 +78,6 @@ export function cellTitle(asset: string, metric: HeatmapMetric, window: HeatmapW
 const DETECTOR_WORD: Record<string, string> = {
   crowded_long: 'CROWDED LONG',
   crowded_short: 'CROWDED SHORT',
-  squeeze_setup: 'SQUEEZE SETUP',
   negative_funding_oi_build: 'NEG FUNDING + OI BUILD',
   deleveraging: 'DELEVERAGING',
   spot_led: 'SPOT LED',
@@ -118,7 +117,6 @@ export function numbersLine(f: Pick<FlowFlag, 'kind' | 'name' | 'numbers' | 'win
     case 'crowded_long':
     case 'crowded_short':
       return join([zOf('funding', n.funding_z), zOf('OI 24h', n.oi_z_24h), zOf('price 24h', n.price_z_24h)])
-    case 'squeeze_setup':
     case 'negative_funding_oi_build':
       return join([n.funding == null ? null : `funding ${hourlyPct(n.funding)}`, zOf('OI 24h', n.oi_z_24h), zOf('price 24h', n.price_z_24h)])
     case 'deleveraging':

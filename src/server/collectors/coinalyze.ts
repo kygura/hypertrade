@@ -123,6 +123,8 @@ export interface FlowCollectDeps {
   recordRun(collector: string, startedAt: Date, ok: boolean, error?: string | null): Promise<void>;
   env: Record<string, string | undefined>;
   now(): number;
+  /** Time budget for the run; default FLOW_BUDGET_MS (the collect route passes what is left of its shared budget). */
+  budgetMs?: number;
 }
 
 export interface FlowCollectResult {
@@ -146,7 +148,8 @@ export async function collectCoinalyze(deps: FlowCollectDeps): Promise<FlowColle
     await record(true, SKIPPED_NO_KEY);
     return { ...out, error: SKIPPED_NO_KEY };
   }
-  const deadline = startedAt.getTime() + FLOW_BUDGET_MS;
+  const deadline = startedAt.getTime() + Math.min(FLOW_BUDGET_MS, deps.budgetMs ?? FLOW_BUDGET_MS);
+  let attempted = 0;
   const get = async (path: string, cost: number, params: Record<string, string> = {}): Promise<unknown> => {
     out.calls += cost;
     const res = await deps.fetch(`${COINALYZE_BASE_URL}/${path}${Object.keys(params).length ? `?${new URLSearchParams(params)}` : ""}`, {
@@ -159,6 +162,11 @@ export async function collectCoinalyze(deps: FlowCollectDeps): Promise<FlowColle
   };
 
   try {
+    if (deps.now() >= deadline) {
+      out.errors.push("skipped, time budget");
+      await record(true, out.errors[0]!);
+      return out;
+    }
     const coins = await deps.coins();
     out.coins = coins.length;
     if (!coins.length) {
@@ -183,6 +191,11 @@ export async function collectCoinalyze(deps: FlowCollectDeps): Promise<FlowColle
       const metric = ep.rows({})[0]![0];
       const latest = await Promise.all([...bySymbol.values()].map((k) => deps.store.latestFlowTs(k.asset, k.venue, metric)));
       const from = Math.min(...latest.map((ts) => (ts ? Date.parse(ts) : deps.now() - LOOKBACK_MS)));
+      if (deps.now() >= deadline) {
+        out.errors.push(`${ep.path} (${ep.market}): skipped, time budget`);
+        continue;
+      }
+      attempted++;
       try {
         const raw = await get(ep.path, bySymbol.size, {
           symbols: [...bySymbol.keys()].join(","),
@@ -197,7 +210,9 @@ export async function collectCoinalyze(deps: FlowCollectDeps): Promise<FlowColle
         out.errors.push(`${ep.path} (${ep.market}): ${e instanceof Error ? e.message : String(e)}`);
       }
     }
-    await record(true, out.errors.length ? out.errors.join("; ") : null);
+    // An attempted run that wrote nothing is a failed run (a quiet market still rewrites the open interval).
+    out.ok = out.written > 0 || attempted === 0;
+    await record(out.ok, out.errors.length ? out.errors.join("; ") : null);
     return out;
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);

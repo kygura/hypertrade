@@ -107,6 +107,24 @@ describe("deleveraging", () => {
     expect(f.numbers.oi_pct_6h!).toBeLessThan(-8);
     expect(f.numbers.liq_z_6h!).toBeGreaterThanOrEqual(2);
   });
+
+  test("zero-heavy liquidation history + $1,000 now: z null, so OI alone is degraded, never a fired deleveraging", () => {
+    const snaps: SnapshotRow[] = [];
+    const flow: FlowRow[] = [];
+    for (let t = NOW - 10 * D; t <= NOW; t += 15 * MIN) {
+      const ts = new Date(t).toISOString();
+      const drop = t > NOW - 6 * H ? Math.exp(Math.log(0.88) * ((t - (NOW - 6 * H)) / (6 * H))) : 1;
+      snaps.push({
+        asset: "ETH", ts, price: 3000, vol24h: null, funding: 1e-5, oiUsd: 1e9 * drop,
+        premium: null, basis: null, depthBid1: null, depthAsk1: null, depthBid2: null, depthAsk2: null, spreadBps: null,
+      });
+      flow.push({ asset: "ETH", venue: "agg", metric: "liq_long_usd", value: t > NOW - 6 * H ? 40 : 0, ts }, { asset: "ETH", venue: "agg", metric: "liq_short_usd", value: 0, ts });
+    }
+    const series = seriesFromRows(snaps, flow);
+    const w = computeWindows(series, NOW);
+    expect(w.find((r) => r.metric === "liq_usd" && r.window === "6h")!.z).toBeNull();
+    expect(flag({ asset: "ETH", now: NOW, series, windows: w }, "deleveraging")).toMatchObject({ degraded: true });
+  });
 });
 
 describe("spot_led / perp_led", () => {

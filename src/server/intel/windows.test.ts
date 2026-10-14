@@ -92,7 +92,16 @@ describe("windowResult", () => {
     const liq = series(10 * D, (t) => (t > NOW - H ? 100_000 : 1_000 * (1 + 0.1 * rnd(t / MIN))));
     const r = windowResult("liq_usd", liq, NOW, "1h");
     expect(r.delta).toBeCloseTo(400_000, 6); // 4 intervals in (now − 1h, now]
-    expect(r.z!).toBeGreaterThan(10);
+    expect(r.z!).toBeGreaterThan(5); // σ is floored at 0.5 log-units: large, but bounded
+  });
+
+  test("sparse sums: fewer than 5 nonzero history windows → z null; with them z stays bounded by the 0.5 floor", () => {
+    const zeros = series(10 * D, (t) => (t > NOW - H ? 250 : 0));
+    expect(windowResult("liq_usd", zeros, NOW, "1h")).toMatchObject({ delta: 1000, z: null });
+    const sparse = series(10 * D, (t, i) => (t > NOW - H ? 250 : i % 100 === 50 ? 100 : 0));
+    const r = windowResult("liq_usd", sparse, NOW, "1h");
+    expect(r.z).not.toBeNull();
+    expect(r.z!).toBeLessThanOrEqual(Math.log1p(1000) / 0.5);
   });
 
   test("a missing endpoint (gap > 20 min) gives no Δ and no z", () => {
@@ -116,12 +125,32 @@ describe("robustLevelZ", () => {
   });
 });
 
+describe("robustLevelZ", () => {
+  test("a flat level does not explode on a small step: σ floor = max(1e-6, 25% of |median|)", () => {
+    const flat = series(10 * D, (t) => (t === NOW ? 1.45e-5 : 1.25e-5));
+    expect(robustLevelZ("funding", flat, NOW)!).toBeLessThan(2);
+  });
+});
+
 describe("seriesFromRows", () => {
   const snap = (ts: string, over: Partial<SnapshotRow> = {}): SnapshotRow => ({
     asset: "BTC", ts, price: 1, vol24h: null, funding: null, oiUsd: null, premium: null, basis: null,
     depthBid1: null, depthAsk1: null, depthBid2: null, depthAsk2: null, spreadBps: null, ...over,
   });
   const flow = (metric: FlowRow["metric"], ts: string, value: number): FlowRow => ({ asset: "BTC", venue: "agg", metric, value, ts });
+
+  test("duplicate venues: one venue per metric (the one with the latest row), never summed", () => {
+    const s = seriesFromRows([], [
+      { ...flow("spot_volume_usd", "2026-10-14T00:00:00Z", 3), venue: "A" },
+      { ...flow("spot_volume_usd", "2026-10-14T00:00:00Z", 4), venue: "C" },
+      { ...flow("spot_volume_usd", "2026-10-14T00:15:00Z", 5), venue: "C" },
+      { ...flow("liq_long_usd", "2026-10-14T00:00:00Z", 10), venue: "agg" },
+      { ...flow("liq_short_usd", "2026-10-14T00:00:00Z", 5), venue: "agg" },
+      { ...flow("liq_long_usd", "2026-10-14T00:00:00Z", 100), venue: "X" },
+    ]);
+    expect(s.spot_volume_usd!.map((p) => p.v)).toEqual([4, 5]);
+    expect(s.liq_usd!.map((p) => p.v)).toEqual([15]);
+  });
 
   test("depth_2 = bid + ask, liq_usd = long + short, HL oi/funding only, ascending", () => {
     const s = seriesFromRows(

@@ -126,6 +126,28 @@ describe("collectCoinalyze", () => {
     expect(r.errors).toContain("ohlcv-history (perp): skipped, call budget");
   });
 
+  test("time budget: endpoints that would start after the deadline are skipped and named", async () => {
+    let t = NOW;
+    const { deps, calls, runs } = setup({ respond: () => ((t += 25_000), undefined) }); // each call costs 25 s of the 60 s budget
+    deps.now = () => t;
+    const r = await collectCoinalyze(deps);
+    expect(calls.map((c) => c.path)).toEqual(["future-markets", "spot-markets", "liquidation-history"]);
+    expect(r.errors).toContain("ohlcv-history (perp): skipped, time budget");
+    expect(r.ok).toBe(true); // it wrote rows
+    expect(runs[0]).toMatchObject({ ok: true });
+  });
+
+  test("a run that attempted endpoints and wrote nothing is not ok; budgetMs ≤ 0 attempts nothing and is ok", async () => {
+    const bad = setup({ respond: (p) => (p.endsWith("history") ? new Response("boom", { status: 500 }) : undefined) });
+    expect(await collectCoinalyze(bad.deps)).toMatchObject({ ok: false, written: 0 });
+    expect(bad.runs[0]).toMatchObject({ ok: false });
+
+    const none = setup();
+    none.deps.budgetMs = 0;
+    expect(await collectCoinalyze(none.deps)).toMatchObject({ ok: true, written: 0, errors: ["skipped, time budget"] });
+    expect(none.calls).toEqual([]);
+  });
+
   test("an endpoint error is recorded and the rest still run; 429 stops the run; nothing throws", async () => {
     const one = setup({ respond: (p) => (p === "liquidation-history" ? new Response("boom", { status: 500 }) : undefined) });
     const r1 = await collectCoinalyze(one.deps);
