@@ -16,3 +16,9 @@ create index if not exists intel_flow_ts_idx on intel_flow (ts);
 
 alter table intel_reviews drop constraint if exists intel_reviews_via_check;
 alter table intel_reviews add constraint intel_reviews_via_check check (via in ('ui', 'deeplink', 'telegram_digest'));
+
+-- Flow detector hits (F0.4): intel_events type 'data' / origin 'flow' carry
+-- the FlowFlag; each becomes an alert of kind 'flow' (ref = event id).
+alter table intel_events add column if not exists flag jsonb;
+alter table intel_alerts drop constraint if exists intel_alerts_kind_check;
+alter table intel_alerts add constraint intel_alerts_kind_check check (kind in ('mapper', 'catalyst', 'docwatch', 'terminal', 'flow'));

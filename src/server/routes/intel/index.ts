@@ -17,6 +17,7 @@ import { briefAssets, buildBrief, defaultTerminalDeps } from "../../intel/termin
 import { defaultDeskService } from "../desk.js";
 import { getCtxs } from "../hl.js";
 import { createAlertsRoutes } from "./alerts.js";
+import { createFlowRoutes } from "./flow.js";
 import { createGraphRoutes } from "./graph.js";
 import { createJournalRoutes } from "./journal.js";
 import { createOrderRoutes } from "./order.js";
@@ -55,6 +56,7 @@ export function createIntelRoutes(deps: IntelDeps) {
     .route("/", createTerminalRoutes(deps))
     .route("/", createAlertsRoutes({ store: deps.store, targets, now: deps.now }))
     .route("/", createGraphRoutes({ store: deps.store, targets, now: deps.now }))
+    .route("/", createFlowRoutes(deps))
     .route("/", createJournalRoutes(deps.journal))
     .route("/", createThesesRoutes(deps.thesis))
     .route("/", createQueryRoutes({ llm: deps.llm, client: deps.queryClient }))
