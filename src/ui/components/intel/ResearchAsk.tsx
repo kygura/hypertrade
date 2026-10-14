@@ -79,7 +79,7 @@ export function ResearchAsk({
           <label htmlFor={`${id}-a`} className="label">
             ASSET
           </label>
-          <input id={`${id}-a`} list={`${id}-list`} value={asset} onChange={(e) => setAsset(e.target.value)} className="w-[6ch] min-w-[8ch] uppercase" />
+          <input id={`${id}-a`} list={`${id}-list`} value={asset} onChange={(e) => setAsset(e.target.value)} className="w-[6ch] uppercase" />
           <datalist id={`${id}-list`}>
             {assets.map((a) => (
               <option key={a} value={a} />

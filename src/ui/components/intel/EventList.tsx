@@ -36,6 +36,13 @@ export function flowEventText(e: Pick<AssetEvent, 'title' | 'numbers'>): string 
   return [flagWord(f).toLowerCase(), nums].filter(Boolean).join(' · ')
 }
 
+/** SEE ON TERMINAL target: `/#research-<id>?asset=<coin>` when the id is known, else the panel anchor. */
+export function researchHref(e: Pick<AssetEvent, 'research'>): string {
+  const r = e.research
+  if (!r) return `/#${RESEARCH_ANCHOR}`
+  return `/#research-${r.id}${r.asset ? `?asset=${encodeURIComponent(r.asset)}` : ''}`
+}
+
 export function EventList({
   events,
   upcoming,
@@ -102,7 +109,7 @@ export function EventList({
                       <>
                         <span className="label">RESEARCH</span>
                         <span className="text-text-primary break-words">{e.title}</span>
-                        <Button tier="ghost" onClick={() => navigate(`/#${RESEARCH_ANCHOR}`)}>
+                        <Button tier="ghost" onClick={() => navigate(researchHref(e))}>
                           SEE ON TERMINAL →
                         </Button>
                       </>

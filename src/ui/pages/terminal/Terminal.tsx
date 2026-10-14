@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import type { Brief, Catalyst, FlowFlag, HeatmapWindow, PositionsResponse, ResearchResult, Review } from '../../../shared/intel'
 import { CatalystsPanel, upcomingCatalysts } from '../../components/intel/CatalystsPanel'
@@ -8,7 +8,17 @@ import { FlowPanel, readFlowWindow, writeFlowWindow } from '../../components/int
 import { agoWords } from '../../components/intel/format'
 import { mergeAlerts, NewsFeedPanel } from '../../components/intel/NewsFeedPanel'
 import { PositionsPanel } from '../../components/intel/PositionsPanel'
-import { askDisabledReason, chipQuestion, mergeResearch, statusWord } from '../../components/intel/research'
+import {
+  askDisabledReason,
+  chipAskInput,
+  gateCleared,
+  mergeResearch,
+  RESEARCH_GATE_INIT,
+  RESEARCH_LIST_LIMIT,
+  researchGate,
+  researchIntervalMs,
+  statusWord,
+} from '../../components/intel/research'
 import { RESEARCH_ANCHOR, ResearchPanel } from '../../components/intel/ResearchPanel'
 import { useAction } from '../../components/intel/useAction'
 import { CATALYSTS_ANCHOR, FLOW_ANCHOR, NEWS_ANCHOR, ReviewStrip } from '../../components/intel/ReviewStrip'
@@ -127,54 +137,49 @@ export function Terminal() {
   // ── research (§16) ──
   const [localResearch, setLocalResearch] = useState<ResearchResult[]>([])
   const [pending, setPending] = useState<{ question: string; asset: string | null } | null>(null)
-  const [conflictAt, setConflictAt] = useState<number | null>(null)
-  const [limitDay, setLimitDay] = useState<string | null>(null)
-  const [highlightId, setHighlightId] = useState<string | null>(() => /^#research-(.+)$/.exec(globalThis.location?.hash ?? '')?.[1] ?? null)
-  const [polledRunning, setPolledRunning] = useState(false)
-  const research = useIntel(() => intel.research({ limit: 20 }), [], {
-    intervalMs: polledRunning || conflictAt != null ? INTEL_POLL_MS.researchRunning : INTEL_POLL_MS.research,
-  })
-  const researchItems = useMemo(() => mergeResearch(localResearch, research.data?.items ?? []), [localResearch, research.data])
+  const [gate, dispatchGate] = useReducer(researchGate, RESEARCH_GATE_INIT)
+  const [highlightId, setHighlightId] = useState<string | null>(() => /^#research-([^?]+)/.exec(globalThis.location?.hash ?? '')?.[1] ?? null)
+  const research = useIntel(() => intel.research({ limit: RESEARCH_LIST_LIMIT }), [], { intervalMs: researchIntervalMs(gate) })
+  const researchItems = useMemo(() => mergeResearch(localResearch, research.data?.items ?? [], highlightId), [localResearch, research.data, highlightId])
   useEffect(() => {
-    const running = (research.data?.items ?? []).some((r) => r.status === 'running')
-    setPolledRunning(running)
-    // a 409 clears once a poll after it shows no running row
-    if (!running && conflictAt != null && (research.fetchedAt ?? 0) > conflictAt) setConflictAt(null)
-  }, [research.data, research.fetchedAt, conflictAt])
+    if (research.data && research.fetchedAt != null)
+      dispatchGate({ type: 'polled', running: research.data.items.some((r) => r.status === 'running'), fetchedAt: research.fetchedAt })
+  }, [research.data, research.fetchedAt])
   const askAction = useAction((input: ResearchAskInput) => intel.ask(input))
-  const askReason = askDisabledReason({
-    busy: askAction.busy,
-    items: researchItems,
-    usedToday: research.data?.usedToday,
-    limit: research.data?.limit,
-    conflict: conflictAt != null,
-    limitDay,
-  })
-  const runAsk = async (input: ResearchAskInput) => {
-    if (askReason) return
+  // useAction keeps the last failure's status; the 409/429 gates key off it.
+  useEffect(() => {
+    if (askAction.status != null) dispatchGate({ type: 'askFailed', status: askAction.status, at: Date.now() })
+  }, [askAction.status, askAction.error])
+  // A lifted gate takes its ErrorBlock / data-ask-state with it.
+  const prevGate = useRef(gate)
+  const clearAsk = askAction.clear
+  useEffect(() => {
+    if (gateCleared(prevGate.current, gate)) clearAsk()
+    prevGate.current = gate
+  }, [gate, clearAsk])
+  const askReason = askDisabledReason({ busy: askAction.busy, items: researchItems, usedToday: research.data?.usedToday, limit: research.data?.limit, gate })
+  /** False when a gate holds; the POST then runs in the background. */
+  const runAsk = (input: ResearchAskInput): boolean => {
+    if (askReason) return false
     setPending({ question: input.question, asset: input.asset ?? null })
-    const r = await askAction.run(input)
-    setPending(null)
-    if (r) {
+    void askAction.run(input).then((r) => {
+      setPending(null)
+      if (!r) return
       setLocalResearch((cur) => [r, ...cur.filter((x) => x.id !== r.id)])
       setAnnounce(`research ready: ${statusWord(r.status).toLowerCase()}`)
       if (input.flagId) heatmap.refetch() // the chip flips to SEE RESEARCH once the flag joins its researchId
-    }
+    })
+    return true
   }
-  // useAction keeps the last failure's status; the 409/429 gates key off it.
-  useEffect(() => {
-    if (askAction.status === 409) setConflictAt(Date.now())
-    if (askAction.status === 429) setLimitDay(new Date().toISOString().slice(0, 10))
-  }, [askAction.status, askAction.error])
   const scrollToResearch = () => document.getElementById(RESEARCH_ANCHOR)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  const seeResearch = async (id: string, asset: string) => {
+  /** Highlight a card; not loaded → refetch scoped to the asset and merge only the match; still missing → the asset page. */
+  const seeResearch = async (id: string, asset: string | null) => {
     setHighlightId(id)
-    if (researchItems.some((r) => r.id === id)) return
-    // not among the loaded cards: refetch scoped to the asset, else the asset page has it as an event
+    if (researchItems.some((r) => r.id === id) || !asset) return
     try {
-      const scoped = await intel.research({ asset, limit: 20 })
-      if (scoped.items.some((r) => r.id === id)) {
-        setLocalResearch((cur) => mergeResearch(cur, scoped.items))
+      const hit = (await intel.research({ asset, limit: RESEARCH_LIST_LIMIT })).items.find((r) => r.id === id)
+      if (hit) {
+        setLocalResearch((cur) => [hit, ...cur.filter((x) => x.id !== id)])
         return
       }
     } catch {
@@ -186,12 +191,18 @@ export function Terminal() {
     const m = new Map((heatmap.data?.flags ?? []).map((f) => [f.id, `${flagWord(f).toLowerCase()} · ${f.asset} ${f.window}`]))
     return (id: string) => m.get(id)
   }, [heatmap.data])
-  // `/#terminal-research` (the asset page's SEE ON TERMINAL) lands on the panel once it has data.
-  const hashScrolled = useRef(false)
+  // The asset page's SEE ON TERMINAL: `/#research-<id>` goes through seeResearch (asset from the hash's `?asset`
+  // when present), `/#terminal-research` just scrolls to the panel; once, after the first poll.
+  const hashHandled = useRef(false)
   useEffect(() => {
-    if (hashScrolled.current || !research.data || globalThis.location?.hash !== `#${RESEARCH_ANCHOR}`) return
-    hashScrolled.current = true
-    scrollToResearch()
+    if (hashHandled.current || !research.data) return
+    hashHandled.current = true
+    const hash = globalThis.location?.hash ?? ''
+    const m = /^#research-([^?]+)(?:\?asset=(.+))?$/.exec(hash)
+    if (m) void seeResearch(m[1]!, m[2] ? decodeURIComponent(m[2]) : null)
+    else if (hash === `#${RESEARCH_ANCHOR}`) scrollToResearch()
+    // first data only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [research.data])
 
   const held = useMemo(() => new Set(positions.data?.positions.map((p) => p.asset) ?? []), [positions.data])
@@ -255,8 +266,7 @@ export function Terminal() {
             research={{
               askDisabledReason: askReason,
               onResearch: (f: FlowFlag) => {
-                scrollToResearch()
-                void runAsk({ question: chipQuestion(f), asset: f.asset, flagId: f.id })
+                if (runAsk(chipAskInput(f))) scrollToResearch()
               },
               onSeeResearch: (id, asset) => void seeResearch(id, asset),
             }}
@@ -266,7 +276,7 @@ export function Terminal() {
           <ResearchPanel
             state={research}
             ask={askAction}
-            local={localResearch}
+            items={researchItems}
             pending={pending}
             heldWatched={heldWatched}
             highlightId={highlightId}

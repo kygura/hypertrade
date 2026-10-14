@@ -6,7 +6,7 @@ import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
 import { ClaimAge } from './ClaimAge'
 import { ResearchAsk } from './ResearchAsk'
 import { ResearchCard } from './ResearchCard'
-import { askState, mergeResearch } from './research'
+import { askState } from './research'
 
 // ResearchPanel — DESIGN-terminal §16.1. RESEARCH · NEWEST FIRST, the usage
 // line (`3 / 10 TODAY`, amber at the limit), the ask box (always rendered),
@@ -21,7 +21,7 @@ const USAGE_TITLE = 'manual research runs this UTC day · INTEL_RESEARCH_DAILY'
 export function ResearchPanel({
   state,
   ask,
-  local,
+  items,
   pending,
   heldWatched,
   highlightId,
@@ -32,8 +32,8 @@ export function ResearchPanel({
   state: IntelState<ResearchListResponse>
   /** The ask useAction, shared with the chip action. */
   ask: { busy: boolean; error: string | null; status: number | null; offline: boolean }
-  /** Results prepended locally after a POST (deduplicated against the poll). */
-  local: ResearchResult[]
+  /** Locally prepended results merged with the poll (mergeResearch: deduplicated, newest first, ≤ 20). */
+  items: ResearchResult[]
   /** The question in flight, rendered as the `running` placeholder. */
   pending: { question: string; asset: string | null } | null
   heldWatched: Set<string>
@@ -43,7 +43,6 @@ export function ResearchPanel({
   onAsk: (input: { question: string; asset?: string }) => void
 }) {
   const d = state.data
-  const items = mergeResearch(local, d?.items ?? [])
   const atLimit = d?.usedToday != null && d.limit != null && d.usedToday >= d.limit
   const scrolled = useRef<string | null>(null)
   const found = highlightId != null && items.some((r) => r.id === highlightId)
@@ -55,7 +54,8 @@ export function ResearchPanel({
     document.getElementById(`research-${highlightId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [highlightId, found])
 
-  const placeholder: ResearchResult | null = pending
+  // the poll's own running row replaces the placeholder (never two RUNNING cards)
+  const placeholder: ResearchResult | null = pending && !items.some((r) => r.status === 'running')
     ? { id: 'pending', trigger: 'manual', asset: pending.asset, question: pending.question, status: 'running', explanation: '', evidence: [], confidence: 'low', openQuestions: [], searches: 0, costUsd: 0, model: '', createdAt: new Date().toISOString() }
     : null
 

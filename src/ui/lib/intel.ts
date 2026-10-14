@@ -225,9 +225,6 @@ export const INTEL_POLL_MS = {
   /** 15-min data (DESIGN-terminal §15.2, §15.8). */
   heatmap: 300_000,
   asset: 300_000,
-  /** DESIGN-terminal §16.6: 60 s, 15 s while a row is running. */
-  research: 60_000,
-  researchRunning: 15_000,
 } as const
 
 export type IntelState<T> = PollState<T>

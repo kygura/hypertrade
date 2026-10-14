@@ -48,10 +48,33 @@ export function confluenceTitle(factor: number, asset: string): string {
 /** Server value, two decimals, never recomputed. */
 export const fmtCost = (usd: number): string => `$${usd.toFixed(2)}`
 
-/** Locally prepended results first, then the poll; dedup by id (the server copy wins), newest first. */
-export function mergeResearch(local: ResearchResult[], items: ResearchResult[]): ResearchResult[] {
-  const seen = new Set(items.map((r) => r.id))
-  return [...local.filter((r) => !seen.has(r.id)), ...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+export const RESEARCH_LIST_LIMIT = 20
+
+const settled = (r: ResearchResult) => (r.status === 'running' ? 0 : 1)
+
+/**
+ * Locally prepended results + the poll, deduplicated by id: a settled copy
+ * beats a running one whichever side it comes from (a poll fetched before the
+ * POST resolved must not resurrect RUNNING); between two settled copies the
+ * server wins. Newest first, capped at 20 after sorting; `keepId` (the
+ * highlighted card) survives the cap.
+ */
+export function mergeResearch(local: ResearchResult[], items: ResearchResult[], keepId: string | null = null): ResearchResult[] {
+  const byId = new Map<string, ResearchResult>()
+  for (const r of local) if (!byId.has(r.id)) byId.set(r.id, r)
+  for (const r of items) {
+    const cur = byId.get(r.id)
+    if (!cur || settled(r) >= settled(cur)) byId.set(r.id, r)
+  }
+  const sorted = [...byId.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  const head = sorted.slice(0, RESEARCH_LIST_LIMIT)
+  const kept = keepId != null && !head.some((r) => r.id === keepId) ? sorted.find((r) => r.id === keepId) : undefined
+  return kept ? [...head, kept] : head
+}
+
+/** The chip path's POST body: the chip question, the flag's coin and its id (§16.3). */
+export function chipAskInput(f: Pick<FlowFlag, 'id' | 'kind' | 'name' | 'numbers' | 'asset' | 'window'>): { question: string; asset: string; flagId: string } {
+  return { question: chipQuestion(f), asset: f.asset, flagId: f.id }
 }
 
 /** The ask box's named failure states (§16.6): 409 and 429 are not generic errors. */
@@ -67,23 +90,53 @@ export function askState(a: { error: string | null; status: number | null; offli
 
 export const IN_FLIGHT = 'a research run is in flight — one at a time'
 
-/**
- * Why the box and the chip action are disabled, or null. Question length is
- * the box's own check. `conflict` = a 409 not yet cleared by a poll showing no
- * running row; `limitDay` = the UTC day a 429 was seen.
- */
-export function askDisabledReason(p: {
-  busy: boolean
-  items: ResearchResult[]
-  usedToday?: number
-  limit?: number
-  conflict: boolean
+// ── ask gates (§16.6) ──
+//
+// conflictAt: a 409 seen at that ms, cleared by a poll fetched after it that
+// shows no running row. limitDay: the UTC day a 429 was seen, cleared by a
+// poll on a later UTC day. polledRunning: the last poll had a running row.
+
+export interface ResearchGate {
+  conflictAt: number | null
   limitDay: string | null
-  now?: number
-}): string | null {
-  if (p.busy || p.conflict || p.items.some((r) => r.status === 'running')) return IN_FLIGHT
-  const today = new Date(p.now ?? Date.now()).toISOString().slice(0, 10)
+  polledRunning: boolean
+}
+
+export type ResearchGateEvent =
+  | { type: 'askFailed'; status: number | null; at: number }
+  | { type: 'polled'; running: boolean; fetchedAt: number }
+
+export const RESEARCH_GATE_INIT: ResearchGate = { conflictAt: null, limitDay: null, polledRunning: false }
+
+const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+
+export function researchGate(s: ResearchGate, e: ResearchGateEvent): ResearchGate {
+  if (e.type === 'askFailed') {
+    if (e.status === 409) return { ...s, conflictAt: e.at }
+    if (e.status === 429) return { ...s, limitDay: utcDay(e.at) }
+    return s
+  }
+  return {
+    polledRunning: e.running,
+    conflictAt: s.conflictAt != null && !e.running && e.fetchedAt > s.conflictAt ? null : s.conflictAt,
+    limitDay: s.limitDay != null && utcDay(e.fetchedAt) !== s.limitDay ? null : s.limitDay,
+  }
+}
+
+/** A 409 or 429 gate just lifted: the stale ask error should go too. */
+export function gateCleared(prev: ResearchGate, next: ResearchGate): boolean {
+  return (prev.conflictAt != null && next.conflictAt == null) || (prev.limitDay != null && next.limitDay == null)
+}
+
+/** 15 s while a row is running or a 409 is unresolved, else 60 s. */
+export function researchIntervalMs(s: ResearchGate): number {
+  return s.polledRunning || s.conflictAt != null ? 15_000 : 60_000
+}
+
+/** Why the box and the chip action are disabled, or null. Question length is the box's own check. */
+export function askDisabledReason(p: { busy: boolean; items: ResearchResult[]; usedToday?: number; limit?: number; gate: ResearchGate }): string | null {
+  if (p.busy || p.gate.conflictAt != null || p.items.some((r) => r.status === 'running')) return IN_FLIGHT
   if (p.usedToday != null && p.limit != null && p.usedToday >= p.limit) return `daily research limit reached (${p.usedToday} / ${p.limit}) — resets 00:00 UTC`
-  if (p.limitDay === today) return 'daily research limit reached — resets 00:00 UTC'
+  if (p.gate.limitDay != null) return 'daily research limit reached — resets 00:00 UTC'
   return null
 }

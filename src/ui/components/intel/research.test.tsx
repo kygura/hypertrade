@@ -6,8 +6,28 @@ import type { IntelState, ResearchListResponse } from "../../lib/intel";
 import { ConfluenceBadge } from "./ConfluenceBadge";
 import { ChipResearchAction, DetectorChips } from "./DetectorChips";
 import { DiffTable } from "./DiffTable";
-import { EventList } from "./EventList";
-import { askDisabledReason, askState, chipQuestion, confluenceText, confluenceTitle, fmtCost, IN_FLIGHT, mergeResearch, statusTone, statusWord, toClaim } from "./research";
+import { EventList, researchHref } from "./EventList";
+import {
+  askDisabledReason,
+  askState,
+  chipAskInput,
+  chipQuestion,
+  confluenceText,
+  confluenceTitle,
+  fmtCost,
+  gateCleared,
+  IN_FLIGHT,
+  mergeResearch,
+  RESEARCH_GATE_INIT,
+  RESEARCH_LIST_LIMIT,
+  researchGate,
+  researchIntervalMs,
+  statusTone,
+  statusWord,
+  toClaim,
+  type ResearchGate,
+  type ResearchGateEvent,
+} from "./research";
 import { ResearchCard } from "./ResearchCard";
 import { ResearchPanel } from "./ResearchPanel";
 
@@ -45,25 +65,78 @@ describe("research helpers", () => {
     expect(confluenceTitle(1.5, "HYPE")).toContain("3 or more independent");
   });
 
-  test("merge: local first, dedup by id (server wins), newest first", () => {
-    const local = [result({ id: "a", status: "running", createdAt: "2026-10-14T13:00:00.000Z" })];
-    const server = [result({ id: "a", status: "found", createdAt: "2026-10-14T13:00:00.000Z" }), result({ id: "b" })];
-    expect(mergeResearch(local, server).map((r) => [r.id, r.status])).toEqual([["a", "found"], ["b", "found"]]);
+  test("merge: a settled copy beats a running one from either side; two settled → server wins; newest first", () => {
+    const at = "2026-10-14T13:00:00.000Z";
+    const m = (local: ResearchResult[], server: ResearchResult[]) => mergeResearch(local, server).map((r) => [r.id, r.status, r.explanation]);
+    // the POST resolved (local found) while the poll still had it running → found, not RUNNING
+    expect(m([result({ id: "a", status: "found", createdAt: at, explanation: "local" })], [result({ id: "a", status: "running", createdAt: at, explanation: "" }), result({ id: "b" })])).toEqual([
+      ["a", "found", "local"],
+      ["b", "found", "A token unlock of 2.1% is scheduled for 10-15."],
+    ]);
+    expect(m([result({ id: "a", status: "running", createdAt: at, explanation: "" })], [result({ id: "a", status: "found", createdAt: at, explanation: "server" })])).toEqual([["a", "found", "server"]]);
+    expect(m([result({ id: "a", status: "found", explanation: "local" })], [result({ id: "a", status: "no_cause", explanation: "server" })])).toEqual([["a", "no_cause", "server"]]);
   });
 
-  test("named ask states and gating: 409 and 429 are distinct", () => {
+  test("merge: capped at 20 after sorting; the highlighted card survives the cap", () => {
+    const many = Array.from({ length: 25 }, (_, i) => result({ id: `r${i}`, createdAt: new Date(Date.parse(ts) - i * 60_000).toISOString() }));
+    const out = mergeResearch([], many);
+    expect(out).toHaveLength(RESEARCH_LIST_LIMIT);
+    expect(out[0]!.id).toBe("r0");
+    expect(mergeResearch([], many, "r24").map((r) => r.id).at(-1)).toBe("r24");
+  });
+
+  test("named ask states: 409 and 429 are distinct", () => {
     expect(askState({ error: null, status: null, offline: false })).toBe("idle");
     expect(askState({ error: "research already running", status: 409, offline: false })).toBe("busy");
     expect(askState({ error: "daily research limit reached", status: 429, offline: false })).toBe("limit");
     expect(askState({ error: "boom", status: 500, offline: false })).toBe("error");
     expect(askState({ error: "api unreachable", status: null, offline: true })).toBe("offline");
-    const base = { busy: false, items: [], conflict: false, limitDay: null, now: Date.parse(ts) };
-    expect(askDisabledReason(base)).toBeNull();
-    expect(askDisabledReason({ ...base, items: [result({ status: "running" })] })).toBe(IN_FLIGHT);
-    expect(askDisabledReason({ ...base, conflict: true })).toBe(IN_FLIGHT);
-    expect(askDisabledReason({ ...base, usedToday: 10, limit: 10 })).toContain("(10 / 10)");
-    expect(askDisabledReason({ ...base, limitDay: "2026-10-14" })).toContain("daily research limit");
-    expect(askDisabledReason({ ...base, limitDay: "2026-10-13" })).toBeNull(); // the UTC day turned
+  });
+
+  test("the chip path posts question + asset + flagId", () => {
+    expect(chipAskInput(flag({ id: "flag-9" }))).toEqual({ question: "What explains crowded long on HYPE over 24h?", asset: "HYPE", flagId: "flag-9" });
+  });
+});
+
+describe("research gate reducer", () => {
+  const T = Date.parse("2026-10-14T12:00:00.000Z");
+  const reason = (gate: ResearchGate, p: { items?: ResearchResult[]; busy?: boolean; usedToday?: number; limit?: number } = {}) =>
+    askDisabledReason({ busy: false, items: [], ...p, gate });
+  const run = (events: ResearchGateEvent[]) => events.reduce(researchGate, RESEARCH_GATE_INIT);
+
+  test.each<[string, ResearchGateEvent[], "enabled" | "disabled", number]>([
+    ["initial", [], "enabled", 60_000],
+    ["409 → disabled", [{ type: "askFailed", status: 409, at: T }], "disabled", 15_000],
+    ["409, then a poll fetched before it → still disabled", [{ type: "askFailed", status: 409, at: T }, { type: "polled", running: false, fetchedAt: T - 1 }], "disabled", 15_000],
+    ["409, then a later poll with a running row → still disabled", [{ type: "askFailed", status: 409, at: T }, { type: "polled", running: true, fetchedAt: T + 15_000 }], "disabled", 15_000],
+    ["409, then a later poll with no running row → enabled", [{ type: "askFailed", status: 409, at: T }, { type: "polled", running: false, fetchedAt: T + 15_000 }], "enabled", 60_000],
+    ["429 at 23:59Z → disabled", [{ type: "askFailed", status: 429, at: Date.parse("2026-10-14T23:59:00Z") }], "disabled", 60_000],
+    ["429 at 23:59Z, poll at 23:59:30Z → disabled", [{ type: "askFailed", status: 429, at: Date.parse("2026-10-14T23:59:00Z") }, { type: "polled", running: false, fetchedAt: Date.parse("2026-10-14T23:59:30Z") }], "disabled", 60_000],
+    ["429 at 23:59Z, poll at 00:01Z → enabled", [{ type: "askFailed", status: 429, at: Date.parse("2026-10-14T23:59:00Z") }, { type: "polled", running: false, fetchedAt: Date.parse("2026-10-15T00:01:00Z") }], "enabled", 60_000],
+    ["500 → no gate", [{ type: "askFailed", status: 500, at: T }], "enabled", 60_000],
+    ["poll with a running row → 15 s", [{ type: "polled", running: true, fetchedAt: T }], "enabled", 15_000],
+  ])("%s", (_name, events, expected, interval) => {
+    const g = run(events);
+    // the running row itself gates through items, not the reducer
+    expect(reason(g) == null ? "enabled" : "disabled").toBe(expected);
+    expect(researchIntervalMs(g)).toBe(interval);
+  });
+
+  test("gateCleared fires exactly when a 409 or 429 gate lifts", () => {
+    const g409 = run([{ type: "askFailed", status: 409, at: T }]);
+    expect(gateCleared(g409, researchGate(g409, { type: "polled", running: false, fetchedAt: T + 1 }))).toBe(true);
+    expect(gateCleared(g409, researchGate(g409, { type: "polled", running: true, fetchedAt: T + 1 }))).toBe(false);
+    const g429 = run([{ type: "askFailed", status: 429, at: T }]);
+    expect(gateCleared(g429, researchGate(g429, { type: "polled", running: false, fetchedAt: T + 86_400_000 }))).toBe(true);
+    expect(gateCleared(RESEARCH_GATE_INIT, RESEARCH_GATE_INIT)).toBe(false);
+  });
+
+  test("other reasons: running row, busy, usage at the limit; never IN_FLIGHT once the POST resolved", () => {
+    expect(reason(RESEARCH_GATE_INIT, { items: [result({ status: "running" })] })).toBe(IN_FLIGHT);
+    expect(reason(RESEARCH_GATE_INIT, { busy: true })).toBe(IN_FLIGHT);
+    expect(reason(RESEARCH_GATE_INIT, { usedToday: 10, limit: 10 })).toContain("(10 / 10)");
+    const merged = mergeResearch([result({ id: "a", status: "found" })], [result({ id: "a", status: "running" })]);
+    expect(reason(RESEARCH_GATE_INIT, { items: merged })).toBeNull();
   });
 });
 
@@ -131,7 +204,7 @@ describe("ResearchPanel states", () => {
   const state = (p: Partial<IntelState<ResearchListResponse>>): IntelState<ResearchListResponse> => ({ data: null, loading: false, error: null, offline: null, fetchedAt: null, refetch: () => {}, setData: () => {}, ...p });
   const idle = { busy: false, error: null, status: null, offline: false };
   const render = (s: IntelState<ResearchListResponse>, p: Partial<Parameters<typeof ResearchPanel>[0]> = {}) =>
-    wrap(<ResearchPanel state={s} ask={idle} local={[]} pending={null} heldWatched={new Set(["HYPE"])} highlightId={null} disabledReason={null} onAsk={() => {}} {...p} />);
+    wrap(<ResearchPanel state={s} ask={idle} items={s.data?.items ?? []} pending={null} heldWatched={new Set(["HYPE"])} highlightId={null} disabledReason={null} onAsk={() => {}} {...p} />);
 
   test("loading, empty (no DB → memory store, same empty), error, offline; ask box always rendered", () => {
     expect(render(state({ loading: true }))).toContain("pulse-label");
@@ -160,6 +233,11 @@ describe("ResearchPanel states", () => {
     expect(html).toContain("RESEARCHING…");
     expect(html.indexOf('data-status="running"')).toBeLessThan(html.indexOf('data-status="found"'));
     expect(html).toContain("Why SOL?");
+  });
+
+  test("the placeholder yields to the poll's own running row (one RUNNING card)", () => {
+    const html = render(state({ data: { items: [result({ status: "running", question: "Why SOL?" })] } }), { ask: { ...idle, busy: true }, pending: { question: "Why SOL?", asset: "SOL" }, disabledReason: IN_FLIGHT });
+    expect(html.match(/data-status="running"/g) ?? []).toHaveLength(1);
   });
 
   test("409 and 429 are distinct named states with the verbatim string; RETRY only offline / 5xx", () => {
@@ -210,6 +288,8 @@ describe("EventList research row", () => {
     const bare = wrap(<EventList events={[ev({})]} upcoming={[]} hot={null} onHover={() => {}} now={Date.parse(ts)} />);
     expect(bare).toContain("SEE ON TERMINAL →");
     expect(bare).not.toContain("aria-expanded");
+    expect(researchHref({ research: result({ id: "r7" }) })).toBe("/#research-r7?asset=HYPE");
+    expect(researchHref({})).toBe("/#terminal-research");
   });
 });
 
