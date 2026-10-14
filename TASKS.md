@@ -107,7 +107,7 @@ Destination: SPEC.md § Scout S0–S2 — Research panel on `/`, auto research o
 - [x] S Second opinion on S0 — fable
 - [x] D2 Design pass → DESIGN-terminal.md § 16 — fable
 - [ ] R1 Contract + 010_research.sql + store (Pg/Memory) + research.ts engine — sonnet — deps S
-- [ ] T Thresholds + confluence + graph diff-review + dead client fns + analyst.test fix — sonnet — deps S
+- [x] T Thresholds + confluence + graph diff-review + dead client fns + analyst.test fix — sonnet — deps S
 - [ ] R2 Routes + auto trigger in ingest — sonnet — deps R1
 - [ ] U5 ResearchPanel, chip action, timeline event, confluence badge — opus (ui-impl) — deps D2, R1
 - [ ] V Verification gate (covers phase 6 too) — reviewers, drift, test/typecheck/build/check:api
