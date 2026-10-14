@@ -78,7 +78,7 @@ Destination: SPEC.md § Flow (F0–F3) built into the Intel Terminal; `/` gains 
 - [x] C Telegram: /digest + fb callbacks + alert actions — opus — deps P0 (uses `via` enum from A; merge after A)
 - [x] D Coinalyze collector in collect + routes heatmap/asset/flows + detector events in brief/mapper push — opus — deps A
 - [x] E UI: FlowHeatmap, DetectorChips, AssetPage (timeline + graph), cap copy — opus (ui-impl) — deps A, D1
-- [ ] V Verification gate — folded into phase 7 V (never ran; baseline 2026-10-14: 1280 pass / 1 fail analyst.test.ts:394, typecheck/build/check:api green)
+- [x] V Verification gate — folded into phase 7 V (done 2026-10-14) (never ran; baseline 2026-10-14: 1280 pass / 1 fail analyst.test.ts:394, typecheck/build/check:api green)
 
 ## Decisions so far
 - P0: Coinalyze only (Binance/Bybit US-blocked from Vercel iad1); exchange inflows out of scope; robust σ + non-overlapping windows; detectors ranked in their own materiality list; existing Telegram callback branch extended; no Codex (user).
@@ -110,7 +110,7 @@ Destination: SPEC.md § Scout S0–S2 — Research panel on `/`, auto research o
 - [x] T Thresholds + confluence + graph diff-review + dead client fns + analyst.test fix — sonnet — deps S
 - [x] R2 Routes + auto trigger in ingest — sonnet — deps R1
 - [x] U5 ResearchPanel, chip action, timeline event, confluence badge — opus (ui-impl) — deps D2, R1
-- [ ] V Verification gate (covers phase 6 too) — reviewers, drift, test/typecheck/build/check:api
+- [x] V Verification gate (covers phase 6 too) — reviewers, drift, test/typecheck/build/check:api
 
 ## Decisions so far
 - P0: Flow A–E already merged on feat/flow-scout; only V missing. Confluence found absent from every materiality formula. Exchange inflows stay out (no free source). Telegram /ask stays Desk.
@@ -123,3 +123,4 @@ Destination: SPEC.md § Scout S0–S2 — Research panel on `/`, auto research o
 - R2 review (opus reliability + resilience). Live heatmap flag ids embedded request time, so researchId never joined in prod; fix = carry the stored episode id. Per-flag join queries → one batched query that fails soft. Timed-out steps now record a pessimistic cost. Both daily limits count running|found|no_cause + failed with cost > 0. Auto: one attempt per flag per UTC day, stop on capped, abort signal threaded, start only with deadline + 15 s left, collector_runs `intel:research`. Fix round 2 sent.
 - R2 fixes 0243ee1 + 0211cb5 (asset stored as typed, matched case-insensitively; kPEPE-safe). U5 fixes 4cf399b (merge prefers non-running copy, researchGate reducer, gate clearing). Both merged → 43d58d7. V launched: finalizer + render, phase 6 4R (risk/reliability/resilience), standards+spec, ponytail.
 - V results. Spec: every F/S item implemented. Phase 6 reviews: the validator harvested digits from ids/timestamps; advice guard too narrow; thesis claims and LLM headlines unvalidated; zero-heavy liq history exploded z; funding level floor too small; flip-back swallowed; partial flow-loop failure re-pushed; migration 009 undocumented; heatmap failed whole on one table. Ponytail: kept the OI/funding endpoints (spec F0.1) and the researchGate reducer (testability); deferred strictNumbers dedupe and lazy windows. Accepted: parallel journal workers can overshoot the $ cap by ≈ one call each. Fix round: W1 (validator/LLM/docs) + W2 (flow math/resilience) in parallel worktrees.
+- V done (089a5c9): 1408 pass / 6 skip / 0 fail, typecheck, build, check:api green; browser render of `/` and `/asset/BTC` with fixtures passes (the asset-page recharts crash was found by render only). Open: Pg parity tests have never run (no Postgres on host); `upsertEvents` sql(rows) and research SQL are read-reviewed only.
