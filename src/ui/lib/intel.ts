@@ -3,13 +3,16 @@ import { api, ApiError } from './api'
 import { usePoll, type PollState } from './poll'
 import {
   AlertsResponseSchema,
+  AssetDetailResponseSchema,
   BriefLatestResponseSchema,
   BriefSchema,
   CatalystsResponseSchema,
   EdgeSchema,
   EventsResponseSchema,
   FeedbackReportSchema,
+  FlowsResponseSchema,
   GraphResponseSchema,
+  HeatmapResponseSchema,
   JournalReportSchema,
   JournalResponseSchema,
   JournalTagResponseSchema,
@@ -30,13 +33,17 @@ import {
   type Alert,
   type AlertFeedbackInput,
   type AlertKind,
+  type AssetDetailResponse,
   type Brief,
   type Catalyst,
   type Edge,
   type EdgeKey,
   type EventType,
   type FeedbackReport,
+  type FlowFlag,
   type GraphResponse,
+  type HeatmapResponse,
+  type HeatmapWindow,
   type IntelEvent,
   type JournalReport,
   type JournalResponse,
@@ -178,6 +185,13 @@ export const intel = {
   watchChanges: async (id: string): Promise<WatchChange[]> =>
     parse(WatchChangesResponseSchema, await api.get(`${base}/watches/${enc(id)}/changes`)).changes,
   checkWatch: (id: string): Promise<void> => api.post(`${base}/watches/${enc(id)}/check`).then(done),
+
+  // ── flow (SPEC § Flow F1) ──
+  heatmap: async (window: HeatmapWindow): Promise<HeatmapResponse> =>
+    parse(HeatmapResponseSchema, await api.get(`${base}/heatmap${qs({ window })}`)),
+  asset: async (coin: string, days: number): Promise<AssetDetailResponse> =>
+    parse(AssetDetailResponseSchema, await api.get(`${base}/asset/${enc(coin)}${qs({ days })}`)),
+  flows: async (since?: string): Promise<FlowFlag[]> => parse(FlowsResponseSchema, await api.get(`${base}/flows${qs({ since })}`)).flags,
 }
 
 /** 409 from `POST /order/confirm`: marks moved > 0.5% or > 60 s (DESIGN-terminal §7.4). */
@@ -195,6 +209,9 @@ export const INTEL_POLL_MS = {
   graph: 600_000,
   watches: 300_000,
   deskStatus: 60_000,
+  /** 15-min data (DESIGN-terminal §15.2, §15.8). */
+  heatmap: 300_000,
+  asset: 300_000,
 } as const
 
 export type IntelState<T> = PollState<T>

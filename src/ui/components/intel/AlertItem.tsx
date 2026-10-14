@@ -52,6 +52,16 @@ export function pricedInText(p: Alert['pricedIn']): string | null {
   return `· ${parts.join(', ')}`
 }
 
+/** The §3.4 amber-square row; `reason` is the server's verbatim string (e.g. `LLM cap reached ($1.37 / $2.00)`). */
+export function NoNarrationRow({ reason }: { reason?: string }) {
+  return (
+    <p className="flex items-center gap-2 text-[11px] text-text-muted">
+      <span aria-hidden="true" className="inline-block w-1.5 h-1.5 bg-amber flex-shrink-0" />
+      {reason ? `no narration — ${reason}` : 'no narration'}
+    </p>
+  )
+}
+
 export function AlertItem({
   alert,
   onVote,
@@ -113,7 +123,7 @@ export function AlertItem({
         </span>
       </div>
       <div className="flex flex-col gap-0.5">
-        <ClaimLine claim={alert.line} />
+        {alert.trace?.error ? <NoNarrationRow reason={alert.trace.error} /> : <ClaimLine claim={alert.line} />}
         {priced && <span className="pl-[calc(4ch+0.5rem)] text-[11px] text-text-muted tabular">{priced}</span>}
       </div>
       {alert.path.length > 0 && <ExposurePathChips path={alert.path} weight={alert.pathWeight} />}

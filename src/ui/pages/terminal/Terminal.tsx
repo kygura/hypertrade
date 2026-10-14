@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import type { Brief, Catalyst, PositionsResponse, Review } from '../../../shared/intel'
+import type { Brief, Catalyst, HeatmapWindow, PositionsResponse, Review } from '../../../shared/intel'
 import { CatalystsPanel, upcomingCatalysts } from '../../components/intel/CatalystsPanel'
 import { ExposurePanel } from '../../components/intel/ExposurePanel'
+import { firingChips } from '../../components/intel/flow'
+import { FlowPanel, readFlowWindow, writeFlowWindow } from '../../components/intel/FlowPanel'
 import { agoWords } from '../../components/intel/format'
 import { mergeAlerts, NewsFeedPanel } from '../../components/intel/NewsFeedPanel'
 import { PositionsPanel } from '../../components/intel/PositionsPanel'
-import { CATALYSTS_ANCHOR, NEWS_ANCHOR, ReviewStrip } from '../../components/intel/ReviewStrip'
+import { CATALYSTS_ANCHOR, FLOW_ANCHOR, NEWS_ANCHOR, ReviewStrip } from '../../components/intel/ReviewStrip'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { WhatChangedPanel } from '../../components/intel/WhatChangedPanel'
 import { ApiError, NetworkError } from '../../lib/api'
@@ -17,7 +19,8 @@ import { errorMessage } from '../../lib/poll'
 // could affect my positions?". Owns the brief POST (§1.5: on a real open only,
 // throttled to once per tab per 5 min; `?review=1` and REVIEW NOW bypass the
 // throttle) and the shared pollers (§1.4) the panels read: positions 60 s,
-// alerts 60 s, catalysts 5 min, watchlist on mount + after a write. Polling
+// alerts 60 s, catalysts 5 min, heatmap 5 min (+ on window change, §15.2),
+// watchlist on mount + after a write. Polling
 // pauses while the tab is hidden (usePoll). Nothing but an open or REVIEW NOW
 // posts a brief.
 
@@ -108,6 +111,8 @@ export function Terminal() {
   const positions = useIntel(intel.positions, [], { intervalMs: INTEL_POLL_MS.positions })
   const watchlist = useIntel(intel.watchlist, [])
   const catalysts = useIntel(() => intel.catalysts(14), [], { intervalMs: INTEL_POLL_MS.catalysts })
+  const [flowWindow, setFlowWindow] = useState<HeatmapWindow>(readFlowWindow)
+  const heatmap = useIntel(() => intel.heatmap(flowWindow), [flowWindow], { intervalMs: INTEL_POLL_MS.heatmap })
   const since = brief?.since
   const alerts = useIntel(() => intel.alerts(since ? { since } : {}), [since], {
     intervalMs: INTEL_POLL_MS.alerts,
@@ -121,6 +126,7 @@ export function Terminal() {
   const batched = brief?.alerts ?? []
   const alertsCount = mergeAlerts(alerts.data, batched).length
   const superseded = reviewing && brief != null
+  const detectorsCount = heatmap.data ? firingChips(heatmap.data.flags, new Map(heatmap.data.rows.map((r) => [r.asset, r.materiality]))).length : 0
 
   return (
     <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col">
@@ -138,6 +144,7 @@ export function Terminal() {
             offline={briefOffline}
             sources={positions.data?.sources ?? null}
             alertsCount={alertsCount}
+            detectorsCount={detectorsCount}
             nextCatalyst={nextExposedCatalyst(catalysts.data, heldWatched)}
             fromTelegram={fromTelegram}
             onReview={() => void post('ui')}
@@ -160,6 +167,16 @@ export function Terminal() {
             since={since ?? null}
             ingest={brief?.ingest}
             pushMateriality={brief?.threshold?.pushMateriality}
+          />
+        </div>
+        <div id={FLOW_ANCHOR} className="lg:col-span-12 scroll-mt-[100px] min-w-0">
+          <FlowPanel
+            state={heatmap}
+            window={flowWindow}
+            onWindow={(w) => {
+              setFlowWindow(w)
+              writeFlowWindow(w)
+            }}
           />
         </div>
         <div className="lg:col-span-8 min-w-0">

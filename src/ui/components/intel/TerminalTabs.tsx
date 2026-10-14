@@ -22,6 +22,8 @@ export const TERMINAL_TABS: readonly (SegmentOption<TerminalTab> & { path: strin
 
 /** The Terminal-family tab a path belongs to, or null outside the family. */
 export function terminalTabOf(pathname: string): TerminalTab | null {
+  // `/asset/:coin` is a drill-in of `/` (DESIGN-terminal §15.4).
+  if (pathname.startsWith('/asset/')) return 'terminal'
   for (const t of TERMINAL_TABS) {
     if (t.path === '/' ? pathname === '/' : pathname === t.path || pathname.startsWith(`${t.path}/`)) return t.value
   }

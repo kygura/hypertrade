@@ -33,6 +33,8 @@ const Theses = lazy(() => import('./pages/terminal/Theses').then((m) => ({ defau
 const Query = lazy(() => import('./pages/terminal/Query').then((m) => ({ default: m.Query })))
 const Order = lazy(() => import('./pages/terminal/Order').then((m) => ({ default: m.Order })))
 const Watch = lazy(() => import('./pages/terminal/Watch').then((m) => ({ default: m.Watch })))
+// `/asset/:coin` is a drill-in of `/` (DESIGN-terminal §15.4), under TerminalTabs.
+const Asset = lazy(() => import('./pages/terminal/Asset').then((m) => ({ default: m.Asset })))
 const TERMINAL_PAGES = [
   { path: '/', Page: Terminal },
   { path: '/journal', Page: Journal },
@@ -40,6 +42,7 @@ const TERMINAL_PAGES = [
   { path: '/query', Page: Query },
   { path: '/order', Page: Order },
   { path: '/watch', Page: Watch },
+  { path: '/asset/:coin', Page: Asset },
 ]
 
 // Router — SPEC.md route map. All routes except /login render inside

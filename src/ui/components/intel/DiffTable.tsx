@@ -5,7 +5,7 @@ import { DataTable, type Column } from '../DataTable'
 import { fmtDelta, fmtMetricValue, fmtSigned, fmtStopDist, METRIC_LABEL } from './format'
 
 // DiffTable — DESIGN-terminal §3.4. Rows = brief.items in server order, not
-// sortable: materiality is the only order. Row tap/Enter → /markets/:coin.
+// sortable: materiality is the only order. Row tap/Enter → /asset/:coin (§15.4).
 // Only `price` Δ is green/red; every other metric prints its sign in
 // text-primary (more OI or a wider spread is not "good").
 
@@ -81,7 +81,7 @@ export function DiffTable({ items, pushMateriality }: { items: DiffItem[]; pushM
       columns={diffColumns(pushMateriality)}
       rows={items}
       rowKey={key}
-      onRowClick={(i) => navigate(`/markets/${encodeURIComponent(i.asset)}`)}
+      onRowClick={(i) => navigate(`/asset/${encodeURIComponent(i.asset)}`)}
     />
   )
 }
