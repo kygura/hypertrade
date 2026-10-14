@@ -2,16 +2,20 @@ import { z } from "zod";
 import { hlInfo, hlWeightWaitMs } from "../../shared/hl-client.js";
 import type { PositionsResponse, SnapshotRow } from "../../shared/intel.js";
 import type { AssetCtx } from "../../shared/types.js";
-import type { IntelStore } from "./store.js";
+import type { IntelStore, StopRow } from "./store.js";
 
 // Snapshot rows (SPEC.md § Intel I0.3). Written inside POST /api/cron/collect
 // from the same metaAndAssetCtxs fetch: held ∪ watched ∪ top-20 by OI. Book
 // depth and spread come from l2Book, fetched only for held ∪ watched (≤ 25
 // coins, under the shared HL weight guard). Raw ticks never reach the LLM.
+// The same collect records the watched HL account's stop triggers (taken
+// from the exposure read the focus list already makes; no extra info call).
 
 export const TOP_OI = 20;
 export const MAX_BOOKS = 25;
 export const SNAPSHOT_RETENTION_DAYS = 90;
+/** intel_stops retention: longer than snapshots, so a long-held trade still finds the stop it was opened with. */
+export const STOP_RETENTION_DAYS = 180;
 const BOOK_CONCURRENCY = 5;
 /** Collector name in collector_runs. Not `intel:*`: those are the news ingest sources the brief reports on. */
 export const SNAPSHOT_COLLECTOR = "intel-snapshots";
@@ -97,29 +101,40 @@ export function selectSnapshotAssets(ctxs: AssetCtx[], focus: string[]): { rows:
   return { rows: [...new Set([...focus.filter((a) => listed.has(a)), ...top])], books };
 }
 
-/** Held (any position source) and watched assets, as one deduped list. Never throws; a failure is returned in `errors`. */
+/** A reduce-only stop trigger on a watched-HL position (readHlAccount's frontendOpenOrders), without its timestamp. */
+export type HlStop = Omit<StopRow, "ts">;
+
+/**
+ * Held (any position source) and watched assets, as one deduped list, plus
+ * the stop of each `hl` position that has one (only read when
+ * DESK_WATCH_ADDRESS is set). Never throws; a failure is returned in `errors`.
+ */
 export async function focusAssets(
   exposure: () => Promise<PositionsResponse>,
   watched: () => Promise<string[]>,
-): Promise<{ held: string[]; watched: string[]; errors: string[] }> {
+): Promise<{ held: string[]; watched: string[]; stops: HlStop[]; errors: string[] }> {
   const errors: string[] = [];
   const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-  const [held, watch] = await Promise.all([
+  const [positions, watch] = await Promise.all([
     exposure().then(
       (r) => {
         for (const s of r.sources) if (!s.ok && s.error && !/not configured/.test(s.error)) errors.push(`${s.source}: ${s.error}`);
-        return [...new Set(r.positions.map((p) => p.asset))];
+        return r.positions;
       },
-      (e) => (errors.push(`positions: ${msg(e)}`), [] as string[]),
+      (e) => (errors.push(`positions: ${msg(e)}`), [] as PositionsResponse["positions"]),
     ),
     watched().catch((e) => (errors.push(`watchlist: ${msg(e)}`), [] as string[])),
   ]);
-  return { held, watched: watch, errors };
+  const stops = positions.flatMap((p) =>
+    p.source === "hl" && p.stopPx != null && Number.isFinite(p.stopPx) && p.stopPx > 0 ? [{ asset: p.asset, side: p.side, stopPx: p.stopPx }] : [],
+  );
+  return { held: [...new Set(positions.map((p) => p.asset))], watched: watch, stops, errors };
 }
 
 export interface SnapshotDeps {
-  store: Pick<IntelStore, "insertSnapshots">;
-  focus(): Promise<{ held: string[]; watched: string[]; errors: string[] }>;
+  store: Pick<IntelStore, "insertSnapshots" | "recordStops">;
+  /** `stops` (watched-HL stop triggers) are recorded at the snapshot's ts for the journal's R (I0.15). */
+  focus(): Promise<{ held: string[]; watched: string[]; stops?: HlStop[]; errors: string[] }>;
   l2Book(coin: string): Promise<BookStats | null>;
   recordRun(collector: string, startedAt: Date, ok: boolean, error?: string | null): Promise<void>;
   /** Epoch ms after which no further book is started (rows are still written). */
@@ -171,6 +186,9 @@ export async function collectIntelSnapshots(deps: SnapshotDeps, ctxs: AssetCtx[]
       return r ? [r] : [];
     });
     const written = await deps.store.insertSnapshots(out);
+    if (focus.stops?.length) {
+      await deps.store.recordStops(focus.stops.map((s) => ({ ...s, ts: ts.toISOString() }))).catch((e) => errors.push(`stops: ${e instanceof Error ? e.message : String(e)}`));
+    }
     await deps.recordRun(SNAPSHOT_COLLECTOR, startedAt, true, errors.length ? errors.join("; ").slice(0, 500) : null).catch(() => {});
     return { ok: true, written, assets: out.length, books: stats.size, errors };
   } catch (e) {

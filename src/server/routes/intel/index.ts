@@ -115,7 +115,7 @@ export function defaultIntelDeps(env: Record<string, string | undefined> = proce
       tz: env.INTEL_TZ,
       hlFills: desk.watchAddress ? hlFillLoader(desk.watchAddress) : undefined,
       deskFills: deskFillLoader(deskService().store),
-      stopFor: journalStopFor(deskService().store),
+      stopFor: journalStopFor(deskService().store, store),
       candles,
       entryState: snapshotEntryState(store, candles),
     });

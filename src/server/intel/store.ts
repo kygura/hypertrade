@@ -25,7 +25,7 @@ import type {
 import { sql } from "../db.js";
 import { iso } from "./util.js";
 
-// Intel persistence (db/migrations/007_intel.sql). Routes, crons and pure
+// Intel persistence (db/migrations/007_intel.sql, 008_intel_stops.sql). Routes, crons and pure
 // modules run against IntelStore: MemoryIntelStore in tests, PgIntelStore in
 // the app. Both implement the same dedupe and conflict rules; the tests in
 // store.test.ts pin them on the memory side.
@@ -43,6 +43,13 @@ export type ThesisPatch = Partial<Pick<Thesis, "assets" | "claims" | "invalidati
 export type WatchState = Pick<Watch, "lastHash" | "lastSnapshot" | "checkedAt" | "error">;
 export type NewWatchChange = Omit<WatchChange, "id" | "ts" | "alertedAssets"> & { ts?: string; alertedAssets?: string[] };
 export type SnapshotSide = "nearest" | "before" | "after";
+/** A stop-loss trigger seen on the watched HL account at `ts` (db/migrations/008_intel_stops.sql). */
+export interface StopRow {
+  asset: string;
+  side: "long" | "short";
+  ts: string;
+  stopPx: number;
+}
 
 export interface IntelStore {
   listManualPositions(): Promise<ManualPosition[]>;
@@ -66,6 +73,12 @@ export interface IntelStore {
   /** from <= ts <= to, ascending. */
   snapshotRange(asset: string, from: Date, to: Date): Promise<SnapshotRow[]>;
   pruneSnapshots(before: Date): Promise<number>;
+
+  /** Upsert on (asset, side, ts). Returns rows written. */
+  recordStops(rows: StopRow[]): Promise<number>;
+  /** Earliest stop for asset/side with from <= ts (and ts < before, when given), or null. */
+  stopAt(asset: string, side: StopRow["side"], from: Date, before?: Date | null): Promise<StopRow | null>;
+  pruneStops(before: Date): Promise<number>;
 
   /** Upsert on (src, dst, type). A user edge is only ever replaced by another user edge. */
   upsertEdges(edges: NewEdge[]): Promise<number>;
@@ -196,6 +209,10 @@ function toSnapshot(r: any): SnapshotRow {
     depthAsk2: r.depth_ask_2,
     spreadBps: r.spread_bps,
   };
+}
+
+function toStop(r: any): StopRow {
+  return { asset: r.asset, side: r.side, ts: isoOrNull(r.ts)!, stopPx: r.stop_px };
 }
 
 function toEdge(r: any): Edge {
@@ -406,6 +423,26 @@ export class PgIntelStore implements IntelStore {
   }
   async pruneSnapshots(before: Date) {
     const res = await sql()`delete from intel_snapshots where ts < ${before}`;
+    return res.count;
+  }
+
+  async recordStops(rows: StopRow[]) {
+    const values = lastByKey(rows, (r) => `${r.asset}|${r.side}|${Date.parse(r.ts)}`).map((r) => ({ asset: r.asset, side: r.side, ts: r.ts, stop_px: r.stopPx }));
+    if (!values.length) return 0;
+    const res = await sql()`
+      insert into intel_stops ${sql()(values, "asset", "side", "ts", "stop_px")}
+      on conflict (asset, side, ts) do update set stop_px = excluded.stop_px
+    `;
+    return res.count;
+  }
+  async stopAt(asset: string, side: StopRow["side"], from: Date, before?: Date | null) {
+    const [r] = before
+      ? await sql()`select * from intel_stops where asset = ${asset} and side = ${side} and ts >= ${from} and ts < ${before} order by ts asc limit 1`
+      : await sql()`select * from intel_stops where asset = ${asset} and side = ${side} and ts >= ${from} order by ts asc limit 1`;
+    return r ? toStop(r) : null;
+  }
+  async pruneStops(before: Date) {
+    const res = await sql()`delete from intel_stops where ts < ${before}`;
     return res.count;
   }
 
@@ -687,6 +724,7 @@ export class MemoryIntelStore implements IntelStore {
   watchlist: WatchlistItem[] = [];
   reviews: Review[] = [];
   snapshots = new Map<string, SnapshotRow>();
+  stops = new Map<string, StopRow>();
   edges = new Map<string, Edge>();
   events = new Map<string, IntelEvent>();
   clusters = new Map<string, Cluster>();
@@ -773,6 +811,23 @@ export class MemoryIntelStore implements IntelStore {
   async pruneSnapshots(before: Date) {
     let n = 0;
     for (const [k, s] of this.snapshots) if (Date.parse(s.ts) < before.getTime()) (this.snapshots.delete(k), n++);
+    return n;
+  }
+
+  async recordStops(rows: StopRow[]) {
+    const all = lastByKey(rows, (r) => `${r.asset}|${r.side}|${Date.parse(r.ts)}`);
+    for (const r of all) this.stops.set(`${r.asset}|${r.side}|${Date.parse(r.ts)}`, { ...r, ts: isoOrNull(r.ts)! });
+    return all.length;
+  }
+  async stopAt(asset: string, side: StopRow["side"], from: Date, before?: Date | null) {
+    const hit = [...this.stops.values()]
+      .filter((s) => s.asset === asset && s.side === side && Date.parse(s.ts) >= from.getTime() && (!before || Date.parse(s.ts) < before.getTime()))
+      .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts))[0];
+    return clone(hit ?? null);
+  }
+  async pruneStops(before: Date) {
+    let n = 0;
+    for (const [k, s] of this.stops) if (Date.parse(s.ts) < before.getTime()) (this.stops.delete(k), n++);
     return n;
   }
 

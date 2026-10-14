@@ -289,7 +289,9 @@ intel job, so nothing bypasses that gate.
 
 **Setup.** Apply `db/migrations/007_intel.sql` before enabling anything. It
 creates every `intel_*` table the Terminal reads, and the routes do not work
-without it. Environment variables are in the table under
+without it. Then `008_intel_stops.sql` (stop triggers of the watched HL
+account, for journal R; without it the capture is skipped and reported).
+Environment variables are in the table under
 [Intel (optional)](#intel-optional), which also covers `INTEL_ENABLED`;
 `.env.example` lists the same keys.
 

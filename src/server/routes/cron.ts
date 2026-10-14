@@ -17,7 +17,7 @@ import type { AssetCtx } from "../../shared/types.js";
 import { runIntelWatch } from "../intel/docwatch.js";
 import { refreshGraph } from "../intel/graph.js";
 import { runIntelIngest } from "../intel/runIngest.js";
-import { collectIntelSnapshots, fetchL2Book, focusAssets, SNAPSHOT_RETENTION_DAYS, type SnapshotResult } from "../intel/snapshot.js";
+import { collectIntelSnapshots, fetchL2Book, focusAssets, SNAPSHOT_RETENTION_DAYS, STOP_RETENTION_DAYS, type SnapshotResult } from "../intel/snapshot.js";
 import type { IntelStore } from "../intel/store.js";
 import { runIntelBrief } from "../intel/terminal.js";
 import { defaultIntelDeps } from "./intel/index.js";
@@ -141,13 +141,18 @@ async function intelCoins(): Promise<string[]> {
   return [...new Set([...f.held, ...f.watched])];
 }
 
-/** Candle retention, plus Intel snapshots past SNAPSHOT_RETENTION_DAYS (reported as `intel_snapshots`). */
+/** Candle retention, plus Intel snapshots past SNAPSHOT_RETENTION_DAYS and stops past STOP_RETENTION_DAYS (`intel_snapshots`, `intel_stops`). */
 async function pruneAll(now: number = Date.now()): Promise<Record<string, number>> {
   const out = await pruneRetention(now);
   try {
     out.intel_snapshots = await defaultIntelDeps().store.pruneSnapshots(new Date(now - SNAPSHOT_RETENTION_DAYS * DAY_MS));
   } catch (err) {
     console.error("[backfill] intel snapshot prune:", err instanceof Error ? err.message : err);
+  }
+  try {
+    out.intel_stops = await defaultIntelDeps().store.pruneStops(new Date(now - STOP_RETENTION_DAYS * DAY_MS));
+  } catch (err) {
+    console.error("[backfill] intel stop prune:", err instanceof Error ? err.message : err);
   }
   return out;
 }

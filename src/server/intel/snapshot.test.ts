@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { AssetCtx } from "../../shared/types.js";
+import { toWatchedAccount } from "../desk/data.js";
+import openOrders from "./fixtures/hl-openorders.json";
+import { loadExposure } from "./positions.js";
 import { collectIntelSnapshots, fetchL2Book, focusAssets, parseL2Book, selectSnapshotAssets, snapshotRow, SNAPSHOT_COLLECTOR, type BookStats } from "./snapshot.js";
 import { MemoryIntelStore } from "./store.js";
 
@@ -100,7 +103,28 @@ describe("focusAssets", () => {
       }),
       async () => Promise.reject(new Error("db down")),
     );
-    expect(res).toEqual({ held: ["SOL", "ETH"], watched: [], errors: ["hl: HTTP 429", "watchlist: db down"] });
+    expect(res).toEqual({ held: ["SOL", "ETH"], watched: [], stops: [], errors: ["hl: HTTP 429", "watchlist: db down"] });
+  });
+
+  test("stops: reduce-only stop triggers of the watched HL account, parsed from frontendOpenOrders", async () => {
+    const exposure = () =>
+      loadExposure({
+        store: { listManualPositions: async () => [{ id: "m1", asset: "ARB", side: "long", size: 1, entryPx: 1, stopPx: 0.9, leverage: 1, venue: "x", createdAt: "", updatedAt: "" }] },
+        marks: async () => ({}),
+        watchAddress: "0x0000000000000000000000000000000000000001",
+        readHl: async () => toWatchedAccount(openOrders.clearinghouseState, openOrders.frontendOpenOrders, null),
+      });
+    const res = await focusAssets(exposure, async () => []);
+    expect(res.held.sort()).toEqual(["ARB", "BTC", "ETH", "SOL"]);
+    // ETH: the reduce-only "Stop Market" (not the non-reduce-only entry stop, not the take-profit); BTC: tpsl "sl"
+    // decides over an unfamiliar orderType; SOL: only a resting limit. Manual stops are not captured.
+    expect(res.stops).toEqual([
+      { asset: "ETH", side: "long", stopPx: 3700 },
+      { asset: "BTC", side: "short", stopPx: 104000 },
+    ]);
+    // No watched address → the hl source is not read, so nothing is captured.
+    const unwatched = await focusAssets(() => loadExposure({ store: { listManualPositions: async () => [] }, marks: async () => ({}) }), async () => []);
+    expect(unwatched.stops).toEqual([]);
   });
 });
 
@@ -139,7 +163,7 @@ describe("collectIntelSnapshots", () => {
     const runs: boolean[] = [];
     const res = await collectIntelSnapshots(
       {
-        store: { insertSnapshots: async () => Promise.reject(new Error("relation intel_snapshots does not exist")) },
+        store: { insertSnapshots: async () => Promise.reject(new Error("relation intel_snapshots does not exist")), recordStops: async () => 0 },
         focus: async () => ({ held: [], watched: [], errors: [] }),
         l2Book: async () => null,
         recordRun: async (_c, _s, ok) => void runs.push(ok),
@@ -149,6 +173,30 @@ describe("collectIntelSnapshots", () => {
     );
     expect(res).toMatchObject({ ok: false, written: 0, error: "relation intel_snapshots does not exist" });
     expect(runs).toEqual([false]);
+  });
+
+  test("records the focus stops at the snapshot ts; a stop write failure is reported, rows still count", async () => {
+    const store = new MemoryIntelStore();
+    const stops = [{ asset: "SOL", side: "long" as const, stopPx: 140 }];
+    const res = await collectIntelSnapshots(
+      { store, focus: async () => ({ held: ["SOL"], watched: [], stops, errors: [] }), l2Book: async () => null, recordRun: async () => {} },
+      ctxs,
+      ts,
+    );
+    expect(res.ok).toBe(true);
+    expect(await store.stopAt("SOL", "long", new Date(0))).toEqual({ asset: "SOL", side: "long", ts: ts.toISOString(), stopPx: 140 });
+
+    const failing = await collectIntelSnapshots(
+      {
+        store: { insertSnapshots: (rows) => store.insertSnapshots(rows), recordStops: async () => Promise.reject(new Error("relation intel_stops does not exist")) },
+        focus: async () => ({ held: [], watched: [], stops, errors: [] }),
+        l2Book: async () => null,
+        recordRun: async () => {},
+      },
+      ctxs,
+      ts,
+    );
+    expect(failing).toMatchObject({ ok: true, written: 3, errors: ["stops: relation intel_stops does not exist"] });
   });
 
   test("books past the deadline are skipped; rows still written", async () => {

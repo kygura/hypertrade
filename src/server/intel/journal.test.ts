@@ -254,6 +254,31 @@ describe("loadJournal", () => {
     expect(sources).toContainEqual({ source: "candles", ok: false, error: "db down" });
   });
 
+  test("HL trades: R from the earliest stop captured within the trade's life, else a manual stop; nothing → null", async () => {
+    let clock = new Date("2025-10-01T00:00:00Z");
+    const store = new MemoryIntelStore(() => clock);
+    // hl:BTC:1001 is long from 2025-10-05T02:00Z (open fill) to 07:00Z (last close).
+    await store.recordStops([
+      { asset: "BTC", side: "long", ts: "2025-10-05T01:00:00.000Z", stopPx: 50000 }, // before the open fill
+      { asset: "BTC", side: "short", ts: "2025-10-05T03:00:00.000Z", stopPx: 70000 }, // other side
+      { asset: "BTC", side: "long", ts: "2025-10-05T04:00:00.000Z", stopPx: 59000 }, // the risk taken
+      { asset: "BTC", side: "long", ts: "2025-10-05T06:00:00.000Z", stopPx: 61500 }, // a later trail
+      { asset: "BTC", side: "long", ts: "2025-10-05T08:00:00.000Z", stopPx: 1 }, // after the close
+    ]);
+    // hl:ETH:2002 (long, still open) has no captured stop: falls back to the manual ETH long stop.
+    await store.createManualPosition({ asset: "ETH", side: "long", size: 1, entryPx: 2900, stopPx: 2800, leverage: 2, venue: "hyperliquid" });
+    clock = NOW; // hl:ETH:2001 (short, closed 2025-10-09T09:00Z): this manual stop was created after the close, so it does not count.
+    await store.createManualPosition({ asset: "ETH", side: "short", size: 1, entryPx: 3000, stopPx: 3100, leverage: 2, venue: "hyperliquid" });
+
+    const { trades } = await loadJournal(deps({ store, hlFills: async () => fills, stopFor: journalStopFor(null, store) }), 30);
+    const btc = trades.find((t) => t.id === "hl:BTC:1001")!;
+    expect(btc.stopPx).toBe(59000);
+    expect(btc.r).toBeCloseTo(btc.pnlUsd / ((btc.entryPx - 59000) * btc.size), 9);
+    expect(btc.r!).toBeGreaterThan(1);
+    expect(trades.find((t) => t.id === "hl:ETH:2002")).toMatchObject({ closedAt: null, stopPx: 2800, r: null, maeUnit: "r" }); // open: no R yet
+    expect(trades.find((t) => t.id === "hl:ETH:2001")).toMatchObject({ stopPx: null, r: null });
+  });
+
   test("window drops trades closed before it; missing sources are reported, not fatal", async () => {
     const d = deps({ hlFills: async () => fills });
     const { trades, sources } = await loadJournal(d, 5); // since 2025-10-08T12:00Z

@@ -1,0 +1,17 @@
+{
+  "clearinghouseState": {
+    "marginSummary": { "accountValue": "20000.0", "totalNtlPos": "9750.0" },
+    "assetPositions": [
+      { "type": "oneWay", "position": { "coin": "ETH", "szi": "1.0", "entryPx": "3900.0", "positionValue": "4000.0", "unrealizedPnl": "100.0" } },
+      { "type": "oneWay", "position": { "coin": "BTC", "szi": "-0.05", "entryPx": "101000.0", "positionValue": "5000.0", "unrealizedPnl": "50.0" } },
+      { "type": "oneWay", "position": { "coin": "SOL", "szi": "5.0", "entryPx": "148.0", "positionValue": "750.0", "unrealizedPnl": "10.0" } }
+    ]
+  },
+  "frontendOpenOrders": [
+    { "coin": "ETH", "side": "A", "limitPx": "3590.0", "sz": "1.0", "oid": 101, "timestamp": 1760356000000, "triggerCondition": "Price below 3600", "isTrigger": true, "triggerPx": "3600.0", "children": [], "isPositionTpsl": false, "reduceOnly": false, "orderType": "Stop Market", "origSz": "1.0", "tif": null, "cloid": null },
+    { "coin": "ETH", "side": "A", "limitPx": "4500.0", "sz": "1.0", "oid": 102, "timestamp": 1760356000000, "triggerCondition": "Price above 4500", "isTrigger": true, "triggerPx": "4500.0", "children": [], "isPositionTpsl": true, "reduceOnly": true, "orderType": "Take Profit Market", "origSz": "1.0", "tif": null, "cloid": null },
+    { "coin": "ETH", "side": "A", "limitPx": "3690.0", "sz": "1.0", "oid": 103, "timestamp": 1760356000000, "triggerCondition": "Price below 3700", "isTrigger": true, "triggerPx": "3700.0", "children": [], "isPositionTpsl": true, "reduceOnly": true, "orderType": "Stop Market", "origSz": "1.0", "tif": null, "cloid": null },
+    { "coin": "BTC", "side": "B", "limitPx": "104500.0", "sz": "0.05", "oid": 104, "timestamp": 1760356000000, "triggerCondition": "Price above 104000", "isTrigger": true, "triggerPx": "104000.0", "tpsl": "sl", "children": [], "isPositionTpsl": false, "reduceOnly": true, "orderType": "Trigger", "origSz": "0.05", "tif": null, "cloid": null },
+    { "coin": "SOL", "side": "A", "limitPx": "160.0", "sz": "5.0", "oid": 105, "timestamp": 1760356000000, "triggerCondition": "N/A", "isTrigger": false, "triggerPx": "0.0", "children": [], "isPositionTpsl": false, "reduceOnly": true, "orderType": "Limit", "origSz": "5.0", "tif": "Gtc", "cloid": null }
+  ]
+}

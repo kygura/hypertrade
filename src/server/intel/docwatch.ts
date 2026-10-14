@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { lookup as dnsLookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { request as httpsRequest } from "node:https";
+import { isIP, type LookupFunction } from "node:net";
+import { Readable } from "node:stream";
 import { z } from "zod";
 import { HttpsUrlSchema, type Chain, type EventSource, type EventType, type Magnitude, type Watch, type WatchChange } from "../../shared/intel.js";
 import { claimsJsonSchema, validateClaims } from "./claims.js";
@@ -10,7 +12,8 @@ import type { IntelStore, WatchState } from "./store.js";
 
 // Doc/contract watcher (SPEC.md § Intel I0.19). Code detects change: `url`
 // pages are fetched through safeFetch (public https only, re-validated on
-// every redirect hop, size/time/content-type capped), stripped to text,
+// every redirect hop and pinned to the vetted IPs, size/time/content-type
+// capped), stripped to text,
 // hashed and line-diffed; `evm_contract` reads the bytecode hash and the
 // EIP-1967 implementation/admin slots; `evm_wallet` reads balance + nonce.
 // The first check is a baseline. On a later change the cheap model
@@ -21,7 +24,10 @@ import type { IntelStore, WatchState } from "./store.js";
 
 export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 /** DNS resolver (node:dns/promises lookup with {all: true}); injectable so tests never hit the network. */
-export type LookupFn = (host: string) => Promise<Array<{ address: string; family: number }>>;
+export type LookupFn = (host: string) => Promise<PinnedAddress[]>;
+export type PinnedAddress = { address: string; family: number };
+/** safeFetch's transport: GET `url` without following redirects, connecting only to `pinned` (the addresses safeFetch just vetted for its host). */
+export type PinnedFetchFn = (url: string, init: { redirect: "manual"; signal: AbortSignal; headers: Record<string, string> }, pinned: PinnedAddress[]) => Promise<Response>;
 const defaultLookup: LookupFn = (host) => dnsLookup(host, { all: true, verbatim: true });
 
 export const FETCH_TIMEOUT_MS = 10_000;
@@ -131,24 +137,76 @@ function v6Words(ip: string): number[] | null {
 }
 
 /**
+ * Node-style `lookup` that answers every query with the vetted addresses
+ * only, so the socket connects to an IP safeFetch checked and DNS is never
+ * consulted again (no rebind window between check and connect).
+ */
+export function pinnedLookup(pinned: readonly PinnedAddress[]): LookupFunction {
+  return (_host, opts, cb) => {
+    const family = opts.family === 4 || opts.family === "IPv4" ? 4 : opts.family === 6 || opts.family === "IPv6" ? 6 : 0;
+    const list = pinned.filter((a) => !family || a.family === family).map(({ address, family }) => ({ address, family }));
+    if (!list.length) return cb(Object.assign(new Error("no vetted address for this family"), { code: "ENOTFOUND" }), "", 0);
+    if (opts.all) cb(null, list);
+    else cb(null, list[0]!.address, list[0]!.family);
+  };
+}
+
+const NULL_BODY_STATUS = new Set([101, 204, 205, 304]);
+
+/**
+ * The production transport: node:https with the pinned `lookup` (honoured by
+ * both Node and Bun; Bun's fetch has no dispatcher hook). The URL keeps the
+ * original hostname, so SNI, certificate validation and Host are unchanged.
+ * No pooling (a pooled socket could predate this hop's check) and identity
+ * encoding only (the byte cap measures what is read). Never follows redirects.
+ */
+export function pinnedHttpsFetch(
+  url: string,
+  init: { signal: AbortSignal; headers: Record<string, string> },
+  pinned: PinnedAddress[],
+  request: typeof httpsRequest = httpsRequest,
+): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const req = request(url, { method: "GET", headers: { ...init.headers, "accept-encoding": "identity" }, signal: init.signal, lookup: pinnedLookup(pinned), agent: false }, (res) => {
+      const status = res.statusCode ?? 0;
+      const encoding = String(res.headers["content-encoding"] ?? "identity").trim().toLowerCase();
+      if (encoding !== "identity") {
+        res.destroy();
+        return reject(new Error(`unsupported content-encoding: ${encoding}`));
+      }
+      try {
+        const headers = new Headers();
+        for (let i = 0; i + 1 < res.rawHeaders.length; i += 2) headers.append(res.rawHeaders[i]!, res.rawHeaders[i + 1]!);
+        const empty = NULL_BODY_STATUS.has(status);
+        if (empty) res.destroy();
+        resolve(new Response(empty ? null : (Readable.toWeb(res) as unknown as ReadableStream), { status, headers }));
+      } catch (e) {
+        res.destroy();
+        reject(e);
+      }
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+/**
  * GET a public https URL. Every hop (the first and each redirect Location)
  * must pass HttpsUrlSchema and its host must resolve only to public
- * addresses; at most MAX_REDIRECTS hops; 10 s overall; the body is streamed
- * and aborted past MAX_BODY_BYTES; only text/html, text/plain and
- * application/json are read.
+ * addresses, and the transport connects only to those vetted addresses; at
+ * most MAX_REDIRECTS hops; 10 s overall; the body is streamed and aborted
+ * past MAX_BODY_BYTES; only text/html, text/plain and application/json are read.
  */
-export async function safeFetch(f: FetchFn, url: string, signal?: AbortSignal, lookup: LookupFn = defaultLookup): Promise<{ text: string; contentType: string; url: string }> {
+export async function safeFetch(f: PinnedFetchFn, url: string, signal?: AbortSignal, lookup: LookupFn = defaultLookup): Promise<{ text: string; contentType: string; url: string }> {
   const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
   const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let current = url;
   for (let hop = 0; ; hop++) {
     const refused = `refused url: ${hop ? "redirect to " : ""}non-public or non-https target`;
     if (!HttpsUrlSchema.safeParse(current).success) throw new Error(refused);
-    // ponytail: the checked IP is not pinned for the fetch itself, so a DNS rebind between this
-    // lookup and fetch's own resolution (TOCTOU) is not covered; pinning needs a custom connector.
     const addrs = await lookup(new URL(current).hostname.replace(/\.+$/, ""));
     if (!addrs.length || addrs.some((a) => isNonPublicIp(a.address))) throw new Error(`${refused} (resolves to a non-public address)`);
-    const res = await f(current, { redirect: "manual", signal: sig, headers: { accept: ALLOWED_TYPES.join(", "), "user-agent": "hypertrade-docwatch/1" } });
+    const res = await f(current, { redirect: "manual", signal: sig, headers: { accept: ALLOWED_TYPES.join(", "), "user-agent": "hypertrade-docwatch/1" } }, addrs);
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get("location");
       await res.body?.cancel().catch(() => {});
@@ -311,7 +369,7 @@ function formatWei(wei: bigint): string {
 async function readWatch(deps: DocwatchDeps, watch: Watch): Promise<Reading> {
   const f = deps.fetch ?? (fetch as FetchFn);
   if (watch.kind === "url") {
-    const { text, contentType } = await safeFetch(f, watch.target, deps.signal, deps.lookup);
+    const { text, contentType } = await safeFetch(deps.fetch ?? pinnedHttpsFetch, watch.target, deps.signal, deps.lookup);
     const body = normalizeBody(text, contentType);
     if (!body) throw new Error("empty page after stripping (JS-rendered or blocked?)");
     return { hash: sha256(body), snapshot: body.slice(0, SNAPSHOT_MAX_CHARS), source: { label: watch.label, url: watch.target } };
