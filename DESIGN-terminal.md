@@ -1413,8 +1413,9 @@ so the state is visible before expanding.
 ### 16.5 Confluence on digest items
 
 Where an item's `confluence > 1`, a 9px gray `Badge` `×1.25` follows the
-materiality number (DiffTable `MAT` cell, AlertItem's leading materiality;
-also the asset header's `MAT 0.71`). Format: `×` + the factor with two
+materiality number in the DiffTable `MAT` cell. Only digest items (`DiffItem`)
+carry `confluence`. Alerts and heatmap rows don't, so AlertItem and the asset
+header show no badge until they do. Format: `×` + the factor with two
 decimals, trailing zero kept (`×1.50`); `confluence ≤ 1` renders nothing, not
 `×1.00`. `title`: `confluence ×1.25 — 2 independent signal sources on <ASSET>
 in the window (snapshot moves, flow detectors, flips, news); this item's own
@@ -1474,7 +1475,7 @@ never the only signal.
 | `research.ts` (pure) | `components/intel/research.ts` | `toClaim(evidence)`, `statusWord(status)`, `statusTone(status)`, `chipQuestion(flag)`, `confluenceTitle(factor, asset)`, `fmtCost(usd)` (the `flow.ts` precedent; unit-tested like `flow.test.tsx`) |
 | `DetectorChips` | `components/intel/DetectorChips.tsx` | gains `onResearch(flag)`, `onSeeResearch(researchId, asset)`, `askDisabledReason: string\|null` |
 | `EventList` | `components/intel/EventList.tsx` | gains the `research` row + disclosure (renders `ResearchCard compact`) |
-| `DiffTable` / `AlertItem` / `AssetHeader` | existing files | render `ConfluenceBadge` after materiality |
+| `DiffTable` | existing file | renders `ConfluenceBadge` after materiality (digest items only) |
 | `Terminal` | `pages/terminal/Terminal.tsx` | gains the research poller, the ask `useAction` (POST + local prepend), `highlightId`, and `RESEARCH_ANCHOR`; wires the chip actions |
 | `intel` client | `lib/intel.ts` | gains `research(q)`, `ask(input)`; `events` and `flows` removed (SPEC S0.9) |
 

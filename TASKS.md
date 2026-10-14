@@ -106,7 +106,7 @@ Destination: SPEC.md § Scout S0–S2 — Research panel on `/`, auto research o
 - [x] P0 Plan — SPEC.md § Scout; user chose research on `/` (2026-10-14) — opus
 - [x] S Second opinion on S0 — fable
 - [x] D2 Design pass → DESIGN-terminal.md § 16 — fable
-- [ ] R1 Contract + 010_research.sql + store (Pg/Memory) + research.ts engine — sonnet — deps S
+- [x] R1 Contract + 010_research.sql + store (Pg/Memory) + research.ts engine — sonnet — deps S
 - [x] T Thresholds + confluence + graph diff-review + dead client fns + analyst.test fix — sonnet — deps S
 - [ ] R2 Routes + auto trigger in ingest — sonnet — deps R1
 - [ ] U5 ResearchPanel, chip action, timeline event, confluence badge — opus (ui-impl) — deps D2, R1
@@ -119,3 +119,5 @@ Destination: SPEC.md § Scout S0–S2 — Research panel on `/`, auto research o
 - R1 review (opus risk + reliability): the provenance check was number-only against titles. Now observed = cited_text overlap ≥ 50 % + exact numbers; found needs an observed claim; 8 searches per run incl. retries; failed calls count toward the $ cap; DB-clock stale lock; limits count running|found|no_cause only. Fix round 1 sent to the R1 worker.
 - T: k = 1 + other distinct sources (6 h window); Alert has no confluence field (avoids a migration clash), so the badge is digest-only; heatmap row materiality left as is.
 - T review (opus reliability): per-asset deletes dropped cross-target and refused-but-reasserted edges → one run-level delete after all upserts, keep = union incl. well-formed refusals, never delete when an endpoint failed. Same-run flag classes precomputed (symmetric k). Held exposure floored at WATCH_FLOOR. Fix round 1 sent to the T worker.
+- R1 + T merged (fixes d755cba, d267746). Pg parity still unrun: no Postgres or docker on this host. The Pg SQL is read-reviewed only, and V must name this gap. Search fee is $0.01/search (ponytail note in llm.ts). R2 and U5 launched in parallel worktrees.
+- R2 review (opus reliability + resilience). Live heatmap flag ids embedded request time, so researchId never joined in prod; fix = carry the stored episode id. Per-flag join queries → one batched query that fails soft. Timed-out steps now record a pessimistic cost. Both daily limits count running|found|no_cause + failed with cost > 0. Auto: one attempt per flag per UTC day, stop on capped, abort signal threaded, start only with deadline + 15 s left, collector_runs `intel:research`. Fix round 2 sent.
