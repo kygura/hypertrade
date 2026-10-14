@@ -87,11 +87,11 @@ Destination: SPEC.md § Flow (F0–F3) built into the Intel Terminal; `/` gains 
 
 # Tasks — Scout (phase 7: research + scorer gaps on `/`)
 
-Harness: Claude Code (local). Planner: claude-opus-5-5. Roster: native Anthropic only (fable, opus, sonnet, haiku), no bridges (user rule). Reviewer = different family / fresh context.
+Harness: Claude Code (local). Planner: claude-opus-5-5 (P0, S); claude-sonnet-5-5 from D2 on (2026-10-14 resume). Roster: native Anthropic only (fable, opus, sonnet, haiku), no bridges (user rule). Reviewer = different family / fresh context.
 
 | Role | Model | Effort |
 |---|---|---|
-| planner | opus (self) | — |
+| planner | opus → sonnet (self) | — |
 | discussion | fable | medium |
 | designer | fable | medium |
 | worker | sonnet | medium (escalate: high → opus) |
@@ -105,7 +105,7 @@ Destination: SPEC.md § Scout S0–S2 — Research panel on `/`, auto research o
 ## Tasks
 - [x] P0 Plan — SPEC.md § Scout; user chose research on `/` (2026-10-14) — opus
 - [x] S Second opinion on S0 — fable
-- [ ] D2 Design pass → DESIGN-terminal.md § 16 — fable
+- [x] D2 Design pass → DESIGN-terminal.md § 16 — fable
 - [ ] R1 Contract + 010_research.sql + store (Pg/Memory) + research.ts engine — sonnet — deps S
 - [ ] T Thresholds + confluence + graph diff-review + dead client fns + analyst.test fix — sonnet — deps S
 - [ ] R2 Routes + auto trigger in ingest — sonnet — deps R1
@@ -115,3 +115,4 @@ Destination: SPEC.md § Scout S0–S2 — Research panel on `/`, auto research o
 ## Decisions so far
 - P0: Flow A–E already merged on feat/flow-scout; only V missing. Confluence found absent from every materiality formula. Exchange inflows stay out (no free source). Telegram /ask stays Desk.
 - S (fable, adopted): no fetch tool (searches ≤ 8 via per-call maxUses; SSRF surface stays closed); observed evidence must cite a URL from the provider's own search results + number in its excerpt, else hypothesis; 45 s research deadline; DB `running` lock not process flag; auto research = own last ingest stage; one `materiality(parts,k)` seam in diff.ts, own signal excluded from k; researchId joined at read time; graph refresh already never deletes → only add stale-edge removal (non-seed/manual).
+- D2 (fable): RESEARCH full-width row under FLOW; "see research" scrolls to the card on `/`; confluence badge ×1.25 only when > 1. Gaps closed by planner in S1: POST accepts `flagId` (chip runs stay trigger "manual"), research AssetEvents carry `research`.

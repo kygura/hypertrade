@@ -1248,3 +1248,240 @@ Skipped: a radial exposure SVG (§14's reason holds); per-cell tab stops (one
 row stop + arrows); sortable heatmap columns (materiality is the order);
 spot/perp volume panes (chip ratio covers it); a dedicated LLM-cap banner (the
 no-narration row is the place reasons already live).
+
+---
+
+## 16. Scout / Research (phase 7)
+
+Binding layout for SPEC.md § "Scout — research on the Terminal" (S0.8). §15
+stands; this section adds one panel to `/`, one action on the detector chips,
+one event kind on `/asset/:coin`, one badge on digest items, and no tokens.
+Research is **model output with code-checked provenance**: every evidence row
+is a Claim and renders through §2, so OBS and HYP stay unmistakable, and a
+hypothesis is never typeset as a fact. Nothing on this surface tells the
+operator what to do; a result explains, it never recommends.
+
+**Reused as-is:** `Panel`, `Badge`, `Button`, `StatusDot`, `SkeletonRows`,
+`EmptyBlock`, `OfflineBlock`, `ErrorBlock`, `ClaimLine`, `ClaimList`,
+`ClaimAge`, `SourceLink`, `useAction`, the QueryInput field idiom (§6.2), the
+pulse label (`REVIEWING…`), the §15.3 expanded-line disclosure, the §15.5
+selection inset.
+
+### 16.1 RESEARCH panel on `/`
+
+**Desktop (`lg:`)** — a full-width 12 row directly under FLOW, before
+POSITIONS / CATALYSTS. FLOW shows *what* moved; research is the attempt to
+find *why*, so it sits under the matrix it explains, above the book.
+
+```
+├ RESEARCH ─ NEWEST FIRST ─────────────────────────────── 3 / 10 TODAY · 12M ─ 12 ┤
+│ QUESTION  [ What explains the OI build on HYPE over 24 h?            ] ASSET [HYPE ] [RESEARCH] │
+│ ─────────────────────────────────────────────────────────────────────────────────────────── │
+│ FOUND  HYPE · What explains the OI build on HYPE over 24 h?                 MEDIUM   12M     │
+│ EXPLANATION  A token unlock of 2.1% is scheduled for 10-15; OI rose 18.4% while price… │
+│ OBS  Unlock of 2.1% of supply scheduled 2026-10-15.               THE BLOCK ↗ · 3H      │
+│ HYP ┃ Market makers may be hedging unlock supply ahead of time.                         │
+│ OPEN QUESTIONS  ? Which wallets received the unlock allocation                          │
+│ MANUAL · 6 SEARCHES · $0.04 · claude-sonnet · 12M                          OPEN HYPE → │
+│ ─────────────────────────────────────────────────────────────────────────────────────────── │
+│ NO CAUSE  SOL · funding flipped +  (FLAG)                                   LOW     2H      │
+│ EXPLANATION  No public cause found. Checked: exchange status pages, SOL news 24 h, …     │
+```
+
+Mid (`md:`): same, full width. **Mobile (<768)**: … → FLOW → **RESEARCH** →
+POSITIONS → …; the ask box stacks `QUESTION` / `ASSET` / button, cards keep
+§2.1's mobile ClaimLine wrap. Nothing is priority-hidden.
+
+**Header.** `RESEARCH`, the `.label` `NEWEST FIRST` (the order is named and is
+the only order), right: the usage line `3 / 10 TODAY` (10px tabular,
+`title` = `manual research runs this UTC day · INTEL_RESEARCH_DAILY`; amber
+when `usedToday ≥ limit`) and `ClaimAge` of the newest result (no staleness
+threshold: research is on demand, an old result is not a stale one).
+
+**Ask box** (`ResearchAsk`). `.label QUESTION` + the §6.2 one-line textarea
+(grows to 3 rows, `maxLength 500`, a 10px `412 / 500` counter appears past
+400); `.label ASSET` + a 6ch uppercase input with a `datalist` of held ∪
+watched (optional; free text allowed, the server decides what it knows);
+`Button` primary `RESEARCH`. Enter submits, Shift+Enter breaks a line.
+Disabled while the question is < 3 chars, while a run is in flight, while a
+`running` row is in the list, and while `usedToday ≥ limit` (`title` says
+which). In flight: `RESEARCHING…` pulse on the button; the list gains a
+placeholder card at the top (§16.2 `running`). The call is synchronous for up
+to 45 s, so the pulse is the whole progress UI: no bar, no countdown (there
+is no signal to drive one, and a fake one lies).
+
+**Results list** — one `ResearchCard` per item, newest first, server order,
+limit 20. After a successful POST the response is prepended locally and
+deduplicated by `id` on the next poll; no refetch. A card arriving from the
+cron (trigger `flag`) appears on the next poll with no announcement.
+
+### 16.2 ResearchCard
+
+An `<article aria-label="Research: <ASSET or 'no asset'>, <status word>">`,
+`px-3 py-2.5`, `border-b border-border-subtle`. Top to bottom:
+
+1. **Status line.** `Badge` with the status word, then coin (sm, primary;
+   omitted when `asset` is null), ` · `, the question (12px `text-primary`,
+   never truncated or uppercased), then right: confidence Badge and
+   `ClaimAge` of `createdAt`.
+
+   | `status` | Badge | Body |
+   |---|---|---|
+   | `running` | gray `RUNNING` + pulse (the §1.5 `REVIEWING…` motion) | `SkeletonRows (2)`; replaced in place by the response |
+   | `found` | gray `FOUND` | full card |
+   | `no_cause` | gray `NO CAUSE` | explanation (`No public cause found.` + what was checked, verbatim), no evidence block, open questions if any |
+   | `capped` | amber `CAPPED` | the §15.7 amber-square row with the verbatim reason (`LLM cap reached ($1.37 / $2.00)`), nothing else |
+   | `failed` | red `FAILED` | the verbatim server reason in an 11px `text-muted` row (`provider has no web search`), nothing else |
+
+   `no_cause` is a valid answer and looks like one: gray, not amber, not
+   empty. Confidence is a gray Badge `LOW` / `MEDIUM` / `HIGH` for `found`
+   and `no_cause` only, `title` = `the model's own confidence in this
+   explanation — not a probability`. It is never color-graded: a green
+   `HIGH` would read as a go signal.
+
+2. **`.label EXPLANATION`** + the explanation as one 12px `text-primary`
+   paragraph, model text rendered verbatim (§2.1 rules: no uppercase, no
+   truncation, no recolored numbers). It is prose, not a Claim, so it never
+   sits inside the ClaimList below; the model name in the meta line is its
+   provenance.
+
+3. **Evidence** — a `ClaimList` of `evidence[]` mapped by `toClaim`:
+   `observed` → `{kind: 'observed', text: claim, source: {label: hostname of
+   url, url}, ts}` (ts may be null → no ClaimAge); `hypothesis` → `{kind:
+   'hypothesis', text: claim}`. A hypothesis that kept its url (the provider
+   saw it, a number did not match) renders the SourceLink **inside** the
+   muted text block after the text, never in the right-hand source slot:
+   the link is useful, the HYP badge and info rule still say "not verified".
+   Omitted when empty (`no_cause`).
+
+4. **`.label OPEN QUESTIONS`** + a `<ul>` of 11px `text-muted` lines, each
+   prefixed `? ` (4ch, matching the OBS/HYP column). Omitted when empty.
+
+5. **Meta line**, 10px `text-secondary` tabular: trigger word (`MANUAL`, or
+   `FLAG · <chip text in lowercase>` when `trigger: 'flag'`), ` · `,
+   `<searches> SEARCHES`, ` · `, `$<costUsd>` (2 decimals, server value,
+   never recomputed), ` · `, `model`, ` · `, ClaimAge; right: ghost `OPEN
+   <ASSET> →` (`/asset/:coin`) when `asset` is set.
+
+**Highlight.** A card addressed by `researchId` (§16.3) gets the §15.5
+selection inset (2px left `--color-red-accent`) and `bg-hover` until the next
+click anywhere, and is scrolled to `start` with `scroll-mt-[100px]`
+(`id="research-<id>"`).
+
+### 16.3 Detector chip action
+
+The chip stays one tab stop; the action lives in the §15.3 expanded line,
+after `OPEN HYPE →`:
+
+- `flag.researchId == null` → ghost `RESEARCH`. Click submits through the
+  same ask action as the box, with the question `What explains <chip text,
+  lowercase> on <ASSET> over <window>?` (e.g. `What explains crowded long on
+  HYPE over 24h?`), `asset` = the flag's coin and `flagId` = the flag id
+  (§16.6), and scrolls to RESEARCH where the `running` placeholder is
+  already visible. It is one click because the chip already holds the whole
+  question; it counts against the daily limit like any manual run, and the
+  usage line says so. Disabled, with the same `title`, under the same
+  conditions as the box button. Degraded summary chips have no action.
+- `flag.researchId` set → ghost `SEE RESEARCH →`. Click scrolls to the card
+  in RESEARCH and highlights it (§16.2). **Why the panel and not the asset
+  page:** the chip is on `/` and the result is already on `/`; a page hop
+  would drop the heatmap context the operator is reading the chip against.
+  If the id is not among the 20 loaded cards, the panel refetches with
+  `?asset=<coin>` and highlights on arrival; still missing → `/asset/:coin`
+  (the timeline has it as an event).
+
+The chip text itself does not change; a flag with research shows a 9px
+`text-secondary` `·R` suffix inside the chip (`title` `research available`),
+so the state is visible before expanding.
+
+### 16.4 `/asset/:coin` timeline
+
+`AssetEvent.kind: 'research'` joins the §15.5 EventList and markers:
+
+- **Marker:** 1px dashed `--color-info` on the PRICE pane at `createdAt`
+  (model output, the news-alert class), every status included; a `no_cause`
+  is still an event that happened.
+- **Row:** `MM-DD HH:mm`, then the status Badge (§16.2 words), `.label`
+  `RESEARCH`, the question in `text-primary`. The row is a disclosure
+  (`aria-expanded`, the §15.3 idiom, one open at a time, `Esc` collapses):
+  tap/Enter opens the full `ResearchCard` body (explanation, evidence, open
+  questions, meta) under the row. When the event carries no `research`
+  payload (§16.6), the row is not expandable and ends with ghost `SEE ON
+  TERMINAL →` (`/#research-<id>`).
+- The header's flags Badges gain the same `·R` suffix as the chips.
+
+### 16.5 Confluence on digest items
+
+Where an item's `confluence > 1`, a 9px gray `Badge` `×1.25` follows the
+materiality number (DiffTable `MAT` cell, AlertItem's leading materiality;
+also the asset header's `MAT 0.71`). Format: `×` + the factor with two
+decimals, trailing zero kept (`×1.50`); `confluence ≤ 1` renders nothing, not
+`×1.00`. `title`: `confluence ×1.25 — 2 independent signal sources on <ASSET>
+in the window (snapshot moves, flow detectors, flips, news); this item's own
+source is not counted` — the count is `1 + round((f − 1) / 0.25)`, and at the
+`1.50` cap it reads `3 or more`. The badge is a suffix, not a column: the
+tables keep their widths, and materiality stays the one printed rank.
+
+### 16.6 States, fields, components
+
+**State → surface (extends §10 / §15.8):**
+
+| Surface | Loading | Empty | Error | Stale / other |
+|---|---|---|---|---|
+| RESEARCH list | SkeletonRows (3) | EmptyBlock `no research yet — ask a question above, or press RESEARCH on a detector chip` (ask box always rendered) | ErrorBlock / OfflineBlock + `RETRY` under the ask box; a loaded list stays | `running` placeholder card; usage line amber at the limit |
+| Ask box submit | `RESEARCHING…` pulse, button disabled | — | verbatim ErrorBlock (`role="alert"`) under the box; `RETRY` only when offline or ≥ 500 | **409** (a run in flight): verbatim string, box disabled until the next poll shows no `running` row; **429** (daily limit): verbatim string, usage line amber, box disabled until `usedToday < limit` after the UTC day turns; **capped**: not an error — a 200 `CAPPED` card (§16.2), box stays enabled; **failed**: a `FAILED` card |
+| No DB | — | the same EmptyBlock: without `DATABASE_URL` the server uses `MemoryIntelStore`, so every state above renders and results live until restart; no demo copy | — | — |
+| Asset research row | — (with events) | — | — | no payload → `SEE ON TERMINAL →` |
+| Chip action | `RESEARCH` disabled with `title` while in flight | — | the box's ErrorBlock | `·R` suffix; `SEE RESEARCH →` fallback to `/asset/:coin` |
+
+A `running` row older than deadline + 15 s (SPEC S0.3) is stale; the panel
+renders it as `FAILED` with reason `timed out` only after the server reports
+it so (the UI never guesses); until then it is `RUNNING`.
+
+**Fields the UI reads (extends §13; pinned in `src/shared/intel.ts`):**
+
+| Field | Used by | If absent |
+|---|---|---|
+| `ResearchResult {id, trigger: 'manual'\|'flag', flagId?, asset: string\|null, question, status, explanation, evidence: {claim, url?, ts: string\|null, type: 'observed'\|'hypothesis'}[], confidence, openQuestions: string[], searches, costUsd, model, createdAt}` | ResearchCard | `costUsd`/`searches`/`model` absent → that meta segment omitted |
+| `GET /research` → `{items, usedToday, limit}` | list, usage line, box gating | `usedToday`/`limit` absent → usage line omitted, box never limit-gated (the 429 still renders) |
+| `POST /research {question, asset?, flagId?}` | ask box, chip action | the UI **sends** `flagId` when the run comes from a chip; a server that ignores it leaves the chip on `RESEARCH` until a poll returns a `researchId` (S1 names only `question`, `asset`) |
+| `FlowFlag.researchId: string\|null` | chip action, `·R` suffix, header flags | treated as null |
+| `AssetEvent {kind: 'research', ts, title (= question), research?: ResearchResult}` | timeline marker, row, disclosure | no `research` → non-expandable row + `SEE ON TERMINAL →` |
+| `DiffItem.confluence?`, `Alert.confluence?`, heatmap row `confluence?` | ConfluenceBadge | no badge |
+
+**Polling (extends §1.4):** `GET /research?limit=20` on mount, then every 60 s
+(results also arrive from the cron); 15 s while any row is `running`; paused
+hidden. `/asset/:coin` needs no new fetch (events carry research).
+
+**Keyboard / a11y (extends §11):** the textarea has a visible `.label` and
+`aria-describedby` on the counter; Enter submits, Shift+Enter inserts a
+newline; the asset input is a labeled `<input list>`; ErrorBlocks are the
+only live regions, plus the existing `/` polite line, which announces
+`research ready: <status word>` when a POST resolves; cards are `<article>`s
+with the status word in `aria-label`; the chip action and `OPEN HYPE →` are
+ordinary buttons inside the expanded line (tab order after the chip);
+`OBS`/`HYP`, status words, `×1.25` and the `? ` prefix are text, so color is
+never the only signal.
+
+**Components (extends §14 / §15.8):**
+
+| Component | File | Props |
+|---|---|---|
+| `ResearchPanel` (container) | `components/intel/ResearchPanel.tsx` | `state: IntelState<ResearchListResponse>`, `ask: ActionState` (shared with the chip action), `heldWatched: Set<string>`, `highlightId: string\|null`, `onHighlighted()`; merges the locally prepended results into `state.data.items`; exports `RESEARCH_ANCHOR` |
+| `ResearchAsk` | `components/intel/ResearchAsk.tsx` | `assets: string[]`, `busy`, `disabledReason: string\|null`, `error`, `offline`, `onSubmit({question, asset?})` |
+| `ResearchCard` | `components/intel/ResearchCard.tsx` | `result: ResearchResult`, `highlighted?: boolean`, `compact?: boolean` (asset page body: no status line, the row has it) |
+| `ConfluenceBadge` | `components/intel/ConfluenceBadge.tsx` | `factor: number\|undefined`, `asset: string` (renders nothing ≤ 1) |
+| `research.ts` (pure) | `components/intel/research.ts` | `toClaim(evidence)`, `statusWord(status)`, `statusTone(status)`, `chipQuestion(flag)`, `confluenceTitle(factor, asset)`, `fmtCost(usd)` (the `flow.ts` precedent; unit-tested like `flow.test.tsx`) |
+| `DetectorChips` | `components/intel/DetectorChips.tsx` | gains `onResearch(flag)`, `onSeeResearch(researchId, asset)`, `askDisabledReason: string\|null` |
+| `EventList` | `components/intel/EventList.tsx` | gains the `research` row + disclosure (renders `ResearchCard compact`) |
+| `DiffTable` / `AlertItem` / `AssetHeader` | existing files | render `ConfluenceBadge` after materiality |
+| `Terminal` | `pages/terminal/Terminal.tsx` | gains the research poller, the ask `useAction` (POST + local prepend), `highlightId`, and `RESEARCH_ANCHOR`; wires the chip actions |
+| `intel` client | `lib/intel.ts` | gains `research(q)`, `ask(input)`; `events` and `flows` removed (SPEC S0.9) |
+
+Skipped: a progress bar or elapsed counter for the 45 s run (no signal to
+drive it); a research sub-tab or `/research` route (the panel is the
+surface; the list is capped at 20 by the API); per-card feedback buttons
+(SPEC S0 defines none); an asset filter control on the panel (the refetch in
+§16.3 is the only use, and the ask box's ASSET field already scopes new
+runs); typing the explanation as a Claim (it is a synthesis, and the evidence
+rows carry the tags).

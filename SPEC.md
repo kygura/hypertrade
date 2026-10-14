@@ -373,9 +373,9 @@ Source: the same "Flow + Scout" brief, § 4.3 and § 3.4. The operator asked (20
 
 ### S1. API delta
 
-- `POST /api/intel/research {question: string(3..500), asset?: string}` → `ResearchResult`. Errors: 409 when a run is in flight, 429 when the daily limit is reached. Over the dollar cap it returns 200 with `status: "capped"`.
+- `POST /api/intel/research {question: string(3..500), asset?: string, flagId?: string}` → `ResearchResult`. A chip-started run keeps `trigger: "manual"` (it counts toward `INTEL_RESEARCH_DAILY`) and stores `flagId`, so `researchForFlag` finds it whatever the trigger. Errors: 409 when a run is in flight, 429 when the daily limit is reached. Over the dollar cap it returns 200 with `status: "capped"`.
 - `GET /api/intel/research?asset&limit=20` → `{items: ResearchResult[], usedToday, limit}`.
-- `FlowFlag` gains `researchId: string|null`, joined at read time through `researchForFlag`. The stored flag JSON is never mutated. `AssetEvent.kind` gains `research`.
+- `FlowFlag` gains `researchId: string|null`, joined at read time through `researchForFlag`. The stored flag JSON is never mutated. `AssetEvent.kind` gains `research`, and such events carry `research: ResearchResult`.
 
 ### S2. Done
 
