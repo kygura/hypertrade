@@ -97,6 +97,23 @@ describe("routeEntities", () => {
     );
   });
 
+  test("pushes carry 👍/👎 for the stored alert id; a failing send keeps the stored alert", async () => {
+    const deps = mapperDeps({ provider: explainer(), positions: [position("SOL", "long", 10_000)] });
+    const r = await routeEntities(deps, jito());
+    const id = r.alerts[0]!.id;
+    expect(deps.notifier.sent[0]!.actions).toEqual([
+      { label: "👍", data: `fb:${id}:1` },
+      { label: "👎", data: `fb:${id}:-1` },
+    ]);
+
+    const broken = mapperDeps({ provider: explainer(), positions: [position("SOL", "long", 10_000)] });
+    broken.notifier.send = async () => {
+      throw new Error("telegram down");
+    };
+    expect((await routeEntities(broken, jito())).alerts).toHaveLength(1);
+    expect(broken.store.alerts).toHaveLength(1);
+  });
+
   test("direct hit on a watched asset: hops 0, weight 1, watch floor keeps it batched", async () => {
     const deps = mapperDeps({ provider: explainer(), positions: [position("SOL", "long", 10_000)], watched: ["HYPE"] });
     const r = await routeEntities(deps, jito({ ref: "cluster-hype", entities: ["HYPE"], eventType: "upgrade", magnitude: "med", title: "Hyperliquid upgrade" }));

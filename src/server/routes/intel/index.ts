@@ -7,12 +7,13 @@ import type { CopilotDeps } from "../../intel/copilot.js";
 import type { DocwatchDeps } from "../../intel/docwatch.js";
 import type { GraphRefreshDeps } from "../../intel/graph.js";
 import { deskFillLoader, hlFillLoader, journalStopFor, snapshotEntryState, type JournalDeps } from "../../intel/journal.js";
-import { routeEntities, type MapperDeps } from "../../intel/mapper.js";
+import type { TelegramIntel } from "../../desk/telegram.js";
+import { deepLink, routeEntities, type MapperDeps } from "../../intel/mapper.js";
 import type { IntelIngestDeps } from "../../intel/runIngest.js";
 import type { ReadClient } from "../../intel/screener.js";
 import { focusAssets } from "../../intel/snapshot.js";
 import { recheckForAssets, type ThesisDeps } from "../../intel/thesis.js";
-import { briefAssets, defaultTerminalDeps } from "../../intel/terminal.js";
+import { briefAssets, buildBrief, defaultTerminalDeps } from "../../intel/terminal.js";
 import { defaultDeskService } from "../desk.js";
 import { getCtxs } from "../hl.js";
 import { createAlertsRoutes } from "./alerts.js";
@@ -137,4 +138,10 @@ export function defaultIntelDeps(env: Record<string, string | undefined> = proce
     graph: { store, llm, targets, now },
   };
   return prod;
+}
+
+/** Telegram /digest + 👍/👎 wiring (SPEC F0.6): the POST /brief builder and the feedback store, for the webhook and the desk worker. */
+export function telegramIntel(env: Record<string, string | undefined> = process.env): TelegramIntel {
+  const d = defaultIntelDeps(env);
+  return { store: d.store, brief: (o) => buildBrief(d, { surface: "ui", ...o }), link: deepLink(d.appUrl) };
 }

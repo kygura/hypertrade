@@ -15,6 +15,7 @@ import { telegramApi } from "../src/server/desk/notify.js";
 import { handleTelegramUpdate, type TelegramUpdate } from "../src/server/desk/telegram.js";
 import { tick } from "../src/server/desk/watch.js";
 import { defaultDeskService } from "../src/server/routes/desk.js";
+import { telegramIntel } from "../src/server/routes/intel/index.js";
 
 const service = defaultDeskService();
 const makeProvider = deskProviderFactory();
@@ -50,6 +51,7 @@ async function telegramLoop(token: string, chatId: string) {
     const r = await runDesk({ service, kind: "ask", input: question, act: false, makeProvider, timeoutMs: 600_000 }, () => {});
     return r.answer || "(no answer)";
   };
+  const intel = telegramIntel();
   log("telegram: polling");
   while (!stopping) {
     try {
@@ -64,7 +66,7 @@ async function telegramLoop(token: string, chatId: string) {
         offset = u.update_id + 1;
         await service.store.setState(KEY, offset);
         // /ask can take minutes; do not block the next updates on it.
-        void handleTelegramUpdate(service, u, { token, chatId, ask }).catch((err) => log("telegram update failed:", err));
+        void handleTelegramUpdate(service, u, { token, chatId, ask, intel }).catch((err) => log("telegram update failed:", err));
       }
     } catch (err) {
       log("telegram poll failed:", err instanceof Error ? err.message : err);

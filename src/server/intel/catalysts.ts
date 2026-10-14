@@ -3,7 +3,7 @@ import type { Alert, CatalystWindow, IntelEvent, ManualCatalystInputSchema } fro
 import type { z } from "zod";
 import { hostLabel } from "./ingest/common.js";
 import { assetExposure, deepLink, exposureHits, loadContext, MAGNITUDE_WEIGHT, pathText, routeFor, type MapperDeps } from "./mapper.js";
-import { sendIntel } from "./notify.js";
+import { feedbackActions, sendIntel } from "./notify.js";
 import type { IntelStore } from "./store.js";
 
 // Catalyst alerts (SPEC.md § Intel I0.13). Scheduled events within the next
@@ -69,7 +69,7 @@ export async function catalystAlerts(deps: CatalystDeps, now: Date): Promise<{ a
     }
     const pushed = inserted.filter((a) => a.route === "push");
     if (pushed.length) {
-      await sendIntel(deps.notifier, { title: `T−${window}: ${e.title}`.slice(0, 200), lines: pushed.map((a) => a.line), link: deepLink(deps.appUrl) });
+      await sendIntel(deps.notifier, { title: `T−${window}: ${e.title}`.slice(0, 200), lines: pushed.map((a) => a.line), link: deepLink(deps.appUrl), actions: feedbackActions(pushed) });
     }
     alerts.push(...inserted);
   }
