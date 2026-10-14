@@ -11,7 +11,7 @@ import { MemoryIntelStore, PgIntelStore, type IntelStore, type NewAlert, type Ne
 
 const PG_URL = process.env.INTEL_PG_TEST_URL;
 const SCHEMA = `intel_test_${process.pid}_${Date.now()}`;
-const MIGRATION = new URL("../../../db/migrations/007_intel.sql", import.meta.url);
+const MIGRATIONS = ["007_intel.sql", "008_intel_stops.sql"].map((f) => new URL(`../../../db/migrations/${f}`, import.meta.url));
 
 const snap = (asset: string, ts: string, price: number, over: Partial<SnapshotRow> = {}): SnapshotRow => ({
   asset, ts, price, vol24h: null, funding: null, oiUsd: null, premium: null, basis: null,
@@ -282,6 +282,21 @@ async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
   put("cache.get", [await s.cacheGet("k", "v1"), await s.cacheGet("k", "v2"), await s.cacheGet("k", "v3")]);
   put("cache.calls", [await s.callsSince(new Date(Date.now() - 60_000)), await s.callsSince(new Date(Date.now() + 60_000))]);
 
+  // stops (journal R for HL trades)
+  put("stop.record", await s.recordStops([
+    { asset: "SOL", side: "long", ts: "2026-10-13T01:00:00Z", stopPx: 140 },
+    { asset: "SOL", side: "long", ts: "2026-10-13T03:00:00+02:00", stopPx: 138 },
+    { asset: "SOL", side: "short", ts: "2026-10-13T02:00:00Z", stopPx: 170 },
+  ]));
+  put("stop.at", [
+    await s.stopAt("SOL", "long", new Date("2026-10-13T00:30:00Z")),
+    await s.stopAt("SOL", "long", new Date("2026-10-13T00:30:00Z"), new Date("2026-10-13T01:00:00Z")),
+    await s.stopAt("SOL", "short", new Date("2026-10-13T00:00:00Z")),
+    await s.stopAt("ETH", "long", new Date("2026-10-13T00:00:00Z")),
+  ]);
+  put("stop.prune", await s.pruneStops(new Date("2026-10-13T01:30:00Z")));
+  put("stop.afterPrune", await s.stopAt("SOL", "long", new Date("2026-10-12T00:00:00Z")));
+
   return out;
 }
 
@@ -295,7 +310,7 @@ describe.skipIf(!PG_URL)("PgIntelStore (real Postgres) matches MemoryIntelStore"
     await releaseConnection();
     await sql().unsafe(`create schema "${SCHEMA}"`);
     await usePath();
-    await sql().unsafe(readFileSync(MIGRATION, "utf8"));
+    for (const m of MIGRATIONS) await sql().unsafe(readFileSync(m, "utf8"));
   });
 
   // The client is one connection; re-pin the schema in case it was recycled.
@@ -316,7 +331,7 @@ describe.skipIf(!PG_URL)("PgIntelStore (real Postgres) matches MemoryIntelStore"
 
   test("the migration landed in the throwaway schema", async () => {
     const [row] = await sql()`select count(*)::int as n from information_schema.tables where table_schema = ${SCHEMA} and table_name like 'intel_%'`;
-    expect(row!.n).toBe(16);
+    expect(row!.n).toBe(17);
   });
 
   test("every method returns what the memory store returns", async () => {

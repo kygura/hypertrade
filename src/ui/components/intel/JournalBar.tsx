@@ -44,7 +44,7 @@ export function JournalBar({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2">
         <span className="flex items-baseline gap-2">
           <span className="text-xl tabular text-text-primary">{count ?? '—'}</span>
-          <span className="label">TRADES</span>
+          <span className="label">{count === 1 ? 'TRADE' : 'TRADES'}</span>
         </span>
         <Segmented label="journal window" options={JOURNAL_WINDOWS} value={days} onChange={onDays} />
         {sources.length > 0 && (
