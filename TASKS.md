@@ -52,3 +52,33 @@ Destination: `/` becomes the Intel Terminal (SPEC.md § Intel): all eight module
 - Open: HL journal trades have no stop source (R blank); no-target normalTpsl needs one testnet smoke; no DNS pinning (TOCTOU noted); calendar dates must be checked yearly; not yet exercised against a live Postgres + LLM.
 - Follow-up (2026-10-14): live run against a local Postgres 16 + live Hyperliquid (all routes and cron jobs exercised, a paper order confirmed, 19 responses zod-validated) → 4 bugs fixed; store.pg.test.ts Pg/Memory parity suite (runs with INTEL_PG_TEST_URL); macro calendar verified against Fed/BLS (5 dates corrected); HL stops captured during collect (migration 008) so HL journal trades get R; docwatch pins the vetted IP (node:https lookup); level/ratio metrics flagged only when changed since the baseline. Gate: 1164 pass + 6 PG-gated, typecheck, build, check:api green.
 - Still open: live LLM provider run (needs a key); one HL testnet smoke for no-target orders (needs testnet credentials).
+
+---
+
+# Tasks — Flow (phase 6, "Flow + Scout" quant gaps)
+
+Harness: Claude Code (local). Planner: claude-sonnet-5-5. Roster: native Anthropic only (fable, opus, sonnet, haiku); no bridges (user rule). Reviewer = different family / fresh context.
+
+| Role | Model | Effort |
+|---|---|---|
+| planner | sonnet (self) | — |
+| discussion | opus / fable | default |
+| designer | fable | default |
+| heavy / worker / ui-impl | opus | default |
+| reviewer | fable (opus work) | default |
+| drift-check | haiku | low |
+
+Destination: SPEC.md § Flow (F0–F3) built into the Intel Terminal; `/` gains the flow heatmap + detector chips, `/asset/:coin` exists, Telegram /digest + 👍/👎 work, LLM lines pass the number validator, $ cap enforced; test/typecheck/build/check:api green.
+
+## Tasks
+- [x] P0 Plan — SPEC.md § Flow, docs/research/flow-sources.md (sonnet research), opus second opinion — sonnet (planner)
+- [x] D1 Design pass → DESIGN-terminal.md §15 — fable
+- [ ] A Contract + pure quant: 009_flow.sql, shared/intel.ts types, IntelStore flow methods, windows.ts, flows.ts — opus — deps P0
+- [ ] B LLM guards: numbers.ts validator wired at the claim layer, $ daily cap in llm.ts — opus — deps P0
+- [ ] C Telegram: /digest + fb callbacks + alert actions — opus — deps P0 (uses `via` enum from A; merge after A)
+- [ ] D Coinalyze collector in collect + routes heatmap/asset/flows + detector events in brief/mapper push — opus — deps A
+- [ ] E UI: FlowHeatmap, DetectorChips, AssetPage (timeline + graph), cap copy — opus (ui-impl) — deps A, D1
+- [ ] V Verification gate — fable reviewers, haiku drift, test/typecheck/build/check:api
+
+## Decisions so far
+- P0: Coinalyze only (Binance/Bybit US-blocked from Vercel iad1); exchange inflows out of scope; robust σ + non-overlapping windows; detectors ranked in their own materiality list; existing Telegram callback branch extended; no Codex (user).

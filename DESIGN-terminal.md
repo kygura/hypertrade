@@ -909,3 +909,342 @@ Shared edits outside these folders: `AppShell.tsx` NAV entry and
 
 Skipped: sub-tab count suffixes (a fetch per route), a node-link exposure
 drawing (needs a library, fails at 390px), query CSV export, alert un-vote.
+
+---
+
+## 15. Flow (phase 6)
+
+Binding layout for SPEC.md § "Flow — quant gaps" (F0.8). Everything above
+stands; this section adds one panel to `/`, one route, and no tokens. The
+principle is unchanged: every number here is computed by code and prints
+plainly; the only model text is the alert lines that already exist (§2).
+
+**Reused as-is:** `Panel`, `Segmented`, `Badge`, `StatusDot`, `StaleBanner`,
+`SkeletonRows`, `EmptyBlock`, `OfflineBlock`, `ErrorBlock`, `ClaimLine`,
+`ClaimAge`, `SourceLink`, `ExposurePathChips`, the ExposureAssetRow body
+(extracted, §15.6), Recharts (DESIGN §4.5/§9) for the timeline, the momentum
+ramp tokens `--color-mom-*` (DESIGN §2) for the heatmap scale.
+
+### 15.1 FLOW panel on `/`
+
+**Desktop (`lg:`)** — a full-width 12 row between the WHAT CHANGED / NEWS row
+and the POSITIONS / CATALYSTS row. The brief answers "what cleared the
+threshold"; the heatmap is the whole matrix that answer was cut from, so it
+sits directly under it, before the book.
+
+```
+├ FLOW ─ RANKED BY MATERIALITY ─ [REV|1H|6H|24H] ──────────────── SNAP 12M ─ 12 ┤
+│ DETECTORS  [CROWDED LONG · HYPE 24H] [SQUEEZE SETUP · SOL 6H] [DELEVERAGING · NO LIQ DATA] │
+│            ┌ SNAPSHOT ─────────────────────────────────────┐┌ FLOW ──────────────┐        │
+│ ASSET      PRICE  OI    FUND  BASIS PREM  VOL   DEPTH SPRD ││ L/S  LIQS PERP SPOT│ FLAGS  │
+│ HYPE HELD  +0.4  +3.1  +2.4  +0.3  +1.9  +1.2  −0.8  +0.2 ││+1.4  +0.6 +1.1 ▢   │ crowded long │
+│ SOL  HELD  −2.3  +1.4  −1.1  ▢     −0.4  +2.6  −2.2  +2.2 ││−0.2  +2.3 +2.0 +0.9│ squeeze setup +1 │
+│ ETH  WATCH +0.1  −0.3  +0.2  −0.1  +0.0  −0.6  +0.3  −0.2 ││ ▢    ▢    ▢    ▢   │        │
+```
+
+Mid (`md:`): same row, full width. **Mobile (<768)**: REVIEW STRIP → WHAT
+CHANGED → NEWS → **FLOW** → POSITIONS → CATALYSTS → EXPOSURE. The grid is the
+§4.4 escape hatch like ResultTable: `.table-scroll`, sticky `ASSET` column,
+sticky header; columns are never priority-hidden (a heatmap with missing
+columns is a different chart). Chips wrap freely above it.
+
+**Header.** `FLOW`, the `.label` `RANKED BY MATERIALITY` (rank key named), the
+window `Segmented` (label `flow window`, `size: 'sm'`), right: `SrcTag snap` +
+`ClaimAge` of `asOf` (amber > 30 min; StaleBanner `snapshots Nh old` > 2 h,
+same row as WHAT CHANGED in §1.7).
+
+**Window switch** `REV | 1H | 6H | 24H` → `?window=review|1h|6h|24h`. Default
+`REV`, persisted per browser (try/catch, like the journal window). `title`s:
+`REV` = `since your last review (<age>) — z against the 7-day history
+(SPEC I0.4)`; `1H`/`6H`/`24H` = `Δ over <window> — z against the trailing
+30-day distribution of <window> changes`. The two z definitions differ, so the
+`title` says which one the cell is using; the cell itself never mixes them.
+Changing the window refetches in place (no skeleton after first data).
+
+### 15.2 FlowHeatmap
+
+Rows = `assets` in server order (materiality desc: row materiality = the
+row's max |z| × exposure weight × stop proximity, §13 field). Not sortable by
+click; materiality is the only order (DiffTable rule). Each row: `ASSET`
+coin (sm, primary) + 9px tag `HELD` / `WATCH`, then the cells, then `FLAGS`.
+
+**Columns, in this order** (header 9px uppercase, `title` = full name + unit):
+
+| Group | Header | Metric | `title` |
+|---|---|---|---|
+| SNAPSHOT | `PRICE` | `price` | price |
+| | `OI` | `oi_usd` | open interest (USD) |
+| | `FUND` | `funding` | hourly funding (level z) |
+| | `BASIS` | `basis` | mark vs oracle (level z) |
+| | `PREM` | `premium` | premium (level z) |
+| | `VOL` | `vol24h` | 24 h volume (ratio z) |
+| | `DEPTH` | `depth_2` | book depth ±2 %, bid + ask (ratio z) |
+| | `SPRD` | `spread_bps` | spread (ratio z) |
+| FLOW | `L/S` | `long_short_ratio` | long/short ratio |
+| | `LIQS` | `liq_usd` | liquidations, long + short (USD); `title` splits long / short when both are known |
+| | `PERP` | `perp_volume_usd` | perp volume (USD) |
+| | `SPOT` | `spot_volume_usd` | spot volume (USD) |
+
+Pruned: `depth_1` (the brief named ±2 only; ±1 is on the asset page tooltip),
+`perp_buy_volume_usd` (it feeds `spot_led`/`perp_led`; the chip shows it). The
+two groups are separated by a 1px `--color-border` vertical rule and a group
+header row (`SNAPSHOT` / `FLOW`, `.label`), so twelve metrics read as 8 + 4.
+
+**Cell.** 11px tabular, signed z with one decimal (`+3.1`, `−0.8`, `+0.0`),
+centered, min-width 44px, `--tap-min` tall. Background from the momentum ramp,
+bucketed on z (not on the sector momentum edges):
+
+| z | Background | Text |
+|---|---|---|
+| null | `--color-panel-alt`, no text (`▢` above is the diagram's stand-in) | — |
+| \|z\| < 1 | `--color-mom-zero` | `text-secondary` (muted: inside noise) |
+| 1 ≤ z < 2 / −2 < z ≤ −1 | `--color-mom-pos1` / `--color-mom-neg1` | `text-primary` |
+| z ≥ 2 / z ≤ −2 | `--color-mom-pos2` / `--color-mom-neg2` | `text-primary` |
+
+Hue encodes the **sign of z**, the same meaning the ramp already has on the
+sector grid (momentum, not PnL). It is not the DiffTable's "only price is
+green/red" rule: that table prints deltas in units where up is not good; here
+every cell is a z in the same unit and the printed number is always present,
+so color is never the sole signal (DESIGN §12.3). The ramp is a 2-step
+diverging scale on the theme's own green/red, which keeps contrast under
+§2.1 in all three themes; no new tokens.
+
+`title` on a cell: `<ASSET> <metric name> · <window> · Δ <delta in unit> · z
++3.1`; null: `fewer than 48 samples` (fixed windows) / `fewer than 24 samples`
+(REV). `aria-label` = the same text. 1px gap between cells (`--color-body`
+seam, the MindshareGrid idiom), no borders.
+
+**FLAGS** column: up to two gray Badges in plain words (§15.3 copy), then
+`+n` (`title` lists all). Badges are gray because every flag is an observed,
+code-computed fact (the §2 vocabulary: gray = OBS, info = model). A row with
+no flags leaves the cell empty.
+
+**Interaction.** Cell click → `/asset/:coin?metric=<metric>` (the matching
+pane is highlighted on arrival, §15.5); asset cell or row Enter →
+`/asset/:coin`. Keyboard: the DataTable idiom — one tab stop per row, Enter
+opens the asset page, `←`/`→` move a visible cell focus along the row (the
+focused cell's `title` text is read; Enter on a focused cell opens with
+`?metric`). Flags badges are not tab stops (their text is in the row's
+`aria-label`).
+
+**Degraded FLOW group** ("no flow source configured"): when the response
+reports the flow source as not ok (§15.8 `flow` field), the `FLOW` group
+header reads `FLOW · NO SOURCE` in `text-secondary`, its four cells render as
+null cells with `title` = the verbatim `flow.error` (fallback `no flow source
+configured — see docs/research/flow-sources.md`), and the grid stays 12 wide
+so the layout never shifts between runs. A flow source that is configured but
+young (< 48 samples) renders ordinary null cells; the two are distinguishable
+by the `title`.
+
+**Polling** (§1.4 row): `GET /heatmap?window=` on mount, on window change,
+then every 5 min (the grid is 15-min data; 60 s would only re-render the same
+cells). Pauses hidden like the others.
+
+### 15.3 DetectorChips
+
+A wrapping row at the top of the FLOW body: `.label` `DETECTORS` then one
+chip per `(name, asset)` in `flags`, ordered by the row's materiality then
+newest `ts`. Chip = `<button>` styled as a gray Badge with the detector in
+plain words, ` · `, coin, ` `, window: `CROWDED LONG · HYPE 24H`. Max 8
+visible, then ghost `+3 MORE` toggles the rest. None firing → 10px
+`text-secondary` `no detectors firing` (not an EmptyBlock; the grid still
+renders).
+
+Copy (code names never reach the screen):
+
+| Event | Chip text | Numbers line (from `numbers`) |
+|---|---|---|
+| `crowded_long` / `crowded_short` | `CROWDED LONG` / `CROWDED SHORT` | `funding z +2.4 · OI 24h z +1.3 · price 24h z +0.2` |
+| `squeeze_setup` | `SQUEEZE SETUP` | `funding −0.004% · OI 24h z +1.6 · price 24h z −0.3` |
+| `deleveraging` | `DELEVERAGING` | `OI 6h −9.2% · liqs 6h z +2.8` |
+| `spot_led` / `perp_led` | `SPOT LED` / `PERP LED` | `price 6h z +2.3 · spot/perp vol z gap +1.4` |
+| `liquidity_thinning` | `THIN BOOK` | `depth ±2% $1.2M · 30d p10 $1.5M` |
+| flip `funding` | `FUNDING FLIPPED +` / `−` | `−0.002% → +0.001%` |
+| flip `basis` | `BASIS INVERTED` / `BASIS BACK ABOVE 0` | `+0.8 bp → −0.4 bp` |
+| flip `oi_vs_price` | `OI UP, PRICE DOWN` | `OI 24h z +1.4 · price 24h z −1.2` |
+| crossing | `FUNDING > 0.05%/8H` (the threshold typeset: hourly → per-8 h when the metric is funding) | `now 0.061%/8h` |
+
+Hover → `title` = the numbers line + `· <ClaimAge>`. Tap or Enter →
+`aria-expanded`, and an 11px line opens under the chips row: the numbers
+line, ClaimAge, and a ghost `OPEN HYPE →` (`/asset/HYPE`). One chip expanded
+at a time; `Esc` collapses. Numbers are printed exactly as the detector
+emitted them (code values; signs always printed, no green/red).
+
+**Degraded detectors.** A detector the server reports as `degraded` (no
+liquidation data, no spot data) renders one summary chip, not per asset:
+`DELEVERAGING · NO LIQ DATA` / `SPOT/PERP LED · NO SPOT DATA`, `text-secondary`
+on a 1px dashed `--color-border` box, `title` = the verbatim reason. It is
+visibly "cannot fire", never "did not fire" (SPEC F0.4). Expanding it shows the
+reason and `see docs/research/flow-sources.md`.
+
+A ReviewStrip count joins the cluster: `3 DETECTORS` (omitted at 0), click
+scrolls to FLOW (`FLOW_ANCHOR`, the NEWS/CATALYSTS precedent).
+
+### 15.4 `/asset/:coin` — AssetPage
+
+Reached by click only (heatmap cell, detector chip, and the row taps of
+DiffTable §3.4 and PositionsTable §3.7, which now go to `/asset/:coin` instead
+of `/markets/:coin`; the candle chart stays one click away via `MARKETS →`).
+It is a drill-in of `/`, not a sub-tab: it renders under TerminalTabs with
+the TERMINAL segment active (`isTerminalPath` gains `/asset/`), the
+`/markets/:coin` precedent. `?days=1|7|30` (default 7), `?metric=` highlights
+a pane on arrival.
+
+```
+┌ TerminalTabs ──────────────────────────────────────────────────────────────── 12 ┐
+├ [← TERMINAL]  HYPE (lg)  HELD · LONG 3× · 12.4 HYPE · $12.4K  MANUAL   [1D|7D|30D] ─ 12 ┤
+│ MARK $32.18 · STOP −3.1% · 0.8×ATR · MAT 0.71 · FLAGS crowded long   SNAP 12M  [MARKETS →] │
+├ TIMELINE ─────────────────────────────────────────────────── 8 ┬ EXPOSURE ──────── 4 ┤
+│ PRICE  ╱╲╱╲╲╱╱   ┆      ┆  ┆                                   │ 9 EDGES · 4 PATHS     │
+│ OI     ────╱╱─   ┆      ┆  ┆                                   │ COLLATERAL · 2        │
+│ FUND   ▁▂▃▅▆▇▆   ┆      ┆  ┆                                   │ Jito → SOL 0.8 [SEED] │
+│ DEPTH  ──╲╲──╱   ┆      ┆  ┆                                   │ PATHS                 │
+│ LIQS   ▁▁▅▁▁▇▁ · L/S ──                                       │ [USDC]→…→[HYPE] w 0.30│
+├ EVENTS · 7D ────────────────────────────────────────────────── 8 ┤ [+ ADD EDGE]          │
+│ 10-13 14:02  OBS  crowded long · funding z +2.4 · OI 24h z +1.3                       │
+│ 10-13 09:40  HYP ┃ Leverage is building into the unlock…   THE BLOCK ↗ · 2H           │
+│ 10-12 00:00  OBS  CATALYST  HYPE unlock 2.1%  MANUAL                                  │
+└───────────────────────────────────────────────────────────────┴───────────────────────┘
+```
+
+Mobile order: header → TIMELINE → EVENTS → EXPOSURE. Pane heights are the
+DESIGN §4.5 table extended: price 160 / 220px (mobile / lg), each other pane
+90 / 120px.
+
+**Header** (a `Panel` without title, `bg-panel-alt`, the ReviewStrip idiom):
+ghost `← TERMINAL`; coin (lg, primary); `HELD` / `WATCH` tag; when held, one
+line per position from the shared `/positions` fetch: side word green/red +
+leverage, size in coins, notional (`fmtUsd`), `SrcTag` of the source; `MARK
+<px>`; `STOP −3.1% · 0.8×ATR` (`title` stop px) or amber Badge `NO STOP`;
+`MAT 0.71` (the row's materiality, 2 decimals); the row's flags as gray
+Badges; `SrcTag snap` + ClaimAge of the newest snapshot; ghost `MARKETS →`
+(`/markets/:coin`). `Segmented` `1D | 7D | 30D` (label `asset window`).
+
+### 15.5 AssetTimeline
+
+Recharts, not lightweight-charts: 30 days of 15-min snapshots is ≤ 2,880
+points per series with no paging, panning or live bar, which is exactly the
+DESIGN §4.5 boundary (lightweight-charts is reserved for the bar-paging
+market chart). Stacked `ComposedChart`s sharing `syncId="asset"` (one
+crosshair and tooltip across panes) and the same `margin`, so the time axes
+align; only the bottom pane draws x ticks. All §4.5 rules apply (no
+animation, dark tooltip, 9px ticks, horizontal dashed grid, inline legend row
+above the stack).
+
+| Pane | Series | Render |
+|---|---|---|
+| `PRICE` | `price` | `Line`, `--color-equity`, 1px |
+| `OI` | `oi_usd` | `Line`, `--color-info`, 1px, USD compact (the §9.4 OI color) |
+| `FUND` | `funding` (hourly %) | `Bar`, `--color-green` ≥ 0 / `--color-red` < 0 at 60 % opacity, zero `ReferenceLine` (the §9.4 funding idiom) |
+| `DEPTH` | `depth_bid_2 + depth_ask_2` | `Line`, `--color-bench-usdc`, 1px, USD compact; tooltip splits bid / ask and shows ±1 % and spread bps |
+| `LIQS · L/S` | `liq_long_usd + liq_short_usd`; `long_short_ratio` | `Bar`, `--color-bench-usdc` 60 %, left axis USD; `Line` L/S, `--color-equity`, 1px, right axis. Omitted (pane and legend entry) when the flow source is not ok; one 10px `text-secondary` line in its place: `no flow source configured` (or the verbatim error) |
+
+Spot / perp volume are not panes (the chip carries their ratio); `premium`,
+`basis`, `vol24h` ride in the tooltip only. `?metric=` → the matching pane
+gets a 2px left inset `--color-red-accent` (the selection idiom) until any
+click.
+
+**Event markers.** Vertical `ReferenceLine`s on the PRICE pane only (every
+pane would be clutter), no text labels on the canvas (they collide):
+
+- observed events — detector hits, flips, crossings, catalysts at their
+  `scheduledAt` — 1px dashed `--color-text-secondary`;
+- model events — news alerts (their line is a Claim, usually `HYP`) — 1px
+  dashed `--color-info`, extending principle 6 (speculation is info-blue).
+
+Markers carry no words, so they are never the only place an event lives: the
+**EventList** under the stack is the labeled form. One row per event, newest
+first: `MM-DD HH:mm` (10px tabular, `title` full UTC), then for an alert its
+`ClaimLine` (§2, badge `OBS`/`HYP` and SourceLink as stored); for a detector
+hit / flip / crossing a plain row with gray Badge `OBS` and the §15.3 numbers
+line (`crowded long · funding z +2.4 · OI 24h z +1.3`); for a catalyst the
+CatalystRow fields (`CATALYST` word, title, origin Badge). Hovering or
+focusing a row sets its marker's stroke to `text-primary`; clicking a marker
+scrolls to its row. Upcoming catalysts inside the window are listed with
+their `T−` countdown but drawn only when inside the x-range. Tooltip on the
+chart adds `2 events` for a timestamp with markers.
+
+### 15.6 ExposureGraph
+
+A **list**, not a radial drawing. ≤ 30 edges over 8 long type names at 390px
+is exactly the case §14 already rejected for node-link drawing, and the
+operator reads edges by type (collateral, settlement, stable dependence), not
+by angle. The panel is the §3.8 expanded row body as its own component:
+edges grouped by type in weight order with weight, origin Badge (`SEED` gray /
+`LLM` info / `USER` gray), SourceLink, `verified` ClaimAge (amber > 48 h),
+Danger `✕` on user edges; then `PATHS` as ExposurePathChips + `w 0.30` (2-hop
+paths to held ∪ watched); `+ ADD EDGE` form. `ExposureAssetRow` becomes a
+disclosure around `ExposureGraph`, so `/` and `/asset/:coin` render the same
+thing from the same code. Header right: `9 EDGES · 4 PATHS`. The asset page
+passes the `graph` it already has; the `/` row keeps fetching on expand.
+
+### 15.7 LLM cap copy
+
+No new banner. `LLM cap reached ($1.37 / $2.00)` is the server's verbatim
+reason (`trace.error`; spent / cap, two decimals, server-formatted, never
+reformatted by the UI) and renders where reasons already render:
+
+- WHAT CHANGED: the §3.4 no-narration row (6px amber square + `no narration —
+  LLM cap reached ($1.37 / $2.00)`); the DiffTable stays — the computed answer
+  is complete.
+- ReviewStrip `LLM` dot: amber (degraded, not down) with `title` = the string.
+- NEWS → POSITIONS: an alert that went out with raw numbers and no line
+  renders line 1 as usual, then the same amber-square row in place of the
+  ClaimLine, then the priced-in suffix and path chips as usual.
+- `/journal` report, `/theses`, `/query`, `/order`: the existing verbatim
+  ErrorBlocks (§10), unchanged.
+- `/asset/:coin` EventList: alert rows without a line use the amber-square
+  row.
+
+### 15.8 States, fields, components
+
+**State → surface (extends §10):**
+
+| Surface | Loading | Empty | Error | Stale / other |
+|---|---|---|---|---|
+| FLOW heatmap | SkeletonRows (4) | EmptyBlock `nothing held or watched — add a position or watch an asset` | ErrorBlock / OfflineBlock + `RETRY` | ClaimAge amber > 30 min; StaleBanner `snapshots Nh old` > 2 h; FLOW group `NO SOURCE`; null cells |
+| Detector chips | — (rendered with the grid) | `no detectors firing` (10px) | — (the panel's ErrorBlock) | degraded summary chips |
+| Asset header | SkeletonRows (1) | `WATCH`-only header without position line | — (the page's ErrorBlock) | `NO STOP` Badge |
+| Asset timeline | SkeletonRows per pane | EmptyBlock `no snapshots yet — the collector adds <COIN> once it is held, watched or top-20 by OI`; unknown coin (404) → EmptyBlock `no data for <COIN>` + ghost `← TERMINAL` | ErrorBlock / OfflineBlock | StaleBanner `snapshots Nh old` > 2 h; LIQS pane replaced by the no-source line |
+| Asset events | SkeletonRows (2) | EmptyBlock `no events in <window>` (`1 day`, `7 days`, `30 days`) | — | alert rows without a line → amber-square row |
+| Asset exposure | SkeletonRows | EmptyBlock `no edges — the daily refresh adds them for held and watched assets` | ErrorBlock, timeline unaffected | edge ClaimAge amber > 48 h |
+
+**Fields the UI reads (extends §13; pinned in `src/shared/intel.ts`):**
+
+| Field | Used by | If absent |
+|---|---|---|
+| `GET /heatmap` → `assets: {asset, held: boolean, materiality}[]` (ordered) | row order, `HELD`/`WATCH` tag, `MAT` | `string[]` → rows in server order, no tag, header label `SERVER ORDER` |
+| `GET /heatmap` → `flags: {asset, kind: 'detector'\|'flip'\|'crossing', name, window, numbers: Record<string, number>, degraded?: string, ts}[]` | chips, FLAGS column, header flags | without `numbers` the chip has no numbers line; `degraded` absent → no degraded chips |
+| `GET /heatmap` / `GET /asset/:coin` → `flow: {ok: boolean, error?: string}` | `NO SOURCE` group, LIQS pane omission | FLOW group renders as ordinary null cells |
+| `GET /asset/:coin` → `events: {ts, kind: 'detector'\|'flip'\|'crossing'\|'alert'\|'catalyst', name?, numbers?, line?: Claim, sources?, catalyst?}[]` | markers, EventList | — |
+| `GET /heatmap` → `window`, `since` (REV baseline ts) | window `title`, `REV` age | `REV` `title` without the age |
+
+**Polling (extends §1.4):** heatmap 5 min (+ on window change); `/asset/:coin`
+on mount + on `days` change + 5 min while mounted; the asset header reads the
+shared positions poller.
+
+**Staleness (extends §1.7):** FLOW and asset timeline — age of `asOf` /
+newest snapshot; degraded > 30 min; stale > 2 h, noun `snapshots`.
+
+**Components (extends §14):**
+
+| Component | File | Props |
+|---|---|---|
+| `FlowPanel` | `components/intel/FlowPanel.tsx` | `state` (heatmap poller), `window`, `onWindow(w)` |
+| `DetectorChips` | `components/intel/DetectorChips.tsx` | `flags: HeatFlag[]`, `materiality: Map<asset, number>` |
+| `FlowHeatmap` | `components/intel/FlowHeatmap.tsx` | `assets, metrics, cells, flags, window, flow` |
+| `HeatCell` | inside `FlowHeatmap.tsx` | `z, delta, unit, metric, asset, window` (bucket → class) |
+| `AssetPage` | `pages/terminal/Asset.tsx` | route `/asset/:coin`; owns `?days`, `?metric`, the asset fetch; reads the positions poller |
+| `AssetHeader` | `components/intel/AssetHeader.tsx` | `coin, positions, held, watched, materiality, flags, asOf, days, onDays` |
+| `AssetTimeline` | `components/intel/AssetTimeline.tsx` | `snapshots, flow, events, days, highlight?: metric, onMarker(eventId)` |
+| `EventList` | `components/intel/EventList.tsx` | `events, highlighted?, onHover(id)` |
+| `ExposureGraph` | `components/intel/ExposureGraph.tsx` (extracted from `ExposureAssetRow`) | `asset, edges, paths, onDeleted?()`, `onAdded?()` |
+| `Terminal` | `pages/terminal/Terminal.tsx` | gains the heatmap poller and `FLOW_ANCHOR`; passes `3 DETECTORS` to ReviewStrip |
+
+Chart primitive: Recharts (`ComposedChart`, `Line`, `Bar`, `ReferenceLine`,
+`syncId`). No new dependency.
+
+Skipped: a radial exposure SVG (§14's reason holds); per-cell tab stops (one
+row stop + arrows); sortable heatmap columns (materiality is the order);
+spot/perp volume panes (chip ratio covers it); a dedicated LLM-cap banner (the
+no-narration row is the place reasons already live).
