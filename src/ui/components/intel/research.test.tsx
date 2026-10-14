@@ -8,6 +8,7 @@ import { ChipResearchAction, DetectorChips } from "./DetectorChips";
 import { DiffTable } from "./DiffTable";
 import { EventList, researchHref } from "./EventList";
 import {
+  afterAsk,
   askDisabledReason,
   chipAskInput,
   chipQuestion,
@@ -82,6 +83,17 @@ describe("research helpers", () => {
     expect(out).toHaveLength(RESEARCH_LIST_LIMIT);
     expect(out[0]!.id).toBe("r0");
     expect(mergeResearch([], many, "r24").map((r) => r.id).at(-1)).toBe("r24");
+  });
+
+  test("the ask box clears only when the server returned a result", () => {
+    let cleared = 0;
+    const clear = () => cleared++;
+    expect(afterAsk(null, clear)).toBe(false); // 409 / 429 / offline / 5xx / throw
+    expect(afterAsk(undefined, clear)).toBe(false);
+    expect(cleared).toBe(0);
+    expect(afterAsk(result({ status: "capped" }), clear)).toBe(true);
+    expect(afterAsk(result({ status: "no_cause" }), clear)).toBe(true);
+    expect(cleared).toBe(2);
   });
 
   test("the chip path posts question + asset + flagId", () => {

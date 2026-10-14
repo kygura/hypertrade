@@ -9,6 +9,7 @@ import { agoWords } from '../../components/intel/format'
 import { mergeAlerts, NewsFeedPanel } from '../../components/intel/NewsFeedPanel'
 import { PositionsPanel } from '../../components/intel/PositionsPanel'
 import {
+  afterAsk,
   askDisabledReason,
   chipAskInput,
   gateCleared,
@@ -158,13 +159,13 @@ export function Terminal() {
     prevGate.current = gate
   }, [gate, clearAsk])
   const askReason = askDisabledReason({ busy: askAction.busy, items: researchItems, usedToday: research.data?.usedToday, limit: research.data?.limit, gate })
-  /** False when a gate holds; the POST then runs in the background. */
-  const runAsk = (input: ResearchAskInput): boolean => {
+  /** False when a gate holds; the POST then runs in the background. `onResult` fires only when the server returned a result. */
+  const runAsk = (input: ResearchAskInput, onResult?: () => void): boolean => {
     if (askReason) return false
     setPending({ question: input.question, asset: input.asset ?? null })
     void askAction.run(input).then((r) => {
       setPending(null)
-      if (!r) return
+      if (!afterAsk(r, onResult)) return
       setLocalResearch((cur) => [r, ...cur.filter((x) => x.id !== r.id)])
       setAnnounce(`research ready: ${STATUS_WORD[r.status].toLowerCase()}`)
       if (input.flagId) heatmap.refetch() // the chip flips to SEE RESEARCH once the flag joins its researchId

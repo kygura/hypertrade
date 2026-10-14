@@ -39,7 +39,7 @@ export function ResearchPanel({
   highlightId: string | null
   disabledReason: string | null
   flagText?: (flagId: string) => string | undefined
-  onAsk: (input: { question: string; asset?: string }) => boolean
+  onAsk: (input: { question: string; asset?: string }, onResult?: () => void) => boolean
 }) {
   const d = state.data
   const atLimit = d?.usedToday != null && d.limit != null && d.usedToday >= d.limit

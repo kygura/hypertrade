@@ -67,6 +67,13 @@ export function chipAskInput(f: Pick<FlowFlag, 'id' | 'kind' | 'name' | 'numbers
   return { question: chipQuestion(f), asset: f.asset, flagId: f.id }
 }
 
+/** A finished ask: runs `onResult` (the ask box clears itself) only when the server returned a result, any status. 409, 429, offline, 5xx and throws arrive as null and keep the text. */
+export function afterAsk(r: ResearchResult | null | undefined, onResult?: () => void): r is ResearchResult {
+  if (!r) return false
+  onResult?.()
+  return true
+}
+
 export const IN_FLIGHT = 'a research run is in flight — one at a time'
 
 // ── ask gates (§16.6) ──

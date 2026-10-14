@@ -28,7 +28,7 @@ export function ResearchAsk({
   error: string | null
   status: number | null
   offline: boolean
-  onSubmit: (input: { question: string; asset?: string }) => boolean
+  onSubmit: (input: { question: string; asset?: string }, onResult?: () => void) => boolean
 }) {
   const id = useId()
   const [q, setQ] = useState('')
@@ -38,10 +38,11 @@ export function ResearchAsk({
 
   const submit = () => {
     if (reason) return
-    if (onSubmit({ question: q.trim(), ...(asset.trim() ? { asset: asset.trim() } : {}) })) {
+    // Cleared only once the server returned a result: a refused or failed run keeps the text for a retry.
+    onSubmit({ question: q.trim(), ...(asset.trim() ? { asset: asset.trim() } : {}) }, () => {
       setQ('')
       setAsset('')
-    }
+    })
   }
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
