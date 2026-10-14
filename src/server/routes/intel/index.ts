@@ -137,7 +137,7 @@ export function defaultIntelDeps(env: Record<string, string | undefined> = proce
     appUrl: desk.appUrl,
     mapper,
     ingest: { ...mapper, fetch, env, targets, journal },
-    graph: { store, llm, targets, now },
+    graph: { store, llm, targets, now, recordRun: db.recordCollectorRun },
   };
   return prod;
 }

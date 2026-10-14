@@ -8,9 +8,7 @@ import {
   BriefSchema,
   CatalystsResponseSchema,
   EdgeSchema,
-  EventsResponseSchema,
   FeedbackReportSchema,
-  FlowsResponseSchema,
   GraphResponseSchema,
   HeatmapResponseSchema,
   JournalReportSchema,
@@ -38,13 +36,10 @@ import {
   type Catalyst,
   type Edge,
   type EdgeKey,
-  type EventType,
   type FeedbackReport,
-  type FlowFlag,
   type GraphResponse,
   type HeatmapResponse,
   type HeatmapWindow,
-  type IntelEvent,
   type JournalReport,
   type JournalResponse,
   type ManualCatalystInput,
@@ -131,8 +126,6 @@ export const intel = {
     parse(AlertsResponseSchema, await api.get(`${base}/alerts${qs(q)}`)).alerts,
   alertFeedback: (id: string, vote: AlertFeedbackInput['vote']): Promise<void> =>
     api.post(`${base}/alerts/${enc(id)}/feedback`, { vote } satisfies AlertFeedbackInput).then(done),
-  events: async (q: { since?: string; type?: EventType } = {}): Promise<IntelEvent[]> =>
-    parse(EventsResponseSchema, await api.get(`${base}/events${qs(q)}`)).events,
   catalysts: async (days = 14): Promise<Catalyst[]> =>
     parse(CatalystsResponseSchema, await api.get(`${base}/catalysts${qs({ days })}`)).catalysts,
   addCatalyst: (input: ManualCatalystInput): Promise<void> => api.post(`${base}/catalysts`, input).then(done),
@@ -191,7 +184,6 @@ export const intel = {
     parse(HeatmapResponseSchema, await api.get(`${base}/heatmap${qs({ window })}`)),
   asset: async (coin: string, days: number): Promise<AssetDetailResponse> =>
     parse(AssetDetailResponseSchema, await api.get(`${base}/asset/${enc(coin)}${qs({ days })}`)),
-  flows: async (since?: string): Promise<FlowFlag[]> => parse(FlowsResponseSchema, await api.get(`${base}/flows${qs({ since })}`)).flags,
 }
 
 /** 409 from `POST /order/confirm`: marks moved > 0.5% or > 60 s (DESIGN-terminal §7.4). */

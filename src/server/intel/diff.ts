@@ -1,4 +1,4 @@
-import { SNAPSHOT_METRICS, type DeltaUnit, type DiffItem, type ExposurePosition, type SnapshotMetric, type SnapshotRow } from "../../shared/intel.js";
+import { SNAPSHOT_METRICS, type Alert, type Brief, type DeltaUnit, type DiffItem, type ExposurePosition, type SnapshotMetric, type SnapshotRow } from "../../shared/intel.js";
 import { baselineZ, metricZ, type Point } from "./normalize.js";
 import { atr as atrOf } from "../desk/tools.js";
 
@@ -8,6 +8,8 @@ import { atr as atrOf } from "../desk/tools.js";
 //                    watchlist-only assets get WATCH_FLOOR
 //   stop_proximity = 1 + 2 · max(0, 1 − dist_to_stop / (2 · ATR14_1h)) with a
 //                    known stop, else 1
+// Every materiality in Intel goes through materiality() below: surprise ×
+// exposure × proximity × confluence(k) (SPEC.md § Scout S0.6).
 // An item clears at |z| ≥ minZ; the cleared ones rank by materiality and the
 // top k go into the brief. Nothing clears → silent. A level or ratio z is a
 // state, not a change, so it also has to have changed since the baseline
@@ -16,6 +18,54 @@ import { atr as atrOf } from "../desk/tools.js";
 export const WATCH_FLOOR = 0.05;
 /** A level/ratio z already past minZ at the baseline clears only if it moved at least this much. */
 export const LEVEL_Z_MOVE = 1;
+
+/** The independent signal classes an asset can show at once (SPEC.md § Scout S0.6). */
+export type SignalSource = "snapshot" | "flow" | "regime" | "news";
+export const CONFLUENCE_WINDOW_MS = 6 * 3_600_000;
+export const CONFLUENCE_CAP = 1.5;
+
+/** 1 for a lone signal, +0.25 per further independent source, capped at 1.5. k counts the item's own source too. */
+export const confluence = (k: number): number => Math.min(CONFLUENCE_CAP, 1 + 0.25 * (Math.max(1, k) - 1));
+
+/** The one materiality formula. `surprise` is |z|, a flag score, or magnitude × path weight. */
+export function materiality(parts: { surprise: number; exposure: number; proximity: number }, k = 1): number {
+  return parts.surprise * parts.exposure * parts.proximity * confluence(k);
+}
+
+/** k for an item of source `own`: itself plus the distinct other sources active on the asset. */
+export const confluenceK = (active: ReadonlySet<SignalSource> | undefined, own: SignalSource): number => 1 + [...(active ?? [])].filter((s) => s !== own).length;
+
+/** Active sources per asset. */
+export type ActiveSources = Map<string, Set<SignalSource>>;
+
+export function noteSource(m: ActiveSources, asset: string, s: SignalSource): void {
+  (m.get(asset) ?? m.set(asset, new Set()).get(asset)!).add(s);
+}
+
+// Flips (`<m>_flip`, `oi_up_price_down`) and crossings (`m>v`) are regime moves; the other flow alerts are detectors.
+const REGIME_NAME = /[<>]|_flip$|^oi_up_price_down$/;
+
+/** The source class an alert represents; terminal alerts are none. */
+export function alertSource(a: Pick<Alert, "kind" | "eventType">): SignalSource | null {
+  if (a.kind === "flow") return REGIME_NAME.test(a.eventType ?? "") ? "regime" : "flow";
+  return a.kind === "terminal" ? null : "news";
+}
+
+/** Sources seen per asset inside the confluence window: alerts since then, plus the last brief's snapshot z moves. Read before alerts are routed. */
+export async function activeSources(
+  store: { listAlerts(o: { since?: Date; limit: number }): Promise<Alert[]>; latestBrief(): Promise<Brief | null> },
+  now: Date,
+): Promise<ActiveSources> {
+  const since = new Date(now.getTime() - CONFLUENCE_WINDOW_MS);
+  const m: ActiveSources = new Map();
+  for (const a of await store.listAlerts({ since, limit: 500 })) {
+    const s = alertSource(a);
+    if (s) noteSource(m, a.asset, s);
+  }
+  const brief = await store.latestBrief();
+  if (brief && Date.parse(brief.createdAt) >= since.getTime()) for (const i of brief.items) noteSource(m, i.asset, "snapshot");
+  return m;
+}
 
 /** DiffItem plus the baseline z (level/ratio only). Internal: rankDiffs strips it. */
 export type RawDiffItem = DiffItem & { zBase?: number };
@@ -88,7 +138,7 @@ export function exposureWeight(positions: AssetDiffInput["positions"], totalNoti
 }
 
 /** Every asset × metric pair that has a z. `diffed` counts them (cleared or not). */
-export function buildDiffItems(inputs: AssetDiffInput[], totalNotionalUsd: number): { items: RawDiffItem[]; diffed: number } {
+export function buildDiffItems(inputs: AssetDiffInput[], totalNotionalUsd: number, active: ActiveSources = new Map()): { items: RawDiffItem[]; diffed: number } {
   const items: RawDiffItem[] = [];
   for (const a of inputs) {
     const held = a.positions.length > 0;
@@ -99,6 +149,7 @@ export function buildDiffItems(inputs: AssetDiffInput[], totalNotionalUsd: numbe
     const proximity = stopProximity(dist, atr);
     const stop =
       dist == null ? {} : { stopDistPct: mark > 0 ? (dist / mark) * 100 : 0, ...(atr != null && atr > 0 ? { stopDistAtr: dist / atr } : {}) };
+    const k = confluenceK(active.get(a.asset), "snapshot");
     const t = Date.parse(a.current.ts);
     const t0 = Date.parse(a.baseline.ts);
     for (const metric of SNAPSHOT_METRICS) {
@@ -121,7 +172,8 @@ export function buildDiffItems(inputs: AssetDiffInput[], totalNotionalUsd: numbe
         to,
         ...delta(metric, from, to),
         z,
-        materiality: Math.abs(z) * weight * proximity,
+        materiality: materiality({ surprise: Math.abs(z), exposure: weight, proximity }, k),
+        confluence: confluence(k),
         exposureWeight: weight,
         stopProximity: proximity,
         ...stop,
@@ -142,10 +194,10 @@ export function changedSinceBaseline(z: number, zBase: number | undefined, minZ:
   return zBase == null || Math.abs(zBase) < minZ || Math.abs(z - zBase) >= LEVEL_Z_MOVE;
 }
 
-/** Items with |z| ≥ minZ that changed since the baseline, by materiality (then |z|) descending, at most topK. */
-export function rankDiffs(items: RawDiffItem[], o: { minZ: number; topK: number }): DiffItem[] {
+/** Items with |z| ≥ minZ that changed since the baseline and clear the digest threshold, by materiality (then |z|) descending, at most topK. */
+export function rankDiffs(items: RawDiffItem[], o: { minZ: number; topK: number; digestMateriality?: number }): DiffItem[] {
   return items
-    .filter((i) => Math.abs(i.z) >= o.minZ && changedSinceBaseline(i.z, i.zBase, o.minZ))
+    .filter((i) => Math.abs(i.z) >= o.minZ && changedSinceBaseline(i.z, i.zBase, o.minZ) && i.materiality >= (o.digestMateriality ?? 0))
     .sort((a, b) => b.materiality - a.materiality || Math.abs(b.z) - Math.abs(a.z))
     .slice(0, Math.max(0, o.topK))
     .map(({ zBase: _, ...i }) => i);

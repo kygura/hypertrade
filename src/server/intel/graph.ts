@@ -138,11 +138,21 @@ Edge types (src is exposed to dst):
 Use web search. Every edge needs an https source URL that documents it; leave out anything you cannot source. Use Hyperliquid tickers for coins. Do not predict prices.`;
 
 export interface GraphRefreshDeps {
-  store: Pick<IntelStore, "upsertEdges" | "edgesFor">;
+  store: Pick<IntelStore, "upsertEdges" | "edgesFor" | "deleteLlmEdges">;
   llm: LlmDeps;
   /** Held ∪ watched assets. */
   targets(): Promise<string[]>;
   now(): Date;
+  /** collector_runs writer; the per-asset diffs are recorded under `graph:diff`. Best-effort. */
+  recordRun?(collector: string, startedAt: Date, ok: boolean, error?: string | null): Promise<void>;
+}
+
+/** What one asset's rebuild changed, as `src -type-> dst` labels. `refused` counts proposals dropped by validation. */
+export interface AssetGraphDiff {
+  added: string[];
+  removed: string[];
+  changed: string[];
+  refused: number;
 }
 
 export interface GraphRefreshSummary {
@@ -155,6 +165,8 @@ export interface GraphRefreshSummary {
   stored: number;
   /** Proposed edges refused: no https source, bad node name, self loop, or not touching the asset. */
   dropped: number;
+  /** Per asset rebuilt successfully (SPEC.md § Scout S0.7). */
+  diffs: Record<string, AssetGraphDiff>;
   /** Set when the refresh could not run at all (the day is not done: the cron must not stamp it). */
   warning?: string;
 }
@@ -186,7 +198,7 @@ export async function refreshGraph(deps: GraphRefreshDeps, opts: { budgetMs: num
   const left = () => opts.budgetMs - (Date.now() - t0);
   const seeded = await ensureSeedEdges(deps.store);
   const assets = [...new Set((await deps.targets()).map((a) => a.trim()).filter(Boolean))];
-  const out: GraphRefreshSummary = { assets, done: [], skipped: [], failed: [], seeded, stored: 0, dropped: 0 };
+  const out: GraphRefreshSummary = { assets, done: [], skipped: [], failed: [], seeded, stored: 0, dropped: 0, diffs: {} };
   // Edges need sources found on the web; a provider without hosted search would only guess.
   if (webSearchAvailable(deps.llm, "strong") === false) return { ...out, skipped: assets, warning: GRAPH_NO_WEB_SEARCH };
 
@@ -217,8 +229,27 @@ export async function refreshGraph(deps: GraphRefreshDeps, opts: { budgetMs: num
     }
     const { edges, dropped } = acceptProposals(asset, res.value.edges, now);
     out.dropped += dropped;
+    out.diffs[asset] = await diffAsset(deps.store, known, edges, dropped);
     out.stored += edges.length ? await deps.store.upsertEdges(edges) : 0;
     out.done.push(asset);
   }
+  if (out.done.length) await deps.recordRun?.("graph:diff", new Date(t0), true, JSON.stringify(out.diffs)).catch(() => {});
   return out;
+}
+
+const label = (e: { src: string; dst: string; type: string }) => `${e.src} -${e.type}-> ${e.dst}`;
+
+/**
+ * Diff of a successful rebuild against the stored edges. LLM edges the rebuild
+ * no longer proposes are deleted; seed and user edges never are, and an empty
+ * rebuild removes nothing (it says nothing, it does not say "no edges").
+ */
+async function diffAsset(store: GraphRefreshDeps["store"], known: Edge[], proposed: NewEdge[], refused: number): Promise<AssetGraphDiff> {
+  const have = new Map(known.map((e) => [label(e), e]));
+  const keep = new Set(proposed.map(label));
+  const added = proposed.filter((e) => !have.has(label(e))).map(label);
+  const changed = proposed.filter((e) => have.get(label(e))?.source != null && have.get(label(e))!.source !== e.source).map(label);
+  const stale = proposed.length ? known.filter((e) => e.origin === "llm" && !keep.has(label(e))) : [];
+  if (stale.length) await store.deleteLlmEdges(stale);
+  return { added, removed: stale.map(label), changed, refused };
 }

@@ -172,6 +172,15 @@ describe("MemoryIntelStore graph, events, cache", () => {
     expect((await s.listEdges()).length).toBe(1);
   });
 
+  test("deleteLlmEdges removes llm edges only", async () => {
+    const s = new MemoryIntelStore();
+    const e = (dst: string, origin: "seed" | "llm" | "user") => ({ src: "SOL", dst, type: "narrative" as const, weight: 0.3, source: null, lastVerified: null, origin });
+    await s.upsertEdges([e("A", "seed"), e("B", "llm"), e("C", "user")]);
+    const key = (dst: string) => ({ src: "SOL", dst, type: "narrative" as const });
+    expect(await s.deleteLlmEdges([key("A"), key("B"), key("C"), key("none")])).toBe(1);
+    expect((await s.listEdges()).map((x) => x.dst)).toEqual(["A", "C"]);
+  });
+
   test("event upsert keeps id, firstSeen and cluster; last duplicate in a batch wins", async () => {
     const s = new MemoryIntelStore();
     const [e] = await s.upsertEvents([event("k1")]);

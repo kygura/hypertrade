@@ -223,6 +223,8 @@ export const DiffItemSchema = z.object({
   deltaUnit: DeltaUnitSchema,
   z: Num,
   materiality: Num,
+  /** Confluence factor inside materiality (1 to 1.5); absent on briefs stored before it existed. */
+  confluence: Num.optional(),
   exposureWeight: Num,
   stopProximity: Num,
   /** Distance from mark to the nearest known stop, in percent and in ATR14(1h); absent without a stop. */
@@ -503,8 +505,8 @@ export const BriefSchema = z.object({
   lines: z.array(ClaimSchema),
   /** Nothing cleared the thresholds. */
   silent: z.boolean(),
-  /** Thresholds in force (INTEL_MIN_Z, INTEL_PUSH_MATERIALITY). */
-  threshold: z.object({ minZ: Num, pushMateriality: Num }).optional(),
+  /** Thresholds in force (INTEL_MIN_Z, INTEL_PUSH_MATERIALITY, INTEL_DIGEST_MATERIALITY). */
+  threshold: z.object({ minZ: Num, pushMateriality: Num, digestMateriality: Num.optional() }).optional(),
   ingest: z.array(IngestHealthSchema).optional(),
   /** Asset × metric pairs that had a z (diffed), cleared or not. */
   diffedCount: z.number().int().nonnegative().optional(),

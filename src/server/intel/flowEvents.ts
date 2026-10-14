@@ -1,6 +1,7 @@
 import type { Claim } from "../../shared/claims.js";
 import type { Alert, EventSource, FlowFlag, FlowMetric, HeatmapMetric, IntelEvent } from "../../shared/intel.js";
 import type { CatalystDeps } from "./catalysts.js";
+import { confluenceK, materiality as materialityOf, noteSource, type SignalSource } from "./diff.js";
 import { DELEV_OI_PCT, detectFlows } from "./flows.js";
 import { assetExposure, deepLink, loadContext, routeFor } from "./mapper.js";
 import { feedbackActions, sendIntel } from "./notify.js";
@@ -14,8 +15,8 @@ import { computeWindows, LOOKBACK, parseThresholds, regimeFlags, seriesFromRows,
 // conditions clear (the set firing last run lives in intel_settings):
 //   event   intel_events type "data", origin "flow", tag observed, the FlowFlag
 //           attached; source = snapshot (HL-only inputs) or coinalyze:<venue>
-//   alert   kind "flow", ref = event id, materiality = score × exposure_weight
-//           × stop_proximity (mapper/diff helpers), routed like the mapper:
+//   alert   kind "flow", ref = event id, materiality = diff.materiality (score ×
+//           exposure_weight × stop_proximity × confluence), routed like the mapper:
 //           ≥ INTEL_PUSH_MATERIALITY → Telegram now, else batched into the
 //           next brief (which merges batched alerts).
 // No INTEL_MIN_Z gate: the detector's own conditions are the gate.
@@ -151,7 +152,8 @@ export async function flowAlerts(deps: FlowDeps, now: Date): Promise<FlowRun> {
       active[k] = event!.id;
       out.events.push(event!);
       const line: Claim = { tag: "observed", text, source, ts: f.ts };
-      const materiality = f.score * exp.weight * exp.proximity;
+      const own: SignalSource = f.kind === "detector" ? "flow" : "regime";
+      const materiality = materialityOf({ surprise: f.score, exposure: exp.weight, proximity: exp.proximity }, confluenceK(ctx.sources.get(asset), own));
       const alert = await deps.store.insertAlert({
         kind: "flow",
         ref: event!.id,
@@ -170,6 +172,7 @@ export async function flowAlerts(deps: FlowDeps, now: Date): Promise<FlowRun> {
         route: routeFor(deps.pushMateriality, ctx.feedback, materiality, { eventType: f.name, edgeType: null, hops: 0 }),
       });
       if (!alert) continue;
+      noteSource(ctx.sources, asset, own);
       out.alerts.push(alert);
       if (alert.route === "push") {
         await sendIntel(deps.notifier, { title: `${exp.label}: ${f.name.replace(/_/g, " ")}`, lines: [line], link: deepLink(deps.appUrl), actions: feedbackActions([alert]) });

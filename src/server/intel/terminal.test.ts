@@ -66,7 +66,7 @@ function harness(o: { price: (base: number) => number; replies?: Array<{ text?: 
     funding: async () => [],
     ingestHealth: async () => [{ source: "rss", ok: true, lastRunAt: iso(NOW - 600_000) }],
     llm: { makeProvider: () => provider, cache: store, now: () => new Date(NOW), dailyCap: 200 },
-    thresholds: { minZ: 2, topK: 5, pushMateriality: 0.35 },
+    thresholds: { minZ: 2, topK: 5, pushMateriality: 0.35, digestMateriality: 0.1 },
     now: () => new Date(NOW),
   };
   return {
@@ -140,6 +140,22 @@ describe("buildBrief", () => {
     await early.store.logReview({ via: "ui" });
     early.clock.t = NOW;
     expect((await buildBrief(early.deps, { surface: "ui" })).items[0]).toMatchObject({ asset: "SOL", baselineTs: iso(NOW - 48 * H) });
+  });
+
+  test("threshold split: a batched alert below INTEL_DIGEST_MATERIALITY stays logged but out of the digest", async () => {
+    const h = harness({ price: (b) => b, replies: [{ emit: good }] });
+    await h.init();
+    h.clock.t = NOW - 4 * H;
+    await h.store.logReview({ via: "ui" });
+    h.clock.t = NOW - H;
+    await h.store.insertAlert({ ...alert("SOL", "batch"), ref: "faint", materiality: 0.05 });
+    await h.store.insertAlert({ ...alert("SOL", "batch"), ref: "clear", materiality: 0.12 });
+    h.clock.t = NOW;
+    const brief = await buildBrief(h.deps, { surface: "ui" });
+    expect(brief.alerts.map((a) => a.ref)).toEqual(["clear"]);
+    expect(brief.threshold).toMatchObject({ pushMateriality: 0.35, digestMateriality: 0.1 });
+    expect((await h.store.listAlerts({ limit: 10 })).map((a) => a.ref).sort()).toEqual(["clear", "faint"]); // still logged
+    expect(loadThresholds({ INTEL_DIGEST_MATERIALITY: "0.2", INTEL_PUSH_MATERIALITY: "0.5" })).toMatchObject({ digestMateriality: 0.2, pushMateriality: 0.5 });
   });
 
   test("ranked items, merged alerts and catalysts, validated narration", async () => {
@@ -295,8 +311,8 @@ describe("runIntelBrief", () => {
 
 describe("helpers", () => {
   test("loadThresholds: defaults, env overrides, clamped", () => {
-    expect(loadThresholds({})).toEqual({ minZ: 2, topK: 5, pushMateriality: 0.35 });
-    expect(loadThresholds({ INTEL_MIN_Z: "2.5", INTEL_TOP_K: "99", INTEL_PUSH_MATERIALITY: "x" })).toEqual({ minZ: 2.5, topK: 20, pushMateriality: 0.35 });
+    expect(loadThresholds({})).toEqual({ minZ: 2, topK: 5, pushMateriality: 0.35, digestMateriality: 0.1 });
+    expect(loadThresholds({ INTEL_MIN_Z: "2.5", INTEL_TOP_K: "99", INTEL_PUSH_MATERIALITY: "x" })).toEqual({ minZ: 2.5, topK: 20, pushMateriality: 0.35, digestMateriality: 0.1 });
   });
   test("itemLine and formatIntel", () => {
     expect(itemLine({ asset: "ETH", metric: "funding", held: false, delta: -0.5, deltaUnit: "bps", z: -2.25 } as never)).toBe("watched ETH funding -0.50 bps (z -2.25)");

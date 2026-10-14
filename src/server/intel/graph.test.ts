@@ -127,4 +127,55 @@ describe("refreshGraph", () => {
     const s = await refreshGraph({ store, llm: llmDeps(null, store, now), targets: async () => ["SOL"], now }, { budgetMs: 10_000 });
     expect(s.failed).toEqual([{ asset: "SOL", error: "llm not configured" }]);
   });
+
+  describe("diff-review", () => {
+    const day2 = () => new Date("2026-10-14T12:00:00Z");
+    const llmEdges = async (store: MemoryIntelStore) => (await store.listEdges()).filter((e) => e.origin === "llm").map((e) => `${e.src}>${e.dst}`).sort();
+    const first = new EmitProvider(() => ({
+      edges: [
+        { src: "SOL", dst: "Pyth", type: "depends_on_stable", source: "https://docs.pyth.network/" },
+        { src: "SOL", dst: "Helius", type: "primary_venue", source: "https://helius.dev" },
+      ],
+    }));
+
+    async function seeded() {
+      const store = new MemoryIntelStore();
+      const run = await refreshGraph({ store, llm: llmDeps(first, store, now), targets: async () => ["SOL"], now }, { budgetMs: 10_000 });
+      expect(await llmEdges(store)).toEqual(["SOL>Helius", "SOL>Pyth"]);
+      expect(run.diffs.SOL).toEqual({ added: ["SOL -depends_on_stable-> Pyth", "SOL -primary_venue-> Helius"], removed: [], changed: [], refused: 0 });
+      return store;
+    }
+
+    test("a failed or empty rebuild never removes edges", async () => {
+      const store = await seeded();
+      const failed = await refreshGraph({ store, llm: llmDeps(null, store, day2), targets: async () => ["SOL"], now: day2 }, { budgetMs: 10_000 });
+      expect(failed.failed).toHaveLength(1);
+      expect(failed.diffs).toEqual({});
+      const empty = new EmitProvider(() => ({ edges: [] }));
+      const s = await refreshGraph({ store, llm: llmDeps(empty, store, day2), targets: async () => ["SOL"], now: day2 }, { budgetMs: 10_000 });
+      expect(s.diffs.SOL).toEqual({ added: [], removed: [], changed: [], refused: 0 });
+      expect(await llmEdges(store)).toEqual(["SOL>Helius", "SOL>Pyth"]);
+    });
+
+    test("a successful rebuild removes llm edges it no longer proposes, never seed or user ones; the diff is recorded", async () => {
+      const store = await seeded();
+      await store.upsertEdges([{ src: "SOL", dst: "Manual", type: "narrative", weight: 0.3, source: "https://example.com/m", lastVerified: null, origin: "user" }]);
+      const second = new EmitProvider(() => ({
+        edges: [
+          { src: "SOL", dst: "Pyth", type: "depends_on_stable", source: "https://pyth.network/new" },
+          { src: "SOL", dst: "Jito", type: "collateral", source: "https://jito.network" },
+          { src: "SOL", dst: "Bad", type: "bridge", source: null },
+        ],
+      }));
+      const runs: Array<[string, boolean, string | null | undefined]> = [];
+      const recordRun = async (c: string, _t: Date, ok: boolean, err?: string | null) => void runs.push([c, ok, err]);
+      const s = await refreshGraph({ store, llm: llmDeps(second, store, day2), targets: async () => ["SOL"], now: day2, recordRun }, { budgetMs: 10_000 });
+      expect(s.diffs.SOL).toEqual({ added: ["SOL -collateral-> Jito"], removed: ["SOL -primary_venue-> Helius"], changed: ["SOL -depends_on_stable-> Pyth"], refused: 1 });
+      expect(await llmEdges(store)).toEqual(["SOL>Jito", "SOL>Pyth"]);
+      const all = await store.listEdges();
+      expect(all.some((e) => e.origin === "user" && e.dst === "Manual")).toBe(true);
+      expect(all.filter((e) => e.origin === "seed").length).toBeGreaterThan(0);
+      expect(runs).toEqual([["graph:diff", true, JSON.stringify(s.diffs)]]);
+    });
+  });
 });

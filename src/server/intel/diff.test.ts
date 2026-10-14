@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { DiffItem, SnapshotRow } from "../../shared/intel.js";
+import type { Alert, DiffItem, SnapshotRow } from "../../shared/intel.js";
 import { atr as atr14 } from "../desk/tools.js";
-import { buildDiffItems, changedSinceBaseline, delta, exposureWeight, rankDiffs, stopDistance, stopProximity, WATCH_FLOOR, type AssetDiffInput } from "./diff.js";
+import { alertSource, buildDiffItems, changedSinceBaseline, confluence, confluenceK, delta, exposureWeight, materiality, rankDiffs, stopDistance, stopProximity, WATCH_FLOOR, type ActiveSources, type AssetDiffInput, type SignalSource } from "./diff.js";
 
 const H = 3_600_000;
 const T = Date.UTC(2026, 9, 13, 12);
@@ -99,8 +99,53 @@ describe("buildDiffItems", () => {
   });
 });
 
+describe("confluence", () => {
+  test("1 for a lone signal, +0.25 per further source, capped at 1.5", () => {
+    expect([1, 2, 3, 4, 9].map(confluence)).toEqual([1, 1.25, 1.5, 1.5, 1.5]);
+    expect(confluence(0)).toBe(1);
+  });
+
+  test("materiality(parts, k) = surprise × exposure × proximity × confluence(k)", () => {
+    const parts = { surprise: 2, exposure: 0.25, proximity: 2.5 };
+    expect(materiality(parts)).toBeCloseTo(1.25, 9);
+    expect(materiality(parts, 3)).toBeCloseTo(1.25 * 1.5, 9);
+  });
+
+  test("k counts the item itself plus the distinct other sources; its own source never boosts it", () => {
+    expect(confluenceK(undefined, "flow")).toBe(1);
+    expect(confluenceK(new Set<SignalSource>(["flow"]), "flow")).toBe(1);
+    expect(confluenceK(new Set<SignalSource>(["flow", "regime"]), "flow")).toBe(2);
+    expect(confluenceK(new Set<SignalSource>(["snapshot", "flow", "regime", "news"]), "news")).toBe(4);
+  });
+
+  test("alerts map to source classes: detectors, flips/crossings, news; terminal none", () => {
+    const src = (kind: Alert["kind"], eventType: string | null) => alertSource({ kind, eventType });
+    expect([src("flow", "crowded_long"), src("flow", "funding_flip"), src("flow", "oi_up_price_down"), src("flow", "funding>0.0001")]).toEqual(["flow", "regime", "regime", "regime"]);
+    expect([src("mapper", "exploit"), src("catalyst", "unlock"), src("docwatch", null), src("terminal", null)]).toEqual(["news", "news", "news", null]);
+  });
+
+  test("buildDiffItems: other sources on the asset lift materiality and expose the factor; the snapshot source itself does not", () => {
+    const hist = history("SOL");
+    const baseline = hist.at(-4)!;
+    const to = baseline.price * Math.exp(0.04);
+    const sol: AssetDiffInput = { asset: "SOL", current: row("SOL", T, { price: to }), baseline: { ...baseline, ts: iso(T - 4 * H) }, history: hist, positions: [{ side: "long", stopPx: null, notionalUsd: 2000 }] };
+    const price = (active?: ActiveSources) => buildDiffItems([sol], 2000, active).items.find((i) => i.metric === "price")!;
+    const lone = price();
+    expect(lone.confluence).toBe(1);
+    expect(price(new Map([["SOL", new Set<SignalSource>(["snapshot"])]])).confluence).toBe(1);
+    const two = price(new Map([["SOL", new Set<SignalSource>(["flow", "news"])]]));
+    expect(two.confluence).toBe(1.5);
+    expect(two.materiality).toBeCloseTo(lone.materiality * 1.5, 9);
+  });
+});
+
 describe("rankDiffs", () => {
   const item = (asset: string, z: number, materiality: number) => ({ asset, metric: "price", z, materiality }) as DiffItem;
+  test("digest threshold hides items below it", () => {
+    const items = [item("A", 3, 0.05), item("B", 3, 0.1), item("C", 3, 0.5)];
+    expect(rankDiffs(items, { minZ: 2, topK: 5, digestMateriality: 0.1 }).map((i) => i.asset)).toEqual(["C", "B"]);
+    expect(rankDiffs(items, { minZ: 2, topK: 5 })).toHaveLength(3);
+  });
   test("|z| ≥ minZ, by materiality, top k", () => {
     const ranked = rankDiffs([item("A", 2.5, 0.1), item("B", -3, 0.9), item("C", 1.9, 5), item("D", 2, 0.5)], { minZ: 2, topK: 2 });
     expect(ranked.map((i) => i.asset)).toEqual(["B", "D"]);
