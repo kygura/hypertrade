@@ -18,6 +18,7 @@ import type { AssetCtx } from "../../shared/types.js";
 import { runIntelWatch } from "../intel/docwatch.js";
 import { flowAlerts } from "../intel/flowEvents.js";
 import { refreshGraph } from "../intel/graph.js";
+import { AUTO_RESEARCH_MARGIN_MS, autoResearch, RESEARCH_DEADLINE_MS, type AutoResearchDeps, type AutoResearchRun } from "../intel/research.js";
 import { runIntelIngest } from "../intel/runIngest.js";
 import { collectIntelSnapshots, fetchL2Book, focusAssets, SNAPSHOT_RETENTION_DAYS, STOP_RETENTION_DAYS, type SnapshotResult } from "../intel/snapshot.js";
 import type { IntelStore } from "../intel/store.js";
@@ -443,6 +444,37 @@ export async function runIntelJob(job: IntelJob, deps: IntelCronDeps): Promise<{
   return { status: 500, body: { job, ok: false, timedOut: true, error: `still running after ${Math.round(hardStopMs / 1000)}s` } };
 }
 
+export interface ResearchStageResult extends Partial<AutoResearchRun> {
+  ran: number;
+  /** Not started: not enough budget left. */
+  skipped?: true;
+  error?: string;
+}
+
+/**
+ * The ingest job's last stage (SPEC S0.3): automatic research. Never throws and never fails ingest; a run is recorded
+ * as collector_runs `intel:research` (ok = no failed research).
+ */
+export async function researchStage(
+  deps: Omit<AutoResearchDeps, "left" | "signal">,
+  o: { left(): number; signal?: AbortSignal },
+  run: (d: AutoResearchDeps) => Promise<AutoResearchRun> = autoResearch,
+  record: typeof db.recordCollectorRun = db.recordCollectorRun,
+): Promise<ResearchStageResult> {
+  if (o.left() <= RESEARCH_DEADLINE_MS + AUTO_RESEARCH_MARGIN_MS) return { ran: 0, skipped: true };
+  const startedAt = new Date();
+  let res: ResearchStageResult;
+  try {
+    res = await run({ ...deps, ...o });
+  } catch (e) {
+    res = { ran: 0, error: e instanceof Error ? e.message : String(e) };
+  }
+  await record("intel:research", startedAt, !res.error && !res.statuses?.failed, res.error ?? (res.statuses?.failed ? `${res.statuses.failed} failed` : null)).catch((e) =>
+    console.error("[intel:research] collector run not recorded:", e),
+  );
+  return res;
+}
+
 const defaultIntelCronDeps = (): IntelCronDeps => {
   const d = defaultIntelDeps();
   return {
@@ -456,12 +488,16 @@ const defaultIntelCronDeps = (): IntelCronDeps => {
     run: {
       // Flow detector events (SPEC F0.4) ride on the ingest job, after the mapper; code only, no LLM.
       ingest: async (o) => {
+        const t0 = Date.now();
+        const left = () => o.budgetMs - (Date.now() - t0);
         const result = await runIntelIngest(d.ingest, o);
         const flows = await flowAlerts(d.ingest, new Date()).then(
           (r) => ({ events: r.events.length, alerts: r.alerts.length, pushed: r.alerts.filter((a) => a.route === "push").length, errors: r.errors }),
           (e) => ({ events: 0, alerts: 0, pushed: 0, errors: [e instanceof Error ? e.message : String(e)] }),
         );
-        return { ok: true, complete: true, result: { ...result, flows } };
+        // Automatic research (SPEC S0.3) is the last stage: it needs this run's flow alerts and more than its own deadline of budget. Never fatal.
+        const research = await researchStage(d.ingest, { left, signal: o.signal });
+        return { ok: true, complete: true, result: { ...result, flows, research } };
       },
       brief: async (o) => {
         const r = await runIntelBrief({ ...d, notifier: d.notifier, appUrl: d.appUrl }, o);

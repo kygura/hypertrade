@@ -346,6 +346,7 @@ async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
     await s.insertResearch(rs({ status: "capped", explanation: "cap" })),
     await s.insertResearch(rs({ trigger: "flag", asset: "BTC", flagId: "flag-2", status: "no_cause" })),
     await s.insertResearch(rs({ status: "failed", flagId: "flag-3" })),
+    await s.insertResearch(rs({ trigger: "flag", status: "failed", flagId: "flag-4", costUsd: 0.3 })), // billed failure: counts
   ]);
   put("research.list", [
     await s.listResearch({ limit: 10 }),
@@ -355,6 +356,8 @@ async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
   ]);
   put("research.count", [await s.researchCountSince(past), await s.researchCountSince(past, "flag"), await s.researchCountSince(future)]);
   put("research.forFlag", [await s.researchForFlag("flag-1"), await s.researchForFlag("flag-2"), await s.researchForFlag("flag-3"), await s.researchForFlag("nope")]);
+  put("research.forFlags", [...(await s.researchForFlags(["flag-1", "flag-2", "flag-3", "flag-4", "nope"])).entries()].sort(([a], [b]) => a.localeCompare(b)));
+  put("research.forFlagsEmpty", [...(await s.researchForFlags([])).entries()]);
   put("research.prune", [await s.pruneResearch(past), await s.pruneResearch(future), await s.listResearch({ limit: 10 })]);
 
   return out;

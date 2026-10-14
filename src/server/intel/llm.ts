@@ -91,6 +91,8 @@ export interface CompleteStructuredArgs<T> {
 }
 
 export const LLM_DEADLINE_MS = 60_000;
+/** The providers' default max output tokens: what a step cut off mid-flight is assumed to have used. */
+export const LLM_MAX_OUTPUT_TOKENS = 16_000;
 
 /** System-prompt rule that goes with `untrusted()` (prompt injection guard). */
 export const UNTRUSTED_RULE =
@@ -122,6 +124,8 @@ export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Pr
 
   // Every call that reached the provider is billed, success or failure (SPEC S0.2); a success is billed by its own cache row.
   let billed = false;
+  // A step cut off by the deadline or an abort still ran: it is billed a pessimistic estimate, not 0 tokens.
+  let inflightChars = 0;
   try {
     if (cacheKey) {
       const hit = await race(deps.cache.cacheGet(cacheKey, promptVersion));
@@ -156,9 +160,11 @@ export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Pr
       const left = args.maxUses === undefined ? undefined : Math.max(0, args.maxUses - trace.searches);
       const prompt = attempt === 1 ? user : `${user}\n\nYour previous answer was rejected: ${lastError}\nCall \`${EMIT_TOOL}\` again with a corrected object.`;
       let text = "";
+      inflightChars = system.length + EMIT_INSTRUCTION.length + prompt.length;
       const res = await race(
         provider.start(system + EMIT_INSTRUCTION, [], prompt).step([emit], { ...hooks, onText: (d) => void (text += d) }, { signal, webSearch: (args.webSearch ?? false) && left !== 0, maxUses: left }),
       );
+      inflightChars = 0;
       trace.usage = { input_tokens: trace.usage.input_tokens + res.usage.input_tokens, output_tokens: trace.usage.output_tokens + res.usage.output_tokens };
       const raw = res.toolCalls.find((c) => c.name === EMIT_TOOL)?.input ?? extractJson(text);
       trace.output = raw ?? text;
@@ -179,6 +185,7 @@ export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Pr
     }
     return fail(`invalid output after retry: ${lastError}`);
   } catch (e) {
+    if (inflightChars && signal.aborted) trace.usage = { input_tokens: trace.usage.input_tokens + Math.ceil(inflightChars / 4), output_tokens: trace.usage.output_tokens + LLM_MAX_OUTPUT_TOKENS };
     return fail(signal.aborted ? (timeout.aborted ? "deadline exceeded" : "aborted") : e instanceof Error ? e.message : String(e));
   } finally {
     if (!billed && trace.model && trace.attempts > 0) {

@@ -11,7 +11,7 @@ import {
   type HeatmapResponse,
 } from "../../../shared/intel.js";
 import { COINALYZE_COLLECTOR } from "../../collectors/coinalyze.js";
-import { assetFlags, flowOptions, loadAssetFlow } from "../../intel/flowEvents.js";
+import { assetFlags, FLOW_ACTIVE_SETTING, flowOptions, loadAssetFlow } from "../../intel/flowEvents.js";
 import { walk } from "../../intel/graph.js";
 import { assetExposure, graphEdges, type RoutingContext } from "../../intel/mapper.js";
 import { FALLBACK_BASELINE_MS, toCatalyst } from "../../intel/terminal.js";
@@ -42,6 +42,33 @@ const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLow
 export function createFlowRoutes(deps: FlowRouteDeps) {
   const { store } = deps;
   const env = deps.env ?? process.env;
+  /**
+   * A live flag's id embeds the request time, so it never equals the stored flag's. For an episode still active in
+   * FLOW_ACTIVE_SETTING (same name, asset, kind and window) the stored flag's id is used; with no stored episode the live id stays.
+   */
+  const storedIds = async (flags: FlowFlag[]): Promise<FlowFlag[]> => {
+    const active = (await store.getSetting<Record<string, string>>(FLOW_ACTIVE_SETTING)) ?? {};
+    const eventIds = [...new Set(flags.flatMap((f) => active[`${f.name}|${f.asset}`] ?? []))];
+    const stored = new Map((await Promise.all(eventIds.map((id) => store.getEvent(id)))).flatMap((e) => (e?.flag ? [[e.id, e.flag] as [string, FlowFlag]] : [])));
+    return flags.map((f) => {
+      const s = stored.get(active[`${f.name}|${f.asset}`] ?? "");
+      return s && s.kind === f.kind && s.window === f.window ? { ...f, id: s.id } : f;
+    });
+  };
+  /**
+   * researchId is read-time only (SPEC S1): the stored flag JSON is never touched. One batched query; the main screen
+   * must never fail because of intel_research, so any error leaves every researchId null.
+   */
+  const withResearch = async (flags: FlowFlag[], live = false): Promise<FlowFlag[]> => {
+    try {
+      const ids = live ? await storedIds(flags) : flags;
+      const found = await store.researchForFlags(ids.map((f) => f.id));
+      return ids.map((f) => ({ ...f, researchId: found.get(f.id)?.id ?? null }));
+    } catch (err) {
+      console.warn("[intel:flow] research join skipped:", err instanceof Error ? err.message : err);
+      return flags.map((f) => ({ ...f, researchId: null }));
+    }
+  };
 
   return new Hono()
     .get("/heatmap", async (c) => {
@@ -76,7 +103,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
         rows.sort((a, b) => b.materiality - a.materiality);
         const run = health.find((h) => h.source === FLOW_SOURCE);
         const flowStatus = !env.COINALYZE_API_KEY?.trim() ? { ok: false, error: "no_source" } : run ? { ok: run.ok, ...(run.error ? { error: run.error } : {}) } : { ok: true };
-        const res: HeatmapResponse = { rows, metrics: [...HEATMAP_METRICS], cells, flags, flow: flowStatus, asOf: now.toISOString() };
+        const res: HeatmapResponse = { rows, metrics: [...HEATMAP_METRICS], cells, flags: await withResearch(flags, true), flow: flowStatus, asOf: now.toISOString() };
         return c.json(res);
       } catch (err) {
         return failure(c, err, "intel:heatmap", "heatmap unavailable");
@@ -91,7 +118,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
       try {
         const now = deps.now();
         const since = new Date(now.getTime() - q.data.days * DAY_MS);
-        const [snapshots, flow, flowEvents, alerts, scheduled, edges, exposure, watched] = await Promise.all([
+        const [snapshots, flow, flowEvents, alerts, scheduled, edges, exposure, watched, research] = await Promise.all([
           store.snapshotRange(asset, since, now),
           store.flowSeries(asset, null, since),
           store.listEvents({ since, type: "data", limit: LIST_LIMIT }),
@@ -100,6 +127,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
           graphEdges(store),
           deps.exposure(),
           deps.watched(),
+          store.listResearch({ asset, since, limit: LIST_LIMIT }),
         ]);
         const targets = [...new Set([...exposure.positions.map((p) => p.asset), ...watched])];
         const mine = scheduled.filter((e) => e.assets.some((a) => same(a, asset)));
@@ -117,6 +145,10 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
             const url = e.sources.find((s) => s.url)?.url;
             return { ts: e.scheduledAt!, kind: "catalyst", title: e.title, tag: e.tag, ...(url ? { url } : {}) };
           }),
+          // Only answers belong on the timeline: failed, capped and running rows are not findings.
+          ...research
+            .filter((r) => r.status === "found" || r.status === "no_cause")
+            .map((r): AssetEvent => ({ ts: r.createdAt, kind: "research", title: r.question, tag: r.status === "found" ? "observed" : "hypothesis", research: r })),
         ].sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
         const res: AssetDetailResponse = {
           snapshots,
@@ -135,7 +167,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
       if (!q.success) return invalid(c, q.error, "since");
       try {
         const events = await store.listEvents({ since: q.data.since ? new Date(q.data.since) : undefined, type: "data", limit: LIST_LIMIT });
-        const res: { flags: FlowFlag[] } = { flags: events.flatMap((e) => (e.flag ? [e.flag] : [])) };
+        const res: { flags: FlowFlag[] } = { flags: await withResearch(events.flatMap((e) => (e.flag ? [e.flag] : []))) };
         return c.json(res);
       } catch (err) {
         return failure(c, err, "intel:flows", "flows unavailable");

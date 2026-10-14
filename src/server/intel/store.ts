@@ -103,10 +103,15 @@ export interface IntelStore {
   finishResearch(id: string, r: NewResearch): Promise<ResearchResult | null>;
   /** createdAt >= since, newest first. */
   listResearch(opts: { asset?: string; since?: Date; limit: number }): Promise<ResearchResult[]>;
-  /** Runs that used or hold the budget (running, found, no_cause) since `since`: the daily limits. Capped and failed rows don't count. */
+  /**
+   * Runs that used or hold the budget since `since`: the daily limits. Counts running, found, no_cause and failed rows
+   * that cost something (a failed run still billed its provider calls); capped rows and free failures never count.
+   */
   researchCountSince(since: Date, trigger?: ResearchResult["trigger"]): Promise<number>;
   /** Newest result carrying the flag id, whatever its trigger; failed and capped runs excluded (they may be retried). */
   researchForFlag(flagId: string): Promise<ResearchResult | null>;
+  /** The read-time join: newest found / no_cause result per flag id. Failed, capped and running rows are excluded. */
+  researchForFlags(flagIds: string[]): Promise<Map<string, ResearchResult>>;
   pruneResearch(before: Date): Promise<number>;
 
   /** Upsert on (src, dst, type). A user edge is only ever replaced by another user edge. */
@@ -122,6 +127,7 @@ export interface IntelStore {
   /** Upsert on `key`: id, firstSeen and an assigned cluster survive re-ingest. Duplicate keys in one call: last wins. */
   upsertEvents(events: NewEvent[]): Promise<IntelEvent[]>;
   getEvent(id: string): Promise<IntelEvent | null>;
+  getEventByKey(key: string): Promise<IntelEvent | null>;
   listEvents(opts: { since?: Date; type?: EventType; limit: number }): Promise<IntelEvent[]>;
   eventsByCluster(clusterId: string): Promise<IntelEvent[]>;
   setEventCluster(eventIds: string[], clusterId: string): Promise<void>;
@@ -549,17 +555,22 @@ export class PgIntelStore implements IntelStore {
   }
   async listResearch(o: { asset?: string; since?: Date; limit: number }) {
     const rows = await sql()`select * from intel_research
-      where (${o.asset ?? null}::text is null or asset = ${o.asset ?? null}) and (${o.since ?? null}::timestamptz is null or created_at >= ${o.since ?? null})
+      where (${o.asset ?? null}::text is null or lower(asset) = lower(${o.asset ?? null})) and (${o.since ?? null}::timestamptz is null or created_at >= ${o.since ?? null})
       order by created_at desc, id limit ${o.limit}`;
     return rows.map(toResearch);
   }
   async researchCountSince(since: Date, trigger?: ResearchResult["trigger"]) {
-    const [row] = await sql()`select count(*)::int as n from intel_research where created_at >= ${since} and status in ('running', 'found', 'no_cause') and (${trigger ?? null}::text is null or trigger = ${trigger ?? null})`;
+    const [row] = await sql()`select count(*)::int as n from intel_research where created_at >= ${since} and (status in ('running', 'found', 'no_cause') or (status = 'failed' and coalesce((body->>'costUsd')::float8, 0) > 0)) and (${trigger ?? null}::text is null or trigger = ${trigger ?? null})`;
     return row!.n as number;
   }
   async researchForFlag(flagId: string) {
     const [row] = await sql()`select * from intel_research where flag_id = ${flagId} and status not in ('failed', 'capped') order by created_at desc limit 1`;
     return row ? toResearch(row) : null;
+  }
+  async researchForFlags(flagIds: string[]) {
+    if (!flagIds.length) return new Map<string, ResearchResult>();
+    const rows = await sql()`select distinct on (flag_id) * from intel_research where flag_id = any(${flagIds}::text[]) and status in ('found', 'no_cause') order by flag_id, created_at desc`;
+    return new Map(rows.map((r: any) => [r.flag_id as string, toResearch(r)] as [string, ResearchResult]));
   }
   async pruneResearch(before: Date) {
     const res = await sql()`delete from intel_research where created_at < ${before}`;
@@ -619,6 +630,10 @@ export class PgIntelStore implements IntelStore {
   async getEvent(id: string) {
     if (!isUuid(id)) return null;
     const [row] = await sql()`select * from intel_events where id = ${id}`;
+    return row ? toEvent(row) : null;
+  }
+  async getEventByKey(key: string) {
+    const [row] = await sql()`select * from intel_events where key = ${key}`;
     return row ? toEvent(row) : null;
   }
   async listEvents(opts: { since?: Date; type?: EventType; limit: number }) {
@@ -1005,16 +1020,23 @@ export class MemoryIntelStore implements IntelStore {
   }
   async listResearch(o: { asset?: string; since?: Date; limit: number }) {
     return this.research
-      .filter((x) => (!o.asset || x.asset === o.asset) && (!o.since || Date.parse(x.createdAt) >= o.since.getTime()))
+      .filter((x) => (!o.asset || x.asset?.toLowerCase() === o.asset.toLowerCase()) && (!o.since || Date.parse(x.createdAt) >= o.since.getTime()))
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       .slice(0, o.limit)
       .map(clone);
   }
   async researchCountSince(since: Date, trigger?: ResearchResult["trigger"]) {
-    return this.research.filter((x) => Date.parse(x.createdAt) >= since.getTime() && x.status !== "capped" && x.status !== "failed" && (!trigger || x.trigger === trigger)).length;
+    return this.research.filter((x) => Date.parse(x.createdAt) >= since.getTime() && x.status !== "capped" && (x.status !== "failed" || x.costUsd > 0) && (!trigger || x.trigger === trigger)).length;
   }
   async researchForFlag(flagId: string) {
     return clone([...this.research].reverse().find((x) => x.flagId === flagId && x.status !== "failed" && x.status !== "capped") ?? null);
+  }
+  async researchForFlags(flagIds: string[]) {
+    const out = new Map<string, ResearchResult>();
+    for (const x of this.research) {
+      if (x.flagId && flagIds.includes(x.flagId) && (x.status === "found" || x.status === "no_cause")) out.set(x.flagId, clone(x)); // rows are oldest first: the newest wins
+    }
+    return out;
   }
   async pruneResearch(before: Date) {
     const keep = this.research.filter((x) => Date.parse(x.createdAt) >= before.getTime());
@@ -1072,6 +1094,9 @@ export class MemoryIntelStore implements IntelStore {
   }
   async getEvent(id: string) {
     return clone(this.events.get(id) ?? null);
+  }
+  async getEventByKey(key: string) {
+    return clone([...this.events.values()].find((e) => e.key === key) ?? null);
   }
   async listEvents(opts: { since?: Date; type?: EventType; limit: number }) {
     return [...this.events.values()]

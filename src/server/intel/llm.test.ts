@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import type { Conversation, LLMProvider, StepOptions, StepResult, ToolSpec } from "../llm/provider.js";
-import { completeStructured, extractJson, intelProviderFactory, type LlmCacheStore, type LlmDeps } from "./llm.js";
+import { completeStructured, extractJson, intelProviderFactory, LLM_MAX_OUTPUT_TOKENS, type LlmCacheStore, type LlmDeps } from "./llm.js";
 
 type Reply = { text?: string; emit?: unknown } | "hang";
 
@@ -143,6 +143,14 @@ describe("completeStructured", () => {
     const pending = run(new FakeProvider(["hang"]), { signal: ctl.signal });
     ctl.abort();
     expect(await pending).toMatchObject({ ok: false, error: "aborted" });
+  });
+
+  test("a step cut off by the deadline is billed a pessimistic estimate, not 0 tokens", async () => {
+    const cache = new MemCache();
+    const r = await run(new FakeProvider(["hang"]), { deadlineMs: 20, cache });
+    expect(r.trace.usage.output_tokens).toBe(LLM_MAX_OUTPUT_TOKENS);
+    expect(r.trace.usage.input_tokens).toBeGreaterThan(0);
+    expect(cache.puts.at(-1)?.usage).toMatchObject({ output_tokens: LLM_MAX_OUTPUT_TOKENS });
   });
 
   test("a throwing provider fails closed", async () => {
