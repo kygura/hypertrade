@@ -44,7 +44,7 @@ describe("detector copy", () => {
     const n = { funding_z: 2.4, oi_z_24h: 1.3, price_z_24h: 0.2, funding: 0.00004 };
     expect(chipText(flag({ numbers: n }))).toBe("CROWDED LONG · HYPE 24H");
     expect(numbersLine(flag({ numbers: n }))).toBe("funding z +2.4 · OI 24h z +1.3 · price 24h z +0.2");
-    expect(flagWord(flag({ name: "negative_funding_oi_build" }))).toBe("SQUEEZE SETUP");
+    expect(flagWord(flag({ name: "negative_funding_oi_build" }))).toBe("NEG FUNDING + OI BUILD");
     expect(numbersLine(flag({ name: "deleveraging", window: "6h", numbers: { oi_pct_6h: -9.2, liq_z_6h: 2.8 } }))).toBe("OI 6h −9.2% · liqs 6h z +2.8");
     expect(flagWord(flag({ name: "liquidity_thinning" }))).toBe("THIN BOOK");
     expect(numbersLine(flag({ name: "liquidity_thinning", numbers: { depth_2: 1_200_000, p10: 1_500_000 } }))).toBe("depth ±2% $1.20M · 30d p10 $1.50M");

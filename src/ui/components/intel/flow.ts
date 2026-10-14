@@ -79,7 +79,7 @@ const DETECTOR_WORD: Record<string, string> = {
   crowded_long: 'CROWDED LONG',
   crowded_short: 'CROWDED SHORT',
   squeeze_setup: 'SQUEEZE SETUP',
-  negative_funding_oi_build: 'SQUEEZE SETUP',
+  negative_funding_oi_build: 'NEG FUNDING + OI BUILD',
   deleveraging: 'DELEVERAGING',
   spot_led: 'SPOT LED',
   perp_led: 'PERP LED',
