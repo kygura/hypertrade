@@ -141,13 +141,18 @@ async function intelCoins(): Promise<string[]> {
   return [...new Set([...f.held, ...f.watched])];
 }
 
-/** Candle retention, plus Intel snapshots past SNAPSHOT_RETENTION_DAYS and stops past STOP_RETENTION_DAYS (`intel_snapshots`, `intel_stops`). */
+/** Candle retention, plus Intel snapshots and flow rows past SNAPSHOT_RETENTION_DAYS and stops past STOP_RETENTION_DAYS (`intel_snapshots`, `intel_flow`, `intel_stops`). */
 async function pruneAll(now: number = Date.now()): Promise<Record<string, number>> {
   const out = await pruneRetention(now);
   try {
     out.intel_snapshots = await defaultIntelDeps().store.pruneSnapshots(new Date(now - SNAPSHOT_RETENTION_DAYS * DAY_MS));
   } catch (err) {
     console.error("[backfill] intel snapshot prune:", err instanceof Error ? err.message : err);
+  }
+  try {
+    out.intel_flow = await defaultIntelDeps().store.pruneFlow(new Date(now - SNAPSHOT_RETENTION_DAYS * DAY_MS));
+  } catch (err) {
+    console.error("[backfill] intel flow prune:", err instanceof Error ? err.message : err);
   }
   try {
     out.intel_stops = await defaultIntelDeps().store.pruneStops(new Date(now - STOP_RETENTION_DAYS * DAY_MS));

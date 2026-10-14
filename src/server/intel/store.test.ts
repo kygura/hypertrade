@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SnapshotRow } from "../../shared/intel.js";
+import type { FlowMetric, FlowRow, SnapshotRow } from "../../shared/intel.js";
 import { MemoryIntelStore, PgIntelStore, type NewAlert, type NewEvent } from "./store.js";
 
 const snap = (asset: string, ts: string, price: number): SnapshotRow => ({
@@ -124,6 +124,39 @@ describe("MemoryIntelStore stops", () => {
     await s.recordStops([stop("SOL", "long", "00:00:00", 140), stop("SOL", "long", "06:00:00", 145)]);
     expect(await s.pruneStops(at("03:00:00"))).toBe(1);
     expect((await s.stopAt("SOL", "long", new Date(0)))?.stopPx).toBe(145);
+  });
+});
+
+// Same rules as PgIntelStore's intel_flow SQL: upsert on (asset, venue, metric, ts); series ascending by ts, metric, venue.
+describe("MemoryIntelStore flow", () => {
+  const row = (metric: FlowMetric, t: string, value: number, venue = "agg", asset = "BTC"): FlowRow => ({ asset, venue, metric, value, ts: `2026-10-13T${t}.000Z` });
+
+  test("upserts on (asset, venue, metric, ts); series filter by metric and since; latest ts per key; prune", async () => {
+    const s = new MemoryIntelStore();
+    expect(
+      await s.insertFlow([
+        row("oi_usd", "00:15:00", 2),
+        row("oi_usd", "00:00:00", 1),
+        row("funding", "00:00:00", 1e-5),
+        row("spot_volume_usd", "00:00:00", 5, "binance"),
+        row("oi_usd", "00:15:00", 3), // duplicate key: last wins
+        row("oi_usd", "00:00:00", 9, "agg", "ETH"),
+      ]),
+    ).toBe(5);
+    await s.insertFlow([{ ...row("oi_usd", "00:00:00", 4), ts: "2026-10-13T02:00:00+02:00" }]); // = 00:00Z
+    const all = await s.flowSeries("BTC", null, new Date("2026-10-12T00:00:00Z"));
+    expect(all.map((r) => [r.ts.slice(11, 16), r.metric, r.venue, r.value])).toEqual([
+      ["00:00", "funding", "agg", 1e-5],
+      ["00:00", "oi_usd", "agg", 4],
+      ["00:00", "spot_volume_usd", "binance", 5],
+      ["00:15", "oi_usd", "agg", 3],
+    ]);
+    expect((await s.flowSeries("BTC", "oi_usd", new Date("2026-10-13T00:15:00Z"))).map((r) => r.value)).toEqual([3]); // since is inclusive
+    expect(await s.latestFlowTs("BTC", "agg", "oi_usd")).toBe("2026-10-13T00:15:00.000Z");
+    expect(await s.latestFlowTs("BTC", "binance", "oi_usd")).toBeNull();
+    expect(await s.insertFlow([])).toBe(0);
+    expect(await s.pruneFlow(new Date("2026-10-13T00:10:00Z"))).toBe(4);
+    expect((await s.flowSeries("BTC", null, new Date(0))).length).toBe(1);
   });
 });
 

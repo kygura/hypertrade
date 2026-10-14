@@ -160,7 +160,7 @@ export type WatchlistResponse = z.infer<typeof WatchlistResponseSchema>;
 export const ReviewSchema = z.object({
   id: z.string(),
   ts: Iso,
-  via: z.enum(["ui", "deeplink"]),
+  via: z.enum(["ui", "deeplink", "telegram_digest"]),
   briefId: z.string().nullable(),
 });
 export type Review = z.infer<typeof ReviewSchema>;
@@ -894,3 +894,110 @@ export type WatchChange = z.infer<typeof WatchChangeSchema>;
 
 export const WatchesResponseSchema = z.object({ watches: z.array(WatchSchema) });
 export const WatchChangesResponseSchema = z.object({ changes: z.array(WatchChangeSchema) });
+
+// ─── Flow (SPEC § Flow F0.1–F0.4, F1) ───
+
+/** Non-HL venue metrics stored in intel_flow; volume and liquidation values are per 15-min interval. */
+export const FLOW_METRICS = [
+  "oi_usd",
+  "funding",
+  "long_short_ratio",
+  "liq_long_usd",
+  "liq_short_usd",
+  "perp_volume_usd",
+  "perp_buy_volume_usd",
+  "spot_volume_usd",
+] as const;
+export const FlowMetricSchema = z.enum(FLOW_METRICS);
+export type FlowMetric = z.infer<typeof FlowMetricSchema>;
+
+export const FlowRowSchema = z.object({
+  asset: z.string(),
+  /** `agg` (Coinalyze provider aggregate, may include HL) or an exchange code. */
+  venue: z.string(),
+  metric: FlowMetricSchema,
+  value: Num,
+  ts: Iso,
+});
+export type FlowRow = z.infer<typeof FlowRowSchema>;
+
+/**
+ * Heatmap columns in display order. oi_usd and funding are HL (snapshots);
+ * depth_2 = bid + ask within ±2%; liq_usd = long + short liquidations.
+ */
+export const HEATMAP_METRICS = [
+  "price",
+  "oi_usd",
+  "funding",
+  "basis",
+  "premium",
+  "vol24h",
+  "depth_2",
+  "spread_bps",
+  "long_short_ratio",
+  "liq_usd",
+  "perp_volume_usd",
+  "spot_volume_usd",
+] as const;
+export const HeatmapMetricSchema = z.enum(HEATMAP_METRICS);
+export type HeatmapMetric = z.infer<typeof HeatmapMetricSchema>;
+
+export const FixedWindowSchema = z.enum(["1h", "6h", "24h"]);
+export type FixedWindow = z.infer<typeof FixedWindowSchema>;
+export const HeatmapWindowSchema = z.enum(["review", "1h", "6h", "24h"]);
+export type HeatmapWindow = z.infer<typeof HeatmapWindowSchema>;
+
+export const FlowFlagSchema = z.object({
+  id: z.string(),
+  asset: z.string(),
+  kind: z.enum(["detector", "flip", "crossing"]),
+  name: z.string(),
+  window: FixedWindowSchema,
+  numbers: z.record(Num),
+  score: Num,
+  /** A series the flag needs was missing or too short: outcome unknown, not quiet. */
+  degraded: z.boolean(),
+  ts: Iso,
+});
+export type FlowFlag = z.infer<typeof FlowFlagSchema>;
+
+export const FlowSourceStatusSchema = z.object({ ok: z.boolean(), error: z.string().optional() });
+
+export const HeatmapQuerySchema = z.object({ window: HeatmapWindowSchema.default("review") });
+export const HeatmapResponseSchema = z.object({
+  /** Held ∪ watched, by materiality descending. */
+  rows: z.array(z.object({ asset: z.string(), held: z.boolean(), materiality: Num })),
+  metrics: z.array(HeatmapMetricSchema),
+  /** z null = too few samples. */
+  cells: z.array(z.object({ asset: z.string(), metric: HeatmapMetricSchema, z: Num.nullable(), delta: Num.nullable() })),
+  flags: z.array(FlowFlagSchema),
+  /** error "no_source" = no flow provider configured (vs per-cell null). */
+  flow: FlowSourceStatusSchema,
+  asOf: Iso,
+});
+export type HeatmapResponse = z.infer<typeof HeatmapResponseSchema>;
+
+export const AssetEventSchema = z.object({
+  ts: Iso,
+  kind: z.enum(["flow", "alert", "catalyst"]),
+  title: z.string(),
+  tag: ClaimTagSchema,
+  numbers: z.record(Num).optional(),
+  /** Alerts carry their claim line. */
+  claim: ClaimSchema.optional(),
+  url: z.string().optional(),
+});
+export type AssetEvent = z.infer<typeof AssetEventSchema>;
+
+export const AssetQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(90).default(7) });
+export const AssetDetailResponseSchema = z.object({
+  snapshots: z.array(SnapshotRowSchema),
+  flow: z.array(FlowRowSchema),
+  events: z.array(AssetEventSchema),
+  catalysts: z.array(CatalystSchema),
+  graph: z.object({ edges: z.array(EdgeSchema), paths: z.array(GraphPathSchema) }),
+});
+export type AssetDetailResponse = z.infer<typeof AssetDetailResponseSchema>;
+
+export const FlowsQuerySchema = z.object({ since: Iso.optional() });
+export const FlowsResponseSchema = z.object({ flags: z.array(FlowFlagSchema) });
