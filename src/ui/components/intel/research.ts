@@ -2,19 +2,12 @@ import type { FlowFlag, ResearchEvidence, ResearchResult, ResearchStatus } from 
 import type { Tone } from '../Badge'
 import type { LineClaim } from './ClaimLine'
 import { flagWord } from './flow'
+import { hostLabel } from './format'
 
 // Pure helpers for the RESEARCH panel, the chip action and confluence
 // (DESIGN-terminal §16; the flow.ts precedent). Research is model output with
 // code-checked provenance: evidence goes through §2 as OBS/HYP, and nothing
 // here ever phrases a result as an instruction.
-
-function hostLabel(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return 'source'
-  }
-}
 
 /** observed → OBS with hostname source + ts (null ts → no ClaimAge); hypothesis → HYP, a kept url rides inside the text block. */
 export function toClaim(e: ResearchEvidence): LineClaim {
@@ -22,12 +15,9 @@ export function toClaim(e: ResearchEvidence): LineClaim {
   return e.url ? { tag: 'hypothesis', text: e.claim, source: { label: hostLabel(e.url), url: e.url } } : { tag: 'hypothesis', text: e.claim }
 }
 
-const STATUS_WORD: Record<ResearchStatus, string> = { running: 'RUNNING', found: 'FOUND', no_cause: 'NO CAUSE', capped: 'CAPPED', failed: 'FAILED' }
-const STATUS_TONE: Record<ResearchStatus, Tone> = { running: 'gray', found: 'gray', no_cause: 'gray', capped: 'amber', failed: 'red' }
+export const STATUS_WORD: Record<ResearchStatus, string> = { running: 'RUNNING', found: 'FOUND', no_cause: 'NO CAUSE', capped: 'CAPPED', failed: 'FAILED' }
+export const STATUS_TONE: Record<ResearchStatus, Tone> = { running: 'gray', found: 'gray', no_cause: 'gray', capped: 'amber', failed: 'red' }
 
-export const statusWord = (s: ResearchStatus): string => STATUS_WORD[s]
-/** `no_cause` is a valid answer: gray like `found`, never amber. */
-export const statusTone = (s: ResearchStatus): Tone => STATUS_TONE[s]
 
 /** `What explains crowded long on HYPE over 24h?` */
 export function chipQuestion(f: Pick<FlowFlag, 'kind' | 'name' | 'numbers' | 'asset' | 'window'>): string {
@@ -42,7 +32,7 @@ export function confluenceText(factor: number | null | undefined): string | null
 /** k = 1 + round((f − 1) / 0.25); the 1.50 cap reads `3 or more` (SPEC S0.6). */
 export function confluenceTitle(factor: number, asset: string): string {
   const k = factor >= 1.5 ? '3 or more' : String(1 + Math.round((factor - 1) / 0.25))
-  return `confluence ${confluenceText(factor) ?? `×${factor.toFixed(2)}`} — ${k} independent signal sources on ${asset} in the window (snapshot moves, flow detectors, flips, news); this item's own source is not counted`
+  return `confluence ${confluenceText(factor)} — ${k} independent signal sources on ${asset} in the window (snapshot moves, flow detectors, flips, news); this item's own source is not counted`
 }
 
 /** Server value, two decimals, never recomputed. */
@@ -75,17 +65,6 @@ export function mergeResearch(local: ResearchResult[], items: ResearchResult[], 
 /** The chip path's POST body: the chip question, the flag's coin and its id (§16.3). */
 export function chipAskInput(f: Pick<FlowFlag, 'id' | 'kind' | 'name' | 'numbers' | 'asset' | 'window'>): { question: string; asset: string; flagId: string } {
   return { question: chipQuestion(f), asset: f.asset, flagId: f.id }
-}
-
-/** The ask box's named failure states (§16.6): 409 and 429 are not generic errors. */
-export type AskState = 'idle' | 'offline' | 'busy' | 'limit' | 'error'
-
-export function askState(a: { error: string | null; status: number | null; offline: boolean }): AskState {
-  if (a.offline) return 'offline'
-  if (!a.error) return 'idle'
-  if (a.status === 409) return 'busy'
-  if (a.status === 429) return 'limit'
-  return 'error'
 }
 
 export const IN_FLIGHT = 'a research run is in flight — one at a time'

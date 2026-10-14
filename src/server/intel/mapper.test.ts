@@ -233,6 +233,14 @@ describe("mapClusters", () => {
     expect(deps.notifier.sent).toHaveLength(1);
   });
 
+  test("with no label or events, an LLM summary carrying a number becomes the generic title", async () => {
+    const deps = mapperDeps({ provider: explainer(), positions: [position("SOL", "long", 10_000)] });
+    const extraction = { type: "exploit" as const, entities: ["Jito"], assets: ["SOL"], magnitude: "high" as const, summary: "Drained $80M.", scheduledAt: null, catalyst: null };
+    await deps.store.upsertCluster({ id: "c-bare", label: null, entities: [], extraction, firstSeen: "2026-10-13T10:00:00.000Z", lastSeen: "2026-10-13T10:30:00.000Z", mappedAt: null });
+    const r = await mapClusters(deps, ["c-bare"]);
+    expect(r.alerts[0]!.title).toBe("Event");
+  });
+
   test("an aborted run leaves the remaining clusters unmapped", async () => {
     const deps = mapperDeps({ provider: explainer() });
     const ctl = new AbortController();

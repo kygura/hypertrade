@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../ConfirmDialog'
 import { EmptyBlock, ErrorBlock } from '../state'
 import { ClaimAge } from './ClaimAge'
 import { ExposurePathChips } from './ExposurePathChips'
-import { useInlineForm } from './format'
+import { hostLabel, useInlineForm } from './format'
 import { SourceLink } from './SourceLink'
 
 // ExposureGraph — DESIGN-terminal §15.6 (the §3.8 expanded row body as its own
@@ -30,11 +30,7 @@ const ORIGIN_BADGE = {
 function edgeSource(source: string | null): { label: string; url?: string } | null {
   if (!source) return null
   if (/^https?:\/\//i.test(source)) {
-    try {
-      return { label: new URL(source).hostname.replace(/^www\./, ''), url: source }
-    } catch {
-      return { label: source }
-    }
+    return { label: hostLabel(source), url: source }
   }
   return { label: source }
 }

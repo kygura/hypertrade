@@ -1,7 +1,6 @@
 import { useId, useState, type KeyboardEvent } from 'react'
 import { Button } from '../Button'
 import { ErrorBlock, OfflineBlock } from '../state'
-import type { AskState } from './research'
 
 // ResearchAsk — DESIGN-terminal §16.1. The §6.2 QUESTION field (one line,
 // grows to 3 rows, 500 max, counter past 400), an optional ASSET input with a
@@ -21,7 +20,6 @@ export function ResearchAsk({
   error,
   status,
   offline,
-  state,
   onSubmit,
 }: {
   assets: string[]
@@ -30,8 +28,7 @@ export function ResearchAsk({
   error: string | null
   status: number | null
   offline: boolean
-  state: AskState
-  onSubmit: (input: { question: string; asset?: string }) => void
+  onSubmit: (input: { question: string; asset?: string }) => boolean
 }) {
   const id = useId()
   const [q, setQ] = useState('')
@@ -41,7 +38,10 @@ export function ResearchAsk({
 
   const submit = () => {
     if (reason) return
-    onSubmit({ question: q.trim(), ...(asset.trim() ? { asset: asset.trim() } : {}) })
+    if (onSubmit({ question: q.trim(), ...(asset.trim() ? { asset: asset.trim() } : {}) })) {
+      setQ('')
+      setAsset('')
+    }
   }
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -52,7 +52,7 @@ export function ResearchAsk({
   const retry = offline || (status != null && status >= 500) ? submit : undefined
 
   return (
-    <div className="flex flex-col gap-2 p-3" data-ask-state={state}>
+    <div className="flex flex-col gap-2 p-3">
       <div className="flex flex-col md:flex-row md:items-start gap-2">
         <div className="flex flex-col gap-1 flex-1 min-w-0">
           <label htmlFor={`${id}-q`} className="label">

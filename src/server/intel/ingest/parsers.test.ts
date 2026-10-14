@@ -288,6 +288,14 @@ describe("websearch", () => {
     expect(events[2]).toMatchObject({ type: "unlock", assets: ["ARB"], scheduledAt: "2026-10-16T13:00:00.000Z", catalyst: { size: "92M ARB", directionHypothesis: "down" } });
   });
 
+  test("advice headlines are dropped; a summary with numbers absent from its title is dropped", () => {
+    const events = sweepEvents(
+      { headlines: [{ title: "Sell SOL now", url: "https://a.example/1" }, { title: "Bridge hacked for $5M", url: "https://a.example/2", summary: "Losses reached $50M." }, { title: "Bridge hacked for $6M", url: "https://a.example/3", summary: "About $6M drained." }], catalysts: [] } as never,
+      now,
+    );
+    expect(events.map((e) => [e.title, e.summary])).toEqual([["Bridge hacked for $5M", null], ["Bridge hacked for $6M", "About $6M drained."]]);
+  });
+
   test("gated on INTEL_WEBSEARCH, at most hourly, strong tier with web search", async () => {
     const store = new MemoryIntelStore();
     const provider = new EmitProvider(() => sweep);

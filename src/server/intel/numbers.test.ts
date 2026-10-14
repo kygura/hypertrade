@@ -126,3 +126,28 @@ describe("isAdvice", () => {
     }
   });
 });
+
+describe("payloadNumbers skips ids and timestamps", () => {
+  test("a payload of only a since timestamp and a uuid id supports no numbers", () => {
+    const nums = payloadNumbers({ since: "2026-10-13T14:00:00Z", alerts: [{ id: "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e", createdAt: 15, source: { url: "https://x.example/23" } }] });
+    expect(lineVerdict("OI fell 23%, liquidations 15", nums)).toBe("numbers");
+    expect(nums).toEqual([]);
+  });
+
+  test("real values next to ids still count", () => {
+    expect(lineVerdict("OI fell 23%", payloadNumbers({ id: "a1", oiChangePct: -23 }))).toBeNull();
+  });
+});
+
+describe("sentence-initial imperatives", () => {
+  test("rejected", () => {
+    for (const t of ["Close the SOL long before the unlock.", "Short SOL now.", "Funding is flat. Reduce size into the print.", "Note: trim SOL"]) {
+      expect(isAdvice(t)).toBe(true);
+    }
+  });
+  test("descriptive lines pass", () => {
+    for (const t of ["Crowded long on SOL: funding z 2.3", "Short squeeze risk rises", "Long/short ratio at 1.8", "Longs closed into the unlock."]) {
+      expect(isAdvice(t)).toBe(false);
+    }
+  });
+});

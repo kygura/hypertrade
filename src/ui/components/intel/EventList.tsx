@@ -9,7 +9,7 @@ import { eventKey } from './AssetTimeline'
 import { ClaimLine } from './ClaimLine'
 import { flagWord, numbersLine } from './flow'
 import { fmtCountdown, fmtMdHm } from './format'
-import { statusTone, statusWord } from './research'
+import { STATUS_TONE, STATUS_WORD } from './research'
 import { RESEARCH_ANCHOR } from './ResearchPanel'
 import { ResearchCard } from './ResearchCard'
 import { SourceLink } from './SourceLink'
@@ -101,7 +101,7 @@ export function EventList({
                         onClick={() => setOpen((o) => (o === k ? null : k))}
                         className="flex flex-wrap items-center gap-2 text-left"
                       >
-                        <Badge tone={statusTone(e.research.status)}>{statusWord(e.research.status)}</Badge>
+                        <Badge tone={STATUS_TONE[e.research.status]}>{STATUS_WORD[e.research.status]}</Badge>
                         <span className="label">RESEARCH</span>
                         <span className="text-text-primary break-words">{e.title}</span>
                       </button>

@@ -136,7 +136,7 @@ export const intel = {
   reviews: async (limit?: number): Promise<Review[]> =>
     parse(ReviewsResponseSchema, await api.get(`${base}/reviews${qs({ limit })}`)).reviews,
 
-  // ── alerts, events, catalysts (I0.9–I0.13) ──
+  // ── alerts, catalysts (I0.9–I0.13) ──
   alerts: async (q: { since?: string; kind?: AlertKind } = {}): Promise<Alert[]> =>
     parse(AlertsResponseSchema, await api.get(`${base}/alerts${qs(q)}`)).alerts,
   alertFeedback: (id: string, vote: AlertFeedbackInput['vote']): Promise<void> =>
@@ -203,7 +203,7 @@ export const intel = {
   // ── scout research (SPEC § Scout S1) ──
   research: async (q: { asset?: string; limit?: number } = {}): Promise<ResearchListResponse> =>
     parse(ResearchListResponseSchema, await api.get(`${base}/research${qs(q)}`)),
-  /** Synchronous up to ~45 s. 409 = a run in flight, 429 = daily limit (askState in components/intel/research.ts); over the $ cap → 200 `capped`. */
+  /** Synchronous up to ~45 s. 409 = a run in flight, 429 = daily limit (the researchGate reducer in components/intel/research.ts); over the $ cap → 200 `capped`. */
   ask: async (input: ResearchAskInput): Promise<ResearchResult> => parse(ResearchResultSchema, await api.post(`${base}/research`, input)),
 }
 

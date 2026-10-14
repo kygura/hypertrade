@@ -9,7 +9,6 @@ import { DiffTable } from "./DiffTable";
 import { EventList, researchHref } from "./EventList";
 import {
   askDisabledReason,
-  askState,
   chipAskInput,
   chipQuestion,
   confluenceText,
@@ -22,8 +21,8 @@ import {
   RESEARCH_LIST_LIMIT,
   researchGate,
   researchIntervalMs,
-  statusTone,
-  statusWord,
+  STATUS_TONE,
+  STATUS_WORD,
   toClaim,
   type ResearchGate,
   type ResearchGateEvent,
@@ -53,8 +52,8 @@ describe("research helpers", () => {
   });
 
   test("status words and tones: no_cause is gray, capped amber, failed red", () => {
-    expect((["running", "found", "no_cause", "capped", "failed"] as const).map(statusWord)).toEqual(["RUNNING", "FOUND", "NO CAUSE", "CAPPED", "FAILED"]);
-    expect((["found", "no_cause", "capped", "failed"] as const).map(statusTone)).toEqual(["gray", "gray", "amber", "red"]);
+    expect((["running", "found", "no_cause", "capped", "failed"] as const).map((s) => STATUS_WORD[s])).toEqual(["RUNNING", "FOUND", "NO CAUSE", "CAPPED", "FAILED"]);
+    expect((["found", "no_cause", "capped", "failed"] as const).map((s) => STATUS_TONE[s])).toEqual(["gray", "gray", "amber", "red"]);
   });
 
   test("chip question, cost, confluence", () => {
@@ -83,14 +82,6 @@ describe("research helpers", () => {
     expect(out).toHaveLength(RESEARCH_LIST_LIMIT);
     expect(out[0]!.id).toBe("r0");
     expect(mergeResearch([], many, "r24").map((r) => r.id).at(-1)).toBe("r24");
-  });
-
-  test("named ask states: 409 and 429 are distinct", () => {
-    expect(askState({ error: null, status: null, offline: false })).toBe("idle");
-    expect(askState({ error: "research already running", status: 409, offline: false })).toBe("busy");
-    expect(askState({ error: "daily research limit reached", status: 429, offline: false })).toBe("limit");
-    expect(askState({ error: "boom", status: 500, offline: false })).toBe("error");
-    expect(askState({ error: "api unreachable", status: null, offline: true })).toBe("offline");
   });
 
   test("the chip path posts question + asset + flagId", () => {
@@ -204,7 +195,7 @@ describe("ResearchPanel states", () => {
   const state = (p: Partial<IntelState<ResearchListResponse>>): IntelState<ResearchListResponse> => ({ data: null, loading: false, error: null, offline: null, fetchedAt: null, refetch: () => {}, setData: () => {}, ...p });
   const idle = { busy: false, error: null, status: null, offline: false };
   const render = (s: IntelState<ResearchListResponse>, p: Partial<Parameters<typeof ResearchPanel>[0]> = {}) =>
-    wrap(<ResearchPanel state={s} ask={idle} items={s.data?.items ?? []} pending={null} heldWatched={new Set(["HYPE"])} highlightId={null} disabledReason={null} onAsk={() => {}} {...p} />);
+    wrap(<ResearchPanel state={s} ask={idle} items={s.data?.items ?? []} pending={null} heldWatched={new Set(["HYPE"])} highlightId={null} disabledReason={null} onAsk={() => true} {...p} />);
 
   test("loading, empty (no DB → memory store, same empty), error, offline; ask box always rendered", () => {
     expect(render(state({ loading: true }))).toContain("pulse-label");
@@ -242,15 +233,12 @@ describe("ResearchPanel states", () => {
 
   test("409 and 429 are distinct named states with the verbatim string; RETRY only offline / 5xx", () => {
     const busy = render(state({ data: { items: [] } }), { ask: { busy: false, error: "a research run is already in flight", status: 409, offline: false }, disabledReason: IN_FLIGHT });
-    expect(busy).toContain('data-ask-state="busy"');
     expect(busy).toContain("a research run is already in flight");
     expect(busy).not.toContain("RETRY");
     const limit = render(state({ data: { items: [], usedToday: 10, limit: 10 } }), { ask: { busy: false, error: "daily research limit reached (10)", status: 429, offline: false }, disabledReason: "daily research limit reached (10 / 10) — resets 00:00 UTC" });
-    expect(limit).toContain('data-ask-state="limit"');
     expect(limit).toContain("daily research limit reached (10)");
     expect(limit).toMatch(/<button[^>]*disabled=""[^>]*title="daily research limit reached/);
     const err = render(state({ data: { items: [] } }), { ask: { busy: false, error: "upstream 502", status: 502, offline: false } });
-    expect(err).toContain('data-ask-state="error"');
     expect(err).toContain("RETRY");
   });
 
