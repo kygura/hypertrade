@@ -8,6 +8,8 @@ import type {
   EdgeKey,
   EventType,
   FeedbackBucket,
+  FlowMetric,
+  FlowRow,
   IntelEvent,
   ManualPosition,
   ManualPositionData,
@@ -25,7 +27,7 @@ import type {
 import { sql } from "../db.js";
 import { iso } from "./util.js";
 
-// Intel persistence (db/migrations/007_intel.sql, 008_intel_stops.sql). Routes, crons and pure
+// Intel persistence (db/migrations/007_intel.sql, 008_intel_stops.sql, 009_flow.sql). Routes, crons and pure
 // modules run against IntelStore: MemoryIntelStore in tests, PgIntelStore in
 // the app. Both implement the same dedupe and conflict rules; the tests in
 // store.test.ts pin them on the memory side.
@@ -79,6 +81,14 @@ export interface IntelStore {
   /** Earliest stop for asset/side with from <= ts (and ts < before, when given), or null. */
   stopAt(asset: string, side: StopRow["side"], from: Date, before?: Date | null): Promise<StopRow | null>;
   pruneStops(before: Date): Promise<number>;
+
+  /** Upsert on (asset, venue, metric, ts). Returns rows written. */
+  insertFlow(rows: FlowRow[]): Promise<number>;
+  /** ts >= since, one metric or all (null), ascending by ts, then metric, then venue. */
+  flowSeries(asset: string, metric: FlowMetric | null, since: Date): Promise<FlowRow[]>;
+  /** Newest stored ts (ISO) for the key, or null: the collector's `from`. */
+  latestFlowTs(asset: string, venue: string, metric: FlowMetric): Promise<string | null>;
+  pruneFlow(before: Date): Promise<number>;
 
   /** Upsert on (src, dst, type). A user edge is only ever replaced by another user edge. */
   upsertEdges(edges: NewEdge[]): Promise<number>;
@@ -214,6 +224,17 @@ function toSnapshot(r: any): SnapshotRow {
 function toStop(r: any): StopRow {
   return { asset: r.asset, side: r.side, ts: isoOrNull(r.ts)!, stopPx: r.stop_px };
 }
+
+function toFlow(r: any): FlowRow {
+  return { asset: r.asset, venue: r.venue, metric: r.metric, value: r.value, ts: isoOrNull(r.ts)! };
+}
+
+/** flowSeries order, shared by both stores. */
+function flowOrder(a: FlowRow, b: FlowRow): number {
+  return Date.parse(a.ts) - Date.parse(b.ts) || (a.metric < b.metric ? -1 : a.metric > b.metric ? 1 : 0) || (a.venue < b.venue ? -1 : a.venue > b.venue ? 1 : 0);
+}
+
+const flowKey = (r: FlowRow) => `${r.asset}|${r.venue}|${r.metric}|${Date.parse(r.ts)}`;
 
 function toEdge(r: any): Edge {
   return { id: r.id, src: r.src, dst: r.dst, type: r.type, weight: r.weight, source: r.source, lastVerified: isoOrNull(r.last_verified), origin: r.origin };
@@ -443,6 +464,34 @@ export class PgIntelStore implements IntelStore {
   }
   async pruneStops(before: Date) {
     const res = await sql()`delete from intel_stops where ts < ${before}`;
+    return res.count;
+  }
+
+  async insertFlow(rows: FlowRow[]) {
+    let count = 0;
+    const all = lastByKey(rows, flowKey);
+    for (let i = 0; i < all.length; i += SNAPSHOT_CHUNK) {
+      const values = all.slice(i, i + SNAPSHOT_CHUNK).map((r) => ({ asset: r.asset, venue: r.venue, metric: r.metric, value: r.value, ts: r.ts }));
+      const res = await sql()`
+        insert into intel_flow ${sql()(values, "asset", "venue", "metric", "value", "ts")}
+        on conflict (asset, venue, metric, ts) do update set value = excluded.value
+      `;
+      count += res.count;
+    }
+    return count;
+  }
+  async flowSeries(asset: string, metric: FlowMetric | null, since: Date) {
+    const rows = metric
+      ? await sql()`select * from intel_flow where asset = ${asset} and metric = ${metric} and ts >= ${since} order by ts, metric collate "C", venue collate "C"`
+      : await sql()`select * from intel_flow where asset = ${asset} and ts >= ${since} order by ts, metric collate "C", venue collate "C"`;
+    return rows.map(toFlow);
+  }
+  async latestFlowTs(asset: string, venue: string, metric: FlowMetric) {
+    const [r] = await sql()`select max(ts) as ts from intel_flow where asset = ${asset} and venue = ${venue} and metric = ${metric}`;
+    return isoOrNull(r?.ts);
+  }
+  async pruneFlow(before: Date) {
+    const res = await sql()`delete from intel_flow where ts < ${before}`;
     return res.count;
   }
 
@@ -725,6 +774,7 @@ export class MemoryIntelStore implements IntelStore {
   reviews: Review[] = [];
   snapshots = new Map<string, SnapshotRow>();
   stops = new Map<string, StopRow>();
+  flow = new Map<string, FlowRow>();
   edges = new Map<string, Edge>();
   events = new Map<string, IntelEvent>();
   clusters = new Map<string, Cluster>();
@@ -828,6 +878,28 @@ export class MemoryIntelStore implements IntelStore {
   async pruneStops(before: Date) {
     let n = 0;
     for (const [k, s] of this.stops) if (Date.parse(s.ts) < before.getTime()) (this.stops.delete(k), n++);
+    return n;
+  }
+
+  async insertFlow(rows: FlowRow[]) {
+    const all = lastByKey(rows, flowKey);
+    for (const r of all) this.flow.set(flowKey(r), { ...r, ts: isoOrNull(r.ts)! });
+    return all.length;
+  }
+  async flowSeries(asset: string, metric: FlowMetric | null, since: Date) {
+    return [...this.flow.values()]
+      .filter((r) => r.asset === asset && (!metric || r.metric === metric) && Date.parse(r.ts) >= since.getTime())
+      .sort(flowOrder)
+      .map(clone);
+  }
+  async latestFlowTs(asset: string, venue: string, metric: FlowMetric) {
+    let best: string | null = null;
+    for (const r of this.flow.values()) if (r.asset === asset && r.venue === venue && r.metric === metric && (!best || r.ts > best)) best = r.ts;
+    return best;
+  }
+  async pruneFlow(before: Date) {
+    let n = 0;
+    for (const [k, r] of this.flow) if (Date.parse(r.ts) < before.getTime()) (this.flow.delete(k), n++);
     return n;
   }
 
