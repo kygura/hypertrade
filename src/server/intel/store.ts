@@ -555,7 +555,7 @@ export class PgIntelStore implements IntelStore {
   }
   async listResearch(o: { asset?: string; since?: Date; limit: number }) {
     const rows = await sql()`select * from intel_research
-      where (${o.asset ?? null}::text is null or asset = ${o.asset ?? null}) and (${o.since ?? null}::timestamptz is null or created_at >= ${o.since ?? null})
+      where (${o.asset ?? null}::text is null or lower(asset) = lower(${o.asset ?? null})) and (${o.since ?? null}::timestamptz is null or created_at >= ${o.since ?? null})
       order by created_at desc, id limit ${o.limit}`;
     return rows.map(toResearch);
   }
@@ -1020,7 +1020,7 @@ export class MemoryIntelStore implements IntelStore {
   }
   async listResearch(o: { asset?: string; since?: Date; limit: number }) {
     return this.research
-      .filter((x) => (!o.asset || x.asset === o.asset) && (!o.since || Date.parse(x.createdAt) >= o.since.getTime()))
+      .filter((x) => (!o.asset || x.asset?.toLowerCase() === o.asset.toLowerCase()) && (!o.since || Date.parse(x.createdAt) >= o.since.getTime()))
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       .slice(0, o.limit)
       .map(clone);

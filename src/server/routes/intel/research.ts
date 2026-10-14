@@ -12,8 +12,8 @@ import type { TerminalRouteDeps } from "./terminal.js";
 //     INTEL_RESEARCH_DAILY manual runs since UTC midnight, 200 with status "capped" over the dollar cap.
 // GET  /research?asset&limit=20 → {items, usedToday, limit}
 
-// Uppercased at the boundary so stored rows match the case-insensitive asset filters elsewhere.
-const Asset = AssetSchema.transform((a) => a.toUpperCase());
+// Stored as typed (HL symbols are case-sensitive: kPEPE, xyz:TSLA); the store matches assets case-insensitively.
+const Asset = AssetSchema;
 const RequestSchema = z.object({
   question: z.string().trim().min(3).max(500),
   asset: Asset.optional(),

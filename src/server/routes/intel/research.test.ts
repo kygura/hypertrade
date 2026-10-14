@@ -135,13 +135,15 @@ describe("POST /research", () => {
     expect(provider.prompts).toHaveLength(0);
   });
 
-  test("a lowercase asset is stored uppercase and shows on /asset/SOL; GET filters case-insensitively", async () => {
+  test("the asset is stored as typed and matched case-insensitively: sol shows on /asset/SOL, kPEPE on /asset/kPEPE", async () => {
     const { call } = setup();
-    const { body } = await call("/research", { question: "Why did sol move?", asset: "sol" });
-    expect(body.asset).toBe("SOL");
-    const a = AssetDetailResponseSchema.parse((await call("/asset/SOL?days=2")).body);
-    expect(a.events.map((e) => e.kind)).toEqual(["research"]);
-    expect((await call("/research?asset=sol")).body.items).toHaveLength(1);
+    expect((await call("/research", { question: "Why did sol move?", asset: "sol" })).body.asset).toBe("sol");
+    expect((await call("/research", { question: "Why did kPEPE move?", asset: "kPEPE" })).body.asset).toBe("kPEPE");
+    const sol = AssetDetailResponseSchema.parse((await call("/asset/SOL?days=2")).body);
+    expect(sol.events.map((e) => e.kind)).toEqual(["research"]);
+    const pepe = AssetDetailResponseSchema.parse((await call("/asset/kPEPE?days=2")).body);
+    expect(pepe.events.map((e) => e.research?.asset)).toEqual(["kPEPE"]);
+    expect((await call("/research?asset=KPEPE")).body.items).toHaveLength(1);
   });
 
   test("failed runs that billed count toward INTEL_RESEARCH_DAILY; free failures do not", async () => {
