@@ -262,6 +262,7 @@ function toEvent(r: any): IntelEvent {
     scheduledAt: isoOrNull(r.scheduled_at),
     catalyst: r.catalyst,
     tag: r.tag,
+    ...(r.flag ? { flag: r.flag } : {}),
   };
 }
 
@@ -532,14 +533,15 @@ export class PgIntelStore implements IntelStore {
     const rows = lastByKey(events, (e) => e.key).map((e) => ({
       key: e.key, cluster_id: e.clusterId ?? null, type: e.type, title: e.title, summary: e.summary,
       entities: json(e.entities), assets: json(e.assets), magnitude: e.magnitude, sources: json(e.sources), origin: e.origin,
-      first_seen: e.firstSeen, scheduled_at: e.scheduledAt, catalyst: json(e.catalyst), tag: e.tag,
+      first_seen: e.firstSeen, scheduled_at: e.scheduledAt, catalyst: json(e.catalyst), tag: e.tag, flag: json(e.flag),
     }));
     const out = await sql()`
-      insert into intel_events ${sql()(rows, "key", "cluster_id", "type", "title", "summary", "entities", "assets", "magnitude", "sources", "origin", "first_seen", "scheduled_at", "catalyst", "tag")}
+      insert into intel_events ${sql()(rows, "key", "cluster_id", "type", "title", "summary", "entities", "assets", "magnitude", "sources", "origin", "first_seen", "scheduled_at", "catalyst", "tag", "flag")}
       on conflict (key) do update set
         cluster_id = coalesce(excluded.cluster_id, intel_events.cluster_id), type = excluded.type, title = excluded.title,
         summary = excluded.summary, entities = excluded.entities, assets = excluded.assets, magnitude = excluded.magnitude,
-        sources = excluded.sources, origin = excluded.origin, scheduled_at = excluded.scheduled_at, catalyst = excluded.catalyst, tag = excluded.tag
+        sources = excluded.sources, origin = excluded.origin, scheduled_at = excluded.scheduled_at, catalyst = excluded.catalyst, tag = excluded.tag,
+        flag = excluded.flag
       returning *
     `;
     return out.map(toEvent);

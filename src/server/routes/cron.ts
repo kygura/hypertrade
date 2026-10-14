@@ -3,6 +3,7 @@ import { Hono, type Context } from "hono";
 import { hlWeightWaitMs } from "../../shared/hl-client.js";
 import { TF_RETENTION_MS, TIMEFRAMES, type Timeframe } from "../../shared/timeframes.js";
 import { requireCronToken } from "../auth.js";
+import { collectCoinalyze, flowCoins, maxFlowCoins, type FlowCollectResult } from "../collectors/coinalyze.js";
 import { collectCryptoContext } from "../collectors/cryptoContext.js";
 import { collectElfa } from "../collectors/elfa.js";
 import { collectFred } from "../collectors/fred.js";
@@ -15,6 +16,7 @@ import { backfillCoin } from "../sim/backfill.js";
 import { STABLES } from "../../shared/schemas.js";
 import type { AssetCtx } from "../../shared/types.js";
 import { runIntelWatch } from "../intel/docwatch.js";
+import { flowAlerts } from "../intel/flowEvents.js";
 import { refreshGraph } from "../intel/graph.js";
 import { runIntelIngest } from "../intel/runIngest.js";
 import { collectIntelSnapshots, fetchL2Book, focusAssets, SNAPSHOT_RETENTION_DAYS, STOP_RETENTION_DAYS, type SnapshotResult } from "../intel/snapshot.js";
@@ -172,6 +174,24 @@ function runIntelSnapshots(ctxs: AssetCtx[], ts: Date): Promise<SnapshotResult> 
     ctxs,
     ts,
   );
+}
+
+/** Coinalyze flow rows for held ∪ watched (capped), after the snapshot write. Never throws (failures land in collector_runs). */
+function runIntelFlow(ctxs: AssetCtx[]): Promise<FlowCollectResult> {
+  const intel = defaultIntelDeps();
+  const env = intel.env ?? process.env;
+  const marks = Object.fromEntries(ctxs.map((c) => [c.name, c.markPx]));
+  return collectCoinalyze({
+    fetch,
+    store: intel.store,
+    recordRun: db.recordCollectorRun,
+    env,
+    now: () => Date.now(),
+    coins: async () => {
+      const [exposure, watched] = await Promise.all([intel.exposure(marks), intel.watched()]);
+      return flowCoins(exposure.positions, watched, maxFlowCoins(env));
+    },
+  });
 }
 
 const defaultBackfillDeps: BackfillDeps = {
@@ -429,7 +449,15 @@ const defaultIntelCronDeps = (): IntelCronDeps => {
     env: d.env ?? process.env,
     now: () => Date.now(),
     run: {
-      ingest: async (o) => ({ ok: true, complete: true, result: await runIntelIngest(d.ingest, o) }),
+      // Flow detector events (SPEC F0.4) ride on the ingest job, after the mapper; code only, no LLM.
+      ingest: async (o) => {
+        const result = await runIntelIngest(d.ingest, o);
+        const flows = await flowAlerts(d.ingest, new Date()).then(
+          (r) => ({ events: r.events.length, alerts: r.alerts.length, pushed: r.alerts.filter((a) => a.route === "push").length, errors: r.errors }),
+          (e) => ({ events: 0, alerts: 0, pushed: 0, errors: [e instanceof Error ? e.message : String(e)] }),
+        );
+        return { ok: true, complete: true, result: { ...result, flows } };
+      },
       brief: async (o) => {
         const r = await runIntelBrief({ ...d, notifier: d.notifier, appUrl: d.appUrl }, o);
         return { ok: r.ok, complete: r.ok, result: r };
@@ -471,17 +499,24 @@ export const cronRoutes = new Hono()
     }
   })
   .on(["GET", "POST"], "/collect", requireCronToken, async (c) => {
-    // Intel snapshots ride on the same metaAndAssetCtxs fetch; their failure
-    // is reported (and recorded), never a failed collect.
+    // Intel snapshots ride on the same metaAndAssetCtxs fetch, and the
+    // Coinalyze flow rows follow the snapshot write; their failure is
+    // reported (and recorded), never a failed collect.
     let snapshots: Promise<SnapshotResult> | undefined;
+    let flow: Promise<FlowCollectResult> | undefined;
+    const onCtxs = (ctxs: AssetCtx[], ts: Date) => {
+      snapshots = runIntelSnapshots(ctxs, ts);
+      flow = snapshots.then(() => runIntelFlow(ctxs));
+    };
     const [hyperliquid, cryptoContext, fred, elfa] = await Promise.all([
-      oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra, (ctxs, ts) => void (snapshots = runIntelSnapshots(ctxs, ts)))),
+      oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra, onCtxs)),
       collectCryptoContext(),
       collectFred(),
       collectElfa(),
     ]);
     const intelSnapshots = snapshots ? await snapshots : { ok: false, written: 0, error: "no asset contexts (hyperliquid collect failed)" };
-    return c.json({ hyperliquid, cryptoContext, fred, elfa, intelSnapshots });
+    const intelFlow = flow ? await flow : { ok: false, written: 0, error: "no asset contexts (hyperliquid collect failed)" };
+    return c.json({ hyperliquid, cryptoContext, fred, elfa, intelSnapshots, intelFlow });
   })
   // Lab history on its own route: a long first backfill must not hold up (or
   // be retried with) the 15-minute collection. Leased: one run at a time.

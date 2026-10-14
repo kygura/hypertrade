@@ -316,10 +316,11 @@ export const EVENT_TYPES = [
   "liquidation",
   "other",
 ] as const;
-export const EventTypeSchema = z.enum(EVENT_TYPES);
+/** EVENT_TYPES (what the LLM may extract) plus "data": a flow detector hit (SPEC F0.4), code-made only. */
+export const EventTypeSchema = z.enum([...EVENT_TYPES, "data"]);
 export type EventType = z.infer<typeof EventTypeSchema>;
 
-export const EventOriginSchema = z.enum(["rss", "governance", "calendar", "websearch", "x", "telegram", "manual", "docwatch"]);
+export const EventOriginSchema = z.enum(["rss", "governance", "calendar", "websearch", "x", "telegram", "manual", "docwatch", "flow"]);
 export type EventOrigin = z.infer<typeof EventOriginSchema>;
 
 export const MagnitudeSchema = z.enum(["low", "med", "high"]);
@@ -370,6 +371,8 @@ export const IntelEventSchema = z.object({
   scheduledAt: Iso.nullable(),
   catalyst: CatalystInfoSchema.nullable(),
   tag: ClaimTagSchema,
+  /** Flow detector / flip / crossing hit (type "data", origin "flow"). Lazy: FlowFlagSchema is declared below. */
+  flag: z.lazy(() => FlowFlagSchema).optional(),
 });
 export type IntelEvent = z.infer<typeof IntelEventSchema>;
 
@@ -419,7 +422,7 @@ export const CatalystsResponseSchema = z.object({ catalysts: z.array(CatalystSch
 
 // ─── Alerts and feedback (I0.11, I0.12) ───
 
-export const AlertKindSchema = z.enum(["mapper", "catalyst", "docwatch", "terminal"]);
+export const AlertKindSchema = z.enum(["mapper", "catalyst", "docwatch", "terminal", "flow"]);
 export type AlertKind = z.infer<typeof AlertKindSchema>;
 export const CatalystWindowSchema = z.enum(["24h", "1h"]);
 export type CatalystWindow = z.infer<typeof CatalystWindowSchema>;
@@ -435,7 +438,7 @@ export type PricedIn = z.infer<typeof PricedInSchema>;
 export const AlertSchema = z.object({
   id: z.string(),
   kind: AlertKindSchema,
-  /** Dedupe reference: cluster id (mapper), event id (catalyst), watch change id (docwatch), brief id (terminal). */
+  /** Dedupe reference: cluster id (mapper), event id (catalyst, flow), watch change id (docwatch), brief id (terminal). */
   ref: z.string(),
   /** Catalyst alerts only (T−24 h / T−1 h). */
   window: CatalystWindowSchema.nullable(),

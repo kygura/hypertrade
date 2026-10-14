@@ -124,15 +124,29 @@ function windowStat(metric: HeatmapMetric, points: Point[], prefix: number[], en
 
 /** Δ and z of one metric over one window ending at `now`. */
 export function windowResult(metric: HeatmapMetric, points: Point[] | undefined, now: number, window: FixedWindow): WindowResult {
-  const out: WindowResult = { metric, window, delta: null, z: null };
+  return { metric, window, ...spanResult(metric, points, now, WINDOW_HOURS[window] * HOUR_MS, LOOKBACK[window]) };
+}
+
+/**
+ * Δ and z over an arbitrary span (the heatmap's "since review" column): the
+ * same non-overlapping-Δ z, with the lookback of the smallest fixed window
+ * at least that long (24 h's beyond a day).
+ */
+export function spanResult(
+  metric: HeatmapMetric,
+  points: Point[] | undefined,
+  now: number,
+  ms: number,
+  lookback = LOOKBACK[FIXED_WINDOWS.find((w) => WINDOW_HOURS[w] * HOUR_MS >= ms) ?? "24h"],
+): { delta: number | null; z: number | null } {
+  const out: { delta: number | null; z: number | null } = { delta: null, z: null };
   if (!points?.length) return out;
   const prefix = [0];
   for (const p of points) prefix.push(prefix.at(-1)! + p.v);
-  const ms = WINDOW_HOURS[window] * HOUR_MS;
   const cur = windowStat(metric, points, prefix, now, ms);
   if (!cur) return out;
   out.delta = cur.delta;
-  const { days, min } = LOOKBACK[window];
+  const { days, min } = lookback;
   const hist: number[] = [];
   for (let end = now - ms; end - ms >= now - days * DAY_MS; end -= ms) {
     const s = windowStat(metric, points, prefix, end, ms);
