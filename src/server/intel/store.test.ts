@@ -99,6 +99,34 @@ describe("MemoryIntelStore snapshots", () => {
   });
 });
 
+// Same rules as PgIntelStore's intel_stops SQL: upsert on (asset, side, ts); stopAt = earliest with from <= ts < before.
+describe("MemoryIntelStore stops", () => {
+  const at = (t: string) => new Date(`2026-10-13T${t}Z`);
+  const stop = (asset: string, side: "long" | "short", t: string, stopPx: number) => ({ asset, side, ts: `2026-10-13T${t}.000Z`, stopPx });
+
+  test("upserts on (asset, side, ts); stopAt is the earliest in [from, before), per side", async () => {
+    const s = new MemoryIntelStore();
+    expect(
+      await s.recordStops([stop("ETH", "long", "01:00:00", 3000), stop("ETH", "long", "01:00:00", 3050), stop("ETH", "long", "02:00:00", 3100), stop("ETH", "short", "00:30:00", 4000)]),
+    ).toBe(3);
+    expect(await s.stopAt("ETH", "long", at("00:00:00"))).toEqual(stop("ETH", "long", "01:00:00", 3050)); // last of a duplicate key wins
+    expect((await s.stopAt("ETH", "long", at("01:00:00")))?.stopPx).toBe(3050); // from is inclusive
+    expect((await s.stopAt("ETH", "long", at("01:00:01")))?.stopPx).toBe(3100);
+    expect(await s.stopAt("ETH", "long", at("01:00:01"), at("02:00:00"))).toBeNull(); // before is exclusive
+    expect((await s.stopAt("ETH", "short", at("00:00:00"), at("01:00:00")))?.stopPx).toBe(4000);
+    expect(await s.stopAt("ETH", "short", at("00:31:00"))).toBeNull();
+    expect(await s.stopAt("BTC", "long", at("00:00:00"))).toBeNull();
+    expect(await s.recordStops([])).toBe(0);
+  });
+
+  test("prunes before a cutoff", async () => {
+    const s = new MemoryIntelStore();
+    await s.recordStops([stop("SOL", "long", "00:00:00", 140), stop("SOL", "long", "06:00:00", 145)]);
+    expect(await s.pruneStops(at("03:00:00"))).toBe(1);
+    expect((await s.stopAt("SOL", "long", new Date(0)))?.stopPx).toBe(145);
+  });
+});
+
 describe("MemoryIntelStore graph, events, cache", () => {
   test("user edges survive seed/llm upserts; only user edges delete", async () => {
     const s = new MemoryIntelStore();

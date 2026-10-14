@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { LookupOptions } from "node:dns";
+import { createServer, request as httpRequest, type IncomingMessage, type RequestOptions } from "node:http";
+import type { request as httpsRequest } from "node:https";
+import type { AddressInfo, LookupFunction } from "node:net";
 import type { WatchInput } from "../../shared/intel.js";
 import {
   checkWatch,
@@ -8,6 +12,8 @@ import {
   isNonPublicIp,
   lineDiff,
   MAX_BODY_BYTES,
+  pinnedHttpsFetch,
+  pinnedLookup,
   rpcUrl,
   runIntelWatch,
   safeFetch,
@@ -15,6 +21,8 @@ import {
   type DocwatchDeps,
   type FetchFn,
   type LookupFn,
+  type PinnedAddress,
+  type PinnedFetchFn,
 } from "./docwatch.js";
 import { EmitProvider, llmDeps } from "./fixtures/emit-provider.js";
 import { MemoryIntelStore } from "./store.js";
@@ -186,6 +194,53 @@ describe("safeFetch (SSRF guard)", () => {
       /unsupported content-type: application\/pdf/,
     );
     await expect(safeFetch(async () => new Response("no", { status: 403, headers: { "content-type": "text/html" } }), "https://a.example.com/", undefined, publicDns)).rejects.toThrow("HTTP 403");
+  });
+});
+
+describe("safeFetch (DNS pinning)", () => {
+  const resolve = (lookup: LookupFunction, host: string, opts: LookupOptions) =>
+    new Promise<unknown>((res, rej) => lookup(host, opts, (err, address, family) => (err ? rej(err) : res(opts.all ? address : { address, family }))));
+
+  test("the transport gets the vetted addresses; its lookup never asks DNS again, so a rebound private answer is unreachable", async () => {
+    let calls = 0;
+    // A rebinding resolver: public for the check, loopback for anyone asking after it.
+    const rebind: LookupFn = async () => (calls++ === 0 ? [{ address: "93.184.216.34", family: 4 }] : [{ address: "127.0.0.1", family: 4 }]);
+    let pinned: PinnedAddress[] = [];
+    const f: PinnedFetchFn = async (_url, _init, p) => ((pinned = p), html("<p>ok</p>"));
+    expect((await safeFetch(f, "https://docs.example.com/", undefined, rebind)).text).toBe("<p>ok</p>");
+    expect(calls).toBe(1);
+    expect(pinned).toEqual([{ address: "93.184.216.34", family: 4 }]);
+    expect(await rebind("docs.example.com")).toEqual([{ address: "127.0.0.1", family: 4 }]); // the rebound answer exists…
+    const lookup = pinnedLookup(pinned); // …but the connection's lookup only knows the vetted one
+    expect(await resolve(lookup, "docs.example.com", { all: true })).toEqual([{ address: "93.184.216.34", family: 4 }]);
+    expect(await resolve(lookup, "docs.example.com", {})).toEqual({ address: "93.184.216.34", family: 4 });
+    await expect(resolve(lookup, "docs.example.com", { family: 6 })).rejects.toThrow(/no vetted address/);
+    expect(calls).toBe(2);
+  });
+
+  test("pinnedHttpsFetch connects to the pinned IP under the original Host, unpooled, identity-encoded", async () => {
+    const server = createServer((req, res) => {
+      if (req.url === "/gz") return void res.writeHead(200, { "content-type": "text/plain", "content-encoding": "gzip" }).end("x");
+      res.writeHead(200, { "content-type": "text/plain" }).end(`host=${req.headers.host} enc=${req.headers["accept-encoding"]}`);
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const seen: RequestOptions[] = [];
+      // Same request/lookup contract as node:https, over plain http to a local server. `.invalid` never resolves,
+      // so a 200 proves the socket went to the pinned address and not through DNS.
+      const viaHttp = ((url: string, o: RequestOptions, cb: (res: IncomingMessage) => void) => (seen.push(o), httpRequest(url, o, cb))) as unknown as typeof httpsRequest;
+      const init = { signal: AbortSignal.timeout(5000), headers: { accept: "text/plain" } };
+      const res = await pinnedHttpsFetch(`http://docs.invalid:${port}/doc`, init, [{ address: "127.0.0.1", family: 4 }], viaHttp);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("text/plain");
+      expect(await res.text()).toBe(`host=docs.invalid:${port} enc=identity`);
+      expect(seen[0]).toMatchObject({ method: "GET", agent: false });
+      await expect(resolve(seen[0]!.lookup!, "docs.invalid", { all: true })).resolves.toEqual([{ address: "127.0.0.1", family: 4 }]);
+      await expect(pinnedHttpsFetch(`http://docs.invalid:${port}/gz`, init, [{ address: "127.0.0.1", family: 4 }], viaHttp)).rejects.toThrow(/content-encoding: gzip/);
+    } finally {
+      server.close();
+    }
   });
 });
 

@@ -25,7 +25,8 @@ import { meanOrNull, round } from "./util.js";
 //   asia [00,08) · eu [08,13) · us [13,21) · off [21,24).
 // - R = net pnl / (|entry − stop| × size), only on closed trades with a stop
 //   on the losing side of the entry. Desk trades always have one (the
-//   proposal's stop); HL trades only when stopFor finds a manual/snapshot stop.
+//   proposal's stop); HL trades only when stopFor finds a captured stop
+//   trigger (intel_stops) or a manual position's stop.
 // - MAE/MFE are magnitudes (≥ 0) of the worst/best move from entry over the
 //   1h candles the trade spans, in R when a stop is known, else percent.
 
@@ -375,7 +376,7 @@ export interface JournalDeps {
   hlFills?: () => Promise<unknown>;
   /** Desk paper fills (any order); undefined → desk reported as not configured. */
   deskFills?: () => Promise<PaperFill[]>;
-  /** Known stop for a trade (desk: the proposal's stop; hl: a manual or snapshot stop), else null. */
+  /** Known stop for a trade (desk: the proposal's stop; hl: a captured stop trigger or a manual stop), else null. */
   stopFor?: (t: RoundTrip) => Promise<number | null>;
   /** 1h candles with from <= ts < to. */
   candles?: (asset: string, from: Date, to: Date) => Promise<CandleLike[]>;
@@ -690,8 +691,14 @@ export const hlFillLoader = (address: string, info: typeof hlInfo = hlInfo) => (
 /** Desk paper fills, oldest first. */
 export const deskFillLoader = (store: Pick<DeskStore, "listFills">, limit = 2000) => async () => (await store.listFills(limit)).reverse();
 
-/** Desk trades' stop from the proposal that opened them; HL trades fall through to `hl` (manual/snapshot stop), else null. */
-export function journalStopFor(desk: Pick<DeskStore, "getProposal"> | null, hl?: (t: RoundTrip) => Promise<number | null>) {
+/**
+ * Desk trades' stop from the proposal that opened them. HL trades: the
+ * earliest stop captured on the watched account for that coin/side within the
+ * trade's life (open fill <= ts < close; recorded by /cron/collect), else the
+ * stop of a manual position on the same asset/side created before the close.
+ * Otherwise null.
+ */
+export function journalStopFor(desk: Pick<DeskStore, "getProposal"> | null, intel?: Pick<IntelStore, "stopAt" | "listManualPositions"> | null) {
   return async (t: RoundTrip): Promise<number | null> => {
     if (t.venue === "desk") {
       if (!desk || !t.ref) return null;
@@ -699,7 +706,14 @@ export function journalStopFor(desk: Pick<DeskStore, "getProposal"> | null, hl?:
       const stop = p?.kind === "open" ? (p.proposal as { stop?: unknown }).stop : undefined;
       return typeof stop === "number" && Number.isFinite(stop) ? stop : null;
     }
-    return hl ? hl(t) : null;
+    if (!intel) return null;
+    const close = t.closedAt ? Date.parse(t.closedAt) : null;
+    const captured = await intel.stopAt(t.asset, t.side, new Date(t.openedAt), close == null ? null : new Date(close));
+    if (captured) return captured.stopPx;
+    const manual = (await intel.listManualPositions()).find(
+      (p) => p.asset === t.asset && p.side === t.side && p.stopPx != null && (close == null || Date.parse(p.createdAt) < close),
+    );
+    return manual?.stopPx ?? null;
   };
 }
 
