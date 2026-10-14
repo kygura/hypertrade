@@ -1,18 +1,31 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import type { Brief, Catalyst, HeatmapWindow, PositionsResponse, Review } from '../../../shared/intel'
+import type { Brief, Catalyst, FlowFlag, HeatmapWindow, PositionsResponse, ResearchResult, Review } from '../../../shared/intel'
 import { CatalystsPanel, upcomingCatalysts } from '../../components/intel/CatalystsPanel'
 import { ExposurePanel } from '../../components/intel/ExposurePanel'
-import { firingChips } from '../../components/intel/flow'
+import { firingChips, flagWord } from '../../components/intel/flow'
 import { FlowPanel, readFlowWindow, writeFlowWindow } from '../../components/intel/FlowPanel'
 import { agoWords } from '../../components/intel/format'
 import { mergeAlerts, NewsFeedPanel } from '../../components/intel/NewsFeedPanel'
 import { PositionsPanel } from '../../components/intel/PositionsPanel'
+import {
+  askDisabledReason,
+  chipAskInput,
+  gateCleared,
+  mergeResearch,
+  RESEARCH_GATE_INIT,
+  RESEARCH_LIST_LIMIT,
+  researchGate,
+  researchIntervalMs,
+  statusWord,
+} from '../../components/intel/research'
+import { RESEARCH_ANCHOR, ResearchPanel } from '../../components/intel/ResearchPanel'
+import { useAction } from '../../components/intel/useAction'
 import { CATALYSTS_ANCHOR, FLOW_ANCHOR, NEWS_ANCHOR, ReviewStrip } from '../../components/intel/ReviewStrip'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { WhatChangedPanel } from '../../components/intel/WhatChangedPanel'
 import { ApiError, NetworkError } from '../../lib/api'
-import { intel, INTEL_POLL_MS, reviewThrottle, useIntel } from '../../lib/intel'
+import { intel, INTEL_POLL_MS, reviewThrottle, useIntel, type ResearchAskInput } from '../../lib/intel'
 import { errorMessage } from '../../lib/poll'
 
 // `/` — TERMINAL (DESIGN-terminal §3): "what changed since I last looked that
@@ -22,7 +35,9 @@ import { errorMessage } from '../../lib/poll'
 // alerts 60 s, catalysts 5 min, heatmap 5 min (+ on window change, §15.2),
 // watchlist on mount + after a write. Polling
 // pauses while the tab is hidden (usePoll). Nothing but an open or REVIEW NOW
-// posts a brief.
+// posts a brief. RESEARCH (§16): the research poller (60 s, 15 s while a row
+// is running or a 409 is unresolved), the ask action shared by the box and the
+// detector chips (POST + local prepend), and the card highlight.
 
 const WHAT_CHANGED_ANCHOR = 'terminal-what-changed'
 
@@ -119,6 +134,77 @@ export function Terminal() {
     enabled: !(reviewing && !brief),
   })
 
+  // ── research (§16) ──
+  const [localResearch, setLocalResearch] = useState<ResearchResult[]>([])
+  const [pending, setPending] = useState<{ question: string; asset: string | null } | null>(null)
+  const [gate, dispatchGate] = useReducer(researchGate, RESEARCH_GATE_INIT)
+  const [highlightId, setHighlightId] = useState<string | null>(() => /^#research-([^?]+)/.exec(globalThis.location?.hash ?? '')?.[1] ?? null)
+  const research = useIntel(() => intel.research({ limit: RESEARCH_LIST_LIMIT }), [], { intervalMs: researchIntervalMs(gate) })
+  const researchItems = useMemo(() => mergeResearch(localResearch, research.data?.items ?? [], highlightId), [localResearch, research.data, highlightId])
+  useEffect(() => {
+    if (research.data && research.fetchedAt != null)
+      dispatchGate({ type: 'polled', running: research.data.items.some((r) => r.status === 'running'), fetchedAt: research.fetchedAt })
+  }, [research.data, research.fetchedAt])
+  const askAction = useAction((input: ResearchAskInput) => intel.ask(input))
+  // useAction keeps the last failure's status; the 409/429 gates key off it.
+  useEffect(() => {
+    if (askAction.status != null) dispatchGate({ type: 'askFailed', status: askAction.status, at: Date.now() })
+  }, [askAction.status, askAction.error])
+  // A lifted gate takes its ErrorBlock / data-ask-state with it.
+  const prevGate = useRef(gate)
+  const clearAsk = askAction.clear
+  useEffect(() => {
+    if (gateCleared(prevGate.current, gate)) clearAsk()
+    prevGate.current = gate
+  }, [gate, clearAsk])
+  const askReason = askDisabledReason({ busy: askAction.busy, items: researchItems, usedToday: research.data?.usedToday, limit: research.data?.limit, gate })
+  /** False when a gate holds; the POST then runs in the background. */
+  const runAsk = (input: ResearchAskInput): boolean => {
+    if (askReason) return false
+    setPending({ question: input.question, asset: input.asset ?? null })
+    void askAction.run(input).then((r) => {
+      setPending(null)
+      if (!r) return
+      setLocalResearch((cur) => [r, ...cur.filter((x) => x.id !== r.id)])
+      setAnnounce(`research ready: ${statusWord(r.status).toLowerCase()}`)
+      if (input.flagId) heatmap.refetch() // the chip flips to SEE RESEARCH once the flag joins its researchId
+    })
+    return true
+  }
+  const scrollToResearch = () => document.getElementById(RESEARCH_ANCHOR)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  /** Highlight a card; not loaded → refetch scoped to the asset and merge only the match; still missing → the asset page. */
+  const seeResearch = async (id: string, asset: string | null) => {
+    setHighlightId(id)
+    if (researchItems.some((r) => r.id === id) || !asset) return
+    try {
+      const hit = (await intel.research({ asset, limit: RESEARCH_LIST_LIMIT })).items.find((r) => r.id === id)
+      if (hit) {
+        setLocalResearch((cur) => [hit, ...cur.filter((x) => x.id !== id)])
+        return
+      }
+    } catch {
+      // fall through to the asset page
+    }
+    navigate(`/asset/${encodeURIComponent(asset)}`)
+  }
+  const flagText = useMemo(() => {
+    const m = new Map((heatmap.data?.flags ?? []).map((f) => [f.id, `${flagWord(f).toLowerCase()} · ${f.asset} ${f.window}`]))
+    return (id: string) => m.get(id)
+  }, [heatmap.data])
+  // The asset page's SEE ON TERMINAL: `/#research-<id>` goes through seeResearch (asset from the hash's `?asset`
+  // when present), `/#terminal-research` just scrolls to the panel; once, after the first poll.
+  const hashHandled = useRef(false)
+  useEffect(() => {
+    if (hashHandled.current || !research.data) return
+    hashHandled.current = true
+    const hash = globalThis.location?.hash ?? ''
+    const m = /^#research-([^?]+)(?:\?asset=(.+))?$/.exec(hash)
+    if (m) void seeResearch(m[1]!, m[2] ? decodeURIComponent(m[2]) : null)
+    else if (hash === `#${RESEARCH_ANCHOR}`) scrollToResearch()
+    // first data only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [research.data])
+
   const held = useMemo(() => new Set(positions.data?.positions.map((p) => p.asset) ?? []), [positions.data])
   const watched = useMemo(() => new Set(watchlist.data?.items.map((i) => i.asset) ?? []), [watchlist.data])
   const heldWatched = useMemo(() => new Set([...held, ...watched]), [held, watched])
@@ -129,7 +215,7 @@ export function Terminal() {
   const detectorsCount = heatmap.data ? firingChips(heatmap.data.flags, new Map(heatmap.data.rows.map((r) => [r.asset, r.materiality]))).length : 0
 
   return (
-    <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col">
+    <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col" onClickCapture={() => setHighlightId(null)}>
       <TerminalTabs />
       <p className="sr-only" aria-live="polite">
         {announce}
@@ -177,6 +263,26 @@ export function Terminal() {
               setFlowWindow(w)
               writeFlowWindow(w)
             }}
+            research={{
+              askDisabledReason: askReason,
+              onResearch: (f: FlowFlag) => {
+                if (runAsk(chipAskInput(f))) scrollToResearch()
+              },
+              onSeeResearch: (id, asset) => void seeResearch(id, asset),
+            }}
+          />
+        </div>
+        <div id={RESEARCH_ANCHOR} className="lg:col-span-12 scroll-mt-[100px] min-w-0">
+          <ResearchPanel
+            state={research}
+            ask={askAction}
+            items={researchItems}
+            pending={pending}
+            heldWatched={heldWatched}
+            highlightId={highlightId}
+            disabledReason={askReason}
+            flagText={flagText}
+            onAsk={(input) => void runAsk(input)}
           />
         </div>
         <div className="lg:col-span-8 min-w-0">

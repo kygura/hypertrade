@@ -86,10 +86,10 @@ export function paneOf(metric: string | null): Pane | null {
   }
 }
 
-/** Model events (news alerts) are info-blue; detector hits, flips, crossings and catalysts are observed gray. */
+/** Model events (news alerts, research §16.4) are info-blue; detector hits, flips, crossings and catalysts are observed gray. */
 export function markerStroke(e: Pick<AssetEvent, 'kind'>, hot: boolean): string {
   if (hot) return 'var(--color-text-primary)'
-  return e.kind === 'alert' ? 'var(--color-info)' : 'var(--color-text-secondary)'
+  return e.kind === 'alert' || e.kind === 'research' ? 'var(--color-info)' : 'var(--color-text-secondary)'
 }
 
 export const eventKey = (e: AssetEvent) => `${e.kind}:${e.ts}:${e.title}`
