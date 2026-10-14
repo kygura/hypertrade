@@ -355,7 +355,6 @@ async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
     await s.listResearch({ since: future, limit: 10 }),
   ]);
   put("research.count", [await s.researchCountSince(past), await s.researchCountSince(past, "flag"), await s.researchCountSince(future)]);
-  put("research.forFlag", [await s.researchForFlag("flag-1"), await s.researchForFlag("flag-2"), await s.researchForFlag("flag-3"), await s.researchForFlag("nope")]);
   put("research.forFlags", [...(await s.researchForFlags(["flag-1", "flag-2", "flag-3", "flag-4", "nope"])).entries()].sort(([a], [b]) => a.localeCompare(b)));
   put("research.forFlagsEmpty", [...(await s.researchForFlags([])).entries()]);
   put("research.prune", [await s.pruneResearch(past), await s.pruneResearch(future), await s.listResearch({ limit: 10 })]);

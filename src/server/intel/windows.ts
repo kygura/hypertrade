@@ -11,7 +11,8 @@ import { median } from "./util.js";
 //   log(1 + total), delta = the total in USD).
 //   z = (Δ − median) / σ against the trailing non-overlapping Δs of the same
 //   length (stride = window, so samples are independent); σ = MAD × 1.4826,
-//   floored per metric (METRIC_RULES) so a flat series cannot explode z.
+//   floored per metric (METRIC_RULES) so a flat series cannot explode z; sum
+//   metrics also need ≥ 5 nonzero history windows (else z null).
 //   An endpoint counts when a sample sits within ±20 min of the grid point.
 //   Lookback 30 d for 1 h / 6 h (≥ 48 / 20 Δs), 90 d for 24 h (≥ 30); fewer → z null.
 // Flips and crossings fire on the transition only: state at the window's
@@ -32,6 +33,11 @@ export const LOOKBACK: Record<FixedWindow, { days: number; min: number }> = {
 /** Robust σ = MAD × this (σ of a normal distribution). */
 export const MAD_SCALE = 1.4826;
 
+/** σ floor for sum metrics, in log(1 + USD): sparse history (MAD 0) cannot make a small total look extreme. */
+const SUM_FLOOR = 0.5;
+/** A sum metric needs this many nonzero history windows for a z at all. */
+const MIN_NONZERO_SUMS = 5;
+
 export type DeltaKind = "log" | "diff" | "sum";
 /** How each metric's Δ is taken and the floor on its σ, in Δ units (log points, raw units, or log(1 + USD)). */
 export const METRIC_RULES: Record<HeatmapMetric, { kind: DeltaKind; floor: number }> = {
@@ -44,9 +50,9 @@ export const METRIC_RULES: Record<HeatmapMetric, { kind: DeltaKind; floor: numbe
   depth_2: { kind: "log", floor: 1e-3 },
   spread_bps: { kind: "log", floor: 1e-2 },
   long_short_ratio: { kind: "diff", floor: 1e-3 },
-  liq_usd: { kind: "sum", floor: 0.1 },
-  perp_volume_usd: { kind: "sum", floor: 0.05 },
-  spot_volume_usd: { kind: "sum", floor: 0.05 },
+  liq_usd: { kind: "sum", floor: SUM_FLOOR },
+  perp_volume_usd: { kind: "sum", floor: SUM_FLOOR },
+  spot_volume_usd: { kind: "sum", floor: SUM_FLOOR },
 };
 
 export type Series = Partial<Record<HeatmapMetric, Point[]>>;
@@ -74,8 +80,17 @@ export function seriesFromRows(snapshots: SnapshotRow[], flow: FlowRow[]): Serie
     for (const m of ["price", "oi_usd", "funding", "basis", "premium", "vol24h", "spread_bps"] as const) add(m, t, metricValue(r, m));
     add("depth_2", t, r.depthBid2 != null && r.depthAsk2 != null ? r.depthBid2 + r.depthAsk2 : null);
   }
+  // One venue per metric (liquidations: long + short together): the one with the latest row, so duplicate venues never double-count.
+  const grp = (m: string) => (m === "liq_long_usd" || m === "liq_short_usd" ? "liq_usd" : m);
+  const latest = new Map<string, { venue: string; ts: number }>();
+  for (const r of flow) {
+    const ts = Date.parse(r.ts);
+    const cur = latest.get(grp(r.metric));
+    if (!(cur && cur.ts >= ts)) latest.set(grp(r.metric), { venue: r.venue, ts });
+  }
   const liq = new Map<number, number>();
   for (const r of flow) {
+    if (latest.get(grp(r.metric))!.venue !== r.venue) continue;
     const t = Date.parse(r.ts);
     if (r.metric === "liq_long_usd" || r.metric === "liq_short_usd") liq.set(t, (liq.get(t) ?? 0) + r.value);
     else if (r.metric === "long_short_ratio" || r.metric === "perp_volume_usd" || r.metric === "spot_volume_usd") add(r.metric, t, r.value);
@@ -152,6 +167,7 @@ export function spanResult(
     const s = windowStat(metric, points, prefix, end, ms);
     if (s) hist.push(s.stat);
   }
+  if (METRIC_RULES[metric].kind === "sum" && hist.filter((x) => x > 0).length < MIN_NONZERO_SUMS) return out;
   if (hist.length >= min) out.z = (cur.stat - median(hist)) / robustSigma(hist, METRIC_RULES[metric].floor);
   return out;
 }
@@ -165,14 +181,18 @@ export function pickWindow(results: WindowResult[], metric: HeatmapMetric, windo
   return results.find((r) => r.metric === metric && r.window === window);
 }
 
-/** Level z of the value at `now` vs the trailing 30-day samples (median, robust σ); ≥ 48 samples. */
+/**
+ * Level z of the value at `now` vs the trailing 30-day samples (median, robust σ); ≥ 48 samples.
+ * σ floor = max(metric floor, 25% of |median|): a flat level (funding's 1.25e-5/h default) must not explode on a small step.
+ */
 export function robustLevelZ(metric: HeatmapMetric, points: Point[] | undefined, now: number): number | null {
   if (!points?.length) return null;
   const v = valueAt(points, now);
   if (v == null) return null;
   const xs = points.filter((p) => p.t <= now && p.t >= now - LOOKBACK["1h"].days * DAY_MS).map((p) => p.v);
   if (xs.length < LOOKBACK["1h"].min) return null;
-  return (v - median(xs)) / robustSigma(xs, METRIC_RULES[metric].floor);
+  const m = median(xs);
+  return (v - m) / robustSigma(xs, Math.max(METRIC_RULES[metric].floor, 0.25 * Math.abs(m)));
 }
 
 // ---------------------------------------------------------------- flips and crossings

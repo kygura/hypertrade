@@ -100,7 +100,7 @@ describe("runResearch", () => {
     expect(r.costUsd).toBeCloseTo((1000 * 4 + 500 * 20) / 1e6 + 3 * 0.01, 8); // tokens + search fees
     expect(provider.opts[0]).toMatchObject({ webSearch: true, maxUses: 8 });
     expect(provider.prompts[0]).toContain("<untrusted>");
-    expect((await store.researchForFlag(flag.id))?.id).toBe(r.id);
+    expect((await store.researchForFlags([flag.id])).get(flag.id)?.id).toBe(r.id);
   });
 
   test("no_cause: the fixed sentence plus what the payload actually had", async () => {

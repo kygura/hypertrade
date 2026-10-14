@@ -966,7 +966,7 @@ export const FlowFlagSchema = z.object({
   /** A series the flag needs was missing or too short: outcome unknown, not quiet. */
   degraded: z.boolean(),
   ts: Iso,
-  /** Joined at read time through researchForFlag (SPEC S1); never stored on the flag JSON. */
+  /** Joined at read time through researchForFlags (SPEC S1); never stored on the flag JSON. */
   researchId: z.string().nullable().default(null),
 });
 export type FlowFlag = z.infer<typeof FlowFlagSchema>;
