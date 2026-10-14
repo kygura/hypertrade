@@ -301,7 +301,7 @@ Embeddings; feedback auto-tuning; mainnet orders; any order without an operator 
 
 ## Flow — quant gaps of "Flow + Scout" (phase 6)
 
-Source brief: "Flow + Scout: Spec" (2026-10-14). Intel (phase 5) already covers most of it: snapshots, review log, exposure graph, news mapper, claim tags, Telegram push, feedback, the Terminal. This phase adds only the missing pieces. § Intel I0 stays binding; where this section adds to it, this section wins. The Terminal stays the main screen (`/`).
+Source brief: "Flow + Scout: Spec" (2026-10-14). Intel (phase 5) already covers most of it: snapshots, review log, exposure graph, news mapper, claim tags, Telegram push, feedback, the Terminal. This phase adds only the missing pieces. § Intel I0 stays binding; where this section adds to it, this section wins. The Terminal stays the main screen (`/`). Phase 7 (§ Scout) adds research and the scorer gaps on top.
 
 ### F0. Decisions (pinned)
 
@@ -343,7 +343,51 @@ Source brief: "Flow + Scout: Spec" (2026-10-14). Intel (phase 5) already covers 
 
 ### F3. Out of scope (Flow)
 
-Exchange inflow detector; on-chain flows/TVL; feedback auto-tuning (I0.12 stands); free-form web research mode (`/ask` stays the Desk's); a new venue for orders.
+Exchange inflow detector; on-chain flows/TVL; feedback auto-tuning (I0.12 stands); a new venue for orders. (Research mode moved in by phase 7 below.)
+
+## Scout — research on the Terminal (phase 7)
+
+Source: the same "Flow + Scout" brief, § 4.3 and § 3.4. The operator asked (2026-10-14) for the whole brief to live on the main screen. Phase 6 left research on the Desk; this phase brings it to `/` and closes the scorer gaps. § Intel and § Flow stay binding; this section wins where it adds to them.
+
+### S0. Decisions (pinned)
+
+1. **Research contract** (`src/shared/intel.ts`). `ResearchResult = {id, trigger, asset: string|null, question, status, explanation, evidence: {claim, url, ts: string|null, type: "observed"|"hypothesis"}[], confidence: "low"|"medium"|"high", openQuestions: string[], searches, costUsd, model, createdAt}`. `trigger` is `"manual"` or `"flag"` (a FlowFlag id in `flagId`). `status` is `running | found | no_cause | capped | failed`. `no_cause` is a valid answer, and its explanation is exactly "No public cause found." followed by what was checked. `observed` evidence needs an `HttpsUrlSchema` url. `hypothesis` evidence may omit the url and is never phrased as fact.
+2. **Engine** (`src/server/intel/research.ts`). One `completeStructured` call on the large tier with `webSearch: true`. Budget: at most 8 web searches, passed per call as `maxUses` through the step options (not the shared provider default). No page-fetch tool is added: hosted search excerpts are the only fetched text, which keeps the SSRF surface closed. The brief's "4 fetches" is dropped on purpose. Deadline: `RESEARCH_DEADLINE_MS` = 45 s, kept under the function's max duration. Input payload: the asset's latest snapshot numbers, the flag's `numbers` when the trigger is a flag, the held or watched exposure, and news-cluster headlines for the asset from the last 24 h, so the model doesn't re-find known news. Fetched text is wrapped with `untrusted()`. Validation runs the § F0.5 validator on `explanation` and every claim. **Provenance is checked in code.** The provider surfaces the URLs and excerpts of its search results (`web_search_tool_result`). An `observed` claim survives only if its url is one of those URLs and each of its numbers appears in that result's excerpt. Otherwise it is downgraded to `hypothesis` (url kept only if seen). A provider that exposes no results downgrades every claim. Numbers in `explanation` must match the payload or a surviving observed claim. Advice language is dropped. If every claim is dropped, the status is `no_cause`. If the provider has no web search, the result is `failed` with "provider has no web search", the same pattern as the graph refresh. It respects the § F0.7 dollar cap: over cap → `capped`, with no LLM call.
+3. **Triggers.**
+   - **Manual:** `POST /api/intel/research {question, asset?}` (authed). It is synchronous within the deadline and allows one in flight, using a `running` row in `intel_research` that goes stale after deadline + 15 s, not a process-local flag (409 otherwise), and `INTEL_RESEARCH_DAILY` (default 10) per UTC day applies (429 after).
+   - **Automatic:** inside `POST /cron/intel/ingest`, as its own last stage, started only when the remaining budget is > `RESEARCH_DEADLINE_MS`. It runs for FlowFlags whose materiality is ≥ the alert threshold and that have no news alert on the same asset in the last 6 h, highest first. At most `INTEL_RESEARCH_AUTO_DAILY` (default 3) per UTC day, deduplicated by flag id, inside the route's existing time budget.
+   - Telegram `/ask` is unchanged (Desk).
+4. **Storage.** Table `intel_research` (migration `010_research.sql`) behind `IntelStore` (Pg and Memory, parity-tested), with 90-day retention. Methods: `insertResearch`, `listResearch({asset?, since?, limit})`, `researchCountSince(since, trigger?)`, `researchForFlag(flagId)`.
+5. **Thresholds.** Two env thresholds on one materiality scale:
+   - `INTEL_PUSH_MATERIALITY` (existing, 0.35) is the alert threshold: Telegram push, plus eligibility for automatic research.
+   - `INTEL_DIGEST_MATERIALITY` (new, default 0.10) is the digest threshold. Items below it are logged but not shown in the What-changed digest or `/digest`.
+6. **Confluence.** There is one seam, `materiality(parts, k)` in `diff.ts`, which returns `surprise × exposure × proximity × confluence(k)`, where `confluence(k) = min(1.5, 1 + 0.25 × (k − 1))`. The four inline formulas (diff, flowEvents, mapper, catalysts) call it. `k` counts the distinct signal sources on the asset within the window: snapshot z moves, flow detectors, flips/crossings, and news alerts. **The item's own source is excluded**, so a flag never boosts itself. `k` is computed before alerts are routed, because routing reads materiality at insert time. The factor is exposed on the item (`confluence: number`) so the UI can show it.
+7. **Graph diff-review.** A graph refresh never deletes edges for an asset whose rebuild failed or returned nothing. Each refresh records a diff per asset (`added`, `removed`, `changed`, `refused`) in its summary and in `collector_runs`. `refreshGraph` already never deletes, so the only new behaviour is this: edges that a successful rebuild no longer proposes are removed, unless they are `seed` or `manual` (a set diff plus one store delete method).
+8. **UI** (binding layout in DESIGN-terminal.md § 16):
+   - **Research panel** on `/`: an ask box (question + optional asset) and the latest results, newest first, with status, explanation, evidence rows tagged OBS/HYP with link and ts, confidence and open questions.
+   - **Detector chips:** a "research" action when a flag has no result yet, or "see research" when it does.
+   - **`/asset/:coin`:** research results join the timeline as events.
+   - **Digest items** show their confluence factor when it is > 1.
+   - Every new panel has the named states.
+9. **Cleanup.** The UI client functions `intel.events` and `intel.flows` have no callers and are removed. Their server routes stay because they are tested.
+
+### S1. API delta
+
+- `POST /api/intel/research {question: string(3..500), asset?: string}` → `ResearchResult`. Errors: 409 when a run is in flight, 429 when the daily limit is reached. Over the dollar cap it returns 200 with `status: "capped"`.
+- `GET /api/intel/research?asset&limit=20` → `{items: ResearchResult[], usedToday, limit}`.
+- `FlowFlag` gains `researchId: string|null`, joined at read time through `researchForFlag`. The stored flag JSON is never mutated. `AssetEvent.kind` gains `research`.
+
+### S2. Done
+
+- Fixture tests:
+  - `research.ts`: found, no_cause, capped, no web search, an invented URL downgraded to hypothesis, a number missing from its excerpt downgraded, a number in the explanation that is in neither the payload nor the evidence dropped, an advice line dropped, and the `running` lock going stale.
+  - `confluence`.
+  - The threshold split.
+  - Graph diff-review: a failed rebuild keeps edges.
+  - Routes: 409, 429 and capped.
+  - Store parity.
+- `bun test` (including the pre-existing `analyst.test.ts` default-provider failure, fixed), `bun run typecheck`, `bun run build` and `bun run check:api` are green.
+- `/` shows the Research panel, and every state renders without a DB.
 
 ## What is explicitly OUT of scope
 
