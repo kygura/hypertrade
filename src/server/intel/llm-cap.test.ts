@@ -25,13 +25,14 @@ describe("usageCost", () => {
     expect(usageCost({ input_tokens: 0, output_tokens: 1e6 })).toBeCloseTo(50, 9);
     expect(usageCost(null)).toBe(0);
   });
+    expect(usageCost({ input_tokens: 0, output_tokens: 0, searches: 3, model: "claude-opus-5-5" })).toBeCloseTo(0.03, 9); // web search fee
 });
 
 describe("daily dollar cap", () => {
   test("under the cap the call runs and its usage is stored with the model", async () => {
     const { store, call } = setup(0.5);
     expect((await call()).ok).toBe(true);
-    expect(await store.usageSince(new Date(0))).toEqual([{ input_tokens: 1, output_tokens: 1, model: "scripted" }]);
+    expect(await store.usageSince(new Date(0))).toEqual([{ input_tokens: 1, output_tokens: 1, searches: 0, model: "scripted" }]);
   });
 
   test("over the cap: fail closed before calling the provider, message shows spent / limit", async () => {

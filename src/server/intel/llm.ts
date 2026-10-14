@@ -1,6 +1,6 @@
 import type { ZodError, ZodType } from "zod";
 import { deskProviderFactory } from "../desk/agents.js";
-import type { AnalystEnv, LLMProvider, ToolSpec, Usage } from "../llm/provider.js";
+import type { AnalystEnv, LLMProvider, StepHooks, ToolSpec, Usage } from "../llm/provider.js";
 
 // The one LLM entry point for Intel (SPEC.md § Intel I0.6). A single client
 // tool, `emit`, carries the target JSON schema; forced tool choice is
@@ -39,12 +39,14 @@ export const LLM_PRICES: Record<string, [number, number]> = {
   "claude-haiku-4-5": [1, 5],
 };
 const TOP_PRICE = Object.values(LLM_PRICES).reduce((a, b) => (a[1] >= b[1] ? a : b));
+// ponytail: flat per-request web search fee, not read from a price table; update when the list price moves.
+export const WEB_SEARCH_USD = 0.01;
 
-/** Dollars for one stored usage row ({input_tokens, output_tokens, model?}). */
+/** Dollars for one stored usage row ({input_tokens, output_tokens, searches?, model?}), web search fees included. */
 export function usageCost(usage: unknown): number {
-  const u = (usage ?? {}) as { input_tokens?: unknown; output_tokens?: unknown; model?: unknown };
+  const u = (usage ?? {}) as { input_tokens?: unknown; output_tokens?: unknown; searches?: unknown; model?: unknown };
   const [i, o] = (typeof u.model === "string" && LLM_PRICES[u.model]) || TOP_PRICE;
-  return ((Number(u.input_tokens) || 0) * i + (Number(u.output_tokens) || 0) * o) / 1e6;
+  return ((Number(u.input_tokens) || 0) * i + (Number(u.output_tokens) || 0) * o) / 1e6 + (Number(u.searches) || 0) * WEB_SEARCH_USD;
 }
 
 export interface LlmTrace {
@@ -55,6 +57,8 @@ export interface LlmTrace {
   inputs: { system: string; user: string };
   output: unknown;
   usage: Usage;
+  /** Web searches the provider ran, across attempts. */
+  searches: number;
   ms: number;
   attempts: number;
   /** Claim lines dropped by validateLines (any reason); set by the caller. */
@@ -77,6 +81,10 @@ export interface CompleteStructuredArgs<T> {
   cacheKey?: string;
   /** Provider-hosted web search; off unless asked for. */
   webSearch?: boolean;
+  /** Web search budget for the whole call, retry included: the retry gets what is left. */
+  maxUses?: number;
+  /** Observers for the provider-hosted search (research provenance). */
+  hooks?: Omit<StepHooks, "onText">;
   signal?: AbortSignal;
   deadlineMs?: number;
   deps: LlmDeps;
@@ -98,7 +106,7 @@ const EMIT_INSTRUCTION = `\n\nReturn your answer by calling the \`${EMIT_TOOL}\`
 export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Promise<StructuredResult<T>> {
   const { tier, system, user, schema, jsonSchema, promptVersion, cacheKey, deps } = args;
   const t0 = Date.now();
-  const trace: LlmTrace = { promptVersion, tier, model: null, inputs: { system, user }, output: null, usage: { input_tokens: 0, output_tokens: 0 }, ms: 0, attempts: 0 };
+  const trace: LlmTrace = { promptVersion, tier, model: null, inputs: { system, user }, output: null, usage: { input_tokens: 0, output_tokens: 0 }, searches: 0, ms: 0, attempts: 0 };
   const fail = (error: string): StructuredResult<T> => ({ ok: false, error, trace: { ...trace, ms: Date.now() - t0 } });
 
   const timeout = AbortSignal.timeout(args.deadlineMs ?? LLM_DEADLINE_MS);
@@ -112,6 +120,8 @@ export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Pr
   // Every await races the signal, so a provider that ignores it still cannot hold the caller past the deadline.
   const race = <R>(p: Promise<R>) => Promise.race([p, aborted]);
 
+  // Every call that reached the provider is billed, success or failure (SPEC S0.2); a success is billed by its own cache row.
+  let billed = false;
   try {
     if (cacheKey) {
       const hit = await race(deps.cache.cacheGet(cacheKey, promptVersion));
@@ -134,12 +144,20 @@ export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Pr
 
     const emit: ToolSpec = { name: EMIT_TOOL, description: "Emit the final structured answer. Call exactly once.", input_schema: jsonSchema };
     let lastError = "";
+    const hooks: Omit<StepHooks, "onText"> = {
+      ...args.hooks,
+      onServerToolCall: (c) => {
+        trace.searches++;
+        args.hooks?.onServerToolCall?.(c);
+      },
+    };
     for (let attempt = 1; attempt <= 2; attempt++) {
       trace.attempts = attempt;
+      const left = args.maxUses === undefined ? undefined : Math.max(0, args.maxUses - trace.searches);
       const prompt = attempt === 1 ? user : `${user}\n\nYour previous answer was rejected: ${lastError}\nCall \`${EMIT_TOOL}\` again with a corrected object.`;
       let text = "";
       const res = await race(
-        provider.start(system + EMIT_INSTRUCTION, [], prompt).step([emit], { onText: (d) => void (text += d) }, { signal, webSearch: args.webSearch ?? false }),
+        provider.start(system + EMIT_INSTRUCTION, [], prompt).step([emit], { ...hooks, onText: (d) => void (text += d) }, { signal, webSearch: (args.webSearch ?? false) && left !== 0, maxUses: left }),
       );
       trace.usage = { input_tokens: trace.usage.input_tokens + res.usage.input_tokens, output_tokens: trace.usage.output_tokens + res.usage.output_tokens };
       const raw = res.toolCalls.find((c) => c.name === EMIT_TOOL)?.input ?? extractJson(text);
@@ -153,14 +171,21 @@ export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Pr
         lastError = zodMessage(parsed.error);
         continue;
       }
-      await race(deps.cache.cachePut(cacheKey ?? `nocache:${crypto.randomUUID()}`, promptVersion, parsed.data, trace.usage, provider.model)).catch((e) =>
+      await race(deps.cache.cachePut(cacheKey ?? `nocache:${crypto.randomUUID()}`, promptVersion, parsed.data, { ...trace.usage, searches: trace.searches }, provider.model)).catch((e) =>
         console.warn(`[intel] llm cache write failed: ${e instanceof Error ? e.message : String(e)}`),
       );
+      billed = true;
       return { ok: true, value: parsed.data, trace: { ...trace, ms: Date.now() - t0 }, cached: false };
     }
     return fail(`invalid output after retry: ${lastError}`);
   } catch (e) {
     return fail(signal.aborted ? (timeout.aborted ? "deadline exceeded" : "aborted") : e instanceof Error ? e.message : String(e));
+  } finally {
+    if (!billed && trace.model && trace.attempts > 0) {
+      await deps.cache.cachePut(`nocache:${crypto.randomUUID()}`, promptVersion, {}, { ...trace.usage, searches: trace.searches }, trace.model).catch((e) =>
+        console.warn(`[intel] llm usage write failed: ${e instanceof Error ? e.message : String(e)}`),
+      );
+    }
   }
 }
 

@@ -192,10 +192,10 @@ export function parseThresholds(raw: string | undefined): Threshold[] {
   return out;
 }
 
-export function flowFlag(f: Omit<FlowFlag, "id" | "ts"> & { now: number }): FlowFlag {
+export function flowFlag(f: Omit<FlowFlag, "id" | "ts" | "researchId"> & { now: number }): FlowFlag {
   const { now, ...rest } = f;
   const ts = new Date(now).toISOString();
-  return { id: `${f.kind}:${f.name}:${f.asset}:${f.window}:${ts}`, ...rest, ts };
+  return { id: `${f.kind}:${f.name}:${f.asset}:${f.window}:${ts}`, ...rest, ts, researchId: null };
 }
 
 const absOr0 = (z: number | null | undefined) => (z == null ? 0 : Math.abs(z));

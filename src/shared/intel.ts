@@ -966,6 +966,8 @@ export const FlowFlagSchema = z.object({
   /** A series the flag needs was missing or too short: outcome unknown, not quiet. */
   degraded: z.boolean(),
   ts: Iso,
+  /** Joined at read time through researchForFlag (SPEC S1); never stored on the flag JSON. */
+  researchId: z.string().nullable().default(null),
 });
 export type FlowFlag = z.infer<typeof FlowFlagSchema>;
 
@@ -987,13 +989,15 @@ export type HeatmapResponse = z.infer<typeof HeatmapResponseSchema>;
 
 export const AssetEventSchema = z.object({
   ts: Iso,
-  kind: z.enum(["flow", "alert", "catalyst"]),
+  kind: z.enum(["flow", "alert", "catalyst", "research"]),
   title: z.string(),
   tag: ClaimTagSchema,
   numbers: z.record(Num).optional(),
   /** Alerts carry their claim line. */
   claim: ClaimSchema.optional(),
   url: z.string().optional(),
+  /** Set when kind is "research". Lazy: ResearchResultSchema is declared below. */
+  research: z.lazy(() => ResearchResultSchema).optional(),
 });
 export type AssetEvent = z.infer<typeof AssetEventSchema>;
 
@@ -1009,3 +1013,39 @@ export type AssetDetailResponse = z.infer<typeof AssetDetailResponseSchema>;
 
 export const FlowsQuerySchema = z.object({ since: Iso.optional() });
 export const FlowsResponseSchema = z.object({ flags: z.array(FlowFlagSchema) });
+
+// ─── Scout research (SPEC.md § Scout S0.1) ───
+
+export const RESEARCH_STATUSES = ["running", "found", "no_cause", "capped", "failed"] as const;
+export const ResearchStatusSchema = z.enum(RESEARCH_STATUSES);
+export type ResearchStatus = z.infer<typeof ResearchStatusSchema>;
+
+/** observed needs a url; hypothesis may omit it and is never phrased as fact. */
+export const ResearchEvidenceSchema = z
+  .object({
+    claim: Text(500),
+    url: HttpsUrlSchema.nullable(),
+    ts: Iso.nullable(),
+    type: z.enum(["observed", "hypothesis"]),
+  })
+  .refine((e) => e.type === "hypothesis" || e.url !== null, { message: "observed evidence needs a url", path: ["url"] });
+export type ResearchEvidence = z.infer<typeof ResearchEvidenceSchema>;
+
+export const ResearchResultSchema = z.object({
+  id: z.string(),
+  trigger: z.enum(["manual", "flag"]),
+  /** The FlowFlag the run was started from (a chip-started run is trigger "manual" with flagId set). */
+  flagId: z.string().optional(),
+  asset: z.string().nullable(),
+  question: z.string(),
+  status: ResearchStatusSchema,
+  explanation: z.string(),
+  evidence: z.array(ResearchEvidenceSchema),
+  confidence: z.enum(["low", "medium", "high"]),
+  openQuestions: z.array(z.string()),
+  searches: z.number().int().min(0),
+  costUsd: Num.min(0),
+  model: z.string(),
+  createdAt: Iso,
+});
+export type ResearchResult = z.infer<typeof ResearchResultSchema>;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { FlowMetric, FlowRow, SnapshotRow } from "../../shared/intel.js";
-import { MemoryIntelStore, PgIntelStore, type NewAlert, type NewEvent } from "./store.js";
+import { MemoryIntelStore, PgIntelStore, type NewAlert, type NewEvent, type NewResearch } from "./store.js";
 
 const snap = (asset: string, ts: string, price: number): SnapshotRow => ({
   asset, ts, price, vol24h: null, funding: null, oiUsd: null, premium: null, basis: null,
@@ -284,5 +284,46 @@ describe("PgIntelStore ids that are not uuids", () => {
     expect(await s.deleteWatch("nope")).toBe(false);
     await s.setWatchChangeAlerted("nope", []);
     expect(await s.listWatchChanges("nope", 5)).toEqual([]);
+  });
+});
+
+// Same rules as PgIntelStore's intel_research SQL (store.pg.test.ts runs both side by side when a database is available).
+describe("MemoryIntelStore research", () => {
+  const rs = (over: Partial<NewResearch> = {}): NewResearch => ({
+    trigger: "manual", asset: "SOL", question: "why", status: "running", explanation: "", evidence: [], confidence: "low", openQuestions: [], searches: 0, costUsd: 0, model: "m", ...over,
+  });
+  const clock = { t: new Date("2026-10-14T12:00:00Z") };
+
+  test("one running row at a time; a stale one is failed and replaced; flag lookup ignores the trigger", async () => {
+    const s = new MemoryIntelStore(() => clock.t);
+    const first = await s.acquireResearch(rs({ flagId: "f1" }), 3_600_000);
+    expect(first?.status).toBe("running");
+    expect(await s.acquireResearch(rs(), 3_600_000)).toBeNull();
+    const second = await s.acquireResearch(rs({ flagId: "f1" }), -1);
+    expect(second).not.toBeNull();
+    expect((await s.listResearch({ limit: 5 })).map((r) => r.status)).toEqual(["failed", "running"]); // same instant: id order
+    expect(await s.finishResearch(first!.id, rs({ status: "found" }))).toBeNull(); // no longer running: cannot be overwritten
+    await s.finishResearch(second!.id, rs({ flagId: "f1", status: "found", explanation: "x" }));
+    expect(await s.finishResearch(second!.id, rs({ status: "failed" }))).toBeNull(); // finished once
+    expect((await s.researchForFlag("f1"))?.id).toBe(second!.id); // trigger is "manual": found all the same
+    expect(await s.researchForFlag("f2")).toBeNull();
+  });
+
+  test("counts and lists by asset, since and trigger; prune by age", async () => {
+    const s = new MemoryIntelStore(() => clock.t);
+    await s.insertResearch(rs({ status: "found", flagId: "f8" }));
+    await s.insertResearch(rs({ status: "capped", flagId: "f7" }));
+    await s.insertResearch(rs({ status: "failed" }));
+    clock.t = new Date("2026-10-15T12:00:00Z");
+    await s.insertResearch(rs({ trigger: "flag", asset: "BTC", flagId: "f9", status: "no_cause" }));
+    const day = new Date("2026-10-15T00:00:00Z");
+    expect(await s.researchCountSince(day)).toBe(1);
+    expect(await s.researchCountSince(new Date(0))).toBe(2); // capped and failed runs don't use the daily budget
+    expect(await s.researchCountSince(new Date(0), "manual")).toBe(1);
+    expect(await s.researchForFlag("f7")).toBeNull(); // capped: the chip may offer a retry
+    expect((await s.listResearch({ asset: "BTC", limit: 5 })).map((r) => r.flagId)).toEqual(["f9"]);
+    expect((await s.listResearch({ limit: 5 })).map((r) => r.asset)).toEqual(["BTC", "SOL", "SOL", "SOL"]); // newest first
+    expect(await s.pruneResearch(day)).toBe(3);
+    expect(await s.listResearch({ limit: 5 })).toHaveLength(1);
   });
 });

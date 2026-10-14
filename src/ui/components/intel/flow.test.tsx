@@ -14,7 +14,7 @@ import { terminalTabOf } from "./TerminalTabs";
 // render-checks (react-dom/server, no jsdom) of the FLOW panel's named states.
 
 const ts = "2026-10-14T12:00:00.000Z";
-const flag = (p: Partial<FlowFlag>): FlowFlag => ({ id: `${p.name}:${p.asset}:${p.ts ?? ts}`, asset: "HYPE", kind: "detector", name: "crowded_long", window: "24h", numbers: {}, score: 2, degraded: false, ts, ...p });
+const flag = (p: Partial<FlowFlag>): FlowFlag => ({ id: `${p.name}:${p.asset}:${p.ts ?? ts}`, asset: "HYPE", kind: "detector", name: "crowded_long", window: "24h", numbers: {}, score: 2, degraded: false, ts, researchId: null, ...p });
 
 describe("zBucket", () => {
   test("bucketed at |z| 1 and 2, null empty", () => {

@@ -157,6 +157,11 @@ async function pruneAll(now: number = Date.now()): Promise<Record<string, number
     console.error("[backfill] intel flow prune:", err instanceof Error ? err.message : err);
   }
   try {
+    out.intel_research = await defaultIntelDeps().store.pruneResearch(new Date(now - SNAPSHOT_RETENTION_DAYS * DAY_MS));
+  } catch (err) {
+    console.error("[backfill] intel research prune:", err instanceof Error ? err.message : err);
+  }
+  try {
     out.intel_stops = await defaultIntelDeps().store.pruneStops(new Date(now - STOP_RETENTION_DAYS * DAY_MS));
   } catch (err) {
     console.error("[backfill] intel stop prune:", err instanceof Error ? err.message : err);
