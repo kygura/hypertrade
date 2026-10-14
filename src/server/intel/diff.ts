@@ -1,5 +1,5 @@
 import { SNAPSHOT_METRICS, type DeltaUnit, type DiffItem, type ExposurePosition, type SnapshotMetric, type SnapshotRow } from "../../shared/intel.js";
-import { metricZ, type Point } from "./normalize.js";
+import { baselineZ, metricZ, type Point } from "./normalize.js";
 import { atr as atrOf } from "../desk/tools.js";
 
 // Diff items, materiality and ranking (SPEC.md § Intel I0.5). Pure.
@@ -9,9 +9,16 @@ import { atr as atrOf } from "../desk/tools.js";
 //   stop_proximity = 1 + 2 · max(0, 1 − dist_to_stop / (2 · ATR14_1h)) with a
 //                    known stop, else 1
 // An item clears at |z| ≥ minZ; the cleared ones rank by materiality and the
-// top k go into the brief. Nothing clears → silent.
+// top k go into the brief. Nothing clears → silent. A level or ratio z is a
+// state, not a change, so it also has to have changed since the baseline
+// (changedSinceBaseline, SPEC I0.4).
 
 export const WATCH_FLOOR = 0.05;
+/** A level/ratio z already past minZ at the baseline clears only if it moved at least this much. */
+export const LEVEL_Z_MOVE = 1;
+
+/** DiffItem plus the baseline z (level/ratio only). Internal: rankDiffs strips it. */
+export type RawDiffItem = DiffItem & { zBase?: number };
 
 export type Bar = { h: number; l: number; c: number };
 
@@ -81,8 +88,8 @@ export function exposureWeight(positions: AssetDiffInput["positions"], totalNoti
 }
 
 /** Every asset × metric pair that has a z. `diffed` counts them (cleared or not). */
-export function buildDiffItems(inputs: AssetDiffInput[], totalNotionalUsd: number): { items: DiffItem[]; diffed: number } {
-  const items: DiffItem[] = [];
+export function buildDiffItems(inputs: AssetDiffInput[], totalNotionalUsd: number): { items: RawDiffItem[]; diffed: number } {
+  const items: RawDiffItem[] = [];
   for (const a of inputs) {
     const held = a.positions.length > 0;
     const weight = exposureWeight(a.positions, totalNotionalUsd);
@@ -102,8 +109,10 @@ export function buildDiffItems(inputs: AssetDiffInput[], totalNotionalUsd: numbe
         const v = metricValue(r, metric);
         return v == null ? [] : [{ t: Date.parse(r.ts), v }];
       });
-      const z = metricZ(metric, { from: { t: t0, v: from }, to: { t, v: to }, history, coldStart: a.coldStart?.[metric] });
+      const zIn = { from: { t: t0, v: from }, to: { t, v: to }, history, coldStart: a.coldStart?.[metric] };
+      const z = metricZ(metric, zIn);
       if (z == null) continue;
+      const zBase = baselineZ(metric, zIn);
       items.push({
         asset: a.asset,
         metric,
@@ -118,16 +127,26 @@ export function buildDiffItems(inputs: AssetDiffInput[], totalNotionalUsd: numbe
         ...stop,
         ts: a.current.ts,
         baselineTs: a.baseline.ts,
+        ...(zBase != null ? { zBase } : {}),
       });
     }
   }
   return { items, diffed: items.length };
 }
 
-/** Items with |z| ≥ minZ, by materiality (then |z|) descending, at most topK. */
-export function rankDiffs(items: DiffItem[], o: { minZ: number; topK: number }): DiffItem[] {
+/**
+ * Level/ratio gate: the z crossed minZ since the baseline (|zBase| < minZ) or
+ * moved ≥ LEVEL_Z_MOVE. No zBase (returns, or no baseline z) → passes.
+ */
+export function changedSinceBaseline(z: number, zBase: number | undefined, minZ: number): boolean {
+  return zBase == null || Math.abs(zBase) < minZ || Math.abs(z - zBase) >= LEVEL_Z_MOVE;
+}
+
+/** Items with |z| ≥ minZ that changed since the baseline, by materiality (then |z|) descending, at most topK. */
+export function rankDiffs(items: RawDiffItem[], o: { minZ: number; topK: number }): DiffItem[] {
   return items
-    .filter((i) => Math.abs(i.z) >= o.minZ)
+    .filter((i) => Math.abs(i.z) >= o.minZ && changedSinceBaseline(i.z, i.zBase, o.minZ))
     .sort((a, b) => b.materiality - a.materiality || Math.abs(b.z) - Math.abs(a.z))
-    .slice(0, Math.max(0, o.topK));
+    .slice(0, Math.max(0, o.topK))
+    .map(({ zBase: _, ...i }) => i);
 }

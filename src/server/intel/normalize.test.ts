@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { hourlyLogChanges, levelZ, metricFamily, metricZ, ratioZ, returnZ, type Point } from "./normalize.js";
+import { baselineZ, hourlyLogChanges, levelZ, metricFamily, metricZ, ratioZ, returnZ, type Point } from "./normalize.js";
 
 const H = 3_600_000;
 const T = Date.UTC(2026, 9, 13, 12);
@@ -99,5 +99,16 @@ describe("metricZ", () => {
   });
   test("the ratio family has no cold start", () => {
     expect(metricZ("vol24h", { from, to, history: [], coldStart: zigzag(30) })).toBeNull();
+  });
+});
+
+describe("baselineZ", () => {
+  const alt = Array.from({ length: 24 }, (_, i) => ({ t: T - (24 - i) * H, v: i % 2 ? 3 : 1 })); // mean 2, σ 1
+  test("level/ratio: the baseline value's z against the same history; returns → null", () => {
+    expect(baselineZ("premium", { from: { t: T - 4 * H, v: 3.5 }, to: { t: T, v: 4 }, history: alt })).toBeCloseTo(1.5, 12);
+    expect(baselineZ("vol24h", { from: { t: T - 4 * H, v: 100 }, to: { t: T, v: 100 }, history: zigzag(30) })).toBe(
+      ratioZ({ t: T, v: 100 }, zigzag(30)),
+    );
+    expect(baselineZ("price", { from: { t: T - 4 * H, v: 100 }, to: { t: T, v: 101 }, history: zigzag(25) })).toBeNull();
   });
 });

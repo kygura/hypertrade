@@ -11,6 +11,8 @@ import { mean, median, stdev } from "./util.js";
 //   vol24h, depth_*,    log(now / 7d median) over the 7d σ of that same
 //   spread_bps          log ratio
 // Fewer than MIN_SAMPLES samples → null: the metric is skipped, never zero.
+// Level and ratio z measure a state, so baselineZ gives the caller the same z
+// at the baseline value (diff.changedSinceBaseline gates on it).
 // The caller loads the history (snapshots) and the cold-start series
 // (1h candles, observations, funding rows) and passes them in as points.
 
@@ -100,10 +102,29 @@ export function hasSamples(metric: SnapshotMetric, history: Point[], t: number):
  * hl.funding|premium.<coin> for funding/premium) stands in when the snapshot
  * store is still too young. The ratio family has no cold start.
  */
-export function metricZ(metric: SnapshotMetric, a: { from: Point; to: Point; history: Point[]; coldStart?: Point[] }): number | null {
+export function metricZ(metric: SnapshotMetric, a: ZInput): number | null {
   const family = metricFamily(metric);
-  const history = family !== "ratio" && a.coldStart?.length && !hasSamples(metric, a.history, a.to.t) ? a.coldStart : a.history;
+  const history = zHistory(metric, a);
   if (family === "return") return returnZ(a.from, a.to, history);
   if (family === "level") return levelZ(a.to, history);
   return ratioZ(a.to, history);
+}
+
+/**
+ * Level and ratio families: the z the baseline value would have had against
+ * the same 7-day history (window ending at `to.t`). null for returns, whose z
+ * is already a change. The caller gates on it so a level that was already
+ * unusual at the baseline does not re-flag on every review.
+ */
+export function baselineZ(metric: SnapshotMetric, a: ZInput): number | null {
+  const family = metricFamily(metric);
+  if (family === "return") return null;
+  const at = { t: a.to.t, v: a.from.v };
+  return family === "level" ? levelZ(at, zHistory(metric, a)) : ratioZ(at, zHistory(metric, a));
+}
+
+type ZInput = { from: Point; to: Point; history: Point[]; coldStart?: Point[] };
+
+function zHistory(metric: SnapshotMetric, a: ZInput): Point[] {
+  return metricFamily(metric) !== "ratio" && a.coldStart?.length && !hasSamples(metric, a.history, a.to.t) ? a.coldStart : a.history;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { DiffItem, SnapshotRow } from "../../shared/intel.js";
 import { atr as atr14 } from "../desk/tools.js";
-import { buildDiffItems, delta, exposureWeight, rankDiffs, stopDistance, stopProximity, WATCH_FLOOR, type AssetDiffInput } from "./diff.js";
+import { buildDiffItems, changedSinceBaseline, delta, exposureWeight, rankDiffs, stopDistance, stopProximity, WATCH_FLOOR, type AssetDiffInput } from "./diff.js";
 
 const H = 3_600_000;
 const T = Date.UTC(2026, 9, 13, 12);
@@ -105,5 +105,40 @@ describe("rankDiffs", () => {
     const ranked = rankDiffs([item("A", 2.5, 0.1), item("B", -3, 0.9), item("C", 1.9, 5), item("D", 2, 0.5)], { minZ: 2, topK: 2 });
     expect(ranked.map((i) => i.asset)).toEqual(["B", "D"]);
     expect(rankDiffs([item("C", 1.9, 5)], { minZ: 2, topK: 5 })).toEqual([]);
+  });
+});
+
+describe("level/ratio gate (changed since the baseline)", () => {
+  // Funding history: mean 2e-5, σ 1e-5, so z = (f − 2e-5) / 1e-5.
+  const flagged = (from: number, to: number) => {
+    const input: AssetDiffInput = {
+      asset: "BTC",
+      current: row("BTC", T, { funding: to }),
+      baseline: row("BTC", T - 4 * H, { funding: from }),
+      history: history("BTC"),
+      positions: [],
+    };
+    const { items } = buildDiffItems([input], 0);
+    return rankDiffs(items, { minZ: 2, topK: 5 }).filter((i) => i.metric === "funding");
+  };
+
+  test("a persistent unusual level with Δ ≈ 0 is not flagged", () => {
+    expect(flagged(4.8e-5, 4.8e-5)).toEqual([]); // z +2.8 at both ends
+    expect(flagged(4.8e-5, 4.5e-5)).toEqual([]); // still unusual, z moved 0.3
+  });
+  test("crossing the threshold since the baseline is flagged", () => {
+    const [f] = flagged(3e-5, 4.5e-5); // z 1 → 2.5
+    expect(f!.z).toBeCloseTo(2.5, 9);
+    expect("zBase" in f!).toBe(false); // internal, not on the DiffItem contract
+  });
+  test("already unusual but z moved ≥ 1 is flagged", () => {
+    expect(flagged(4.5e-5, 6e-5)).toHaveLength(1); // z 2.5 → 4
+    expect(flagged(-2.5e-5, 4.5e-5)).toHaveLength(1); // z −4.5 → +2.5
+  });
+  test("changedSinceBaseline: no baseline z (returns) always passes", () => {
+    expect(changedSinceBaseline(3, undefined, 2)).toBe(true);
+    expect(changedSinceBaseline(3, 1.9, 2)).toBe(true);
+    expect(changedSinceBaseline(3, 2.1, 2)).toBe(false);
+    expect(changedSinceBaseline(3, 2, 2)).toBe(true);
   });
 });
