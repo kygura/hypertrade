@@ -108,11 +108,8 @@ class AnthropicConversation implements Conversation {
     // native hosted tool under the same name — the API rejects duplicates.
     // Intel opts out per step (webSearch: false).
     if (opts.webSearch !== false && !tools.some((t) => t.name === "web_search")) {
-      apiTools.push(
-        current
-          ? { type: "web_search_20260209", name: "web_search", max_uses: this.opts.webSearchMaxUses ?? 5 }
-          : { type: "web_search_20250305", name: "web_search", max_uses: this.opts.webSearchMaxUses ?? 5 },
-      );
+      const max_uses = opts.maxUses ?? this.opts.webSearchMaxUses ?? 5;
+      apiTools.push(current ? { type: "web_search_20260209", name: "web_search", max_uses } : { type: "web_search_20250305", name: "web_search", max_uses });
     }
     // "default" fallback routing is first-party only: skip it behind a base-URL override.
     const fallbacks = FALLBACK_MODELS.has(model) && !this.opts.baseURL;
@@ -144,6 +141,7 @@ class AnthropicConversation implements Conversation {
       } else if (block.type === "web_search_tool_result") {
         const { ok, summary } = summarizeWebSearch(block.content);
         hooks.onServerToolResult?.(block.tool_use_id, "web_search", ok, summary);
+        if (Array.isArray(block.content)) hooks.onSearchResults?.(block.content.map((r) => ({ url: r.url, title: r.title ?? null })));
       } else if (block.type === "text" && block.citations) {
         for (const c of block.citations) {
           if (c.type === "web_search_result_location") {

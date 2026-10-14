@@ -1,6 +1,6 @@
 import type { ZodError, ZodType } from "zod";
 import { deskProviderFactory } from "../desk/agents.js";
-import type { AnalystEnv, LLMProvider, ToolSpec, Usage } from "../llm/provider.js";
+import type { AnalystEnv, LLMProvider, StepHooks, ToolSpec, Usage } from "../llm/provider.js";
 
 // The one LLM entry point for Intel (SPEC.md § Intel I0.6). A single client
 // tool, `emit`, carries the target JSON schema; forced tool choice is
@@ -77,6 +77,10 @@ export interface CompleteStructuredArgs<T> {
   cacheKey?: string;
   /** Provider-hosted web search; off unless asked for. */
   webSearch?: boolean;
+  /** Per-call web search budget (StepOptions.maxUses). */
+  maxUses?: number;
+  /** Observers for the provider-hosted search (research provenance). */
+  hooks?: Omit<StepHooks, "onText">;
   signal?: AbortSignal;
   deadlineMs?: number;
   deps: LlmDeps;
@@ -139,7 +143,7 @@ export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Pr
       const prompt = attempt === 1 ? user : `${user}\n\nYour previous answer was rejected: ${lastError}\nCall \`${EMIT_TOOL}\` again with a corrected object.`;
       let text = "";
       const res = await race(
-        provider.start(system + EMIT_INSTRUCTION, [], prompt).step([emit], { onText: (d) => void (text += d) }, { signal, webSearch: args.webSearch ?? false }),
+        provider.start(system + EMIT_INSTRUCTION, [], prompt).step([emit], { ...args.hooks, onText: (d) => void (text += d) }, { signal, webSearch: args.webSearch ?? false, maxUses: args.maxUses }),
       );
       trace.usage = { input_tokens: trace.usage.input_tokens + res.usage.input_tokens, output_tokens: trace.usage.output_tokens + res.usage.output_tokens };
       const raw = res.toolCalls.find((c) => c.name === EMIT_TOOL)?.input ?? extractJson(text);
