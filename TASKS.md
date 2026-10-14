@@ -23,20 +23,20 @@ Destination: `/` becomes the Intel Terminal (SPEC.md § Intel): all eight module
 - [x] T1 Contract: 007_intel.sql, src/shared/intel.ts (all API types), IntelStore (Pg + Memory), positions.ts — opus — done
 - [x] T2 LLM: completeStructured + cache + trace + cap, provider web-search opt-out, claims validator — opus — done
 - [x] T3 Governor refactor: evaluateRisk + DeskService.submitOperatorOrder — opus (heavy) — done
-- [ ] T4 Snapshot store + normalize/diff + terminal brief + collect/backfill hooks — opus — deps T1, T2
-- [ ] T5 Graph + cluster + ingest adapters + calendar — opus — deps T1, T2
-- [ ] T6 Mapper + priced-in + catalysts + feedback + notify — opus — deps T4, T5
-- [ ] T7 Journal — opus — deps T1, T2
-- [ ] T8 Theses + screener — opus — deps T4
-- [ ] T9 Copilot — opus — deps T1, T2, T3
-- [ ] T10 Docwatch — opus — deps T6
-- [ ] T11 Routes + cron wiring + workflow + api mount + auth READ_PATH — opus — deps T4–T10
-- [ ] U1 UI shell: routes, nav, TerminalTabs, lib/intel.ts — opus (ui-impl) — deps D1, T1
-- [ ] U2 Terminal page — opus (ui-impl) — deps U1
-- [ ] U3 Journal + Theses + Query pages — opus (ui-impl) — deps U1
-- [ ] U4 Order + Watch pages — opus (ui-impl) — deps U1
-- [ ] T12 README + DESIGN.md §5/§10.2/§13 touch-ups — haiku — deps U2–U4
-- [ ] V1 Verification gate — reviewers (fable), drift (haiku), tests/typecheck/build/check:api
+- [x] T4 Snapshot store + normalize/diff + terminal brief + collect/backfill hooks — opus — deps T1, T2
+- [x] T5 Graph + cluster + ingest adapters + calendar — opus — deps T1, T2
+- [x] T6 Mapper + priced-in + catalysts + feedback + notify — opus — deps T4, T5
+- [x] T7 Journal — opus — deps T1, T2
+- [x] T8 Theses + screener — opus — deps T4
+- [x] T9 Copilot — opus — deps T1, T2, T3
+- [x] T10 Docwatch — opus — deps T6
+- [x] T11 Routes + cron wiring + workflow + api mount + auth READ_PATH — opus — deps T4–T10
+- [x] U1 UI shell: routes, nav, TerminalTabs, lib/intel.ts — opus (ui-impl) — deps D1, T1
+- [x] U2 Terminal page — opus (ui-impl) — deps U1
+- [x] U3 Journal + Theses + Query pages — opus (ui-impl) — deps U1
+- [x] U4 Order + Watch pages — opus (ui-impl) — deps U1
+- [x] T12 README + DESIGN.md §5/§10.2/§13 touch-ups — haiku — deps U2–U4
+- [x] V1 Verification gate — reviewers (fable), drift (haiku), tests/typecheck/build/check:api
 
 ## Decisions so far
 - P0: baseline 769 pass, typecheck green. Workers do not commit; planner commits per task with explicit paths. Native Claude workers only.
@@ -46,3 +46,7 @@ Destination: `/` becomes the Intel Terminal (SPEC.md § Intel): all eight module
 - T1 (opus): 16 tables, lists as jsonb; alert dedupe key (kind, ref, asset, time_window); HttpsUrlSchema blocks IP/local hosts (SSRF); aligned to DESIGN-terminal §13 (design doc renamed to contract names). 836 green.
 - D1 (opus): OBS gray / HYP info-blue badges; 4-char sub-tabs no scroll; nav ▣ TERM; review once per tab per 5 min; order confirm Level 2 with venue badge, no Money tier.
 - Wave 2 launched in worktrees: T4, T5, T7, T8, T9, U1.
+- Waves 2–3 (opus, worktrees): T4 snapshot/normalize/brief, T5 graph/cluster/ingest, T6 mapper/catalysts/feedback, T7 journal, T8 theses/screener, T9 copilot, T10 docwatch, U1–U4 UI; T11 wiring (routes, cron, workflow, auth, client↔route contract test). Merge conflicts only in the UI barrel and format.ts (additive, resolved).
+- V1 reviews (fable): risk — ReDoS in HTML/RSS scanning (HIGH), hostname-only SSRF, unbounded ingest bodies, raw 500s, prompt-injection integrity; reliability — UI baseline could be minutes old (z inflation), h-cap inflation, unreadable rate deltas, mapper budget/dedupe, catalyst ordering; finalizer — feedback report unreachable, Vercel cron bypassing INTEL_ENABLED, catalyst dampening, thesis recheck on alerts, journal weekly schedule, graph refresh without web search, Telegram backoff; drift (haiku) — confirm copy not irreversible (MUST-FIX); ponytail — ~180 lines of duplicated helpers.
+- V1 loops 1–2 (opus): all fixed except drift B2 (lg/xl are type sizes, not breakpoints; code already follows DESIGN.md). Gate: 1147 pass, typecheck, build, check:api green. Browser run without DB: all 7 routes render on desktop and mobile, no page errors, every panel in a named state.
+- Open: HL journal trades have no stop source (R blank); no-target normalTpsl needs one testnet smoke; no DNS pinning (TOCTOU noted); calendar dates must be checked yearly; not yet exercised against a live Postgres + LLM.
