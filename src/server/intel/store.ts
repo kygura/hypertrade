@@ -96,16 +96,16 @@ export interface IntelStore {
   insertResearch(r: NewResearch): Promise<ResearchResult>;
   /**
    * The `running` lock (SPEC S0.3): stores `r` (status "running") and returns it, or null when another run is in
-   * flight. A running row created before `staleBefore` is first marked failed.
+   * flight. A running row older than `staleMs` (store clock) is first marked failed.
    */
-  acquireResearch(r: NewResearch, staleBefore: Date): Promise<ResearchResult | null>;
-  /** Replaces a running row with its final result. */
+  acquireResearch(r: NewResearch, staleMs: number): Promise<ResearchResult | null>;
+  /** Replaces a running row with its final result; null when the row is gone or no longer running (marked stale meanwhile). */
   finishResearch(id: string, r: NewResearch): Promise<ResearchResult | null>;
   /** createdAt >= since, newest first. */
   listResearch(opts: { asset?: string; since?: Date; limit: number }): Promise<ResearchResult[]>;
-  /** Rows (any status) created since `since`: the daily limits. */
+  /** Runs that used or hold the budget (running, found, no_cause) since `since`: the daily limits. Capped and failed rows don't count. */
   researchCountSince(since: Date, trigger?: ResearchResult["trigger"]): Promise<number>;
-  /** Newest result for a flag, failed runs excluded (a failed run may be retried). */
+  /** Newest result carrying the flag id, whatever its trigger; failed and capped runs excluded (they may be retried). */
   researchForFlag(flagId: string): Promise<ResearchResult | null>;
   pruneResearch(before: Date): Promise<number>;
 
@@ -531,9 +531,10 @@ export class PgIntelStore implements IntelStore {
     const [row] = await sql()`insert into intel_research (trigger, flag_id, asset, status, body) values (${r.trigger}, ${r.flagId ?? null}, ${r.asset}, ${r.status}, ${json(r)}) returning *`;
     return toResearch(row);
   }
-  async acquireResearch(r: NewResearch, staleBefore: Date) {
+  async acquireResearch(r: NewResearch, staleMs: number) {
+    // Staleness is judged by the database clock, which also stamped created_at.
     await sql()`update intel_research set status = 'failed', body = body || ${json({ status: "failed", explanation: STALE_RESEARCH })}
-      where status = 'running' and created_at < ${staleBefore}`;
+      where status = 'running' and created_at < now() - make_interval(secs => ${staleMs / 1000}::float8)`;
     // The partial unique index on status = 'running' makes a concurrent second insert a no-op.
     const [row] = await sql()`insert into intel_research (trigger, flag_id, asset, status, body) values (${r.trigger}, ${r.flagId ?? null}, ${r.asset}, 'running', ${json({ ...r, status: "running" })})
       on conflict do nothing returning *`;
@@ -541,7 +542,7 @@ export class PgIntelStore implements IntelStore {
   }
   async finishResearch(id: string, r: NewResearch) {
     if (!isUuid(id)) return null;
-    const [row] = await sql()`update intel_research set status = ${r.status}, body = ${json(r)} where id = ${id} returning *`;
+    const [row] = await sql()`update intel_research set status = ${r.status}, body = ${json(r)} where id = ${id} and status = 'running' returning *`;
     return row ? toResearch(row) : null;
   }
   async listResearch(o: { asset?: string; since?: Date; limit: number }) {
@@ -551,11 +552,11 @@ export class PgIntelStore implements IntelStore {
     return rows.map(toResearch);
   }
   async researchCountSince(since: Date, trigger?: ResearchResult["trigger"]) {
-    const [row] = await sql()`select count(*)::int as n from intel_research where created_at >= ${since} and (${trigger ?? null}::text is null or trigger = ${trigger ?? null})`;
+    const [row] = await sql()`select count(*)::int as n from intel_research where created_at >= ${since} and status in ('running', 'found', 'no_cause') and (${trigger ?? null}::text is null or trigger = ${trigger ?? null})`;
     return row!.n as number;
   }
   async researchForFlag(flagId: string) {
-    const [row] = await sql()`select * from intel_research where flag_id = ${flagId} and status <> 'failed' order by created_at desc limit 1`;
+    const [row] = await sql()`select * from intel_research where flag_id = ${flagId} and status not in ('failed', 'capped') order by created_at desc limit 1`;
     return row ? toResearch(row) : null;
   }
   async pruneResearch(before: Date) {
@@ -981,15 +982,16 @@ export class MemoryIntelStore implements IntelStore {
     this.research.push(row);
     return clone(row);
   }
-  async acquireResearch(r: NewResearch, staleBefore: Date) {
+  async acquireResearch(r: NewResearch, staleMs: number) {
+    const cutoff = this.clock().getTime() - staleMs;
     for (const x of this.research) {
-      if (x.status === "running" && Date.parse(x.createdAt) < staleBefore.getTime()) Object.assign(x, { status: "failed", explanation: STALE_RESEARCH });
+      if (x.status === "running" && Date.parse(x.createdAt) < cutoff) Object.assign(x, { status: "failed", explanation: STALE_RESEARCH });
     }
     if (this.research.some((x) => x.status === "running")) return null;
     return this.insertResearch({ ...r, status: "running" });
   }
   async finishResearch(id: string, r: NewResearch) {
-    const i = this.research.findIndex((x) => x.id === id);
+    const i = this.research.findIndex((x) => x.id === id && x.status === "running");
     if (i < 0) return null;
     this.research[i] = { ...clone(r), id, createdAt: this.research[i]!.createdAt };
     return clone(this.research[i]!);
@@ -997,15 +999,15 @@ export class MemoryIntelStore implements IntelStore {
   async listResearch(o: { asset?: string; since?: Date; limit: number }) {
     return this.research
       .filter((x) => (!o.asset || x.asset === o.asset) && (!o.since || Date.parse(x.createdAt) >= o.since.getTime()))
-      .reverse()
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
       .slice(0, o.limit)
       .map(clone);
   }
   async researchCountSince(since: Date, trigger?: ResearchResult["trigger"]) {
-    return this.research.filter((x) => Date.parse(x.createdAt) >= since.getTime() && (!trigger || x.trigger === trigger)).length;
+    return this.research.filter((x) => Date.parse(x.createdAt) >= since.getTime() && x.status !== "capped" && x.status !== "failed" && (!trigger || x.trigger === trigger)).length;
   }
   async researchForFlag(flagId: string) {
-    return clone([...this.research].reverse().find((x) => x.flagId === flagId && x.status !== "failed") ?? null);
+    return clone([...this.research].reverse().find((x) => x.flagId === flagId && x.status !== "failed" && x.status !== "capped") ?? null);
   }
   async pruneResearch(before: Date) {
     const keep = this.research.filter((x) => Date.parse(x.createdAt) >= before.getTime());

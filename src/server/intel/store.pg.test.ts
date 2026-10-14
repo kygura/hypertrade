@@ -329,15 +329,17 @@ async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
   });
   const past = new Date(0);
   const future = new Date(Date.now() + 3_600_000);
-  put("research.acquire", await s.acquireResearch(rs(), past));
-  put("research.busy", await s.acquireResearch(rs(), past));
-  const taken = await s.acquireResearch(rs({ flagId: "flag-1" }), future); // the first row is stale now
+  put("research.acquire", await s.acquireResearch(rs(), 3_600_000));
+  put("research.busy", await s.acquireResearch(rs(), 3_600_000));
+  const taken = await s.acquireResearch(rs({ flagId: "flag-1" }), -3_600_000); // the first row is stale now
   put("research.stale", taken);
   put("research.finish", await s.finishResearch(taken!.id, rs({ flagId: "flag-1", status: "found", explanation: "x", evidence: [{ claim: "c", url: "https://a.example.com/x", ts: null, type: "observed" }], confidence: "high", searches: 2, costUsd: 0.5 })));
+  put("research.finishAgain", await s.finishResearch(taken!.id, rs({ status: "failed" }))); // already finished
   put("research.finishMissing", await s.finishResearch(crypto.randomUUID(), rs()));
   put("research.insert", [
     await s.insertResearch(rs({ status: "capped", explanation: "cap" })),
     await s.insertResearch(rs({ trigger: "flag", asset: "BTC", flagId: "flag-2", status: "no_cause" })),
+    await s.insertResearch(rs({ status: "failed", flagId: "flag-3" })),
   ]);
   put("research.list", [
     await s.listResearch({ limit: 10 }),
@@ -346,7 +348,7 @@ async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
     await s.listResearch({ since: future, limit: 10 }),
   ]);
   put("research.count", [await s.researchCountSince(past), await s.researchCountSince(past, "flag"), await s.researchCountSince(future)]);
-  put("research.forFlag", [await s.researchForFlag("flag-1"), await s.researchForFlag("flag-2"), await s.researchForFlag("nope")]);
+  put("research.forFlag", [await s.researchForFlag("flag-1"), await s.researchForFlag("flag-2"), await s.researchForFlag("flag-3"), await s.researchForFlag("nope")]);
   put("research.prune", [await s.pruneResearch(past), await s.pruneResearch(future), await s.listResearch({ limit: 10 })]);
 
   return out;
@@ -383,7 +385,7 @@ describe.skipIf(!PG_URL)("PgIntelStore (real Postgres) matches MemoryIntelStore"
 
   test("the migration landed in the throwaway schema", async () => {
     const [row] = await sql()`select count(*)::int as n from information_schema.tables where table_schema = ${SCHEMA} and table_name like 'intel_%'`;
-    expect(row!.n).toBe(18);
+    expect(row!.n).toBe(19);
   });
 
   test("every method returns what the memory store returns", async () => {

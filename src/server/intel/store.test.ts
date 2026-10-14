@@ -287,29 +287,34 @@ describe("MemoryIntelStore research", () => {
 
   test("one running row at a time; a stale one is failed and replaced; flag lookup ignores the trigger", async () => {
     const s = new MemoryIntelStore(() => clock.t);
-    const first = await s.acquireResearch(rs({ flagId: "f1" }), new Date(0));
+    const first = await s.acquireResearch(rs({ flagId: "f1" }), 3_600_000);
     expect(first?.status).toBe("running");
-    expect(await s.acquireResearch(rs(), new Date(0))).toBeNull();
-    const second = await s.acquireResearch(rs({ flagId: "f1" }), new Date(clock.t.getTime() + 1));
+    expect(await s.acquireResearch(rs(), 3_600_000)).toBeNull();
+    const second = await s.acquireResearch(rs({ flagId: "f1" }), -1);
     expect(second).not.toBeNull();
-    expect((await s.listResearch({ limit: 5 })).map((r) => r.status)).toEqual(["running", "failed"]);
+    expect((await s.listResearch({ limit: 5 })).map((r) => r.status)).toEqual(["failed", "running"]); // same instant: id order
+    expect(await s.finishResearch(first!.id, rs({ status: "found" }))).toBeNull(); // no longer running: cannot be overwritten
     await s.finishResearch(second!.id, rs({ flagId: "f1", status: "found", explanation: "x" }));
+    expect(await s.finishResearch(second!.id, rs({ status: "failed" }))).toBeNull(); // finished once
     expect((await s.researchForFlag("f1"))?.id).toBe(second!.id); // trigger is "manual": found all the same
     expect(await s.researchForFlag("f2")).toBeNull();
   });
 
   test("counts and lists by asset, since and trigger; prune by age", async () => {
     const s = new MemoryIntelStore(() => clock.t);
-    await s.insertResearch(rs({ status: "capped" }));
+    await s.insertResearch(rs({ status: "found", flagId: "f8" }));
+    await s.insertResearch(rs({ status: "capped", flagId: "f7" }));
+    await s.insertResearch(rs({ status: "failed" }));
     clock.t = new Date("2026-10-15T12:00:00Z");
     await s.insertResearch(rs({ trigger: "flag", asset: "BTC", flagId: "f9", status: "no_cause" }));
     const day = new Date("2026-10-15T00:00:00Z");
     expect(await s.researchCountSince(day)).toBe(1);
-    expect(await s.researchCountSince(new Date(0))).toBe(2);
+    expect(await s.researchCountSince(new Date(0))).toBe(2); // capped and failed runs don't use the daily budget
     expect(await s.researchCountSince(new Date(0), "manual")).toBe(1);
+    expect(await s.researchForFlag("f7")).toBeNull(); // capped: the chip may offer a retry
     expect((await s.listResearch({ asset: "BTC", limit: 5 })).map((r) => r.flagId)).toEqual(["f9"]);
-    expect((await s.listResearch({ limit: 5 })).map((r) => r.asset)).toEqual(["BTC", "SOL"]); // newest first
-    expect(await s.pruneResearch(day)).toBe(1);
+    expect((await s.listResearch({ limit: 5 })).map((r) => r.asset)).toEqual(["BTC", "SOL", "SOL", "SOL"]); // newest first
+    expect(await s.pruneResearch(day)).toBe(3);
     expect(await s.listResearch({ limit: 5 })).toHaveLength(1);
   });
 });

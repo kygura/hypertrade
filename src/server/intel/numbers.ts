@@ -29,9 +29,15 @@ const NUMBER = /(?<![\w.]|[A-Za-z][-:])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:\s
 const SCALE: Record<string, number> = { k: 1e3, thousand: 1e3, m: 1e6, mn: 1e6, million: 1e6, b: 1e9, bn: 1e9, billion: 1e9, trillion: 1e12 };
 
 /** Numeric tokens of an LLM line, exempt ones skipped. Signs are dropped (direction is usually in words). */
-export function extractNumbers(text: string): NumToken[] {
+/** `text` with the exempt spans (dates, times, list markers) blanked out, length preserved. */
+export function stripExempt(text: string): string {
   let t = text;
   for (const re of EXEMPT) t = t.replace(re, (s) => " ".repeat(s.length));
+  return t;
+}
+
+export function extractNumbers(text: string): NumToken[] {
+  const t = stripExempt(text);
   const out: NumToken[] = [];
   for (const m of t.matchAll(NUMBER)) {
     const [whole, int, dec = "", word, letter] = m;
@@ -76,6 +82,8 @@ const ADVICE = [
   new RegExp(`(?:^[\\s\\-•*]*|[.!?:;—–]\\s*)${VERB}\\b${NOT_NOUN}`, "i"),
   new RegExp(`\\b(?:should|could|consider|recommend\\w*|time to|better to|you|we)\\s+${VERB}(?:ing)?\\b${NOT_NOUN}`, "i"),
   /\btargets?\b|\bwill\s+reach\b/i,
+  // Imperatives with no buy/sell verb. Bare "long"/"short" stay legal ("long/short ratio", "crowded long").
+  /\b(?:go\s+(?:long|short)|take\s+profits?|add\s+(?:to\s+)?exposure|trim|short\s+it|long\s+it)\b/i,
   /\bTP\d?\b/,
 ];
 

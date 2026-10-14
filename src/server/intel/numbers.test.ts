@@ -116,4 +116,13 @@ describe("isAdvice", () => {
     expect(isAdvice("Buy-side depth fell.")).toBe(false);
     expect(isAdvice("Long SOL: sell into strength.")).toBe(true);
   });
+
+  test("verbless imperatives are advice; bare long/short stay legal", () => {
+    for (const t of ["Go long here.", "go short on the bounce", "Take profit at the high.", "Add exposure now.", "Trim the position.", "Short it.", "Long it."]) {
+      expect(isAdvice(t)).toBe(true);
+    }
+    for (const t of ["The long/short ratio rose to 1.8.", "A crowded long unwound.", "Shorts were squeezed.", "Longs added open interest."]) {
+      expect(isAdvice(t)).toBe(false);
+    }
+  });
 });
