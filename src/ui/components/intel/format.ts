@@ -223,3 +223,12 @@ export function fmtOp(op: string): string {
 export function signClass(n: number | null | undefined): string {
   return n == null || !Number.isFinite(n) ? 'text-text-secondary' : classForPnl(n)
 }
+
+/** Hostname without `www.`; "source" when the url does not parse. */
+export function hostLabel(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return 'source'
+  }
+}

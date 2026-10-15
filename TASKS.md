@@ -52,3 +52,75 @@ Destination: `/` becomes the Intel Terminal (SPEC.md § Intel): all eight module
 - Open: HL journal trades have no stop source (R blank); no-target normalTpsl needs one testnet smoke; no DNS pinning (TOCTOU noted); calendar dates must be checked yearly; not yet exercised against a live Postgres + LLM.
 - Follow-up (2026-10-14): live run against a local Postgres 16 + live Hyperliquid (all routes and cron jobs exercised, a paper order confirmed, 19 responses zod-validated) → 4 bugs fixed; store.pg.test.ts Pg/Memory parity suite (runs with INTEL_PG_TEST_URL); macro calendar verified against Fed/BLS (5 dates corrected); HL stops captured during collect (migration 008) so HL journal trades get R; docwatch pins the vetted IP (node:https lookup); level/ratio metrics flagged only when changed since the baseline. Gate: 1164 pass + 6 PG-gated, typecheck, build, check:api green.
 - Still open: live LLM provider run (needs a key); one HL testnet smoke for no-target orders (needs testnet credentials).
+
+---
+
+# Tasks — Flow (phase 6, "Flow + Scout" quant gaps)
+
+Harness: Claude Code (local). Planner: claude-sonnet-5-5. Roster: native Anthropic only (fable, opus, sonnet, haiku); no bridges (user rule). Reviewer = different family / fresh context.
+
+| Role | Model | Effort |
+|---|---|---|
+| planner | sonnet (self) | — |
+| discussion | opus / fable | default |
+| designer | fable | default |
+| heavy / worker / ui-impl | opus | default |
+| reviewer | fable (opus work) | default |
+| drift-check | haiku | low |
+
+Destination: SPEC.md § Flow (F0–F3) built into the Intel Terminal; `/` gains the flow heatmap + detector chips, `/asset/:coin` exists, Telegram /digest + 👍/👎 work, LLM lines pass the number validator, $ cap enforced; test/typecheck/build/check:api green.
+
+## Tasks
+- [x] P0 Plan — SPEC.md § Flow, docs/research/flow-sources.md (sonnet research), opus second opinion — sonnet (planner)
+- [x] D1 Design pass → DESIGN-terminal.md §15 — fable
+- [x] A Contract + pure quant: 009_flow.sql, shared/intel.ts types, IntelStore flow methods, windows.ts, flows.ts — opus — deps P0
+- [x] B LLM guards: numbers.ts validator wired at the claim layer, $ daily cap in llm.ts — opus — deps P0
+- [x] C Telegram: /digest + fb callbacks + alert actions — opus — deps P0 (uses `via` enum from A; merge after A)
+- [x] D Coinalyze collector in collect + routes heatmap/asset/flows + detector events in brief/mapper push — opus — deps A
+- [x] E UI: FlowHeatmap, DetectorChips, AssetPage (timeline + graph), cap copy — opus (ui-impl) — deps A, D1
+- [x] V Verification gate — folded into phase 7 V (done 2026-10-14) (never ran; baseline 2026-10-14: 1280 pass / 1 fail analyst.test.ts:394, typecheck/build/check:api green)
+
+## Decisions so far
+- P0: Coinalyze only (Binance/Bybit US-blocked from Vercel iad1); exchange inflows out of scope; robust σ + non-overlapping windows; detectors ranked in their own materiality list; existing Telegram callback branch extended; no Codex (user).
+
+---
+
+# Tasks — Scout (phase 7: research + scorer gaps on `/`)
+
+Harness: Claude Code (local). Planner: claude-opus-5-5 (P0, S); claude-sonnet-5-5 from D2 on (2026-10-14 resume). Roster: native Anthropic only (fable, opus, sonnet, haiku), no bridges (user rule). Reviewer = different family / fresh context.
+
+| Role | Model | Effort |
+|---|---|---|
+| planner | opus → sonnet (self) | — |
+| discussion | fable | medium |
+| designer | fable | medium |
+| worker | sonnet | medium (escalate: high → opus) |
+| heavy | opus | medium |
+| ui-impl | opus | medium |
+| reviewer | opus (sonnet work), fable (opus work) | medium |
+| grunt / drift-check | haiku | high / low |
+
+Destination: SPEC.md § Scout S0–S2 — Research panel on `/`, auto research on unexplained flags, digest/alert thresholds, confluence, graph diff-review; full gate green.
+
+## Tasks
+- [x] P0 Plan — SPEC.md § Scout; user chose research on `/` (2026-10-14) — opus
+- [x] S Second opinion on S0 — fable
+- [x] D2 Design pass → DESIGN-terminal.md § 16 — fable
+- [x] R1 Contract + 010_research.sql + store (Pg/Memory) + research.ts engine — sonnet — deps S
+- [x] T Thresholds + confluence + graph diff-review + dead client fns + analyst.test fix — sonnet — deps S
+- [x] R2 Routes + auto trigger in ingest — sonnet — deps R1
+- [x] U5 ResearchPanel, chip action, timeline event, confluence badge — opus (ui-impl) — deps D2, R1
+- [x] V Verification gate (covers phase 6 too) — reviewers, drift, test/typecheck/build/check:api
+
+## Decisions so far
+- P0: Flow A–E already merged on feat/flow-scout; only V missing. Confluence found absent from every materiality formula. Exchange inflows stay out (no free source). Telegram /ask stays Desk.
+- S (fable, adopted): no fetch tool (searches ≤ 8 via per-call maxUses; SSRF surface stays closed); observed evidence must cite a URL from the provider's own search results + number in its excerpt, else hypothesis; 45 s research deadline; DB `running` lock not process flag; auto research = own last ingest stage; one `materiality(parts,k)` seam in diff.ts, own signal excluded from k; researchId joined at read time; graph refresh already never deletes → only add stale-edge removal (non-seed/manual).
+- D2 (fable): RESEARCH full-width row under FLOW; "see research" scrolls to the card on `/`; confluence badge ×1.25 only when > 1. Gaps closed by planner in S1: POST accepts `flagId` (chip runs stay trigger "manual"), research AssetEvents carry `research`.
+- R1 review (opus risk + reliability): the provenance check was number-only against titles. Now observed = cited_text overlap ≥ 50 % + exact numbers; found needs an observed claim; 8 searches per run incl. retries; failed calls count toward the $ cap; DB-clock stale lock; limits count running|found|no_cause only. Fix round 1 sent to the R1 worker.
+- T: k = 1 + other distinct sources (6 h window); Alert has no confluence field (avoids a migration clash), so the badge is digest-only; heatmap row materiality left as is.
+- T review (opus reliability): per-asset deletes dropped cross-target and refused-but-reasserted edges → one run-level delete after all upserts, keep = union incl. well-formed refusals, never delete when an endpoint failed. Same-run flag classes precomputed (symmetric k). Held exposure floored at WATCH_FLOOR. Fix round 1 sent to the T worker.
+- R1 + T merged (fixes d755cba, d267746). Pg parity still unrun: no Postgres or docker on this host. The Pg SQL is read-reviewed only, and V must name this gap. Search fee is $0.01/search (ponytail note in llm.ts). R2 and U5 launched in parallel worktrees.
+- R2 review (opus reliability + resilience). Live heatmap flag ids embedded request time, so researchId never joined in prod; fix = carry the stored episode id. Per-flag join queries → one batched query that fails soft. Timed-out steps now record a pessimistic cost. Both daily limits count running|found|no_cause + failed with cost > 0. Auto: one attempt per flag per UTC day, stop on capped, abort signal threaded, start only with deadline + 15 s left, collector_runs `intel:research`. Fix round 2 sent.
+- R2 fixes 0243ee1 + 0211cb5 (asset stored as typed, matched case-insensitively; kPEPE-safe). U5 fixes 4cf399b (merge prefers non-running copy, researchGate reducer, gate clearing). Both merged → 43d58d7. V launched: finalizer + render, phase 6 4R (risk/reliability/resilience), standards+spec, ponytail.
+- V results. Spec: every F/S item implemented. Phase 6 reviews: the validator harvested digits from ids/timestamps; advice guard too narrow; thesis claims and LLM headlines unvalidated; zero-heavy liq history exploded z; funding level floor too small; flip-back swallowed; partial flow-loop failure re-pushed; migration 009 undocumented; heatmap failed whole on one table. Ponytail: kept the OI/funding endpoints (spec F0.1) and the researchGate reducer (testability); deferred strictNumbers dedupe and lazy windows. Accepted: parallel journal workers can overshoot the $ cap by ≈ one call each. Fix round: W1 (validator/LLM/docs) + W2 (flow math/resilience) in parallel worktrees.
+- V done (089a5c9): 1408 pass / 6 skip / 0 fail, typecheck, build, check:api green; browser render of `/` and `/asset/BTC` with fixtures passes (the asset-page recharts crash was found by render only). Open: Pg parity tests have never run (no Postgres on host); `upsertEvents` sql(rows) and research SQL are read-reviewed only.

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { SnapshotRow } from "../../shared/intel.js";
+import type { FlowMetric, FlowRow, SnapshotRow } from "../../shared/intel.js";
 import { releaseConnection, sql } from "../db.js";
-import { MemoryIntelStore, PgIntelStore, type IntelStore, type NewAlert, type NewEvent } from "./store.js";
+import { MemoryIntelStore, PgIntelStore, type IntelStore, type NewAlert, type NewEvent, type NewResearch } from "./store.js";
 
 // PgIntelStore against a real Postgres, call for call against MemoryIntelStore.
 // Runs only with INTEL_PG_TEST_URL set (CI without a database skips it):
@@ -11,7 +11,7 @@ import { MemoryIntelStore, PgIntelStore, type IntelStore, type NewAlert, type Ne
 
 const PG_URL = process.env.INTEL_PG_TEST_URL;
 const SCHEMA = `intel_test_${process.pid}_${Date.now()}`;
-const MIGRATIONS = ["007_intel.sql", "008_intel_stops.sql"].map((f) => new URL(`../../../db/migrations/${f}`, import.meta.url));
+const MIGRATIONS = ["007_intel.sql", "008_intel_stops.sql", "009_flow.sql", "010_research.sql"].map((f) => new URL(`../../../db/migrations/${f}`, import.meta.url));
 
 const snap = (asset: string, ts: string, price: number, over: Partial<SnapshotRow> = {}): SnapshotRow => ({
   asset, ts, price, vol24h: null, funding: null, oiUsd: null, premium: null, basis: null,
@@ -98,6 +98,7 @@ async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
   put("rev.logged", [r1, r2]);
   put("rev.last", await s.lastReview());
   put("rev.list", await s.listReviews(1));
+  put("rev.digest", await s.logReview({ via: "telegram_digest" })); // 009 widened the via CHECK
 
   // snapshots
   const full = snap("BTC", "2026-10-13T00:00:00.000Z", 1, {
@@ -148,6 +149,12 @@ async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
     await s.deleteUserEdge({ src: "USDC", dst: "HYPE", type: "settles_on" }),
     await s.deleteUserEdge({ src: "Jito", dst: "SOL", type: "collateral" }),
     await s.deleteUserEdge({ src: "Jito", dst: "SOL", type: "collateral" }),
+  ]);
+
+  put("edge.deleteLlm", [
+    await s.deleteLlmEdges([{ src: "USDC", dst: "HYPE", type: "settles_on" }]), // seed: left alone
+    await s.deleteLlmEdges([{ src: "ETH", dst: "SOL", type: "macro_beta" }, { src: "ETH", dst: "SOL", type: "macro_beta" }]),
+    await s.listEdges(),
   ]);
 
   // events + clusters
@@ -297,6 +304,61 @@ async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
   put("stop.prune", await s.pruneStops(new Date("2026-10-13T01:30:00Z")));
   put("stop.afterPrune", await s.stopAt("SOL", "long", new Date("2026-10-12T00:00:00Z")));
 
+  // flow
+  const flow = (metric: FlowMetric, ts: string, value: number, venue = "agg", asset = "BTC"): FlowRow => ({ asset, venue, metric, value, ts });
+  put("flow.insert", await s.insertFlow([
+    flow("oi_usd", "2026-10-13T00:15:00.000Z", 2.5e9),
+    flow("oi_usd", "2026-10-13T00:00:00.000Z", 2.4e9),
+    flow("funding", "2026-10-13T00:00:00.000Z", -1.25e-5),
+    flow("spot_volume_usd", "2026-10-13T00:00:00.000Z", 1.5e6, "binance"),
+    flow("long_short_ratio", "2026-10-13T00:00:00.000Z", 1.2, "agg", "ETH"),
+    flow("oi_usd", "2026-10-13T00:15:00Z", 2.6e9), // same instant: last wins
+  ]));
+  put("flow.upsert", await s.insertFlow([flow("oi_usd", "2026-10-13T02:00:00+02:00", 2.45e9)])); // = 00:00Z
+  put("flow.empty", await s.insertFlow([]));
+  put("flow.series", [
+    await s.flowSeries("BTC", null, new Date("2026-10-12T00:00:00Z")),
+    await s.flowSeries("BTC", "oi_usd", new Date("2026-10-13T00:15:00Z")),
+    await s.flowSeries("SOL", null, new Date(0)),
+  ]);
+  put("flow.latest", [
+    await s.latestFlowTs("BTC", "agg", "oi_usd"),
+    await s.latestFlowTs("BTC", "binance", "spot_volume_usd"),
+    await s.latestFlowTs("BTC", "binance", "oi_usd"),
+  ]);
+  put("flow.prune", await s.pruneFlow(new Date("2026-10-13T00:10:00Z")));
+  put("flow.afterPrune", await s.flowSeries("BTC", null, new Date(0)));
+
+  // research: lock, stale takeover, finish, filters, prune (real clock on both sides)
+  const rs = (over: Partial<NewResearch> = {}): NewResearch => ({
+    trigger: "manual", asset: "SOL", question: "why", status: "running", explanation: "", evidence: [], confidence: "low", openQuestions: [], searches: 0, costUsd: 0, model: "m", ...over,
+  });
+  const past = new Date(0);
+  const future = new Date(Date.now() + 3_600_000);
+  put("research.acquire", await s.acquireResearch(rs(), 3_600_000));
+  put("research.busy", await s.acquireResearch(rs(), 3_600_000));
+  const taken = await s.acquireResearch(rs({ flagId: "flag-1" }), -3_600_000); // the first row is stale now
+  put("research.stale", taken);
+  put("research.finish", await s.finishResearch(taken!.id, rs({ flagId: "flag-1", status: "found", explanation: "x", evidence: [{ claim: "c", url: "https://a.example.com/x", ts: null, type: "observed" }], confidence: "high", searches: 2, costUsd: 0.5 })));
+  put("research.finishAgain", await s.finishResearch(taken!.id, rs({ status: "failed" }))); // already finished
+  put("research.finishMissing", await s.finishResearch(crypto.randomUUID(), rs()));
+  put("research.insert", [
+    await s.insertResearch(rs({ status: "capped", explanation: "cap" })),
+    await s.insertResearch(rs({ trigger: "flag", asset: "BTC", flagId: "flag-2", status: "no_cause" })),
+    await s.insertResearch(rs({ status: "failed", flagId: "flag-3" })),
+    await s.insertResearch(rs({ trigger: "flag", status: "failed", flagId: "flag-4", costUsd: 0.3 })), // billed failure: counts
+  ]);
+  put("research.list", [
+    await s.listResearch({ limit: 10 }),
+    await s.listResearch({ asset: "BTC", limit: 10 }),
+    await s.listResearch({ limit: 1 }),
+    await s.listResearch({ since: future, limit: 10 }),
+  ]);
+  put("research.count", [await s.researchCountSince(past), await s.researchCountSince(past, "flag"), await s.researchCountSince(future)]);
+  put("research.forFlags", [...(await s.researchForFlags(["flag-1", "flag-2", "flag-3", "flag-4", "nope"])).entries()].sort(([a], [b]) => a.localeCompare(b)));
+  put("research.forFlagsEmpty", [...(await s.researchForFlags([])).entries()]);
+  put("research.prune", [await s.pruneResearch(past), await s.pruneResearch(future), await s.listResearch({ limit: 10 })]);
+
   return out;
 }
 
@@ -331,7 +393,7 @@ describe.skipIf(!PG_URL)("PgIntelStore (real Postgres) matches MemoryIntelStore"
 
   test("the migration landed in the throwaway schema", async () => {
     const [row] = await sql()`select count(*)::int as n from information_schema.tables where table_schema = ${SCHEMA} and table_name like 'intel_%'`;
-    expect(row!.n).toBe(17);
+    expect(row!.n).toBe(19);
   });
 
   test("every method returns what the memory store returns", async () => {

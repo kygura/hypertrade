@@ -3,13 +3,14 @@ import { api, ApiError } from './api'
 import { usePoll, type PollState } from './poll'
 import {
   AlertsResponseSchema,
+  AssetDetailResponseSchema,
   BriefLatestResponseSchema,
   BriefSchema,
   CatalystsResponseSchema,
   EdgeSchema,
-  EventsResponseSchema,
   FeedbackReportSchema,
   GraphResponseSchema,
+  HeatmapResponseSchema,
   JournalReportSchema,
   JournalResponseSchema,
   JournalTagResponseSchema,
@@ -19,6 +20,7 @@ import {
   PositionsResponseSchema,
   QueryParseResponseSchema,
   QueryResultSchema,
+  ResearchResultSchema,
   ReviewsResponseSchema,
   ThesesResponseSchema,
   ThesisSchema,
@@ -30,14 +32,15 @@ import {
   type Alert,
   type AlertFeedbackInput,
   type AlertKind,
+  type AssetDetailResponse,
   type Brief,
   type Catalyst,
   type Edge,
   type EdgeKey,
-  type EventType,
   type FeedbackReport,
   type GraphResponse,
-  type IntelEvent,
+  type HeatmapResponse,
+  type HeatmapWindow,
   type JournalReport,
   type JournalResponse,
   type ManualCatalystInput,
@@ -50,6 +53,7 @@ import {
   type PositionsResponse,
   type QueryParseResponse,
   type QueryResult,
+  type ResearchResult,
   type Review,
   type ScreenerDslInput,
   type Thesis,
@@ -87,6 +91,19 @@ const FeedbackReportLatestSchema = z.object({ report: FeedbackReportSchema.nulla
 const JournalTagResultSchema = JournalTagResponseSchema.extend({ failed: z.number().int().default(0), error: z.string().optional() })
 export type JournalTagResult = z.infer<typeof JournalTagResultSchema>
 
+/** `GET /research` (SPEC S1). `usedToday`/`limit` may be absent: usage line omitted, box never limit-gated (DESIGN-terminal §16.6). */
+export const ResearchListResponseSchema = z.object({
+  items: z.array(ResearchResultSchema),
+  usedToday: z.number().int().optional(),
+  limit: z.number().int().optional(),
+})
+export type ResearchListResponse = z.infer<typeof ResearchListResponseSchema>
+export interface ResearchAskInput {
+  question: string
+  asset?: string
+  flagId?: string
+}
+
 const base = '/intel'
 const enc = encodeURIComponent
 
@@ -119,13 +136,11 @@ export const intel = {
   reviews: async (limit?: number): Promise<Review[]> =>
     parse(ReviewsResponseSchema, await api.get(`${base}/reviews${qs({ limit })}`)).reviews,
 
-  // ── alerts, events, catalysts (I0.9–I0.13) ──
+  // ── alerts, catalysts (I0.9–I0.13) ──
   alerts: async (q: { since?: string; kind?: AlertKind } = {}): Promise<Alert[]> =>
     parse(AlertsResponseSchema, await api.get(`${base}/alerts${qs(q)}`)).alerts,
   alertFeedback: (id: string, vote: AlertFeedbackInput['vote']): Promise<void> =>
     api.post(`${base}/alerts/${enc(id)}/feedback`, { vote } satisfies AlertFeedbackInput).then(done),
-  events: async (q: { since?: string; type?: EventType } = {}): Promise<IntelEvent[]> =>
-    parse(EventsResponseSchema, await api.get(`${base}/events${qs(q)}`)).events,
   catalysts: async (days = 14): Promise<Catalyst[]> =>
     parse(CatalystsResponseSchema, await api.get(`${base}/catalysts${qs({ days })}`)).catalysts,
   addCatalyst: (input: ManualCatalystInput): Promise<void> => api.post(`${base}/catalysts`, input).then(done),
@@ -178,6 +193,18 @@ export const intel = {
   watchChanges: async (id: string): Promise<WatchChange[]> =>
     parse(WatchChangesResponseSchema, await api.get(`${base}/watches/${enc(id)}/changes`)).changes,
   checkWatch: (id: string): Promise<void> => api.post(`${base}/watches/${enc(id)}/check`).then(done),
+
+  // ── flow (SPEC § Flow F1) ──
+  heatmap: async (window: HeatmapWindow): Promise<HeatmapResponse> =>
+    parse(HeatmapResponseSchema, await api.get(`${base}/heatmap${qs({ window })}`)),
+  asset: async (coin: string, days: number): Promise<AssetDetailResponse> =>
+    parse(AssetDetailResponseSchema, await api.get(`${base}/asset/${enc(coin)}${qs({ days })}`)),
+
+  // ── scout research (SPEC § Scout S1) ──
+  research: async (q: { asset?: string; limit?: number } = {}): Promise<ResearchListResponse> =>
+    parse(ResearchListResponseSchema, await api.get(`${base}/research${qs(q)}`)),
+  /** Synchronous up to ~45 s. 409 = a run in flight, 429 = daily limit (the researchGate reducer in components/intel/research.ts); over the $ cap → 200 `capped`. */
+  ask: async (input: ResearchAskInput): Promise<ResearchResult> => parse(ResearchResultSchema, await api.post(`${base}/research`, input)),
 }
 
 /** 409 from `POST /order/confirm`: marks moved > 0.5% or > 60 s (DESIGN-terminal §7.4). */
@@ -195,6 +222,9 @@ export const INTEL_POLL_MS = {
   graph: 600_000,
   watches: 300_000,
   deskStatus: 60_000,
+  /** 15-min data (DESIGN-terminal §15.2, §15.8). */
+  heatmap: 300_000,
+  asset: 300_000,
 } as const
 
 export type IntelState<T> = PollState<T>

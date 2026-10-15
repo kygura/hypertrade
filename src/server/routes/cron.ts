@@ -3,6 +3,7 @@ import { Hono, type Context } from "hono";
 import { hlWeightWaitMs } from "../../shared/hl-client.js";
 import { TF_RETENTION_MS, TIMEFRAMES, type Timeframe } from "../../shared/timeframes.js";
 import { requireCronToken } from "../auth.js";
+import { collectCoinalyze, flowCoins, maxFlowCoins, type FlowCollectResult } from "../collectors/coinalyze.js";
 import { collectCryptoContext } from "../collectors/cryptoContext.js";
 import { collectElfa } from "../collectors/elfa.js";
 import { collectFred } from "../collectors/fred.js";
@@ -15,7 +16,9 @@ import { backfillCoin } from "../sim/backfill.js";
 import { STABLES } from "../../shared/schemas.js";
 import type { AssetCtx } from "../../shared/types.js";
 import { runIntelWatch } from "../intel/docwatch.js";
+import { flowAlerts } from "../intel/flowEvents.js";
 import { refreshGraph } from "../intel/graph.js";
+import { AUTO_RESEARCH_MARGIN_MS, autoResearch, RESEARCH_DEADLINE_MS, type AutoResearchDeps, type AutoResearchRun } from "../intel/research.js";
 import { runIntelIngest } from "../intel/runIngest.js";
 import { collectIntelSnapshots, fetchL2Book, focusAssets, SNAPSHOT_RETENTION_DAYS, STOP_RETENTION_DAYS, type SnapshotResult } from "../intel/snapshot.js";
 import type { IntelStore } from "../intel/store.js";
@@ -141,32 +144,57 @@ async function intelCoins(): Promise<string[]> {
   return [...new Set([...f.held, ...f.watched])];
 }
 
-/** Candle retention, plus Intel snapshots past SNAPSHOT_RETENTION_DAYS and stops past STOP_RETENTION_DAYS (`intel_snapshots`, `intel_stops`). */
+/** Candle retention, plus Intel snapshots and flow rows past SNAPSHOT_RETENTION_DAYS and stops past STOP_RETENTION_DAYS (`intel_snapshots`, `intel_flow`, `intel_stops`). */
 async function pruneAll(now: number = Date.now()): Promise<Record<string, number>> {
   const out = await pruneRetention(now);
-  try {
-    out.intel_snapshots = await defaultIntelDeps().store.pruneSnapshots(new Date(now - SNAPSHOT_RETENTION_DAYS * DAY_MS));
-  } catch (err) {
-    console.error("[backfill] intel snapshot prune:", err instanceof Error ? err.message : err);
-  }
-  try {
-    out.intel_stops = await defaultIntelDeps().store.pruneStops(new Date(now - STOP_RETENTION_DAYS * DAY_MS));
-  } catch (err) {
-    console.error("[backfill] intel stop prune:", err instanceof Error ? err.message : err);
+  const snapshotCutoff = new Date(now - SNAPSHOT_RETENTION_DAYS * DAY_MS);
+  const jobs: Array<[string, () => Promise<number>]> = [
+    ["intel_snapshots", () => defaultIntelDeps().store.pruneSnapshots(snapshotCutoff)],
+    ["intel_flow", () => defaultIntelDeps().store.pruneFlow(snapshotCutoff)],
+    ["intel_research", () => defaultIntelDeps().store.pruneResearch(snapshotCutoff)],
+    ["intel_stops", () => defaultIntelDeps().store.pruneStops(new Date(now - STOP_RETENTION_DAYS * DAY_MS))],
+  ];
+  for (const [name, fn] of jobs) {
+    try {
+      out[name] = await fn();
+    } catch (err) {
+      console.error(`[backfill] ${name} prune:`, err instanceof Error ? err.message : err);
+    }
   }
   return out;
 }
 
 /** Book fetches for the snapshot rows stop starting after this; the rows are written regardless. */
 const SNAPSHOT_BOOK_BUDGET_MS = 60_000;
+/** Snapshot books and the flow collector share this, measured from the start of the collect request; flow gets what is left. */
+const COLLECT_BUDGET_MS = 90_000;
 
 /** Intel snapshot rows from the collect's own metaAndAssetCtxs. Never throws (failures land in collector_runs). */
-function runIntelSnapshots(ctxs: AssetCtx[], ts: Date): Promise<SnapshotResult> {
+function runIntelSnapshots(ctxs: AssetCtx[], ts: Date, collectDeadline: number): Promise<SnapshotResult> {
   return collectIntelSnapshots(
-    { store: defaultIntelDeps().store, focus: intelFocus, l2Book: (coin) => fetchL2Book(coin), recordRun: db.recordCollectorRun, deadline: Date.now() + SNAPSHOT_BOOK_BUDGET_MS },
+    { store: defaultIntelDeps().store, focus: intelFocus, l2Book: (coin) => fetchL2Book(coin), recordRun: db.recordCollectorRun, deadline: Math.min(Date.now() + SNAPSHOT_BOOK_BUDGET_MS, collectDeadline) },
     ctxs,
     ts,
   );
+}
+
+/** Coinalyze flow rows for held ∪ watched (capped), after the snapshot write. Never throws (failures land in collector_runs). */
+function runIntelFlow(ctxs: AssetCtx[], collectDeadline: number): Promise<FlowCollectResult> {
+  const intel = defaultIntelDeps();
+  const env = intel.env ?? process.env;
+  const marks = Object.fromEntries(ctxs.map((c) => [c.name, c.markPx]));
+  return collectCoinalyze({
+    fetch,
+    store: intel.store,
+    recordRun: db.recordCollectorRun,
+    env,
+    now: () => Date.now(),
+    budgetMs: collectDeadline - Date.now(), // capped at FLOW_BUDGET_MS by the collector
+    coins: async () => {
+      const [exposure, watched] = await Promise.all([intel.exposure(marks), intel.watched()]);
+      return flowCoins(exposure.positions, watched, maxFlowCoins(env));
+    },
+  });
 }
 
 const defaultBackfillDeps: BackfillDeps = {
@@ -413,6 +441,37 @@ export async function runIntelJob(job: IntelJob, deps: IntelCronDeps): Promise<{
   return { status: 500, body: { job, ok: false, timedOut: true, error: `still running after ${Math.round(hardStopMs / 1000)}s` } };
 }
 
+export interface ResearchStageResult extends Partial<AutoResearchRun> {
+  ran: number;
+  /** Not started: not enough budget left. */
+  skipped?: true;
+  error?: string;
+}
+
+/**
+ * The ingest job's last stage (SPEC S0.3): automatic research. Never throws and never fails ingest; a run is recorded
+ * as collector_runs `intel:research` (ok = no failed research).
+ */
+export async function researchStage(
+  deps: Omit<AutoResearchDeps, "left" | "signal">,
+  o: { left(): number; signal?: AbortSignal },
+  run: (d: AutoResearchDeps) => Promise<AutoResearchRun> = autoResearch,
+  record: typeof db.recordCollectorRun = db.recordCollectorRun,
+): Promise<ResearchStageResult> {
+  if (o.left() <= RESEARCH_DEADLINE_MS + AUTO_RESEARCH_MARGIN_MS) return { ran: 0, skipped: true };
+  const startedAt = new Date();
+  let res: ResearchStageResult;
+  try {
+    res = await run({ ...deps, ...o });
+  } catch (e) {
+    res = { ran: 0, error: e instanceof Error ? e.message : String(e) };
+  }
+  await record("intel:research", startedAt, !res.error && !res.statuses?.failed, res.error ?? (res.statuses?.failed ? `${res.statuses.failed} failed` : null)).catch((e) =>
+    console.error("[intel:research] collector run not recorded:", e),
+  );
+  return res;
+}
+
 const defaultIntelCronDeps = (): IntelCronDeps => {
   const d = defaultIntelDeps();
   return {
@@ -424,7 +483,23 @@ const defaultIntelCronDeps = (): IntelCronDeps => {
     env: d.env ?? process.env,
     now: () => Date.now(),
     run: {
-      ingest: async (o) => ({ ok: true, complete: true, result: await runIntelIngest(d.ingest, o) }),
+      // Flow detector events (SPEC F0.4) ride on the ingest job, after the mapper; code only, no LLM.
+      ingest: async (o) => {
+        const t0 = Date.now();
+        const left = () => o.budgetMs - (Date.now() - t0);
+        const result = await runIntelIngest(d.ingest, o);
+        const flowStart = new Date();
+        const flows = await flowAlerts(d.ingest, flowStart, { left, signal: o.signal }).then(
+          (r) => ({ events: r.events.length, alerts: r.alerts.length, pushed: r.alerts.filter((a) => a.route === "push").length, errors: r.errors }),
+          (e) => ({ events: 0, alerts: 0, pushed: 0, errors: [e instanceof Error ? e.message : String(e)] }),
+        );
+        await db.recordCollectorRun("intel:flow:detect", flowStart, !flows.errors.length, flows.errors.join("; ").slice(0, 500) || null).catch((e) =>
+          console.error("[intel:flow] collector run not recorded:", e),
+        );
+        // Automatic research (SPEC S0.3) is the last stage: it needs this run's flow alerts and more than its own deadline of budget. Never fatal.
+        const research = await researchStage(d.ingest, { left, signal: o.signal });
+        return { ok: true, complete: true, result: { ...result, flows, research } };
+      },
       brief: async (o) => {
         const r = await runIntelBrief({ ...d, notifier: d.notifier, appUrl: d.appUrl }, o);
         return { ok: r.ok, complete: r.ok, result: r };
@@ -466,17 +541,25 @@ export const cronRoutes = new Hono()
     }
   })
   .on(["GET", "POST"], "/collect", requireCronToken, async (c) => {
-    // Intel snapshots ride on the same metaAndAssetCtxs fetch; their failure
-    // is reported (and recorded), never a failed collect.
+    // Intel snapshots ride on the same metaAndAssetCtxs fetch, and the
+    // Coinalyze flow rows follow the snapshot write; their failure is
+    // reported (and recorded), never a failed collect.
+    const collectDeadline = Date.now() + COLLECT_BUDGET_MS;
     let snapshots: Promise<SnapshotResult> | undefined;
+    let flow: Promise<FlowCollectResult> | undefined;
+    const onCtxs = (ctxs: AssetCtx[], ts: Date) => {
+      snapshots = runIntelSnapshots(ctxs, ts, collectDeadline);
+      flow = snapshots.then(() => runIntelFlow(ctxs, collectDeadline));
+    };
     const [hyperliquid, cryptoContext, fred, elfa] = await Promise.all([
-      oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra, (ctxs, ts) => void (snapshots = runIntelSnapshots(ctxs, ts)))),
+      oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra, onCtxs)),
       collectCryptoContext(),
       collectFred(),
       collectElfa(),
     ]);
     const intelSnapshots = snapshots ? await snapshots : { ok: false, written: 0, error: "no asset contexts (hyperliquid collect failed)" };
-    return c.json({ hyperliquid, cryptoContext, fred, elfa, intelSnapshots });
+    const intelFlow = flow ? await flow : { ok: false, written: 0, error: "no asset contexts (hyperliquid collect failed)" };
+    return c.json({ hyperliquid, cryptoContext, fred, elfa, intelSnapshots, intelFlow });
   })
   // Lab history on its own route: a long first backfill must not hold up (or
   // be retried with) the 15-minute collection. Leased: one run at a time.

@@ -11,8 +11,9 @@ import {
   type ThesisEvidence,
 } from "../../shared/intel.js";
 import type { AssetCtx } from "../../shared/types.js";
-import { claimsJsonSchema, validateClaims } from "./claims.js";
+import { claimsJsonSchema, validateLines } from "./claims.js";
 import { completeStructured, type LlmDeps, type LlmTrace } from "./llm.js";
+import { lineVerdict, payloadNumbers } from "./numbers.js";
 import type { IntelStore } from "./store.js";
 import { iso, round } from "./util.js";
 
@@ -228,7 +229,7 @@ export async function evaluateThesis(deps: ThesisDeps, t: ThesisBody): Promise<T
 // ---------------------------------------------------------------- extraction
 
 const ExtractedClaimSchema = z.object({ kind: z.enum(["claim", "assumption"]), text: z.string().trim().min(1).max(600), check: ThesisCheckSchema }).strict();
-/** What the model returns. wrongIf stays raw so validateClaims can drop bad lines instead of failing the call (I0.7). */
+/** What the model returns. wrongIf stays raw so validateLines can drop bad lines instead of failing the call (I0.7). */
 export const ThesisExtractionSchema = z
   .object({
     assets: z.array(AssetSchema).max(20),
@@ -322,8 +323,14 @@ export async function extractThesis(deps: ThesisDeps, text: string): Promise<Ext
     deps: deps.llm,
   });
   if (!res.ok) return res;
-  const { claims: wrongIf, dropped } = validateClaims(res.value.wrongIf);
-  return { ok: true, extraction: { ...res.value, wrongIf }, trace: { ...res.trace, dropped, cached: res.cached } };
+  const { claims: wrongIf, ...counts } = validateLines(res.value.wrongIf, text);
+  // claims and invalidation text are LLM lines too: same number/advice check against the thesis input.
+  const nums = payloadNumbers(text);
+  const ok = (l: { text: string }) => lineVerdict(l.text, nums) === null;
+  const claims = res.value.claims.filter(ok);
+  const invalidation = res.value.invalidation.filter(ok);
+  const dropped = counts.dropped + (res.value.claims.length - claims.length) + (res.value.invalidation.length - invalidation.length);
+  return { ok: true, extraction: { ...res.value, claims, invalidation, wrongIf }, trace: { ...res.trace, ...counts, dropped, cached: res.cached } };
 }
 
 function assetsOf(extracted: string[], checks: ThesisCheck[]): string[] {

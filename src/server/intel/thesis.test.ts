@@ -185,11 +185,25 @@ describe("loadCheckData", () => {
 describe("extractThesis", () => {
   test("strong tier, claim-tagged wrongIf with bad lines dropped and counted", async () => {
     const { deps } = setup();
-    const r = await extractThesis(deps, "HYPE grinds higher into the unlock because perp OI keeps rising while funding stays flat");
+    const r = await extractThesis(deps, "HYPE grinds higher into the unlock because perp OI keeps rising while funding stays flat; out below $35 or BTC under $79.2K");
     if (!r.ok) throw new Error(r.error);
     expect(r.extraction.claims).toHaveLength(4);
     expect(r.extraction.wrongIf).toEqual([{ tag: "hypothesis", text: "Unlock recipients sell into strength." }]);
     expect(r.trace).toMatchObject({ tier: "strong", model: "strong-model", dropped: 1, promptVersion: "thesis.v1" });
+  });
+
+  test("claims and invalidation lines with unsupported numbers or advice are dropped", async () => {
+    const bad = {
+      ...extraction,
+      claims: [...extraction.claims, { kind: "claim", text: "HYPE reaches 47 by Friday", check: { kind: "unknown", reason: "x" } }, { kind: "claim", text: "Sell HYPE here", check: { kind: "unknown", reason: "x" } }],
+      invalidation: [...extraction.invalidation, { text: "HYPE below $12" }],
+    };
+    const { deps } = setup(bad);
+    const r = await extractThesis(deps, "HYPE grinds higher into the unlock because perp OI keeps rising; out below $35 or BTC under $79.2K");
+    if (!r.ok) throw new Error(r.error);
+    expect(r.extraction.claims).toHaveLength(4);
+    expect(r.extraction.invalidation).toHaveLength(3);
+    expect(r.trace).toMatchObject({ dropped: 4 });
   });
 
   test("a check outside the catalog fails closed after one retry", async () => {
@@ -213,7 +227,7 @@ describe("createThesis / checkThesis / recheckForAssets", () => {
   test("stores claims with code-evaluated statuses and invalidation states", async () => {
     const { store, deps } = setup();
     await seed(store);
-    const r = await createThesis(deps, "HYPE grinds higher into the unlock");
+    const r = await createThesis(deps, "HYPE grinds higher into the unlock; out below $35 or BTC under $79.2K");
     if (!r.ok) throw new Error(r.error);
     const t = r.thesis;
     expect(t.assets).toEqual(["HYPE", "BTC"]);
@@ -229,7 +243,7 @@ describe("createThesis / checkThesis / recheckForAssets", () => {
   test("recheck re-evaluates saved checks without calling the model", async () => {
     const { store, deps, makes } = setup();
     await seed(store);
-    const r = await createThesis(deps, "HYPE grinds higher");
+    const r = await createThesis(deps, "HYPE grinds higher; out below $35 or BTC under $79.2K");
     if (!r.ok) throw new Error(r.error);
     const calls = makes();
     // Price breaks $35 and funding turns negative.

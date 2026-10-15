@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import type { Conversation, LLMProvider, StepOptions, StepResult, ToolSpec } from "../llm/provider.js";
-import { completeStructured, extractJson, intelProviderFactory, type LlmCacheStore, type LlmDeps } from "./llm.js";
+import { completeStructured, extractJson, intelProviderFactory, LLM_MAX_OUTPUT_TOKENS, type LlmCacheStore, type LlmDeps } from "./llm.js";
 
 type Reply = { text?: string; emit?: unknown } | "hang";
 
@@ -75,7 +75,7 @@ describe("completeStructured", () => {
     expect(p.tools[0]!.map((t) => t.name)).toEqual(["emit"]);
     expect(p.tools[0]![0]!.input_schema).toBe(jsonSchema);
     expect(p.opts[0]!.webSearch).toBe(false);
-    expect(cache.puts).toEqual([{ key: "k1", usage: { input_tokens: 10, output_tokens: 5 } }]);
+    expect(cache.puts).toEqual([{ key: "k1", usage: { input_tokens: 10, output_tokens: 5, searches: 0 } }]);
   });
 
   test("webSearch: true is passed through", async () => {
@@ -111,7 +111,8 @@ describe("completeStructured", () => {
     if (!r.ok) expect(r.error).toContain("score");
     expect(r.trace.attempts).toBe(2);
     expect(p.prompts[1]).toContain("no `emit` call");
-    expect(cache.puts).toEqual([]);
+    expect(cache.puts.map((p) => p.key.startsWith("nocache:"))).toEqual([true]); // nothing cached under the key; the spend is billed in a row of its own
+    expect(cache.rows.has("k|v1")).toBe(false);
   });
 
   test("cache hit: no provider call", async () => {
@@ -142,6 +143,14 @@ describe("completeStructured", () => {
     const pending = run(new FakeProvider(["hang"]), { signal: ctl.signal });
     ctl.abort();
     expect(await pending).toMatchObject({ ok: false, error: "aborted" });
+  });
+
+  test("a step cut off by the deadline is billed a pessimistic estimate, not 0 tokens", async () => {
+    const cache = new MemCache();
+    const r = await run(new FakeProvider(["hang"]), { deadlineMs: 20, cache });
+    expect(r.trace.usage.output_tokens).toBe(LLM_MAX_OUTPUT_TOKENS);
+    expect(r.trace.usage.input_tokens).toBeGreaterThan(0);
+    expect(cache.puts.at(-1)?.usage).toMatchObject({ output_tokens: LLM_MAX_OUTPUT_TOKENS });
   });
 
   test("a throwing provider fails closed", async () => {

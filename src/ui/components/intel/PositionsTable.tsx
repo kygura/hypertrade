@@ -8,7 +8,7 @@ import { SrcTag } from '../SrcTag'
 import { fmtLeverage, fmtStopDist, MINUS } from './format'
 
 // PositionsTable — DESIGN-terminal §3.7. Rows = positions[] across all three
-// sources, default sort notional desc. Row tap/Enter → /markets/:coin. Only
+// sources, default sort notional desc. Row tap/Enter → /asset/:coin. Only
 // manual rows carry EDIT (HL/DESK rows are read-only). No stop → amber
 // NO STOP: stop proximity drives materiality, so it outranks PnL.
 
@@ -98,7 +98,7 @@ export function PositionsTable({ positions, onEdit }: { positions: ExposurePosit
       rowKey={(p) => p.id}
       sortable
       defaultSort={{ key: 'notional', dir: 'desc' }}
-      onRowClick={(p) => navigate(`/markets/${encodeURIComponent(p.asset)}`)}
+      onRowClick={(p) => navigate(`/asset/${encodeURIComponent(p.asset)}`)}
     />
   )
 }

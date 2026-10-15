@@ -86,6 +86,8 @@ export interface StepHooks {
   /** Provider-hosted tools: result arrived (already summarised). */
   onServerToolResult?(id: string, name: string, ok: boolean, summary: string): void;
   onCitation?(c: Citation): void;
+  /** Provider-hosted web search: the URLs one search returned (Intel provenance checks). */
+  onSearchResults?(results: { url: string; title: string | null }[]): void;
 }
 
 export interface StepOptions {
@@ -94,6 +96,8 @@ export interface StepOptions {
   final?: boolean;
   /** false: do not register the provider-hosted web search (Intel calls). Default on. */
   webSearch?: boolean;
+  /** Per-call web search budget; defaults to the provider's own (webSearchMaxUses). */
+  maxUses?: number;
 }
 
 export interface Conversation {

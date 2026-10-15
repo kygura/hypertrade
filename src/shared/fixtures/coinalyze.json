@@ -1,0 +1,31 @@
+{
+  "future-markets": [
+    { "symbol": "BTCUSDT_PERP.A", "exchange": "A", "symbol_on_exchange": "BTCUSDT", "base_asset": "BTC", "quote_asset": "USDT", "is_perpetual": true, "margined": "STABLE", "expire_at": null, "oi_lq_vol_denominated_in": "BASE_ASSET", "has_long_short_ratio_data": true, "has_ohlcv_data": true, "has_buy_sell_data": true },
+    { "symbol": "PEPEUSDT_PERP.6", "exchange": "6", "symbol_on_exchange": "1000PEPEUSDT", "base_asset": "PEPE", "quote_asset": "USDT", "is_perpetual": true, "margined": "STABLE", "expire_at": null, "oi_lq_vol_denominated_in": "BASE_ASSET", "has_long_short_ratio_data": false, "has_ohlcv_data": true, "has_buy_sell_data": true },
+    { "symbol": "ETHUSD_241227.0", "exchange": "0", "symbol_on_exchange": "ETHZ24", "base_asset": "ETH", "quote_asset": "USD", "is_perpetual": false, "margined": "COIN", "expire_at": 1735286400000, "oi_lq_vol_denominated_in": "QUOTE_ASSET", "has_long_short_ratio_data": false, "has_ohlcv_data": true, "has_buy_sell_data": false }
+  ],
+  "spot-markets": [
+    { "symbol": "BTCUSDC.C", "exchange": "C", "symbol_on_exchange": "BTC-USDC", "base_asset": "BTC", "quote_asset": "USDC", "has_buy_sell_data": true },
+    { "symbol": "BTCUSD.C", "exchange": "C", "symbol_on_exchange": "BTC-USD", "base_asset": "BTC", "quote_asset": "USD", "has_buy_sell_data": true },
+    { "symbol": "BTCEUR.K", "exchange": "K", "symbol_on_exchange": "XBTEUR", "base_asset": "BTC", "quote_asset": "EUR", "has_buy_sell_data": false },
+    { "symbol": "PEPEUSDT.Z", "exchange": "Z", "symbol_on_exchange": "PEPE_USDT", "base_asset": "PEPE", "quote_asset": "USDT", "has_buy_sell_data": true }
+  ],
+  "liquidation-history": [
+    { "symbol": "BTCUSDT_PERP.A", "history": [{ "t": 1791975600, "l": 120000.5, "s": 30000 }, { "t": 1791976500, "l": 0, "s": 15000 }] },
+    { "symbol": "PEPEUSDT_PERP.A", "history": [{ "t": 1791975600, "l": 500, "s": 700 }] }
+  ],
+  "ohlcv-history": [
+    { "symbol": "BTCUSDT_PERP.A", "history": [{ "t": 1791975600, "o": 99000, "h": 100500, "l": 98800, "c": 100000, "v": 250.5, "bv": 130.25, "tx": 9000, "btx": 4800 }] },
+    { "symbol": "BTCUSD.C", "history": [{ "t": 1791975600, "o": 99010, "h": 100490, "l": 98810, "c": 100000, "v": 40, "bv": 22, "tx": 1500, "btx": 800 }] },
+    { "symbol": "PEPEUSDT.Z", "history": [{ "t": 1791975600, "o": 0.00001, "h": 0.00001, "l": 0.00001, "c": 0.00001, "v": 2000000000, "bv": 1000000000, "tx": 10, "btx": 5 }] }
+  ],
+  "long-short-ratio-history": [
+    { "symbol": "BTCUSDT_PERP.A", "history": [{ "t": 1791975600, "r": 1.85, "l": 64.9, "s": 35.1 }] }
+  ],
+  "open-interest-history": [
+    { "symbol": "BTCUSDT_PERP.A", "history": [{ "t": 1791975600, "o": 8.1e9, "h": 8.2e9, "l": 8.0e9, "c": 8.15e9 }] }
+  ],
+  "funding-rate-history": [
+    { "symbol": "BTCUSDT_PERP.A", "history": [{ "t": 1791975600, "o": 0.01, "h": 0.012, "l": 0.009, "c": 0.0105 }] }
+  ]
+}

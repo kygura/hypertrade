@@ -46,7 +46,7 @@ function setup() {
     funding: async () => [],
     ingestHealth: async () => [],
     llm,
-    thresholds: { minZ: 2, topK: 5, pushMateriality: 0.35 },
+    thresholds: { minZ: 2, topK: 5, pushMateriality: 0.35, digestMateriality: 0.1 },
     now: () => NOW,
     journal: () => ({ store, llm, now: () => NOW, deskFills: async () => [] }),
     thesis: { store, llm: { ...llm, makeProvider: () => thesisProvider }, now: () => NOW, ctxs: async () => [sol] },
@@ -103,7 +103,8 @@ describe("createIntelRoutes ↔ ui/lib/intel.ts", () => {
 
     expect(await call(() => intel.alerts({ since: NOW.toISOString(), kind: "mapper" }))).toEqual([]);
     expect(await call(() => intel.alertFeedback("00000000-0000-4000-8000-000000000999", 1))).toEqual({ status: 404 });
-    expect(await call(() => intel.events({ type: "macro" }))).toEqual([]);
+    // The route stays (the client function was removed): hit it directly.
+    expect(await (await h.app.request("/api/intel/events?type=macro")).json()).toEqual({ events: [] });
     await call(() => intel.addCatalyst({ title: "SOL upgrade", assets: ["SOL"], scheduledAt: "2026-10-20T12:00:00.000Z" }));
     const cats = (await call(() => intel.catalysts(14))) as Array<{ eventId: string; exposed: string[] }>;
     expect(cats).toMatchObject([{ exposed: ["SOL"] }]);
@@ -147,7 +148,7 @@ describe("createIntelRoutes ↔ ui/lib/intel.ts", () => {
     for (const ep of [
       "POST /api/intel/positions", "PUT /api/intel/positions/:id", "DELETE /api/intel/positions/:id", "GET /api/intel/positions",
       "GET /api/intel/watchlist", "PUT /api/intel/watchlist", "POST /api/intel/brief", "GET /api/intel/brief/latest", "GET /api/intel/reviews",
-      "GET /api/intel/alerts", "POST /api/intel/alerts/:id/feedback", "GET /api/intel/events", "GET /api/intel/catalysts", "POST /api/intel/catalysts", "DELETE /api/intel/catalysts/:id", "GET /api/intel/feedback/report/latest",
+      "GET /api/intel/alerts", "POST /api/intel/alerts/:id/feedback", "GET /api/intel/catalysts", "POST /api/intel/catalysts", "DELETE /api/intel/catalysts/:id", "GET /api/intel/feedback/report/latest",
       "GET /api/intel/graph", "POST /api/intel/graph/edges", "DELETE /api/intel/graph/edges",
       "GET /api/intel/journal", "PUT /api/intel/journal/desk%3AETH%3A1/note", "POST /api/intel/journal/tag", "GET /api/intel/journal/report/latest", "POST /api/intel/journal/report",
       "GET /api/intel/theses", "POST /api/intel/theses", "POST /api/intel/theses/:id/check", "DELETE /api/intel/theses/:id",

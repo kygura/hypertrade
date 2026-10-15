@@ -76,6 +76,18 @@ describe("catalystAlerts", () => {
     expect((await catalystAlerts(deps, clock.now)).alerts).toEqual([]);
   });
 
+  test("a pushed catalyst carries 👍/👎 for each stored alert, named by asset when several share the message", async () => {
+    const { clock, deps, store } = setup();
+    await addManualCatalyst(store, { title: "SOL+BTC unlock", assets: ["SOL", "BTC"], scheduledAt: at(20), type: "unlock" }, clock.now);
+    const [sol, btc] = (await catalystAlerts(deps, clock.now)).alerts.filter((a) => a.route === "push");
+    expect(deps.notifier.sent[0]!.actions).toEqual([
+      { label: "👍 SOL", data: `fb:${sol!.id}:1` },
+      { label: "👎 SOL", data: `fb:${sol!.id}:-1` },
+      { label: "👍 BTC", data: `fb:${btc!.id}:1` },
+      { label: "👎 BTC", data: `fb:${btc!.id}:-1` },
+    ]);
+  });
+
   test("feedback dampening batches a catalyst push, same as the mapper", async () => {
     const { clock, deps, store } = setup();
     for (const i of [1, 2, 3, 4, 5]) {

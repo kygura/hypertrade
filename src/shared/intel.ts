@@ -72,6 +72,9 @@ export const LlmTraceSchema = z.object({
   attempts: z.number().int().optional(),
   /** Claim lines dropped by the validator (I0.7). */
   dropped: z.number().int().nonnegative().optional(),
+  /** Of those, lines with a number not in the payload / with advice language (F0.5). */
+  numbersRejected: z.number().int().nonnegative().optional(),
+  adviceRejected: z.number().int().nonnegative().optional(),
   error: z.string().optional(),
 });
 export type LlmTrace = z.infer<typeof LlmTraceSchema>;
@@ -160,7 +163,7 @@ export type WatchlistResponse = z.infer<typeof WatchlistResponseSchema>;
 export const ReviewSchema = z.object({
   id: z.string(),
   ts: Iso,
-  via: z.enum(["ui", "deeplink"]),
+  via: z.enum(["ui", "deeplink", "telegram_digest"]),
   briefId: z.string().nullable(),
 });
 export type Review = z.infer<typeof ReviewSchema>;
@@ -220,6 +223,8 @@ export const DiffItemSchema = z.object({
   deltaUnit: DeltaUnitSchema,
   z: Num,
   materiality: Num,
+  /** Confluence factor inside materiality (1 to 1.5); absent on briefs stored before it existed. */
+  confluence: Num.optional(),
   exposureWeight: Num,
   stopProximity: Num,
   /** Distance from mark to the nearest known stop, in percent and in ATR14(1h); absent without a stop. */
@@ -313,10 +318,11 @@ export const EVENT_TYPES = [
   "liquidation",
   "other",
 ] as const;
-export const EventTypeSchema = z.enum(EVENT_TYPES);
+/** EVENT_TYPES (what the LLM may extract) plus "data": a flow detector hit (SPEC F0.4), code-made only. */
+export const EventTypeSchema = z.enum([...EVENT_TYPES, "data"]);
 export type EventType = z.infer<typeof EventTypeSchema>;
 
-export const EventOriginSchema = z.enum(["rss", "governance", "calendar", "websearch", "x", "telegram", "manual", "docwatch"]);
+export const EventOriginSchema = z.enum(["rss", "governance", "calendar", "websearch", "x", "telegram", "manual", "docwatch", "flow"]);
 export type EventOrigin = z.infer<typeof EventOriginSchema>;
 
 export const MagnitudeSchema = z.enum(["low", "med", "high"]);
@@ -367,6 +373,8 @@ export const IntelEventSchema = z.object({
   scheduledAt: Iso.nullable(),
   catalyst: CatalystInfoSchema.nullable(),
   tag: ClaimTagSchema,
+  /** Flow detector / flip / crossing hit (type "data", origin "flow"). Lazy: FlowFlagSchema is declared below. */
+  flag: z.lazy(() => FlowFlagSchema).optional(),
 });
 export type IntelEvent = z.infer<typeof IntelEventSchema>;
 
@@ -416,7 +424,7 @@ export const CatalystsResponseSchema = z.object({ catalysts: z.array(CatalystSch
 
 // ─── Alerts and feedback (I0.11, I0.12) ───
 
-export const AlertKindSchema = z.enum(["mapper", "catalyst", "docwatch", "terminal"]);
+export const AlertKindSchema = z.enum(["mapper", "catalyst", "docwatch", "terminal", "flow"]);
 export type AlertKind = z.infer<typeof AlertKindSchema>;
 export const CatalystWindowSchema = z.enum(["24h", "1h"]);
 export type CatalystWindow = z.infer<typeof CatalystWindowSchema>;
@@ -432,7 +440,7 @@ export type PricedIn = z.infer<typeof PricedInSchema>;
 export const AlertSchema = z.object({
   id: z.string(),
   kind: AlertKindSchema,
-  /** Dedupe reference: cluster id (mapper), event id (catalyst), watch change id (docwatch), brief id (terminal). */
+  /** Dedupe reference: cluster id (mapper), event id (catalyst, flow), watch change id (docwatch), brief id (terminal). */
   ref: z.string(),
   /** Catalyst alerts only (T−24 h / T−1 h). */
   window: CatalystWindowSchema.nullable(),
@@ -497,8 +505,8 @@ export const BriefSchema = z.object({
   lines: z.array(ClaimSchema),
   /** Nothing cleared the thresholds. */
   silent: z.boolean(),
-  /** Thresholds in force (INTEL_MIN_Z, INTEL_PUSH_MATERIALITY). */
-  threshold: z.object({ minZ: Num, pushMateriality: Num }).optional(),
+  /** Thresholds in force (INTEL_MIN_Z, INTEL_PUSH_MATERIALITY, INTEL_DIGEST_MATERIALITY). */
+  threshold: z.object({ minZ: Num, pushMateriality: Num, digestMateriality: Num.optional() }).optional(),
   ingest: z.array(IngestHealthSchema).optional(),
   /** Asset × metric pairs that had a z (diffed), cleared or not. */
   diffedCount: z.number().int().nonnegative().optional(),
@@ -894,3 +902,150 @@ export type WatchChange = z.infer<typeof WatchChangeSchema>;
 
 export const WatchesResponseSchema = z.object({ watches: z.array(WatchSchema) });
 export const WatchChangesResponseSchema = z.object({ changes: z.array(WatchChangeSchema) });
+
+// ─── Flow (SPEC § Flow F0.1–F0.4, F1) ───
+
+/** Non-HL venue metrics stored in intel_flow; volume and liquidation values are per 15-min interval. */
+export const FLOW_METRICS = [
+  "oi_usd",
+  "funding",
+  "long_short_ratio",
+  "liq_long_usd",
+  "liq_short_usd",
+  "perp_volume_usd",
+  "perp_buy_volume_usd",
+  "spot_volume_usd",
+] as const;
+export const FlowMetricSchema = z.enum(FLOW_METRICS);
+export type FlowMetric = z.infer<typeof FlowMetricSchema>;
+
+export const FlowRowSchema = z.object({
+  asset: z.string(),
+  /** `agg` (Coinalyze provider aggregate, may include HL) or an exchange code. */
+  venue: z.string(),
+  metric: FlowMetricSchema,
+  value: Num,
+  ts: Iso,
+});
+export type FlowRow = z.infer<typeof FlowRowSchema>;
+
+/**
+ * Heatmap columns in display order. oi_usd and funding are HL (snapshots);
+ * depth_2 = bid + ask within ±2%; liq_usd = long + short liquidations.
+ */
+export const HEATMAP_METRICS = [
+  "price",
+  "oi_usd",
+  "funding",
+  "basis",
+  "premium",
+  "vol24h",
+  "depth_2",
+  "spread_bps",
+  "long_short_ratio",
+  "liq_usd",
+  "perp_volume_usd",
+  "spot_volume_usd",
+] as const;
+export const HeatmapMetricSchema = z.enum(HEATMAP_METRICS);
+export type HeatmapMetric = z.infer<typeof HeatmapMetricSchema>;
+
+export const FixedWindowSchema = z.enum(["1h", "6h", "24h"]);
+export type FixedWindow = z.infer<typeof FixedWindowSchema>;
+export const HeatmapWindowSchema = z.enum(["review", "1h", "6h", "24h"]);
+export type HeatmapWindow = z.infer<typeof HeatmapWindowSchema>;
+
+export const FlowFlagSchema = z.object({
+  id: z.string(),
+  asset: z.string(),
+  kind: z.enum(["detector", "flip", "crossing"]),
+  name: z.string(),
+  window: FixedWindowSchema,
+  numbers: z.record(Num),
+  score: Num,
+  /** A series the flag needs was missing or too short: outcome unknown, not quiet. */
+  degraded: z.boolean(),
+  ts: Iso,
+  /** Joined at read time through researchForFlags (SPEC S1); never stored on the flag JSON. */
+  researchId: z.string().nullable().default(null),
+});
+export type FlowFlag = z.infer<typeof FlowFlagSchema>;
+
+export const FlowSourceStatusSchema = z.object({ ok: z.boolean(), error: z.string().optional() });
+
+export const HeatmapQuerySchema = z.object({ window: HeatmapWindowSchema.default("review") });
+export const HeatmapResponseSchema = z.object({
+  /** Held ∪ watched, by materiality descending. */
+  rows: z.array(z.object({ asset: z.string(), held: z.boolean(), materiality: Num })),
+  metrics: z.array(HeatmapMetricSchema),
+  /** z null = too few samples. */
+  cells: z.array(z.object({ asset: z.string(), metric: HeatmapMetricSchema, z: Num.nullable(), delta: Num.nullable() })),
+  flags: z.array(FlowFlagSchema),
+  /** error "no_source" = no flow provider configured (vs per-cell null). */
+  flow: FlowSourceStatusSchema,
+  asOf: Iso,
+});
+export type HeatmapResponse = z.infer<typeof HeatmapResponseSchema>;
+
+export const AssetEventSchema = z.object({
+  ts: Iso,
+  kind: z.enum(["flow", "alert", "catalyst", "research"]),
+  title: z.string(),
+  tag: ClaimTagSchema,
+  numbers: z.record(Num).optional(),
+  /** Alerts carry their claim line. */
+  claim: ClaimSchema.optional(),
+  url: z.string().optional(),
+  /** Set when kind is "research". Lazy: ResearchResultSchema is declared below. */
+  research: z.lazy(() => ResearchResultSchema).optional(),
+});
+export type AssetEvent = z.infer<typeof AssetEventSchema>;
+
+export const AssetQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(90).default(7) });
+export const AssetDetailResponseSchema = z.object({
+  snapshots: z.array(SnapshotRowSchema),
+  flow: z.array(FlowRowSchema),
+  events: z.array(AssetEventSchema),
+  catalysts: z.array(CatalystSchema),
+  graph: z.object({ edges: z.array(EdgeSchema), paths: z.array(GraphPathSchema) }),
+});
+export type AssetDetailResponse = z.infer<typeof AssetDetailResponseSchema>;
+
+export const FlowsQuerySchema = z.object({ since: Iso.optional() });
+export const FlowsResponseSchema = z.object({ flags: z.array(FlowFlagSchema) });
+
+// ─── Scout research (SPEC.md § Scout S0.1) ───
+
+export const RESEARCH_STATUSES = ["running", "found", "no_cause", "capped", "failed"] as const;
+export const ResearchStatusSchema = z.enum(RESEARCH_STATUSES);
+export type ResearchStatus = z.infer<typeof ResearchStatusSchema>;
+
+/** observed needs a url; hypothesis may omit it and is never phrased as fact. */
+export const ResearchEvidenceSchema = z
+  .object({
+    claim: Text(500),
+    url: HttpsUrlSchema.nullable(),
+    ts: Iso.nullable(),
+    type: z.enum(["observed", "hypothesis"]),
+  })
+  .refine((e) => e.type === "hypothesis" || e.url !== null, { message: "observed evidence needs a url", path: ["url"] });
+export type ResearchEvidence = z.infer<typeof ResearchEvidenceSchema>;
+
+export const ResearchResultSchema = z.object({
+  id: z.string(),
+  trigger: z.enum(["manual", "flag"]),
+  /** The FlowFlag the run was started from (a chip-started run is trigger "manual" with flagId set). */
+  flagId: z.string().optional(),
+  asset: z.string().nullable(),
+  question: z.string(),
+  status: ResearchStatusSchema,
+  explanation: z.string(),
+  evidence: z.array(ResearchEvidenceSchema),
+  confidence: z.enum(["low", "medium", "high"]),
+  openQuestions: z.array(z.string()),
+  searches: z.number().int().min(0),
+  costUsd: Num.min(0),
+  model: z.string(),
+  createdAt: Iso,
+});
+export type ResearchResult = z.infer<typeof ResearchResultSchema>;

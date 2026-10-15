@@ -190,7 +190,8 @@ page. All `DESK_*` settings are listed in `.env.example`.
 
 The Terminal (`/` and `/journal`, `/theses`, `/query`, `/order`, `/watch`;
 SPEC.md § Intel) reads `/api/intel/*`. Code: `src/server/intel/*`,
-`src/server/routes/intel/*`. Needs `db/migrations/007_intel.sql`; LLM features
+`src/server/routes/intel/*`. Needs `db/migrations/007_intel.sql` (plus 008, 009 and
+010, see Setup below); LLM features
 use the Desk's model resolution and alerts go through the Desk notifier.
 Orders from `/order` go to the Desk venue only (paper or testnet), always
 preview → confirm. `GET /api/intel/*` also accepts the `LAB_API_TOKEN` bearer;
@@ -207,8 +208,12 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 |---|---|
 | `INTEL_MIN_Z` | \|z\| a change must clear to reach the brief, default 2 |
 | `INTEL_TOP_K` | brief items kept after ranking, default 5 |
-| `INTEL_PUSH_MATERIALITY` | mapper alerts at or above this push to Telegram now, else wait for the brief; default 0.35 |
+| `INTEL_PUSH_MATERIALITY` | alert threshold: items at or above it push to Telegram now, and flow flags at or above it are eligible for auto-research; default 0.35 |
+| `INTEL_DIGEST_MATERIALITY` | digest floor: items below it are hidden from the digest (still logged); default 0.10 |
+| `INTEL_RESEARCH_DAILY` | manual research runs per UTC day, default 10 |
+| `INTEL_RESEARCH_AUTO_DAILY` | automatic (flow-flag) research runs per UTC day, default 3 |
 | `INTEL_LLM_DAILY_CAP` | Intel LLM calls per day before failing closed, default 200 |
+| `INTEL_LLM_DAILY_USD` | Intel LLM spend per UTC day (usage × model price) before failing closed, default 2.00 |
 | `INTEL_BRIEF_HOURS` | cron brief at most every N hours, default 6 |
 | `INTEL_TZ` | journal session clock (asia/eu/us by hour), default UTC |
 | `INTEL_RSS_FEEDS` | comma-separated RSS/Atom URLs; default a built-in keyless list |
@@ -218,6 +223,10 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 | `X_BEARER_TOKEN`, `INTEL_X_LIST_ID` | X list timeline ingest; both required |
 | `INTEL_RPC_<CHAIN>` | RPC override for the contract/wallet watcher (`ETHEREUM`, `ARBITRUM`, `BASE`, `OPTIMISM`, `POLYGON`, `BSC`, `AVALANCHE`, `HYPEREVM`); default public RPCs |
 | `DATABASE_URL_READONLY` | read-only Postgres role for `/api/intel/query/run`; default the main connection |
+| `COINALYZE_API_KEY` | Coinalyze flow collector in the collect cron (free key, 40 calls/min); unset → no flow rows and the heatmap's flow status reads `no_source` |
+| `INTEL_FLOW_MAX_COINS` | held ∪ watched coins the flow collector covers (by notional, then watch order), 1–20, default 8 |
+| `INTEL_THRESHOLDS` | threshold-crossing events, comma list of `metric>value` / `metric<value`; default `funding>0.0000625` (0.05%/8 h, hourly) |
+| `INTEL_DELEV_OI_PCT` | deleveraging detector's OI 6 h drop, in %, default 8 |
 | repo var `INTEL_ENABLED` | `true` turns on the workflow's `intel` job |
 
 ### How the Terminal works
@@ -291,9 +300,27 @@ intel job, so nothing bypasses that gate.
 creates every `intel_*` table the Terminal reads, and the routes do not work
 without it. Then `008_intel_stops.sql` (stop triggers of the watched HL
 account, for journal R; without it the capture is skipped and reported).
+`009_flow.sql` (non-HL venue flow rows; without it the flow collector, heatmap
+and digest log fail) and `010_research.sql` (research runs and their lock;
+without it `/api/intel/research` and auto-research fail). Apply 009 and 010
+before deploying this code, as with 002, 003, 004 and 007.
 Environment variables are in the table under
 [Intel (optional)](#intel-optional), which also covers `INTEL_ENABLED`;
 `.env.example` lists the same keys.
+
+### Research
+
+The RESEARCH panel on `/` asks one question about a coin (optionally tied to a
+flow flag) and returns an explanation, evidence and open questions. Routes:
+`POST /api/intel/research` (`{question, asset?, flagId?}`; 429 at the daily
+limit, 409 while another run is in flight) and `GET /api/intel/research`
+(recent runs, `usedToday`, `limit`). A flow-flag chip's action posts the chip
+question with the flag id. The ingest job also researches the strongest
+unexplained flags on its own. Limits: `INTEL_RESEARCH_DAILY` manual and
+`INTEL_RESEARCH_AUTO_DAILY` automatic runs per UTC day, at most 8 web searches
+and 45 s per run, and the `INTEL_LLM_DAILY_USD` spend cap. Evidence that cites
+a source and time is `observed`; everything else is a `hypothesis`, and any
+number that is not in the inputs is dropped.
 
 **Order copilot.** Paper or Hyperliquid testnet only. Mainnet is not
 selectable; the Desk venue config refuses it.

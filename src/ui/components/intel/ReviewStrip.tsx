@@ -18,6 +18,7 @@ const SOURCE_LABEL = { manual: 'MANUAL', hl: 'HL', desk: 'DESK' } as const
 
 export const NEWS_ANCHOR = 'terminal-news'
 export const CATALYSTS_ANCHOR = 'terminal-catalysts'
+export const FLOW_ANCHOR = 'terminal-flow'
 
 function jump(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -47,6 +48,7 @@ export function ReviewStrip({
   offline,
   sources,
   alertsCount,
+  detectorsCount = 0,
   nextCatalyst,
   fromTelegram,
   onReview,
@@ -59,6 +61,8 @@ export function ReviewStrip({
   offline?: string | null
   sources: PositionSourceStatus[] | null
   alertsCount: number
+  /** Firing detector chips (§15.3); omitted at 0. */
+  detectorsCount?: number
   nextCatalyst?: Catalyst
   fromTelegram: boolean
   onReview: () => void
@@ -101,6 +105,11 @@ export function ReviewStrip({
               {alertsCount > 0 && (
                 <button type="button" className="label hover:!text-text-primary" onClick={() => jump(NEWS_ANCHOR)}>
                   {alertsCount} {alertsCount === 1 ? 'ALERT' : 'ALERTS'}
+                </button>
+              )}
+              {detectorsCount > 0 && (
+                <button type="button" className="label hover:!text-text-primary" onClick={() => jump(FLOW_ANCHOR)}>
+                  {detectorsCount} {detectorsCount === 1 ? 'DETECTOR' : 'DETECTORS'}
                 </button>
               )}
               {nextCatalyst && (

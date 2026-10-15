@@ -216,7 +216,8 @@ export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
   const resolve =
     o.resolve ??
     (() => {
-      const p = resolveProvider();
+      // An injected catalog or choice resolver defines the world; the process env must not leak past it.
+      const p = o.catalog || o.resolveChoice ? null : resolveProvider();
       if (p) return p;
       const first = catalog().providers.find((e) => e.available && e.models.length > 0);
       if (!first) return null;

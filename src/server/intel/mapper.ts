@@ -15,12 +15,13 @@ import {
   type PositionsResponse,
 } from "../../shared/intel.js";
 import type { Notifier } from "../desk/notify.js";
-import { claimsJsonSchema, validateClaims } from "./claims.js";
+import { claimsJsonSchema, validateLines } from "./claims.js";
 import { atr } from "../desk/tools.js";
-import { exposureWeight, stopDistance, stopProximity, type Bar } from "./diff.js";
+import { activeSources, confluenceK, exposureWeight, materiality as materialityOf, stopDistance, stopProximity, type ActiveSources, type Bar } from "./diff.js";
 import { seedEdges, walk } from "./graph.js";
 import { completeStructured, untrusted, UNTRUSTED_RULE, type LlmDeps } from "./llm.js";
-import { sendIntel } from "./notify.js";
+import { lineVerdict } from "./numbers.js";
+import { feedbackActions, sendIntel } from "./notify.js";
 import { loadPricedIn, pricedInText } from "./pricedIn.js";
 import type { IntelStore } from "./store.js";
 import { norm } from "./util.js";
@@ -109,6 +110,8 @@ export interface RoutingContext {
   targets: string[];
   edges: Edge[];
   feedback: FeedbackBucket[];
+  /** Signal sources active per asset, read before any alert of this run is routed (confluence). */
+  sources: ActiveSources;
 }
 
 const edgeKey = (e: { src: string; dst: string; type: string }) => `${e.src}|${e.dst}|${e.type}`;
@@ -124,14 +127,15 @@ export async function loadContext(
   deps: Pick<MapperDeps, "store" | "exposure" | "watched" | "now">,
   withFeedback = true,
 ): Promise<RoutingContext> {
-  const [exposure, watched, edges, feedback] = await Promise.all([
+  const [exposure, watched, edges, feedback, sources] = await Promise.all([
     deps.exposure(),
     deps.watched(),
     graphEdges(deps.store),
     withFeedback ? deps.store.feedbackStats(new Date(deps.now().getTime() - FEEDBACK_LOOKBACK_MS)) : Promise.resolve([]),
+    activeSources(deps.store, deps.now()).catch(() => new Map() as ActiveSources),
   ]);
   const targets = [...new Set([...exposure.positions.map((p) => p.asset), ...watched])];
-  return { exposure, targets, edges, feedback };
+  return { exposure, targets, edges, feedback, sources };
 }
 
 /** Direct hits first (hops 0), then the best ≤ 2-hop path to every other reachable target. Pure. */
@@ -253,8 +257,8 @@ async function explain(
     deps: deps.llm,
   });
   if (!r.ok) return { line: fallback, trace: { ...r.trace, error: r.error } };
-  const { claims, dropped } = validateClaims([r.value.line]);
-  const trace: LlmTrace = { ...r.trace, cached: r.cached, dropped };
+  const { claims, ...counts } = validateLines([r.value.line], user);
+  const trace: LlmTrace = { ...r.trace, cached: r.cached, ...counts };
   const claim = claims[0];
   if (!claim) return { line: fallback, trace };
   // The side is the one thing the line must carry; code adds it when the model left it out.
@@ -285,7 +289,7 @@ async function routeWith(deps: MapperDeps, ctx: RoutingContext, input: RouteInpu
     const exp = await assetExposure(deps, ctx, hit.asset);
     const pricedIn = await loadPricedIn(deps, hit.asset, input.firstSeen);
     const suffix = pricedIn ? pricedInText(pricedIn) : null;
-    const materiality = MAGNITUDE_WEIGHT[input.magnitude] * hit.pathWeight * exp.weight * exp.proximity;
+    const materiality = materialityOf({ surprise: MAGNITUDE_WEIGHT[input.magnitude] * hit.pathWeight, exposure: exp.weight, proximity: exp.proximity }, confluenceK(ctx.sources.get(hit.asset), "news"));
     const route = routeFor(deps.pushMateriality, ctx.feedback, materiality, { eventType: input.eventType, edgeType: hit.edgeType, hops: hit.hops });
     const { line, trace } = await explain(deps, input, hit, exp, suffix, signal);
     const alert = await deps.store.insertAlert({
@@ -309,7 +313,7 @@ async function routeWith(deps: MapperDeps, ctx: RoutingContext, input: RouteInpu
     if (!alert) continue;
     alerts.push(alert);
     if (route === "push") {
-      await sendIntel(deps.notifier, { title: `${exp.label}: ${input.title}`.slice(0, 200), lines: suffix ? [line, suffix] : [line], link: deepLink(deps.appUrl) });
+      await sendIntel(deps.notifier, { title: `${exp.label}: ${input.title}`.slice(0, 200), lines: suffix ? [line, suffix] : [line], link: deepLink(deps.appUrl), actions: feedbackActions([alert]) });
     }
   }
   return { alerts, alertedAssets: [...new Set(alerts.map((a) => a.asset))] };
@@ -356,7 +360,7 @@ export async function mapClusters(deps: MapperDeps, clusterIds: string[], opts: 
         entities: [...new Set([...x.entities, ...x.assets])],
         eventType: x.type,
         magnitude: x.magnitude,
-        title: c.label ?? events[0]?.title ?? x.summary,
+        title: c.label ?? events[0]?.title ?? (lineVerdict(x.summary, []) === null ? x.summary : "Event"),
         sources: events.flatMap((e) => e.sources),
         firstSeen: c.firstSeen,
       },

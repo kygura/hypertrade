@@ -909,3 +909,580 @@ Shared edits outside these folders: `AppShell.tsx` NAV entry and
 
 Skipped: sub-tab count suffixes (a fetch per route), a node-link exposure
 drawing (needs a library, fails at 390px), query CSV export, alert un-vote.
+
+---
+
+## 15. Flow (phase 6)
+
+Binding layout for SPEC.md § "Flow — quant gaps" (F0.8). Everything above
+stands; this section adds one panel to `/`, one route, and no tokens. The
+principle is unchanged: every number here is computed by code and prints
+plainly; the only model text is the alert lines that already exist (§2).
+
+**Reused as-is:** `Panel`, `Segmented`, `Badge`, `StatusDot`, `StaleBanner`,
+`SkeletonRows`, `EmptyBlock`, `OfflineBlock`, `ErrorBlock`, `ClaimLine`,
+`ClaimAge`, `SourceLink`, `ExposurePathChips`, the ExposureAssetRow body
+(extracted, §15.6), Recharts (DESIGN §4.5/§9) for the timeline, the momentum
+ramp tokens `--color-mom-*` (DESIGN §2) for the heatmap scale.
+
+### 15.1 FLOW panel on `/`
+
+**Desktop (`lg:`)** — a full-width 12 row between the WHAT CHANGED / NEWS row
+and the POSITIONS / CATALYSTS row. The brief answers "what cleared the
+threshold"; the heatmap is the whole matrix that answer was cut from, so it
+sits directly under it, before the book.
+
+```
+├ FLOW ─ RANKED BY MATERIALITY ─ [REV|1H|6H|24H] ──────────────── SNAP 12M ─ 12 ┤
+│ DETECTORS  [CROWDED LONG · HYPE 24H] [SQUEEZE SETUP · SOL 6H] [DELEVERAGING · NO LIQ DATA] │
+│            ┌ SNAPSHOT ─────────────────────────────────────┐┌ FLOW ──────────────┐        │
+│ ASSET      PRICE  OI    FUND  BASIS PREM  VOL   DEPTH SPRD ││ L/S  LIQS PERP SPOT│ FLAGS  │
+│ HYPE HELD  +0.4  +3.1  +2.4  +0.3  +1.9  +1.2  −0.8  +0.2 ││+1.4  +0.6 +1.1 ▢   │ crowded long │
+│ SOL  HELD  −2.3  +1.4  −1.1  ▢     −0.4  +2.6  −2.2  +2.2 ││−0.2  +2.3 +2.0 +0.9│ squeeze setup +1 │
+│ ETH  WATCH +0.1  −0.3  +0.2  −0.1  +0.0  −0.6  +0.3  −0.2 ││ ▢    ▢    ▢    ▢   │        │
+```
+
+Mid (`md:`): same row, full width. **Mobile (<768)**: REVIEW STRIP → WHAT
+CHANGED → NEWS → **FLOW** → POSITIONS → CATALYSTS → EXPOSURE. The grid is the
+§4.4 escape hatch like ResultTable: `.table-scroll`, sticky `ASSET` column,
+sticky header; columns are never priority-hidden (a heatmap with missing
+columns is a different chart). Chips wrap freely above it.
+
+**Header.** `FLOW`, the `.label` `RANKED BY MATERIALITY` (rank key named), the
+window `Segmented` (label `flow window`, `size: 'sm'`), right: `SrcTag snap` +
+`ClaimAge` of `asOf` (amber > 30 min; StaleBanner `snapshots Nh old` > 2 h,
+same row as WHAT CHANGED in §1.7).
+
+**Window switch** `REV | 1H | 6H | 24H` → `?window=review|1h|6h|24h`. Default
+`REV`, persisted per browser (try/catch, like the journal window). `title`s:
+`REV` = `since your last review (<age>) — z against the 7-day history
+(SPEC I0.4)`; `1H`/`6H`/`24H` = `Δ over <window> — z against the trailing
+30-day distribution of <window> changes`. The two z definitions differ, so the
+`title` says which one the cell is using; the cell itself never mixes them.
+Changing the window refetches in place (no skeleton after first data).
+
+### 15.2 FlowHeatmap
+
+Rows = `assets` in server order (materiality desc: row materiality = the
+row's max |z| × exposure weight × stop proximity, §13 field). Not sortable by
+click; materiality is the only order (DiffTable rule). Each row: `ASSET`
+coin (sm, primary) + 9px tag `HELD` / `WATCH`, then the cells, then `FLAGS`.
+
+**Columns, in this order** (header 9px uppercase, `title` = full name + unit):
+
+| Group | Header | Metric | `title` |
+|---|---|---|---|
+| SNAPSHOT | `PRICE` | `price` | price |
+| | `OI` | `oi_usd` | open interest (USD) |
+| | `FUND` | `funding` | hourly funding (level z) |
+| | `BASIS` | `basis` | mark vs oracle (level z) |
+| | `PREM` | `premium` | premium (level z) |
+| | `VOL` | `vol24h` | 24 h volume (ratio z) |
+| | `DEPTH` | `depth_2` | book depth ±2 %, bid + ask (ratio z) |
+| | `SPRD` | `spread_bps` | spread (ratio z) |
+| FLOW | `L/S` | `long_short_ratio` | long/short ratio |
+| | `LIQS` | `liq_usd` | liquidations, long + short (USD); `title` splits long / short when both are known |
+| | `PERP` | `perp_volume_usd` | perp volume (USD) |
+| | `SPOT` | `spot_volume_usd` | spot volume (USD) |
+
+Pruned: `depth_1` (the brief named ±2 only; ±1 is on the asset page tooltip),
+`perp_buy_volume_usd` (it feeds `spot_led`/`perp_led`; the chip shows it). The
+two groups are separated by a 1px `--color-border` vertical rule and a group
+header row (`SNAPSHOT` / `FLOW`, `.label`), so twelve metrics read as 8 + 4.
+
+**Cell.** 11px tabular, signed z with one decimal (`+3.1`, `−0.8`, `+0.0`),
+centered, min-width 44px, `--tap-min` tall. Background from the momentum ramp,
+bucketed on z (not on the sector momentum edges):
+
+| z | Background | Text |
+|---|---|---|
+| null | `--color-panel-alt`, no text (`▢` above is the diagram's stand-in) | — |
+| \|z\| < 1 | `--color-mom-zero` | `text-secondary` (muted: inside noise) |
+| 1 ≤ z < 2 / −2 < z ≤ −1 | `--color-mom-pos1` / `--color-mom-neg1` | `text-primary` |
+| z ≥ 2 / z ≤ −2 | `--color-mom-pos2` / `--color-mom-neg2` | `text-primary` |
+
+Hue encodes the **sign of z**, the same meaning the ramp already has on the
+sector grid (momentum, not PnL). It is not the DiffTable's "only price is
+green/red" rule: that table prints deltas in units where up is not good; here
+every cell is a z in the same unit and the printed number is always present,
+so color is never the sole signal (DESIGN §12.3). The ramp is a 2-step
+diverging scale on the theme's own green/red, which keeps contrast under
+§2.1 in all three themes; no new tokens.
+
+`title` on a cell: `<ASSET> <metric name> · <window> · Δ <delta in unit> · z
++3.1`; null: `fewer than 48 samples` (fixed windows) / `fewer than 24 samples`
+(REV). `aria-label` = the same text. 1px gap between cells (`--color-body`
+seam, the MindshareGrid idiom), no borders.
+
+**FLAGS** column: up to two gray Badges in plain words (§15.3 copy), then
+`+n` (`title` lists all). Badges are gray because every flag is an observed,
+code-computed fact (the §2 vocabulary: gray = OBS, info = model). A row with
+no flags leaves the cell empty.
+
+**Interaction.** Cell click → `/asset/:coin?metric=<metric>` (the matching
+pane is highlighted on arrival, §15.5); asset cell or row Enter →
+`/asset/:coin`. Keyboard: the DataTable idiom — one tab stop per row, Enter
+opens the asset page, `←`/`→` move a visible cell focus along the row (the
+focused cell's `title` text is read; Enter on a focused cell opens with
+`?metric`). Flags badges are not tab stops (their text is in the row's
+`aria-label`).
+
+**Degraded FLOW group** ("no flow source configured"): when the response
+reports the flow source as not ok (§15.8 `flow` field), the `FLOW` group
+header reads `FLOW · NO SOURCE` in `text-secondary`, its four cells render as
+null cells with `title` = the verbatim `flow.error` (fallback `no flow source
+configured — see docs/research/flow-sources.md`), and the grid stays 12 wide
+so the layout never shifts between runs. A flow source that is configured but
+young (< 48 samples) renders ordinary null cells; the two are distinguishable
+by the `title`.
+
+**Polling** (§1.4 row): `GET /heatmap?window=` on mount, on window change,
+then every 5 min (the grid is 15-min data; 60 s would only re-render the same
+cells). Pauses hidden like the others.
+
+### 15.3 DetectorChips
+
+A wrapping row at the top of the FLOW body: `.label` `DETECTORS` then one
+chip per `(name, asset)` in `flags`, ordered by the row's materiality then
+newest `ts`. Chip = `<button>` styled as a gray Badge with the detector in
+plain words, ` · `, coin, ` `, window: `CROWDED LONG · HYPE 24H`. Max 8
+visible, then ghost `+3 MORE` toggles the rest. None firing → 10px
+`text-secondary` `no detectors firing` (not an EmptyBlock; the grid still
+renders).
+
+Copy (code names never reach the screen):
+
+| Event | Chip text | Numbers line (from `numbers`) |
+|---|---|---|
+| `crowded_long` / `crowded_short` | `CROWDED LONG` / `CROWDED SHORT` | `funding z +2.4 · OI 24h z +1.3 · price 24h z +0.2` |
+| `squeeze_setup` | `SQUEEZE SETUP` | `funding −0.004% · OI 24h z +1.6 · price 24h z −0.3` |
+| `deleveraging` | `DELEVERAGING` | `OI 6h −9.2% · liqs 6h z +2.8` |
+| `spot_led` / `perp_led` | `SPOT LED` / `PERP LED` | `price 6h z +2.3 · spot/perp vol z gap +1.4` |
+| `liquidity_thinning` | `THIN BOOK` | `depth ±2% $1.2M · 30d p10 $1.5M` |
+| flip `funding` | `FUNDING FLIPPED +` / `−` | `−0.002% → +0.001%` |
+| flip `basis` | `BASIS INVERTED` / `BASIS BACK ABOVE 0` | `+0.8 bp → −0.4 bp` |
+| flip `oi_vs_price` | `OI UP, PRICE DOWN` | `OI 24h z +1.4 · price 24h z −1.2` |
+| crossing | `FUNDING > 0.05%/8H` (the threshold typeset: hourly → per-8 h when the metric is funding) | `now 0.061%/8h` |
+
+Hover → `title` = the numbers line + `· <ClaimAge>`. Tap or Enter →
+`aria-expanded`, and an 11px line opens under the chips row: the numbers
+line, ClaimAge, and a ghost `OPEN HYPE →` (`/asset/HYPE`). One chip expanded
+at a time; `Esc` collapses. Numbers are printed exactly as the detector
+emitted them (code values; signs always printed, no green/red).
+
+**Degraded detectors.** A detector the server reports as `degraded` (no
+liquidation data, no spot data) renders one summary chip, not per asset:
+`DELEVERAGING · NO LIQ DATA` / `SPOT/PERP LED · NO SPOT DATA`, `text-secondary`
+on a 1px dashed `--color-border` box, `title` = the verbatim reason. It is
+visibly "cannot fire", never "did not fire" (SPEC F0.4). Expanding it shows the
+reason and `see docs/research/flow-sources.md`.
+
+A ReviewStrip count joins the cluster: `3 DETECTORS` (omitted at 0), click
+scrolls to FLOW (`FLOW_ANCHOR`, the NEWS/CATALYSTS precedent).
+
+### 15.4 `/asset/:coin` — AssetPage
+
+Reached by click only (heatmap cell, detector chip, and the row taps of
+DiffTable §3.4 and PositionsTable §3.7, which now go to `/asset/:coin` instead
+of `/markets/:coin`; the candle chart stays one click away via `MARKETS →`).
+It is a drill-in of `/`, not a sub-tab: it renders under TerminalTabs with
+the TERMINAL segment active (`isTerminalPath` gains `/asset/`), the
+`/markets/:coin` precedent. `?days=1|7|30` (default 7), `?metric=` highlights
+a pane on arrival.
+
+```
+┌ TerminalTabs ──────────────────────────────────────────────────────────────── 12 ┐
+├ [← TERMINAL]  HYPE (lg)  HELD · LONG 3× · 12.4 HYPE · $12.4K  MANUAL   [1D|7D|30D] ─ 12 ┤
+│ MARK $32.18 · STOP −3.1% · 0.8×ATR · MAT 0.71 · FLAGS crowded long   SNAP 12M  [MARKETS →] │
+├ TIMELINE ─────────────────────────────────────────────────── 8 ┬ EXPOSURE ──────── 4 ┤
+│ PRICE  ╱╲╱╲╲╱╱   ┆      ┆  ┆                                   │ 9 EDGES · 4 PATHS     │
+│ OI     ────╱╱─   ┆      ┆  ┆                                   │ COLLATERAL · 2        │
+│ FUND   ▁▂▃▅▆▇▆   ┆      ┆  ┆                                   │ Jito → SOL 0.8 [SEED] │
+│ DEPTH  ──╲╲──╱   ┆      ┆  ┆                                   │ PATHS                 │
+│ LIQS   ▁▁▅▁▁▇▁ · L/S ──                                       │ [USDC]→…→[HYPE] w 0.30│
+├ EVENTS · 7D ────────────────────────────────────────────────── 8 ┤ [+ ADD EDGE]          │
+│ 10-13 14:02  OBS  crowded long · funding z +2.4 · OI 24h z +1.3                       │
+│ 10-13 09:40  HYP ┃ Leverage is building into the unlock…   THE BLOCK ↗ · 2H           │
+│ 10-12 00:00  OBS  CATALYST  HYPE unlock 2.1%  MANUAL                                  │
+└───────────────────────────────────────────────────────────────┴───────────────────────┘
+```
+
+Mobile order: header → TIMELINE → EVENTS → EXPOSURE. Pane heights are the
+DESIGN §4.5 table extended: price 160 / 220px (mobile / lg), each other pane
+90 / 120px.
+
+**Header** (a `Panel` without title, `bg-panel-alt`, the ReviewStrip idiom):
+ghost `← TERMINAL`; coin (lg, primary); `HELD` / `WATCH` tag; when held, one
+line per position from the shared `/positions` fetch: side word green/red +
+leverage, size in coins, notional (`fmtUsd`), `SrcTag` of the source; `MARK
+<px>`; `STOP −3.1% · 0.8×ATR` (`title` stop px) or amber Badge `NO STOP`;
+`MAT 0.71` (the row's materiality, 2 decimals); the row's flags as gray
+Badges; `SrcTag snap` + ClaimAge of the newest snapshot; ghost `MARKETS →`
+(`/markets/:coin`). `Segmented` `1D | 7D | 30D` (label `asset window`).
+
+### 15.5 AssetTimeline
+
+Recharts, not lightweight-charts: 30 days of 15-min snapshots is ≤ 2,880
+points per series with no paging, panning or live bar, which is exactly the
+DESIGN §4.5 boundary (lightweight-charts is reserved for the bar-paging
+market chart). Stacked `ComposedChart`s sharing `syncId="asset"` (one
+crosshair and tooltip across panes) and the same `margin`, so the time axes
+align; only the bottom pane draws x ticks. All §4.5 rules apply (no
+animation, dark tooltip, 9px ticks, horizontal dashed grid, inline legend row
+above the stack).
+
+| Pane | Series | Render |
+|---|---|---|
+| `PRICE` | `price` | `Line`, `--color-equity`, 1px |
+| `OI` | `oi_usd` | `Line`, `--color-info`, 1px, USD compact (the §9.4 OI color) |
+| `FUND` | `funding` (hourly %) | `Bar`, `--color-green` ≥ 0 / `--color-red` < 0 at 60 % opacity, zero `ReferenceLine` (the §9.4 funding idiom) |
+| `DEPTH` | `depth_bid_2 + depth_ask_2` | `Line`, `--color-bench-usdc`, 1px, USD compact; tooltip splits bid / ask and shows ±1 % and spread bps |
+| `LIQS · L/S` | `liq_long_usd + liq_short_usd`; `long_short_ratio` | `Bar`, `--color-bench-usdc` 60 %, left axis USD; `Line` L/S, `--color-equity`, 1px, right axis. Omitted (pane and legend entry) when the flow source is not ok; one 10px `text-secondary` line in its place: `no flow source configured` (or the verbatim error) |
+
+Spot / perp volume are not panes (the chip carries their ratio); `premium`,
+`basis`, `vol24h` ride in the tooltip only. `?metric=` → the matching pane
+gets a 2px left inset `--color-red-accent` (the selection idiom) until any
+click.
+
+**Event markers.** Vertical `ReferenceLine`s on the PRICE pane only (every
+pane would be clutter), no text labels on the canvas (they collide):
+
+- observed events — detector hits, flips, crossings, catalysts at their
+  `scheduledAt` — 1px dashed `--color-text-secondary`;
+- model events — news alerts (their line is a Claim, usually `HYP`) — 1px
+  dashed `--color-info`, extending principle 6 (speculation is info-blue).
+
+Markers carry no words, so they are never the only place an event lives: the
+**EventList** under the stack is the labeled form. One row per event, newest
+first: `MM-DD HH:mm` (10px tabular, `title` full UTC), then for an alert its
+`ClaimLine` (§2, badge `OBS`/`HYP` and SourceLink as stored); for a detector
+hit / flip / crossing a plain row with gray Badge `OBS` and the §15.3 numbers
+line (`crowded long · funding z +2.4 · OI 24h z +1.3`); for a catalyst the
+CatalystRow fields (`CATALYST` word, title, origin Badge). Hovering or
+focusing a row sets its marker's stroke to `text-primary`; clicking a marker
+scrolls to its row. Upcoming catalysts inside the window are listed with
+their `T−` countdown but drawn only when inside the x-range. Tooltip on the
+chart adds `2 events` for a timestamp with markers.
+
+### 15.6 ExposureGraph
+
+A **list**, not a radial drawing. ≤ 30 edges over 8 long type names at 390px
+is exactly the case §14 already rejected for node-link drawing, and the
+operator reads edges by type (collateral, settlement, stable dependence), not
+by angle. The panel is the §3.8 expanded row body as its own component:
+edges grouped by type in weight order with weight, origin Badge (`SEED` gray /
+`LLM` info / `USER` gray), SourceLink, `verified` ClaimAge (amber > 48 h),
+Danger `✕` on user edges; then `PATHS` as ExposurePathChips + `w 0.30` (2-hop
+paths to held ∪ watched); `+ ADD EDGE` form. `ExposureAssetRow` becomes a
+disclosure around `ExposureGraph`, so `/` and `/asset/:coin` render the same
+thing from the same code. Header right: `9 EDGES · 4 PATHS`. The asset page
+passes the `graph` it already has; the `/` row keeps fetching on expand.
+
+### 15.7 LLM cap copy
+
+No new banner. `LLM cap reached ($1.37 / $2.00)` is the server's verbatim
+reason (`trace.error`; spent / cap, two decimals, server-formatted, never
+reformatted by the UI) and renders where reasons already render:
+
+- WHAT CHANGED: the §3.4 no-narration row (6px amber square + `no narration —
+  LLM cap reached ($1.37 / $2.00)`); the DiffTable stays — the computed answer
+  is complete.
+- ReviewStrip `LLM` dot: amber (degraded, not down) with `title` = the string.
+- NEWS → POSITIONS: an alert that went out with raw numbers and no line
+  renders line 1 as usual, then the same amber-square row in place of the
+  ClaimLine, then the priced-in suffix and path chips as usual.
+- `/journal` report, `/theses`, `/query`, `/order`: the existing verbatim
+  ErrorBlocks (§10), unchanged.
+- `/asset/:coin` EventList: alert rows without a line use the amber-square
+  row.
+
+### 15.8 States, fields, components
+
+**State → surface (extends §10):**
+
+| Surface | Loading | Empty | Error | Stale / other |
+|---|---|---|---|---|
+| FLOW heatmap | SkeletonRows (4) | EmptyBlock `nothing held or watched — add a position or watch an asset` | ErrorBlock / OfflineBlock + `RETRY` | ClaimAge amber > 30 min; StaleBanner `snapshots Nh old` > 2 h; FLOW group `NO SOURCE`; null cells |
+| Detector chips | — (rendered with the grid) | `no detectors firing` (10px) | — (the panel's ErrorBlock) | degraded summary chips |
+| Asset header | SkeletonRows (1) | `WATCH`-only header without position line | — (the page's ErrorBlock) | `NO STOP` Badge |
+| Asset timeline | SkeletonRows per pane | EmptyBlock `no snapshots yet — the collector adds <COIN> once it is held, watched or top-20 by OI`; unknown coin (404) → EmptyBlock `no data for <COIN>` + ghost `← TERMINAL` | ErrorBlock / OfflineBlock | StaleBanner `snapshots Nh old` > 2 h; LIQS pane replaced by the no-source line |
+| Asset events | SkeletonRows (2) | EmptyBlock `no events in <window>` (`1 day`, `7 days`, `30 days`) | — | alert rows without a line → amber-square row |
+| Asset exposure | SkeletonRows | EmptyBlock `no edges — the daily refresh adds them for held and watched assets` | ErrorBlock, timeline unaffected | edge ClaimAge amber > 48 h |
+
+**Fields the UI reads (extends §13; pinned in `src/shared/intel.ts`):**
+
+| Field | Used by | If absent |
+|---|---|---|
+| `GET /heatmap` → `assets: {asset, held: boolean, materiality}[]` (ordered) | row order, `HELD`/`WATCH` tag, `MAT` | `string[]` → rows in server order, no tag, header label `SERVER ORDER` |
+| `GET /heatmap` → `flags: {asset, kind: 'detector'\|'flip'\|'crossing', name, window, numbers: Record<string, number>, degraded?: string, ts}[]` | chips, FLAGS column, header flags | without `numbers` the chip has no numbers line; `degraded` absent → no degraded chips |
+| `GET /heatmap` / `GET /asset/:coin` → `flow: {ok: boolean, error?: string}` | `NO SOURCE` group, LIQS pane omission | FLOW group renders as ordinary null cells |
+| `GET /asset/:coin` → `events: {ts, kind: 'detector'\|'flip'\|'crossing'\|'alert'\|'catalyst', name?, numbers?, line?: Claim, sources?, catalyst?}[]` | markers, EventList | — |
+| `GET /heatmap` → `window`, `since` (REV baseline ts) | window `title`, `REV` age | `REV` `title` without the age |
+
+**Polling (extends §1.4):** heatmap 5 min (+ on window change); `/asset/:coin`
+on mount + on `days` change + 5 min while mounted; the asset header reads the
+shared positions poller.
+
+**Staleness (extends §1.7):** FLOW and asset timeline — age of `asOf` /
+newest snapshot; degraded > 30 min; stale > 2 h, noun `snapshots`.
+
+**Components (extends §14):**
+
+| Component | File | Props |
+|---|---|---|
+| `FlowPanel` | `components/intel/FlowPanel.tsx` | `state` (heatmap poller), `window`, `onWindow(w)` |
+| `DetectorChips` | `components/intel/DetectorChips.tsx` | `flags: HeatFlag[]`, `materiality: Map<asset, number>` |
+| `FlowHeatmap` | `components/intel/FlowHeatmap.tsx` | `assets, metrics, cells, flags, window, flow` |
+| `HeatCell` | inside `FlowHeatmap.tsx` | `z, delta, unit, metric, asset, window` (bucket → class) |
+| `AssetPage` | `pages/terminal/Asset.tsx` | route `/asset/:coin`; owns `?days`, `?metric`, the asset fetch; reads the positions poller |
+| `AssetHeader` | `components/intel/AssetHeader.tsx` | `coin, positions, held, watched, materiality, flags, asOf, days, onDays` |
+| `AssetTimeline` | `components/intel/AssetTimeline.tsx` | `snapshots, flow, events, days, highlight?: metric, onMarker(eventId)` |
+| `EventList` | `components/intel/EventList.tsx` | `events, highlighted?, onHover(id)` |
+| `ExposureGraph` | `components/intel/ExposureGraph.tsx` (extracted from `ExposureAssetRow`) | `asset, edges, paths, onDeleted?()`, `onAdded?()` |
+| `Terminal` | `pages/terminal/Terminal.tsx` | gains the heatmap poller and `FLOW_ANCHOR`; passes `3 DETECTORS` to ReviewStrip |
+
+Chart primitive: Recharts (`ComposedChart`, `Line`, `Bar`, `ReferenceLine`,
+`syncId`). No new dependency.
+
+Skipped: a radial exposure SVG (§14's reason holds); per-cell tab stops (one
+row stop + arrows); sortable heatmap columns (materiality is the order);
+spot/perp volume panes (chip ratio covers it); a dedicated LLM-cap banner (the
+no-narration row is the place reasons already live).
+
+---
+
+## 16. Scout / Research (phase 7)
+
+Binding layout for SPEC.md § "Scout — research on the Terminal" (S0.8). §15
+stands; this section adds one panel to `/`, one action on the detector chips,
+one event kind on `/asset/:coin`, one badge on digest items, and no tokens.
+Research is **model output with code-checked provenance**: every evidence row
+is a Claim and renders through §2, so OBS and HYP stay unmistakable, and a
+hypothesis is never typeset as a fact. Nothing on this surface tells the
+operator what to do; a result explains, it never recommends.
+
+**Reused as-is:** `Panel`, `Badge`, `Button`, `StatusDot`, `SkeletonRows`,
+`EmptyBlock`, `OfflineBlock`, `ErrorBlock`, `ClaimLine`, `ClaimList`,
+`ClaimAge`, `SourceLink`, `useAction`, the QueryInput field idiom (§6.2), the
+pulse label (`REVIEWING…`), the §15.3 expanded-line disclosure, the §15.5
+selection inset.
+
+### 16.1 RESEARCH panel on `/`
+
+**Desktop (`lg:`)** — a full-width 12 row directly under FLOW, before
+POSITIONS / CATALYSTS. FLOW shows *what* moved; research is the attempt to
+find *why*, so it sits under the matrix it explains, above the book.
+
+```
+├ RESEARCH ─ NEWEST FIRST ─────────────────────────────── 3 / 10 TODAY · 12M ─ 12 ┤
+│ QUESTION  [ What explains the OI build on HYPE over 24 h?            ] ASSET [HYPE ] [RESEARCH] │
+│ ─────────────────────────────────────────────────────────────────────────────────────────── │
+│ FOUND  HYPE · What explains the OI build on HYPE over 24 h?                 MEDIUM   12M     │
+│ EXPLANATION  A token unlock of 2.1% is scheduled for 10-15; OI rose 18.4% while price… │
+│ OBS  Unlock of 2.1% of supply scheduled 2026-10-15.               THE BLOCK ↗ · 3H      │
+│ HYP ┃ Market makers may be hedging unlock supply ahead of time.                         │
+│ OPEN QUESTIONS  ? Which wallets received the unlock allocation                          │
+│ MANUAL · 6 SEARCHES · $0.04 · claude-sonnet · 12M                          OPEN HYPE → │
+│ ─────────────────────────────────────────────────────────────────────────────────────────── │
+│ NO CAUSE  SOL · funding flipped +  (FLAG)                                   LOW     2H      │
+│ EXPLANATION  No public cause found. Checked: exchange status pages, SOL news 24 h, …     │
+```
+
+Mid (`md:`): same, full width. **Mobile (<768)**: … → FLOW → **RESEARCH** →
+POSITIONS → …; the ask box stacks `QUESTION` / `ASSET` / button, cards keep
+§2.1's mobile ClaimLine wrap. Nothing is priority-hidden.
+
+**Header.** `RESEARCH`, the `.label` `NEWEST FIRST` (the order is named and is
+the only order), right: the usage line `3 / 10 TODAY` (10px tabular,
+`title` = `manual research runs this UTC day · INTEL_RESEARCH_DAILY`; amber
+when `usedToday ≥ limit`) and `ClaimAge` of the newest result (no staleness
+threshold: research is on demand, an old result is not a stale one).
+
+**Ask box** (`ResearchAsk`). `.label QUESTION` + the §6.2 one-line textarea
+(grows to 3 rows, `maxLength 500`, a 10px `412 / 500` counter appears past
+400); `.label ASSET` + a 6ch uppercase input with a `datalist` of held ∪
+watched (optional; free text allowed, the server decides what it knows);
+`Button` primary `RESEARCH`. Enter submits, Shift+Enter breaks a line.
+Disabled while the question is < 3 chars, while a run is in flight, while a
+`running` row is in the list, and while `usedToday ≥ limit` (`title` says
+which). In flight: `RESEARCHING…` pulse on the button; the list gains a
+placeholder card at the top (§16.2 `running`). The call is synchronous for up
+to 45 s, so the pulse is the whole progress UI: no bar, no countdown (there
+is no signal to drive one, and a fake one lies).
+
+**Results list** — one `ResearchCard` per item, newest first, server order,
+limit 20. After a successful POST the response is prepended locally and
+deduplicated by `id` on the next poll; no refetch. A card arriving from the
+cron (trigger `flag`) appears on the next poll with no announcement.
+
+### 16.2 ResearchCard
+
+An `<article aria-label="Research: <ASSET or 'no asset'>, <status word>">`,
+`px-3 py-2.5`, `border-b border-border-subtle`. Top to bottom:
+
+1. **Status line.** `Badge` with the status word, then coin (sm, primary;
+   omitted when `asset` is null), ` · `, the question (12px `text-primary`,
+   never truncated or uppercased), then right: confidence Badge and
+   `ClaimAge` of `createdAt`.
+
+   | `status` | Badge | Body |
+   |---|---|---|
+   | `running` | gray `RUNNING` + pulse (the §1.5 `REVIEWING…` motion) | `SkeletonRows (2)`; replaced in place by the response |
+   | `found` | gray `FOUND` | full card |
+   | `no_cause` | gray `NO CAUSE` | explanation (`No public cause found.` + what was checked, verbatim), no evidence block, open questions if any |
+   | `capped` | amber `CAPPED` | the §15.7 amber-square row with the verbatim reason (`LLM cap reached ($1.37 / $2.00)`), nothing else |
+   | `failed` | red `FAILED` | the verbatim server reason in an 11px `text-muted` row (`provider has no web search`), nothing else |
+
+   `no_cause` is a valid answer and looks like one: gray, not amber, not
+   empty. Confidence is a gray Badge `LOW` / `MEDIUM` / `HIGH` for `found`
+   and `no_cause` only, `title` = `the model's own confidence in this
+   explanation — not a probability`. It is never color-graded: a green
+   `HIGH` would read as a go signal.
+
+2. **`.label EXPLANATION`** + the explanation as one 12px `text-primary`
+   paragraph, model text rendered verbatim (§2.1 rules: no uppercase, no
+   truncation, no recolored numbers). It is prose, not a Claim, so it never
+   sits inside the ClaimList below; the model name in the meta line is its
+   provenance.
+
+3. **Evidence** — a `ClaimList` of `evidence[]` mapped by `toClaim`:
+   `observed` → `{kind: 'observed', text: claim, source: {label: hostname of
+   url, url}, ts}` (ts may be null → no ClaimAge); `hypothesis` → `{kind:
+   'hypothesis', text: claim}`. A hypothesis that kept its url (the provider
+   saw it, a number did not match) renders the SourceLink **inside** the
+   muted text block after the text, never in the right-hand source slot:
+   the link is useful, the HYP badge and info rule still say "not verified".
+   Omitted when empty (`no_cause`).
+
+4. **`.label OPEN QUESTIONS`** + a `<ul>` of 11px `text-muted` lines, each
+   prefixed `? ` (4ch, matching the OBS/HYP column). Omitted when empty.
+
+5. **Meta line**, 10px `text-secondary` tabular: trigger word (`MANUAL`, or
+   `FLAG · <chip text in lowercase>` when `trigger: 'flag'`), ` · `,
+   `<searches> SEARCHES`, ` · `, `$<costUsd>` (2 decimals, server value,
+   never recomputed), ` · `, `model`, ` · `, ClaimAge; right: ghost `OPEN
+   <ASSET> →` (`/asset/:coin`) when `asset` is set.
+
+**Highlight.** A card addressed by `researchId` (§16.3) gets the §15.5
+selection inset (2px left `--color-red-accent`) and `bg-hover` until the next
+click anywhere, and is scrolled to `start` with `scroll-mt-[100px]`
+(`id="research-<id>"`).
+
+### 16.3 Detector chip action
+
+The chip stays one tab stop; the action lives in the §15.3 expanded line,
+after `OPEN HYPE →`:
+
+- `flag.researchId == null` → ghost `RESEARCH`. Click submits through the
+  same ask action as the box, with the question `What explains <chip text,
+  lowercase> on <ASSET> over <window>?` (e.g. `What explains crowded long on
+  HYPE over 24h?`), `asset` = the flag's coin and `flagId` = the flag id
+  (§16.6), and scrolls to RESEARCH where the `running` placeholder is
+  already visible. It is one click because the chip already holds the whole
+  question; it counts against the daily limit like any manual run, and the
+  usage line says so. Disabled, with the same `title`, under the same
+  conditions as the box button. Degraded summary chips have no action.
+- `flag.researchId` set → ghost `SEE RESEARCH →`. Click scrolls to the card
+  in RESEARCH and highlights it (§16.2). **Why the panel and not the asset
+  page:** the chip is on `/` and the result is already on `/`; a page hop
+  would drop the heatmap context the operator is reading the chip against.
+  If the id is not among the 20 loaded cards, the panel refetches with
+  `?asset=<coin>` and highlights on arrival; still missing → `/asset/:coin`
+  (the timeline has it as an event).
+
+The chip text itself does not change; a flag with research shows a 9px
+`text-secondary` `·R` suffix inside the chip (`title` `research available`),
+so the state is visible before expanding.
+
+### 16.4 `/asset/:coin` timeline
+
+`AssetEvent.kind: 'research'` joins the §15.5 EventList and markers:
+
+- **Marker:** 1px dashed `--color-info` on the PRICE pane at `createdAt`
+  (model output, the news-alert class), every status included; a `no_cause`
+  is still an event that happened.
+- **Row:** `MM-DD HH:mm`, then the status Badge (§16.2 words), `.label`
+  `RESEARCH`, the question in `text-primary`. The row is a disclosure
+  (`aria-expanded`, the §15.3 idiom, one open at a time, `Esc` collapses):
+  tap/Enter opens the full `ResearchCard` body (explanation, evidence, open
+  questions, meta) under the row. When the event carries no `research`
+  payload (§16.6), the row is not expandable and ends with ghost `SEE ON
+  TERMINAL →` (`/#research-<id>`).
+- The header's flags Badges gain the same `·R` suffix as the chips.
+
+### 16.5 Confluence on digest items
+
+Where an item's `confluence > 1`, a 9px gray `Badge` `×1.25` follows the
+materiality number in the DiffTable `MAT` cell. Only digest items (`DiffItem`)
+carry `confluence`. Alerts and heatmap rows don't, so AlertItem and the asset
+header show no badge until they do. Format: `×` + the factor with two
+decimals, trailing zero kept (`×1.50`); `confluence ≤ 1` renders nothing, not
+`×1.00`. `title`: `confluence ×1.25 — 2 independent signal sources on <ASSET>
+in the window (snapshot moves, flow detectors, flips, news); this item's own
+source is not counted` — the count is `1 + round((f − 1) / 0.25)`, and at the
+`1.50` cap it reads `3 or more`. The badge is a suffix, not a column: the
+tables keep their widths, and materiality stays the one printed rank.
+
+### 16.6 States, fields, components
+
+**State → surface (extends §10 / §15.8):**
+
+| Surface | Loading | Empty | Error | Stale / other |
+|---|---|---|---|---|
+| RESEARCH list | SkeletonRows (3) | EmptyBlock `no research yet — ask a question above, or press RESEARCH on a detector chip` (ask box always rendered) | ErrorBlock / OfflineBlock + `RETRY` under the ask box; a loaded list stays | `running` placeholder card; usage line amber at the limit |
+| Ask box submit | `RESEARCHING…` pulse, button disabled | — | verbatim ErrorBlock (`role="alert"`) under the box; `RETRY` only when offline or ≥ 500 | **409** (a run in flight): verbatim string, box disabled until the next poll shows no `running` row; **429** (daily limit): verbatim string, usage line amber, box disabled until `usedToday < limit` after the UTC day turns; **capped**: not an error — a 200 `CAPPED` card (§16.2), box stays enabled; **failed**: a `FAILED` card |
+| No DB | — | the same EmptyBlock: without `DATABASE_URL` the server uses `MemoryIntelStore`, so every state above renders and results live until restart; no demo copy | — | — |
+| Asset research row | — (with events) | — | — | no payload → `SEE ON TERMINAL →` |
+| Chip action | `RESEARCH` disabled with `title` while in flight | — | the box's ErrorBlock | `·R` suffix; `SEE RESEARCH →` fallback to `/asset/:coin` |
+
+A `running` row older than deadline + 15 s (SPEC S0.3) is stale; the panel
+renders it as `FAILED` with reason `timed out` only after the server reports
+it so (the UI never guesses); until then it is `RUNNING`.
+
+**Fields the UI reads (extends §13; pinned in `src/shared/intel.ts`):**
+
+| Field | Used by | If absent |
+|---|---|---|
+| `ResearchResult {id, trigger: 'manual'\|'flag', flagId?, asset: string\|null, question, status, explanation, evidence: {claim, url?, ts: string\|null, type: 'observed'\|'hypothesis'}[], confidence, openQuestions: string[], searches, costUsd, model, createdAt}` | ResearchCard | `costUsd`/`searches`/`model` absent → that meta segment omitted |
+| `GET /research` → `{items, usedToday, limit}` | list, usage line, box gating | `usedToday`/`limit` absent → usage line omitted, box never limit-gated (the 429 still renders) |
+| `POST /research {question, asset?, flagId?}` | ask box, chip action | the UI **sends** `flagId` when the run comes from a chip; a server that ignores it leaves the chip on `RESEARCH` until a poll returns a `researchId` (S1 names only `question`, `asset`) |
+| `FlowFlag.researchId: string\|null` | chip action, `·R` suffix, header flags | treated as null |
+| `AssetEvent {kind: 'research', ts, title (= question), research?: ResearchResult}` | timeline marker, row, disclosure | no `research` → non-expandable row + `SEE ON TERMINAL →` |
+| `DiffItem.confluence?`, `Alert.confluence?`, heatmap row `confluence?` | ConfluenceBadge | no badge |
+
+**Polling (extends §1.4):** `GET /research?limit=20` on mount, then every 60 s
+(results also arrive from the cron); 15 s while any row is `running`; paused
+hidden. `/asset/:coin` needs no new fetch (events carry research).
+
+**Keyboard / a11y (extends §11):** the textarea has a visible `.label` and
+`aria-describedby` on the counter; Enter submits, Shift+Enter inserts a
+newline; the asset input is a labeled `<input list>`; ErrorBlocks are the
+only live regions, plus the existing `/` polite line, which announces
+`research ready: <status word>` when a POST resolves; cards are `<article>`s
+with the status word in `aria-label`; the chip action and `OPEN HYPE →` are
+ordinary buttons inside the expanded line (tab order after the chip);
+`OBS`/`HYP`, status words, `×1.25` and the `? ` prefix are text, so color is
+never the only signal.
+
+**Components (extends §14 / §15.8):**
+
+| Component | File | Props |
+|---|---|---|
+| `ResearchPanel` (container) | `components/intel/ResearchPanel.tsx` | `state: IntelState<ResearchListResponse>`, `ask: ActionState` (shared with the chip action), `heldWatched: Set<string>`, `highlightId: string\|null`, `onHighlighted()`; merges the locally prepended results into `state.data.items`; exports `RESEARCH_ANCHOR` |
+| `ResearchAsk` | `components/intel/ResearchAsk.tsx` | `assets: string[]`, `busy`, `disabledReason: string\|null`, `error`, `offline`, `onSubmit({question, asset?})` |
+| `ResearchCard` | `components/intel/ResearchCard.tsx` | `result: ResearchResult`, `highlighted?: boolean`, `compact?: boolean` (asset page body: no status line, the row has it) |
+| `ConfluenceBadge` | `components/intel/ConfluenceBadge.tsx` | `factor: number\|undefined`, `asset: string` (renders nothing ≤ 1) |
+| `research.ts` (pure) | `components/intel/research.ts` | `toClaim(evidence)`, `statusWord(status)`, `statusTone(status)`, `chipQuestion(flag)`, `confluenceTitle(factor, asset)`, `fmtCost(usd)` (the `flow.ts` precedent; unit-tested like `flow.test.tsx`) |
+| `DetectorChips` | `components/intel/DetectorChips.tsx` | gains `onResearch(flag)`, `onSeeResearch(researchId, asset)`, `askDisabledReason: string\|null` |
+| `EventList` | `components/intel/EventList.tsx` | gains the `research` row + disclosure (renders `ResearchCard compact`) |
+| `DiffTable` | existing file | renders `ConfluenceBadge` after materiality (digest items only) |
+| `Terminal` | `pages/terminal/Terminal.tsx` | gains the research poller, the ask `useAction` (POST + local prepend), `highlightId`, and `RESEARCH_ANCHOR`; wires the chip actions |
+| `intel` client | `lib/intel.ts` | gains `research(q)`, `ask(input)`; `events` and `flows` removed (SPEC S0.9) |
+
+Skipped: a progress bar or elapsed counter for the 45 s run (no signal to
+drive it); a research sub-tab or `/research` route (the panel is the
+surface; the list is capped at 20 by the API); per-card feedback buttons
+(SPEC S0 defines none); an asset filter control on the panel (the refetch in
+§16.3 is the only use, and the ask box's ASSET field already scopes new
+runs); typing the explanation as a Claim (it is a synthesis, and the evidence
+rows carry the tags).
