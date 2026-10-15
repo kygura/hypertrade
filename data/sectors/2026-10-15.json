@@ -1,0 +1,116 @@
+{
+  "generated_at": "2026-10-15T05:56:00Z",
+  "sectors": [
+    {
+      "id": "l1-majors",
+      "label": "L1 Majors",
+      "mindshare_score": 0.6,
+      "momentum": -0.1,
+      "rationale": "BTC -3.4%, ETH -6.1%, SOL -5.2%, XRP -5.1% 24h; sector OI $6.49B, mostly BTC ($3.19B) and ETH ($2.49B). BTC dominance 59.8% (z30 +2.8) says attention is concentrating in BTC as alts fall faster. Social share unavailable (no Elfa data), so MS is unchecked. Low-confidence.",
+      "tokens": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "hypertrade rolling baselines (z30)"
+      ]
+    },
+    {
+      "id": "perp-dex-defi",
+      "label": "Perp DEX & DeFi",
+      "mindshare_score": 0.5,
+      "momentum": -0.3,
+      "rationale": "HYPE -2.3% to $79.82 with OI $1.63B (z30 -0.9), holding better than the field; ENA -11.8%, PENDLE -10.6%, AAVE -7.0%, UNI -6.0%. Sector OI $1.87B. Mindshare cut from 0.6 as the DeFi tail sold off harder than HYPE. Social share unavailable.",
+      "tokens": [
+        "HYPE",
+        "AAVE",
+        "UNI",
+        "ENA",
+        "PENDLE"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "hypertrade rolling baselines (z30)"
+      ]
+    },
+    {
+      "id": "privacy",
+      "label": "Privacy",
+      "mindshare_score": 0.4,
+      "momentum": -0.4,
+      "rationale": "ZEC -12.4% to $1,091 with OI $536M (from $554M), still the 5th-largest HL OI; XMR -3.2%. Sector OI $601M. The high-beta end is still unwinding. Social share unavailable. Low-confidence.",
+      "tokens": [
+        "ZEC",
+        "XMR"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)"
+      ]
+    },
+    {
+      "id": "rwa-stablecoins",
+      "label": "RWA & Stablecoins",
+      "mindshare_score": 0.4,
+      "momentum": -0.25,
+      "rationale": "ONDO -7.9% with OI $40M; the stablecoin series is $309.9B (z30 -3.7, -0.8% on the day), so the sector's liquidity input is draining, not building. Mindshare cut from 0.5.",
+      "tokens": [
+        "ONDO"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "hypertrade rolling baselines (z30)",
+        "defillama stablecoin supply"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "label": "AI & Agents",
+      "mindshare_score": 0.35,
+      "momentum": -0.4,
+      "rationale": "FET -10.4%, VIRTUAL -8.2%, TAO -7.0% 24h while SMH fell 4.0% on the day and 9.7% over 5 sessions; sector OI $66M, thin, so the token moves carry little leverage signal.",
+      "tokens": [
+        "FET",
+        "TAO",
+        "VIRTUAL"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "yahoo finance equity quotes"
+      ]
+    },
+    {
+      "id": "memecoins",
+      "label": "Memecoins",
+      "mindshare_score": 0.2,
+      "momentum": -0.5,
+      "rationale": "PUMP -13.8% (OI $164M, from $203M two days ago), WIF -8.0%, DOGE -6.5%; sector OI $266M, down from $314M. Leverage keeps leaving the speculative end first.",
+      "tokens": [
+        "WIF",
+        "DOGE",
+        "PUMP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)"
+      ]
+    }
+  ],
+  "rotations": [
+    {
+      "from": "memecoins",
+      "to": "l1-majors",
+      "confidence": 0.35,
+      "trigger": "PUMP OI below $150M while BTC OI stays above $3.0B and BTC dominance stays above 59.5%",
+      "note": "Low-confidence; last run's trigger was met (PUMP OI $164M, BTC OI $3.19B, dominance 59.8%), so we lean that this is continued de-risking into the largest names, not a narrative rotation."
+    },
+    {
+      "from": "ai-agents",
+      "to": "l1-majors",
+      "confidence": 0.2,
+      "trigger": "SMH 5d change stays below -5% while FET and TAO OI stay under $60M combined",
+      "note": "Very low-confidence; AI tokens are following semis lower, and a SMH stabilisation would remove the trigger."
+    }
+  ]
+}

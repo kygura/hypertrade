@@ -8,6 +8,7 @@ import d20261009 from "./2026-10-09.json" with { type: "json" };
 import d20261011 from "./2026-10-11.json" with { type: "json" };
 import d20261012 from "./2026-10-12.json" with { type: "json" };
 import d20261013 from "./2026-10-13.json" with { type: "json" };
+import d20261015 from "./2026-10-15.json" with { type: "json" };
 
 export const MARKETSTATE_HISTORY: Array<{ date: string; data: unknown }> = [
   { date: "2026-08-30", data: d20260830 },
@@ -16,4 +17,5 @@ export const MARKETSTATE_HISTORY: Array<{ date: string; data: unknown }> = [
   { date: "2026-10-11", data: d20261011 },
   { date: "2026-10-12", data: d20261012 },
   { date: "2026-10-13", data: d20261013 },
+  { date: "2026-10-15", data: d20261015 },
 ];
