@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-10-14T05:53:53Z",
+  "pulse": {
+    "4b7b330b19cb2cc1": {
+      "firing": false,
+      "asset": "BTC",
+      "direction": "long"
+    },
+    "12cb9d5129185e2b": {
+      "firing": false,
+      "asset": "BTC",
+      "direction": "long"
+    },
+    "880aad52d0930040": {
+      "firing": true,
+      "asset": "ETH",
+      "direction": "long"
+    }
+  },
+  "catalogue_ids": [
+    "4b7b330b19cb2cc1",
+    "12cb9d5129185e2b",
+    "880aad52d0930040"
+  ],
+  "hl_cycles": {
+    "regime_state": "mild_risk_on",
+    "as_of": "2026-10-13"
+  }
+}
