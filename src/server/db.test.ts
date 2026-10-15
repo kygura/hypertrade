@@ -52,7 +52,7 @@ describe('databaseUrl', () => {
 
 describe('query timeout', () => {
   const TIMEOUT_MS = 150
-  const saved = { url: process.env.DATABASE_URL, timeout: process.env.DB_QUERY_TIMEOUT_MS }
+  const saved = { url: process.env.DATABASE_URL, timeout: process.env.DB_QUERY_TIMEOUT_MS, pool: process.env.DB_POOL_MAX }
   let fake: FakePg
 
   beforeAll(async () => {
@@ -60,6 +60,8 @@ describe('query timeout', () => {
     await releaseConnection()
     process.env.DATABASE_URL = fake.url
     process.env.DB_QUERY_TIMEOUT_MS = String(TIMEOUT_MS)
+    // These tests model one wedged connection with queries queued behind it.
+    process.env.DB_POOL_MAX = '1'
   })
   afterEach(async () => {
     setSystemTime()
@@ -68,7 +70,7 @@ describe('query timeout', () => {
   })
   afterAll(async () => {
     await fake.close()
-    for (const [k, v] of [['DATABASE_URL', saved.url], ['DB_QUERY_TIMEOUT_MS', saved.timeout]] as const) {
+    for (const [k, v] of [['DATABASE_URL', saved.url], ['DB_QUERY_TIMEOUT_MS', saved.timeout], ['DB_POOL_MAX', saved.pool]] as const) {
       if (v === undefined) delete process.env[k]
       else process.env[k] = v
     }
@@ -86,6 +88,20 @@ describe('query timeout', () => {
     expect(await q`select * from lab_rules where true ${q`and asset = ${'BTC'}`} ${q``}`).toHaveLength(0)
     expect(await db.upsertObservations([{ seriesId: 'lab.x', ts: new Date(0), value: 1 }])).toBe(0)
     expect(fake.connections).toBe(1)
+  })
+
+  test('with a pool, concurrent queries are not serialized on one connection', async () => {
+    process.env.DB_POOL_MAX = '3'
+    try {
+      await releaseConnection()
+      const before = fake.connections
+      await Promise.all([sql()`select 1`, sql()`select 2`, sql()`select 3`])
+      const opened = fake.connections - before
+      expect(opened).toBeGreaterThan(1)
+      expect(opened).toBeLessThanOrEqual(3)
+    } finally {
+      process.env.DB_POOL_MAX = '1'
+    }
   })
 
   test('a query that never gets an answer fails, frees the queries queued behind it, and the next one reconnects', async () => {
