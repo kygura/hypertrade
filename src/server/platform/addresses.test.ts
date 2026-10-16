@@ -34,4 +34,22 @@ describe("address buffer", () => {
     expect(calls).toEqual([1]);
     await buf.stop();
   });
+
+  test("overlapping flushes share one in-flight write; a bad trade time drops only that address", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const calls: string[][] = [];
+    const buf = createAddressBuffer({ recordAddresses: async (r) => (calls.push(r.map((x) => x.address)), await gate, r.length) }, { flushMs: 60_000 });
+    buf.add([A], 1_000);
+    buf.add([B], 9e15); // out of Date range: toISOString throws
+    const first = buf.flush();
+    buf.add([A], 2_000);
+    const second = buf.flush();
+    expect(second).toBe(first);
+    release();
+    expect(await first).toBe(1);
+    expect(calls).toEqual([[A]]);
+    await buf.stop();
+    expect(calls).toEqual([[A], [A]]);
+  });
 });

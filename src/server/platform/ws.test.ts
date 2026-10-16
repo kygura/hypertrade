@@ -58,8 +58,8 @@ describe("ingest over a fake socket", () => {
     ws.emit({ channel: "allMids", data: { mids: { BTC: "100" } } });
     t += 4_000;
     expect(ingest.mid("BTC")).toBe(100);
-    expect(ingest.midAge("BTC")).toBe(4_000);
-    expect(ingest.midAge("ETH")).toBeNull();
+    expect(ingest.midAgeMs("BTC")).toBe(4_000);
+    expect(ingest.midAgeMs("ETH")).toBeNull();
     expect(ingest.lastMessageAgeSec()).toBe(4);
 
     ws.emit({ channel: "trades", data: [trade, { coin: "BTC" }] });

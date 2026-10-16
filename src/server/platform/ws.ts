@@ -11,6 +11,8 @@ import { bus as defaultBus, type Bus } from "./bus.js";
 
 const UNIVERSE_REFRESH_MS = 3_600_000;
 const SILENT_MS = 60_000;
+/** A mid older than this is not a price (outcomes fall back to the scan mark; the freshness gate refuses). */
+export const MID_MAX_AGE_MS = 30_000;
 
 const Num = z.string().transform(Number).pipe(z.number().finite().positive());
 const Mids = z.record(z.string(), Num);
@@ -109,7 +111,7 @@ export function createWsIngest(deps: WsIngestDeps = {}) {
     },
     mid: (coin: string) => mids.get(coin)?.px ?? null,
     /** Ms since the coin's last mid update, or null if never seen. */
-    midAge: (coin: string, at: number = now()) => {
+    midAgeMs: (coin: string, at: number = now()) => {
       const m = mids.get(coin);
       return m ? at - m.receivedAt : null;
     },

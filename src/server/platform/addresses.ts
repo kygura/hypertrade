@@ -20,12 +20,20 @@ export function createAddressBuffer(
   { flushMs = FLUSH_MS, log = console.error }: { flushMs?: number; log?: (...a: unknown[]) => void } = {},
 ): AddressBuffer {
   let buf = new Map<string, number>();
-  const flush = async () => {
+  let running: Promise<number> | null = null;
+  const run = async () => {
     if (!buf.size) return 0;
     const taken = buf;
     buf = new Map();
-    const rows: AddressSighting[] = [...taken].map(([address, ms]) => ({ address, seenAt: new Date(ms).toISOString() }));
     try {
+      const rows: AddressSighting[] = [];
+      for (const [address, ms] of taken) {
+        try {
+          rows.push({ address, seenAt: new Date(ms).toISOString() });
+        } catch {
+          taken.delete(address); // a bad trade time drops that address only
+        }
+      }
       return await store.recordAddresses(rows);
     } catch (err) {
       log("[addresses] flush failed:", err instanceof Error ? err.message : err);
@@ -33,6 +41,8 @@ export function createAddressBuffer(
       return 0;
     }
   };
+  /** One flush at a time: a slow store must not stack overlapping batches. */
+  const flush = () => (running ??= run().finally(() => void (running = null)));
   const timer = setInterval(() => void flush(), flushMs);
   timer.unref?.();
   return {
@@ -42,6 +52,7 @@ export function createAddressBuffer(
     flush,
     async stop() {
       clearInterval(timer);
+      await running;
       await flush();
     },
     get size() {

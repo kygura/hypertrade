@@ -2,7 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 
-const COOKIE_NAME = "ht_session";
+export const COOKIE_NAME = "ht_session";
 const MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 /**

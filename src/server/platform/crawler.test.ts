@@ -21,18 +21,23 @@ describe("parseClearinghouse", () => {
 });
 
 describe("crawler", () => {
-  async function run(o: { weightPerMin: number; guard?: number; ticks: number; response?: unknown }) {
+  async function run(o: { weightPerMin: number; guard?: number | (() => number); ticks: number; response?: unknown; fail?: boolean }) {
     const store = new MemoryPlatformStore();
     await store.recordAddresses(Array.from({ length: 3000 }, (_, i) => ({ address: addr(i + 1), seenAt: "2026-10-15T00:00:00Z" })));
     let t = Date.UTC(2026, 9, 15, 12);
     const calls: number[] = [];
-    const info = (async () => (calls.push(t), o.response ?? { assetPositions: [pos("BTC", "1")] })) as unknown as Info;
-    const c = createCrawler({ store, info, now: () => t, weightPerMin: o.weightPerMin, guardWaitMs: () => o.guard ?? 0 });
+    const errs: Error[] = [];
+    const info = (async () => {
+      calls.push(t);
+      if (o.fail) throw new Error("boom");
+      return o.response ?? { assetPositions: [pos("BTC", "1")] };
+    }) as unknown as Info;
+    const c = createCrawler({ store, info, now: () => t, weightPerMin: o.weightPerMin, guardWaitMs: () => (typeof o.guard === "function" ? o.guard() : o.guard ?? 0) });
     for (let i = 0; i < o.ticks; i++) {
       t += 5_000;
-      await c.tick();
+      await c.tick().catch((e) => errs.push(e));
     }
-    return { c, calls, store };
+    return { c, calls, store, errs };
   }
 
   test("respects the weight budget: no 60 s window holds more than weightPerMin / 2 polls (plus one tick of burst)", async () => {
@@ -60,5 +65,19 @@ describe("crawler", () => {
     const bad = await run({ weightPerMin: 800, ticks: 3, response: { garbage: true } });
     expect(bad.c.bad).toBeGreaterThan(0);
     expect(bad.c.pollsPerMin()).toBe(0);
+    expect(bad.errs[0]!.message).toContain("polls failed");
+  });
+
+  test("a mostly failing tick throws so loop health shows it; an outage of one poll does not", async () => {
+    const down = await run({ weightPerMin: 800, ticks: 2, fail: true });
+    expect(down.c.failed).toBeGreaterThan(5);
+    expect(down.errs.length).toBeGreaterThan(0);
+    expect((await run({ weightPerMin: 800, ticks: 3 })).errs).toHaveLength(0);
+  });
+
+  test("the guard is checked per poll: it filling mid-tick stops the remaining polls", async () => {
+    let sent = 0;
+    const { calls } = await run({ weightPerMin: 800, ticks: 1, guard: () => (sent++ >= 3 ? 1_000 : 0) });
+    expect(calls).toHaveLength(3);
   });
 });

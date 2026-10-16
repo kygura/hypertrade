@@ -1,8 +1,25 @@
 // Always-on entry (SPEC.md § Platform P0.1): one Bun process serving /api/*
 // (the Hono app), dist/ with SPA fallback, and the worker loops. Run with
 //   bun run start
-// Env: PORT (8787), DATABASE_URL, MIGRATE_ON_BOOT=1, WORKER_LOOPS (all|off|list),
-// PLATFORM_RETENTION_DAYS (14).
+// The port is bound first and boot() (migrate, store, loops) runs behind it: a
+// boot failure leaves the UI and /api/health up, with a failed `boot` loop entry.
+// Env read by this process:
+//   PORT                              listen port (8787)
+//   DATABASE_URL                      Postgres; unset = in-memory store, no desk loops
+//   MIGRATE_ON_BOOT                   1 = apply db/migrations before starting (needs DATABASE_URL)
+//   WORKER_LOOPS                      all (default) | off | comma list of loop names
+//   DB_POOL_MAX                       postgres.js pool size (1; use ~5 here)
+//   APP_URL / DESK_APP_URL            link in Telegram alerts
+//   INTEL_LLM_DAILY_USD               not read here; health LLM spend comes from the same intel accounting
+//   PLATFORM_RETENTION_DAYS (14)      prune horizon for scan history
+//   PLATFORM_SCAN_INTERVAL_SEC        scanner cadence
+//   PLATFORM_CRAWL_WEIGHT_PER_MIN (500), PLATFORM_CRAWL_MAX_AGE_MIN   crawler budget / freshness
+//   PLATFORM_LIQMAP_COINS             liquidation-map coins
+//   PLATFORM_OUTCOME_HORIZONS         outcome marking horizons
+//   PLATFORM_READY_TTL_MIN, PLATFORM_COOLDOWN_MIN, PLATFORM_EDGE_MIN_N   opportunity lifecycle
+//   PLATFORM_RESEARCH_SCORE, PLATFORM_PUSH_SCORE   score thresholds (research feed / Telegram push)
+//   PLATFORM_COST_TOP_N               cost model top-N coins
+// Desk loops also read DESK_WORKER_TICK_SEC and DESK_TELEGRAM_* (scripts/desk-worker.ts).
 import { existsSync, statSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
 import { app } from "../api/index";
@@ -14,14 +31,18 @@ import { bus } from "../src/server/platform/bus";
 import { setPlatformContext } from "../src/server/platform/context";
 import { createCrawler } from "../src/server/platform/crawler";
 import { createLiqmapLoop } from "../src/server/platform/liqmapLoop";
-import { createOutcomesLoop } from "../src/server/platform/outcomesLoop";
-import { sql } from "../src/server/db";
+import { createOutcomesLoop, skipped as outcomesSkipped } from "../src/server/platform/outcomesLoop";
+import { sql, setLongRunning } from "../src/server/db";
+import { defaultDeskService } from "../src/server/routes/desk";
+import { PgIntelStore } from "../src/server/intel/store";
+import { usageCost } from "../src/server/intel/llm";
+import { createReconcileLoop } from "../src/server/platform/reconcile";
 import { createScanner } from "../src/server/platform/scanner";
 import { setHealthExtras, parseWorkerLoops, startLoops, type LoopDef, type Loops } from "../src/server/platform/runtime";
 import { MemoryPlatformStore } from "../src/server/platform/store-memory";
 import { PgPlatformStore, pgDb } from "../src/server/platform/store-pg";
 import type { PlatformStore } from "../src/server/platform/store";
-import { createWsIngest } from "../src/server/platform/ws";
+import { createWsIngest, MID_MAX_AGE_MS } from "../src/server/platform/ws";
 import type { PlatformHealth } from "../src/shared/platform";
 
 const DIST = resolve(import.meta.dir, "../dist");
@@ -33,7 +54,13 @@ export function createHandler(api: (req: Request) => Response | Promise<Response
     const { pathname } = new URL(req.url);
     if (pathname === "/api" || pathname.startsWith("/api/")) return api(req);
     if (req.method !== "GET" && req.method !== "HEAD") return new Response("Method Not Allowed", { status: 405 });
-    let file = resolve(dist, "." + normalize(decodeURIComponent(pathname)));
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(pathname);
+    } catch {
+      return new Response("Bad Request", { status: 400 });
+    }
+    let file = resolve(dist, "." + normalize(decoded));
     const inside = file === dist || file.startsWith(dist + "/");
     const hit = inside && existsSync(file) && statSync(file).isFile();
     // Missing asset files are real 404s; any other path is a client route.
@@ -46,7 +73,22 @@ export function createHandler(api: (req: Request) => Response | Promise<Response
   };
 }
 
+/** Last good value of a slow health probe, refreshed at most every ttlMs, each try capped at 2 s; `fallback` until one succeeds. */
+function cached<T>(ttlMs: number, fn: () => Promise<T>, fallback: T): () => Promise<T> {
+  let at = -Infinity;
+  let v = fallback;
+  return async () => {
+    if (Date.now() - at < ttlMs) return v;
+    at = Date.now();
+    try {
+      v = await Promise.race([fn(), new Promise<never>((_, rej) => setTimeout(() => rej(new Error("probe timeout")), 2_000).unref())]);
+    } catch {}
+    return v;
+  };
+}
+
 async function boot() {
+  setLongRunning(true);
   const databaseUrl = process.env.DATABASE_URL?.trim();
   if (process.env.MIGRATE_ON_BOOT === "1") {
     if (!databaseUrl) throw new Error("MIGRATE_ON_BOOT=1 needs DATABASE_URL");
@@ -69,8 +111,8 @@ async function boot() {
   const scanner = createScanner({ store, seedFrom });
   const crawler = createCrawler({ store });
   const liqmap = createLiqmapLoop({ store });
-  // A ws mid older than 30 s is not a price; the outcomes loop then falls back to the last scan's mark.
-  const outcomes = createOutcomesLoop({ store, mid: (c) => ((ws.midAge(c) ?? Infinity) <= 30_000 ? ws.mid(c) : null), scanMark: scanner.latestMark,
+  // A ws mid older than MID_MAX_AGE_MS is not a price; the outcomes loop then falls back to the last scan's mark.
+  const outcomes = createOutcomesLoop({ store, mid: (c) => ((ws.midAgeMs(c) ?? Infinity) <= MID_MAX_AGE_MS ? ws.mid(c) : null), scanMark: scanner.latestMark,
     fillPx: databaseUrl
       ? async (id) => {
           if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
@@ -94,7 +136,9 @@ async function boot() {
   const selected = parseWorkerLoops(process.env.WORKER_LOOPS);
   const wants = (n: string) => selected === "all" || selected.has(n);
   const unsubAlerts = wants("alerts") ? alerts.subscribe(bus) : () => {};
-  if (wants("desk") || wants("telegram")) {
+  // Desk loops need the Postgres-backed desk store; in memory mode they would only fail.
+  if (databaseUrl) defs.push(createReconcileLoop({ store, desk: defaultDeskService, now: () => new Date() }));
+  if (databaseUrl && (wants("desk") || wants("telegram"))) {
     // Dynamic: importing desk-worker builds the desk service, which only the worker needs.
     const desk = await import("./desk-worker");
     if (wants("desk")) defs.push({ name: "desk", intervalSec: desk.deskTickSec, run: desk.deskTickOnce });
@@ -104,18 +148,26 @@ async function boot() {
   }
 
   const loops: Loops = startLoops(defs, { only: selected });
+  const addressCount = cached(30_000, () => store.addressCount(), 0);
+  const intel = databaseUrl ? new PgIntelStore() : null;
+  const llmSpend = cached<number | null>(60_000, async () => {
+    const n = new Date();
+    const dayStart = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()));
+    return (await intel!.usageSince(dayStart)).reduce<number>((sum, u) => sum + usageCost(u), 0);
+  }, null);
   setHealthExtras(async () => ({
     store: storeKind,
     loops: loops.health(),
     ws: { state: selected === "all" || selected.has("ws") ? ws.state : "off", lastMessageAgeSec: ws.lastMessageAgeSec() },
     scanHistoryMin: scanner.historyMin(),
     scanAgeSec: scanner.lastScanAt() ? (Date.now() - scanner.lastScanAt()!.getTime()) / 1000 : null,
-    crawler: { pollsPerMin: crawler.pollsPerMin(), addresses: await store.addressCount() },
-    llmSpendUsdToday: null,
+    crawler: { pollsPerMin: crawler.pollsPerMin(), addresses: await addressCount() },
+    llmSpendUsdToday: intel ? await llmSpend() : null,
+    outcomesSkipped: outcomesSkipped(),
   }));
   setPlatformContext({
     store,
-    midAge: (coin, now) => { const ms = ws.midAge(coin, now); return ms == null ? null : ms / 1000; },
+    midAge: (coin, now) => { const ms = ws.midAgeMs(coin, now); return ms == null ? null : ms / 1000; },
     mid: (coin) => ws.mid(coin),
     lastScanAt: scanner.lastScanAt,
     scanIntervalSec: scanner.intervalSec,
@@ -125,21 +177,33 @@ async function boot() {
   return async () => {
     unsubAlerts();
     setPlatformContext(null);
-    await loops.stop();
     ws.stop();
-    await addresses.stop();
+    await Promise.all([loops.stop(), addresses.stop()]);
   };
 }
 
-if (import.meta.main) {
-  const port = Number(process.env.PORT) || 8787;
-  const stop = await boot();
+/** Binds the port first, then boots in the background; a boot failure shows up in /api/health as a failed `boot` loop. */
+export function start({ port, boot: bootFn = boot, api = app.fetch, dist = DIST }: { port: number; boot?: () => Promise<() => Promise<void>>; api?: (req: Request) => Response | Promise<Response>; dist?: string }) {
   const server = Bun.serve({
     port,
-    fetch: createHandler(app.fetch),
+    fetch: createHandler(api, dist),
     // Bun closes a silent connection after 10 s by default; the cron routes run up to ~200 s.
     idleTimeout: 255,
   });
+  let stopBoot = async () => {};
+  const booted = bootFn().then(
+    (stop) => void (stopBoot = stop),
+    (err) => {
+      const error = err instanceof Error ? err.message : String(err);
+      console.error("boot failed; serving degraded:", err);
+      setHealthExtras(() => ({ loops: [{ name: "boot", lastBeatAt: null, expectedIntervalSec: 1, ok: false, error }] }));
+    },
+  );
+  return { server, booted, stop: async () => (await booted, await stopBoot().catch((err) => console.error("shutdown:", err)), await server.stop()) };
+}
+
+if (import.meta.main) {
+  const { server, stop } = start({ port: Number(process.env.PORT) || 8787 });
   console.log(`server listening on :${server.port}`);
   let closing = false;
   for (const sig of ["SIGINT", "SIGTERM"] as const) {
@@ -148,7 +212,6 @@ if (import.meta.main) {
       closing = true;
       console.log(`${sig}: shutting down`);
       setTimeout(() => process.exit(1), 10_000).unref();
-      await server.stop();
       await stop().catch((err) => console.error("shutdown:", err));
       process.exit(0);
     });

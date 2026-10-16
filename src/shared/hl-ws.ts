@@ -48,6 +48,8 @@ type Handler = (data: unknown) => void
 const PING_MS = 50_000
 const IDLE_CLOSE_MS = 30_000
 const MAX_BACKOFF_MS = 30_000
+const REPLAY_BATCH = 50
+const REPLAY_GAP_MS = 100
 
 export const keyOf = (s: HlSub) => {
   switch (s.type) {
@@ -87,7 +89,10 @@ export class HlSocket {
   private pingTimer: ReturnType<typeof setInterval> | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private idleTimer: ReturnType<typeof setTimeout> | null = null
+  private replayTimer: ReturnType<typeof setTimeout> | null = null
   private backoff = 1_000
+  /** A message arrived on the current connection; only then is the backoff reset (an open-then-silent socket must keep backing off). */
+  private gotMessage = false
   private everOpened = false
   private stopped = false
   private _state: HlSocketState = 'closed'
@@ -163,12 +168,25 @@ export class HlSocket {
     this.ws = ws
     this.setState('connecting')
     ws.onopen = () => {
-      this.backoff = 1_000
+      this.gotMessage = false
       this.lastMessageAt = Date.now()
-      for (const { sub } of this.subs.values()) this.send({ method: 'subscribe', subscription: sub })
+      // Staggered replay: a 250-sub burst per reconnect is what trips HL's rate limits.
+      const pending = [...this.subs.values()].map((e) => e.sub)
+      const replay = () => {
+        this.replayTimer = null
+        if (this.ws !== ws) return
+        for (const sub of pending.splice(0, REPLAY_BATCH)) this.send({ method: 'subscribe', subscription: sub })
+        if (pending.length) this.replayTimer = setTimeout(replay, REPLAY_GAP_MS)
+      }
+      replay()
       const stale = this.opts.staleMs ?? 0
       this.pingTimer = setInterval(() => {
-        if (stale > 0 && Date.now() - this.lastMessageAt > stale) return ws.close()
+        if (stale > 0 && Date.now() - this.lastMessageAt > stale) {
+          // Do not wait for onclose: a half-dead socket may never deliver it.
+          ws.onclose = ws.onmessage = null
+          try { ws.close() } catch {}
+          return this.dropped()
+        }
         this.send({ method: 'ping' })
       }, stale > 0 ? Math.min(PING_MS, stale / 2) : PING_MS)
       this.setState('open')
@@ -177,6 +195,10 @@ export class HlSocket {
     }
     ws.onmessage = (ev) => {
       this.lastMessageAt = Date.now()
+      if (!this.gotMessage) {
+        this.gotMessage = true
+        this.backoff = 1_000
+      }
       let msg: { channel?: string; data?: unknown }
       try {
         msg = JSON.parse(String(ev.data))
@@ -187,21 +209,27 @@ export class HlSocket {
       if (key) this.subs.get(key)?.handlers.forEach((h) => h(msg.data))
     }
     ws.onclose = () => {
-      this.teardown()
-      this.setState('closed')
-      if (this.subs.size === 0 || this.stopped) return
-      this.retryTimer = setTimeout(() => {
-        this.retryTimer = null
-        this.ensureOpen()
-      }, this.backoff)
-      this.backoff = Math.min(this.backoff * 2, MAX_BACKOFF_MS)
+      if (this.ws === ws) this.dropped()
     }
     ws.onerror = () => ws.close()
   }
 
+  /** The connection is gone (closed by the peer or declared stale): schedule the reconnect. */
+  private dropped() {
+    this.teardown()
+    this.setState('closed')
+    if (this.subs.size === 0 || this.stopped) return
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null
+      this.ensureOpen()
+    }, this.backoff * (1 + Math.random() * 0.25))
+    this.backoff = Math.min(this.backoff * 2, MAX_BACKOFF_MS)
+  }
+
   private teardown() {
     if (this.pingTimer) clearInterval(this.pingTimer)
-    this.pingTimer = null
+    if (this.replayTimer) clearTimeout(this.replayTimer)
+    this.pingTimer = this.replayTimer = null
     this.ws = null
   }
 
