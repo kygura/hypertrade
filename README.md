@@ -51,7 +51,9 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    -- The owner bypasses RLS; hypertrade_app gets the only policy (RLS binds every non-owner role).
    alter table ledger_entries enable row level security;
    alter table opportunities enable row level security;
+   drop policy if exists app_all on ledger_entries;
    create policy app_all on ledger_entries for all to hypertrade_app using (true) with check (true);
+   drop policy if exists app_all on opportunities;
    create policy app_all on opportunities for all to hypertrade_app using (true) with check (true);
    ```
 

@@ -217,8 +217,8 @@ export type LiqBucket = z.infer<typeof LiqBucketSchema>;
 export const CoverageSchema = z.object({
   trackedNotional: NonNeg,
   oiNotional: NonNeg,
-  /** trackedNotional / (2 × oiNotional) (P0.8); 0 when OI is 0. */
-  ratio: NonNeg,
+  /** trackedNotional / (2 × oiNotional) (P0.8); null when OI is unknown or 0 (unknown is not 0% covered). */
+  ratio: NonNeg.nullable(),
   addresses: z.number().int().nonnegative(),
   pollAgeP50Sec: NonNeg.nullable(),
   pollAgeP90Sec: NonNeg.nullable(),

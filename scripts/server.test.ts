@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getHealthExtras, setHealthExtras } from "../src/server/platform/runtime";
-import { createHandler, start } from "./server";
+import { PlatformHealthSchema } from "../src/shared/platform";
+import { createHandler, orStop, start } from "./server";
 
 let dir: string;
 let handle: (r: Request) => Promise<Response>;
@@ -47,18 +48,27 @@ describe("start", () => {
     const quiet = console.error;
     console.error = () => {};
     try {
-      const api = async () => Response.json({ ok: true, ...(await getHealthExtras()?.()) });
+      const api = async () => Response.json({ ok: true, ts: new Date().toISOString(), ...(await getHealthExtras()?.()) });
       const { server, booted, stop } = start({ port: 0, boot: async () => { throw new Error("migration exploded"); }, api, dist: dir });
       await booted;
       const r = await fetch(`http://localhost:${server.port}/api/health`);
       expect(r.status).toBe(200);
       const body = (await r.json()) as { loops: { name: string; ok: boolean; error: string }[] };
       expect(body.loops[0]).toMatchObject({ name: "boot", ok: false, error: "migration exploded" });
+      expect(PlatformHealthSchema.safeParse(body).success).toBe(true); // full shape: the cockpit can show the failed loop
       expect(await (await fetch(`http://localhost:${server.port}/`)).text()).toBe("<html>spa</html>");
       await stop();
     } finally {
       console.error = quiet;
       setHealthExtras(null);
     }
+  });
+
+  test("orStop stops what boot started when a later step throws, and rethrows", async () => {
+    let stopped = 0;
+    await expect(orStop(() => { throw new Error("late failure"); }, async () => void stopped++)).rejects.toThrow("late failure");
+    expect(stopped).toBe(1);
+    expect(await orStop(() => 7, async () => void stopped++)).toBe(7);
+    expect(stopped).toBe(1);
   });
 });

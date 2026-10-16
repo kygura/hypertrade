@@ -15,6 +15,12 @@ const GRACE_MS = 15 * 60_000;
 /** HL keeps the latest 5000 1-min candles; a horizon older than that cannot be priced (margin: the page edge moves). */
 const CANDLE_RANGE_MS = (HL_MAX_CANDLES - 5) * 60_000;
 
+/** Late-horizon candle fetches per tick: a long outage must not burst a backlog through the weight guard. */
+const MAX_LATE_PER_TICK = 10;
+/** Empty candle answers for one horizon before it is given up on (counted in skipped()). */
+const MAX_EMPTY = 3;
+class NoCandles extends Error {}
+
 let skippedN = 0;
 /** Horizons too old for HL's candle history, never marked. Counted once per process; health shows it as outcomesSkipped. */
 export const skipped = () => skippedN;
@@ -41,10 +47,12 @@ export function createOutcomesLoop(deps: OutcomesDeps) {
   const candles = deps.candles ?? ((coin: string, s: number, e: number) => fetchCandles(coin, "1m", s, e));
   /** Horizons already marked, per opportunity; loaded from the ledger the first time one comes due. */
   const marked = new Map<string, Set<string>>();
+  const empties = new Map<string, number>();
 
   async function tick() {
     const t = now();
     const cutoff = t - maxMs - CANDLE_RANGE_MS;
+    let lateFetches = 0;
     // ponytail: scans up to 5000 rows a minute; add a createdAt filter to listOpportunities when the table outgrows it.
     for (const o of await store.listOpportunities({ limit: 5000 })) {
       if (Date.parse(o.createdAt) < cutoff) {
@@ -60,10 +68,19 @@ export function createOutcomesLoop(deps: OutcomesDeps) {
       for (const h of due) {
         try {
           const dueAt = Date.parse(o.createdAt) + horizonMs(h);
+          const late = t - dueAt > GRACE_MS;
           if (t - dueAt > CANDLE_RANGE_MS) skippedN++;
-          else await mark(o, h, dueAt, t - dueAt > GRACE_MS);
+          else if (late && o.entryPx == null) continue; // nothing to price against: don't burn a fetch slot
+          else if (late && lateFetches++ >= MAX_LATE_PER_TICK) continue; // next tick
+          else await mark(o, h, dueAt, late);
           marked.get(o.id)!.add(h);
         } catch (err) {
+          if (err instanceof NoCandles) {
+            const key = `${o.id}|${h}`;
+            const n = (empties.get(key) ?? 0) + 1;
+            if (n >= MAX_EMPTY) (empties.delete(key), skippedN++, marked.get(o.id)!.add(h));
+            else empties.set(key, n);
+          }
           console.error(`[outcomes] ${o.coin} ${h}:`, err instanceof Error ? err.message : err);
         }
       }
@@ -79,6 +96,7 @@ export function createOutcomesLoop(deps: OutcomesDeps) {
 
   async function mark(o: Opportunity, horizon: string, dueAt: number, late: boolean) {
     const horizonPx = late ? await candlePx(o.coin, dueAt) : (deps.mid(o.coin) ?? deps.scanMark(o.coin));
+    if (horizonPx == null && late) throw new NoCandles("no candle at the horizon");
     if (horizonPx == null || o.entryPx == null) throw new Error("no price");
     const base = o.costs ?? { feeBps: DEFAULT_TAKER_FEE_BPS, slippageBps: 0, fundingBps: 0 }; // no book at creation: fee-only
     // Creation costs charge funding over HOLD_HOURS; an outcome holds for the horizon.

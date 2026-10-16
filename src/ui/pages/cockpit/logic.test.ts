@@ -72,6 +72,7 @@ describe("liquidation map", () => {
     expect(coverageTreatment(0.18)).toBe("partial");
     expect(coverageTreatment(0.05)).toBe("partial");
     expect(coverageTreatment(0.049)).toBe("none");
+    expect(coverageTreatment(null)).toBe("unknown");
   });
 
   test("p95 and alpha steps", () => {

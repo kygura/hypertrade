@@ -43,13 +43,13 @@ export function aggregate(
 /** Nearest-rank percentile of a sorted array. */
 const pct = (sorted: number[], q: number) => sorted[Math.min(sorted.length - 1, Math.ceil(q * sorted.length) - 1)];
 
-/** pollAges in seconds. Negative or non-finite ages are ignored. HL OI counts one side of each trade while tracked notional sums longs + shorts, so ratio = tracked / (2 × OI). */
-export function coverage(trackedNotional: number, oiNotional: number, addresses: number, pollAges: number[]): Coverage {
+/** oiNotional null (unknown) or <= 0 gives ratio null, never 0. pollAges in seconds. Negative or non-finite ages are ignored. HL OI counts one side of each trade while tracked notional sums longs + shorts, so ratio = tracked / (2 × OI). */
+export function coverage(trackedNotional: number, oiNotional: number | null, addresses: number, pollAges: number[]): Coverage {
   const ages = pollAges.filter((a) => Number.isFinite(a) && a >= 0).sort((a, b) => a - b);
   return {
     trackedNotional,
-    oiNotional,
-    ratio: oiNotional > 0 ? trackedNotional / (2 * oiNotional) : 0,
+    oiNotional: oiNotional ?? 0,
+    ratio: oiNotional != null && oiNotional > 0 ? trackedNotional / (2 * oiNotional) : null,
     addresses,
     pollAgeP50Sec: ages.length ? pct(ages, 0.5) : null,
     pollAgeP90Sec: ages.length ? pct(ages, 0.9) : null,

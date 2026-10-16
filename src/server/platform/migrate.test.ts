@@ -87,4 +87,11 @@ describe("db/migrate.ts on PGlite", () => {
     // Other kinds are not limited.
     for (let i = 0; i < 2; i++) await db.query(`insert into ledger_entries (opportunity_id, kind, payload) values ($1::uuid, 'status', '{"horizon":"1h"}'::jsonb)`, [o!.id]);
   });
+
+  test("013 adds the dedupe cooldown index", async () => {
+    const db = pgliteDb(newPglite());
+    expect(await migrate(db, quiet)).toContain("013_platform_dedupe_idx.sql");
+    const idx = await db.query<{ indexname: string }>("select indexname from pg_indexes where indexname = 'opportunities_dedupe_terminal_idx'");
+    expect(idx).toHaveLength(1);
+  });
 });

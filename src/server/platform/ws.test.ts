@@ -70,3 +70,31 @@ describe("ingest over a fake socket", () => {
     ingest.stop();
   });
 });
+
+describe("silence is judged per connection", () => {
+  test("a reopened socket does not inherit the last connection's silence; a silent open one still throws at 30 s", async () => {
+    let t = 1_000_000;
+    let setState!: (s: "connecting" | "open" | "closed") => void;
+    const handlers: Record<string, (d: unknown) => void> = {};
+    const socket = {
+      onState: (cb: typeof setState) => void (setState = cb),
+      subscribe: (sub: { type: string }, h: (d: unknown) => void) => void (handlers[sub.type] = h),
+      stop: () => {},
+    } as unknown as HlSocket;
+    const ingest = createWsIngest({ socket, bus: new Bus(), now: () => t, universe: async () => [] });
+    await ingest.tick();
+    setState("open");
+    handlers.allMids!({ mids: { BTC: "1" } });
+    t += 29_000;
+    await ingest.tick(); // 29 s: below the threshold
+    t += 2_000;
+    await expect(ingest.tick()).rejects.toThrow("ws silent"); // 31 s on the same connection
+    setState("closed");
+    setState("open"); // reconnected: nothing yet on this connection
+    await ingest.tick(); // must not throw on the stale age
+    expect(ingest.lastMessageAgeSec()).toBe(31);
+    handlers.allMids!({ mids: { BTC: "2" } });
+    t += 31_000;
+    await expect(ingest.tick()).rejects.toThrow("ws silent");
+  });
+});

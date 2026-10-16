@@ -8,6 +8,7 @@ import { app as apiApp } from "../../../api/index.js";
 import { requireAuth, signSession } from "../auth.js";
 import { makeService } from "../desk/testkit.js";
 import type { PlatformContext } from "../platform/context.js";
+import { reconcileOnce } from "../platform/reconcile.js";
 import { setHealthExtras } from "../platform/runtime.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
 import { createPlatformRoutes, deskRisk, type PlatformDeps, type RiskGate } from "./platform.js";
@@ -179,6 +180,23 @@ describe("approve", () => {
     const entries = await store.ledgerFor(o.id);
     expect(entries.at(-1)!.payload).toEqual({ from: "approved", to: "failed", actor: "system", ref: "p2", reason: "placement blocked: mark moved" });
     expect(entries.filter((e) => e.kind === "decision").map((e) => (e.payload as { decision: string }).decision)).toEqual(["approve"]);
+  });
+
+  test("D1: a slow placement is in flight; a reconcile tick meanwhile leaves it approved, then it opens", async () => {
+    let release!: () => void;
+    const gateP = new Promise<void>((r) => (release = r));
+    let by = "";
+    deps.risk = gate({ place: async (_t, b) => ((by = b), await gateP, { status: "executed", reasons: [], proposalId: "p9" }) });
+    const o = await seed();
+    const pending = post(`/opportunities/${o.id}/approve`);
+    while (!by) await new Promise((r) => setTimeout(r, 1));
+    expect(by).toContain(o.id); // the opportunity id rides on the desk proposal
+    store.opportunities.get(o.id)!.statusChangedAt = new Date(Date.now() - 60 * 60_000).toISOString();
+    const desk = { store: { getProposal: async () => null, listProposals: async () => [], paperPositions: async () => [] }, broker: { live: false }, account: async () => { throw new Error("unused"); }, alert: async () => {} };
+    expect(await reconcileOnce({ store, desk: () => desk, now: () => new Date() })).toEqual([]);
+    expect((await store.getOpportunity(o.id))?.status).toBe("approved");
+    release();
+    expect(await (await pending).json()).toMatchObject({ opportunity: { status: "open" }, proposalId: "p9" });
   });
 
   test("a placement that throws ends failed with ref null and 502", async () => {

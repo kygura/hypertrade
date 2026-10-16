@@ -14,3 +14,11 @@ export interface PlatformContext {
 let ctx: PlatformContext | null = null;
 export const setPlatformContext = (c: PlatformContext | null) => { ctx = c; };
 export const getPlatformContext = () => ctx;
+
+/**
+ * Opportunity ids whose approval is placing at the desk right now (this process). The approve route adds before
+ * placement and removes in finally; reconcile.ts leaves these alone. ponytail: in-process, fine for one service.
+ */
+export const placing = new Set<string>();
+/** Desk proposal `decidedBy` for a platform approval: reconcile.ts finds the proposal by it. */
+export const placedBy = (opportunityId: string) => `operator (opportunity ${opportunityId})`;

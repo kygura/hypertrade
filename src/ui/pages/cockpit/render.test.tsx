@@ -65,6 +65,13 @@ test("CoverageLine: partial map below 25%", () => {
   expect(html).toContain("PARTIAL MAP");
 });
 
+test("CoverageLine: unknown OI is a muted line, not a 0% partial map", () => {
+  const html = renderToStaticMarkup(<CoverageLine coverage={{ trackedNotional: 18, oiNotional: 0, ratio: null, addresses: 4210, pollAgeP50Sec: 360, pollAgeP90Sec: 1440 }} />);
+  expect(html).toContain("COVERAGE — OI UNKNOWN");
+  expect(html).not.toContain("PARTIAL MAP");
+  expect(html).not.toContain("text-amber");
+});
+
 describe("OpportunityFeed states (C7)", () => {
   const base = { ranked: [], snoozed: [], selectedId: null, status: "live" as const, tier: "all" as const, loading: false, offline: null, error: null, scanAgeSec: 10, hasRows: false, now: Date.now(), readyTtlMin: 60, snoozedOpen: false, onToggleSnoozed: noop, onSelect: noop, onFilter: noop, onRetry: noop };
   test("empty, filter-empty, offline, stale", () => {
@@ -98,7 +105,7 @@ test("WarmingLine: visible under 60 min with no rows, hidden otherwise", () => {
 });
 
 describe("LiqBoard", () => {
-  const cov = (ratio: number) => ({ trackedNotional: 1, oiNotional: 1, ratio, addresses: 10, pollAgeP50Sec: 60, pollAgeP90Sec: 120 });
+  const cov = (ratio: number | null) => ({ trackedNotional: 1, oiNotional: 1, ratio, addresses: 10, pollAgeP50Sec: 60, pollAgeP90Sec: 120 });
   const cl = (distancePct: number, notionalUsd: number) => ({ priceLo: 99, priceHi: 100, distancePct, notionalUsd });
   const rows: LiqBoardResponse["rows"] = [
     { coin: "BTC", mark: 100_000, nearestLong: cl(1.2, 9_300_000), nearestShort: cl(2.5, 6_100_000), coverage: cov(0.31) },
@@ -116,6 +123,14 @@ describe("LiqBoard", () => {
     expect(html).toContain("too little coverage to name clusters");
     expect(html).not.toContain("$500K");
     expect(html).toContain('aria-selected="true"');
+  });
+  test("unknown OI: clusters shown (no hiding), COV is a dash", () => {
+    const html = renderToStaticMarkup(<LiqBoard {...props} rows={[{ coin: "ARB", mark: 1, nearestLong: cl(2, 700_000), nearestShort: null, coverage: cov(null) }]} />);
+    expect(html).toContain("$700K");
+    expect(html).not.toContain("≥ $700K");
+    expect(html).not.toContain("too little coverage");
+    expect(html).toContain("open interest unknown");
+    expect(html).not.toContain(">0%<");
   });
   test("skeleton, offline, error, empty", () => {
     expect(renderToStaticMarkup(<LiqBoard {...props} rows={null} loading />)).toContain("pulse");

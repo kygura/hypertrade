@@ -68,11 +68,11 @@ export const platform = {
     LiqMapHistoryResponseSchema.parse(await api.get(`${P}/liqmap/history?coin=${id(coin)}&hours=${hours}`)),
   /**
    * Public `/api/health`. null when the platform runtime adds no fields (API-only / Vercel) or the
-   * server sent the redacted no-session shape `{ok, ts, loops:[{name, ok}], ws}` (no `store`): gray items.
+   * server sent the redacted no-session shape `{ok, ts, loops:[{name, ok}], ws}` (no `crawler`): gray items.
    */
   health: async (): Promise<PlatformHealth | null> => {
     const r = await api.get<Record<string, unknown>>('/health')
-    return r && 'loops' in r && 'store' in r ? PlatformHealthResponseSchema.parse(r) : null
+    return r && 'loops' in r && 'crawler' in r ? PlatformHealthResponseSchema.parse(r) : null
   },
   approve: (oppId: string) => api.post<unknown>(`${P}/opportunities/${id(oppId)}/approve`),
   reject: (oppId: string, reason: string) => api.post<unknown>(`${P}/opportunities/${id(oppId)}/reject`, { reason }),

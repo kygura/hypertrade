@@ -10,7 +10,10 @@ import { bus as defaultBus, type Bus } from "./bus.js";
 // messages are dropped and counted, never thrown.
 
 const UNIVERSE_REFRESH_MS = 3_600_000;
-const SILENT_MS = 60_000;
+/** "ws silent" threshold: matches the UI and the critical alert (30 s). */
+const SILENT_MS = 30_000;
+/** The socket is torn down and reopened after this long without a message; it must beat SILENT_MS so a reconnect happens before the alarm (checked every STALE_MS / 2 = 10 s). */
+export const STALE_MS = 20_000;
 /** A mid older than this is not a price (outcomes fall back to the scan mark; the freshness gate refuses). */
 export const MID_MAX_AGE_MS = 30_000;
 
@@ -59,31 +62,36 @@ export type WsIngest = ReturnType<typeof createWsIngest>;
 export function createWsIngest(deps: WsIngestDeps = {}) {
   const now = deps.now ?? Date.now;
   const bus = deps.bus ?? defaultBus;
-  const socket = deps.socket ?? new HlSocket({ idleCloseMs: 0, staleMs: SILENT_MS });
+  const socket = deps.socket ?? new HlSocket({ idleCloseMs: 0, staleMs: STALE_MS });
   const mids = new Map<string, { px: number; receivedAt: number }>();
   const subscribed = new Set<string>();
   let started = false;
   let universeAt = -Infinity;
   let dropped = 0;
   let lastMessageAt = 0;
+  /** The current connection delivered a message; a fresh socket must not inherit the last one's silence. */
+  let gotOnConn = false;
   let state: PlatformHealth["ws"]["state"] = "off";
   const universe = deps.universe ?? (async () => (await fetchPerpMetaAndCtxs()).ctxs.filter((c) => !c.isDelisted).map((c) => c.name));
 
   const setState = (s: HlSocketState) => {
     if (s === state) return;
     state = s;
+    if (s !== "open") gotOnConn = false;
     bus.publish("ws", { state, ts: new Date(now()).toISOString() });
   };
   const onMids = (data: unknown) => {
     const m = parseMids(data);
     if (!m) return void dropped++;
     lastMessageAt = now();
+    gotOnConn = true;
     for (const [coin, px] of m) mids.set(coin, { px, receivedAt: lastMessageAt });
   };
   const onTrades = (data: unknown) => {
     const r = parseTrades(data);
     if (!r) return void dropped++;
     lastMessageAt = now();
+    gotOnConn = true;
     dropped += r.bad;
     for (const t of r.trades) deps.onAddresses?.([...t.users], t.time);
   };
@@ -104,7 +112,7 @@ export function createWsIngest(deps: WsIngestDeps = {}) {
         }
         universeAt = now();
       }
-      if (state === "open" && lastMessageAt && now() - lastMessageAt > SILENT_MS) throw new Error("ws silent");
+      if (state === "open" && gotOnConn && now() - lastMessageAt > SILENT_MS) throw new Error("ws silent");
     },
     stop() {
       socket.stop();

@@ -148,38 +148,49 @@ async function boot() {
   }
 
   const loops: Loops = startLoops(defs, { only: selected });
-  const addressCount = cached(30_000, () => store.addressCount(), 0);
-  const intel = databaseUrl ? new PgIntelStore() : null;
-  const llmSpend = cached<number | null>(60_000, async () => {
-    const n = new Date();
-    const dayStart = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()));
-    return (await intel!.usageSince(dayStart)).reduce<number>((sum, u) => sum + usageCost(u), 0);
-  }, null);
-  setHealthExtras(async () => ({
-    store: storeKind,
-    loops: loops.health(),
-    ws: { state: selected === "all" || selected.has("ws") ? ws.state : "off", lastMessageAgeSec: ws.lastMessageAgeSec() },
-    scanHistoryMin: scanner.historyMin(),
-    scanAgeSec: scanner.lastScanAt() ? (Date.now() - scanner.lastScanAt()!.getTime()) / 1000 : null,
-    crawler: { pollsPerMin: crawler.pollsPerMin(), addresses: await addressCount() },
-    llmSpendUsdToday: intel ? await llmSpend() : null,
-    outcomesSkipped: outcomesSkipped(),
-  }));
-  setPlatformContext({
-    store,
-    midAge: (coin, now) => { const ms = ws.midAgeMs(coin, now); return ms == null ? null : ms / 1000; },
-    mid: (coin) => ws.mid(coin),
-    lastScanAt: scanner.lastScanAt,
-    scanIntervalSec: scanner.intervalSec,
-  });
-  bus.subscribe("ws", ({ state }) => console.log(new Date().toISOString(), "[ws]", state));
-
-  return async () => {
+  const shutdown = async () => {
     unsubAlerts();
     setPlatformContext(null);
     ws.stop();
     await Promise.all([loops.stop(), addresses.stop()]);
   };
+  // Loops are already running: if the rest of boot throws, stop them rather than orphan them behind a "boot failed" health.
+  return orStop(() => {
+    const addressCount = cached(30_000, () => store.addressCount(), 0);
+    const intel = databaseUrl ? new PgIntelStore() : null;
+    const llmSpend = cached<number | null>(60_000, async () => {
+      const n = new Date();
+      const dayStart = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()));
+      return (await intel!.usageSince(dayStart)).reduce<number>((sum, u) => sum + usageCost(u), 0);
+    }, null);
+    setHealthExtras(async () => ({
+      store: storeKind,
+      loops: loops.health(),
+      ws: { state: selected === "all" || selected.has("ws") ? ws.state : "off", lastMessageAgeSec: ws.lastMessageAgeSec() },
+      scanHistoryMin: scanner.historyMin(),
+      scanAgeSec: scanner.lastScanAt() ? (Date.now() - scanner.lastScanAt()!.getTime()) / 1000 : null,
+      crawler: { pollsPerMin: crawler.pollsPerMin(), addresses: await addressCount() },
+      llmSpendUsdToday: intel ? await llmSpend() : null,
+      outcomesSkipped: outcomesSkipped(),
+    }));
+    setPlatformContext({
+      store,
+      midAge: (coin, now) => { const ms = ws.midAgeMs(coin, now); return ms == null ? null : ms / 1000; },
+      mid: (coin) => ws.mid(coin),
+      lastScanAt: scanner.lastScanAt,
+      scanIntervalSec: scanner.intervalSec,
+    });
+    bus.subscribe("ws", ({ state }) => console.log(new Date().toISOString(), "[ws]", state));
+    return shutdown;
+  }, shutdown);
+}
+
+/** Runs `fn`; if it throws, runs `cleanup` (errors swallowed) and rethrows. */
+export function orStop<T>(fn: () => T, cleanup: () => Promise<void>): Promise<T> {
+  return Promise.resolve().then(fn).catch(async (err) => {
+    await cleanup().catch(() => {});
+    throw err;
+  });
 }
 
 /** Binds the port first, then boots in the background; a boot failure shows up in /api/health as a failed `boot` loop. */
@@ -196,7 +207,15 @@ export function start({ port, boot: bootFn = boot, api = app.fetch, dist = DIST 
     (err) => {
       const error = err instanceof Error ? err.message : String(err);
       console.error("boot failed; serving degraded:", err);
-      setHealthExtras(() => ({ loops: [{ name: "boot", lastBeatAt: null, expectedIntervalSec: 1, ok: false, error }] }));
+      // Full non-redacted shape, so the cockpit shows the failed `boot` loop instead of gray items.
+      setHealthExtras(() => ({
+        store: process.env.DATABASE_URL?.trim() ? "pg" : "memory",
+        loops: [{ name: "boot", lastBeatAt: null, expectedIntervalSec: 1, ok: false, error }],
+        ws: { state: "off", lastMessageAgeSec: null },
+        scanAgeSec: null,
+        crawler: { pollsPerMin: 0, addresses: 0 },
+        llmSpendUsdToday: null,
+      }));
     },
   );
   return { server, booted, stop: async () => (await booted, await stopBoot().catch((err) => console.error("shutdown:", err)), await server.stop()) };

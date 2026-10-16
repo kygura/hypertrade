@@ -20,6 +20,8 @@ export function createAddressBuffer(
   { flushMs = FLUSH_MS, log = console.error }: { flushMs?: number; log?: (...a: unknown[]) => void } = {},
 ): AddressBuffer {
   let buf = new Map<string, number>();
+  /** Addresses already re-queued once after a failed write. */
+  const retried = new Set<string>();
   let running: Promise<number> | null = null;
   const run = async () => {
     if (!buf.size) return 0;
@@ -34,10 +36,17 @@ export function createAddressBuffer(
           taken.delete(address); // a bad trade time drops that address only
         }
       }
-      return await store.recordAddresses(rows);
+      const n = await store.recordAddresses(rows);
+      for (const a of taken.keys()) retried.delete(a);
+      return n;
     } catch (err) {
-      log("[addresses] flush failed:", err instanceof Error ? err.message : err);
-      for (const [a, ms] of taken) if ((buf.get(a) ?? 0) < ms) buf.set(a, ms); // ponytail: unbounded only while the store is down
+      // Re-queue once (a blip); a second failure for the same address is data-shaped or an outage: drop it, never loop forever.
+      let dropped = 0;
+      for (const [a, ms] of taken) {
+        if (retried.has(a)) (retried.delete(a), dropped++);
+        else if ((buf.get(a) ?? 0) < ms) (retried.add(a), buf.set(a, ms));
+      }
+      log(`[addresses] flush failed${dropped ? `, dropped ${dropped} after a retry` : ""}:`, err instanceof Error ? err.message : err);
       return 0;
     }
   };
