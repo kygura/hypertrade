@@ -11,7 +11,7 @@ import { DeskService } from "../desk/service.js";
 import type { OperatorOrder } from "../desk/types.js";
 import { researchDailyLimit, researchDeps, runResearch, RESEARCH_PROMPT_VERSION, utcDayStart } from "../intel/research.js";
 import { aggregate, coverage } from "../platform/liqmap.js";
-import { getPlatformContext, type PlatformContext } from "../platform/context.js";
+import { getPlatformContext, placedBy, placing, type PlatformContext } from "../platform/context.js";
 import { Z_KEYS } from "../platform/score.js";
 import { groupStats } from "../platform/stats.js";
 import { defaultDeskService } from "./desk.js";
@@ -128,7 +128,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
 
   /** liqmap.coverage owns the ratio (P0.8); this only gathers its inputs. */
   const coverageOf = (positions: Position[], oiUsd: number | null, now: Date) =>
-    coverage(positions.reduce((s, p) => s + p.positionValue, 0), oiUsd ?? 0, new Set(positions.map((p) => p.address)).size, positions.map((p) => seenAge(p.updatedAt, now)));
+    coverage(positions.reduce((s, p) => s + p.positionValue, 0), oiUsd ?? null, new Set(positions.map((p) => p.address)).size, positions.map((p) => seenAge(p.updatedAt, now)));
 
   const ticketOf = (o: Opportunity): Ticket | null => (o.stopPx == null ? null : { coin: o.coin, side: o.direction, stopPx: o.stopPx, targetPx: o.targetPx });
   const created = (entries: Awaited<ReturnType<PlatformContext["store"]["ledgerFor"]>>) => entries.find((e) => e.kind === "created");
@@ -223,21 +223,28 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       if (!approved) return c.json({ error: "illegal_transition", message: "opportunity is no longer ready" }, 409);
 
       // placeOperatorOrder never throws after a fill, so a throw here means nothing was placed.
-      const placed = await deps.risk.place(ticket, OPERATOR).catch((err) => ({ status: "failed", reasons: [err instanceof Error ? err.message : String(err)], proposalId: "" }));
-      const ref = placed.proposalId || null;
-      if (placed.status !== "executed") {
-        const reason = `placement ${placed.status}: ${placed.reasons.join("; ") || "no detail"}`.slice(0, 2000);
-        const failed = await ctx.store.transitionOpportunity(opp.id, "approved", "failed", "system", undefined, { ref, reason }).catch((err) => (console.error("[platform] approved → failed not recorded", opp.id, err), null));
-        if (!failed) console.error("[platform] approved → failed lost; reconcile will settle", opp.id);
-        return c.json({ error: placed.status === "blocked" ? "governor_blocked" : "placement_failed", reasons: placed.reasons }, placed.status === "blocked" ? 422 : 502);
+      // The opportunity id rides on the desk proposal (decidedBy), so reconcile.ts can find it without a ref.
+      // In flight until the projection has moved, so reconcile never races this request.
+      placing.add(opp.id);
+      try {
+        const placed = await deps.risk.place(ticket, placedBy(opp.id)).catch((err) => ({ status: "failed", reasons: [err instanceof Error ? err.message : String(err)], proposalId: "" }));
+        const ref = placed.proposalId || null;
+        if (placed.status !== "executed") {
+          const reason = `placement ${placed.status}: ${placed.reasons.join("; ") || "no detail"}`.slice(0, 2000);
+          const failed = await ctx.store.transitionOpportunity(opp.id, "approved", "failed", "system", undefined, { ref, reason }).catch((err) => (console.error("[platform] approved → failed not recorded", opp.id, err), null));
+          if (!failed) console.error("[platform] approved → failed lost; reconcile will settle", opp.id);
+          return c.json({ error: placed.status === "blocked" ? "governor_blocked" : "placement_failed", reasons: placed.reasons }, placed.status === "blocked" ? 422 : 502);
+        }
+        const open = await ctx.store.transitionOpportunity(opp.id, "approved", "open", "system", undefined, { ref }).catch((err) => (console.error("[platform] approved → open failed", opp.id, err), null));
+        if (!open) {
+          // The fill happened; the row stays approved and reconcile.ts moves it to open from the desk proposal.
+          console.error("[platform] approved → open lost after a fill; reconcile will settle", opp.id, ref);
+          return c.json({ error: "transition_lost", proposalId: ref }, 500);
+        }
+        return c.json({ opportunity: open, proposalId: placed.proposalId });
+      } finally {
+        placing.delete(opp.id);
       }
-      const open = await ctx.store.transitionOpportunity(opp.id, "approved", "open", "system", undefined, { ref }).catch((err) => (console.error("[platform] approved → open failed", opp.id, err), null));
-      if (!open) {
-        // The fill happened; the row stays approved and reconcile.ts moves it to open from the desk proposal.
-        console.error("[platform] approved → open lost after a fill; reconcile will settle", opp.id, ref);
-        return c.json({ error: "transition_lost", proposalId: ref }, 500);
-      }
-      return c.json({ opportunity: open, proposalId: placed.proposalId });
     })
     .post("/opportunities/:id/reject", async (c) => {
       const { opp, res } = await load(c);

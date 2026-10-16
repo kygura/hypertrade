@@ -52,4 +52,17 @@ describe("address buffer", () => {
     await buf.stop();
     expect(calls).toEqual([[A], [A]]);
   });
+
+  test("a batch is re-queued at most once, then dropped with one log line", async () => {
+    const logs: unknown[][] = [];
+    const buf = createAddressBuffer({ recordAddresses: async () => { throw new Error("bad shape"); } }, { flushMs: 60_000, log: (...a) => logs.push(a) });
+    buf.add([A], 1);
+    await buf.flush();
+    expect(buf.size).toBe(1);
+    await buf.flush();
+    expect(buf.size).toBe(0);
+    expect(logs).toHaveLength(2);
+    expect(String(logs[1]![0])).toContain("dropped 1");
+    await buf.stop();
+  });
 });

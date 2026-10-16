@@ -260,6 +260,13 @@ describe("operator orders (copilot)", () => {
     expect(await store.listFills(10)).toHaveLength(2);
   });
 
+  test("a copilot preview concurrent with placeOperatorOrder cannot slip between its preview and submit", async () => {
+    const { service } = makeService();
+    const short = { ...order, side: "short" as const, stop: 4200, target: 3500 };
+    const [, rec] = await Promise.all([service.previewOperatorOrder(short), service.placeOperatorOrder(order, BY), service.previewOperatorOrder(short)]);
+    expect(rec.status).toBe("executed");
+  });
+
   test("a fill whose record write throws still returns executed (never failed with a position open)", async () => {
     const { service, store } = makeService();
     const orig = store.updateProposal.bind(store);

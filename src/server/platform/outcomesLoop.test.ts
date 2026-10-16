@@ -89,4 +89,35 @@ describe("outcomes loop", () => {
     expect(out.payload).toMatchObject({ entryBasis: "fill", entryPx: 100.5, horizonPx: 102 });
     expect(out.payload.netReturn).toBeCloseTo(102 / 100.5 - 1 - 10.5 / 1e4, 9); // 2*5 fee + 2 bps funding × 1h/4h
   });
+
+  test("late-horizon candle fetches are capped per tick", async () => {
+    const { store, created } = await seed();
+    const horizons = Array.from({ length: 12 }, (_, i) => `${i + 1}h`);
+    let asked = 0;
+    const candles = async () => (asked++, [{ t: created, T: created + 60_000, o: 1, h: 1, l: 1, c: 103, v: 1 }]);
+    const loop = createOutcomesLoop({ store, mid: () => 1, scanMark: () => 1, candles, horizons, now: () => created + 20 * HOUR });
+    await loop.tick();
+    expect(asked).toBe(10);
+    expect(await store.outcomeRows({})).toHaveLength(10);
+    await loop.tick();
+    expect(asked).toBe(12);
+    expect(await store.outcomeRows({})).toHaveLength(12);
+  });
+
+  test("a horizon with 3 empty candle answers is counted skipped and not retried", async () => {
+    const { store, created } = await seed();
+    let asked = 0;
+    const before = skipped();
+    const loop = createOutcomesLoop({ store, mid: () => 1, scanMark: () => 1, candles: async () => (asked++, []), horizons: ["1h"], now: () => created + 2 * HOUR });
+    const quiet = console.error;
+    console.error = () => {};
+    try {
+      for (let i = 0; i < 5; i++) await loop.tick();
+    } finally {
+      console.error = quiet;
+    }
+    expect(asked).toBe(3);
+    expect(skipped() - before).toBe(1);
+    expect(await store.outcomeRows({})).toHaveLength(0);
+  });
 });

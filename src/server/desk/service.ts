@@ -227,8 +227,12 @@ export class DeskService {
     return { ctx, risk, verdict: { ...v, warnings: [...warnings, ...v.warnings] } };
   }
 
-  /** What the governor would do with an operator order right now. Executes nothing. */
-  async previewOperatorOrder(input: OperatorOrder): Promise<OperatorPreview> {
+  /** What the governor would do with an operator order right now. Executes nothing. Under the operator lock: a preview never lands inside another caller's preview → submit. */
+  previewOperatorOrder(input: OperatorOrder): Promise<OperatorPreview> {
+    return this.serial(() => this.previewOperatorOrderNow(input));
+  }
+
+  private async previewOperatorOrderNow(input: OperatorOrder): Promise<OperatorPreview> {
     const order = parseOperatorOrder(input);
     const { ctx, verdict } = await this.operatorVerdict(order);
     const at = this.now();
@@ -251,10 +255,11 @@ export class DeskService {
 
   /**
    * Preview and submit as one step under the operator lock, so no other operator preview or submit can land in
-   * between (the platform's approve path: the operator's click on the opportunity is the confirm).
+   * between (the platform's approve path: the operator's click on the opportunity is the confirm). `by` is stored on
+   * the proposal from insert on (decidedBy), so a caller can find its proposal by it.
    */
   placeOperatorOrder(input: OperatorOrder, by: string): Promise<ProposalRecord> {
-    return this.serial(async () => this.submitOperatorOrderNow(input, { previewHash: (await this.previewOperatorOrder(input)).previewHash }, by));
+    return this.serial(async () => this.submitOperatorOrderNow(input, { previewHash: (await this.previewOperatorOrderNow(input)).previewHash }, by));
   }
 
   private serial<T>(fn: () => Promise<T>): Promise<T> {
@@ -285,7 +290,7 @@ export class DeskService {
       await this.alert("info", `Blocked: ${risk.side} ${risk.coin} (copilot)`, verdict.reasons.join("\n"));
       return rec;
     }
-    const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt: null });
+    const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt: null, decidedBy: by });
     return this.fillOpen(rec, risk, verdict, verdict.sizing, by, "operator order (copilot)");
   }
 

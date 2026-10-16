@@ -60,9 +60,10 @@ describe("coverage", () => {
     expect(c.pollAgeP50Sec).toBe(50);
     expect(c.pollAgeP90Sec).toBe(90);
   });
-  test("zero OI gives ratio 0; no ages gives null percentiles; bad ages ignored", () => {
+  test("unknown or zero OI gives ratio null (not 0%); no ages gives null percentiles; bad ages ignored", () => {
     const c = coverage(5, 0, 0, []);
-    expect(c.ratio).toBe(0);
+    expect(c.ratio).toBeNull();
+    expect(coverage(5, null, 0, []).ratio).toBeNull();
     expect(c.pollAgeP50Sec).toBeNull();
     expect(c.pollAgeP90Sec).toBeNull();
     expect(coverage(1, 2, 1, [NaN, -3, 7]).pollAgeP50Sec).toBe(7);
