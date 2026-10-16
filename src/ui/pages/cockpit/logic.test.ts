@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { bucketBounds, bucketIndex, type FeedRow, type LiqBucket, type PlatformHealth } from "../../../shared/platform";
 import {
-  alphaStep, cellRow, cellSide, coverageTreatment, denseBuckets, edgeWord, filterFeed, healthItems, keyAction, nearestCluster, p95, priceY, stepSelection, worstItem,
+  alphaStep, cellRow, cellSide, coverageTreatment, denseBuckets, edgeWord, filterFeed, fmtSigned, fmtSignedPct, healthItems, keyAction, p95, priceY, stepSelection, worstItem,
 } from "./logic";
 
 const row = (over: Partial<FeedRow>): FeedRow => ({
@@ -18,13 +18,14 @@ describe("filterFeed", () => {
     row({ id: "c", status: "rejected", liquidityTier: 1 }),
     row({ id: "d", status: "calculated", snoozedUntil: "2026-10-16T13:00:00Z" }),
     row({ id: "e", status: "investigating", snoozedUntil: "2026-10-16T11:00:00Z" }),
+    row({ id: "f", status: "failed", liquidityTier: 2 }),
   ];
   const ids = (r: FeedRow[]) => r.map((x) => x.id);
   test("status sets keep server order, expired snoozes rejoin the list", () => {
     expect(ids(filterFeed(rows, "live", "all", now).ranked)).toEqual(["a", "b", "e"]);
     expect(ids(filterFeed(rows, "live", "all", now).snoozed)).toEqual(["d"]);
     expect(ids(filterFeed(rows, "ready", "all", now).ranked)).toEqual(["a"]);
-    expect(ids(filterFeed(rows, "decided", "all", now).ranked)).toEqual(["c"]);
+    expect(ids(filterFeed(rows, "decided", "all", now).ranked)).toEqual(["c", "f"]);
     expect(ids(filterFeed(rows, "all", 1, now).ranked)).toEqual(["a", "c", "e"]);
   });
 });
@@ -43,21 +44,19 @@ test("edgeWord: sign, costs exceed, non-directional", () => {
   expect(edgeWord({ netEdgeBps: null, edgeBasis: "unvalidated", tradeType: "directional" })).toMatchObject({ text: "—", title: "no cost model for directional" });
 });
 
+test("fmtSigned: one signed formatter for bp and %", () => {
+  expect(fmtSigned(38, "bp")).toBe("+38bp");
+  expect(fmtSigned(-12, "bp")).toBe("−12bp");
+  expect(fmtSigned(0, "bp")).toBe("0bp");
+  expect(fmtSignedPct(-0.054, 1)).toBe("−5.4%");
+  expect(fmtSigned(4.8, "%", 1)).toBe("+4.8%");
+});
+
 describe("liquidation map", () => {
   const bps = 25;
   const b = (idx: number, longUsd: number, shortUsd: number): LiqBucket => ({ idx, longUsd, shortUsd, ...bucketBounds(idx, bps) });
   const markIdx = bucketIndex(100, bps);
   const buckets = [b(markIdx - 8, 10e6, 0), b(markIdx - 3, 1e6, 0), b(markIdx - 1, 0.5e6, 0), b(markIdx + 2, 0, 3e6), b(markIdx + 6, 0, 6e6)];
-
-  test("nearestCluster: nearest bucket with ≥ 20% of the side max", () => {
-    const long = nearestCluster(buckets, 100, "long")!; // 0.5M < 2M floor, 1M < 2M too → the 10M bucket
-    expect(long.usd).toBe(10e6);
-    expect(long.pct).toBeLessThan(0);
-    const short = nearestCluster(buckets, 100, "short")!; // 3M ≥ 1.2M → nearest
-    expect(short.usd).toBe(3e6);
-    expect(short.pct).toBeGreaterThan(0);
-    expect(nearestCluster([], 100, "long")).toBeNull();
-  });
 
   test("denseBuckets fills the grid, highest price first", () => {
     const d = denseBuckets(buckets, bps);
@@ -113,7 +112,7 @@ describe("healthItems", () => {
 
   test("all green", () => {
     expect(lv(h({}))).toEqual({ WS: "ok", SCAN: "ok", CRAWL: "ok", LOOPS: "ok", LLM: "unknown" });
-    expect(healthItems(h({}), now).find((i) => i.key === "CRAWL")!.value).toBe("388/MIN · 9.4K ADDR");
+    expect(healthItems(h({}), now).find((i) => i.key === "CRAWL")!.value).toBe("388/MIN · 9,400 ADDR");
   });
   test("warn and critical thresholds", () => {
     expect(lv(h({ ws: { state: "open", lastMessageAgeSec: 11 }, scanAgeSec: 91, crawler: { pollsPerMin: 50, addresses: 1 } }))).toMatchObject({ WS: "warn", SCAN: "warn", CRAWL: "warn" });

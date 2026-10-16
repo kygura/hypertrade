@@ -1,11 +1,10 @@
-import { useState } from 'react'
-import { Badge, Button, StatusDot, type DotStatus } from '../../components'
+import { useState, type RefObject } from 'react'
+import { Badge, Button, DialogShell, StatusDot, type DotStatus } from '../../components'
 import { VenueBadge } from '../../components/intel/VenueBadge'
 import { fmtAge } from '../../components/strategy/format'
 import type { DeskStatus } from '../../lib/desk'
 import type { PlatformHealth } from '../../../shared/platform'
 import { healthItems, worstItem, type Level } from './logic'
-import { Dialog } from './Dialog'
 
 // CockpitHeader, HealthStrip, KeysHelp — DESIGN-terminal C2/C6/C3.
 // Presentational: data and callbacks come from Cockpit.tsx.
@@ -21,6 +20,7 @@ export function CockpitHeader({
   readyCount,
   desk,
   noDb,
+  killRef,
   onKill,
   onHelp,
 }: {
@@ -29,15 +29,24 @@ export function CockpitHeader({
   readyCount: number | null
   desk: { data: DeskStatus | null; offline: string | null; error: string | null }
   noDb: boolean
+  /** KILL / RESUME: the kill dialog returns focus here. */
+  killRef?: RefObject<HTMLButtonElement | null>
   onKill: () => void
   onHelp: () => void
 }) {
   const kill = desk.data?.killSwitch
+  const deskDown = !desk.data && (desk.offline ?? desk.error)
   return (
     <div className="flex flex-col gap-1 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h1 className="text-[13px] text-text-primary font-display tracking-wider">COCKPIT</h1>
-        <VenueBadge venue={venue} />
+        {deskDown ? (
+          <span className="text-[10px] text-text-secondary" title={deskDown}>
+            DESK —
+          </span>
+        ) : (
+          <VenueBadge venue={venue} />
+        )}
         {noDb && <Badge tone="gray">NO DATABASE — MEMORY STORE</Badge>}
         {liveCount != null && (
           <span className="text-[11px] tabular text-text-secondary">
@@ -48,22 +57,18 @@ export function CockpitHeader({
           <Button tier="ghost" onClick={onHelp} className="hidden [@media(pointer:fine)]:inline-flex" aria-label="keyboard shortcuts">
             ? KEYS
           </Button>
-          {desk.offline && !desk.data ? (
-            <span className="text-[10px] text-text-secondary" title={desk.offline}>
-              DESK —
-            </span>
-          ) : kill?.on ? (
+          {kill?.on ? (
             <>
               <Badge tone="red">KILLED</Badge>
               <span className="text-[10px] text-text-secondary" title={kill.reason}>
                 {[kill.reason, kill.at ? fmtAge(kill.at) : null].filter(Boolean).join(' · ')}
               </span>
-              <Button tier="ghost" onClick={onKill} className="min-h-[var(--tap-min)]">
+              <Button tier="ghost" ref={killRef} onClick={onKill} className="min-h-[var(--tap-min)]">
                 RESUME <KeyHint k="x" />
               </Button>
             </>
           ) : (
-            <Button tier="danger" onClick={onKill} disabled={!desk.data} className="min-h-[var(--tap-min)]">
+            <Button tier="danger" ref={killRef} onClick={onKill} disabled={!desk.data} title={deskDown || undefined} className="min-h-[var(--tap-min)]">
               KILL <KeyHint k="x" />
             </Button>
           )}
@@ -136,7 +141,7 @@ const KEYS: [string, string][] = [
 
 export function KeysHelp({ onClose }: { onClose: () => void }) {
   return (
-    <Dialog title="KEYS" onClose={onClose}>
+    <DialogShell title="KEYS" onClose={onClose} className="md:max-w-[400px]">
       <table className="text-[11px] w-full">
         <tbody>
           {KEYS.map(([k, v]) => (
@@ -154,6 +159,6 @@ export function KeysHelp({ onClose }: { onClose: () => void }) {
           CLOSE
         </Button>
       </div>
-    </Dialog>
+    </DialogShell>
   )
 }

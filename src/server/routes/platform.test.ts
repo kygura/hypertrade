@@ -15,7 +15,7 @@ import { createPlatformRoutes, deskRisk, type PlatformDeps, type RiskGate } from
 const NOW = new Date("2026-10-16T12:00:00Z");
 const ADDR = `0x${"a".repeat(40)}`;
 const created: LedgerPayload<"created"> = {
-  features: { features: { ret15mZ: 2.1, fundingPctile14d: 0.9 }, inputs: { mark: 4000 } },
+  features: { features: { ret15mZ: 2.1, priceAccelZ: 1.2, fundingPctile14d: 0.9 }, inputs: { mark: 4000, ret15mPct: 0.012 } },
   market: { mark: 4000 }, score: 2.5, scoreVersion: "v1",
 };
 const costs = { feeBps: 4.5, slippageBps: 2, fundingBps: 1, absorbableUsd: 50_000, grossEdgeBps: 120, netEdgeBps: 108, edgeBasis: "unvalidated" as const };
@@ -85,6 +85,7 @@ describe("feed and detail", () => {
     const all = FeedResponseSchema.parse(await (await req("/opportunities")).json());
     expect(all.opportunities.map((o) => o.coin)).toEqual(["BTC", "SOL", "ETH"]);
     expect(all.scanAgeSec).toBe(10);
+    expect(all.readyTtlMin).toBe(60);
     const ready = FeedResponseSchema.parse(await (await req("/opportunities?status=ready,approved&limit=1")).json());
     expect(ready.opportunities.map((o) => o.coin)).toEqual(["BTC"]);
     expect(FeedResponseSchema.parse(await (await req("/opportunities?tier=2")).json()).opportunities).toHaveLength(0);
@@ -103,7 +104,8 @@ describe("feed and detail", () => {
     const o = await seed();
     await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: { horizon: "1h", entryBasis: "mark", entryPx: 4000, horizonPx: 4040, grossReturn: 0.01, netReturn: 0.009 } });
     const d = OpportunityDetailSchema.parse(await (await req(`/opportunities/${o.id}`)).json());
-    expect(d.signals).toEqual([{ name: "ret15mZ", value: 2.1, z: 2.1 }, { name: "fundingPctile14d", value: 0.9, z: null }]);
+    // z-features carry their raw input as value (none for priceAccelZ); plain features carry themselves.
+    expect(d.signals).toEqual([{ name: "ret15mZ", value: 0.012, z: 2.1 }, { name: "priceAccelZ", value: null, z: 1.2 }, { name: "fundingPctile14d", value: 0.9, z: null }]);
     expect(d.opportunity.costs?.absorbableUsd).toBe(50_000);
     expect(d.opportunity.invalidation).toBe("15m close below 3800");
     expect(d.stats).toMatchObject({ setupKind: "breakout", n: 1 });

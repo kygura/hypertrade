@@ -203,6 +203,9 @@ export type AddressRow = z.infer<typeof AddressRowSchema>;
  */
 export const bucketIndex = (px: number, bucketBps: number) => Math.floor(Math.log(px) / Math.log(1 + bucketBps / 1e4));
 export const bucketBounds = (idx: number, bucketBps: number) => ({ priceLo: (1 + bucketBps / 1e4) ** idx, priceHi: (1 + bucketBps / 1e4) ** (idx + 1) });
+/** The cockpit liquidation panel's grid and half-width around mark (DESIGN-terminal C4). */
+export const LIQMAP_BUCKET_BPS = 25;
+export const LIQMAP_PANEL_RANGE = 0.1;
 
 /** One stored grid cell. Longs liquidate below mark, shorts above. */
 export const LiqCellSchema = z.object({ idx: z.number().int(), longUsd: NonNeg, shortUsd: NonNeg });
@@ -301,18 +304,23 @@ export const SnoozeBodySchema = z.object({ minutes: z.number().int().min(1).max(
 export const FeedRowSchema = OpportunitySchema.pick({
   id: true, coin: true, direction: true, setupKind: true, tradeType: true, status: true, score: true,
   netEdgeBps: true, edgeBasis: true, tags: true, liquidityTier: true, createdAt: true, updatedAt: true, snoozedUntil: true,
-});
+}).extend({ statusChangedAt: Iso.optional() });
 export type FeedRow = z.infer<typeof FeedRowSchema>;
 /** GET /opportunities: sorted by score, highest first. */
-export const FeedResponseSchema = z.object({ opportunities: z.array(FeedRowSchema), scanAgeSec: NonNeg.nullable() });
+export const FeedResponseSchema = z.object({
+  opportunities: z.array(FeedRowSchema),
+  scanAgeSec: NonNeg.nullable(),
+  /** PLATFORM_READY_TTL_MIN: a ready row expires this long after statusChangedAt. */
+  readyTtlMin: Pos.optional(),
+});
 export type FeedResponse = z.infer<typeof FeedResponseSchema>;
 
 export const SignalSchema = z.object({ name: Text(64), value: Num.nullable(), z: Num.nullable() });
 /** Governor verdict as the desk returns it (src/ui/lib/desk.ts Verdict); extra fields pass through. */
 export const RiskVerdictSchema = z.object({
   approved: z.boolean(), reasons: z.array(z.string()), warnings: z.array(z.string()),
-  /** The governor's sizing (desk Sizing); only notionalUsd is read here. */
-  sizing: z.object({ notionalUsd: Num.optional() }).nullish(),
+  /** The governor's sizing (desk Sizing); the fields the cockpit reads. */
+  sizing: z.object({ notionalUsd: Num.optional(), grossLeverageAfter: Num.optional(), riskUsd: Num.optional() }).nullish(),
 }).passthrough();
 /** GET /opportunities/:id. Costs, absorbableUsd and invalidation ride on `opportunity`. */
 export const OpportunityDetailSchema = z.object({

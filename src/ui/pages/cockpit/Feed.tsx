@@ -1,14 +1,11 @@
-import { useMemo } from 'react'
-import { Badge, DataTable, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, type Column } from '../../components'
+import { useMemo, type ReactNode } from 'react'
+import { Badge, DataTable, ErrorBlock, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column } from '../../components'
 import { fmtAge } from '../../components/strategy/format'
 import type { FeedRow as Row, OpportunityStatus } from '../../../shared/platform'
 import { edgeWord, STATUS_WORD, type StatusFilter, type TierFilter } from './logic'
-import { StaleStrip } from './Dialog'
 
 // OpportunityFeed / FeedRow / FeedFilters — DESIGN-terminal C3. Server order
 // (score desc), no click sort; the container filters client-side.
-
-const READY_TTL_MIN = 60 // PLATFORM_READY_TTL_MIN default (SPEC P0.11)
 
 export function StatusPill({ status }: { status: OpportunityStatus }) {
   const word = STATUS_WORD[status]
@@ -16,6 +13,8 @@ export function StatusPill({ status }: { status: OpportunityStatus }) {
   if (status === 'approved') return <Badge tone="green" className="!bg-transparent !border-[var(--color-green)]">{word}</Badge>
   if (status === 'investigating') return <Badge tone="info" className="pulse-label">{word}</Badge>
   if (status === 'open') return <Badge tone="info">{word}</Badge>
+  // Placement failed after approval (system-only): critical, not the gray of an operator reject.
+  if (status === 'failed') return <Badge tone="red">{word}</Badge>
   return <Badge tone="gray">{word}</Badge>
 }
 
@@ -39,15 +38,16 @@ function snoozeLeft(until: string, now: number): string {
   return m < 60 ? `${m}M` : `${Math.floor(m / 60)}H${m % 60 ? ` ${m % 60}M` : ''}`
 }
 
-function rowColumns(now: number): Column<Row>[] {
+function rowColumns(now: number, readyTtlMin: number): Column<Row>[] {
   return [
     {
       key: 'row',
-      label: 'BY SCORE',
+      label: <span className="sr-only">opportunity</span>,
       priority: 1,
       render: (r) => {
-        const ageMin = (now - Date.parse(r.createdAt)) / 60_000
-        const nearExpiry = r.status === 'ready' && ageMin >= READY_TTL_MIN - 10
+        // A ready row expires readyTtlMin after it became ready (statusChangedAt).
+        const readyMin = r.statusChangedAt ? (now - Date.parse(r.statusChangedAt)) / 60_000 : null
+        const nearExpiry = r.status === 'ready' && readyMin != null && readyMin >= readyTtlMin - 10
         const tags = r.tags.slice(0, 3)
         const snoozed = r.snoozedUntil && Date.parse(r.snoozedUntil) > now
         return (
@@ -76,6 +76,19 @@ function rowColumns(now: number): Column<Row>[] {
       },
     },
   ]
+}
+
+/** Minutes of scanner history the z-scores need before ideas can clear the bar. */
+const WARM_MIN = 60
+
+/** SPEC P3 gate amendment: shown while the scanner ring is short and nothing has been found yet. */
+export function WarmingLine({ scanHistoryMin, hasRows }: { scanHistoryMin: number | null | undefined; hasRows: boolean }) {
+  if (scanHistoryMin == null || scanHistoryMin >= WARM_MIN || hasRows) return null
+  return (
+    <p className="px-3 py-1.5 text-[10px] tabular text-amber" role="status">
+      SCANNER WARMING UP — {Math.floor(scanHistoryMin)} of {WARM_MIN} MIN HISTORY
+    </p>
+  )
 }
 
 const STATUS_OPTS = [
@@ -112,6 +125,8 @@ export function OpportunityFeed({
   scanAgeSec,
   hasRows,
   now,
+  readyTtlMin,
+  emptySlot,
   snoozedOpen,
   onToggleSnoozed,
   onSelect,
@@ -130,13 +145,17 @@ export function OpportunityFeed({
   /** Any row at all before filtering (decides which empty copy). */
   hasRows: boolean
   now: number
+  /** PLATFORM_READY_TTL_MIN from the feed response. */
+  readyTtlMin: number
+  /** Rendered under the empty line when no row matches (the liquidation board, C2 gate amendment). */
+  emptySlot?: ReactNode
   snoozedOpen: boolean
   onToggleSnoozed: () => void
   onSelect: (row: Row) => void
   onFilter: (f: { status?: StatusFilter; tier?: TierFilter }) => void
   onRetry: () => void
 }) {
-  const columns = useMemo(() => rowColumns(now), [now])
+  const columns = useMemo(() => rowColumns(now, readyTtlMin), [now, readyTtlMin])
   const count = ranked.length + snoozed.length
   const filterWord = [status !== 'all' ? status.toUpperCase() : null, tier !== 'all' ? `T${tier}` : null].filter(Boolean).join(' ') || 'ALL'
   let body
@@ -144,7 +163,12 @@ export function OpportunityFeed({
   else if (offline) body = <OfflineBlock message="platform API unreachable" onRetry={onRetry} />
   else if (error) body = <ErrorBlock message={error} onRetry={onRetry} />
   else if (count === 0)
-    body = <EmptyBlock label={hasRows ? `no ${filterWord} opportunities` : 'nothing cleared the bar — the scanner runs every minute'} />
+    body = (
+      <>
+        <p className="px-3 py-2 text-[11px] text-text-secondary">{hasRows ? `no ${filterWord} opportunities` : 'nothing cleared the bar — the scanner runs every minute'}</p>
+        {emptySlot}
+      </>
+    )
   else
     body = (
       <div data-feed>
@@ -161,7 +185,7 @@ export function OpportunityFeed({
     )
   return (
     <Panel className="min-w-0">
-      <PanelHeader title="FEED">
+      <PanelHeader title="FEED ─ BY SCORE">
         <span className="text-[10px] tabular text-text-secondary">{count}</span>
       </PanelHeader>
       {scanAgeSec != null && scanAgeSec > 120 && <StaleStrip>scan {Math.floor(scanAgeSec / 60)}m old — scores are frozen</StaleStrip>}

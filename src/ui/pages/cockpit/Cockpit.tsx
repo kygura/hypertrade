@@ -1,26 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router'
-import { ConfirmDialog } from '../../components'
+import { Button, ConfirmDialog } from '../../components'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { api, ApiError } from '../../lib/api'
 import type { DeskStatus } from '../../lib/desk'
 import { useHlSubscription, type WsAssetCtx } from '../../lib/hlWs'
-import { actionFailure, isPlatformOffline, platform } from '../../lib/platformApi'
+import { actionFailure, platform, PLATFORM_POLL } from '../../lib/platformApi'
 import { errorMessage, usePoll } from '../../lib/poll'
 import type { OpportunityDetail as DetailT } from '../../../shared/platform'
 import { filterFeed, isLive, keyAction, stepSelection, STATUS_WORD, type StatusFilter, type TierFilter } from './logic'
 import { ActionBar, canApprove, canReject, OpportunityDetail, RejectDialog, TicketDialog } from './Detail'
-import { OpportunityFeed } from './Feed'
+import { OpportunityFeed, WarmingLine } from './Feed'
 import { CockpitHeader, HealthStrip, KeysHelp } from './Header'
-import { LiqMapPanel, type HistWindow } from './LiqMap'
+import { LiqBoard, LiqMapPanel, type HistWindow } from './LiqMap'
 
 // Cockpit — DESIGN-terminal § Cockpit (phase 8), route `/`. Container: owns
-// the pollers (C8), `?id/status/tier/liqh`, the page keyboard handler (C3)
+// the pollers (C8), `?id/status/tier/liqh/liq`, the page keyboard handler (C3)
 // and action state (C5). Everything it renders is presentational except
 // LiqMapPanel, which polls its own two endpoints.
+//
+// SPEC P3 gate amendment: the liquidation panel always renders (picked coin,
+// else the selected idea's coin, else BTC) and an empty feed shows the
+// liquidation board, so the landing has data before the scanner warms up.
 
 const STATUS_VALUES: readonly StatusFilter[] = ['live', 'ready', 'decided', 'all']
 const LG = '(min-width: 1024px)'
+const DEFAULT_COIN = 'BTC'
 
 function useNow(ms: number): number {
   const [now, setNow] = useState(() => Date.now())
@@ -64,6 +69,7 @@ function CockpitPage() {
   const tier: TierFilter = tierRaw === 1 || tierRaw === 2 || tierRaw === 3 ? tierRaw : 'all'
   const liqhRaw = Number(params.get('liqh'))
   const liqh: HistWindow = liqhRaw === 6 || liqhRaw === 72 ? liqhRaw : 24
+  const liqParam = params.get('liq')
 
   const patch = useCallback(
     (next: Record<string, string | null>, push = false) =>
@@ -79,7 +85,8 @@ function CockpitPage() {
   )
 
   // ── pollers (C8) ──
-  const feed = usePoll(platform.feed, [], { intervalMs: 15_000, isOffline: isPlatformOffline, offlineFallback: 'platform API unreachable' })
+  const feed = usePoll(platform.feed, [], { intervalMs: 15_000, ...PLATFORM_POLL })
+  const board = usePoll(platform.board, [], { intervalMs: 30_000, ...PLATFORM_POLL })
   const health = usePoll(platform.health, [], { intervalMs: 15_000 })
   const desk = usePoll(() => api.get<DeskStatus>('/desk/status'), [], { intervalMs: 30_000 })
 
@@ -89,15 +96,28 @@ function CockpitPage() {
   const visibleIds = useMemo(() => [...ranked, ...(snoozedOpen ? snoozed : [])].map((r) => r.id), [ranked, snoozed, snoozedOpen])
   const selectedId = idParam ?? ranked[0]?.id ?? null
   const selectedRow = rows.find((r) => r.id === selectedId) ?? null
+  // Phone: the right pane shows only after a tap (?id or ?liq); nothing polls behind it (C8).
+  const paneOpen = desktop || idParam != null || liqParam != null
 
   const detail = usePoll<DetailT | null>(() => platform.detail(selectedId!), [selectedId], {
     intervalMs: 30_000,
-    enabled: selectedId != null,
-    isOffline: isPlatformOffline,
-    offlineFallback: 'platform API unreachable',
+    enabled: selectedId != null && (desktop || idParam != null),
+    ...PLATFORM_POLL,
   })
   const d = detail.data?.opportunity.id === selectedId ? detail.data : null
+  const o = d?.opportunity
+  const subStats = usePoll(
+    async () => {
+      const [regime, tier] = await Promise.all([platform.stats({ setupKind: o!.setupKind, regime: o!.regime }), platform.stats({ setupKind: o!.setupKind, tier: o!.liquidityTier })])
+      return { regime, tier }
+    },
+    [o?.setupKind, o?.regime, o?.liquidityTier],
+    { intervalMs: 60_000, enabled: o != null, ...PLATFORM_POLL },
+  )
   const coin = d?.opportunity.coin ?? selectedRow?.coin ?? null
+  const boardRows = board.data?.rows ?? null
+  const boardCoins = useMemo(() => boardRows?.map((r) => r.coin) ?? [], [boardRows])
+  const liqCoin = liqParam ?? coin ?? DEFAULT_COIN
 
   // Live mark from the shared HL WS (activeAssetCtx), with its receive time.
   const [mid, setMid] = useState<{ coin: string; px: number; at: number } | null>(null)
@@ -106,6 +126,7 @@ function CockpitPage() {
     if (m.coin === coin && Number.isFinite(px) && px > 0) setMid({ coin: m.coin, px, at: Date.now() })
   })
   const wsMark = mid?.coin === coin ? mid.px : null
+  const feedEmpty = feed.data != null && ranked.length + snoozed.length === 0
   const midAgeSec = mid?.coin === coin ? (now - mid.at) / 1000 : null
 
   // ── actions (C5) ──
@@ -197,14 +218,18 @@ function CockpitPage() {
   // ── selection ──
   const headingRef = useRef<HTMLHeadingElement>(null)
   const focusRow = useRef(false)
-  const select = (id: string, push = !desktop) => patch({ id }, push)
+  const liqRef = useRef<HTMLDivElement>(null)
+  const killRef = useRef<HTMLButtonElement>(null)
+  // Picking an idea hands the liquidation panel back to its coin.
+  const select = (id: string, push = !desktop) => patch({ id, liq: null }, push)
+  const pickCoin = (c: string, push = !desktop) => patch({ liq: c }, push)
   useEffect(() => {
     if (!focusRow.current) return
     focusRow.current = false
     const tr = document.querySelector<HTMLElement>('[data-feed] tr[aria-selected="true"]')
     tr?.focus()
     tr?.scrollIntoView({ block: 'nearest' })
-  }, [selectedId])
+  }, [selectedId, liqCoin])
 
   // ── keyboard (C3): one page-level handler ──
   const keyRef = useRef<(e: KeyboardEvent) => void>(() => {})
@@ -226,14 +251,22 @@ function CockpitPage() {
     switch (a.type) {
       case 'next':
       case 'prev': {
-        const id = stepSelection(visibleIds, selectedId, a.type === 'next' ? 1 : -1)
-        if (id) {
+        const delta = a.type === 'next' ? 1 : -1
+        // Empty feed: j/k walk the liquidation board instead.
+        const next = feedEmpty ? stepSelection(boardCoins, liqCoin, delta) : stepSelection(visibleIds, selectedId, delta)
+        if (next) {
           focusRow.current = true
-          select(id, false)
+          if (feedEmpty) pickCoin(next, false)
+          else select(next, false)
         }
         break
       }
       case 'open':
+        if (feedEmpty) {
+          if (desktop) liqRef.current?.focus()
+          else if (el?.tagName !== 'TR') pickCoin(liqCoin, true)
+          break
+        }
         if (!selectedId) break
         if (desktop) headingRef.current?.focus()
         else if (el?.tagName !== 'TR') select(selectedId, true) // a row's own Enter already pushed
@@ -247,6 +280,7 @@ function CockpitPage() {
         break
       case 'snoozeMenu':
         if (d && isLive(d.opportunity.status)) setSnoozeOpen((v) => !v)
+        else if (d) setHint(`snooze needs a live idea — status is ${STATUS_WORD[d.opportunity.status]}`)
         break
       case 'snooze':
         snooze(a.minutes)
@@ -255,7 +289,8 @@ function CockpitPage() {
         setSnoozeOpen(false)
         break
       case 'research':
-        research()
+        if (d && !isLive(d.opportunity.status)) setHint(`research needs a live idea — status is ${STATUS_WORD[d.opportunity.status]}`)
+        else research()
         break
       case 'kill':
         if (desk.data) openDialog('kill')
@@ -275,7 +310,29 @@ function CockpitPage() {
   const readyCount = feed.data ? rows.filter((r) => r.status === 'ready').length : null
   const inFeed = selectedId != null && visibleIds.includes(selectedId)
 
-  const liqPanel = coin ? <LiqMapPanel key={coin} coin={coin} wsMark={wsMark} window={liqh} onWindow={(w) => patch({ liqh: w === 24 ? null : String(w) })} now={now} /> : null
+  const tracked = boardRows ? { count: boardRows.length, has: boardCoins.includes(liqCoin) } : null
+  const liqPanel = paneOpen ? (
+    <div ref={liqRef} tabIndex={-1} className="outline-none min-w-0">
+      <LiqMapPanel
+        key={liqCoin}
+        coin={liqCoin}
+        coins={boardCoins}
+        onCoin={(c) => pickCoin(c, false)}
+        tracked={tracked}
+        wsMark={liqCoin === coin ? wsMark : null}
+        window={liqh}
+        onWindow={(w) => patch({ liqh: w === 24 ? null : String(w) })}
+        now={now}
+      />
+    </div>
+  ) : null
+  const boardSlot = (
+    <>
+      <WarmingLine scanHistoryMin={health.data?.scanHistoryMin} hasRows={rows.length > 0} />
+      <LiqBoard rows={boardRows} loading={board.loading} offline={board.offline} error={board.error} selectedCoin={liqCoin} onSelect={(c) => pickCoin(c)} onRetry={board.refetch} />
+    </>
+  )
+  const showDetail = selectedId != null && (desktop || idParam != null)
   const actionBar = d ? (
     <ActionBar
       status={d.opportunity.status}
@@ -303,12 +360,13 @@ function CockpitPage() {
         readyCount={readyCount}
         desk={desk}
         noDb={health.data?.store === 'memory'}
+        killRef={killRef}
         onKill={() => openDialog('kill')}
         onHelp={() => openDialog('help')}
       />
       <HealthStrip health={health.data} loading={health.loading} offline={health.offline} error={health.error} now={now} />
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 mt-3 min-w-0">
-        <div className={`lg:col-span-5 xl:col-span-4 min-w-0 ${idParam ? 'hidden lg:block' : ''}`}>
+        <div className={`lg:col-span-5 xl:col-span-4 min-w-0 ${paneOpen && !desktop ? 'hidden' : ''}`}>
           <OpportunityFeed
             ranked={ranked}
             snoozed={snoozed}
@@ -321,6 +379,8 @@ function CockpitPage() {
             scanAgeSec={feed.data?.scanAgeSec ?? null}
             hasRows={rows.length > 0}
             now={now}
+            readyTtlMin={feed.data?.readyTtlMin ?? 60}
+            emptySlot={boardSlot}
             snoozedOpen={snoozedOpen}
             onToggleSnoozed={() => setSnoozedOpen((v) => !v)}
             onSelect={(r) => select(r.id)}
@@ -333,15 +393,23 @@ function CockpitPage() {
             onRetry={feed.refetch}
           />
         </div>
-        <div className={`lg:col-span-7 xl:col-span-8 min-w-0 flex-col gap-3 ${idParam ? 'flex' : 'hidden lg:flex'}`}>
-          {desktop && liqPanel}
+        <div className={`lg:col-span-7 xl:col-span-8 min-w-0 flex-col gap-3 ${paneOpen ? 'flex' : 'hidden'}`}>
+          {!showDetail && !desktop && (
+            <div>
+              <Button tier="ghost" onClick={() => (window.history.length > 1 ? navigate(-1) : patch({ liq: null }))} className="min-h-[var(--tap-min)]">
+                ← FEED
+              </Button>
+            </div>
+          )}
+          {(desktop || !showDetail) && liqPanel}
+          {showDetail && (
           <OpportunityDetail
             ref={headingRef}
             detail={d}
-            notFound={selectedId != null && !detail.loading && detail.data === null && !detail.error && !detail.offline}
+            subStats={subStats.data}
+            notFound={!detail.loading && detail.data === null && !detail.error && !detail.offline}
             offline={detail.offline}
             error={detail.error}
-            hasSelection={selectedId != null}
             inFeed={inFeed}
             mark={wsMark}
             midAgeSec={midAgeSec}
@@ -351,6 +419,7 @@ function CockpitPage() {
             liqSlot={desktop ? null : liqPanel}
             actionBar={actionBar}
           />
+          )}
         </div>
       </div>
 
@@ -368,6 +437,7 @@ function CockpitPage() {
           onCancel={() => setDialog(null)}
           error={dialogError}
           busy={busy}
+          returnFocus={killRef}
         />
       )}
       {dialog === 'help' && <KeysHelp onClose={() => setDialog(null)} />}

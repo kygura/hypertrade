@@ -12,6 +12,7 @@ import type { OperatorOrder } from "../desk/types.js";
 import { researchDailyLimit, researchDeps, runResearch, RESEARCH_PROMPT_VERSION, utcDayStart } from "../intel/research.js";
 import { aggregate, coverage } from "../platform/liqmap.js";
 import { getPlatformContext, type PlatformContext } from "../platform/context.js";
+import { Z_KEYS } from "../platform/score.js";
 import { groupStats } from "../platform/stats.js";
 import { defaultDeskService } from "./desk.js";
 import { defaultIntelDeps } from "./intel/index.js";
@@ -103,7 +104,8 @@ const IdSchema = z.string().uuid();
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const seenAge = (iso: string, now: Date) => Math.max(0, (now.getTime() - Date.parse(iso)) / 1000);
 // score.ts keeps its Z_KEYS private; the name pattern stands in until it exports Z_FEATURE_KEYS.
-const Z_NAME = /Z(\d+d)?$/;
+/** z-feature → the raw input it standardises (features.ts); z-features without one show no value. */
+const RAW_OF: Partial<Record<(typeof Z_KEYS)[number], string>> = { ret15mZ: "ret15mPct", oiChg1hZ: "oiChg1hPct", fundingZ24h: "fundingApr" };
 const BOARD_BUCKET_BPS = 25;
 const BOARD_RANGE = 0.2;
 
@@ -161,15 +163,23 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       const ctx = c.var.ctx;
       const rows = await ctx.store.listOpportunities({ statuses: q.data.status, tier: q.data.tier, limit: q.data.limit });
       const last = ctx.lastScanAt();
-      return c.json({ opportunities: rows.map((r) => FeedRowSchema.parse(r)), scanAgeSec: last ? seenAge(last.toISOString(), deps.now()) : null });
+      return c.json({
+        opportunities: rows.map((r) => FeedRowSchema.parse(r)),
+        scanAgeSec: last ? seenAge(last.toISOString(), deps.now()) : null,
+        readyTtlMin: Number(process.env.PLATFORM_READY_TTL_MIN) || 60,
+      });
     })
     .get("/opportunities/:id", async (c) => {
       const { opp, res } = await load(c);
       if (!opp) return res;
       const store = c.var.ctx.store;
       const entries = await store.ledgerFor(opp.id);
-      const features = created(entries)?.payload.features.features ?? {};
-      const signals = Object.entries(features).map(([name, value]) => ({ name, value, z: Z_NAME.test(name) ? value : null }));
+      const fv = created(entries)?.payload.features ?? { features: {}, inputs: {} };
+      const signals = Object.entries(fv.features).map(([name, value]) => {
+        if (!(Z_KEYS as readonly string[]).includes(name)) return { name, value, z: null };
+        const raw = RAW_OF[name as (typeof Z_KEYS)[number]];
+        return { name, value: raw ? num(fv.inputs[raw]) : null, z: value };
+      });
       const stats = groupStats(await store.outcomeRows({ setupKind: opp.setupKind })).sort((a, b) => b.n - a.n)[0] ?? null;
       const ticket = ticketOf(opp);
       let risk: { before: RiskVerdict; after: RiskVerdict } | null = null;

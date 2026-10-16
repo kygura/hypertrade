@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Badge, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows } from '../../components'
+import { Badge, DataTable, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column } from '../../components'
 import { fmtUsdCompact } from '../../components/branches/format'
-import { fmtAge } from '../../components/strategy/format'
+import { fmtAge, fmtDur } from '../../components/strategy/format'
 import { fmtPx } from '../../lib/desk'
-import { isPlatformOffline, platform } from '../../lib/platformApi'
-import { usePoll } from '../../lib/poll'
-import { bucketBounds, bucketIndex, type Coverage, type LiqBucket, type LiqMapHistory } from '../../../shared/platform'
-import { alphaStep, cellRow, cellSide, coverageTreatment, denseBuckets, fmtPct, nearestCluster, p95, priceY, type Cluster } from './logic'
-import { StaleStrip } from './Dialog'
+import { platform, PLATFORM_POLL } from '../../lib/platformApi'
+import { usePoll, type PollState } from '../../lib/poll'
+import { bucketBounds, bucketIndex, type Cluster, type Coverage, type LiqBoardResponse, type LiqBucket, type LiqMap, type LiqMapHistory } from '../../../shared/platform'
+import { alphaStep, cellRow, cellSide, coverageTreatment, denseBuckets, fmtSigned, p95, priceY, type CoverageTreatment } from './logic'
 
-// LiqMapPanel (container) + LiqProfile / LiqHistory / CoverageLine — DESIGN-terminal C4.
+// LiqMapPanel (container) + LiqProfile / LiqHistory / CoverageLine / LiqBoard — DESIGN-terminal C4.
 // PROFILE is Recharts (≤ 80 bars); HISTORY is one DPR-scaled <canvas>. Both
 // sit on the same log price axis: profile bands are one per grid idx (dense),
 // and the canvas maps idx → row with the same [lo, hi].
@@ -21,9 +20,41 @@ const X_AXIS_H = 20
 const LONG = 'var(--color-proj-line)'
 const SHORT = 'var(--color-bench-btc)'
 
-export function LiqMapPanel({ coin, wsMark, window, onWindow, now }: { coin: string; wsMark: number | null; window: HistWindow; onWindow: (w: HistWindow) => void; now: number }) {
-  const live = usePoll(() => platform.liqmap(coin), [coin], { intervalMs: 15_000, isOffline: isPlatformOffline, offlineFallback: 'platform API unreachable' })
-  const hist = usePoll(() => platform.history(coin, window), [coin, window], { intervalMs: 5 * 60_000, isOffline: isPlatformOffline, offlineFallback: 'platform API unreachable' })
+type PanelProps = {
+  coin: string
+  /** Picker options: the board's coins (top by OI). */
+  coins: readonly string[]
+  onCoin: (coin: string) => void
+  /** From the board: how many coins the snapshot loop tracks and whether this one is among them; null before the board lands. */
+  tracked: { count: number; has: boolean } | null
+  wsMark: number | null
+  window: HistWindow
+  onWindow: (w: HistWindow) => void
+  now: number
+}
+
+/** Container: polls the live map and its history (C8), renders LiqMapView. */
+export function LiqMapPanel(props: PanelProps) {
+  const { coin, window } = props
+  const live = usePoll(() => platform.liqmap(coin), [coin], { intervalMs: 15_000, ...PLATFORM_POLL })
+  const hist = usePoll(() => platform.history(coin, window), [coin, window], { intervalMs: 5 * 60_000, ...PLATFORM_POLL })
+  return <LiqMapView {...props} live={live} hist={hist} />
+}
+
+type Polled<T> = Pick<PollState<T>, 'data' | 'loading' | 'offline' | 'error' | 'fetchedAt' | 'refetch'>
+
+export function LiqMapView({
+  coin,
+  coins,
+  onCoin,
+  tracked,
+  wsMark,
+  window,
+  onWindow,
+  now,
+  live,
+  hist,
+}: PanelProps & { live: Polled<LiqMap | null>; hist: Polled<LiqMapHistory> }) {
   const [view, setView] = useState<'profile' | 'history'>('profile')
 
   const data = live.data?.coin === coin ? live.data : null // null also = 503 no_mark → empty
@@ -48,7 +79,9 @@ export function LiqMapPanel({ coin, wsMark, window, onWindow, now }: { coin: str
   if (!h && hist.loading) history = <SkeletonRows rows={6} />
   else if (!h && hist.offline) history = <OfflineBlock message={hist.offline} onRetry={hist.refetch} />
   else if (!h && hist.error) history = <ErrorBlock message={hist.error} onRetry={hist.refetch} />
-  else if (!h || h.snapshots.length === 0) history = <EmptyBlock label={`history is kept for the top 30 coins by OI — ${coin} is not one`} />
+  else if ((!h || h.snapshots.length === 0) && tracked && !tracked.has)
+    history = <EmptyBlock label={`history is kept for the top ${tracked.count} coins by OI — ${coin} is not one`} />
+  else if (!h || h.snapshots.length === 0) history = <EmptyBlock label="no snapshots yet — history builds every 15 min" />
   else if (h.snapshots.length < 2) history = <EmptyBlock label={`history builds every 15 min — first snapshot ${fmtAge(h.snapshots[0]!.ts).toLowerCase()}`} />
   else if (!axis) history = <EmptyBlock label="history unavailable" />
   else history = <LiqHistory history={h} lo={axis.lo} hi={axis.hi} coin={coin} />
@@ -57,6 +90,13 @@ export function LiqMapPanel({ coin, wsMark, window, onWindow, now }: { coin: str
   return (
     <Panel className="min-w-0">
       <PanelHeader title={`LIQUIDATIONS · ${coin}`}>
+        <select aria-label="liquidation coin" value={coin} onChange={(e) => onCoin(e.target.value)} className="text-[10px] min-h-[var(--tap-min)] md:min-h-0">
+          {(coins.includes(coin) ? coins : [coin, ...coins]).map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
         <Segmented<HistWindow>
           label="history window"
           size="sm"
@@ -92,12 +132,12 @@ export function LiqMapPanel({ coin, wsMark, window, onWindow, now }: { coin: str
         <div className={view === 'history' ? '' : 'hidden xl:block'}>{history}</div>
         <div className={view === 'profile' ? '' : 'hidden xl:block'}>{profile}</div>
       </div>
-      {data && data.buckets.length > 0 && mark != null && <Callouts buckets={data.buckets} mark={mark} ratio={data.coverage.ratio} />}
+      {data && data.buckets.length > 0 && <Callouts clusters={data.nearestClusters} ratio={data.coverage.ratio} />}
     </Panel>
   )
 }
 
-const ageMin = (sec: number | null) => (sec == null ? '—' : sec < 60 ? `${Math.round(sec)}S` : `${Math.round(sec / 60)}M`)
+const ageMin = (sec: number | null) => (sec == null ? '—' : fmtDur(sec))
 
 export function CoverageLine({ coverage }: { coverage: Coverage }) {
   const t = coverageTreatment(coverage.ratio)
@@ -113,16 +153,100 @@ export function CoverageLine({ coverage }: { coverage: Coverage }) {
   )
 }
 
-function Callouts({ buckets, mark, ratio }: { buckets: LiqBucket[]; mark: number; ratio: number }) {
+/** Server cluster (liqmap.aggregate) → `$6.1M` / `≥ $6.1M`, signed distance (long below mark), mid price. */
+const clusterParts = (c: Cluster, side: 'long' | 'short', t: CoverageTreatment) => ({
+  usd: `${t === 'partial' ? '≥ ' : ''}${fmtUsdCompact(c.notionalUsd)}`,
+  dist: fmtSigned(side === 'long' ? -c.distancePct : c.distancePct, '%', 1),
+  px: fmtPx((c.priceLo + c.priceHi) / 2),
+})
+
+function Callouts({ clusters, ratio }: { clusters: LiqMap['nearestClusters']; ratio: number }) {
   const t = coverageTreatment(ratio)
   if (t === 'none') return <p className="px-3 pb-2 text-[10px] text-text-secondary">too little coverage to name clusters</p>
-  const line = (word: string, c: Cluster | null) =>
-    c ? `${word} CLUSTER ${t === 'partial' ? '≥ ' : ''}${fmtUsdCompact(c.usd)} @ ${fmtPx(c.price)} · ${fmtPct(c.pct, 1)}` : `${word} CLUSTER —`
+  const line = (word: string, side: 'long' | 'short') => {
+    const c = clusters[side]
+    if (!c) return `${word} CLUSTER —`
+    const p = clusterParts(c, side, t)
+    return `${word} CLUSTER ${p.usd} @ ${p.px} · ${p.dist}`
+  }
   return (
     <div className="flex flex-wrap gap-x-4 px-3 pb-2 text-[10px] tabular text-text-primary">
-      <span>{line('SHORT', nearestCluster(buckets, mark, 'short'))}</span>
-      <span>{line('LONG', nearestCluster(buckets, mark, 'long'))}</span>
+      <span>{line('SHORT', 'short')}</span>
+      <span>{line('LONG', 'long')}</span>
     </div>
+  )
+}
+
+// ─── Liquidation board (feed slot while the feed is empty; SPEC P3 gate amendment) ───
+
+type BoardRow = LiqBoardResponse['rows'][number]
+
+function ClusterCell({ c, side, coverage }: { c: Cluster | null; side: 'long' | 'short'; coverage: Coverage }) {
+  const t = coverageTreatment(coverage.ratio)
+  if (t === 'none') return <span className="text-text-secondary" title="too little coverage to name clusters">—</span>
+  if (!c) return <span className="text-text-secondary">—</span>
+  const p = clusterParts(c, side, t)
+  return (
+    <span title={`${side} liqs ${p.usd} @ ${p.px}`}>
+      <span style={{ color: side === 'long' ? LONG : SHORT }}>{p.dist}</span> <span className="text-text-secondary">{p.usd}</span>
+    </span>
+  )
+}
+
+const BOARD_COLUMNS: Column<BoardRow>[] = [
+  { key: 'coin', label: 'COIN', priority: 1, render: (r) => <span className="text-text-primary">{r.coin}</span> },
+  { key: 'mark', label: 'MARK', priority: 3, align: 'right', render: (r) => fmtPx(r.mark) },
+  { key: 'long', label: 'LONG LIQS', priority: 1, align: 'right', render: (r) => <ClusterCell c={r.nearestLong} side="long" coverage={r.coverage} /> },
+  { key: 'short', label: 'SHORT LIQS', priority: 1, align: 'right', render: (r) => <ClusterCell c={r.nearestShort} side="short" coverage={r.coverage} /> },
+  {
+    key: 'cov',
+    label: 'COV',
+    priority: 2,
+    align: 'right',
+    render: (r) => {
+      const t = coverageTreatment(r.coverage.ratio)
+      return (
+        <span className={t === 'full' ? 'text-text-secondary' : 'text-amber'} title={t === 'full' ? 'share of open interest mapped' : 'partial map — missing clusters are likely'}>
+          {Math.round(r.coverage.ratio * 100)}%
+        </span>
+      )
+    },
+  },
+]
+
+export function LiqBoard({
+  rows,
+  loading,
+  offline,
+  error,
+  selectedCoin,
+  onSelect,
+  onRetry,
+}: {
+  rows: BoardRow[] | null
+  loading: boolean
+  offline: string | null
+  error: string | null
+  selectedCoin: string
+  onSelect: (coin: string) => void
+  onRetry: () => void
+}) {
+  let body
+  if (!rows && loading) body = <SkeletonRows rows={8} />
+  else if (!rows && offline) body = <OfflineBlock message={offline} onRetry={onRetry} />
+  else if (!rows && error) body = <ErrorBlock message={error} onRetry={onRetry} />
+  else if (!rows || rows.length === 0) body = <EmptyBlock label="no marks yet — the board fills after the first scan" />
+  else
+    body = (
+      <div data-feed>
+        <DataTable columns={BOARD_COLUMNS} rows={rows} rowKey={(r) => r.coin} onRowClick={(r) => onSelect(r.coin)} isSelected={(r) => r.coin === selectedCoin} />
+      </div>
+    )
+  return (
+    <section aria-label="liquidation board" className="border-t border-border-subtle">
+      <h3 className="label px-3 pt-2 pb-1">LIQUIDATION BOARD ─ BY NEAREST CLUSTER</h3>
+      {body}
+    </section>
   )
 }
 

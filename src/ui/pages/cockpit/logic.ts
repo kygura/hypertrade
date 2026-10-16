@@ -1,8 +1,12 @@
-import { bucketBounds, type FeedRow, type LiqBucket, type LiqCell, type OpportunityStatus, type PlatformHealth } from '../../../shared/platform'
+import { fmtDur } from '../../components/strategy/format'
+import {
+  bucketBounds, PRE_DECISION_STATUSES, TERMINAL_STATUSES, type FeedRow, type LiqBucket, type LiqCell, type OpportunityStatus, type PlatformHealth,
+} from '../../../shared/platform'
 
 // Cockpit pure helpers (DESIGN-terminal § Cockpit C9). No React, no DOM: the
-// feed filter, cluster finder, health levels, keyboard map, edge word and the
-// history canvas geometry, all tested in cockpit.test.ts.
+// feed filter, health levels, keyboard map, edge word and the history canvas
+// geometry, all tested in logic.test.ts. Clusters come from the server
+// (LiqMap.nearestClusters).
 
 // ─── Feed (C3) ───
 
@@ -10,12 +14,13 @@ export type StatusFilter = 'live' | 'ready' | 'decided' | 'all'
 export type TierFilter = 'all' | 1 | 2 | 3
 
 const STATUS_SETS: Record<Exclude<StatusFilter, 'all'>, readonly OpportunityStatus[]> = {
-  live: ['new', 'investigating', 'calculated', 'ready'],
+  live: PRE_DECISION_STATUSES,
   ready: ['ready'],
-  decided: ['approved', 'open', 'rejected', 'expired', 'closed'],
+  decided: ['approved', 'open', ...TERMINAL_STATUSES],
 }
 
-export const isLive = (s: OpportunityStatus) => STATUS_SETS.live.includes(s)
+/** Before the operator decides: snooze, research and the feed's LIVE filter apply. */
+export const isLive = (s: OpportunityStatus) => PRE_DECISION_STATUSES.includes(s)
 
 /** Client-side filter over the one feed fetch; server order (score desc) kept. Snoozed rows split out. */
 export function filterFeed(rows: readonly FeedRow[], status: StatusFilter, tier: TierFilter, now: number): { ranked: FeedRow[]; snoozed: FeedRow[] } {
@@ -44,31 +49,19 @@ export function edgeWord(row: Pick<FeedRow, 'netEdgeBps' | 'edgeBasis' | 'tradeT
   if (row.netEdgeBps == null) return { text: '—', tone: 'gray', costsExceed: false, unvalidated: false, title: `no cost model for ${row.tradeType}` }
   const n = row.netEdgeBps
   return {
-    text: fmtBps(n),
+    text: fmtSigned(n, 'bp'),
     tone: n < 0 ? 'gray' : n > 0 ? 'green' : 'gray',
     costsExceed: n < 0,
     unvalidated: row.edgeBasis === 'unvalidated',
   }
 }
 
-export const fmtBps = (n: number, dp = 0) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(dp)}bp`
-export const fmtPct = (frac: number, dp = 2) => `${frac > 0 ? '+' : frac < 0 ? '−' : ''}${Math.abs(frac * 100).toFixed(dp)}%`
+/** `+38bp`, `−5.4%`: sign (typographic minus) + magnitude + unit. */
+export const fmtSigned = (n: number, unit: string, dp = 0) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(dp)}${unit}`
+/** A fraction as a signed percent (0.021 → `+2.10%`). */
+export const fmtSignedPct = (frac: number, dp = 2) => fmtSigned(frac * 100, '%', dp)
 
 // ─── Liquidation map (C4) ───
-
-export type Cluster = { price: number; usd: number; pct: number }
-
-/** Bucket nearest the mark whose side notional is ≥ 20% of that side's largest bucket. Long side below mark, short above. */
-export function nearestCluster(buckets: readonly LiqBucket[], mark: number, side: 'long' | 'short'): Cluster | null {
-  const mid = (b: LiqBucket) => (b.priceLo + b.priceHi) / 2
-  const usd = (b: LiqBucket) => (side === 'long' ? b.longUsd : b.shortUsd)
-  const sideBuckets = buckets.filter((b) => (side === 'long' ? mid(b) < mark : mid(b) > mark) && usd(b) > 0)
-  const max = Math.max(0, ...sideBuckets.map(usd))
-  if (max <= 0) return null
-  let best: LiqBucket | null = null
-  for (const b of sideBuckets) if (usd(b) >= 0.2 * max && (best == null || Math.abs(mid(b) - mark) < Math.abs(mid(best) - mark))) best = b
-  return { price: mid(best!), usd: usd(best!), pct: mid(best!) / mark - 1 }
-}
 
 /** Fill gaps so the profile has one band per grid index (category bands then line up with log price). */
 export function denseBuckets(buckets: readonly LiqBucket[], bucketBps: number): LiqBucket[] {
@@ -119,8 +112,6 @@ export function cellSide(cell: LiqCell, bucketBps: number, mark: number): 'long'
 export type Level = 'ok' | 'warn' | 'critical' | 'unknown'
 export type HealthItem = { key: 'WS' | 'SCAN' | 'CRAWL' | 'LOOPS' | 'LLM'; level: Level; value: string; title?: string }
 
-const ageWord = (sec: number) => (sec < 60 ? `${Math.round(sec)}S` : sec < 3600 ? `${Math.floor(sec / 60)}M` : `${Math.floor(sec / 3600)}H`)
-const compact = (n: number) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n).toUpperCase()
 
 export function healthItems(h: PlatformHealth, now: number): HealthItem[] {
   const ws = h.ws
@@ -136,12 +127,12 @@ export function healthItems(h: PlatformHealth, now: number): HealthItem[] {
   const beating = h.loops.filter((l) => l.ok && loopRatio(l) <= 2).length
   const loopLevel: Level = h.loops.length === 0 ? 'unknown' : crashed || worst > 5 ? 'critical' : worst > 2 ? 'warn' : 'ok'
   const loopTitle = h.loops
-    .map((l) => `${l.name}: ${l.lastBeatAt ? `${ageWord((now - Date.parse(l.lastBeatAt)) / 1000)} ago` : 'never'}${l.error ? ` — ${l.error}` : ''}`)
+    .map((l) => `${l.name}: ${l.lastBeatAt ? `${fmtDur((now - Date.parse(l.lastBeatAt)) / 1000)} ago` : 'never'}${l.error ? ` — ${l.error}` : ''}`)
     .join('\n')
   return [
-    { key: 'WS', level: wsLevel, value: ws.state !== 'open' ? ws.state.toUpperCase() : wsAge == null ? '—' : ageWord(wsAge) },
-    { key: 'SCAN', level: scanLevel, value: scan == null ? '—' : ageWord(scan) },
-    { key: 'CRAWL', level: crawlLevel, value: `${Math.round(ppm)}/MIN · ${compact(h.crawler.addresses)} ADDR` },
+    { key: 'WS', level: wsLevel, value: ws.state !== 'open' ? ws.state.toUpperCase() : wsAge == null ? '—' : fmtDur(wsAge) },
+    { key: 'SCAN', level: scanLevel, value: scan == null ? '—' : fmtDur(scan) },
+    { key: 'CRAWL', level: crawlLevel, value: `${Math.round(ppm)}/MIN · ${h.crawler.addresses.toLocaleString('en-US')} ADDR` },
     { key: 'LOOPS', level: loopLevel, value: `${beating}/${h.loops.length}`, title: loopTitle || undefined },
     // No cap in the contract (C9 fallback): spend shown, dot gray.
     { key: 'LLM', level: 'unknown', value: h.llmSpendUsdToday == null ? '—' : `$${h.llmSpendUsdToday.toFixed(2)}`, title: 'daily cap not reported by /health' },
@@ -214,4 +205,5 @@ export const STATUS_WORD: Record<OpportunityStatus, string> = {
   rejected: 'REJECTED',
   expired: 'EXPIRED',
   closed: 'CLOSED',
+  failed: 'FAILED',
 }

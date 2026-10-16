@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Button } from './Button'
 import { StatusDot } from './Badge'
 
@@ -94,6 +95,11 @@ export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: ()
 
 function ageHours(generatedAt: string): number {
   return (Date.now() - new Date(generatedAt).getTime()) / 3_600_000
+}
+
+/** Amber strip with minute/second copy (StaleBanner is hour-based, so the same look with free words). */
+export function StaleStrip({ children }: { children: ReactNode }) {
+  return <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-amber bg-amber-bg border-b border-border-subtle">{children}</div>
 }
 
 // StaleBanner (NEW, §6) — full-width strip at panel top, shown when routine

@@ -1,12 +1,11 @@
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Badge, Button, EmptyBlock, ErrorBlock, MetricStat, OfflineBlock, Panel, SkeletonRows } from '../../components'
+import { Badge, Button, DialogShell, EmptyBlock, ErrorBlock, MetricStat, OfflineBlock, Panel, SkeletonRows, StaleStrip } from '../../components'
 import { VenueBadge } from '../../components/intel/VenueBadge'
 import { fmtUsdCompact } from '../../components/branches/format'
 import { fmtAge } from '../../components/strategy/format'
 import { fmtPx, fmtUsd } from '../../lib/desk'
-import type { OpportunityDetail as Detail, OpportunityStatus } from '../../../shared/platform'
-import { fmtBps, fmtPct, isLive, STATUS_WORD } from './logic'
-import { Dialog, StaleStrip } from './Dialog'
+import type { OpportunityDetail as Detail, LedgerStats, OpportunityStatus } from '../../../shared/platform'
+import { fmtSigned, fmtSignedPct, isLive, STATUS_WORD } from './logic'
 import { EdgeCell, StatusPill } from './Feed'
 import { KeyHint } from './Header'
 
@@ -14,6 +13,9 @@ import { KeyHint } from './Header'
 // SnoozeMenu — DESIGN-terminal C5. Presentational; Cockpit.tsx owns the POSTs.
 
 type Venue = 'paper' | 'testnet' | null
+/** Section 4 sub-rows: the same setup restricted to this idea's regime / tier (GET /ledger/stats?regime= / ?tier=). */
+export type SubStats = { regime: LedgerStats | null; tier: LedgerStats | null }
+const bp = (n: number) => fmtSigned(n, 'bp')
 
 export const canApprove = (s: OpportunityStatus) => s === 'ready'
 export const canReject = (s: OpportunityStatus) => s === 'ready' || s === 'approved'
@@ -33,10 +35,10 @@ export const OpportunityDetail = forwardRef<
   HTMLHeadingElement,
   {
     detail: Detail | null
+    subStats: SubStats | null
     offline: string | null
     error: string | null
     notFound: boolean
-    hasSelection: boolean
     inFeed: boolean
     mark: number | null
     midAgeSec: number | null
@@ -47,7 +49,7 @@ export const OpportunityDetail = forwardRef<
     liqSlot: ReactNode
     actionBar: ReactNode
   }
->(function OpportunityDetail({ detail, offline, error, notFound, hasSelection, inFeed, mark, midAgeSec, onRetry, onBack, onResearch, liqSlot, actionBar }, headingRef) {
+>(function OpportunityDetail({ detail, subStats, offline, error, notFound, inFeed, mark, midAgeSec, onRetry, onBack, onResearch, liqSlot, actionBar }, headingRef) {
   const back = (
     <div className="lg:hidden px-3 pt-2">
       <Button tier="ghost" onClick={onBack} className="min-h-[var(--tap-min)]">
@@ -55,7 +57,6 @@ export const OpportunityDetail = forwardRef<
       </Button>
     </div>
   )
-  if (!hasSelection) return <Panel><EmptyBlock label="select an opportunity" /></Panel>
   if (!detail) {
     let body
     if (notFound) body = <EmptyBlock label="opportunity not found" />
@@ -121,15 +122,15 @@ export const OpportunityDetail = forwardRef<
           {o.costs && o.grossEdgeBps != null ? (
             <>
               <p className="text-[11px] tabular text-text-muted">
-                gross {fmtBps(o.grossEdgeBps)} − fees 2×{o.costs.feeBps}bp − slippage {fmtBps(o.costs.slippageBps).replace('+', '')} − funding{' '}
-                {fmtBps(o.costs.fundingBps).replace('+', '')} = net {o.netEdgeBps == null ? '—' : fmtBps(o.netEdgeBps)}
+                gross {bp(o.grossEdgeBps)} − fees 2×{o.costs.feeBps}bp − slippage {o.costs.slippageBps.toFixed(0)}bp − funding {o.costs.fundingBps.toFixed(0)}bp = net{' '}
+                {o.netEdgeBps == null ? '—' : bp(o.netEdgeBps)}
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-5 border border-border-subtle">
-                <MetricStat label="GROSS" value={fmtBps(o.grossEdgeBps)} />
+                <MetricStat label="GROSS" value={bp(o.grossEdgeBps)} />
                 <MetricStat label="FEES" value={`2×${o.costs.feeBps}bp`} />
                 <MetricStat label="SLIPPAGE" value={`${o.costs.slippageBps.toFixed(0)}bp`} />
-                <MetricStat label="FUNDING" value={fmtBps(o.costs.fundingBps)} />
-                <MetricStat label="NET" value={o.netEdgeBps == null ? '—' : fmtBps(o.netEdgeBps)} />
+                <MetricStat label="FUNDING" value={bp(o.costs.fundingBps)} />
+                <MetricStat label="NET" value={o.netEdgeBps == null ? '—' : bp(o.netEdgeBps)} />
               </div>
               <p className="text-[11px] tabular text-text-secondary">{fmtUsdCompact(o.costs.absorbableUsd)} absorbable (10% of depth ±0.5%)</p>
             </>
@@ -142,7 +143,7 @@ export const OpportunityDetail = forwardRef<
           {o.invalidationPx != null && (
             <p className="text-[11px] tabular">
               {fmtPx(o.invalidationPx)}
-              {px != null && <span className="text-text-secondary"> · {fmtPct(o.invalidationPx / px - 1, 1)} from mark</span>}
+              {px != null && <span className="text-text-secondary"> · {fmtSignedPct(o.invalidationPx / px - 1, 1)} from mark</span>}
             </p>
           )}
           <p className="text-[11px] text-text-muted">{o.invalidation}</p>
@@ -159,6 +160,8 @@ export const OpportunityDetail = forwardRef<
         </Section>
         <Section n={4} title="HAVE SIMILAR SETUPS PAID">
           <SimilarSetups stats={detail.stats} />
+          {subStats?.regime && <SimilarSetups stats={subStats.regime} label={`REGIME ${o.regime}`} />}
+          {subStats?.tier && <SimilarSetups stats={subStats.tier} label={`TIER T${o.liquidityTier}`} />}
         </Section>
         <Section n={5} title="PORTFOLIO RISK">
           <PortfolioRisk risk={detail.risk} />
@@ -168,13 +171,21 @@ export const OpportunityDetail = forwardRef<
   )
 })
 
-function SimilarSetups({ stats }: { stats: Detail['stats'] }) {
-  if (!stats || stats.ci95 == null) return <p className="text-[11px] tabular text-text-secondary">n{stats ? ` ${stats.n}` : ''}&lt;5 — not enough outcomes</p>
+function SimilarSetups({ stats, label }: { stats: Detail['stats']; label?: string }) {
+  const head = label && <span className="label">{label}</span>
+  if (!stats || stats.ci95 == null)
+    return (
+      <p className="flex flex-wrap gap-2 text-[11px] tabular text-text-secondary">
+        {head}
+        <span>n{stats ? ` ${stats.n}` : ''}&lt;5 — not enough outcomes</span>
+      </p>
+    )
   const [lo, hi] = stats.ci95
   return (
     <div className="flex flex-wrap items-center gap-2 text-[11px] tabular">
+      {head}
       <span>
-        n {stats.n} · hit {stats.hitRate == null ? '—' : `${Math.round(stats.hitRate * 100)}%`} · mean net {stats.meanNet == null ? '—' : fmtPct(stats.meanNet)} · 95% CI {fmtPct(lo)} to {fmtPct(hi)}
+        n {stats.n} · hit {stats.hitRate == null ? '—' : `${Math.round(stats.hitRate * 100)}%`} · mean net {stats.meanNet == null ? '—' : fmtSignedPct(stats.meanNet)} · 95% CI {fmtSignedPct(lo)} to {fmtSignedPct(hi)}
       </span>
       <span className="text-text-secondary">({stats.horizon})</span>
       {lo < 0 && hi > 0 && <Badge tone="gray">NOT DISTINGUISHABLE FROM ZERO</Badge>}
@@ -183,12 +194,11 @@ function SimilarSetups({ stats }: { stats: Detail['stats'] }) {
 }
 
 type Verdict = NonNullable<Detail['risk']>['before']
-const sizing = (v: Verdict) => (v as { sizing?: { notionalUsd?: number; grossLeverageAfter?: number; riskUsd?: number } }).sizing
 
 function PortfolioRisk({ risk }: { risk: Detail['risk'] }) {
   if (!risk) return <p className="text-[11px] text-text-secondary">no governor preview</p>
   const col = (label: string, v: Verdict) => {
-    const s = sizing(v)
+    const s = v.sizing
     return (
       <div className="flex flex-col gap-1 text-[11px] tabular">
         <span className="label">{label}</span>
@@ -222,6 +232,7 @@ function PortfolioRisk({ risk }: { risk: Detail['risk'] }) {
         {col('BEFORE', risk.before)}
         {col('AFTER', risk.after)}
       </div>
+      <p className="text-[10px] text-text-secondary">margin use is not in the governor preview this phase</p>
     </div>
   )
 }
@@ -360,10 +371,11 @@ export function TicketDialog({
     ['ENTRY REF', fmtPx(t.entryPx)],
     ['STOP', fmtPx(t.stopPx)],
     ['TARGET', fmtPx(t.targetPx)],
-    ['NET EDGE', o.netEdgeBps == null ? '—' : fmtBps(o.netEdgeBps)],
+    ['NET EDGE', o.netEdgeBps == null ? '—' : bp(o.netEdgeBps)],
   ]
   return (
-    <Dialog
+    <DialogShell
+      className="md:max-w-[400px]"
       title={
         <>
           APPROVE — {venue === 'testnet' ? 'TESTNET' : venue === 'paper' ? 'PAPER' : '…'} <VenueBadge venue={venue} />
@@ -399,14 +411,14 @@ export function TicketDialog({
           <span className={busy ? 'pulse-label' : undefined}>{busy ? 'CONFIRM…' : 'CONFIRM'}</span>
         </Button>
       </div>
-    </Dialog>
+    </DialogShell>
   )
 }
 
 export function RejectDialog({ busy, error, onConfirm, onCancel }: { busy: boolean; error: string | null; onConfirm: (reason: string) => void; onCancel: () => void }) {
   const [reason, setReason] = useState('')
   return (
-    <Dialog title="REJECT" onClose={onCancel}>
+    <DialogShell title="REJECT" onClose={onCancel} className="md:max-w-[400px]">
       <label className="flex flex-col gap-1">
         <span className="label">REASON</span>
         <textarea data-autofocus required rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={2000} className="w-full" />
@@ -420,6 +432,6 @@ export function RejectDialog({ busy, error, onConfirm, onCancel }: { busy: boole
           <span className={busy ? 'pulse-label' : undefined}>{busy ? 'CONFIRM…' : 'CONFIRM'}</span>
         </Button>
       </div>
-    </Dialog>
+    </DialogShell>
   )
 }

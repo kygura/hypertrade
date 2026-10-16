@@ -1,11 +1,17 @@
 import { api, ApiError, NetworkError } from './api'
 import {
   FeedResponseSchema,
+  LedgerStatsResponseSchema,
+  LiqBoardResponseSchema,
+  LIQMAP_BUCKET_BPS,
+  LIQMAP_PANEL_RANGE,
   LiqMapHistoryResponseSchema,
   LiqMapResponseSchema,
   OpportunityDetailSchema,
   PlatformHealthResponseSchema,
   type FeedResponse,
+  type LedgerStats,
+  type LiqBoardResponse,
   type LiqMap,
   type LiqMapHistory,
   type OpportunityDetail,
@@ -20,6 +26,8 @@ const P = '/platform'
 
 /** No response, or the server answered 503 platform_offline (runtime absent): render OfflineBlock. */
 export const isPlatformOffline = (err: unknown) => err instanceof NetworkError || (err instanceof ApiError && err.status === 503 && err.message === 'platform_offline')
+/** usePoll options every platform poller shares (offline = OfflineBlock, not ErrorBlock). */
+export const PLATFORM_POLL = { isOffline: isPlatformOffline, offlineFallback: 'platform API unreachable' } as const
 const nullOn = async <T>(p: Promise<T>, status: number, code?: string): Promise<T | null> => {
   try {
     return await p
@@ -46,15 +54,25 @@ export const platform = {
   },
   /** null = 503 no_mark (no live mid and no scan snapshot yet). */
   liqmap: async (coin: string): Promise<LiqMap | null> => {
-    const r = await nullOn(api.get(`${P}/liqmap?coin=${id(coin)}&range=0.1&bucketBps=25`), 503, 'no_mark')
+    const r = await nullOn(api.get(`${P}/liqmap?coin=${id(coin)}&range=${LIQMAP_PANEL_RANGE}&bucketBps=${LIQMAP_BUCKET_BPS}`), 503, 'no_mark')
     return r == null ? null : LiqMapResponseSchema.parse(r)
+  },
+  board: async (): Promise<LiqBoardResponse> => LiqBoardResponseSchema.parse(await api.get(`${P}/liqmap/board`)),
+  /** The largest-n group for one filter (setupKind plus regime or tier); null with no outcomes. */
+  stats: async (q: { setupKind: string; regime?: string; tier?: number }): Promise<LedgerStats | null> => {
+    const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]))
+    const { stats } = LedgerStatsResponseSchema.parse(await api.get(`${P}/ledger/stats?${qs}`))
+    return stats.reduce<LedgerStats | null>((a, b) => (a == null || b.n > a.n ? b : a), null)
   },
   history: async (coin: string, hours: number): Promise<LiqMapHistory> =>
     LiqMapHistoryResponseSchema.parse(await api.get(`${P}/liqmap/history?coin=${id(coin)}&hours=${hours}`)),
-  /** Public `/api/health`; null when the server is up but the platform runtime adds no fields (API-only / Vercel). */
+  /**
+   * Public `/api/health`. null when the platform runtime adds no fields (API-only / Vercel) or the
+   * server sent the redacted no-session shape `{ok, ts, loops:[{name, ok}], ws}` (no `store`): gray items.
+   */
   health: async (): Promise<PlatformHealth | null> => {
     const r = await api.get<Record<string, unknown>>('/health')
-    return r && 'loops' in r ? PlatformHealthResponseSchema.parse(r) : null
+    return r && 'loops' in r && 'store' in r ? PlatformHealthResponseSchema.parse(r) : null
   },
   approve: (oppId: string) => api.post<unknown>(`${P}/opportunities/${id(oppId)}/approve`),
   reject: (oppId: string, reason: string) => api.post<unknown>(`${P}/opportunities/${id(oppId)}/reject`, { reason }),
