@@ -104,6 +104,22 @@ describe("outcomes loop", () => {
     expect(await store.outcomeRows({})).toHaveLength(12);
   });
 
+  test("late rows without an entry price do not spend the late-fetch budget", async () => {
+    const store = new MemoryPlatformStore();
+    const mk = (coin: string, entryPx: number | null, score = 2) =>
+      store.upsertOpportunity(
+        { coin, direction: "long", setupKind: "k", tradeType: "directional", score, scoreVersion: "v", tags: [], liquidityTier: 1, regime: "range", invalidation: "x", entryPx: entryPx as never, stopPx: 98, targetPx: 104, invalidationPx: 98 },
+        { features: { features: {}, inputs: {} }, market: {}, score: 2, scoreVersion: "v" },
+      );
+    for (let i = 0; i < 12; i++) await mk(`N${i}`, null, 5); // listed first (score order)
+    const { opportunity: o } = await mk("ETH", 100);
+    const created = Date.parse(o.createdAt);
+    const candles = async () => [{ t: created, T: created + 60_000, o: 1, h: 1, l: 1, c: 103, v: 1 }];
+    const loop = createOutcomesLoop({ store, mid: () => 1, scanMark: () => 1, candles, horizons: ["1h"], now: () => created + 20 * HOUR });
+    await loop.tick();
+    expect(await store.outcomeRows({})).toHaveLength(1);
+  });
+
   test("a horizon with 3 empty candle answers is counted skipped and not retried", async () => {
     const { store, created } = await seed();
     let asked = 0;

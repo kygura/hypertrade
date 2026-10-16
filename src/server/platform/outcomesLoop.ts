@@ -70,6 +70,7 @@ export function createOutcomesLoop(deps: OutcomesDeps) {
           const dueAt = Date.parse(o.createdAt) + horizonMs(h);
           const late = t - dueAt > GRACE_MS;
           if (t - dueAt > CANDLE_RANGE_MS) skippedN++;
+          else if (late && o.entryPx == null) continue; // nothing to price against: don't burn a fetch slot
           else if (late && lateFetches++ >= MAX_LATE_PER_TICK) continue; // next tick
           else await mark(o, h, dueAt, late);
           marked.get(o.id)!.add(h);
