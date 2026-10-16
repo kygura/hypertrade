@@ -11,6 +11,8 @@ A single deployable web application merging three prior projects (`../hyperion`,
 
 ## Runtime shape (decided — do not relitigate)
 
+> **Amendment, 2026-10-16 (operator decision, phase 8).** Hosting, Backend and Scheduling below are superseded by § Platform P0.1–P0.3: the app now runs as one always-on Bun service on Railway that serves both `dist/` and `/api/*` from the same origin, with the worker loops in the same process. Cron-shaped jobs stay on GitHub Actions and now target the Railway origin. Vercel is retired at cutover (its config stays in the repo until the operator removes it). Auth, Frontend, Database, LLM and Package manager are unchanged.
+
 - **Hosting**: Vercel. Git-connected; pushes to the repo redeploy the app. Routine outputs are committed files, so a routine run = fresh deploy with fresh data.
 - **Frontend**: React 19 + Vite + TypeScript + Tailwind CSS v4 (CSS-native `@theme`, no tailwind.config). Recharts for charts (lightweight-charts for the markets drill-in chart). React Router. Fonts: Geist Mono via `geist` package (self-hosted woff2), monospace everywhere — inherited from Hyperion.
 - **Backend**: Hono on Vercel Functions — one catch-all function at `api/index.ts` serving `/api/*`. Runtime: Node (Vercel default), code written to also run under `bun dev` locally.
@@ -388,6 +390,130 @@ Source: the same "Flow + Scout" brief, § 4.3 and § 3.4. The operator asked (20
   - Store parity.
 - `bun test` (including the pre-existing `analyst.test.ts` default-provider failure, fixed), `bun run typecheck`, `bun run build` and `bun run check:api` are green.
 - `/` shows the Research panel, and every state renders without a DB.
+
+## Platform — always-on scanner and cockpit (phase 8)
+
+Phase 1 of the Trading Intelligence Platform spec (2026-10-15). Code scans the whole Hyperliquid perp universe every minute, ranks opportunities, maps real liquidation levels from crawled trader positions, and records every idea and its outcome in an append-only ledger. The operator lands on a cockpit that shows what to act on now. Paper and testnet only.
+
+### P0. Decisions (pinned)
+
+1. **One Railway service.** `scripts/server.ts` runs `Bun.serve` on `$PORT`: `/api/*` goes to the existing Hono `app.fetch`, everything else serves `dist/` with SPA fallback to `index.html`. Same origin, so the session cookie is unchanged. The same process starts the worker loops (P0.4). Built from a `Dockerfile` (`oven/bun`), because Railpack does not detect Bun. Region: `asia-southeast1` (closest Railway region to Hyperliquid's API; HL's hosting location is believed to be Tokyo, unverified).
+2. **Cron stays for cron-shaped work.** GitHub Actions keeps `collect`, `lab`, and `intel/{ingest,brief,graph,watch}` on `*/15`, with `APP_URL` pointing at the Railway origin. The `desk` job is disabled (`vars.DESK_ENABLED=false`) because the desk tick and the Telegram long-poll move into the worker. `api/index.ts` stays exported and working; `vercel.json` stays until the operator decommissions Vercel.
+3. **No Redis, no TimescaleDB in this phase** (deliberate divergence from the platform spec). One process means one consumer: an in-process `publish(topic, payload)` bus (`src/server/platform/bus.ts`, a typed `EventEmitter` wrapper) carries events between loops, and Postgres rows are the durable record. A row is written before its event is published. Redis can sit behind the same interface when a second consumer exists.
+4. **Worker loops**, each isolated (its own try/catch, its own heartbeat, a crash in one never stops the others or the API):
+   - `ws`: one server-side HL WebSocket. Subscribes `allMids` and `trades` for every listed perp. Keeps a live mid per coin with its receive time. Feeds trader addresses (`trades[].users`) into the address book in batches.
+   - `scanner`: every `PLATFORM_SCAN_INTERVAL_SEC` (60). One `metaAndAssetCtxs` call, features per asset, ranking, opportunity upsert, costs for the top `PLATFORM_COST_TOP_N` (25) via `l2Book`.
+   - `crawler`: polls `clearinghouseState` for the highest-priority addresses within its weight budget (P0.6).
+   - `liqmap`: every 15 min, stores a bucketed liquidation snapshot for the top `PLATFORM_LIQMAP_COINS` (30) coins by OI.
+   - `outcomes`: every minute, marks opportunities to market at each horizon that has come due.
+   - `desk` and `telegram`: the two loops from `scripts/desk-worker.ts`, moved here unchanged.
+   - `prune`: hourly, deletes rows older than `PLATFORM_RETENTION_DAYS` (14) from snapshot and history tables. Never touches the ledger.
+   `WORKER_LOOPS` (default `all`; `off`, or a comma list) selects loops, so the server can also run API-only.
+5. **One HL weight budget.** All HL REST calls already go through `hlInfo` and its weight guard; that guard is now process-wide and shared by cron-triggered jobs, the scanner and the crawler. The crawler takes at most `PLATFORM_CRAWL_WEIGHT_PER_MIN` (800, i.e. 400 polls/min) and backs off first when the guard is near its limit.
+6. **Crawler priority** (pure function, tested): `priority = notional × proximity × staleness`, where `notional` is the account's last known total position value, `proximity` rises as any position's `|mark − liquidationPx| / mark` falls (capped so a 1% distance outranks a 30% one), and `staleness` is seconds since the last poll. Every address with open positions is polled at least every `PLATFORM_CRAWL_MAX_AGE_MIN` (30). Addresses with no positions drop to an hourly tier and return to the fast tier when they trade again. Unpolled new addresses go first.
+7. **Positions model.** `hl_positions` holds the latest row per `(address, coin)` (upsert). `hl_position_changes` appends only when a position opens, closes, or moves `szi` or `liquidationPx` by more than 1%. The live heatmap aggregates `hl_positions` on read into price buckets (10 s in-memory cache); history comes from the 15-min `liqmap_snapshots`.
+8. **Coverage is shown, never hidden.** Liquidation data covers only addresses seen trading. Every liqmap response carries `trackedNotional / openInterestNotional` per coin, the number of addresses, and the age distribution of their last polls. The UI shows that coverage figure next to the map.
+9. **Features (per asset per scan, pure).** Each is a z-score against the asset's own history (reusing `intel/normalize.ts` and `intel/windows.ts`) unless noted: 15 m return; price acceleration (15 m return minus a quarter of the 60 m return); 1 h OI change; OI-vs-price quadrant (`classifyRegime`); funding z over 7 d and funding percentile over 14 d; 1 h notional volume vs the 24 h hourly mean; realized-vol expansion (1 h over 24 h); liquidation pressure (tracked liquidation notional within ±2% of mark divided by OI, from the positions table); spread and depth from `l2Book` for the costed top N. Each asset also gets a `liquidityTier` 1–3 from universe terciles of 24 h notional volume. Feature thresholds are set per tier. History for the z-scores is an in-memory 1-minute ring (24 h) rebuilt at boot from `scan_snapshots`, which persists one row per asset every 5 minutes.
+10. **Score and edge stay separate.** `score` is `intel/diff.ts` materiality and confluence over the feature set; the feed is sorted by it. `netEdgeBps` exists only for `tradeType: "directional"` (the only type with a cost model this phase) and equals `grossEdgeBps − 2 × takerFeeBps − slippageBps − fundingBps`. Slippage comes from walking the live `l2Book` at the planned size, and funding is charged over `holdingHours`. `grossEdgeBps` is the stop-to-target distance from the setup and carries `edgeBasis: "unvalidated"` until the ledger has at least `PLATFORM_EDGE_MIN_N` (30) resolved outcomes for that setup kind. After that it uses the ledger's mean net return for the kind. The UI never multiplies score by edge, and shows "costs exceed edge" when `netEdgeBps < 0`. `absorbableUsd` is 10% of book depth within 0.5% of mid (spec R6, shown, not enforced).
+11. **Opportunity status machine** (pure transition function, tested; illegal transitions throw): `new → investigating | calculated`, `investigating → calculated`, `calculated → ready`, `ready → approved | rejected | expired`, `approved → open | rejected`, `open → closed`. `investigating` happens only when the operator asks for deeper research or `score ≥ PLATFORM_RESEARCH_SCORE` and the existing research budget allows it. That reuses `intel/research.ts` unchanged. `approved` and `rejected` come **only** from an operator click, never from code or an LLM (Intel I4). `ready` expires after `PLATFORM_READY_TTL_MIN` (60) without a decision. Snooze is a `snoozedUntil` field, not a state. Dedupe: one live opportunity per `(coin, direction, setupKind)`; a rescan updates its inputs and score instead of creating a second one.
+12. **Append-only decision ledger.** `ledger_entries` (insert-only, enforced by a Postgres trigger that raises on `UPDATE` and `DELETE`) is the source of truth; `opportunities` is a projection. Entry kinds:
+    - `created`: the feature vector, raw inputs, market snapshot, score and score version.
+    - `status`: from, to, actor.
+    - `costs`: the fee, slippage and funding breakdown.
+    - `research`: the research id, model, prompt version and source URLs.
+    - `decision`: approve or reject, reason, operator.
+    - `outcome`: horizon, entry price, horizon price, gross and net return.
+    Recomputing the score from a `created` entry's stored inputs must reproduce the stored score exactly. That is the replay and determinism guarantee (spec M1.7, M1.8).
+13. **Outcomes for every idea.** Horizons are `PLATFORM_OUTCOME_HORIZONS` (`1h,4h,24h,72h`). The entry price is the mark at creation for ideas that were never filled, and the paper fill price for opened ones. Net return is `direction × (horizonPx / entryPx − 1)` minus the costs recorded at creation. Rejected and expired ideas are marked too, so the ledger can score rejections.
+14. **Ledger stats.** Grouped by setup kind, and optionally by regime and liquidity tier: `n`, hit rate, mean net return, and its 95% interval (t-interval; `null` below n = 5). These feed the detail view's "have similar setups paid" panel and P0.10.
+15. **Feed freshness gate.** Approving an opportunity refuses with 409 `stale_feed` when the coin's live mid is older than 30 s or the last scan is older than 2 × the scan interval. A Telegram alert fires once when the WS has been silent for more than 30 s, and once when it recovers.
+16. **Alerts.** One Telegram message, through the existing desk notifier, when an opportunity reaches `ready` with `score ≥ PLATFORM_PUSH_SCORE`. It is deduped per opportunity.
+17. **Migrations.** A minimal runner (`db/migrate.ts`, about 30 lines) keeps a `schema_migrations(name, applied_at)` table and applies `db/migrations/*.sql` in name order, one transaction each. Files `001`–`010` are recorded as a baseline without running them. It runs at boot when `MIGRATE_ON_BOOT=1`, and as `bun run db:migrate`. New schema goes in `011_platform.sql`.
+18. **Pool.** `DB_POOL_MAX` (default 1; Railway sets 4) for the long-running process, Supabase transaction pooler on port 6543, `prepare:false` (already set). Bulk writes are multi-row `INSERT … ON CONFLICT`.
+19. **Store parity.** A `PlatformStore` interface has a memory implementation (all unit tests) and a Postgres implementation, following the Intel store pattern. Postgres-only behaviour (migrations and the ledger trigger) is tested with PGlite as a dev dependency, since there is no local Postgres or Docker.
+
+### P1. Code layout
+
+```
+scripts/server.ts                 # Railway entry: Bun.serve (api + dist), boot migrations, start loops, graceful shutdown
+Dockerfile                        # oven/bun, bun install --frozen-lockfile, bun run build, CMD bun scripts/server.ts
+db/migrate.ts                     # migration runner
+db/migrations/011_platform.sql    # hl_addresses, hl_positions, hl_position_changes, liqmap_snapshots,
+                                  # scan_snapshots, opportunities, ledger_entries (+ append-only trigger)
+src/shared/platform.ts            # zod schemas + types for every /api/platform response (the UI contract)
+src/shared/hl-ws.ts               # isomorphic HL WS client lifted from src/ui/lib/hlWs.ts (UI imports it from here)
+src/server/platform/
+  bus.ts  runtime.ts              # typed in-process bus; loop supervisor with heartbeats
+  store.ts store-memory.ts store-pg.ts
+  ws.ts addresses.ts              # WS ingest, mid cache with ages, address book batching
+  crawler.ts priority.ts          # crawl loop; pure priority
+  liqmap.ts                       # pure bucket aggregation + coverage; snapshot loop
+  features.ts costs.ts score.ts   # pure feature set, cost model, score (wraps intel/diff.ts)
+  scanner.ts                      # scan loop
+  opportunity.ts                  # pure status machine + dedupe key
+  ledger.ts outcomes.ts stats.ts  # ledger writes; pure outcome math + loop; pure stats
+src/server/routes/platform.ts     # /api/platform/*
+src/ui/pages/cockpit/*            # landing cockpit (see DESIGN-terminal.md § Cockpit)
+```
+
+### P2. API delta (all under `/api/platform`, cookie auth; GETs also accept the read bearer)
+
+- `GET /opportunities?status=&tier=&limit=`: feed rows with coin, `tradeType`, score, `netEdgeBps`, `edgeBasis`, status, signal tags, age, `snoozedUntil`. Sorted by score.
+- `GET /opportunities/:id`: detail. Signals with values and z-scores; the cost breakdown and `absorbableUsd`; invalidation and the research bear case, if any; ledger stats for the setup kind; and a portfolio-risk preview from the governor's `assess`, before and after.
+- `POST /opportunities/:id/approve` opens a pre-filled ticket through the existing desk and governor path (paper or testnet). `POST /opportunities/:id/reject` requires a non-empty `reason`. `POST /opportunities/:id/snooze` takes `{ minutes }`. `POST /opportunities/:id/research` runs the existing research stage.
+- `GET /liqmap?coin=&range=&bucketBps=` returns live long and short liquidation notional per price bucket, the mark, and coverage. `GET /liqmap/history?coin=&hours=` returns time-by-price buckets from the 15-min snapshots.
+- `GET /ledger/stats?setupKind=&regime=&tier=` and `GET /ledger/:opportunityId` (entries in order).
+- `GET /health`: the existing `/api/health`, extended with each loop's last beat, WS state and last message age, scan age, crawler polls per minute and address count. It stays public and answers even when loops are down.
+
+### P3. UI delta
+
+The cockpit becomes `/`; the current Terminal moves to `/terminal`, with all its routes and panels unchanged. The cockpit layout, states and interactions follow `DESIGN-terminal.md` § Cockpit, written in the design pass of this phase:
+- a ranked feed (the spec's row fields);
+- the selected asset's liquidation heatmap, with live mark, nearest long and short clusters with their distance, a coverage figure and a time-by-price history;
+- the detail view, which answers the five questions;
+- the actions;
+- a system-health strip (WS, scan and crawler ages, loop heartbeats, LLM spend);
+- the desk kill switch in the cockpit header.
+Every panel has named skeleton, empty, offline and error states. The page polls with `usePoll` and takes the live mark from the shared HL WS client.
+
+### P4. Done
+
+- `bun run typecheck`, `bun test src`, `bun run build` and `bun run check:api` are green.
+- New unit tests cover:
+  - `priority.ts` (ordering, the max-age floor, tier demotion);
+  - `liqmap.ts` (bucket sums, long below and short above mark, coverage ratio);
+  - `features.ts` (hand-checked fixtures);
+  - `costs.ts` (book walk, fee and funding math);
+  - `opportunity.ts` (every legal transition, illegal ones throw, dedupe);
+  - `outcomes.ts` (long and short net return, horizons, rejected ideas);
+  - `stats.ts` (interval, null below n = 5);
+  - a determinism test that recomputes the score from a stored `created` entry and gets the same value;
+  - the approval freshness gate (409 on a stale mid);
+  - route tests through the app for every `/api/platform` endpoint;
+  - a PGlite test that applies all migrations through the runner and shows the ledger trigger rejecting `UPDATE` and `DELETE`.
+- `WORKER_LOOPS=all bun scripts/server.ts` against a Postgres `DATABASE_URL`, after one minute:
+  - `/api/health` shows the WS connected, scan age under 90 s, crawler polls per minute above 0, and every loop beating;
+  - `GET /api/platform/opportunities` returns ranked rows from live HL data;
+  - `GET /api/platform/liqmap?coin=BTC` returns buckets with a coverage figure above 0.
+- `docker build .` succeeds and the container answers `/api/health`.
+- `/` renders the cockpit with every panel's states, including offline with no DB, and `/terminal` still renders the old Terminal.
+- README gains a "Railway" section: service setup, the env var list below, the pooler URL, `MIGRATE_ON_BOOT`, the `APP_URL` change for GitHub Actions, and `DESK_ENABLED=false`.
+
+### P5. Out of scope (phase 8)
+
+- Live mainnet execution, idempotent client order IDs, reconciliation, and a kill switch that cancels and flattens.
+- Hard enforcement of limits R4–R6 and R8.
+- Re-authentication for approve.
+- Redis, TimescaleDB, Next.js and the Ink TUI.
+- Cross-venue funding divergence and sector rotation features.
+- Trade types other than directional.
+- Narrative and token intelligence (spec M3).
+- The multi-role research team (M4 beyond the existing research stage).
+- Strategy-lab changes.
+- Automatic agent switch-off.
+- The undocumented HL leaderboard endpoint.
+
+New env vars: `PORT`, `WORKER_LOOPS`, `MIGRATE_ON_BOOT`, `DB_POOL_MAX`, `PLATFORM_SCAN_INTERVAL_SEC`, `PLATFORM_COST_TOP_N`, `PLATFORM_CRAWL_WEIGHT_PER_MIN`, `PLATFORM_CRAWL_MAX_AGE_MIN`, `PLATFORM_LIQMAP_COINS`, `PLATFORM_RETENTION_DAYS`, `PLATFORM_READY_TTL_MIN`, `PLATFORM_RESEARCH_SCORE`, `PLATFORM_PUSH_SCORE`, `PLATFORM_EDGE_MIN_N`, `PLATFORM_OUTCOME_HORIZONS`. All are optional, with the defaults above.
 
 ## What is explicitly OUT of scope
 
