@@ -17,14 +17,17 @@ describe("canTransition", () => {
 });
 
 describe("shouldExpire", () => {
-  const opp = { status: "ready" as const, updatedAt: "2026-10-13T12:00:00Z" };
+  const opp = { status: "ready" as const, statusChangedAt: "2026-10-13T12:00:00Z" };
   test("boundary: not before ttl, expired exactly at ttl", () => {
     expect(shouldExpire(opp, new Date("2026-10-13T12:59:59Z"), 60)).toBe(false);
     expect(shouldExpire(opp, new Date("2026-10-13T13:00:00Z"), 60)).toBe(true);
   });
+  test("a rescan bumping updatedAt does not delay expiry", () => {
+    expect(shouldExpire({ ...opp, updatedAt: "2026-10-13T12:59:00Z" } as typeof opp, new Date("2026-10-13T13:00:00Z"), 60)).toBe(true);
+  });
   test("only ready ideas expire; bad input never expires", () => {
     expect(shouldExpire({ ...opp, status: "calculated" }, new Date("2027-01-01T00:00:00Z"), 60)).toBe(false);
-    expect(shouldExpire({ ...opp, updatedAt: "nope" }, new Date("2027-01-01T00:00:00Z"), 60)).toBe(false);
+    expect(shouldExpire({ ...opp, statusChangedAt: "nope" }, new Date("2027-01-01T00:00:00Z"), 60)).toBe(false);
     expect(shouldExpire(opp, new Date("2027-01-01T00:00:00Z"), NaN)).toBe(false);
   });
 });

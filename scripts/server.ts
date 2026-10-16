@@ -7,8 +7,15 @@ import { existsSync, statSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
 import { app } from "../api/index";
 import { migrate } from "../db/migrate";
+import { createNotifier } from "../src/server/desk/notify";
 import { createAddressBuffer } from "../src/server/platform/addresses";
+import { createAlerts } from "../src/server/platform/alerts";
 import { bus } from "../src/server/platform/bus";
+import { setPlatformContext } from "../src/server/platform/context";
+import { createCrawler } from "../src/server/platform/crawler";
+import { createLiqmapLoop } from "../src/server/platform/liqmapLoop";
+import { createOutcomesLoop } from "../src/server/platform/outcomesLoop";
+import { createScanner } from "../src/server/platform/scanner";
 import { setHealthExtras, parseWorkerLoops, startLoops, type LoopDef, type Loops } from "../src/server/platform/runtime";
 import { MemoryPlatformStore } from "../src/server/platform/store-memory";
 import { PgPlatformStore, pgDb } from "../src/server/platform/store-pg";
@@ -51,14 +58,26 @@ async function boot() {
   const ws = createWsIngest({ onAddresses: (a, t) => addresses.add(a, t) });
   const retentionDays = Number(process.env.PLATFORM_RETENTION_DAYS ?? 14) || 14;
 
+  const scanner = createScanner({ store });
+  const crawler = createCrawler({ store });
+  const liqmap = createLiqmapLoop({ store });
+  // A ws mid older than 30 s is not a price; the outcomes loop then falls back to the last scan's mark.
+  const outcomes = createOutcomesLoop({ store, mid: (c) => ((ws.midAge(c) ?? Infinity) <= 30_000 ? ws.mid(c) : null), scanMark: scanner.latestMark });
+  const alerts = createAlerts({ notifier: createNotifier(), wsAgeSec: () => ws.lastMessageAgeSec(), appUrl: (process.env.APP_URL ?? process.env.DESK_APP_URL)?.trim() });
+
   const defs: LoopDef[] = [
     // ws.tick opens/maintains the socket and refreshes the universe hourly; throws if the feed goes silent.
     { name: "ws", intervalSec: 30, run: () => ws.tick() },
     { name: "prune", intervalSec: 3600, run: async () => void (await store.pruneHistory(new Date(Date.now() - retentionDays * 86_400_000).toISOString())) },
-    // TODO(T4): scanner (PLATFORM_SCAN_INTERVAL_SEC), crawler, liqmap (15 min), outcomes (60 s) register here.
+    scanner.def,
+    crawler.def,
+    liqmap.def,
+    outcomes.def,
+    alerts.def,
   ];
   const selected = parseWorkerLoops(process.env.WORKER_LOOPS);
   const wants = (n: string) => selected === "all" || selected.has(n);
+  const unsubAlerts = wants("alerts") ? alerts.subscribe(bus) : () => {};
   if (wants("desk") || wants("telegram")) {
     // Dynamic: importing desk-worker builds the desk service, which only the worker needs.
     const desk = await import("./desk-worker");
@@ -73,13 +92,22 @@ async function boot() {
     store: storeKind,
     loops: loops.health(),
     ws: { state: selected === "all" || selected.has("ws") ? ws.state : "off", lastMessageAgeSec: ws.lastMessageAgeSec() },
-    scanAgeSec: null, // TODO(T4)
-    crawler: { pollsPerMin: 0, addresses: await store.addressCount() }, // TODO(T4): polls/min
+    scanAgeSec: scanner.lastScanAt() ? (Date.now() - scanner.lastScanAt()!.getTime()) / 1000 : null,
+    crawler: { pollsPerMin: crawler.pollsPerMin(), addresses: await store.addressCount() },
     llmSpendUsdToday: null,
   }));
+  setPlatformContext({
+    store,
+    midAge: (coin, now) => { const ms = ws.midAge(coin, now); return ms == null ? null : ms / 1000; },
+    mid: (coin) => ws.mid(coin),
+    lastScanAt: scanner.lastScanAt,
+    scanIntervalSec: scanner.intervalSec,
+  });
   bus.subscribe("ws", ({ state }) => console.log(new Date().toISOString(), "[ws]", state));
 
   return async () => {
+    unsubAlerts();
+    setPlatformContext(null);
     await loops.stop();
     ws.stop();
     await addresses.stop();

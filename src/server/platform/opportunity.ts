@@ -2,10 +2,10 @@ import { OPPORTUNITY_TRANSITIONS, type Costs, type Opportunity, type Opportunity
 
 export const canTransition = (from: OpportunityStatus, to: OpportunityStatus) => OPPORTUNITY_TRANSITIONS[from].includes(to);
 
-/** P0.11: a ready idea expires after ttlMin without a decision. Measured from updatedAt (the contract has no readyAt). */
-export function shouldExpire(opp: Pick<Opportunity, "status" | "updatedAt">, now: Date, ttlMin: number): boolean {
+/** P0.11: a ready idea expires after ttlMin without a decision. Measured from statusChangedAt (set on creation and every status move, never by a rescan). */
+export function shouldExpire(opp: Pick<Opportunity, "status" | "statusChangedAt">, now: Date, ttlMin: number): boolean {
   if (opp.status !== "ready" || !(ttlMin >= 0)) return false;
-  const t = Date.parse(opp.updatedAt);
+  const t = Date.parse(opp.statusChangedAt);
   return Number.isFinite(t) && now.getTime() - t >= ttlMin * 60_000;
 }
 
