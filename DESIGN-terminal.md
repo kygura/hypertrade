@@ -1486,3 +1486,281 @@ surface; the list is capped at 20 by the API); per-card feedback buttons
 §16.3 is the only use, and the ask box's ASSET field already scopes new
 runs); typing the explanation as a Claim (it is a synthesis, and the evidence
 rows carry the tags).
+
+---
+
+## Cockpit (phase 8)
+
+Binding layout for SPEC.md § Platform P3. Everything above stands unless
+named here. Question the screen answers: **"what should I act on now, and is
+it worth the cost?"** It is a ranked feed with one selected opportunity,
+never a wall of charts. No new tokens, no new endpoints: data comes from
+`/api/platform` (P2) plus the existing `GET /api/desk/status` and
+`POST /api/desk/kill` for the kill switch.
+
+**Reused as-is:** `Panel`, `Badge` (`green|red|amber|info|gray`), `Button`,
+`Segmented`, `DataTable` (`isSelected`), `ConfirmDialog` (incl. `typedWord`),
+`StatusDot`, `SkeletonRows`, `EmptyBlock`, `OfflineBlock`, `ErrorBlock`,
+`StaleBanner`, `ClaimAge`, `ClaimLine`, `VenueBadge`, `fmtUsd`, `fmtAge`,
+`usePoll`, the shared HL WS client (`activeAssetCtx` for the selected mark),
+Recharts.
+
+### C1. Routes and navigation (supersedes §1.1 row `/`, §1.2, §1.5 path)
+
+- `/` = COCKPIT (`src/ui/pages/cockpit/Cockpit.tsx`). `/terminal` = the old
+  TERMINAL page, unchanged. `/?id=<opportunityId>` selects (`replace: true`).
+- `/?review=1` → `navigate('/terminal?review=1', { replace: true })`, so old
+  Telegram links keep working; §1.5 now applies to `/terminal`.
+- AppShell NAV first cell: label `COCKPIT`, mobile `CKPT`, glyph `◉`, to `/`;
+  still one cell (the 9-cell ceiling holds). Active on `isTerminalPath`, which
+  gains `/terminal` and `/asset/*`. Wordmark → `/`.
+- TerminalTabs gains `COCKPIT / CKPT` first at `/`; `TERMINAL / TERM` moves to
+  `/terminal`. Eight short labels ≈ 308 px: fits at 400 px; the existing
+  `overflow-x: auto` safety net covers 320 px. Links reading `← TERMINAL`
+  (asset page) point at `/terminal`.
+
+### C2. Layout
+
+**Desktop ≥1280 (`xl:`, 12-col, gutter 12px).** Feed 4 | right column 8.
+
+```
+┌ TerminalTabs [COCKPIT|TERMINAL|JOURNAL|…] ─────────────────────────────────────────────┐
+├ COCKPIT  [PAPER]  14 LIVE · 3 READY                         [? KEYS]  [KILL] / ●KILLED ┤
+├ HEALTH  ● WS 2S  ● SCAN 41S  ● CRAWL 388/MIN · 9.4K ADDR  ● LOOPS 8/8  ● LLM $0.42/$2.00┤
+├ FEED ─ BY SCORE ─ [LIVE|READY|DECIDED|ALL] [ALL|T1|T2|T3] 4 ┬ LIQUIDATIONS · HYPE ─ [6H|24H|72H] ─ 8 ┤
+│▌HYPE  LONG  0.82  +38bp UNVALIDATED  [READY]   2M          │ COVERAGE 31% OF OI · 4,210 ADDR · POLL p50 6M p90 24M │
+│   oi-accel  funding-z  liq-pressure                        │  history (time × price) ░▒▓  ──price──   │ profile │
+│ SOL   SHORT 0.71  −12bp [COSTS EXCEED EDGE] [CALC] 6M      │  ░░▒▒▓▓▓▒░  ───────────╲                │ ▇▇▇ SHORT│
+│ ETH   LONG  0.55  +9bp UNVALIDATED [NEW]     9M            │  ─────────────────── MARK 42.18 ─────── │ ──────── │
+│ …                                                          │  ▒▓▓▒░                                  │ ▇▇▇▇ LONG│
+│ SNOOZED · 2 ▸                                              │ SHORT CLUSTER $6.1M @ 44.20 +4.8% · LONG $9.3M @ 39.90 −5.4% │
+│                                                            ├ HYPE · LONG · OI ACCELERATION ─ READY ─ score 0.82 ─ 8 ┤
+│                                                            │ [APPROVE a] [REJECT r] [SNOOZE s ▾] [RESEARCH d]   PAPER │
+│                                                            │ 1 WHY IT PASSED   2 COST TO TRADE   (scrolls: 3 4 5)    │
+└────────────────────────────────────────────────────────────┴─────────────────────────────────────┘
+```
+
+Above the fold on load (1280×800): header, health strip, ~14 feed rows, the
+liquidation panel (320 px) and the detail's action bar + questions 1–2. On
+load the top row of the filtered feed is selected, so the map and detail are
+populated without a click.
+
+**Laptop ~1024 (`lg:`).** Feed 5 | right 7. The liquidation panel shows one
+view at a time via `Segmented` `PROFILE | HISTORY` (default PROFILE); detail
+below it. Health strip wraps to two lines if needed; never hidden.
+
+**Phone ~400 (<768).** Single column: header (COCKPIT, venue, KILL) → health
+as one line of dots + worst item text (`● SCAN 3M OLD`), tap expands the full
+strip → filters (wrapping) → feed. Tapping a row (or Enter) pushes
+`/?id=` (a real history entry on mobile, the §5.1 exception) and shows the
+detail screen: `← FEED`, the opportunity header, liquidation panel (PROFILE
+default, `Segmented` to HISTORY), the five questions, and the action bar
+**sticky at the bottom** (`env(safe-area-inset-bottom)` padding, controls
+≥ `--tap-min`). Md (768–1023): mobile order, with feed and detail side by side
+only from `lg:`.
+
+### C3. Feed
+
+**Row (DataTable, one tab stop, `isSelected`).** Line 1: coin (sm, primary) ·
+direction word `LONG`/`SHORT` · `score` (2 dp, tabular) · edge cell · status
+pill · age (`fmtAge` of `createdAt`; amber when the row is `ready` and within
+10 min of `PLATFORM_READY_TTL_MIN`). Line 2 (10px, secondary): signal tags as
+plain words, max 3 + `+n`; `tier T1|T2|T3`; `tradeType` only when not
+`directional`.
+
+- **Edge cell:** `netEdgeBps` signed (`+38bp`, `−12bp`). `edgeBasis:
+  "unvalidated"` → info Badge `UNVALIDATED` (`title`: `gross edge is the
+  setup's stop-to-target distance; fewer than 30 resolved outcomes for this
+  setup`). `netEdgeBps < 0` → red Badge `COSTS EXCEED EDGE` in place of the
+  sign color. `netEdgeBps: null` (non-directional) → `—` with `title` `no cost
+  model for <tradeType>`. Score and edge are never combined or multiplied.
+- **Status pill** (Badge, word always printed): `NEW` gray, `INVESTIGATING`
+  info (pulse), `CALC` gray, `READY` green, `APPROVED` green outline, `OPEN`
+  info, `REJECTED`/`EXPIRED`/`CLOSED` gray.
+- **Snoozed:** rows with `snoozedUntil > now` leave the ranked list and sit in
+  a collapsed `SNOOZED · n ▸` group at the bottom; each shows `SNOOZED 42M`
+  (time left). Expanding keeps order by score.
+- **Sort:** server order (score desc). No click sort (DiffTable rule).
+- **Filters** (`Segmented`, `size: 'sm'`, persisted to `?status=`/`?tier=`):
+  status `LIVE` (new, investigating, calculated, ready; default) · `READY` ·
+  `DECIDED` (approved, open, rejected, expired, closed) · `ALL`; tier `ALL ·
+  T1 · T2 · T3`. One `GET /opportunities?limit=100` feeds all filters; the UI
+  filters client-side (no refetch on toggle).
+- **Selection:** `?id`. Default = first row of the filtered list. If the
+  selected id leaves the filtered list, the detail stays and shows gray Badge
+  `NOT IN FEED`; `j`/`k` resume from the top.
+
+**Keyboard** (one page-level handler; ignored while focus is in an
+input/textarea/select, while any dialog is open, or with Ctrl/Meta/Alt):
+
+| Key | Action |
+|---|---|
+| `j` / `k` | next / previous row; selects, focuses and scrolls it into view |
+| `Enter` | open detail: desktop moves focus to the detail heading; phone pushes `/?id=` |
+| `a` | approve → ticket dialog (C5); not `ready` → inline line `approve needs READY — status is CALC` |
+| `r` | reject dialog |
+| `s` | snooze menu; `1`/`2`/`3` = 15M/1H/4H, `Esc` closes |
+| `d` | deeper research (`POST /research`) |
+| `x` | kill-switch confirm (Desk dialog: `typedWord` `KILL`; resume has none) |
+| `?` | keys overlay (dialog listing this table) |
+| `Esc` | closes the topmost dialog/menu, refocuses the opener |
+
+Buttons print their key (`APPROVE a`) on fine pointers only.
+
+### C4. Liquidation panel
+
+Header: `LIQUIDATIONS · <COIN>`, history window `Segmented` `6H|24H|72H`
+(default 24H, `?liqh=`), right: coverage line. The two views share one price
+axis (right edge) so a history row and a profile bar at the same height are
+the same price. Defaults: `range=10` (±10% of mark), `bucketBps=25`.
+
+**Colour (no new tokens).** Long-liquidation notional (below mark) =
+`--color-proj-line` (blue); short-liquidation notional (above mark) =
+`--color-bench-btc` (yellow). Both are chart-series tokens, so they never read
+as good/bad (green/red) or momentum (`--color-mom-*`), and blue/yellow stays
+distinct under red-green colour blindness. Amber stays text-only on this panel
+(ages, coverage) so it never competes with the fills. Mark line =
+`--color-equity`, 1px, label tag `MARK 42.18` on the axis. Words `LONG LIQS`
+/ `SHORT LIQS` always label the halves; colour is never alone.
+
+**(a) PROFILE (live, `GET /liqmap`).** Recharts horizontal `BarChart`
+(`layout="vertical"`): y = bucket price, x = notional (`fmtUsd` compact,
+ticks at 0 / half / max). Mark from the WS (`activeAssetCtx.markPx`), falling
+back to the response `mark`; the line moves with the WS, the buckets refresh
+on poll. Callouts under the chart, one per side:
+`SHORT CLUSTER $6.1M @ 44.20 · +4.8%` and `LONG CLUSTER $9.3M @ 39.90 · −5.4%`
+(% = signed distance from mark). Cluster = the bucket nearest the mark whose
+notional is ≥ 20% of the side's largest bucket (pure `nearestCluster` in
+`cockpit.ts`, tested). Bar `title`: `<price> · long liqs $x · <n> positions`.
+
+**(b) HISTORY (`GET /liqmap/history`).** One `<canvas>` (device-pixel-ratio
+scaled): columns = 15-min snapshots, rows = price buckets, each cell's alpha in
+5 steps of its notional over the window's 95th percentile (clipped). Side
+colour per cell from that snapshot's mark. Mark per snapshot drawn as a 1.5px
+`--color-equity` line on top. Hover/tap crosshair → one tooltip line
+`14:15 · 44.20 · short liqs $1.2M`. Time axis: 4–6 local-time labels.
+
+**Chart choice:** Recharts for PROFILE (≤ 80 bars; axes, tooltip, a11y for
+free; already used, §15.8). Plain canvas for HISTORY: 288 × 80 = 23K cells
+at 72H is too many SVG nodes, and lightweight-charts has no 2-D cell series.
+No new dependency.
+
+**Coverage (always visible, header right).** `COVERAGE 31% OF OI · 4,210
+ADDR · POLL p50 6M p90 24M`. Below 25%: the line turns amber, an amber Badge
+`PARTIAL MAP` appears, a caption `only 18% of open interest is mapped —
+missing clusters are likely` sits above the chart, and cluster callouts read
+`≥ $6.1M`. Below 5%: callouts are replaced by `too little coverage to name
+clusters`; bars still draw. Poll p90 > 30 min → that segment amber.
+
+**Empty/sparse.** No buckets → EmptyBlock `no tracked positions on <COIN>
+yet — the crawler adds addresses as they trade`. History with < 2 snapshots →
+EmptyBlock `history builds every 15 min — first snapshot <age> ago`. Coin not
+in the snapshot set → EmptyBlock `history is kept for the top 30 coins by
+OI — <COIN> is not one` (PROFILE unaffected).
+
+### C5. Detail (selected opportunity)
+
+Header: `<COIN> · <DIRECTION> · <setup kind>` · status pill · `score 0.82` ·
+age. Action bar directly under it (sticky in the panel), then five numbered
+sections in this fixed order, each a `.label` heading:
+
+1. **WHY IT PASSED** — table: signal name · value (unit) · z (signed, 1 dp,
+   amber when |z| ≥ 2) · threshold for this tier. Plain values, code-computed.
+2. **COST TO TRADE** — `gross +62bp − fees 2×4.5bp − slippage 11bp − funding
+   4bp (8h) = net +38bp`, as a column of `MetricStat`s; `absorbableUsd`
+   `$84K absorbable (10% of depth ±0.5%)`; `UNVALIDATED`/`COSTS EXCEED EDGE`
+   as in the feed.
+3. **INVALIDATION & BEAR CASE** — invalidation level and its distance from
+   mark; research bear case as `ClaimList` (model words, §2). None →
+   EmptyBlock `no research yet` + `RESEARCH` button; `investigating` →
+   `RESEARCHING…` pulse.
+4. **HAVE SIMILAR SETUPS PAID** — `n 41 · hit 54% · mean net +0.21% · 95% CI
+   −0.08% to +0.50%` for the setup kind (regime/tier sub-rows when present).
+   Interval `null` → `n<5 — not enough outcomes`. CI straddling 0 → gray
+   word `NOT DISTINGUISHABLE FROM ZERO`.
+5. **PORTFOLIO RISK** — governor preview, two columns `BEFORE` / `AFTER`
+   (gross, net, per-asset, margin use), verdict reasons verbatim; a blocked
+   verdict → red Badge `GOVERNOR BLOCKS` and the reasons.
+
+**Actions.**
+- `APPROVE` (neutral tier; enabled only in `ready`) → `ConfirmDialog` titled
+  `APPROVE — PAPER` / `— TESTNET` (VenueBadge, large, from desk status): the
+  pre-filled ticket (side, size USD, entry ref, stop, target, net edge) read
+  from detail; CONFIRM → `POST /approve`. Governor blocked → APPROVE disabled
+  with `title` = first reason.
+- `REJECT` (ghost) → dialog with a required `REASON` textarea; CONFIRM
+  disabled while blank → `POST /reject {reason}`.
+- `SNOOZE ▾` → menu `15M · 1H · 4H` → `POST /snooze {minutes}`.
+- `RESEARCH` → `POST /research`; disabled with `title` while investigating.
+- After any action: refetch feed + detail; failures render verbatim in an
+  ErrorBlock under the action bar.
+- **409 `stale_feed`:** dialog stays open, CONFIRM disabled, amber
+  StaleBanner with the server string verbatim + `RETRY` (re-POSTs). The
+  health strip will show the cause.
+
+### C6. Health strip
+
+One row of `StatusDot` + label + value, from `GET /health`, polled 15 s.
+Green = ok, amber = warn, red = critical, gray = unknown (field absent).
+
+| Item | Shows | Warn | Critical |
+|---|---|---|---|
+| `WS` | state + last message age | > 10 s | > 30 s or not connected |
+| `SCAN` | last scan age | > 90 s | > 120 s (2 × interval, the approve gate) |
+| `CRAWL` | polls/min · address count | < 100/min | 0/min |
+| `LOOPS` | `beating/total` (`title` lists each loop + last beat) | any beat > 2 × its interval | any > 5 × or crashed |
+| `LLM` | `$spent/$cap` today | ≥ 80% | ≥ 100% (`LLM CAP REACHED`) |
+
+Desk kill switch lives in the cockpit header, not the strip: `KILL` (danger)
+when off; when on, red Badge `KILLED` + `RESUME` (ghost) with reason/age.
+
+### C7. Named states (extends §10; copy verbatim)
+
+| Panel | Skeleton | Empty | Offline | Error | Stale |
+|---|---|---|---|---|---|
+| Feed | SkeletonRows (8) | EmptyBlock `nothing cleared the bar — the scanner runs every minute` (filter empty: `no <FILTER> opportunities`) | OfflineBlock `platform API unreachable` + RETRY | ErrorBlock verbatim + RETRY | scan > 120 s: StaleBanner `scan Nm old — scores are frozen` |
+| Liquidations | SkeletonRows (6) | C4 empties | OfflineBlock | ErrorBlock | live response > 60 s: StaleBanner `liquidation map Nm old` |
+| Detail | SkeletonRows (5) | EmptyBlock `select an opportunity` / `opportunity not found` (bad `?id`) | OfflineBlock | ErrorBlock | mid > 30 s: StaleBanner `live price Ns old — approve is blocked` |
+| Health | 1 SkeletonRow | — | red `HEALTH UNREACHABLE` line (health is public; this means the server is down) | same | items go amber/red per C6 |
+| Kill switch | `KILL` disabled until desk status lands | — | `DESK —` gray + `title` | verbatim under header | — |
+
+**No DB:** the platform store falls back to memory, so the feed renders empty
+with the copy above plus gray Badge `NO DATABASE — MEMORY STORE` in the
+header (from `/health`). Never demo data.
+
+### C8. Polling (extends §1.4; all pause when hidden)
+
+Feed 15 s · detail on select + 30 s · liqmap live on coin change + 15 s ·
+history on coin/window change + 5 min · health 15 s · desk status 30 s · WS
+mark live. Every POST refetches feed + detail.
+
+### C9. Components (`src/ui/pages/cockpit/`, client `src/ui/lib/platform.ts`)
+
+| Component | Kind | Consumes / props |
+|---|---|---|
+| `Cockpit.tsx` | container (route `/`) | owns pollers (C8), `?id/status/tier/liqh`, keyboard handler, action state |
+| `CockpitHeader` | presentational | `venue, liveCount, readyCount, kill, onKill(), onHelp()`; `GET /api/desk/status` via Cockpit |
+| `HealthStrip` | presentational | `health` (`GET /health`), `compact` (phone) |
+| `OpportunityFeed` / `FeedRow` / `FeedFilters` | presentational | `GET /opportunities`: `rows, selectedId, status, tier, onSelect, onFilter` |
+| `LiqMapPanel` | container | `coin`; polls `GET /liqmap`, `GET /liqmap/history`; WS mark |
+| `LiqProfile` / `LiqHistory` / `CoverageLine` | presentational | `buckets, mark, clusters` / `snapshots, window` / `coverage` |
+| `OpportunityDetail` | presentational | `GET /opportunities/:id` → sections `WhyPassed`, `CostToTrade`, `Invalidation`, `SimilarSetups` (`ledger stats` inside detail), `PortfolioRisk` |
+| `ActionBar` / `TicketDialog` / `RejectDialog` / `SnoozeMenu` | presentational | `status, blocked, venue, busy, error, onApprove/onReject(reason)/onSnooze(min)/onResearch` → the four POSTs |
+| `KeysHelp` | presentational | C3 table |
+| `cockpit.ts` | pure, tested | `filterFeed`, `nearestCluster`, `healthLevel(item, value)`, `keyAction(event)`, `edgeWord(row)` |
+
+Shared edits: `App.tsx` routes (`/` Cockpit, `/terminal` Terminal),
+`AppShell.tsx` NAV, `TerminalTabs.tsx`, `ReviewStrip`'s `?review=1` path.
+
+**Fields read beyond SPEC P2** (pin in `src/shared/platform.ts`; if absent the
+named fallback applies): row `direction`, `setupKind`, `liquidityTier`,
+`createdAt` (else no tier tag / age from `age`); detail `ticket {side,
+sizeUsd, entryPx, stopPx, targetPx}` and `invalidationPx` (else APPROVE
+dialog shows `size set by the desk` and section 3 shows research only);
+history buckets on an **absolute** price grid plus `mark` per snapshot (else
+HISTORY is not drawn: EmptyBlock `history unavailable`); health `llm
+{spentUsd, capUsd}`, per-loop `intervalSec`, `store: 'pg'|'memory'` (else
+gray dots).
+
+Skipped: drag-resizable panes, a multi-coin heatmap grid (one selected asset
+is the point), click-sortable feed, bulk actions, sound alerts.
