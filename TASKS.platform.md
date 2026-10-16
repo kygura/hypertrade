@@ -26,13 +26,14 @@ Gate baseline: typecheck ok, `bun test src` 1404 pass / 6 skip / 0 fail, build o
 ## Tasks
 | ID | Task | Level | Role | Deps | Status |
 |---|---|---|---|---|---|
-| T0 | Design brief: DESIGN-terminal.md § Cockpit | L2 | designer | — | todo |
-| T1 | Data layer: contracts `src/shared/platform.ts`, `011_platform.sql`, `db/migrate.ts`, `PlatformStore` (memory + pg) incl. ledger append helpers, `bus.ts`, `DB_POOL_MAX`, PGlite test | L3: schema/migration design + ledger data integrity | heavy | — | todo |
-| T2a | Pure: opportunity status machine + dedupe, outcomes math, stats, liqmap aggregation (+ tests) | L2 | worker | T1 | todo |
-| T2b | Pure: features, costs (book walk), score (wraps diff.ts), crawler priority (+ tests) | L2 | worker | T1 | todo |
-| T3 | Runtime: `scripts/server.ts`, `runtime.ts`, health extension, desk loops moved, `Dockerfile`, scripts; `shared/hl-ws.ts` lift; `ws.ts` + `addresses.ts` | L2 | worker | T1 | todo |
-| T4 | Loops: scanner, crawler, liqmap snapshots, outcomes loop, prune, alerts, freshness gate | L2 | worker | T2a, T2b, T3 | todo |
-| T5 | Routes `/api/platform/*` + route tests; approve via desk/governor | L2 | worker | T2a, T2b | todo |
-| T6 | Cockpit UI at `/`, Terminal to `/terminal` | L2 | ui-impl | T0, T1 | todo |
-| T7 | README Railway section | L1 | grunt | T4 | todo |
-| G | Verification gate: review lenses, feature-finalizer, ponytail-review, drift-check, full CI + live smoke | — | reviewer | all | todo |
+| T0 | Design brief: DESIGN-terminal.md § Cockpit | L2 | designer | — | done |
+| T1 | Data layer: contracts `src/shared/platform.ts`, `011_platform.sql`, `db/migrate.ts`, `PlatformStore` (memory + pg) incl. ledger append helpers, `bus.ts`, `DB_POOL_MAX`, PGlite test | L3: schema/migration design + ledger data integrity | heavy | — | done |
+| T2a | Pure: opportunity status machine + dedupe, outcomes math, stats, liqmap aggregation (+ tests) | L2 | worker | T1 | done |
+| T2b | Pure: features, costs (book walk), score (wraps diff.ts), crawler priority (+ tests) | L2 | worker | T1 | done |
+| T3 | Runtime: `scripts/server.ts`, `runtime.ts`, health extension, desk loops moved, `Dockerfile`, scripts; `shared/hl-ws.ts` lift; `ws.ts` + `addresses.ts` | L2 | worker | T1 | done |
+| T4 | Loops: scanner, crawler, liqmap snapshots, outcomes loop, prune, alerts, freshness gate | L2 | worker | T2a, T2b, T3 | done |
+| T5 | Routes `/api/platform/*` + route tests; approve via desk/governor | L2 | worker | T2a, T2b | done |
+| T6 | Cockpit UI at `/`, Terminal to `/terminal` | L2 | ui-impl | T0, T1 | done |
+| T7 | README Railway section | L1 | grunt | T4 | done |
+| G | Verification gate: review lenses, feature-finalizer, ponytail-review, drift-check, full CI + live smoke | — | reviewer | all | in progress (fix loop 1: F1–F3, then F4 UI) |
+- Gate loop 1 (2026-10-16): CI green (1550 pass), live smoke green (crawler 400/min, BTC map 43 buckets). 7 lenses → ~50 findings. Fix wave: F1 heavy (failed status, reject only from ready, reconcile stuck approved + open→closed, desk preview+submit lock, outcome unique index, health redaction, Supabase anon/RLS), F2 (gap-normalized rv for restart blindness, cooldown, late horizons via candles, stats exclude uncosted, coverage /2·OI, fin helper), F3 (bind before boot, no pool release in long-running, crawler 500 + per-poll guard, WS stale/backoff/stagger, alert hysteresis, non-root Docker, LLM spend). F4 UI next: always-on liquidation panel + board when feed empty, warming-up, failed pill, server cluster rule, detail raw inputs. F1–F3 hit a session rate limit mid-run and were resumed.

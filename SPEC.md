@@ -456,10 +456,14 @@ src/server/platform/
   liqmap.ts                       # pure bucket aggregation + coverage; snapshot loop
   features.ts costs.ts score.ts   # pure feature set, cost model, score (wraps intel/diff.ts)
   scanner.ts                      # scan loop
-  opportunity.ts                  # pure status machine + dedupe key
-  ledger.ts outcomes.ts stats.ts  # ledger writes; pure outcome math + loop; pure stats
+  opportunity.ts                  # pure expiry + auto status (transition table lives in shared/platform.ts, enforced in store.ts)
+  outcomes.ts stats.ts            # pure outcome math; pure stats (ledger append helpers live in store.ts)
+  liqmapLoop.ts outcomesLoop.ts   # 15-min liqmap snapshots; horizon marking
+  alerts.ts reconcile.ts          # Telegram alerts; stuck-approval and open→closed reconcile
+  context.ts                      # runtime registry the routes read (null → 503 platform_offline)
 src/server/routes/platform.ts     # /api/platform/*
-src/ui/pages/cockpit/*            # landing cockpit (see DESIGN-terminal.md § Cockpit)
+src/ui/lib/platformApi.ts         # typed fetchers, parse every response with the shared schemas
+src/ui/pages/cockpit/*            # landing cockpit (see DESIGN-terminal.md § Cockpit); pure helpers in logic.ts
 ```
 
 ### P2. API delta (all under `/api/platform`, cookie auth; GETs also accept the read bearer)
