@@ -21,7 +21,7 @@ describe("computeFeatures", () => {
     for (const h of [[], ring(1), ring(20)]) {
       const fv = computeFeatures(h, NOW);
       noNaN(fv.features);
-      for (const k of ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ7d", "fundingPctile14d", "volRatio1hZ", "rvExpansion"]) expect(fv.features[k]).toBeNull();
+      for (const k of ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "fundingPctile24h", "volRatio1hZ", "rvExpansion"]) expect(fv.features[k]).toBeNull();
     }
   });
 
@@ -47,12 +47,24 @@ describe("computeFeatures", () => {
     expect(fv.features.rvExpansion!).toBeGreaterThan(1);
   });
 
-  test("funding percentile: current funding at the top of 14 d reads ~1", () => {
+  test("funding percentile: current funding at the top of the 24 h ring reads ~1", () => {
     const n = 14 * 24 * 60;
     const h = ring(n, (i) => ({ funding: 1e-5 + (i / n) * 1e-4 }));
     const fv = computeFeatures(h, NOW);
-    expect(fv.features.fundingPctile14d).toBe(1);
-    expect(computeFeatures(h.slice(0, 30), NOW).features.fundingPctile14d).toBeNull();
+    expect(fv.features.fundingPctile24h).toBe(1);
+    expect(computeFeatures(h.slice(0, 30), NOW).features.fundingPctile24h).toBeNull();
+  });
+
+  test("restart: the persisted 5-/15-min grid still yields sigma1h and setups, on the 1-min scale", () => {
+    const ref = computeFeatures(ring(24 * 60), NOW).inputs.sigma1h as number;
+    for (const step of [5, 15]) {
+      const h = ring(24 * 60).filter((_, i, a) => (a.length - 1 - i) % step === 0);
+      const fv = computeFeatures(h, NOW);
+      expect(fv.inputs.sigma1h as number).toBeGreaterThan(0);
+      expect(fv.inputs.sigma1h as number).toBeLessThan(ref * 3);
+      const hot = { ...fv, features: { ...fv.features, fundingZ24h: 3, oiChg1hZ: 2, ret15mZ: 0 } };
+      expect(setupsFor(hot, 1).map((s) => s.setupKind)).toEqual(["crowded_long"]);
+    }
   });
 
   test("liqPressure and book features only when given", () => {
@@ -91,7 +103,7 @@ describe("setupsFor", () => {
   const kinds = (fv: ReturnType<typeof base>, tier: 1 | 2 | 3 = 1) => setupsFor(fv, tier).map((s) => s.setupKind);
 
   test("crowded_long: short, stop above, target below", () => {
-    const s = setupsFor(base({ fundingZ7d: 2.5, oiChg1hZ: 1.5, ret15mZ: 0.2 }), 1);
+    const s = setupsFor(base({ fundingZ24h: 2.5, oiChg1hZ: 1.5, ret15mZ: 0.2 }), 1);
     expect(s).toHaveLength(1);
     expect(s[0]).toMatchObject({ setupKind: "crowded_long", direction: "short" });
     expect(s[0]!.stopPx).toBeCloseTo(101.5, 9);
@@ -100,7 +112,7 @@ describe("setupsFor", () => {
   });
 
   test("negative_funding_squeeze: long", () => {
-    const s = setupsFor(base({ fundingZ7d: -2, oiChg1hZ: 1.5, ret15mZ: 0 }, { funding: -1e-4 }), 1);
+    const s = setupsFor(base({ fundingZ24h: -2, oiChg1hZ: 1.5, ret15mZ: 0 }, { funding: -1e-4 }), 1);
     expect(s.map((x) => x.setupKind)).toEqual(["negative_funding_squeeze"]);
     expect(s[0]!.stopPx).toBeLessThan(100);
     expect(s[0]!.targetPx).toBeGreaterThan(100);
@@ -118,7 +130,7 @@ describe("setupsFor", () => {
   });
 
   test("tier thresholds: thinner tiers need more", () => {
-    const f = base({ fundingZ7d: 2.1, oiChg1hZ: 1.1, ret15mZ: 0 });
+    const f = base({ fundingZ24h: 2.1, oiChg1hZ: 1.1, ret15mZ: 0 });
     expect(kinds(f, 1)).toEqual(["crowded_long"]);
     expect(kinds(f, 2)).toEqual([]);
     expect(kinds(f, 3)).toEqual([]);
@@ -127,11 +139,11 @@ describe("setupsFor", () => {
 
   test("unknown features, no vol or no mark: no setups", () => {
     expect(kinds(base({}))).toEqual([]);
-    expect(kinds(base({ fundingZ7d: 3, oiChg1hZ: 2, ret15mZ: 0 }, { sigma1h: null }))).toEqual([]);
-    expect(kinds(base({ fundingZ7d: 3, oiChg1hZ: 2, ret15mZ: 0 }, { mark: null }))).toEqual([]);
+    expect(kinds(base({ fundingZ24h: 3, oiChg1hZ: 2, ret15mZ: 0 }, { sigma1h: null }))).toEqual([]);
+    expect(kinds(base({ fundingZ24h: 3, oiChg1hZ: 2, ret15mZ: 0 }, { mark: null }))).toEqual([]);
   });
 
   test("a stop that would go non-positive is dropped", () => {
-    expect(kinds(base({ fundingZ7d: -2, oiChg1hZ: 1.5, ret15mZ: 0 }, { funding: -1e-4, sigma1h: 0.9 }))).toEqual([]);
+    expect(kinds(base({ fundingZ24h: -2, oiChg1hZ: 1.5, ret15mZ: 0 }, { funding: -1e-4, sigma1h: 0.9 }))).toEqual([]);
   });
 });

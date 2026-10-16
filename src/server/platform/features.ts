@@ -2,7 +2,7 @@ import type { Side } from "../../shared/intel.js";
 import type { FeatureVector, LiquidityTier } from "../../shared/platform.js";
 import { classifyRegime } from "../desk/analytics.js";
 import type { Point } from "../intel/normalize.js";
-import { median } from "../intel/util.js";
+import { fin, median } from "../intel/util.js";
 import { robustLevelZ, robustSigma, spanResult, valueAt } from "../intel/windows.js";
 import { depthWithin, midOf, type Book } from "./costs.js";
 
@@ -10,7 +10,7 @@ import { depthWithin, midOf, type Book } from "./costs.js";
 // z-scores reuse the Flow machinery (intel/windows.ts): non-overlapping window
 // changes of the asset's own ring, median and MAD-based robust sigma. The ring
 // is 24 h, so the lookback is 1 day with at least MIN_HIST window samples
-// (fewer -> null). A feature that cannot be computed is null, never NaN.
+// (fewer -> null). fundingZ24h / fundingPctile24h are computed on that same 24 h ring (feature keys are free-form). A feature that cannot be computed is null, never NaN.
 
 export type RingPoint = { ts: number; mark: number; oiUsd: number; funding: number; dayNtlVlm: number };
 export type FeatureExtras = {
@@ -23,24 +23,23 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 const LOOKBACK = { days: 1, min: 12 };
-/** Gap beyond which two adjacent ring points are not one 1-min return. */
-const MAX_GAP_MS = 3 * MIN;
-
-const fin = (n: number | null | undefined): number | null => (n != null && Number.isFinite(n) ? n : null);
 const series = (ring: RingPoint[], f: (p: RingPoint) => number): Point[] => ring.map((p) => ({ t: p.ts, v: f(p) })).filter((p) => Number.isFinite(p.v));
 
-/** RMS of 1-min log returns in (since, now], or null below `min` returns. */
-function rv(marks: Point[], since: number, min: number): number | null {
+/**
+ * Realized vol per sqrt(minute) over (since, now]: sum(r²) / sum(Δt minutes) across consecutive points.
+ * Gap-normalized, so the 5-/15-min persisted grid after a restart gives the same scale as 1-min ticks. Null below `minMin` minutes of returns.
+ */
+function rv(marks: Point[], since: number, minMin: number): number | null {
   let ss = 0;
-  let n = 0;
+  let dt = 0;
   for (let i = 1; i < marks.length; i++) {
     const a = marks[i - 1]!;
     const b = marks[i]!;
-    if (b.t <= since || b.t - a.t > MAX_GAP_MS || !(a.v > 0) || !(b.v > 0)) continue;
+    if (b.t <= since || !(b.t > a.t) || !(a.v > 0) || !(b.v > 0)) continue;
     ss += Math.log(b.v / a.v) ** 2;
-    n++;
+    dt += (b.t - a.t) / MIN;
   }
-  return n >= min ? Math.sqrt(ss / n) : null;
+  return dt >= minMin && dt > 0 ? Math.sqrt(ss / dt) : null;
 }
 
 /** z of (r15 − r60/4) against the same statistic on the trailing 15-min grid. */
@@ -72,17 +71,18 @@ export function computeFeatures(history: RingPoint[], now: number, extras: Featu
   const oi1h = spanResult("oi_usd", oi, now, HOUR, LOOKBACK);
   // vol24h is HL's rolling 24 h notional; its 1 h log change is the proxy for "1 h volume vs the 24 h hourly mean".
   const vol1h = spanResult("vol24h", series(day, (p) => p.dayNtlVlm), now, HOUR, LOOKBACK);
-  const fundingZ7d = robustLevelZ("funding", funding.filter((p) => p.t >= now - 7 * DAY), now);
+  const fund24 = funding.filter((p) => p.t >= now - DAY);
+  const fundingZ24h = robustLevelZ("funding", fund24, now);
 
-  let fundingPctile14d: number | null = null;
-  if (last && Number.isFinite(last.funding) && funding.length >= 48) fundingPctile14d = funding.filter((p) => p.v <= last.funding).length / funding.length;
+  let fundingPctile24h: number | null = null;
+  if (last && Number.isFinite(last.funding) && fund24.length >= 48) fundingPctile24h = fund24.filter((p) => p.v <= last.funding).length / fund24.length;
 
   const rv1h = rv(marks, now - HOUR, 30);
   const rv24h = rv(marks, now - DAY, 240);
   const sigma1h = rv24h == null ? null : rv24h * Math.sqrt(60);
 
   const fundingApr = last ? last.funding * 24 * 365 * 100 : null;
-  const regime = ret1h.delta == null ? null : classifyRegime(ret1h.delta, oi1h.delta, fundingZ7d, fundingApr);
+  const regime = ret1h.delta == null ? null : classifyRegime(ret1h.delta, oi1h.delta, fundingZ24h, fundingApr);
 
   const liq = fin(extras.liqNearUsd);
   const b = extras.book ?? null;
@@ -95,8 +95,8 @@ export function computeFeatures(history: RingPoint[], now: number, extras: Featu
       ret15mZ: fin(ret15.z),
       priceAccelZ: fin(accelZ(marks, now)),
       oiChg1hZ: fin(oi1h.z),
-      fundingZ7d: fin(fundingZ7d),
-      fundingPctile14d: fin(fundingPctile14d),
+      fundingZ24h: fin(fundingZ24h),
+      fundingPctile24h: fin(fundingPctile24h),
       volRatio1hZ: fin(vol1h.z),
       rvExpansion: rv1h != null && rv24h ? fin(rv1h / rv24h) : null,
       liqPressure: liq != null && last && last.oiUsd > 0 ? fin(liq / last.oiUsd) : null,
@@ -131,7 +131,7 @@ export function liquidityTiers(universe: Array<{ coin: string; dayNtlVlm: number
 // ─── Setups ───
 
 export type Thresholds = {
-  /** |fundingZ7d| a crowded setup needs. */
+  /** |fundingZ24h| a crowded setup needs. */
   fundingZ: number;
   /** oiChg1hZ build (or drop) needed. */
   oiZ: number;
@@ -182,9 +182,9 @@ export function setupsFor(fv: FeatureVector, tier: LiquidityTier, thresholds: Re
   const ret = f.ret15mZ;
   const out: Array<{ kind: string; direction: Side; tags: string[] }> = [];
 
-  if (ge(f.fundingZ7d, T.fundingZ) && (funding ?? 0) > 0 && ge(f.oiChg1hZ, T.oiZ) && ret != null && Math.abs(ret) < T.flatZ)
+  if (ge(f.fundingZ24h, T.fundingZ) && (funding ?? 0) > 0 && ge(f.oiChg1hZ, T.oiZ) && ret != null && Math.abs(ret) < T.flatZ)
     out.push({ kind: "crowded_long", direction: "short", tags: ["crowded_long", "funding_hot", "oi_building"] });
-  if (le(f.fundingZ7d, -T.fundingZ / 2) && (funding ?? 0) < 0 && ge(f.oiChg1hZ, T.oiZ) && ge(ret, -0.5))
+  if (le(f.fundingZ24h, -T.fundingZ / 2) && (funding ?? 0) < 0 && ge(f.oiChg1hZ, T.oiZ) && ge(ret, -0.5))
     out.push({ kind: "negative_funding_squeeze", direction: "long", tags: ["negative_funding", "oi_building", "squeeze_fuel"] });
   if (le(f.oiChg1hZ, -T.oiZ) && le(ret, -T.retZ) && ge(f.rvExpansion, T.rvExpansion))
     out.push({ kind: "deleveraging_washout", direction: "long", tags: ["deleveraging", "long_flush", "vol_expansion"] });

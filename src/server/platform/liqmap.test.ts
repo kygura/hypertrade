@@ -54,8 +54,8 @@ describe("aggregate", () => {
 
 describe("coverage", () => {
   test("ratio and percentiles (nearest-rank)", () => {
-    const c = coverage(30e6, 100e6, 12, [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
-    expect(c.ratio).toBeCloseTo(0.3, 12);
+    const c = coverage(60e6, 100e6, 12, [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
+    expect(c.ratio).toBeCloseTo(0.3, 12); // 60M tracked (longs + shorts) vs 2 × 100M one-sided OI
     expect(c.addresses).toBe(12);
     expect(c.pollAgeP50Sec).toBe(50);
     expect(c.pollAgeP90Sec).toBe(90);

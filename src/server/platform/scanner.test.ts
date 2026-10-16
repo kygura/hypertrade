@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { Bus } from "./bus.js";
+import { scoreOpportunity } from "./score.js";
 import { clean, createScanner, type Info } from "./scanner.js";
 import { MemoryPlatformStore } from "./store-memory.js";
 import type { RingPoint } from "./features.js";
@@ -75,11 +76,15 @@ describe("cold-start seeding", () => {
 
 describe("scanner tick", () => {
   let s: ReturnType<typeof setup>;
-  beforeEach(async () => {
-    s = setup();
-    await s.store.insertScanSnapshots(
-      ["PUMP", "A", "B", "C", "D", "E"].flatMap((coin) => (coin === "PUMP" ? s.pumped : ring(false)).map((p) => ({ coin, ts: new Date(p.ts).toISOString(), inputs: { mark: p.mark, oiUsd: p.oiUsd, funding: p.funding, dayNtlVlm: p.dayNtlVlm } }))),
+  const seeded = async () => {
+    const x = setup();
+    await x.store.insertScanSnapshots(
+      ["PUMP", "A", "B", "C", "D", "E"].flatMap((coin) => (coin === "PUMP" ? x.pumped : ring(false)).map((p) => ({ coin, ts: new Date(p.ts).toISOString(), inputs: { mark: p.mark, oiUsd: p.oiUsd, funding: p.funding, dayNtlVlm: p.dayNtlVlm } }))),
     );
+    return x;
+  };
+  beforeEach(async () => {
+    s = await seeded();
   });
 
   test("one tick: ranked opportunity with costs, a created ledger entry, calculated -> ready, events", async () => {
@@ -146,5 +151,58 @@ describe("scanner tick", () => {
     t += MIN;
     await sc.tick();
     expect((await s.store.getOpportunity(o!.id))!.status).toBe("expired");
+  });
+
+  test("determinism: the score recomputed from the created entry's stored features equals the stored score", async () => {
+    const sc = createScanner({ store: s.store, info: s.info, now: () => NOW + MIN, bus: s.bus });
+    await sc.tick();
+    const created = s.store.ledger.filter((e) => e.kind === "created");
+    expect(created.length).toBeGreaterThan(0);
+    for (const e of created) if (e.kind === "created") expect(scoreOpportunity(e.payload.features)).toBe(e.payload.score);
+  });
+
+  test("cooldown: a rejected key is not recreated until PLATFORM_COOLDOWN_MIN has passed", async () => {
+    let t = NOW + MIN;
+    const sc = createScanner({ store: s.store, info: s.info, now: () => t, bus: s.bus, cooldownMin: 10 });
+    await sc.tick();
+    const [o] = await s.store.listOpportunities({ statuses: ["ready"], limit: 1 });
+    const seen = { score: o!.score, scoreVersion: "v", features: { features: {}, inputs: {} }, stopPx: 1, targetPx: 2, invalidationPx: 1, regime: "range", liquidityTier: 1 as const, costs: null };
+    await s.store.transitionOpportunity(o!.id, "ready", "rejected", "operator", { decision: "reject", reason: "no", operator: "op", seen });
+    const pump = async () => (await s.store.listOpportunities({ limit: 50 })).filter((x) => x.coin === "PUMP").length;
+    const before = await pump();
+    s.store.opportunities.get(o!.id)!.statusChangedAt = new Date(t - 5 * MIN).toISOString();
+    t += MIN;
+    await sc.tick();
+    expect(await pump()).toBe(before); // 6 min after the reject: still cooling down
+    s.store.opportunities.get(o!.id)!.statusChangedAt = new Date(t - 11 * MIN).toISOString();
+    t += MIN;
+    await sc.tick();
+    expect(await pump()).toBe(before + 1);
+  });
+
+  test("ledger edge basis: net is the 4 h mean and gross = net + costs, so net = gross − costs holds", async () => {
+    const probe = await seeded();
+    await createScanner({ store: probe.store, info: probe.info, now: () => NOW + MIN, bus: probe.bus }).tick();
+    const kind = (await probe.store.listOpportunities({ limit: 1 }))[0]!.setupKind;
+    const { opportunity: old } = await s.store.upsertOpportunity(
+      { coin: "OLD", direction: "long", setupKind: kind, tradeType: "directional", score: 1, scoreVersion: "v", tags: [], liquidityTier: 1, regime: "range", invalidation: "x", entryPx: 100, stopPx: 98, targetPx: 104, invalidationPx: 98 },
+      { features: { features: {}, inputs: {} }, market: {}, score: 1, scoreVersion: "v" },
+    );
+    await s.store.setOpportunityCosts(old.id, { feeBps: 5, slippageBps: 3, fundingBps: 2, absorbableUsd: 1e4, grossEdgeBps: 400, netEdgeBps: 385, edgeBasis: "unvalidated" });
+    await s.store.appendLedger({ opportunityId: old.id, kind: "outcome", payload: { horizon: "4h", entryBasis: "mark", entryPx: 100, horizonPx: 102, grossReturn: 0.02, netReturn: 0.0185 } });
+    await createScanner({ store: s.store, info: s.info, now: () => NOW + MIN, bus: s.bus, edgeMinN: 1 }).tick();
+    const o = (await s.store.listOpportunities({ limit: 50 })).find((x) => x.coin === "PUMP" && x.setupKind === kind)!;
+    expect(o.edgeBasis).toBe("ledger");
+    expect(o.netEdgeBps).toBeCloseTo(185, 6);
+    expect(o.netEdgeBps).toBeCloseTo(o.grossEdgeBps! - 2 * o.costs!.feeBps - o.costs!.slippageBps - o.costs!.fundingBps, 6);
+  });
+
+  test("latestMark is null once older than 2 scan intervals", async () => {
+    let t = NOW + MIN;
+    const sc = createScanner({ store: s.store, info: s.info, now: () => t, bus: s.bus });
+    await sc.tick();
+    expect(sc.latestMark("PUMP")).not.toBeNull();
+    t += 2 * MIN + 1;
+    expect(sc.latestMark("PUMP")).toBeNull();
   });
 });

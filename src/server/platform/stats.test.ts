@@ -3,10 +3,15 @@ import { groupStats } from "./stats.js";
 import type { OutcomeRow } from "./store.js";
 
 const row = (netReturn: number, o: Partial<OutcomeRow> = {}): OutcomeRow => ({
-  opportunityId: crypto.randomUUID(), setupKind: "squeeze", regime: "trend", liquidityTier: 1, horizon: "1h", grossReturn: netReturn, netReturn, ...o,
+  opportunityId: crypto.randomUUID(), setupKind: "squeeze", regime: "trend", liquidityTier: 1, horizon: "1h", grossReturn: netReturn, netReturn, hasCosts: true, ...o,
 });
 
 describe("groupStats", () => {
+  test("rows without a cost breakdown are excluded", () => {
+    const [s] = groupStats([row(0.01), row(0.5, { hasCosts: false })]);
+    expect(s.n).toBe(1);
+    expect(s.meanNet).toBeCloseTo(0.01, 12);
+  });
   test("n >= 5: hitRate, mean and t-interval (df 4, t = 2.776)", () => {
     const [s] = groupStats([0.01, 0.02, 0.03, 0.04, 0.05].map((x) => row(x)));
     // mean .03, sd = sqrt(2.5e-4) = .0158114, half-width = 2.776 * .0158114 / sqrt(5) = .019630

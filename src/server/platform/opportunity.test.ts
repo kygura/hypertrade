@@ -1,20 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { OPPORTUNITY_TRANSITIONS, OpportunityStatusSchema, type OpportunityStatus } from "../../shared/platform.js";
-import { canTransition, nextAutoStatus, shouldExpire } from "./opportunity.js";
+import { nextAutoStatus, shouldExpire } from "./opportunity.js";
 
 const costs = { feeBps: 4.5, slippageBps: 2, fundingBps: 1, absorbableUsd: 50_000 };
 const ctx = { researchScore: 0.8, researchAllowed: true };
 const all = OpportunityStatusSchema.options;
-
-describe("canTransition", () => {
-  test("every legal transition passes and every other pair is rejected", () => {
-    for (const from of all) for (const to of all) {
-      expect(canTransition(from, to)).toBe(OPPORTUNITY_TRANSITIONS[from].includes(to));
-    }
-    expect(canTransition("new", "ready")).toBe(false);
-    expect(canTransition("closed", "new")).toBe(false);
-  });
-});
 
 describe("shouldExpire", () => {
   const opp = { status: "ready" as const, statusChangedAt: "2026-10-13T12:00:00Z" };
@@ -52,7 +42,7 @@ describe("nextAutoStatus", () => {
       const next = nextAutoStatus(o(s, score, c), { researchScore: 0.8, researchAllowed: allowed });
       if (next === null) continue;
       expect(["investigating", "calculated", "ready"]).toContain(next);
-      expect(canTransition(s, next)).toBe(true);
+      expect(OPPORTUNITY_TRANSITIONS[s]).toContain(next);
     }
   });
 });

@@ -18,7 +18,7 @@ export function dueHorizons(createdAt: string, horizons: string[], alreadyMarked
   return horizons.filter((h) => !alreadyMarked.includes(h) && now.getTime() - t >= horizonMs(h));
 }
 
-/** direction × (horizonPx/entryPx − 1) minus round-trip fees, slippage and funding (bps). Throws on non-positive prices. */
+/** direction × (horizonPx/entryPx − 1) minus round-trip fees, slippage and funding, as a fraction (0.01 = 1%). Throws on non-positive prices. */
 export function netReturn(a: { direction: Opportunity["direction"]; entryPx: number; horizonPx: number; costs: Pick<Costs, "feeBps" | "slippageBps" | "fundingBps"> }): number {
   if (!(a.entryPx > 0) || !(a.horizonPx > 0) || !Number.isFinite(a.entryPx) || !Number.isFinite(a.horizonPx)) throw new Error("prices must be finite and positive");
   const sign = a.direction === "long" ? 1 : -1;

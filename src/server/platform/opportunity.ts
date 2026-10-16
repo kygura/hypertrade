@@ -1,6 +1,4 @@
-import { OPPORTUNITY_TRANSITIONS, type Costs, type Opportunity, type OpportunityStatus } from "../../shared/platform.js";
-
-export const canTransition = (from: OpportunityStatus, to: OpportunityStatus) => OPPORTUNITY_TRANSITIONS[from].includes(to);
+import type { Costs, Opportunity, OpportunityStatus } from "../../shared/platform.js";
 
 /** P0.11: a ready idea expires after ttlMin without a decision. Measured from statusChangedAt (set on creation and every status move, never by a rescan). */
 export function shouldExpire(opp: Pick<Opportunity, "status" | "statusChangedAt">, now: Date, ttlMin: number): boolean {

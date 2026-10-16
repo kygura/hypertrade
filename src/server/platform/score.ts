@@ -1,7 +1,6 @@
 import type { FeatureVector } from "../../shared/platform.js";
 import { materiality, type SignalSource } from "../intel/diff.js";
 import { round } from "../intel/util.js";
-import type { Setup } from "./features.js";
 
 // Opportunity score (SPEC.md § Platform P0.10, P0.12). Pure and deterministic:
 // the same stored feature vector reproduces the same number (the replay guarantee).
@@ -11,18 +10,18 @@ import type { Setup } from "./features.js";
 //   proximity 1: no stop distance to a held position
 //   k         independent signal classes showing at once (confluence): snapshot
 //             (price/OI z), flow (funding or volume z), regime (quadrant is not "range")
-// The setup does not change the number today (kind, direction and levels are
-// ticket data); it is a parameter so versions can weigh setups without a signature change.
+// The setup does not change the number (kind, direction and levels are ticket data).
 // Bump SCORE_VERSION whenever any of this changes; the ledger stores it beside the score.
 
 export const SCORE_VERSION = "score-v1";
 /** |z| at which a feature counts as an active signal for confluence. */
 const ACTIVE_Z = 1;
-const Z_KEYS = ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ7d", "volRatio1hZ"] as const;
+/** The z-features: the single definition (surprise = the largest |z| among them). fundingZ24h is a 24 h-ring z. */
+export const Z_KEYS = ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "volRatio1hZ"] as const;
 const SNAPSHOT_KEYS = ["ret15mZ", "priceAccelZ", "oiChg1hZ"];
-const FLOW_KEYS = ["fundingZ7d", "volRatio1hZ"];
+const FLOW_KEYS = ["fundingZ24h", "volRatio1hZ"];
 
-export function scoreOpportunity(fv: FeatureVector, _setup?: Pick<Setup, "setupKind" | "direction">): number {
+export function scoreOpportunity(fv: FeatureVector): number {
   const abs = (keys: readonly string[]) => Math.max(0, ...keys.map((k) => fv.features[k]).filter((z): z is number => z != null && Number.isFinite(z)).map(Math.abs));
   const active = new Set<SignalSource>();
   if (abs(SNAPSHOT_KEYS) >= ACTIVE_Z) active.add("snapshot");

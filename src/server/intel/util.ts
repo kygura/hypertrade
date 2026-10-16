@@ -20,3 +20,6 @@ export function median(xs: number[]): number {
   const m = s.length >> 1;
   return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
 }
+
+/** The number if finite, else null. */
+export const fin = (n: number | null | undefined): number | null => (n != null && Number.isFinite(n) ? n : null);

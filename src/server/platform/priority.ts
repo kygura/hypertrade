@@ -1,4 +1,5 @@
 import type { AddressRow } from "../../shared/platform.js";
+import { fin } from "../intel/util.js";
 
 // Crawler priority (SPEC.md § Platform P0.6). Pure. Order of the result:
 //   1. never polled (largest last-known notional first, then most recently seen)
@@ -14,12 +15,10 @@ export const DEFAULT_IDLE_INTERVAL_MIN = 60;
 /** proximity = 1 / clamp(minLiqDistance, MIN_DIST, 1): a 1% distance scores 100, a 30% one 3.3. No liquidation price scores 1. */
 const MIN_DIST = 0.01;
 
-const num = (n: number | null | undefined, fallback: number) => (n != null && Number.isFinite(n) ? n : fallback);
-
 export function priority(c: Candidate, now: number): number {
   const age = c.polledAt ? Math.max(1, (now - Date.parse(c.polledAt)) / 1000) : 1;
   const dist = c.minLiqDistance == null || !Number.isFinite(c.minLiqDistance) ? 1 : Math.min(1, Math.max(MIN_DIST, c.minLiqDistance));
-  return Math.max(0, num(c.notionalUsd, 0)) * (1 / dist) * age;
+  return Math.max(0, fin(c.notionalUsd) ?? 0) * (1 / dist) * age;
 }
 
 export function rankCandidates<T extends Candidate>(candidates: T[], now: number, o: { maxAgeMin: number; idleIntervalMin?: number }): T[] {
@@ -41,7 +40,7 @@ export function rankCandidates<T extends Candidate>(candidates: T[], now: number
   return keyed
     .sort((a, b) =>
       a.t - b.t ||
-      (a.t === 0 ? num(b.c.notionalUsd, 0) - num(a.c.notionalUsd, 0) || seen(b.c) - seen(a.c) : a.t === 3 ? age(b.c) - age(a.c) : b.p - a.p) ||
+      (a.t === 0 ? (fin(b.c.notionalUsd) ?? 0) - (fin(a.c.notionalUsd) ?? 0) || seen(b.c) - seen(a.c) : a.t === 3 ? age(b.c) - age(a.c) : b.p - a.p) ||
       (a.c.address < b.c.address ? -1 : 1),
     )
     .map((k) => k.c);
