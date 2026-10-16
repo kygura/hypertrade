@@ -182,6 +182,17 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(await s.setOpportunityCosts(o3, costs)).toBeNull();
   put("ledger.o3", await s.ledgerFor(o3));
   expect((out["ledger.o3"] as { kind: string }[]).map((e) => e.kind)).toEqual(["created", "status", "status", "status", "decision"]);
+  // Gate amendment: approved ends in open or failed (system only); rejected only from ready.
+  await expect(s.transitionOpportunity(o3, "approved", "rejected", "operator", reject)).rejects.toThrow(/illegal/);
+  await expect(s.transitionOpportunity(o3, "approved", "failed", "operator")).rejects.toThrow(/system/);
+  expect(await s.lastTerminalAt("SOL|long|breakout")).toBeNull();
+  put("opp.failed", await s.transitionOpportunity(o3, "approved", "failed", "system", undefined, { ref: null, reason: "placement failed: venue down" }));
+  expect((await s.ledgerFor(o3)).at(-1)!.payload).toEqual({ from: "approved", to: "failed", actor: "system", ref: null, reason: "placement failed: venue down" });
+  expect((await s.lastTerminalAt("SOL|long|breakout"))!.toISOString()).toBe((await s.getOpportunity(o3))!.statusChangedAt);
+  expect(await s.lastTerminalAt("BTC|long|breakout")).toBeInstanceOf(Date);
+  expect(await s.lastTerminalAt("nope")).toBeNull();
+  expect(await s.transitionOpportunity("not-a-uuid", "approved", "failed", "system")).toBeNull();
+  expect(await s.setOpportunityCosts("not-a-uuid", costs)).toBeNull();
 
   put("opp.costs", await s.setOpportunityCosts(o2, costs));
   expect((await s.getOpportunity(o2))!).toMatchObject({ costs: { feeBps: 4.5, slippageBps: 2, fundingBps: 1, absorbableUsd: 50000 }, grossEdgeBps: 30, netEdgeBps: 18 });
@@ -191,11 +202,12 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((await s.snoozeOpportunity(o2, null))!.snoozedUntil).toBeNull();
   expect(await s.snoozeOpportunity(crypto.randomUUID(), null)).toBeNull();
   expect((await s.listOpportunities({ statuses: ["rejected", "new"], limit: 10 })).map((o) => o.id)).toEqual([o2, o1, again.opportunity.id]);
-  expect((await s.listOpportunities({ statuses: ["approved"], limit: 10 })).map((o) => o.id)).toEqual([o3]);
+  expect((await s.listOpportunities({ statuses: ["failed"], limit: 10 })).map((o) => o.id)).toEqual([o3]);
 
   // ledger
   put("ledger.research", await s.appendLedger({ opportunityId: o2, kind: "research", payload: { researchId: "r1", model: "m", promptVersion: "p1", sources: ["https://example.com/a"] } }));
   put("ledger.outcome", await s.appendLedger(outcome(o1)));
+  expect(await s.appendLedger({ ...outcome(o1), payload: { ...outcome(o1).payload, horizonPx: 1 } })).toBeNull(); // one outcome per horizon
   await expect(s.appendLedger(outcome(crypto.randomUUID()))).rejects.toThrow(/unknown/);
   await expect(s.appendLedger({ ...outcome(o1), payload: { ...outcome(o1).payload, entryPx: -1 } })).rejects.toThrow();
   await expect(s.appendLedger({ opportunityId: o1, kind: "status", payload: { from: "new", to: "closed", actor: "system" } } as never)).rejects.toThrow(/research or outcome/);
@@ -203,7 +215,7 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((out["ledger.o1"] as { kind: string }[]).map((e) => e.kind)).toEqual(["created", "status", "status", "status", "decision", "outcome"]);
   put("ledger.o2", await s.ledgerFor(o2));
   expect(await s.ledgerFor("not-a-uuid")).toEqual([]);
-  expect(await s.outcomeRows({})).toEqual([{ opportunityId: o1, setupKind: "breakout", regime: "new_longs", liquidityTier: 1, horizon: "1h", grossReturn: 0.01, netReturn: 0.0091 }]);
+  expect(await s.outcomeRows({})).toEqual([{ opportunityId: o1, setupKind: "breakout", regime: "new_longs", liquidityTier: 1, horizon: "1h", grossReturn: 0.01, netReturn: 0.0091, hasCosts: false }]);
   expect(await s.outcomeRows({ setupKind: "breakout", regime: "new_longs", tier: 1 })).toHaveLength(1);
   expect(await s.outcomeRows({ tier: 2 })).toEqual([]);
   expect(await s.outcomeRows({ regime: "range" })).toEqual([]);

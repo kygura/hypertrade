@@ -43,6 +43,16 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    alter default privileges for role postgres in schema public
      grant usage, select on sequences to hypertrade_app;
    revoke update, delete, truncate on ledger_entries from hypertrade_app;
+   -- Supabase exposes public over PostgREST to the anon key: shut that door. Covers every
+   -- table, older ones (001–010) included; the app talks Postgres directly, not PostgREST.
+   revoke all on all tables in schema public from anon, authenticated;
+   alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated;
+   -- RLS with no anon/authenticated policy: PostgREST is denied even if a grant comes back.
+   -- The owner bypasses RLS; hypertrade_app gets the only policy (RLS binds every non-owner role).
+   alter table ledger_entries enable row level security;
+   alter table opportunities enable row level security;
+   create policy app_all on ledger_entries for all to hypertrade_app using (true) with check (true);
+   create policy app_all on opportunities for all to hypertrade_app using (true) with check (true);
    ```
 
    Point `DATABASE_URL` at the same pooler with the `hypertrade_app` user (Supabase usually wants `hypertrade_app.<project-ref>`; copy the exact string from the Connect panel). Leave `MIGRATE_ON_BOOT` unset: this role cannot create tables. Migrations run as the owner, with `DATABASE_URL=<owner pooler URL> bun run db:migrate`. There is no separate migrate URL.
@@ -76,7 +86,7 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `PLATFORM_OUTCOME_HORIZONS` (`1h,4h,24h,72h`) | Outcome horizons. |
    | `PLATFORM_EDGE_MIN_N` (30) | Resolved outcomes needed before edge leaves `unvalidated`. |
    | `PLATFORM_READY_TTL_MIN` (60) | Minutes before an undecided `ready` opportunity expires. |
-   | `PLATFORM_RESEARCH_SCORE` (4) | Score that triggers research. |
+   | `PLATFORM_RESEARCH_SCORE` (4) | Reserved; research is operator-triggered in phase 8. |
    | `PLATFORM_PUSH_SCORE` (3) | Score that triggers a Telegram alert on `ready`. |
    | `DESK_WORKER_TICK_SEC` (60) | Desk watch tick period, minimum 30. |
    | `DESK_MAX_CYCLES_PER_DAY` (8) | Agent cycle budget per day. |

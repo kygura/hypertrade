@@ -5,6 +5,9 @@ import {
   diffPositions,
   isLive,
   isPreDecision,
+  isTerminal,
+  transitionEntries,
+  UUID,
   parsePoll,
   normalizeSightings,
   parseEntry,
@@ -154,10 +157,10 @@ export class MemoryPlatformStore implements PlatformStore {
       .map(clone);
   }
 
-  async transitionOpportunity(...[id, from, to, actor, decision, ref]: Parameters<PlatformStore["transitionOpportunity"]>) {
+  async transitionOpportunity(...[id, from, to, actor, decision, note]: Parameters<PlatformStore["transitionOpportunity"]>) {
     checkTransition(from, to, actor, decision);
-    const entries = [parseEntry({ opportunityId: id, kind: "status", payload: { from, to, actor, ...(ref ? { ref } : {}) } })];
-    if (decision) entries.push(parseEntry({ opportunityId: id, kind: "decision", payload: decision }));
+    if (!UUID.test(id)) return null;
+    const entries = transitionEntries(id, from, to, actor, decision, note);
     const o = this.opportunities.get(id);
     if (!o || o.status !== from) return null;
     o.status = to;
@@ -166,7 +169,13 @@ export class MemoryPlatformStore implements PlatformStore {
     return clone(o);
   }
 
+  async lastTerminalAt(key: string) {
+    const ts = [...this.opportunities.values()].filter((o) => o.dedupeKey === key && isTerminal(o.status)).map((o) => o.statusChangedAt).sort().at(-1);
+    return ts ? new Date(ts) : null;
+  }
+
   async setOpportunityCosts(id: string, c: LedgerPayload<"costs">) {
+    if (!UUID.test(id)) return null;
     const entry = parseEntry({ opportunityId: id, kind: "costs", payload: c });
     const o = this.opportunities.get(id);
     if (!o || !isPreDecision(o.status)) return null;
@@ -188,6 +197,7 @@ export class MemoryPlatformStore implements PlatformStore {
     if (e.kind !== "research" && e.kind !== "outcome") throw new Error(`appendLedger takes research or outcome, not ${(e as NewLedgerEntry).kind}`);
     const entry = parseEntry(e);
     if (!this.opportunities.has(e.opportunityId)) throw new Error(`unknown opportunity ${e.opportunityId}`);
+    if (e.kind === "outcome" && this.ledger.some((x) => x.kind === "outcome" && x.opportunityId === e.opportunityId && x.payload.horizon === e.payload.horizon)) return null;
     return clone(this.push(entry));
   }
 
@@ -203,7 +213,7 @@ export class MemoryPlatformStore implements PlatformStore {
       if ((setupKind && o.setupKind !== setupKind) || (regime && o.regime !== regime) || (tier !== undefined && o.liquidityTier !== tier)) continue;
       out.push({
         opportunityId: o.id, setupKind: o.setupKind, regime: o.regime, liquidityTier: o.liquidityTier,
-        horizon: e.payload.horizon, grossReturn: e.payload.grossReturn, netReturn: e.payload.netReturn,
+        horizon: e.payload.horizon, grossReturn: e.payload.grossReturn, netReturn: e.payload.netReturn, hasCosts: o.costs != null,
       });
     }
     return out;

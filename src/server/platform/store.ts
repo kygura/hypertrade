@@ -6,6 +6,8 @@ import {
   OPPORTUNITY_TRANSITIONS,
   PolledPositionSchema,
   PRE_DECISION_STATUSES,
+  SYSTEM_ONLY,
+  TERMINAL_STATUSES,
   type AddressRow,
   type LedgerEntry,
   type LedgerPayload,
@@ -71,7 +73,12 @@ export interface OutcomeRow {
   horizon: string;
   grossReturn: number;
   netReturn: number;
+  /** The opportunity has a cost breakdown; stats exclude rows without one (P0.13). */
+  hasCosts: boolean;
 }
+
+/** Extra fields on a `status` entry: the desk proposal id and, for code-made moves, why. */
+export type StatusNote = Pick<LedgerPayload<"status">, "ref" | "reason">;
 
 export interface PlatformStore {
   /** Address book upsert (P0.4 ws). Invalid addresses are dropped; duplicates keep the latest sighting. Returns addresses written. */
@@ -115,8 +122,8 @@ export interface PlatformStore {
   listOpportunities(opts: { statuses?: OpportunityStatus[]; tier?: LiquidityTier; limit: number }): Promise<Opportunity[]>;
   /**
    * Compare-and-set status move plus its `status` entry (and the operator's `decision` entry for approved/rejected).
-   * Throws on an illegal transition (checkTransition) or a bad payload; null when the row is missing or no longer at
-   * `from`. Sets statusChangedAt.
+   * Throws on an illegal transition (checkTransition) or a bad payload; null when the id is malformed, the row is
+   * missing or no longer at `from`. Sets statusChangedAt.
    */
   transitionOpportunity(
     id: string,
@@ -124,16 +131,21 @@ export interface PlatformStore {
     to: OpportunityStatus,
     actor: LedgerPayload<"status">["actor"],
     decision?: LedgerPayload<"decision">,
-    /** Recorded on the `status` entry (approved -> open: the desk proposal id). */
-    ref?: string,
+    /** Recorded on the `status` entry (approved -> open | failed: the desk proposal id and reason). */
+    note?: StatusNote,
   ): Promise<Opportunity | null>;
-  /** Sets costs and edge on a pre-decision opportunity and appends the `costs` entry. Null when missing or past the decision. */
+  /** Cooldown (P0.11): latest statusChangedAt among the key's rejected, expired, failed or closed rows; null when none. */
+  lastTerminalAt(dedupeKey: string): Promise<Date | null>;
+  /** Sets costs and edge on a pre-decision opportunity and appends the `costs` entry. Null when malformed, missing or past the decision. */
   setOpportunityCosts(id: string, c: LedgerPayload<"costs">): Promise<Opportunity | null>;
   /** Projection only: snooze is a field, not a state. Null when missing. */
   snoozeOpportunity(id: string, until: string | null): Promise<Opportunity | null>;
 
-  /** Appends a `research` or `outcome` entry (the other kinds go through the methods above). Throws for a missing opportunity. */
-  appendLedger(e: Extract<NewLedgerEntry, { kind: "research" | "outcome" }>): Promise<LedgerEntry>;
+  /**
+   * Appends a `research` or `outcome` entry (the other kinds go through the methods above). Throws for a missing
+   * opportunity. An outcome for an (opportunity, horizon) that already has one is ignored: null (P0.13, unique index).
+   */
+  appendLedger(e: Extract<NewLedgerEntry, { kind: "research" | "outcome" }>): Promise<LedgerEntry | null>;
   /** Entries for one opportunity in insertion order. */
   ledgerFor(opportunityId: string): Promise<LedgerEntry[]>;
   /** Every outcome entry joined with its opportunity, in insertion order. */
@@ -145,8 +157,10 @@ export interface PlatformStore {
 export const dedupeKey = (o: Pick<Opportunity, "coin" | "direction" | "setupKind">) => `${o.coin}|${o.direction}|${o.setupKind}`;
 export const isLive = (s: OpportunityStatus) => LIVE_STATUSES.includes(s);
 export const isPreDecision = (s: OpportunityStatus) => PRE_DECISION_STATUSES.includes(s);
+export const isTerminal = (s: OpportunityStatus) => TERMINAL_STATUSES.includes(s);
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Throws unless from → to is in the P0.11 machine and operator-only moves come from an operator with a matching decision. */
+/** Throws unless from → to is in the P0.11 machine, operator-only moves come from an operator with a matching decision, and system-only moves from the system. */
 export function checkTransition(
   from: OpportunityStatus,
   to: OpportunityStatus,
@@ -158,10 +172,20 @@ export function checkTransition(
     if (actor !== "operator") throw new Error(`${to} comes only from an operator`);
     if (decision?.decision !== (to === "approved" ? "approve" : "reject")) throw new Error(`${to} needs a matching decision entry`);
   } else if (decision) throw new Error(`a decision entry only goes with approved or rejected`);
+  if (SYSTEM_ONLY.includes(to) && actor !== "system") throw new Error(`${to} comes only from the system`);
 }
 
 /** Zod gate in front of every ledger insert. */
 export const parseEntry = (e: NewLedgerEntry): NewLedgerEntry => NewLedgerEntrySchema.parse(e);
+
+/** The `status` (+ `decision`) entries of one move, validated. */
+export function transitionEntries(...[id, from, to, actor, decision, note]: Parameters<PlatformStore["transitionOpportunity"]>): NewLedgerEntry[] {
+  checkTransition(from, to, actor, decision);
+  const payload = { from, to, actor, ...(note?.ref !== undefined ? { ref: note.ref } : {}), ...(note?.reason ? { reason: note.reason } : {}) };
+  const entries = [parseEntry({ opportunityId: id, kind: "status", payload })];
+  if (decision) entries.push(parseEntry({ opportunityId: id, kind: "decision", payload: decision }));
+  return entries;
+}
 
 /** Lowercases, drops invalid addresses, and keeps the latest sighting per address. */
 export function normalizeSightings(rows: AddressSighting[]): AddressSighting[] {

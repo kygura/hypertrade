@@ -1,6 +1,7 @@
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { handle } from "hono/vercel";
-import { requireAuth } from "../src/server/auth.js";
+import { requireAuth, verifySession } from "../src/server/auth.js";
 import { mcpRoutes } from "../src/server/mcp/http.js";
 import { labRegistry } from "../src/server/mcp/lab.js";
 import { getHealthExtras } from "../src/server/platform/runtime.js";
@@ -40,10 +41,14 @@ app.use("*", requireAuth);
 
 // Public, and it answers even when loops are down: platform fields are added
 // by scripts/server.ts (absent on Vercel), a failing provider never fails the probe.
+// Without a session it shows only loop names/ok and WS state; errors and counts need a login.
 app.get("/health", async (c) => {
   const base = { ok: true, ts: new Date().toISOString() };
   try {
-    return c.json({ ...base, ...(await getHealthExtras()?.()) });
+    const extras = await getHealthExtras()?.();
+    // "ht_session" is auth.ts COOKIE_NAME.
+    if (!extras || verifySession(getCookie(c, "ht_session"))) return c.json({ ...base, ...extras });
+    return c.json({ ...base, ...(extras.loops ? { loops: extras.loops.map(({ name, ok }) => ({ name, ok })) } : {}), ...(extras.ws ? { ws: extras.ws } : {}) });
   } catch (err) {
     console.error("[health] extras failed:", err);
     return c.json(base);

@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import {
-  FeedQuerySchema, FeedRowSchema, LedgerStatsQuerySchema, LiqMapHistoryQuerySchema, LiqMapQuerySchema, RejectBodySchema, SnoozeBodySchema,
-  type Costs, type LedgerEntry, type LedgerPayload, type Opportunity, type RiskVerdictSchema,
+  FeedQuerySchema, FeedRowSchema, LedgerStatsQuerySchema, LiqBoardQuerySchema, LiqMapHistoryQuerySchema, LiqMapQuerySchema, RejectBodySchema, SnoozeBodySchema,
+  type Costs, type LedgerEntry, type LedgerPayload, type LiqBoardResponse, type Opportunity, type Position, type RiskVerdictSchema,
 } from "../../shared/platform.js";
 import type { Side } from "../../shared/intel.js";
 import type { ResearchResult } from "../../shared/intel.js";
@@ -19,7 +19,8 @@ import { body, failure, invalid } from "./intel/http.js";
 
 // /api/platform (SPEC.md § Platform P2). Cookie auth; GETs also take the read bearer (READ_PATH in auth.ts).
 // Every route answers 503 {error:"platform_offline"} while no PlatformContext is set (the worker loops are not running).
-// Approval reaches the book only through the desk's governor: preview → submitOperatorOrder.
+// Approval reaches the book only through the desk's governor: placeOperatorOrder (preview + submit under one lock).
+// After approval the idea ends open (filled) or failed (system); a lost transition stays approved for reconcile.ts.
 
 export type RiskVerdict = z.infer<typeof RiskVerdictSchema>;
 /** What an opportunity asks the governor to size and place; sizing is the governor's, never ours. */
@@ -29,7 +30,7 @@ export interface Placement { status: string; reasons: string[]; proposalId: stri
 export interface RiskGate {
   /** Read-only: the portfolio before and the governor's verdict on adding the ticket. */
   assess(t: Ticket): Promise<{ before: RiskVerdict; after: RiskVerdict }>;
-  /** Preview and submit on the desk's venue (paper or testnet). Records a blocked verdict instead of executing it. */
+  /** Preview and submit on the desk's venue (paper or testnet). Records a blocked verdict instead of executing it. Never throws after a fill. */
   place(t: Ticket, by: string): Promise<Placement>;
 }
 
@@ -74,9 +75,7 @@ export function deskRisk(get: () => DeskService): RiskGate {
     },
     async place(t, by) {
       const d = get();
-      const o = order(t, d.config.limits.maxRiskPct);
-      const pv = await d.previewOperatorOrder(o);
-      const rec = await d.submitOperatorOrder(o, { previewHash: pv.previewHash }, by);
+      const rec = await d.placeOperatorOrder(order(t, d.config.limits.maxRiskPct), by);
       return { status: rec.status, reasons: rec.verdict.reasons, proposalId: rec.id };
     },
   };
@@ -103,7 +102,10 @@ export function defaultPlatformDeps(): PlatformDeps {
 const IdSchema = z.string().uuid();
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const seenAge = (iso: string, now: Date) => Math.max(0, (now.getTime() - Date.parse(iso)) / 1000);
+// score.ts keeps its Z_KEYS private; the name pattern stands in until it exports Z_FEATURE_KEYS.
 const Z_NAME = /Z(\d+d)?$/;
+const BOARD_BUCKET_BPS = 25;
+const BOARD_RANGE = 0.2;
 
 export function createPlatformRoutes(deps: PlatformDeps) {
   const cache = new Map<string, { at: number; value: unknown }>();
@@ -121,6 +123,10 @@ export function createPlatformRoutes(deps: PlatformDeps) {
     const snap = (await ctx.store.scanSnapshotsSince(new Date(now.getTime() - 3_600_000).toISOString())).filter((s) => s.coin === coin).at(-1);
     return { mark: ctx.mid(coin) ?? num(snap?.inputs.mark), oiUsd: num(snap?.inputs.oiUsd) };
   };
+
+  /** liqmap.coverage owns the ratio (P0.8); this only gathers its inputs. */
+  const coverageOf = (positions: Position[], oiUsd: number | null, now: Date) =>
+    coverage(positions.reduce((s, p) => s + p.positionValue, 0), oiUsd ?? 0, new Set(positions.map((p) => p.address)).size, positions.map((p) => seenAge(p.updatedAt, now)));
 
   const ticketOf = (o: Opportunity): Ticket | null => (o.stopPx == null ? null : { coin: o.coin, side: o.direction, stopPx: o.stopPx, targetPx: o.targetPx });
   const created = (entries: Awaited<ReturnType<PlatformContext["store"]["ledgerFor"]>>) => entries.find((e) => e.kind === "created");
@@ -170,7 +176,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       if (ticket) risk = await deps.risk.assess(ticket).catch((err) => (console.error("[platform] risk preview failed", err), null));
       const rid = entries.filter((e): e is Extract<LedgerEntry, { kind: "research" }> => e.kind === "research").at(-1)?.payload.researchId;
       const research = rid ? await deps.research.get(rid, opp.coin).catch(() => null) : null;
-      const size = risk?.after.sizing as { notionalUsd?: number } | undefined;
+      const size = risk?.after.sizing;
       return c.json({
         opportunity: opp,
         signals,
@@ -206,14 +212,22 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       const approved = await ctx.store.transitionOpportunity(opp.id, "ready", "approved", "operator", decision(opp, entry, "approve", null)).catch(() => null);
       if (!approved) return c.json({ error: "illegal_transition", message: "opportunity is no longer ready" }, 409);
 
+      // placeOperatorOrder never throws after a fill, so a throw here means nothing was placed.
       const placed = await deps.risk.place(ticket, OPERATOR).catch((err) => ({ status: "failed", reasons: [err instanceof Error ? err.message : String(err)], proposalId: "" }));
+      const ref = placed.proposalId || null;
       if (placed.status !== "executed") {
         const reason = `placement ${placed.status}: ${placed.reasons.join("; ") || "no detail"}`.slice(0, 2000);
-        await ctx.store.transitionOpportunity(opp.id, "approved", "rejected", "operator", decision(approved, entry, "reject", reason));
+        const failed = await ctx.store.transitionOpportunity(opp.id, "approved", "failed", "system", undefined, { ref, reason }).catch((err) => (console.error("[platform] approved → failed not recorded", opp.id, err), null));
+        if (!failed) console.error("[platform] approved → failed lost; reconcile will settle", opp.id);
         return c.json({ error: placed.status === "blocked" ? "governor_blocked" : "placement_failed", reasons: placed.reasons }, placed.status === "blocked" ? 422 : 502);
       }
-      const open = await ctx.store.transitionOpportunity(opp.id, "approved", "open", "system", undefined, placed.proposalId || undefined);
-      return c.json({ opportunity: open ?? approved, proposalId: placed.proposalId });
+      const open = await ctx.store.transitionOpportunity(opp.id, "approved", "open", "system", undefined, { ref }).catch((err) => (console.error("[platform] approved → open failed", opp.id, err), null));
+      if (!open) {
+        // The fill happened; the row stays approved and reconcile.ts moves it to open from the desk proposal.
+        console.error("[platform] approved → open lost after a fill; reconcile will settle", opp.id, ref);
+        return c.json({ error: "transition_lost", proposalId: ref }, 500);
+      }
+      return c.json({ opportunity: open, proposalId: placed.proposalId });
     })
     .post("/opportunities/:id/reject", async (c) => {
       const { opp, res } = await load(c);
@@ -221,9 +235,11 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       const b = RejectBodySchema.safeParse(await body(c));
       if (!b.success) return invalid(c, b.error, "reject body");
       const ctx = c.var.ctx;
+      const illegal = () => c.json({ error: "illegal_transition", message: `${opp.status} → rejected is not allowed` }, 409);
+      if (opp.status !== "ready") return illegal();
       const entry = created(await ctx.store.ledgerFor(opp.id));
-      const rejected = await ctx.store.transitionOpportunity(opp.id, opp.status, "rejected", "operator", decision(opp, entry, "reject", b.data.reason)).catch(() => null);
-      return rejected ? c.json({ opportunity: rejected }) : c.json({ error: "illegal_transition", message: `${opp.status} → rejected is not allowed` }, 409);
+      const rejected = await ctx.store.transitionOpportunity(opp.id, "ready", "rejected", "operator", decision(opp, entry, "reject", b.data.reason)).catch(() => null);
+      return rejected ? c.json({ opportunity: rejected }) : illegal();
     })
     .post("/opportunities/:id/snooze", async (c) => {
       const { opp, res } = await load(c);
@@ -263,14 +279,40 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         const { mark, oiUsd } = await marketFor(ctx, coin, now);
         if (mark == null || !(mark > 0)) return null;
         const positions = await ctx.store.listPositions(coin);
-        const { buckets } = aggregate(positions, { mark, bucketBps, rangePct: range });
-        const tracked = positions.reduce((s, p) => s + p.positionValue, 0);
-        return {
-          coin, ts: now.toISOString(), mark, bucketBps, buckets,
-          coverage: coverage(tracked, oiUsd ?? 0, new Set(positions.map((p) => p.address)).size, positions.map((p) => seenAge(p.updatedAt, now))),
-        };
+        const { buckets, nearestClusters } = aggregate(positions, { mark, bucketBps, rangePct: range });
+        return { coin, ts: now.toISOString(), mark, bucketBps, buckets, nearestClusters, coverage: coverageOf(positions, oiUsd, now) };
       });
       return out ? c.json(out) : c.json({ error: "no_mark", message: `no mark price for ${coin} yet` }, 503);
+    })
+    .get("/liqmap/board", async (c) => {
+      const q = LiqBoardQuerySchema.safeParse(c.req.query());
+      if (!q.success) return invalid(c, q.error, "query");
+      const limit = q.data.limit ?? (Number(process.env.PLATFORM_LIQMAP_COINS) || 30);
+      const ctx = c.var.ctx;
+      return c.json(await cached(`board|${limit}`, async (): Promise<LiqBoardResponse> => {
+        const now = deps.now();
+        // Latest scan inputs per coin (mark, OI); before the first snapshot, the coins the crawler holds positions in.
+        const snaps = new Map<string, Record<string, unknown>>();
+        for (const s of await ctx.store.scanSnapshotsSince(new Date(now.getTime() - 3_600_000).toISOString())) snaps.set(s.coin, s.inputs);
+        const byCoin = new Map<string, Position[]>();
+        for (const p of await ctx.store.listPositions()) byCoin.set(p.coin, [...(byCoin.get(p.coin) ?? []), p]);
+        const oi = (coin: string) => num(snaps.get(coin)?.oiUsd);
+        const tracked = (coin: string) => (byCoin.get(coin) ?? []).reduce((a, p) => a + p.positionValue, 0);
+        const coins = snaps.size
+          ? [...snaps.keys()].sort((a, b) => (oi(b) ?? 0) - (oi(a) ?? 0))
+          : [...byCoin.keys()].sort((a, b) => tracked(b) - tracked(a));
+        const rows: LiqBoardResponse["rows"] = [];
+        for (const coin of coins.slice(0, limit)) {
+          const mark = ctx.mid(coin) ?? num(snaps.get(coin)?.mark);
+          if (mark == null || !(mark > 0)) continue;
+          const positions = byCoin.get(coin) ?? [];
+          const { nearestClusters } = aggregate(positions, { mark, bucketBps: BOARD_BUCKET_BPS, rangePct: BOARD_RANGE });
+          rows.push({ coin, mark, nearestLong: nearestClusters.long, nearestShort: nearestClusters.short, coverage: coverageOf(positions, oi(coin), now) });
+        }
+        const near = (r: LiqBoardResponse["rows"][number]) => Math.min(r.nearestLong?.distancePct ?? Infinity, r.nearestShort?.distancePct ?? Infinity);
+        rows.sort((a, b) => near(a) - near(b) || a.coin.localeCompare(b.coin));
+        return { rows, asOf: now.toISOString() };
+      }));
     })
     .get("/liqmap/history", async (c) => {
       const q = LiqMapHistoryQuerySchema.safeParse(c.req.query());

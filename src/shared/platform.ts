@@ -30,7 +30,7 @@ export const HorizonSchema = z.string().regex(/^\d+[mhd]$/, "invalid horizon");
 export const TradeTypeSchema = z.enum(["directional"]);
 export type TradeType = z.infer<typeof TradeTypeSchema>;
 
-export const OpportunityStatusSchema = z.enum(["new", "investigating", "calculated", "ready", "approved", "rejected", "expired", "open", "closed"]);
+export const OpportunityStatusSchema = z.enum(["new", "investigating", "calculated", "ready", "approved", "rejected", "expired", "open", "closed", "failed"]);
 export type OpportunityStatus = z.infer<typeof OpportunityStatusSchema>;
 
 /** P0.11 status machine. Anything not listed is illegal. */
@@ -39,11 +39,12 @@ export const OPPORTUNITY_TRANSITIONS: Readonly<Record<OpportunityStatus, readonl
   investigating: ["calculated"],
   calculated: ["ready"],
   ready: ["approved", "rejected", "expired"],
-  approved: ["open", "rejected"],
+  approved: ["open", "failed"],
   open: ["closed"],
   rejected: [],
   expired: [],
   closed: [],
+  failed: [],
 };
 /** Statuses that hold the (coin, direction, setupKind) dedupe slot. Must match 011_platform.sql's partial index. */
 export const LIVE_STATUSES: readonly OpportunityStatus[] = ["new", "investigating", "calculated", "ready", "approved", "open"];
@@ -51,6 +52,10 @@ export const LIVE_STATUSES: readonly OpportunityStatus[] = ["new", "investigatin
 export const PRE_DECISION_STATUSES: readonly OpportunityStatus[] = ["new", "investigating", "calculated", "ready"];
 /** Transitions only an operator click may make (P0.11, Intel I4). */
 export const OPERATOR_ONLY: readonly OpportunityStatus[] = ["approved", "rejected"];
+/** Transitions only code may make: placement failed after approval (P0.11 gate amendment). */
+export const SYSTEM_ONLY: readonly OpportunityStatus[] = ["failed"];
+/** Final statuses the cooldown measures from (P0.11): store.lastTerminalAt. */
+export const TERMINAL_STATUSES: readonly OpportunityStatus[] = ["rejected", "expired", "failed", "closed"];
 
 export const EdgeBasisSchema = z.enum(["unvalidated", "ledger"]);
 export const LiquidityTierSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
@@ -106,8 +111,10 @@ const PAYLOADS = {
   created: z.object({ features: FeatureVectorSchema, market: JsonRecord, score: Num, scoreVersion: Text(32) }),
   status: z.object({
     from: OpportunityStatusSchema, to: OpportunityStatusSchema, actor: ActorSchema,
-    /** approved -> open: the desk proposal id, whose paper fill is the outcome entry price. */
-    ref: Text(64).optional(),
+    /** approved -> open | failed, open -> closed: the desk proposal id (null when none was created). open's paper fill is the outcome entry price. */
+    ref: Text(64).nullable().optional(),
+    /** Why code moved it (failed, closed, reconciled). */
+    reason: Text(2000).optional(),
   }),
   costs: CostsSchema.extend({ grossEdgeBps: Num.nullable(), netEdgeBps: Num.nullable(), edgeBasis: EdgeBasisSchema }),
   research: z.object({ researchId: Text(64), model: Text(120), promptVersion: Text(32), sources: z.array(z.string().url()) }),
@@ -207,7 +214,7 @@ export type LiqBucket = z.infer<typeof LiqBucketSchema>;
 export const CoverageSchema = z.object({
   trackedNotional: NonNeg,
   oiNotional: NonNeg,
-  /** trackedNotional / oiNotional; 0 when OI is 0. */
+  /** trackedNotional / (2 × oiNotional) (P0.8); 0 when OI is 0. */
   ratio: NonNeg,
   addresses: z.number().int().nonnegative(),
   pollAgeP50Sec: NonNeg.nullable(),
@@ -215,12 +222,17 @@ export const CoverageSchema = z.object({
 });
 export type Coverage = z.infer<typeof CoverageSchema>;
 
+/** The bucket nearest the mark holding a material share of one side's liquidation notional (liqmap.aggregate). */
+export const ClusterSchema = z.object({ priceLo: Pos, priceHi: Pos, distancePct: NonNeg, notionalUsd: NonNeg });
+export type Cluster = z.infer<typeof ClusterSchema>;
+
 export const LiqMapSchema = z.object({
   coin: AssetSchema,
   ts: Iso,
   mark: Pos,
   bucketBps: Pos,
   buckets: z.array(LiqBucketSchema),
+  nearestClusters: z.object({ long: ClusterSchema.nullable(), short: ClusterSchema.nullable() }),
   coverage: CoverageSchema,
 });
 export type LiqMap = z.infer<typeof LiqMapSchema>;
@@ -250,6 +262,8 @@ export const PlatformHealthSchema = z.object({
   scanHistoryMin: NonNeg.nullable().optional(),
   crawler: z.object({ pollsPerMin: NonNeg, addresses: z.number().int().nonnegative() }),
   llmSpendUsdToday: NonNeg.nullable(),
+  /** Outcome horizons too old to price from 1-minute candles (P0.13 gate amendment). */
+  outcomesSkipped: z.number().int().nonnegative().optional(),
 });
 export type PlatformHealth = z.infer<typeof PlatformHealthSchema>;
 
@@ -272,6 +286,7 @@ export const LiqMapQuerySchema = z.object({
   range: z.coerce.number().positive().max(1).default(0.2),
   bucketBps: z.coerce.number().int().min(1).max(1000).default(25),
 }).strict();
+export const LiqBoardQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).optional() }).strict();
 export const LiqMapHistoryQuerySchema = z.object({ coin: AssetSchema, hours: z.coerce.number().int().min(1).max(14 * 24).default(24) }).strict();
 export const LedgerStatsQuerySchema = z.object({
   setupKind: Text(64).optional(),
@@ -294,7 +309,11 @@ export type FeedResponse = z.infer<typeof FeedResponseSchema>;
 
 export const SignalSchema = z.object({ name: Text(64), value: Num.nullable(), z: Num.nullable() });
 /** Governor verdict as the desk returns it (src/ui/lib/desk.ts Verdict); extra fields pass through. */
-export const RiskVerdictSchema = z.object({ approved: z.boolean(), reasons: z.array(z.string()), warnings: z.array(z.string()) }).passthrough();
+export const RiskVerdictSchema = z.object({
+  approved: z.boolean(), reasons: z.array(z.string()), warnings: z.array(z.string()),
+  /** The governor's sizing (desk Sizing); only notionalUsd is read here. */
+  sizing: z.object({ notionalUsd: Num.optional() }).nullish(),
+}).passthrough();
 /** GET /opportunities/:id. Costs, absorbableUsd and invalidation ride on `opportunity`. */
 export const OpportunityDetailSchema = z.object({
   opportunity: OpportunitySchema,
@@ -309,6 +328,12 @@ export type OpportunityDetail = z.infer<typeof OpportunityDetailSchema>;
 
 /** GET /liqmap. */
 export const LiqMapResponseSchema = LiqMapSchema;
+/** GET /liqmap/board: sorted by the nearer cluster's distance, coins with no cluster last (P2 gate amendment). */
+export const LiqBoardResponseSchema = z.object({
+  rows: z.array(z.object({ coin: AssetSchema, mark: Pos, nearestLong: ClusterSchema.nullable(), nearestShort: ClusterSchema.nullable(), coverage: CoverageSchema })),
+  asOf: Iso,
+});
+export type LiqBoardResponse = z.infer<typeof LiqBoardResponseSchema>;
 /** GET /liqmap/history. */
 export const LiqMapHistoryResponseSchema = LiqMapHistorySchema;
 /** GET /ledger/stats. */

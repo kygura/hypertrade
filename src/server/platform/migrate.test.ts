@@ -71,4 +71,20 @@ describe("db/migrate.ts on PGlite", () => {
     await ins("rejected");
     await ins("expired");
   });
+
+  test("012: 'failed' is a legal status and one outcome per (opportunity, horizon)", async () => {
+    const db = pgliteDb(newPglite());
+    expect(await migrate(db, quiet)).toContain("012_platform_gate.sql");
+    const [o] = await db.query<{ id: string }>(
+      `insert into opportunities (coin, direction, setup_kind, trade_type, status, score, score_version, edge_basis, liquidity_tier, regime, invalidation, dedupe_key)
+       values ('BTC', 'long', 'breakout', 'directional', 'failed', 1, 'v1', 'unvalidated', 1, 'range', 'x', 'BTC|long|breakout') returning id`,
+    );
+    await expect(db.query(`update opportunities set status = 'bogus'`)).rejects.toThrow();
+    const out = (h: string) => db.query(`insert into ledger_entries (opportunity_id, kind, payload) values ($1::uuid, 'outcome', $2::jsonb)`, [o!.id, JSON.stringify({ horizon: h })]);
+    await out("1h");
+    await out("4h");
+    await expect(out("1h")).rejects.toThrow();
+    // Other kinds are not limited.
+    for (let i = 0; i < 2; i++) await db.query(`insert into ledger_entries (opportunity_id, kind, payload) values ($1::uuid, 'status', '{"horizon":"1h"}'::jsonb)`, [o!.id]);
+  });
 });

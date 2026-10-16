@@ -1,6 +1,6 @@
 import type postgres from "postgres";
 import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, Opportunity, Position } from "../../shared/platform.js";
-import { LIVE_STATUSES, PRE_DECISION_STATUSES } from "../../shared/platform.js";
+import { LIVE_STATUSES, PRE_DECISION_STATUSES, TERMINAL_STATUSES } from "../../shared/platform.js";
 import { sql } from "../db.js";
 import {
   checkTransition,
@@ -10,6 +10,8 @@ import {
   parseEntry,
   parsePoll,
   pollSummary,
+  transitionEntries,
+  UUID,
   type AddressSighting,
   type OpportunityInput,
   type OutcomeRow,
@@ -46,11 +48,11 @@ export const pgDb = (): Db => wrap(sql, false);
 const J = (v: unknown) => JSON.stringify(v);
 const iso = (d: unknown) => new Date(d as string).toISOString();
 const isoOrNull = (d: unknown) => (d == null ? null : iso(d));
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Status lists as SQL literals (fixed enum values, not input). */
 const sqlList = (xs: readonly string[]) => xs.map((s) => `'${s}'`).join(", ");
 const LIVE_SQL = sqlList(LIVE_STATUSES);
 const PRE_SQL = sqlList(PRE_DECISION_STATUSES);
+const TERMINAL_SQL = sqlList(TERMINAL_STATUSES);
 
 const ADDRESS_COLS = "address, first_seen_at, last_seen_at, polled_at, notional_usd, position_count, min_liq_distance";
 const toAddress = (r: any): AddressRow => ({
@@ -75,11 +77,12 @@ const toOpportunity = (r: any): Opportunity => ({
 const toEntry = (r: any): LedgerEntry =>
   ({ id: Number(r.id), opportunityId: r.opportunity_id, kind: r.kind, payload: r.payload, createdAt: iso(r.created_at) }) as LedgerEntry;
 
-async function insertEntries(db: Db, entries: NewLedgerEntry[]): Promise<LedgerEntry[]> {
+/** `skipDuplicates`: a row hitting the one-outcome-per-horizon index (012) is dropped, not raised. */
+async function insertEntries(db: Db, entries: NewLedgerEntry[], skipDuplicates = false): Promise<LedgerEntry[]> {
   const rows = await db.query(
     `insert into ledger_entries (opportunity_id, kind, payload)
      select x.opportunity_id, x.kind, x.payload from jsonb_array_elements($1::jsonb) with ordinality as e(v, n), jsonb_to_record(e.v) as x(opportunity_id uuid, kind text, payload jsonb)
-     order by e.n returning *`,
+     order by e.n ${skipDuplicates ? "on conflict do nothing" : ""} returning *`,
     [J(entries.map((e) => ({ opportunity_id: e.opportunityId, kind: e.kind, payload: e.payload })))],
   );
   return rows.map(toEntry).sort((a, b) => a.id - b.id);
@@ -255,10 +258,10 @@ export class PgPlatformStore implements PlatformStore {
     return rows.map(toOpportunity);
   }
 
-  async transitionOpportunity(...[id, from, to, actor, decision, ref]: Parameters<PlatformStore["transitionOpportunity"]>) {
+  async transitionOpportunity(...[id, from, to, actor, decision, note]: Parameters<PlatformStore["transitionOpportunity"]>) {
     checkTransition(from, to, actor, decision);
-    const entries = [parseEntry({ opportunityId: id, kind: "status", payload: { from, to, actor, ...(ref ? { ref } : {}) } })];
-    if (decision) entries.push(parseEntry({ opportunityId: id, kind: "decision", payload: decision }));
+    if (!UUID.test(id)) return null;
+    const entries = transitionEntries(id, from, to, actor, decision, note);
     return this.db.tx(async (db) => {
       const [r] = await db.query(`update opportunities set status = $3, updated_at = now(), status_changed_at = now() where id = $1::uuid and status = $2 returning *`, [id, from, to]);
       if (!r) return null;
@@ -267,7 +270,13 @@ export class PgPlatformStore implements PlatformStore {
     });
   }
 
+  async lastTerminalAt(key: string) {
+    const [r] = await this.db.query<{ at: unknown }>(`select max(status_changed_at) as at from opportunities where dedupe_key = $1 and status in (${TERMINAL_SQL})`, [key]);
+    return r?.at == null ? null : new Date(r.at as string);
+  }
+
   async setOpportunityCosts(id: string, c: LedgerPayload<"costs">) {
+    if (!UUID.test(id)) return null;
     const entry = parseEntry({ opportunityId: id, kind: "costs", payload: c });
     const { grossEdgeBps, netEdgeBps, edgeBasis, ...costs } = c;
     return this.db.tx(async (db) => {
@@ -292,8 +301,8 @@ export class PgPlatformStore implements PlatformStore {
     if (e.kind !== "research" && e.kind !== "outcome") throw new Error(`appendLedger takes research or outcome, not ${(e as NewLedgerEntry).kind}`);
     const entry = parseEntry(e);
     if (!(await this.getOpportunity(e.opportunityId))) throw new Error(`unknown opportunity ${e.opportunityId}`);
-    const [row] = await insertEntries(this.db, [entry]);
-    return row!;
+    const [row] = await insertEntries(this.db, [entry], e.kind === "outcome");
+    return row ?? null;
   }
 
   async ledgerFor(opportunityId: string) {
@@ -303,14 +312,14 @@ export class PgPlatformStore implements PlatformStore {
 
   async outcomeRows({ setupKind, regime, tier }: Parameters<PlatformStore["outcomeRows"]>[0]) {
     const rows = await this.db.query<any>(
-      `select o.id, o.setup_kind, o.regime, o.liquidity_tier, l.payload from ledger_entries l join opportunities o on o.id = l.opportunity_id
+      `select o.id, o.setup_kind, o.regime, o.liquidity_tier, (o.costs is not null) as has_costs, l.payload from ledger_entries l join opportunities o on o.id = l.opportunity_id
        where l.kind = 'outcome' and ($1::text is null or o.setup_kind = $1) and ($2::text is null or o.regime = $2) and ($3::int is null or o.liquidity_tier = $3::int)
        order by l.id`,
       [setupKind ?? null, regime ?? null, tier ?? null],
     );
     return rows.map((r): OutcomeRow => ({
       opportunityId: r.id, setupKind: r.setup_kind, regime: r.regime, liquidityTier: r.liquidity_tier,
-      horizon: r.payload.horizon, grossReturn: r.payload.grossReturn, netReturn: r.payload.netReturn,
+      horizon: r.payload.horizon, grossReturn: r.payload.grossReturn, netReturn: r.payload.netReturn, hasCosts: Boolean(r.has_costs),
     }));
   }
 }

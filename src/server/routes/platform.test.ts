@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import {
-  FeedResponseSchema, LedgerEntriesResponseSchema, LedgerStatsResponseSchema, LiqMapHistoryResponseSchema, LiqMapResponseSchema, OpportunityDetailSchema,
+  FeedResponseSchema, LedgerEntriesResponseSchema, LedgerStatsResponseSchema, LiqBoardResponseSchema, LiqMapHistoryResponseSchema, LiqMapResponseSchema, OpportunityDetailSchema,
   type LedgerPayload, type Opportunity,
 } from "../../shared/platform.js";
-import { requireAuth } from "../auth.js";
+import { app as apiApp } from "../../../api/index.js";
+import { requireAuth, signSession } from "../auth.js";
 import { makeService } from "../desk/testkit.js";
 import type { PlatformContext } from "../platform/context.js";
+import { setHealthExtras } from "../platform/runtime.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
 import { createPlatformRoutes, deskRisk, type PlatformDeps, type RiskGate } from "./platform.js";
 
@@ -67,7 +69,7 @@ describe("offline", () => {
   test("every route answers 503 platform_offline without a context", async () => {
     online = false;
     const id = crypto.randomUUID();
-    for (const [method, path] of [["GET", "/opportunities"], ["GET", `/opportunities/${id}`], ["POST", `/opportunities/${id}/approve`], ["POST", `/opportunities/${id}/reject`], ["POST", `/opportunities/${id}/snooze`], ["POST", `/opportunities/${id}/research`], ["GET", "/liqmap?coin=ETH"], ["GET", "/liqmap/history?coin=ETH"], ["GET", "/ledger/stats"], ["GET", `/ledger/${id}`]] as const) {
+    for (const [method, path] of [["GET", "/opportunities"], ["GET", `/opportunities/${id}`], ["POST", `/opportunities/${id}/approve`], ["POST", `/opportunities/${id}/reject`], ["POST", `/opportunities/${id}/snooze`], ["POST", `/opportunities/${id}/research`], ["GET", "/liqmap?coin=ETH"], ["GET", "/liqmap/board"], ["GET", "/liqmap/history?coin=ETH"], ["GET", "/ledger/stats"], ["GET", `/ledger/${id}`]] as const) {
       const res = await req(path, { method });
       expect([method, path, res.status]).toEqual([method, path, 503]);
       expect(await res.json()).toEqual({ error: "platform_offline" });
@@ -167,11 +169,35 @@ describe("approve", () => {
     expect((await store.ledgerFor(o.id)).some((e) => e.kind === "decision")).toBe(false);
   });
 
-  test("a block at placement time records a reject decision and returns 422", async () => {
+  test("a block at placement time ends failed (system, ref, reason), with only the approve decision", async () => {
     deps.risk = gate({ place: async () => ({ status: "blocked", reasons: ["mark moved"], proposalId: "p2" }) });
     const o = await seed();
     expect((await post(`/opportunities/${o.id}/approve`)).status).toBe(422);
-    expect((await store.getOpportunity(o.id))?.status).toBe("rejected");
+    expect((await store.getOpportunity(o.id))?.status).toBe("failed");
+    const entries = await store.ledgerFor(o.id);
+    expect(entries.at(-1)!.payload).toEqual({ from: "approved", to: "failed", actor: "system", ref: "p2", reason: "placement blocked: mark moved" });
+    expect(entries.filter((e) => e.kind === "decision").map((e) => (e.payload as { decision: string }).decision)).toEqual(["approve"]);
+  });
+
+  test("a placement that throws ends failed with ref null and 502", async () => {
+    deps.risk = gate({ place: async () => { throw new Error("venue down"); } });
+    const o = await seed();
+    expect((await post(`/opportunities/${o.id}/approve`)).status).toBe(502);
+    expect((await store.getOpportunity(o.id))?.status).toBe("failed");
+    expect((await store.ledgerFor(o.id)).at(-1)!.payload).toMatchObject({ to: "failed", ref: null, reason: "placement failed: venue down" });
+  });
+
+  test("approved → open lost after a fill: 500 transition_lost, row stays approved for reconcile", async () => {
+    const o = await seed();
+    const orig = store.transitionOpportunity.bind(store);
+    store.transitionOpportunity = async (...a) => (a[2] === "open" ? null : orig(...a));
+    const err = console.error;
+    console.error = () => {};
+    const res = await post(`/opportunities/${o.id}/approve`);
+    console.error = err;
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({ error: "transition_lost", proposalId: "p1" });
+    expect((await store.getOpportunity(o.id))?.status).toBe("approved");
   });
 
   test("not ready → 409 illegal_transition; unknown → 404", async () => {
@@ -192,6 +218,19 @@ describe("approve", () => {
     const res = await post(`/opportunities/${o.id}/approve`);
     expect(await res.json()).toMatchObject({ opportunity: { status: "open" } });
     expect(await kit.store.listFills(10)).toHaveLength(1);
+  });
+
+  test("through the real desk: a fill whose desk record write throws still ends open", async () => {
+    const kit = makeService();
+    kit.store.updateProposal = async () => { throw new Error("db down"); };
+    deps.risk = deskRisk(() => kit.service);
+    const o = await seed();
+    const err = console.error;
+    console.error = () => {};
+    const res = await post(`/opportunities/${o.id}/approve`);
+    console.error = err;
+    expect(await res.json()).toMatchObject({ opportunity: { status: "open" } });
+    expect(await kit.store.paperPositions()).toHaveLength(1);
   });
 
   test("through the real desk: kill switch blocks with 422 before anything is placed", async () => {
@@ -216,6 +255,14 @@ describe("reject, snooze, research", () => {
     expect(await res.json()).toMatchObject({ opportunity: { status: "rejected" } });
     const dec = (await store.ledgerFor(o.id)).find((e) => e.kind === "decision");
     expect(dec?.payload).toMatchObject({ decision: "reject", reason: "funding too hot", seen: { score: 2.5 } });
+  });
+
+  test("reject only from ready: an approved idea → 409", async () => {
+    const o = await seed();
+    await store.transitionOpportunity(o.id, "ready", "approved", "operator", { decision: "approve", reason: null, operator: "operator", seen: { score: 1, scoreVersion: "v1", features: { features: {}, inputs: {} }, stopPx: null, targetPx: null, invalidationPx: null, regime: "r", liquidityTier: 1, costs: null } });
+    const res = await post(`/opportunities/${o.id}/reject`, { reason: "changed my mind" });
+    expect(res.status).toBe(409);
+    expect((await store.getOpportunity(o.id))?.status).toBe("approved");
   });
 
   test("illegal transition → 409 (reject a rejected idea, reject a new one)", async () => {
@@ -262,10 +309,31 @@ describe("liqmap and ledger", () => {
     expect(m.mark).toBe(4000);
     expect(m.buckets.some((b) => b.longUsd === 400_000 && b.priceHi < 4000)).toBe(true);
     expect(m.buckets.some((b) => b.shortUsd === 200_000 && b.priceLo > 4000)).toBe(true);
-    expect(m.coverage).toMatchObject({ trackedNotional: 600_000, oiNotional: 3_000_000, ratio: 0.2, addresses: 2 });
+    expect(m.coverage).toMatchObject({ trackedNotional: 600_000, oiNotional: 3_000_000, addresses: 2 });
+    expect(m.nearestClusters.long).toMatchObject({ notionalUsd: 400_000 });
+    expect(m.nearestClusters.short).toBeNull(); // 200k is under the cluster floor
     await store.savePoll(ADDR, NOW.toISOString(), []);
     expect(((await (await req("/liqmap?coin=ETH&range=0.2&bucketBps=50")).json()) as { coverage: { addresses: number } }).coverage.addresses).toBe(2);
     expect(((await (await req("/liqmap?coin=ETH&range=0.2&bucketBps=25")).json()) as { coverage: { addresses: number } }).coverage.addresses).toBe(1);
+  });
+
+  test("liqmap board: top coins by scan OI, nearest clusters, sorted by the nearer cluster; cached", async () => {
+    await store.savePoll(ADDR, NOW.toISOString(), [
+      { coin: "ETH", szi: 100, entryPx: 3900, positionValue: 400_000, liquidationPx: 3600, leverage: 10 },
+      { coin: "BTC", szi: -10, entryPx: 60000, positionValue: 600_000, liquidationPx: 61000, leverage: 10 },
+    ]);
+    const ts = new Date(NOW.getTime() - 60_000).toISOString();
+    await store.insertScanSnapshots([
+      { coin: "ETH", ts, inputs: { mark: 3990, oiUsd: 3_000_000 } },
+      { coin: "BTC", ts, inputs: { mark: 60000, oiUsd: 9_000_000 } },
+      { coin: "SOL", ts, inputs: { mark: 150, oiUsd: 1_000 } },
+    ]);
+    const b = LiqBoardResponseSchema.parse(await (await req("/liqmap/board")).json());
+    expect(b.rows.map((r) => r.coin)).toEqual(["BTC", "ETH", "SOL"]); // BTC 1.7% away, ETH 10%, SOL none
+    expect(b.rows[0]).toMatchObject({ mark: 60000, nearestLong: null, nearestShort: { notionalUsd: 600_000 }, coverage: { addresses: 1 } });
+    expect(b.rows[1]!.mark).toBe(4000); // live mid wins over the snapshot
+    expect(LiqBoardResponseSchema.parse(await (await req("/liqmap/board?limit=1")).json()).rows.map((r) => r.coin)).toEqual(["BTC"]);
+    expect((await req("/liqmap/board?limit=0")).status).toBe(400);
   });
 
   test("liqmap: no mark anywhere → 503 no_mark; history parses", async () => {
@@ -301,5 +369,24 @@ describe("auth", () => {
     expect((await a.request("/api/platform/opportunities")).status).toBe(401);
     expect((await a.request(`/api/platform/opportunities/${crypto.randomUUID()}/approve`, { method: "POST", headers: h })).status).toBe(401);
     [process.env.LAB_API_TOKEN, process.env.SESSION_SECRET] = saved;
+  });
+});
+
+describe("/api/health", () => {
+  test("without a session: loop names and ok plus ws only; with one: everything", async () => {
+    process.env.SESSION_SECRET = process.env.SESSION_SECRET || "s";
+    setHealthExtras(() => ({
+      store: "memory", loops: [{ name: "scanner", lastBeatAt: null, expectedIntervalSec: 60, ok: false, error: "boom at db" }],
+      ws: { state: "open", lastMessageAgeSec: 1 }, crawler: { pollsPerMin: 5, addresses: 99 }, scanAgeSec: 3, llmSpendUsdToday: null,
+    }));
+    try {
+      const anon = (await (await apiApp.request("/api/health")).json()) as Record<string, unknown>;
+      expect(Object.keys(anon).sort()).toEqual(["loops", "ok", "ts", "ws"]);
+      expect(anon.loops).toEqual([{ name: "scanner", ok: false }]);
+      const full = (await (await apiApp.request("/api/health", { headers: { cookie: `ht_session=${signSession()}` } })).json()) as Record<string, unknown>;
+      expect(full).toMatchObject({ crawler: { addresses: 99 }, loops: [{ error: "boom at db" }] });
+    } finally {
+      setHealthExtras(null);
+    }
   });
 });
