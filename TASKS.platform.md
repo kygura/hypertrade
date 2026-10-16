@@ -19,6 +19,7 @@ Gate baseline: typecheck ok, `bun test src` 1404 pass / 6 skip / 0 fail, build o
 ## Decisions so far
 - 2026-10-16: extend hypertrade; Railway one service (API + dist + loops); Supabase stays; no Redis/Timescale this phase; Vercel retired at cutover.
 - 2026-10-16: Phase 1 scope only; paper/testnet; PGlite for Postgres-only tests (no local Pg/Docker).
+- T0 done (489645f): cockpit at `/`, Terminal at `/terminal`; Recharts live profile + canvas time×price; long=blue, short=yellow; coverage <25% degrades. Contract gaps sent to T1: feed row adds direction/setupKind/tier/createdAt; ticket levels on opportunity, size only from governor preview; liqmap fixed log-price grid; health adds LLM spend, loop intervals, store kind; status filter comma list.
 
 ## Tasks
 | ID | Task | Level | Role | Deps | Status |

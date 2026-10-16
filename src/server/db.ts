@@ -84,7 +84,8 @@ export function sql(): postgres.Sql {
   // it can hit the statement timeout, blocking the one connection meanwhile and
   // then crashing the process with an unhandled rejection. No query here relies
   // on array types (lists go through `in ${sql()(ids)}`).
-  const c = postgres(url, { max: 1, prepare: false, idle_timeout: IDLE_MS / 1000, fetch_types: false })
+  // DB_POOL_MAX: 1 for serverless, more for the long-running Railway process (P0.18).
+  const c = postgres(url, { max: Number(process.env.DB_POOL_MAX) || 1, prepare: false, idle_timeout: IDLE_MS / 1000, fetch_types: false })
   raw = c
   inflight = 0
   lastActive = Date.now()
