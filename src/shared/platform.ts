@@ -12,6 +12,13 @@ const NonNeg = z.number().finite().nonnegative();
 const Pos = z.number().finite().positive();
 const Text = (max: number) => z.string().trim().min(1).max(max);
 
+/** A JSON value with finite numbers only: what a ledger payload may hold. Callers map NaN and ±Infinity to null first. */
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
+export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([z.string(), Num, z.boolean(), z.null(), z.array(JsonValueSchema), z.record(JsonValueSchema)]),
+);
+const JsonRecord = z.record(JsonValueSchema);
+
 /** Lowercase 0x-prefixed 20-byte Hyperliquid account address. */
 export const AddressSchema = z.string().regex(/^0x[0-9a-f]{40}$/, "invalid address");
 /** Outcome horizon from PLATFORM_OUTCOME_HORIZONS ("1h", "4h", "24h", "72h"). */
@@ -40,6 +47,8 @@ export const OPPORTUNITY_TRANSITIONS: Readonly<Record<OpportunityStatus, readonl
 };
 /** Statuses that hold the (coin, direction, setupKind) dedupe slot. Must match 011_platform.sql's partial index. */
 export const LIVE_STATUSES: readonly OpportunityStatus[] = ["new", "investigating", "calculated", "ready", "approved", "open"];
+/** Before the operator decides: rescans and cost updates may change the projection only in these. */
+export const PRE_DECISION_STATUSES: readonly OpportunityStatus[] = ["new", "investigating", "calculated", "ready"];
 /** Transitions only an operator click may make (P0.11, Intel I4). */
 export const OPERATOR_ONLY: readonly OpportunityStatus[] = ["approved", "rejected"];
 
@@ -76,6 +85,8 @@ export const OpportunitySchema = z.object({
   invalidationPx: Pos.nullable(),
   createdAt: Iso,
   updatedAt: Iso,
+  /** Set on creation and on every status move, never by a rescan (ready expiry measures from it). */
+  statusChangedAt: Iso,
   snoozedUntil: Iso.nullable(),
   /** `${coin}|${direction}|${setupKind}`: one live opportunity per key (P0.11). */
   dedupeKey: Text(160),
@@ -85,18 +96,34 @@ export type Opportunity = z.infer<typeof OpportunitySchema>;
 /** Named features (z-scores and raw ratios; null without enough history) and the raw inputs they came from. */
 export const FeatureVectorSchema = z.object({
   features: z.record(Num.nullable()),
-  inputs: z.record(z.unknown()),
+  inputs: JsonRecord,
 });
 export type FeatureVector = z.infer<typeof FeatureVectorSchema>;
 
 // ─── Ledger (P0.12) ───
 
 const PAYLOADS = {
-  created: z.object({ features: FeatureVectorSchema, market: z.record(z.unknown()), score: Num, scoreVersion: Text(32) }),
+  created: z.object({ features: FeatureVectorSchema, market: JsonRecord, score: Num, scoreVersion: Text(32) }),
   status: z.object({ from: OpportunityStatusSchema, to: OpportunityStatusSchema, actor: ActorSchema }),
   costs: CostsSchema.extend({ grossEdgeBps: Num.nullable(), netEdgeBps: Num.nullable(), edgeBasis: EdgeBasisSchema }),
   research: z.object({ researchId: Text(64), model: Text(120), promptVersion: Text(32), sources: z.array(z.string().url()) }),
-  decision: z.object({ decision: z.enum(["approve", "reject"]), reason: Text(2000).nullable(), operator: Text(64) }),
+  decision: z.object({
+    decision: z.enum(["approve", "reject"]),
+    reason: Text(2000).nullable(),
+    operator: Text(64),
+    /** What the operator saw when deciding (P0.12): the decision is auditable against it, not the later projection. */
+    seen: z.object({
+      score: Num,
+      scoreVersion: Text(32),
+      features: FeatureVectorSchema,
+      stopPx: Pos.nullable(),
+      targetPx: Pos.nullable(),
+      invalidationPx: Pos.nullable(),
+      regime: Text(40),
+      liquidityTier: LiquidityTierSchema,
+      costs: CostsSchema.nullable(),
+    }),
+  }),
   outcome: z.object({ horizon: HorizonSchema, entryBasis: z.enum(["mark", "fill"]), entryPx: Pos, horizonPx: Pos, grossReturn: Num, netReturn: Num }),
 };
 const stored = { id: z.number().int().positive(), opportunityId: z.string().uuid(), createdAt: Iso };
@@ -141,6 +168,9 @@ export const PositionSchema = z.object({
   updatedAt: Iso,
 });
 export type Position = z.infer<typeof PositionSchema>;
+/** One position as polled from clearinghouseState (the store stamps address and updatedAt). */
+export const PolledPositionSchema = PositionSchema.omit({ address: true, updatedAt: true });
+export type PolledPosition = z.infer<typeof PolledPositionSchema>;
 
 export const AddressRowSchema = z.object({
   address: AddressSchema,

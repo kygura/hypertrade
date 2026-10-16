@@ -1,10 +1,11 @@
 import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, Opportunity, Position } from "../../shared/platform.js";
 import {
-  checkPoll,
   checkTransition,
   dedupeKey,
   diffPositions,
   isLive,
+  isPreDecision,
+  parsePoll,
   normalizeSightings,
   parseEntry,
   pollSummary,
@@ -55,7 +56,7 @@ export class MemoryPlatformStore implements PlatformStore {
   async savePoll(address: string, polledAt: string, positions: PolledPosition[]): Promise<PositionChange[]> {
     address = address.toLowerCase();
     const ts = iso(polledAt);
-    checkPoll(positions);
+    positions = parsePoll(positions);
     if (!this.addresses.has(address)) await this.recordAddresses([{ address, seenAt: ts }]);
     const a = this.addresses.get(address);
     if (!a) throw new Error(`invalid address ${address}`);
@@ -122,16 +123,19 @@ export class MemoryPlatformStore implements PlatformStore {
     const key = dedupeKey(o);
     const now = new Date().toISOString();
     const live = [...this.opportunities.values()].find((x) => x.dedupeKey === key && isLive(x.status));
+    const id = crypto.randomUUID();
+    const entry = parseEntry({ opportunityId: id, kind: "created", payload: created });
     if (live) {
-      for (const f of RESCAN_FIELDS) (live as Record<string, unknown>)[f] = clone(o[f]);
-      live.updatedAt = now;
+      if (isPreDecision(live.status)) {
+        for (const f of RESCAN_FIELDS) (live as Record<string, unknown>)[f] = clone(o[f]);
+        live.updatedAt = now;
+      }
       return { opportunity: clone(live), created: false };
     }
     const row: Opportunity = {
-      ...clone(o), id: crypto.randomUUID(), status: "new", netEdgeBps: null, grossEdgeBps: null, edgeBasis: "unvalidated",
-      costs: null, createdAt: now, updatedAt: now, snoozedUntil: null, dedupeKey: key,
+      ...clone(o), id, status: "new", netEdgeBps: null, grossEdgeBps: null, edgeBasis: "unvalidated",
+      costs: null, createdAt: now, updatedAt: now, statusChangedAt: now, snoozedUntil: null, dedupeKey: key,
     };
-    const entry = parseEntry({ opportunityId: row.id, kind: "created", payload: created });
     this.opportunities.set(row.id, row);
     this.push(entry);
     return { opportunity: clone(row), created: true };
@@ -152,20 +156,20 @@ export class MemoryPlatformStore implements PlatformStore {
 
   async transitionOpportunity(...[id, from, to, actor, decision]: Parameters<PlatformStore["transitionOpportunity"]>) {
     checkTransition(from, to, actor, decision);
-    const o = this.opportunities.get(id);
-    if (!o || o.status !== from) return null;
     const entries = [parseEntry({ opportunityId: id, kind: "status", payload: { from, to, actor } })];
     if (decision) entries.push(parseEntry({ opportunityId: id, kind: "decision", payload: decision }));
+    const o = this.opportunities.get(id);
+    if (!o || o.status !== from) return null;
     o.status = to;
-    o.updatedAt = new Date().toISOString();
+    o.updatedAt = o.statusChangedAt = new Date().toISOString();
     entries.forEach((e) => this.push(e));
     return clone(o);
   }
 
   async setOpportunityCosts(id: string, c: LedgerPayload<"costs">) {
-    const o = this.opportunities.get(id);
-    if (!o) return null;
     const entry = parseEntry({ opportunityId: id, kind: "costs", payload: c });
+    const o = this.opportunities.get(id);
+    if (!o || !isPreDecision(o.status)) return null;
     const { grossEdgeBps, netEdgeBps, edgeBasis, ...costs } = c;
     Object.assign(o, { costs, grossEdgeBps, netEdgeBps, edgeBasis, updatedAt: new Date().toISOString() });
     this.push(entry);

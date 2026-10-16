@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
-import { BASELINE, migrate } from "../../../db/migrate.js";
+import { migrate } from "../../../db/migrate.js";
 import { newPglite, pgliteDb } from "../testing/pglite.js";
 
 const DIR = new URL("../../../db/migrations/", import.meta.url);
@@ -17,10 +17,18 @@ describe("db/migrate.ts on PGlite", () => {
     expect(rows.map((r) => r.name)).toEqual(FILES);
   });
 
-  test("an existing database (001–010 applied, no schema_migrations) baselines them and runs only what is new", async () => {
+  test("an existing database (001–010 applied by hand, no schema_migrations) re-applies them cleanly", async () => {
     const db = pgliteDb(newPglite());
-    for (const f of FILES.filter((f) => f <= BASELINE)) await db.exec(readFileSync(new URL(f, DIR), "utf8"));
-    expect(await migrate(db, quiet)).toEqual(FILES.filter((f) => f > BASELINE));
+    for (const f of FILES.filter((f) => f <= "010_research.sql")) await db.exec(readFileSync(new URL(f, DIR), "utf8"));
+    expect(await migrate(db, quiet)).toEqual(FILES);
+    expect((await db.query("select name from schema_migrations")).length).toBe(FILES.length);
+  });
+
+  test("two concurrent runs on one database apply each file once", async () => {
+    // PGlite is one connection and queues transactions, so this checks the in-lock re-check, not real lock contention.
+    const db = pgliteDb(newPglite());
+    const [a, b] = await Promise.all([migrate(db, quiet), migrate(db, quiet)]);
+    expect([...a, ...b].sort()).toEqual(FILES);
     expect((await db.query("select name from schema_migrations")).length).toBe(FILES.length);
   });
 

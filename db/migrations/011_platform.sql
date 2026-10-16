@@ -91,7 +91,9 @@ create table if not exists opportunities (
   dedupe_key      text not null,
   snoozed_until   timestamptz,
   created_at      timestamptz not null default now(),
-  updated_at      timestamptz not null default now()
+  updated_at      timestamptz not null default now(),
+  -- Creation or the last status move; rescans leave it alone (ready expiry measures from it).
+  status_changed_at timestamptz not null default now()
 );
 -- One live opportunity per (coin, direction, setupKind). The status list is LIVE_STATUSES in src/shared/platform.ts.
 create unique index if not exists opportunities_live_dedupe on opportunities (dedupe_key)

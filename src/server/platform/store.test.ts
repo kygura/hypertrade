@@ -25,7 +25,8 @@ const opp = (over: Partial<OpportunityInput> = {}): OpportunityInput => ({
   entryPx: 62000, stopPx: 61000, targetPx: 64000, invalidationPx: 61000, ...over,
 });
 const created = (score: number): LedgerPayload<"created"> => ({
-  features: { features: { ret15m: 1.2, fundingZ: null }, inputs: { mark: 62000, oi: [1, 2] } }, market: { mark: 62000 }, score, scoreVersion: "v1",
+  features: { features: { ret15m: 1.2, fundingZ: null }, inputs: { mark: 62000, oi: [1, null, 2], regime: "new_longs", ctx: { premium: null, ok: true } } },
+  market: { mark: 62000 }, score, scoreVersion: "v1",
 });
 const costs: LedgerPayload<"costs"> = { feeBps: 4.5, slippageBps: 2, fundingBps: 1, absorbableUsd: 50000, grossEdgeBps: 30, netEdgeBps: 18, edgeBasis: "unvalidated" };
 const outcome = (id: string): Extract<Parameters<PlatformStore["appendLedger"]>[0], { kind: "outcome" }> => ({
@@ -33,7 +34,7 @@ const outcome = (id: string): Extract<Parameters<PlatformStore["appendLedger"]>[
 });
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-/** uuids → #1, #2… by first appearance; store-clock stamps (createdAt, updatedAt) checked as ISO and dropped. */
+/** uuids → #1, #2… by first appearance; store-clock stamps (createdAt, updatedAt, statusChangedAt) checked as ISO and dropped. */
 function normalizer() {
   const ids = new Map<string, string>();
   const walk = (v: unknown): unknown => {
@@ -41,7 +42,7 @@ function normalizer() {
     if (v && typeof v === "object") {
       const out: Record<string, unknown> = {};
       for (const [k, x] of Object.entries(v)) {
-        if (k === "createdAt" || k === "updatedAt") expect(x).toMatch(ISO);
+        if (k === "createdAt" || k === "updatedAt" || k === "statusChangedAt") expect(x).toMatch(ISO);
         else out[k] = walk(x);
       }
       return out;
@@ -84,6 +85,9 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(closed).toEqual([{ address: A1, coin: "BTC", ts: t(4), kind: "close", szi: null, liquidationPx: null, prevSzi: 1.005, prevLiquidationPx: 50000 }]);
   expect(await s.savePoll(A3, t(2), [])).toEqual([]);
   await expect(s.savePoll(A2, t(2), [eth(1, 2000), eth(2, 2000)])).rejects.toThrow(/duplicate/);
+  await expect(s.savePoll(A2, t(2), [{ ...eth(1, 2000), entryPx: -1 }])).rejects.toThrow();
+  await expect(s.savePoll(A2, t(2), [{ ...eth(1, 2000), szi: 0 }])).rejects.toThrow();
+  await expect(s.savePoll(A2, t(2), [{ ...eth(1, 2000), liquidationPx: Number.NaN }])).rejects.toThrow();
   expect((await s.getAddress(A2))!.polledAt).toBeNull();
   put("changes", await s.positionChanges(A1));
   expect((out.changes as unknown[]).length).toBe(4);
@@ -121,6 +125,14 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   const rescan = await s.upsertOpportunity(opp({ score: 3, entryPx: 1, tags: ["oi_up", "funding"] }), created(3));
   expect(rescan.created).toBe(false);
   expect(rescan.opportunity).toMatchObject({ id: first.opportunity.id, score: 3, entryPx: 62000, tags: ["oi_up", "funding"] });
+  expect(rescan.opportunity.statusChangedAt).toBe(first.opportunity.statusChangedAt);
+  expect(first.opportunity.statusChangedAt).toBe(first.opportunity.createdAt);
+  // JSON-safe payloads: a non-finite number is refused before anything is written.
+  const nan = created(9);
+  nan.features.inputs.mark = Number.NaN;
+  await expect(s.upsertOpportunity(opp({ setupKind: "nan" }), nan)).rejects.toThrow();
+  await expect(s.upsertOpportunity(opp({ setupKind: "inf" }), { ...created(9), market: { mark: Infinity } })).rejects.toThrow();
+  expect((await s.listOpportunities({ limit: 10 })).map((o) => o.setupKind)).toEqual(["breakout"]);
   const o1 = first.opportunity.id;
   const o2 = (await s.upsertOpportunity(opp({ coin: "ETH", direction: "short", score: 5, liquidityTier: 2 }), created(5))).opportunity.id;
   put("opp.upserts", [first, rescan]);
@@ -136,18 +148,40 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(await s.transitionOpportunity(crypto.randomUUID(), "new", "calculated", "system")).toBeNull();
   expect((await s.transitionOpportunity(o1, "new", "calculated", "system"))!.status).toBe("calculated");
   await s.transitionOpportunity(o1, "calculated", "ready", "system");
-  const reject: LedgerPayload<"decision"> = { decision: "reject", reason: "funding too hot", operator: "op" };
+  const seen = { score: 3, scoreVersion: "v1", features: created(3).features, stopPx: 61000, targetPx: 64000, invalidationPx: 61000, regime: "new_longs", liquidityTier: 1 as const, costs: null };
+  const reject: LedgerPayload<"decision"> = { decision: "reject", reason: "funding too hot", operator: "op", seen };
+  const approve: LedgerPayload<"decision"> = { ...reject, decision: "approve", reason: null };
   await expect(s.transitionOpportunity(o1, "ready", "rejected", "system", reject)).rejects.toThrow(/operator/);
   await expect(s.transitionOpportunity(o1, "ready", "rejected", "operator")).rejects.toThrow(/decision/);
   await expect(s.transitionOpportunity(o1, "ready", "approved", "operator", reject)).rejects.toThrow(/decision/);
+  await expect(s.transitionOpportunity(o1, "ready", "rejected", "operator", { ...reject, seen: { ...seen, score: Number.NaN } })).rejects.toThrow();
+  // Missing id with a bad payload: the payload error wins in both stores.
+  await expect(s.transitionOpportunity(crypto.randomUUID(), "ready", "rejected", "operator", { ...reject, operator: "" })).rejects.toThrow();
+  await expect(s.setOpportunityCosts(crypto.randomUUID(), { ...costs, feeBps: -1 })).rejects.toThrow();
+  await expect(s.appendLedger({ ...outcome(crypto.randomUUID()), payload: { ...outcome(o1).payload, horizonPx: 0 } })).rejects.toThrow(/horizonPx|too_small|greater/i);
+  const beforeMove = (await s.getOpportunity(o1))!.statusChangedAt;
   await expect(s.transitionOpportunity(o1, "new", "calculated", "system", reject)).rejects.toThrow(/decision/);
   put("opp.rejected", await s.transitionOpportunity(o1, "ready", "rejected", "operator", reject));
-  expect((await s.getOpportunity(o1))!.status).toBe("rejected");
+  const rejected = (await s.getOpportunity(o1))!;
+  expect(rejected.status).toBe("rejected");
+  expect(rejected.statusChangedAt >= beforeMove).toBe(true);
+  // Past the decision: no cost updates.
+  expect(await s.setOpportunityCosts(o1, costs)).toBeNull();
   // The rejected one freed the dedupe slot.
   const again = await s.upsertOpportunity(opp(), created(2));
   expect(again.created).toBe(true);
   expect(again.opportunity.id).not.toBe(o1);
   put("opp.again", again);
+
+  // An approved idea is frozen: a rescan returns it unchanged, with no ledger entry, and costs cannot move.
+  const o3 = (await s.upsertOpportunity(opp({ coin: "SOL", score: 1 }), created(1))).opportunity.id;
+  for (const [f, to] of [["new", "calculated"], ["calculated", "ready"]] as const) await s.transitionOpportunity(o3, f, to, "system");
+  const approved = (await s.transitionOpportunity(o3, "ready", "approved", "operator", approve))!;
+  const frozen = await s.upsertOpportunity(opp({ coin: "SOL", score: 7, stopPx: 1 }), created(7));
+  expect(frozen).toEqual({ opportunity: approved, created: false });
+  expect(await s.setOpportunityCosts(o3, costs)).toBeNull();
+  put("ledger.o3", await s.ledgerFor(o3));
+  expect((out["ledger.o3"] as { kind: string }[]).map((e) => e.kind)).toEqual(["created", "status", "status", "status", "decision"]);
 
   put("opp.costs", await s.setOpportunityCosts(o2, costs));
   expect((await s.getOpportunity(o2))!).toMatchObject({ costs: { feeBps: 4.5, slippageBps: 2, fundingBps: 1, absorbableUsd: 50000 }, grossEdgeBps: 30, netEdgeBps: 18 });
@@ -157,6 +191,7 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((await s.snoozeOpportunity(o2, null))!.snoozedUntil).toBeNull();
   expect(await s.snoozeOpportunity(crypto.randomUUID(), null)).toBeNull();
   expect((await s.listOpportunities({ statuses: ["rejected", "new"], limit: 10 })).map((o) => o.id)).toEqual([o2, o1, again.opportunity.id]);
+  expect((await s.listOpportunities({ statuses: ["approved"], limit: 10 })).map((o) => o.id)).toEqual([o3]);
 
   // ledger
   put("ledger.research", await s.appendLedger({ opportunityId: o2, kind: "research", payload: { researchId: "r1", model: "m", promptVersion: "p1", sources: ["https://example.com/a"] } }));

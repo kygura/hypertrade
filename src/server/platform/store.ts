@@ -4,6 +4,8 @@ import {
   NewLedgerEntrySchema,
   OPERATOR_ONLY,
   OPPORTUNITY_TRANSITIONS,
+  PolledPositionSchema,
+  PRE_DECISION_STATUSES,
   type AddressRow,
   type LedgerEntry,
   type LedgerPayload,
@@ -12,6 +14,7 @@ import {
   type NewLedgerEntry,
   type Opportunity,
   type OpportunityStatus,
+  type PolledPosition,
   type Position,
 } from "../../shared/platform.js";
 
@@ -30,8 +33,7 @@ export interface AddressSighting {
   seenAt: string;
 }
 
-/** One position as polled from clearinghouseState (the store stamps address and updatedAt). */
-export type PolledPosition = Omit<Position, "address" | "updatedAt">;
+export type { PolledPosition };
 
 export interface PositionChange {
   address: string;
@@ -57,7 +59,7 @@ export type OpportunityInput = Pick<
   | "coin" | "direction" | "setupKind" | "tradeType" | "score" | "scoreVersion" | "tags" | "liquidityTier"
   | "regime" | "invalidation" | "entryPx" | "stopPx" | "targetPx" | "invalidationPx"
 >;
-/** Fields a rescan refreshes on the live opportunity (entryPx stays the mark at creation). */
+/** Fields a rescan refreshes on a pre-decision opportunity (entryPx stays the mark at creation; statusChangedAt untouched). */
 export const RESCAN_FIELDS = ["score", "scoreVersion", "tags", "liquidityTier", "regime", "invalidation", "stopPx", "targetPx", "invalidationPx"] as const;
 
 /** One resolved outcome with the opportunity fields stats group by (P0.14). */
@@ -103,8 +105,9 @@ export interface PlatformStore {
   pruneHistory(before: string): Promise<number>;
 
   /**
-   * Dedupe upsert (P0.11): with a live opportunity on the same key, refreshes RESCAN_FIELDS and returns it
-   * (created false, no ledger entry). Otherwise inserts it as "new" with its `created` ledger entry.
+   * Dedupe upsert (P0.11): with a live opportunity on the same key, returns it with created false and no ledger
+   * entry, refreshing RESCAN_FIELDS only while it is pre-decision (approved and open rows are left unchanged).
+   * Otherwise inserts it as "new" with its `created` ledger entry.
    */
   upsertOpportunity(o: OpportunityInput, created: LedgerPayload<"created">): Promise<{ opportunity: Opportunity; created: boolean }>;
   getOpportunity(id: string): Promise<Opportunity | null>;
@@ -112,7 +115,8 @@ export interface PlatformStore {
   listOpportunities(opts: { statuses?: OpportunityStatus[]; tier?: LiquidityTier; limit: number }): Promise<Opportunity[]>;
   /**
    * Compare-and-set status move plus its `status` entry (and the operator's `decision` entry for approved/rejected).
-   * Throws on an illegal transition (checkTransition); null when the row is missing or no longer at `from`.
+   * Throws on an illegal transition (checkTransition) or a bad payload; null when the row is missing or no longer at
+   * `from`. Sets statusChangedAt.
    */
   transitionOpportunity(
     id: string,
@@ -121,7 +125,7 @@ export interface PlatformStore {
     actor: LedgerPayload<"status">["actor"],
     decision?: LedgerPayload<"decision">,
   ): Promise<Opportunity | null>;
-  /** Sets costs and edge on the projection and appends the `costs` entry. Null when missing. */
+  /** Sets costs and edge on a pre-decision opportunity and appends the `costs` entry. Null when missing or past the decision. */
   setOpportunityCosts(id: string, c: LedgerPayload<"costs">): Promise<Opportunity | null>;
   /** Projection only: snooze is a field, not a state. Null when missing. */
   snoozeOpportunity(id: string, until: string | null): Promise<Opportunity | null>;
@@ -138,6 +142,7 @@ export interface PlatformStore {
 
 export const dedupeKey = (o: Pick<Opportunity, "coin" | "direction" | "setupKind">) => `${o.coin}|${o.direction}|${o.setupKind}`;
 export const isLive = (s: OpportunityStatus) => LIVE_STATUSES.includes(s);
+export const isPreDecision = (s: OpportunityStatus) => PRE_DECISION_STATUSES.includes(s);
 
 /** Throws unless from → to is in the P0.11 machine and operator-only moves come from an operator with a matching decision. */
 export function checkTransition(
@@ -201,12 +206,13 @@ export function pollSummary(positions: PolledPosition[]): Pick<AddressRow, "noti
   return { notionalUsd: positions.reduce((s, p) => s + p.positionValue, 0), positionCount: positions.length, minLiqDistance: min };
 }
 
-/** Throws on a duplicate coin in one poll (HL returns one position per coin; two would silently drop one). */
-export function checkPoll(positions: PolledPosition[]): void {
+/** Validates one poll (zod, then one position per coin: HL returns one, two would silently drop one). Returns the parsed list. */
+export function parsePoll(positions: PolledPosition[]): PolledPosition[] {
+  const parsed = PolledPositionSchema.array().parse(positions);
   const seen = new Set<string>();
-  for (const p of positions) {
+  for (const p of parsed) {
     if (seen.has(p.coin)) throw new Error(`duplicate position for ${p.coin}`);
-    if (p.szi === 0) throw new Error(`zero-size position for ${p.coin}`);
     seen.add(p.coin);
   }
+  return parsed;
 }

@@ -20,6 +20,8 @@ Gate baseline: typecheck ok, `bun test src` 1404 pass / 6 skip / 0 fail, build o
 - 2026-10-16: extend hypertrade; Railway one service (API + dist + loops); Supabase stays; no Redis/Timescale this phase; Vercel retired at cutover.
 - 2026-10-16: Phase 1 scope only; paper/testnet; PGlite for Postgres-only tests (no local Pg/Docker).
 - T0 done (489645f): cockpit at `/`, Terminal at `/terminal`; Recharts live profile + canvas time×price; long=blue, short=yellow; coverage <25% degrades. Contract gaps sent to T1: feed row adds direction/setupKind/tier/createdAt; ticket levels on opportunity, size only from governor preview; liqmap fixed log-price grid; health adds LLM spend, loop intervals, store kind; status filter comma list.
+- T1 done (75d0b75), 1413 pass. T2a done (6ec6111), 1443 pass.
+- T1 risk review (opus): 7 findings. Fix round sent to T1: rescans only pre-decision; decision entry snapshots what operator saw; JSON-safe payloads (no NaN/∞); no migrate baseline; advisory lock; costs only pre-decision; parity on invalid input; `statusChangedAt` for expiry. Finding 7 (app runs as table owner → can disable trigger) → README: run app as non-owner role.
 
 ## Tasks
 | ID | Task | Level | Role | Deps | Status |

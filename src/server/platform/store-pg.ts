@@ -1,14 +1,14 @@
 import type postgres from "postgres";
 import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, Opportunity, Position } from "../../shared/platform.js";
-import { LIVE_STATUSES } from "../../shared/platform.js";
+import { LIVE_STATUSES, PRE_DECISION_STATUSES } from "../../shared/platform.js";
 import { sql } from "../db.js";
 import {
-  checkPoll,
   checkTransition,
   dedupeKey,
   diffPositions,
   normalizeSightings,
   parseEntry,
+  parsePoll,
   pollSummary,
   type AddressSighting,
   type OpportunityInput,
@@ -47,8 +47,10 @@ const J = (v: unknown) => JSON.stringify(v);
 const iso = (d: unknown) => new Date(d as string).toISOString();
 const isoOrNull = (d: unknown) => (d == null ? null : iso(d));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Live statuses as a SQL list literal (fixed enum values, not input). */
-const LIVE_SQL = LIVE_STATUSES.map((s) => `'${s}'`).join(", ");
+/** Status lists as SQL literals (fixed enum values, not input). */
+const sqlList = (xs: readonly string[]) => xs.map((s) => `'${s}'`).join(", ");
+const LIVE_SQL = sqlList(LIVE_STATUSES);
+const PRE_SQL = sqlList(PRE_DECISION_STATUSES);
 
 const ADDRESS_COLS = "address, first_seen_at, last_seen_at, polled_at, notional_usd, position_count, min_liq_distance";
 const toAddress = (r: any): AddressRow => ({
@@ -68,7 +70,7 @@ const toOpportunity = (r: any): Opportunity => ({
   score: r.score, scoreVersion: r.score_version, netEdgeBps: r.net_edge_bps, grossEdgeBps: r.gross_edge_bps,
   edgeBasis: r.edge_basis, costs: r.costs, tags: r.tags, liquidityTier: r.liquidity_tier, regime: r.regime,
   invalidation: r.invalidation, entryPx: r.entry_px, stopPx: r.stop_px, targetPx: r.target_px, invalidationPx: r.invalidation_px,
-  createdAt: iso(r.created_at), updatedAt: iso(r.updated_at), snoozedUntil: isoOrNull(r.snoozed_until), dedupeKey: r.dedupe_key,
+  createdAt: iso(r.created_at), updatedAt: iso(r.updated_at), statusChangedAt: iso(r.status_changed_at), snoozedUntil: isoOrNull(r.snoozed_until), dedupeKey: r.dedupe_key,
 });
 const toEntry = (r: any): LedgerEntry =>
   ({ id: Number(r.id), opportunityId: r.opportunity_id, kind: r.kind, payload: r.payload, createdAt: iso(r.created_at) }) as LedgerEntry;
@@ -112,7 +114,7 @@ export class PgPlatformStore implements PlatformStore {
   async savePoll(address: string, polledAt: string, positions: PolledPosition[]) {
     address = address.toLowerCase();
     const ts = iso(polledAt);
-    checkPoll(positions);
+    positions = parsePoll(positions);
     const s = pollSummary(positions);
     return this.db.tx(async (db) => {
       await db.query(
@@ -222,10 +224,16 @@ export class PgPlatformStore implements PlatformStore {
            score = excluded.score, score_version = excluded.score_version, tags = excluded.tags, liquidity_tier = excluded.liquidity_tier,
            regime = excluded.regime, invalidation = excluded.invalidation, stop_px = excluded.stop_px, target_px = excluded.target_px,
            invalidation_px = excluded.invalidation_px, updated_at = now()
+         where opportunities.status in (${PRE_SQL})
          returning *, (xmax = 0) as inserted`,
         [o.coin, o.direction, o.setupKind, o.tradeType, o.score, o.scoreVersion, J(o.tags), o.liquidityTier, o.regime, o.invalidation,
           o.entryPx, o.stopPx, o.targetPx, o.invalidationPx, dedupeKey(o), id],
       );
+      // No row back: the live one is past the decision, so the rescan leaves it as is.
+      if (!r) {
+        const [live] = await db.query(`select * from opportunities where dedupe_key = $1 and status in (${LIVE_SQL})`, [dedupeKey(o)]);
+        return { opportunity: toOpportunity(live), created: false };
+      }
       if (r.inserted) await insertEntries(db, [entry]);
       return { opportunity: toOpportunity(r), created: Boolean(r.inserted) };
     });
@@ -249,11 +257,10 @@ export class PgPlatformStore implements PlatformStore {
 
   async transitionOpportunity(...[id, from, to, actor, decision]: Parameters<PlatformStore["transitionOpportunity"]>) {
     checkTransition(from, to, actor, decision);
-    if (!UUID.test(id)) return null;
     const entries = [parseEntry({ opportunityId: id, kind: "status", payload: { from, to, actor } })];
     if (decision) entries.push(parseEntry({ opportunityId: id, kind: "decision", payload: decision }));
     return this.db.tx(async (db) => {
-      const [r] = await db.query(`update opportunities set status = $3, updated_at = now() where id = $1::uuid and status = $2 returning *`, [id, from, to]);
+      const [r] = await db.query(`update opportunities set status = $3, updated_at = now(), status_changed_at = now() where id = $1::uuid and status = $2 returning *`, [id, from, to]);
       if (!r) return null;
       await insertEntries(db, entries);
       return toOpportunity(r);
@@ -261,13 +268,12 @@ export class PgPlatformStore implements PlatformStore {
   }
 
   async setOpportunityCosts(id: string, c: LedgerPayload<"costs">) {
-    if (!UUID.test(id)) return null;
     const entry = parseEntry({ opportunityId: id, kind: "costs", payload: c });
     const { grossEdgeBps, netEdgeBps, edgeBasis, ...costs } = c;
     return this.db.tx(async (db) => {
       const [r] = await db.query(
         `update opportunities set costs = $2::jsonb, gross_edge_bps = $3::float8, net_edge_bps = $4::float8, edge_basis = $5, updated_at = now()
-         where id = $1::uuid returning *`,
+         where id = $1::uuid and status in (${PRE_SQL}) returning *`,
         [id, J(costs), grossEdgeBps, netEdgeBps, edgeBasis],
       );
       if (!r) return null;
