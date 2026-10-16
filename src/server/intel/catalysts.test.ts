@@ -59,7 +59,7 @@ describe("catalystAlerts", () => {
     expect(byTitle["US CPI release"]!.line.tag).toBe("observed");
 
     expect(deps.notifier.sent.map((s) => s.title)).toEqual(["T−24h: SOL unlock"]);
-    expect(deps.notifier.sent[0]!.body).toContain("https://app.example.com/?review=1");
+    expect(deps.notifier.sent[0]!.body).toContain("https://app.example.com/terminal?review=1");
 
     // Same windows again: nothing new.
     clock.now = new Date(T0 + 10 * 60_000);

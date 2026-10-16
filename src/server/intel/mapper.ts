@@ -68,7 +68,7 @@ export interface MapperDeps {
   notifier: Notifier;
   /** INTEL_PUSH_MATERIALITY (terminal.loadThresholds). */
   pushMateriality: number;
-  /** Base URL for the Telegram deep link (/?review=1). */
+  /** Base URL for the Telegram deep link (/terminal?review=1). */
   appUrl?: string;
   now(): Date;
 }
@@ -179,7 +179,7 @@ export async function assetExposure(deps: Pick<MapperDeps, "candles1h" | "now">,
 }
 
 export function deepLink(appUrl?: string): string | undefined {
-  return appUrl ? `${appUrl.replace(/\/+$/, "")}/?review=1` : undefined;
+  return appUrl ? `${appUrl.replace(/\/+$/, "")}/terminal?review=1` : undefined;
 }
 
 // ---------------------------------------------------------------- feedback dampening

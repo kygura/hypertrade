@@ -154,9 +154,9 @@ export class MemoryPlatformStore implements PlatformStore {
       .map(clone);
   }
 
-  async transitionOpportunity(...[id, from, to, actor, decision]: Parameters<PlatformStore["transitionOpportunity"]>) {
+  async transitionOpportunity(...[id, from, to, actor, decision, ref]: Parameters<PlatformStore["transitionOpportunity"]>) {
     checkTransition(from, to, actor, decision);
-    const entries = [parseEntry({ opportunityId: id, kind: "status", payload: { from, to, actor } })];
+    const entries = [parseEntry({ opportunityId: id, kind: "status", payload: { from, to, actor, ...(ref ? { ref } : {}) } })];
     if (decision) entries.push(parseEntry({ opportunityId: id, kind: "decision", payload: decision }));
     const o = this.opportunities.get(id);
     if (!o || o.status !== from) return null;

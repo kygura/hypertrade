@@ -54,4 +54,21 @@ describe("outcomes loop", () => {
     await loop.tick();
     expect(await store.outcomeRows({})).toHaveLength(1);
   });
+
+  test("an opened idea enters at its paper fill (fee and funding only, the fill carries slippage)", async () => {
+    const { store, o, created } = await seed();
+    await store.transitionOpportunity(o.id, "new", "calculated", "system");
+    await store.transitionOpportunity(o.id, "calculated", "ready", "system");
+    const seen = { score: 2, scoreVersion: "v", features: { features: {}, inputs: {} }, stopPx: 98, targetPx: 104, invalidationPx: 98, regime: "range", liquidityTier: 1 as const, costs: null };
+    await store.transitionOpportunity(o.id, "ready", "approved", "operator", { decision: "approve", reason: null, operator: "op", seen });
+    await store.transitionOpportunity(o.id, "approved", "open", "system", undefined, "11111111-1111-1111-1111-111111111111");
+    const asked: string[] = [];
+    const loop = createOutcomesLoop({ store, mid: () => 102, scanMark: () => null, fillPx: async (id) => (asked.push(id), 100.5), now: () => created + HOUR + 1000 });
+    await loop.tick();
+    const out = (await store.ledgerFor(o.id)).find((e) => e.kind === "outcome");
+    if (out?.kind !== "outcome") throw new Error("no outcome");
+    expect(asked).toEqual(["11111111-1111-1111-1111-111111111111"]);
+    expect(out.payload).toMatchObject({ entryBasis: "fill", entryPx: 100.5, horizonPx: 102 });
+    expect(out.payload.netReturn).toBeCloseTo(102 / 100.5 - 1 - 12 / 1e4, 9); // 2*5 fee + 2 funding
+  });
 });

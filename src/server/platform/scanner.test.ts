@@ -51,6 +51,28 @@ describe("clean", () => {
   });
 });
 
+describe("cold-start seeding", () => {
+  test("merges the extra source with scan_snapshots (own row wins per timestamp) and reports history minutes", async () => {
+    const store = new MemoryPlatformStore();
+    const row = (ts: number, mark: number) => ({ coin: "A", ts: new Date(ts).toISOString(), inputs: { mark, oiUsd: 1, funding: 0, dayNtlVlm: 1 } });
+    await store.insertScanSnapshots([row(NOW - 30 * MIN, 111)]);
+    const seedFrom = async () => [row(NOW - 90 * MIN, 1), row(NOW - 60 * MIN, 2), row(NOW - 30 * MIN, 999), { ...row(NOW, 3), inputs: { mark: null } }];
+    const info = (async () => [{ universe: [{ name: "A", szDecimals: 3, maxLeverage: 20 }] }, [ctx(100)]]) as unknown as Info;
+    const sc = createScanner({ store, info, now: () => NOW, seedFrom });
+    expect(sc.historyMin()).toBeNull();
+    await sc.tick();
+    expect(sc.historyMin()).toBe(90);
+    expect((await store.scanSnapshotsSince(new Date(NOW - 2 * 60 * MIN).toISOString())).length).toBe(2); // own + the tick's persist
+  });
+  test("a failing extra source does not stop the scan", async () => {
+    const store = new MemoryPlatformStore();
+    const info = (async () => [{ universe: [{ name: "A", szDecimals: 3, maxLeverage: 20 }] }, [ctx(100)]]) as unknown as Info;
+    const sc = createScanner({ store, info, now: () => NOW, seedFrom: async () => Promise.reject(new Error("no table")) });
+    await sc.tick();
+    expect(sc.lastScanAt()).not.toBeNull();
+  });
+});
+
 describe("scanner tick", () => {
   let s: ReturnType<typeof setup>;
   beforeEach(async () => {

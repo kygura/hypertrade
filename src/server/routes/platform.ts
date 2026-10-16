@@ -212,7 +212,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         await ctx.store.transitionOpportunity(opp.id, "approved", "rejected", "operator", decision(approved, entry, "reject", reason));
         return c.json({ error: placed.status === "blocked" ? "governor_blocked" : "placement_failed", reasons: placed.reasons }, placed.status === "blocked" ? 422 : 502);
       }
-      const open = await ctx.store.transitionOpportunity(opp.id, "approved", "open", "system");
+      const open = await ctx.store.transitionOpportunity(opp.id, "approved", "open", "system", undefined, placed.proposalId || undefined);
       return c.json({ opportunity: open ?? approved, proposalId: placed.proposalId });
     })
     .post("/opportunities/:id/reject", async (c) => {

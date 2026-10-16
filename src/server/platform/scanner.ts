@@ -7,7 +7,7 @@ import { computeFeatures, liquidityTiers, setupsFor, type RingPoint } from "./fe
 import { nextAutoStatus, shouldExpire } from "./opportunity.js";
 import { SCORE_VERSION, scoreOpportunity } from "./score.js";
 import { groupStats } from "./stats.js";
-import type { OpportunityInput, PlatformStore } from "./store.js";
+import type { OpportunityInput, PlatformStore, ScanSnapshot } from "./store.js";
 import type { LoopDef } from "./runtime.js";
 
 // Scan loop (SPEC P0.4 scanner, P0.9-P0.11). Thin glue: one metaAndAssetCtxs per
@@ -48,6 +48,8 @@ export interface ScannerDeps {
   edgeMinN?: number;
   readyTtlMin?: number;
   researchScore?: number;
+  /** Extra history for the ring at boot (e.g. intel_snapshots); the scan_snapshots row wins on a shared timestamp. */
+  seedFrom?: (sinceIso: string) => Promise<ScanSnapshot[]>;
 }
 
 export function createScanner(deps: ScannerDeps) {
@@ -69,13 +71,18 @@ export function createScanner(deps: ScannerDeps) {
 
   /** Rebuilds the ring from the persisted 5-min snapshots (once, at the first tick). */
   async function seed() {
-    for (const s of await store.scanSnapshotsSince(new Date(now() - RING_MS).toISOString())) {
+    const since = new Date(now() - RING_MS).toISOString();
+    const own = await store.scanSnapshotsSince(since);
+    // The extra source is best-effort: a missing table must not stop the scanner.
+    const extra = await deps.seedFrom?.(since).catch((err) => (console.error("[scanner] seedFrom failed:", err instanceof Error ? err.message : err), [] as ScanSnapshot[])) ?? [];
+    const merged = new Map<string, Map<number, RingPoint>>();
+    for (const s of [...extra, ...own]) {
       const { mark, oiUsd, funding, dayNtlVlm } = s.inputs as Record<string, unknown>;
       const ts = Date.parse(s.ts);
       if (![ts, mark, oiUsd, funding, dayNtlVlm].every((n) => typeof n === "number" && Number.isFinite(n))) continue;
-      const pts = ring.get(s.coin) ?? ring.set(s.coin, []).get(s.coin)!;
-      pts.push({ ts, mark: mark as number, oiUsd: oiUsd as number, funding: funding as number, dayNtlVlm: dayNtlVlm as number });
+      (merged.get(s.coin) ?? merged.set(s.coin, new Map()).get(s.coin)!).set(ts, { ts, mark: mark as number, oiUsd: oiUsd as number, funding: funding as number, dayNtlVlm: dayNtlVlm as number });
     }
+    for (const [coin, m] of merged) ring.set(coin, [...m.values()].sort((a, b) => a.ts - b.ts));
     seeded = true;
   }
 
@@ -204,6 +211,11 @@ export function createScanner(deps: ScannerDeps) {
     intervalSec,
     lastScanAt: () => lastScan,
     /** Mark from the latest scan, for the outcomes fallback. */
+    /** Minutes of ring history for the median coin; null while the ring is empty. */
+    historyMin: () => {
+      const spans = [...ring.values()].filter((p) => p.length).map((p) => (p.at(-1)!.ts - p[0]!.ts) / MIN).sort((a, b) => a - b);
+      return spans.length ? spans[Math.floor(spans.length / 2)]! : null;
+    },
     latestMark: (coin: string) => marks.get(coin) ?? null,
   };
 }

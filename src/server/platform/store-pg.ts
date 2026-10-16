@@ -255,9 +255,9 @@ export class PgPlatformStore implements PlatformStore {
     return rows.map(toOpportunity);
   }
 
-  async transitionOpportunity(...[id, from, to, actor, decision]: Parameters<PlatformStore["transitionOpportunity"]>) {
+  async transitionOpportunity(...[id, from, to, actor, decision, ref]: Parameters<PlatformStore["transitionOpportunity"]>) {
     checkTransition(from, to, actor, decision);
-    const entries = [parseEntry({ opportunityId: id, kind: "status", payload: { from, to, actor } })];
+    const entries = [parseEntry({ opportunityId: id, kind: "status", payload: { from, to, actor, ...(ref ? { ref } : {}) } })];
     if (decision) entries.push(parseEntry({ opportunityId: id, kind: "decision", payload: decision }));
     return this.db.tx(async (db) => {
       const [r] = await db.query(`update opportunities set status = $3, updated_at = now(), status_changed_at = now() where id = $1::uuid and status = $2 returning *`, [id, from, to]);

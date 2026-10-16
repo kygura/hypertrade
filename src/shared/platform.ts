@@ -104,7 +104,11 @@ export type FeatureVector = z.infer<typeof FeatureVectorSchema>;
 
 const PAYLOADS = {
   created: z.object({ features: FeatureVectorSchema, market: JsonRecord, score: Num, scoreVersion: Text(32) }),
-  status: z.object({ from: OpportunityStatusSchema, to: OpportunityStatusSchema, actor: ActorSchema }),
+  status: z.object({
+    from: OpportunityStatusSchema, to: OpportunityStatusSchema, actor: ActorSchema,
+    /** approved -> open: the desk proposal id, whose paper fill is the outcome entry price. */
+    ref: Text(64).optional(),
+  }),
   costs: CostsSchema.extend({ grossEdgeBps: Num.nullable(), netEdgeBps: Num.nullable(), edgeBasis: EdgeBasisSchema }),
   research: z.object({ researchId: Text(64), model: Text(120), promptVersion: Text(32), sources: z.array(z.string().url()) }),
   decision: z.object({
@@ -242,6 +246,8 @@ export const PlatformHealthSchema = z.object({
   loops: z.array(LoopHealthSchema),
   ws: z.object({ state: z.enum(["connecting", "open", "closed", "off"]), lastMessageAgeSec: NonNeg.nullable() }),
   scanAgeSec: NonNeg.nullable(),
+  /** Minutes of history in the scanner ring for the median coin (z-score warm-up); null before the first scan. */
+  scanHistoryMin: NonNeg.nullable().optional(),
   crawler: z.object({ pollsPerMin: NonNeg, addresses: z.number().int().nonnegative() }),
   llmSpendUsdToday: NonNeg.nullable(),
 });

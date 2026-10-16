@@ -124,6 +124,8 @@ export interface PlatformStore {
     to: OpportunityStatus,
     actor: LedgerPayload<"status">["actor"],
     decision?: LedgerPayload<"decision">,
+    /** Recorded on the `status` entry (approved -> open: the desk proposal id). */
+    ref?: string,
   ): Promise<Opportunity | null>;
   /** Sets costs and edge on a pre-decision opportunity and appends the `costs` entry. Null when missing or past the decision. */
   setOpportunityCosts(id: string, c: LedgerPayload<"costs">): Promise<Opportunity | null>;

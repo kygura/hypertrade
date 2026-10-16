@@ -153,6 +153,7 @@ describe("approve", () => {
     const dec = entries.find((e) => e.kind === "decision");
     expect(dec?.payload).toMatchObject({ decision: "approve", operator: "operator", seen: { score: 2.5, scoreVersion: "v1", stopPx: 3800, features: { features: { ret15mZ: 2.1 } }, costs: { feeBps: 4.5 } } });
     expect(entries.filter((e) => e.kind === "status").map((e) => (e.payload as { to: string }).to)).toEqual(["calculated", "ready", "approved", "open"]);
+    expect(entries.filter((e) => e.kind === "status").at(-1)!.payload).toMatchObject({ to: "open", ref: "p1" });
     expect(risk.placed).toBe(1);
   });
 

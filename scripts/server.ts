@@ -15,6 +15,7 @@ import { setPlatformContext } from "../src/server/platform/context";
 import { createCrawler } from "../src/server/platform/crawler";
 import { createLiqmapLoop } from "../src/server/platform/liqmapLoop";
 import { createOutcomesLoop } from "../src/server/platform/outcomesLoop";
+import { sql } from "../src/server/db";
 import { createScanner } from "../src/server/platform/scanner";
 import { setHealthExtras, parseWorkerLoops, startLoops, type LoopDef, type Loops } from "../src/server/platform/runtime";
 import { MemoryPlatformStore } from "../src/server/platform/store-memory";
@@ -58,11 +59,26 @@ async function boot() {
   const ws = createWsIngest({ onAddresses: (a, t) => addresses.add(a, t) });
   const retentionDays = Number(process.env.PLATFORM_RETENTION_DAYS ?? 14) || 14;
 
-  const scanner = createScanner({ store });
+  // Cold start: intel_snapshots (15-min rows from /cron/collect) fills the ring until scan_snapshots has 24 h of its own.
+  const seedFrom = databaseUrl
+    ? async (since: string) =>
+        (await sql()`select asset, ts, price, vol24h, funding, oi_usd from intel_snapshots where ts >= ${since} order by ts`).map((r: any) => ({
+          coin: String(r.asset), ts: new Date(r.ts).toISOString(), inputs: { mark: r.price, oiUsd: r.oi_usd, funding: r.funding, dayNtlVlm: r.vol24h },
+        }))
+    : undefined;
+  const scanner = createScanner({ store, seedFrom });
   const crawler = createCrawler({ store });
   const liqmap = createLiqmapLoop({ store });
   // A ws mid older than 30 s is not a price; the outcomes loop then falls back to the last scan's mark.
-  const outcomes = createOutcomesLoop({ store, mid: (c) => ((ws.midAge(c) ?? Infinity) <= 30_000 ? ws.mid(c) : null), scanMark: scanner.latestMark });
+  const outcomes = createOutcomesLoop({ store, mid: (c) => ((ws.midAge(c) ?? Infinity) <= 30_000 ? ws.mid(c) : null), scanMark: scanner.latestMark,
+    fillPx: databaseUrl
+      ? async (id) => {
+          if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+          const [r] = await sql()`select px from desk_paper_fills where proposal_id = ${id} order by ts asc limit 1`;
+          return r ? Number(r.px) : null;
+        }
+      : undefined,
+  });
   const alerts = createAlerts({ notifier: createNotifier(), wsAgeSec: () => ws.lastMessageAgeSec(), appUrl: (process.env.APP_URL ?? process.env.DESK_APP_URL)?.trim() });
 
   const defs: LoopDef[] = [
@@ -92,6 +108,7 @@ async function boot() {
     store: storeKind,
     loops: loops.health(),
     ws: { state: selected === "all" || selected.has("ws") ? ws.state : "off", lastMessageAgeSec: ws.lastMessageAgeSec() },
+    scanHistoryMin: scanner.historyMin(),
     scanAgeSec: scanner.lastScanAt() ? (Date.now() - scanner.lastScanAt()!.getTime()) / 1000 : null,
     crawler: { pollsPerMin: crawler.pollsPerMin(), addresses: await store.addressCount() },
     llmSpendUsdToday: null,

@@ -93,7 +93,7 @@ describe("routeEntities", () => {
     expect(deps.notifier.sent).toHaveLength(1);
     expect(deps.notifier.sent[0]!.title).toBe("Long SOL: Attackers drain jitoSOL vault");
     expect(deps.notifier.sent[0]!.body).toBe(
-      "• [hypothesis] Long SOL. The exploit is on Jito, whose jitoSOL is SOL collateral, which could cause liquidations.\n• already −4.1%, OI −8%\n\nhttps://app.example.com/?review=1",
+      "• [hypothesis] Long SOL. The exploit is on Jito, whose jitoSOL is SOL collateral, which could cause liquidations.\n• already −4.1%, OI −8%\n\nhttps://app.example.com/terminal?review=1",
     );
   });
 

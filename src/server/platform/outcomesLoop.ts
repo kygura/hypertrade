@@ -16,6 +16,8 @@ export interface OutcomesDeps {
   mid: (coin: string) => number | null;
   /** Mark from the latest scan: the fallback. */
   scanMark: (coin: string) => number | null;
+  /** Paper fill price of a desk proposal, null when unknown. */
+  fillPx?: (proposalId: string) => Promise<number | null>;
   horizons?: string[];
   now?: () => number;
 }
@@ -54,14 +56,21 @@ export function createOutcomesLoop(deps: OutcomesDeps) {
 
   async function mark(o: Opportunity, horizon: string) {
     const horizonPx = deps.mid(o.coin) ?? deps.scanMark(o.coin);
-    // ponytail: entry is the mark at creation. A paper fill price for opened ideas needs the desk fill path (T5); wire it here.
     if (horizonPx == null || o.entryPx == null) throw new Error("no price");
-    const c = o.costs ?? { feeBps: DEFAULT_TAKER_FEE_BPS, slippageBps: 0, fundingBps: 0 }; // no book at creation: fee-only
-    const a = { direction: o.direction, entryPx: o.entryPx, horizonPx, costs: c };
+    let c = o.costs ?? { feeBps: DEFAULT_TAKER_FEE_BPS, slippageBps: 0, fundingBps: 0 }; // no book at creation: fee-only
+    let entryPx = o.entryPx;
+    let entryBasis: "mark" | "fill" = "mark";
+    // An opened idea enters at its paper fill (the ref on its approved -> open entry); the fill already carries slippage.
+    if (deps.fillPx && (o.status === "open" || o.status === "closed")) {
+      const ref = (await store.ledgerFor(o.id)).flatMap((e) => (e.kind === "status" && e.payload.to === "open" && e.payload.ref ? [e.payload.ref] : []))[0];
+      const fill = ref ? await deps.fillPx(ref).catch(() => null) : null;
+      if (fill != null && fill > 0 && Number.isFinite(fill)) (entryPx = fill, entryBasis = "fill", c = { ...c, slippageBps: 0 });
+    }
+    const a = { direction: o.direction, entryPx, horizonPx, costs: c };
     await store.appendLedger({
       opportunityId: o.id,
       kind: "outcome",
-      payload: { horizon, entryBasis: "mark", entryPx: o.entryPx, horizonPx, grossReturn: netReturn({ ...a, costs: { feeBps: 0, slippageBps: 0, fundingBps: 0 } }), netReturn: netReturn(a) },
+      payload: { horizon, entryBasis, entryPx, horizonPx, grossReturn: netReturn({ ...a, costs: { feeBps: 0, slippageBps: 0, fundingBps: 0 } }), netReturn: netReturn(a) },
     });
   }
 
