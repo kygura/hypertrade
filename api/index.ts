@@ -3,6 +3,7 @@ import { handle } from "hono/vercel";
 import { requireAuth } from "../src/server/auth.js";
 import { mcpRoutes } from "../src/server/mcp/http.js";
 import { labRegistry } from "../src/server/mcp/lab.js";
+import { getHealthExtras } from "../src/server/platform/runtime.js";
 import { analystRoutes } from "../src/server/routes/analyst.js";
 import { authRoutes } from "../src/server/routes/auth.js";
 import { branchesRoutes } from "../src/server/routes/branches.js";
@@ -36,8 +37,16 @@ const app = new Hono({ strict: false }).basePath("/api");
 // Public/cron exceptions live in PUBLIC_PATHS in src/server/auth.ts.
 app.use("*", requireAuth);
 
-app.get("/health", (c) => {
-  return c.json({ ok: true, ts: new Date().toISOString() });
+// Public, and it answers even when loops are down: platform fields are added
+// by scripts/server.ts (absent on Vercel), a failing provider never fails the probe.
+app.get("/health", async (c) => {
+  const base = { ok: true, ts: new Date().toISOString() };
+  try {
+    return c.json({ ...base, ...(await getHealthExtras()?.()) });
+  } catch (err) {
+    console.error("[health] extras failed:", err);
+    return c.json(base);
+  }
 });
 
 app.route("/auth", authRoutes);

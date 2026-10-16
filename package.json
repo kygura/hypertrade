@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "bun scripts/server.ts",
     "dev:api": "bun run scripts/dev-api.ts",
     "desk:worker": "bun run scripts/desk-worker.ts",
     "lab": "bun run scripts/lab-cli.ts",
