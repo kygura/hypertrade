@@ -74,9 +74,10 @@ export function denseBuckets(buckets: readonly LiqBucket[], bucketBps: number): 
   return out // highest price first (top of the chart)
 }
 
-export type CoverageTreatment = 'full' | 'partial' | 'none'
-/** < 25% partial map (amber, `≥` callouts); < 5% no cluster naming. */
-export const coverageTreatment = (ratio: number): CoverageTreatment => (ratio < 0.05 ? 'none' : ratio < 0.25 ? 'partial' : 'full')
+export type CoverageTreatment = 'full' | 'partial' | 'none' | 'unknown'
+/** < 25% partial map (amber, `≥` callouts); < 5% no cluster naming; null (OI unknown) is not 0%: clusters show, muted. */
+export const coverageTreatment = (ratio: number | null): CoverageTreatment =>
+  ratio == null ? 'unknown' : ratio < 0.05 ? 'none' : ratio < 0.25 ? 'partial' : 'full'
 
 /** 95th percentile (nearest-rank) of the positive values; 0 when none. */
 export function p95(values: readonly number[]): number {

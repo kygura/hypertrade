@@ -86,7 +86,7 @@ export function LiqMapView({
   else if (!axis) history = <EmptyBlock label="history unavailable" />
   else history = <LiqHistory history={h} lo={axis.lo} hi={axis.hi} coin={coin} />
 
-  const partial = data ? coverageTreatment(data.coverage.ratio) !== 'full' : false
+  const partial = data ? ['partial', 'none'].includes(coverageTreatment(data.coverage.ratio)) : false
   return (
     <Panel className="min-w-0">
       <PanelHeader title={`LIQUIDATIONS · ${coin}`}>
@@ -113,7 +113,7 @@ export function LiqMapView({
       {data && ageSec > 60 && <StaleStrip>liquidation map {Math.floor(ageSec / 60)}m old</StaleStrip>}
       {data && partial && (
         <p className="px-3 pt-1 text-[10px] text-amber">
-          only {Math.round(data.coverage.ratio * 100)}% of open interest is mapped — missing clusters are likely
+          only {Math.round((data.coverage.ratio ?? 0) * 100)}% of open interest is mapped — missing clusters are likely
         </p>
       )}
       <div className="px-3 pt-2 xl:hidden">
@@ -143,12 +143,12 @@ export function CoverageLine({ coverage }: { coverage: Coverage }) {
   const t = coverageTreatment(coverage.ratio)
   const slowP90 = coverage.pollAgeP90Sec != null && coverage.pollAgeP90Sec > 30 * 60
   return (
-    <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 text-[10px] tabular border-b border-border-subtle ${t === 'full' ? 'text-text-secondary' : 'text-amber'}`}>
+    <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 text-[10px] tabular border-b border-border-subtle ${t === 'full' || t === 'unknown' ? 'text-text-secondary' : 'text-amber'}`}>
       <span>
-        COVERAGE {Math.round(coverage.ratio * 100)}% OF OI · {coverage.addresses.toLocaleString()} ADDR · POLL p50 {ageMin(coverage.pollAgeP50Sec)}{' '}
+        {coverage.ratio == null ? 'COVERAGE — OI UNKNOWN' : `COVERAGE ${Math.round(coverage.ratio * 100)}% OF OI`} · {coverage.addresses.toLocaleString()} ADDR · POLL p50 {ageMin(coverage.pollAgeP50Sec)}{' '}
         <span className={slowP90 ? 'text-amber' : undefined}>p90 {ageMin(coverage.pollAgeP90Sec)}</span>
       </span>
-      {t !== 'full' && <Badge tone="amber">PARTIAL MAP</Badge>}
+      {(t === 'partial' || t === 'none') && <Badge tone="amber">PARTIAL MAP</Badge>}
     </div>
   )
 }
@@ -160,7 +160,7 @@ const clusterParts = (c: Cluster, side: 'long' | 'short', t: CoverageTreatment) 
   px: fmtPx((c.priceLo + c.priceHi) / 2),
 })
 
-function Callouts({ clusters, ratio }: { clusters: LiqMap['nearestClusters']; ratio: number }) {
+function Callouts({ clusters, ratio }: { clusters: LiqMap['nearestClusters']; ratio: number | null }) {
   const t = coverageTreatment(ratio)
   if (t === 'none') return <p className="px-3 pb-2 text-[10px] text-text-secondary">too little coverage to name clusters</p>
   const line = (word: string, side: 'long' | 'short') => {
@@ -206,8 +206,8 @@ const BOARD_COLUMNS: Column<BoardRow>[] = [
     render: (r) => {
       const t = coverageTreatment(r.coverage.ratio)
       return (
-        <span className={t === 'full' ? 'text-text-secondary' : 'text-amber'} title={t === 'full' ? 'share of open interest mapped' : 'partial map — missing clusters are likely'}>
-          {Math.round(r.coverage.ratio * 100)}%
+        <span className={t === 'full' || t === 'unknown' ? 'text-text-secondary' : 'text-amber'} title={t === 'full' ? 'share of open interest mapped' : t === 'unknown' ? 'open interest unknown' : 'partial map — missing clusters are likely'}>
+          {r.coverage.ratio == null ? '—' : `${Math.round(r.coverage.ratio * 100)}%`}
         </span>
       )
     },
@@ -255,7 +255,7 @@ export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBuck
   const markRow = rows.find((r) => mark >= r.priceLo && mark < r.priceHi) ?? null
   const max = Math.max(1, ...rows.map((r) => r.longUsd + r.shortUsd))
   return (
-    <figure aria-label={`liquidation profile for ${coin}: long liquidations below mark ${fmtPx(mark)}, short above; ${Math.round(coverage.ratio * 100)}% of open interest mapped`}>
+    <figure aria-label={`liquidation profile for ${coin}: long liquidations below mark ${fmtPx(mark)}, short above; ${coverage.ratio == null ? 'open interest unknown' : `${Math.round(coverage.ratio * 100)}% of open interest mapped`}`}>
       <div className="flex justify-between h-4 text-[10px] label px-1">
         <span style={{ color: SHORT }}>▲ SHORT LIQS</span>
         <span style={{ color: LONG }}>▼ LONG LIQS</span>
