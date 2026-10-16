@@ -1,9 +1,10 @@
 import type { Claim } from "../../shared/claims.js";
 import type { Alert, CatalystWindow, IntelEvent, ManualCatalystInputSchema } from "../../shared/intel.js";
 import type { z } from "zod";
+import { confluenceK, materiality as materialityOf } from "./diff.js";
 import { hostLabel } from "./ingest/common.js";
 import { assetExposure, deepLink, exposureHits, loadContext, MAGNITUDE_WEIGHT, pathText, routeFor, type MapperDeps } from "./mapper.js";
-import { sendIntel } from "./notify.js";
+import { feedbackActions, sendIntel } from "./notify.js";
 import type { IntelStore } from "./store.js";
 
 // Catalyst alerts (SPEC.md § Intel I0.13). Scheduled events within the next
@@ -47,7 +48,7 @@ export async function catalystAlerts(deps: CatalystDeps, now: Date): Promise<{ a
     for (const hit of exposureHits(ctx.edges, [...e.entities, ...e.assets], ctx.targets)) {
       const exp = await assetExposure(deps, ctx, hit.asset);
       const text = `${e.title} at ${utc(e.scheduledAt!)} (${countdown(until)}). ${exp.label}; exposed via ${pathText(hit)}.`.slice(0, 600);
-      const materiality = MAGNITUDE_WEIGHT[e.magnitude] * hit.pathWeight * exp.weight * exp.proximity;
+      const materiality = materialityOf({ surprise: MAGNITUDE_WEIGHT[e.magnitude] * hit.pathWeight, exposure: exp.weight, proximity: exp.proximity }, confluenceK(ctx.sources.get(hit.asset), "news"));
       const alert = await deps.store.insertAlert({
         kind: "catalyst",
         ref: e.id,
@@ -69,7 +70,7 @@ export async function catalystAlerts(deps: CatalystDeps, now: Date): Promise<{ a
     }
     const pushed = inserted.filter((a) => a.route === "push");
     if (pushed.length) {
-      await sendIntel(deps.notifier, { title: `T−${window}: ${e.title}`.slice(0, 200), lines: pushed.map((a) => a.line), link: deepLink(deps.appUrl) });
+      await sendIntel(deps.notifier, { title: `T−${window}: ${e.title}`.slice(0, 200), lines: pushed.map((a) => a.line), link: deepLink(deps.appUrl), actions: feedbackActions(pushed) });
     }
     alerts.push(...inserted);
   }

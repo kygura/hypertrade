@@ -14,7 +14,7 @@ const ID = /^[0-9a-f-]{36}$/i;
 /** completeStructured's fail-closed errors → HTTP status. */
 export function llmErrorStatus(error: string): 429 | 502 | 503 {
   if (error === "llm not configured") return 503;
-  if (error === "LLM cap reached") return 429;
+  if (error.startsWith("LLM cap reached")) return 429;
   return 502;
 }
 

@@ -25,6 +25,97 @@ bun run build
 
 Deployed on Vercel + Supabase. Set environment variables from `.env.example` in Vercel project settings.
 
+## Railway (always-on backend, phase 8)
+
+One Bun process (`scripts/server.ts`) serves the API, the built UI and the platform worker loops (scanner, crawler, liqmap, outcomes, alerts, desk, Telegram). Follow the steps in order: migrations before the first boot, restricted role after migrations.
+
+1. **Create the service.** New Railway project, deploy from this GitHub repo. Builder: `Dockerfile` (Railpack does not detect Bun). Region: `asia-southeast1` (Singapore). Generate a public domain under Networking. Healthcheck path: `/api/health` (public, no login).
+2. **Database.** Set `DATABASE_URL` to the Supabase transaction pooler URL (port 6543, IPv4). Railway egress is IPv4 by default, and `prepare: false` is already set in code. Set `DB_POOL_MAX=4`. For the first deploy set `MIGRATE_ON_BOOT=1`, or run `bun run db:migrate` once with the owner URL. Migrations apply in name order, one transaction each, under an advisory lock, so concurrent boots cannot race. An existing database re-applies `001`–`010` once; they are idempotent.
+3. **Restricted app role (recommended).** `ledger_entries` is append-only through a trigger. Only the table owner can drop or disable that trigger, so run the app as a non-owner role. Run this in the Supabase SQL editor as `postgres`, after step 2 (the `revoke` needs the table to exist). Replace the password and keep it in Railway only.
+
+   ```sql
+   create role hypertrade_app login password '<generated>';
+   grant usage on schema public to hypertrade_app;
+   grant select, insert, update, delete on all tables in schema public to hypertrade_app;
+   grant usage, select on all sequences in schema public to hypertrade_app;
+   alter default privileges for role postgres in schema public
+     grant select, insert, update, delete on tables to hypertrade_app;
+   alter default privileges for role postgres in schema public
+     grant usage, select on sequences to hypertrade_app;
+   revoke update, delete, truncate on ledger_entries from hypertrade_app;
+   -- Supabase exposes public over PostgREST to the anon key: shut that door. Covers every
+   -- table, older ones (001–010) included; the app talks Postgres directly, not PostgREST.
+   revoke all on all tables in schema public from anon, authenticated;
+   alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated;
+   -- RLS with no anon/authenticated policy: PostgREST is denied even if a grant comes back.
+   -- The owner bypasses RLS; hypertrade_app gets the only policy (RLS binds every non-owner role).
+   alter table ledger_entries enable row level security;
+   alter table opportunities enable row level security;
+   create policy app_all on ledger_entries for all to hypertrade_app using (true) with check (true);
+   create policy app_all on opportunities for all to hypertrade_app using (true) with check (true);
+   ```
+
+   Point `DATABASE_URL` at the same pooler with the `hypertrade_app` user (Supabase usually wants `hypertrade_app.<project-ref>`; copy the exact string from the Connect panel). Leave `MIGRATE_ON_BOOT` unset: this role cannot create tables. Migrations run as the owner, with `DATABASE_URL=<owner pooler URL> bun run db:migrate`. There is no separate migrate URL.
+4. **Environment variables.** Set these on the Railway service. Never commit values.
+
+   Required:
+
+   | Variable | Purpose |
+   | --- | --- |
+   | `APP_PASSWORD` | Login password for the cockpit and terminal. |
+   | `SESSION_SECRET` | Signs the session cookie. |
+   | `CRON_TOKEN` | Sent as `x-cron-token` to `/api/cron/*`. Must match the GitHub secret. `CRON_SECRET` is accepted as a bearer alternative. |
+   | `APP_URL` | Public origin, no trailing slash. Builds Telegram links. Set it on Railway as well as in GitHub. |
+
+   Optional, for the worker and platform (defaults in parentheses):
+
+   | Variable | Purpose |
+   | --- | --- |
+   | `PORT` (8787) | Listen port. Railway sets it. |
+   | `DATABASE_URL` (unset) | Postgres. Without it the store is in memory and nothing survives a restart. `DATABASE_POSTGRES_URL` and `POSTGRES_URL` are also read. |
+   | `DB_POOL_MAX` (1) | Connection pool size. Use 4. |
+   | `DB_QUERY_TIMEOUT_MS` (30000) | Per-query timeout. |
+   | `MIGRATE_ON_BOOT` (unset) | `1` runs migrations before serving. Needs `DATABASE_URL`. |
+   | `WORKER_LOOPS` (`all`) | `all`, `off`, or a comma list of `ws`, `scanner`, `crawler`, `liqmap`, `outcomes`, `alerts`, `prune`, `desk`, `telegram`. |
+   | `PLATFORM_SCAN_INTERVAL_SEC` (60) | Universe scan period. |
+   | `PLATFORM_COST_TOP_N` (25) | Coins costed from `l2Book` per scan. |
+   | `PLATFORM_LIQMAP_COINS` (30) | Coins in each 15-minute liquidation snapshot. |
+   | `PLATFORM_CRAWL_WEIGHT_PER_MIN` (800) | Hyperliquid weight budget for the crawler. |
+   | `PLATFORM_CRAWL_MAX_AGE_MIN` (30) | Max age of a poll for addresses with open positions. |
+   | `PLATFORM_RETENTION_DAYS` (14) | Pruning window for snapshot and history tables. The ledger is never pruned. |
+   | `PLATFORM_OUTCOME_HORIZONS` (`1h,4h,24h,72h`) | Outcome horizons. |
+   | `PLATFORM_EDGE_MIN_N` (30) | Resolved outcomes needed before edge leaves `unvalidated`. |
+   | `PLATFORM_READY_TTL_MIN` (60) | Minutes before an undecided `ready` opportunity expires. |
+   | `PLATFORM_RESEARCH_SCORE` (4) | Reserved; research is operator-triggered in phase 8. |
+   | `PLATFORM_PUSH_SCORE` (3) | Score that triggers a Telegram alert on `ready`. |
+   | `DESK_WORKER_TICK_SEC` (60) | Desk watch tick period, minimum 30. |
+   | `DESK_MAX_CYCLES_PER_DAY` (8) | Agent cycle budget per day. |
+   | `DESK_TELEGRAM_BOT_TOKEN`, `DESK_TELEGRAM_CHAT_ID` (unset) | Both needed for the Telegram loop. Without them it does not run. |
+   | `DESK_TELEGRAM_WEBHOOK_SECRET` (unset) | If set, the Telegram long-poll turns off (webhook mode). Leave unset so the worker polls. |
+   | `ANTHROPIC_API_KEY` (unset) | Optional LLM key for the analyst and desk. See Analyst. |
+
+5. **Cut over from Vercel.**
+   - GitHub Actions secret `APP_URL` = the Railway origin. The collect, lab and intel jobs now call the worker.
+   - Repository variable `DESK_ENABLED=false`. The desk tick runs inside the worker now; leaving the job on runs two ticks per window.
+   - `INTEL_ENABLED` stays as it was.
+   - `vercel.json` still schedules collect, lab-collect and backfill on Vercel. Pause the Vercel project after one green day on Railway.
+   - Telegram review links open `/terminal?review=1`.
+6. **Verify.**
+
+   ```bash
+   curl -sS "$APP_URL/api/health"
+   ```
+
+   Expect `"store":"pg"`, every entry in `loops` with `"ok":true`, `ws.state` `"open"`, `scanAgeSec` under 90, and `crawler.pollsPerMin` above 0. The crawler reads 0 until the WebSocket has supplied trader addresses. Z-scores need history: the scanner ring spans 24 h, is persisted every 5 min to `scan_snapshots`, and is reloaded at boot. Expect thin features on a fresh database.
+7. **Local run.**
+
+   ```bash
+   WORKER_LOOPS=all bun run start                       # no DATABASE_URL: memory store
+   docker build -t hypertrade . && docker run -p 8787:8787 --env-file .env hypertrade
+   ```
+
+Cost: Hobby plan is about $5/mo plus usage. At 0.5 vCPU and 512 MB, usage is about $15/mo at the rates in the research notes. Check current Railway pricing before relying on this.
+
 ## Chart history
 
 `/markets/:coin` charts every Hyperliquid perp at `1m 5m 15m 1H 4H 1D 1W 1M`
@@ -190,7 +281,8 @@ page. All `DESK_*` settings are listed in `.env.example`.
 
 The Terminal (`/` and `/journal`, `/theses`, `/query`, `/order`, `/watch`;
 SPEC.md § Intel) reads `/api/intel/*`. Code: `src/server/intel/*`,
-`src/server/routes/intel/*`. Needs `db/migrations/007_intel.sql`; LLM features
+`src/server/routes/intel/*`. Needs `db/migrations/007_intel.sql` (plus 008, 009 and
+010, see Setup below); LLM features
 use the Desk's model resolution and alerts go through the Desk notifier.
 Orders from `/order` go to the Desk venue only (paper or testnet), always
 preview → confirm. `GET /api/intel/*` also accepts the `LAB_API_TOKEN` bearer;
@@ -207,8 +299,12 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 |---|---|
 | `INTEL_MIN_Z` | \|z\| a change must clear to reach the brief, default 2 |
 | `INTEL_TOP_K` | brief items kept after ranking, default 5 |
-| `INTEL_PUSH_MATERIALITY` | mapper alerts at or above this push to Telegram now, else wait for the brief; default 0.35 |
+| `INTEL_PUSH_MATERIALITY` | alert threshold: items at or above it push to Telegram now, and flow flags at or above it are eligible for auto-research; default 0.35 |
+| `INTEL_DIGEST_MATERIALITY` | digest floor: items below it are hidden from the digest (still logged); default 0.10 |
+| `INTEL_RESEARCH_DAILY` | manual research runs per UTC day, default 10 |
+| `INTEL_RESEARCH_AUTO_DAILY` | automatic (flow-flag) research runs per UTC day, default 3 |
 | `INTEL_LLM_DAILY_CAP` | Intel LLM calls per day before failing closed, default 200 |
+| `INTEL_LLM_DAILY_USD` | Intel LLM spend per UTC day (usage × model price) before failing closed, default 2.00 |
 | `INTEL_BRIEF_HOURS` | cron brief at most every N hours, default 6 |
 | `INTEL_TZ` | journal session clock (asia/eu/us by hour), default UTC |
 | `INTEL_RSS_FEEDS` | comma-separated RSS/Atom URLs; default a built-in keyless list |
@@ -218,6 +314,10 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 | `X_BEARER_TOKEN`, `INTEL_X_LIST_ID` | X list timeline ingest; both required |
 | `INTEL_RPC_<CHAIN>` | RPC override for the contract/wallet watcher (`ETHEREUM`, `ARBITRUM`, `BASE`, `OPTIMISM`, `POLYGON`, `BSC`, `AVALANCHE`, `HYPEREVM`); default public RPCs |
 | `DATABASE_URL_READONLY` | read-only Postgres role for `/api/intel/query/run`; default the main connection |
+| `COINALYZE_API_KEY` | Coinalyze flow collector in the collect cron (free key, 40 calls/min); unset → no flow rows and the heatmap's flow status reads `no_source` |
+| `INTEL_FLOW_MAX_COINS` | held ∪ watched coins the flow collector covers (by notional, then watch order), 1–20, default 8 |
+| `INTEL_THRESHOLDS` | threshold-crossing events, comma list of `metric>value` / `metric<value`; default `funding>0.0000625` (0.05%/8 h, hourly) |
+| `INTEL_DELEV_OI_PCT` | deleveraging detector's OI 6 h drop, in %, default 8 |
 | repo var `INTEL_ENABLED` | `true` turns on the workflow's `intel` job |
 
 ### How the Terminal works
@@ -291,9 +391,27 @@ intel job, so nothing bypasses that gate.
 creates every `intel_*` table the Terminal reads, and the routes do not work
 without it. Then `008_intel_stops.sql` (stop triggers of the watched HL
 account, for journal R; without it the capture is skipped and reported).
+`009_flow.sql` (non-HL venue flow rows; without it the flow collector, heatmap
+and digest log fail) and `010_research.sql` (research runs and their lock;
+without it `/api/intel/research` and auto-research fail). Apply 009 and 010
+before deploying this code, as with 002, 003, 004 and 007.
 Environment variables are in the table under
 [Intel (optional)](#intel-optional), which also covers `INTEL_ENABLED`;
 `.env.example` lists the same keys.
+
+### Research
+
+The RESEARCH panel on `/` asks one question about a coin (optionally tied to a
+flow flag) and returns an explanation, evidence and open questions. Routes:
+`POST /api/intel/research` (`{question, asset?, flagId?}`; 429 at the daily
+limit, 409 while another run is in flight) and `GET /api/intel/research`
+(recent runs, `usedToday`, `limit`). A flow-flag chip's action posts the chip
+question with the flag id. The ingest job also researches the strongest
+unexplained flags on its own. Limits: `INTEL_RESEARCH_DAILY` manual and
+`INTEL_RESEARCH_AUTO_DAILY` automatic runs per UTC day, at most 8 web searches
+and 45 s per run, and the `INTEL_LLM_DAILY_USD` spend cap. Evidence that cites
+a source and time is `observed`; everything else is a `hypothesis`, and any
+number that is not in the inputs is dropped.
 
 **Order copilot.** Paper or Hyperliquid testnet only. Mainnet is not
 selectable; the Desk venue config refuses it.

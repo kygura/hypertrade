@@ -21,7 +21,7 @@ function app() {
     funding: async () => [],
     ingestHealth: async () => [],
     llm: { makeProvider: () => (llmCalls++, null), cache: store, now: () => new Date(), dailyCap: 200 },
-    thresholds: { minZ: 2, topK: 5, pushMateriality: 0.35 },
+    thresholds: { minZ: 2, topK: 5, pushMateriality: 0.35, digestMateriality: 0.1 },
     now: () => new Date(),
   });
   const call = (method: string, path: string, body?: unknown) =>

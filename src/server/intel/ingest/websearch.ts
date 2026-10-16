@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AssetSchema, EVENT_TYPES, EventTypeSchema, HttpsUrlSchema } from "../../../shared/intel.js";
 import { completeStructured } from "../llm.js";
+import { isAdvice, lineVerdict, payloadNumbers } from "../numbers.js";
 import type { NewEvent } from "../store.js";
 import { fresh, hashKey, headlineEvent, hostLabel, message, pastIso, SKIPPED_DISABLED, SKIPPED_THROTTLED, type AdapterResult, type IngestDeps } from "./common.js";
 
@@ -97,6 +98,9 @@ export function sweepEvents(sweep: Sweep, now: Date): NewEvent[] {
   for (const h of sweep.headlines) {
     const title = h.title.replace(/\s+/g, " ").trim().slice(0, 300);
     if (!title) continue;
+    // LLM-written text: advice drops the headline; a summary whose numbers are not in its own title is dropped.
+    if (isAdvice(title)) continue;
+    const summary = h.summary?.trim().slice(0, 600);
     const link = url(h.url);
     const firstSeen = pastIso(h.publishedAt, now) ?? now.toISOString();
     if (!fresh(firstSeen, now)) continue;
@@ -104,7 +108,7 @@ export function sweepEvents(sweep: Sweep, now: Date): NewEvent[] {
       headlineEvent({
         key: `websearch:${hashKey(link ?? title.toLowerCase())}`,
         title,
-        summary: h.summary?.trim().slice(0, 600),
+        summary: summary && lineVerdict(summary, payloadNumbers(title)) === null ? summary : undefined,
         url: link,
         label: link ? hostLabel(link, "web search").slice(0, 120) : "LLM web search (no URL)",
         origin: "websearch",

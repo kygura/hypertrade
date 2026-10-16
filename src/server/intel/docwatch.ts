@@ -5,7 +5,7 @@ import { isIP, type LookupFunction } from "node:net";
 import { Readable } from "node:stream";
 import { z } from "zod";
 import { HttpsUrlSchema, type Chain, type EventSource, type EventType, type Magnitude, type Watch, type WatchChange } from "../../shared/intel.js";
-import { claimsJsonSchema, validateClaims } from "./claims.js";
+import { claimsJsonSchema, validateLines } from "./claims.js";
 import { decodeEntities, message, readCapped, stripTags } from "./ingest/common.js";
 import { completeStructured, untrusted, UNTRUSTED_RULE, type LlmDeps } from "./llm.js";
 import type { IntelStore, WatchState } from "./store.js";
@@ -464,8 +464,8 @@ async function summarize(deps: DocwatchDeps, watch: Watch, c: Classified, source
     deps: deps.llm,
   });
   if (!res.ok) return { lines: [], trace: { ...res.trace, error: res.error } };
-  const { claims, dropped } = validateClaims(res.value.summary);
-  return { lines: claims, trace: { ...res.trace, dropped, cached: res.cached } };
+  const { claims, ...counts } = validateLines(res.value.summary, user);
+  return { lines: claims, trace: { ...res.trace, ...counts, cached: res.cached } };
 }
 
 // ─── Check ───

@@ -44,7 +44,9 @@ function logWeight(weight: number) {
   while (weightLog.length && weightLog[0]!.t <= now - WEIGHT_WINDOW_MS) weightLog.shift();
 }
 
-function responseWeight(type: string, json: unknown): number {
+export function responseWeight(type: string, json: unknown): number {
+  // HL docs: l2Book, allMids and clearinghouseState weigh 2; everything else here weighs 20.
+  if (type === "l2Book" || type === "allMids" || type === "clearinghouseState") return 2;
   const rows = Array.isArray(json) ? json.length : 0;
   if (type === "candleSnapshot") return 20 + Math.ceil(rows / 60);
   if (type === "fundingHistory") return 20 + Math.ceil(rows / 20);

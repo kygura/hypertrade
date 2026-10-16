@@ -59,7 +59,7 @@ describe("catalystAlerts", () => {
     expect(byTitle["US CPI release"]!.line.tag).toBe("observed");
 
     expect(deps.notifier.sent.map((s) => s.title)).toEqual(["T−24h: SOL unlock"]);
-    expect(deps.notifier.sent[0]!.body).toContain("https://app.example.com/?review=1");
+    expect(deps.notifier.sent[0]!.body).toContain("https://app.example.com/terminal?review=1");
 
     // Same windows again: nothing new.
     clock.now = new Date(T0 + 10 * 60_000);
@@ -74,6 +74,18 @@ describe("catalystAlerts", () => {
       ["Too far", "24h"],
     ]);
     expect((await catalystAlerts(deps, clock.now)).alerts).toEqual([]);
+  });
+
+  test("a pushed catalyst carries 👍/👎 for each stored alert, named by asset when several share the message", async () => {
+    const { clock, deps, store } = setup();
+    await addManualCatalyst(store, { title: "SOL+BTC unlock", assets: ["SOL", "BTC"], scheduledAt: at(20), type: "unlock" }, clock.now);
+    const [sol, btc] = (await catalystAlerts(deps, clock.now)).alerts.filter((a) => a.route === "push");
+    expect(deps.notifier.sent[0]!.actions).toEqual([
+      { label: "👍 SOL", data: `fb:${sol!.id}:1` },
+      { label: "👎 SOL", data: `fb:${sol!.id}:-1` },
+      { label: "👍 BTC", data: `fb:${btc!.id}:1` },
+      { label: "👎 BTC", data: `fb:${btc!.id}:-1` },
+    ]);
   });
 
   test("feedback dampening batches a catalyst push, same as the mapper", async () => {

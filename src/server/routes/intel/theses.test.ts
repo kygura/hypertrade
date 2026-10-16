@@ -37,7 +37,7 @@ describe("/api/intel/theses", () => {
     const { app: a, store } = await app();
     expect(await (await a.request("/api/intel/theses")).json()).toEqual({ theses: [] });
 
-    const res = await a.request("/api/intel/theses", post({ text: "HYPE grinds higher into the unlock because perp OI keeps rising" }));
+    const res = await a.request("/api/intel/theses", post({ text: "HYPE grinds higher into the unlock because perp OI keeps rising; out below $35" }));
     expect(res.status).toBe(201);
     const t = await res.json();
     expect(t.claims.map((c: { status: string }) => c.status)).toEqual(["supported", "supported"]);

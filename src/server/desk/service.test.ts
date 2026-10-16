@@ -253,6 +253,26 @@ describe("operator orders (copilot)", () => {
     expect(await status(service.previewOperatorOrder({ ...order, source: "agent" } as never))).toBe(400);
   });
 
+  test("placeOperatorOrder previews and submits in one step; two at once both run, one after the other", async () => {
+    const { service, store } = makeService();
+    const [a, b] = await Promise.all([service.placeOperatorOrder(order, BY), service.placeOperatorOrder({ ...order, coin: "BTC", stop: 95_000, target: 110_000 }, BY)]);
+    expect([a.status, b.status]).toEqual(["executed", "executed"]);
+    expect(await store.listFills(10)).toHaveLength(2);
+  });
+
+  test("a fill whose record write throws still returns executed (never failed with a position open)", async () => {
+    const { service, store } = makeService();
+    const orig = store.updateProposal.bind(store);
+    store.updateProposal = async () => { throw new Error("db down"); };
+    const err = console.error;
+    console.error = () => {};
+    const rec = await service.placeOperatorOrder(order, BY);
+    console.error = err;
+    store.updateProposal = orig;
+    expect(rec).toMatchObject({ status: "executed", decidedBy: BY });
+    expect(await store.paperPositions()).toMatchObject([{ coin: "ETH", proposalId: rec.id }]);
+  });
+
   test("mainnet is still refused: a mainnet venue request trades paper", async () => {
     const KEY = "0x0123456789012345678901234567890123456789012345678901234567890123";
     const { service, store } = makeService({ env: { DESK_VENUE: "hl-mainnet", DESK_HL_SECRET_KEY: KEY } });

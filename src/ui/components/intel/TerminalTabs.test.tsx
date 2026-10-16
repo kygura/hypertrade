@@ -8,7 +8,9 @@ import { TerminalTabs, TERMINAL_TABS, isTerminalPath, terminalTabOf } from "./Te
 
 describe("terminalTabOf / isTerminalPath", () => {
   test("every family route maps to its tab", () => {
-    expect(terminalTabOf("/")).toBe("terminal");
+    expect(terminalTabOf("/")).toBe("cockpit");
+    expect(terminalTabOf("/terminal")).toBe("terminal");
+    expect(terminalTabOf("/asset/HYPE")).toBe("terminal");
     expect(terminalTabOf("/journal")).toBe("journal");
     expect(terminalTabOf("/theses")).toBe("theses");
     expect(terminalTabOf("/query")).toBe("query");
@@ -27,7 +29,7 @@ describe("terminalTabOf / isTerminalPath", () => {
   });
 
   test("short labels stay within 4 chars (DESIGN-terminal §1.3 mobile fit)", () => {
-    expect(TERMINAL_TABS.map((t) => t.short)).toEqual(["TERM", "JRNL", "THES", "QRY", "ORDR", "WTCH", "OVW"]);
+    expect(TERMINAL_TABS.map((t) => t.short)).toEqual(["CKPT", "TERM", "JRNL", "THES", "QRY", "ORDR", "WTCH", "OVW"]);
     for (const t of TERMINAL_TABS) expect(String(t.short).length).toBeLessThanOrEqual(4);
   });
 });
@@ -40,21 +42,22 @@ describe("TerminalTabs", () => {
       </MemoryRouter>,
     );
 
-  test("sticky radiogroup with seven segments, the current route checked", () => {
+  test("sticky radiogroup with eight segments, the current route checked", () => {
     const html = render("/theses");
     expect(html).toContain('aria-label="terminal sections"');
     expect(html).toContain("sticky top-10");
     const btns = html.match(/<button[^>]*>/g) ?? [];
-    expect(btns).toHaveLength(7);
+    expect(btns).toHaveLength(8);
     const checked = btns.filter((b) => b.includes('aria-checked="true"'));
     expect(checked).toHaveLength(1);
     expect(checked[0]).toContain('title="test a thesis against the data"');
   });
 
-  test("`/` checks TERMINAL and `/overview` checks OVERVIEW", () => {
+  test("`/` checks COCKPIT, `/terminal` TERMINAL, `/overview` OVERVIEW", () => {
     const first = (render("/").match(/<button[^>]*>/g) ?? [])[0];
     expect(first).toContain('aria-checked="true"');
-    const last = (render("/overview").match(/<button[^>]*>/g) ?? [])[6];
+    expect((render("/terminal").match(/<button[^>]*>/g) ?? [])[1]).toContain('aria-checked="true"');
+    const last = (render("/overview").match(/<button[^>]*>/g) ?? [])[7];
     expect(last).toContain('aria-checked="true"');
   });
 });

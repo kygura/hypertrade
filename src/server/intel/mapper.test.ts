@@ -93,8 +93,25 @@ describe("routeEntities", () => {
     expect(deps.notifier.sent).toHaveLength(1);
     expect(deps.notifier.sent[0]!.title).toBe("Long SOL: Attackers drain jitoSOL vault");
     expect(deps.notifier.sent[0]!.body).toBe(
-      "• [hypothesis] Long SOL. The exploit is on Jito, whose jitoSOL is SOL collateral, which could cause liquidations.\n• already −4.1%, OI −8%\n\nhttps://app.example.com/?review=1",
+      "• [hypothesis] Long SOL. The exploit is on Jito, whose jitoSOL is SOL collateral, which could cause liquidations.\n• already −4.1%, OI −8%\n\nhttps://app.example.com/terminal?review=1",
     );
+  });
+
+  test("pushes carry 👍/👎 for the stored alert id; a failing send keeps the stored alert", async () => {
+    const deps = mapperDeps({ provider: explainer(), positions: [position("SOL", "long", 10_000)] });
+    const r = await routeEntities(deps, jito());
+    const id = r.alerts[0]!.id;
+    expect(deps.notifier.sent[0]!.actions).toEqual([
+      { label: "👍", data: `fb:${id}:1` },
+      { label: "👎", data: `fb:${id}:-1` },
+    ]);
+
+    const broken = mapperDeps({ provider: explainer(), positions: [position("SOL", "long", 10_000)] });
+    broken.notifier.send = async () => {
+      throw new Error("telegram down");
+    };
+    expect((await routeEntities(broken, jito())).alerts).toHaveLength(1);
+    expect(broken.store.alerts).toHaveLength(1);
   });
 
   test("direct hit on a watched asset: hops 0, weight 1, watch floor keeps it batched", async () => {
@@ -214,6 +231,14 @@ describe("mapClusters", () => {
 
     expect((await mapClusters(deps, ["c-live"])).mapped).toEqual([]);
     expect(deps.notifier.sent).toHaveLength(1);
+  });
+
+  test("with no label or events, an LLM summary carrying a number becomes the generic title", async () => {
+    const deps = mapperDeps({ provider: explainer(), positions: [position("SOL", "long", 10_000)] });
+    const extraction = { type: "exploit" as const, entities: ["Jito"], assets: ["SOL"], magnitude: "high" as const, summary: "Drained $80M.", scheduledAt: null, catalyst: null };
+    await deps.store.upsertCluster({ id: "c-bare", label: null, entities: [], extraction, firstSeen: "2026-10-13T10:00:00.000Z", lastSeen: "2026-10-13T10:30:00.000Z", mappedAt: null });
+    const r = await mapClusters(deps, ["c-bare"]);
+    expect(r.alerts[0]!.title).toBe("Event");
   });
 
   test("an aborted run leaves the remaining clusters unmapped", async () => {

@@ -8,10 +8,11 @@ import { Segmented, type SegmentOption } from '../Segmented'
 // Mobile: seven ≤ 4-char short labels fit at 320px; overflow-x stays only as
 // a safety net (wider theme --seg-pad, 200% zoom).
 
-export type TerminalTab = 'terminal' | 'journal' | 'theses' | 'query' | 'order' | 'watch' | 'overview'
+export type TerminalTab = 'cockpit' | 'terminal' | 'journal' | 'theses' | 'query' | 'order' | 'watch' | 'overview'
 
 export const TERMINAL_TABS: readonly (SegmentOption<TerminalTab> & { path: string; title: string })[] = [
-  { value: 'terminal', path: '/', label: 'TERMINAL', short: 'TERM', title: 'what changed since I last looked' },
+  { value: 'cockpit', path: '/', label: 'COCKPIT', short: 'CKPT', title: 'what to act on now' },
+  { value: 'terminal', path: '/terminal', label: 'TERMINAL', short: 'TERM', title: 'what changed since I last looked' },
   { value: 'journal', path: '/journal', label: 'JOURNAL', short: 'JRNL', title: 'what my trades say' },
   { value: 'theses', path: '/theses', label: 'THESES', short: 'THES', title: 'test a thesis against the data' },
   { value: 'query', path: '/query', label: 'QUERY', short: 'QRY', title: 'ask the snapshot store' },
@@ -22,6 +23,8 @@ export const TERMINAL_TABS: readonly (SegmentOption<TerminalTab> & { path: strin
 
 /** The Terminal-family tab a path belongs to, or null outside the family. */
 export function terminalTabOf(pathname: string): TerminalTab | null {
+  // `/asset/:coin` is a drill-in of `/terminal` (DESIGN-terminal §15.4, C1).
+  if (pathname.startsWith('/asset/')) return 'terminal'
   for (const t of TERMINAL_TABS) {
     if (t.path === '/' ? pathname === '/' : pathname === t.path || pathname.startsWith(`${t.path}/`)) return t.value
   }
@@ -42,7 +45,7 @@ export function TerminalTabs() {
         label="terminal sections"
         size="md"
         options={TERMINAL_TABS}
-        value={terminalTabOf(pathname) ?? 'terminal'}
+        value={terminalTabOf(pathname) ?? 'cockpit'}
         onChange={(t) => navigate(TERMINAL_TABS.find((x) => x.value === t)!.path)}
       />
     </div>

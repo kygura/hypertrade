@@ -34,15 +34,26 @@ jobs:
           set -o pipefail
           url="${APP_URL%/}/api/cron/collect"
           body=$(mktemp)
-          # --fail-with-body: HTTP errors become a non-zero exit (so --retry sees
-          # them as transient) while still writing the response body for logs.
+          # --fail-with-body: HTTP errors become a non-zero exit while still
+          # writing the response body for logs.
           code=$(curl -sS -X POST \
             --fail-with-body \
-            --retry 3 --retry-delay 5 --retry-all-errors \
             --max-time 120 \
             -H "x-cron-token: $CRON_TOKEN" \
             -o "$body" -w '%{http_code}' \
             "$url") && status=0 || status=$?
+          # Retry only when the connection never opened (curl exit 6/7), never on
+          # a timeout (28): a timed-out run keeps going on Vercel and a retry overlaps it.
+          if [ "$status" -eq 6 ] || [ "$status" -eq 7 ]; then
+            echo "connection failed (curl exit $status); retrying once"
+            sleep 5
+            code=$(curl -sS -X POST \
+              --fail-with-body \
+              --max-time 120 \
+              -H "x-cron-token: $CRON_TOKEN" \
+              -o "$body" -w '%{http_code}' \
+              "$url") && status=0 || status=$?
+          fi
           echo "POST $url -> HTTP ${code:-none}"
           cat "$body"
           echo

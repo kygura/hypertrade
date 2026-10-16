@@ -11,6 +11,8 @@ A single deployable web application merging three prior projects (`../hyperion`,
 
 ## Runtime shape (decided — do not relitigate)
 
+> **Amendment, 2026-10-16 (operator decision, phase 8).** Hosting, Backend and Scheduling below are superseded by § Platform P0.1–P0.3: the app now runs as one always-on Bun service on Railway that serves both `dist/` and `/api/*` from the same origin, with the worker loops in the same process. Cron-shaped jobs stay on GitHub Actions and now target the Railway origin. Vercel is retired at cutover (its config stays in the repo until the operator removes it). Auth, Frontend, Database, LLM and Package manager are unchanged.
+
 - **Hosting**: Vercel. Git-connected; pushes to the repo redeploy the app. Routine outputs are committed files, so a routine run = fresh deploy with fresh data.
 - **Frontend**: React 19 + Vite + TypeScript + Tailwind CSS v4 (CSS-native `@theme`, no tailwind.config). Recharts for charts (lightweight-charts for the markets drill-in chart). React Router. Fonts: Geist Mono via `geist` package (self-hosted woff2), monospace everywhere — inherited from Hyperion.
 - **Backend**: Hono on Vercel Functions — one catch-all function at `api/index.ts` serving `/api/*`. Runtime: Node (Vercel default), code written to also run under `bun dev` locally.
@@ -299,6 +301,236 @@ All under `/api/intel`, session-cookie auth (GET also accepts the `LAB_API_TOKEN
 
 Embeddings; feedback auto-tuning; mainnet orders; any order without an operator confirm click; raw-SQL editing; spot balances from the watched address; JS-rendered doc pages.
 
+## Flow — quant gaps of "Flow + Scout" (phase 6)
+
+Source brief: "Flow + Scout: Spec" (2026-10-14). Intel (phase 5) already covers most of it: snapshots, review log, exposure graph, news mapper, claim tags, Telegram push, feedback, the Terminal. This phase adds only the missing pieces. § Intel I0 stays binding; where this section adds to it, this section wins. The Terminal stays the main screen (`/`). Phase 7 (§ Scout) adds research and the scorer gaps on top.
+
+### F0. Decisions (pinned)
+
+1. **Flow collector.** New long table `intel_flow(asset, venue, metric, value, ts)`, pk `(asset, venue, metric, ts)`, migration `009_flow.sql`, behind `IntelStore`. Written inside `POST /api/cron/collect` beside the snapshot, for the coin set defined below. Rows are non-HL venues (or `agg` for a Coinalyze aggregate, which may include HL — labelled "provider aggregate" in the UI) only; volume and liquidation metrics are **per 15-min interval** values, never rolling 24 h; HL OI/funding stay in `intel_snapshots` and are never duplicated here. Metrics: `oi_usd`, `funding`, `long_short_ratio`, `liq_long_usd`, `liq_short_usd`, `perp_volume_usd`, `perp_buy_volume_usd`, `spot_volume_usd`. Source (F0.1a, from `docs/research/flow-sources.md`): **Coinalyze only**, behind `COINALYZE_API_KEY` (free, 40 calls/min). Perp metrics use the aggregated symbol (`<COIN>USDT_PERP.A`, venue `agg`); spot volume uses the aggregated spot symbol when `/spot-markets` lists one, else the spot symbol of the first exchange in a fixed liquidity ranking that lists the coin (venue = that exchange code). `/spot-markets` carries no volume, so the ranking is static (ponytail note in `coinalyze.ts`); the symbol map is resolved once from `/future-markets` + `/spot-markets` and cached in memory per invocation. Interval `15min`, `from` = the last stored ts per (asset, metric) or 24 h back. Endpoints: `open-interest-history` (`c`), `funding-rate-history` (`c`), `liquidation-history` (`l`, `s`), `long-short-ratio-history` (`r`), `ohlcv-history` (`v`, `bv`). Coins = held ∪ watched, capped at `INTEL_FLOW_MAX_COINS` (default 8, by notional then watch order); multi-symbol calls (≤ 20 symbols each), paced under the rate limit, ≤ 60 s budget inside collect. No key → `flow: {ok: false, error: "no_source"}`. Binance/Bybit direct APIs are not used (US-blocked from Vercel `iad1`). A source that fails or has no key records a `collector_runs` row (`intel:flow:<venue>`) and is skipped, never fatal. 90-day retention, same as snapshots. Exchange inflows are **out of scope**: no free source.
+2. **Fixed windows** (`src/server/intel/windows.ts`, pure). For each snapshot metric and each flow metric, Δ over 1 h, 6 h and 24 h, plus z = Δ against the trailing 30-day distribution of **non-overlapping** Δs of the same window length (stride = window length, so samples are independent). σ is robust (MAD × 1.4826) with a per-metric floor (funding: 1e-6/h, so hourly-stepped funding cannot explode z). A window endpoint counts if a sample exists within ±20 min of the grid point. Lookback 30 days for 1 h/6 h (min 48 / 20 samples), 90 days for 24 h (min 30); below → `z = null`, and detectors that need that z report `degraded` (expected for the first ~14 days of flow data). These run alongside the I0.4 last-review baseline and don't replace it.
+3. **Regime flips and threshold crossings** (same module, pure). Flips: funding sign change, basis sign change (inversion), OI up while price down over the window (both |z| ≥ 1). Crossings come from env `INTEL_THRESHOLDS`, a comma list of `metric>value` or `metric<value`; the default is `funding>0.0000625`, which is 0.05%/8 h expressed hourly. A flip or crossing is an event, emitted only on the transition, not while the state holds.
+4. **Flow detectors** (`src/server/intel/flows.ts`, pure, deterministic). Each takes window results plus snapshots and flow rows and emits `{detector, asset, window, numbers: Record<string, number>, ts}`:
+   - `crowded_long` / `crowded_short`: funding level |z| ≥ 2 with its sign, OI 24 h z ≥ 1, price 24 h |z| < 1.
+   - `negative_funding_oi_build`: funding < 0, OI 24 h z ≥ 1, price 24 h z ≥ −0.5 (shorts adding into a price that is not falling; a precondition for a squeeze, not a squeeze).
+   - `deleveraging`: OI 6 h Δ ≤ −`INTEL_DELEV_OI_PCT` (default 8%) and liquidations 6 h z ≥ 2. Without liquidation data it is reported as `degraded`, never as a false negative.
+   - `spot_led` / `perp_led`: price 6 h |z| ≥ 2; gap `g = z6h(spot_volume_usd) − z6h(perp_volume_usd)`; `g ≥ 1` → spot_led, `g ≤ −1` → perp_led. No spot data → skipped.
+   - `liquidity_thinning`: depth ±2% (bid + ask) below its 30-day 10th percentile; score = 1 + (p10 − depth)/p10 × 4 (same 30-day baseline as the trigger).
+   - Exchange inflow spike: not built (F0.1).
+   Detector score = max |z| among its triggering conditions (liquidity_thinning: the depth z). Hits become `intel_events` with `kind: "data"`, `tag: "observed"`, source = the actual provider of the data used (`{label: "snapshot"}` for HL-only detectors, `{label: "<venue>"}` otherwise) + ts, Detector materiality = score × exposure_weight × stop_proximity, ranked in its own list (no `INTEL_MIN_Z` gate — the detector's own conditions are the gate) and merged into the brief like batched alerts; push to Telegram when ≥ `INTEL_PUSH_MATERIALITY`. One event per (detector, asset) until its conditions clear. Thresholds are starting values, env-tunable; calibration comes from feedback (I0.12).
+5. **Number validator** (`src/server/intel/numbers.ts`, pure). It applies to every LLM line before display or sending: brief narration, mapper impact lines, journal, thesis and docwatch summaries. It extracts each numeric token, normalising `%`, `$`, `K/M/B`, signs, thousands separators and `bps`. Code precomputes every derived value the LLM may cite (percent changes, distances, ratios) into the payload, rounded, in display units (funding as %/8 h, spread in bps); the prompt says to reuse them, never compute. Numbers inside payload text fields (titles, diffs, thesis text) count as payload numbers. Tokens inside identifiers (L2, ATR14, EIP-1967, BTC2) and window labels (1h/6h/24h/7d) are exempt. A line passes only if every number matches a number in the call's input payload within rounding: relative 0.5%, or one unit of the last printed decimal. Exempt: dates, times, ordinals ≤ 31 inside a date phrase, and the 1/2/5 list markers. A failing line is dropped like an untagged claim and counted in the trace as `numbersRejected`. Same layer: a line with a buy/sell/enter/exit **imperative** (not nouns like "sell-off", "exit liquidity") or a price target ("target", "TP", "will reach") is dropped and counted as `adviceRejected`. Zero hallucinated numbers is enforced by code, not by the prompt.
+6. **Telegram.** On the existing Desk bot: Vercel uses the existing webhook route (`routes/desk.ts`), the desk worker's polling stays as the fallback when no webhook secret is set; both call `handleTelegramUpdate`, which already handles callbacks and the chat-id check (`desk/telegram.ts:42–63`). Intel deps (store + brief builder) are injected at both call sites; the existing callback branch gains an `fb` verb; `sendIntel` takes `actions` built from the stored alert id (the Desk notifier already renders `Alert.actions` as an inline keyboard), so alerts are stored before they are sent:
+   - `/digest` builds the same brief as `POST /api/intel/brief`, replies with its lines plus the `/?review=1` link, and logs a review with `via: "telegram_digest"` (zod enum in `src/shared/intel.ts` + an ALTER of the `intel_reviews` CHECK in `009_flow.sql`). Narration is bounded (≤ 20 s); on timeout or cap the reply carries the ranked raw-number items.
+   - Every Intel alert message carries inline 👍/👎 buttons (`callback_data: "fb:<alertId>:1|-1"`). The callback writes the same feedback as `POST /api/intel/alerts/:id/feedback`, answers the callback, and edits the buttons to show the vote.
+   - Only the configured chat id is accepted.
+7. **Spend cap in dollars.** `INTEL_LLM_DAILY_USD` (default 2.00) is computed from stored usage × a per-model price table in `llm.ts`. Unknown model → priced at the strongest tier's rate. It is checked alongside the existing call cap; whichever trips first wins. Over cap → fail closed exactly as today. Alerts and the brief still go out with raw numbers and no prose, and show "LLM cap reached ($x.xx / $y.yy)".
+8. **UI (Terminal family).** Binding layout in DESIGN-terminal.md § Flow.
+   - **Heatmap** panel on `/`: rows are held ∪ watched assets, columns are metrics, with a window switch (since review / 1 h / 6 h / 24 h). Each cell is a signed z, with null shown as empty. A cell click opens the asset page.
+   - **Detector chips** on the Terminal.
+   - **Asset page** `/asset/:coin`: snapshot and flow time series with event markers (detector hits, flips, news alerts, catalysts) and the asset's exposure graph (edges plus 2-hop paths to held/watched, typed and weighted).
+   - Every panel has the named states (skeleton / empty / offline / error).
+
+### F1. API delta
+
+- `GET /api/intel/heatmap?window=review|1h|6h|24h` → `{rows: {asset, held, materiality}[]` (sorted by materiality), `metrics` (fixed order: price, oi_usd, funding, basis, premium, vol24h, depth_2 (bid+ask), spread_bps, long_short_ratio, liq_usd (long+short), perp_volume_usd, spot_volume_usd), `cells: {asset, metric, z|null, delta|null}[]`, `flags: FlowFlag[]`, `flow: {ok, error?}` (`error: "no_source"` vs per-cell null = too few samples), `asOf}`. `FlowFlag = {id, asset, kind: detector|flip|crossing, name, window, numbers: Record<string, number>, score, degraded: boolean, ts}`.
+- `GET /api/intel/asset/:coin?days=7` → `{snapshots, flow, events: AssetEvent[], catalysts, graph: {edges, paths}}`, where `AssetEvent = {ts, kind: flow|alert|catalyst, title, tag: observed|hypothesis, numbers?, claim?: Claim, url?}` (flow = a FlowFlag, alert carries its Claim).
+- `GET /api/intel/flows?since` → detector/flip/crossing events.
+- Types live in `src/shared/intel.ts`, and the route tests go through `createIntelRoutes`.
+
+### F2. Done
+
+- Fixture tests for `windows`, `flows` (every detector: fires, quiet, degraded), `numbers` (accept/reject table including advice language), the flow collector parsers, the dollar cap, the Telegram callback and `/digest` handlers, and the new routes.
+- `bun test`, `bun run typecheck`, `bun run build`, `bun run check:api` green; the existing tests are unchanged.
+- `/` shows the heatmap and detector chips. `/asset/:coin` renders timeline and graph. Every new panel has named states without a DB.
+
+### F3. Out of scope (Flow)
+
+Exchange inflow detector; on-chain flows/TVL; feedback auto-tuning (I0.12 stands); a new venue for orders. (Research mode moved in by phase 7 below.)
+
+## Scout — research on the Terminal (phase 7)
+
+Source: the same "Flow + Scout" brief, § 4.3 and § 3.4. The operator asked (2026-10-14) for the whole brief to live on the main screen. Phase 6 left research on the Desk; this phase brings it to `/` and closes the scorer gaps. § Intel and § Flow stay binding; this section wins where it adds to them.
+
+### S0. Decisions (pinned)
+
+1. **Research contract** (`src/shared/intel.ts`). `ResearchResult = {id, trigger, asset: string|null, question, status, explanation, evidence: {claim, url, ts: string|null, type: "observed"|"hypothesis"}[], confidence: "low"|"medium"|"high", openQuestions: string[], searches, costUsd, model, createdAt}`. `trigger` is `"manual"` or `"flag"` (a FlowFlag id in `flagId`). `status` is `running | found | no_cause | capped | failed`. `no_cause` is a valid answer, and its explanation is exactly "No public cause found." followed by what was checked. `observed` evidence needs an `HttpsUrlSchema` url. `hypothesis` evidence may omit the url and is never phrased as fact.
+2. **Engine** (`src/server/intel/research.ts`). One `completeStructured` call on the large tier with `webSearch: true`. Budget: at most 8 web searches, passed per call as `maxUses` through the step options (not the shared provider default). No page-fetch tool is added: hosted search excerpts are the only fetched text, which keeps the SSRF surface closed. The brief's "4 fetches" is dropped on purpose. Deadline: `RESEARCH_DEADLINE_MS` = 45 s, kept under the function's max duration. Input payload: the asset's latest snapshot numbers, the flag's `numbers` when the trigger is a flag, the held or watched exposure, and news-cluster headlines for the asset from the last 24 h, so the model doesn't re-find known news. Fetched text is wrapped with `untrusted()`. Validation runs the § F0.5 validator on `explanation` and every claim. **Provenance is checked in code.** The provider surfaces the URLs and excerpts of its search results (`web_search_tool_result`). An `observed` claim survives only if its url is one of those URLs and each of its numbers appears in that result's excerpt. Otherwise it is downgraded to `hypothesis` (url kept only if seen). A provider that exposes no results downgrades every claim. Anthropic returns result bodies encrypted, so the only readable excerpt for a URL is the `cited_text` of citations pointing at it. The prompt asks the model to state its evidence in cited prose before it calls `emit`. An `observed` claim needs at least one citation for its url, ≥ 50 % of its content words present in that cited text, and each of its numbers printed in it at the same value, sign and unit. Anything less becomes `hypothesis`. Search results can't be wrapped with `untrusted()` (they are provider tool results), so the system prompt states that they are untrusted data. `found` needs at least one surviving `observed` claim. With only hypotheses left, the status is `no_cause` and the hypotheses are kept as evidence. The 8-search budget covers the whole run, retries included. Every provider call records its usage, search fees included, against the § F0.7 cap whether it succeeds or fails. Numbers in `explanation` must match the payload or a surviving observed claim. Advice language is dropped. If every claim is dropped, the status is `no_cause`. If the provider has no web search, the result is `failed` with "provider has no web search", the same pattern as the graph refresh. It respects the § F0.7 dollar cap: over cap → `capped`, with no LLM call.
+3. **Triggers.**
+   - **Manual:** `POST /api/intel/research {question, asset?}` (authed). It is synchronous within the deadline and allows one in flight, using a `running` row in `intel_research` that goes stale after deadline + 15 s, not a process-local flag (409 otherwise), and `INTEL_RESEARCH_DAILY` (default 10) per UTC day applies (429 after).
+   - **Automatic:** inside `POST /cron/intel/ingest`, as its own last stage, started only when the remaining budget is > `RESEARCH_DEADLINE_MS`. It runs for FlowFlags whose materiality is ≥ the alert threshold and that have no news alert on the same asset in the last 6 h, highest first. At most `INTEL_RESEARCH_AUTO_DAILY` (default 3) per UTC day, deduplicated by flag id, inside the route's existing time budget.
+   - Telegram `/ask` is unchanged (Desk).
+4. **Storage.** Table `intel_research` (migration `010_research.sql`) behind `IntelStore` (Pg and Memory, parity-tested), with 90-day retention. Methods: `insertResearch`, `listResearch({asset?, since?, limit})`, `researchCountSince(since, trigger?)`, `researchForFlag(flagId)`.
+5. **Thresholds.** Two env thresholds on one materiality scale:
+   - `INTEL_PUSH_MATERIALITY` (existing, 0.35) is the alert threshold: Telegram push, plus eligibility for automatic research.
+   - `INTEL_DIGEST_MATERIALITY` (new, default 0.10) is the digest threshold. Items below it are logged but not shown in the What-changed digest or `/digest`.
+6. **Confluence.** There is one seam, `materiality(parts, k)` in `diff.ts`, which returns `surprise × exposure × proximity × confluence(k)`, where `confluence(k) = min(1.5, 1 + 0.25 × (k − 1))`. The four inline formulas (diff, flowEvents, mapper, catalysts) call it. `k` counts the distinct signal sources on the asset within the window: snapshot z moves, flow detectors, flips/crossings, and news alerts. **The item's own source is excluded**, so a flag never boosts itself. `k` is computed before alerts are routed, because routing reads materiality at insert time. The factor is exposed on the item (`confluence: number`) so the UI can show it.
+7. **Graph diff-review.** A graph refresh never deletes edges for an asset whose rebuild failed or returned nothing. Each refresh records a diff per asset (`added`, `removed`, `changed`, `refused`) in its summary and in `collector_runs`. `refreshGraph` already never deletes, so the only new behaviour is this: edges that a successful rebuild no longer proposes are removed, unless they are `seed` or `manual` (a set diff plus one store delete method).
+8. **UI** (binding layout in DESIGN-terminal.md § 16):
+   - **Research panel** on `/`: an ask box (question + optional asset) and the latest results, newest first, with status, explanation, evidence rows tagged OBS/HYP with link and ts, confidence and open questions.
+   - **Detector chips:** a "research" action when a flag has no result yet, or "see research" when it does.
+   - **`/asset/:coin`:** research results join the timeline as events.
+   - **Digest items** show their confluence factor when it is > 1.
+   - Every new panel has the named states.
+9. **Cleanup.** The UI client functions `intel.events` and `intel.flows` have no callers and are removed. Their server routes stay because they are tested.
+
+### S1. API delta
+
+- `POST /api/intel/research {question: string(3..500), asset?: string, flagId?: string}` → `ResearchResult`. A chip-started run keeps `trigger: "manual"` (it counts toward `INTEL_RESEARCH_DAILY`) and stores `flagId`, so `researchForFlag` finds it whatever the trigger. Errors: 409 when a run is in flight, 429 when the daily limit is reached. Over the dollar cap it returns 200 with `status: "capped"`.
+- `GET /api/intel/research?asset&limit=20` → `{items: ResearchResult[], usedToday, limit}`.
+- `FlowFlag` gains `researchId: string|null`, joined at read time through `researchForFlag`. The stored flag JSON is never mutated. `AssetEvent.kind` gains `research`, and such events carry `research: ResearchResult`.
+
+### S2. Done
+
+- Fixture tests:
+  - `research.ts`: found, no_cause, capped, no web search, an invented URL downgraded to hypothesis, a number missing from its excerpt downgraded, a number in the explanation that is in neither the payload nor the evidence dropped, an advice line dropped, and the `running` lock going stale.
+  - `confluence`.
+  - The threshold split.
+  - Graph diff-review: a failed rebuild keeps edges.
+  - Routes: 409, 429 and capped.
+  - Store parity.
+- `bun test` (including the pre-existing `analyst.test.ts` default-provider failure, fixed), `bun run typecheck`, `bun run build` and `bun run check:api` are green.
+- `/` shows the Research panel, and every state renders without a DB.
+
+## Platform — always-on scanner and cockpit (phase 8)
+
+Phase 1 of the Trading Intelligence Platform spec (2026-10-15). Code scans the whole Hyperliquid perp universe every minute, ranks opportunities, maps real liquidation levels from crawled trader positions, and records every idea and its outcome in an append-only ledger. The operator lands on a cockpit that shows what to act on now. Paper and testnet only.
+
+### P0. Decisions (pinned)
+
+1. **One Railway service.** `scripts/server.ts` runs `Bun.serve` on `$PORT`: `/api/*` goes to the existing Hono `app.fetch`, everything else serves `dist/` with SPA fallback to `index.html`. Same origin, so the session cookie is unchanged. The same process starts the worker loops (P0.4). Built from a `Dockerfile` (`oven/bun`), because Railpack does not detect Bun. Region: `asia-southeast1` (closest Railway region to Hyperliquid's API; HL's hosting location is believed to be Tokyo, unverified).
+2. **Cron stays for cron-shaped work.** GitHub Actions keeps `collect`, `lab`, and `intel/{ingest,brief,graph,watch}` on `*/15`, with `APP_URL` pointing at the Railway origin. The `desk` job is disabled (`vars.DESK_ENABLED=false`) because the desk tick and the Telegram long-poll move into the worker. `api/index.ts` stays exported and working; `vercel.json` stays until the operator decommissions Vercel.
+3. **No Redis, no TimescaleDB in this phase** (deliberate divergence from the platform spec). One process means one consumer: an in-process `publish(topic, payload)` bus (`src/server/platform/bus.ts`, a typed `EventEmitter` wrapper) carries events between loops, and Postgres rows are the durable record. A row is written before its event is published. Redis can sit behind the same interface when a second consumer exists.
+4. **Worker loops**, each isolated (its own try/catch, its own heartbeat, a crash in one never stops the others or the API):
+   - `ws`: one server-side HL WebSocket. Subscribes `allMids` and `trades` for every listed perp. Keeps a live mid per coin with its receive time. Feeds trader addresses (`trades[].users`) into the address book in batches.
+   - `scanner`: every `PLATFORM_SCAN_INTERVAL_SEC` (60). One `metaAndAssetCtxs` call, features per asset, ranking, opportunity upsert, costs for the top `PLATFORM_COST_TOP_N` (25) via `l2Book`.
+   - `crawler`: polls `clearinghouseState` for the highest-priority addresses within its weight budget (P0.6).
+   - `liqmap`: every 15 min, stores a bucketed liquidation snapshot for the top `PLATFORM_LIQMAP_COINS` (30) coins by OI.
+   - `outcomes`: every minute, marks opportunities to market at each horizon that has come due.
+   - `desk` and `telegram`: the two loops from `scripts/desk-worker.ts`, moved here unchanged.
+   - `prune`: hourly, deletes rows older than `PLATFORM_RETENTION_DAYS` (14) from snapshot and history tables. Never touches the ledger.
+   `WORKER_LOOPS` (default `all`; `off`, or a comma list) selects loops, so the server can also run API-only.
+5. **One HL weight budget.** All HL REST calls already go through `hlInfo` and its weight guard; that guard is now process-wide and shared by cron-triggered jobs, the scanner and the crawler. The crawler takes at most `PLATFORM_CRAWL_WEIGHT_PER_MIN` (800, i.e. 400 polls/min) and backs off first when the guard is near its limit.
+6. **Crawler priority** (pure function, tested): `priority = notional × proximity × staleness`, where `notional` is the account's last known total position value, `proximity` rises as any position's `|mark − liquidationPx| / mark` falls (capped so a 1% distance outranks a 30% one), and `staleness` is seconds since the last poll. Every address with open positions is polled at least every `PLATFORM_CRAWL_MAX_AGE_MIN` (30). Addresses with no positions drop to an hourly tier and return to the fast tier when they trade again. Unpolled new addresses go first.
+7. **Positions model.** `hl_positions` holds the latest row per `(address, coin)` (upsert). `hl_position_changes` appends only when a position opens, closes, or moves `szi` or `liquidationPx` by more than 1%. The live heatmap aggregates `hl_positions` on read into price buckets (10 s in-memory cache); history comes from the 15-min `liqmap_snapshots`.
+8. **Coverage is shown, never hidden.** Liquidation data covers only addresses seen trading. Every liqmap response carries coverage per coin as `trackedNotional / (2 × openInterestNotional)`, because HL open interest counts one side while tracked notional sums longs and shorts, the number of addresses, and the age distribution of their last polls. The UI shows that coverage figure next to the map.
+9. **Features (per asset per scan, pure).** Each is a z-score against the asset's own history (reusing `intel/normalize.ts` and `intel/windows.ts`) unless noted: 15 m return; price acceleration (15 m return minus a quarter of the 60 m return); 1 h OI change; OI-vs-price quadrant (`classifyRegime`); funding z over 7 d and funding percentile over 14 d; 1 h notional volume vs the 24 h hourly mean; realized-vol expansion (1 h over 24 h); liquidation pressure (tracked liquidation notional within ±2% of mark divided by OI, from the positions table); spread and depth from `l2Book` for the costed top N. Each asset also gets a `liquidityTier` 1–3 from universe terciles of 24 h notional volume. Feature thresholds are set per tier. History for the z-scores is an in-memory 1-minute ring (24 h) rebuilt at boot from `scan_snapshots`, which persists one row per asset every 5 minutes.
+10. **Score and edge stay separate.** `score` is `intel/diff.ts` materiality and confluence over the feature set; the feed is sorted by it. `netEdgeBps` exists only for `tradeType: "directional"` (the only type with a cost model this phase) and equals `grossEdgeBps − 2 × takerFeeBps − slippageBps − fundingBps`. Slippage comes from walking the live `l2Book` at the planned size, and funding is charged over `holdingHours`. `grossEdgeBps` is the stop-to-target distance from the setup and carries `edgeBasis: "unvalidated"` until the ledger has at least `PLATFORM_EDGE_MIN_N` (30) resolved outcomes for that setup kind. After that it uses the ledger's mean net return for the kind. The UI never multiplies score by edge, and shows "costs exceed edge" when `netEdgeBps < 0`. `absorbableUsd` is 10% of book depth within 0.5% of mid (spec R6, shown, not enforced).
+11. **Opportunity status machine** (pure transition function, tested; illegal transitions throw): `new → investigating | calculated`, `investigating → calculated`, `calculated → ready`, `ready → approved | rejected | expired`, `approved → open | rejected`, `open → closed`. `investigating` happens only when the operator asks for deeper research or `score ≥ PLATFORM_RESEARCH_SCORE` and the existing research budget allows it. That reuses `intel/research.ts` unchanged. `approved` and `rejected` come **only** from an operator click, never from code or an LLM (Intel I4). `ready` expires after `PLATFORM_READY_TTL_MIN` (60) without a decision. Snooze is a `snoozedUntil` field, not a state. Dedupe: one live opportunity per `(coin, direction, setupKind)`; a rescan updates its inputs and score instead of creating a second one.
+    - **Gate amendment (2026-10-16), terminal status `failed`.** `approved → failed` is set by `system` only, when placement is blocked or errors after approval. Its status entry carries `ref` (the proposal id) and the reason, and there is no decision entry. `rejected` is reachable only from `ready`, by an operator click.
+    - **Stuck approvals.** A row still `approved` after 2 minutes is reconciled against its desk proposal and moved to `open` or `failed`.
+    - **Cooldown.** After a key's idea is rejected, expired, failed or closed, no new idea is created for that key for `PLATFORM_COOLDOWN_MIN` (240) minutes.
+12. **Append-only decision ledger.** `ledger_entries` (insert-only, enforced by a Postgres trigger that raises on `UPDATE` and `DELETE`) is the source of truth; `opportunities` is a projection. Entry kinds:
+    - `created`: the feature vector, raw inputs, market snapshot, score and score version.
+    - `status`: from, to, actor.
+    - `costs`: the fee, slippage and funding breakdown.
+    - `research`: the research id, model, prompt version and source URLs.
+    - `decision`: approve or reject, reason, operator.
+    - `outcome`: horizon, entry price, horizon price, gross and net return.
+    Recomputing the score from a `created` entry's stored inputs must reproduce the stored score exactly. That is the replay and determinism guarantee (spec M1.7, M1.8).
+13. **Outcomes for every idea.** Horizons are `PLATFORM_OUTCOME_HORIZONS` (`1h,4h,24h,72h`). The entry price is the mark at creation for ideas that were never filled, and the paper fill price for opened ones. Net return is `direction × (horizonPx / entryPx − 1)` minus the costs recorded at creation. Rejected and expired ideas are marked too, so the ledger can score rejections.
+    - **Gate amendment (2026-10-16), late horizons.** A horizon that came due while the process was down is priced from the 1-minute `candleSnapshot` close at the horizon time. HL keeps about 3.5 days of 1-minute candles. Older gaps are counted in health as `outcomesSkipped`, never silently dropped.
+    - **One outcome per horizon.** At most one outcome entry per `(opportunity, horizon)`, enforced by a unique index.
+    - **Costs in outcomes.** Funding is charged over the horizon. Ideas with no cost breakdown are excluded from the stats.
+14. **Ledger stats.** Grouped by setup kind, and optionally by regime and liquidity tier: `n`, hit rate, mean net return, and its 95% interval (t-interval; `null` below n = 5). These feed the detail view's "have similar setups paid" panel and P0.10.
+15. **Feed freshness gate.** Approving an opportunity refuses with 409 `stale_feed` when the coin's live mid is older than 30 s or the last scan is older than 2 × the scan interval. A Telegram alert fires once when the WS has been silent for more than 30 s, and once when it recovers.
+16. **Alerts.** One Telegram message, through the existing desk notifier, when an opportunity reaches `ready` with `score ≥ PLATFORM_PUSH_SCORE`. It is deduped per opportunity.
+17. **Migrations.** A minimal runner (`db/migrate.ts`, about 30 lines) keeps a `schema_migrations(name, applied_at)` table and applies `db/migrations/*.sql` in name order, one transaction each, under a transaction-scoped advisory lock (`pg_advisory_xact_lock`, safe behind the transaction pooler). Every unrecorded file runs, including `001`–`010` on an existing database: they are idempotent, and a recorded-without-running baseline could skip a file that never ran. It runs at boot when `MIGRATE_ON_BOOT=1`, and as `bun run db:migrate`. New schema goes in `011_platform.sql`.
+18. **Pool.** `DB_POOL_MAX` (default 1; Railway sets 4) for the long-running process, Supabase transaction pooler on port 6543, `prepare:false` (already set). Bulk writes are multi-row `INSERT … ON CONFLICT`.
+19. **Store parity.** A `PlatformStore` interface has a memory implementation (all unit tests) and a Postgres implementation, following the Intel store pattern. Postgres-only behaviour (migrations and the ledger trigger) is tested with PGlite as a dev dependency, since there is no local Postgres or Docker.
+
+### P1. Code layout
+
+```
+scripts/server.ts                 # Railway entry: Bun.serve (api + dist), boot migrations, start loops, graceful shutdown
+Dockerfile                        # oven/bun, bun install --frozen-lockfile, bun run build, CMD bun scripts/server.ts
+db/migrate.ts                     # migration runner
+db/migrations/011_platform.sql    # hl_addresses, hl_positions, hl_position_changes, liqmap_snapshots,
+                                  # scan_snapshots, opportunities, ledger_entries (+ append-only trigger)
+src/shared/platform.ts            # zod schemas + types for every /api/platform response (the UI contract)
+src/shared/hl-ws.ts               # isomorphic HL WS client lifted from src/ui/lib/hlWs.ts (UI imports it from here)
+src/server/platform/
+  bus.ts  runtime.ts              # typed in-process bus; loop supervisor with heartbeats
+  store.ts store-memory.ts store-pg.ts
+  ws.ts addresses.ts              # WS ingest, mid cache with ages, address book batching
+  crawler.ts priority.ts          # crawl loop; pure priority
+  liqmap.ts                       # pure bucket aggregation + coverage; snapshot loop
+  features.ts costs.ts score.ts   # pure feature set, cost model, score (wraps intel/diff.ts)
+  scanner.ts                      # scan loop
+  opportunity.ts                  # pure expiry + auto status (transition table lives in shared/platform.ts, enforced in store.ts)
+  outcomes.ts stats.ts            # pure outcome math; pure stats (ledger append helpers live in store.ts)
+  liqmapLoop.ts outcomesLoop.ts   # 15-min liqmap snapshots; horizon marking
+  alerts.ts reconcile.ts          # Telegram alerts; stuck-approval and open→closed reconcile
+  context.ts                      # runtime registry the routes read (null → 503 platform_offline)
+src/server/routes/platform.ts     # /api/platform/*
+src/ui/lib/platformApi.ts         # typed fetchers, parse every response with the shared schemas
+src/ui/pages/cockpit/*            # landing cockpit (see DESIGN-terminal.md § Cockpit); pure helpers in logic.ts
+```
+
+### P2. API delta (all under `/api/platform`, cookie auth; GETs also accept the read bearer)
+
+- `GET /opportunities?status=&tier=&limit=`: feed rows with coin, `tradeType`, score, `netEdgeBps`, `edgeBasis`, status, signal tags, age, `snoozedUntil`. Sorted by score.
+- `GET /opportunities/:id`: detail. Signals with values and z-scores; the cost breakdown and `absorbableUsd`; invalidation and the research bear case, if any; ledger stats for the setup kind; and a portfolio-risk preview from the governor's `assess`, before and after.
+- `POST /opportunities/:id/approve` opens a pre-filled ticket through the existing desk and governor path (paper or testnet). `POST /opportunities/:id/reject` requires a non-empty `reason`. `POST /opportunities/:id/snooze` takes `{ minutes }`. `POST /opportunities/:id/research` runs the existing research stage.
+- `GET /liqmap?coin=&range=&bucketBps=` returns live long and short liquidation notional per price bucket, the mark, and coverage. `GET /liqmap/history?coin=&hours=` returns time-by-price buckets from the 15-min snapshots.
+- `GET /liqmap/board?limit=` (gate amendment, 2026-10-16): for the top `PLATFORM_LIQMAP_COINS` coins by OI, the mark, the nearest long and short cluster (distance %, notional) and coverage. Sorted by the nearest cluster's distance, so the cockpit has actionable data minutes after boot, before the scanner has history.
+- `GET /ledger/stats?setupKind=&regime=&tier=` and `GET /ledger/:opportunityId` (entries in order).
+- `GET /health`: the existing `/api/health`, extended with each loop's last beat, WS state and last message age, scan age, crawler polls per minute and address count. It stays public and answers even when loops are down.
+
+### P3. UI delta
+
+The cockpit becomes `/`; the current Terminal moves to `/terminal`, with all its routes and panels unchanged. The cockpit layout, states and interactions follow `DESIGN-terminal.md` § Cockpit, written in the design pass of this phase:
+- a ranked feed (the spec's row fields);
+- the selected asset's liquidation heatmap, with live mark, nearest long and short clusters with their distance, a coverage figure and a time-by-price history;
+- the detail view, which answers the five questions;
+- the actions;
+- a system-health strip (WS, scan and crawler ages, loop heartbeats, LLM spend);
+- the desk kill switch in the cockpit header.
+Every panel has named skeleton, empty, offline and error states.
+
+Gate amendments (2026-10-16):
+- The liquidation panel is always rendered. It shows the selected opportunity's coin, or the coin picked from the liquidation board, or BTC by default.
+- When the feed is empty, the feed slot shows the liquidation board ranked by nearest cluster, plus a warming-up line from `scanHistoryMin`.
+- Status `failed` (P0.11 amendment) renders as its own pill. The page polls with `usePoll` and takes the live mark from the shared HL WS client.
+
+### P4. Done
+
+- `bun run typecheck`, `bun test src`, `bun run build` and `bun run check:api` are green.
+- New unit tests cover:
+  - `priority.ts` (ordering, the max-age floor, tier demotion);
+  - `liqmap.ts` (bucket sums, long below and short above mark, coverage ratio);
+  - `features.ts` (hand-checked fixtures);
+  - `costs.ts` (book walk, fee and funding math);
+  - `opportunity.ts` (every legal transition, illegal ones throw, dedupe);
+  - `outcomes.ts` (long and short net return, horizons, rejected ideas);
+  - `stats.ts` (interval, null below n = 5);
+  - a determinism test that recomputes the score from a stored `created` entry and gets the same value;
+  - the approval freshness gate (409 on a stale mid);
+  - route tests through the app for every `/api/platform` endpoint;
+  - a PGlite test that applies all migrations through the runner and shows the ledger trigger rejecting `UPDATE` and `DELETE`.
+- `WORKER_LOOPS=all bun scripts/server.ts` against a Postgres `DATABASE_URL`, after one minute:
+  - `/api/health` shows the WS connected, scan age under 90 s, crawler polls per minute above 0, and every loop beating;
+  - `GET /api/platform/opportunities` returns ranked rows from live HL data;
+  - `GET /api/platform/liqmap?coin=BTC` returns buckets with a coverage figure above 0.
+- `docker build .` succeeds and the container answers `/api/health`.
+- `/` renders the cockpit with every panel's states, including offline with no DB, and `/terminal` still renders the old Terminal.
+- README gains a "Railway" section: service setup, the env var list below, the pooler URL, `MIGRATE_ON_BOOT`, the `APP_URL` change for GitHub Actions, and `DESK_ENABLED=false`.
+
+### P5. Out of scope (phase 8)
+
+- Live mainnet execution, idempotent client order IDs, reconciliation, and a kill switch that cancels and flattens.
+- Hard enforcement of limits R4–R6 and R8.
+- Re-authentication for approve.
+- Redis, TimescaleDB, Next.js and the Ink TUI.
+- Cross-venue funding divergence and sector rotation features.
+- Trade types other than directional.
+- Narrative and token intelligence (spec M3).
+- The multi-role research team (M4 beyond the existing research stage).
+- Strategy-lab changes.
+- Automatic agent switch-off.
+- The undocumented HL leaderboard endpoint.
+
+New env vars: `PORT`, `WORKER_LOOPS`, `MIGRATE_ON_BOOT`, `DB_POOL_MAX`, `PLATFORM_SCAN_INTERVAL_SEC`, `PLATFORM_COST_TOP_N`, `PLATFORM_CRAWL_WEIGHT_PER_MIN`, `PLATFORM_CRAWL_MAX_AGE_MIN`, `PLATFORM_LIQMAP_COINS`, `PLATFORM_RETENTION_DAYS`, `PLATFORM_READY_TTL_MIN`, `PLATFORM_RESEARCH_SCORE`, `PLATFORM_PUSH_SCORE`, `PLATFORM_EDGE_MIN_N`, `PLATFORM_OUTCOME_HORIZONS`. All are optional, with the defaults above.
+
 ## What is explicitly OUT of scope
 
 - Hyperliquid mainnet execution. The Desk trades paper or testnet only; the ENGINE pages only proxy operator actions to the Hyperion core, which owns its own governor and venues.
@@ -307,7 +539,7 @@ Embeddings; feedback auto-tuning; mainnet orders; any order without an operator 
 
 ## Environment variables
 
-`DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `CRON_TOKEN`, `FRED_API_KEY` (optional), `ELFA_API_KEY` / `ELFA_MIN_INTERVAL_HOURS` (optional), `ROUTINE_WEBHOOK_URL` (optional), `ENGINE_URL` / `ENGINE_TOKEN` (optional, engine console), `ANALYST_PROVIDER` / `DESK_ANALYST_MODEL` / `ANALYST_API_KEY` / `ANALYST_BASE_URL` / `ANALYST_EFFORT` / `ANALYST_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` / `DESK_ANTHROPIC_FIRST` / `ANALYST_OPENAI_API_KEY` / `ANALYST_OPENAI_BASE_URL` / `ANALYST_MODELS`, and the vendor keys `OPENAI_API_KEY` / `GEMINI_API_KEY` / `XAI_API_KEY` / `DEEPSEEK_API_KEY` / `MOONSHOT_API_KEY` / `DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY` (all optional, analyst — see README.md "Analyst" for precedence and per-preset overrides)
+`DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `CRON_TOKEN`, `FRED_API_KEY` (optional), `ELFA_API_KEY` / `ELFA_MIN_INTERVAL_HOURS` (optional), `ROUTINE_WEBHOOK_URL` (optional), `ENGINE_URL` / `ENGINE_TOKEN` (optional, engine console), `ANALYST_PROVIDER` / `DESK_ANALYST_MODEL` / `ANALYST_API_KEY` / `ANALYST_BASE_URL` / `ANALYST_EFFORT` / `ANALYST_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` / `DESK_ANTHROPIC_FIRST` / `ANALYST_OPENAI_API_KEY` / `ANALYST_OPENAI_BASE_URL` / `ANALYST_MODELS`, and the vendor keys `OPENAI_API_KEY` / `GEMINI_API_KEY` / `XAI_API_KEY` / `DEEPSEEK_API_KEY` / `MOONSHOT_API_KEY` / `DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY` (all optional, analyst — see README.md "Analyst" for precedence and per-preset overrides). Intel tuning (all optional, defaults in README.md "Intel"): `COINALYZE_API_KEY`, `INTEL_FLOW_MAX_COINS`, `INTEL_DELEV_OI_PCT`, `INTEL_THRESHOLDS`, `INTEL_LLM_DAILY_USD`, `INTEL_PUSH_MATERIALITY`, `INTEL_DIGEST_MATERIALITY`, `INTEL_RESEARCH_DAILY`, `INTEL_RESEARCH_AUTO_DAILY`.
 
 GitHub Actions repository secrets (Settings > Secrets and variables > Actions), used by `.github/workflows/collect.yml`:
 

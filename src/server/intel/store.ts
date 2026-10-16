@@ -8,11 +8,14 @@ import type {
   EdgeKey,
   EventType,
   FeedbackBucket,
+  FlowMetric,
+  FlowRow,
   IntelEvent,
   ManualPosition,
   ManualPositionData,
   Report,
   ReportKind,
+  ResearchResult,
   Review,
   SnapshotRow,
   Thesis,
@@ -25,7 +28,7 @@ import type {
 import { sql } from "../db.js";
 import { iso } from "./util.js";
 
-// Intel persistence (db/migrations/007_intel.sql, 008_intel_stops.sql). Routes, crons and pure
+// Intel persistence (db/migrations/007_intel.sql, 008_intel_stops.sql, 009_flow.sql, 010_research.sql). Routes, crons and pure
 // modules run against IntelStore: MemoryIntelStore in tests, PgIntelStore in
 // the app. Both implement the same dedupe and conflict rules; the tests in
 // store.test.ts pin them on the memory side.
@@ -42,6 +45,7 @@ export type NewThesis = Omit<Thesis, "id" | "createdAt">;
 export type ThesisPatch = Partial<Pick<Thesis, "assets" | "claims" | "invalidation" | "wrongIf" | "checkedAt" | "trace">>;
 export type WatchState = Pick<Watch, "lastHash" | "lastSnapshot" | "checkedAt" | "error">;
 export type NewWatchChange = Omit<WatchChange, "id" | "ts" | "alertedAssets"> & { ts?: string; alertedAssets?: string[] };
+export type NewResearch = Omit<ResearchResult, "id" | "createdAt">;
 export type SnapshotSide = "nearest" | "before" | "after";
 /** A stop-loss trigger seen on the watched HL account at `ts` (db/migrations/008_intel_stops.sql). */
 export interface StopRow {
@@ -80,6 +84,34 @@ export interface IntelStore {
   stopAt(asset: string, side: StopRow["side"], from: Date, before?: Date | null): Promise<StopRow | null>;
   pruneStops(before: Date): Promise<number>;
 
+  /** Upsert on (asset, venue, metric, ts). Returns rows written. */
+  insertFlow(rows: FlowRow[]): Promise<number>;
+  /** ts >= since, one metric or all (null), ascending by ts, then metric, then venue. */
+  flowSeries(asset: string, metric: FlowMetric | null, since: Date): Promise<FlowRow[]>;
+  /** Newest stored ts (ISO) for the key, or null: the collector's `from`. */
+  latestFlowTs(asset: string, venue: string, metric: FlowMetric): Promise<string | null>;
+  pruneFlow(before: Date): Promise<number>;
+
+  /** Stores a finished result (no lock involved). */
+  insertResearch(r: NewResearch): Promise<ResearchResult>;
+  /**
+   * The `running` lock (SPEC S0.3): stores `r` (status "running") and returns it, or null when another run is in
+   * flight. A running row older than `staleMs` (store clock) is first marked failed.
+   */
+  acquireResearch(r: NewResearch, staleMs: number): Promise<ResearchResult | null>;
+  /** Replaces a running row with its final result; null when the row is gone or no longer running (marked stale meanwhile). */
+  finishResearch(id: string, r: NewResearch): Promise<ResearchResult | null>;
+  /** createdAt >= since, newest first. */
+  listResearch(opts: { asset?: string; since?: Date; limit: number }): Promise<ResearchResult[]>;
+  /**
+   * Runs that used or hold the budget since `since`: the daily limits. Counts running, found, no_cause and failed rows
+   * that cost something (a failed run still billed its provider calls); capped rows and free failures never count.
+   */
+  researchCountSince(since: Date, trigger?: ResearchResult["trigger"]): Promise<number>;
+  /** The read-time join: newest found / no_cause result per flag id. Failed, capped and running rows are excluded. */
+  researchForFlags(flagIds: string[]): Promise<Map<string, ResearchResult>>;
+  pruneResearch(before: Date): Promise<number>;
+
   /** Upsert on (src, dst, type). A user edge is only ever replaced by another user edge. */
   upsertEdges(edges: NewEdge[]): Promise<number>;
   listEdges(): Promise<Edge[]>;
@@ -87,10 +119,13 @@ export interface IntelStore {
   edgesFor(nodes: string[]): Promise<Edge[]>;
   /** Deletes a user edge; seed and LLM edges are left alone (false). */
   deleteUserEdge(key: EdgeKey): Promise<boolean>;
+  /** Deletes LLM-origin edges by key (graph diff-review); seed and user edges are left alone. Returns how many went. */
+  deleteLlmEdges(keys: EdgeKey[]): Promise<number>;
 
   /** Upsert on `key`: id, firstSeen and an assigned cluster survive re-ingest. Duplicate keys in one call: last wins. */
   upsertEvents(events: NewEvent[]): Promise<IntelEvent[]>;
   getEvent(id: string): Promise<IntelEvent | null>;
+  getEventByKey(key: string): Promise<IntelEvent | null>;
   listEvents(opts: { since?: Date; type?: EventType; limit: number }): Promise<IntelEvent[]>;
   eventsByCluster(clusterId: string): Promise<IntelEvent[]>;
   setEventCluster(eventIds: string[], clusterId: string): Promise<void>;
@@ -109,6 +144,8 @@ export interface IntelStore {
   getAlert(id: string): Promise<Alert | null>;
   listAlerts(opts: { since?: Date; kind?: AlertKind; route?: Alert["route"]; limit: number }): Promise<Alert[]>;
   setAlertFeedback(id: string, vote: 1 | -1 | null): Promise<Alert | null>;
+  /** Moves alerts to another route (a push that reached no channel goes to the next brief). */
+  setAlertRoute(ids: string[], route: Alert["route"]): Promise<void>;
   /** Votes per (event type, edge type, hops), most downvoted first. */
   feedbackStats(since?: Date): Promise<FeedbackBucket[]>;
 
@@ -142,10 +179,18 @@ export interface IntelStore {
   setSetting(key: string, value: unknown): Promise<void>;
 
   cacheGet(key: string, promptVersion: string): Promise<unknown | null>;
-  cachePut(key: string, promptVersion: string, output: unknown, usage: unknown): Promise<void>;
+  cachePut(key: string, promptVersion: string, output: unknown, usage: unknown, model?: string): Promise<void>;
   /** LLM calls recorded (cache rows written) since `since`: the daily cap counter. */
   callsSince(since: Date): Promise<number>;
+  /** Stored usage rows (with `model`) since `since`: the dollar caps (F0.7). */
+  usageSince(since: Date): Promise<unknown[]>;
 }
+
+/** Explanation of a running row that outlived its deadline (acquireResearch). */
+const STALE_RESEARCH = "Run did not finish.";
+
+/** The model rides inside the usage json (no schema change) so spend can be priced. */
+const withModel = (usage: unknown, model?: string) => (model && usage && typeof usage === "object" ? { ...usage, model } : usage);
 
 // ---------------------------------------------------------------- shared
 
@@ -215,6 +260,17 @@ function toStop(r: any): StopRow {
   return { asset: r.asset, side: r.side, ts: isoOrNull(r.ts)!, stopPx: r.stop_px };
 }
 
+function toFlow(r: any): FlowRow {
+  return { asset: r.asset, venue: r.venue, metric: r.metric, value: r.value, ts: isoOrNull(r.ts)! };
+}
+
+/** flowSeries order, shared by both stores. */
+function flowOrder(a: FlowRow, b: FlowRow): number {
+  return Date.parse(a.ts) - Date.parse(b.ts) || (a.metric < b.metric ? -1 : a.metric > b.metric ? 1 : 0) || (a.venue < b.venue ? -1 : a.venue > b.venue ? 1 : 0);
+}
+
+const flowKey = (r: FlowRow) => `${r.asset}|${r.venue}|${r.metric}|${Date.parse(r.ts)}`;
+
 function toEdge(r: any): Edge {
   return { id: r.id, src: r.src, dst: r.dst, type: r.type, weight: r.weight, source: r.source, lastVerified: isoOrNull(r.last_verified), origin: r.origin };
 }
@@ -236,6 +292,7 @@ function toEvent(r: any): IntelEvent {
     scheduledAt: isoOrNull(r.scheduled_at),
     catalyst: r.catalyst,
     tag: r.tag,
+    ...(r.flag ? { flag: r.flag } : {}),
   };
 }
 
@@ -281,6 +338,10 @@ function toBrief(r: any): Brief {
 
 function toReport(r: any): Report {
   return { ...r.body, id: r.id, kind: r.kind, createdAt: isoOrNull(r.created_at)! };
+}
+
+function toResearch(r: any): ResearchResult {
+  return { ...r.body, id: r.id, createdAt: isoOrNull(r.created_at)! };
 }
 
 function toThesis(r: any): Thesis {
@@ -446,6 +507,72 @@ export class PgIntelStore implements IntelStore {
     return res.count;
   }
 
+  async insertFlow(rows: FlowRow[]) {
+    let count = 0;
+    const all = lastByKey(rows, flowKey);
+    for (let i = 0; i < all.length; i += SNAPSHOT_CHUNK) {
+      const values = all.slice(i, i + SNAPSHOT_CHUNK).map((r) => ({ asset: r.asset, venue: r.venue, metric: r.metric, value: r.value, ts: r.ts }));
+      const res = await sql()`
+        insert into intel_flow ${sql()(values, "asset", "venue", "metric", "value", "ts")}
+        on conflict (asset, venue, metric, ts) do update set value = excluded.value
+      `;
+      count += res.count;
+    }
+    return count;
+  }
+  async flowSeries(asset: string, metric: FlowMetric | null, since: Date) {
+    const rows = metric
+      ? await sql()`select * from intel_flow where asset = ${asset} and metric = ${metric} and ts >= ${since} order by ts, metric collate "C", venue collate "C"`
+      : await sql()`select * from intel_flow where asset = ${asset} and ts >= ${since} order by ts, metric collate "C", venue collate "C"`;
+    return rows.map(toFlow);
+  }
+  async latestFlowTs(asset: string, venue: string, metric: FlowMetric) {
+    const [r] = await sql()`select max(ts) as ts from intel_flow where asset = ${asset} and venue = ${venue} and metric = ${metric}`;
+    return isoOrNull(r?.ts);
+  }
+  async pruneFlow(before: Date) {
+    const res = await sql()`delete from intel_flow where ts < ${before}`;
+    return res.count;
+  }
+
+  async insertResearch(r: NewResearch) {
+    const [row] = await sql()`insert into intel_research (trigger, flag_id, asset, status, body) values (${r.trigger}, ${r.flagId ?? null}, ${r.asset}, ${r.status}, ${json(r)}) returning *`;
+    return toResearch(row);
+  }
+  async acquireResearch(r: NewResearch, staleMs: number) {
+    // Staleness is judged by the database clock, which also stamped created_at.
+    await sql()`update intel_research set status = 'failed', body = body || ${json({ status: "failed", explanation: STALE_RESEARCH })}
+      where status = 'running' and created_at < now() - make_interval(secs => ${staleMs / 1000}::float8)`;
+    // The partial unique index on status = 'running' makes a concurrent second insert a no-op.
+    const [row] = await sql()`insert into intel_research (trigger, flag_id, asset, status, body) values (${r.trigger}, ${r.flagId ?? null}, ${r.asset}, 'running', ${json({ ...r, status: "running" })})
+      on conflict do nothing returning *`;
+    return row ? toResearch(row) : null;
+  }
+  async finishResearch(id: string, r: NewResearch) {
+    if (!isUuid(id)) return null;
+    const [row] = await sql()`update intel_research set status = ${r.status}, body = ${json(r)} where id = ${id} and status = 'running' returning *`;
+    return row ? toResearch(row) : null;
+  }
+  async listResearch(o: { asset?: string; since?: Date; limit: number }) {
+    const rows = await sql()`select * from intel_research
+      where (${o.asset ?? null}::text is null or lower(asset) = lower(${o.asset ?? null})) and (${o.since ?? null}::timestamptz is null or created_at >= ${o.since ?? null})
+      order by created_at desc, id limit ${o.limit}`;
+    return rows.map(toResearch);
+  }
+  async researchCountSince(since: Date, trigger?: ResearchResult["trigger"]) {
+    const [row] = await sql()`select count(*)::int as n from intel_research where created_at >= ${since} and (status in ('running', 'found', 'no_cause') or (status = 'failed' and coalesce((body->>'costUsd')::float8, 0) > 0)) and (${trigger ?? null}::text is null or trigger = ${trigger ?? null})`;
+    return row!.n as number;
+  }
+  async researchForFlags(flagIds: string[]) {
+    if (!flagIds.length) return new Map<string, ResearchResult>();
+    const rows = await sql()`select distinct on (flag_id) * from intel_research where flag_id = any(${flagIds}::text[]) and status in ('found', 'no_cause') order by flag_id, created_at desc`;
+    return new Map(rows.map((r: any) => [r.flag_id as string, toResearch(r)] as [string, ResearchResult]));
+  }
+  async pruneResearch(before: Date) {
+    const res = await sql()`delete from intel_research where created_at < ${before}`;
+    return res.count;
+  }
+
   async upsertEdges(edges: NewEdge[]) {
     if (!edges.length) return 0;
     const rows = lastByKey(edges, (e) => `${e.src}|${e.dst}|${e.type}`).map((e) => ({
@@ -472,20 +599,28 @@ export class PgIntelStore implements IntelStore {
     const res = await sql()`delete from intel_edges where src = ${k.src} and dst = ${k.dst} and type = ${k.type} and origin = 'user'`;
     return res.count > 0;
   }
+  async deleteLlmEdges(keys: EdgeKey[]) {
+    let n = 0;
+    for (const k of keys) n += (await sql()`delete from intel_edges where src = ${k.src} and dst = ${k.dst} and type = ${k.type} and origin = 'llm'`).count;
+    return n;
+  }
 
   async upsertEvents(events: NewEvent[]) {
     if (!events.length) return [];
-    const rows = lastByKey(events, (e) => e.key).map((e) => ({
+    const kept = lastByKey(events, (e) => e.key);
+    const withFlag = kept.some((e) => e.flag); // pre-009 schemas have no flag column
+    const rows = kept.map((e) => ({
       key: e.key, cluster_id: e.clusterId ?? null, type: e.type, title: e.title, summary: e.summary,
       entities: json(e.entities), assets: json(e.assets), magnitude: e.magnitude, sources: json(e.sources), origin: e.origin,
-      first_seen: e.firstSeen, scheduled_at: e.scheduledAt, catalyst: json(e.catalyst), tag: e.tag,
+      first_seen: e.firstSeen, scheduled_at: e.scheduledAt, catalyst: json(e.catalyst), tag: e.tag, ...(withFlag ? { flag: json(e.flag) } : {}),
     }));
     const out = await sql()`
-      insert into intel_events ${sql()(rows, "key", "cluster_id", "type", "title", "summary", "entities", "assets", "magnitude", "sources", "origin", "first_seen", "scheduled_at", "catalyst", "tag")}
+      insert into intel_events ${sql()(rows)}
       on conflict (key) do update set
         cluster_id = coalesce(excluded.cluster_id, intel_events.cluster_id), type = excluded.type, title = excluded.title,
         summary = excluded.summary, entities = excluded.entities, assets = excluded.assets, magnitude = excluded.magnitude,
         sources = excluded.sources, origin = excluded.origin, scheduled_at = excluded.scheduled_at, catalyst = excluded.catalyst, tag = excluded.tag
+        ${withFlag ? sql()`, flag = excluded.flag` : sql()``}
       returning *
     `;
     return out.map(toEvent);
@@ -493,6 +628,10 @@ export class PgIntelStore implements IntelStore {
   async getEvent(id: string) {
     if (!isUuid(id)) return null;
     const [row] = await sql()`select * from intel_events where id = ${id}`;
+    return row ? toEvent(row) : null;
+  }
+  async getEventByKey(key: string) {
+    const [row] = await sql()`select * from intel_events where key = ${key}`;
     return row ? toEvent(row) : null;
   }
   async listEvents(opts: { since?: Date; type?: EventType; limit: number }) {
@@ -573,6 +712,10 @@ export class PgIntelStore implements IntelStore {
     if (!isUuid(id)) return null;
     const [row] = await sql()`update intel_alerts set feedback = ${vote} where id = ${id} returning *`;
     return row ? toAlert(row) : null;
+  }
+  async setAlertRoute(ids: string[], route: Alert["route"]) {
+    const valid = ids.filter(isUuid);
+    if (valid.length) await sql()`update intel_alerts set route = ${route} where id = any(${valid}::uuid[])`;
   }
   async feedbackStats(since?: Date) {
     const lo = since ?? null;
@@ -702,13 +845,16 @@ export class PgIntelStore implements IntelStore {
     const [row] = await sql()`select output from intel_llm_cache where key = ${key} and prompt_version = ${promptVersion}`;
     return row ? (row.output as unknown) : null;
   }
-  async cachePut(key: string, promptVersion: string, output: unknown, usage: unknown) {
-    await sql()`insert into intel_llm_cache (key, prompt_version, output, usage) values (${key}, ${promptVersion}, ${json(output)}, ${json(usage)})
+  async cachePut(key: string, promptVersion: string, output: unknown, usage: unknown, model?: string) {
+    await sql()`insert into intel_llm_cache (key, prompt_version, output, usage) values (${key}, ${promptVersion}, ${json(output)}, ${json(withModel(usage, model))})
       on conflict (key, prompt_version) do update set output = excluded.output, usage = excluded.usage, created_at = now()`;
   }
   async callsSince(since: Date) {
     const [row] = await sql()`select count(*)::int as n from intel_llm_cache where created_at >= ${since}`;
     return row!.n as number;
+  }
+  async usageSince(since: Date) {
+    return (await sql()`select usage from intel_llm_cache where created_at >= ${since}`).map((r) => r.usage as unknown);
   }
 }
 
@@ -725,6 +871,8 @@ export class MemoryIntelStore implements IntelStore {
   reviews: Review[] = [];
   snapshots = new Map<string, SnapshotRow>();
   stops = new Map<string, StopRow>();
+  flow = new Map<string, FlowRow>();
+  research: ResearchResult[] = [];
   edges = new Map<string, Edge>();
   events = new Map<string, IntelEvent>();
   clusters = new Map<string, Cluster>();
@@ -831,6 +979,71 @@ export class MemoryIntelStore implements IntelStore {
     return n;
   }
 
+  async insertFlow(rows: FlowRow[]) {
+    const all = lastByKey(rows, flowKey);
+    for (const r of all) this.flow.set(flowKey(r), { ...r, ts: isoOrNull(r.ts)! });
+    return all.length;
+  }
+  async flowSeries(asset: string, metric: FlowMetric | null, since: Date) {
+    return [...this.flow.values()]
+      .filter((r) => r.asset === asset && (!metric || r.metric === metric) && Date.parse(r.ts) >= since.getTime())
+      .sort(flowOrder)
+      .map(clone);
+  }
+  async latestFlowTs(asset: string, venue: string, metric: FlowMetric) {
+    let best: string | null = null;
+    for (const r of this.flow.values()) if (r.asset === asset && r.venue === venue && r.metric === metric && (!best || r.ts > best)) best = r.ts;
+    return best;
+  }
+  async pruneFlow(before: Date) {
+    let n = 0;
+    for (const [k, r] of this.flow) if (Date.parse(r.ts) < before.getTime()) (this.flow.delete(k), n++);
+    return n;
+  }
+
+  async insertResearch(r: NewResearch) {
+    const row: ResearchResult = { ...clone(r), id: this.id(), createdAt: this.now() };
+    this.research.push(row);
+    return clone(row);
+  }
+  async acquireResearch(r: NewResearch, staleMs: number) {
+    const cutoff = this.clock().getTime() - staleMs;
+    for (const x of this.research) {
+      if (x.status === "running" && Date.parse(x.createdAt) < cutoff) Object.assign(x, { status: "failed", explanation: STALE_RESEARCH });
+    }
+    if (this.research.some((x) => x.status === "running")) return null;
+    return this.insertResearch({ ...r, status: "running" });
+  }
+  async finishResearch(id: string, r: NewResearch) {
+    const i = this.research.findIndex((x) => x.id === id && x.status === "running");
+    if (i < 0) return null;
+    this.research[i] = { ...clone(r), id, createdAt: this.research[i]!.createdAt };
+    return clone(this.research[i]!);
+  }
+  async listResearch(o: { asset?: string; since?: Date; limit: number }) {
+    return this.research
+      .filter((x) => (!o.asset || x.asset?.toLowerCase() === o.asset.toLowerCase()) && (!o.since || Date.parse(x.createdAt) >= o.since.getTime()))
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .slice(0, o.limit)
+      .map(clone);
+  }
+  async researchCountSince(since: Date, trigger?: ResearchResult["trigger"]) {
+    return this.research.filter((x) => Date.parse(x.createdAt) >= since.getTime() && x.status !== "capped" && (x.status !== "failed" || x.costUsd > 0) && (!trigger || x.trigger === trigger)).length;
+  }
+  async researchForFlags(flagIds: string[]) {
+    const out = new Map<string, ResearchResult>();
+    for (const x of this.research) {
+      if (x.flagId && flagIds.includes(x.flagId) && (x.status === "found" || x.status === "no_cause")) out.set(x.flagId, clone(x)); // rows are oldest first: the newest wins
+    }
+    return out;
+  }
+  async pruneResearch(before: Date) {
+    const keep = this.research.filter((x) => Date.parse(x.createdAt) >= before.getTime());
+    const n = this.research.length - keep.length;
+    this.research = keep;
+    return n;
+  }
+
   async upsertEdges(edges: NewEdge[]) {
     let n = 0;
     for (const e of lastByKey(edges, (e) => `${e.src}|${e.dst}|${e.type}`)) {
@@ -853,6 +1066,14 @@ export class MemoryIntelStore implements IntelStore {
     const key = `${k.src}|${k.dst}|${k.type}`;
     return this.edges.get(key)?.origin === "user" ? this.edges.delete(key) : false;
   }
+  async deleteLlmEdges(keys: EdgeKey[]) {
+    let n = 0;
+    for (const k of keys) {
+      const key = `${k.src}|${k.dst}|${k.type}`;
+      if (this.edges.get(key)?.origin === "llm") n += Number(this.edges.delete(key));
+    }
+    return n;
+  }
 
   async upsertEvents(events: NewEvent[]) {
     const out: IntelEvent[] = [];
@@ -872,6 +1093,9 @@ export class MemoryIntelStore implements IntelStore {
   }
   async getEvent(id: string) {
     return clone(this.events.get(id) ?? null);
+  }
+  async getEventByKey(key: string) {
+    return clone([...this.events.values()].find((e) => e.key === key) ?? null);
   }
   async listEvents(opts: { since?: Date; type?: EventType; limit: number }) {
     return [...this.events.values()]
@@ -941,6 +1165,9 @@ export class MemoryIntelStore implements IntelStore {
     if (!a) return null;
     a.feedback = vote;
     return clone(a);
+  }
+  async setAlertRoute(ids: string[], route: Alert["route"]) {
+    for (const a of this.alerts) if (ids.includes(a.id)) a.route = route;
   }
   async feedbackStats(since?: Date) {
     const buckets = new Map<string, FeedbackBucket>();
@@ -1067,10 +1294,13 @@ export class MemoryIntelStore implements IntelStore {
     const hit = this.cache.get(JSON.stringify([key, promptVersion]));
     return hit ? clone(hit.output) : null;
   }
-  async cachePut(key: string, promptVersion: string, output: unknown, usage: unknown) {
-    this.cache.set(JSON.stringify([key, promptVersion]), { output: clone(output), usage: clone(usage), createdAt: this.clock().getTime() });
+  async cachePut(key: string, promptVersion: string, output: unknown, usage: unknown, model?: string) {
+    this.cache.set(JSON.stringify([key, promptVersion]), { output: clone(output), usage: clone(withModel(usage, model)), createdAt: this.clock().getTime() });
   }
   async callsSince(since: Date) {
     return [...this.cache.values()].filter((c) => c.createdAt >= since.getTime()).length;
+  }
+  async usageSince(since: Date) {
+    return [...this.cache.values()].filter((c) => c.createdAt >= since.getTime()).map((c) => clone(c.usage));
   }
 }

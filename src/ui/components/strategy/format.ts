@@ -17,17 +17,22 @@ export function fmtTsSec(iso: string | null | undefined): string {
   return d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
 }
 
+/** A duration in seconds as fmtAge's words without `AGO`: `42S`, `3M`, `5H`, `2D`. */
+export function fmtDur(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  if (s < 60) return `${s}S`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}M`
+  const h = Math.floor(m / 60)
+  if (h < 48) return `${h}H`
+  return `${Math.floor(h / 24)}D`
+}
+
 export function fmtAge(iso: string | null | undefined): string {
   if (!iso) return '—'
   const ms = Date.now() - new Date(iso).getTime()
   if (Number.isNaN(ms)) return iso
-  const s = Math.max(0, Math.floor(ms / 1000))
-  if (s < 60) return `${s}S AGO`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}M AGO`
-  const h = Math.floor(m / 60)
-  if (h < 48) return `${h}H AGO`
-  return `${Math.floor(h / 24)}D AGO`
+  return `${fmtDur(ms / 1000)} AGO`
 }
 
 export function fmtProb(p: number | null | undefined): string {

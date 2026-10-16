@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { EVENT_TYPES, EventExtractionSchema, type EventExtraction, type EventType, type IntelEvent } from "../../shared/intel.js";
 import { hostLabel } from "./ingest/common.js";
+import { lineVerdict, payloadNumbers } from "./numbers.js";
 import { completeStructured, untrusted, UNTRUSTED_RULE, type LlmDeps, type StructuredResult } from "./llm.js";
 
 // Headline clustering (SPEC.md § Intel I0.9). Pure, no embeddings
@@ -247,6 +248,10 @@ export async function extractCluster(deps: { llm: LlmDeps; signal?: AbortSignal;
     deadlineMs: deps.deadlineMs,
     deps: deps.llm,
   });
-  if (res.ok && res.value.magnitude === "high" && sourceHosts(cluster.events) < 2) return { ...res, value: { ...res.value, magnitude: "med" } };
-  return res;
+  if (!res.ok) return res;
+  // The summary is an LLM line: a number not in the headlines, or advice, falls back to the first source headline.
+  let value = res.value;
+  if (lineVerdict(value.summary, payloadNumbers(lines.join("\n"))) !== null) value = { ...value, summary: cluster.events[0]!.title.slice(0, 600) };
+  if (value.magnitude === "high" && sourceHosts(cluster.events) < 2) value = { ...value, magnitude: "med" };
+  return { ...res, value };
 }

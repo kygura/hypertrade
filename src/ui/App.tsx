@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AppShell } from './components/AppShell'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { api } from './lib/api'
 import { Login } from './pages/Login'
 import { Overview } from './pages/Overview'
@@ -25,21 +26,27 @@ const MarketDrill = lazy(() => import('./pages/MarketDrill').then((m) => ({ defa
 const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
 const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
 const LAB_TAB_PATHS = ['/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
-// Terminal family (DESIGN-terminal.md §1.1): `/` is the Terminal; each sub-tab
-// is its own route, loaded with it. `/overview` is the old `/` under TerminalTabs.
+// Terminal family (DESIGN-terminal.md §1.1, C1): `/` is the Cockpit, `/terminal`
+// the Terminal; each sub-tab is its own route, loaded with it. `/overview` is
+// the old glance under TerminalTabs.
+const Cockpit = lazy(() => import('./pages/cockpit/Cockpit').then((m) => ({ default: m.Cockpit })))
 const Terminal = lazy(() => import('./pages/terminal/Terminal').then((m) => ({ default: m.Terminal })))
 const Journal = lazy(() => import('./pages/terminal/Journal').then((m) => ({ default: m.Journal })))
 const Theses = lazy(() => import('./pages/terminal/Theses').then((m) => ({ default: m.Theses })))
 const Query = lazy(() => import('./pages/terminal/Query').then((m) => ({ default: m.Query })))
 const Order = lazy(() => import('./pages/terminal/Order').then((m) => ({ default: m.Order })))
 const Watch = lazy(() => import('./pages/terminal/Watch').then((m) => ({ default: m.Watch })))
+// `/asset/:coin` is a drill-in of `/terminal` (DESIGN-terminal §15.4), under TerminalTabs.
+const Asset = lazy(() => import('./pages/terminal/Asset').then((m) => ({ default: m.Asset })))
 const TERMINAL_PAGES = [
-  { path: '/', Page: Terminal },
+  { path: '/', Page: Cockpit },
+  { path: '/terminal', Page: Terminal },
   { path: '/journal', Page: Journal },
   { path: '/theses', Page: Theses },
   { path: '/query', Page: Query },
   { path: '/order', Page: Order },
   { path: '/watch', Page: Watch },
+  { path: '/asset/:coin', Page: Asset },
 ]
 
 // Router — SPEC.md route map. All routes except /login render inside
@@ -50,7 +57,12 @@ function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     api.get('/auth/me').catch(() => {}) // 401 redirect handled in api.ts
   }, [])
-  return <AppShell>{children}</AppShell>
+  const { pathname } = useLocation()
+  return (
+    <AppShell>
+      <ErrorBoundary key={pathname}>{children}</ErrorBoundary>
+    </AppShell>
+  )
 }
 
 export default function App() {

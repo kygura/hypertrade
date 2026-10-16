@@ -15,6 +15,7 @@ import { telegramApi } from "../src/server/desk/notify.js";
 import { handleTelegramUpdate, type TelegramUpdate } from "../src/server/desk/telegram.js";
 import { tick } from "../src/server/desk/watch.js";
 import { defaultDeskService } from "../src/server/routes/desk.js";
+import { telegramIntel } from "../src/server/routes/intel/index.js";
 
 const service = defaultDeskService();
 const makeProvider = deskProviderFactory();
@@ -24,18 +25,56 @@ let stopping = false;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const log = (...a: unknown[]) => console.log(new Date().toISOString(), "[desk]", ...a);
 
+/** One watch tick; throws on failure (the caller decides how to retry). Also used by scripts/server.ts. */
+export async function deskTickOnce() {
+  const r = await tick(service, { makeProvider, cycleTimeoutMs: 600_000 });
+  const parts = [
+    r.triggers.length ? `triggers: ${r.triggers.map((t) => t.key).join(", ")}` : null,
+    r.settled.length ? `settled: ${r.settled.map((s) => `${s.coin} ${s.kind} ${s.pnl.toFixed(2)}`).join(", ")}` : null,
+    r.expired ? `expired ${r.expired}` : null,
+    r.cycle ? ("runId" in r.cycle ? `cycle ${r.cycle.runId} (${r.cycle.stop})` : `cycle skipped: ${r.cycle.skipped}`) : null,
+  ].filter(Boolean);
+  if (parts.length) log(parts.join(" · "));
+}
+export const deskTickSec = tickMs / 1000;
+
+/** The Telegram poller as a repeatable step: one getUpdates long-poll (<=25 s), throws on failure. Null when no bot polling applies. */
+export async function createTelegramPoll(): Promise<(() => Promise<void>) | null> {
+  const token = process.env.DESK_TELEGRAM_BOT_TOKEN?.trim();
+  const chatId = process.env.DESK_TELEGRAM_CHAT_ID?.trim();
+  // Polling and a webhook cannot coexist on one bot.
+  if (!token || !chatId || process.env.DESK_TELEGRAM_WEBHOOK_SECRET) return null;
+  await telegramApi(token, "deleteWebhook", {}).catch(() => undefined);
+  const KEY = "telegram_offset";
+  let offset = (await service.store.getState<number>(KEY)) ?? 0;
+  const ask = async (question: string) => {
+    const r = await runDesk({ service, kind: "ask", input: question, act: false, makeProvider, timeoutMs: 600_000 }, () => {});
+    return r.answer || "(no answer)";
+  };
+  const intel = telegramIntel();
+  log("telegram: polling");
+  return async () => {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ offset, timeout: 25, allowed_updates: ["message", "callback_query"] }),
+      signal: AbortSignal.timeout(35_000),
+    });
+    const body = (await res.json()) as { ok: boolean; result?: TelegramUpdate[] };
+    for (const u of body.result ?? []) {
+      offset = u.update_id + 1;
+      await service.store.setState(KEY, offset);
+      // /ask can take minutes; do not block the next updates on it.
+      void handleTelegramUpdate(service, u, { token, chatId, ask, intel }).catch((err) => log("telegram update failed:", err));
+    }
+  };
+}
+
 async function tickLoop() {
   while (!stopping) {
     const started = Date.now();
     try {
-      const r = await tick(service, { makeProvider, cycleTimeoutMs: 600_000 });
-      const parts = [
-        r.triggers.length ? `triggers: ${r.triggers.map((t) => t.key).join(", ")}` : null,
-        r.settled.length ? `settled: ${r.settled.map((s) => `${s.coin} ${s.kind} ${s.pnl.toFixed(2)}`).join(", ")}` : null,
-        r.expired ? `expired ${r.expired}` : null,
-        r.cycle ? ("runId" in r.cycle ? `cycle ${r.cycle.runId} (${r.cycle.stop})` : `cycle skipped: ${r.cycle.skipped}`) : null,
-      ].filter(Boolean);
-      if (parts.length) log(parts.join(" · "));
+      await deskTickOnce();
     } catch (err) {
       log("tick failed:", err instanceof Error ? err.message : err);
     }
@@ -43,29 +82,10 @@ async function tickLoop() {
   }
 }
 
-async function telegramLoop(token: string, chatId: string) {
-  const KEY = "telegram_offset";
-  let offset = (await service.store.getState<number>(KEY)) ?? 0;
-  const ask = async (question: string) => {
-    const r = await runDesk({ service, kind: "ask", input: question, act: false, makeProvider, timeoutMs: 600_000 }, () => {});
-    return r.answer || "(no answer)";
-  };
-  log("telegram: polling");
+async function telegramLoop(poll: () => Promise<void>) {
   while (!stopping) {
     try {
-      const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ offset, timeout: 25, allowed_updates: ["message", "callback_query"] }),
-        signal: AbortSignal.timeout(35_000),
-      });
-      const body = (await res.json()) as { ok: boolean; result?: TelegramUpdate[] };
-      for (const u of body.result ?? []) {
-        offset = u.update_id + 1;
-        await service.store.setState(KEY, offset);
-        // /ask can take minutes; do not block the next updates on it.
-        void handleTelegramUpdate(service, u, { token, chatId, ask }).catch((err) => log("telegram update failed:", err));
-      }
+      await poll();
     } catch (err) {
       log("telegram poll failed:", err instanceof Error ? err.message : err);
       await sleep(5000);
@@ -76,23 +96,19 @@ async function telegramLoop(token: string, chatId: string) {
 async function main() {
   const pm = makeProvider("pm");
   log(`starting: venue ${service.broker.venue}, approval ${await service.approval()}, model ${pm ? `${pm.id}/${pm.model}` : "none (alerts only)"}, tick ${tickMs / 1000}s`);
-  const token = process.env.DESK_TELEGRAM_BOT_TOKEN?.trim();
-  const chatId = process.env.DESK_TELEGRAM_CHAT_ID?.trim();
   const loops = [tickLoop()];
-  if (token && chatId && !process.env.DESK_TELEGRAM_WEBHOOK_SECRET) {
-    // Polling and a webhook cannot coexist on one bot.
-    await telegramApi(token, "deleteWebhook", {}).catch(() => undefined);
-    loops.push(telegramLoop(token, chatId));
-  }
+  const poll = await createTelegramPoll();
+  if (poll) loops.push(telegramLoop(poll));
   await Promise.all(loops);
 }
 
-for (const sig of ["SIGINT", "SIGTERM"] as const) {
-  process.on(sig, () => {
-    log(`${sig}: finishing the current step`);
-    stopping = true;
-    setTimeout(() => process.exit(0), 5000).unref();
-  });
+if (import.meta.main) {
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
+    process.on(sig, () => {
+      log(`${sig}: finishing the current step`);
+      stopping = true;
+      setTimeout(() => process.exit(0), 5000).unref();
+    });
+  }
+  void main();
 }
-
-void main();

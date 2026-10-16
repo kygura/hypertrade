@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { SnapshotRow } from "../../shared/intel.js";
-import { MemoryIntelStore, PgIntelStore, type NewAlert, type NewEvent } from "./store.js";
+import type { FlowMetric, FlowRow, SnapshotRow } from "../../shared/intel.js";
+import { MemoryIntelStore, PgIntelStore, type NewAlert, type NewEvent, type NewResearch } from "./store.js";
 
 const snap = (asset: string, ts: string, price: number): SnapshotRow => ({
   asset, ts, price, vol24h: null, funding: null, oiUsd: null, premium: null, basis: null,
@@ -127,6 +127,39 @@ describe("MemoryIntelStore stops", () => {
   });
 });
 
+// Same rules as PgIntelStore's intel_flow SQL: upsert on (asset, venue, metric, ts); series ascending by ts, metric, venue.
+describe("MemoryIntelStore flow", () => {
+  const row = (metric: FlowMetric, t: string, value: number, venue = "agg", asset = "BTC"): FlowRow => ({ asset, venue, metric, value, ts: `2026-10-13T${t}.000Z` });
+
+  test("upserts on (asset, venue, metric, ts); series filter by metric and since; latest ts per key; prune", async () => {
+    const s = new MemoryIntelStore();
+    expect(
+      await s.insertFlow([
+        row("oi_usd", "00:15:00", 2),
+        row("oi_usd", "00:00:00", 1),
+        row("funding", "00:00:00", 1e-5),
+        row("spot_volume_usd", "00:00:00", 5, "binance"),
+        row("oi_usd", "00:15:00", 3), // duplicate key: last wins
+        row("oi_usd", "00:00:00", 9, "agg", "ETH"),
+      ]),
+    ).toBe(5);
+    await s.insertFlow([{ ...row("oi_usd", "00:00:00", 4), ts: "2026-10-13T02:00:00+02:00" }]); // = 00:00Z
+    const all = await s.flowSeries("BTC", null, new Date("2026-10-12T00:00:00Z"));
+    expect(all.map((r) => [r.ts.slice(11, 16), r.metric, r.venue, r.value])).toEqual([
+      ["00:00", "funding", "agg", 1e-5],
+      ["00:00", "oi_usd", "agg", 4],
+      ["00:00", "spot_volume_usd", "binance", 5],
+      ["00:15", "oi_usd", "agg", 3],
+    ]);
+    expect((await s.flowSeries("BTC", "oi_usd", new Date("2026-10-13T00:15:00Z"))).map((r) => r.value)).toEqual([3]); // since is inclusive
+    expect(await s.latestFlowTs("BTC", "agg", "oi_usd")).toBe("2026-10-13T00:15:00.000Z");
+    expect(await s.latestFlowTs("BTC", "binance", "oi_usd")).toBeNull();
+    expect(await s.insertFlow([])).toBe(0);
+    expect(await s.pruneFlow(new Date("2026-10-13T00:10:00Z"))).toBe(4);
+    expect((await s.flowSeries("BTC", null, new Date(0))).length).toBe(1);
+  });
+});
+
 describe("MemoryIntelStore graph, events, cache", () => {
   test("user edges survive seed/llm upserts; only user edges delete", async () => {
     const s = new MemoryIntelStore();
@@ -137,6 +170,15 @@ describe("MemoryIntelStore graph, events, cache", () => {
     expect(await s.deleteUserEdge({ src: "USDC", dst: "HYPE", type: "settles_on" })).toBe(false);
     expect(await s.deleteUserEdge({ src: "Jito", dst: "SOL", type: "collateral" })).toBe(true);
     expect((await s.listEdges()).length).toBe(1);
+  });
+
+  test("deleteLlmEdges removes llm edges only", async () => {
+    const s = new MemoryIntelStore();
+    const e = (dst: string, origin: "seed" | "llm" | "user") => ({ src: "SOL", dst, type: "narrative" as const, weight: 0.3, source: null, lastVerified: null, origin });
+    await s.upsertEdges([e("A", "seed"), e("B", "llm"), e("C", "user")]);
+    const key = (dst: string) => ({ src: "SOL", dst, type: "narrative" as const });
+    expect(await s.deleteLlmEdges([key("A"), key("B"), key("C"), key("none")])).toBe(1);
+    expect((await s.listEdges()).map((x) => x.dst)).toEqual(["A", "C"]);
   });
 
   test("event upsert keeps id, firstSeen and cluster; last duplicate in a batch wins", async () => {
@@ -242,5 +284,47 @@ describe("PgIntelStore ids that are not uuids", () => {
     expect(await s.deleteWatch("nope")).toBe(false);
     await s.setWatchChangeAlerted("nope", []);
     expect(await s.listWatchChanges("nope", 5)).toEqual([]);
+  });
+});
+
+// Same rules as PgIntelStore's intel_research SQL (store.pg.test.ts runs both side by side when a database is available).
+describe("MemoryIntelStore research", () => {
+  const rs = (over: Partial<NewResearch> = {}): NewResearch => ({
+    trigger: "manual", asset: "SOL", question: "why", status: "running", explanation: "", evidence: [], confidence: "low", openQuestions: [], searches: 0, costUsd: 0, model: "m", ...over,
+  });
+  const clock = { t: new Date("2026-10-14T12:00:00Z") };
+
+  test("one running row at a time; a stale one is failed and replaced; flag lookup ignores the trigger", async () => {
+    const s = new MemoryIntelStore(() => clock.t);
+    const first = await s.acquireResearch(rs({ flagId: "f1" }), 3_600_000);
+    expect(first?.status).toBe("running");
+    expect(await s.acquireResearch(rs(), 3_600_000)).toBeNull();
+    const second = await s.acquireResearch(rs({ flagId: "f1" }), -1);
+    expect(second).not.toBeNull();
+    expect((await s.listResearch({ limit: 5 })).map((r) => r.status)).toEqual(["failed", "running"]); // same instant: id order
+    expect(await s.finishResearch(first!.id, rs({ status: "found" }))).toBeNull(); // no longer running: cannot be overwritten
+    await s.finishResearch(second!.id, rs({ flagId: "f1", status: "found", explanation: "x" }));
+    expect(await s.finishResearch(second!.id, rs({ status: "failed" }))).toBeNull(); // finished once
+    expect((await s.researchForFlags(["f1", "f2"])).get("f1")?.id).toBe(second!.id); // trigger is "manual": found all the same
+    expect((await s.researchForFlags(["f2"])).size).toBe(0);
+  });
+
+  test("counts and lists by asset, since and trigger; prune by age", async () => {
+    const s = new MemoryIntelStore(() => clock.t);
+    await s.insertResearch(rs({ status: "found", flagId: "f8" }));
+    await s.insertResearch(rs({ status: "capped", flagId: "f7" }));
+    await s.insertResearch(rs({ status: "failed" })); // never called out: free
+    await s.insertResearch(rs({ status: "failed", costUsd: 0.2, flagId: "f6" })); // billed
+    clock.t = new Date("2026-10-15T12:00:00Z");
+    await s.insertResearch(rs({ trigger: "flag", asset: "BTC", flagId: "f9", status: "no_cause" }));
+    const day = new Date("2026-10-15T00:00:00Z");
+    expect(await s.researchCountSince(day)).toBe(1);
+    expect(await s.researchCountSince(new Date(0))).toBe(3); // capped and free failures don't use the daily budget; billed failures do
+    expect(await s.researchCountSince(new Date(0), "manual")).toBe(2);
+    expect([...(await s.researchForFlags(["f8", "f7", "f6", "f9", "nope"])).keys()].sort()).toEqual(["f8", "f9"]); // failed and capped stay out of the join
+    expect((await s.listResearch({ asset: "BTC", limit: 5 })).map((r) => r.flagId)).toEqual(["f9"]);
+    expect((await s.listResearch({ limit: 5 })).map((r) => r.asset)).toEqual(["BTC", "SOL", "SOL", "SOL", "SOL"]); // newest first
+    expect(await s.pruneResearch(day)).toBe(4);
+    expect(await s.listResearch({ limit: 5 })).toHaveLength(1);
   });
 });

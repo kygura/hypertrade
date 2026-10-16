@@ -3,6 +3,9 @@ import { createNotifier, escapeHtml, telegramPayload } from "./notify.js";
 import { handleTelegramUpdate } from "./telegram.js";
 import { makeService } from "./testkit.js";
 import { toWatchedAccount, trimForModel } from "./data.js";
+import type { Brief } from "../../shared/intel.js";
+import { feedbackActions } from "../intel/notify.js";
+import { MemoryIntelStore, type NewAlert } from "../intel/store.js";
 
 function recorder() {
   const calls: Array<{ url: string; body: any }> = [];
@@ -65,6 +68,82 @@ describe("telegram control", () => {
     expect(await service.killSwitch()).toMatchObject({ on: true, reason: "too volatile" });
     await handleTelegramUpdate(service, { update_id: 4, message: { chat: { id: 42 }, text: "/ask is this a trap?" } }, o);
     expect(calls.at(-1)!.body.text).toContain("desk worker");
+  });
+});
+
+describe("telegram intel (SPEC F0.6)", () => {
+  const newAlert = (): NewAlert => ({
+    kind: "mapper",
+    ref: "cluster-1",
+    window: null,
+    asset: "SOL",
+    title: "SOL exploit",
+    eventType: "exploit",
+    line: { tag: "hypothesis", text: "Long SOL: exposure via collateral." },
+    path: [],
+    edgeType: null,
+    hops: 0,
+    pathWeight: 1,
+    sources: [],
+    materiality: 0.5,
+    pricedIn: null,
+    route: "push",
+  });
+  const brief = (o: Partial<Brief>): Brief => ({ id: "b1", createdAt: "2026-10-14T00:00:00.000Z", surface: "ui", since: "2026-10-13T18:00:00.000Z", items: [], alerts: [], catalysts: [], lines: [], silent: false, ...o });
+  const item = { asset: "SOL", metric: "price", held: true, from: 100, to: 104.1, delta: 4.1, deltaUnit: "pct", z: 2.5, materiality: 2.5, exposureWeight: 1, stopProximity: 1, ts: "2026-10-14T00:00:00.000Z", baselineTs: "2026-10-13T18:00:00.000Z" } as const;
+
+  test("fb:<alertId>:<vote> stores the vote, answers the callback and marks the voted button", async () => {
+    const { service } = makeService({});
+    const store = new MemoryIntelStore();
+    const a = (await store.insertAlert(newAlert()))!;
+    const { calls, fetchFn } = recorder();
+    const keyboard = [feedbackActions([a]).map((x) => ({ text: x.label, callback_data: x.data }))];
+    const intel = { store, brief: async () => brief({}) };
+    await handleTelegramUpdate(
+      service,
+      { update_id: 1, callback_query: { id: "cq", data: `fb:${a.id}:-1`, message: { chat: { id: 42 }, message_id: 7, reply_markup: { inline_keyboard: keyboard } } } },
+      { token: "T", chatId: "42", fetchFn, intel },
+    );
+    expect(store.alerts[0]!.feedback).toBe(-1);
+    expect(calls.map((c) => c.url.split("/").pop())).toEqual(["answerCallbackQuery", "editMessageReplyMarkup"]);
+    expect(calls[1]!.body.reply_markup.inline_keyboard[0]).toEqual([
+      { text: "👍", callback_data: `fb:${a.id}:1` },
+      { text: "✅ 👎", callback_data: `fb:${a.id}:-1` },
+    ]);
+    // Another chat: ignored.
+    await handleTelegramUpdate(service, { update_id: 2, callback_query: { id: "cq", data: `fb:${a.id}:1`, message: { chat: { id: 666 }, message_id: 7 } } }, { token: "T", chatId: "42", fetchFn, intel });
+    expect(store.alerts[0]!.feedback).toBe(-1);
+    expect(calls).toHaveLength(2);
+  });
+
+  test("/digest builds a telegram_digest brief with a bounded signal and replies with its lines + review link", async () => {
+    const { service } = makeService({});
+    const { calls, fetchFn } = recorder();
+    const seen: Array<{ via: string; signal: AbortSignal }> = [];
+    const lines = [{ tag: "hypothesis" as const, text: "Long SOL: the move is large." }];
+    const intel = { store: new MemoryIntelStore(), link: "https://app.example.com/?review=1", brief: async (o: { via: "telegram_digest"; signal: AbortSignal }) => (seen.push(o), brief({ lines, items: [item] })) };
+    await handleTelegramUpdate(service, { update_id: 1, message: { chat: { id: 42 }, text: "/digest" } }, { token: "T", chatId: "42", fetchFn, intel });
+    expect(seen[0]!.via).toBe("telegram_digest");
+    expect(seen[0]!.signal).toBeInstanceOf(AbortSignal);
+    expect(calls.at(-1)!.body.text).toBe("• [hypothesis] Long SOL: the move is large.\n\nhttps://app.example.com/?review=1");
+
+    // Narration timed out or capped (lines []): the ranked raw-number items go out instead.
+    intel.brief = async () => brief({ items: [item], trace: { promptVersion: "v", tier: "strong", model: "m", inputs: {}, output: null, usage: null, ms: 20_000, error: "aborted" } as Brief["trace"] });
+    await handleTelegramUpdate(service, { update_id: 2, message: { chat: { id: 42 }, text: "/digest" } }, { token: "T", chatId: "42", fetchFn, intel });
+    expect(calls.at(-1)!.body.text).toBe("• held SOL price +4.10% (z +2.50)\n\nhttps://app.example.com/?review=1");
+
+    intel.brief = async () => brief({ silent: true });
+    await handleTelegramUpdate(service, { update_id: 3, message: { chat: { id: 42 }, text: "/digest" } }, { token: "T", chatId: "42", fetchFn, intel });
+    expect(calls.at(-1)!.body.text).toContain("Nothing cleared");
+  });
+
+  test("without Intel deps: /digest says so and fb presses fall through unchanged", async () => {
+    const { service } = makeService({});
+    const { calls, fetchFn } = recorder();
+    await handleTelegramUpdate(service, { update_id: 1, message: { chat: { id: 42 }, text: "/digest" } }, { token: "T", chatId: "42", fetchFn });
+    expect(calls.at(-1)!.body.text).toContain("/digest");
+    await handleTelegramUpdate(service, { update_id: 2, callback_query: { id: "cq", data: "fb:x:1", message: { chat: { id: 42 }, message_id: 7 } } }, { token: "T", chatId: "42", fetchFn });
+    expect(calls.at(-1)!.body.text).toBe("unknown action");
   });
 });
 

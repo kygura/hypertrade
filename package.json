@@ -4,12 +4,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "bun scripts/server.ts",
     "dev:api": "bun run scripts/dev-api.ts",
     "desk:worker": "bun run scripts/desk-worker.ts",
     "lab": "bun run scripts/lab-cli.ts",
     "lab:mcp": "bun run scripts/lab-mcp.ts",
     "build": "bun run typecheck && vite build",
     "test": "bun test src",
+    "db:migrate": "bun run db/migrate.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "check:api": "sh scripts/check-api-esm.sh"
   },
@@ -29,14 +31,15 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "vite": "^6.0.2",
-    "@vitejs/plugin-react": "^4.3.4",
-    "tailwindcss": "^4.0.10",
+    "@electric-sql/pglite": "^0.5.10",
     "@tailwindcss/vite": "^4.0.10",
-    "typescript": "^5.7.2",
+    "@types/bun": "latest",
+    "@types/node": "^22.10.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/node": "^22.10.5",
-    "@types/bun": "latest"
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.0.10",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.2"
   }
 }

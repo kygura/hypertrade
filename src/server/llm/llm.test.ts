@@ -135,6 +135,32 @@ describe("AnthropicProvider", () => {
     expect(sent.messages.at(-1).content[0]).toMatchObject({ type: "tool_result", tool_use_id: "tu_1" });
   });
 
+  test("web search: per-step maxUses is sent, and result URLs and cited text reach the hooks (Intel provenance)", async () => {
+    let sent: any;
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body));
+      return sse([
+        { event: "message_start", data: { type: "message_start", message: { id: "m1", type: "message", role: "assistant", model: "claude-opus-5-5", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } } },
+        { event: "content_block_start", data: { type: "content_block_start", index: 0, content_block: { type: "web_search_tool_result", tool_use_id: "srv_1", content: [{ type: "web_search_result", url: "https://ex.com/1", title: "One", encrypted_content: "x", page_age: null }, { type: "web_search_result", url: "https://ex.com/2", title: null, encrypted_content: "y", page_age: null }] } } },
+        { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
+        { event: "content_block_start", data: { type: "content_block_start", index: 1, content_block: { type: "text", text: "", citations: null } } },
+        { event: "content_block_delta", data: { type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "Monad is up 5%." } } },
+        { event: "content_block_delta", data: { type: "content_block_delta", index: 1, delta: { type: "citations_delta", citation: { type: "web_search_result_location", url: "https://ex.com/1", title: "One", cited_text: "Monad rose 5% today", encrypted_index: "e" } } } },
+        { event: "content_block_stop", data: { type: "content_block_stop", index: 1 } },
+        { event: "message_delta", data: { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 5 } } },
+        { event: "message_stop", data: { type: "message_stop" } },
+      ]);
+    }) as unknown as typeof fetch;
+    const p = new AnthropicProvider({ apiKey: "k", model: "claude-opus-5-5", fetch: fakeFetch, webSearchMaxUses: 5 });
+    const results: Array<{ url: string; title: string | null }[]> = [];
+    const cited: Array<[string, string | undefined]> = [];
+    const h: StepHooks = { onText: () => {}, onSearchResults: (r) => void results.push(r), onCitation: (c) => void cited.push([c.url, c.cited_text]) };
+    await p.start("S", [], "q").step([], h, { signal: new AbortController().signal, maxUses: 8 });
+    expect(sent.tools.at(-1)).toMatchObject({ name: "web_search", max_uses: 8 }); // the step option beats the provider default
+    expect(results).toEqual([[{ url: "https://ex.com/1", title: "One" }, { url: "https://ex.com/2", title: null }]]);
+    expect(cited).toEqual([["https://ex.com/1", "Monad rose 5% today"]]);
+  });
+
   test("defers to a caller-supplied web_search tool (Exa) instead of also registering its own native one", async () => {
     let sent: any;
     const fakeFetch = (async (_url: string, init: RequestInit) => {
