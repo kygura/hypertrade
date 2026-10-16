@@ -16,6 +16,7 @@ import { createIntelRoutes, defaultIntelDeps, telegramIntel } from "../src/serve
 import { labRoutes } from "../src/server/routes/lab.js";
 import { marketstateRoutes } from "../src/server/routes/marketstate.js";
 import { metricsRoutes } from "../src/server/routes/metrics.js";
+import { createPlatformRoutes, defaultPlatformDeps } from "../src/server/routes/platform.js";
 import { perpRoutes } from "../src/server/routes/perp.js";
 import { routinesRoutes } from "../src/server/routes/routines.js";
 import { sectorsRoutes } from "../src/server/routes/sectors.js";
@@ -66,6 +67,7 @@ app.route("/mcp", mcpRoutes(labRegistry));
 app.route("/marketstate", marketstateRoutes);
 app.route("/metrics", metricsRoutes);
 app.route("/perp", perpRoutes);
+app.route("/platform", createPlatformRoutes(defaultPlatformDeps()));
 app.route("/routines", routinesRoutes);
 app.route("/sectors", sectorsRoutes);
 
