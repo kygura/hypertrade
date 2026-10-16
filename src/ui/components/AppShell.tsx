@@ -15,7 +15,7 @@ import { ThemeSwitcher } from './ThemeSwitcher'
 const NAV = [
   // Intel Terminal family (DESIGN-terminal.md §1.2): one entry; /journal,
   // /theses, /query, /order, /watch and /overview switch inside via TerminalTabs.
-  { to: '/', label: 'TERMINAL', tab: 'TERM', glyph: '▣' },
+  { to: '/', label: 'COCKPIT', tab: 'CKPT', glyph: '◉' },
   { to: '/branches', label: 'BRANCHES', tab: 'BRNCH', glyph: '⑂' },
   { to: '/sectors', label: 'SECTORS', tab: 'SECTR', glyph: '▦' },
   { to: '/state', label: 'STATE', tab: 'STATE', glyph: '☰' },

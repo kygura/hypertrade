@@ -288,8 +288,8 @@ describe("EventList research row", () => {
     const bare = wrap(<EventList events={[ev({})]} upcoming={[]} hot={null} onHover={() => {}} now={Date.parse(ts)} />);
     expect(bare).toContain("SEE ON TERMINAL →");
     expect(bare).not.toContain("aria-expanded");
-    expect(researchHref({ research: result({ id: "r7" }) })).toBe("/#research-r7?asset=HYPE");
-    expect(researchHref({})).toBe("/#terminal-research");
+    expect(researchHref({ research: result({ id: "r7" }) })).toBe("/terminal#research-r7?asset=HYPE");
+    expect(researchHref({})).toBe("/terminal#terminal-research");
   });
 });
 

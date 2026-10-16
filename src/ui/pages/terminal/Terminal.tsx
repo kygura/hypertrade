@@ -100,7 +100,7 @@ export function Terminal() {
     if (deeplink.current) {
       setFromTelegram(true)
       void post('deeplink') // the request is dispatched synchronously; drop the param now
-      navigate('/', { replace: true })
+      navigate('/terminal', { replace: true })
     } else if (reviewing) {
       void post('ui')
     }

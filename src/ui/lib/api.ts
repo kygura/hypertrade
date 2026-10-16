@@ -8,10 +8,13 @@ export class ApiError extends Error {
   status: number
   /** Offending field when the server names one (`{ error, field }`, e.g. the engine's 400s). */
   field?: string
-  constructor(message: string, status: number, field?: string) {
+  /** Parsed JSON error body, for routes that return more than `error` (e.g. 409 stale_feed's `message`). */
+  body?: unknown
+  constructor(message: string, status: number, field?: string, body?: unknown) {
     super(message)
     this.status = status
     this.field = field
+    this.body = body
   }
 }
 
@@ -43,7 +46,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const body = await res.json().catch(() => null)
   if (!res.ok) {
-    throw new ApiError(body?.error ?? res.statusText, res.status, typeof body?.field === 'string' ? body.field : undefined)
+    throw new ApiError(body?.error ?? res.statusText, res.status, typeof body?.field === 'string' ? body.field : undefined, body)
   }
   return body as T
 }

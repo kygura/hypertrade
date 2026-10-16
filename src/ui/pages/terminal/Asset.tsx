@@ -75,7 +75,7 @@ function AssetHeader({
     <Panel className="!bg-panel-alt">
       <div className="flex flex-col gap-1.5 px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <Button tier="ghost" onClick={() => navigate('/')}>
+          <Button tier="ghost" onClick={() => navigate('/terminal')}>
             ← TERMINAL
           </Button>
           <span className="text-lg text-text-primary">{coin}</span>
@@ -193,7 +193,7 @@ export function Asset() {
         {asset.data === 'missing' ? (
           <div className="lg:col-span-12">
             <Panel>
-              <EmptyBlock label={`no data for ${coin}`} action={{ label: '← TERMINAL', onClick: () => navigate('/') }} />
+              <EmptyBlock label={`no data for ${coin}`} action={{ label: '← TERMINAL', onClick: () => navigate('/terminal') }} />
             </Panel>
           </div>
         ) : (
