@@ -1,0 +1,118 @@
+{
+  "generated_at": "2026-10-10T06:00:00Z",
+  "sectors": [
+    {
+      "id": "rwa-stablecoins",
+      "label": "RWA & Stablecoins",
+      "mindshare_score": 0.6,
+      "momentum": 0.2,
+      "rationale": "Sources describe RWA as showing the clearest institutional flow in 2026 alongside stablecoin/stablechain narratives; no single dominant narrative this period. Low-confidence, undated sources. ONDO confirmed listed on HL this run; no fresh flow data. 2026-10-10: taxonomy carried over (no fresh narrative sweep available); live HL OI $59M; measured social share unavailable (null), so no MS-vs-SOC gap can be assessed.",
+      "tokens": [
+        "ONDO"
+      ],
+      "sources": [
+        "web narrative roundups (coingecko, tiger research)",
+        "hyperliquid universe check (live)"
+      ]
+    },
+    {
+      "id": "perp-dex-defi",
+      "label": "Perp DEX & DeFi",
+      "mindshare_score": 0.65,
+      "momentum": 0,
+      "rationale": "HYPE $85.50 (-2.2%), OI $1.68B (z30 -1.5); platform OI $11.9B (z30 -2.1) is the lowest in the 30-day window, so building momentum remains cooled. Low-confidence. 2026-10-10: taxonomy carried over (no fresh narrative sweep available); live HL OI $1982M; measured social share unavailable (null), so no MS-vs-SOC gap can be assessed.",
+      "tokens": [
+        "HYPE",
+        "AAVE",
+        "UNI",
+        "ENA",
+        "PENDLE"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "hypertrade rolling baselines (z30)"
+      ]
+    },
+    {
+      "id": "l1-majors",
+      "label": "L1 Majors",
+      "mindshare_score": 0.5,
+      "momentum": -0.35,
+      "rationale": "ETH -3.0% and SOL -4.2% versus prior-day px on HL while BTC only -0.6%; ETH OI z30 -2.3 and SOL OI z30 -2.6 mean leverage is leaving the non-BTC majors fastest. Measured social share unavailable (no Elfa data). 2026-10-10: taxonomy carried over (no fresh narrative sweep available); live HL OI $6843M; measured social share unavailable (null), so no MS-vs-SOC gap can be assessed.",
+      "tokens": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "price roundup search"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "label": "AI & Agents",
+      "mindshare_score": 0.45,
+      "momentum": 0.1,
+      "rationale": "AI remains the dominant equity theme (AI-linked >80% of S&P gains per Jefferies); crypto-side AI narratives (agentic economy, AI x DePIN) appear mostly in promotional posts, so crypto attention is uncertain. 2026-10-10: taxonomy carried over (no fresh narrative sweep available); live HL OI $83M; measured social share unavailable (null), so no MS-vs-SOC gap can be assessed.",
+      "tokens": [
+        "FET",
+        "TAO",
+        "VIRTUAL"
+      ],
+      "sources": [
+        "equity research summaries",
+        "binance square posts (low reliability)",
+        "hyperliquid universe check (live)"
+      ]
+    },
+    {
+      "id": "memecoins",
+      "label": "Memecoins",
+      "mindshare_score": 0.3,
+      "momentum": -0.25,
+      "rationale": "PUMP -8.8% 24h (OI ~$278M), DOGE -2.0%; memes weaker than majors on the day with no fresh euphoric run found. Low-confidence. 2026-10-10: taxonomy carried over (no fresh narrative sweep available); live HL OI $324M; measured social share unavailable (null), so no MS-vs-SOC gap can be assessed.",
+      "tokens": [
+        "WIF",
+        "DOGE",
+        "PUMP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "coingecko narratives page"
+      ]
+    },
+    {
+      "id": "privacy",
+      "label": "Privacy",
+      "mindshare_score": 0.4,
+      "momentum": -0.3,
+      "rationale": "ZEC is the 5th-largest HL OI (~$566M) at $1,207 but -6.8% 24h, the sharpest drop among the large-OI markets; prior coverage describes a multi-month privacy run, which now appears to be unwinding on the day. Low-confidence, coverage undated. 2026-10-10: taxonomy carried over (no fresh narrative sweep available); live HL OI $632M; measured social share unavailable (null), so no MS-vs-SOC gap can be assessed.",
+      "tokens": [
+        "ZEC",
+        "XMR"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "blockworks research notes (undated)"
+      ]
+    }
+  ],
+  "rotations": [
+    {
+      "from": "memecoins",
+      "to": "perp-dex-defi",
+      "confidence": 0.25,
+      "trigger": "HL OI stabilises or rises while PUMP/meme OI keeps falling",
+      "note": "Low-confidence; weaker than last run because HYPE itself is -3.6% on the day."
+    },
+    {
+      "from": "privacy",
+      "to": "l1-majors",
+      "confidence": 0.2,
+      "trigger": "ZEC OI drops below ~$400M while BTC/ETH OI holds",
+      "note": "Very low-confidence; we lean toward de-risking from high-beta rather than a clean rotation."
+    }
+  ]
+}

@@ -30,11 +30,11 @@ let inflight = 0
 let lastActive = 0
 
 /**
- * Longest a query may take, queueing behind others on the one connection
- * included. postgres.js has no query timeout of its own: a query on a socket
- * that stopped answering (a dead pooler connection, or one left idle across a
- * Fluid suspend) waits forever, and with max: 1 so does every query queued
- * behind it, until Vercel kills the function at 300 s with nothing logged.
+ * Longest a query may take, queueing for a free connection included.
+ * postgres.js has no query timeout of its own: a query on a socket that
+ * stopped answering (a dead pooler connection, or one left idle across a Fluid
+ * suspend) waits forever, and so does every query queued behind it, until
+ * Vercel kills the function at 300 s with nothing logged.
  * Past this the query fails with QueryTimeoutError and the client is dropped,
  * so the next query opens a fresh connection.
  */
@@ -47,6 +47,16 @@ export class QueryTimeoutError extends Error {
 }
 
 const queryTimeoutMs = () => Number(process.env.DB_QUERY_TIMEOUT_MS) || DEFAULT_QUERY_TIMEOUT_MS
+
+/**
+ * Connections per function instance. The 15-minute collect runs the market
+ * collectors and the Intel snapshots side by side; on one connection they
+ * queue, the 30 s clock runs while a query waits its turn, and one slow
+ * statement times out everything behind it. Nothing here holds session state
+ * (no advisory locks, no SET), so a few connections are safe behind the pooler.
+ */
+export const DEFAULT_POOL_MAX = 3
+const poolMax = () => Math.max(1, Math.floor(Number(process.env.DB_POOL_MAX)) || DEFAULT_POOL_MAX)
 
 /**
  * The connection string. DATABASE_URL wins; otherwise the pooled URL the
@@ -88,12 +98,11 @@ export function sql(): postgres.Sql {
   // it can hit the statement timeout, blocking the one connection meanwhile and
   // then crashing the process with an unhandled rejection. No query here relies
   // on array types (lists go through `in ${sql()(ids)}`).
-  // DB_POOL_MAX: 1 for serverless, more for the long-running Railway process (P0.18).
-  const c = postgres(url, { max: Number(process.env.DB_POOL_MAX) || 1, prepare: false, idle_timeout: IDLE_MS / 1000, fetch_types: false })
+  const c = postgres(url, { max: poolMax(), prepare: false, idle_timeout: IDLE_MS / 1000, fetch_types: false })
   raw = c
   inflight = 0
   lastActive = Date.now()
-  client = withQueryTimeout(c, queryTimeoutMs(), Number(process.env.DB_POOL_MAX) || 1)
+  client = withQueryTimeout(c, queryTimeoutMs(), poolMax())
   return client
 }
 

@@ -1,0 +1,116 @@
+{
+  "generated_at": "2026-10-14T05:53:53Z",
+  "sectors": [
+    {
+      "id": "perp-dex-defi",
+      "label": "Perp DEX & DeFi",
+      "mindshare_score": 0.55,
+      "momentum": -0.1,
+      "rationale": "HYPE -1.9% 24h to $81.41 with OI $1.65B (z30 -0.9, was $1.67B), ENA -3.1%, UNI -2.2%, PENDLE +0.9%; sector OI $1.92B, flat. Funding at 0.0013%/h across the group (z30 +0.3 on HYPE) shows no crowding. The sector is holding rather than building. Social share unavailable (Elfa not configured), so MS cannot be cross-checked. Low-confidence.",
+      "tokens": [
+        "HYPE",
+        "AAVE",
+        "UNI",
+        "ENA",
+        "PENDLE"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "hypertrade rolling baselines (z30)"
+      ]
+    },
+    {
+      "id": "l1-majors",
+      "label": "L1 Majors",
+      "mindshare_score": 0.55,
+      "momentum": 0.0,
+      "rationale": "BTC -0.3% vs ETH -1.1%, SOL -1.2%, XRP -0.7%; BTC dominance 59.2% (z30 -0.1). Sector OI $6.73B, mostly BTC/ETH, with ETH OI at z30 -1.8 so the sector's weak point is ETH leverage, not price. BTC held while Nasdaq futures and Korean stocks fell on Oct 13 (CoinDesk). Social share unavailable.",
+      "tokens": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "hypertrade rolling baselines (z30)",
+        "coindesk"
+      ]
+    },
+    {
+      "id": "rwa-stablecoins",
+      "label": "RWA & Stablecoins",
+      "mindshare_score": 0.45,
+      "momentum": -0.1,
+      "rationale": "ONDO -4.7% 24h with OI $53M (from $62M); stablecoin supply $313.1B is flat (z30 +0.5), so we see no fresh inflow evidence. Narrative strength from undated roundups is carried at lower weight.",
+      "tokens": [
+        "ONDO"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "defillama stablecoin supply"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "label": "AI & Agents",
+      "mindshare_score": 0.35,
+      "momentum": -0.2,
+      "rationale": "FET -2.2%, TAO -2.0%, VIRTUAL -2.3% 24h (milder than last run's -4.6% to -8.3%) while SMH is -7.0% over 5 sessions and NVDA -4.5%. Sector OI $76M, thin. The selling slowed, but equity semis have not turned.",
+      "tokens": [
+        "FET",
+        "TAO",
+        "VIRTUAL"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "yahoo finance equity quotes"
+      ]
+    },
+    {
+      "id": "memecoins",
+      "label": "Memecoins",
+      "mindshare_score": 0.25,
+      "momentum": -0.3,
+      "rationale": "PUMP -2.1% 24h (OI $200M, from $203M), DOGE -0.6%, WIF -2.1%; sector OI $311M, flat. The sharp unwind of last run (PUMP -13.5%) paused; leverage is not rebuilding. Highest-beta sector with the lowest attention in this sweep.",
+      "tokens": [
+        "WIF",
+        "DOGE",
+        "PUMP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)"
+      ]
+    },
+    {
+      "id": "privacy",
+      "label": "Privacy",
+      "mindshare_score": 0.4,
+      "momentum": -0.05,
+      "rationale": "ZEC +2.7% 24h to $1,245 with OI $605M (up from $554M last run, 5th-largest HL OI) and XMR +3.1% to $554, the only gainers in the sweep. Last run's unwind has reversed on rising OI, so momentum is revised from -0.35 to roughly flat; ZEC leverage is building against a falling market. Low-confidence.",
+      "tokens": [
+        "ZEC",
+        "XMR"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)"
+      ]
+    }
+  ],
+  "rotations": [
+    {
+      "from": "memecoins",
+      "to": "l1-majors",
+      "confidence": 0.25,
+      "trigger": "PUMP OI below $180M at the next run while BTC OI stays above $3.0B and BTC dominance stays above 59%",
+      "note": "Low-confidence; last run's PUMP OI trigger ($180M) was not met ($200M), so we carry it once more at lower confidence and would drop it if it fails again."
+    },
+    {
+      "from": "ai-agents",
+      "to": "privacy",
+      "confidence": 0.15,
+      "trigger": "ZEC OI above $650M at the next run while TAO OI stays below $56M and SMH stays below $600",
+      "note": "Very low-confidence; privacy is the only sector gaining OI, but it is one token (ZEC about 90% of sector OI), so we lean against reading it as a broad rotation."
+    }
+  ]
+}
