@@ -14,6 +14,7 @@ const int32 = (n: number) => {
   b.writeInt32BE(n);
   return b;
 };
+const CANCEL_REQUEST_CODE = 80877102;
 const READY = msg("Z", Buffer.from("I"));
 const STARTED = Buffer.concat([msg("R", int32(0)), READY]);
 const int16 = (n: number) => {
@@ -30,6 +31,8 @@ const paramDescription = (query: string) => {
 export type FakePg = {
   url: string;
   mode: "answer" | "silent";
+  /** Reset the out-of-band CancelRequest connection, the way a pooler that can't route it may (the client sees ECONNRESET). */
+  refuseCancel: boolean;
   /** Connections accepted so far. */
   connections: number;
   /** Syncs received (a query is one or two: describe, then execute). */
@@ -53,6 +56,11 @@ export async function startFakePg(): Promise<FakePg> {
       for (;;) {
         if (!started) {
           if (buf.length < 4 || buf.length < buf.readInt32BE(0)) return;
+          if (buf.length >= 8 && buf.readInt32BE(4) === CANCEL_REQUEST_CODE) {
+            if (fake.refuseCancel) socket.resetAndDestroy();
+            else socket.end();
+            return;
+          }
           buf = buf.subarray(buf.readInt32BE(0));
           started = true;
           socket.write(STARTED);
@@ -84,6 +92,7 @@ export async function startFakePg(): Promise<FakePg> {
   const fake: FakePg = {
     url: `postgres://u:p@127.0.0.1:${port}/db`,
     mode: "answer",
+    refuseCancel: false,
     connections: 0,
     queries: 0,
     close: () => {

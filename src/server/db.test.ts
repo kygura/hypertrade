@@ -71,6 +71,7 @@ describe('query timeout', () => {
   afterEach(async () => {
     setSystemTime()
     fake.mode = 'answer'
+    fake.refuseCancel = false
     await releaseConnection()
   })
   afterAll(async () => {
@@ -178,6 +179,28 @@ describe('query timeout', () => {
       expect(await outcome(c`select 3`)).toBe('timeout')
       expect(sql()).not.toBe(c)
     } finally {
+      delete process.env.DB_POOL_MAX
+    }
+  })
+
+  test('a cancel the server refuses is not an unhandled rejection', async () => {
+    // postgres.js query.cancel() drops its promise; a refused CancelRequest
+    // (e.g. through a pooler) used to crash the Vercel function with a 500.
+    process.env.DB_POOL_MAX = '2'
+    const unhandled: unknown[] = []
+    const onUnhandled: NodeJS.UnhandledRejectionListener = (e) => void unhandled.push(e)
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      await releaseConnection()
+      const c = sql()
+      await c`select 1`
+      fake.mode = 'silent'
+      fake.refuseCancel = true
+      expect(await outcome(c`select 2`)).toBe('timeout')
+      await new Promise((r) => setTimeout(r, 200))
+      expect(unhandled).toEqual([])
+    } finally {
+      ;(process as NodeJS.EventEmitter).off('unhandledRejection', onUnhandled)
       delete process.env.DB_POOL_MAX
     }
   })
