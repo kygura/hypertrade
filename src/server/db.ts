@@ -149,7 +149,8 @@ function withQueryTimeout(c: postgres.Sql, ms: number, poolMax = 1): postgres.Sq
           timeouts++
           if (poolMax > 1 && timeouts < 2) {
             console.error(`[db] ${timedOut.err.message}; cancelling the query`)
-            try { (q as unknown as { cancel?: () => void }).cancel?.() } catch {}
+            // postgres.js cancels over a new connection and returns its promise: a refused cancel must not become an unhandled rejection.
+            try { Promise.resolve((q as unknown as { cancel?: () => unknown }).cancel?.()).catch(() => {}) } catch {}
           } else {
             console.error(`[db] ${timedOut.err.message}; resetting the connection`)
             if (raw === c) reset()

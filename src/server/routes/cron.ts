@@ -7,6 +7,7 @@ import { collectCoinalyze, flowCoins, maxFlowCoins, type FlowCollectResult } fro
 import { collectCryptoContext } from "../collectors/cryptoContext.js";
 import { collectElfa } from "../collectors/elfa.js";
 import { collectFred } from "../collectors/fred.js";
+import type { CollectorResult } from "../collectors/types.js";
 import { collectHyperliquid } from "../collectors/hyperliquid.js";
 import * as db from "../db.js";
 import { collectLab, LAB_SYNC_COIN, type LabCollectResult, type LabProgress } from "../lab/collect.js";
@@ -529,6 +530,13 @@ let activeCronRequests = 0;
 // same timestamp's values.
 // GET is what Vercel Cron sends; POST is what the GitHub workflow sends.
 export const cronRoutes = new Hono()
+  // Hono's default answer to an uncaught error is a bare "Internal Server
+  // Error", which is all the collect workflow could log. Cron routes sit
+  // behind the cron token, so the message can go back to the caller.
+  .onError((err, c) => {
+    console.error(`[cron] ${c.req.path} failed:`, err);
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+  })
   // Never leave a cron run's connection idle in a warm instance: the next run
   // reusing it hung on its first query until the hard stop. Only the last
   // request out releases it, so one run never cuts off another's queries.
@@ -551,15 +559,27 @@ export const cronRoutes = new Hono()
       snapshots = runIntelSnapshots(ctxs, ts, collectDeadline);
       flow = snapshots.then(() => runIntelFlow(ctxs, collectDeadline));
     };
+    // A collector that throws (its own collector_runs write timing out, say)
+    // must not cut the others off mid-write: each settles to a result, and
+    // the response waits for all of them.
+    const threw: string[] = [];
+    const settle = (name: string, p: Promise<CollectorResult>): Promise<CollectorResult> =>
+      p.catch((err) => {
+        const error = err instanceof Error ? err.message : String(err);
+        console.error(`[collect] ${name} threw:`, err);
+        threw.push(name);
+        return { ok: false, error: `threw: ${error}`, written: 0 };
+      });
     const [hyperliquid, cryptoContext, fred, elfa] = await Promise.all([
-      oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra, onCtxs)),
-      collectCryptoContext(),
-      collectFred(),
-      collectElfa(),
+      settle("hyperliquid", oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra, onCtxs))),
+      settle("cryptoContext", collectCryptoContext()),
+      settle("fred", collectFred()),
+      settle("elfa", collectElfa()),
     ]);
     const intelSnapshots = snapshots ? await snapshots : { ok: false, written: 0, error: "no asset contexts (hyperliquid collect failed)" };
     const intelFlow = flow ? await flow : { ok: false, written: 0, error: "no asset contexts (hyperliquid collect failed)" };
-    return c.json({ hyperliquid, cryptoContext, fred, elfa, intelSnapshots, intelFlow });
+    // A throw is still a failed collect (red workflow), but the body says which collector and why.
+    return c.json({ hyperliquid, cryptoContext, fred, elfa, intelSnapshots, intelFlow, ...(threw.length ? { threw } : {}) }, threw.length ? 500 : 200);
   })
   // Lab history on its own route: a long first backfill must not hold up (or
   // be retried with) the 15-minute collection. Leased: one run at a time.

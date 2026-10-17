@@ -37,6 +37,27 @@ describe("POST /cron/collect", () => {
     });
     expect(res.status).toBe(401);
   });
+
+  test("a collector that throws is named in a JSON 500 and the others still answer", async () => {
+    // No database: every collector_runs write throws, as a timed-out one does in production.
+    const saved = { url: process.env.DATABASE_URL, pg: process.env.DATABASE_POSTGRES_URL, pooled: process.env.POSTGRES_URL, fetch: globalThis.fetch };
+    delete process.env.DATABASE_URL;
+    delete process.env.DATABASE_POSTGRES_URL;
+    delete process.env.POSTGRES_URL;
+    globalThis.fetch = (async () => new Response("blocked", { status: 403 })) as unknown as typeof fetch;
+    try {
+      const res = await app.request("/cron/collect", { method: "POST", headers: { "x-cron-token": "test-cron-token" } });
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as Record<string, { ok: boolean; error?: string }> & { threw: string[] };
+      expect([...body.threw].sort()).toEqual(["cryptoContext", "elfa", "fred", "hyperliquid"]);
+      expect(body.fred!.ok).toBe(false);
+      expect(body.fred!.error).toContain("DATABASE_URL is not set");
+      expect(body.intelSnapshots).toBeDefined();
+    } finally {
+      globalThis.fetch = saved.fetch;
+      for (const [k, v] of [["DATABASE_URL", saved.url], ["DATABASE_POSTGRES_URL", saved.pg], ["POSTGRES_URL", saved.pooled]] as const) if (v !== undefined) process.env[k] = v;
+    }
+  });
 });
 
 describe("POST /cron/lab-collect", () => {
