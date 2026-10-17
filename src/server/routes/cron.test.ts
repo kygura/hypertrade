@@ -37,6 +37,49 @@ describe("POST /cron/collect", () => {
     });
     expect(res.status).toBe(401);
   });
+
+  test("no database: the rows come back as a spill, and a replayed spill is merged into the next one", async () => {
+    // No database: every write fails at once, as a wedged one does after FLUSH_BUDGET_MS.
+    const saved = { url: process.env.DATABASE_URL, pg: process.env.DATABASE_POSTGRES_URL, pooled: process.env.POSTGRES_URL, fetch: globalThis.fetch };
+    delete process.env.DATABASE_URL;
+    delete process.env.DATABASE_POSTGRES_URL;
+    delete process.env.POSTGRES_URL;
+    globalThis.fetch = (async () => new Response("blocked", { status: 403 })) as unknown as typeof fetch;
+    const post = (body?: unknown) =>
+      app.request("/cron/collect", {
+        method: "POST",
+        headers: { "x-cron-token": "test-cron-token", "content-type": "application/json" },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+    try {
+      const res = await post();
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { threw?: string[]; flush: { spilled: number; errors: string[] }; spill: { runs: { collector: string }[] } };
+      expect(body.threw).toBeUndefined();
+      expect(body.flush.errors.join(" ")).toContain("DATABASE_URL is not set");
+      // Every collector's run record is kept for the next run.
+      expect(body.spill.runs.map((r) => r.collector).sort()).toEqual(["crypto-context", "elfa", "fred", "hyperliquid"]);
+
+      const old = { seriesId: "test.series", ts: "2026-10-17T00:00:00.000Z", value: 1 };
+      const again = await post({ replay: { ...body.spill, series: [{ id: "test.series" }], observations: [old] } });
+      const next = (await again.json()) as { flush: { replayed: number }; spill: { observations: unknown[]; runs: unknown[] } };
+      expect(next.flush.replayed).toBe(body.spill.runs.length + 1);
+      expect(next.spill.observations).toContainEqual(old);
+      expect(next.spill.runs.length).toBeGreaterThan(body.spill.runs.length);
+    } finally {
+      globalThis.fetch = saved.fetch;
+      for (const [k, v] of [["DATABASE_URL", saved.url], ["DATABASE_POSTGRES_URL", saved.pg], ["POSTGRES_URL", saved.pooled]] as const) if (v !== undefined) process.env[k] = v;
+    }
+  });
+
+  test("400s on a malformed replay", async () => {
+    const res = await app.request("/cron/collect", {
+      method: "POST",
+      headers: { "x-cron-token": "test-cron-token", "content-type": "application/json" },
+      body: JSON.stringify({ replay: { observations: [{ seriesId: "x", ts: "yesterday", value: 1 }] } }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("POST /cron/lab-collect", () => {

@@ -5,8 +5,10 @@ import { TF_RETENTION_MS, TIMEFRAMES, type Timeframe } from "../../shared/timefr
 import { requireCronToken } from "../auth.js";
 import { collectCoinalyze, flowCoins, maxFlowCoins, type FlowCollectResult } from "../collectors/coinalyze.js";
 import { collectCryptoContext } from "../collectors/cryptoContext.js";
-import { collectElfa } from "../collectors/elfa.js";
+import { batchSize, CollectBatchSchema, createBatchSink, emptyBatch, flushBatch, mergeBatches, type BatchWriter } from "../collectors/batch.js";
+import { collectElfa, defaultElfaDeps } from "../collectors/elfa.js";
 import { collectFred } from "../collectors/fred.js";
+import type { CollectorResult } from "../collectors/types.js";
 import { collectHyperliquid } from "../collectors/hyperliquid.js";
 import * as db from "../db.js";
 import { collectLab, LAB_SYNC_COIN, type LabCollectResult, type LabProgress } from "../lab/collect.js";
@@ -168,11 +170,35 @@ async function pruneAll(now: number = Date.now()): Promise<Record<string, number
 const SNAPSHOT_BOOK_BUDGET_MS = 60_000;
 /** Snapshot books and the flow collector share this, measured from the start of the collect request; flow gets what is left. */
 const COLLECT_BUDGET_MS = 90_000;
+/** Cap on each database read the collect's fetch phase still makes (OI coins, Intel focus, Elfa throttle). */
+const COLLECT_READ_MS = 5_000;
+/** The collect's one write phase. The workflow's curl allows 120 s for the whole request. */
+export const FLUSH_BUDGET_MS = 25_000;
+/** A spill still holding rows this old fails the collect: the database has been unwritable for hours. */
+export const SPILL_ALARM_MS = 6 * 3_600_000;
 
-/** Intel snapshot rows from the collect's own metaAndAssetCtxs. Never throws (failures land in collector_runs). */
-function runIntelSnapshots(ctxs: AssetCtx[], ts: Date, collectDeadline: number): Promise<SnapshotResult> {
+/** `p`, or `fallback` once `ms` pass (p keeps running; its late result or error is dropped). */
+function capped<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p.catch(() => fallback), new Promise<T>((ok) => (timer = setTimeout(() => ok(fallback), ms)))]).finally(() => clearTimeout(timer));
+}
+
+const collectWriter = (): BatchWriter => {
+  const store = defaultIntelDeps().store;
+  return {
+    ensureSeries: db.ensureSeries,
+    upsertObservations: db.upsertObservations,
+    insertSnapshots: (rows) => store.insertSnapshots(rows),
+    recordStops: (rows) => store.recordStops(rows),
+    insertCollectorRuns: db.insertCollectorRuns,
+  };
+};
+
+/** Intel snapshot rows from the collect's own metaAndAssetCtxs, into the collect's batch. Never throws (failures land in collector_runs). */
+function runIntelSnapshots(ctxs: AssetCtx[], ts: Date, collectDeadline: number, sink: ReturnType<typeof createBatchSink>): Promise<SnapshotResult> {
+  const focus = () => capped(intelFocus(), COLLECT_READ_MS, { held: [], watched: [], stops: [], errors: [`focus: no answer from the database in ${COLLECT_READ_MS / 1000}s`] });
   return collectIntelSnapshots(
-    { store: defaultIntelDeps().store, focus: intelFocus, l2Book: (coin) => fetchL2Book(coin), recordRun: db.recordCollectorRun, deadline: Math.min(Date.now() + SNAPSHOT_BOOK_BUDGET_MS, collectDeadline) },
+    { store: sink.store, focus, l2Book: (coin) => fetchL2Book(coin), recordRun: sink.db.recordCollectorRun, deadline: Math.min(Date.now() + SNAPSHOT_BOOK_BUDGET_MS, collectDeadline) },
     ctxs,
     ts,
   );
@@ -529,6 +555,13 @@ let activeCronRequests = 0;
 // same timestamp's values.
 // GET is what Vercel Cron sends; POST is what the GitHub workflow sends.
 export const cronRoutes = new Hono()
+  // Hono's default answer to an uncaught error is a bare "Internal Server
+  // Error", which is all the collect workflow could log. Cron routes sit
+  // behind the cron token, so the message can go back to the caller.
+  .onError((err, c) => {
+    console.error(`[cron] ${c.req.path} failed:`, err);
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+  })
   // Never leave a cron run's connection idle in a warm instance: the next run
   // reusing it hung on its first query until the hard stop. Only the last
   // request out releases it, so one run never cuts off another's queries.
@@ -541,25 +574,68 @@ export const cronRoutes = new Hono()
     }
   })
   .on(["GET", "POST"], "/collect", requireCronToken, async (c) => {
-    // Intel snapshots ride on the same metaAndAssetCtxs fetch, and the
-    // Coinalyze flow rows follow the snapshot write; their failure is
-    // reported (and recorded), never a failed collect.
+    // A replayed spill from the previous run (POST body `{ replay }`, sent by
+    // the collect workflow). Vercel Cron's GET has no body.
+    let replay = emptyBatch();
+    if (c.req.method === "POST") {
+      const text = await c.req.text();
+      if (text.trim()) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          return c.json({ error: "body is not JSON" }, 400);
+        }
+        const r = CollectBatchSchema.safeParse((parsed as { replay?: unknown } | null)?.replay ?? emptyBatch());
+        if (!r.success) return c.json({ error: "invalid replay batch", issues: r.error.issues.slice(0, 5) }, 400);
+        replay = r.data;
+      }
+    }
+    // Fetch phase: collectors and Intel snapshots write into the sink, not the
+    // database. The reads they still need are capped, so a slow database
+    // costs seconds here, not the 30 s query timeout.
+    const sink = createBatchSink();
     const collectDeadline = Date.now() + COLLECT_BUDGET_MS;
     let snapshots: Promise<SnapshotResult> | undefined;
     let flow: Promise<FlowCollectResult> | undefined;
     const onCtxs = (ctxs: AssetCtx[], ts: Date) => {
-      snapshots = runIntelSnapshots(ctxs, ts, collectDeadline);
+      snapshots = runIntelSnapshots(ctxs, ts, collectDeadline, sink);
       flow = snapshots.then(() => runIntelFlow(ctxs, collectDeadline));
     };
+    const threw: string[] = [];
+    const settle = (name: string, p: Promise<CollectorResult>): Promise<CollectorResult> =>
+      p.catch((err) => {
+        const error = err instanceof Error ? err.message : String(err);
+        console.error(`[collect] ${name} threw:`, err);
+        threw.push(name);
+        return { ok: false, error: `threw: ${error}`, written: 0 };
+      });
     const [hyperliquid, cryptoContext, fred, elfa] = await Promise.all([
-      oiCoins().then((extra) => collectHyperliquid(fetch, undefined, extra, onCtxs)),
-      collectCryptoContext(),
-      collectFred(),
-      collectElfa(),
+      settle("hyperliquid", capped(oiCoins(), COLLECT_READ_MS, []).then((extra) => collectHyperliquid(fetch, sink.db, extra, onCtxs))),
+      settle("cryptoContext", collectCryptoContext(fetch, sink.db)),
+      settle("fred", collectFred(fetch, sink.db)),
+      // Throttle check unreadable: treat Elfa as just fetched, so a slow database never spends a credit.
+      settle("elfa", collectElfa(fetch, { ...defaultElfaDeps, ...sink.db, lastFetch: () => capped(defaultElfaDeps.lastFetch(), COLLECT_READ_MS, new Date()) })),
     ]);
     const intelSnapshots = snapshots ? await snapshots : { ok: false, written: 0, error: "no asset contexts (hyperliquid collect failed)" };
+    // Write phase: this run's rows over the replayed spill, under one budget.
+    const flush = await flushBatch(mergeBatches(replay, sink.batch), collectWriter(), FLUSH_BUDGET_MS);
     const intelFlow = flow ? await flow : { ok: false, written: 0, error: "no asset contexts (hyperliquid collect failed)" };
-    return c.json({ hyperliquid, cryptoContext, fred, elfa, intelSnapshots, intelFlow });
+    const spilled = batchSize(flush.spill);
+    const since = flush.spill.since ? Date.parse(flush.spill.since) : null;
+    // Rows the database could not take come back for the workflow to cache and replay. A spill is a
+    // green run (nothing lost); one first spilled SPILL_ALARM_MS ago means the database has been
+    // unwritable that long, and a throw is a bug: both are a failed collect.
+    const stale = since != null && Date.now() - since > SPILL_ALARM_MS;
+    return c.json(
+      {
+        hyperliquid, cryptoContext, fred, elfa, intelSnapshots, intelFlow,
+        flush: { written: flush.written, replayed: batchSize(replay), spilled, ...(flush.errors.length ? { errors: flush.errors } : {}), ...(flush.spill.since ? { spilledSince: flush.spill.since } : {}) },
+        ...(threw.length ? { threw } : {}),
+        ...(spilled ? { spill: flush.spill } : {}),
+      },
+      threw.length || stale ? 500 : 200,
+    );
   })
   // Lab history on its own route: a long first backfill must not hold up (or
   // be retried with) the 15-minute collection. Leased: one run at a time.

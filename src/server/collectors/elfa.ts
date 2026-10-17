@@ -118,7 +118,7 @@ export type ElfaDeps = {
   now: () => number;
 };
 
-const defaultDeps: ElfaDeps = {
+export const defaultElfaDeps: ElfaDeps = {
   ensureSeries,
   upsertObservations,
   recordCollectorRun,
@@ -134,7 +134,7 @@ export function intervalHours(env: Record<string, string | undefined> = process.
 
 export async function collectElfa(
   fetchFn: typeof fetch = fetch,
-  deps: ElfaDeps = defaultDeps,
+  deps: ElfaDeps = defaultElfaDeps,
   env: Record<string, string | undefined> = process.env,
 ): Promise<CollectorResult> {
   const startedAt = new Date(deps.now());
