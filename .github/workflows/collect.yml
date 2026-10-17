@@ -26,7 +26,17 @@ jobs:
             exit 1
           fi
 
+      # Rows the database could not take on an earlier run come back here and
+      # are replayed (src/server/collectors/batch.ts). Newest spill wins.
+      - name: Restore collect spill
+        uses: actions/cache/restore@v4
+        with:
+          path: collect-spill.json
+          key: collect-spill-${{ github.run_id }}
+          restore-keys: collect-spill-
+
       - name: Collect data
+        id: collect
         env:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
@@ -34,33 +44,62 @@ jobs:
           set -o pipefail
           url="${APP_URL%/}/api/cron/collect"
           body=$(mktemp)
+          req=$(mktemp)
+          rows() { jq '[.observations, .snapshots, .stops, .runs] | map(length) | add // 0' "$1" 2>/dev/null || echo 0; }
+          restored=0
+          if [ -s collect-spill.json ]; then restored=$(rows collect-spill.json); fi
+          if [ "$restored" -gt 0 ]; then
+            echo "replaying $restored spilled rows"
+            jq -c '{replay: .}' collect-spill.json > "$req"
+          else
+            echo '{}' > "$req"
+          fi
+          post() {
+            curl -sS -X POST \
+              --fail-with-body \
+              --max-time 120 \
+              -H "x-cron-token: $CRON_TOKEN" \
+              -H "content-type: application/json" \
+              --data-binary @"$req" \
+              -o "$body" -w '%{http_code}' \
+              "$url"
+          }
           # --fail-with-body: HTTP errors become a non-zero exit while still
           # writing the response body for logs.
-          code=$(curl -sS -X POST \
-            --fail-with-body \
-            --max-time 120 \
-            -H "x-cron-token: $CRON_TOKEN" \
-            -o "$body" -w '%{http_code}' \
-            "$url") && status=0 || status=$?
+          code=$(post) && status=0 || status=$?
           # Retry only when the connection never opened (curl exit 6/7), never on
           # a timeout (28): a timed-out run keeps going on Vercel and a retry overlaps it.
           if [ "$status" -eq 6 ] || [ "$status" -eq 7 ]; then
             echo "connection failed (curl exit $status); retrying once"
             sleep 5
-            code=$(curl -sS -X POST \
-              --fail-with-body \
-              --max-time 120 \
-              -H "x-cron-token: $CRON_TOKEN" \
-              -o "$body" -w '%{http_code}' \
-              "$url") && status=0 || status=$?
+            code=$(post) && status=0 || status=$?
           fi
           echo "POST $url -> HTTP ${code:-none}"
-          cat "$body"
+          jq -c 'del(.spill)' "$body" 2>/dev/null || cat "$body"
           echo
+          # The server answered: its spill (or none) replaces the one we sent. No answer: keep ours for next run.
+          if jq -e '.flush' "$body" >/dev/null 2>&1; then
+            if jq -e '.spill' "$body" >/dev/null; then
+              jq -c '.spill' "$body" > collect-spill.json
+              echo "::warning::Database did not take $(rows collect-spill.json) rows; cached for the next run ($(jq -r '.flush.errors // [] | join("; ")' "$body"))"
+              echo "save=1" >> "$GITHUB_OUTPUT"
+            elif [ "$restored" -gt 0 ]; then
+              : > collect-spill.json
+              echo "save=1" >> "$GITHUB_OUTPUT"
+            fi
+          fi
           if [ "$status" -ne 0 ]; then
             echo "::error::Collection failed (curl exit $status, HTTP ${code:-none})"
             exit 1
           fi
+
+      # Saved even when the collect failed, so a stale-spill alarm (HTTP 500) keeps its rows.
+      - name: Save collect spill
+        if: always() && steps.collect.outputs.save == '1'
+        uses: actions/cache/save@v4
+        with:
+          path: collect-spill.json
+          key: collect-spill-${{ github.run_id }}-${{ github.run_attempt }}
 
       # Keeps chart history warm for core, branch and recently charted coins:
       # daily history, a head sync of every timeframe (Hyperliquid only serves

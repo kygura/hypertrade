@@ -366,6 +366,26 @@ export async function recordCollectorRun(
   `
 }
 
+export type CollectorRunRow = { collector: string; startedAt: string; finishedAt: string; ok: boolean; error: string | null }
+
+/**
+ * Buffered runs from a collect flush or a replayed spill. A run already stored
+ * (same collector and started_at) is skipped, so replaying a batch whose
+ * write committed after the client stopped waiting adds no duplicate.
+ */
+export async function insertCollectorRuns(rows: CollectorRunRow[]): Promise<number> {
+  if (rows.length === 0) return 0
+  // ::text first: a bare string parameter cast straight to jsonb arrives as a JSON string, not the array.
+  const json = JSON.stringify(rows.map((r) => ({ collector: r.collector, started_at: r.startedAt, finished_at: r.finishedAt, ok: r.ok, error: r.error })))
+  const res = await sql()`
+    insert into collector_runs (collector, started_at, finished_at, ok, error)
+    select r.collector, r.started_at, r.finished_at, r.ok, r.error
+    from jsonb_to_recordset(${json}::text::jsonb) as r(collector text, started_at timestamptz, finished_at timestamptz, ok boolean, error text)
+    where not exists (select 1 from collector_runs c where c.collector = r.collector and c.started_at = r.started_at)
+  `
+  return res.count
+}
+
 /**
  * Start of the latest run that actually fetched: ok, and not a `skipped:*`
  * record. Keyed collectors on a free quota throttle themselves off this,
