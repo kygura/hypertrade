@@ -10,5 +10,5 @@
     "allowSyntheticDefaultImports": true,
     "types": ["bun-types"]
   },
-  "include": ["vite.config.ts", "scripts", "api", "src/server", "src/shared"]
+  "include": ["vite.config.ts", "scripts", "api", "db", "src/server", "src/shared"]
 }

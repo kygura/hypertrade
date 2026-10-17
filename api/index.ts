@@ -1,8 +1,10 @@
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { handle } from "hono/vercel";
-import { requireAuth } from "../src/server/auth.js";
+import { COOKIE_NAME, requireAuth, verifySession } from "../src/server/auth.js";
 import { mcpRoutes } from "../src/server/mcp/http.js";
 import { labRegistry } from "../src/server/mcp/lab.js";
+import { getHealthExtras } from "../src/server/platform/runtime.js";
 import { analystRoutes } from "../src/server/routes/analyst.js";
 import { authRoutes } from "../src/server/routes/auth.js";
 import { branchesRoutes } from "../src/server/routes/branches.js";
@@ -15,6 +17,7 @@ import { createIntelRoutes, defaultIntelDeps, telegramIntel } from "../src/serve
 import { labRoutes } from "../src/server/routes/lab.js";
 import { marketstateRoutes } from "../src/server/routes/marketstate.js";
 import { metricsRoutes } from "../src/server/routes/metrics.js";
+import { createPlatformRoutes, defaultPlatformDeps } from "../src/server/routes/platform.js";
 import { perpRoutes } from "../src/server/routes/perp.js";
 import { routinesRoutes } from "../src/server/routes/routines.js";
 import { sectorsRoutes } from "../src/server/routes/sectors.js";
@@ -36,8 +39,19 @@ const app = new Hono({ strict: false }).basePath("/api");
 // Public/cron exceptions live in PUBLIC_PATHS in src/server/auth.ts.
 app.use("*", requireAuth);
 
-app.get("/health", (c) => {
-  return c.json({ ok: true, ts: new Date().toISOString() });
+// Public, and it answers even when loops are down: platform fields are added
+// by scripts/server.ts (absent on Vercel), a failing provider never fails the probe.
+// Without a session it shows only loop names/ok and WS state; errors and counts need a login.
+app.get("/health", async (c) => {
+  const base = { ok: true, ts: new Date().toISOString() };
+  try {
+    const extras = await getHealthExtras()?.();
+    if (!extras || verifySession(getCookie(c, COOKIE_NAME))) return c.json({ ...base, ...extras });
+    return c.json({ ...base, ...(extras.loops ? { loops: extras.loops.map(({ name, ok }) => ({ name, ok })) } : {}), ...(extras.ws ? { ws: extras.ws } : {}) });
+  } catch (err) {
+    console.error("[health] extras failed:", err);
+    return c.json(base);
+  }
 });
 
 app.route("/auth", authRoutes);
@@ -57,6 +71,7 @@ app.route("/mcp", mcpRoutes(labRegistry));
 app.route("/marketstate", marketstateRoutes);
 app.route("/metrics", metricsRoutes);
 app.route("/perp", perpRoutes);
+app.route("/platform", createPlatformRoutes(defaultPlatformDeps()));
 app.route("/routines", routinesRoutes);
 app.route("/sectors", sectorsRoutes);
 

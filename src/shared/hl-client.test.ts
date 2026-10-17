@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fetchPerpMetaAndCtxs, fetchCandles, fetchFundingPage, fetchPredictedFundings, weightWaitMs } from "./hl-client.js";
+import { fetchPerpMetaAndCtxs, fetchCandles, fetchFundingPage, fetchPredictedFundings, weightWaitMs, responseWeight } from "./hl-client.js";
 import fixture from "./fixtures/hyperliquid.json" with { type: "json" };
 
 function mockFetch(body: unknown, ok = true, status = 200): typeof fetch {
@@ -84,5 +84,13 @@ describe("fetchPredictedFundings", () => {
       { venue: "BinPerp", rate: 0.0001, intervalHours: 8, nextFundingTime: 1733961600000 },
       { venue: "HlPerp", rate: 0.0000125, intervalHours: 1, nextFundingTime: 1733958000000 },
     ]);
+  });
+});
+
+describe("responseWeight", () => {
+  test("l2Book, allMids and clearinghouseState weigh 2; other info calls 20; candles by rows", () => {
+    for (const t of ["l2Book", "allMids", "clearinghouseState"]) expect(responseWeight(t, {})).toBe(2);
+    expect(responseWeight("metaAndAssetCtxs", [])).toBe(20);
+    expect(responseWeight("candleSnapshot", new Array(120))).toBe(22);
   });
 });

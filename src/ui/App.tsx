@@ -26,18 +26,21 @@ const MarketDrill = lazy(() => import('./pages/MarketDrill').then((m) => ({ defa
 const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
 const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
 const LAB_TAB_PATHS = ['/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
-// Terminal family (DESIGN-terminal.md §1.1): `/` is the Terminal; each sub-tab
-// is its own route, loaded with it. `/overview` is the old `/` under TerminalTabs.
+// Terminal family (DESIGN-terminal.md §1.1, C1): `/` is the Cockpit, `/terminal`
+// the Terminal; each sub-tab is its own route, loaded with it. `/overview` is
+// the old glance under TerminalTabs.
+const Cockpit = lazy(() => import('./pages/cockpit/Cockpit').then((m) => ({ default: m.Cockpit })))
 const Terminal = lazy(() => import('./pages/terminal/Terminal').then((m) => ({ default: m.Terminal })))
 const Journal = lazy(() => import('./pages/terminal/Journal').then((m) => ({ default: m.Journal })))
 const Theses = lazy(() => import('./pages/terminal/Theses').then((m) => ({ default: m.Theses })))
 const Query = lazy(() => import('./pages/terminal/Query').then((m) => ({ default: m.Query })))
 const Order = lazy(() => import('./pages/terminal/Order').then((m) => ({ default: m.Order })))
 const Watch = lazy(() => import('./pages/terminal/Watch').then((m) => ({ default: m.Watch })))
-// `/asset/:coin` is a drill-in of `/` (DESIGN-terminal §15.4), under TerminalTabs.
+// `/asset/:coin` is a drill-in of `/terminal` (DESIGN-terminal §15.4), under TerminalTabs.
 const Asset = lazy(() => import('./pages/terminal/Asset').then((m) => ({ default: m.Asset })))
 const TERMINAL_PAGES = [
-  { path: '/', Page: Terminal },
+  { path: '/', Page: Cockpit },
+  { path: '/terminal', Page: Terminal },
   { path: '/journal', Page: Journal },
   { path: '/theses', Page: Theses },
   { path: '/query', Page: Query },

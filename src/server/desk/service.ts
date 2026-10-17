@@ -227,8 +227,12 @@ export class DeskService {
     return { ctx, risk, verdict: { ...v, warnings: [...warnings, ...v.warnings] } };
   }
 
-  /** What the governor would do with an operator order right now. Executes nothing. */
-  async previewOperatorOrder(input: OperatorOrder): Promise<OperatorPreview> {
+  /** What the governor would do with an operator order right now. Executes nothing. Under the operator lock: a preview never lands inside another caller's preview → submit. */
+  previewOperatorOrder(input: OperatorOrder): Promise<OperatorPreview> {
+    return this.serial(() => this.previewOperatorOrderNow(input));
+  }
+
+  private async previewOperatorOrderNow(input: OperatorOrder): Promise<OperatorPreview> {
     const order = parseOperatorOrder(input);
     const { ctx, verdict } = await this.operatorVerdict(order);
     const at = this.now();
@@ -246,7 +250,20 @@ export class DeskService {
    * the operator who confirmed; it is recorded as the decision.
    */
   submitOperatorOrder(input: OperatorOrder, confirm: { previewHash: string }, by: string): Promise<ProposalRecord> {
-    const run = this.operatorLock.then(() => this.submitOperatorOrderNow(input, confirm, by));
+    return this.serial(() => this.submitOperatorOrderNow(input, confirm, by));
+  }
+
+  /**
+   * Preview and submit as one step under the operator lock, so no other operator preview or submit can land in
+   * between (the platform's approve path: the operator's click on the opportunity is the confirm). `by` is stored on
+   * the proposal from insert on (decidedBy), so a caller can find its proposal by it.
+   */
+  placeOperatorOrder(input: OperatorOrder, by: string): Promise<ProposalRecord> {
+    return this.serial(async () => this.submitOperatorOrderNow(input, { previewHash: (await this.previewOperatorOrderNow(input)).previewHash }, by));
+  }
+
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.operatorLock.then(fn);
     this.operatorLock = run.catch(() => undefined);
     return run;
   }
@@ -273,7 +290,7 @@ export class DeskService {
       await this.alert("info", `Blocked: ${risk.side} ${risk.coin} (copilot)`, verdict.reasons.join("\n"));
       return rec;
     }
-    const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt: null });
+    const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt: null, decidedBy: by });
     return this.fillOpen(rec, risk, verdict, verdict.sizing, by, "operator order (copilot)");
   }
 
@@ -309,11 +326,16 @@ export class DeskService {
     return this.fillOpen(rec, p, verdict, verdict.sizing, by, p.setup);
   }
 
-  /** Sends an approved, sized entry to the venue and records the outcome. */
+  /**
+   * Sends an approved, sized entry to the venue and records the outcome. Once the venue has answered nothing here
+   * throws: a failed record or alert write is logged and the in-memory record returned, so a caller never reads
+   * "failed" while a position is open.
+   */
   private async fillOpen(rec: ProposalRecord, p: RiskOrder, verdict: Verdict, sizing: Sizing, by: string, note: string): Promise<ProposalRecord> {
     const decidedAt = this.now().toISOString();
     const result = await this.broker.open(p, sizing, rec.id, this.now());
-    const out = await this.store.updateProposal(rec.id, { status: result.ok ? "executed" : "failed", verdict, execution: result, decidedBy: by, decidedAt });
+    const patch = { status: result.ok ? ("executed" as const) : ("failed" as const), verdict, execution: result, decidedBy: by, decidedAt };
+    const out = await this.store.updateProposal(rec.id, patch).catch((err) => (console.error(`[desk] proposal ${rec.id} ${patch.status} but not recorded`, err), null));
     const fill = result.fills[0];
     await this.alert(
       result.ok ? "info" : "warn",
@@ -322,8 +344,8 @@ export class DeskService {
         ? `${fill.size} @ ${fmtPx(fill.px)} · stop ${fmtPx(p.stop)} · target ${p.target != null ? fmtPx(p.target) : "none"} · risk $${sizing.riskUsd} · R:R ${sizing.rr ?? "n/a"}\n${note}`
         : (result.error ?? "unknown error"),
       rec.runId,
-    );
-    return out!;
+    ).catch((err) => console.error(`[desk] alert for proposal ${rec.id} failed`, err));
+    return out ?? { ...rec, ...patch };
   }
 
   private async executeExit(rec: ProposalRecord, by: string): Promise<ProposalRecord> {

@@ -2,7 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 
-const COOKIE_NAME = "ht_session";
+export const COOKIE_NAME = "ht_session";
 const MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 /**
@@ -115,12 +115,12 @@ export const requireCronToken: MiddlewareHandler = async (c, next) => {
 const LAB_PATH = /^\/(lab|mcp)(\/|$)/;
 
 /**
- * `/metrics`, `/sectors`, `/marketstate`, `/intel` and their subpaths — not
+ * `/metrics`, `/sectors`, `/marketstate`, `/intel`, `/platform` and their subpaths — not
  * `/metricsx`. The bearer only opens them on GET, so the routine can read;
  * every write under these paths (Intel's positions, orders, watches…) still
  * needs the session cookie.
  */
-const READ_PATH = /^\/(metrics|sectors|marketstate|intel)(\/|$)/;
+const READ_PATH = /^\/(metrics|sectors|marketstate|intel|platform)(\/|$)/;
 
 /**
  * Bearer token for the lab surfaces and the read-only paths above (LAB.md

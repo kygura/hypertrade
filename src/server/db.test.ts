@@ -147,4 +147,33 @@ describe('query timeout', () => {
     await sql()`select 1`
     expect(fake.connections).toBe(connections + 1)
   })
+
+  test('releaseConnection is a no-op in the long-running process', async () => {
+    const c = sql()
+    db.setLongRunning(true)
+    try {
+      await releaseConnection()
+      expect(sql()).toBe(c)
+    } finally {
+      db.setLongRunning(false)
+    }
+    await releaseConnection()
+    expect(sql()).not.toBe(c)
+  })
+
+  test('with a pool, one timeout rejects the query without resetting the client; a second in a row resets', async () => {
+    process.env.DB_POOL_MAX = '2'
+    try {
+      await releaseConnection()
+      const c = sql()
+      await c`select 1`
+      fake.mode = 'silent'
+      expect(await outcome(c`select 2`)).toBe('timeout')
+      expect(sql()).toBe(c)
+      expect(await outcome(c`select 3`)).toBe('timeout')
+      expect(sql()).not.toBe(c)
+    } finally {
+      delete process.env.DB_POOL_MAX
+    }
+  })
 })

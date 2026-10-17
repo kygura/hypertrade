@@ -80,6 +80,10 @@ export function databaseUrl(env: Record<string, string | undefined> = process.en
   }
 }
 
+let longRunning = false
+/** scripts/server.ts: loops share the pool for the life of the process, so cron requests must not end it. Vercel never sets this. */
+export const setLongRunning = (v: boolean) => void (longRunning = v)
+
 /** Lazy singleton. Nothing connects at import time; builds and tests run without a DB. */
 export function sql(): postgres.Sql {
   // Idle past idle_timeout and still open: its idle timer never ran, so the
@@ -98,7 +102,7 @@ export function sql(): postgres.Sql {
   raw = c
   inflight = 0
   lastActive = Date.now()
-  client = withQueryTimeout(c, queryTimeoutMs())
+  client = withQueryTimeout(c, queryTimeoutMs(), poolMax())
   return client
 }
 
@@ -111,15 +115,19 @@ function reset(): void {
 
 /**
  * Wraps a client so every query it runs (tagged templates, unsafe, begin)
- * rejects with QueryTimeoutError after `ms` and resets the client. Fragments
+ * rejects with QueryTimeoutError after `ms` and resets the client (with DB_POOL_MAX > 1: cancels
+ * the query, and resets after a second timeout in a row). Fragments
  * and helpers pass through untouched: the timer starts when a query is awaited.
  */
-function withQueryTimeout(c: postgres.Sql, ms: number): postgres.Sql {
+function withQueryTimeout(c: postgres.Sql, ms: number, poolMax = 1): postgres.Sql {
+  /** Consecutive timeouts on this client. With a pool (max > 1) one slow query only cancels itself; the second in a row resets the pool. */
+  let timeouts = 0
   /** Set once a query on this client timed out; the reset rejects the others with CONNECTION_DESTROYED. */
   let wedged: string | null = null
   const guard = <T extends PromiseLike<unknown>>(q: T, label: string): T => {
     const timedOut = { err: null as QueryTimeoutError | null }
     let armed = false
+    let settled: Promise<unknown> | undefined
     const then = q.then
     // postgres.js runs a query on its first then() (await, catch and finally
     // all go through it), so that is where the clock starts.
@@ -127,19 +135,35 @@ function withQueryTimeout(c: postgres.Sql, ms: number): postgres.Sql {
       if (!armed) {
         armed = true
         inflight++
+        // Own promise so the caller is rejected at the deadline even when the reset is skipped.
+        let rejectNow!: (e: unknown) => void
+        settled = new Promise((ok, err) => {
+          rejectNow = err
+          then.call(this, ok, err)
+        })
+        let fired = false
         const timer = setTimeout(() => {
+          fired = true
           timedOut.err = new QueryTimeoutError(`query timed out after ${ms / 1000}s: ${label}`)
-          console.error(`[db] ${timedOut.err.message}; resetting the connection`)
           wedged ??= label
-          if (raw === c) reset()
+          timeouts++
+          if (poolMax > 1 && timeouts < 2) {
+            console.error(`[db] ${timedOut.err.message}; cancelling the query`)
+            try { (q as unknown as { cancel?: () => void }).cancel?.() } catch {}
+          } else {
+            console.error(`[db] ${timedOut.err.message}; resetting the connection`)
+            if (raw === c) reset()
+          }
+          rejectNow(timedOut.err)
         }, ms)
         const settle = () => {
           clearTimeout(timer)
+          if (!fired) timeouts = 0
           if (raw === c) (inflight--, (lastActive = Date.now()))
         }
-        then.call(this, settle, settle)
+        settled.then(settle, settle)
       }
-      return then.call(this, onOk, (e: unknown) => {
+      return settled!.then(onOk, (e: unknown) => {
         const destroyed = wedged !== null && (e as { code?: string })?.code === 'CONNECTION_DESTROYED'
         const err = timedOut.err ?? (destroyed ? new QueryTimeoutError(`connection reset after a query timed out (${wedged}): ${label}`) : e)
         if (onErr) return onErr(err)
@@ -172,6 +196,7 @@ function withQueryTimeout(c: postgres.Sql, ms: number): postgres.Sql {
  * is what Vercel's attachDatabasePool guards against for pg pools.
  */
 export async function releaseConnection(): Promise<void> {
+  if (longRunning) return
   const c = raw
   client = raw = null
   await c?.end({ timeout: 5 })

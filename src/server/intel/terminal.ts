@@ -339,7 +339,7 @@ export interface IntelBriefRun {
 /**
  * Cron brief (POST /api/cron/intel/brief): builds the cron-surface brief and,
  * when anything cleared, pushes "N things changed that touch your positions"
- * with the top lines and a /?review=1 link. Never marks reviewed. Never throws.
+ * with the top lines and a /terminal?review=1 link. Never marks reviewed. Never throws.
  */
 export async function runIntelBrief(
   deps: TerminalDeps & { notifier: Notifier; appUrl?: string },
@@ -354,7 +354,7 @@ export async function runIntelBrief(
     if (brief.silent) return { ...base, sent: [], ...narrationError };
     const n = brief.items.length + brief.alerts.length;
     const lines = briefLines(brief);
-    const link = deps.appUrl ? `${deps.appUrl.replace(/\/+$/, "")}/?review=1` : undefined;
+    const link = deps.appUrl ? `${deps.appUrl.replace(/\/+$/, "")}/terminal?review=1` : undefined;
     const title = n === 1 ? "1 thing changed that touches your positions" : `${n} things changed that touch your positions`;
     const sent = await sendIntel(deps.notifier, { title, lines, link });
     return { ...base, sent, ...narrationError };

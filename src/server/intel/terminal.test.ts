@@ -302,7 +302,7 @@ describe("runIntelBrief", () => {
     expect(sent[0]!.title).toBe("1 thing changed that touches your positions");
     expect(sent[0]!.body).toContain("SOL mark up 10.5% since your last look. (snapshot)");
     expect(sent[0]!.body).toContain("[hypothesis] Long SOL");
-    expect(sent[0]!.body.endsWith("https://app.example.com/?review=1")).toBe(true);
+    expect(sent[0]!.body.endsWith("https://app.example.com/terminal?review=1")).toBe(true);
     expect(h.store.reviews).toHaveLength(0);
 
     const quiet = harness({ price: (b) => b });
