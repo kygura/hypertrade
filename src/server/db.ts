@@ -114,6 +114,26 @@ function reset(): void {
 }
 
 /**
+ * Sends a CancelRequest for a running query. postgres.js query.cancel() drops
+ * the promise its canceller returns, so a refused cancel connection (Supabase's
+ * pooler can reset it) became an unhandled rejection, which ends the Vercel
+ * function with a 500. Call the canceller directly and keep its rejection.
+ */
+function cancelQuery(q: unknown, label: string): void {
+  const query = q as { canceller?: ((q: unknown) => Promise<void>) | null; cancel?: () => void }
+  const onFail = (err: unknown) => console.error(`[db] cancel failed (${label}):`, err instanceof Error ? err.message : err)
+  try {
+    if (typeof query.canceller === 'function') {
+      const canceller = query.canceller
+      query.canceller = null
+      Promise.resolve(canceller(q)).catch(onFail)
+    } else query.cancel?.()
+  } catch (err) {
+    onFail(err)
+  }
+}
+
+/**
  * Wraps a client so every query it runs (tagged templates, unsafe, begin)
  * rejects with QueryTimeoutError after `ms` and resets the client (with DB_POOL_MAX > 1: cancels
  * the query, and resets after a second timeout in a row). Fragments
@@ -149,7 +169,7 @@ function withQueryTimeout(c: postgres.Sql, ms: number, poolMax = 1): postgres.Sq
           timeouts++
           if (poolMax > 1 && timeouts < 2) {
             console.error(`[db] ${timedOut.err.message}; cancelling the query`)
-            try { (q as unknown as { cancel?: () => void }).cancel?.() } catch {}
+            cancelQuery(q, label)
           } else {
             console.error(`[db] ${timedOut.err.message}; resetting the connection`)
             if (raw === c) reset()
