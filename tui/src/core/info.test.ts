@@ -91,7 +91,7 @@ describe("accountFromRaw", () => {
     expect(acct.positions).toHaveLength(2);
     expect(btc.side).toBe("long");
     expect(eth.side).toBe("short");
-    expect(eth.size).toBe(3);
+    expect(eth.size).toBe(0.005);
     expect(btc.markPx).toBe(markets.find((m) => m.coin === "BTC")!.markPx);
     expect(acct.unrealizedPnlUsd).toBeCloseTo(btc.unrealizedPnlUsd + eth.unrealizedPnlUsd, 6);
   });
@@ -145,8 +145,8 @@ describe("accountFromRaw", () => {
     });
 
     test("a stop covering under half the position is not 'the stop'", () => {
-      expect(ethOf([stop({ sz: "1.0" })]).stopPx).toBeNull();
-      expect(ethOf([stop({ sz: "1.5" })]).stopPx).not.toBeNull();
+      expect(ethOf([stop({ sz: "0.002" })]).stopPx).toBeNull();
+      expect(ethOf([stop({ sz: "0.003" })]).stopPx).not.toBeNull();
     });
 
     test("size 0 means the whole position", () => {
@@ -167,7 +167,7 @@ describe("accountFromRaw", () => {
 
   test("falls back to positionValue / size when the coin is not in markets", () => {
     const a = accountFromRaw("0xabc", accountStateFx, [], [], 1);
-    expect(a.positions[0]!.markPx).toBeCloseTo(Number(accountStateFx.assetPositions[0]!.position.positionValue) / 0.15, 4);
+    expect(a.positions[0]!.markPx).toBeCloseTo(Number(accountStateFx.assetPositions[0]!.position.positionValue) / 0.005, 4);
   });
 
   test("malformed payloads throw instead of dropping orders", () => {
