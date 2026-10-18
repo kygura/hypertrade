@@ -1,6 +1,14 @@
 # Hypertrade
 
-A personal market terminal for tracking crypto assets, simulating allocation branches against historical data, and monitoring sector dynamics.
+A personal market terminal and signal platform for crypto perps. It tracks assets, simulates allocation branches against historical data, monitors sector dynamics, and runs an always-on worker that scans Hyperliquid and surfaces ranked setups.
+
+Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade routine (a scheduled Claude session that commits research to `data/*.json`; see `ROUTINE.md`).
+
+## Status
+
+- **Live in the repo (master):** the platform backend in `src/server/platform/` (scanner, crawler, liquidation map, outcomes, alerts loops) on one Bun process, the cockpit UI, `/api/platform/*`, and the fallback routine (setups pulse, HTF view, daily brief; Opus 5.5 by default, Kimi as fallback).
+- **In progress:** the platform verification gate (review fix loop), then the Railway cutover; see `TASKS.platform.md`. Vercel is retired only at cutover: `vercel.json` still carries the collect, lab-collect and backfill crons until then.
+- **Not committed yet:** an Ink terminal UI under `src/tui/` (`bun run tui`) with `SPEC-tui.md` and `DESIGN-tui.md`.
 
 ## Setup
 
@@ -23,14 +31,14 @@ bun run build
 
 ## Deployment
 
-Deployed on Vercel + Supabase. Set environment variables from `.env.example` in Vercel project settings.
+The database is Supabase Postgres. The app has run on Vercel (static UI, serverless API, crons in `vercel.json`); the target is the single always-on Railway service below. Set environment variables from `.env.example` in whichever host is active.
 
 ## Railway (always-on backend, phase 8)
 
 One Bun process (`scripts/server.ts`) serves the API, the built UI and the platform worker loops (scanner, crawler, liqmap, outcomes, alerts, desk, Telegram). Follow the steps in order: migrations before the first boot, restricted role after migrations.
 
 1. **Create the service.** New Railway project, deploy from this GitHub repo. Builder: `Dockerfile` (Railpack does not detect Bun). Region: `asia-southeast1` (Singapore). Generate a public domain under Networking. Healthcheck path: `/api/health` (public, no login).
-2. **Database.** Set `DATABASE_URL` to the Supabase transaction pooler URL (port 6543, IPv4). Railway egress is IPv4 by default, and `prepare: false` is already set in code. Set `DB_POOL_MAX=4`. For the first deploy set `MIGRATE_ON_BOOT=1`, or run `bun run db:migrate` once with the owner URL. Migrations apply in name order, one transaction each, under an advisory lock, so concurrent boots cannot race. An existing database re-applies `001`–`010` once; they are idempotent.
+2. **Database.** Set `DATABASE_URL` to the Supabase transaction pooler URL (port 6543, IPv4). Railway egress is IPv4 by default, and `prepare: false` is already set in code. Set `DB_POOL_MAX=4`. For the first deploy set `MIGRATE_ON_BOOT=1`, or run `bun run db:migrate` once with the owner URL. Migrations apply in name order, one transaction each, under an advisory lock, so concurrent boots cannot race. An existing database re-applies `001`–`010` once; they are idempotent. `011`–`013` add the platform tables, the gate hardening and the dedupe index.
 3. **Restricted app role (recommended).** `ledger_entries` is append-only through a trigger. Only the table owner can drop or disable that trigger, so run the app as a non-owner role. Run this in the Supabase SQL editor as `postgres`, after step 2 (the `revoke` needs the table to exist). Replace the password and keep it in Railway only.
 
    ```sql
