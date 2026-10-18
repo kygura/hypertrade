@@ -1,10 +1,12 @@
 import { z } from "zod";
 import type { ToolSpec } from "../llm/provider.js";
 import { runTool as runAnalystTool, TOOL_SPECS as ANALYST_SPECS, type ToolDeps, defaultToolDeps } from "../llm/tools.js";
-import { marketBreadth, mean, rallyDiagnostics, stdev } from "./analytics.js";
+import { atr, marketBreadth, mean, rallyDiagnostics, stdev } from "./analytics.js";
 import { trimForModel } from "./data.js";
 import { DeskService } from "./service.js";
 import { ExitProposalSchema, TradeProposalSchema, type DeskEvent } from "./types.js";
+
+export { atr };
 
 // The desk agents' tools. Read tools are shared by every agent; action
 // tools (propose_trade, propose_exit, send_alert) go only to the portfolio
@@ -72,12 +74,6 @@ export function ema(values: number[], period: number): number | null {
   let e = mean(values.slice(0, period));
   for (const v of values.slice(period)) e = v * k + e * (1 - k);
   return e;
-}
-
-export function atr(bars: Array<{ h: number; l: number; c: number }>, period = 14): number | null {
-  if (bars.length <= period) return null;
-  const trs = bars.slice(1).map((b, i) => Math.max(b.h - b.l, Math.abs(b.h - bars[i]!.c), Math.abs(b.l - bars[i]!.c)));
-  return mean(trs.slice(-period));
 }
 
 /** FRED ids the collector stores (collectors/fred.ts) plus its two derived series. */

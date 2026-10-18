@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { fmtPx } from "../../shared/format.js";
 import type { AssetCtx } from "../../shared/types.js";
 import type { DeskConfig } from "./config.js";
 import type { MarketData } from "./data.js";
@@ -389,11 +390,7 @@ export class DeskError extends Error {
   }
 }
 
-export function fmtPx(x: number): string {
-  if (!Number.isFinite(x)) return String(x);
-  const a = Math.abs(x);
-  return a >= 1000 ? x.toFixed(1) : a >= 1 ? x.toFixed(3) : x.toPrecision(4);
-}
+export { fmtPx };
 
 export function describeOpen(p: TradeProposal, v: Verdict, appUrl?: string): string {
   const s = v.sizing!;

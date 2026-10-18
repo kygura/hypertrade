@@ -64,6 +64,13 @@ export function mean(xs: number[]): number {
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN;
 }
 
+/** Average true range over the last `period` bars; null until there are period + 1. */
+export function atr(bars: Array<{ h: number; l: number; c: number }>, period = 14): number | null {
+  if (bars.length <= period) return null;
+  const trs = bars.slice(1).map((b, i) => Math.max(b.h - b.l, Math.abs(b.h - bars[i]!.c), Math.abs(b.l - bars[i]!.c)));
+  return mean(trs.slice(-period));
+}
+
 export function stdev(xs: number[]): number {
   if (xs.length < 2) return NaN;
   const m = mean(xs);

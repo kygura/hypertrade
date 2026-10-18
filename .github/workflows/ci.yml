@@ -14,6 +14,21 @@ jobs:
       - name: No focused tests
         run: "! grep -rn '\\.only(' src --include=*.test.ts --include=*.test.tsx"
       - run: bun run typecheck
-      - run: bun test src
+      - run: bun test ./src
       - run: bun run build
       - run: bun run check:api
+
+  tui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bun install --frozen-lockfile
+        working-directory: tui
+      - name: No focused tests
+        run: "! grep -rn '\\.only(' tui/src --include=*.test.ts --include=*.test.tsx"
+      - run: bun run typecheck
+        working-directory: tui
+      - run: bun test
+        working-directory: tui
