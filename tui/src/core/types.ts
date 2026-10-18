@@ -2,8 +2,10 @@
 // Core modules produce these shapes; the UI and the agent only read them.
 import type { OrderIntent } from "../../../src/shared/intel.js";
 import type { Verdict } from "../../../src/server/desk/types.js";
+import type { FundingPoint } from "../../../src/shared/hl-client.js";
+import type { Candle } from "../../../src/shared/types.js";
 
-export type { OrderIntent, Verdict };
+export type { Candle, FundingPoint, OrderIntent, Verdict };
 
 export type Network = "testnet" | "mainnet";
 
@@ -140,6 +142,19 @@ export interface Alert {
   title: string;
   detail: string;
   at: number;
+}
+
+/**
+ * Read side of Hyperliquid's /info endpoint for one network. Implemented by
+ * core/info.ts (live) and core/demo.ts (fixtures). Tickets, the store and the
+ * agent tools only ever read through this.
+ */
+export interface InfoSource {
+  markets(): Promise<MarketRow[]>;
+  account(address: string, markets: MarketRow[]): Promise<AccountSnapshot>;
+  book(coin: string): Promise<BookView>;
+  candles(coin: string, interval: "1h" | "4h" | "1d", startMs: number): Promise<Candle[]>;
+  fundingHistory(coin: string, startMs: number): Promise<FundingPoint[]>;
 }
 
 export type WsState = "connecting" | "open" | "closed" | "off";
