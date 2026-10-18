@@ -164,6 +164,8 @@ export interface AppState {
   config: Config;
   markets: MarketRow[];
   marketsAt: number | null;
+  /** Last markets poll error; the previous markets stay in place. */
+  marketsError: string | null;
   account: AccountSnapshot | null;
   accountError: string | null;
   alerts: Alert[];

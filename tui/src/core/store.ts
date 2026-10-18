@@ -68,7 +68,7 @@ export class Store {
     this.makeSocket = o.socket ?? ((url) => new HlSocket({ url }));
     this.marketsEveryMs = o.marketsEveryMs ?? 15_000;
     this.accountEveryMs = o.accountEveryMs ?? 10_000;
-    this.state = { config: o.config, markets: [], marketsAt: null, account: null, accountError: null, alerts: [], ws: o.config.demo ? "off" : "closed" };
+    this.state = { config: o.config, markets: [], marketsAt: null, marketsError: null, account: null, accountError: null, alerts: [], ws: o.config.demo ? "off" : "closed" };
   }
 
   getState(): AppState {
@@ -134,10 +134,11 @@ export class Store {
     this.busy.markets = true;
     try {
       const rows = await this.info.markets();
-      this.patch({ markets: this.withMids(rows), marketsAt: this.now() });
+      this.patch({ markets: this.withMids(rows), marketsAt: this.now(), marketsError: null });
       return true;
-    } catch {
-      return false; // keep the last markets; the status bar shows their age
+    } catch (e) {
+      this.patch({ marketsError: errMsg(e) }); // keep the last markets; the status bar shows their age
+      return false;
     } finally {
       this.busy.markets = false;
     }
