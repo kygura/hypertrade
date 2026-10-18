@@ -105,7 +105,7 @@ describe("agentTools", () => {
     const { run, drafts } = await tools({
       draftOrder: async (a: Parameters<typeof fakeTicket>[0]) => fakeTicket(a, { canSend: false, blockers: ["notional above HT_MAX_NOTIONAL_USD"] }),
     });
-    const text = await run("draft_order", { coin: "ETH", side: "short", stop: { type: "price", px: 9999 }, size: { pctBook: 5 }, leverage: 2, limit_px: 3000 });
+    const text = await run("draft_order", { coin: "ETH", side: "short", stop: { type: "price", px: 9999 }, size: { pct_book: 5 }, leverage: 2, limit_px: 3000 });
     expect(drafts).toHaveLength(0);
     expect(text).toContain('"canSend":false');
     expect(text).toContain("HT_MAX_NOTIONAL_USD");
@@ -120,6 +120,31 @@ describe("agentTools", () => {
     await expect(run("draft_order", { coin: "BTC", side: "long", size: { usd: 100 }, stop: { type: "pct", pct: 2 }, leverage: 99 })).rejects.toThrow(/leverage/);
     await expect(run("draft_order", { coin: "NOPE", side: "long", size: { usd: 100 }, stop: { type: "pct", pct: 2 } })).rejects.toThrow(/unknown coin/);
     expect(drafts).toHaveLength(0);
+  });
+
+  test("unknown keys are errors that name the key (no silent market order)", async () => {
+    const { run, drafts } = await tools();
+    const base = { coin: "BTC", side: "long", stop: { type: "pct", pct: 2 }, size: { usd: 100 } };
+    await expect(run("draft_order", { ...base, limitPx: 60000 })).rejects.toThrow(/limitPx/);
+    await expect(run("draft_order", { ...base, tp: 70000 })).rejects.toThrow(/'tp'/);
+    await expect(run("draft_order", { ...base, size: { pctBook: 5 } })).rejects.toThrow(/pctBook/);
+    await expect(run("draft_order", { ...base, size: { usd: 1, pct_book: 5 } })).rejects.toThrow(/exactly one of usd or pct_book/);
+    await expect(run("draft_order", { ...base, stop: { type: "pct", pct: 2, px: 1 } })).rejects.toThrow(/px/);
+    await expect(run("get_book", { coin: "BTC", depth: 5 })).rejects.toThrow(/depth/);
+    await expect(run("get_positions", { all: true })).rejects.toThrow(/all/);
+    await expect(run("draft_close", { coin: "BTC", pct: 50, percent: 1 })).rejects.toThrow(/percent/);
+    expect(drafts).toHaveLength(0);
+    const spec = agentTools((await makeDeps()).deps).find((t) => t.spec.name === "draft_order")!.spec;
+    expect(spec.description).toContain("limit_px");
+    expect(spec.input_schema.additionalProperties).toBe(false);
+  });
+
+  test("pct_book maps onto the intent's pctBook", async () => {
+    const { run, drafts } = await tools();
+    await run("draft_order", { coin: "ETH", side: "short", stop: { type: "prev_day_high" }, size: { pct_book: 5 } });
+    const a = drafts[0]!;
+    if (a.kind !== "open") throw new Error();
+    expect(a.intent.size).toEqual({ pctBook: 5 });
   });
 
   test("draft_close needs an open position and a valid pct", async () => {

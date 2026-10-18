@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Agent, createAgent, summarizeInput, type AgentEvents } from "./loop.js";
+import { Agent, createAgent, summarizeInput, trimHistory, type AgentEvents } from "./loop.js";
 import { makeDeps, ScriptedLLM, type ScriptStep } from "./testkit.js";
 import { NOT_SENT } from "./tools.js";
 
@@ -115,6 +115,28 @@ describe("Agent", () => {
     expect((await a.agent.ask("q", a.ev)).stop).toBe("refusal");
     const b = await setup([{ stop: "pause" }, { text: "continued" }]);
     expect(await b.agent.ask("q", b.ev)).toEqual({ text: "continued", stop: "end" });
+  });
+
+  test("a pause on the final round reports max_rounds", async () => {
+    const { agent, ev } = await setup([{ calls: [{ name: "get_alerts", input: {} }] }, { stop: "pause" }], { maxRounds: 1 });
+    expect((await agent.ask("q", ev)).stop).toBe("max_rounds");
+  });
+
+  test("history sent to the provider is capped, oldest pairs first", async () => {
+    const { llm, agent, ev } = await setup([{ text: "a" }]);
+    for (let i = 0; i < 15; i++) agent.history.push({ role: "user", content: `q${i}` }, { role: "assistant", content: `a${i}` });
+    await agent.ask("now", ev);
+    const sent = llm.histories[0]!;
+    expect(sent).toHaveLength(20);
+    expect(sent[0]).toEqual({ role: "user", content: "q5" });
+    expect(sent.at(-1)).toEqual({ role: "assistant", content: "a14" });
+    expect(agent.history).toHaveLength(32); // stored history is not truncated
+    const big = (c: string) => "x".repeat(c === "u" ? 40_000 : 30_000);
+    const t = trimHistory([
+      { role: "user", content: big("u") }, { role: "assistant", content: big("a") },
+      { role: "user", content: "q" }, { role: "assistant", content: "a" },
+    ]);
+    expect(t).toEqual([{ role: "user", content: "q" }, { role: "assistant", content: "a" }]);
   });
 
   test("caller abort ends the turn, keeps partial text, no throw", async () => {

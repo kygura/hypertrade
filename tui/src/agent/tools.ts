@@ -96,7 +96,7 @@ function positionOut(p: AccountSnapshot["positions"][number]) {
 // ─── input handling ───
 
 const FIELD_HINTS: Record<string, string> = {
-  size: 'required, one of {"usd": number} or {"pctBook": number}; there is no default, ask the human',
+  size: 'required, {"usd": number} or {"pct_book": number}; there is no default, ask the human',
   stop: 'required, e.g. {"type":"pct","pct":2}, {"type":"price","px":60000}, {"type":"atr_mult","mult":1.5}, {"type":"prev_day_low"}',
 };
 
@@ -157,7 +157,7 @@ function def<S extends z.ZodTypeAny>(
   };
 }
 
-const CoinOnly = z.object({ coin: z.string().trim().min(1) });
+const CoinOnly = z.object({ coin: z.string().trim().min(1) }).strict();
 const coinProp = { coin: { type: "string", description: "Hyperliquid coin symbol, e.g. BTC, ETH, SOL, HYPE" } };
 
 const SORTS = ["oi", "volume", "change_up", "change_down", "funding_high", "funding_low"] as const;
@@ -171,16 +171,23 @@ const sorters: Record<(typeof SORTS)[number], (a: MarketRow, b: MarketRow) => nu
 };
 
 const StopInput = OrderIntentSchema.shape.stop;
-const DraftOrderInput = z.object({
-  coin: z.string().trim().min(1),
-  side: SideSchema,
-  stop: StopInput,
-  size: OrderIntentSchema.shape.size,
-  leverage: OrderIntentSchema.shape.leverage.optional(),
-  limit_px: z.number().finite().positive().optional(),
-  target: z.number().finite().positive().optional(),
-});
-const DraftCloseInput = z.object({ coin: z.string().trim().min(1), pct: z.number().finite().gt(0).max(100) });
+// Snake_case on the wire; mapped onto OrderIntent (pct_book -> pctBook, limit_px -> entry.px).
+const SizeInput = z
+  .object({ usd: z.number().finite().positive().optional(), pct_book: z.number().finite().gt(0).max(100).optional() })
+  .strict()
+  .refine((s) => (s.usd === undefined) !== (s.pct_book === undefined), { message: "give exactly one of usd or pct_book" });
+const DraftOrderInput = z
+  .object({
+    coin: z.string().trim().min(1),
+    side: SideSchema,
+    stop: StopInput,
+    size: SizeInput,
+    leverage: OrderIntentSchema.shape.leverage.optional(),
+    limit_px: z.number().finite().positive().optional(),
+    target: z.number().finite().positive().optional(),
+  })
+  .strict();
+const DraftCloseInput = z.object({ coin: z.string().trim().min(1), pct: z.number().finite().gt(0).max(100) }).strict();
 
 function ticketResult(t: Ticket): string {
   return [
@@ -222,7 +229,7 @@ export function agentTools(deps: AgentDeps): AgentTool[] {
         coins: { type: "array", items: { type: "string" }, description: "only these coins (overrides sort/limit)" },
       },
       [],
-      z.object({ sort: z.enum(SORTS).optional(), limit: z.number().int().min(1).max(40).optional(), coins: z.array(z.string().trim().min(1)).max(40).optional() }),
+      z.object({ sort: z.enum(SORTS).optional(), limit: z.number().int().min(1).max(40).optional(), coins: z.array(z.string().trim().min(1)).max(40).optional() }).strict(),
       (i) => {
         const s = deps.getState();
         const live = s.markets.filter((m) => !m.isDelisted);
@@ -280,13 +287,13 @@ export function agentTools(deps: AgentDeps): AgentTool[] {
         });
       },
     ),
-    def("get_positions", "The trader's account: equity, margin, open positions (with stop, TP, liquidation distance) and open orders.", {}, [], z.object({}), () => {
+    def("get_positions", "The trader's account: equity, margin, open positions (with stop, TP, liquidation distance) and open orders.", {}, [], z.object({}).strict(), () => {
       const s = deps.getState();
       if (!s.config.account) return "no account configured: only market data is available";
       if (!s.account) return `account not loaded yet${s.accountError ? ` (${s.accountError})` : ""}`;
       return out({ ...accountOut(s.account), ...(s.accountError ? { error: s.accountError } : {}) });
     }),
-    def("get_alerts", "Active alerts from the TUI's trigger engine (moves, extreme funding, OI swings, missing/near stops).", {}, [], z.object({}), () => {
+    def("get_alerts", "Active alerts from the TUI's trigger engine (moves, extreme funding, OI swings, missing/near stops).", {}, [], z.object({}).strict(), () => {
       const s = deps.getState();
       return out({ count: s.alerts.length, alerts: s.alerts.map((a) => ({ level: a.level, title: a.title, detail: a.detail, at: iso(a.at) })) });
     }),
@@ -338,7 +345,7 @@ export function agentTools(deps: AgentDeps): AgentTool[] {
         return out({ coin: m.coin, interval: i.interval, bars: c.length, format: "[time, o, h, l, c, v]", candles: c.map((k) => [iso(k.t), sig(k.o), sig(k.h), sig(k.l), sig(k.c), sig(k.v, 4)]) });
       },
     ),
-    def("lab_pulse", "Hypertrade Lab market pulse: per asset, how many catalogued long/short rules are firing now, and which. Errors when the Lab is not configured.", {}, [], z.object({}), async () => {
+    def("lab_pulse", "Hypertrade Lab market pulse: per asset, how many catalogued long/short rules are firing now, and which. Errors when the Lab is not configured.", {}, [], z.object({}).strict(), async () => {
       const raw = await deps.pulse();
       const p = PulseSchema.safeParse(raw);
       if (!p.success) return out(raw);
@@ -354,13 +361,13 @@ export function agentTools(deps: AgentDeps): AgentTool[] {
         })),
       });
     }),
-    def("get_brief", "The routine's latest market brief from the repo: headline, tldr, regime, risks and top sectors (date-stamped; may be a day old).", {}, [], z.object({}), async () => {
+    def("get_brief", "The routine's latest market brief from the repo: headline, tldr, regime, risks and top sectors (date-stamped; may be a day old).", {}, [], z.object({}).strict(), async () => {
       const b = await deps.brief();
       return b == null ? "no brief available: data/marketstate/latest.json not found" : out(b);
     }),
     def(
       "draft_order",
-      "Draft an OPEN order and show the resulting ticket to the human for confirmation. Nothing is sent; only the human can confirm. Call only when the human asked for a trade. Requires coin, side, stop and size.",
+      "Draft an OPEN order and show the resulting ticket to the human for confirmation. Nothing is sent; only the human can confirm. Call only when the human asked for a trade. Fields (snake_case, no others are accepted): coin, side, stop, size (required); leverage, limit_px, target (optional).",
       {
         ...coinProp,
         side: { type: "string", enum: ["long", "short"] },
@@ -369,11 +376,13 @@ export function agentTools(deps: AgentDeps): AgentTool[] {
           description: 'Stop loss. {"type":"pct","pct":2} = 2% from entry; {"type":"price","px":N}; {"type":"atr_mult","mult":1.5}; {"type":"prev_day_low"}; {"type":"prev_day_high"}',
           properties: { type: { type: "string", enum: ["price", "pct", "prev_day_low", "prev_day_high", "atr_mult"] }, px: { type: "number" }, pct: { type: "number" }, mult: { type: "number" } },
           required: ["type"],
+          additionalProperties: false,
         },
         size: {
           type: "object",
-          description: 'Position size. {"usd": notional USD} or {"pctBook": percent of account equity as notional}. Required.',
-          properties: { usd: { type: "number" }, pctBook: { type: "number" } },
+          description: 'Position size, exactly one of: {"usd": notional USD} or {"pct_book": percent of account equity as notional}. Required, no default.',
+          properties: { usd: { type: "number" }, pct_book: { type: "number" } },
+          additionalProperties: false,
         },
         leverage: { type: "number", description: "default: the configured default leverage" },
         limit_px: { type: "number", description: "limit entry price; omit for market" },
@@ -388,7 +397,7 @@ export function agentTools(deps: AgentDeps): AgentTool[] {
           asset: m.coin,
           side: i.side,
           leverage: i.leverage ?? s.config.defaultLeverage,
-          size: i.size,
+          size: i.size.usd !== undefined ? { usd: i.size.usd } : { pctBook: i.size.pct_book! },
           entry: i.limit_px ? { type: "limit", px: i.limit_px } : { type: "market" },
           stop: i.stop,
           ...(i.target ? { target: i.target } : {}),

@@ -33,6 +33,21 @@ export interface AskResult {
 
 export const MAX_TOOL_ROUNDS = 8;
 export const TIMEOUT_MS = 120_000;
+/** History sent to the provider: newest turns only, oldest question/answer pairs dropped first. */
+export const MAX_HISTORY_TURNS = 20;
+export const MAX_HISTORY_CHARS = 60_000;
+
+export function trimHistory(history: Turn[], maxTurns = MAX_HISTORY_TURNS, maxChars = MAX_HISTORY_CHARS): Turn[] {
+  let from = 0;
+  let chars = history.reduce((n, t) => n + t.content.length, 0);
+  while (from < history.length && (history.length - from > maxTurns || chars > maxChars)) {
+    chars -= history[from]!.content.length;
+    from++;
+  }
+  // Keep user/assistant pairs aligned: never start on an assistant turn.
+  while (from < history.length && history[from]!.role !== "user") from++;
+  return history.slice(from);
+}
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
@@ -83,7 +98,7 @@ export class Agent {
     const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
     const now = this.now();
     const system = buildAgentPrompt({ config: this.deps.getState().config, now, webSearch: this.provider.webSearch });
-    const conv = this.provider.start(system, this.history, `[current time ${now.toISOString()}]\n${question}`);
+    const conv = this.provider.start(system, trimHistory(this.history), `[current time ${now.toISOString()}]\n${question}`);
     const specs = this.tools.map((t) => t.spec);
     const parts: string[] = [];
     let current = "";
@@ -111,7 +126,10 @@ export class Agent {
         endRound();
         if (res.stop === "pause") {
           // Provider-hosted tool paused a long turn; continue it.
-          if (final) break;
+          if (final) {
+            stop = "max_rounds";
+            break;
+          }
           rounds++;
           continue;
         }
