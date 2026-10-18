@@ -37,6 +37,9 @@ export const LLM_PRICES: Record<string, [number, number]> = {
   "claude-opus-5": [5, 25],
   "claude-sonnet-5-5": [2, 10],
   "claude-haiku-4-5": [1, 5],
+  // Moonshot list prices (provenance cost.ts carries the same rows); the fallback routine runs on these.
+  "kimi-k3": [3, 15],
+  "kimi-k2.6": [0.95, 4],
 };
 const TOP_PRICE = Object.values(LLM_PRICES).reduce((a, b) => (a[1] >= b[1] ? a : b));
 // ponytail: flat per-request web search fee, not read from a price table; update when the list price moves.
