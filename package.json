@@ -9,9 +9,10 @@
     "desk:worker": "bun run scripts/desk-worker.ts",
     "lab": "bun run scripts/lab-cli.ts",
     "lab:mcp": "bun run scripts/lab-mcp.ts",
+    "tui": "bun run --cwd tui start",
     "routine": "bun run scripts/routine.ts",
     "build": "bun run typecheck && vite build",
-    "test": "bun test src",
+    "test": "bun test ./src",
     "db:migrate": "bun run db/migrate.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "check:api": "sh scripts/check-api-esm.sh"

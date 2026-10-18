@@ -82,3 +82,10 @@ export function classForPnl(n: number): string {
   if (n < 0) return "text-red-text";
   return "text-text-secondary";
 }
+
+/** Compact price for alerts and tickets: 1 decimal at 1000+, 3 at 1+, else 4 significant figures. */
+export function fmtPx(x: number): string {
+  if (!Number.isFinite(x)) return String(x);
+  const a = Math.abs(x);
+  return a >= 1000 ? x.toFixed(1) : a >= 1 ? x.toFixed(3) : x.toPrecision(4);
+}
