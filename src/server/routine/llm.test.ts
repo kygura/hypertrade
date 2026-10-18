@@ -80,8 +80,8 @@ describe("provider chain", () => {
   });
 
   test("the spend cap stops the chain instead of falling through", async () => {
-    // Unknown models are priced at the top row ($10/$50 per MTok): 100k in + 20k out ≈ $2.
-    const pricey = new StubProvider("kimi-k3", [{ emit: { answer: "a" } }], { input_tokens: 100_000, output_tokens: 20_000 });
+    // An unpriced model is billed at the top row ($10/$50 per MTok): 100k in + 20k out ≈ $2.
+    const pricey = new StubProvider("mystery-xl", [{ emit: { answer: "a" } }], { input_tokens: 100_000, output_tokens: 20_000 });
     const d = deps({ "kimi-k3": pricey, "deepseek-v4-pro": new StubProvider("deepseek-v4-pro", [{ emit: { answer: "b" } }]) }, 1);
     expect((await callChain(d, args)).ok).toBe(true);
     expect(d.cache.spentUsd()).toBeGreaterThan(1);
@@ -114,5 +114,6 @@ describe("emit schemas", () => {
     expect(pulseOutputSchema(false).safeParse({ ...base, stand_aside_reason: "quiet" }).success).toBe(true);
     expect(pulseOutputSchema(false).safeParse(base).success).toBe(false);
     expect(pulseOutputSchema(true).safeParse({ ...base, stand_aside_reason: "quiet" }).success).toBe(false);
+    expect(pulseOutputSchema(false, false).safeParse(base).success).toBe(true); // htf mode: no setups, no reason needed
   });
 });

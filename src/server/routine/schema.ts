@@ -12,7 +12,6 @@ const Price = z.number().finite().positive();
 
 export const DirectionSchema = z.enum(["long", "short"]);
 export const SetupStatusSchema = z.enum(["watching", "triggered", "invalidated", "target_hit", "expired", "cancelled"]);
-export const OPEN_STATUSES = ["watching", "triggered"] as const;
 
 export const SetupSchema = z.object({
   id: z.string(),
@@ -32,6 +31,8 @@ export const SetupSchema = z.object({
   status: SetupStatusSchema,
   status_note: z.string().nullable(),
   r_result: z.number().nullable(),
+  /** When the entry zone first traded; null if it never did. Older ledgers lack it. */
+  triggered_at: z.string().nullable().default(null),
   created_at: z.string(),
   updated_at: z.string(),
   expires_at: z.string(),
@@ -74,7 +75,6 @@ export const HtfViewSchema = HtfViewDraftSchema.extend({
   hl_cycles_state: z.string().nullable(),
 });
 export type HtfView = z.infer<typeof HtfViewSchema>;
-export type HtfViewDraft = z.infer<typeof HtfViewDraftSchema>;
 
 export const SetupProposalSchema = z.object({
   asset: z.string().min(1).max(24).describe("Hyperliquid symbol, case-sensitive"),
@@ -104,10 +104,10 @@ export const PulseOutputSchema = z.object({
 export type PulseOutput = z.infer<typeof PulseOutputSchema>;
 
 /** Pulse output plus the cross-field rules the model must meet (completeStructured retries once on a miss). */
-export function pulseOutputSchema(htfDue: boolean) {
+export function pulseOutputSchema(htfDue: boolean, setupsAllowed = true) {
   return PulseOutputSchema.superRefine((o, ctx) => {
     if (htfDue && !o.htf_view) ctx.addIssue({ code: "custom", path: ["htf_view"], message: "an HTF refresh is due: htf_view is required" });
-    if (o.new_setups.length === 0 && !o.stand_aside_reason?.trim()) ctx.addIssue({ code: "custom", path: ["stand_aside_reason"], message: "required when new_setups is empty" });
+    if (setupsAllowed && o.new_setups.length === 0 && !o.stand_aside_reason?.trim()) ctx.addIssue({ code: "custom", path: ["stand_aside_reason"], message: "required when new_setups is empty" });
   });
 }
 

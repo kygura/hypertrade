@@ -78,6 +78,8 @@ describe("collect failures become gaps", () => {
     for (const s of ["hyperliquid.metaAndAssetCtxs", "hyperliquid.candles.BTC.1d", "hyperliquid.candles.SOL.1h", "hl-cycles.vector", "fred.DGS10", "yahoo.^VIX", "alternative.me.fng", "defillama.stablecoins", "app.metrics", "lab.market_pulse"])
       expect(sources).toContain(s);
     expect(pack.gaps.find((g) => g.source === "app.metrics")!.status).toBe(503);
+    expect(pack.gaps.find((g) => g.source === "app.metrics")!.detail).toBe("HTTP 503"); // no response body in the prompt
+    expect(pack.gaps.find((g) => g.source === "hl-cycles.vector")!.detail).toBe("response is not JSON");
     expect(pack.gaps.find((g) => g.source === "hl-cycles.vector")!.status).toBe("bad-json");
     expect(pack.app).toBeNull();
   });

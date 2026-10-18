@@ -34,7 +34,7 @@ MarketState/Sectors write (`--mode daily`) once `ROUTINE_FALLBACK=true`.
 |---|---|---|---|
 | `pulse` | `17 */4 * * *` | `data/setups/ledger.json`, `data/setups/htf.json` (when refreshed) | runs whenever an LLM key is present |
 | `daily` | `40 6 * * *` | pulse outputs + MarketState, Sectors, `data/lab/<date>.json` | repo variable `ROUTINE_FALLBACK == 'true'` |
-| `htf` | manual dispatch | `data/setups/htf.json` | forced refresh |
+| `htf` | manual dispatch | `data/setups/htf.json` | forced refresh; proposes no setups |
 
 `pulse` refreshes the HTF view itself when the view is missing, older than
 7 days, or the hl-cycles `regime.state` differs from the view's
@@ -56,18 +56,25 @@ configured"), so a missing secret never turns the schedule red.
    - Hyperliquid `metaAndAssetCtxs`: mark, prevDayPx, OI (USD), funding for
      the whole universe; keep BTC, ETH, SOL, HYPE plus the top 25 by OI.
    - Hyperliquid `candleSnapshot` daily (400 d) and weekly (3 y) for BTC,
-     ETH, SOL, HYPE, and daily candles since the last run for every asset
-     with an open setup (status checks need the high/low path, not only the
-     mark).
+     ETH, SOL, HYPE, and hourly (`1h`) candles since each open setup's
+     `updated_at` for every asset with an open setup (status checks need
+     the high/low path, not only the mark; hourly bars keep the "which came
+     first" ambiguity of one bar small).
    - hl-cycles `vector.json` + `health.json` (regime, levels, compass,
      brief confirm/invalidate).
    - FRED CSV: DGS10, DGS2, T10Y2Y, VIXCLS, DTWEXBGS, DCOILBRENTEU,
-     NASDAQCOM. Retry once with HTTP/1.1 semantics on a transport error.
+     NASDAQCOM. Retry once on a fresh connection (`connection: close`) on a
+     transport error.
    - Yahoo chart: SPY, QQQ, NVDA, ^VIX (1mo daily).
    - Fear & Greed (31 d), DefiLlama stablecoin total (now, −7 d, −30 d).
    - App (only when `APP_URL` and `LAB_API_TOKEN` are set):
      `/api/metrics/summary` (ids from CLAUDE.md §2.2), `/api/sectors`,
      `POST /api/lab/tools/lab_market_pulse`, `lab_catalogue_list`.
+   A gap's `detail` is a short reason written by the code (`HTTP 503`,
+   `response is not JSON`), never response text. Strings from outside
+   sources (hl-cycles, Lab rules, gaps) reach the model only inside
+   `untrusted()`; HL symbols and the hl-cycles regime state are
+   shape-checked at parse.
 3. **HTF features** (`htf.ts`, pure, unit-tested) per major: close vs
    20W/50W SMA and 200D SMA, distance from 52-week high/low, 30-day
    realised vol (annualised), 4-week return, weekly trend label
@@ -77,12 +84,18 @@ configured"), so a missing secret never turns the schedule red.
    - `watching` → `triggered` when a candle trades into the entry zone.
    - `watching` → `invalidated` ("never filled") when price crosses the
      invalidation level first.
+   - `watching`, one candle reaching invalidation that also traded the
+     entry zone and did not open beyond invalidation → filled and stopped
+     (−1R). Targets are not checked on the candle that triggers.
    - `triggered` → `invalidated` (stopped, −1R) when invalidation trades.
    - `triggered` → `target_hit` when the first target trades (record R).
    - Same candle touches both invalidation and target → invalidation wins
      (conservative).
-   - Any open setup past `expires_at` → `expired`.
-   Keep closed setups for 90 days in `closed[]`, then drop them.
+   - Any open setup past `expires_at` → `expired` (a triggered one is
+     marked to the last close in R; a cancelled triggered one to the mark).
+   Keep closed setups for 90 days in `closed[]`, then drop them. The ledger
+   file is rewritten only when something besides the check timestamps
+   changed, so a quiet pulse leaves no commit.
 5. **Model call** via `completeStructured` from `src/server/intel/llm.ts`
    with an in-memory cache and the provider chain below. Input: HTF view,
    HTF features, the condensed context pack, open and recently closed
@@ -98,6 +111,8 @@ configured"), so a missing secret never turns the schedule red.
      and ROUTINE.md §c–e (separate call, `kimi-k3`).
 6. **Gate** (`gate.ts`, pure, unit-tested) each proposal:
    - asset exists in the live HL universe;
+   - the mark is not already beyond the invalidation level
+     (`already_invalid`);
    - direction-consistent levels: long ⇒ invalidation < entry.low ≤
      entry.high < targets ascending; short mirrored;
    - entry zone width ≤ 4% of its midpoint; invalidation distance from
@@ -110,11 +125,21 @@ configured"), so a missing secret never turns the schedule red.
    - HTF stance `stand_aside` ⇒ no new setups at all;
    - caps: at most 5 open setups, at most 2 new per `pulse`, 3 per `daily`.
    Rejected proposals are listed in the run output with the failing rule.
+   `htf` mode skips this step: it asks for no setups and ignores any.
 7. **Write** ledger/view (and daily files), print the brief, write the
    GitHub step summary.
 8. **Notify** (Telegram, plain text, split under 4000 chars) only when:
    a setup was added, changed status or was cancelled; the HTF view was
    refreshed with a regime change; or `daily` ran.
+9. **Commit** (workflow): pulse/htf stage `data/setups/*.json` only. A
+   daily commit runs `bun run typecheck && bun test src` first; green goes
+   to the default branch, red is committed anyway and pushed to
+   `routine/<RUN_DATE>` (no deploy there), then the job fails. The run
+   date comes from the run itself (`run_date` step output).
+
+Exit codes: 0 without an LLM key; 1 when `ROUTINE_LLM` has no usable
+entry, every provider failed, or the daily stage failed (pulse outputs
+computed before the failure are still written).
 
 ## Data shapes (`src/server/routine/schema.ts`)
 
@@ -137,10 +162,12 @@ Setup {
   status: "watching" | "triggered" | "invalidated" | "target_hit" | "expired" | "cancelled"
   status_note: string | null
   r_result: number | null   // realised R when closed after a trigger
+  triggered_at: string | null  // when the entry zone first traded
   created_at: string; updated_at: string; expires_at: string
 }
 Ledger { updated_at: string; open: Setup[]; closed: Setup[];
          stats: { closed_90d: number; triggered_90d: number; hit_rate: number | null; avg_r: number | null } }
+         // triggered_90d counts setups with triggered_at; avg_r averages those with a realised R
 HtfView {
   generated_at: string; valid_until: string
   hl_cycles_state: string | null

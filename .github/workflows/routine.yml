@@ -61,6 +61,7 @@ jobs:
           echo "mode=$mode dry_run=$dry"
 
       - name: Run routine
+        id: run
         if: steps.mode.outputs.mode != 'skip'
         env:
           MODE: ${{ steps.mode.outputs.mode }}
@@ -77,23 +78,29 @@ jobs:
         run: |
           if [ "$DRY" = "true" ]; then bun run routine --mode "$MODE" --dry-run; else bun run routine --mode "$MODE"; fi
 
-      # Runs even when the routine exited non-zero (a model failure still leaves
-      # code-decided setup status changes worth keeping). Only data/ is staged.
+      # Runs even when the routine exited non-zero: a model failure still leaves
+      # code-decided setup status changes worth keeping. Only data/ is staged.
+      # A daily commit must pass typecheck + tests to reach master; otherwise it
+      # goes to routine/<date> (no deploy there) and the job fails after the push,
+      # so nothing computed is lost and master never goes red from a data commit.
       - name: Commit and push data
         if: ${{ !cancelled() && steps.mode.outputs.mode != 'skip' && steps.mode.outputs.dry != 'true' }}
         env:
           MODE: ${{ steps.mode.outputs.mode }}
+          RUN_DATE: ${{ steps.run.outputs.run_date }}
         run: |
           if [ -z "$(git status --porcelain -- data)" ]; then
             echo "no data changes"
             exit 0
           fi
+          checks_ok=true
           if [ "$MODE" = "daily" ] && [ -n "$(git status --porcelain -- data/marketstate data/sectors data/lab)" ]; then
-            bun run typecheck
+            [ -n "$RUN_DATE" ] || { echo "::error::routine did not report its run date"; exit 1; }
+            bun run typecheck && bun test src || checks_ok=false
             paths="data"
-            msg="feat(routine): marketstate + sectors + lab snapshot $(TZ=Atlantic/Canary date +%F) (fallback)"
+            msg="feat(routine): marketstate + sectors + lab snapshot $RUN_DATE (fallback)"
           else
-            paths="data/setups"
+            paths="data/setups/*.json"
             msg="chore(routine): setups pulse $(date -u +%FT%TZ)"
           fi
           git config user.name "github-actions[bot]"
@@ -104,6 +111,11 @@ jobs:
             exit 0
           fi
           git commit -m "$msg"
+          if [ "$checks_ok" != "true" ]; then
+            git push --force origin "HEAD:refs/heads/routine/$RUN_DATE"
+            echo "::error::typecheck or tests failed on the daily data; pushed to routine/$RUN_DATE instead of the default branch"
+            exit 1
+          fi
           if ! git push; then
             echo "push rejected; rebasing once"
             git pull --rebase

@@ -70,7 +70,8 @@ export interface ContextPack {
   fng: { value: number; label: string; series: Point[] } | null;
   stablecoins: { nowUsd: number; d7Pct: number | null; d30Pct: number | null; date: string } | null;
   app: { metrics: unknown[]; unusual: Array<{ id: string; latest: number; z30: number; mean30: number | null }>; sectors: unknown } | null;
-  lab: { pulse: LabPulse | null; catalogue: LabCatalogueEntry[] | null } | null;
+  /** catalogue: the saved rule ids. */
+  lab: { pulse: LabPulse | null; catalogue: string[] | null } | null;
   calendar: Array<{ kind: string; at: string }>;
   gaps: Gap[];
 }
@@ -100,7 +101,16 @@ class FetchError extends Error {
 }
 
 const errStatus = (e: unknown): number | string => (e instanceof FetchError ? e.status : e instanceof Error && e.name === "TimeoutError" ? "timeout" : "error");
-const errDetail = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 200);
+/**
+ * A gap's detail is a short reason we wrote, never response text: it reaches the prompt, so an upstream body
+ * (or a zod message quoting a received value) must not. Transport errors keep the runtime's own message.
+ */
+const errDetail = (e: unknown): string => {
+  if (e instanceof FetchError) return e.message;
+  if (e instanceof z.ZodError) return `unexpected response shape at ${[...new Set(e.issues.map((i) => i.path.join(".") || "(root)"))].slice(0, 5).join(", ")}`;
+  if (e instanceof Error && e.name === "TimeoutError") return "timed out";
+  return (e instanceof Error ? e.message : String(e)).replace(/[^\w .:/()-]/g, "").slice(0, 120);
+};
 const finite = (x: unknown): number | null => {
   const n = typeof x === "string" ? Number(x) : x;
   return typeof n === "number" && Number.isFinite(n) ? n : null;
@@ -111,7 +121,7 @@ const r = (x: number, dp = 2) => Math.round(x * 10 ** dp) / 10 ** dp;
 async function fetchText(f: typeof fetch, url: string, init: RequestInit = {}): Promise<string> {
   const res = await f(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
   const text = await res.text();
-  if (!res.ok) throw new FetchError(res.status, `HTTP ${res.status}: ${text.slice(0, 120)}`);
+  if (!res.ok) throw new FetchError(res.status, `HTTP ${res.status}`);
   return text;
 }
 async function fetchJson(f: typeof fetch, url: string, init: RequestInit = {}): Promise<unknown> {
@@ -119,7 +129,7 @@ async function fetchJson(f: typeof fetch, url: string, init: RequestInit = {}): 
   try {
     return JSON.parse(text);
   } catch {
-    throw new FetchError("bad-json", `not JSON: ${text.slice(0, 80)}`);
+    throw new FetchError("bad-json", "response is not JSON");
   }
 }
 
@@ -133,8 +143,12 @@ async function source<T>(gaps: Gap[], name: string, fn: () => Promise<T>): Promi
   }
 }
 
+/** Hyperliquid symbol shape (shared/schemas.ts CoinSchema): names reach the prompt, so anything else is dropped. */
+export const SYMBOL = /^([A-Za-z0-9]+:)?[A-Za-z0-9]{1,24}$/;
+const liveCtx = (c: AssetCtx) => !c.isDelisted && c.markPx > 0 && SYMBOL.test(c.name);
+
 export function summariseHl(ctxs: AssetCtx[]): HlAsset[] {
-  const live = ctxs.filter((c) => !c.isDelisted && c.markPx > 0);
+  const live = ctxs.filter(liveCtx);
   const rows = live.map((c) => ({
     name: c.name,
     mark: c.markPx,
@@ -202,7 +216,7 @@ async function yahoo(f: typeof fetch, sym: string): Promise<{ price: number | nu
   return { price: finite(res.meta.regularMarketPrice), closes: points };
 }
 
-const FngResponse = z.object({ data: z.array(z.object({ value: z.string(), value_classification: z.string(), timestamp: z.string() })).min(1) });
+const FngResponse = z.object({ data: z.array(z.object({ value: z.string(), value_classification: z.string().regex(/^[A-Za-z ]{1,24}$/), timestamp: z.string() })).min(1) });
 
 const StableRow = z.object({ date: z.string(), totalCirculatingUSD: z.object({ peggedUSD: z.number() }).passthrough() }).passthrough();
 
@@ -221,7 +235,8 @@ const HlcVector = z
     stale: z.boolean().optional(),
     regime: z
       .object({
-        state: z.string(),
+        // An identifier: it lands in the view file, the refresh reason and the brief header.
+        state: z.string().regex(/^[a-z0-9_]{1,40}$/i),
         since: num,
         allocation: num,
         momentum: num,
@@ -286,34 +301,14 @@ const MetricSummaryRow = z.object({ seriesId: z.string(), latest: z.number().nul
 export interface LabPulse {
   asOf: string;
   assets: Array<{ asset: string; lean: number; rules: Array<{ id: string; name: string; direction: string; firing: boolean; text: string }> }>;
-  warnings: string[];
-}
-export interface LabCatalogueEntry {
-  id: string;
-  name: string;
-  origin: string | null;
-  asset: string | null;
-  direction: string | null;
 }
 const LabPulseSchema = z.object({
   asOf: z.string(),
   assets: z.array(
     z.object({ asset: z.string(), lean: z.number(), rules: z.array(z.object({ id: z.string(), name: z.string(), direction: z.string(), firing: z.boolean(), text: z.string() }).passthrough()) }).passthrough(),
   ),
-  warnings: z.array(z.string()).default([]),
 });
-const LabCatalogueSchema = z.object({
-  entries: z.array(
-    z
-      .object({
-        id: z.string(),
-        name: z.string(),
-        origin: z.string().optional(),
-        rule: z.object({ asset: z.string().optional(), direction: z.string().optional() }).passthrough().optional(),
-      })
-      .passthrough(),
-  ),
-});
+const LabCatalogueSchema = z.object({ entries: z.array(z.object({ id: z.string() }).passthrough()) });
 
 async function labTool(f: typeof fetch, base: string, token: string, name: string, args: unknown): Promise<unknown> {
   const body = (await fetchJson(f, `${base}/api/lab/tools/${name}`, {
@@ -321,7 +316,7 @@ async function labTool(f: typeof fetch, base: string, token: string, name: strin
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "x-lab-source": "cli" },
     body: JSON.stringify(args),
   })) as { ok?: boolean; result?: unknown; error?: string };
-  if (body?.ok === false) throw new FetchError("tool-error", body.error ?? "lab tool failed");
+  if (body?.ok === false) throw new FetchError("tool-error", "lab tool returned ok: false");
   return body?.result;
 }
 
@@ -401,14 +396,7 @@ export async function collect(opts: CollectOptions): Promise<ContextPack> {
     const [pulse, catalogue] = await Promise.all([
       source(gaps, "lab.market_pulse", async () => LabPulseSchema.parse(await labTool(f, base, token, "lab_market_pulse", {}))),
       source(gaps, "lab.catalogue_list", async () =>
-        LabCatalogueSchema.parse(await labTool(f, base, token, "lab_catalogue_list", { live: false })).entries.map((e) => ({
-          id: e.id,
-          name: e.name,
-          origin: e.origin ?? null,
-          asset: e.rule?.asset ?? null,
-          direction: e.rule?.direction ?? null,
-        })),
-      ),
+        LabCatalogueSchema.parse(await labTool(f, base, token, "lab_catalogue_list", { live: false })).entries.map((e) => e.id)),
     ]);
     return { pulse, catalogue };
   })();
@@ -427,7 +415,7 @@ export async function collect(opts: CollectOptions): Promise<ContextPack> {
   }
 
   const marks: Record<string, number> = {};
-  for (const c of hl?.ctxs ?? []) if (!c.isDelisted && c.markPx > 0) marks[c.name] = c.markPx;
+  for (const c of hl?.ctxs ?? []) if (liveCtx(c)) marks[c.name] = c.markPx;
   const pick = <T,>(rows: Array<{ k: string; v: T | null }>) => Object.fromEntries(rows.filter((x) => x.v !== null).map((x) => [x.k, x.v as T]));
 
   return {

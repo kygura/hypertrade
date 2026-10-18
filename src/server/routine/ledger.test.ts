@@ -27,6 +27,7 @@ function setup(over: Partial<Setup> = {}): Setup {
     status: "watching",
     status_note: null,
     r_result: null,
+    triggered_at: null,
     created_at: iso(T0),
     updated_at: iso(T0),
     expires_at: iso(T0 + 10 * 24 * H),
@@ -49,13 +50,14 @@ describe("advanceSetup", () => {
   test("watching → triggered when price trades into the zone; target not counted on the trigger candle", () => {
     const s = advanceSetup(setup(), path([105, 112, 101, 104]), now);
     expect(s.status).toBe("triggered");
+    expect(s.triggered_at).toBe(iso(T0 + H));
     expect(s.r_result).toBeNull();
     expect(s.updated_at).toBe(now.toISOString());
   });
 
   test("triggered → target_hit records R", () => {
     const s = advanceSetup(setup(), path([105, 106, 101, 104], [104, 112, 103, 110]), now);
-    expect(s).toMatchObject({ status: "target_hit", r_result: 2 });
+    expect(s).toMatchObject({ status: "target_hit", r_result: 2, triggered_at: iso(T0 + H) });
     expect(s.status_note).toContain("first target 111");
   });
 
@@ -114,6 +116,9 @@ describe("ledger settle and stats", () => {
     expect(l.open.map((s) => s.id)).toEqual(["a"]);
     expect(l.closed.map((s) => s.id).sort()).toEqual(["b", "c", "d"]);
     expect(l.stats).toEqual({ closed_90d: 3, triggered_90d: 2, hit_rate: 0.5, avg_r: 0.5 });
+    // A setup that triggered but could not be marked still counts as triggered; avg R skips it.
+    const unmarked = setup({ id: "e", status: "cancelled", r_result: null, triggered_at: iso(T0) });
+    expect(ledgerStats([t("b", "target_hit", 2), unmarked])).toEqual({ closed_90d: 2, triggered_90d: 2, hit_rate: 0.5, avg_r: 2 });
     expect(ledgerStats([])).toEqual({ closed_90d: 0, triggered_90d: 0, hit_rate: null, avg_r: null });
   });
 });

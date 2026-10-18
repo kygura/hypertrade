@@ -96,6 +96,7 @@ const openBtc: Setup = {
   status: "watching",
   status_note: null,
   r_result: null,
+  triggered_at: null,
   created_at: iso(NOW.getTime() - 2 * DAY),
   updated_at: iso(NOW.getTime() - 10 * H),
   expires_at: iso(NOW.getTime() + 8 * DAY),
@@ -231,6 +232,33 @@ describe("runRoutine end to end", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]!.body).toMatchObject({ chat_id: "c" });
     expect(sent[0]!.body).not.toHaveProperty("parse_mode");
+  });
+
+  test("ROUTINE_LLM with no usable entry is an error, not a silent no-op", async () => {
+    const logs: string[] = [];
+    const r = await runRoutine({ mode: "pulse", dryRun: false, root }, deps(null, [], logs, { ROUTINE_LLM: "nope:x,moonshot:" }));
+    expect(r.exitCode).toBe(1);
+    expect(logs.at(-1)).toContain("no usable entry");
+  });
+
+  test("htf mode refreshes the view and gates nothing", async () => {
+    const stub = new StubProvider("kimi-k3", [{ emit: pulseReply }]);
+    const r = await runRoutine({ mode: "htf", dryRun: false, root }, deps(stub, [], []));
+    expect(r.rejected).toEqual([]);
+    expect(r.brief).toContain("htf mode: ignored 2 proposed setup(s)");
+    expect(stub.users[0]).toContain("new_setups must be []");
+    expect((await read("data/setups/htf.json")).stance).toBe("trend_long");
+    expect(LedgerSchema.parse(await read("data/setups/ledger.json")).open.map((s) => s.asset)).toEqual(["BTC"]);
+  });
+
+  test("a throw in the daily stage keeps the pulse outputs and exits 1", async () => {
+    // No data/marketstate/index.ts in this root: registering the date throws.
+    const stub = new StubProvider("kimi-k3", [{ emit: pulseReply }, { emit: dailyReply }]);
+    const r = await runRoutine({ mode: "daily", dryRun: false, root }, deps(stub, [], []));
+    expect(r.exitCode).toBe(1);
+    expect(r.brief).toContain("daily MarketState/Sectors not written");
+    expect(LedgerSchema.parse(await read("data/setups/ledger.json")).open.some((s) => s.asset === "SOL")).toBe(true);
+    expect((await read("data/setups/htf.json")).regime).toBe("risk_on");
   });
 
   test("dry run: model is called, nothing is written or sent", async () => {

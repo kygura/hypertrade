@@ -12,7 +12,7 @@ export const GATE = {
   minRr: 2,
   maxDays: { swing: 14, position: 45 },
   maxOpen: 5,
-  maxNew: { pulse: 2, daily: 3, htf: 0 },
+  maxNew: { pulse: 2, daily: 3 },
   maxCounterOpen: 1,
 } as const;
 
@@ -120,6 +120,7 @@ export function gateProposals(proposals: SetupProposal[], ctx: GateContext): { a
       status: "watching",
       status_note: null,
       r_result: null,
+      triggered_at: null,
       created_at: nowIso,
       updated_at: nowIso,
       expires_at: new Date(Date.parse(p.expires_at)).toISOString(),

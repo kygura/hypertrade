@@ -39,7 +39,7 @@ const ctx = (over: Partial<GateContext> = {}): GateContext => ({
   htf: view,
   ...over,
 });
-const openSetup = (over: Partial<Setup>): Setup => ({ ...(good() as unknown as Setup), id: "x", rr: 2, status: "watching", status_note: null, r_result: null, created_at: "", updated_at: "", ...over });
+const openSetup = (over: Partial<Setup>): Setup => ({ ...(good() as unknown as Setup), id: "x", rr: 2, status: "watching", status_note: null, r_result: null, triggered_at: null, created_at: "", updated_at: "", ...over });
 
 const rule = (p: SetupProposal, c: GateContext = ctx()) => gateProposals([p], c).rejected[0]?.rule ?? null;
 
@@ -82,7 +82,6 @@ describe("gate", () => {
     expect(three.accepted).toHaveLength(2);
     expect(three.rejected[0]!.rule).toBe("cap_new");
     expect(gateProposals([good(), goodShort(), sol], ctx({ mode: "daily" })).accepted).toHaveLength(3);
-    expect(gateProposals([good()], ctx({ mode: "htf" })).rejected[0]!.rule).toBe("cap_new");
     const five = ["A", "B", "C", "D", "E"].map((a) => openSetup({ asset: a }));
     expect(rule(good(), ctx({ open: five }))).toBe("cap_open");
     expect(gateProposals([good(), good()], ctx()).rejected[0]!.rule).toBe("duplicate");

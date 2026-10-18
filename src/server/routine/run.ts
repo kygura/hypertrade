@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { telegramApi } from "../desk/notify.js";
 import type { AnalystEnv } from "../llm/provider.js";
 import { collect, MAJORS, type ContextPack, type HlClient } from "./collect.js";
-import { gateProposals, type GateMode, type Rejection } from "./gate.js";
+import { gateProposals, type Rejection } from "./gate.js";
 import { htfFeatures, htfRefreshReason, type HtfFeatures, HTF_MAX_AGE_MS } from "./htf.js";
 import { advanceSetup, cancelSetup, emptyLedger, settleLedger } from "./ledger.js";
 import { anyProviderConfigured, callChain, DEFAULT_MAX_USD, envProviderFactory, MemoryLlmCache, parseChain, type ChainAttempt, type ProviderFactory } from "./llm.js";
@@ -141,14 +141,6 @@ async function notifyTelegram(env: RunDeps["env"], text: string, f: typeof fetch
   }
 }
 
-/** Rough line diff for --dry-run: lines that left and lines that arrived. */
-function lineDiff(before: string | null, after: string): string {
-  if (before === null) return after.split("\n").map((l) => `+ ${l}`).join("\n");
-  const a = new Set(before.split("\n"));
-  const b = new Set(after.split("\n"));
-  return [...[...a].filter((l) => !b.has(l)).map((l) => `- ${l}`), ...[...b].filter((l) => !a.has(l)).map((l) => `+ ${l}`)].join("\n") || "(no change)";
-}
-
 export function packSummary(pack: ContextPack, htf: Record<string, HtfFeatures | null>): string {
   const lines = [`context pack @ ${pack.asOf}`];
   lines.push(`  hyperliquid: ${pack.hl ? `${pack.hl.universeSize} live symbols, kept ${pack.hl.assets.length}` : "missing"}`);
@@ -189,8 +181,16 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
   const setupsDir = join(dataDir, "setups");
   const result: RunResult = { exitCode: 0, wrote: [], brief: "", notified: false, rejected: [], gaps: [] };
 
+  // The workflow names the daily commit after the run's own date, not a second clock read.
+  if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT, `run_date=${date}\n`).catch((e) => log(`GITHUB_OUTPUT: ${e instanceof Error ? e.message : String(e)}`));
+
   const chain = parseChain(env.ROUTINE_LLM);
   for (const e of chain.errors) log(`ROUTINE_LLM: ignored ${e}`);
+  if (!opts.collectOnly && !chain.entries.length) {
+    // A misconfigured chain is an error, unlike a missing key (exit 0 below).
+    log(`ROUTINE_LLM has no usable entry: ${chain.errors.join("; ")}`);
+    return { ...result, exitCode: 1 };
+  }
   const makeProvider = deps.makeProvider ?? envProviderFactory(env as AnalystEnv);
   if (!opts.collectOnly && !anyProviderConfigured(chain.entries, makeProvider)) {
     log(`no LLM provider configured (ROUTINE_LLM=${env.ROUTINE_LLM?.trim() || "default"}; set the key for one of its providers). Nothing to do.`);
@@ -229,7 +229,7 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
   const chainDeps = { entries: chain.entries, makeProvider, cache, maxUsd, now: deps.now };
   const attempts: ChainAttempt[] = [];
   const ledgerForPrompt: Ledger = { ...ledger0, open: advanced.filter((s) => s.status === "watching" || s.status === "triggered") };
-  const pulseSchema = pulseOutputSchema(refreshReason !== null);
+  const pulseSchema = pulseOutputSchema(refreshReason !== null, opts.mode !== "htf");
   const pulse = await callChain(chainDeps, {
     system: PULSE_SYSTEM,
     user: pulseUser({ pack, htf, view: view0, refreshReason, ledger: ledgerForPrompt, mode: opts.mode }),
@@ -260,11 +260,16 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
       view = { ...pulse.value.htf_view, generated_at: nowIso, valid_until: new Date(now.getTime() + HTF_MAX_AGE_MS).toISOString(), hl_cycles_state: pack.hlCycles?.regime?.state ?? null };
       regimeChanged = !view0 || view0.regime !== view.regime || view0.hl_cycles_state !== view.hl_cycles_state;
     }
-    const stillOpen = open.filter((s) => s.status === "watching" || s.status === "triggered");
-    const usedIds = new Set([...ledger0.open, ...ledger0.closed].map((s) => s.id));
-    const gated = gateProposals(pulse.value.new_setups, { mode: opts.mode as GateMode, now, marks: new Map(Object.entries(pack.marks)), open: stillOpen, usedIds, htf: view });
-    accepted = gated.accepted;
-    result.rejected = gated.rejected;
+    if (opts.mode === "htf") {
+      // htf mode refreshes the view only; the prompt asks for no setups, and any that come back are not gated.
+      if (pulse.value.new_setups.length) notes.push(`htf mode: ignored ${pulse.value.new_setups.length} proposed setup(s)`);
+    } else {
+      const stillOpen = open.filter((s) => s.status === "watching" || s.status === "triggered");
+      const usedIds = new Set([...ledger0.open, ...ledger0.closed].map((s) => s.id));
+      const gated = gateProposals(pulse.value.new_setups, { mode: opts.mode, now, marks: new Map(Object.entries(pack.marks)), open: stillOpen, usedIds, htf: view });
+      accepted = gated.accepted;
+      result.rejected = gated.rejected;
+    }
   } else {
     notes.push(`model call failed: ${pulse.error}`);
     result.exitCode = 1;
@@ -279,13 +284,19 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
   let dailyOk = false;
   let scorecard: string[] = [];
   if (opts.mode === "daily") {
-    const daily = await runDaily({ opts, env, pack, htf, view, date, nowIso, chainDeps, pulseBrief: pulse.ok ? pulse.value.brief : null, notes });
-    attempts.push(...daily.attempts);
-    if (daily.files) {
-      files.push(...daily.files);
-      scorecard = daily.scorecard;
-      dailyOk = true;
-    } else result.exitCode = 1;
+    // A throw here (bad index file, schema miss) must not cost the pulse outputs computed above.
+    try {
+      const daily = await runDaily({ opts, env, pack, htf, view, date, nowIso, chainDeps, pulseBrief: pulse.ok ? pulse.value.brief : null, notes });
+      attempts.push(...daily.attempts);
+      if (daily.files) {
+        files.push(...daily.files);
+        scorecard = daily.scorecard;
+        dailyOk = true;
+      } else result.exitCode = 1;
+    } catch (e) {
+      notes.push(`daily MarketState/Sectors not written: ${e instanceof Error ? e.message : String(e)}`);
+      result.exitCode = 1;
+    }
   }
 
   // 8. Brief.
@@ -296,7 +307,7 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
   if (statusChanges.length) body.push("", "Status changes:", ...statusChanges.map((s) => `- ${s.id}: ${s.status}${s.r_result !== null ? ` (${s.r_result}R)` : ""} — ${s.status_note}`));
   if (cancelled.length) body.push("", "Cancelled:", ...cancelled.map((s) => `- ${s.id}: ${s.status_note}${s.r_result !== null ? ` (${s.r_result}R)` : ""}`));
   if (accepted.length) body.push("", "New setups (conditional plans, not orders):", ...accepted.map((s) => `- ${fmtSetup(s)}`));
-  else if (pulse.ok) body.push("", `No new setups: ${pulse.value.stand_aside_reason ?? "none passed the gate"}`);
+  else if (pulse.ok && opts.mode !== "htf") body.push("", `No new setups: ${pulse.value.stand_aside_reason ?? "none passed the gate"}`);
   if (result.rejected.length) body.push("", "Dropped by the gate:", ...result.rejected.map((r) => `- ${r.asset} ${r.direction}: ${r.rule} (${r.detail})`));
   if (scorecard.length) body.push("", "Scorecard (last daily run):", ...scorecard);
   if (dailyOk) body.push("", `MarketState + Sectors written for ${date}.`);
@@ -310,15 +321,7 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
 
   // 9. Write.
   if (opts.dryRun) {
-    for (const file of files) {
-      let before: string | null = null;
-      try {
-        before = await readFile(file.path, "utf8");
-      } catch {
-        // new file
-      }
-      log(`--- would write ${file.path}\n${lineDiff(before, file.text)}`);
-    }
+    for (const file of files) log(`--- would write ${file.path}\n${file.text}`);
   } else {
     for (const file of files) {
       await mkdir(join(file.path, ".."), { recursive: true });
@@ -404,7 +407,7 @@ async function labSnapshot(labDir: string, pack: ContextPack, nowIso: string, da
   if (pulse && catalogue) {
     const snap: Record<string, { firing: boolean; asset: string; direction: string }> = {};
     for (const asset of pulse.assets) for (const rule of asset.rules) snap[rule.id] = { firing: rule.firing, asset: asset.asset, direction: rule.direction };
-    return { generated_at: nowIso, pulse: snap, catalogue_ids: catalogue.map((e) => e.id), hl_cycles };
+    return { generated_at: nowIso, pulse: snap, catalogue_ids: catalogue, hl_cycles };
   }
   const prevPath = await latestDated(labDir, date);
   const prev = ((prevPath ? await readJson(prevPath) : null) ?? {}) as { pulse?: unknown; catalogue_ids?: unknown };

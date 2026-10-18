@@ -37,6 +37,7 @@ const isOpen = (s: Setup) => s.status === "watching" || s.status === "triggered"
 export function advanceSetup(s: Setup, candles: Candle[], now: Date): Setup {
   if (!isOpen(s)) return s;
   const nowIso = now.toISOString();
+  let cur: Setup = s;
   const since = Date.parse(s.updated_at);
   const expires = Date.parse(s.expires_at);
   const long = s.direction === "long";
@@ -45,14 +46,13 @@ export function advanceSetup(s: Setup, candles: Candle[], now: Date): Setup {
   const hitsTarget = (c: Candle) => (long ? c.h >= s.targets[0]! : c.l <= s.targets[0]!);
   const openedBeyondInvalidation = (c: Candle) => (long ? c.o <= s.invalidation : c.o >= s.invalidation);
   const close = (status: Setup["status"], note: string, r: number | null, at: number): Setup => ({
-    ...s,
+    ...cur,
     status,
     status_note: note,
     r_result: r,
     updated_at: new Date(Math.min(at, now.getTime())).toISOString(),
   });
 
-  let cur: Setup = s;
   let lastClose: number | null = null;
   for (const c of [...candles].sort((a, b) => a.t - b.t)) {
     if (c.T <= since || c.t >= expires) continue;
@@ -60,10 +60,10 @@ export function advanceSetup(s: Setup, candles: Candle[], now: Date): Setup {
     const day = new Date(c.t).toISOString().slice(0, 16).replace("T", " ");
     if (cur.status === "watching") {
       if (hitsInvalidation(c)) {
-        if (touchesZone(c) && !openedBeyondInvalidation(c)) return close("invalidated", `filled and stopped in the same candle (${day} UTC)`, -1, c.T);
+        if (touchesZone(c) && !openedBeyondInvalidation(c)) return { ...close("invalidated", `filled and stopped in the same candle (${day} UTC)`, -1, c.T), triggered_at: new Date(c.t).toISOString() };
         return close("invalidated", `never filled: invalidation ${s.invalidation} traded first (${day} UTC)`, null, c.T);
       }
-      if (touchesZone(c)) cur = { ...cur, status: "triggered", status_note: `entry zone traded (${day} UTC)` };
+      if (touchesZone(c)) cur = { ...cur, status: "triggered", status_note: `entry zone traded (${day} UTC)`, triggered_at: new Date(c.t).toISOString() };
       continue;
     }
     // triggered
@@ -92,14 +92,16 @@ export function cancelSetup(s: Setup, reason: string, mark: number | null, now: 
   };
 }
 
+/** triggered = the entry zone traded (even when no R could be marked); avg R over those with a realised R. */
 export function ledgerStats(closed: Setup[]): LedgerStats {
-  const triggered = closed.filter((s) => s.r_result !== null);
+  const triggered = closed.filter((s) => s.triggered_at !== null || s.r_result !== null);
   const hits = triggered.filter((s) => s.status === "target_hit").length;
+  const withR = triggered.filter((s) => s.r_result !== null);
   return {
     closed_90d: closed.length,
     triggered_90d: triggered.length,
     hit_rate: triggered.length ? Math.round((hits / triggered.length) * 100) / 100 : null,
-    avg_r: triggered.length ? Math.round((triggered.reduce((a, s) => a + s.r_result!, 0) / triggered.length) * 100) / 100 : null,
+    avg_r: withR.length ? Math.round((withR.reduce((a, s) => a + s.r_result!, 0) / withR.length) * 100) / 100 : null,
   };
 }
 
