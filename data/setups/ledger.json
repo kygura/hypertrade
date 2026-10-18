@@ -1,0 +1,11 @@
+{
+  "updated_at": "2026-10-18T00:00:00.000Z",
+  "open": [],
+  "closed": [],
+  "stats": {
+    "closed_90d": 0,
+    "triggered_90d": 0,
+    "hit_rate": null,
+    "avg_r": null
+  }
+}
