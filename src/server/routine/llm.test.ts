@@ -56,7 +56,7 @@ describe("provider chain", () => {
     const bad = parseChain("nope:model,moonshot:kimi@wild,moonshot:");
     expect(bad.entries).toEqual([]);
     expect(bad.errors).toHaveLength(3);
-    expect(parseChain(undefined).entries.map((e) => e.raw)).toEqual(["moonshot:kimi-k3@high", "moonshot:kimi-k2.6"]);
+    expect(parseChain(undefined).entries.map((e) => e.raw)).toEqual(["anthropic:claude-opus-5-5@high", "moonshot:kimi-k3@high", "moonshot:kimi-k2.6"]);
   });
 
   test("falls through missing key, HTTP error and invalid output; stops at the first valid answer", async () => {

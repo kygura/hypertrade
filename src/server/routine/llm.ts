@@ -7,7 +7,8 @@ import { isProviderId, parseEffort, resolveChosenProvider, type AnalystEnv, type
 // tried in order on failure (docs/fallback-routine.md § Provider chain). No
 // database: the cache is in memory and doubles as the per-run spend meter.
 
-export const DEFAULT_CHAIN = "moonshot:kimi-k3@high,moonshot:kimi-k2.6";
+// Claude first; Kimi takes over when the Anthropic call fails (no credits, no key, outage).
+export const DEFAULT_CHAIN = "anthropic:claude-opus-5-5@high,moonshot:kimi-k3@high,moonshot:kimi-k2.6";
 export const DEFAULT_MAX_USD = 1;
 /** Large structured answers from thinking models take minutes, not the intel default of 60 s. */
 export const ROUTINE_DEADLINE_MS = 300_000;

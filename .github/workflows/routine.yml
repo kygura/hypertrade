@@ -1,6 +1,7 @@
 name: Routine (fallback)
 
 # Provider-agnostic setups pulse and daily brief (docs/fallback-routine.md).
+# Claude Opus 5.5 by default, Kimi when the Anthropic call fails; ROUTINE_LLM overrides.
 # pulse: every 4 h, writes data/setups/ (no redeploy: vercel.json ignoreCommand).
 # daily: 06:40 UTC, only when the repository variable ROUTINE_FALLBACK is
 # 'true'; writes MarketState, Sectors and the Lab snapshot too.
@@ -66,6 +67,8 @@ jobs:
         env:
           MODE: ${{ steps.mode.outputs.mode }}
           DRY: ${{ steps.mode.outputs.dry }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_WORKSPACE_ID: ${{ secrets.ANTHROPIC_WORKSPACE_ID }}
           MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

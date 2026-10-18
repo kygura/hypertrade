@@ -1,8 +1,9 @@
 # Fallback routine: provider-agnostic setups pulse and daily brief
 
 Status: spec for the GitHub Actions routine that runs without Claude Code.
-It reuses the app's own LLM layer (`src/server/llm/`, Kimi via the
-`moonshot` preset by default) and runs from `.github/workflows/routine.yml`.
+It reuses the app's own LLM layer (`src/server/llm/`: Claude Opus 5.5 by
+default, Kimi via the `moonshot` preset when the Anthropic call fails) and
+runs from `.github/workflows/routine.yml`.
 
 The Claude Code scheduled routine (`CLAUDE.md`) keeps working while it
 exists. This pipeline adds two things it never had: a frequent **setups
@@ -108,7 +109,7 @@ configured"), so a missing secret never turns the schedule red.
    - `stand_aside_reason` when `new_setups` is empty.
    - `brief`: short delta-first text.
    - In `daily` mode also MarketState + Sectors per `src/shared/schemas.ts`
-     and ROUTINE.md §c–e (separate call, `kimi-k3`).
+     and ROUTINE.md §c–e (separate call, same provider chain).
 6. **Gate** (`gate.ts`, pure, unit-tested) each proposal:
    - asset exists in the live HL universe;
    - the mark is not already beyond the invalidation level
@@ -183,7 +184,11 @@ HtfView {
 
 `ROUTINE_LLM` = comma-separated `provider:model[@effort]`, tried in order on
 failure (missing key, HTTP error, invalid output after retry). Default
-`moonshot:kimi-k3@high,moonshot:kimi-k2.6`. Any preset in
+`anthropic:claude-opus-5-5@high,moonshot:kimi-k3@high,moonshot:kimi-k2.6`:
+Claude first; an Anthropic account out of credits answers with an HTTP
+error, so the run moves on to Kimi without any change. To pin another
+model, set the `ROUTINE_LLM` repository variable (Settings → Secrets and
+variables → Actions → Variables); clearing it restores the default. Any preset in
 `src/server/llm/presets.ts` works (`openrouter:…`, `deepseek:…`,
 `openai-compatible:…`, `anthropic:…`). Spend cap per run:
 `ROUTINE_MAX_USD` (default 1.00), using `usageCost` from intel/llm.ts.
@@ -192,7 +197,8 @@ failure (missing key, HTTP error, invalid output after retry). Default
 
 | Name | Kind | Needed by |
 |---|---|---|
-| `MOONSHOT_API_KEY` (or any key the chain names) | secret | all modes |
+| `ANTHROPIC_API_KEY` | secret | default model (optional: without it the chain starts at Kimi) |
+| `MOONSHOT_API_KEY` (or any key the chain names) | secret | fallback; all modes when Anthropic is absent |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | secret | notifications (optional) |
 | `APP_URL`, `LAB_API_TOKEN` | secret | app metrics, sectors, Lab pulse (optional; without them the run uses public sources only and says so) |
 | `ROUTINE_LLM`, `ROUTINE_MAX_USD` | variable | optional overrides |
