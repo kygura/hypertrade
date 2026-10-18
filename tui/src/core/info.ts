@@ -18,6 +18,9 @@ export const BOOK_SIZES_USD = [10_000, 50_000, 250_000] as const;
 
 const APR = 24 * 365 * 100;
 
+/** A stop or TP counts as protecting a position only when it covers at least this share of it. */
+const MIN_COVERAGE = 0.5;
+
 // ─── markets ───
 
 const PredictedSchema = z.array(
@@ -155,9 +158,12 @@ export function accountFromRaw(address: string, state: unknown, orders: unknown,
       const size = Math.abs(p.szi);
       const side = p.szi >= 0 ? "long" : "short";
       const markPx = markOf.get(p.coin) ?? (size > 0 ? p.positionValue / size : 0);
-      const mine = protective.filter((o) => o.coin === p.coin);
-      const stopPx = mine.find((o) => o.tpsl === "sl")?.triggerPx ?? null;
-      const tpPx = mine.find((o) => o.tpsl === "tp")?.triggerPx ?? null;
+      // Only an order that closes this position counts: opposite side, and big enough (size 0 = whole position).
+      const closing = protective.filter((o) => o.coin === p.coin && o.side === (side === "long" ? "sell" : "buy") && (o.size === 0 || o.size >= size * MIN_COVERAGE));
+      const nearest = (kind: "sl" | "tp") =>
+        closing.filter((o) => o.tpsl === kind).sort((a, b) => Math.abs(a.triggerPx! - markPx) - Math.abs(b.triggerPx! - markPx))[0]?.triggerPx ?? null;
+      const stopPx = nearest("sl");
+      const tpPx = nearest("tp");
       const liqPx = p.liquidationPx ?? null;
       return {
         coin: p.coin,

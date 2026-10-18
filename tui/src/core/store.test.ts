@@ -31,6 +31,17 @@ class FakeTimers {
   };
   clearInterval = (h: unknown) => void this.fns.delete(h as number);
   now = () => this.clock;
+  once = new Map<number, { fn: () => void; at: number }>();
+  setTimeout = (fn: () => void, ms: number) => {
+    this.once.set(++this.n, { fn, at: this.clock + ms });
+    return this.n;
+  };
+  clearTimeout = (h: unknown) => void this.once.delete(h as number);
+  /** Advances the clock and runs due one-shot timers. */
+  advance(ms: number) {
+    this.clock += ms;
+    for (const [id, t] of [...this.once]) if (t.at <= this.clock) (this.once.delete(id), t.fn());
+  }
   /** Fires every interval whose period is `ms`. */
   tick(ms: number) {
     for (const t of [...this.fns.values()]) if (t.ms === ms) t.fn();
@@ -72,6 +83,8 @@ function setup(over: Partial<Config> = {}, info: InfoSource = new DemoInfo(() =>
     now: timers.now,
     setInterval: timers.setInterval,
     clearInterval: timers.clearInterval,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
     marketsEveryMs: 15_000,
     accountEveryMs: 10_000,
     ...extra,
@@ -162,29 +175,74 @@ describe("Store", () => {
     store.stop();
   });
 
-  test("mids survive the next poll", async () => {
+  test("a mid that predates the latest poll is superseded by it", async () => {
     const { store, sock, timers } = setup();
     await store.start();
     sock.mids({ BTC: "99" });
+    timers.advance(1_000);
     timers.tick(15_000);
     await flush();
-    expect(store.getState().markets.find((r) => r.coin === "BTC")!.midPx).toBe(99);
+    expect(store.getState().markets.find((r) => r.coin === "BTC")!.midPx).toBeNull();
+    timers.advance(500);
+    sock.mids({ BTC: "100" });
+    expect(store.getState().markets.find((r) => r.coin === "BTC")!.midPx).toBe(100);
     store.stop();
   });
 
-  test("mid-driven notifications are throttled to 4 per second but state stays current", async () => {
+  test("a mid older than 10 s is not applied by the next update", async () => {
     const { store, sock, timers } = setup();
     await store.start();
+    sock.mids({ BTC: "99" });
+    timers.advance(11_000);
+    sock.mids({ ETH: "5" });
+    const m = store.getState().markets;
+    expect(m.find((r) => r.coin === "BTC")!.midPx).toBeNull();
+    expect(m.find((r) => r.coin === "ETH")!.midPx).toBe(5);
+    store.stop();
+  });
+
+  test("mids are dropped when the socket leaves the open state", async () => {
+    const { store, sock } = setup();
+    await store.start();
+    sock.stateCb!("open");
+    sock.mids({ BTC: "99" });
+    expect(store.getState().markets[0]!.midPx).toBe(99);
+    sock.stateCb!("closed");
+    expect(store.getState().markets[0]!.midPx).toBeNull();
+    sock.stateCb!("open");
+    expect(store.getState().markets[0]!.midPx).toBeNull();
+    store.stop();
+  });
+
+  test("mid-driven notifications are throttled to 4 per second, with a trailing notify so the last update is delivered", async () => {
+    const { store, sock, timers } = setup();
+    await store.start();
+    timers.advance(1_000);
     let n = 0;
     store.subscribe(() => n++);
-    for (let i = 1; i <= 10; i++) {
-      timers.clock += 50; // 20 msgs/s
+    sock.mids({ BTC: "100" });
+    expect(n).toBe(1); // leading edge
+    for (let i = 1; i <= 4; i++) {
+      timers.advance(50);
       sock.mids({ BTC: String(100 + i) });
     }
-    expect(n).toBeGreaterThanOrEqual(1);
-    expect(n).toBeLessThanOrEqual(3); // 500 ms of messages
-    expect(store.getState().markets.find((r) => r.coin === "BTC")!.midPx).toBe(110);
+    expect(n).toBe(1); // throttled
+    expect(store.getState().markets[0]!.midPx).toBe(104); // state is current
+    timers.advance(100); // 250 ms since the leading notify
+    expect(n).toBe(2); // trailing edge
+    expect(timers.once.size).toBe(0);
     store.stop();
+  });
+
+  test("stop() cancels a pending trailing notify", async () => {
+    const { store, sock, timers } = setup();
+    await store.start();
+    timers.advance(1_000);
+    sock.mids({ BTC: "100" });
+    sock.mids({ BTC: "101" });
+    expect(timers.once.size).toBe(1);
+    store.stop();
+    expect(timers.once.size).toBe(0);
   });
 
   test("ws state follows the socket", async () => {
@@ -302,6 +360,31 @@ describe("Store", () => {
     expect(timers.fns.size).toBe(0);
     expect(sock.stopped).toBe(true);
     expect(store.getState().ws).toBe("closed");
+  });
+
+  test("a poll in flight when stop() is called neither patches nor alerts, and does not block a restart", async () => {
+    let release!: () => void;
+    let gated = true;
+    const gate = new Promise<void>((r) => (release = r));
+    const demo = new DemoInfo(() => T0);
+    const { store } = setup({}, { ...bind(demo), markets: async () => (gated ? (await gate, demo.markets()) : demo.markets()) });
+    let notified = 0;
+    const seen: Alert[] = [];
+    store.onAlert((a) => seen.push(a));
+    const started = store.start();
+    await flush();
+    store.stop();
+    store.subscribe(() => notified++);
+    release();
+    await started;
+    await flush();
+    expect(store.getState().markets).toEqual([]);
+    expect(notified).toBe(0);
+    expect(seen).toEqual([]);
+    gated = false;
+    await store.start(); // busy flags were reset, so the restart really loads
+    expect(store.getState().markets.length).toBeGreaterThan(30);
+    store.stop();
   });
 
   test("overlapping polls are skipped while one is in flight", async () => {

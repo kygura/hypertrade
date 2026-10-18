@@ -43,7 +43,8 @@ export async function buildCoinView(
     orEmpty(info.fundingHistory(market.coin, now - 30 * DAY)),
   ]);
 
-  const atr14 = atr(daily, 14);
+  // Completed bars only: today's partial candle would understate the range.
+  const atr14 = atr(daily.filter((c) => c.t + DAY <= now), 14);
   const diagnostics: string[] = [];
   let regime: string | null = null;
 

@@ -129,9 +129,40 @@ describe("accountFromRaw", () => {
   });
 
   test("a short's stop above mark is negative", () => {
-    const orders = [{ ...accountOrdersFx[0]!, coin: "ETH", side: "B", triggerPx: String(eth.markPx * 1.05), oid: 5 }];
+    const orders = [{ ...accountOrdersFx[0]!, coin: "ETH", side: "B", sz: "3.0", triggerPx: String(eth.markPx * 1.05), oid: 5 }];
     const e = accountFromRaw("0xabc", accountStateFx, orders, markets, 1).positions.find((p) => p.coin === "ETH")!;
     expect(e.stopDistPct!).toBeCloseTo(-5, 6);
+  });
+
+  describe("which trigger orders count as the stop / tp", () => {
+    const stop = (o: Record<string, unknown>) => ({ ...accountOrdersFx[0]!, coin: "ETH", side: "B", sz: "3.0", oid: 50, triggerPx: String(eth.markPx * 1.05), ...o });
+    const ethOf = (orders: unknown[]) => accountFromRaw("0xabc", accountStateFx, orders, markets, 1).positions.find((p) => p.coin === "ETH")!;
+
+    test("a stop on the wrong side for the position is ignored", () => {
+      expect(ethOf([stop({ side: "A" })]).stopPx).toBeNull(); // short needs a buy stop
+      const btcSell = accountFromRaw("0xabc", accountStateFx, [{ ...accountOrdersFx[0]!, side: "B" }], markets, 1).positions[0]!;
+      expect(btcSell.stopPx).toBeNull(); // long needs a sell stop
+    });
+
+    test("a stop covering under half the position is not 'the stop'", () => {
+      expect(ethOf([stop({ sz: "1.0" })]).stopPx).toBeNull();
+      expect(ethOf([stop({ sz: "1.5" })]).stopPx).not.toBeNull();
+    });
+
+    test("size 0 means the whole position", () => {
+      expect(ethOf([stop({ sz: "0.0" })]).stopPx).toBe(eth.markPx * 1.05);
+    });
+
+    test("picks the stop nearest to mark, and the tp nearest to mark", () => {
+      const e = ethOf([
+        stop({ oid: 1, triggerPx: String(eth.markPx * 1.2) }),
+        stop({ oid: 2, triggerPx: String(eth.markPx * 1.05) }),
+        stop({ oid: 3, orderType: "Take Profit Market", triggerPx: String(eth.markPx * 0.8) }),
+        stop({ oid: 4, orderType: "Take Profit Market", triggerPx: String(eth.markPx * 0.9) }),
+      ]);
+      expect(e.stopPx!).toBeCloseTo(eth.markPx * 1.05, 6);
+      expect(e.tpPx!).toBeCloseTo(eth.markPx * 0.9, 6);
+    });
   });
 
   test("falls back to positionValue / size when the coin is not in markets", () => {

@@ -21,11 +21,16 @@ export interface StoreOptions {
   now?: () => number;
   setInterval?: (fn: () => void, ms: number) => unknown;
   clearInterval?: (handle: unknown) => void;
+  /** One-shot timer for the trailing notification. Default: global setTimeout. */
+  setTimeout?: (fn: () => void, ms: number) => unknown;
+  clearTimeout?: (handle: unknown) => void;
   marketsEveryMs?: number;
   accountEveryMs?: number;
 }
 
 const MIN_NOTIFY_GAP_MS = 250;
+/** A WS mid older than this is not used, even if the socket still looks open. */
+const MID_TTL_MS = 10_000;
 const MidsMessage = z.object({ mids: z.record(z.string(), z.string()) });
 
 export const wsUrl = (network: Config["network"]) => (network === "mainnet" ? "wss://api.hyperliquid.xyz/ws" : "wss://api.hyperliquid-testnet.xyz/ws");
@@ -47,6 +52,8 @@ export class Store {
   private readonly now: () => number;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (h: unknown) => void;
+  private readonly setOnce: (fn: () => void, ms: number) => unknown;
+  private readonly clearOnce: (h: unknown) => void;
   private readonly makeSocket: (url: string) => SocketLike;
   private readonly marketsEveryMs: number;
   private readonly accountEveryMs: number;
@@ -54,8 +61,12 @@ export class Store {
   private readonly alertListeners = new Set<(a: Alert) => void>();
   private timers: unknown[] = [];
   private socket: SocketLike | null = null;
-  private mids = new Map<string, number>();
+  /** Latest WS mid per coin with its arrival time. */
+  private mids = new Map<string, { px: number; at: number }>();
   private lastNotify = 0;
+  private trailing: unknown = null;
+  /** Bumped by start() and stop(): a poll that began under an older generation drops its result. */
+  private gen = 0;
   private busy = { markets: false, account: false };
 
   constructor(o: StoreOptions) {
@@ -65,6 +76,8 @@ export class Store {
     this.now = o.now ?? Date.now;
     this.setTimer = o.setInterval ?? ((fn, ms) => setInterval(fn, ms));
     this.clearTimer = o.clearInterval ?? ((h) => clearInterval(h as ReturnType<typeof setInterval>));
+    this.setOnce = o.setTimeout ?? ((fn, ms) => setTimeout(fn, ms));
+    this.clearOnce = o.clearTimeout ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
     this.makeSocket = o.socket ?? ((url) => new HlSocket({ url }));
     this.marketsEveryMs = o.marketsEveryMs ?? 15_000;
     this.accountEveryMs = o.accountEveryMs ?? 10_000;
@@ -93,54 +106,65 @@ export class Store {
   /** Starts the polls and the socket, then resolves once the first markets and account reads have settled. */
   async start(): Promise<void> {
     if (this.timers.length) return;
+    const gen = ++this.gen;
     this.timers.push(
       this.setTimer(() => void this.refreshMarkets(), this.marketsEveryMs),
       this.setTimer(() => void this.refreshAccount(), this.accountEveryMs),
     );
     if (!this.cfg.demo) this.openSocket();
     await this.loadMarkets();
+    if (gen !== this.gen) return;
     await this.refreshAccount();
-    this.evaluate();
+    if (gen === this.gen) this.evaluate();
   }
 
   stop(): void {
+    this.gen++;
+    this.busy = { markets: false, account: false };
     for (const t of this.timers) this.clearTimer(t);
     this.timers = [];
+    this.clearTrailing();
     this.socket?.stop();
     this.socket = null;
-    if (!this.cfg.demo) this.patch({ ws: "closed" });
+    this.mids.clear();
+    if (!this.cfg.demo) this.patch({ ws: "closed", markets: this.withMids(this.state.markets) });
   }
 
   async refreshMarkets(): Promise<void> {
-    if (await this.loadMarkets()) this.evaluate();
+    const gen = this.gen;
+    if ((await this.loadMarkets()) && gen === this.gen) this.evaluate();
   }
 
   async refreshAccount(): Promise<void> {
     const address = this.cfg.account ?? (this.cfg.demo ? demoAccountAddress : null);
     if (!address || this.busy.account) return;
+    const gen = this.gen;
     this.busy.account = true;
     try {
       const account = await this.info.account(address, this.state.markets);
-      this.patch({ account, accountError: null });
+      if (gen === this.gen) this.patch({ account, accountError: null });
     } catch (e) {
-      this.patch({ accountError: errMsg(e) });
+      if (gen === this.gen) this.patch({ accountError: errMsg(e) });
     } finally {
-      this.busy.account = false;
+      if (gen === this.gen) this.busy.account = false;
     }
   }
 
   private async loadMarkets(): Promise<boolean> {
     if (this.busy.markets) return false;
+    const gen = this.gen;
     this.busy.markets = true;
     try {
       const rows = await this.info.markets();
-      this.patch({ markets: this.withMids(rows), marketsAt: this.now(), marketsError: null });
+      if (gen !== this.gen) return false;
+      const at = this.now();
+      this.patch({ markets: this.withMids(rows, at), marketsAt: at, marketsError: null });
       return true;
     } catch (e) {
-      this.patch({ marketsError: errMsg(e) }); // keep the last markets; the status bar shows their age
+      if (gen === this.gen) this.patch({ marketsError: errMsg(e) }); // keep the last markets; the status bar shows their age
       return false;
     } finally {
-      this.busy.markets = false;
+      if (gen === this.gen) this.busy.markets = false;
     }
   }
 
@@ -156,11 +180,16 @@ export class Store {
     for (const a of fresh) for (const fn of this.alertListeners) safely(() => fn(a));
   }
 
-  private withMids(rows: MarketRow[]): MarketRow[] {
-    if (!this.mids.size) return rows;
+  /**
+   * midPx is a WS mid only while it is fresh (within MID_TTL_MS) and newer than
+   * the last poll; otherwise null, so nothing prices off a stale mid.
+   */
+  private withMids(rows: MarketRow[], marketsAt: number | null = this.state.marketsAt): MarketRow[] {
+    const now = this.now();
     return rows.map((m) => {
       const mid = this.mids.get(m.coin);
-      return mid == null || m.midPx === mid ? m : { ...m, midPx: mid };
+      const px = mid && now - mid.at <= MID_TTL_MS && (marketsAt == null || mid.at >= marketsAt) ? mid.px : null;
+      return m.midPx === px ? m : { ...m, midPx: px };
     });
   }
 
@@ -168,28 +197,56 @@ export class Store {
     const sock = this.makeSocket(wsUrl(this.cfg.network));
     this.socket = sock;
     this.patch({ ws: "connecting" });
-    sock.onState((s) => this.patch({ ws: s satisfies WsState }));
+    sock.onState((s) => {
+      if (this.socket !== sock) return;
+      if (s !== "open") this.mids.clear(); // nothing live behind these any more
+      this.patch({ ws: s satisfies WsState, ...(s !== "open" ? { markets: this.withMids(this.state.markets) } : {}) });
+    });
     sock.subscribe({ type: "allMids" }, (data) => {
+      if (this.socket !== sock) return;
       const msg = MidsMessage.safeParse(data);
       if (!msg.success) return;
+      const at = this.now();
       let changed = false;
       for (const [coin, px] of Object.entries(msg.data.mids)) {
         const v = Number(px);
-        if (Number.isFinite(v) && v > 0 && this.mids.get(coin) !== v) {
-          this.mids.set(coin, v);
-          changed = true;
-        }
+        if (!Number.isFinite(v) || v <= 0) continue;
+        if (this.mids.get(coin)?.px !== v) changed = true;
+        this.mids.set(coin, { px: v, at });
       }
       if (changed) this.patch({ markets: this.withMids(this.state.markets) }, true);
     });
   }
 
-  /** Replace state and tell subscribers; `throttle` caps notifications at ~4/s (the state itself always updates). */
+  /**
+   * Replace state and tell subscribers. `throttle` caps notifications at ~4/s;
+   * a throttled update schedules one trailing notification so the last one is
+   * never lost. The state itself always updates immediately.
+   */
   private patch(p: Partial<AppState>, throttle = false): void {
     this.state = { ...this.state, ...p };
     const t = this.now();
-    if (throttle && t - this.lastNotify < MIN_NOTIFY_GAP_MS) return;
-    this.lastNotify = t;
+    const wait = MIN_NOTIFY_GAP_MS - (t - this.lastNotify);
+    if (throttle && wait > 0) {
+      if (this.trailing == null) {
+        this.trailing = this.setOnce(() => {
+          this.trailing = null;
+          this.notify();
+        }, wait);
+      }
+      return;
+    }
+    this.clearTrailing();
+    this.notify();
+  }
+
+  private notify(): void {
+    this.lastNotify = this.now();
     for (const fn of this.listeners) safely(fn);
+  }
+
+  private clearTrailing(): void {
+    if (this.trailing != null) this.clearOnce(this.trailing);
+    this.trailing = null;
   }
 }

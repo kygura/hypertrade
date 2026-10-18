@@ -21,6 +21,23 @@ describe("buildCoinView", () => {
     expect(v.position?.coin).toBe("BTC");
   });
 
+  test("ATR ignores the still-forming daily candle", async () => {
+    const day = 24 * 3_600_000;
+    const bars = await demo.candles("BTC", "1d", 0);
+    const forming = bars[bars.length - 1]!;
+    expect(forming.t + day).toBeGreaterThan(NOW);
+    const spiky: InfoSource = {
+      ...(demo as InfoSource),
+      markets: () => demo.markets(),
+      account: (a, m) => demo.account(a, m),
+      book: (c) => demo.book(c),
+      fundingHistory: (c, s) => demo.fundingHistory(c, s),
+      candles: async (c, i, s) => (i === "1d" ? bars.map((b) => (b === forming ? { ...b, h: b.h * 3 } : b)) : demo.candles(c, i, s)),
+    };
+    const base = await buildCoinView(demo, markets[0]!, null, NOW);
+    expect((await buildCoinView(spiky, markets[0]!, null, NOW)).atr14).toBe(base.atr14);
+  });
+
   test("no position, no account", async () => {
     expect((await buildCoinView(demo, markets[0]!, null, NOW)).position).toBeNull();
     expect((await buildCoinView(demo, markets[2]!, account, NOW)).position).toBeNull();
