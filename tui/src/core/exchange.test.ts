@@ -44,12 +44,22 @@ const openTicket = (over: Partial<OrderIntent> = {}, config = cfg()) => buildTic
 
 type Posted = { url: string; body: { action: any; nonce: number; signature: { r: string; s: string; v: number }; vaultAddress: string | null; expiresAfter: null } };
 
-/** Fake /exchange: records posts, verifies every signature against KEY, answers from a script. */
-function fakeExchange(responses: unknown[], isMainnet = false) {
+type InfoReply = (body: { type: string; [k: string]: unknown }) => unknown;
+/** Fake /info for flatten and close reads: a fresh mid of 3990 and a flat account, unless overridden. */
+const defaultInfo: InfoReply = (b) => (b.type === "allMids" ? { ETH: "3990", BTC: "100000" } : b.type === "clearinghouseState" ? { assetPositions: [] } : null);
+
+/** Fake HL API: records /exchange posts (verifying every signature against KEY) and /info reads; answers from scripts. */
+function fakeExchange(responses: unknown[], isMainnet = false, info: InfoReply = defaultInfo) {
   const posted: Posted[] = [];
+  const infos: Array<{ type: string; [k: string]: unknown }> = [];
   const queue = [...responses];
   const fetchFn = (async (url: string, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body));
+    if (String(url).endsWith("/info")) {
+      infos.push(body);
+      const reply = info(body);
+      return reply == null ? new Response("unavailable", { status: 503 }) : new Response(JSON.stringify(reply), { status: 200 });
+    }
     const digest = agentDigest(actionHash(body.action, body.vaultAddress, body.nonce, null), isMainnet);
     const sig = new secp256k1.Signature(BigInt(body.signature.r), BigInt(body.signature.s), body.signature.v - 27);
     expect(`0x${bytesToHex(keccak_256(sig.recoverPublicKey(digest).toBytes(false).slice(1)).slice(-20))}`).toBe(addressOf(KEY));
@@ -57,7 +67,7 @@ function fakeExchange(responses: unknown[], isMainnet = false) {
     const next = queue.shift() ?? { status: "err", response: "unscripted" };
     return new Response(JSON.stringify(next), { status: 200 });
   }) as unknown as typeof fetch;
-  return { fetchFn, posted };
+  return { fetchFn, posted, infos };
 }
 const okDefault = { status: "ok", response: { type: "default" } };
 const orderOk = (...statuses: unknown[]) => ({ status: "ok", response: { type: "order", data: { statuses } } });
@@ -89,6 +99,13 @@ describe("action builders", () => {
     const lim = await openTicket({ entry: { type: "limit", px: 3990 } });
     const [, l] = buildOpenActions(lim, ETH, 0.01);
     expect(l.orders[0]).toMatchObject({ b: true, p: "3990", r: false, t: { limit: { tif: "Gtc" } } });
+  });
+
+  test("the wire carries exactly the ticket's venue-rounded prices", async () => {
+    const t = await buildTicket({ kind: "open", intent: intent({ entry: { type: "limit", px: 3990.04 }, stop: { type: "price", px: 3912.345 }, target: 4300.06 }), riskPct: 0.5 }, deps());
+    const [, o] = buildOpenActions(t, ETH, 0.01);
+    expect([o.orders[0]!.p, o.orders[1]!.t.trigger?.triggerPx, o.orders[2]!.t.trigger?.triggerPx]).toEqual([String(t.entryPx), String(t.stopPx), String(t.tpPx)]);
+    expect([t.entryPx, t.stopPx, t.tpPx]).toEqual([3990, 3912.3, 4300.1]);
   });
 
   test("open builder refuses a mismatched market and a non-open ticket", async () => {
@@ -168,18 +185,44 @@ describe("createExchange", () => {
     const r = await createExchange(cfg(), KEY, { fetchFn: fx.fetchFn, now: clock() })!.send(t, MARKETS);
     expect(r.ok).toBe(false);
     expect(r.errors).toContain("stop order rejected (Invalid TP/SL price.)");
-    expect(r.lines).toContain("flattened 0.625 ETH @ 3,999 (oid 4)");
+    expect(r.lines).toContain("flattened 0.625 ETH @ 3,999 (oid 4, ±2% band)");
+    // anchored to the fresh mid 3990, 2 × 1% through it
     const flat = fx.posted[2]!.body.action;
-    expect(flat).toEqual({ type: "order", orders: [{ a: 1, b: false, p: "3920", s: "0.625", r: true, t: { limit: { tif: "Ioc" } } }], grouping: "na" });
+    expect(flat).toEqual({ type: "order", orders: [{ a: 1, b: false, p: "3910.2", s: "0.625", r: true, t: { limit: { tif: "Ioc" } } }], grouping: "na" });
+    expect(fx.infos[0]).toEqual({ type: "allMids" });
     expect(fx.posted[3]!.body.action).toEqual({ type: "cancel", cancels: [{ a: 1, o: 3 }] });
   });
 
-  test("a failed flatten is reported loudly", async () => {
+  test("an unfilled flatten is retried once with a wider band, then the TP is cancelled", async () => {
     const t = await openTicket();
-    const fx = fakeExchange([okDefault, orderOk({ filled: { totalSz: "0.625", avgPx: "4000", oid: 1 } }, { error: "bad stop" }, { error: "bad tp" }), orderOk({ error: "no liquidity" })]);
+    const fx = fakeExchange([
+      okDefault,
+      orderOk({ filled: { totalSz: "0.625", avgPx: "4000", oid: 1 } }, { error: "bad stop" }, { resting: { oid: 3 } }),
+      orderOk({ error: "no liquidity" }),
+      orderOk({ filled: { totalSz: "0.625", avgPx: "3950", oid: 5 } }),
+      cancelOk("success"),
+    ]);
     const r = await createExchange(cfg(), KEY, { fetchFn: fx.fetchFn, now: clock() })!.send(t, MARKETS);
     expect(r.ok).toBe(false);
-    expect(r.errors.join("\n")).toContain("FLATTEN FAILED (no liquidity): 0.625 ETH is open WITHOUT a stop");
+    expect(fx.posted[3]!.body.action.orders[0]).toMatchObject({ b: false, r: true, s: "0.625", p: "3790.5" }); // 3990 × 0.95
+    expect(r.lines).toContain("flattened 0.625 ETH @ 3,950 (oid 5, ±5% band)");
+    expect(fx.posted.at(-1)!.body.action).toEqual({ type: "cancel", cancels: [{ a: 1, o: 3 }] });
+    expect(r.errors.join(" ")).not.toContain("FLATTEN FAILED");
+  });
+
+  test("a failed flatten is reported loudly and keeps the take-profit; no fresh mid falls back to the fill price", async () => {
+    const t = await openTicket();
+    const fx = fakeExchange(
+      [okDefault, orderOk({ filled: { totalSz: "0.625", avgPx: "4000", oid: 1 } }, { error: "bad stop" }, { resting: { oid: 3 } }), orderOk({ error: "no liquidity" }), orderOk({ error: "no liquidity" })],
+      false,
+      () => null,
+    );
+    const r = await createExchange(cfg(), KEY, { fetchFn: fx.fetchFn, now: clock() })!.send(t, MARKETS);
+    expect(r.ok).toBe(false);
+    expect(r.errors.at(-1)).toBe("FLATTEN FAILED: 0.625 of 0.625 ETH is open WITHOUT a stop; take-profit kept: act now");
+    expect(fx.posted.map((p) => p.body.action.type)).toEqual(["updateLeverage", "order", "order", "order"]); // no cancel
+    expect(fx.posted[2]!.body.action.orders[0].p).toBe("3920"); // fill 4000 × 0.98
+    expect(fx.infos.map((i) => i.type)).toEqual(["allMids", "l2Book", "allMids", "l2Book"]);
   });
 
   test("a resting limit entry whose stop is rejected is cancelled", async () => {
@@ -209,14 +252,36 @@ describe("createExchange", () => {
     expect(r3.errors[0]).toContain("nothing was ordered");
   });
 
-  test("full close fills, then cancels leftover triggers", async () => {
+  test("full close fills, the venue confirms flat, then leftover triggers are cancelled", async () => {
     const t = await buildTicket({ kind: "close", coin: "ETH", pct: 100 }, deps(cfg(), true));
     const fx = fakeExchange([orderOk({ filled: { totalSz: "0.6255", avgPx: "3998", oid: 30 } }), cancelOk("success", { error: "Order was never placed, already canceled, or filled." })]);
     const r = await createExchange(cfg(), KEY, { fetchFn: fx.fetchFn, now: clock() })!.send(t, ETH);
     expect(r.ok).toBe(true);
+    expect(fx.infos).toEqual([{ type: "clearinghouseState", user: MASTER }]);
     expect(r.lines).toEqual(["closed 0.6255 ETH @ 3,998 (oid 30)", "cancelled leftover trigger oid 11"]);
     expect(r.errors[0]).toContain("could not cancel leftover trigger oid 12");
     expect(fx.posted[1]!.body.action).toEqual({ type: "cancel", cancels: [{ a: 1, o: 11 }, { a: 1, o: 12 }] });
+  });
+
+  test("full close: position still open or unreadable → triggers kept; a partial fill is not ok", async () => {
+    const t = await buildTicket({ kind: "close", coin: "ETH", pct: 100 }, deps(cfg(), true));
+    const open = fakeExchange([orderOk({ filled: { totalSz: "0.6255", avgPx: "3998", oid: 30 } })], false, (b) => (b.type === "clearinghouseState" ? { assetPositions: [{ position: { coin: "ETH", szi: "0.1" } }] } : null));
+    const r1 = await createExchange(cfg(), KEY, { fetchFn: open.fetchFn, now: clock() })!.send(t, ETH);
+    expect(r1.ok).toBe(true);
+    expect(r1.lines.at(-1)).toBe("ETH: position remains, triggers kept (0.1 still open)");
+    expect(open.posted).toHaveLength(1);
+
+    const down = fakeExchange([orderOk({ filled: { totalSz: "0.6255", avgPx: "3998", oid: 30 } })], false, () => null);
+    const r2 = await createExchange(cfg(), KEY, { fetchFn: down.fetchFn, now: clock() })!.send(t, ETH);
+    expect(r2.errors[0]).toContain("could not confirm ETH is flat");
+    expect(r2.errors[0]).toContain("triggers kept");
+    expect(down.posted).toHaveLength(1);
+
+    const partial = fakeExchange([orderOk({ filled: { totalSz: "0.4", avgPx: "3998", oid: 31 } })], false, (b) => (b.type === "clearinghouseState" ? { assetPositions: [{ position: { coin: "ETH", szi: "0.2255" } }] } : null));
+    const r3 = await createExchange(cfg(), KEY, { fetchFn: partial.fetchFn, now: clock() })!.send(t, ETH);
+    expect(r3.ok).toBe(false);
+    expect(r3.errors).toContain("partial close: 0.4 of 0.6255 ETH filled");
+    expect(r3.lines.at(-1)).toBe("ETH: position remains, triggers kept (0.2255 still open)");
   });
 
   test("stop: new stop first, then the old one cancelled; a rejected new stop keeps the old", async () => {
@@ -257,9 +322,16 @@ describe("send refuses before signing", () => {
     expect(await refuse({ ...(await openTicket()), canSend: false })).toContain("ticket is blocked");
   });
 
-  test("notional over the cap even if the ticket claims canSend", async () => {
+  test("notional over the cap even if the ticket claims canSend; the cap includes the IOC band", async () => {
     const t = await openTicket();
     expect(await refuse(t, { config: cfg({ HT_MAX_NOTIONAL_USD: "1000" }) })).toContain("exceeds HT_MAX_NOTIONAL_USD");
+    // 0.625 × 4000 = 2,500 at the mark, 2,525 at mark + 1%
+    expect(await refuse(t, { config: cfg({ HT_MAX_NOTIONAL_USD: "2520" }) })).toContain("notional $2525.00 exceeds");
+  });
+
+  test("a take-profit no longer on the profit side of the mark", async () => {
+    const t = await openTicket();
+    expect(await refuse({ ...t, tpPx: 3990 })).toContain("take-profit 3,990 is on the wrong side");
   });
 
   test("network mismatch, stale ticket, mark drift, wrong-side stop", async () => {

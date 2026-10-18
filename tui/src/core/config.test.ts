@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { addressOf } from "../../../src/server/desk/hl/signing.js";
-import { DEMO_ACCOUNT, governorLimits, loadConfig } from "./config.js";
+import { API_BASE, DEMO_ACCOUNT, governorLimits, loadConfig, verifyAgent } from "./config.js";
 
 const KEY = "0x0123456789012345678901234567890123456789012345678901234567890123";
 const MASTER = "0x1111111111111111111111111111111111111111";
@@ -123,5 +123,71 @@ describe("loadConfig", () => {
     expect(half.config.lab).toBeNull();
     expect(half.warnings.join(" ")).toContain("LAB_URL");
     expect(half.warnings.join(" ")).not.toContain("tok-secret");
+  });
+});
+
+describe("LAB_URL transport", () => {
+  test("https, or http only to localhost; otherwise the token is never used", () => {
+    const env = (url: string) => loadConfig({ LAB_URL: url, LAB_API_TOKEN: "tok-secret" }, []);
+    expect(env("https://lab.example.com").config.lab?.url).toBe("https://lab.example.com");
+    expect(env("http://localhost:3000").config.lab?.url).toBe("http://localhost:3000");
+    expect(env("http://127.0.0.1:8080/").config.lab?.url).toBe("http://127.0.0.1:8080");
+    for (const bad of ["http://lab.example.com", "http://localhost.evil.com", "ftp://lab.example.com", "lab.example.com"]) {
+      const r = env(bad);
+      expect(r.config.lab).toBeNull();
+      expect(r.warnings).toEqual(["LAB_URL must be https:// (http only for localhost): Lab pulse disabled"]);
+    }
+  });
+});
+
+describe("verifyAgent", () => {
+  const AGENT = addressOf(KEY);
+  const base = () => loadConfig({ HT_AGENT_KEY: KEY, HT_ACCOUNT: MASTER }, []).config;
+  function fake(reply: unknown, status = 200) {
+    const bodies: Array<{ url: string; body: unknown }> = [];
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      bodies.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      if (reply instanceof Error) throw reply;
+      return new Response(JSON.stringify(reply), { status });
+    }) as unknown as typeof fetch;
+    return { fetchFn, bodies };
+  }
+
+  test("an approved agent of HT_ACCOUNT keeps trading", async () => {
+    const f = fake({ role: "agent", data: { user: MASTER.toUpperCase().replace("0X", "0x") } });
+    const r = await verifyAgent(base(), KEY, f.fetchFn);
+    expect(r.config.canTrade).toBe(true);
+    expect(r.warnings).toEqual([]);
+    expect(f.bodies).toEqual([{ url: `${API_BASE.testnet}/info`, body: { type: "userRole", user: AGENT } }]);
+  });
+
+  test("another master, another role or an HTTP error turns trading off", async () => {
+    for (const reply of [{ role: "agent", data: { user: "0x2222222222222222222222222222222222222222" } }, { role: "user" }, { role: "missing" }, null]) {
+      const r = await verifyAgent(base(), KEY, fake(reply).fetchFn);
+      expect(r.config.canTrade).toBe(false);
+      expect(r.warnings).toEqual(["key is not an approved agent for HT_ACCOUNT: read-only"]);
+    }
+    const http = await verifyAgent(base(), KEY, fake({}, 500).fetchFn);
+    expect(http.config.canTrade).toBe(false);
+    expect(http.warnings[0]).toContain("HTTP 500");
+  });
+
+  test("a network error turns trading off without leaking the key", async () => {
+    const r = await verifyAgent(base(), KEY, fake(new Error("connect ECONNREFUSED")).fetchFn);
+    expect(r.config.canTrade).toBe(false);
+    expect(r.warnings[0]).toContain("could not verify");
+    expect(leaks(r.warnings.join(" "), KEY)).toBe(false);
+  });
+
+  test("no call when the key is its own account, read-only or demo; mainnet asks mainnet", async () => {
+    const own = fake({ role: "user" });
+    const self = loadConfig({ HT_AGENT_KEY: KEY }, []).config;
+    expect((await verifyAgent(self, KEY, own.fetchFn)).config.canTrade).toBe(true);
+    expect((await verifyAgent(loadConfig({ HT_ACCOUNT: MASTER }, []).config, null, own.fetchFn)).config.canTrade).toBe(false);
+    expect((await verifyAgent(loadConfig({}, ["--demo"]).config, KEY, own.fetchFn)).warnings).toEqual([]);
+    expect(own.bodies).toHaveLength(0);
+    const main = fake({ role: "agent", data: { user: MASTER } });
+    await verifyAgent(loadConfig({ HT_AGENT_KEY: KEY, HT_ACCOUNT: MASTER, HT_NETWORK: "mainnet" }, []).config, KEY, main.fetchFn);
+    expect(main.bodies[0]!.url).toBe(`${API_BASE.mainnet}/info`);
   });
 });

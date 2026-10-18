@@ -77,10 +77,13 @@ function book(coin: string, mid: number): BookView {
   };
 }
 
-function fakeInfo(calls: string[] = []): InfoSource {
+function fakeInfo(calls: string[] = [], acct: () => AccountSnapshot = () => account()): InfoSource {
   return {
     markets: async () => markets(),
-    account: async () => account(),
+    account: async (address) => {
+      calls.push(`account ${address}`);
+      return acct();
+    },
     book: async (coin) => {
       calls.push(`book ${coin}`);
       return book(coin, coin === "ETH" ? 4000 : 100_000);
@@ -94,12 +97,14 @@ function fakeInfo(calls: string[] = []): InfoSource {
 }
 
 const tradeEnv = { HT_AGENT_KEY: KEY, HT_ACCOUNT: MASTER, HT_MAX_NOTIONAL_USD: "5000" };
+/** The fake info source answers with the same account the deps hold, unless `info` is given. */
 function deps(o: Partial<TicketDeps> & { env?: Record<string, string> } = {}): TicketDeps {
+  const acct = o.account === undefined ? account() : o.account;
   return {
     config: loadConfig(o.env ?? tradeEnv, []).config,
-    info: o.info ?? fakeInfo(),
+    info: o.info ?? fakeInfo([], () => acct ?? account()),
     markets: o.markets ?? markets(),
-    account: o.account === undefined ? account() : o.account,
+    account: acct,
     now: () => NOW,
     id: () => "t-test",
   };
@@ -174,7 +179,7 @@ describe("open tickets", () => {
     const t = await buildTicket({ kind: "open", intent: intent(), riskPct: 0.5 }, deps({ env: { HT_AGENT_KEY: KEY, HT_ACCOUNT: MASTER } }));
     expect(t.verdict?.approved).toBe(true);
     expect(t.canSend).toBe(false);
-    expect(t.blockers).toEqual(["notional $2,500.00 exceeds HT_MAX_NOTIONAL_USD $1,000.00"]);
+    expect(t.blockers).toEqual(["notional $2,525.00 (mark + 1% IOC band) exceeds HT_MAX_NOTIONAL_USD $1,000.00"]);
   });
 
   test("read-only and demo still quote but cannot send", async () => {
@@ -285,7 +290,7 @@ describe("requote", () => {
   });
 
   test("a blocker change (cap now exceeded) is a change", async () => {
-    const t = await buildTicket({ kind: "open", intent: intent({ size: { usd: 999 } }) }, deps({ env: { HT_AGENT_KEY: KEY, HT_ACCOUNT: MASTER } }));
+    const t = await buildTicket({ kind: "open", intent: intent({ size: { usd: 900 } }) }, deps({ env: { HT_AGENT_KEY: KEY, HT_ACCOUNT: MASTER } }));
     expect(t.canSend).toBe(true);
     const r = await requote(t, deps({ env: { HT_AGENT_KEY: KEY, HT_ACCOUNT: MASTER, HT_MAX_NOTIONAL_USD: "500" } }));
     expect(r.kind).toBe("changed");
@@ -296,8 +301,104 @@ describe("requote", () => {
     const acc = account({ positions: [ethLong()], orders: [order(11, "sl", 3800)] });
     const t = await buildTicket({ kind: "stop", coin: "ETH", px: 3900 }, deps({ account: acc }));
     const fresh = account({ positions: [ethLong()], orders: [order(21, "sl", 3850)] });
-    const r = await requote(t, deps({ account: fresh }));
+    const r = await requote(t, { ...deps({ account: acc }), info: fakeInfo([], () => fresh) });
     expect(r.kind).toBe("same");
     expect((r.ticket.action as { replaceOids?: number[] }).replaceOids).toEqual([21]);
+  });
+});
+
+describe("review fixes", () => {
+  test("ticket ids carry 64 random bits", async () => {
+    const d = deps();
+    delete d.id;
+    const a = await buildTicket({ kind: "open", intent: intent(), riskPct: 0.5 }, d);
+    const b = await buildTicket({ kind: "open", intent: intent(), riskPct: 0.5 }, d);
+    expect(a.id).toMatch(/^t-[0-9a-f]{16}$/);
+    expect(a.id).not.toBe(b.id);
+  });
+
+  test("the notional cap is checked at the far edge of the IOC band", async () => {
+    // $990 → 0.2475 ETH: $999.90 at mark + 1%, passes. $995 → 0.2487 ETH: $994.80 at the mark but $1,004.75 at mark + 1%, blocked.
+    const ok = await buildTicket({ kind: "open", intent: intent({ size: { usd: 990 } }) }, deps({ env: { HT_AGENT_KEY: KEY, HT_ACCOUNT: MASTER } }));
+    expect(ok.canSend).toBe(true);
+    const over = await buildTicket({ kind: "open", intent: intent({ size: { usd: 995 } }) }, deps({ env: { HT_AGENT_KEY: KEY, HT_ACCOUNT: MASTER } }));
+    expect(over.notionalUsd).toBe(994.8);
+    expect(over.blockers[0]).toContain("(mark + 1% IOC band) exceeds HT_MAX_NOTIONAL_USD");
+  });
+
+  test("a limit more than the slippage band through the mark is blocked; inside the band it only warns", async () => {
+    const far = await buildTicket({ kind: "open", intent: intent({ entry: { type: "limit", px: 4050 }, target: 4400 }), riskPct: 0.5 }, deps());
+    expect(far.blockers.join(" ")).toContain("more than 1% through the mark");
+    const near = await buildTicket({ kind: "open", intent: intent({ entry: { type: "limit", px: 4030 }, target: 4400 }), riskPct: 0.5 }, deps());
+    expect(near.canSend).toBe(true);
+    expect(near.warnings.join(" ")).toContain("fills at once");
+    const shortFar = await buildTicket({ kind: "open", intent: intent({ side: "short", entry: { type: "limit", px: 3950 }, target: 3600 }), riskPct: 0.5 }, deps());
+    expect(shortFar.canSend).toBe(false);
+  });
+
+  test("stop, TP and limit are venue-rounded and sized on the rounded values", async () => {
+    const t = await buildTicket(
+      { kind: "open", intent: intent({ entry: { type: "limit", px: 3990.04 }, stop: { type: "price", px: 3912.345 }, target: 4300.06 }), riskPct: 0.5 },
+      deps(),
+    );
+    expect(t).toMatchObject({ entryPx: 3990, stopPx: 3912.3, tpPx: 4300.1 });
+    expect(t.riskUsd).toBeCloseTo(t.size! * (3990 - 3912.3), 2);
+    expect(t.notes.filter((n) => n.includes("rounded to the venue price"))).toHaveLength(3);
+    const pct = await buildTicket({ kind: "open", intent: intent({ stop: { type: "pct", pct: 1.2345 } }), riskPct: 0.5 }, deps());
+    expect(pct.stopPx).toBe(3950.6); // 4000 × (1 − 1.2345%) = 3950.62 → 5 significant figures
+    expect(pct.notes.some((n) => n.startsWith("stop = 1.2345% below entry"))).toBe(true);
+    const stop = await buildTicket({ kind: "stop", coin: "ETH", px: 3900.123 }, deps({ account: account({ positions: [ethLong()] }) }));
+    expect(stop.stopPx).toBe(3900.1);
+  });
+
+  test("a resting entry on the same coin blocks like a position", async () => {
+    const resting: OpenOrder = { ...order(50, null, 3950), side: "buy", reduceOnly: false };
+    const t = await buildTicket({ kind: "open", intent: intent(), riskPct: 0.5 }, deps({ account: account({ orders: [resting] }) }));
+    expect(t.canSend).toBe(false);
+    expect(t.blockers).toContain("resting entry order on ETH (oid 50): cancel before opening another");
+    expect(t.blockers.join(" ")).toContain("already long ETH");
+  });
+
+  test("resting entries elsewhere count toward open risk: unprotected by their whole notional, protected by their stop", async () => {
+    const btcBuy: OpenOrder = { oid: 60, coin: "BTC", side: "buy", size: 0.015, limitPx: 100_000, triggerPx: null, isTrigger: false, reduceOnly: false, tpsl: null, orderType: "Limit", timestamp: NOW.getTime() };
+    const naked = await buildTicket({ kind: "open", intent: intent(), riskPct: 0.5 }, deps({ account: account({ orders: [btcBuy] }) }));
+    // $1,500 unprotected exceeds the 2% ($200) open-risk budget: nothing left for a new trade
+    expect(naked.canSend).toBe(false);
+    expect(naked.verdict?.warnings.join(" ")).toContain("open-risk budget");
+    const btcStop: OpenOrder = { ...btcBuy, oid: 61, side: "sell", triggerPx: 99_000, limitPx: 99_000, isTrigger: true, reduceOnly: true, tpsl: "sl" };
+    const covered = await buildTicket({ kind: "open", intent: intent(), riskPct: 0.5 }, deps({ account: account({ orders: [btcBuy, btcStop] }) }));
+    expect(covered.canSend).toBe(true); // $15 at risk leaves $185 of budget, the new trade needs $50
+    expect(covered.verdict?.sizing?.grossLeverageAfter).toBe(0.4); // (1,500 + 2,500) / 10,000
+  });
+
+  test("requote refetches the account; a fetch failure falls back to the snapshot with a warning", async () => {
+    const calls: string[] = [];
+    const t = await buildTicket({ kind: "open", intent: intent(), riskPct: 0.5 }, deps());
+    const withPos = account({ positions: [ethLong()] });
+    const r = await requote(t, { ...deps(), info: fakeInfo(calls, () => withPos) });
+    expect(calls[0]).toBe(`account ${MASTER}`);
+    expect(r.kind).toBe("changed");
+    expect(r.ticket.blockers.join(" ")).toContain("already long ETH");
+
+    const failing: InfoSource = { ...fakeInfo(), account: async () => Promise.reject(new Error("HTTP 502")) };
+    const f = await requote(t, { ...deps(), info: failing });
+    expect(f.kind).toBe("same");
+    expect(f.ticket.warnings).toContain("account refresh failed (HTTP 502): re-quoted on the last snapshot");
+  });
+
+  test("requote flags leverage and fixed-price changes", async () => {
+    const t = await buildTicket({ kind: "open", intent: intent(), riskPct: 0.5 }, deps());
+    const ms = markets();
+    ms[1]!.maxLeverage = 2;
+    const lev = await requote(t, deps({ markets: ms }));
+    expect(lev.kind).toBe("changed");
+    if (lev.kind === "changed") expect(lev.why).toContain("leverage 3 → 2");
+
+    const acc = account({ positions: [ethLong()] });
+    const s = await buildTicket({ kind: "stop", coin: "ETH", px: 3900 }, deps({ account: acc }));
+    const moved = account({ positions: [{ ...ethLong(), entryPx: 3950 }] });
+    const r = await requote(s, { ...deps({ account: acc }), info: fakeInfo([], () => moved) });
+    expect(r.kind).toBe("changed");
+    if (r.kind === "changed") expect(r.why).toContain("entry 3900 → 3950");
   });
 });

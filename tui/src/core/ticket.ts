@@ -1,5 +1,6 @@
 import { evaluateRisk, floorToDecimals, type GovernorContext, type MarketRef } from "../../../src/server/desk/governor.js";
 import type { AccountState, RiskOrder } from "../../../src/server/desk/types.js";
+import { roundPerpPx } from "../../../src/server/desk/hl/wire.js";
 import { resolveOrder, type OrderMarket } from "../../../src/server/intel/order-resolve.js";
 import { walkBook } from "../../../src/server/platform/costs.js";
 import { governorLimits } from "./config.js";
@@ -51,8 +52,19 @@ const fmtPx = (x: number) => x.toLocaleString("en-US", { maximumSignificantDigit
 const fmtUsd = (x: number) => `$${x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/** 64 random bits: ids also guard against double sends, so they must never collide. */
 function defaultId(): string {
-  return `t-${crypto.randomUUID().replace(/-/g, "").slice(0, 4)}`;
+  const b = crypto.getRandomValues(new Uint8Array(8));
+  return `t-${Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/**
+ * Notional the HT_MAX_NOTIONAL_USD cap is checked against: size × limit for a
+ * limit entry, else size × mark × (1 + slippage), the far edge of the IOC band.
+ * Shared with exchange.ts so the ticket and the pre-sign check agree.
+ */
+export function capNotionalUsd(size: number, limitPx: number | null, mark: number, slippage: number): number {
+  return size * (limitPx ?? mark * (1 + slippage));
 }
 
 /** Strips the quote-time extras so a requote recaptures them from the fresh account. */
@@ -117,19 +129,52 @@ function toAccountState(a: AccountSnapshot, network: string): AccountState {
     equityUsd: a.equityUsd,
     // AccountSnapshot carries no day PnL: the governor's daily-loss check cannot fire (noted on each open ticket).
     dayPnlUsd: 0,
-    positions: a.positions.map((p) => ({
-      coin: p.coin,
-      side: p.side,
-      size: p.size,
-      entryPx: p.entryPx,
-      markPx: p.markPx,
-      stopPx: p.stopPx,
-      tpPx: p.tpPx,
-      unrealizedPnl: p.unrealizedPnlUsd,
-      notionalUsd: p.notionalUsd,
-    })),
+    positions: [
+      ...a.positions.map((p) => ({
+        coin: p.coin,
+        side: p.side,
+        size: p.size,
+        entryPx: p.entryPx,
+        markPx: p.markPx,
+        stopPx: p.stopPx,
+        tpPx: p.tpPx,
+        unrealizedPnl: p.unrealizedPnlUsd,
+        notionalUsd: p.notionalUsd,
+      })),
+      ...pendingExposure(a),
+    ],
     available: true,
   };
+}
+
+/**
+ * Resting non-reduce-only orders as would-be positions (one per coin and side),
+ * so the governor's same-coin rule, position count, open-risk and gross budgets
+ * see them. Risk is to a reduce-only stop trigger on the loss side when one is
+ * visible and the coin has no position (else that stop belongs to the position);
+ * otherwise the whole notional counts as at risk, as for an unprotected position.
+ */
+function pendingExposure(a: AccountSnapshot): AccountState["positions"] {
+  const by = new Map<string, { coin: string; side: "long" | "short"; size: number; notional: number }>();
+  for (const o of a.orders) {
+    if (o.reduceOnly) continue;
+    const px = o.triggerPx ?? o.limitPx;
+    if (!(px > 0) || !(o.size > 0)) continue;
+    const side = o.side === "buy" ? "long" : "short";
+    const e = by.get(`${o.coin}:${side}`) ?? { coin: o.coin, side, size: 0, notional: 0 };
+    e.size += o.size;
+    e.notional += o.size * px;
+    by.set(`${o.coin}:${side}`, e);
+  }
+  return [...by.values()].map((e) => {
+    const entryPx = e.notional / e.size;
+    const long = e.side === "long";
+    const hasPos = a.positions.some((p) => p.coin === e.coin);
+    const sl = hasPos ? undefined : a.orders.find((o) => o.coin === e.coin && o.reduceOnly && o.tpsl === "sl" && o.side === (long ? "sell" : "buy"));
+    const slPx = sl ? (sl.triggerPx ?? sl.limitPx) : null;
+    const stopPx = slPx != null && (long ? slPx < entryPx : slPx > entryPx) ? slPx : null;
+    return { coin: e.coin, side: e.side, size: e.size, entryPx, markPx: entryPx, stopPx, tpPx: null, unrealizedPnl: 0, notionalUsd: e.notional };
+  });
 }
 
 /** Slippage estimate in bps vs mid for `notional` USD taken on `side`; adds a warning when unknown or wider than the IOC band. */
@@ -195,21 +240,41 @@ async function buildOpen(action: OpenTicketAction, deps: TicketDeps, now: Date):
   }
   const om: OrderMarket = { coin: m.coin, markPx: mark, maxLeverage: m.maxLeverage, szDecimals: m.szDecimals, equityUsd: account.equityUsd, daily, now };
 
-  // Risk sizing needs the resolved stop first: resolve once for the stop, then again at the risk-implied notional.
-  let sizedIntent = intent;
+  // Venue-rounded prices throughout, so the ticket shows and sizes exactly what goes on the wire.
+  const venue = (px: number) => roundPerpPx(px, m.szDecimals);
+  const rounded: OrderIntent = { ...intent };
+  if (intent.entry.type === "limit") {
+    const px = venue(intent.entry.px);
+    if (px !== intent.entry.px) t.notes.push(`limit ${fmtPx(intent.entry.px)} rounded to the venue price ${fmtPx(px)}`);
+    rounded.entry = { type: "limit", px };
+  }
+  if (intent.target != null) {
+    const tp = venue(intent.target);
+    if (tp !== intent.target) t.notes.push(`tp ${fmtPx(intent.target)} rounded to the venue price ${fmtPx(tp)}`);
+    rounded.target = tp;
+  }
+  t.tpPx = rounded.target ?? null;
+
+  // Pass 1 resolves the stop; pass 2 resolves at the venue-rounded stop and the final (risk-implied) size.
+  const probe = resolveOrder(action.riskPct != null ? { ...rounded, size: { usd: Math.max(account.equityUsd, 1e6) } } : rounded, om);
+  if (!probe.ok) {
+    t.blockers.push(`resolve: ${probe.error}`);
+    return finish(t, config);
+  }
+  const venueStop = venue(probe.resolved.stopPx);
+  let size: OrderIntent["size"] = rounded.size;
   let riskNote: string | null = null;
   if (action.riskPct != null) {
-    const probe = resolveOrder({ ...intent, size: { usd: account.equityUsd } }, om);
-    if (!probe.ok) {
-      t.blockers.push(`resolve: ${probe.error}`);
+    const stopFrac = Math.abs(probe.resolved.entryPx - venueStop) / probe.resolved.entryPx;
+    if (!(stopFrac > 0)) {
+      t.blockers.push(`resolve: stop ${fmtPx(venueStop)} rounds onto the entry`);
       return finish(t, config);
     }
-    const stopFrac = Math.abs(probe.resolved.entryPx - probe.resolved.stopPx) / probe.resolved.entryPx;
     const usd = r2((account.equityUsd * (action.riskPct / 100)) / stopFrac);
-    sizedIntent = { ...intent, size: { usd } };
+    size = { usd };
     riskNote = `size = risk ${action.riskPct}% of equity ${fmtUsd(account.equityUsd)} at a ${r2(stopFrac * 100)}% stop: ${fmtUsd(usd)} notional`;
   }
-  const r = resolveOrder(sizedIntent, om);
+  const r = resolveOrder({ ...rounded, size, stop: { type: "price", px: venueStop } }, om);
   if (!r.ok) {
     t.blockers.push(`resolve: ${r.error}`);
     return finish(t, config);
@@ -222,48 +287,66 @@ async function buildOpen(action: OpenTicketAction, deps: TicketDeps, now: Date):
   t.leverage = Math.max(1, Math.floor(r.leverage));
   if (t.leverage !== r.leverage) t.warnings.push(`leverage ${r.leverage}x rounded down to ${t.leverage}x (Hyperliquid takes whole numbers); liq ≈ is for ${r.leverage}x`);
   if (riskNote) t.notes.push(riskNote);
-  t.notes.push(...r.notes);
-  t.warnings.push(...r.warnings);
+  const how = probe.notes.find((n) => n.startsWith("stop = "));
+  t.notes.push(...r.notes.map((n) => (how && n.startsWith("stop = ") ? how : n)));
+  if (venueStop !== probe.resolved.stopPx) t.notes.push(`stop ${fmtPx(probe.resolved.stopPx)} rounded to the venue price ${fmtPx(venueStop)}`);
+  t.warnings.push(...r.warnings, ...probe.warnings.filter((w) => !w.startsWith("liquidation") && !r.warnings.includes(w)));
 
-  // Governor. A limit order is evaluated at its limit price (where it fills), not the mark:
+  // A limit order is evaluated at its limit price (where it fills), not the mark:
   // the desk's entryLimit means "worst acceptable price" and would reject every resting limit.
   const isLimit = intent.entry.type === "limit";
   if (isLimit) {
     t.notes.push(`limit order: governor evaluated at the limit price ${fmtPx(entryPx)}`);
-    const marketable = intent.side === "long" ? entryPx >= mark : entryPx <= mark;
-    if (marketable) t.warnings.push(`limit ${fmtPx(entryPx)} is through the mark ${fmtPx(mark)}: it fills at once as a taker`);
+    const long = intent.side === "long";
+    const band = config.slippage;
+    if (long ? entryPx > mark * (1 + band) : entryPx < mark * (1 - band)) {
+      t.blockers.push(`limit ${fmtPx(entryPx)} is more than ${r2(band * 100)}% through the mark ${fmtPx(mark)}: use a market order or a closer limit`);
+    } else if (long ? entryPx >= mark : entryPx <= mark) {
+      t.warnings.push(`limit ${fmtPx(entryPx)} is through the mark ${fmtPx(mark)}: it fills at once as a taker`);
+    }
   }
+
+  // Resting entries count as exposure: same coin blocks, every coin counts toward open risk and gross.
+  const resting = account.orders.filter((o) => !o.reduceOnly);
+  const sameCoin = resting.filter((o) => o.coin === m.coin);
+  if (sameCoin.length) t.blockers.push(`resting entry order${sameCoin.length > 1 ? "s" : ""} on ${m.coin} (oid ${sameCoin.map((o) => o.oid).join(", ")}): cancel before opening another`);
+  if (resting.length) t.notes.push(`${resting.length} resting entry order(s) counted as exposure by the governor (without a visible stop, their whole notional counts as risk)`);
+
   const ref: MarketRef = { coin: m.coin, markPx: entryPx, szDecimals: m.szDecimals, isDelisted: m.isDelisted };
   const ctx: GovernorContext = { limits: governorLimits(config.limits), account: toAccountState(account, config.network), market: ref, killSwitch: false, now };
   // Full-precision risk percent: the resolver's rounded one could make the governor floor one size step lower.
   const resolvedRiskPct = ((r.resolved.size * Math.abs(entryPx - stopPx)) / account.equityUsd) * 100;
-  const order: RiskOrder = { coin: m.coin, side: intent.side, stop: stopPx, riskPct: resolvedRiskPct, ...(intent.target != null ? { target: intent.target } : {}) };
+  const order: RiskOrder = { coin: m.coin, side: intent.side, stop: stopPx, riskPct: resolvedRiskPct, ...(rounded.target != null ? { target: rounded.target } : {}) };
   const verdict = evaluateRisk(order, ctx);
   t.verdict = verdict;
   t.notes.push("governor daily-loss limit not checked: day PnL is not available from the account snapshot");
-  if (!verdict.approved) t.blockers.push(...verdict.reasons);
+  for (const reason of verdict.reasons) if (!t.blockers.includes(reason)) t.blockers.push(reason);
 
-  let size = r.resolved.size;
+  let qty = r.resolved.size;
   if (verdict.sizing) {
-    const capped = floorToDecimals(Math.min(size, verdict.sizing.size), m.szDecimals);
-    if (capped < size) t.warnings.push(`size reduced from ${size} to ${capped} ${m.coin} by the governor`);
-    size = capped;
+    const capped = floorToDecimals(Math.min(qty, verdict.sizing.size), m.szDecimals);
+    if (capped < qty) t.warnings.push(`size reduced from ${qty} to ${capped} ${m.coin} by the governor`);
+    qty = capped;
   }
-  if (!(size > 0)) t.blockers.push("size rounds to zero");
-  t.size = size;
-  const notional = size * entryPx;
+  if (!(qty > 0)) t.blockers.push("size rounds to zero");
+  t.size = qty;
+  const notional = qty * entryPx;
   t.notionalUsd = r2(notional);
-  t.riskUsd = r2(size * Math.abs(entryPx - stopPx));
-  t.riskPct = Math.round(((size * Math.abs(entryPx - stopPx)) / account.equityUsd) * 100 * 1e4) / 1e4;
-  if (intent.target != null) t.rr = r2(Math.abs(intent.target - entryPx) / Math.abs(entryPx - stopPx));
+  t.riskUsd = r2(qty * Math.abs(entryPx - stopPx));
+  t.riskPct = Math.round(((qty * Math.abs(entryPx - stopPx)) / account.equityUsd) * 100 * 1e4) / 1e4;
+  if (rounded.target != null) t.rr = r2(Math.abs(rounded.target - entryPx) / Math.abs(entryPx - stopPx));
 
-  if (notional > config.maxNotionalUsd) t.blockers.push(`notional ${fmtUsd(notional)} exceeds HT_MAX_NOTIONAL_USD ${fmtUsd(config.maxNotionalUsd)}`);
+  // Cap on the worst price the order may fill at: the limit, or the far edge of the IOC band.
+  const capNotional = capNotionalUsd(qty, isLimit ? entryPx : null, mark, config.slippage);
+  if (capNotional > config.maxNotionalUsd) {
+    t.blockers.push(`notional ${fmtUsd(capNotional)}${isLimit ? "" : ` (mark + ${r2(config.slippage * 100)}% IOC band)`} exceeds HT_MAX_NOTIONAL_USD ${fmtUsd(config.maxNotionalUsd)}`);
+  }
   const lev = t.leverage;
   if (notional / lev > account.withdrawableUsd) {
     t.warnings.push(`margin needed ≈ ${fmtUsd(notional / lev)} at ${lev}x exceeds withdrawable ${fmtUsd(account.withdrawableUsd)}: the exchange may reject it`);
   }
 
-  if (size > 0) {
+  if (qty > 0) {
     if (isLimit) t.notes.push("Gtc limit entry: slippage not estimated");
     else await estimateSlippage(t, info, m.coin, intent.side === "long", notional, config.slippage);
   }
@@ -401,15 +484,18 @@ function buildStop(action: StopTicketAction, deps: TicketDeps, now: Date): Ticke
     t.blockers.push(`stop ${action.px} is not a price`);
     return finish(t, config);
   }
-  t.stopPx = action.px;
+  // The venue-rounded price is what is shown, checked and sent.
+  const px = roundPerpPx(action.px, m.szDecimals);
+  if (px !== action.px) t.notes.push(`stop ${fmtPx(action.px)} rounded to the venue price ${fmtPx(px)}`);
+  t.stopPx = px;
   const long = pos.side === "long";
-  if (long ? !(action.px < mark) : !(action.px > mark)) {
-    t.blockers.push(`stop ${fmtPx(action.px)} is on the wrong side of the mark ${fmtPx(mark)} for a ${pos.side}: it would trigger at once`);
+  if (long ? !(px < mark) : !(px > mark)) {
+    t.blockers.push(`stop ${fmtPx(px)} is on the wrong side of the mark ${fmtPx(mark)} for a ${pos.side}: it would trigger at once`);
   }
-  if (pos.liqPx != null && (long ? action.px <= pos.liqPx : action.px >= pos.liqPx)) {
-    t.warnings.push(`stop ${fmtPx(action.px)} is beyond the liquidation price ${fmtPx(pos.liqPx)}`);
+  if (pos.liqPx != null && (long ? px <= pos.liqPx : px >= pos.liqPx)) {
+    t.warnings.push(`stop ${fmtPx(px)} is beyond the liquidation price ${fmtPx(pos.liqPx)}`);
   }
-  const riskUsd = pos.size * Math.abs(mark - action.px);
+  const riskUsd = pos.size * Math.abs(mark - px);
   t.riskUsd = r2(riskUsd);
   if (account.equityUsd > 0) t.riskPct = Math.round((riskUsd / account.equityUsd) * 100 * 1e4) / 1e4;
   const old = account.orders.filter((o) => o.coin === m.coin && o.tpsl === "sl");
@@ -439,21 +525,53 @@ export async function buildTicket(action: TicketRequest, deps: TicketDeps): Prom
 const sameList = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join("\n") === [...b].sort().join("\n");
 
 /**
- * Re-quotes a ticket at confirm time (same id). "changed" when the mark moved
- * more than 0.5%, the size changed, sendability or the governor verdict
- * flipped, or the blockers differ; the UI must then ask for another `y`.
+ * Which prices are fixed by the action (compared exactly on requote) rather
+ * than moving with the mark (covered by the 0.5% mark rule): a market entry,
+ * a close's fill estimate, and pct/ATR stops of a market entry track the mark.
+ */
+function fixedPrices(t: Ticket): { entry: boolean; stop: boolean } {
+  const a = t.action;
+  if (a.kind === "close") return { entry: false, stop: true };
+  if (a.kind !== "open") return { entry: true, stop: true };
+  const limit = a.intent.entry.type === "limit";
+  return { entry: limit, stop: limit || (a.intent.stop.type !== "pct" && a.intent.stop.type !== "atr_mult") };
+}
+
+/**
+ * Re-quotes a ticket at confirm time (same id), on a freshly fetched account
+ * (falling back to deps.account with a warning when the fetch fails).
+ * "changed" when the mark moved more than 0.5%; the size, leverage, TP, a fixed
+ * entry or stop price changed; sendability or the governor verdict flipped; or
+ * the blockers differ. The UI must then ask for another `y`.
  */
 export async function requote(t: Ticket, deps: TicketDeps): Promise<Requote> {
-  const next = await buildTicket(baseAction(t.action), { ...deps, id: () => t.id });
+  let account = deps.account;
+  let refreshWarning: string | null = null;
+  if (deps.config.account) {
+    try {
+      account = await deps.info.account(deps.config.account, deps.markets);
+    } catch (e) {
+      refreshWarning = `account refresh failed (${errMsg(e)}): re-quoted on the last snapshot`;
+    }
+  }
+  const next = await buildTicket(baseAction(t.action), { ...deps, account, id: () => t.id });
+  if (refreshWarning) next.warnings.push(refreshWarning);
   const why: string[] = [];
   if (t.markPx != null && next.markPx != null) {
     const move = (next.markPx - t.markPx) / t.markPx;
     if (Math.abs(move) > REQUOTE_MOVE) why.push(`mark moved ${move > 0 ? "+" : ""}${r2(move * 100)}% (${fmtPx(t.markPx)} → ${fmtPx(next.markPx)})`);
   } else if (t.markPx !== next.markPx) why.push("mark unavailable");
-  if (t.size !== next.size) why.push(`size ${t.size ?? "—"} → ${next.size ?? "—"}`);
+  const fixed = fixedPrices(t);
+  const diff = (label: string, a: number | null, b: number | null) => {
+    if (a !== b) why.push(`${label} ${a ?? "—"} → ${b ?? "—"}`);
+  };
+  diff("size", t.size, next.size);
+  diff("leverage", t.leverage, next.leverage);
+  diff("tp", t.tpPx, next.tpPx);
+  if (fixed.entry) diff("entry", t.entryPx, next.entryPx);
+  if (fixed.stop) diff("stop", t.stopPx, next.stopPx);
   if ((t.verdict?.approved ?? null) !== (next.verdict?.approved ?? null)) why.push(`governor ${t.verdict?.approved ? "PASS" : "REJECTED"} → ${next.verdict?.approved ? "PASS" : "REJECTED"}`);
   if (t.canSend !== next.canSend) why.push(next.canSend ? "now sendable" : "now blocked");
   if (!sameList(t.blockers, next.blockers)) why.push("blockers changed");
   return why.length ? { kind: "changed", ticket: next, why: why.join("; ") } : { kind: "same", ticket: next };
 }
-

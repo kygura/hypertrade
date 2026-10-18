@@ -20,6 +20,11 @@ export interface LoadedConfig {
   warnings: string[];
 }
 
+export const API_BASE: Record<Network, string> = {
+  mainnet: "https://api.hyperliquid.xyz",
+  testnet: "https://api.hyperliquid-testnet.xyz",
+};
+
 /** Account the demo fixtures are read for (same placeholder as demo.ts; the demo source answers for any address). */
 export const DEMO_ACCOUNT = "0xde30de30de30de30de30de30de30de30de30de30";
 
@@ -69,6 +74,8 @@ function watchList(raw: string | undefined, warnings: string[]): string[] {
   return out.length ? out : DEFAULT_WATCH;
 }
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
 function lab(env: Env, warnings: string[]): Config["lab"] {
   const url = env.LAB_URL?.trim().replace(/\/+$/, "");
   const token = env.LAB_API_TOKEN?.trim();
@@ -77,8 +84,15 @@ function lab(env: Env, warnings: string[]): Config["lab"] {
     warnings.push(`${url ? "LAB_API_TOKEN" : "LAB_URL"} is not set: Lab pulse disabled`);
     return null;
   }
-  if (!/^https?:\/\/[^\s/]+/.test(url)) {
-    warnings.push("LAB_URL is not an http(s) URL: Lab pulse disabled");
+  // The bearer token must never travel in clear: https, or http only to this machine.
+  let u: URL | null = null;
+  try {
+    u = new URL(url);
+  } catch {
+    u = null;
+  }
+  if (!u || !(u.protocol === "https:" || (u.protocol === "http:" && LOCAL_HOSTS.has(u.hostname)))) {
+    warnings.push("LAB_URL must be https:// (http only for localhost): Lab pulse disabled");
     return null;
   }
   return { url, token };
@@ -158,4 +172,39 @@ export function loadConfig(env: Env, argv: string[]): LoadedConfig {
     demo,
   };
   return { config, agentKey, warnings };
+}
+
+/**
+ * When the key trades for a different HT_ACCOUNT, confirms with Hyperliquid
+ * (info userRole) that the key is an approved agent of exactly that account.
+ * Anything else (another role, another master, a network error) turns trading
+ * off: the governor would otherwise size against one account while the key
+ * trades another. Returns a new Config; never echoes the key.
+ */
+export async function verifyAgent(config: Config, agentKey: string | null, fetchFn: typeof fetch = fetch): Promise<{ config: Config; warnings: string[] }> {
+  if (config.demo || !config.canTrade || !agentKey || !config.account) return { config, warnings: [] };
+  const readOnly = (w: string) => ({ config: { ...config, canTrade: false }, warnings: [w] });
+  let keyAddress: string;
+  try {
+    keyAddress = addressOf(agentKey).toLowerCase();
+  } catch {
+    return readOnly("HT_AGENT_KEY is not a valid private key: read-only");
+  }
+  const account = config.account.toLowerCase();
+  if (keyAddress === account) return { config, warnings: [] };
+  try {
+    const r = await fetchFn(`${API_BASE[config.network]}/info`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "userRole", user: keyAddress }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = (await r.json()) as { role?: unknown; data?: { user?: unknown } } | null;
+    const master = typeof j?.data?.user === "string" ? j.data.user.toLowerCase() : null;
+    if (j?.role === "agent" && master === account) return { config, warnings: [] };
+    return readOnly("key is not an approved agent for HT_ACCOUNT: read-only");
+  } catch (e) {
+    return readOnly(`could not verify the key is an agent for HT_ACCOUNT (${e instanceof Error ? e.message : String(e)}): read-only`);
+  }
 }

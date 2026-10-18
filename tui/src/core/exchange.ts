@@ -1,8 +1,9 @@
 import { floorToDecimals } from "../../../src/server/desk/governor.js";
 import { isPrivateKey, signL1Action } from "../../../src/server/desk/hl/signing.js";
 import { cancelAction, orderAction, roundPerpPx, slippagePx, updateLeverageAction, type OrderRequest } from "../../../src/server/desk/hl/wire.js";
-import { REQUOTE_MOVE, findMarket, livePx, type CloseTicketAction, type StopTicketAction } from "./ticket.js";
-import type { Config, MarketRow, Network, SendResult, Ticket } from "./types.js";
+import { API_BASE } from "./config.js";
+import { REQUOTE_MOVE, capNotionalUsd, findMarket, livePx, type CloseTicketAction, type StopTicketAction } from "./ticket.js";
+import type { Config, MarketRow, SendResult, Ticket } from "./types.js";
 
 // The money path: Hyperliquid /exchange actions, signed with the agent key.
 // Mirrors src/server/desk/hl/broker.ts (leverage then one normalTpsl order
@@ -14,15 +15,17 @@ import type { Config, MarketRow, Network, SendResult, Ticket } from "./types.js"
 // canSend, network match, notional cap, mark drift since the quote, ticket
 // age, one send per ticket id, one send at a time. Errors never carry the key.
 
-export const API_BASE: Record<Network, string> = {
-  mainnet: "https://api.hyperliquid.xyz",
-  testnet: "https://api.hyperliquid-testnet.xyz",
-};
+export { API_BASE };
 
 /** A ticket older than this must be re-quoted before sending. */
 export const MAX_TICKET_AGE_MS = 30_000;
-/** The emergency flatten after a rejected stop crosses this many times the configured slippage. */
-const FLATTEN_SLIPPAGE_MULT = 2;
+/**
+ * The emergency flatten after a rejected stop: IOC attempts this many times the
+ * configured slippage through a fresh mid (the second only for what the first
+ * left open), each band capped at FLATTEN_MAX_BAND.
+ */
+const FLATTEN_SLIPPAGE_MULTS = [2, 5];
+const FLATTEN_MAX_BAND = 0.2;
 
 export type LeverageAction = ReturnType<typeof updateLeverageAction>;
 export type OrderAction = ReturnType<typeof orderAction>;
@@ -43,7 +46,8 @@ function needSize(t: Ticket, m: MarketRow): number {
 /**
  * Open: [updateLeverage (cross, whole number, ≤ coin max), order normalTpsl
  * [entry, reduce-only market SL trigger, optional reduce-only market TP trigger]].
- * Market entry = IOC `slippage` through the live mark; `@px` entry = Gtc at px.
+ * Market entry = IOC `slippage` through the live mark; `@px` entry = Gtc at the
+ * ticket's venue-rounded entry. Stop/TP come from the ticket (already venue-rounded).
  */
 export function buildOpenActions(t: Ticket, m: MarketRow, slippage: number): [LeverageAction, OrderAction] {
   if (t.action.kind !== "open") throw new Error(`not an open ticket (${t.action.kind})`);
@@ -51,11 +55,12 @@ export function buildOpenActions(t: Ticket, m: MarketRow, slippage: number): [Le
   if (t.side == null || t.stopPx == null || t.leverage == null) throw new Error("open ticket is missing side, stop or leverage");
   const sz = needSize(t, m);
   const intent = t.action.intent;
+  if (intent.entry.type === "limit" && t.entryPx == null) throw new Error("limit ticket has no entry price");
   const isBuy = t.side === "long";
   const leverage = Math.max(1, Math.min(Math.floor(t.leverage), m.maxLeverage > 0 ? m.maxLeverage : 1));
   const entry: OrderRequest =
     intent.entry.type === "limit"
-      ? { asset: m.asset, isBuy, limitPx: roundPerpPx(intent.entry.px, m.szDecimals), sz, reduceOnly: false, orderType: { limit: { tif: "Gtc" } } }
+      ? { asset: m.asset, isBuy, limitPx: roundPerpPx(t.entryPx!, m.szDecimals), sz, reduceOnly: false, orderType: { limit: { tif: "Gtc" } } }
       : { asset: m.asset, isBuy, limitPx: slippagePx(livePx(m), isBuy, slippage, m.szDecimals), sz, reduceOnly: false, orderType: { limit: { tif: "Ioc" } } };
   const legs: OrderRequest[] = [entry, trigger(m, !isBuy, t.stopPx, sz, "sl", slippage)];
   if (t.tpPx != null) legs.push(trigger(m, !isBuy, t.tpPx, sz, "tp", slippage));
@@ -104,10 +109,10 @@ export function buildCancelAction(t: Ticket, markets: MarketRow[]): CancelAction
 export function buildStopActions(t: Ticket, m: MarketRow, slippage: number): [OrderAction, CancelAction | null] {
   if (t.action.kind !== "stop") throw new Error(`not a stop ticket (${t.action.kind})`);
   needMarket(t, m);
-  if (t.side == null) throw new Error("stop ticket has no position side");
+  if (t.side == null || t.stopPx == null) throw new Error("stop ticket has no position side or stop price");
   const sz = needSize(t, m);
   const old = (t.action as StopTicketAction).replaceOids ?? [];
-  const place = orderAction([trigger(m, t.side === "short", t.action.px, sz, "sl", slippage)], "positionTpsl");
+  const place = orderAction([trigger(m, t.side === "short", t.stopPx, sz, "sl", slippage)], "positionTpsl");
   return [place, old.length ? cancelAction(old.map((oid) => ({ asset: m.asset, oid }))) : null];
 }
 
@@ -194,6 +199,84 @@ export function createExchange(config: Config, agentKey: string | null, opts: Ex
     }
   }
 
+  /** Unsigned /info read on the same network. */
+  async function postInfo<T>(body: { type: string } & Record<string, unknown>): Promise<T> {
+    const r = await fetchFn(`${base}/info`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const text = await r.text();
+    if (!r.ok) throw new Error(`HL ${config.network} /info HTTP ${r.status}: ${text.slice(0, 200)}`);
+    return JSON.parse(text) as T;
+  }
+
+  /** A fresh mid: allMids, else the l2Book's best bid/ask; null when neither answers. */
+  async function freshMid(coin: string): Promise<number | null> {
+    try {
+      const mids = await postInfo<Record<string, string>>({ type: "allMids" });
+      const mid = Number(mids?.[coin]);
+      if (mid > 0) return mid;
+    } catch {
+      // fall through to the book
+    }
+    try {
+      const b = await postInfo<{ levels?: Array<Array<{ px: string }>> }>({ type: "l2Book", coin });
+      const bid = Number(b?.levels?.[0]?.[0]?.px);
+      const ask = Number(b?.levels?.[1]?.[0]?.px);
+      if (bid > 0 && ask > 0) return (bid + ask) / 2;
+    } catch {
+      // no fresh price
+    }
+    return null;
+  }
+
+  /** Signed size of `coin` on the traded account right now (0 = flat). Throws when it cannot be read. */
+  async function positionSize(coin: string): Promise<number> {
+    const user = vault ?? config.account;
+    if (!user) throw new Error("no account configured");
+    const st = await postInfo<{ assetPositions?: Array<{ position?: { coin?: string; szi?: string } }> }>({ type: "clearinghouseState", user });
+    if (!Array.isArray(st?.assetPositions)) throw new Error("unexpected clearinghouseState response");
+    const p = st.assetPositions.find((x) => x.position?.coin === coin);
+    const szi = Number(p?.position?.szi ?? 0);
+    if (!Number.isFinite(szi)) throw new Error("unreadable position size");
+    return szi;
+  }
+
+  /**
+   * Reduce-only IOC closes of `size` after a rejected stop: each attempt is
+   * anchored to a fresh mid (fallback: the entry fill price) and retried once,
+   * with a wider band, for whatever is still open. Returns the size left open.
+   */
+  async function flatten(m: MarketRow, closeIsBuy: boolean, size: number, fallbackPx: number, out: SendResult): Promise<number> {
+    let left = size;
+    for (const mult of FLATTEN_SLIPPAGE_MULTS) {
+      if (left <= 1e-12) break;
+      const anchor = (await freshMid(m.coin)) ?? fallbackPx;
+      const band = Math.min(config.slippage * mult, FLATTEN_MAX_BAND);
+      const sz = floorToDecimals(left, m.szDecimals);
+      if (!(sz > 0)) break;
+      try {
+        const fp = parseStatuses(
+          await post(orderAction([{ asset: m.asset, isBuy: closeIsBuy, limitPx: slippagePx(anchor, closeIsBuy, band, m.szDecimals), sz, reduceOnly: true, orderType: { limit: { tif: "Ioc" } } }])),
+          "order",
+        );
+        const ff = fp.ok ? filled(fp.statuses[0]) : null;
+        if (ff) {
+          left -= Number(ff.totalSz);
+          out.lines.push(`flattened ${ff.totalSz} ${m.coin} @ ${fmtPx(Number(ff.avgPx))} (oid ${ff.oid}, ±${Math.round(band * 1000) / 10}% band)`);
+          out.oids.push(ff.oid);
+        } else {
+          out.errors.push(`flatten attempt at ±${Math.round(band * 1000) / 10}% not filled (${fp.ok ? (legError(fp.statuses[0]) ?? "IOC did not cross") : fp.error})`);
+        }
+      } catch (e) {
+        out.errors.push(`flatten attempt at ±${Math.round(band * 1000) / 10}% failed (${safe(e)})`);
+      }
+    }
+    return Math.max(0, left);
+  }
+
   async function cancelOids(m: MarketRow, oids: number[], label: string, out: SendResult): Promise<boolean> {
     if (!oids.length) return true;
     try {
@@ -231,15 +314,18 @@ export function createExchange(config: Config, agentKey: string | null, opts: Ex
     if (t.action.kind === "open") {
       if (m.isDelisted) return `${m.coin} is delisted`;
       if (t.size == null || t.stopPx == null) return "open ticket has no size or stop";
-      const px = t.action.intent.entry.type === "limit" ? t.action.intent.entry.px : mark;
-      const notional = Math.max(t.size * px, t.notionalUsd ?? 0);
+      const limit = t.action.intent.entry.type === "limit";
+      if (limit && t.entryPx == null) return "limit ticket has no entry price";
+      const notional = Math.max(capNotionalUsd(t.size, limit ? t.entryPx : null, mark, config.slippage), t.notionalUsd ?? 0);
       if (!(notional <= config.maxNotionalUsd)) return `notional $${notional.toFixed(2)} exceeds HT_MAX_NOTIONAL_USD $${config.maxNotionalUsd}`;
       const long = t.side === "long";
       if (long ? !(t.stopPx < mark) : !(t.stopPx > mark)) return `stop ${fmtPx(t.stopPx)} is on the wrong side of the mark ${fmtPx(mark)}`;
+      if (t.tpPx != null && (long ? !(t.tpPx > mark) : !(t.tpPx < mark))) return `take-profit ${fmtPx(t.tpPx)} is on the wrong side of the mark ${fmtPx(mark)}`;
     }
     if (t.action.kind === "stop") {
       const long = t.side === "long";
-      if (long ? !(t.action.px < mark) : !(t.action.px > mark)) return `stop ${fmtPx(t.action.px)} is on the wrong side of the mark ${fmtPx(mark)}`;
+      if (t.stopPx == null) return "stop ticket has no stop price";
+      if (long ? !(t.stopPx < mark) : !(t.stopPx > mark)) return `stop ${fmtPx(t.stopPx)} is on the wrong side of the mark ${fmtPx(mark)}`;
     }
     return null;
   }
@@ -293,33 +379,22 @@ export function createExchange(config: Config, agentKey: string | null, opts: Ex
     const stopErr = legError(stop);
     if (stopErr) {
       out.errors.push(`stop order rejected (${stopErr})`);
+      const tpOids = hasTp && restingOid(tp) != null ? [restingOid(tp)!] : [];
       if (fill) {
         // No exchange-side stop: flatten now rather than hold it unprotected.
         const sz = Number(fill.totalSz);
-        const avg = Number(fill.avgPx);
-        const flatBuy = !isBuy;
-        const flat = orderAction([
-          { asset: m.asset, isBuy: flatBuy, limitPx: slippagePx(avg, flatBuy, config.slippage * FLATTEN_SLIPPAGE_MULT, m.szDecimals), sz, reduceOnly: true, orderType: { limit: { tif: "Ioc" } } },
-        ]);
-        try {
-          const fp = parseStatuses(await post(flat), "order");
-          const ff = fp.ok ? filled(fp.statuses[0]) : null;
-          if (ff) {
-            out.lines.push(`flattened ${ff.totalSz} ${m.coin} @ ${fmtPx(Number(ff.avgPx))} (oid ${ff.oid})`);
-            out.oids.push(ff.oid);
-            if (Number(ff.totalSz) < sz - 1e-12) out.errors.push(`FLATTEN PARTIAL: ${ff.totalSz} of ${sz} closed; the rest is open WITHOUT a stop`);
-          } else {
-            out.errors.push(`FLATTEN FAILED (${fp.ok ? (legError(fp.statuses[0]) ?? "IOC did not cross") : fp.error}): ${sz} ${m.coin} is open WITHOUT a stop`);
-          }
-        } catch (e) {
-          out.errors.push(`FLATTEN FAILED (${safe(e)}): ${sz} ${m.coin} may be open WITHOUT a stop`);
+        const left = await flatten(m, !isBuy, sz, Number(fill.avgPx), out);
+        if (left > 1e-12) {
+          // Keep the take-profit: it is the only exchange-side order still reducing the position.
+          out.errors.push(`FLATTEN FAILED: ${Math.round(left * 1e8) / 1e8} of ${sz} ${m.coin} is open WITHOUT a stop${tpOids.length ? "; take-profit kept" : ""}: act now`);
+          return;
         }
       } else {
         // A resting entry without its stop must not be allowed to fill.
         const ok = await cancelOids(m, [entryOid!], "entry", out);
         if (!ok) out.errors.push(`entry oid ${entryOid} may still rest WITHOUT a stop: cancel it now`);
       }
-      await cancelOids(m, hasTp && restingOid(tp) != null ? [restingOid(tp)!] : [], "take-profit", out);
+      await cancelOids(m, tpOids, "take-profit", out);
       return;
     }
     const sOid = restingOid(stop);
@@ -355,14 +430,24 @@ export function createExchange(config: Config, agentKey: string | null, opts: Ex
     }
     out.lines.push(`closed ${f.totalSz} ${m.coin} @ ${fmtPx(Number(f.avgPx))} (oid ${f.oid})`);
     out.oids.push(f.oid);
-    out.ok = true;
-    const full = Number(f.totalSz) >= (t.size ?? Infinity) - 1e-12;
-    const leftovers = (t.action as CloseTicketAction).cleanupOids ?? [];
-    if (!full) {
-      if ((t.action as CloseTicketAction).pct >= 100) out.errors.push(`partial close: ${f.totalSz} of ${t.size} ${m.coin}; position still open`);
+    const action = t.action as CloseTicketAction;
+    const complete = Number(f.totalSz) >= (t.size ?? Infinity) - 1e-12;
+    out.ok = complete;
+    if (!complete) out.errors.push(`partial close: ${f.totalSz} of ${t.size} ${m.coin} filled`);
+    const leftovers = action.cleanupOids ?? [];
+    if (action.pct < 100 || !leftovers.length) return;
+    // Cancel leftover reduce-only triggers only once the venue confirms the position is flat.
+    let szi: number;
+    try {
+      szi = await positionSize(m.coin);
+    } catch (e) {
+      out.errors.push(`could not confirm ${m.coin} is flat (${safe(e)}): triggers kept`);
       return;
     }
-    // Flat now: cancel leftover reduce-only triggers so they cannot act on a future position.
+    if (szi !== 0) {
+      out.lines.push(`${m.coin}: position remains, triggers kept (${Math.abs(szi)} still open)`);
+      return;
+    }
     await cancelOids(m, leftovers, "leftover trigger", out);
   }
 
@@ -382,7 +467,7 @@ export function createExchange(config: Config, agentKey: string | null, opts: Ex
       return;
     }
     const oid = p.ok ? restingOid(p.statuses[0]) : null;
-    out.lines.push(oid != null ? `stop oid ${oid} resting @ ${fmtPx((t.action as StopTicketAction).px)}` : `stop accepted @ ${fmtPx((t.action as StopTicketAction).px)}`);
+    out.lines.push(oid != null ? `stop oid ${oid} resting @ ${fmtPx(t.stopPx!)}` : `stop accepted @ ${fmtPx(t.stopPx!)}`);
     if (oid != null) out.oids.push(oid);
     out.ok = true;
     if (cancel) await cancelOids(m, cancel.cancels.map((c) => c.o), "old stop", out);
