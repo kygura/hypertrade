@@ -3,10 +3,18 @@ import { demoAccountAddress, DemoInfo } from "../core/demo.js";
 import type { Exchange } from "../core/exchange.js";
 import type { Alert, AppState, Config, MarketRow, SendResult, Ticket } from "../core/types.js";
 import { testConfig } from "../agent/testkit.js";
-import { agentOutcomeNote, closestCoins, Controller, sortMarkets, type AgentEventsLike, type AgentLike, type StoreLike, type Timers } from "./controller.js";
+import { fetchPulse } from "../core/lab.js";
+import { agentOutcomeNote, ARM_DELAY_MS, closestCoins, Controller, sendOutcome, sortMarkets, type AgentEventsLike, type AgentLike, type StoreLike, type Timers } from "./controller.js";
 import type { Entry } from "./model.js";
 
 const NOW = 1_792_329_069_607;
+/** Controller clock; tests advance it past the y arm delay. */
+let clock = NOW;
+/** Waits out the arm delay, then presses y. */
+const yes = async (ctl: Controller) => {
+  clock += ARM_DELAY_MS;
+  await ctl.key("y", {});
+};
 
 class FakeStore implements StoreLike {
   listeners = new Set<() => void>();
@@ -90,6 +98,7 @@ let markets: MarketRow[];
 let baseState: AppState;
 
 beforeEach(async () => {
+  clock = NOW;
   markets = await info.markets();
   const account = await info.account(demoAccountAddress, markets);
   baseState = { config: testConfig(), markets, marketsAt: NOW, marketsError: null, account, accountError: null, alerts: [], ws: "off" };
@@ -118,7 +127,7 @@ function setup(o: { config?: Config; exchange?: Exchange | null; agent?: AgentLi
     agentLabel: "scripted-1",
     ...(o.pulse ? { pulse: o.pulse } : {}),
     ...(o.brief ? { brief: o.brief } : {}),
-    now: () => NOW,
+    now: () => clock,
     timers,
     batchMs: 0,
     ticketId: () => "t-1",
@@ -247,7 +256,7 @@ describe("controller", () => {
     // typed keys are dropped
     await ctl.key("x", {});
     expect(ctl.getView().input).toBe("");
-    await ctl.key("y", {});
+    await yes(ctl);
     expect(ctl.getView().mode).toBe("prompt");
     expect(last("ticket")!.outcome).toBe("simulated");
     const r = last("result")!;
@@ -262,7 +271,7 @@ describe("controller", () => {
   test("demo: a ticket the governor refuses is simulated as refused", async () => {
     const { ctl, last } = setup();
     await ctl.submit("/long BTC risk 0.5% stop 2%");
-    await ctl.key("y", {});
+    await yes(ctl);
     const r = last("result")!;
     expect(r.result.ok).toBe(false);
     expect(r.result.errors.join(" ")).toContain("would be refused: already long BTC");
@@ -283,7 +292,7 @@ describe("controller", () => {
     const t = ctl.getView().pending!.ticket;
     expect(t.blockers).toEqual([]);
     expect(t.canSend).toBe(true);
-    await ctl.key("y", {});
+    await yes(ctl);
     expect(ex.sent.length).toBe(1);
     expect(ex.sent[0]!.id).toBe("t-1");
     expect(last("ticket")!.outcome).toBe("sent");
@@ -298,23 +307,23 @@ describe("controller", () => {
     await ctl.submit("/long HYPE $500 stop 2%");
     const before = ctl.getView().pending!.ticket;
     store.patch({ markets: store.state.markets.map((m) => (m.coin === "HYPE" ? { ...m, markPx: m.markPx * 1.02, midPx: null } : m)) });
-    await ctl.key("y", {});
+    await yes(ctl);
     const p = ctl.getView().pending!;
     expect(ex.sent.length).toBe(0);
     expect(p.ui.changedWhy).toContain("mark moved");
     expect(p.ui.previous!.markPx).toBe(before.markPx);
     expect(p.ui.phase).toBe("awaiting");
-    await ctl.key("y", {});
+    await yes(ctl);
     expect(ex.sent.length).toBe(1);
   });
 
-  test("failed send freezes as failed", async () => {
-    const ex = new FakeExchange({ ok: false, lines: [], errors: ["insufficient margin"], oids: [] });
+  test("a send refused before posting freezes as not sent", async () => {
+    const ex = new FakeExchange({ ok: false, lines: [], errors: ["not sent: insufficient margin"], oids: [] });
     const { ctl, last } = setup({ config: tradeCfg(), exchange: ex });
     await ctl.submit("/short HYPE $300 stop 2%");
-    await ctl.key("y", {});
+    await yes(ctl);
     expect(last("ticket")!.outcome).toBe("failed");
-    expect(last("result")!.result.errors).toEqual(["insufficient margin"]);
+    expect(last("result")!.result.errors).toEqual(["not sent: insufficient margin"]);
   });
 
   test("n discards; a read-only ticket has no y and is dismissed", async () => {
@@ -327,7 +336,7 @@ describe("controller", () => {
     const b = setup({ config: tradeCfg({ canTrade: false }), exchange: null });
     await b.ctl.submit("/long BTC $500 stop 2%");
     expect(b.ctl.getView().pending!.ui.access).toBe("read-only");
-    await b.ctl.key("y", {});
+    await yes(b.ctl);
     expect(b.ctl.getView().mode).toBe("ticket");
     await b.ctl.key("", key({ escape: true }));
     expect(b.last("ticket")!.outcome).toBe("dismissed");
@@ -525,4 +534,207 @@ describe("controller", () => {
       "[ticket t-9 BTC long: confirmed by the human and sent; filled 0.01 BTC @ 61,200.0]",
     );
   });
+
+  // ─── verification round ───
+
+  test("confirm needs exactly y: Ctrl-Y, Alt-Y, 'yes' and 'y\\r' chunks are ignored", async () => {
+    const ex = new FakeExchange();
+    const { ctl } = setup({ config: tradeCfg(), exchange: ex });
+    await ctl.submit("/long HYPE $500 stop 2%");
+    clock += ARM_DELAY_MS;
+    await ctl.key("y", key({ ctrl: true }));
+    await ctl.key("y", key({ meta: true }));
+    await ctl.key("Y", key({ meta: true }));
+    await ctl.key("yes", {});
+    await ctl.key("y\r", {});
+    expect(ex.sent).toEqual([]);
+    expect(ctl.getView().mode).toBe("ticket");
+    await ctl.key("y", {});
+    expect(ex.sent.length).toBe(1);
+  });
+
+  test("y is ignored for ARM_DELAY_MS after a ticket appears or is re-quoted", async () => {
+    const ex = new FakeExchange();
+    const { ctl, store } = setup({ config: tradeCfg(), exchange: ex });
+    await ctl.submit("/long HYPE $500 stop 2%");
+    clock += 100;
+    await ctl.key("y", {});
+    expect(ctl.getView().pending!.ui.phase).toBe("awaiting");
+    clock += ARM_DELAY_MS - 101;
+    await ctl.key("y", {});
+    expect(ctl.getView().pending).not.toBeNull();
+    // past the delay: requote moves the mark → "changed", which re-arms
+    store.patch({ markets: store.state.markets.map((m) => (m.coin === "HYPE" ? { ...m, markPx: m.markPx * 1.02, midPx: null } : m)) });
+    clock += 1;
+    await ctl.key("y", {});
+    expect(ctl.getView().pending!.ui.changedWhy).toContain("mark moved");
+    clock += 200;
+    await ctl.key("y", {});
+    expect(ex.sent).toEqual([]);
+    clock += ARM_DELAY_MS;
+    await ctl.key("y", {});
+    expect(ex.sent.length).toBe(1);
+  });
+
+  test("demo y also waits for the arm delay", async () => {
+    const { ctl } = setup();
+    await ctl.submit("/long HYPE risk 0.5% stop 2%");
+    await ctl.key("y", {});
+    expect(ctl.getView().mode).toBe("ticket");
+    await yes(ctl);
+    expect(ctl.getView().mode).toBe("prompt");
+  });
+
+  test("quit while sending: the ticket is not discarded, the send finishes, nothing is appended after quit", async () => {
+    let release!: (r: SendResult) => void;
+    const sent: Ticket[] = [];
+    const ex: Exchange = {
+      send: (t) => {
+        sent.push(t);
+        return new Promise((r) => (release = r));
+      },
+    };
+    const { ctl, last, quits } = setup({ config: tradeCfg(), exchange: ex });
+    await ctl.submit("/long HYPE $500 stop 2%");
+    clock += ARM_DELAY_MS;
+    const confirming = ctl.key("y", {});
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ctl.getView().pending!.ui.phase).toBe("sending");
+    const inflight = ctl.inFlight();
+    expect(inflight).not.toBeNull();
+    ctl.quit();
+    expect(quits()).toBe(1);
+    expect(last("note")!.text).toContain("order in flight");
+    expect(last("ticket")).toBeUndefined();
+    const n = ctl.getView().entries.length;
+    release({ ok: true, lines: ["filled 6 HYPE @ 78.6"], errors: [], oids: [7] });
+    await confirming;
+    const done = await inflight!;
+    expect(done.outcome).toBe("sent");
+    expect(done.result.oids).toEqual([7]);
+    expect(sent.length).toBe(1);
+    expect(ctl.getView().entries.length).toBe(n);
+  });
+
+  test("quit while re-quoting: never sends", async () => {
+    let gate: (() => void) | null = null;
+    const slowInfo = Object.create(info) as DemoInfo;
+    slowInfo.book = async (coin: string) => {
+      if (gate === null) return info.book(coin);
+      await new Promise<void>((r) => (gate = r));
+      return info.book(coin);
+    };
+    const ex = new FakeExchange();
+    const store = new FakeStore({ ...baseState, config: tradeCfg() });
+    let quits = 0;
+    const ctl = new Controller({ config: tradeCfg(), store, info: slowInfo, exchange: ex, now: () => clock, timers: new FakeTimers(), batchMs: 0, ticketId: () => "t-1", onQuit: () => quits++ });
+    await ctl.submit("/long HYPE $500 stop 2%");
+    gate = () => {};
+    clock += ARM_DELAY_MS;
+    const confirming = ctl.key("y", {});
+    await new Promise((r) => setTimeout(r, 5));
+    expect(ctl.getView().pending!.ui.phase).toBe("requoting");
+    ctl.quit();
+    (gate as () => void)();
+    await confirming;
+    expect(ex.sent).toEqual([]);
+    expect(ctl.inFlight()).toBeNull();
+    expect(quits).toBe(1);
+    expect([...ctl.getView().entries].reverse().find((e) => e.kind === "note")).toMatchObject({ text: "ticket t-1 abandoned while re-quoting: not sent" });
+  });
+
+  test("sendOutcome: not sent vs uncertain", () => {
+    expect(sendOutcome({ ok: true, lines: ["filled"], errors: [], oids: [1] })).toBe("sent");
+    expect(sendOutcome({ ok: false, lines: [], errors: ["not sent: ticket is stale"], oids: [] })).toBe("failed");
+    expect(sendOutcome({ ok: false, lines: [], errors: ["leverage update failed (x); nothing was ordered"], oids: [] })).toBe("failed");
+    expect(sendOutcome({ ok: false, lines: ["leverage 3x cross set on HYPE"], errors: ["order rejected: margin"], oids: [] })).toBe("uncertain");
+    expect(sendOutcome({ ok: false, lines: [], errors: ["order status unknown (timeout): check /pos before retrying"], oids: [] })).toBe("uncertain");
+    expect(sendOutcome({ ok: false, lines: [], errors: [], oids: [5] })).toBe("uncertain");
+    expect(sendOutcome({ ok: false, lines: [], errors: ["not sent: x"], oids: [] }, true)).toBe("uncertain");
+  });
+
+  test("an uncertain send says so in the card, the result and the agent note", async () => {
+    let ctlRef: Controller | null = null;
+    const ex = new FakeExchange({ ok: false, lines: ["leverage 3x cross set on HYPE"], errors: ["order status unknown (timeout): check /pos before retrying"], oids: [] });
+    const agent = new FakeAgent(async (q) => {
+      if (q.endsWith("draft")) await ctlRef!.draftOrder({ kind: "open", intent: { asset: "HYPE", side: "long", leverage: 3, size: { usd: 500 }, entry: { type: "market" }, stop: { type: "pct", pct: 2 } } });
+      return { text: "", stop: "end" };
+    });
+    const s = setup({ config: tradeCfg(), exchange: ex, agent });
+    ctlRef = s.ctl;
+    await s.ctl.submit("draft");
+    await yes(s.ctl);
+    expect(s.last("ticket")!.outcome).toBe("uncertain");
+    expect(s.last("result")!.outcome).toBe("uncertain");
+    await s.ctl.submit("next");
+    expect(agent.questions[1]).toStartWith("[ticket t-1 HYPE long: confirmed by the human; outcome uncertain, check /pos;");
+  });
+
+  test("a thrown send is uncertain, not failed", async () => {
+    const ex: Exchange = { send: async () => Promise.reject(new Error("socket hang up")) };
+    const { ctl, last } = setup({ config: tradeCfg(), exchange: ex });
+    await ctl.submit("/long HYPE $500 stop 2%");
+    await yes(ctl);
+    expect(last("ticket")!.outcome).toBe("uncertain");
+    expect(last("result")!.result.errors).toEqual(["socket hang up"]);
+  });
+
+  test("busy is cleared after failing async commands", async () => {
+    const b = setup({ pulse: async () => Promise.reject(new Error("timeout")) });
+    await b.ctl.submit("/pulse");
+    expect(b.ctl.getView().busy).toBeNull();
+    const failingInfo = Object.create(info) as DemoInfo;
+    failingInfo.book = async () => Promise.reject(new Error("down"));
+    const store = new FakeStore({ ...baseState, config: tradeCfg() });
+    const c = new Controller({ config: tradeCfg(), store, info: failingInfo, exchange: null, now: () => clock, timers: new FakeTimers(), batchMs: 0 });
+    await c.submit("/coin BTC");
+    expect(c.getView().busy).toBeNull();
+  });
+
+  test("fetchPulse passes a timeout signal", async () => {
+    let seen: AbortSignal | undefined;
+    await fetchPulse({ url: "https://lab.example", token: "tok" }, async (_u, init) => {
+      seen = init?.signal ?? undefined;
+      return new Response(JSON.stringify({ ok: true, result: { asOf: "x", assets: [], warnings: [] } }), { status: 200 });
+    });
+    expect(seen).toBeInstanceOf(AbortSignal);
+  });
+
+  test("after quit, late updates do not re-arm timers", async () => {
+    let ev: AgentEventsLike | null = null;
+    const agent = new FakeAgent((_q, e) => {
+      ev = e;
+      return new Promise(() => {});
+    });
+    const store = new FakeStore({ ...baseState });
+    const timers = new FakeTimers();
+    const ctl = new Controller({ config: testConfig(), store, info, exchange: null, agent, now: () => clock, timers, batchMs: 50 });
+    void ctl.submit("go");
+    ev!.onText("streaming");
+    expect(timers.timeouts.size).toBe(1);
+    ctl.quit();
+    expect(timers.timeouts.size).toBe(0);
+    ev!.onText(" more");
+    store.patch({ marketsAt: NOW + 1 });
+    await ctl.key("c", key({ ctrl: true }));
+    expect(timers.timeouts.size).toBe(0);
+    expect(timers.intervals.size).toBe(0);
+  });
+
+  test("a chunk ending in a newline submits; the rest stays as input; filter edit applies", async () => {
+    const { ctl, last } = setup();
+    await ctl.key("/po", {});
+    await ctl.key("s\r", {});
+    expect(last("view-snapshot")!.view).toBe("pos");
+    await ctl.key("/help\n/alerts", {});
+    expect(last("view-snapshot")!.view).toBe("help");
+    expect(ctl.getView().input).toBe("/alerts");
+    await ctl.key("u", key({ ctrl: true }));
+    await ctl.submit("/markets");
+    await ctl.key("/", {});
+    await ctl.key("eth\r", {});
+    expect(ctl.getView().overlay).toMatchObject({ filter: "eth", editing: null });
+  });
 });
+

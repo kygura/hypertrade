@@ -2,7 +2,7 @@
 // for non-null values, governor verdict, verbatim reasons/warnings/notes, and a
 // footer that depends on phase and access. Plus the frozen note and ResultBlock.
 import { Box, Text } from "ink";
-import type { TicketUi } from "../app/model.js";
+import type { TicketOutcome, TicketUi } from "../app/model.js";
 import type { SendResult, Ticket } from "../core/types.js";
 import { fmtBps, fmtClock, fmtDist, fmtLev, fmtPx, fmtRr, fmtSz, fmtUsd, padEnd } from "./format.js";
 import { lineWidth, padLine, SegLine, wrapSegs, type Line, type Seg } from "./segs.js";
@@ -63,7 +63,8 @@ function footer(t: Ticket, ui: TicketUi, at: number): Line {
   const y = (label: string): Line => [{ text: "y", bold: true }, { text: label }, { text: " · n discard" }];
   switch (ui.phase) {
     case "frozen":
-      if (ui.outcome === "failed") return [{ text: `send failed ${fmtClock(at)}`, tone: "critical" }];
+      if (ui.outcome === "failed") return [{ text: `not sent ${fmtClock(at)}`, tone: "critical" }];
+      if (ui.outcome === "uncertain") return [{ text: `outcome uncertain ${fmtClock(at)} · check /pos`, tone: "critical" }];
       if (ui.outcome === "simulated") return [{ text: `simulated ${fmtClock(at)} (demo, nothing sent)`, tone: "dim" }];
       return [{ text: `sent ${fmtClock(at)}`, tone: "dim" }];
     case "requoting":
@@ -91,7 +92,8 @@ export function ticketCard(t: Ticket, ui: TicketUi, at: number): CardModel {
     return [{ text: v, ...(t0 ? { tone: t0 } : {}) }];
   };
   const lab = (s: string, w = 10): Seg => ({ text: padEnd(s, w), tone: "dim" });
-  const pair = (left: Line, right: Line): Line => (right.length ? [...padLine(left, 30), ...right] : left);
+  // A lone value renders at the left; only a non-empty left half is padded to the second column.
+  const pair = (left: Line, right: Line): Line => (!left.length ? right : right.length ? [...padLine(left, 30), ...right] : left);
 
   const kind = t.action.kind.toUpperCase();
   const body: Line[] = [];
@@ -231,17 +233,24 @@ export function TicketNote({ ticket, ui }: { ticket: Ticket; ui: TicketUi }) {
   );
 }
 
-export function ResultBlock({ result, demo }: { result: SendResult; demo?: boolean }) {
+export function resultHeadline(result: SendResult, outcome?: TicketOutcome, demo?: boolean): string {
+  if (demo) return result.ok ? "simulated" : "simulated: order refused";
+  if (result.ok) return "order sent";
+  return outcome === "failed" ? "order not sent" : "outcome uncertain, check /pos";
+}
+
+export function ResultBlock({ result, demo, outcome }: { result: SendResult; demo?: boolean; outcome?: TicketOutcome }) {
+  const head = resultHeadline(result, outcome, demo);
   return (
     <Box flexDirection="column">
       {result.ok ? (
         <Text>
           <Text {...tone("pass")}>{g().check} </Text>
-          <Text {...tone("pass")}>{demo ? "simulated" : "order sent"}</Text>
+          <Text {...tone("pass")}>{head}</Text>
         </Text>
       ) : (
         <Text {...tone("critical")}>
-          {g().cross} {demo ? "simulated: order refused" : "order failed"}
+          {g().cross} {head}
         </Text>
       )}
       {result.lines.map((l, i) => (

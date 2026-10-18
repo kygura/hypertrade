@@ -2,7 +2,7 @@
 // no exchange (demo), and a fake agent.
 import { afterEach, expect, test } from "bun:test";
 import { cleanup, render } from "ink-testing-library";
-import { Controller, type AgentLike } from "../app/controller.js";
+import { ARM_DELAY_MS, Controller, type AgentLike } from "../app/controller.js";
 import { loadConfig } from "../core/config.js";
 import { DemoInfo } from "../core/demo.js";
 import { Store } from "../core/store.js";
@@ -75,10 +75,20 @@ test("demo: markets → esc → pos → book → long HYPE → y (simulated) →
   expect(out()).toContain("ticket pending: y send · n discard");
   expect(ctl.getView().mode).toBe("ticket");
 
+  // y is armed only ARM_DELAY_MS after the ticket appears
+  app.stdin.write("y");
+  await tick();
+  expect(ctl.getView().mode).toBe("ticket");
+  await new Promise((r) => setTimeout(r, ARM_DELAY_MS + 50));
   app.stdin.write("y");
   await waitFor(() => out().includes("demo: simulated, nothing sent"), "simulated result");
   expect(out()).toContain("simulated");
   expect(ctl.getView().mode).toBe("prompt");
+
+  // text + Enter in ONE read (paste, fast typist) submits
+  app.stdin.write("/coin BTC\r");
+  await waitFor(() => out().includes("ATR14"), "coin card from a single chunk");
+  expect(ctl.getView().input).toBe("");
 
   await type("/quit");
   await waitFor(() => quit === 1, "quit");

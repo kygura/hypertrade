@@ -14,6 +14,8 @@ import type { InfoSource } from "./core/types.js";
 import { App } from "./ui/App.js";
 import { configureTheme, colorEnabled } from "./ui/theme.js";
 
+const IN_FLIGHT_WAIT_MS = 10_000;
+
 async function main(): Promise<void> {
   configureTheme({ color: colorEnabled(process.env, !!process.stdout.isTTY), ascii: process.env.HT_ASCII === "1" });
 
@@ -67,7 +69,24 @@ async function main(): Promise<void> {
   void store.start().catch((e: unknown) => process.stderr.write(`ht: start failed: ${e instanceof Error ? e.message : String(e)}\n`));
   await ink.waitUntilExit();
   store.stop();
+  await awaitInFlight(controller);
   process.exit(0);
+}
+
+/** An order confirmed before quitting is allowed to finish (up to 10 s); its outcome goes to stderr. */
+async function awaitInFlight(c: Controller): Promise<void> {
+  const pending = c.inFlight();
+  if (!pending) return;
+  process.stderr.write("ht: waiting for the order in flight…\n");
+  const done = await Promise.race([pending, new Promise<null>((r) => setTimeout(() => r(null), IN_FLIGHT_WAIT_MS))]);
+  if (!done) {
+    process.stderr.write("ht: order status unknown after 10s: check /pos after restart\n");
+    return;
+  }
+  const head = done.outcome === "sent" ? "sent" : done.outcome === "failed" ? "not sent" : "outcome uncertain, check /pos after restart";
+  process.stderr.write(`ht: ticket ${done.ticket.id}: ${head}\n`);
+  for (const l of done.result.lines) process.stderr.write(`ht:   · ${l}\n`);
+  for (const e of done.result.errors) process.stderr.write(`ht:   ✗ ${e}\n`);
 }
 
 main().catch((e: unknown) => {

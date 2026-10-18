@@ -110,9 +110,14 @@ export function fmtApr(pct: number | null | undefined): string {
 /** Hourly funding fraction → APR percent. */
 export const aprOf = (hourly: number) => hourly * 24 * 365 * 100;
 
-export function fmtBps(bps: number | null | undefined): string {
+/** bps number only: 1 decimal below 10, integer from 10 (for columns headed "bps"). */
+export function fmtBpsNum(bps: number | null | undefined): string {
   if (!ok(bps)) return MISSING;
-  return Math.abs(bps) < 10 ? `${bps.toFixed(1)} bps` : `${Math.round(bps)} bps`;
+  return Math.abs(bps) < 10 ? bps.toFixed(1) : String(Math.round(bps));
+}
+
+export function fmtBps(bps: number | null | undefined): string {
+  return ok(bps) ? `${fmtBpsNum(bps)} bps` : MISSING;
 }
 
 export function fmtLev(x: number | null | undefined): string {

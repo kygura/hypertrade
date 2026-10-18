@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { OrderIntentSchema, SideSchema, type OrderIntent } from "../../../src/shared/intel.js";
 import type { ToolSpec } from "../../../src/server/llm/provider.js";
-import { buildCoinView } from "../core/coin.js";
+import { buildCoinView, closestCoins } from "../core/coin.js";
 import { PulseSchema } from "../core/lab.js";
 import type { AccountSnapshot, AppState, InfoSource, MarketRow, Ticket, TicketAction } from "../core/types.js";
 
@@ -110,15 +110,6 @@ function zodMessage(tool: string, err: z.ZodError, input?: unknown): string {
   return `invalid input to ${tool}: ${parts.join("; ")}`;
 }
 
-function editDistance(a: string, b: string): number {
-  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...new Array<number>(b.length).fill(0)]);
-  for (let j = 1; j <= b.length; j++) d[0]![j] = j;
-  for (let i = 1; i <= a.length; i++)
-    for (let j = 1; j <= b.length; j++)
-      d[i]![j] = Math.min(d[i - 1]![j]! + 1, d[i]![j - 1]! + 1, d[i - 1]![j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
-  return d[a.length]![b.length]!;
-}
-
 /** The listed market for `input` (case-insensitive), or an error that names the closest coins. */
 function findMarket(state: AppState, input: string): MarketRow {
   const q = input.trim().toUpperCase();
@@ -126,16 +117,7 @@ function findMarket(state: AppState, input: string): MarketRow {
   const hit = live.find((m) => m.coin.toUpperCase() === q);
   if (hit) return hit;
   if (!live.length) throw new Error(`unknown coin ${input}: no markets loaded yet${state.marketsError ? ` (${state.marketsError})` : ""}`);
-  const near = live
-    .map((m) => {
-      const c = m.coin.toUpperCase();
-      const score = c.startsWith(q) || q.startsWith(c) ? 0 : c.includes(q) || q.includes(c) ? 1 : editDistance(c, q) <= 2 ? 2 : 9;
-      return { coin: m.coin, score, oi: m.oiUsd };
-    })
-    .filter((x) => x.score < 9)
-    .sort((a, b) => a.score - b.score || b.oi - a.oi)
-    .slice(0, 5)
-    .map((x) => x.coin);
+  const near = closestCoins(live, q, 5);
   throw new Error(`unknown coin ${input}${near.length ? `; close matches: ${near.join(", ")}` : "; not in the Hyperliquid universe (use get_markets to list)"}`);
 }
 

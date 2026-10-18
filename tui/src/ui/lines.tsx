@@ -117,7 +117,7 @@ const LEVEL: Record<AlertLevel, { marker: string; tag: string }> = {
 export function AlertLine({ alert, width, age }: { alert: Alert; width: number; age?: string }) {
   const l = LEVEL[alert.level];
   const markTone = alert.level === "info" ? "dim" : alert.level === "warn" ? "warn" : "critical";
-  const prefix = `${`${l.marker} ${l.tag}`.padEnd(7)}  ${age ?? fmtClock(alert.at)}  `;
+  const prefix = `${l.marker} ${l.tag}  ${age ?? fmtClock(alert.at)}  `;
   const crit = alert.level === "critical";
   return (
     <Box>

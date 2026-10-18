@@ -399,7 +399,7 @@ fixtures, no network · …`); `ws off`; ticket sends are simulated and their re
 | `/pos` | `fetching account…` (live, then snapshot) | `no account configured — set HT_ACCOUNT or HT_AGENT_KEY`; or `no open positions` / `no open orders` | `error` entry, `source: account` |
 | `/book` | `fetching BTC book…` | unknown coin → `error` with up to 3 closest coins | thin book → `—` slippage + `book too thin for $250k`; fetch failure → overlay line in critical, Esc closes |
 | `/coin` | `loading BTC…` | unknown coin as above | ATR `—` + dim `candles unavailable`; regime `—` |
-| ticket | `quoting…` live line | — | resolve/governor failure → `error` entry naming the step (`resolve: stop must be below entry for a long`) |
+| ticket | `quoting…` live line | — | resolve/governor failure → the ticket still renders, as a blocked card whose `✗` line names the step (`resolve: stop must be below entry for a long`); footer `blocked · n/esc dismiss`. Only a ticket build that throws becomes an `error` entry |
 | agent | `● thinking 3s · esc abort` | — | no provider → `error`: `agent unavailable — no LLM provider configured (set ANTHROPIC_API_KEY or ANALYST_PROVIDER); slash commands still work`, status `agent off`; mid-stream failure keeps partial text + `error` entry; 120 s timeout → `note` `timed out after 120s`; 8 tool rounds → `note` `stopped after 8 tool rounds` |
 | `/pulse` | `fetching lab pulse…` | `lab not configured — set LAB_URL and LAB_API_TOKEN` | HTTP code verbatim in `error` |
 | `/brief` | — | `no brief at data/marketstate/latest.json` | parse failure in `error`; `generated_at` age warn > 36 h |

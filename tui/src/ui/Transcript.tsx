@@ -34,7 +34,7 @@ export function EntryView({ entry: e, width, prose }: EntryViewProps) {
     case "ticket":
       return e.outcome === "discarded" || e.outcome === "dismissed" ? <TicketNote ticket={e.ticket} ui={e.ui} /> : <TicketCard ticket={e.ticket} ui={e.ui} width={width} at={e.at} />;
     case "result":
-      return <ResultBlock result={e.result} demo={e.demo} />;
+      return <ResultBlock result={e.result} demo={e.demo} outcome={e.outcome} />;
     case "view-snapshot":
       switch (e.view) {
         case "pos":

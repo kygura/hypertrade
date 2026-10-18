@@ -7,12 +7,15 @@ import { complete } from "../commands/complete.js";
 import { orderToIntent } from "../commands/intent.js";
 import { parseInput, type Command, type OrderCommand, type SortKey } from "../commands/parse.js";
 import type { Brief } from "../core/brief.js";
-import { buildCoinView } from "../core/coin.js";
+import { buildCoinView, closestCoins } from "../core/coin.js";
+
+export { closestCoins };
 import type { Exchange } from "../core/exchange.js";
 import type { Pulse } from "../core/lab.js";
 import { buildTicket, findMarket, livePx, requote, type TicketDeps, type TicketRequest } from "../core/ticket.js";
 import type { Alert, AppState, Config, InfoSource, MarketRow, SendResult, Ticket, TicketAction } from "../core/types.js";
 import { fmtPx, fmtSz, fmtUsd } from "../ui/format.js";
+import { bookLevels, bookMaxLevels, overlayHeight } from "./model.js";
 import type {
   AgentRun,
   BookOverlay,
@@ -42,7 +45,6 @@ export interface StoreLike {
 
 export interface AgentEventsLike {
   onText(delta: string): void;
-  onReasoning?(delta: string): void;
   onToolStart(name: string, inputSummary: string): void;
   onToolEnd(name: string, ok: boolean, summary: string): void;
   onServerTool?(name: string, summary: string): void;
@@ -92,6 +94,8 @@ export interface ControllerOptions {
 // ─── constants ───
 
 export const QUIT_ARM_MS = 2000;
+/** `y` is ignored this long after a ticket appears or is re-quoted (stray typing, key repeat). */
+export const ARM_DELAY_MS = 500;
 export const BOOK_POLL_MS = 3000;
 const HISTORY_MAX = 200;
 const DEMO_BLOCKER = "demo: orders disabled";
@@ -117,6 +121,13 @@ export const HELP: HelpItem[] = [
 
 const HELP_SUMMARY: Record<string, string> = Object.fromEntries(HELP.map((h) => [h.usage.split(" ")[0]!, h.summary]));
 
+/** A confirmed send and how it ended. */
+export interface InFlight {
+  ticket: Ticket;
+  result: SendResult;
+  outcome: "sent" | "failed" | "uncertain";
+}
+
 type NewEntry = Entry extends infer E ? (E extends Entry ? Omit<E, "id" | "at"> : never) : never;
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -138,32 +149,6 @@ export function sortMarkets(markets: MarketRow[], sort: SortKey, dir: "desc" | "
   return rows;
 }
 
-function editDistance(a: string, b: string): number {
-  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...new Array<number>(b.length).fill(0)]);
-  for (let j = 1; j <= b.length; j++) d[0]![j] = j;
-  for (let i = 1; i <= a.length; i++)
-    for (let j = 1; j <= b.length; j++) d[i]![j] = Math.min(d[i - 1]![j]! + 1, d[i]![j - 1]! + 1, d[i - 1]![j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
-  return d[a.length]![b.length]!;
-}
-
-/** Up to `n` listed coins closest to `q` (prefix, substring, then edit distance ≤ 2), by OI. */
-export function closestCoins(markets: MarketRow[], q: string, n = 3): string[] {
-  const u = q.toUpperCase();
-  return markets
-    .map((m) => {
-      const c = m.coin.toUpperCase();
-      const score = c.startsWith(u) || u.startsWith(c) ? 0 : c.includes(u) || u.includes(c) ? 1 : editDistance(c, u) <= 2 ? 2 : 9;
-      return { coin: m.coin, score, oi: m.oiUsd };
-    })
-    .filter((x) => x.score < 9)
-    .sort((a, b) => a.score - b.score || b.oi - a.oi)
-    .slice(0, n)
-    .map((x) => x.coin);
-}
-
-/** A demo ticket can be "sent" (simulated) when the demo blocker is its only blocker. */
-export const demoSendable = (t: Ticket) => t.blockers.every((b) => b === DEMO_BLOCKER);
-
 function ticketLabel(t: Ticket): string {
   switch (t.action.kind) {
     case "open":
@@ -177,6 +162,17 @@ function ticketLabel(t: Ticket): string {
   }
 }
 
+/**
+ * A send that did not succeed is "failed" only when nothing was posted (preflight
+ * refusal, leverage update refused before any order). Anything else that is not ok
+ * (fills, oids, status unknown, flatten paths, a thrown send) is "uncertain".
+ */
+export function sendOutcome(r: SendResult, threw = false): "sent" | "failed" | "uncertain" {
+  if (r.ok && !threw) return "sent";
+  if (threw || r.lines.length || r.oids.length || !r.errors.length) return "uncertain";
+  return r.errors.every((e) => e.startsWith("not sent:") || /nothing was ordered/.test(e)) ? "failed" : "uncertain";
+}
+
 /** One-line outcome the agent sees at the start of its next question. */
 export function agentOutcomeNote(t: Ticket, outcome: TicketOutcome, result?: SendResult): string {
   const head = `[ticket ${t.id} ${ticketLabel(t)}:`;
@@ -185,7 +181,9 @@ export function agentOutcomeNote(t: Ticket, outcome: TicketOutcome, result?: Sen
     case "sent":
       return `${head} confirmed by the human and sent${detail ? `; ${detail}` : ""}]`;
     case "failed":
-      return `${head} confirmed by the human; send failed${detail ? `; ${detail}` : ""}]`;
+      return `${head} confirmed by the human; not sent${detail ? `; ${detail}` : ""}]`;
+    case "uncertain":
+      return `${head} confirmed by the human; outcome uncertain, check /pos${detail ? `; ${detail}` : ""}]`;
     case "simulated":
       return `${head} confirmed in demo mode; simulated, nothing sent]`;
     case "discarded":
@@ -228,6 +226,10 @@ export class Controller {
   private lastAccountError: string | null = null;
   private unsubs: Array<() => void> = [];
   private quitting = false;
+  private disposed = false;
+  /** When the pending ticket was shown or last re-quoted (ARM_DELAY_MS gate). */
+  private armedAt = 0;
+  private inflight: Promise<InFlight> | null = null;
   private size = { cols: 100, rows: 30 };
 
   constructor(o: ControllerOptions) {
@@ -286,6 +288,7 @@ export class Controller {
 
   /** Detaches from the store and stops timers (no quit callback). */
   dispose(): void {
+    this.disposed = true;
     for (const u of this.unsubs) u();
     this.unsubs = [];
     this.stopBookPoll();
@@ -295,6 +298,7 @@ export class Controller {
   }
 
   private emit(urgent: boolean): void {
+    if (this.disposed) return; // late set() after quit: no timers, nobody to render for
     if (urgent || this.batchMs <= 0) {
       if (this.flushTimer) {
         this.timers.clearTimeout(this.flushTimer);
@@ -560,6 +564,7 @@ export class Controller {
   private openTicket(t: Ticket, source: TicketSource, notes: string[]): void {
     if (this.view.overlay) this.closeOverlay(true);
     this.intentNotes = notes;
+    this.armedAt = this.now();
     this.set({ pending: { ticket: this.withIntentNotes(t), ui: this.uiFor(t, source) } });
   }
 
@@ -588,24 +593,36 @@ export class Controller {
     this.set({ pending: p });
   }
 
+  /** An order the human confirmed whose send has not returned yet (main awaits it on exit). */
+  inFlight(): Promise<InFlight> | null {
+    return this.inflight;
+  }
+
   private async confirm(): Promise<void> {
     const p = this.view.pending;
-    if (!p || p.ui.phase !== "awaiting") return;
+    if (!p || p.ui.phase !== "awaiting" || this.quitting) return;
+    if (this.now() - this.armedAt < ARM_DELAY_MS) return;
     const { ticket, ui } = p;
     if (ui.access === "demo") return this.simulate(ticket, ui);
     if (!ticket.canSend || ui.access !== "trade") return;
     if (!this.exchange) return this.error("send", "no exchange: trading key not loaded");
+    const exchange = this.exchange;
+    // After every await: the human may have quit, or the ticket may be gone.
+    const stale = () => this.quitting || this.view.pending?.ticket.id !== ticket.id;
 
     this.setPending({ ticket, ui: { ...ui, phase: "requoting" } });
     let rq;
     try {
       rq = await requote(ticket, this.ticketDeps());
     } catch (e) {
+      if (stale()) return;
       this.setPending({ ticket, ui: { ...ui, phase: "awaiting" } });
       return this.error("requote", errMsg(e));
     }
+    if (stale()) return;
     const next = this.withIntentNotes(rq.ticket);
     if (rq.kind === "changed") {
+      this.armedAt = this.now();
       this.setPending({ ticket: next, ui: { ...ui, phase: "awaiting", changedWhy: rq.why, previous: ticket } });
       return;
     }
@@ -614,13 +631,20 @@ export class Controller {
       return;
     }
     this.setPending({ ticket: next, ui: { ...ui, phase: "sending" } });
-    let result: SendResult;
-    try {
-      result = await this.exchange.send(next, this.state().markets);
-    } catch (e) {
-      result = { ok: false, lines: [], errors: [errMsg(e)], oids: [] };
-    }
-    this.resolveTicket(next, ui, result.ok ? "sent" : "failed", result);
+    const markets = this.state().markets;
+    const sending: Promise<InFlight> = exchange.send(next, markets).then(
+      (result) => ({ ticket: next, result, outcome: sendOutcome(result) }),
+      (e: unknown) => {
+        const result: SendResult = { ok: false, lines: [], errors: [errMsg(e)], oids: [] };
+        return { ticket: next, result, outcome: sendOutcome(result, true) };
+      },
+    );
+    this.inflight = sending;
+    const done = await sending;
+    if (this.inflight === sending) this.inflight = null;
+    if (this.quitting) return; // main prints the outcome after the UI is gone
+    if (this.view.pending?.ticket.id !== next.id) return;
+    this.resolveTicket(next, ui, done.outcome, done.result);
     try {
       await this.store.refreshAccount();
     } catch {}
@@ -644,6 +668,7 @@ export class Controller {
     this.resolveTicket(t, ui, "simulated", result);
   }
 
+
   private discard(): void {
     const p = this.view.pending;
     if (!p || p.ui.phase === "requoting" || p.ui.phase === "sending") return;
@@ -655,7 +680,7 @@ export class Controller {
     this.intentNotes = [];
     this.set({ pending: null });
     this.append({ kind: "ticket", ticket: t, outcome, ui: { ...ui, phase: "frozen", outcome } });
-    if (result) this.append({ kind: "result", result, ticketId: t.id, demo: outcome === "simulated" });
+    if (result) this.append({ kind: "result", result, ticketId: t.id, demo: outcome === "simulated", outcome });
     if (ui.source === "agent") this.agentNotes.push(agentOutcomeNote(t, outcome, result));
   }
 
@@ -745,7 +770,7 @@ export class Controller {
   // ─── overlays ───
 
   private bookLevels(): number {
-    return Math.max(1, Math.min(10, Math.floor((this.size.rows - 1 - 9) / 2)));
+    return bookLevels(overlayHeight(this.size.rows));
   }
 
   private async openBook(coin: string, back: MarketsOverlay | null): Promise<void> {
@@ -795,7 +820,12 @@ export class Controller {
       if (key.escape) this.set({ overlay: { ...o, editing: null } });
       else if (key.return) this.set({ overlay: { ...o, filter: o.editing.trim(), editing: null, selected: 0 } });
       else if (key.backspace || key.delete) this.set({ overlay: { ...o, editing: o.editing.slice(0, -1) } });
-      else if (input && !key.ctrl && !key.meta && printable(input)) this.set({ overlay: { ...o, editing: o.editing + input } });
+      else if (input && !key.ctrl && !key.meta) {
+        const nl = input.search(/[\r\n]/);
+        const text = o.editing + clean(nl >= 0 ? input.slice(0, nl) : input);
+        if (nl >= 0) this.set({ overlay: { ...o, filter: text.trim(), editing: null, selected: 0 } });
+        else this.set({ overlay: { ...o, editing: text } });
+      }
       return;
     }
     const rows = this.marketsRows(o);
@@ -826,7 +856,7 @@ export class Controller {
 
   private bookKey(o: BookOverlay, input: string, key: KeyLike): void {
     if (key.escape || input === "q") return this.closeOverlay();
-    if (input === "+" || input === "=") this.set({ overlay: { ...o, levels: Math.min(30, o.levels + 1) } });
+    if (input === "+" || input === "=") this.set({ overlay: { ...o, levels: Math.min(bookMaxLevels(overlayHeight(this.size.rows)), o.levels + 1) } });
     else if (input === "-" || input === "_") this.set({ overlay: { ...o, levels: Math.max(1, o.levels - 1) } });
   }
 
@@ -838,6 +868,8 @@ export class Controller {
       if (key.ctrl && input === "c") return this.ctrlC();
       const v = this.view;
       if (v.pending) {
+        // Exactly y / n / Esc: Ctrl-Y, Alt-Y and pasted chunks such as "yes" or "y\r" never confirm.
+        if (key.ctrl || key.meta) return;
         if (key.escape || input === "n" || input === "N") return this.discard();
         if (input === "y" || input === "Y") return await this.confirm();
         return; // typed keys are dropped, not buffered
@@ -857,6 +889,7 @@ export class Controller {
   }
 
   private ctrlC(): void {
+    if (this.quitting) return;
     if (this.view.quitArmed) return this.quit();
     if (this.quitTimer) this.timers.clearTimeout(this.quitTimer);
     this.quitTimer = this.timers.setTimeout(() => {
@@ -866,16 +899,22 @@ export class Controller {
     this.set({ quitArmed: true });
   }
 
-  /** /quit or a second Ctrl-C: abort the agent, discard any ticket (never sends), stop polls, then onQuit. */
+  /**
+   * /quit or a second Ctrl-C: abort the agent, discard an awaiting ticket, stop polls,
+   * then onQuit. A ticket being re-quoted is never sent after this; one already being
+   * sent is left to finish (see inFlight()).
+   */
   quit(): void {
     if (this.quitting) return;
     this.quitting = true;
     this.abort?.abort();
     const p = this.view.pending;
-    if (p) this.resolveTicket(p.ticket, p.ui, "discarded");
+    if (p?.ui.phase === "sending") this.note(`order in flight (ticket ${p.ticket.id}): check /pos after restart`);
+    else if (p?.ui.phase === "requoting") this.note(`ticket ${p.ticket.id} abandoned while re-quoting: not sent`);
+    else if (p) this.resolveTicket(p.ticket, p.ui, "discarded");
     if (this.view.overlay) this.closeOverlay(true);
-    this.dispose();
     this.set({ quitArmed: false });
+    this.dispose();
     try {
       this.onQuit();
     } catch {}
@@ -915,8 +954,18 @@ export class Controller {
     }
     if (key.escape) return this.setInput("", 0);
     if (input && !key.ctrl && !key.meta) {
-      const text = input.replace(/[\r\n]+/g, " ").replace(/[\u0000-\u001f\u007f]/g, "");
-      if (text) this.setInput(val.slice(0, cursor) + text + val.slice(cursor), cursor + text.length);
+      // A chunk with a newline (paste, or text + Enter in one read): insert what precedes it, then submit.
+      const nl = input.search(/[\r\n]/);
+      const text = clean(nl >= 0 ? input.slice(0, nl) : input);
+      const line = val.slice(0, cursor) + text + val.slice(cursor);
+      if (nl < 0) {
+        if (text) this.setInput(line, cursor + text.length);
+        return;
+      }
+      const rest = clean(input.slice(nl).replace(/[\r\n]+/g, " ")).trim();
+      if (this.view.agentRun) return this.setInput(rest ? `${line} ${rest}` : line); // Enter is ignored while the agent runs
+      await this.submit(line);
+      if (rest && !this.view.pending) this.setInput(rest);
     }
   }
 
@@ -959,7 +1008,8 @@ export class Controller {
 const ALIAS_OF: Record<string, string> = { p: "pos", m: "markets", b: "book", q: "quit", h: "help", buy: "long", sell: "short" };
 const aliasTarget = (label: string) => ALIAS_OF[label.slice(1)] ?? label.slice(1);
 
-const printable = (s: string) => !/[\u0000-\u001f\u007f]/.test(s);
+/** Drops control characters (escape sequences, newlines) from typed or pasted text. */
+const clean = (s: string) => s.replace(/[\u0000-\u001f\u007f]/g, "");
 
 function modeOf(v: View): Mode {
   if (v.pending) return "ticket";

@@ -47,7 +47,7 @@ export function statusFields(state: AppState, agentLabel: string | null, width: 
         ? { line: one("ws connecting", "warn"), priority: 5 }
         : state.ws === "closed"
           ? { line: one(`ws down · poll ${pollAge}`, "critical"), priority: 5 }
-          : { line: one("ws off", "dim"), priority: 10 };
+          : { line: one("ws off", "dim"), priority: 5 };
   f.push({ id: "ws", ...ws });
 
   const n = state.alerts.length;

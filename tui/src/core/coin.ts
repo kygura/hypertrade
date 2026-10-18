@@ -8,6 +8,32 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const WINDOW_HOURS = 24;
 
+function editDistance(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...new Array<number>(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0]![j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) d[i]![j] = Math.min(d[i - 1]![j]! + 1, d[i]![j - 1]! + 1, d[i - 1]![j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length]![b.length]!;
+}
+
+/**
+ * Up to `n` coins closest to `q`, case-insensitive: prefix either way, then substring,
+ * then edit distance ≤ 2; ties by OI desc. Shared by the UI's unknown-coin hint and the agent tools.
+ */
+export function closestCoins(markets: MarketRow[], q: string, n = 3): string[] {
+  const u = q.trim().toUpperCase();
+  return markets
+    .map((m) => {
+      const c = m.coin.toUpperCase();
+      const score = c.startsWith(u) || u.startsWith(c) ? 0 : c.includes(u) || u.includes(c) ? 1 : editDistance(c, u) <= 2 ? 2 : 9;
+      return { coin: m.coin, score, oi: m.oiUsd };
+    })
+    .filter((x) => x.score < 9)
+    .sort((a, b) => a.score - b.score || b.oi - a.oi)
+    .slice(0, n)
+    .map((x) => x.coin);
+}
+
 const sgn = (x: number, d = 1) => `${x >= 0 ? "+" : ""}${x.toFixed(d)}`;
 const orEmpty = async <T>(p: Promise<T[]>): Promise<T[]> => p.catch(() => []);
 

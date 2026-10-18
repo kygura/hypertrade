@@ -3,6 +3,7 @@
 import { Box, Text, useInput, useStdin, useWindowSize } from "ink";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { Controller } from "../app/controller.js";
+import { overlayHeight } from "../app/model.js";
 import { findMarket } from "../core/ticket.js";
 import { BookOverlay } from "./Book.js";
 import { AgentLive, Dock, dockChrome, proseWidth } from "./Dock.js";
@@ -48,8 +49,7 @@ export function App({ controller, columns, rows }: AppProps) {
   const p = view.pending;
   const dismissOnly = !!p && p.ui.access !== "demo" && (p.ui.access === "read-only" || !p.ticket.canSend);
 
-  // Overlay height: rows − 2 so overlay + status bar stays within rows − 1.
-  const overlayH = Math.max(5, rws - 2);
+  const overlayH = overlayHeight(rws);
   let overlay = null;
   if (view.overlay?.kind === "markets") overlay = <MarketsOverlay state={view.state} overlay={view.overlay} maxHeight={overlayH} width={cols} now={now} />;
   else if (view.overlay?.kind === "book") {

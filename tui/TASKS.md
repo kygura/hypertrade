@@ -32,3 +32,9 @@ confirm-gated orders (see SPEC.md "Done means").
 - V verification gate: review lenses, drift check, full test/typecheck — reviewers
 
 ## Decisions so far
+- T0 done: pure modules extracted (order-resolve, triggers, atr, fmtPx); root tests scoped to ./src; CI tui job.
+- D done: DESIGN.md (dock + Static transcript, overlays for /markets and /book, ticket card states).
+- T1–T5 done; review round fixed stale mids, stop matching, stale-account tickets, partial-close cleanup, agent-key approval check, strict agent inputs.
+- T6 done; verification round fixed Ctrl/Alt+Y confirm, 500 ms arm delay, quit during send, uncertain outcomes, paste submit, five design drifts.
+- Accepted deviation: resolve/governor failures render as a blocked ticket card, not an error entry (DESIGN §8 updated).
+- Not verified: a real testnet order round trip (needs a funded testnet API wallet).

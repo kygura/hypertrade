@@ -2,7 +2,7 @@
 import { Box, Text } from "ink";
 import type { BookOverlay as BookState } from "../app/model.js";
 import type { BookView, Level } from "../core/types.js";
-import { fmtAge, fmtBps, fmtClock, fmtPx, fmtSz, fmtUsdCompact, MISSING, padStart } from "./format.js";
+import { fmtAge, fmtBps, fmtBpsNum, fmtClock, fmtPx, fmtSz, fmtUsdCompact, MISSING, padStart } from "./format.js";
 import { SegLine, spread, type Line } from "./segs.js";
 import { g, tone, type Tone } from "./theme.js";
 
@@ -75,7 +75,7 @@ export function BookStats({ book }: { book: BookView }) {
       </Text>
       <Text {...tone("dim")}>{`${padStart("SIZE", 7)} ${padStart("BUY bps", 8)} ${padStart("SELL bps", 9)}`}</Text>
       {book.slippage.map((s) => (
-        <Text key={s.sizeUsd}>{`${padStart(fmtUsdCompact(s.sizeUsd), 7)} ${padStart(s.buyBps == null ? MISSING : s.buyBps.toFixed(1), 8)} ${padStart(s.sellBps == null ? MISSING : s.sellBps.toFixed(1), 9)}`}</Text>
+        <Text key={s.sizeUsd}>{`${padStart(fmtUsdCompact(s.sizeUsd), 7)} ${padStart(fmtBpsNum(s.buyBps), 8)} ${padStart(fmtBpsNum(s.sellBps), 9)}`}</Text>
       ))}
       {thin.length > 0 && <Text {...tone("warn")}>book too thin for {fmtUsdCompact(thin[0]!.sizeUsd)}</Text>}
     </Box>
@@ -85,15 +85,13 @@ export function BookStats({ book }: { book: BookView }) {
 export function BookOverlay({ overlay: o, szDecimals, maxHeight, width, now }: { overlay: BookState; szDecimals: number; maxHeight: number; width: number; now: number }) {
   const left: Line = [{ text: ` BOOK ${o.coin} `, tone: "selected" }, { text: `  levels ${o.levels}`, tone: "dim" }];
   const right: Line = o.book ? [{ text: `updated ${fmtAge(now - o.book.at)} ago`, tone: "dim" }] : [];
-  // Ladder = header + 2·levels + spread row; stats = 2 + 3 + thin line.
-  const fitLevels = Math.max(1, Math.min(o.levels, Math.floor((maxHeight - 3 - 7 - 2) / 2)));
   let body;
   if (o.error) body = <Text {...tone("critical")}>book {o.coin}: {o.error} · esc closes</Text>;
   else if (!o.book) body = <Text {...tone("dim")}>fetching {o.coin} book…</Text>;
   else
     body = (
       <>
-        <BookLadder book={o.book} levels={fitLevels} szDecimals={szDecimals} width={width} />
+        <BookLadder book={o.book} levels={o.levels} szDecimals={szDecimals} width={width} />
         <BookStats book={o.book} />
       </>
     );
@@ -111,7 +109,7 @@ export function BookOverlay({ overlay: o, szDecimals, maxHeight, width, now }: {
 /** One line kept in scrollback after the overlay closes. */
 export function BookSummaryLine({ book, szDecimals, at }: { book: BookView; szDecimals: number; at: number }) {
   const s50 = book.slippage.find((s) => s.sizeUsd === 50_000);
-  const slip = s50 ? ` · $50k slip ${s50.buyBps == null ? MISSING : s50.buyBps.toFixed(1)} / ${s50.sellBps == null ? MISSING : s50.sellBps.toFixed(1)} bps` : "";
+  const slip = s50 ? ` · $50k slip ${fmtBpsNum(s50.buyBps)} / ${fmtBpsNum(s50.sellBps)} bps` : "";
   return (
     <Text {...tone("dim")}>
       BOOK {book.coin} · {fmtClock(at)} · mid {book.mid != null ? fmtPx(book.mid, szDecimals) : MISSING} · spread {fmtBps(book.spreadBps)} · ±50bps {fmtUsdCompact(book.depth50Usd.bid)} /{" "}

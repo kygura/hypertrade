@@ -61,6 +61,7 @@ export async function fetchPulse(lab: { url: string; token: string }, fetchFn: F
       accept: "application/json",
     },
     body: "{}",
+    signal: AbortSignal.timeout(15_000),
   });
   if (res.status === 401) throw new Error("unauthorized: check LAB_API_TOKEN");
   const text = await res.text();

@@ -1,5 +1,5 @@
 // View-model shapes shared by the controller (app/controller.ts) and the Ink
-// components (ui/*). Types only.
+// components (ui/*), plus the two layout formulas both must agree on.
 import type { Brief } from "../core/brief.js";
 import type { Pulse } from "../core/lab.js";
 import type { SortKey } from "../commands/parse.js";
@@ -32,8 +32,11 @@ export type Snapshot =
 
 export type ToolStatus = "running" | "ok" | "error" | "aborted";
 
-/** sent / failed / simulated freeze the card; discarded / dismissed print one note line. */
-export type TicketOutcome = "sent" | "failed" | "simulated" | "discarded" | "dismissed";
+/**
+ * sent / failed / uncertain / simulated freeze the card; discarded / dismissed print one note line.
+ * failed = confirmed but nothing was posted; uncertain = something may have reached the exchange.
+ */
+export type TicketOutcome = "sent" | "failed" | "uncertain" | "simulated" | "discarded" | "dismissed";
 export type TicketSource = "command" | "agent";
 
 /** What the card needs besides the ticket. */
@@ -62,7 +65,7 @@ export type Entry = { id: string; at: number } & (
   | { kind: "alert"; alert: Alert }
   | ({ kind: "view-snapshot" } & Snapshot)
   | { kind: "ticket"; ticket: Ticket; outcome: TicketOutcome; ui: TicketUi }
-  | { kind: "result"; result: SendResult; ticketId: string; demo: boolean }
+  | { kind: "result"; result: SendResult; ticketId: string; demo: boolean; outcome: TicketOutcome }
   | { kind: "error"; source: string; message: string; hint?: string }
   | { kind: "note"; text: string }
 );
@@ -155,4 +158,19 @@ export interface KeyLike {
   backspace?: boolean;
   delete?: boolean;
   meta?: boolean;
+}
+
+/** Overlay height: rows − 2, so overlay + status bar stays within the rows − 1 live region. */
+export function overlayHeight(rows: number): number {
+  return Math.max(5, rows - 2);
+}
+
+/** Most book levels per side an overlay of `maxHeight` lines fits: ⌊(maxHeight − 9)/2⌋ (DESIGN §3), at least 1. */
+export function bookMaxLevels(maxHeight: number): number {
+  return Math.max(1, Math.floor((maxHeight - 9) / 2));
+}
+
+/** Initial levels: min(10, ⌊(maxHeight − 9)/2⌋). */
+export function bookLevels(maxHeight: number): number {
+  return Math.min(10, bookMaxLevels(maxHeight));
 }
