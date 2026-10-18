@@ -1,41 +1,36 @@
 {
-  "generated_at": "2026-10-15T05:56:00Z",
-  "headline": "Hot September CPI (3.7% headline, core +0.3% m/m vs 0.2% expected) sends semis down 4.3% and BTC to $80.6K (-3.4% 24h), below the $81.7K ETF cost basis; hl-cycles flips to mild risk-off",
-  "tldr": "Regime: hl-cycles flipped from mild risk-on to mild risk-off (33% BTC, since Oct 12; 2 of 6 stress conditions on). Main change: the Oct 14 CPI beat lifted October hike odds from about 20% to roughly 44-46% (sources differ), the S&P fell 1.1% to 7,718.94 and BTC and ETH fell 3.4% and 6.1% on 24h. Main disagreement: BTC OI did not fall ($3.20B, z30 +0.9) and funding sits at its baseline, so longs have not been flushed, while the stablecoin series dropped to z30 -3.7. Next catalysts: Russia/Iran sanctions implementation Oct 18 (no fresh coverage found), FOMC Oct 27-28. Not financial advice.",
+  "generated_at": "2026-10-18T05:57:20Z",
+  "headline": "Equities broke lower on Oct 16 (S&P 7,659.44, -1.1%; QQQ -2.5%; Yahoo VIX 19.99, +21%) while BTC held $81.65K (+0.1% 24h) and hl-cycles is back in mild risk-on (66% BTC, since Oct 9)",
+  "tldr": "Regime: hl-cycles mild risk-on, 2 of 6 stress conditions on (ETF 7d outflow, STH-SOPR below 1). Main change: the chip rout extended on Oct 16 (SMH -3.4%, -10.5% over 5 sessions) and VIX closed at 19.99, one tick short of last run's 20 trigger, yet BTC did not follow. Main disagreement: equities price de-risking while BTC sits 2.7% above the True Market Mean on lighter leverage (funding z30 -1.5, Derivatives lens 34 Light) and a Restrictive Macro lens (33). Next catalyst: FOMC Oct 27-28 (date carried from last run, not re-verified). Not financial advice.",
   "domains": [
     {
       "domain": "macro",
-      "summary": "September CPI (Oct 14) printed 3.7% y/y headline against a 3.6% forecast in one source, with core +0.3% m/m against 0.2% expected; reports tie the energy-driven inflation to Middle East supply disruption. Reported October 28 hike odds rose to roughly 44-46% from about 20% (sources range from 44% to 50%; December odds are above 50% in one source and above 95% in another, so we treat them as low-confidence). Rates: 10Y 5.21%, 2Y 4.79%, 30Y 5.56% (Oct 13, FRED; Oct 14 not yet printed). 2s10s narrowed to +37bp on Oct 14 from +42bp, but with the 10Y and 2Y both near flat since Oct 6 we cannot name a steepener or flattener driver until Oct 14 yields print. Oil is stale in FRED: Brent $125.44 and WTI $96.24 on Oct 6, so the oil input is unverified for the last six sessions. Dollar index 121.60 (Oct 9). We read the stance as restrictive, and hl-cycles Macro lens is 30 (Restrictive, 7d -3.9). What would change the read: a December hike probability falling back below 50% or Brent falling under $100.",
+      "summary": "Yields fell into the CPI aftermath: 10Y 5.10% on Oct 15 (5.21% Oct 13), 2Y 4.77% (4.79%), so 2s10s narrowed to +33bp on Oct 15 and printed +35bp on Oct 16 (FRED). The long end fell about 11bp against 2bp at the front, which reads as a bull flattening and not a hawkish repricing at the front end. Oil stays the inflation input: Brent $126.55 and WTI $101.91 on Oct 14 (FRED, newest print; Brent peaked at $130.18 Oct 8), well above the $100 level that feeds the next CPI. Dollar index 121.60 is stale (Oct 9, FRED). hl-cycles Macro lens is 33 (Restrictive, 30d -10.4), with the policy-gap input (2Y minus Fed funds upper) at the 97th percentile. We could not verify current Oct 28 hike odds this run; last run's 44-46% is the newest figure and is now 4 days old. What would change the read: 10Y back above 5.25% or Brent under $110.",
       "signals": [
         {
-          "label": "CPI y/y Sep (Oct 14)",
-          "value": "3.7%",
-          "direction": "up"
-        },
-        {
-          "label": "10Y yield (Oct 13)",
-          "value": "5.21%",
-          "direction": "flat"
-        },
-        {
-          "label": "2Y yield (Oct 13)",
-          "value": "4.79%",
-          "direction": "flat"
-        },
-        {
-          "label": "2s10s (Oct 14)",
-          "value": "+37bp",
+          "label": "10Y yield (Oct 15)",
+          "value": "5.10%",
           "direction": "down"
         },
         {
-          "label": "Brent (Oct 6, FRED)",
-          "value": "$125.44",
-          "direction": "up"
+          "label": "2Y yield (Oct 15)",
+          "value": "4.77%",
+          "direction": "down"
         },
         {
-          "label": "WTI (Oct 6, FRED)",
-          "value": "$96.24",
+          "label": "2s10s (Oct 16)",
+          "value": "+35bp",
           "direction": "flat"
+        },
+        {
+          "label": "Brent (Oct 14, FRED)",
+          "value": "$126.55",
+          "direction": "flat"
+        },
+        {
+          "label": "WTI (Oct 14, FRED)",
+          "value": "$101.91",
+          "direction": "up"
         },
         {
           "label": "Dollar index (Oct 9)",
@@ -43,168 +38,158 @@
           "direction": "up"
         },
         {
-          "label": "Oct 28 hike odds (futures, Oct 14)",
-          "value": "~44-46%",
-          "direction": "up"
-        },
-        {
           "label": "hl-cycles Macro lens",
-          "value": "30 Restrictive",
+          "value": "33 Restrictive",
           "direction": "down"
         }
       ]
     },
     {
       "domain": "equities",
-      "summary": "Oct 14 cash close (FRED/Yahoo): S&P 500 7,718.94 (-1.1%, -0.98% over 5 sessions per SPY), Nasdaq Comp 26,692.87 (-1.9%), Dow 51,621.48 (-0.1%). Semis led the loss: the Philadelphia Semiconductor Index fell 4.3%, its sixth straight decline, and SMH is -9.7% over 5 sessions (NVDA -6.8%). QQQ is -3.8% and IWM -2.3% over 5 sessions. VIX (Yahoo) jumped 10.5% on the day to 16.87 (FRED's Oct 13 print was 15.27). Calm volatility sitting on a 5.2% 10Y was the part we flagged last run; the CPI print is the first test, and VIX at 16.9 says the market is treating it as a tech-specific repricing and not a broad de-risking (low-confidence). What would change the read: VIX above 20 or the S&P closing below 7,600. No put/call ratio found.",
+      "summary": "Oct 16 cash close (FRED/Yahoo): S&P 500 7,659.44 (-1.1% on the day, -1.9% since Oct 9), SPY -2.0% over 5 sessions, QQQ -2.5% on the day and -5.5% over 5, IWM -1.7% on the day. Nasdaq Comp last printed 26,713.03 on Oct 15 (FRED lag). Yahoo VIX closed at 19.99, +21.4% on the day and +34.7% over 5 sessions, from 16.46 (FRED, Oct 15). Last run read the CPI repricing as tech-specific with VIX near 17; the Oct 16 move across SPY, IWM and VIX says it is widening, though a 20 handle is still short of stress (low-confidence). What would change the read: a VIX close above 20 or the S&P closing below 7,600 (about 0.8% away). No put/call ratio found. Searches this run returned no outlet coverage dated Oct 16, so the cause of the day's move is not verified.",
       "signals": [
         {
-          "label": "S&P 500 (Oct 14)",
-          "value": "7,718.94",
+          "label": "S&P 500 (Oct 16)",
+          "value": "7,659.44",
           "direction": "down"
         },
         {
-          "label": "Nasdaq Comp (Oct 14)",
-          "value": "26,692.87",
-          "direction": "down"
-        },
-        {
-          "label": "Dow (Oct 14)",
-          "value": "51,621.48",
+          "label": "Nasdaq Comp (Oct 15, FRED)",
+          "value": "26,713.03",
           "direction": "flat"
         },
         {
-          "label": "SMH 5d",
-          "value": "-9.7%",
+          "label": "SPY 5d",
+          "value": "-2.0%",
           "direction": "down"
         },
         {
           "label": "QQQ 5d",
-          "value": "-3.8%",
+          "value": "-5.5%",
           "direction": "down"
         },
         {
           "label": "IWM 5d",
-          "value": "-2.3%",
+          "value": "-3.0%",
           "direction": "down"
         },
         {
-          "label": "VIX (Oct 14, Yahoo)",
-          "value": "16.87",
+          "label": "VIX (Oct 16, Yahoo)",
+          "value": "19.99",
           "direction": "up"
         }
       ]
     },
     {
       "domain": "crypto",
-      "summary": "Price/OI/funding: BTC -3.4% 24h to $80,580 (HL mark) and ETH -6.1% to $2,350, while BTC OI barely moved ($3.20B app series vs $3.15B previous, z30 +0.9) and funding sits at the HL baseline (1.25e-5/h, z30 +1.0). Price down with OI holding and flat funding means the sell-off came from spot and new shorts offsetting longs, not a long flush; ETH OI is lower ($2.69B, z30 -1.7), so ETH is deleveraging more than BTC. HL total OI $11.72B (z30 -0.9), funding skew z30 +1.0: crowding is low, and no washout is confirmed because BTC OI has not dropped. Unusual: BTC dominance 59.8% (z30 +2.8, from 59.2%) shows alts underperforming; the stablecoin series fell to $309.9B (-0.8% day, z30 -3.7; DefiLlama's chart, a different aggregate, shows $305.5B, -0.6% 7d, +0.6% 30d), so the supply signal is a drain, not new dry powder. Fear & Greed 62 (flat, z30 -0.0) and DVOL 38.5 (z30 +1.9) have not caught up with the move. BTC moved with Nasdaq/semis this run (QQQ -2.0% on the day), so it reads macro-driven, in contrast to last run. What would change the read: BTC OI falling below $3.0B with F&G under 50 would make it a washout; OI rising with funding z30 above +2 would mean shorts are being squeezed or leverage is rebuilding.",
+      "summary": "BTC $81,652 (HL mark, +0.1% 24h, +1.3% vs $80,580 on Oct 15) and ETH $2,409 (-0.8% 24h, +2.5% vs Oct 15). BTC OI $3.35B (z30 +0.4) is up from $3.20B while BTC funding fell to +0.00045%/h (z30 -1.5): price up, OI up and funding below baseline means the bid is not coming from longs paying carry, so shorts or hedged basis are likely absorbing it, and a squeeze is possible only if funding turns positive with OI still rising. ETH OI fell to $2.50B (z30 -1.6) from $2.69B on Oct 15 while price rose, which reads as deleveraging, not new demand. HL total OI $11.05B (z30 -1.5, -5.7% vs Oct 15) and funding skew z30 -1.7 say crowding is low: leverage is leaving, not building. No series reached |z30| 2. BTC dominance 59.49% (z30 +1.0, from 59.8%). Stablecoin supply: app series $306.2B (z30 -0.4); DefiLlama's chart, a different aggregate, shows $304.6B, -0.5% over 7d and +0.5% over 30d. Fear & Greed 53 (z30 -1.1; 69 on Oct 12), DVOL 37.9 (z30 -0.1). Cross-asset: BTC rose while QQQ fell 2.5% and VIX rose 21% on Oct 16, so BTC is trading idiosyncratically this run, the opposite of the Oct 14 CPI day. What would change the read: BTC OI above $3.5B with funding z30 above +1 would mean leverage is rebuilding; a daily close below $79.3K breaks the hl-cycles level.",
       "signals": [
         {
           "label": "BTC (HL mark)",
-          "value": "$80,580",
-          "direction": "down"
+          "value": "$81,652",
+          "direction": "flat"
         },
         {
           "label": "ETH (HL mark)",
-          "value": "$2,350",
+          "value": "$2,409",
           "direction": "down"
         },
         {
           "label": "SOL (HL mark)",
-          "value": "$101.59",
+          "value": "$103.31",
           "direction": "down"
         },
         {
           "label": "HYPE (HL mark)",
-          "value": "$79.82",
+          "value": "$78.38",
           "direction": "down"
         },
         {
-          "label": "HL perp OI total (z30 -0.9)",
-          "value": "$11.72B",
-          "direction": "flat"
-        },
-        {
-          "label": "BTC OI (z30 +0.9)",
-          "value": "$3.20B",
-          "direction": "flat"
-        },
-        {
-          "label": "ETH OI (z30 -1.7)",
-          "value": "$2.69B",
+          "label": "HL perp OI total (z30 -1.5)",
+          "value": "$11.05B",
           "direction": "down"
         },
         {
-          "label": "BTC funding HL (z30 +1.0)",
-          "value": "+0.00125%/h",
-          "direction": "flat"
-        },
-        {
-          "label": "Fear & Greed (z30 -0.0)",
-          "value": "62",
-          "direction": "flat"
-        },
-        {
-          "label": "BTC dominance (z30 +2.8)",
-          "value": "59.8%",
+          "label": "BTC OI (z30 +0.4)",
+          "value": "$3.35B",
           "direction": "up"
         },
         {
-          "label": "BTC DVOL (z30 +1.9)",
-          "value": "38.5",
-          "direction": "up"
+          "label": "ETH OI (z30 -1.6)",
+          "value": "$2.50B",
+          "direction": "down"
         },
         {
-          "label": "Stablecoin cap (z30 -3.7)",
-          "value": "$309.9B",
+          "label": "BTC funding HL (z30 -1.5)",
+          "value": "+0.00045%/h",
           "direction": "down"
+        },
+        {
+          "label": "Fear & Greed (z30 -1.1)",
+          "value": "53",
+          "direction": "down"
+        },
+        {
+          "label": "BTC dominance (z30 +1.0)",
+          "value": "59.49%",
+          "direction": "flat"
+        },
+        {
+          "label": "BTC DVOL (z30 -0.1)",
+          "value": "37.9",
+          "direction": "flat"
+        },
+        {
+          "label": "Stablecoin cap (app, z30 -0.4)",
+          "value": "$306.2B",
+          "direction": "flat"
         }
       ]
     },
     {
       "domain": "tech",
-      "summary": "Oct 14 closes (Yahoo), day change and 5-session change: NVDA $221.30 (-3.2%, -6.8%), META $737.54 (-3.3%, +2.3%), MSFT $533.69 (-1.8%, +0.7%), GOOGL $347.64 (-1.7%, -0.8%), AMZN $254.08 (-1.7%, -2.3%), AAPL $342.96 (+0.5%, +1.9%). SMH $564.74 fell 4.0% on the day and 9.7% over 5 sessions. Dispersion has narrowed in the wrong direction: last run platforms held while semis fell, and on Oct 14 five of six names fell; only AAPL gained. Reports of China's CXMT progress on memory chips added a stock-specific leg to the semis drop. SMH is -4.4% since the Oct 12 close ($590.99), just short of the -5% trigger set last run. What would change the read: SMH closing back above its Oct 12 level ($590.99). No earnings dates for the six were verified this run.",
+      "summary": "Oct 16 closes (Yahoo), day and 5-session change: NVDA $214.13 (-1.4%, -6.6%), META $709.33 (-3.7%, -1.3%), MSFT $529.05 (-1.9%, -1.1%), GOOGL $340.59 (-2.5%, -3.1%), AMZN $250.00 (-1.9%, -4.7%), AAPL $343.46 (+0.4%, +2.0%). SMH $539.79 fell 3.4% on the day and 10.5% over 5 sessions, 1.8% above the $530 level set as a risk last run. Dispersion: AAPL is the only gainer and is up on a 5-session basis, while META, which held its 5-day change on Oct 14, led losses on Oct 16; this is a broad megacap sell-off with semis worst, not a semis-only move. What would change the read: SMH closing below $530, or back above $591 (its Oct 12 close). No earnings dates for the six were verified this run.",
       "signals": [
         {
           "label": "NVDA",
-          "value": "221.30",
+          "value": "214.13",
           "direction": "down"
         },
         {
           "label": "META",
-          "value": "737.54",
+          "value": "709.33",
           "direction": "down"
         },
         {
           "label": "MSFT",
-          "value": "533.69",
+          "value": "529.05",
           "direction": "down"
         },
         {
           "label": "GOOGL",
-          "value": "347.64",
+          "value": "340.59",
           "direction": "down"
         },
         {
           "label": "AMZN",
-          "value": "254.08",
+          "value": "250.00",
           "direction": "down"
         },
         {
           "label": "AAPL",
-          "value": "342.96",
+          "value": "343.46",
           "direction": "up"
         },
         {
           "label": "SMH 5d",
-          "value": "-9.7%",
+          "value": "-10.5%",
           "direction": "down"
         }
       ]
     },
     {
       "domain": "geopolitics",
-      "summary": "Live searches this run (Oct 15) found no new coverage dated this week of the Oct 18 Russia/Iran sanctions-act implementation or of Hormuz; the newest item we can cite for that is last run's (late September), so the Oct 18 date is carried as unverified. The Oct 14 CPI coverage ties the energy-driven inflation to Middle East supply disruption, which keeps oil in play as the main geopolitical transmission into rates. Linkage: with Brent last verified at $125 (Oct 6, FRED), an actual tariff on a top oil importer would plausibly add to inflation ahead of the Oct 27-28 FOMC; a waiver would likely remove that. What would change the read: a dated announcement of tariffs or a waiver before Oct 18.",
+      "summary": "Live searches this run (Oct 18) returned no coverage dated this week on the Russia/Iran sanctions implementation, Hormuz or tariffs; the newest items found describe summer 2026 (Senate advancing a Russia sanctions bill allowing tariffs of up to 100% on large buyers of Russian oil, Iran halting tankers in Hormuz in July), and they come mostly from one secondary site, so we treat them as background only. The Oct 18 sanctions date from earlier runs stays unverified. Linkage: Brent at $126.55 (Oct 14) keeps oil the main geopolitical transmission into rates ahead of FOMC Oct 27-28. What would change the read: a dated tariff announcement or waiver, or Brent moving more than $10 in a session.",
       "signals": [
         {
           "label": "Russia/Iran sanctions deadline (unverified)",
@@ -217,23 +202,23 @@
           "direction": "flat"
         },
         {
-          "label": "Oct hike odds",
-          "value": "~44-46%",
-          "direction": "up"
+          "label": "Brent (Oct 14, FRED)",
+          "value": "$126.55",
+          "direction": "flat"
         }
       ]
     }
   ],
   "thesis": {
-    "observe": "BTC $80,580 (HL mark, -3.4% 24h) and ETH $2,350 (-6.1%); BTC OI $3.20B (z30 +0.9), HL total OI $11.72B (z30 -0.9), BTC funding +0.00125%/h (z30 +1.0); BTC dominance 59.8% (z30 +2.8); stablecoin series $309.9B (z30 -3.7); F&G 62, DVOL 38.5. hl-cycles: mild risk-off since Oct 12, Compass 46 (Neutral), Macro 30 (Restrictive), ETF cost basis $81.7K, True Market Mean $79.2K (BTC about 1.7% above on the HL mark), STH cost basis $74.3K. Sep CPI 3.7% y/y, core +0.3% m/m; S&P 7,718.94, SMH -9.7% over 5 sessions, VIX 16.87, 10Y 5.21% (Oct 13).",
-    "infer": "Positioning: price down, OI flat-to-up and funding at baseline means longs have not been flushed and shorts are not paying to press, so the move reads as macro-driven spot selling after CPI rather than a leverage washout. Disagreement: Fear & Greed (62) and DVOL (38.5) still price a calm tape while the stablecoin series is at z30 -3.7, hl-cycles has turned risk-off and the Macro lens is Restrictive. Consensus is pricing roughly even odds of an October hike and a likely December hike; we read the risk as skewing hawkish into Oct 27-28 unless oil falls.",
-    "forecast": "Base case (we lean here, low-confidence): BTC trades between the True Market Mean ($79.2K) and the ETF cost basis ($81.7K) while OI stays near $3.2B, with hl-cycles confirming risk-on only on a daily close above $81.7K with realized cap growing. Tail case (low-confidence): a daily close below $79.2K, which hl-cycles lists as invalidating, would put the STH cost basis ($74.3K, about 8% below) in play. Second tail case (low-confidence): a Fed or oil de-escalation reverses the hike pricing, with BTC reclaiming $81.7K and the stablecoin series recovering above $312B. Consensus is pricing a slower pace of hikes than the CPI beat implies; we read the risk as the December path.",
+    "observe": "BTC $81,652 (HL mark, +0.1% 24h), ETH $2,409 (-0.8%); BTC OI $3.35B (z30 +0.4), HL total OI $11.05B (z30 -1.5), BTC funding +0.00045%/h (z30 -1.5), ETH OI $2.50B (z30 -1.6); F&G 53, DVOL 37.9, BTC dominance 59.49%. hl-cycles: mild risk-on since Oct 9 (66% BTC, 2 of 6 stress conditions on), Compass 48 (Neutral), Macro 33 (Restrictive), Derivatives 34 (Light); BTC is 2.7% above the True Market Mean ($79.3K), 9.4% above the STH cost basis ($74.4K) and 0.3% below the ETF cost basis ($81.7K). S&P 7,659.44, QQQ -5.5% and SMH -10.5% over 5 sessions, Yahoo VIX 19.99; 10Y 5.10% (Oct 15), Brent $126.55 (Oct 14).",
+    "infer": "Positioning: BTC price and OI up with funding below its 30-day mean means the move is not leveraged-long; leverage is leaving ETH and the HL total, so crowding is low. Disagreement: equities and volatility are pricing de-risking (VIX at the 20 line, semis -10.5%) while BTC holds above the True Market Mean on light derivatives and a Restrictive Macro lens, so BTC is either decoupling or lagging a macro move. Consensus is pricing a firm hawkish Fed into Oct 27-28; we read the risk as skewing toward BTC catching up to equity weakness if VIX closes above 20, since nothing in positioning is flushed yet.",
+    "forecast": "Base case (we lean here, low-confidence): BTC holds between the True Market Mean ($79.3K) and the ETF cost basis ($81.7K) into FOMC, with hl-cycles confirming risk-on only on a daily close above $81.7K with realized cap growing. Tail case (low-confidence): VIX closes above 20 and the S&P below 7,600, BTC loses $79.3K on a daily close (hl-cycles invalidation) and the STH cost basis ($74.4K, about 9% below) comes into play. Second tail case (low-confidence): equities stabilise with SMH back above $591 and BTC clears $81.7K with OI above $3.5B, which would make the risk-on a leveraged one.",
     "disclaimer": "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything."
   },
   "risks": [
-    "Daily BTC close below $79.2K (True Market Mean, hl-cycles invalidation level)",
-    "BTC OI above $3.5B with BTC funding z30 above +2 while price stays under $81.7K (leverage building into weakness)",
-    "SMH closing below $530 (about 6% below Oct 14) before Oct 21",
-    "VIX closing above 20 before the Oct 27-28 FOMC"
+    "Daily BTC close below $79.3K (True Market Mean, hl-cycles invalidation level)",
+    "VIX (Yahoo or FRED) closing above 20 before the Oct 27-28 FOMC",
+    "SMH closing below $530 before Oct 21",
+    "BTC OI above $3.5B with BTC funding z30 above +1 while price stays under $81.7K (leverage building into weakness)"
   ]
 }
