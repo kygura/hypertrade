@@ -3,20 +3,24 @@ import fixture from "../../shared/fixtures/coinalyze-oi.json" with { type: "json
 import { createOiBackfill, hlSymbolMap, oiRows, parseDailyOi, type OiRow } from "./coinalyzeOi.js";
 
 const DAY = 86_400_000;
-const D0 = 1791936000 * 1000; // 2026-10-14T00:00Z, the fixture's last bar
-const NOW = D0 + 12 * 3_600_000; // mid-day: the D0 bar is still open
+// Recorded 2026-10-19 from Coinalyze: /exchanges, the Hyperliquid rows of /future-markets, BTC.H daily open-interest-history (convert_to_usd=false).
+const bars = [...parseDailyOi(fixture["open-interest-history"])].sort(([a], [b]) => a - b);
+const D0 = bars.at(-1)![0]; // last bar (2026-10-19, still open)
+const NOW = D0 + 12 * 3_600_000;
+const coinsOf = (d: number) => bars.find(([t]) => t === d)![1];
 
 describe("coinalyze OI backfill", () => {
-  test("parses the HL symbol map and daily bars (coins, keyed by UTC day start)", () => {
-    expect([...hlSymbolMap(fixture.exchanges, fixture["future-markets"])]).toEqual([["BTC", "BTCUSD.H"], ["ETH", "ETHUSD.H"]]);
-    expect([...parseDailyOi(fixture["open-interest-history"])]).toEqual([[D0 - 3 * DAY, 1003], [D0 - 2 * DAY, 1002], [D0 - DAY, 1001], [D0, 1000]]);
+  test("parses the recorded HL symbol map and daily bars (coins, keyed by UTC day start)", () => {
+    expect(hlSymbolMap(fixture.exchanges, fixture["future-markets"]).get("BTC")).toBe("BTC.H");
+    expect(bars.length).toBeGreaterThan(700);
+    expect(bars.every(([t, v], i) => t % DAY === 0 && v > 0 && (i === 0 || t - bars[i - 1]![0] === DAY))).toBe(true);
   });
 
   test("USD = coins x same-day close, stamped 23:59:59Z; skips open day, existing days and days without a candle", () => {
-    const coins = parseDailyOi(fixture["open-interest-history"]);
+    const coins = new Map(bars);
     const closes = new Map([[D0 - 3 * DAY, 50_000], [D0 - DAY, 60_000], [D0, 70_000]]); // D0-2d has no candle
     const rows = oiRows("BTC", coins, closes, new Set([D0 - 3 * DAY]), NOW);
-    expect(rows).toEqual([{ seriesId: "hl.oi.BTC", ts: new Date(D0 - 1000), value: 1001 * 60_000 }]);
+    expect(rows).toEqual([{ seriesId: "hl.oi.BTC", ts: new Date(D0 - 1000), value: coinsOf(D0 - DAY) * 60_000 }]);
   });
 
   test("idempotent: second run over the store inserts nothing, live points are never replaced", async () => {
@@ -39,7 +43,7 @@ describe("coinalyze OI backfill", () => {
     expect(store.get(D0 - DAY - 5000)).toBe(42);
     expect(await run("BTC")).toBe(0);
     expect(await run("DOGE")).toBe(0); // no HL symbol
-    expect(calls.filter((c) => c === "open-interest-history").length).toBe(2);
+    expect(calls.filter((c) => c === "open-interest-history").length).toBe(2); // BTC twice (under 365 stored days it refetches, inserting nothing)
   });
 
   test("no key: no call, no rows", async () => {
