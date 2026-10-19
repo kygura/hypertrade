@@ -10,6 +10,7 @@ import { authRoutes } from "../src/server/routes/auth.js";
 import { branchesRoutes } from "../src/server/routes/branches.js";
 import { candlesRoutes } from "../src/server/routes/candles.js";
 import { cronRoutes } from "../src/server/routes/cron.js";
+import { cyclesRoutes } from "../src/server/routes/cycles.js";
 import { createDeskRoutes } from "../src/server/routes/desk.js";
 import { engineRoutes } from "../src/server/routes/engine.js";
 import { hlRoutes } from "../src/server/routes/hl.js";
@@ -61,6 +62,7 @@ app.route("/analyst", analystRoutes);
 app.route("/branches", branchesRoutes);
 app.route("/candles", candlesRoutes);
 app.route("/cron", cronRoutes);
+app.route("/cycles", cyclesRoutes);
 // Intel is injected here: routes/desk.ts importing intel/index.ts would cycle (intel/index → desk).
 app.route("/desk", createDeskRoutes({ intel: () => telegramIntel() }));
 app.route("/engine", engineRoutes);

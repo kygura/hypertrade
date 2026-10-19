@@ -74,6 +74,21 @@
   --color-drawdown-fill: rgba(188, 38, 62, 0.18);
   --color-drawdown-line: #bc263e;
 
+  /* Cycle phases (/cycles, ported from hl-cycles). Order is coolest to
+     hottest; validated as a categorical set on the dark panel surface
+     (distribution pinked off hl-cycles' coral so it parts from euphoria). */
+  --color-ph-accumulation: #3987e5;
+  --color-ph-expansion: #199e70;
+  --color-ph-euphoria: #c98500;
+  --color-ph-distribution: #e65a7a;
+  --color-ph-markdown: #9085e9;
+  --color-ph-capitulation: #d55181;
+  /* Past-cycle lines on the analog chart, oldest first (the live cycle is
+     text-primary). Validated all-pairs on the dark panel surface. */
+  --color-cyc-1: #3987e5;
+  --color-cyc-2: #d95926;
+  --color-cyc-3: #199e70;
+
   /* ── Type scale (Hyperion §2.4, closed set, unchanged) ───────── */
   --text-2xs: 9px;
   --text-xs: 10px;
