@@ -5,7 +5,7 @@ It reuses the app's own LLM layer (`src/server/llm/`: Claude Opus 5.5 by
 default, Kimi via the `moonshot` preset when the Anthropic call fails) and
 runs from `.github/workflows/routine.yml`.
 
-The Claude Code scheduled routine (`CLAUDE.md`) keeps working while it
+The Claude Code scheduled routine (`ROUTINE.md`) keeps working while it
 exists. This pipeline adds two things it never had: a frequent **setups
 pulse** and a persistent **HTF view**. It can also take over the daily
 MarketState/Sectors write (`--mode daily`) once `ROUTINE_FALLBACK=true`.
@@ -69,7 +69,7 @@ configured"), so a missing secret never turns the schedule red.
    - Yahoo chart: SPY, QQQ, NVDA, ^VIX (1mo daily).
    - Fear & Greed (31 d), DefiLlama stablecoin total (now, −7 d, −30 d).
    - App (only when `APP_URL` and `LAB_API_TOKEN` are set):
-     `/api/metrics/summary` (ids from CLAUDE.md §2.2), `/api/sectors`,
+     `/api/metrics/summary` (ids from ROUTINE.md §2.2), `/api/sectors`,
      `POST /api/lab/tools/lab_market_pulse`, `lab_catalogue_list`.
    A gap's `detail` is a short reason written by the code (`HTTP 503`,
    `response is not JSON`), never response text. Strings from outside
@@ -109,7 +109,7 @@ configured"), so a missing secret never turns the schedule red.
    - `stand_aside_reason` when `new_setups` is empty.
    - `brief`: short delta-first text.
    - In `daily` mode also MarketState + Sectors per `src/shared/schemas.ts`
-     and ROUTINE.md §c–e (separate call, same provider chain).
+     and ROUTINE.md §4.1–4.3 (separate call, same provider chain).
 6. **Gate** (`gate.ts`, pure, unit-tested) each proposal:
    - asset exists in the live HL universe;
    - the mark is not already beyond the invalidation level

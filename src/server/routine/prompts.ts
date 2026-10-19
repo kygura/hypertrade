@@ -32,7 +32,7 @@ ${NOT_ADVICE}
 ${HEDGES}
 ${UNTRUSTED_RULE}`;
 
-export const DAILY_SYSTEM = `You write hypertrade's daily MarketState and Sectors files from a context pack of measured numbers. The output contract is ROUTINE.md §c–e as amended by CLAUDE.md §4.1:
+export const DAILY_SYSTEM = `You write hypertrade's daily MarketState and Sectors files from a context pack of measured numbers. The output contract is ROUTINE.md §4.1–4.3:
 
 - Rewrite every summary, rationale and thesis field from scratch. Never append to or quote last run's text.
 - headline: the single most important change since the last run, with its number. Not a list of readings.
