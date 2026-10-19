@@ -1,4 +1,4 @@
-import type { BullEpisode, CycleForecast, EstimateMethod } from '../../../shared/cycleForecast'
+import type { BullEpisode, CycleForecast, EstimateMethod, OnsetKind } from '../../../shared/cycleForecast'
 import { DAY_MS } from '../../../shared/cycles'
 import { fmtPct } from '../../../shared/format'
 import { DataTable, type Column } from '../DataTable'
@@ -10,14 +10,22 @@ import { fmtDay, fmtDays, fmtMonth, fmtQuarter, fmtUsdPx, PHASE_LABEL } from './
 // they were measured on.
 
 const METHOD_NOTE: Record<EstimateMethod['key'], string> = {
-  rhythm: 'onset-to-onset spacing of past runs, repeated from the 2024 onset',
-  halving: 'each run’s onset relative to its nearest halving, applied to the 2028 halving',
-  low: 'days from each bear-market low to the next onset, from the low since the last top',
-  top: 'days from each cycle top to the next onset, from the 2025 top',
+  rhythm: 'spacing between past run starts, repeated from the latest start',
+  halving: 'each run’s start relative to its nearest halving, applied to the 2028 halving',
+  low: 'days from each bear-market low to the next run start, from the low since the last top',
+  top: 'days from each cycle top to the next run start, from the 2025 top',
 }
 
-export function ForecastHero({ forecast }: { forecast: CycleForecast }) {
-  const { onset, top, status } = forecast
+/** Date a run by the selected start. */
+export const runStart = (e: BullEpisode, kind: OnsetKind) => (kind === 'breakout' ? e.breakout.t : e.start)
+
+const KIND_NOTE: Record<OnsetKind, string> = {
+  breakout: 'Run start = where the final doubling into euphoria began: the first close of the run-up that stays above half the price on euphoria’s first day.',
+  euphoria: 'Run start = first day the model commits to EUPHORIA, which in past cycles came within days of a new all-time high.',
+}
+
+export function ForecastHero({ forecast, other }: { forecast: CycleForecast; other: CycleForecast }) {
+  const { onset, top, status, kind } = forecast
   if (status === 'in_run') {
     return (
       <div className="p-3 text-[13px] text-text-muted">
@@ -30,7 +38,7 @@ export function ForecastHero({ forecast }: { forecast: CycleForecast }) {
   return (
     <div className="p-3 flex flex-col gap-2">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[10px] text-text-secondary [text-transform:var(--label-case)] tracking-[var(--label-tracking)]">next bull run, central estimate</span>
+        <span className="text-[10px] text-text-secondary [text-transform:var(--label-case)] tracking-[var(--label-tracking)]">next bull run starts, central estimate</span>
       </div>
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <span className="text-[22px] leading-none text-text-primary tabular">{fmtMonth(onset.median)}</span>
@@ -41,23 +49,32 @@ export function ForecastHero({ forecast }: { forecast: CycleForecast }) {
       {top && (
         <span className="text-[11px] text-text-secondary tabular">
           run peaks around <span className="text-text-primary">{fmtQuarter(top.median)}</span> (core {fmtMonth(top.p25)} – {fmtMonth(top.p75)}), using past
-          onset-to-top lengths of {runLengths(forecast.episodes)}.
+          start-to-top lengths of {runLengths(forecast.episodes, kind)}.
         </span>
       )}
       <span className="text-[11px] text-text-secondary">
-        Onset = first day the model commits to <span style={{ color: 'var(--color-ph-euphoria)' }}>EUPHORIA</span>, which in past cycles came
-        within days of a new all-time high. Core = middle half of the {forecast.methods.reduce((n, m) => n + m.samples.length, 0)} candidate
-        dates below.
+        {KIND_NOTE[kind]} Past starts: {pastStarts(forecast.episodes, kind)}. Core = middle half of the{' '}
+        {forecast.methods.reduce((n, m) => n + m.samples.length, 0)} candidate dates below.
+        {other.onset && (
+          <>
+            {' '}
+            Dated from {other.kind} instead: {fmtMonth(other.onset.median)}.
+          </>
+        )}
       </span>
     </div>
   )
 }
 
-function runLengths(episodes: BullEpisode[]): string {
+function runLengths(episodes: BullEpisode[], kind: OnsetKind): string {
   return episodes
     .filter((e) => e.lowConfirmed)
-    .map((e) => fmtDays(Math.round((e.top.t - e.start) / DAY_MS)))
+    .map((e) => fmtDays(Math.round((e.top.t - runStart(e, kind)) / DAY_MS)))
     .join(', ')
+}
+
+function pastStarts(episodes: BullEpisode[], kind: OnsetKind): string {
+  return episodes.map((e) => fmtMonth(runStart(e, kind))).join(', ')
 }
 
 export function ReadinessStrip({ forecast }: { forecast: CycleForecast }) {
@@ -139,13 +156,16 @@ export function MethodsTable({ forecast }: { forecast: CycleForecast }) {
   return <DataTable columns={columns} rows={forecast.methods} rowKey={(m) => m.key} emptyLabel={<div className="p-3 text-[11px] text-text-secondary">no estimate</div>} />
 }
 
-export function EpisodesTable({ episodes }: { episodes: BullEpisode[] }) {
+export function EpisodesTable({ episodes, kind }: { episodes: BullEpisode[]; kind: OnsetKind }) {
+  const date = (t: number, on: boolean) => <span className={`whitespace-nowrap ${on ? 'text-text-primary' : ''}`}>{fmtDay(t)}</span>
   const columns: Column<BullEpisode>[] = [
-    { key: 'onset', label: 'Run onset', priority: 1, render: (e) => <span className="text-text-primary whitespace-nowrap">{fmtDay(e.start)}</span> },
-    { key: 'onsetPx', label: 'Price', priority: 3, align: 'right', render: (e) => fmtUsdPx(e.startPrice) },
+    { key: 'breakout', label: 'Breakout', priority: 1, render: (e) => date(e.breakout.t, kind === 'breakout') },
+    { key: 'breakoutPx', label: 'Price', priority: 3, align: 'right', render: (e) => fmtUsdPx(e.breakout.price) },
+    { key: 'onset', label: 'Euphoria', priority: 2, render: (e) => date(e.start, kind === 'euphoria') },
+    { key: 'onsetPx', label: 'Price', priority: 4, align: 'right', render: (e) => fmtUsdPx(e.startPrice) },
     { key: 'top', label: 'Top', priority: 1, render: (e) => <span className="whitespace-nowrap">{fmtDay(e.top.t)}</span> },
     { key: 'topPx', label: 'Top price', priority: 2, align: 'right', render: (e) => fmtUsdPx(e.top.price) },
-    { key: 'len', label: 'Onset→top', priority: 2, align: 'right', render: (e) => fmtDays(Math.round((e.top.t - e.start) / DAY_MS)) },
+    { key: 'len', label: 'Start→top', priority: 2, align: 'right', render: (e) => fmtDays(Math.round((e.top.t - runStart(e, kind)) / DAY_MS)) },
     {
       key: 'low',
       label: 'Bear low',

@@ -3,7 +3,7 @@
 // functions only; the server runs it on stored 1d candles (routes/cycles.ts)
 // and the next-bull-run estimate builds on its phases (cycleForecast.ts).
 
-import type { CycleAnalog, CycleForecast } from "./cycleForecast.js";
+import type { CycleAnalog, CycleForecast, OnsetKind } from "./cycleForecast.js";
 
 export const DAY_MS = 86_400_000;
 
@@ -294,7 +294,8 @@ export interface CyclesResponse {
   bars: CycleBar[];
   halvings: number[];
   nextHalving: number;
-  forecast: CycleForecast;
+  /** The estimate dated from each run's breakout and from its euphoria onset. */
+  forecasts: Record<OnsetKind, CycleForecast>;
   analogs: CycleAnalog[];
   /** Bars per source venue, for the footer. */
   sources: Record<string, number>;

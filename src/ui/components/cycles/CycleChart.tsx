@@ -62,8 +62,8 @@ function windowAt(t: number, f: CycleForecast): 'core' | 'top' | 'range' | 'topR
 }
 
 const WINDOW_LABEL = {
-  core: 'core onset window (middle half of estimates)',
-  range: 'onset range (all estimates)',
+  core: 'core run-start window (middle half of estimates)',
+  range: 'run-start range (all estimates)',
   top: 'estimated cycle-top window',
   topRange: 'cycle-top range',
 } as const
@@ -179,8 +179,9 @@ export function CycleChart({
         .filter((h) => h >= first && h <= last.t)
         .map((h) => ({ time: sec(snap(h)), position: 'belowBar' as const, shape: 'arrowUp' as const, color: ink, text: `halving ${new Date(h).getUTCFullYear()}` })),
       ...forecast.episodes
-        .filter((e) => e.start >= first)
-        .map((e) => ({ time: sec(snap(e.start)), position: 'aboveBar' as const, shape: 'circle' as const, color: euph, size: 1, text: `run ${fmtMonth(e.start)}` })),
+        .map((e) => (forecast.kind === 'breakout' ? e.breakout.t : e.start))
+        .filter((t) => t >= first)
+        .map((t) => ({ time: sec(snap(t)), position: 'aboveBar' as const, shape: 'circle' as const, color: euph, size: 1, text: `run ${fmtMonth(t)}` })),
     ].sort((a, b) => (a.time as number) - (b.time as number))
     s.candleMarkers.setMarkers(past)
 
@@ -256,8 +257,8 @@ export function CycleChart({
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 px-[var(--panel-pad)] py-1.5 text-[10px] text-text-secondary">
         <Swatch color="var(--color-text-muted)" line label="SMA200" />
-        <Swatch color="color-mix(in srgb, var(--color-proj-line) 30%, transparent)" label="est. onset, core" />
-        <Swatch color="color-mix(in srgb, var(--color-proj-line) 12%, transparent)" label="est. onset, range" />
+        <Swatch color="color-mix(in srgb, var(--color-proj-line) 30%, transparent)" label="est. run start, core" />
+        <Swatch color="color-mix(in srgb, var(--color-proj-line) 12%, transparent)" label="est. run start, range" />
         <Swatch color="color-mix(in srgb, var(--color-ph-euphoria) 26%, transparent)" label="est. top window" />
       </div>
     </div>

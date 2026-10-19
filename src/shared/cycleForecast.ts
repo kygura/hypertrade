@@ -1,7 +1,13 @@
 // Next-bull-run estimate on top of the cycle model (cycles.ts). A bull run is
 // an episode of committed `euphoria` phase; runs closer than a year apart
 // merge into one (2013's April and November legs, 2024's March and November
-// legs). The onsets fall in Mar 2013, Mar 2017, Dec 2020 and Mar 2024.
+// legs). Euphoria sets in Mar 2013, Mar 2017, Dec 2020 and Mar 2024.
+//
+// A run can be dated from two points (OnsetKind). `euphoria` is that first
+// euphoric day. `breakout` is where the final doubling into it began: the
+// first close of the closing stretch that stays above half the euphoria-onset
+// price. It lands on 20 Oct 2016, 19 Oct 2020 and 23 Oct 2023, the "October
+// of the year before" start.
 //
 // Four timing methods each project the next onset from a different anchor,
 // using every past cycle's offset from that anchor; the estimate is the pooled
@@ -14,6 +20,8 @@ import { DAY_MS, HALVINGS, NEXT_HALVING_ESTIMATE, type CyclePhase, type CyclePoi
 export const MERGE_GAP_DAYS = 365;
 /** Drawdown from the running high that marks a bear market (every past bear reached -77% or worse). */
 export const BEAR_BREAK = -0.55;
+/** A run's breakout is where closes last rose through this fraction of its euphoria-onset price. */
+export const BREAKOUT_RATIO = 0.5;
 /** History needed before the first onset to read a meaningful prior low. */
 const MIN_PRE_HISTORY_DAYS = 365;
 
@@ -22,7 +30,11 @@ export interface PricePoint {
   price: number;
 }
 
+export type OnsetKind = "breakout" | "euphoria";
+
 export interface BullEpisode {
+  /** Start of the final doubling into euphoria: first close of the run-up that stays above BREAKOUT_RATIO × onset price. */
+  breakout: PricePoint;
   /** First day of committed euphoria. */
   start: number;
   /** Last day of committed euphoria in the merged run. */
@@ -79,6 +91,8 @@ export interface Readiness {
 
 export interface CycleForecast {
   asOf: number;
+  /** Which point of each run the methods date it from. */
+  kind: OnsetKind;
   /** "in_run" while the latest run is still live; the estimate then points past it. */
   status: "in_run" | "between_runs";
   episodes: BullEpisode[];
@@ -96,8 +110,9 @@ export interface CycleAnalog {
   topT: number;
   topPrice: number;
   current: boolean;
-  /** Days from top to the next run's onset; null for the current cycle. */
+  /** Days from top to the next run's euphoria onset and breakout; null for the current cycle. */
   onsetDay: number | null;
+  breakoutDay: number | null;
   lowDay: number | null;
   /** Weekly samples: d = days since top, r = close / top close. */
   points: { d: number; r: number }[];
@@ -138,7 +153,7 @@ export function bullEpisodes(points: CyclePoint[]): BullEpisode[] {
     else runs.push({ s: i, e });
     i = e;
   }
-  return runs.map((r, k) => {
+  const spans = runs.map((r, k) => {
     const next = runs[k + 1]?.s ?? points.length;
     // The top is the high before the bear market breaks it: the first close,
     // after the run ends, at BEAR_BREAK below the running high. 2021's April
@@ -154,7 +169,17 @@ export function bullEpisodes(points: CyclePoint[]): BullEpisode[] {
     }
     const top = argExtreme(points, r.s, brk, (a, b) => a > b);
     const low = top + 1 < next ? argExtreme(points, top + 1, next, (a, b) => a < b) : -1;
+    return { r, top, low };
+  });
+  return spans.map(({ r, top, low }, k) => {
+    // Breakout: walk back from the onset while closes stay above BREAKOUT_RATIO
+    // of its price, no further than the previous run's low.
+    const floor = k > 0 ? Math.max(spans[k - 1]!.low, 0) : 0;
+    const level = points[r.s]!.c * BREAKOUT_RATIO;
+    let b = r.s;
+    while (b > floor && points[b - 1]!.c > level) b--;
     return {
+      breakout: { t: points[b]!.t, price: points[b]!.c },
       start: points[r.s]!.t,
       end: points[r.e]!.t,
       startPrice: points[r.s]!.c,
@@ -181,11 +206,16 @@ function method(key: MethodKey, label: string, anchor: EstimateMethod["anchor"],
  * Needs at least two bull runs in history; with fewer the methods are empty
  * and `onset` is null.
  */
-export function forecastNextRun(points: CyclePoint[], nextHalving = NEXT_HALVING_ESTIMATE): CycleForecast {
+export function forecastNextRun(
+  points: CyclePoint[],
+  opts: { kind?: OnsetKind; nextHalving?: number } = {},
+): CycleForecast {
+  const { kind = "breakout", nextHalving = NEXT_HALVING_ESTIMATE } = opts;
   const last = points[points.length - 1];
   const episodes = bullEpisodes(points);
   const latest = episodes[episodes.length - 1];
-  const base: CycleForecast = { asOf: last?.t ?? 0, status: "between_runs", episodes, methods: [], onset: null, top: null, readiness: null, nextHalving };
+  const on = (e: BullEpisode) => (kind === "breakout" ? e.breakout.t : e.start);
+  const base: CycleForecast = { asOf: last?.t ?? 0, kind, status: "between_runs", episodes, methods: [], onset: null, top: null, readiness: null, nextHalving };
   if (!last || !latest) return base;
 
   const year = (t: number) => new Date(t).getUTCFullYear();
@@ -193,7 +223,7 @@ export function forecastNextRun(points: CyclePoint[], nextHalving = NEXT_HALVING
   const inRun = last.t - latest.end <= 90 * DAY_MS && last.c / latest.top.price - 1 > -0.35;
 
   // Low before the first run, when enough history precedes it.
-  const firstIdx = points.findIndex((p) => p.t === episodes[0]!.start);
+  const firstIdx = points.findIndex((p) => p.t === on(episodes[0]!));
   const preLow =
     firstIdx >= MIN_PRE_HISTORY_DAYS ? (() => {
       const i = argExtreme(points, 0, firstIdx, (a, b) => a < b);
@@ -206,14 +236,14 @@ export function forecastNextRun(points: CyclePoint[], nextHalving = NEXT_HALVING
     const m1 = method(
       "rhythm",
       "Run-to-run rhythm",
-      { label: `${year(latest.start)} onset`, t: latest.start, estimated: false },
-      later.map((e, i) => ({ cycle: year(e.start), days: days(e.start - episodes[i]!.start) })),
+      { label: `${year(on(latest))} ${kind}`, t: on(latest), estimated: false },
+      later.map((e, i) => ({ cycle: year(on(e)), days: days(on(e) - on(episodes[i]!)) })),
     );
     const m2 = method(
       "halving",
       "Halving offset",
       { label: "next halving", t: nextHalving, estimated: true },
-      episodes.map((e) => ({ cycle: year(e.start), days: days(e.start - nearestHalving(e.start)) })),
+      episodes.map((e) => ({ cycle: year(on(e)), days: days(on(e) - nearestHalving(on(e))) })),
     );
     const lows = episodes.map((e, i) => (i === 0 ? preLow : episodes[i - 1]!.low));
     const m3 = latest.low
@@ -221,14 +251,14 @@ export function forecastNextRun(points: CyclePoint[], nextHalving = NEXT_HALVING
           "low",
           "Bear-market low",
           { label: "low since top", t: latest.low.t, estimated: true },
-          episodes.flatMap((e, i) => (lows[i] ? [{ cycle: year(e.start), days: days(e.start - lows[i]!.t) }] : [])),
+          episodes.flatMap((e, i) => (lows[i] ? [{ cycle: year(on(e)), days: days(on(e) - lows[i]!.t) }] : [])),
         )
       : null;
     const m4 = method(
       "top",
       "Previous cycle top",
       { label: `${year(latest.top.t)} top`, t: latest.top.t, estimated: false },
-      later.map((e, i) => ({ cycle: year(e.start), days: days(e.start - episodes[i]!.top.t) })),
+      later.map((e, i) => ({ cycle: year(on(e)), days: days(on(e) - episodes[i]!.top.t) })),
     );
     for (const m of [m1, m2, m3, m4]) if (m) methods.push(m);
   }
@@ -236,7 +266,7 @@ export function forecastNextRun(points: CyclePoint[], nextHalving = NEXT_HALVING
   const onsetDates = methods.flatMap((m) => m.samples.map((s) => s.date));
   const onset = range(onsetDates);
   // Every candidate onset plus every completed run's onset-to-top length.
-  const runLengths = episodes.filter((e) => e.lowConfirmed).map((e) => e.top.t - e.start);
+  const runLengths = episodes.filter((e) => e.lowConfirmed).map((e) => e.top.t - on(e));
   const top = range(onsetDates.flatMap((o) => runLengths.map((d) => o + d)));
 
   // Readiness: where today sits between the last top and the next run.
@@ -244,7 +274,7 @@ export function forecastNextRun(points: CyclePoint[], nextHalving = NEXT_HALVING
   for (let i = points.length - 1; i >= 0 && points[i]!.phase === last.phase; i--) phaseSince = points[i]!.t;
   let ath = points[0]!;
   for (const p of points) if (p.c > ath.c) ath = p;
-  const gaps = episodes.slice(1).map((e, i) => e.start - episodes[i]!.top.t).sort((a, b) => a - b);
+  const gaps = episodes.slice(1).map((e, i) => on(e) - episodes[i]!.top.t).sort((a, b) => a - b);
   const sinceTop = last.t - latest.top.t;
   const readiness: Readiness = {
     phase: last.phase,
@@ -285,6 +315,7 @@ export function cycleAnalogs(points: CyclePoint[], episodes: BullEpisode[], hori
       topPrice: e.top.price,
       current: !next,
       onsetDay: next ? days(next.start - e.top.t) : null,
+      breakoutDay: next ? days(next.breakout.t - e.top.t) : null,
       lowDay: e.low ? days(e.low.t - e.top.t) : null,
       points: out,
     };

@@ -1,29 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { bullEpisodes, cycleAnalogs, forecastNextRun, quantile } from "./cycleForecast.js";
 import { commitWithHysteresis, computeCycle, DAY_MS, fillGaps, percentileRank, resampleWeekly, sma, type DailyBar } from "./cycles.js";
-import weekly from "./fixtures/cycles/btc-weekly.json";
+import daily from "./fixtures/cycles/btc-daily.json";
 
-// BTC/USD weekly closes 2011-09 → 2026-10 ([day number, close]), the daily
-// history the route serves thinned to one close a week to keep the fixture small.
-// Log-linear interpolation rebuilds a daily series close enough for the model.
-function dailyFromWeekly(rows: number[][]): DailyBar[] {
-  const out: DailyBar[] = [];
-  for (let i = 0; i < rows.length - 1; i++) {
-    const [d0, c0] = rows[i]! as [number, number];
-    const [d1, c1] = rows[i + 1]! as [number, number];
-    for (let d = d0; d < d1; d++) {
-      const c = c0 * Math.pow(c1 / c0, (d - d0) / (d1 - d0));
-      out.push({ t: d * DAY_MS, o: c, h: c, l: c, c, v: 0, src: "fixture" });
-    }
-  }
-  const [dl, cl] = rows[rows.length - 1]! as [number, number];
-  out.push({ t: dl * DAY_MS, o: cl, h: cl, l: cl, c: cl, v: 0, src: "fixture" });
-  return out;
+// BTC/USD daily closes 2011-09-13 → 2026-10-18 (Bitstamp, then Hyperliquid
+// from 2020-08), gap-filled, 5 significant figures.
+function dailyBars(fx: { from: string; c: number[] }): DailyBar[] {
+  const t0 = Date.parse(`${fx.from}T00:00:00Z`);
+  return fx.c.map((c, i) => ({ t: t0 + i * DAY_MS, o: c, h: c, l: c, c, v: 0, src: "fixture" }));
 }
 
 const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
 const month = (t: number) => iso(t).slice(0, 7);
-const bars = dailyFromWeekly(weekly as number[][]);
+const bars = dailyBars(daily);
 const asOf = bars[bars.length - 1]!.t + DAY_MS;
 const points = computeCycle(bars, asOf);
 
@@ -69,12 +58,22 @@ describe("cycle model on BTC history", () => {
     expect(w[w.length - 1]!.phase).toBe(points[points.length - 1]!.phase);
   });
 
-  test("finds the four bull runs: 2013, 2017, early 2021 and 2024", () => {
+  test("finds the four bull runs and dates each by euphoria and by breakout", () => {
     const eps = bullEpisodes(points);
-    // Daily closes put the 2017 and 2020 onsets at 2017-03-02 and 2020-12-20;
-    // the interpolated weekly fixture reads a few weeks earlier.
-    expect(eps.map((e) => month(e.start))).toEqual(["2013-03", "2017-02", "2020-11", "2024-03"]);
-    expect(eps.map((e) => month(e.top.t))).toEqual(["2013-12", "2017-12", "2021-11", "2025-10"]);
+    expect(eps.map((e) => iso(e.start))).toEqual(["2013-03-29", "2017-03-02", "2020-12-20", "2024-03-03"]);
+    // The final doubling into euphoria: October of the year before since 2016.
+    expect(eps.map((e) => iso(e.breakout.t))).toEqual(["2013-03-13", "2016-10-20", "2020-10-19", "2023-10-23"]);
+    for (const e of eps) {
+      expect(e.breakout.price).toBeGreaterThan(e.startPrice / 2);
+      expect(e.breakout.t).toBeLessThanOrEqual(e.start);
+    }
+    // 2013 ties at $1,132 to 5 significant figures (Nov 29 and Dec 4); the first wins.
+    expect(eps.map((e) => [iso(e.top.t), e.top.price])).toEqual([
+      ["2013-11-29", 1132],
+      ["2017-12-16", 19188],
+      ["2021-11-08", 67607],
+      ["2025-10-06", 124710],
+    ]);
     expect(eps.map((e) => e.low && month(e.low.t))).toEqual(["2015-01", "2018-12", "2022-11", "2026-06"]);
     expect(eps.map((e) => e.lowConfirmed)).toEqual([true, true, true, false]);
   });
@@ -82,28 +81,34 @@ describe("cycle model on BTC history", () => {
 
 describe("forecastNextRun", () => {
   const f = forecastNextRun(points);
+  const fe = forecastNextRun(points, { kind: "euphoria" });
 
   test("projects each method from its own anchor with every past offset", () => {
     expect(f.status).toBe("between_runs");
+    expect(f.kind).toBe("breakout");
     const byKey = Object.fromEntries(f.methods.map((m) => [m.key, m]));
     expect(Object.keys(byKey).sort()).toEqual(["halving", "low", "rhythm", "top"]);
-    expect(byKey.rhythm!.samples.map((s) => s.cycle)).toEqual([2017, 2020, 2024]);
+    expect(byKey.rhythm!.samples.map((s) => s.cycle)).toEqual([2016, 2020, 2023]);
+    expect(byKey.rhythm!.anchor.t).toBe(Date.UTC(2023, 9, 23));
     expect(byKey.halving!.samples).toHaveLength(4);
-    // 2024's run started before its halving.
-    expect(byKey.halving!.samples[3]!.days).toBeLessThan(0);
+    // The 2023 breakout came six months before its halving.
+    expect(byKey.halving!.samples[3]!.days).toBe(-180);
     for (const m of f.methods) for (const s of m.samples) expect(s.date).toBe(m.anchor.t + s.days * DAY_MS);
   });
 
-  test("pools the candidates into a 2027-2029 onset window", () => {
-    const o = f.onset!;
-    expect(o.min).toBeLessThanOrEqual(o.p25);
-    expect(o.p25).toBeLessThanOrEqual(o.median);
-    expect(o.median).toBeLessThanOrEqual(o.p75);
-    expect(o.p75).toBeLessThanOrEqual(o.max);
-    expect(iso(o.min) >= "2027-01-01").toBe(true);
-    expect(iso(o.max) < "2029-07-01").toBe(true);
-    expect(iso(o.median).slice(0, 4)).toBe("2028");
-    expect(f.top!.median).toBeGreaterThan(o.median);
+  test("pools the candidates into a run-start window; breakout dates it earlier", () => {
+    for (const x of [f, fe]) {
+      const o = x.onset!;
+      expect(o.min).toBeLessThanOrEqual(o.p25);
+      expect(o.p25).toBeLessThanOrEqual(o.median);
+      expect(o.median).toBeLessThanOrEqual(o.p75);
+      expect(o.p75).toBeLessThanOrEqual(o.max);
+      expect(x.top!.median).toBeGreaterThan(o.median);
+    }
+    expect(month(f.onset!.median)).toBe("2028-01");
+    expect(month(fe.onset!.median)).toBe("2028-05");
+    // The 2020→2023 breakout gap (1099d) repeated lands on the fixture's own month.
+    expect(month(f.onset!.min)).toBe("2026-10");
   });
 
   test("reads today's position against the last top", () => {
@@ -131,7 +136,8 @@ describe("cycleAnalogs", () => {
     for (const x of a) expect(x.points[0]).toEqual({ d: 0, r: 1 });
     expect(a.map((x) => x.current)).toEqual([false, false, false, true]);
     expect(a[3]!.onsetDay).toBeNull();
-    expect(a[2]!.onsetDay).toBeGreaterThan(800);
+    expect(a[2]!.onsetDay).toBe(846);
+    expect(a[2]!.breakoutDay).toBe(714);
     expect(a[3]!.points[a[3]!.points.length - 1]!.r).toBeCloseTo(points[points.length - 1]!.c / a[3]!.topPrice, 6);
   });
 });

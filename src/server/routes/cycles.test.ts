@@ -77,13 +77,15 @@ describe("GET /cycles", () => {
     expect(daily.tf).toBe("1d");
     expect(daily.bars.length).toBeGreaterThan(5000);
     expect(daily.halvings).toHaveLength(4);
-    expect(daily.forecast.episodes.length).toBeGreaterThanOrEqual(2);
-    expect(daily.analogs.length).toBe(daily.forecast.episodes.length);
+    expect(daily.forecasts.breakout.kind).toBe("breakout");
+    expect(daily.forecasts.euphoria.kind).toBe("euphoria");
+    expect(daily.forecasts.breakout.episodes.length).toBeGreaterThanOrEqual(2);
+    expect(daily.analogs.length).toBe(daily.forecasts.breakout.episodes.length);
     expect(daily.sources).toEqual({ hl: daily.bars.length });
 
     const weekly = (await (await app(d).request("/cycles?tf=1w")).json()) as CyclesResponse;
     expect(weekly.bars.length).toBeLessThan(daily.bars.length / 6);
-    expect(weekly.forecast).toEqual(daily.forecast);
+    expect(weekly.forecasts).toEqual(daily.forecasts);
   });
 
   test("caches per timeframe", async () => {

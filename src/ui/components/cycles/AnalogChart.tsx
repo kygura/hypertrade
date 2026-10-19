@@ -6,8 +6,9 @@ import { fmtMonth } from './format'
 
 // Cycle analogs — each cycle's price from its top, indexed to the top close
 // (1 = the top), on a log scale against days since the top. The live cycle is
-// the bright line; dots mark where each past cycle's next bull run began, and
-// the blue band is the forecast's core onset window in the same units.
+// the bright line; dots mark where each past cycle's next bull run started
+// (by the selected run-start definition), and the blue band is the forecast's
+// core window in the same units.
 
 const HORIZON = 1400
 const Y_TICKS = [0.1, 0.2, 0.5, 1, 2, 5]
@@ -39,6 +40,7 @@ export function AnalogChart({ analogs, forecast }: { analogs: CycleAnalog[]; for
   const nearest = (a: CycleAnalog, day: number) => a.points.reduce((b, p) => (Math.abs(p.d - day) < Math.abs(b.d - day) ? p : b), a.points[0]!)
   const today = live ? live.points[live.points.length - 1]! : null
   const onset = forecast.onset
+  const startDay = (a: CycleAnalog) => (forecast.kind === 'breakout' ? a.breakoutDay : a.onsetDay)
   const core = live && onset ? { from: Math.round((onset.p25 - live.topT) / DAY_MS), to: Math.round((onset.p75 - live.topT) / DAY_MS) } : null
 
   if (shown.length === 0) return null
@@ -97,9 +99,9 @@ export function AnalogChart({ analogs, forecast }: { analogs: CycleAnalog[]; for
             />
           ))}
           {past
-            .filter((a) => a.onsetDay != null && a.onsetDay <= HORIZON)
+            .filter((a) => startDay(a) != null && startDay(a)! <= HORIZON)
             .map((a) => {
-              const p = nearest(a, a.onsetDay!)
+              const p = nearest(a, startDay(a)!)
               return <ReferenceDot key={a.label} x={p.d} y={p.r} r={4} fill={color(a)} stroke="var(--color-panel)" strokeWidth={2} />
             })}
         </LineChart>
@@ -109,12 +111,12 @@ export function AnalogChart({ analogs, forecast }: { analogs: CycleAnalog[]; for
           <span key={a.label} className="flex items-center gap-1.5">
             <span className="w-3 h-0.5" style={{ background: color(a) }} />
             {a.label} top{a.current ? ' (live)' : ''}
-            {a.onsetDay != null && <span>· next run +{a.onsetDay}d</span>}
+            {startDay(a) != null && <span>· next run +{startDay(a)}d</span>}
           </span>
         ))}
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-text-secondary" />
-          next run began
+          next run started
         </span>
         {core && onset && (
           <span className="flex items-center gap-1.5">

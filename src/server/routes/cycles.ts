@@ -88,7 +88,7 @@ export async function loadHistory(deps: CyclesDeps): Promise<DailyBar[]> {
 
 export function buildCycles(history: DailyBar[], now: number, tf: "1d" | "1w"): CyclesResponse {
   const points = computeCycle(history, now);
-  const forecast = forecastNextRun(points);
+  const forecasts = { breakout: forecastNextRun(points, { kind: "breakout" }), euphoria: forecastNextRun(points, { kind: "euphoria" }) };
   const shown = tf === "1w" ? resampleWeekly(points) : points;
   const sources: Record<string, number> = {};
   for (const p of points) sources[p.src] = (sources[p.src] ?? 0) + 1;
@@ -98,8 +98,8 @@ export function buildCycles(history: DailyBar[], now: number, tf: "1d" | "1w"): 
     bars: shown.map(toCycleBar),
     halvings: [...HALVINGS],
     nextHalving: NEXT_HALVING_ESTIMATE,
-    forecast,
-    analogs: cycleAnalogs(points, forecast.episodes),
+    forecasts,
+    analogs: cycleAnalogs(points, forecasts.breakout.episodes),
     sources,
   };
 }
