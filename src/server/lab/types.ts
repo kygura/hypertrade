@@ -275,6 +275,15 @@ export interface CatalogueEntry {
   savedAt: string; // ISO
 }
 
+/** One entry of the global trial log: idea number `n`, in order of authoring/evaluation, never reset. */
+export interface Trial {
+  n: number;
+  at: string; // ISO
+  ruleId: string;
+  intent: string | null;
+  verdict: VerdictLevel | null;
+}
+
 export interface CatalogueHealth {
   decayed: Array<{ id: string; name: string; liveDays: number; liveSharpe: number; holdoutSharpe: number | null }>;
   overlaps: Array<{ a: string; b: string; jaccard: number }>;

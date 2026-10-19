@@ -60,7 +60,7 @@ async function fieldOf(name: string, args: unknown): Promise<string | undefined>
 }
 
 describe("lab tools: definitions", () => {
-  test("the twelve contract tools, in order", () => {
+  test("the thirteen contract tools, in order", () => {
     expect(tools.map((t) => t.name)).toEqual([
       "lab_list_providers",
       "lab_list_metrics",
@@ -71,6 +71,7 @@ describe("lab tools: definitions", () => {
       "lab_sensitivity",
       "lab_catalogue_list",
       "lab_catalogue_save",
+      "lab_author_rule",
       "lab_catalogue_remove",
       "lab_catalogue_health",
       "lab_market_pulse",
@@ -181,7 +182,7 @@ describe("lab tools: end to end", () => {
     expect(await bad.json()).toMatchObject({ ok: false, field: "windows.0" });
 
     const listed = (await (await app.request("/lab/tools")).json()) as { tools: Array<{ name: string }> };
-    expect(listed.tools.length).toBe(12);
+    expect(listed.tools.length).toBe(13);
   }, 20_000);
 
   test("autoresearch prompt and instructions", async () => {

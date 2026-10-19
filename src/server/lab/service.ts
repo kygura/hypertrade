@@ -9,10 +9,13 @@ import {
   parseFeatureId,
   ruleFiresAt,
   ruleId,
+  ruleText,
   runSearch,
   SearchRefused,
   withVerdict,
 } from "./engine/index.js";
+import type { LlmDeps } from "../intel/llm.js";
+import { authorRules, type AuthorInput } from "./author.js";
 import { allMetrics, getMetric, loadDataset as registryLoadDataset, PROVIDERS, type LoadConfig } from "./providers/registry.js";
 import { defaultStore, type LabStore, type RunSummary, type StoredRun } from "./store.js";
 import {
@@ -47,6 +50,8 @@ export interface LabServiceDeps {
   now: () => number;
   /** Metric catalogue used to validate ids; defaults to the registry. */
   providers: LabProvider[];
+  /** Model access for lab_author_rule; defaults to the Intel provider chain with an in-memory cache. */
+  llm?: LlmDeps;
 }
 
 export const DEFAULT_WINDOWS = [7, 30, 90];
@@ -64,7 +69,20 @@ export type CallBudget = Pick<ToolContext, "deadlineMs">;
 const underDeadline = (ctx?: CallBudget) => (ctx?.deadlineMs != null ? { deadline: true } : {});
 
 export type CatalogueFlag = "decayed" | "overlap";
-export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flags: CatalogueFlag[] };
+/** `idea #n of N` (FEATURES.md § 5): n = first trial recorded for the rule, N = the global trial count. */
+export type IdeaNumber = { n: number; of: number };
+export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flags: CatalogueFlag[]; idea: IdeaNumber | null };
+
+export interface AuthoredCandidate {
+  id: string;
+  rule: Rule;
+  /** Readable condition text, e.g. "cm:CapMVRVCur z(90) < -1 AND ...". */
+  text: string;
+  /** null when the rule could not be evaluated (see `error`). */
+  evaluation: RuleEvaluation | null;
+  error?: string;
+  idea: IdeaNumber;
+}
 
 export interface EvaluateInput {
   rule: Rule;
@@ -140,7 +158,15 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     loadDataset: partial.loadDataset ?? ((cfg) => registryLoadDataset(cfg)),
     now: partial.now ?? Date.now,
     providers: partial.providers ?? PROVIDERS,
+    llm: partial.llm,
   };
+  let llm = deps.llm;
+  // Imported on first use: the Intel/Desk graph imports the lab tools, so a static import would be a cycle.
+  async function llmDeps(): Promise<LlmDeps> {
+    if (llm) return llm;
+    const [{ intelProviderFactory }, { MemoryLlmCache }] = await Promise.all([import("../intel/llm.js"), import("../routine/llm.js")]);
+    return (llm = { makeProvider: intelProviderFactory(), cache: new MemoryLlmCache(), now: () => new Date(), dailyCap: 100 });
+  }
   const known = (id: string) => !!getMetric(id, deps.providers);
 
   /** Metric ids a rule's features read; ToolInputError on a bad feature id or unknown metric. */
@@ -359,9 +385,13 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
 
     async catalogueList(input: { asset?: string; direction?: Direction; live?: boolean } = {}, ctx?: CallBudget): Promise<{ entries: CatalogueListEntry[] }> {
       const all = (await deps.store.listCatalogue()).map(withEntryVerdict);
+      const trials = await deps.store.listTrials();
+      const firstTrial = new Map<string, number>();
+      for (const t of trials) if (!firstTrial.has(t.ruleId)) firstTrial.set(t.ruleId, t.n);
+      const idea = (id: string): IdeaNumber | null => (firstTrial.has(id) ? { n: firstTrial.get(id)!, of: trials.length } : null);
       const sameAsset = (e: CatalogueEntry) => !input.asset || e.rule.asset.toUpperCase() === input.asset.toUpperCase();
       const listed = all.filter((e) => sameAsset(e) && (!input.direction || e.rule.direction === input.direction));
-      if (input.live === false || !listed.length) return { entries: listed.map((e) => ({ ...e, live: null, flags: [] })) };
+      if (input.live === false || !listed.length) return { entries: listed.map((e) => ({ ...e, live: null, flags: [], idea: idea(e.id) })) };
       // Flags compare against every rule on the listed assets, not only the listed direction.
       const assets = new Set(listed.map((e) => e.rule.asset.toUpperCase()));
       const health = await analyse(all.filter((e) => assets.has(e.rule.asset.toUpperCase())), ctx);
@@ -371,9 +401,32 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         entries: listed.map((e) => ({
           ...e,
           live: health.live[e.id] ?? null,
+          idea: idea(e.id),
           flags: [...(decayed.has(e.id) ? (["decayed"] as const) : []), ...(overlapping.has(e.id) ? (["overlap"] as const) : [])],
         })),
       };
+    },
+
+    /** 1-3 validated rule candidates from an intent, each evaluated and logged as a trial; writes nothing to the catalogue. */
+    async authorRule(input: AuthorInput, ctx?: CallBudget): Promise<{ candidates: AuthoredCandidate[]; trialCount: number; model: string | null }> {
+      const r = await authorRules(input, { llm: await llmDeps(), metrics: allMetrics({ asset: input.asset }, deps.providers) });
+      if (!r.ok) throw new UpstreamError(`rule authoring failed: ${r.error}`);
+      const candidates: AuthoredCandidate[] = [];
+      for (const rule of r.rules) {
+        const id = ruleId(rule);
+        let evaluation: RuleEvaluation | null = null;
+        let error: string | undefined;
+        try {
+          evaluation = await evaluate({ rule }, ctx);
+        } catch (err) {
+          error = msg(err);
+        }
+        const t = await deps.store.appendTrial({ ruleId: id, intent: input.intent, verdict: evaluation?.verdict?.level ?? null });
+        candidates.push({ id, rule, text: ruleText(rule), evaluation, ...(error && { error }), idea: { n: t.n, of: t.n } });
+      }
+      const trialCount = candidates.at(-1)?.idea.n ?? 0;
+      for (const c of candidates) c.idea.of = trialCount;
+      return { candidates, trialCount, model: r.model };
     },
 
     async catalogueSave(input: SaveInput, ctx?: CallBudget): Promise<CatalogueEntry> {

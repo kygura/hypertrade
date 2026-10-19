@@ -14,6 +14,7 @@ import {
   toCatalogueEntry,
   toRunSummary,
   toStoredRun,
+  toTrial,
   type LabStore,
   type NewRun,
 } from "./store.js";
@@ -348,5 +349,38 @@ describe("pg row mapping", () => {
     expect(await s.getCatalogueEntry("bad id")).toBeNull();
     expect(await s.archiveCatalogueEntry("bad id")).toBe(false);
     await expect(s.saveCatalogueEntry({ ...entry("ok"), id: "bad id" })).rejects.toThrow(/rule id/);
+  });
+});
+
+describe("trial log", () => {
+  test("memory store numbers trials 1.. in order and returns clones", async () => {
+    const s = memoryStore();
+    const t1 = await s.appendTrial({ ruleId: "r1", intent: "a", verdict: "weak" });
+    const t2 = await s.appendTrial({ ruleId: "r1", intent: null, verdict: null });
+    expect([t1.n, t2.n]).toEqual([1, 2]);
+    const list = await s.listTrials();
+    expect(list.map((t) => t.ruleId)).toEqual(["r1", "r1"]);
+    list.pop();
+    expect(await s.listTrials()).toHaveLength(2);
+  });
+
+  test("file store keeps the log across reloads and reads files that predate it", async () => {
+    const path = join(await tmp(), "lab.json");
+    await fileStore(path).appendTrial({ ruleId: "r1", intent: "a", verdict: "fragile" });
+    expect((await fileStore(path).appendTrial({ ruleId: "r2", intent: "b", verdict: null })).n).toBe(2);
+    expect((await fileStore(path).listTrials()).map((t) => t.ruleId)).toEqual(["r1", "r2"]);
+    const old = join(await tmp(), "old.json");
+    await writeFile(old, JSON.stringify({ version: 1, runs: [], rules: [] }));
+    expect(await fileStore(old).listTrials()).toEqual([]);
+  });
+
+  test("toTrial maps a lab_trials row", () => {
+    expect(toTrial({ n: "3", at: new Date("2026-01-01T00:00:00Z"), rule_id: "r", intent: null, verdict: "robust" })).toEqual({
+      n: 3,
+      at: "2026-01-01T00:00:00.000Z",
+      ruleId: "r",
+      intent: null,
+      verdict: "robust",
+    });
   });
 });
