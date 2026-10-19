@@ -71,6 +71,8 @@ export interface OutcomeRow {
   regime: string;
   liquidityTier: LiquidityTier;
   horizon: string;
+  /** Opportunity creation time (ms): the cluster bucket for stats. */
+  createdAtMs: number;
   grossReturn: number;
   netReturn: number;
   /** The opportunity has a cost breakdown; stats exclude rows without one (P0.13). */

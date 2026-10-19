@@ -215,7 +215,7 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((out["ledger.o1"] as { kind: string }[]).map((e) => e.kind)).toEqual(["created", "status", "status", "status", "decision", "outcome"]);
   put("ledger.o2", await s.ledgerFor(o2));
   expect(await s.ledgerFor("not-a-uuid")).toEqual([]);
-  expect(await s.outcomeRows({})).toEqual([{ opportunityId: o1, setupKind: "breakout", regime: "new_longs", liquidityTier: 1, horizon: "1h", grossReturn: 0.01, netReturn: 0.0091, hasCosts: false }]);
+  expect(await s.outcomeRows({})).toEqual([{ opportunityId: o1, setupKind: "breakout", regime: "new_longs", liquidityTier: 1, horizon: "1h", createdAtMs: expect.any(Number), grossReturn: 0.01, netReturn: 0.0091, hasCosts: false }]);
   expect(await s.outcomeRows({ setupKind: "breakout", regime: "new_longs", tier: 1 })).toHaveLength(1);
   expect(await s.outcomeRows({ tier: 2 })).toEqual([]);
   expect(await s.outcomeRows({ regime: "range" })).toEqual([]);

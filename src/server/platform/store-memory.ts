@@ -213,7 +213,7 @@ export class MemoryPlatformStore implements PlatformStore {
       if ((setupKind && o.setupKind !== setupKind) || (regime && o.regime !== regime) || (tier !== undefined && o.liquidityTier !== tier)) continue;
       out.push({
         opportunityId: o.id, setupKind: o.setupKind, regime: o.regime, liquidityTier: o.liquidityTier,
-        horizon: e.payload.horizon, grossReturn: e.payload.grossReturn, netReturn: e.payload.netReturn, hasCosts: o.costs != null,
+        horizon: e.payload.horizon, createdAtMs: Date.parse(o.createdAt), grossReturn: e.payload.grossReturn, netReturn: e.payload.netReturn, hasCosts: o.costs != null,
       });
     }
     return out;

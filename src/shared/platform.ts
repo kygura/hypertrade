@@ -157,9 +157,11 @@ export const LedgerStatsSchema = z.object({
   regime: Text(40).nullable(),
   tier: LiquidityTierSchema.nullable(),
   n: z.number().int().nonnegative(),
+  /** Distinct signal-time buckets (max(1 day, horizon)); meanNet and ci95 run over their means. */
+  clusters: z.number().int().nonnegative(),
   hitRate: Num.nullable(),
   meanNet: Num.nullable(),
-  /** 95% t-interval of the mean net return; null below n = 5 (P0.14). */
+  /** 95% t-interval over cluster means; null below 5 clusters (P0.14). */
   ci95: z.tuple([Num, Num]).nullable(),
 });
 export type LedgerStats = z.infer<typeof LedgerStatsSchema>;
