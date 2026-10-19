@@ -15,6 +15,7 @@ import {
   type LiquidityTier,
   type NewLedgerEntry,
   type NoveltyEntry,
+  type SectorTag,
   type Opportunity,
   type OpportunityStatus,
   type PolledPosition,
@@ -160,6 +161,11 @@ export interface PlatformStore {
   listNovelty(sinceBar: string): Promise<NoveltyEntry[]>;
   /** Retention: deletes entries with barDate < beforeBar. Returns rows deleted. */
   pruneNovelty(beforeBar: string): Promise<number>;
+
+  /** Market sector tags (PS-B5): upsert by coin. Tags only filter universes, never score. */
+  saveSectors(tags: SectorTag[]): Promise<void>;
+  /** Every cached tag, ascending by coin. */
+  listSectors(): Promise<SectorTag[]>;
 }
 
 // ---------------------------------------------------------------- shared rules

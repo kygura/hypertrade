@@ -9,6 +9,7 @@ import { admitRun, novelty, pendingNovel, NOVELTY, type Candidate, type NoveltyD
 import type { LoopDef } from "./runtime.js";
 import { envNum } from "./scanner.js";
 import type { PlatformStore } from "./store.js";
+import { ensureSectors, myMarkets, parseUniverseSpec, selectUniverse, type UniverseOpts } from "./universe.js";
 
 // Novelty loop (FEATURES.md section 4): hourly beat, detection once per newly closed UTC day. Every coin in the
 // liquidity gate is checked against its own full history from `candles` (1d), `funding` and `observations`
@@ -48,6 +49,10 @@ export interface NoveltyLoopDeps {
   now?: () => number;
   /** Coins in liquidity tiers 1..maxTier are checked (tier 1 = most liquid third). */
   maxTier?: number;
+  /** Explicit universe filter (see parseUniverseSpec); default PLATFORM_NOVELTY_UNIVERSE, else tiers 1..maxTier plus my markets. */
+  filter?: UniverseOpts;
+  /** coin -> sectors for a sector filter; default tags new coins through the LLM and caches them in the store. */
+  tags?: (coins: string[]) => Promise<Record<string, string[]>>;
 }
 
 /** `from` bounds only what is synced; the baseline is everything stored (full history since listing). */
@@ -78,6 +83,9 @@ export function createNoveltyLoop(deps: NoveltyLoopDeps) {
   const inputs = deps.inputs ?? storedInputs(defaultHtDeps, syncFunding, defaultOiBackfill());
   const universe = deps.universe ?? defaultUniverse;
   const maxTier = deps.maxTier ?? envNum("PLATFORM_NOVELTY_MAX_TIER", 1);
+  const spec = process.env.PLATFORM_NOVELTY_UNIVERSE?.trim();
+  const filter = deps.filter ?? (spec ? parseUniverseSpec(spec) : undefined);
+  const tags = deps.tags ?? ((coins: string[]) => ensureSectors(coins, store));
   /** Coins whose bar was evaluated (hit or not), per bar. A coin that threw or lacks the bar stays out and is retried next beat. Lost on restart: the window is re-checked once and admit() dedupes. */
   const checked = new Map<string, Set<string>>();
 
@@ -85,7 +93,10 @@ export function createNoveltyLoop(deps: NoveltyLoopDeps) {
   async function detect(bars: string[], t: number) {
     const all = await universe();
     const tiers = liquidityTiers(all);
-    const u = all.filter((c) => tiers[c.coin]! <= maxTier);
+    const mine = new Set(myMarkets());
+    const u = filter
+      ? selectUniverse(all, { ...filter, tags: filter.sectors?.length ? await tags(all.map((c) => c.coin)) : undefined })
+      : all.filter((c) => tiers[c.coin]! <= maxTier || mine.has(c.coin));
     const todo = new Map(bars.map((b) => [b, u.filter((c) => !checked.get(b)?.has(c.coin))]));
     const coins = u.filter((c) => bars.some((b) => todo.get(b)!.includes(c)));
     if (!coins.length) return;
