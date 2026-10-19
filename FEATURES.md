@@ -136,7 +136,7 @@ Defaults: round-trip fee 0.09%, slippage 0.05% per side. A long pays positive fu
 **Verdict.**
 
 ```
-upper95 = expectancy + 1.645 × sd(weekly means) / √W      (sample sd)
+upper95 = expectancy + t(0.95, W−1) × sd(weekly means) / √W      (sample sd; one-sided Student t)
 W < 30                      → insufficient
 W ≥ 30 and upper95 < 0      → rejected     (clearly a loser)
 otherwise                   → clear        ("not shown to lose", never "proven")
@@ -150,7 +150,7 @@ Printed as facts, not used in the verdict: events, W, expectancy, upper95, train
 
 - **R units** make a 3% stop on a meme coin and a 1% stop on BTC comparable, and charging funding matters because funding-extreme setups trade against the very carry they collect or pay.
 - **ISO-week clustering.** Same-day alt events are one market move, and 7–14 day holds overlap. A week is the smallest bucket that contains one hold and keeps the events inside it from leaking into the next. Coarser buckets throw away observations.
-- **30 weeks.** Below that the sample sd is unstable, the normal approximation behind 1.645 is poor, and the test cannot tell a loser from noise. `insufficient` says so instead of guessing.
+- **30 weeks.** Below that the sample sd is unstable, the t quantile is wide, and the test cannot tell a loser from noise. `insufficient` says so instead of guessing.
 - **Reject only.** A backtest can only reward patterns that already existed, and an idea inspired by recent markets cannot be tested fairly on the period that inspired it. So the screen is allowed to say only one thing with confidence: this lost money, clearly.
 - **No Bonferroni.** A multiple-testing correction controls false *claims of an effect*. This screen claims no effect: `clear` grants nothing, because every approved setup alerts anyway. An earlier version required a Bonferroni-deflated bar to pass, and its only effect was to throw away real ideas. Multiple testing is still visible, as a fact: the global trial counter (`idea #n of N`, section 5) tells the operator how much luck to expect. Contrast the Lab, whose `robust` verdict does grant status after testing thousands of variants: deflating there (deflated Sharpe against effective trials) is correct.
 - **Why the vault was dropped.** A sealed holdout works only if it is sealed before any idea is formed on it. Here the holdout period had already been seen when the setups were designed, so it gave false assurance, and a holdout of a few weeks has almost no power anyway. The train/holdout split survives as two printed numbers.

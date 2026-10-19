@@ -18,6 +18,7 @@ import {
   type EventStudyResult,
 } from "./engine/index.js";
 import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
+import { databaseUrl } from "../db.js";
 import type { LlmDeps } from "../intel/llm.js";
 import { authorRules, type AuthorInput } from "./author.js";
 import { allMetrics, getMetric, loadDataset as registryLoadDataset, PROVIDERS, type LoadConfig } from "./providers/registry.js";
@@ -58,6 +59,8 @@ export interface LabServiceDeps {
   llm?: LlmDeps;
   /** Listed HL perps for lab_event_study's default coins; defaults to Hyperliquid's meta. */
   perpUniverse?: () => Promise<string[]>;
+  /** Whether stored history is available; without it lab_event_study fetches live and caps its coins. */
+  hasDb?: () => boolean;
 }
 
 export const DEFAULT_WINDOWS = [7, 30, 90];
@@ -67,6 +70,9 @@ const LOAD_CONCURRENCY = 4;
 const DECAY_MIN_LIVE_DAYS = 30;
 const DECAY_HOLDOUT_SHARE = 0.25;
 const OVERLAP_JACCARD = 0.6;
+/** lab_event_study: default coins (top by day volume) and the cap without a DB; eventList keeps the most recent this many. */
+const STUDY_MAX_COINS = 20;
+const EVENT_LIST_MAX = 200;
 /** Kept back from a search deadline for the work after the last trial (refit, ranking, persisting). */
 export const SEARCH_FINISH_MS = 5_000;
 
@@ -173,7 +179,15 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     now: partial.now ?? Date.now,
     providers: partial.providers ?? PROVIDERS,
     llm: partial.llm,
-    perpUniverse: partial.perpUniverse ?? (async () => (await fetchPerpMetaAndCtxs()).ctxs.filter((c) => !c.isDelisted).map((c) => c.name)),
+    perpUniverse:
+      partial.perpUniverse ??
+      (async () =>
+        (await fetchPerpMetaAndCtxs()).ctxs
+          .filter((c) => !c.isDelisted)
+          .sort((a, b) => b.dayNtlVlm - a.dayNtlVlm)
+          .slice(0, STUDY_MAX_COINS)
+          .map((c) => c.name)),
+    hasDb: partial.hasDb ?? (() => Boolean(databaseUrl())),
   };
   let llm = deps.llm;
   // Imported on first use: the Intel/Desk graph imports the lab tools, so a static import would be a cycle.
@@ -445,12 +459,15 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     },
 
     /** Reject-only event-study screen of a rule across coins (FEATURES.md § 2), recorded as a trial; informational, gates nothing. */
-    async eventStudy(input: EventStudyInput, ctx?: CallBudget): Promise<EventStudyResult & { warnings: string[]; idea: IdeaNumber }> {
+    async eventStudy(input: EventStudyInput, ctx?: CallBudget): Promise<EventStudyResult & { eventListTotal: number; warnings: string[]; idea: IdeaNumber }> {
       const rule = parseInput(RuleSchema, input.rule, "rule");
       if (rule.price && rule.price !== "ht:price") throw new ToolInputError("the event study trades ht:price: stops and targets need its candles' open/high/low", "rule.price");
       const metrics = [...new Set([...ruleMetrics(rule), ...STUDY_METRICS])];
       const started = deps.now();
       let coins = input.coins;
+      if (coins && coins.length > STUDY_MAX_COINS && !deps.hasDb!()) {
+        throw new ToolInputError(`at most ${STUDY_MAX_COINS} coins without a database (each coin's history is fetched live from Hyperliquid)`, "coins");
+      }
       if (!coins) {
         try {
           coins = await deps.perpUniverse!();
@@ -458,17 +475,26 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
           throw new UpstreamError(`HL perp universe unavailable (${msg(err)}): pass coins`);
         }
       }
-      const warnings: string[] = [];
+      const unique = coins.filter((c, i) => coins!.findIndex((x) => x.toLowerCase() === c.toLowerCase()) === i);
+      const warned = new Map<string, string[]>(); // warning → coins
       const failed: EventStudyResult["coins"] = [];
-      const loaded = await mapLimit([...new Set(coins)], LOAD_CONCURRENCY, async (coin) => {
+      const LATE = "not loaded before the deadline";
+      const loaded = await mapLimit(unique, LOAD_CONCURRENCY, async (coin) => {
         const fail = (reason: string) => (failed.push({ coin, bars: 0, from: null, to: null, events: 0, status: "insufficient", reason }), null);
-        if (ctx?.deadlineMs != null && deps.now() - started > ctx.deadlineMs - SEARCH_FINISH_MS) return fail("not loaded before the deadline");
+        const left = ctx?.deadlineMs == null ? Infinity : ctx.deadlineMs - SEARCH_FINISH_MS - (deps.now() - started);
+        if (left <= 0) return fail(LATE);
+        let timer: ReturnType<typeof setTimeout> | undefined;
         try {
-          const r = await deps.loadDataset({ asset: coin, metrics, price: "ht:price", ...underDeadline(ctx) });
-          warnings.push(...r.warnings.map((w) => `${coin}: ${w}`));
+          const load = deps.loadDataset({ asset: coin, metrics, price: "ht:price", ...underDeadline(ctx) });
+          const late = new Promise<null>((r) => (timer = setTimeout(() => r(null), left)));
+          const r = await (Number.isFinite(left) ? Promise.race([load, late]) : load);
+          if (!r) return fail(LATE);
+          for (const w of r.warnings) warned.set(w, [...(warned.get(w) ?? []), coin]);
           return r.dataset;
         } catch (err) {
           return fail(msg(err));
+        } finally {
+          clearTimeout(timer);
         }
       });
       let result: EventStudyResult;
@@ -478,8 +504,11 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         throw asInputError(err);
       }
       result.coins.push(...failed);
+      const warnings = [...warned].map(([w, cs]) => (cs.length === 1 ? `${cs[0]}: ${w}` : `${w} (${cs.length} coins: ${cs.join(", ")})`));
+      const eventListTotal = result.eventList.length;
+      result.eventList = result.eventList.slice(-EVENT_LIST_MAX);
       const t = await deps.store.appendTrial({ ruleId: ruleId(rule), intent: "lab_event_study", verdict: result.verdict });
-      return { ...result, warnings, idea: { n: t.n, of: (await deps.store.listTrials()).length } };
+      return { ...result, eventListTotal, warnings, idea: { n: t.n, of: (await deps.store.listTrials()).length } };
     },
 
     async catalogueSave(input: SaveInput, ctx?: CallBudget): Promise<CatalogueEntry> {

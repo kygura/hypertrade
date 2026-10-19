@@ -167,6 +167,15 @@ describe("ht", () => {
     expect(d.calls).toContain("cap:10000");
   });
 
+  test("open/high/low/price reuse one candle fetch per coin and range", async () => {
+    let fetched = 0;
+    const d = deps({ hasDb: () => false, liveCandles: async () => (fetched++, [{ t: D0, o: 1, h: 3, l: 0.5, c: 2, v: 1 }]) });
+    const p = createHtProvider(d);
+    const got = await Promise.all(["price", "open", "high", "low"].map((k) => p.fetch(k, "BTC", ...R)));
+    expect(got.map((s) => s.v[0])).toEqual([2, 1, 3, 0.5]);
+    expect(fetched).toBe(1);
+  });
+
   test("under a request deadline the backfill is capped at 4 s", async () => {
     const d = deps();
     await createHtProvider(d).fetch("price", "BTC", ...R, { deadline: true });
