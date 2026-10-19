@@ -210,6 +210,13 @@ describe("scanner tick", () => {
     expect(o.netEdgeBps).toBeCloseTo(o.grossEdgeBps! - 2 * o.costs!.feeBps - o.costs!.slippageBps - o.costs!.fundingBps, 6);
   });
 
+  test("scan universe: setups run only on the filtered coins (PLATFORM_SCAN_UNIVERSE)", async () => {
+    await createScanner({ store: s.store, info: s.info, now: () => NOW + MIN, bus: s.bus, filter: { mine: ["A"] } }).tick();
+    expect(await s.store.listOpportunities({ limit: 50 })).toEqual([]);
+    await createScanner({ store: s.store, info: s.info, now: () => NOW + MIN, bus: s.bus, filter: { mine: ["PUMP"] } }).tick();
+    expect((await s.store.listOpportunities({ limit: 50 })).map((o) => o.coin)).toContain("PUMP");
+  });
+
   test("latestMark is null once older than 2 scan intervals", async () => {
     let t = NOW + MIN;
     const sc = createScanner({ store: s.store, info: s.info, now: () => t, bus: s.bus });
