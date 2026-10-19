@@ -52,6 +52,13 @@ const SaveArgs = z
     origin: z.enum(["user", "agent", "seed"]).default("user"),
   })
   .strict();
+const AuthorArgs = z
+  .object({
+    intent: z.string().trim().min(3).max(1000),
+    asset: z.string().regex(ASSET_PATTERN, "expected a ticker of 1–20 letters or digits, e.g. BTC").optional(),
+    direction: z.enum(["long", "short"]).optional(),
+  })
+  .strict();
 const RemoveArgs = z.object({ id: z.string().min(1).max(128) }).strict();
 const PulseArgs = z.object({ asset: z.string().min(1).max(20).optional() }).strict();
 
@@ -301,6 +308,25 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       async run(args, ctx) {
         return service.catalogueSave(parseInput(SaveArgs, args), ctx);
+      },
+    },
+    {
+      name: "lab_author_rule",
+      title: "Author a rule from an idea",
+      description:
+        "Turns a trading idea in words into 1–3 candidate Lab rules. An LLM writes them over the metric catalogue only; each is validated (unknown metric or feature ids are repaired once, then the call fails), evaluated like lab_evaluate_rule and recorded as the next trial in the global trial log. Returns { candidates: [{ id, rule, text, evaluation, idea: { n, of } }], trialCount }: \"idea #n of N\" says how many ideas have been tried in total, so judge a good-looking result by it. Writes nothing to the catalogue: save with lab_catalogue_save. Calls an LLM and fetches data: tens of seconds. " +
+        HONESTY,
+      inputSchema: obj(
+        {
+          intent: { type: "string", minLength: 3, maxLength: 1000, description: "The idea in plain words, e.g. \"buy BTC when funding is deeply negative and sentiment is fearful\"." },
+          asset: assetSchema("Asset to trade; narrows the metric catalogue. Default: the model picks from the idea."),
+          direction: { type: "string", enum: ["long", "short"], description: "Side to trade. Default: from the idea." },
+        },
+        ["intent"],
+      ),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      async run(args, ctx) {
+        return service.authorRule(parseInput(AuthorArgs, args), ctx);
       },
     },
     {
