@@ -39,6 +39,10 @@ export type CyclePoint = DailyBar & {
   phase: CyclePhase | null; // committed (hysteresis)
 };
 
+/** Coins with a cycle view. ETH is read on BTC's halving clock. */
+export const CYCLE_COINS = ["BTC", "ETH"] as const;
+export type CycleCoin = (typeof CYCLE_COINS)[number];
+
 export const HALVINGS = [Date.UTC(2012, 10, 28), Date.UTC(2016, 6, 9), Date.UTC(2020, 4, 11), Date.UTC(2024, 3, 20)] as const;
 
 /** Block-time estimate for the fifth halving; label it an estimate wherever it shows. */
@@ -253,6 +257,49 @@ export function computeCycle(daily: DailyBar[], now: number): CyclePoint[] {
   }));
 }
 
+/** Shortest phase stretch the chart draws on its own; shorter ones fold into a neighbour. */
+export const MIN_PHASE_DAYS = 60;
+
+/**
+ * Display smoothing for the phase bands. The model's hysteresis still lets
+ * short stretches flicker (capitulation, accumulation, capitulation within a
+ * few weeks), which reads as noise across 15 years. Repeatedly folds the
+ * shortest stretch under `minDays` into its neighbours: into both when they
+ * share a phase, else into the longer one. Euphoria (the run anchors) and the
+ * final, ongoing stretch are kept as they are. The forecast reads the raw
+ * phases; this only changes what is drawn.
+ */
+export function smoothPhases(phases: (CyclePhase | null)[], minDays = MIN_PHASE_DAYS): (CyclePhase | null)[] {
+  const segs: { p: CyclePhase | null; n: number }[] = [];
+  for (const p of phases) {
+    const last = segs[segs.length - 1];
+    if (last && last.p === p) last.n++;
+    else segs.push({ p, n: 1 });
+  }
+  for (;;) {
+    let k = -1;
+    for (let i = 0; i < segs.length - 1; i++) {
+      const x = segs[i]!;
+      if (x.p && x.p !== "euphoria" && x.n < minDays && (k < 0 || x.n < segs[k]!.n)) k = i;
+    }
+    if (k < 0) break;
+    const left = segs[k - 1]?.p ? segs[k - 1]! : null;
+    const right = segs[k + 1]?.p ? segs[k + 1]! : null;
+    const cur = segs[k]!;
+    if (left && right && left.p === right.p) {
+      left.n += cur.n + right.n;
+      segs.splice(k, 2);
+    } else if (left && (!right || left.n >= right.n)) {
+      left.n += cur.n;
+      segs.splice(k, 1);
+    } else if (right) {
+      right.n += cur.n;
+      segs.splice(k, 1);
+    } else break; // only warm-up around it: nothing to fold into
+  }
+  return segs.flatMap((x) => Array<CyclePhase | null>(x.n).fill(x.p));
+}
+
 /** Monday 00:00 UTC of the week containing t. */
 export function weekStart(t: number): number {
   const MON = 4 * DAY_MS; // 1970-01-05 was a Monday
@@ -289,6 +336,7 @@ export function resampleWeekly(points: CyclePoint[]): CyclePoint[] {
 // ─── wire types (GET /api/cycles) ───
 
 export interface CyclesResponse {
+  coin: CycleCoin;
   asOf: number;
   tf: "1d" | "1w";
   bars: CycleBar[];
@@ -315,6 +363,7 @@ export interface CycleBar {
   drawdown: number;
   trend: number | null;
   heat: number | null;
+  /** Phase as drawn: the model's phase after smoothPhases. */
   phase: CyclePhase | null;
 }
 

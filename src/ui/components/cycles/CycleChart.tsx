@@ -18,14 +18,14 @@ import {
 } from 'lightweight-charts'
 import { fmtPct } from '../../../shared/format'
 import type { CycleForecast } from '../../../shared/cycleForecast'
-import { CYCLE_PHASES, DAY_MS, weekStart, type CycleBar, type CyclePhase } from '../../../shared/cycles'
+import { CYCLE_PHASES, DAY_MS, weekStart, type CycleBar, type CycleCoin, type CyclePhase } from '../../../shared/cycles'
 import { useTheme } from '../../themes/registry'
 import { Segmented } from '../Segmented'
 import { alpha, blend, css, fmtDay, fmtMonth, fmtUsdPx, PHASE_LABEL, PHASE_VAR } from './format'
 
 // CycleChart — the hl-cycles HTF chart (docs/design/README.md §9.4 canvas chart family):
-// BTC daily/weekly candles on a log scale over phase-coloured bands, SMA200,
-// halvings and past bull-run onsets. Past the last bar it draws the forecast:
+// BTC or ETH daily/weekly candles on a log scale over phase-coloured bands,
+// SMA200, BTC halvings and past bull-run onsets. Past the last bar it draws the forecast:
 // the pooled onset range and its core (interquartile) window in projection
 // blue, then the estimated top window in the euphoria colour.
 
@@ -70,6 +70,7 @@ const WINDOW_LABEL = {
 
 export function CycleChart({
   bars,
+  coin,
   halvings,
   nextHalving,
   forecast,
@@ -77,6 +78,7 @@ export function CycleChart({
   onTfChange,
 }: {
   bars: CycleBar[]
+  coin: CycleCoin
   halvings: number[]
   nextHalving: number
   forecast: CycleForecast
@@ -157,13 +159,13 @@ export function CycleChart({
     s.candle.setData(bars.map((b) => ({ time: sec(b.t), open: b.o, high: b.h, low: b.l, close: b.c })))
     s.sma.setData(bars.filter((b) => b.sma200 != null).map((b) => ({ time: sec(b.t), value: b.sma200! })))
     const panel = css('--color-panel', '#111111')
-    s.bands.setData(bars.map((b) => ({ time: sec(b.t), value: 1, color: b.phase ? blend(phaseHex[b.phase], panel, 0.16) : 'rgba(0,0,0,0)' })))
+    s.bands.setData(bars.map((b) => ({ time: sec(b.t), value: 1, color: b.phase ? blend(phaseHex[b.phase], panel, 0.13) : 'rgba(0,0,0,0)' })))
 
     // Projection: one whitespace-or-filled bar per future step, so the time
     // axis runs on past the halving and the estimated top.
     const projLine = css('--color-proj-line', '#6ea8d8')
     const euph = phaseHex.euphoria
-    const fill = { core: blend(projLine, panel, 0.3), range: blend(projLine, panel, 0.12), top: blend(euph, panel, 0.26), topRange: blend(euph, panel, 0.1) }
+    const fill = { core: blend(projLine, panel, 0.3), range: blend(projLine, panel, 0.12), top: blend(euph, panel, 0.2), topRange: blend(euph, panel, 0.08) }
     const snap = (t: number) => (tf === '1w' ? weekStart(t) : Math.floor(t / DAY_MS) * DAY_MS)
     const future: { time: UTCTimestamp; value: number; color: string }[] = []
     for (let t = snap(last.t) + step; t <= projEnd; t += step) {
@@ -177,7 +179,7 @@ export function CycleChart({
     const past: SeriesMarker<Time>[] = [
       ...halvings
         .filter((h) => h >= first && h <= last.t)
-        .map((h) => ({ time: sec(snap(h)), position: 'belowBar' as const, shape: 'arrowUp' as const, color: ink, text: `halving ${new Date(h).getUTCFullYear()}` })),
+        .map((h) => ({ time: sec(snap(h)), position: 'belowBar' as const, shape: 'arrowUp' as const, color: ink, text: `${coin === 'BTC' ? '' : 'BTC '}halving ${new Date(h).getUTCFullYear()}` })),
       ...forecast.episodes
         .map((e) => (forecast.kind === 'breakout' ? e.breakout.t : e.start))
         .filter((t) => t >= first)
@@ -191,7 +193,7 @@ export function CycleChart({
     if (showProj && forecast.onset) ahead.push({ time: sec(snap(forecast.onset.median)), position: 'aboveBar', shape: 'circle', color: projLine, text: 'run' })
     if (showProj && forecast.top) ahead.push({ time: sec(snap(forecast.top.median)), position: 'aboveBar', shape: 'circle', color: euph, text: 'top' })
     s.projMarkers.setMarkers(ahead.sort((a, b) => (a.time as number) - (b.time as number)))
-  }, [version, bars, halvings, nextHalving, forecast, showProj, tf, step, projEnd, last])
+  }, [version, coin, bars, halvings, nextHalving, forecast, showProj, tf, step, projEnd, last])
 
   // ── visible range ──
   useEffect(() => {
@@ -252,14 +254,14 @@ export function CycleChart({
         ref={containerRef}
         className="w-full h-[300px] lg:h-[440px]"
         role="img"
-        aria-label={`Bitcoin ${tf === '1w' ? 'weekly' : 'daily'} log price with cycle phase bands, halvings, and the projected next bull-run window`}
+        aria-label={`${coin} ${tf === '1w' ? 'weekly' : 'daily'} log price with cycle phase bands, halvings, and the projected next bull-run window`}
       />
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 px-[var(--panel-pad)] py-1.5 text-[10px] text-text-secondary">
         <Swatch color="var(--color-text-muted)" line label="SMA200" />
         <Swatch color="color-mix(in srgb, var(--color-proj-line) 30%, transparent)" label="est. run start, core" />
         <Swatch color="color-mix(in srgb, var(--color-proj-line) 12%, transparent)" label="est. run start, range" />
-        <Swatch color="color-mix(in srgb, var(--color-ph-euphoria) 26%, transparent)" label="est. top window" />
+        <Swatch color="color-mix(in srgb, var(--color-ph-euphoria) 20%, transparent)" label="est. top window" />
       </div>
     </div>
   )
