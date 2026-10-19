@@ -192,7 +192,7 @@ export function createScanner(deps: ScannerDeps) {
           if (cost) {
             const gross = (Math.abs(setup.targetPx - mark) / mark) * 1e4;
             const g = best.get(setup.setupKind);
-            const ledger = g && g.n >= edgeMinN && g.meanNet != null;
+            const ledger = g && g.clusters >= edgeMinN && g.meanNet != null;
             // net = gross − costs always holds: from the ledger the net is the 4 h mean, and gross is derived back from it.
             const net = ledger ? g.meanNet! * 1e4 : netEdge({ grossEdgeBps: gross, costs: cost });
             const grossEdge = ledger ? net + 2 * cost.feeBps + cost.slippageBps + cost.fundingBps : gross;

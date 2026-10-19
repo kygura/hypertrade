@@ -312,14 +312,14 @@ export class PgPlatformStore implements PlatformStore {
 
   async outcomeRows({ setupKind, regime, tier }: Parameters<PlatformStore["outcomeRows"]>[0]) {
     const rows = await this.db.query<any>(
-      `select o.id, o.setup_kind, o.regime, o.liquidity_tier, (o.costs is not null) as has_costs, l.payload from ledger_entries l join opportunities o on o.id = l.opportunity_id
+      `select o.id, o.created_at as opp_created_at, o.setup_kind, o.regime, o.liquidity_tier, (o.costs is not null) as has_costs, l.payload from ledger_entries l join opportunities o on o.id = l.opportunity_id
        where l.kind = 'outcome' and ($1::text is null or o.setup_kind = $1) and ($2::text is null or o.regime = $2) and ($3::int is null or o.liquidity_tier = $3::int)
        order by l.id`,
       [setupKind ?? null, regime ?? null, tier ?? null],
     );
     return rows.map((r): OutcomeRow => ({
       opportunityId: r.id, setupKind: r.setup_kind, regime: r.regime, liquidityTier: r.liquidity_tier,
-      horizon: r.payload.horizon, grossReturn: r.payload.grossReturn, netReturn: r.payload.netReturn, hasCosts: Boolean(r.has_costs),
+      horizon: r.payload.horizon, createdAtMs: new Date(r.opp_created_at).getTime(), grossReturn: r.payload.grossReturn, netReturn: r.payload.netReturn, hasCosts: Boolean(r.has_costs),
     }));
   }
 }
