@@ -162,7 +162,8 @@ export interface IntelStore {
   listTheses(): Promise<Thesis[]>;
   getThesis(id: string): Promise<Thesis | null>;
   insertThesis(t: NewThesis): Promise<Thesis>;
-  updateThesis(id: string, patch: ThesisPatch): Promise<Thesis | null>;
+  /** `ifHistory`: compare-and-set; null when the thesis is missing or its history is no longer that value. */
+  updateThesis(id: string, patch: ThesisPatch, ifHistory?: Thesis["history"]): Promise<Thesis | null>;
   deleteThesis(id: string): Promise<boolean>;
 
   listWatches(): Promise<Watch[]>;
@@ -777,12 +778,13 @@ export class PgIntelStore implements IntelStore {
       returning *`;
     return toThesis(row);
   }
-  async updateThesis(id: string, patch: ThesisPatch) {
+  async updateThesis(id: string, patch: ThesisPatch, ifHistory?: Thesis["history"]) {
     const cur = await this.getThesis(id);
     if (!cur) return null;
     const n = { ...cur, ...patch };
+    const guard = ifHistory ? sql()`and history = ${json(ifHistory)}::jsonb` : sql()``;
     const [row] = await sql()`update intel_theses set assets = ${json(n.assets)}, claims = ${json(n.claims)}, invalidation = ${json(n.invalidation)},
-      wrong_if = ${json(n.wrongIf)}, trace = ${json(n.trace)}, checked_at = ${n.checkedAt}, history = ${json(n.history ?? [])} where id = ${id} returning *`;
+      wrong_if = ${json(n.wrongIf)}, trace = ${json(n.trace)}, checked_at = ${n.checkedAt}, history = ${json(n.history ?? [])} where id = ${id} ${guard} returning *`;
     return row ? toThesis(row) : null;
   }
   async deleteThesis(id: string) {
@@ -1223,9 +1225,10 @@ export class MemoryIntelStore implements IntelStore {
     this.theses.set(row.id, row);
     return clone(row);
   }
-  async updateThesis(id: string, patch: ThesisPatch) {
+  async updateThesis(id: string, patch: ThesisPatch, ifHistory?: Thesis["history"]) {
     const cur = this.theses.get(id);
     if (!cur) return null;
+    if (ifHistory && JSON.stringify(cur.history ?? []) !== JSON.stringify(ifHistory)) return null;
     const row = { ...cur, ...clone(patch) };
     row.checkedAt = isoOrNull(row.checkedAt);
     this.theses.set(id, row);

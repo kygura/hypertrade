@@ -408,7 +408,10 @@ export async function checkThesis(deps: ThesisDeps, id: string): Promise<Thesis 
   const body = await evaluateThesis(deps, t);
   const checkedAt = deps.now().toISOString();
   const history = [...(t.history ?? []), historyEntry(checkedAt, body)].slice(-HISTORY_CAP);
-  const out = await deps.store.updateThesis(id, { ...body, checkedAt, history });
+  // Compare-and-set on the history we read: a concurrent check that won the race owns the write and the alert.
+  const out = await deps.store.updateThesis(id, { ...body, checkedAt, history }, t.history ?? []);
+  if (!out) return deps.store.getThesis(id);
+  // ponytail: state is saved before the send, so if every channel fails the alert is lost (no retry); add an outbox if it matters.
   if (deps.notifier) {
     const hits = [
       ...body.claims.flatMap((c, i) => (t.claims[i]?.status === "supported" && c.status === "contradicted" ? [brokenAlert(t, c.text, c.check, c.evidence)] : [])),
@@ -423,8 +426,12 @@ export async function checkThesis(deps: ThesisDeps, id: string): Promise<Thesis 
 export async function recheckAll(deps: ThesisDeps): Promise<Thesis[]> {
   const out: Thesis[] = [];
   for (const t of await deps.store.listTheses()) {
-    const r = await checkThesis(deps, t.id);
-    if (r) out.push(r);
+    try {
+      const r = await checkThesis(deps, t.id);
+      if (r) out.push(r);
+    } catch (e) {
+      console.warn(`[intel] thesis ${t.id} recheck: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
   return out;
 }
