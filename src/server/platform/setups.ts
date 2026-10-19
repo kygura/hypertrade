@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { Side } from "../../shared/intel.js";
 import type { FeatureVector, LiquidityTier } from "../../shared/platform.js";
 import { fin } from "../intel/util.js";
-import { DEFAULT_THRESHOLDS, type Setup, type Thresholds } from "./features.js";
 
 // Platform setups as data (TASKS PS-B1, FEATURES.md § 1): each setup is a
 // SetupSchema over the scanner's feature vector, compiled once into the
@@ -11,6 +10,27 @@ import { DEFAULT_THRESHOLDS, type Setup, type Thresholds } from "./features.js";
 // `<` / `>=` over daily feature columns, a fixed direction and fixed
 // thresholds, so it cannot say |x| < t, x ≤ t, "same sign", a direction
 // taken from a feature's sign, or a per-liquidity-tier threshold.
+
+export type Thresholds = {
+  /** |fundingZ24h| a crowded setup needs. */
+  fundingZ: number;
+  /** oiChg1hZ build (or drop) needed. */
+  oiZ: number;
+  /** |ret15mZ| for a move. */
+  retZ: number;
+  rvExpansion: number;
+  volZ: number;
+  /** |ret15mZ| below this counts as price flat. */
+  flatZ: number;
+};
+/** Thinner books move on less, so lower tiers need a stronger signal. */
+export const DEFAULT_THRESHOLDS: Record<LiquidityTier, Thresholds> = {
+  1: { fundingZ: 2, oiZ: 1, retZ: 2, rvExpansion: 1.8, volZ: 1.5, flatZ: 1 },
+  2: { fundingZ: 2.25, oiZ: 1.25, retZ: 2.25, rvExpansion: 2, volZ: 1.75, flatZ: 1 },
+  3: { fundingZ: 2.5, oiZ: 1.5, retZ: 2.5, rvExpansion: 2.25, volZ: 2, flatZ: 1 },
+};
+
+export type Setup = { setupKind: string; direction: Side; stopPx: number; targetPx: number; invalidationPx: number; tags: string[] };
 
 /** Scanner features (computeFeatures keys) plus `funding`, the raw hourly rate from the inputs. */
 export const REFS = ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "fundingPctile24h", "volRatio1hZ", "rvExpansion", "liqPressure", "spreadBps", "depthUsd", "funding"] as const;
@@ -145,4 +165,5 @@ export function compile(schemas: SetupSchema[]): (fv: FeatureVector, tier: Liqui
   };
 }
 
-export const compiledSetups = compile(SETUPS);
+/** The scanner's setup predicate. */
+export const setupsFor = compile(SETUPS);

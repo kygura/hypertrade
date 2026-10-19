@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import type { FeatureVector, LiquidityTier } from "../../shared/platform.js";
 import { mulberry32 } from "../lab/engine/rng.js";
-import { setupsFor as legacy } from "./features.js";
-import { compiledSetups, SETUPS, SetupSchemaZ } from "./setups.js";
+import { setupsFor, SETUPS, SetupSchemaZ } from "./setups.js";
 
 // Parity (PS-B1, as perpsignal T9): the compiled schemas reproduce the
 // pre-schema hardcoded setupsFor on every synthetic bar. Values sit on and
@@ -43,25 +42,9 @@ function summary(outs: unknown[][]) {
 describe("setup schemas", () => {
   const cs = cases();
 
-  test("parity: compiled == hardcoded on every bar and setup", () => {
-    let same = 0;
-    for (const c of cs) {
-      const want = legacy(c.fv, c.tier);
-      const got = compiledSetups(c.fv, c.tier);
-      for (const kind of SETUPS.map((s) => s.kind)) {
-        const w = want.find((s) => s.setupKind === kind) ?? null;
-        if (JSON.stringify(got.find((s) => s.setupKind === kind) ?? null) === JSON.stringify(w)) same++;
-      }
-      expect(got).toEqual(want);
-    }
-    console.log(`setup parity ${same}/${cs.length * SETUPS.length}`);
-    expect(same).toBe(cs.length * SETUPS.length);
-    if (process.env.PARITY_RECORD) writeFileSync(FIXTURE, JSON.stringify(summary(cs.map((c) => legacy(c.fv, c.tier))), null, 2) + "\n");
-  });
-
   test("parity: compiled output matches the frozen hardcoded fixture, every setup fires and stays quiet", () => {
     const frozen = JSON.parse(readFileSync(FIXTURE, "utf8"));
-    const got = summary(cs.map((c) => compiledSetups(c.fv, c.tier)));
+    const got = summary(cs.map((c) => setupsFor(c.fv, c.tier)));
     expect(got).toEqual(frozen);
     for (const k of ["crowded_long:short", "negative_funding_squeeze:long", "deleveraging_washout:long", "vol_expansion_breakout:long", "vol_expansion_breakout:short"]) {
       expect(got.counts[k]).toBeGreaterThan(20);
