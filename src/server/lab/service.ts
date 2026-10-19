@@ -214,8 +214,9 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
   /** Metric ids a rule's features read; ToolInputError on a bad feature id or unknown metric. */
   function ruleMetrics(rule: Rule, field = "rule"): string[] {
     const out = new Set<string>();
-    rule.conditions.forEach((c, i) => {
-      const at = `${field}.conditions.${i}.feature`;
+    const conds = [...rule.conditions.map((c, i) => [c, `conditions.${i}`] as const), ...(rule.invalidation ?? []).map((c, i) => [c, `invalidation.${i}`] as const)];
+    conds.forEach(([c, path]) => {
+      const at = `${field}.${path}.feature`;
       let metric: string;
       try {
         metric = parseFeatureId(c.feature).metric;

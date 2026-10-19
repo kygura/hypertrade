@@ -111,6 +111,36 @@ describe("authorRules", () => {
   });
 });
 
+describe("authorRules: optional exits and regime (PS-B4)", () => {
+  const deps = (emits: unknown[]) => ({ llm: fakeLlm(emits).llm, metrics: provider.metrics() });
+  const full = {
+    ...good,
+    stop: { ref: "low", n: 7, atr: -0.25 },
+    target: { ref: "entry", atr: 3 },
+    invalidation: [{ feature: "syn:b|z|30", op: ">=", threshold: 2 }],
+    regime: { trend: ["up", "range"] },
+  };
+
+  test("accepts stop, target, invalidation and regime validated against the catalogue", async () => {
+    const r = await authorRules({ intent: "x" }, deps([{ candidates: [full] }]));
+    expect(r.ok && r.rules).toEqual([full] as never);
+  });
+
+  test("rejects an unknown invalidation metric, a stop on the wrong side, a bad level and an unknown trend", async () => {
+    const cases = [
+      { ...full, invalidation: [{ feature: "syn:nope|z|30", op: "<", threshold: 1 }] },
+      { ...full, stop: { ref: "entry", atr: 2 } }, // a long's stop above entry
+      { ...full, target: { ref: "entry", atr: -1 } },
+      { ...full, stop: { ref: "low", atr: -1 } }, // low needs n
+      { ...full, regime: { trend: ["sideways"] } },
+    ];
+    for (const bad of cases) {
+      const r = await authorRules({ intent: "x" }, deps([{ candidates: [bad] }, { candidates: [bad] }]));
+      expect(r.ok).toBe(false);
+    }
+  });
+});
+
 describe("lab_author_rule (service)", () => {
   test("every candidate is a trial, the catalogue stays empty", async () => {
     const other = { ...good, conditions: [{ feature: "syn:b|z|30", op: ">=", threshold: 1 }] };

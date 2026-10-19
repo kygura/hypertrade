@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { DAY_MS, type LabDataset, type Rule } from "../types.js";
 import { funnel, inZoneDays, ruleFiresAt } from "./evaluate.js";
 import { ATR_WINDOW, eventStudy, FUNDING, HIGH, isoWeek, LOW, OPEN, replayCoin, screenOf, t95, verdictOfScreen, type StudyEvent } from "./eventStudy.js";
+import { trendSeries } from "./features.js";
+import { ruleText } from "./rules.js";
 import { synthetic } from "./testkit.js";
 import { isoDate } from "./util.js";
 
@@ -215,5 +217,72 @@ describe("funnel", () => {
     const sv = f.steps.map((s) => s.survivors);
     expect(sv.every((v, i) => i === 0 || v <= sv[i - 1]!)).toBe(true);
     expect(sv.at(-1)).toBe(2 * inZoneDays(r, syn).filter(Boolean).length);
+  });
+});
+
+describe("rule exits and regime (PS-B4)", () => {
+  test("structural stop: the 3-bar low, hand-checked R", () => {
+    const d = dataset(30, { 19: { l: 97 }, 20: { x: 1 }, 21: { l: 96 } });
+    const ev = replayCoin({ ...rule("long"), stop: { ref: "low", n: 3 } }, d, opts)[0]!;
+    // stop 97, risk 3 (stopPct 3%): gross −1, costs 0.19 / 3, one day's funding 0.01 / 3
+    expect(ev).toMatchObject({ exit: "stop", exitDate: isoDate(T0 + 21 * DAY_MS) });
+    expect(ev.r).toBeCloseTo(-1 - 0.19 / 3 - 0.01 / 3, 10);
+  });
+
+  test("a rule's target overrides the targetAtr arg; a target on the wrong side is no event", () => {
+    const d = dataset(30, { 20: { x: 1 }, 21: { h: 102.5 } });
+    expect(replayCoin(rule("long"), d, opts)[0]!.exit).toBe("horizon"); // arg target 104
+    const ev = replayCoin({ ...rule("long"), target: { ref: "entry", atr: 1 } }, d, opts)[0]!;
+    expect(ev.exit).toBe("target");
+    expect(ev.r).toBeCloseTo(1 - 0.095 - 0.005, 10);
+    expect(replayCoin({ ...rule("long"), target: { ref: "ma", n: 5, atr: -1 } }, d, opts)).toEqual([]);
+  });
+
+  test("invalidation at a close exits at the next open, without that day's funding", () => {
+    const d = dataset(30, { 20: { x: 1 }, 21: { x: -2 }, 22: { o: 99.5 } });
+    const r = { ...rule("long"), invalidation: [{ feature: "syn:x|raw|0", op: "<" as const, threshold: -1 }] };
+    const ev = replayCoin(r, d, opts)[0]!;
+    // (99.5 − 100) / 2 = −0.25; costs 0.095; funding 1 day 0.005
+    expect(ev).toMatchObject({ exit: "invalidation", exitDate: isoDate(T0 + 22 * DAY_MS) });
+    expect(ev.r).toBeCloseTo(-0.25 - 0.095 - 0.005, 10);
+    // Firing on the horizon bar: the horizon close wins.
+    expect(replayCoin(r, dataset(30, { 20: { x: 1 }, 23: { x: -2 } }), opts)[0]!.exit).toBe("horizon");
+  });
+
+  test("invalidation parity: exits match the invalidation firing on data truncated at each bar", () => {
+    const syn = synthetic({ seed: 7, days: 700 });
+    const c = syn.price;
+    const o = c.map((_, i) => c[Math.max(0, i - 1)]!);
+    const d: LabDataset = {
+      ...syn,
+      metrics: { ...syn.metrics, [OPEN]: o, [HIGH]: c.map((x, i) => Math.max(x, o[i]!) * 1.01), [LOW]: c.map((x, i) => Math.min(x, o[i]!) * 0.99), [FUNDING]: c.map(() => 0.0001) },
+    };
+    const inv = [{ feature: "syn:b|raw|0", op: ">=" as const, threshold: 1 }];
+    const r: Rule = { asset: "SYN", direction: "long", horizonDays: 5, conditions: [{ feature: "syn:a|z|30", op: "<", threshold: -1 }], invalidation: inv };
+    const cut = (k: number): LabDataset => ({ ...d, t: d.t.slice(0, k + 1), price: d.price.slice(0, k + 1), metrics: Object.fromEntries(Object.entries(d.metrics).map(([id, v]) => [id, v.slice(0, k + 1)])) });
+    const invAt = (k: number) => ruleFiresAt({ ...r, conditions: inv, invalidation: undefined }, cut(k)).firing;
+    const idx = (day: string) => d.t.findIndex((x) => isoDate(x) === day);
+    const evs = replayCoin(r, d, { stopAtr: 3, targetAtr: 6 });
+    expect(evs.filter((e) => e.exit === "invalidation").length).toBeGreaterThan(5);
+    for (const e of evs) {
+      const j = idx(e.date);
+      const x = idx(e.exitDate);
+      const lastClose = e.exit === "invalidation" ? x - 2 : x - 1;
+      for (let k = j + 1; k <= lastClose; k++) expect(invAt(k)).toBe(false);
+      if (e.exit === "invalidation") expect(invAt(x - 1)).toBe(true);
+    }
+  });
+
+  test("regime: trend persists 3 days; it ANDs into the in-zone path and shows as a funnel step", () => {
+    const n = 70;
+    const d = dataset(n, Object.fromEntries(Array.from({ length: n }, (_, i) => [i, { x: 1, c: i < 60 ? 100 + i : 50 }])));
+    expect(trendSeries(d.price).slice(48, 63)).toEqual([null, ...Array(13).fill("up"), "range"]);
+    const r: Rule = { ...rule("long"), regime: { trend: ["up"] } };
+    const zone = inZoneDays(r, d);
+    expect(zone.filter(Boolean).length).toBe(13); // days 49..61
+    expect(zone[49] && zone[61] && !zone[62]).toBe(true);
+    const f = funnel(r, d);
+    expect(f.steps.map((s) => [s.condition, s.survivors])).toEqual([["syn:x raw ≥ 1", n], ["trend ∈ {up}", 13]]);
+    expect(ruleText(r)).toBe("syn:x raw ≥ 1 AND trend ∈ {up}");
   });
 });

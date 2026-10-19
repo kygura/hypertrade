@@ -1,7 +1,8 @@
-import { DAY_MS, RuleSchema, type EventVerdict, type LabDataset, type Rule } from "../types.js";
+import { DAY_MS, RuleSchema, type EventVerdict, type LabDataset, type Level, type Rule } from "../types.js";
+import { makeCtx } from "./context.js";
 import { funnel, inZoneDays, type FunnelStep } from "./evaluate.js";
 import { parseFeatureId } from "./features.js";
-import { ruleText } from "./rules.js";
+import { exitText, ruleText } from "./rules.js";
 import { isoDate } from "./util.js";
 
 // Event-study screen (FEATURES.md § 2). Replays a Lab rule per coin on daily
@@ -29,6 +30,7 @@ export const SURVIVORSHIP_NOTE =
   "Survivorship: the replay uses today's listed coins, so delisted losers are missing and the past looks better than it was.";
 
 export interface EventStudyOptions {
+  /** Defaults: a rule's own stop / target take precedence. */
   stopAtr: number;
   targetAtr: number;
   /** Slippage per side, basis points; default 5. */
@@ -40,7 +42,7 @@ export interface EventStudyOptions {
 export interface StudyEvent {
   coin: string;
   date: string; // signal bar, YYYY-MM-DD
-  exit: "stop" | "target" | "horizon";
+  exit: "stop" | "target" | "invalidation" | "horizon";
   exitDate: string;
   r: number;
   fundingR: number; // funding part of r (negative = paid)
@@ -65,6 +67,7 @@ export interface Screen {
 }
 
 export interface EventStudyResult {
+  /** The rule, then its own exits when it has any ("… | stop low(7) − 0.25 ATR; …"). */
   text: string;
   direction: Rule["direction"];
   horizonDays: number;
@@ -129,9 +132,12 @@ export function verdictOfScreen(s: Screen): EventVerdict {
  * Events of one coin. A day is an event when the rule is in zone at its close
  * and the previous event's signal bar is at least horizonDays back (cooldown =
  * horizon, so holds never overlap). Entry at the signal close; stop/target =
- * entry ∓/± stopAtr/targetAtr × ATR(14) at the signal bar; stop fills at the
- * worse of stop and open, wins a bar that hits both; otherwise exit at the
- * horizon close. A firing day whose trade cannot be scored (no ATR yet, a
+ * entry ∓/± stopAtr/targetAtr × ATR(14) at the signal bar, or the rule's own
+ * stop/target levels (fixed at the signal bar); stop fills at the worse of
+ * stop and open, wins a bar that hits both; when the rule's invalidation holds
+ * at a bar's close before the horizon bar, exit at the next bar's open;
+ * otherwise exit at the horizon close. A firing day whose trade cannot be
+ * scored (no ATR or level yet, a stop/target on the wrong side of entry, a
  * missing bar or funding inside the hold, data ends first) is no event.
  */
 export function replayCoin(rule: Rule, data: LabDataset, opts: EventStudyOptions): StudyEvent[] {
@@ -145,6 +151,7 @@ export function replayCoin(rule: Rule, data: LabDataset, opts: EventStudyOptions
   const dir = rule.direction === "long" ? 1 : -1;
   const slipPct = (opts.slippageBps ?? DEFAULT_SLIPPAGE_BPS) / 100;
   const fires = inZoneDays(rule, data);
+  const invalid = rule.invalidation ? makeCtx(data).signal(rule.invalidation) : null;
 
   const atrAt = (j: number): number => {
     if (j < ATR_WINDOW) return NaN;
@@ -153,16 +160,38 @@ export function replayCoin(rule: Rule, data: LabDataset, opts: EventStudyOptions
     return s / ATR_WINDOW; // NaN when any input is
   };
 
+  /** NaN when any bar it reads is missing. */
+  const levelAt = (e: Level, j: number): number => {
+    let v = c[j]!;
+    if (e.ref !== "entry") {
+      const w = e.n!;
+      if (j + 1 < w) return NaN;
+      const xs = (e.ref === "low" ? l : e.ref === "high" ? h : c).slice(j - w + 1, j + 1);
+      v = e.ref === "low" ? Math.min(...xs) : e.ref === "high" ? Math.max(...xs) : xs.reduce((a, b) => a + b, 0) / w;
+    }
+    return e.atr ? v + e.atr * atrAt(j) : v;
+  };
+
   const playOut = (j: number): StudyEvent | null => {
     const entry = c[j]!;
-    const risk = opts.stopAtr * atrAt(j); // |entry − stop|
+    let risk: number; // |entry − stop|
+    let stop: number;
+    if (rule.stop) (stop = levelAt(rule.stop, j)), (risk = dir * (entry - stop));
+    else (risk = opts.stopAtr * atrAt(j)), (stop = entry - dir * risk);
     if (!(risk > 0) || !(entry > 0)) return null;
-    const stop = entry - dir * risk;
-    const target = entry + dir * opts.targetAtr * atrAt(j);
+    const target = rule.target ? levelAt(rule.target, j) : entry + dir * opts.targetAtr * atrAt(j);
+    if (rule.target && !(dir * (target - entry) > 0)) return null;
     const stopPct = (risk / entry) * 100;
     let funding = 0; // fraction of price paid over the hold
+    const scored = (exit: StudyEvent["exit"], px: number, i: number, ambiguous: boolean): StudyEvent => {
+      const fundingR = -(funding * 100) / stopPct;
+      const r = (dir * (px - entry)) / risk - (FEE_ROUND_TRIP_PCT + 2 * slipPct) / stopPct + fundingR;
+      return { coin: data.asset, date: isoDate(t[j]!), exit, exitDate: isoDate(t[i]!), r, fundingR, ambiguous };
+    };
     for (let k = 1; k <= H; k++) {
       const i = j + k;
+      // Invalidated at the previous close (inside the hold): out at this open, no funding for this day.
+      if (invalid?.[i - 1] && k > 1) return i < n && Number.isFinite(o[i]) ? scored("invalidation", o[i]!, i, false) : null;
       if (i >= n || ![o[i], h[i], l[i], c[i], f[i]].every((x) => Number.isFinite(x))) return null;
       funding += dir * f[i]!; // ht:funding is the day's summed hourly rate; a long pays positive funding
       const stopHit = dir > 0 ? l[i]! <= stop : h[i]! >= stop;
@@ -173,9 +202,7 @@ export function replayCoin(rule: Rule, data: LabDataset, opts: EventStudyOptions
       else if (tgtHit) (exit = "target"), (px = target);
       else if (k === H) exit = "horizon";
       if (!exit) continue;
-      const fundingR = -(funding * 100) / stopPct;
-      const r = (dir * (px - entry)) / risk - (FEE_ROUND_TRIP_PCT + 2 * slipPct) / stopPct + fundingR;
-      return { coin: data.asset, date: isoDate(t[j]!), exit, exitDate: isoDate(t[i]!), r, fundingR, ambiguous: stopHit && tgtHit };
+      return scored(exit, px, i, stopHit && tgtHit);
     }
     return null;
   };
@@ -202,7 +229,7 @@ export function eventStudy(input: Rule, data: LabDataset[], opts: EventStudyOpti
   const studied: LabDataset[] = [];
   let lo = Infinity;
   let hi = -Infinity;
-  const needed = [...new Set([...STUDY_METRICS, ...rule.conditions.map((c) => parseFeatureId(c.feature).metric)])];
+  const needed = [...new Set([...STUDY_METRICS, ...[...rule.conditions, ...(rule.invalidation ?? [])].map((c) => parseFeatureId(c.feature).metric)])];
   for (const d of data) {
     const missing = needed.filter((m) => !d.metrics[m]);
     const funded = missing.length ? [] : d.t.filter((_, i) => Number.isFinite(d.price[i]) && Number.isFinite(d.metrics[FUNDING]![i]));
@@ -228,7 +255,7 @@ export function eventStudy(input: Rule, data: LabDataset[], opts: EventStudyOpti
     : null;
   const screen = screenOf(events);
   return {
-    text: ruleText(rule),
+    text: [ruleText(rule), exitText(rule)].filter(Boolean).join(" | "),
     direction: rule.direction,
     horizonDays: rule.horizonDays,
     stopAtr: opts.stopAtr,

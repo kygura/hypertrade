@@ -1,4 +1,4 @@
-import { TRANSFORMS, type FeatureSpec, type LabDataset, type Transform } from "../types.js";
+import { TRANSFORMS, type FeatureSpec, type LabDataset, type Transform, type Trend } from "../types.js";
 
 // Feature expansion (LAB.md §3). Every transform at day t reads only values at
 // days ≤ t. NaN policy: the output at t is NaN when the raw value at t is
@@ -186,4 +186,51 @@ export function buildFeatures(
     return transformSeries(vals, s.transform, s.window);
   });
   return { ids: specs.map(featureId), specs, columns };
+}
+
+/** Metric part of a regime feature id: `regime:trend=<sorted values>`; built from the price, not a dataset metric. */
+export const REGIME_PREFIX = "regime:trend=";
+const TREND_PERSIST = 3;
+
+const smaAt = (x: ArrayLike<number>, w: number, i: number): number => {
+  if (i + 1 < w) return NaN;
+  let s = 0;
+  for (let k = i - w + 1; k <= i; k++) s += x[k]!;
+  return s / w; // NaN when any close is missing
+};
+
+/**
+ * Daily trend per day, ported from perpsignal regime.ts: raw "up" when
+ * close > MA50, MA20 > MA50 and the 20-day ROC > 0, "down" when all three
+ * point down, else "range"; a new value counts only after holding 3
+ * consecutive days. Null until the first classifiable day. Day t reads closes ≤ t.
+ */
+export function trendSeries(close: ArrayLike<number>): (Trend | null)[] {
+  const out: (Trend | null)[] = [];
+  let state: Trend | null = null;
+  let cand: Trend | null = null;
+  let bars = 0;
+  for (let i = 0; i < close.length; i++) {
+    const ma50 = smaAt(close, 50, i);
+    if (Number.isFinite(ma50)) {
+      const c = close[i]!;
+      const ma20 = smaAt(close, 20, i);
+      const roc = c / close[i - 20]! - 1;
+      const raw: Trend = c > ma50 && ma20 > ma50 && roc > 0 ? "up" : c < ma50 && ma20 < ma50 && roc < 0 ? "down" : "range";
+      if (!state || raw === state) (state ??= raw), (cand = null), (bars = 0);
+      else {
+        bars = cand === raw ? bars + 1 : 1;
+        cand = raw;
+        if (bars >= TREND_PERSIST) (state = raw), (cand = null), (bars = 0);
+      }
+    }
+    out.push(state);
+  }
+  return out;
+}
+
+/** In-set indicator for a regime metric: 1 when the day's trend is in the set, 0 when not, NaN when unknown. */
+export function regimeColumn(metric: string, close: ArrayLike<number>): Float64Array {
+  const set = new Set(metric.slice(REGIME_PREFIX.length).split(","));
+  return Float64Array.from(trendSeries(close), (v) => (v == null ? NaN : set.has(v) ? 1 : 0));
 }
