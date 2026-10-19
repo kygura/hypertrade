@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Navigate, useNavigate, useParams } from 'react-router'
 import { Segmented } from '../components/Segmented'
 import { Panel, PanelHeader, PanelBody } from '../components/Panel'
 import { ErrorBlock, OfflineBlock, SkeletonRows } from '../components/state'
@@ -7,11 +8,11 @@ import { CycleChart } from '../components/cycles/CycleChart'
 import { AnalogChart } from '../components/cycles/AnalogChart'
 import { EpisodesTable, ForecastHero, MethodsTable, ReadinessStrip } from '../components/cycles/ForecastPanel'
 import { fmtDay } from '../components/cycles/format'
-import type { CyclesResponse } from '../../shared/cycles'
+import { CYCLE_COINS, type CycleCoin, type CyclesResponse } from '../../shared/cycles'
 import type { OnsetKind } from '../../shared/cycleForecast'
 
-// /cycles — the hl-cycles BTC cycle view (phase-banded log chart, SMA200,
-// halvings) with a next-bull-run estimate layered on: headline window and
+// /cycles, /cycles/eth — the hl-cycles cycle view (phase-banded log chart,
+// SMA200, halvings) for BTC or ETH, with a next-bull-run estimate layered on: headline window and
 // readiness strip, the chart with the projected window, cycle analogs from
 // the top, the four timing methods, and the past runs they're built on.
 // RUN START picks how a run is dated: its breakout (the final doubling into
@@ -22,19 +23,33 @@ const KIND_OPTIONS = [
   { value: 'euphoria' as const, label: 'EUPHORIA', title: 'Date runs from the first day the model commits to euphoria (Mar 2017, Dec 2020, Mar 2024)' },
 ]
 
+const COIN_OPTIONS = CYCLE_COINS.map((c) => ({ value: c, label: c }))
+/** First year of each coin's history, for the loading line. */
+const SINCE: Record<CycleCoin, number> = { BTC: 2011, ETH: 2015 }
+
 export function Cycles() {
+  const param = useParams().coin
+  const navigate = useNavigate()
+  const coin = (param ?? 'btc').toUpperCase() as CycleCoin
   const [tf, setTf] = useState<'1d' | '1w'>('1d')
   const [kind, setKind] = useState<OnsetKind>('breakout')
-  // useApi keeps the previous body while a timeframe switch loads.
-  const { data: body, loading, error, offline, refetch } = useApi<CyclesResponse>(`/cycles?tf=${tf}`)
+  const valid = (CYCLE_COINS as readonly string[]).includes(coin)
+  // useApi keeps the previous body while a coin or timeframe switch loads.
+  const { data: body, loading, error, offline, refetch } = useApi<CyclesResponse>(valid ? `/cycles?coin=${coin}&tf=${tf}` : null)
+  // BTC lives at /cycles; an unknown coin goes there too.
+  if (!valid || param === 'btc') return <Navigate to="/cycles" replace />
+  const coinSwitch = (
+    <Segmented label="Coin" options={COIN_OPTIONS} value={coin} onChange={(c) => navigate(c === 'BTC' ? '/cycles' : `/cycles/${c.toLowerCase()}`)} />
+  )
 
   if (!body) {
     return (
-      <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)]">
+      <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)] flex flex-col gap-3">
+        <div>{coinSwitch}</div>
         {loading && (
           <div className="flex flex-col gap-2">
             <SkeletonRows />
-            <span className="text-[10px] text-text-secondary text-center pulse-label">loading BTC history since 2011…</span>
+            <span className="text-[10px] text-text-secondary text-center pulse-label">loading {coin} history since {SINCE[coin]}…</span>
           </div>
         )}
         {!loading && offline && <OfflineBlock onRetry={refetch} />}
@@ -43,8 +58,12 @@ export function Cycles() {
     )
   }
 
+  // Until a switch lands, the body on screen is the previous coin's.
+  const shownCoin = body.coin
   const forecast = body.forecasts[kind]
   const other = body.forecasts[kind === 'breakout' ? 'euphoria' : 'breakout']
+  const r = forecast.readiness
+  const shallower = r?.lowDepth != null && r.priorBearDepths.length > 0 && r.lowDepth > Math.max(...r.priorBearDepths)
   const sources = Object.entries(body.sources)
     .map(([k, n]) => `${k} ${n.toLocaleString('en-US')}d`)
     .join(' · ')
@@ -52,8 +71,9 @@ export function Cycles() {
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)] flex flex-col gap-3 lg:grid lg:grid-cols-12">
       <Panel className="lg:col-span-12">
-        <PanelHeader title="NEXT BULL RUN · ESTIMATE">
-          <span className="hidden md:inline text-[10px] text-text-secondary tabular">BTC · as of {fmtDay(body.asOf)}</span>
+        <PanelHeader title={`NEXT ${shownCoin} BULL RUN · ESTIMATE`}>
+          <span className={`hidden md:inline text-[10px] text-text-secondary tabular ${loading ? 'pulse-label' : ''}`}>as of {fmtDay(body.asOf)}</span>
+          {coinSwitch}
           <Segmented label="Run start" options={KIND_OPTIONS} value={kind} onChange={setKind} />
         </PanelHeader>
         <PanelBody className="p-0">
@@ -63,10 +83,11 @@ export function Cycles() {
       </Panel>
 
       <Panel className="lg:col-span-12">
-        <PanelHeader title="CYCLE · BTC/USD · LOG" />
+        <PanelHeader title={`CYCLE · ${shownCoin}/USD · LOG`} />
         <PanelBody className="p-0">
           <CycleChart
             bars={body.bars}
+            coin={shownCoin}
             halvings={body.halvings}
             nextHalving={body.nextHalving}
             forecast={forecast}
@@ -86,7 +107,7 @@ export function Cycles() {
       <Panel className="lg:col-span-6">
         <PanelHeader title="TIMING METHODS" />
         <PanelBody className="p-0">
-          <MethodsTable forecast={forecast} />
+          <MethodsTable forecast={forecast} coin={shownCoin} />
         </PanelBody>
       </Panel>
 
@@ -95,9 +116,10 @@ export function Cycles() {
         <PanelBody className="p-0">
           <EpisodesTable episodes={forecast.episodes} kind={kind} />
           <p className="px-3 py-2 text-[11px] text-text-secondary border-t border-border-subtle">
-            Four cycles is a small sample and the spread between methods is the honest error bar. This bear market bottomed shallower than every
-            past one so far; a lower low would move the bear-low anchor, and the estimate with it, later. Halving date is a block-time estimate.
-            Not financial advice. History: {sources}.
+            {forecast.episodes.length} runs is a small sample and the spread between methods is the honest error bar.
+            {shallower && ' This bear market has bottomed shallower than every past one so far; a lower low would move the bear-low anchor, and the estimate with it, later.'}{' '}
+            Halving dates are BTC's{shownCoin !== 'BTC' && `, used as the market's clock for ${shownCoin}`}; the next one is a block-time estimate.
+            {body.sources.coinmetrics ? ' Coin Metrics days are daily reference closes, so they draw as flat bars.' : ''} Not financial advice. History: {sources}.
           </p>
         </PanelBody>
       </Panel>

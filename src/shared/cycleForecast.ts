@@ -18,8 +18,12 @@ import { DAY_MS, HALVINGS, NEXT_HALVING_ESTIMATE, type CyclePhase, type CyclePoi
 
 /** Euphoria runs closer than this belong to one bull run. */
 export const MERGE_GAP_DAYS = 365;
-/** Drawdown from the running high that marks a bear market (every past bear reached -77% or worse). */
-export const BEAR_BREAK = -0.55;
+/**
+ * Drawdown from the running high that marks a bear market. Mid-run dips stay
+ * above it (BTC -53% and ETH -57% in mid-2021); every completed bear went
+ * past -75%.
+ */
+export const BEAR_BREAK = -0.65;
 /** A run's breakout is where closes last rose through this fraction of its euphoria-onset price. */
 export const BREAKOUT_RATIO = 0.5;
 /** History needed before the first onset to read a meaningful prior low. */
@@ -156,8 +160,8 @@ export function bullEpisodes(points: CyclePoint[]): BullEpisode[] {
   const spans = runs.map((r, k) => {
     const next = runs[k + 1]?.s ?? points.length;
     // The top is the high before the bear market breaks it: the first close,
-    // after the run ends, at BEAR_BREAK below the running high. 2021's April
-    // high and July dip (-53%) stay inside the run; November is the top.
+    // after the run ends, at BEAR_BREAK below the running high. 2021's spring
+    // high and summer dip stay inside the run; November is the top.
     let peak = points[r.s]!.c;
     let brk = next;
     for (let i = r.s; i < next; i++) {

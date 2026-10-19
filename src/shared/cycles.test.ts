@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { bullEpisodes, cycleAnalogs, forecastNextRun, quantile } from "./cycleForecast.js";
-import { commitWithHysteresis, computeCycle, DAY_MS, fillGaps, percentileRank, resampleWeekly, sma, type DailyBar } from "./cycles.js";
+import { commitWithHysteresis, computeCycle, DAY_MS, fillGaps, MIN_PHASE_DAYS, percentileRank, resampleWeekly, sma, smoothPhases, type CyclePhase, type DailyBar } from "./cycles.js";
 import daily from "./fixtures/cycles/btc-daily.json";
+import ethDaily from "./fixtures/cycles/eth-daily.json";
 
 // BTC/USD daily closes 2011-09-13 → 2026-10-18 (Bitstamp, then Hyperliquid
-// from 2020-08), gap-filled, 5 significant figures.
+// from 2020-08) and ETH/USD 2015-08-08 → 2026-10-18 (Coin Metrics reference
+// rate), gap-filled, 5 significant figures.
 function dailyBars(fx: { from: string; c: number[] }): DailyBar[] {
   const t0 = Date.parse(`${fx.from}T00:00:00Z`);
   return fx.c.map((c, i) => ({ t: t0 + i * DAY_MS, o: c, h: c, l: c, c, v: 0, src: "fixture" }));
@@ -76,6 +78,66 @@ describe("cycle model on BTC history", () => {
     ]);
     expect(eps.map((e) => e.low && month(e.low.t))).toEqual(["2015-01", "2018-12", "2022-11", "2026-06"]);
     expect(eps.map((e) => e.lowConfirmed)).toEqual([true, true, true, false]);
+  });
+});
+
+describe("smoothPhases", () => {
+  const run = (p: CyclePhase | null, n: number) => Array<CyclePhase | null>(n).fill(p);
+  const lengths = (xs: (CyclePhase | null)[]) => {
+    const out: [CyclePhase | null, number][] = [];
+    for (const x of xs) {
+      const l = out[out.length - 1];
+      if (l && l[0] === x) l[1]++;
+      else out.push([x, 1]);
+    }
+    return out;
+  };
+
+  test("folds a short blip into matching neighbours, and into the longer one otherwise", () => {
+    const xs = [...run("markdown", 100), ...run("capitulation", 10), ...run("markdown", 50), ...run("capitulation", 120), ...run("accumulation", 20), ...run("expansion", 90)];
+    expect(lengths(smoothPhases(xs, 60))).toEqual([
+      ["markdown", 160],
+      ["capitulation", 140],
+      ["expansion", 90],
+    ]);
+  });
+
+  test("keeps euphoria, the ongoing stretch and warm-up nulls", () => {
+    const xs = [...run(null, 30), ...run("expansion", 200), ...run("euphoria", 12), ...run("distribution", 100), ...run("markdown", 9)];
+    expect(lengths(smoothPhases(xs, 60))).toEqual([
+      [null, 30],
+      ["expansion", 200],
+      ["euphoria", 12],
+      ["distribution", 100],
+      ["markdown", 9],
+    ]);
+  });
+
+  test("on BTC, no drawn stretch but euphoria and today's is shorter than the minimum", () => {
+    const segs = lengths(smoothPhases(points.map((p) => p.phase)));
+    for (const [p, n] of segs.slice(0, -1)) if (p && p !== "euphoria") expect(n).toBeGreaterThanOrEqual(MIN_PHASE_DAYS);
+    // The 2022 bear draws as one markdown stretch, then one capitulation.
+    const bear = segs.filter(([p]) => p === "markdown" || p === "capitulation");
+    expect(bear.length).toBeLessThan(lengths(points.map((p) => p.phase)).filter(([p]) => p === "markdown" || p === "capitulation").length);
+  });
+});
+
+describe("cycle model on ETH history", () => {
+  const eth = dailyBars(ethDaily);
+  const ethPoints = computeCycle(eth, eth[eth.length - 1]!.t + DAY_MS);
+
+  test("finds ETH's three runs; its -57% mid-2021 dip stays inside the run", () => {
+    const eps = bullEpisodes(ethPoints);
+    expect(eps.map((e) => iso(e.breakout.t))).toEqual(["2017-03-12", "2020-12-27", "2025-06-23"]);
+    expect(eps.map((e) => iso(e.top.t))).toEqual(["2018-01-13", "2021-11-08", "2025-08-22"]);
+    expect(eps.map((e) => e.low && month(e.low.t))).toEqual(["2018-12", "2022-06", "2026-06"]);
+  });
+
+  test("dates ETH's next run on BTC's halving clock", () => {
+    const f = forecastNextRun(ethPoints);
+    expect(f.methods.map((m) => m.key)).toEqual(["rhythm", "halving", "low", "top"]);
+    expect(f.methods.find((m) => m.key === "halving")!.samples).toHaveLength(3);
+    expect(iso(f.onset!.median) > iso(forecastNextRun(points).onset!.median)).toBe(true);
   });
 });
 

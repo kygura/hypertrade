@@ -146,16 +146,19 @@ export default function App() {
             </Shell>
           }
         />
-        <Route
-          path="/cycles"
-          element={
-            <Shell>
-              <Suspense fallback={<SkeletonRows />}>
-                <Cycles />
-              </Suspense>
-            </Shell>
-          }
-        />
+        {['/cycles', '/cycles/:coin'].map((path) => (
+          <Route
+            key={path}
+            path={path}
+            element={
+              <Shell>
+                <Suspense fallback={<SkeletonRows />}>
+                  <Cycles />
+                </Suspense>
+              </Shell>
+            }
+          />
+        ))}
         <Route
           path="/strategies"
           element={

@@ -74,15 +74,17 @@
   --color-drawdown-fill: rgba(188, 38, 62, 0.18);
   --color-drawdown-line: #bc263e;
 
-  /* Cycle phases (/cycles, ported from hl-cycles). Order is coolest to
-     hottest; validated as a categorical set on the dark panel surface
-     (distribution pinked off hl-cycles' coral so it parts from euphoria). */
-  --color-ph-accumulation: #3987e5;
-  --color-ph-expansion: #199e70;
-  --color-ph-euphoria: #c98500;
-  --color-ph-distribution: #e65a7a;
-  --color-ph-markdown: #9085e9;
-  --color-ph-capitulation: #d55181;
+  /* Cycle phases (/cycles, ported from hl-cycles), in cycle order around a
+     hue wheel: blue, green, gold, orange, violet, crimson. Any two can share
+     a border, so the set is validated all-pairs on the dark panel surfaces
+     (normal-vision dE >= 18, CVD dE >= 8); lightness is spread on purpose to
+     get there, and crimson sits under 3:1 so it always ships with its label. */
+  --color-ph-accumulation: #64a8ff;
+  --color-ph-expansion: #1d9a6c;
+  --color-ph-euphoria: #f7d45a;
+  --color-ph-distribution: #e8741c;
+  --color-ph-markdown: #9a5ce6;
+  --color-ph-capitulation: #b8183f;
   /* Past-cycle lines on the analog chart, oldest first (the live cycle is
      text-primary). Validated all-pairs on the dark panel surface. */
   --color-cyc-1: #3987e5;

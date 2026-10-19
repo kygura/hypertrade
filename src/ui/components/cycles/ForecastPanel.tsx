@@ -1,5 +1,5 @@
 import type { BullEpisode, CycleForecast, EstimateMethod, OnsetKind } from '../../../shared/cycleForecast'
-import { DAY_MS } from '../../../shared/cycles'
+import { DAY_MS, type CycleCoin } from '../../../shared/cycles'
 import { fmtPct } from '../../../shared/format'
 import { DataTable, type Column } from '../DataTable'
 import { MetricStat } from '../MetricStat'
@@ -9,11 +9,12 @@ import { fmtDay, fmtDays, fmtMonth, fmtQuarter, fmtUsdPx, PHASE_LABEL } from './
 // four timing methods with every past offset they use, and the bull runs
 // they were measured on.
 
-const METHOD_NOTE: Record<EstimateMethod['key'], string> = {
-  rhythm: 'spacing between past run starts, repeated from the latest start',
-  halving: 'each run’s start relative to its nearest halving, applied to the 2028 halving',
-  low: 'days from each bear-market low to the next run start, from the low since the last top',
-  top: 'days from each cycle top to the next run start, from the 2025 top',
+const METHOD_NOTE: Record<EstimateMethod['key'], (m: EstimateMethod, coin: CycleCoin) => string> = {
+  rhythm: () => 'spacing between past run starts, repeated from the latest start',
+  halving: (m, coin) =>
+    `each run’s start relative to its nearest ${coin === 'BTC' ? '' : 'BTC '}halving, applied to the ${new Date(m.anchor.t).getUTCFullYear()} halving`,
+  low: () => 'days from each bear-market low to the next run start, from the low since the last top',
+  top: (m) => `days from each cycle top to the next run start, from the ${m.anchor.label}`,
 }
 
 /** Date a run by the selected start. */
@@ -101,7 +102,7 @@ export function ReadinessStrip({ forecast }: { forecast: CycleForecast }) {
   )
 }
 
-export function MethodsTable({ forecast }: { forecast: CycleForecast }) {
+export function MethodsTable({ forecast, coin }: { forecast: CycleForecast; coin: CycleCoin }) {
   const columns: Column<EstimateMethod>[] = [
     {
       key: 'method',
@@ -110,7 +111,7 @@ export function MethodsTable({ forecast }: { forecast: CycleForecast }) {
       render: (m) => (
         <span className="flex flex-col py-0.5">
           <span className="text-text-primary">{m.label}</span>
-          <span className="text-[10px] text-text-secondary whitespace-normal">{METHOD_NOTE[m.key]}</span>
+          <span className="text-[10px] text-text-secondary whitespace-normal">{METHOD_NOTE[m.key](m, coin)}</span>
         </span>
       ),
     },
