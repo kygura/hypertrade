@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { computeFeatures, DEFAULT_THRESHOLDS, liquidityTiers, setupsFor, type RingPoint } from "./features.js";
+import { computeFeatures, liquidityTiers, type RingPoint } from "./features.js";
+import { DEFAULT_THRESHOLDS, setupsFor } from "./setups.js";
 
 const MIN = 60_000;
 const NOW = Date.UTC(2026, 9, 15, 12);

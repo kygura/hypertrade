@@ -14,6 +14,8 @@ import {
   type LiqMapSnapshot,
   type LiquidityTier,
   type NewLedgerEntry,
+  type NoveltyEntry,
+  type SectorTag,
   type Opportunity,
   type OpportunityStatus,
   type PolledPosition,
@@ -71,6 +73,8 @@ export interface OutcomeRow {
   regime: string;
   liquidityTier: LiquidityTier;
   horizon: string;
+  /** Opportunity creation time (ms): the cluster bucket for stats. */
+  createdAtMs: number;
   grossReturn: number;
   netReturn: number;
   /** The opportunity has a cost breakdown; stats exclude rows without one (P0.13). */
@@ -150,6 +154,18 @@ export interface PlatformStore {
   ledgerFor(opportunityId: string): Promise<LedgerEntry[]>;
   /** Every outcome entry joined with its opportunity, in insertion order. */
   outcomeRows(filter: { setupKind?: string; regime?: string; tier?: LiquidityTier }): Promise<OutcomeRow[]>;
+
+  /** Novelty journal (FEATURES.md 4): upsert by entry id, so a rerun adds nothing and a delivery stamp replaces the entry. */
+  saveNovelty(entries: NoveltyEntry[]): Promise<void>;
+  /** Entries with barDate >= sinceBar (YYYY-MM-DD), ascending by barDate then coin. */
+  listNovelty(sinceBar: string): Promise<NoveltyEntry[]>;
+  /** Retention: deletes entries with barDate < beforeBar. Returns rows deleted. */
+  pruneNovelty(beforeBar: string): Promise<number>;
+
+  /** Market sector tags (PS-B5): upsert by coin. Tags only filter universes, never score. */
+  saveSectors(tags: SectorTag[]): Promise<void>;
+  /** Every cached tag, ascending by coin. */
+  listSectors(): Promise<SectorTag[]>;
 }
 
 // ---------------------------------------------------------------- shared rules

@@ -31,6 +31,7 @@ import { bus } from "../src/server/platform/bus";
 import { setPlatformContext } from "../src/server/platform/context";
 import { createCrawler } from "../src/server/platform/crawler";
 import { createLiqmapLoop } from "../src/server/platform/liqmapLoop";
+import { createNoveltyLoop } from "../src/server/platform/noveltyLoop";
 import { createOutcomesLoop, skipped as outcomesSkipped } from "../src/server/platform/outcomesLoop";
 import { sql, setLongRunning } from "../src/server/db";
 import { defaultDeskService } from "../src/server/routes/desk";
@@ -121,7 +122,7 @@ async function boot() {
         }
       : undefined,
   });
-  const alerts = createAlerts({ notifier: createNotifier(), wsAgeSec: () => ws.lastMessageAgeSec(), appUrl: (process.env.APP_URL ?? process.env.DESK_APP_URL)?.trim() });
+  const alerts = createAlerts({ store, notifier: createNotifier(), wsAgeSec: () => ws.lastMessageAgeSec(), appUrl: (process.env.APP_URL ?? process.env.DESK_APP_URL)?.trim() });
 
   const defs: LoopDef[] = [
     // ws.tick opens/maintains the socket and refreshes the universe hourly; throws if the feed goes silent.
@@ -132,6 +133,8 @@ async function boot() {
     liqmap.def,
     outcomes.def,
     alerts.def,
+    // Daily inputs live in Postgres (candles, funding, observations): no database, no novelty loop.
+    ...(databaseUrl ? [createNoveltyLoop({ store, notify: alerts.novel, nearMiss: scanner.nearMiss }).def] : []),
   ];
   const selected = parseWorkerLoops(process.env.WORKER_LOOPS);
   const wants = (n: string) => selected === "all" || selected.has(n);
@@ -178,6 +181,7 @@ async function boot() {
       midAge: (coin, now) => { const ms = ws.midAgeMs(coin, now); return ms == null ? null : ms / 1000; },
       mid: (coin) => ws.mid(coin),
       lastScanAt: scanner.lastScanAt,
+      nearMisses: scanner.nearMisses,
       scanIntervalSec: scanner.intervalSec,
     });
     bus.subscribe("ws", ({ state }) => console.log(new Date().toISOString(), "[ws]", state));

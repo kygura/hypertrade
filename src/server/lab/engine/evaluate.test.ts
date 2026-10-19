@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { LabDataset, Rule } from "../types.js";
-import { evaluateRule, inZoneDays, livePerf, ruleFiresAt } from "./evaluate.js";
+import { evaluateRule, funnel, inZoneDays, livePerf, ruleFiresAt } from "./evaluate.js";
+import { eventStudy } from "./eventStudy.js";
+import golden from "./fixtures/oldRules.golden.json";
+import { ruleId, ruleText } from "./rules.js";
 import { synthetic } from "./testkit.js";
 import { isoDate } from "./util.js";
 
@@ -152,5 +155,29 @@ describe("firing and zones", () => {
     expect(live.days).toBe(99);
     expect(live.from).toBe(isoDate(data.t[501]!));
     expect(livePerf(planted, data, { slippageBps: 10, from: isoDate(data.t[599]!) })).toBeNull();
+  });
+});
+
+describe("backward compatibility (PS-B4): old-shape rules evaluate byte-identically", () => {
+  test("ids, texts, evaluation, firing, live perf, funnel and event study match the pre-PS-B4 golden", () => {
+    const syn = synthetic({ seed: 11, drift: 0.01, days: 900 });
+    const c = syn.price;
+    const o = c.map((_, i) => c[Math.max(0, i - 1)]!);
+    const d: LabDataset = {
+      ...syn,
+      metrics: { ...syn.metrics, "ht:open": o, "ht:high": c.map((x, i) => Math.max(x, o[i]!) * 1.01), "ht:low": c.map((x, i) => Math.min(x, o[i]!) * 0.99), "ht:funding": c.map(() => 0.0001) },
+    };
+    const rules = golden.rules as Rule[];
+    const out = rules.map((r) => ({
+      id: ruleId(r),
+      text: ruleText(r),
+      evaluation: evaluateRule(r, d, { slippageBps: 10, windows: [7, 30, 90] }),
+      fires: ruleFiresAt(r, d),
+      live: livePerf(r, d, { slippageBps: 10, from: "2019-06-01" }),
+      funnel: funnel(r, d),
+      study: eventStudy(r, [d], { stopAtr: 1.5, targetAtr: 3, minBars: 300 }),
+    }));
+    // JSON round-trip: the golden was stored as JSON (NaN → null).
+    expect(JSON.parse(JSON.stringify(out))).toEqual(golden.outputs);
   });
 });

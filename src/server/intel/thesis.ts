@@ -7,13 +7,16 @@ import {
   type SnapshotRow,
   type Thesis,
   type ThesisCheck,
+  type ThesisHistoryEntry,
   type ThesisClaim,
   type ThesisEvidence,
 } from "../../shared/intel.js";
 import type { AssetCtx } from "../../shared/types.js";
 import { claimsJsonSchema, validateLines } from "./claims.js";
 import { completeStructured, type LlmDeps, type LlmTrace } from "./llm.js";
-import { lineVerdict, payloadNumbers } from "./numbers.js";
+import type { Notifier } from "../desk/notify.js";
+import { isAdvice, lineVerdict, payloadNumbers } from "./numbers.js";
+import { sendIntel } from "./notify.js";
 import type { IntelStore } from "./store.js";
 import { iso, round } from "./util.js";
 
@@ -37,8 +40,12 @@ export interface ThesisDeps {
   observations?(seriesIds: string[]): Promise<Array<{ seriesId: string; ts: Date | string; value: number }>>;
   /** Live Hyperliquid contexts (MarketData.ctxs); preferred over the latest snapshot. */
   ctxs?(): Promise<AssetCtx[]>;
+  /** Where "premise no longer holds" goes; absent → no alert. */
+  notifier?: Notifier;
   signal?: AbortSignal;
 }
+
+export const HISTORY_CAP = 365;
 
 export type CheckStatus = ThesisClaim["status"];
 export interface CheckResult {
@@ -355,27 +362,76 @@ export async function createThesis(deps: ThesisDeps, text: string): Promise<{ ok
     wrongIf,
     checkedAt: deps.now().toISOString(),
     trace: ex.trace,
+    history: [historyEntry(deps.now().toISOString(), body)],
   });
   return { ok: true, thesis };
 }
 
-/** Re-evaluates a stored thesis from its saved checks; no LLM call. Null when it does not exist. */
+/** history entry for one evaluation: claims then invalidation, in order. */
+function historyEntry(ts: string, b: ThesisBody): ThesisHistoryEntry {
+  return {
+    ts,
+    checks: [
+      ...b.claims.map((c) => ({ status: c.status, value: c.evidence?.value ?? null })),
+      ...b.invalidation.map((i) => ({ status: i.status ?? ("unknown" as const), value: i.evidence?.value ?? null })),
+    ],
+  };
+}
+
+const opWord = { ">": "above", ">=": "at or above", "<": "below", "<=": "at or below" };
+function checkWords(c: ThesisCheck): string {
+  switch (c.kind) {
+    case "metric_threshold": return `${c.series} ${opWord[c.op]} ${c.value}`;
+    case "price_vs_level": return `${c.asset} price ${opWord[c.op]} ${c.level}`;
+    case "funding_sign": return `${c.asset} funding ${c.sign}`;
+    case "oi_change": return `${c.asset} open interest change over ${c.window_h}h ${opWord[c.op]} ${c.pct}%`;
+    case "event_exists": return `event "${c.query}" in the last ${c.since_h}h`;
+    case "unknown": return "unchecked";
+  }
+}
+
+/** Facts only; a premise text that trips the advice guard is replaced by a neutral label. */
+function brokenAlert(t: Thesis, text: string, check: ThesisCheck, ev?: ThesisEvidence) {
+  const premise = isAdvice(text) ? `a premise of the ${t.assets.join("/") || "saved"} thesis` : text;
+  const now = ev ? `now ${ev.value ?? "n/a"} (${ev.source.label}, ${ev.ts})` : "now n/a";
+  return { title: `Premise no longer holds: ${premise}`, line: `${checkWords(check)}: ${now}` };
+}
+
+/**
+ * Re-evaluates a stored thesis from its saved checks; no LLM call. Appends a history entry
+ * and sends one alert per transition supported → contradicted / clear → triggered
+ * (never repeats while the state is unchanged). Null when it does not exist.
+ */
 export async function checkThesis(deps: ThesisDeps, id: string): Promise<Thesis | null> {
   const t = await deps.store.getThesis(id);
   if (!t) return null;
   const body = await evaluateThesis(deps, t);
-  return deps.store.updateThesis(id, { ...body, checkedAt: deps.now().toISOString() });
+  const checkedAt = deps.now().toISOString();
+  const history = [...(t.history ?? []), historyEntry(checkedAt, body)].slice(-HISTORY_CAP);
+  // Compare-and-set on the history we read: a concurrent check that won the race owns the write and the alert.
+  const out = await deps.store.updateThesis(id, { ...body, checkedAt, history }, t.history ?? []);
+  if (!out) return deps.store.getThesis(id);
+  // ponytail: state is saved before the send, so if every channel fails the alert is lost (no retry); add an outbox if it matters.
+  if (deps.notifier) {
+    const hits = [
+      ...body.claims.flatMap((c, i) => (t.claims[i]?.status === "supported" && c.status === "contradicted" ? [brokenAlert(t, c.text, c.check, c.evidence)] : [])),
+      ...body.invalidation.flatMap((v, i) => (v.check && t.invalidation[i]?.status === "clear" && v.status === "triggered" ? [brokenAlert(t, v.text, v.check, v.evidence)] : [])),
+    ];
+    for (const h of hits) await sendIntel(deps.notifier, { title: h.title, lines: [h.line] });
+  }
+  return out;
 }
 
-/** Brief hook: rechecks every thesis that names one of `assets`. Returns the rechecked theses. */
-export async function recheckForAssets(deps: ThesisDeps, assets: string[]): Promise<Thesis[]> {
-  const want = new Set(assets);
-  if (!want.size) return [];
+/** Brief hook: rechecks every thesis each run. Returns the rechecked theses. */
+export async function recheckAll(deps: ThesisDeps): Promise<Thesis[]> {
   const out: Thesis[] = [];
   for (const t of await deps.store.listTheses()) {
-    if (!t.assets.some((a) => want.has(a))) continue;
-    const r = await checkThesis(deps, t.id);
-    if (r) out.push(r);
+    try {
+      const r = await checkThesis(deps, t.id);
+      if (r) out.push(r);
+    } catch (e) {
+      console.warn(`[intel] thesis ${t.id} recheck: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
   return out;
 }

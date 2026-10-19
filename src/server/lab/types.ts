@@ -92,6 +92,27 @@ export const ConditionSchema = z.object({
 });
 export type Condition = z.infer<typeof ConditionSchema>;
 
+/** Daily trend regime (port of perpsignal regime.ts rawTrend + 3-bar persistence). */
+export const TRENDS = ["up", "down", "range"] as const;
+export type Trend = (typeof TRENDS)[number];
+
+/**
+ * A price level fixed at the signal bar: `ref` + atr × ATR(14). ref is the
+ * entry (signal close), the n-bar lowest low / highest high, or the n-bar
+ * mean close, all ending at the signal bar. atr is signed: a long's stop at
+ * 2 ATR is { ref: "entry", atr: -2 }; below the 7-bar low by a quarter ATR is
+ * { ref: "low", n: 7, atr: -0.25 }.
+ */
+export const LevelSchema = z
+  .object({
+    ref: z.enum(["entry", "low", "high", "ma"]),
+    n: z.number().int().min(2).max(365).optional(),
+    atr: z.number().finite().min(-50).max(50).optional(),
+  })
+  .strict()
+  .refine((l) => (l.ref === "entry") === (l.n === undefined), { message: "n is required for low/high/ma and not allowed for entry" });
+export type Level = z.infer<typeof LevelSchema>;
+
 export const RuleSchema = z.object({
   asset: AssetSchema,
   direction: z.enum(["long", "short"]),
@@ -99,8 +120,47 @@ export const RuleSchema = z.object({
   conditions: z.array(ConditionSchema).min(1).max(2),
   /** Price metric the rule trades; defaults to `ht:price`. */
   price: z.string().optional(),
+  // Optional exits and regime (PS-B4). Absent = the rule behaves exactly as before.
+  /** Event study only: overrides the stopAtr arg. */
+  stop: LevelSchema.optional(),
+  /** Event study only: overrides the targetAtr arg. */
+  target: LevelSchema.optional(),
+  /** Event study only: when these all hold at a bar's close inside the hold, exit at the next bar's open. */
+  invalidation: z.array(ConditionSchema).min(1).max(2).optional(),
+  /** In zone only while the coin's daily trend is one of these (an extra condition on every in-zone path). */
+  regime: z.object({ trend: z.array(z.enum(TRENDS)).min(1) }).strict().optional(),
 });
 export type Rule = z.infer<typeof RuleSchema>;
+
+const levelJson = (role: string) => ({
+  type: "object",
+  description: `${role}: a price level fixed at the signal bar = ref + atr × ATR(14). ref entry (signal close; no n), low/high (n-bar lowest low / highest high), ma (n-bar mean close). atr is signed: a long's 2-ATR stop is {ref:"entry",atr:-2}; a quarter ATR under the 7-bar low is {ref:"low",n:7,atr:-0.25}. Event study only.`,
+  properties: { ref: { type: "string", enum: ["entry", "low", "high", "ma"] }, n: { type: "integer", minimum: 2, maximum: 365 }, atr: { type: "number", minimum: -50, maximum: 50 } },
+  required: ["ref"],
+});
+
+/** JSON Schema of the optional Rule fields (stop, target, invalidation, regime), shared by the tool and author schemas. */
+export const RULE_EXTRAS_JSON = {
+  stop: levelJson("Optional stop; overrides lab_event_study's stopAtr"),
+  target: levelJson("Optional target; overrides lab_event_study's targetAtr"),
+  invalidation: {
+    type: "array",
+    minItems: 1,
+    maxItems: 2,
+    description: "Optional: conditions (same shape as `conditions`) that, all holding at a close inside the hold, exit the trade at the next open. Event study only.",
+    items: {
+      type: "object",
+      properties: { feature: { type: "string" }, op: { type: "string", enum: ["<", ">="] }, threshold: { type: "number" } },
+      required: ["feature", "op", "threshold"],
+    },
+  },
+  regime: {
+    type: "object",
+    description: "Optional: in zone only while the coin's daily trend (close vs MA50, MA20 vs MA50, 20-day ROC; a change holds 3 days) is one of these.",
+    properties: { trend: { type: "array", minItems: 1, items: { type: "string", enum: [...TRENDS] } } },
+    required: ["trend"],
+  },
+};
 
 export interface PerfStats {
   from: string; // YYYY-MM-DD
@@ -274,6 +334,20 @@ export interface CatalogueEntry {
   saved: RuleEvaluation;
   savedAt: string; // ISO
 }
+
+/** One entry of the global trial log: idea number `n`, in order of authoring/evaluation, never reset. */
+export interface Trial {
+  n: number;
+  at: string; // ISO
+  ruleId: string;
+  intent: string | null;
+  verdict: VerdictLevel | EventVerdict | null;
+  /** The rule as authored or screened; absent/null on rows logged before it was stored. */
+  rule?: Rule | null;
+}
+
+/** lab_event_study screen (FEATURES.md § 2): reject-only, never a grant. */
+export type EventVerdict = "insufficient" | "rejected" | "clear";
 
 export interface CatalogueHealth {
   decayed: Array<{ id: string; name: string; liveDays: number; liveSharpe: number; holdoutSharpe: number | null }>;

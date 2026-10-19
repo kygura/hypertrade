@@ -2,7 +2,7 @@ import { RuleSchema, type LabDataset, type PerfStats, type Rule, type RuleEvalua
 import { concatReturns, equityCurve, perfStats, sharpeOf, simulate } from "./backtest.js";
 import { checkDataset, makeCtx, rangeIndices, type EvalCtx } from "./context.js";
 import { makeLabels } from "./labels.js";
-import { ruleId, ruleText } from "./rules.js";
+import { ruleId, ruleText, zoneConditions } from "./rules.js";
 import { deflatedSharpeOf } from "./stats.js";
 import { verdictOf } from "./verdict.js";
 import { isoDate, parseDay, SearchRefused } from "./util.js";
@@ -32,7 +32,7 @@ export function evaluateInCtx(ctx: EvalCtx, rule: Rule, o: EvalInCtxOptions): Ru
   const { n, t } = ctx;
   const { split } = o;
   const dirSign = rule.direction === "long" ? 1 : -1;
-  const sig = ctx.signal(rule.conditions);
+  const sig = ctx.signal(zoneConditions(rule));
   const pos = positions(sig, dirSign);
   const bench = new Float64Array(n).fill(dirSign);
 
@@ -57,7 +57,7 @@ export function evaluateInCtx(ctx: EvalCtx, rule: Rule, o: EvalInCtxOptions): Ru
     const x = ctx.col(c.feature)[n - 1]!;
     values[c.feature] = Number.isFinite(x) ? x : null;
   }
-  const wf = o.walkForward && split.folds.length ? walkForwardSegments(ctx, rule.conditions, split, dirSign, o.slippageBps, o.refitThresholds ?? true) : null;
+  const wf = o.walkForward && split.folds.length ? walkForwardSegments(ctx, zoneConditions(rule), split, dirSign, o.slippageBps, o.refitThresholds ?? true) : null;
 
   const out: RuleEvaluation = {
     id: ruleId(rule),
@@ -155,7 +155,7 @@ export function ruleFiresAt(input: Rule, data: LabDataset): { firing: boolean; l
   if (!data.t.length) throw new Error("empty dataset");
   const ctx = makeCtx(data);
   const n = ctx.n;
-  const sig = ctx.signal(rule.conditions, n - 1, n);
+  const sig = ctx.signal(zoneConditions(rule), n - 1, n);
   const values: Record<string, number | null> = {};
   for (const c of rule.conditions) {
     const x = ctx.col(c.feature)[n - 1]!;
@@ -168,7 +168,35 @@ export function ruleFiresAt(input: Rule, data: LabDataset): { firing: boolean; l
 export function inZoneDays(input: Rule, data: LabDataset): boolean[] {
   const rule = RuleSchema.parse(input);
   checkDataset(data);
-  return Array.from(makeCtx(data).signal(rule.conditions), (x) => x === 1);
+  return Array.from(makeCtx(data).signal(zoneConditions(rule)), (x) => x === 1);
+}
+
+export interface FunnelStep {
+  condition: string;
+  /** Coin-days (summed over coins) passing this condition and every one before it. */
+  survivors: number;
+  /** Relative drop from the previous step (the first step: from all coin-days); 0 when that was 0. */
+  dropRel: number;
+}
+
+/** Where the idea dies: coin-days surviving each condition in rule order, via the same conditionSignal as evaluation. `bottleneck` = step with the largest dropRel (first on ties; -1 if none). */
+export function funnel(input: Rule, data: LabDataset | LabDataset[]): { steps: FunnelStep[]; bottleneck: number } {
+  const rule = RuleSchema.parse(input);
+  const sets = Array.isArray(data) ? data : [data];
+  const steps: FunnelStep[] = [];
+  const ctxs = sets.map((d) => (checkDataset(d), makeCtx(d)));
+  let prev = ctxs.reduce((a, c) => a + c.n, 0);
+  const conds = zoneConditions(rule);
+  conds.forEach((c, k) => {
+    const sv = ctxs.reduce((a, ctx) => a + ctx.signal(conds.slice(0, k + 1)).reduce((x, v) => x + v, 0), 0);
+    steps.push({ condition: ruleText({ conditions: [c] }), survivors: sv, dropRel: prev ? 1 - sv / prev : 0 });
+    prev = sv;
+  });
+  let bottleneck = -1;
+  steps.forEach((s, k) => {
+    if (s.dropRel > (steps[bottleneck]?.dropRel ?? 0)) bottleneck = k;
+  });
+  return { steps, bottleneck };
 }
 
 /** Net performance over return days after `from` (a date or ISO time, e.g. savedAt); null with fewer than 2 return days. */
@@ -181,6 +209,6 @@ export function livePerf(input: Rule, data: LabDataset, opts: { slippageBps: num
   let a = ctx.t.findIndex((x) => x > start);
   if (a < 0 || ctx.n - a < 2) return null;
   a = Math.max(1, a);
-  const pos = positions(ctx.signal(rule.conditions, a - 1, ctx.n), rule.direction === "long" ? 1 : -1);
+  const pos = positions(ctx.signal(zoneConditions(rule), a - 1, ctx.n), rule.direction === "long" ? 1 : -1);
   return perfStats(ctx.t, [simulate(ctx.pr, pos, a, ctx.n, opts.slippageBps)]);
 }

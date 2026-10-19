@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { databaseUrl, sql } from "../db.js";
-import type { CatalogueEntry, Direction, SearchConfig, SearchResult } from "./types.js";
+import type { CatalogueEntry, Direction, SearchConfig, SearchResult, Trial } from "./types.js";
 
 // Lab persistence (db/migrations/004_lab.sql). Three LabStore implementations:
 // Postgres (deployed), in-memory (no DB), and a JSON file (local CLI/stdio).
@@ -37,6 +37,7 @@ export interface RunSummary {
 
 export type NewRun = Omit<StoredRun, "id" | "createdAt">;
 export type NewCatalogueEntry = Omit<CatalogueEntry, "savedAt"> & { savedAt?: string };
+export type NewTrial = Omit<Trial, "n" | "at">;
 export type CatalogueFilter = { asset?: string; direction?: Direction };
 
 export interface LabStore {
@@ -57,6 +58,10 @@ export interface LabStore {
   saveCatalogueEntry(e: NewCatalogueEntry): Promise<CatalogueEntry>;
   /** false when there was no active entry with that id. */
   archiveCatalogueEntry(id: string): Promise<boolean>;
+  /** Append-only global trial log: assigns the next n, never reused or reset. */
+  appendTrial(t: NewTrial): Promise<Trial>;
+  /** Oldest first (n ascending). */
+  listTrials(): Promise<Trial[]>;
 }
 
 // ---------------------------------------------------------------- helpers
@@ -147,6 +152,10 @@ export function toCatalogueEntry(r: any): CatalogueEntry {
   };
 }
 
+export function toTrial(r: any): Trial {
+  return { n: Number(r.n), at: iso(r.at)!, ruleId: r.rule_id, intent: r.intent ?? null, verdict: r.verdict ?? null, rule: r.rule ?? null };
+}
+
 export function pgStore(): LabStore {
   const json = (v: unknown) => sql().json(v as never);
   return {
@@ -205,6 +214,13 @@ export function pgStore(): LabStore {
       const res = await sql()`update lab_rules set archived_at = now() where id = ${id} and archived_at is null`;
       return res.count > 0;
     },
+    async appendTrial(t) {
+      const [row] = await sql()`insert into lab_trials (rule_id, intent, verdict, rule) values (${t.ruleId}, ${t.intent}, ${t.verdict}, ${t.rule ? json(t.rule) : null}) returning *`;
+      return toTrial(row);
+    },
+    async listTrials() {
+      return (await sql()`select * from lab_trials order by n`).map(toTrial);
+    },
   };
 }
 
@@ -214,9 +230,10 @@ type StoredRule = CatalogueEntry & { archivedAt: string | null };
 interface State {
   runs: StoredRun[]; // insertion order, oldest first
   rules: StoredRule[];
+  trials: Trial[]; // n ascending
 }
 
-const emptyState = (): State => ({ runs: [], rules: [] });
+const emptyState = (): State => ({ runs: [], rules: [], trials: [] });
 const entryOf = ({ archivedAt: _a, ...e }: StoredRule): CatalogueEntry => structuredClone(e);
 
 /**
@@ -285,6 +302,16 @@ function localStore(
       await persist(s);
       return true;
     },
+    async appendTrial(t) {
+      const s = await load();
+      const trial: Trial = { ...t, n: (s.trials.at(-1)?.n ?? 0) + 1, at: clock().toISOString() };
+      s.trials.push(trial);
+      await persist(s);
+      return { ...trial };
+    },
+    async listTrials() {
+      return structuredClone((await load()).trials);
+    },
   };
 }
 
@@ -297,7 +324,7 @@ function parseState(text: string): State | null {
   try {
     const raw = JSON.parse(text);
     if (raw && typeof raw === "object" && Array.isArray(raw.runs) && Array.isArray(raw.rules)) {
-      return { runs: raw.runs, rules: raw.rules };
+      return { runs: raw.runs, rules: raw.rules, trials: Array.isArray(raw.trials) ? raw.trials : [] };
     }
   } catch {
     // fall through
@@ -307,8 +334,7 @@ function parseState(text: string): State | null {
 
 /**
  * Memory store backed by a JSON file. Loaded on first use; a missing file
- * starts empty, a corrupt one is moved to `<path>.bak` and the store starts
- * empty. Every mutation rewrites the file atomically (tmp + rename).
+ * starts empty, a corrupt one makes every call throw and is left untouched. Every mutation rewrites the file atomically (tmp + rename).
  */
 export function fileStore(path: string, clock: () => Date = () => new Date()): LabStore {
   let loading: Promise<State> | null = null;
@@ -325,15 +351,15 @@ export function fileStore(path: string, clock: () => Date = () => new Date()): L
       }
       const state = parseState(text);
       if (state) return state;
-      await rename(path, `${path}.bak`);
-      return emptyState();
+      // Never start empty over a damaged file: that would reset the trial counter (FEATURES.md § 5).
+      throw new Error(`lab store file ${path} is corrupt; fix or remove it by hand (the store will not start empty)`);
     })().catch((err) => {
       loading = null; // retry on the next call
       throw err;
     }));
 
   const persist = (s: State) => {
-    const body = JSON.stringify({ version: 1, runs: s.runs, rules: s.rules });
+    const body = JSON.stringify({ version: 1, runs: s.runs, rules: s.rules, trials: s.trials });
     const tmp = `${path}.${process.pid}.tmp`;
     // Chained so concurrent mutations never interleave their tmp writes.
     writing = writing

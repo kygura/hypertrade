@@ -16,7 +16,7 @@ const detail = (over: Partial<OpportunityDetail["ticket"]> = {}): OpportunityDet
     tags: [], liquidityTier: 1, regime: "trend", invalidation: "close below 39.9", entryPx: 42.18, stopPx: 39.9, targetPx: 45, invalidationPx: 39.9,
     createdAt: "2026-10-16T00:00:00Z", updatedAt: "2026-10-16T00:00:00Z", statusChangedAt: "2026-10-16T00:00:00Z", snoozedUntil: null, dedupeKey: "HYPE|long|oi-accel",
   },
-  signals: [], bearCase: null, stats: null, risk: null,
+  signals: [], bearCase: null, stats: null, evidence: "ledger 24h: n 0 · 0 clusters · edge unvalidated", risk: null,
   ticket: { side: "long", entryPx: 42.18, stopPx: 39.9, targetPx: 45, sizeUsd: 1500, sizeSource: "governor", ...over },
 });
 const noop = () => {};
@@ -184,7 +184,7 @@ describe("OpportunityDetail states (C7)", () => {
     expect(renderToStaticMarkup(<DetailView {...p} detail={detail()} notFound={false} offline={null} error={null} midAgeSec={45} />)).toContain("live price 45s old — approve is blocked");
   });
   test("signals show VALUE and Z apart; regime/tier sub-rows; margin out of scope", () => {
-    const stats = { setupKind: "oi-accel", horizon: "4h", regime: null, tier: null, n: 41, hitRate: 0.54, meanNet: 0.0021, ci95: [-0.0008, 0.005] as [number, number] };
+    const stats = { setupKind: "oi-accel", horizon: "4h", regime: null, tier: null, n: 41, clusters: 9, hitRate: 0.54, meanNet: 0.0021, ci95: [-0.0008, 0.005] as [number, number] };
     const d = { ...detail(), signals: [{ name: "ret15mZ", value: 0.012, z: 2.1 }], stats, risk: { before: { approved: true, reasons: [], warnings: [] }, after: { approved: true, reasons: [], warnings: [], sizing: { notionalUsd: 1500, grossLeverageAfter: 1.2, riskUsd: 50 } } } };
     const html = renderToStaticMarkup(<DetailView {...p} detail={d} subStats={{ regime: { ...stats, regime: "trend", n: 12 }, tier: null }} notFound={false} offline={null} error={null} />);
     expect(html).toContain("0.012");

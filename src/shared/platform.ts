@@ -157,9 +157,11 @@ export const LedgerStatsSchema = z.object({
   regime: Text(40).nullable(),
   tier: LiquidityTierSchema.nullable(),
   n: z.number().int().nonnegative(),
+  /** Distinct signal-time buckets (max(1 day, horizon)); meanNet and ci95 run over their means. */
+  clusters: z.number().int().nonnegative(),
   hitRate: Num.nullable(),
   meanNet: Num.nullable(),
-  /** 95% t-interval of the mean net return; null below n = 5 (P0.14). */
+  /** 95% t-interval over cluster means; null below 5 clusters (P0.14). */
   ci95: z.tuple([Num, Num]).nullable(),
 });
 export type LedgerStats = z.infer<typeof LedgerStatsSchema>;
@@ -328,6 +330,8 @@ export const OpportunityDetailSchema = z.object({
   signals: z.array(SignalSchema),
   bearCase: z.string().nullable(),
   stats: LedgerStatsSchema.nullable(),
+  /** Facts line from the 24h ledger group (FEATURES 5). */
+  evidence: z.string(),
   risk: z.object({ before: RiskVerdictSchema, after: RiskVerdictSchema }).nullable(),
   /** Pre-filled ticket. sizeUsd comes from the governor preview only; null without one. */
   ticket: z.object({ side: SideSchema, entryPx: Pos.nullable(), stopPx: Pos.nullable(), targetPx: Pos.nullable(), sizeUsd: Pos.nullable(), sizeSource: z.literal("governor") }),
@@ -350,5 +354,46 @@ export type LedgerStatsResponse = z.infer<typeof LedgerStatsResponseSchema>;
 /** GET /ledger/:opportunityId: entries in insertion order. */
 export const LedgerEntriesResponseSchema = z.object({ opportunityId: z.string().uuid(), entries: z.array(LedgerEntrySchema) });
 export type LedgerEntriesResponse = z.infer<typeof LedgerEntriesResponseSchema>;
+// ─── Novelty (FEATURES.md section 4) ───
+
+export const NoveltyFeatureSchema = z.object({ id: Text(32), value: Num, histMin: Num, histMax: Num, p1: Num, p99: Num, bars: z.number().int().nonnegative(), pctRank: Num });
+export type NoveltyFeature = z.infer<typeof NoveltyFeatureSchema>;
+/** One per coin per closed daily bar; id `${barDate}:${coin}`. Only new extremes are pushed. */
+export const NoveltyEntrySchema = z.object({
+  id: Text(64),
+  detectedAt: Iso,
+  barDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  coin: AssetSchema,
+  kind: z.enum(["new_extreme", "joint_extreme"]),
+  families: z.array(z.enum(["funding", "oi", "price"])),
+  features: z.array(NoveltyFeatureSchema),
+  nearSetups: z.array(z.string()),
+  marketWide: z.boolean(),
+  pushed: z.boolean(),
+  suppressed: z.enum(["cooldown", "run_cap"]).optional(),
+  notified: z.array(z.object({ at: Iso, channels: z.array(z.string()) })),
+});
+export type NoveltyEntry = z.infer<typeof NoveltyEntrySchema>;
+export const NoveltyQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(365).default(30), coin: AssetSchema.optional() }).strict();
+/** GET /novelty: newest bar first. */
+export const NoveltyResponseSchema = z.object({ entries: z.array(NoveltyEntrySchema) });
+export type NoveltyResponse = z.infer<typeof NoveltyResponseSchema>;
+// ─── Near-miss (PS-B2) ───
+export const NearMissSchema = z.object({ coin: AssetSchema, setupKind: z.string(), cond: z.number().int(), value: z.number(), limit: z.number(), relDistance: z.number() });
+export type NearMiss = z.infer<typeof NearMissSchema>;
+/** GET /near-miss: informational. `top` is the closest; `all` is every coin near a setup, closest first. */
+export const NearMissResponseSchema = z.object({ top: NearMissSchema.nullable(), all: z.array(NearMissSchema) });
+export type NearMissResponse = z.infer<typeof NearMissResponseSchema>;
+// ─── Market sectors (PS-B5) ───
+
+/** Fixed vocabulary the LLM tags coins from; anything else is rejected at the trust boundary. */
+export const SECTORS = ["AI", "Privacy", "Stablecoin", "Perp DEX", "L1", "L2", "DeFi", "Meme", "RWA", "Gaming", "Infra", "Exchange token", "Other"] as const;
+export const SectorSchema = z.enum(SECTORS);
+export type Sector = z.infer<typeof SectorSchema>;
+export const SectorTagSchema = z.object({ coin: AssetSchema, sectors: z.array(SectorSchema).min(1), taggedAt: Iso });
+export type SectorTag = z.infer<typeof SectorTagSchema>;
+/** GET /sectors: the cached tags. */
+export const SectorsResponseSchema = z.object({ vocabulary: z.array(SectorSchema), tags: z.array(SectorTagSchema) });
+export type SectorsResponse = z.infer<typeof SectorsResponseSchema>;
 /** GET /health. */
 export const PlatformHealthResponseSchema = PlatformHealthSchema;

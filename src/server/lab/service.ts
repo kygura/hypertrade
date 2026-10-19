@@ -2,6 +2,7 @@ import type { z, ZodTypeAny } from "zod";
 import { ToolInputError, UpstreamError, type ToolContext } from "../mcp/types.js";
 import {
   evaluateRule as evaluateRuleOn,
+  eventStudy as eventStudyOn,
   featureSpecs,
   inZoneDays,
   livePerf,
@@ -9,11 +10,20 @@ import {
   parseFeatureId,
   ruleFiresAt,
   ruleId,
+  ruleText,
   runSearch,
   SearchRefused,
+  STUDY_METRICS,
   withVerdict,
+  type EventStudyResult,
 } from "./engine/index.js";
+import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
+import { databaseUrl } from "../db.js";
+import type { LlmDeps } from "../intel/llm.js";
+import { authorRules, type AuthorInput } from "./author.js";
 import { allMetrics, getMetric, loadDataset as registryLoadDataset, PROVIDERS, type LoadConfig } from "./providers/registry.js";
+import { myMarkets, selectUniverse, ensureSectors } from "../platform/universe.js";
+import type { PlatformStore } from "../platform/store.js";
 import { defaultStore, type LabStore, type RunSummary, type StoredRun } from "./store.js";
 import {
   RuleSchema,
@@ -47,6 +57,12 @@ export interface LabServiceDeps {
   now: () => number;
   /** Metric catalogue used to validate ids; defaults to the registry. */
   providers: LabProvider[];
+  /** Model access for lab_author_rule; defaults to the Intel provider chain with an in-memory cache. */
+  llm?: LlmDeps;
+  /** Listed HL perps for lab_event_study's default coins; defaults to Hyperliquid's meta. */
+  perpUniverse?: (o: { top?: number; sectors?: string[]; mine?: boolean }) => Promise<string[]>;
+  /** Whether stored history is available; without it lab_event_study fetches live and caps its coins. */
+  hasDb?: () => boolean;
 }
 
 export const DEFAULT_WINDOWS = [7, 30, 90];
@@ -56,6 +72,9 @@ const LOAD_CONCURRENCY = 4;
 const DECAY_MIN_LIVE_DAYS = 30;
 const DECAY_HOLDOUT_SHARE = 0.25;
 const OVERLAP_JACCARD = 0.6;
+/** lab_event_study: default coins (top by day volume) and the cap without a DB; eventList keeps the most recent this many. */
+const STUDY_MAX_COINS = 20;
+const EVENT_LIST_MAX = 200;
 /** Kept back from a search deadline for the work after the last trial (refit, ranking, persisting). */
 export const SEARCH_FINISH_MS = 5_000;
 
@@ -64,7 +83,20 @@ export type CallBudget = Pick<ToolContext, "deadlineMs">;
 const underDeadline = (ctx?: CallBudget) => (ctx?.deadlineMs != null ? { deadline: true } : {});
 
 export type CatalogueFlag = "decayed" | "overlap";
-export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flags: CatalogueFlag[] };
+/** `idea #n of N` (FEATURES.md § 5): n = first trial recorded for the rule, N = the global trial count. */
+export type IdeaNumber = { n: number; of: number };
+export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flags: CatalogueFlag[]; idea: IdeaNumber | null };
+
+export interface AuthoredCandidate {
+  id: string;
+  rule: Rule;
+  /** Readable condition text, e.g. "cm:CapMVRVCur z(90) < -1 AND ...". */
+  text: string;
+  /** null when the rule could not be evaluated (see `error`). */
+  evaluation: RuleEvaluation | null;
+  error?: string;
+  idea: IdeaNumber;
+}
 
 export interface EvaluateInput {
   rule: Rule;
@@ -76,6 +108,18 @@ export interface EvaluateInput {
   windows?: number[];
   /** N for the deflated Sharpe (e.g. a run's effectiveTrials); default 1. */
   trials?: number;
+}
+
+export interface EventStudyInput {
+  rule: Rule;
+  coins?: string[];
+  /** Default coins when `coins` is absent: the N most liquid, sector members (intersect), plus my markets (union). Default: top 20. */
+  top?: number;
+  sectors?: string[];
+  mine?: boolean;
+  stopAtr: number;
+  targetAtr: number;
+  slippageBps?: number;
 }
 
 export interface SaveInput {
@@ -140,14 +184,40 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     loadDataset: partial.loadDataset ?? ((cfg) => registryLoadDataset(cfg)),
     now: partial.now ?? Date.now,
     providers: partial.providers ?? PROVIDERS,
+    llm: partial.llm,
+    perpUniverse:
+      partial.perpUniverse ??
+      (async (o) => {
+        const live = (await fetchPerpMetaAndCtxs()).ctxs.filter((c) => !c.isDelisted).map((c) => ({ coin: c.name, dayNtlVlm: c.dayNtlVlm }));
+        const tags = o.sectors?.length ? await sectorTags(live.map((c) => c.coin)) : undefined;
+        if (tags && !Object.keys(tags).length) throw new ToolInputError("sector tags unavailable (the LLM is down or not configured): pass coins or drop sectors", "sectors");
+        return selectUniverse(live, { top: o.top, sectors: o.sectors, mine: o.mine ? myMarkets() : undefined, tags }).map((c) => c.coin);
+      }),
+    hasDb: partial.hasDb ?? (() => Boolean(databaseUrl())),
   };
+  let llm = deps.llm;
+  // Imported on first use: the Intel/Desk graph imports the lab tools, so a static import would be a cycle.
+  async function llmDeps(): Promise<LlmDeps> {
+    if (llm) return llm;
+    const [{ intelProviderFactory }, { MemoryLlmCache }] = await Promise.all([import("../intel/llm.js"), import("../routine/llm.js")]);
+    return (llm = { makeProvider: intelProviderFactory(), cache: new MemoryLlmCache(), now: () => new Date(), dailyCap: 100 });
+  }
+  let platformStore: PlatformStore | undefined;
+  /** Cached sector tags for `coins`; tags the new ones. Platform store loaded on first use (keeps the lab graph light). */
+  async function sectorTags(coins: string[]) {
+    if (!platformStore) {
+      platformStore = deps.hasDb!() ? new (await import("../platform/store-pg.js")).PgPlatformStore() : new (await import("../platform/store-memory.js")).MemoryPlatformStore();
+    }
+    return ensureSectors(coins, platformStore, llmDeps);
+  }
   const known = (id: string) => !!getMetric(id, deps.providers);
 
   /** Metric ids a rule's features read; ToolInputError on a bad feature id or unknown metric. */
   function ruleMetrics(rule: Rule, field = "rule"): string[] {
     const out = new Set<string>();
-    rule.conditions.forEach((c, i) => {
-      const at = `${field}.conditions.${i}.feature`;
+    const conds = [...rule.conditions.map((c, i) => [c, `conditions.${i}`] as const), ...(rule.invalidation ?? []).map((c, i) => [c, `invalidation.${i}`] as const)];
+    conds.forEach(([c, path]) => {
+      const at = `${field}.${path}.feature`;
       let metric: string;
       try {
         metric = parseFeatureId(c.feature).metric;
@@ -359,9 +429,13 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
 
     async catalogueList(input: { asset?: string; direction?: Direction; live?: boolean } = {}, ctx?: CallBudget): Promise<{ entries: CatalogueListEntry[] }> {
       const all = (await deps.store.listCatalogue()).map(withEntryVerdict);
+      const trials = await deps.store.listTrials();
+      const firstTrial = new Map<string, number>();
+      for (const t of trials) if (!firstTrial.has(t.ruleId)) firstTrial.set(t.ruleId, t.n);
+      const idea = (id: string): IdeaNumber | null => (firstTrial.has(id) ? { n: firstTrial.get(id)!, of: trials.length } : null);
       const sameAsset = (e: CatalogueEntry) => !input.asset || e.rule.asset.toUpperCase() === input.asset.toUpperCase();
       const listed = all.filter((e) => sameAsset(e) && (!input.direction || e.rule.direction === input.direction));
-      if (input.live === false || !listed.length) return { entries: listed.map((e) => ({ ...e, live: null, flags: [] })) };
+      if (input.live === false || !listed.length) return { entries: listed.map((e) => ({ ...e, live: null, flags: [], idea: idea(e.id) })) };
       // Flags compare against every rule on the listed assets, not only the listed direction.
       const assets = new Set(listed.map((e) => e.rule.asset.toUpperCase()));
       const health = await analyse(all.filter((e) => assets.has(e.rule.asset.toUpperCase())), ctx);
@@ -371,9 +445,91 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         entries: listed.map((e) => ({
           ...e,
           live: health.live[e.id] ?? null,
+          idea: idea(e.id),
           flags: [...(decayed.has(e.id) ? (["decayed"] as const) : []), ...(overlapping.has(e.id) ? (["overlap"] as const) : [])],
         })),
       };
+    },
+
+    /** 1-3 validated rule candidates from an intent, each evaluated and logged as a trial; writes nothing to the catalogue. */
+    async authorRule(input: AuthorInput, ctx?: CallBudget): Promise<{ candidates: AuthoredCandidate[]; trialCount: number; model: string | null }> {
+      const r = await authorRules(input, { llm: await llmDeps(), metrics: allMetrics({ asset: input.asset }, deps.providers) });
+      if (!r.ok) throw new UpstreamError(`rule authoring failed: ${r.error}`);
+      const candidates: AuthoredCandidate[] = [];
+      for (const rule of r.rules) {
+        const id = ruleId(rule);
+        let evaluation: RuleEvaluation | null = null;
+        let error: string | undefined;
+        try {
+          evaluation = await evaluate({ rule }, ctx);
+        } catch (err) {
+          error = msg(err);
+        }
+        const t = await deps.store.appendTrial({ ruleId: id, intent: input.intent, verdict: evaluation?.verdict?.level ?? null, rule });
+        candidates.push({ id, rule, text: ruleText(rule), evaluation, ...(error && { error }), idea: { n: t.n, of: t.n } });
+      }
+      const trialCount = (await deps.store.listTrials()).length;
+      for (const c of candidates) c.idea.of = trialCount;
+      return { candidates, trialCount, model: r.model };
+    },
+
+    /** Reject-only event-study screen of a rule across coins (FEATURES.md § 2), recorded as a trial; informational, gates nothing. */
+    async eventStudy(input: EventStudyInput, ctx?: CallBudget): Promise<EventStudyResult & { eventListTotal: number; warnings: string[]; idea: IdeaNumber }> {
+      const rule = parseInput(RuleSchema, input.rule, "rule");
+      if (rule.price && rule.price !== "ht:price") throw new ToolInputError("the event study trades ht:price: stops and targets need its candles' open/high/low", "rule.price");
+      const metrics = [...new Set([...ruleMetrics(rule), ...STUDY_METRICS])];
+      const started = deps.now();
+      let coins = input.coins;
+      if (coins && coins.length > STUDY_MAX_COINS && !deps.hasDb!()) {
+        throw new ToolInputError(`at most ${STUDY_MAX_COINS} coins without a database (each coin's history is fetched live from Hyperliquid)`, "coins");
+      }
+      if (!coins) {
+        try {
+          const { top, sectors, mine } = input;
+          coins = await deps.perpUniverse!({ top: top ?? (sectors?.length || mine ? undefined : STUDY_MAX_COINS), sectors, mine });
+        } catch (err) {
+          if (err instanceof ToolInputError) throw err;
+          throw new UpstreamError(`HL perp universe unavailable (${msg(err)}): pass coins`);
+        }
+        if (!coins.length) throw new ToolInputError("no listed coin matches top/sectors/mine", "sectors");
+        if (coins.length > STUDY_MAX_COINS && !deps.hasDb!()) {
+          throw new ToolInputError(`the universe has ${coins.length} coins; at most ${STUDY_MAX_COINS} without a database: lower top`, "top");
+        }
+      }
+      const unique = coins.filter((c, i) => coins!.findIndex((x) => x.toLowerCase() === c.toLowerCase()) === i);
+      const warned = new Map<string, string[]>(); // warning → coins
+      const failed: EventStudyResult["coins"] = [];
+      const LATE = "not loaded before the deadline";
+      const loaded = await mapLimit(unique, LOAD_CONCURRENCY, async (coin) => {
+        const fail = (reason: string) => (failed.push({ coin, bars: 0, from: null, to: null, events: 0, status: "insufficient", reason }), null);
+        const left = ctx?.deadlineMs == null ? Infinity : ctx.deadlineMs - SEARCH_FINISH_MS - (deps.now() - started);
+        if (left <= 0) return fail(LATE);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const load = deps.loadDataset({ asset: coin, metrics, price: "ht:price", ...underDeadline(ctx) });
+          const late = new Promise<null>((r) => (timer = setTimeout(() => r(null), left)));
+          const r = await (Number.isFinite(left) ? Promise.race([load, late]) : load);
+          if (!r) return fail(LATE);
+          for (const w of r.warnings) warned.set(w, [...(warned.get(w) ?? []), coin]);
+          return r.dataset;
+        } catch (err) {
+          return fail(msg(err));
+        } finally {
+          clearTimeout(timer);
+        }
+      });
+      let result: EventStudyResult;
+      try {
+        result = eventStudyOn(rule, loaded.filter((d): d is LabDataset => d !== null), { stopAtr: input.stopAtr, targetAtr: input.targetAtr, slippageBps: input.slippageBps });
+      } catch (err) {
+        throw asInputError(err);
+      }
+      result.coins.push(...failed);
+      const warnings = [...warned].map(([w, cs]) => (cs.length === 1 ? `${cs[0]}: ${w}` : `${w} (${cs.length} coins: ${cs.join(", ")})`));
+      const eventListTotal = result.eventList.length;
+      result.eventList = result.eventList.slice(-EVENT_LIST_MAX);
+      const t = await deps.store.appendTrial({ ruleId: ruleId(rule), intent: "lab_event_study", verdict: result.verdict, rule });
+      return { ...result, eventListTotal, warnings, idea: { n: t.n, of: (await deps.store.listTrials()).length } };
     },
 
     async catalogueSave(input: SaveInput, ctx?: CallBudget): Promise<CatalogueEntry> {

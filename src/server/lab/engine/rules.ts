@@ -1,5 +1,5 @@
-import type { Condition, Rule } from "../types.js";
-import { parseFeatureId } from "./features.js";
+import type { Condition, Level, Rule } from "../types.js";
+import { parseFeatureId, REGIME_PREFIX } from "./features.js";
 import type { Forest, TreeNode } from "./tree.js";
 import { hash64 } from "./util.js";
 
@@ -83,6 +83,12 @@ export function conditionSignal(cols: Float64Array[], conds: Condition[], n: num
   return sig;
 }
 
+/** The rule's in-zone conditions: its own, plus its regime as a condition on an in-set indicator column (so every in-zone path, funnel included, runs it through conditionSignal). */
+export function zoneConditions(rule: Pick<Rule, "conditions" | "regime">): Condition[] {
+  if (!rule.regime) return rule.conditions;
+  return [...rule.conditions, { feature: `${REGIME_PREFIX}${[...new Set(rule.regime.trend)].sort().join(",")}|raw|0`, op: ">=", threshold: 1 }];
+}
+
 export function fmtNum(x: number): string {
   if (x === 0) return "0";
   const a = Math.abs(x);
@@ -99,9 +105,30 @@ function featureText(id: string): string {
   }
 }
 
-/** "cm:CapMVRVCur z(90) < -1.12 AND ht:funding raw ≥ 0.0003" */
-export function ruleText(rule: Pick<Rule, "conditions">): string {
-  return rule.conditions.map((c) => `${featureText(c.feature)} ${c.op === "<" ? "<" : "≥"} ${fmtNum(c.threshold)}`).join(" AND ");
+function condText(c: Condition): string {
+  if (c.feature.startsWith(REGIME_PREFIX)) return `trend ∈ {${parseFeatureId(c.feature).metric.slice(REGIME_PREFIX.length)}}`;
+  return `${featureText(c.feature)} ${c.op === "<" ? "<" : "≥"} ${fmtNum(c.threshold)}`;
+}
+
+/** "cm:CapMVRVCur z(90) < -1.12 AND ht:funding raw ≥ 0.0003" (then "AND trend ∈ {up}" with a regime) */
+export function ruleText(rule: Pick<Rule, "conditions" | "regime">): string {
+  return zoneConditions(rule).map(condText).join(" AND ");
+}
+
+function levelText(l: Level): string {
+  const base = l.ref === "entry" ? "entry" : `${l.ref}(${l.n})`;
+  return l.atr ? `${base} ${l.atr < 0 ? "−" : "+"} ${fmtNum(Math.abs(l.atr))} ATR` : base;
+}
+
+/** "stop low(7) − 0.25 ATR; target entry + 3 ATR; exit at next open when …"; "" without exits. */
+export function exitText(rule: Pick<Rule, "stop" | "target" | "invalidation">): string {
+  return [
+    rule.stop && `stop ${levelText(rule.stop)}`,
+    rule.target && `target ${levelText(rule.target)}`,
+    rule.invalidation && `exit at next open when ${rule.invalidation.map(condText).join(" AND ")}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
 }
 
 /** Stable id: FNV-1a over the canonical rule (asset case-insensitive, conditions sorted). */
@@ -114,6 +141,13 @@ export function ruleId(rule: Rule): string {
       h: rule.horizonDays,
       p: rule.price ?? "ht:price",
       c: conds.map((c) => [c.feature, c.op, c.threshold]),
+      // Optional parts: undefined keys drop out of the JSON, so ids of rules without them are unchanged.
+      r: rule.regime && [...new Set(rule.regime.trend)].sort(),
+      s: rule.stop && levelKey(rule.stop),
+      t: rule.target && levelKey(rule.target),
+      i: rule.invalidation && (canonicalConditions(rule.invalidation) ?? rule.invalidation).map((c) => [c.feature, c.op, c.threshold]),
     }),
   );
 }
+
+const levelKey = (l: Level) => [l.ref, l.n ?? 0, l.atr ?? 0];

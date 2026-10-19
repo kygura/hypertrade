@@ -4,9 +4,10 @@
 // all serve these.
 import { z } from "zod";
 import type { PromptDef, ToolDef, ToolInputSchema } from "../mcp/types.js";
+import { SECTORS, SectorSchema } from "../../shared/platform.js";
 import { createLabService, parseInput, type LabService } from "./service.js";
 import { MIN_DEFLATED_SHARPE, MIN_STABILITY, MIN_WALK_FORWARD_SHARPE } from "./engine/verdict.js";
-import { ASSET_PATTERN, DaySchema, RuleSchema, SearchConfigSchema, TRANSFORMS, VERDICT_LEVELS } from "./types.js";
+import { ASSET_PATTERN, DaySchema, RULE_EXTRAS_JSON, RuleSchema, SearchConfigSchema, TRANSFORMS, VERDICT_LEVELS } from "./types.js";
 
 export type { PromptDef, ToolContext, ToolDef, ToolSource } from "../mcp/types.js";
 export { ToolInputError } from "../mcp/types.js";
@@ -50,6 +51,25 @@ const SaveArgs = z
     note: z.string().max(2000).optional(),
     runId: z.string().uuid("expected a run id (uuid) from lab_search or lab_list_runs").optional(),
     origin: z.enum(["user", "agent", "seed"]).default("user"),
+  })
+  .strict();
+const AuthorArgs = z
+  .object({
+    intent: z.string().trim().min(3).max(1000),
+    asset: z.string().regex(ASSET_PATTERN, "expected a ticker of 1–20 letters or digits, e.g. BTC").optional(),
+    direction: z.enum(["long", "short"]).optional(),
+  })
+  .strict();
+const EventStudyArgs = z
+  .object({
+    rule: RuleSchema,
+    coins: z.array(z.string().regex(ASSET_PATTERN, "expected a ticker of 1–20 letters or digits, e.g. BTC")).min(1).max(300).optional(),
+    top: z.number().int().min(1).max(300).optional(),
+    sectors: z.array(SectorSchema).min(1).optional(),
+    mine: z.boolean().optional(),
+    stopAtr: z.number().positive().max(20),
+    targetAtr: z.number().positive().max(50),
+    slippageBps: z.number().min(0).max(200).default(5),
   })
   .strict();
 const RemoveArgs = z.object({ id: z.string().min(1).max(128) }).strict();
@@ -101,6 +121,7 @@ const ruleSchema = {
       },
     },
     price: { type: "string", description: "Price metric traded; default ht:price (falls back to cm:PriceUSD)." },
+    ...RULE_EXTRAS_JSON,
   },
   required: ["asset", "direction", "horizonDays", "conditions"],
 };
@@ -301,6 +322,49 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       async run(args, ctx) {
         return service.catalogueSave(parseInput(SaveArgs, args), ctx);
+      },
+    },
+    {
+      name: "lab_author_rule",
+      title: "Author a rule from an idea",
+      description:
+        "Turns a trading idea in words into 1–3 candidate Lab rules. An LLM writes them over the metric catalogue only; each is validated (unknown metric or feature ids are repaired once, then the call fails), evaluated like lab_evaluate_rule and recorded as the next trial in the global trial log. Returns { candidates: [{ id, rule, text, evaluation, idea: { n, of } }], trialCount }: \"idea #n of N\" says how many ideas have been tried in total, so judge a good-looking result by it. Writes nothing to the catalogue: save with lab_catalogue_save. Calls an LLM and fetches data: tens of seconds. " +
+        HONESTY,
+      inputSchema: obj(
+        {
+          intent: { type: "string", minLength: 3, maxLength: 1000, description: "The idea in plain words, e.g. \"buy BTC when funding is deeply negative and sentiment is fearful\"." },
+          asset: assetSchema("Asset to trade; narrows the metric catalogue. Default: the model picks from the idea."),
+          direction: { type: "string", enum: ["long", "short"], description: "Side to trade. Default: from the idea." },
+        },
+        ["intent"],
+      ),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      async run(args, ctx) {
+        return service.authorRule(parseInput(AuthorArgs, args), ctx);
+      },
+    },
+    {
+      name: "lab_event_study",
+      title: "Event-study screen",
+      description:
+        "Reject-only screen of a rule as discrete trades across coins (default: the 20 listed HL perps with the most day volume; without a database at most 20 coins; coins need ≥ 365 daily bars with funding, else status insufficient). Per coin, an event is a day the rule is in zone at the close (the same predicate as lab_market_pulse), at least horizonDays after the previous event (no overlapping holds). Entry at the signal close; stop/target = stopAtr/targetAtr × ATR(14), unless the rule has its own stop/target levels; with the rule's invalidation, exit at the next open after it holds at a close; stop fills at the worse of stop and open and wins a bar that hits both; else exit at the horizon close. R per event is net of a 0.09% round-trip fee, slippageBps per side and the funding paid over the hold. Events cluster by ISO week; verdict over weekly means: insufficient (< 30 weeks), rejected (one-sided 95% upper bound < 0: clearly lost), else clear (not shown to lose; never proof of an edge). Returns { screen, verdict, train, holdout (last 30% by time, facts only), period, coins, eventList (most recent 200), eventListTotal, survivorship, warnings, idea: { n, of } }; recorded as the next trial. Runs alongside the save-bar verdict, which it does not change. Fetches daily candles and funding per coin: seconds to tens of seconds. " +
+        HONESTY,
+      inputSchema: obj(
+        {
+          rule: ruleSchema,
+          coins: { type: "array", items: { type: "string", pattern: ASSET_PATTERN.source }, minItems: 1, maxItems: 300, description: "Coins to replay the rule on (rule.asset is ignored). Default: the 20 listed HL perps with the most day volume. Without a database at most 20." },
+          top: { type: "integer", minimum: 1, maximum: 300, description: "Default universe: the N listed HL perps with the most day volume (default 20 when no sectors/mine). Ignored when coins is set." },
+          sectors: { type: "array", items: { type: "string", enum: [...SECTORS] }, minItems: 1, description: "Default universe: keep only coins tagged with any of these sectors (intersects top). Tags are LLM-assigned once and cached; they only filter." },
+          mine: { type: "boolean", description: "Default universe: add my markets (PLATFORM_MY_MARKETS, default BTC,ETH,HYPE,SOL,XPL,LIT,ZEC). Alone, the universe is just those." },
+          stopAtr: { type: "number", exclusiveMinimum: 0, maximum: 20, description: "Stop distance in ATR(14) at the signal bar, e.g. 1.5." },
+          targetAtr: { type: "number", exclusiveMinimum: 0, maximum: 50, description: "Target distance in ATR(14), e.g. 3." },
+          slippageBps: { type: "number", minimum: 0, maximum: 200, description: "Slippage per side, basis points. Default 5." },
+        },
+        ["rule", "stopAtr", "targetAtr"],
+      ),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      async run(args, ctx) {
+        return service.eventStudy(parseInput(EventStudyArgs, args), ctx);
       },
     },
     {

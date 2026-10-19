@@ -1,14 +1,17 @@
 import { hlInfo, parseMetaAndCtxs } from "../../shared/hl-client.js";
+import { calendarEvents } from "../intel/calendar.js";
 import { fin } from "../intel/util.js";
-import type { JsonValue, LedgerStats, Opportunity } from "../../shared/platform.js";
+import type { JsonValue, LedgerStats, NearMiss, Opportunity } from "../../shared/platform.js";
 import { bus as defaultBus, type Bus } from "./bus.js";
 import { ABSORB_SHARE, bookFromL2, costs as costsFor, depthWithin, midOf, netEdge, type Book } from "./costs.js";
-import { computeFeatures, liquidityTiers, setupsFor, type RingPoint } from "./features.js";
+import { computeFeatures, liquidityTiers, type RingPoint } from "./features.js";
+import { nearMiss, setupsFor } from "./setups.js";
 import { nextAutoStatus, shouldExpire } from "./opportunity.js";
 import { SCORE_VERSION, scoreOpportunity } from "./score.js";
 import { groupStats } from "./stats.js";
 import { dedupeKey, type OpportunityInput, type PlatformStore, type ScanSnapshot } from "./store.js";
 import type { LoopDef } from "./runtime.js";
+import { ensureSectors, parseUniverseSpec, selectUniverse, type UniverseOpts } from "./universe.js";
 
 // Scan loop (SPEC P0.4 scanner, P0.9-P0.11). Thin glue: one metaAndAssetCtxs per
 // tick -> ring -> features -> setups -> score -> upsert -> costs for the top N ->
@@ -28,6 +31,7 @@ export const REF_SIZE_USD = 10_000;
 /** Holding time funding is charged over. ponytail: fixed 4 h (the middle outcome horizon); per-setup holds when the ledger says they differ. */
 export const HOLD_HOURS = 4;
 const LIQ_NEAR = 0.02;
+const DAY_MS = 24 * 60 * MIN;
 
 /** Maps NaN/±Infinity/undefined to null, recursively: the ledger rejects non-finite numbers. */
 export function clean(v: unknown): JsonValue {
@@ -37,6 +41,17 @@ export function clean(v: unknown): JsonValue {
   return (v ?? null) as JsonValue;
 }
 const px = (n: number) => Number(n.toPrecision(6));
+
+/** Macro label (FOMC, CPI) for releases within one UTC day of `now`. A tag only: nothing reads it for score or status. */
+function macroTags(now: Date): string[] {
+  const today = Date.parse(now.toISOString().slice(0, 10));
+  return calendarEvents(now).flatMap((e) => {
+    const kind = e.entities[0]; // calendar.ts lists the macro kind first
+    const days = Math.round((Date.parse(e.scheduledAt!.slice(0, 10)) - today) / DAY_MS);
+    if ((kind !== "FOMC" && kind !== "CPI") || Math.abs(days) > 1) return [];
+    return [`macro:${kind} ${days === 0 ? "today" : days === 1 ? "in 1 day" : "1 day ago"}`];
+  });
+}
 
 export interface ScannerDeps {
   store: PlatformStore;
@@ -50,6 +65,10 @@ export interface ScannerDeps {
   researchScore?: number;
   /** Extra history for the ring at boot (e.g. intel_snapshots); the scan_snapshots row wins on a shared timestamp. */
   seedFrom?: (sinceIso: string) => Promise<ScanSnapshot[]>;
+  /** Coins the setups run on (see parseUniverseSpec); default PLATFORM_SCAN_UNIVERSE, else every live coin. Tiers and the ring still cover all. */
+  filter?: UniverseOpts;
+  /** coin -> sectors for a sector filter; default tags new coins through the LLM and caches them in the store. */
+  tags?: (coins: string[]) => Promise<Record<string, string[]>>;
 }
 
 export function createScanner(deps: ScannerDeps) {
@@ -63,12 +82,16 @@ export function createScanner(deps: ScannerDeps) {
   const researchScore = deps.researchScore ?? envNum("PLATFORM_RESEARCH_SCORE", 4);
   const intervalSec = envNum("PLATFORM_SCAN_INTERVAL_SEC", 60);
   const cooldownMs = (deps.cooldownMin ?? envNum("PLATFORM_COOLDOWN_MIN", 240)) * MIN;
+  const spec = process.env.PLATFORM_SCAN_UNIVERSE?.trim();
+  const filter = deps.filter ?? (spec ? parseUniverseSpec(spec) : undefined);
+  const tags = deps.tags ?? ((coins: string[]) => ensureSectors(coins, store));
 
   const ring = new Map<string, RingPoint[]>();
   const marks = new Map<string, { px: number; ts: number }>();
   let seeded = false;
   let lastPersist = -Infinity;
   let lastScan: Date | null = null;
+  let near = new Map<string, NearMiss>();
 
   /** Rebuilds the ring from the persisted 5-min snapshots (once, at the first tick). */
   async function seed() {
@@ -128,10 +151,16 @@ export function createScanner(deps: ScannerDeps) {
       console.error("[scanner] positions read failed:", err instanceof Error ? err.message : err);
     }
 
-    const tiers = liquidityTiers(live.map((c) => ({ coin: c.name, dayNtlVlm: c.dayNtlVlm })));
-    const cands = live.flatMap((c) => {
+    const vols = live.map((c) => ({ coin: c.name, dayNtlVlm: c.dayNtlVlm }));
+    const tiers = liquidityTiers(vols);
+    const macro = macroTags(new Date(t));
+    const scanned = filter && new Set(selectUniverse(vols, { ...filter, tags: filter.sectors?.length ? await tags(vols.map((c) => c.coin)) : undefined }).map((c) => c.coin));
+    const nears = new Map<string, NearMiss>();
+    const cands = live.filter((c) => !scanned || scanned.has(c.name)).flatMap((c) => {
       const fv = computeFeatures(ring.get(c.name) ?? [], t, { liqNearUsd: liqNear.get(c.name) ?? null });
       const tier = tiers[c.name]!;
+      const nm = nearMiss(c.name, fv, tier);
+      if (nm) nears.set(c.name, nm);
       return setupsFor(fv, tier).map((setup) => ({ ctx: c, fv, tier, setup, score: scoreOpportunity(fv) }));
     }).sort((a, b) => b.score - a.score);
 
@@ -156,7 +185,7 @@ export function createScanner(deps: ScannerDeps) {
         const mark = ctx.markPx;
         const input: OpportunityInput = {
           coin: ctx.name, direction: setup.direction, setupKind: setup.setupKind, tradeType: "directional", score, scoreVersion: SCORE_VERSION,
-          tags: setup.tags, liquidityTier: tier, regime: String(fv.inputs.regime ?? "unknown"),
+          tags: [...setup.tags, ...macro], liquidityTier: tier, regime: String(fv.inputs.regime ?? "unknown"),
           invalidation: `${setup.direction === "long" ? "Below" : "Above"} ${px(setup.invalidationPx)}: the thesis is dead`,
           entryPx: mark, stopPx: setup.stopPx, targetPx: setup.targetPx, invalidationPx: setup.invalidationPx,
         };
@@ -178,7 +207,7 @@ export function createScanner(deps: ScannerDeps) {
           if (cost) {
             const gross = (Math.abs(setup.targetPx - mark) / mark) * 1e4;
             const g = best.get(setup.setupKind);
-            const ledger = g && g.n >= edgeMinN && g.meanNet != null;
+            const ledger = g && g.clusters >= edgeMinN && g.meanNet != null;
             // net = gross − costs always holds: from the ledger the net is the 4 h mean, and gross is derived back from it.
             const net = ledger ? g.meanNet! * 1e4 : netEdge({ grossEdgeBps: gross, costs: cost });
             const grossEdge = ledger ? net + 2 * cost.feeBps + cost.slippageBps + cost.fundingBps : gross;
@@ -208,6 +237,7 @@ export function createScanner(deps: ScannerDeps) {
       if (e) publish(e, "status");
     }
 
+    near = nears;
     lastScan = new Date(t);
     bus.publish("scan", { ts: lastScan.toISOString(), assets: live.length });
   }
@@ -217,6 +247,9 @@ export function createScanner(deps: ScannerDeps) {
     def: { name: "scanner", intervalSec, run: tick } satisfies LoopDef,
     intervalSec,
     lastScanAt: () => lastScan,
+    /** Informational only: the near-miss of the latest scan for a coin, and all of them closest first. */
+    nearMiss: (coin: string) => near.get(coin) ?? null,
+    nearMisses: (): NearMiss[] => [...near.values()].sort((a, b) => a.relDistance - b.relDistance),
     /** Minutes of ring history for the median coin; null while the ring is empty. */
     historyMin: () => {
       const spans = [...ring.values()].filter((p) => p.length).map((p) => (p.at(-1)!.ts - p[0]!.ts) / MIN).sort((a, b) => a - b);

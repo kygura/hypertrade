@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import {
-  FeedQuerySchema, FeedRowSchema, LedgerStatsQuerySchema, LiqBoardQuerySchema, LiqMapHistoryQuerySchema, LiqMapQuerySchema, RejectBodySchema, SnoozeBodySchema,
-  type Costs, type LedgerEntry, type LedgerPayload, type LiqBoardResponse, type Opportunity, type Position, type RiskVerdictSchema,
+  FeedQuerySchema, FeedRowSchema, LedgerStatsQuerySchema, LiqBoardQuerySchema, NoveltyQuerySchema, LiqMapHistoryQuerySchema, LiqMapQuerySchema, RejectBodySchema, SECTORS, SnoozeBodySchema,
+  type Costs, type LedgerEntry, type LedgerPayload, type LiqBoardResponse, type NearMissResponse, type Opportunity, type Position, type RiskVerdictSchema, type SectorsResponse,
 } from "../../shared/platform.js";
 import type { Side } from "../../shared/intel.js";
 import type { ResearchResult } from "../../shared/intel.js";
@@ -13,7 +13,7 @@ import { researchDailyLimit, researchDeps, runResearch, RESEARCH_PROMPT_VERSION,
 import { aggregate, coverage } from "../platform/liqmap.js";
 import { getPlatformContext, placedBy, placing, type PlatformContext } from "../platform/context.js";
 import { Z_KEYS } from "../platform/score.js";
-import { groupStats } from "../platform/stats.js";
+import { evidenceLine, groupStats } from "../platform/stats.js";
 import { defaultDeskService } from "./desk.js";
 import { defaultIntelDeps } from "./intel/index.js";
 import { body, failure, invalid } from "./intel/http.js";
@@ -180,7 +180,8 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         const raw = RAW_OF[name as (typeof Z_KEYS)[number]];
         return { name, value: raw ? num(fv.inputs[raw]) : null, z: value };
       });
-      const stats = groupStats(await store.outcomeRows({ setupKind: opp.setupKind })).sort((a, b) => b.n - a.n)[0] ?? null;
+      const groups = groupStats(await store.outcomeRows({ setupKind: opp.setupKind }));
+      const stats = [...groups].sort((a, b) => b.n - a.n)[0] ?? null;
       const ticket = ticketOf(opp);
       let risk: { before: RiskVerdict; after: RiskVerdict } | null = null;
       if (ticket) risk = await deps.risk.assess(ticket).catch((err) => (console.error("[platform] risk preview failed", err), null));
@@ -192,6 +193,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         signals,
         bearCase: research && (research.status === "found" || research.status === "no_cause") ? research.explanation : null,
         stats,
+        evidence: evidenceLine(groups.find((g) => g.horizon === "24h") ?? null, opp.edgeBasis),
         risk,
         ticket: { side: opp.direction, entryPx: opp.entryPx, stopPx: opp.stopPx, targetPx: opp.targetPx, sizeUsd: size?.notionalUsd && size.notionalUsd > 0 ? size.notionalUsd : null, sizeSource: "governor" as const },
       });
@@ -337,6 +339,14 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       const snaps = await c.var.ctx.store.liqmapHistory(q.data.coin, new Date(deps.now().getTime() - q.data.hours * 3_600_000).toISOString());
       return c.json({ coin: q.data.coin, bucketBps: snaps.at(-1)?.bucketBps ?? 25, snapshots: snaps.map(({ ts, mark, buckets }) => ({ ts, mark, buckets })) });
     })
+    .get("/novelty", async (c) => {
+      const q = NoveltyQuerySchema.safeParse(c.req.query());
+      if (!q.success) return invalid(c, q.error, "query");
+      const entries = await c.var.ctx.store.listNovelty(new Date(deps.now().getTime() - q.data.days * 86_400_000).toISOString().slice(0, 10));
+      return c.json({ entries: entries.filter((e) => !q.data.coin || e.coin === q.data.coin).reverse() });
+    })
+    .get("/near-miss", (c) => { const all = c.var.ctx.nearMisses(); return c.json({ top: all[0] ?? null, all } satisfies NearMissResponse); })
+    .get("/sectors", async (c) => c.json({ vocabulary: [...SECTORS], tags: await c.var.ctx.store.listSectors() } satisfies SectorsResponse))
     .get("/ledger/stats", async (c) => {
       const q = LedgerStatsQuerySchema.safeParse(c.req.query());
       if (!q.success) return invalid(c, q.error, "query");

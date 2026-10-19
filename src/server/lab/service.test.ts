@@ -402,3 +402,95 @@ describe("lab service: market pulse", () => {
     expect(only.warnings).toEqual([]);
   });
 });
+
+describe("lab_event_study (service)", () => {
+  const c = base.price;
+  const o = c.map((_, i) => c[Math.max(0, i - 1)]!);
+  const ohlc: Record<string, number[]> = {
+    "ht:open": o,
+    "ht:high": c.map((x, i) => Math.max(x, o[i]!) * 1.01),
+    "ht:low": c.map((x, i) => Math.min(x, o[i]!) * 0.99),
+    "ht:funding": c.map(() => 0.0001),
+  };
+  const studyKit = () =>
+    kit({
+      perpUniverse: async () => ["SYN", "FAIL", "SYN"],
+      hasDb: () => false,
+      async loadDataset(cfg) {
+        if (cfg.asset === "FAIL") throw new Error("no price history for FAIL");
+        expect(cfg.price).toBe("ht:price");
+        const all = { ...base.metrics, ...ohlc };
+        return { dataset: { ...base, asset: cfg.asset, metrics: Object.fromEntries(cfg.metrics.map((m) => [m, all[m]!])) }, warnings: [] };
+      },
+    });
+
+  test("default coins = the HL universe; load failures are insufficient coins; the run is a trial with the screen verdict", async () => {
+    const { service, store } = studyKit();
+    const r = await service.eventStudy({ rule: planted, stopAtr: 1.5, targetAtr: 3 });
+    expect(r.coins.map((x) => [x.coin, x.status])).toEqual([
+      ["SYN", "ok"],
+      ["FAIL", "insufficient"],
+    ]);
+    expect(r.screen.events).toBeGreaterThan(0);
+    expect(["insufficient", "rejected", "clear"]).toContain(r.verdict);
+    expect(r.survivorship).toContain("Survivorship");
+    const trials = await store.listTrials();
+    expect(trials.at(-1)).toMatchObject({ ruleId: ruleId(planted), intent: "lab_event_study", verdict: r.verdict });
+    expect(r.idea).toEqual({ n: trials.length, of: trials.length });
+  });
+
+  test("top/sectors/mine reach the universe; default is top 20; explicit coins win; empty or oversized universes are refused", async () => {
+    const calls: unknown[] = [];
+    let out = ["SYN"];
+    const k = kit({
+      perpUniverse: async (o) => (calls.push(o), out),
+      hasDb: () => false,
+      async loadDataset(cfg) {
+        const all = { ...base.metrics, ...ohlc };
+        return { dataset: { ...base, asset: cfg.asset, metrics: Object.fromEntries(cfg.metrics.map((m) => [m, all[m]!])) }, warnings: [] };
+      },
+    });
+    const run = (extra: object) => k.service.eventStudy({ rule: planted, stopAtr: 1, targetAtr: 2, ...extra });
+    await run({});
+    await run({ sectors: ["AI"] });
+    await run({ mine: true, top: 5 });
+    await run({ coins: ["SYN"], top: 5 });
+    expect(calls).toEqual([{ top: 20 }, { sectors: ["AI"] }, { top: 5, mine: true }].map((o) => ({ top: undefined, sectors: undefined, mine: undefined, ...o })));
+    out = [];
+    expect(await run({ sectors: ["AI"] }).catch((e) => e)).toBeInstanceOf(ToolInputError);
+    out = Array.from({ length: 21 }, (_, i) => `C${i}`);
+    expect((await run({ mine: true }).catch((e) => e)).field).toBe("top");
+  });
+
+  test("without a DB more than 20 coins is refused; coins de-dupe case-insensitively; eventList capped at 200", async () => {
+    const { service } = studyKit();
+    const many = Array.from({ length: 21 }, (_, i) => `C${i}`);
+    const err = await service.eventStudy({ rule: planted, stopAtr: 1, targetAtr: 2, coins: many }).catch((e) => e);
+    expect(err).toBeInstanceOf(ToolInputError);
+    expect((err as ToolInputError).field).toBe("coins");
+    const always1: Rule = { ...planted, horizonDays: 1, conditions: [{ feature: "syn:b|raw|0", op: ">=", threshold: -100 }] };
+    const r = await service.eventStudy({ rule: always1, stopAtr: 1, targetAtr: 2, coins: ["SYN", "syn"] });
+    expect(r.coins.map((c) => c.coin)).toEqual(["SYN"]);
+    expect(r.eventListTotal).toBe(r.screen.events);
+    expect(r.screen.events).toBeGreaterThan(200);
+    expect(r.eventList).toHaveLength(200);
+  });
+
+  test("a coin still loading at the deadline is listed insufficient and the call returns", async () => {
+    const { service } = kit({
+      async loadDataset() {
+        return new Promise(() => {}); // never settles
+      },
+    });
+    const r = await service.eventStudy({ rule: planted, stopAtr: 1, targetAtr: 2, coins: ["SLOW"] }, { deadlineMs: SEARCH_FINISH_MS + 50 });
+    expect(r.coins).toEqual([{ coin: "SLOW", bars: 0, from: null, to: null, events: 0, status: "insufficient", reason: "not loaded before the deadline" }]);
+    expect(r.verdict).toBe("insufficient");
+  });
+
+  test("a non-ht price is refused", async () => {
+    const { service } = studyKit();
+    const err = await service.eventStudy({ rule: { ...planted, price: "cm:PriceUSD" }, stopAtr: 1, targetAtr: 2, coins: ["SYN"] }).catch((e) => e);
+    expect(err).toBeInstanceOf(ToolInputError);
+    expect((err as ToolInputError).field).toBe("rule.price");
+  });
+});

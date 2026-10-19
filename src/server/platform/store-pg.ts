@@ -1,5 +1,5 @@
 import type postgres from "postgres";
-import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, Opportunity, Position } from "../../shared/platform.js";
+import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
 import { LIVE_STATUSES, PRE_DECISION_STATUSES, TERMINAL_STATUSES } from "../../shared/platform.js";
 import { sql } from "../db.js";
 import {
@@ -203,6 +203,30 @@ export class PgPlatformStore implements PlatformStore {
     return rows.map((r): ScanSnapshot => ({ coin: r.coin, ts: iso(r.ts), inputs: r.inputs }));
   }
 
+  async saveNovelty(entries: NoveltyEntry[]) {
+    for (const e of entries) {
+      await this.db.query(`insert into platform_novelty (id, bar_date, entry) values ($1, $2, $3::jsonb) on conflict (id) do update set entry = excluded.entry`, [e.id, e.barDate, J(e)]);
+    }
+  }
+
+  async listNovelty(sinceBar: string) {
+    return (await this.db.query<any>(`select entry from platform_novelty where bar_date >= $1 order by bar_date, entry->>'coin'`, [sinceBar])).map((r): NoveltyEntry => r.entry);
+  }
+
+  async pruneNovelty(beforeBar: string) {
+    return (await this.db.query(`delete from platform_novelty where bar_date < $1 returning 1`, [beforeBar])).length;
+  }
+
+  async saveSectors(tags: SectorTag[]) {
+    for (const t of tags) {
+      await this.db.query(`insert into market_sectors (coin, sectors, tagged_at) values ($1, $2::jsonb, $3::timestamptz) on conflict (coin) do update set sectors = excluded.sectors, tagged_at = excluded.tagged_at`, [t.coin, J(t.sectors), iso(t.taggedAt)]);
+    }
+  }
+
+  async listSectors() {
+    return (await this.db.query<any>(`select coin, sectors, tagged_at from market_sectors order by coin`)).map((r): SectorTag => ({ coin: r.coin, sectors: r.sectors, taggedAt: iso(r.tagged_at) }));
+  }
+
   async pruneHistory(before: string) {
     const [r] = await this.db.query<{ n: number }>(
       `with a as (delete from liqmap_snapshots where ts < $1::timestamptz returning 1),
@@ -312,14 +336,14 @@ export class PgPlatformStore implements PlatformStore {
 
   async outcomeRows({ setupKind, regime, tier }: Parameters<PlatformStore["outcomeRows"]>[0]) {
     const rows = await this.db.query<any>(
-      `select o.id, o.setup_kind, o.regime, o.liquidity_tier, (o.costs is not null) as has_costs, l.payload from ledger_entries l join opportunities o on o.id = l.opportunity_id
+      `select o.id, o.created_at as opp_created_at, o.setup_kind, o.regime, o.liquidity_tier, (o.costs is not null) as has_costs, l.payload from ledger_entries l join opportunities o on o.id = l.opportunity_id
        where l.kind = 'outcome' and ($1::text is null or o.setup_kind = $1) and ($2::text is null or o.regime = $2) and ($3::int is null or o.liquidity_tier = $3::int)
        order by l.id`,
       [setupKind ?? null, regime ?? null, tier ?? null],
     );
     return rows.map((r): OutcomeRow => ({
       opportunityId: r.id, setupKind: r.setup_kind, regime: r.regime, liquidityTier: r.liquidity_tier,
-      horizon: r.payload.horizon, grossReturn: r.payload.grossReturn, netReturn: r.payload.netReturn, hasCosts: Boolean(r.has_costs),
+      horizon: r.payload.horizon, createdAtMs: new Date(r.opp_created_at).getTime(), grossReturn: r.payload.grossReturn, netReturn: r.payload.netReturn, hasCosts: Boolean(r.has_costs),
     }));
   }
 }

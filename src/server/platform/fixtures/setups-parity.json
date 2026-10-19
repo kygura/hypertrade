@@ -1,0 +1,11 @@
+{
+  "n": 20000,
+  "counts": {
+    "negative_funding_squeeze:long": 103,
+    "deleveraging_washout:long": 209,
+    "vol_expansion_breakout:short": 76,
+    "vol_expansion_breakout:long": 104,
+    "crowded_long:short": 44
+  },
+  "sha256": "341ffdee1d225d1f65ac6b3960c19dd0adad8801866ce076ae940607b9e344f4"
+}

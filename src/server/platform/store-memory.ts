@@ -1,4 +1,4 @@
-import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, Opportunity, Position } from "../../shared/platform.js";
+import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
 import {
   checkTransition,
   dedupeKey,
@@ -33,6 +33,8 @@ export class MemoryPlatformStore implements PlatformStore {
   changes: PositionChange[] = [];
   liqmaps = new Map<string, LiqMapSnapshot>();
   scans = new Map<string, ScanSnapshot>();
+  novelty = new Map<string, NoveltyEntry>();
+  sectors = new Map<string, SectorTag>();
   opportunities = new Map<string, Opportunity>();
   /** Append-only: nothing in this class splices, sets or reassigns an element. */
   readonly ledger: LedgerEntry[] = [];
@@ -110,6 +112,28 @@ export class MemoryPlatformStore implements PlatformStore {
   async scanSnapshotsSince(since: string) {
     const lo = iso(since);
     return [...this.scans.values()].filter((r) => r.ts >= lo).sort((a, b) => byTs(a, b) || a.coin.localeCompare(b.coin)).map(clone);
+  }
+
+  async saveNovelty(entries: NoveltyEntry[]) {
+    for (const e of entries) this.novelty.set(e.id, clone(e));
+  }
+
+  async listNovelty(sinceBar: string) {
+    return [...this.novelty.values()].filter((e) => e.barDate >= sinceBar).sort((a, b) => a.barDate.localeCompare(b.barDate) || a.coin.localeCompare(b.coin)).map(clone);
+  }
+
+  async pruneNovelty(beforeBar: string) {
+    let n = 0;
+    for (const [k, e] of this.novelty) if (e.barDate < beforeBar) (this.novelty.delete(k), n++);
+    return n;
+  }
+
+  async saveSectors(tags: SectorTag[]) {
+    for (const t of tags) this.sectors.set(t.coin, clone(t));
+  }
+
+  async listSectors() {
+    return [...this.sectors.values()].sort((a, b) => a.coin.localeCompare(b.coin)).map(clone);
   }
 
   async pruneHistory(before: string) {
@@ -213,7 +237,7 @@ export class MemoryPlatformStore implements PlatformStore {
       if ((setupKind && o.setupKind !== setupKind) || (regime && o.regime !== regime) || (tier !== undefined && o.liquidityTier !== tier)) continue;
       out.push({
         opportunityId: o.id, setupKind: o.setupKind, regime: o.regime, liquidityTier: o.liquidityTier,
-        horizon: e.payload.horizon, grossReturn: e.payload.grossReturn, netReturn: e.payload.netReturn, hasCosts: o.costs != null,
+        horizon: e.payload.horizon, createdAtMs: Date.parse(o.createdAt), grossReturn: e.payload.grossReturn, netReturn: e.payload.netReturn, hasCosts: o.costs != null,
       });
     }
     return out;

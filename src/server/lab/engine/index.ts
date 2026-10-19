@@ -2,6 +2,7 @@
 export * from "./backtest.js";
 export * from "./context.js";
 export * from "./evaluate.js";
+export * from "./eventStudy.js";
 export * from "./features.js";
 export * from "./labels.js";
 export * from "./rng.js";

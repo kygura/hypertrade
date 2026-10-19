@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import {
-  FeedResponseSchema, LedgerEntriesResponseSchema, LedgerStatsResponseSchema, LiqBoardResponseSchema, LiqMapHistoryResponseSchema, LiqMapResponseSchema, OpportunityDetailSchema,
+  FeedResponseSchema, LedgerEntriesResponseSchema, LedgerStatsResponseSchema, LiqBoardResponseSchema, LiqMapHistoryResponseSchema, LiqMapResponseSchema, NearMissResponseSchema, NoveltyResponseSchema, type NearMiss, OpportunityDetailSchema,
   type LedgerPayload, type Opportunity,
 } from "../../shared/platform.js";
 import { app as apiApp } from "../../../api/index.js";
@@ -35,6 +35,7 @@ let store: MemoryPlatformStore;
 let ctx: PlatformContext;
 let midAge: number | null;
 let lastScan: Date | null;
+let nearMisses: NearMiss[];
 let risk: ReturnType<typeof gate>;
 let online: boolean;
 const research = { run: async () => null as never, get: async () => null };
@@ -59,9 +60,10 @@ beforeEach(() => {
   store = new MemoryPlatformStore();
   midAge = 1;
   lastScan = new Date(NOW.getTime() - 10_000);
+  nearMisses = [];
   online = true;
   risk = gate();
-  ctx = { store, midAge: () => midAge, mid: (coin) => (coin === "ETH" ? 4000 : null), lastScanAt: () => lastScan, scanIntervalSec: 60 };
+  ctx = { store, midAge: () => midAge, mid: (coin) => (coin === "ETH" ? 4000 : null), lastScanAt: () => lastScan, nearMisses: () => nearMisses, scanIntervalSec: 60 };
   deps = { context: () => (online ? ctx : null), risk, research, now: () => NOW };
   app = new Hono().basePath("/api").route("/platform", createPlatformRoutes(deps));
 });
@@ -70,7 +72,7 @@ describe("offline", () => {
   test("every route answers 503 platform_offline without a context", async () => {
     online = false;
     const id = crypto.randomUUID();
-    for (const [method, path] of [["GET", "/opportunities"], ["GET", `/opportunities/${id}`], ["POST", `/opportunities/${id}/approve`], ["POST", `/opportunities/${id}/reject`], ["POST", `/opportunities/${id}/snooze`], ["POST", `/opportunities/${id}/research`], ["GET", "/liqmap?coin=ETH"], ["GET", "/liqmap/board"], ["GET", "/liqmap/history?coin=ETH"], ["GET", "/ledger/stats"], ["GET", `/ledger/${id}`]] as const) {
+    for (const [method, path] of [["GET", "/opportunities"], ["GET", `/opportunities/${id}`], ["POST", `/opportunities/${id}/approve`], ["POST", `/opportunities/${id}/reject`], ["POST", `/opportunities/${id}/snooze`], ["POST", `/opportunities/${id}/research`], ["GET", "/liqmap?coin=ETH"], ["GET", "/liqmap/board"], ["GET", "/liqmap/history?coin=ETH"], ["GET", "/novelty"], ["GET", "/near-miss"], ["GET", "/ledger/stats"], ["GET", `/ledger/${id}`]] as const) {
       const res = await req(path, { method });
       expect([method, path, res.status]).toEqual([method, path, 503]);
       expect(await res.json()).toEqual({ error: "platform_offline" });
@@ -105,6 +107,7 @@ describe("feed and detail", () => {
     const o = await seed();
     await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: { horizon: "1h", entryBasis: "mark", entryPx: 4000, horizonPx: 4040, grossReturn: 0.01, netReturn: 0.009 } });
     const d = OpportunityDetailSchema.parse(await (await req(`/opportunities/${o.id}`)).json());
+    expect(d.evidence).toBe("ledger 24h: n 0 · 0 clusters · edge unvalidated");
     // z-features carry their raw input as value (none for priceAccelZ); plain features carry themselves.
     expect(d.signals).toEqual([{ name: "ret15mZ", value: 0.012, z: 2.1 }, { name: "priceAccelZ", value: null, z: 1.2 }, { name: "fundingPctile14d", value: 0.9, z: null }]);
     expect(d.opportunity.costs?.absorbableUsd).toBe(50_000);
@@ -133,6 +136,30 @@ describe("feed and detail", () => {
     expect(((await (await req(`/opportunities/${o.id}`)).json()) as { bearCase: string }).bearCase).toBe("Unlock next week.");
     expect((await req(`/opportunities/${crypto.randomUUID()}`)).status).toBe(404);
     expect((await req("/opportunities/nope")).status).toBe(400);
+  });
+});
+
+describe("near-miss", () => {
+  test("top is the first of all; empty scan gives null", async () => {
+    expect(NearMissResponseSchema.parse(await (await req("/near-miss")).json())).toEqual({ top: null, all: [] });
+    nearMisses = [{ coin: "ETH", setupKind: "crowded_long", cond: 2, value: 0.95, limit: 1, relDistance: 0.05 }, { coin: "SOL", setupKind: "crowded_long", cond: 2, value: 0.92, limit: 1, relDistance: 0.08 }];
+    const r = NearMissResponseSchema.parse(await (await req("/near-miss")).json());
+    expect(r.top?.coin).toBe("ETH");
+    expect(r.all).toHaveLength(2);
+  });
+});
+
+describe("novelty", () => {
+  const nov = (barDate: string, coin: string) => ({
+    id: `${barDate}:${coin}`, detectedAt: NOW.toISOString(), barDate, coin, kind: "new_extreme" as const, families: ["funding" as const], nearSetups: [], marketWide: false, pushed: true, notified: [],
+    features: [{ id: "funding_z90", value: 9, histMin: -3, histMax: 8, p1: -2, p99: 3, bars: 400, pctRank: 100 }],
+  });
+  test("newest bar first, within days, optional coin filter; bad query is 400", async () => {
+    await store.saveNovelty([nov("2026-10-15", "ETH"), nov("2026-10-15", "BTC"), nov("2026-10-10", "BTC"), nov("2026-08-01", "BTC")]);
+    const all = NoveltyResponseSchema.parse(await (await req("/novelty?days=10")).json());
+    expect(all.entries.map((e) => e.id)).toEqual(["2026-10-15:ETH", "2026-10-15:BTC", "2026-10-10:BTC"]);
+    expect(NoveltyResponseSchema.parse(await (await req("/novelty?days=10&coin=ETH")).json()).entries).toHaveLength(1);
+    expect((await req("/novelty?days=0")).status).toBe(400);
   });
 });
 

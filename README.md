@@ -2,7 +2,7 @@
 
 A personal market terminal and signal platform for crypto perps. It tracks assets, simulates allocation branches against historical data, monitors sector dynamics, and runs an always-on worker that scans Hyperliquid and surfaces ranked setups.
 
-Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade routine (a scheduled Claude session that commits research to `data/*.json`; see `ROUTINE.md`).
+Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade routine (a scheduled Claude session that commits research to `data/*.json`; see `ROUTINE.md`) and a second, signal-pipeline routine (near-misses, novelty, ready opportunities, thesis watch, Lab ideas; commits `data/signals/`, one ntfy push only when something changed; see `SIGNALS-ROUTINE.md`).
 
 ## Status
 
@@ -98,10 +98,14 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `PLATFORM_READY_TTL_MIN` (60) | Minutes before an undecided `ready` opportunity expires. |
    | `PLATFORM_RESEARCH_SCORE` (4) | Reserved; research is operator-triggered in phase 8. |
    | `PLATFORM_PUSH_SCORE` (3) | Score that triggers a Telegram alert on `ready`. |
+   | `PLATFORM_MY_MARKETS` (`BTC,ETH,HYPE,SOL,XPL,LIT,ZEC`) | "My markets": added to the novelty universe and to `lab_event_study` with `mine`. |
+   | `PLATFORM_NOVELTY_UNIVERSE` (unset) | Novelty universe: `;`-separated `mine`, `top:N`, `sectors:AI,Perp DEX`. Unset: liquidity tier 1 plus my markets. |
+   | `PLATFORM_SCAN_UNIVERSE` (unset) | Coins the scanner runs setups on, same syntax as `PLATFORM_NOVELTY_UNIVERSE`. Liquidity tiers still rank the whole universe. Unset: every live coin. |
    | `DESK_WORKER_TICK_SEC` (60) | Desk watch tick period, minimum 30. |
    | `DESK_MAX_CYCLES_PER_DAY` (8) | Agent cycle budget per day. |
    | `DESK_TELEGRAM_BOT_TOKEN`, `DESK_TELEGRAM_CHAT_ID` (unset) | Both needed for the Telegram loop. Without them it does not run. |
    | `DESK_TELEGRAM_WEBHOOK_SECRET` (unset) | If set, the Telegram long-poll turns off (webhook mode). Leave unset so the worker polls. |
+   | `NTFY_TOPIC` (unset) | Push alerts to this ntfy topic. `NTFY_SERVER` (`https://ntfy.sh`) and `NTFY_TOKEN` (bearer token, protected topics) are optional. |
    | `ANTHROPIC_API_KEY` (unset) | Optional LLM key for the analyst and desk. See Analyst. |
 
 5. **Cut over from Vercel.**
@@ -125,6 +129,16 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    ```
 
 Cost: Hobby plan is about $5/mo plus usage. At 0.5 vCPU and 512 MB, usage is about $15/mo at the rates in the research notes. Check current Railway pricing before relying on this.
+
+## Signals routine (scheduled Claude session)
+
+Runbook `SIGNALS-ROUTINE.md`, next to the market routine (`ROUTINE.md`). `bun run signals:collect` prints one JSON snapshot (near-miss, novelty, ready evidence, thesis watch, Lab ideas, diff vs the previous run) from the worker's own endpoints; the session writes `data/signals/YYYY-MM-DD.{md,json}`, commits, and sends one ntfy push through the desk notifier only when something changed. Informational; it gates and places nothing. Secrets in the cloud environment:
+
+| Variable | Purpose |
+| --- | --- |
+| `APP_URL`, `LAB_API_TOKEN` | Worker origin and the read bearer (GETs under `/api/platform`, `/api/intel`; `LAB_URL=$APP_URL` for the Lab CLI). |
+| `DATABASE_URL` | Optional: the Lab trial log for authored ideas. Without it the Lab section says so. |
+| `NTFY_TOPIC` (`NTFY_SERVER`, `NTFY_TOKEN` optional) | The push channel. No Telegram setup is needed. |
 
 ## Chart history
 
@@ -284,7 +298,7 @@ minutes (set the repo variable `DESK_ENABLED=true`), or every minute from
 `DESK_TELEGRAM_WEBHOOK_SECRET` and register
 `${APP_URL}/api/desk/telegram` with `setWebhook` (`secret_token` = that
 secret). Discord (`DESK_DISCORD_WEBHOOK_URL`) and a generic JSON webhook
-(`DESK_ALERT_WEBHOOK_URL`) also work. Every alert is stored and shown on the
+(`DESK_ALERT_WEBHOOK_URL`) and ntfy (`NTFY_TOPIC`) also work. Every alert is stored and shown on the
 page. All `DESK_*` settings are listed in `.env.example`.
 
 ## Intel (the Terminal)
@@ -325,6 +339,7 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 | `INTEL_RPC_<CHAIN>` | RPC override for the contract/wallet watcher (`ETHEREUM`, `ARBITRUM`, `BASE`, `OPTIMISM`, `POLYGON`, `BSC`, `AVALANCHE`, `HYPEREVM`); default public RPCs |
 | `DATABASE_URL_READONLY` | read-only Postgres role for `/api/intel/query/run`; default the main connection |
 | `COINALYZE_API_KEY` | Coinalyze flow collector in the collect cron (free key, 40 calls/min); unset → no flow rows and the heatmap's flow status reads `no_source` |
+| `bun scripts/backfill-oi.ts [COIN ...]` | one-off Coinalyze daily OI backfill into `hl.oi.<COIN>` (needs `COINALYZE_API_KEY`, `DATABASE_URL`); idempotent, the novelty loop also runs it once per coin per process |
 | `INTEL_FLOW_MAX_COINS` | held ∪ watched coins the flow collector covers (by notional, then watch order), 1–20, default 8 |
 | `INTEL_THRESHOLDS` | threshold-crossing events, comma list of `metric>value` / `metric<value`; default `funding>0.0000625` (0.05%/8 h, hourly) |
 | `INTEL_DELEV_OI_PCT` | deleveraging detector's OI 6 h drop, in %, default 8 |

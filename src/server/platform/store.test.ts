@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import type { LedgerPayload } from "../../shared/platform.js";
+import type { LedgerPayload, NoveltyEntry } from "../../shared/platform.js";
 import { migrate } from "../../../db/migrate.js";
 import { newPglite, pgliteDb } from "../testing/pglite.js";
 import type { OpportunityInput, PlatformStore, PolledPosition } from "./store.js";
@@ -215,7 +215,7 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((out["ledger.o1"] as { kind: string }[]).map((e) => e.kind)).toEqual(["created", "status", "status", "status", "decision", "outcome"]);
   put("ledger.o2", await s.ledgerFor(o2));
   expect(await s.ledgerFor("not-a-uuid")).toEqual([]);
-  expect(await s.outcomeRows({})).toEqual([{ opportunityId: o1, setupKind: "breakout", regime: "new_longs", liquidityTier: 1, horizon: "1h", grossReturn: 0.01, netReturn: 0.0091, hasCosts: false }]);
+  expect(await s.outcomeRows({})).toEqual([{ opportunityId: o1, setupKind: "breakout", regime: "new_longs", liquidityTier: 1, horizon: "1h", createdAtMs: expect.any(Number), grossReturn: 0.01, netReturn: 0.0091, hasCosts: false }]);
   expect(await s.outcomeRows({ setupKind: "breakout", regime: "new_longs", tier: 1 })).toHaveLength(1);
   expect(await s.outcomeRows({ tier: 2 })).toEqual([]);
   expect(await s.outcomeRows({ regime: "range" })).toEqual([]);
@@ -225,6 +225,20 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(await s.pruneHistory(t(3))).toBe(1 + 2 + 2); // BTC t1 liqmap, two t1 scans, two t2 opens
   expect((await s.ledgerFor(o1)).length).toBe(6);
   put("changes.after", await s.positionChanges(A1));
+
+  // novelty journal: upsert by id (a delivery stamp replaces the entry), range read, bar-date prune
+  const nov = (barDate: string, coin: string): NoveltyEntry => ({
+    id: `${barDate}:${coin}`, detectedAt: t(0), barDate, coin, kind: "new_extreme", families: ["funding"], nearSetups: [], marketWide: false, pushed: true, notified: [],
+    features: [{ id: "funding_z90", value: 9, histMin: -3, histMax: 8, p1: -2, p99: 3, bars: 400, pctRank: 100 }],
+  });
+  await s.saveNovelty([nov("2026-01-02", "ETH"), nov("2026-01-01", "BTC"), nov("2026-01-02", "BTC")]);
+  await s.saveNovelty([{ ...nov("2026-01-02", "BTC"), notified: [{ at: t(1), channels: ["telegram"] }] }]);
+  put("novelty.all", await s.listNovelty("2026-01-01"));
+  expect((out["novelty.all"] as NoveltyEntry[]).map((e) => e.id)).toEqual(["2026-01-01:BTC", "2026-01-02:BTC", "2026-01-02:ETH"]);
+  expect((out["novelty.all"] as NoveltyEntry[])[1]!.notified).toEqual([{ at: t(1), channels: ["telegram"] }]);
+  expect((await s.listNovelty("2026-01-02")).length).toBe(2);
+  expect(await s.pruneNovelty("2026-01-02")).toBe(1);
+  expect((await s.listNovelty("2026-01-01")).length).toBe(2);
   return out;
 }
 
