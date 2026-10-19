@@ -181,6 +181,7 @@ async function boot() {
       midAge: (coin, now) => { const ms = ws.midAgeMs(coin, now); return ms == null ? null : ms / 1000; },
       mid: (coin) => ws.mid(coin),
       lastScanAt: scanner.lastScanAt,
+      nearMisses: scanner.nearMisses,
       scanIntervalSec: scanner.intervalSec,
     });
     bus.subscribe("ws", ({ state }) => console.log(new Date().toISOString(), "[ws]", state));

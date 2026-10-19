@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Side } from "../../shared/intel.js";
-import type { FeatureVector, LiquidityTier } from "../../shared/platform.js";
+import type { FeatureVector, LiquidityTier, NearMiss } from "../../shared/platform.js";
 import { fin } from "../intel/util.js";
 
 // Platform setups as data (TASKS PS-B1, FEATURES.md § 1): each setup is a
@@ -162,7 +162,6 @@ export function explain(s: SetupSchema, fv: FeatureVector, tier: LiquidityTier, 
   return s.when.map((c) => evalCond(c, e));
 }
 
-export type NearMiss = { coin: string; setupKind: string; cond: number; value: number; limit: number; relDistance: number };
 const NEAR = 0.1;
 
 /** FEATURES.md near-miss: healthy bar, exactly one condition of a setup failed, numeric, not a price level, within 10% of its limit; the closest wins. */

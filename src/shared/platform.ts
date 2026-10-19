@@ -378,6 +378,12 @@ export const NoveltyQuerySchema = z.object({ days: z.coerce.number().int().min(1
 /** GET /novelty: newest bar first. */
 export const NoveltyResponseSchema = z.object({ entries: z.array(NoveltyEntrySchema) });
 export type NoveltyResponse = z.infer<typeof NoveltyResponseSchema>;
+// ─── Near-miss (PS-B2) ───
+export const NearMissSchema = z.object({ coin: AssetSchema, setupKind: z.string(), cond: z.number().int(), value: z.number(), limit: z.number(), relDistance: z.number() });
+export type NearMiss = z.infer<typeof NearMissSchema>;
+/** GET /near-miss: informational. `top` is the closest; `all` is every coin near a setup, closest first. */
+export const NearMissResponseSchema = z.object({ top: NearMissSchema.nullable(), all: z.array(NearMissSchema) });
+export type NearMissResponse = z.infer<typeof NearMissResponseSchema>;
 // ─── Market sectors (PS-B5) ───
 
 /** Fixed vocabulary the LLM tags coins from; anything else is rejected at the trust boundary. */
