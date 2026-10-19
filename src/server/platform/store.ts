@@ -155,7 +155,7 @@ export interface PlatformStore {
   /** Every outcome entry joined with its opportunity, in insertion order. */
   outcomeRows(filter: { setupKind?: string; regime?: string; tier?: LiquidityTier }): Promise<OutcomeRow[]>;
 
-  /** Novelty journal (FEATURES.md 4): upsert by entry id, so a rerun adds nothing and a delivery stamp replaces the entry. */
+  /** Novelty journal (docs/FEATURES.md 4): upsert by entry id, so a rerun adds nothing and a delivery stamp replaces the entry. */
   saveNovelty(entries: NoveltyEntry[]): Promise<void>;
   /** Entries with barDate >= sinceBar (YYYY-MM-DD), ascending by barDate then coin. */
   listNovelty(sinceBar: string): Promise<NoveltyEntry[]>;

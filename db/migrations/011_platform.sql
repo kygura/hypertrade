@@ -1,4 +1,4 @@
--- Platform (SPEC.md § Platform P0.6–P0.12): the crawled address book and
+-- Platform (docs/SPEC.md § Platform P0.6–P0.12): the crawled address book and
 -- positions, liquidation and scan snapshots, opportunities and the
 -- append-only decision ledger. Lists live in jsonb (db.ts runs with
 -- fetch_types off). Apply after 010; safe to re-run.

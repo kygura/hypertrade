@@ -2,7 +2,7 @@ import { Badge } from '../Badge'
 import { AgeStamp } from '../state'
 import { dsrTitle, effectiveTrials, fmtTrialsN, shortId, fmtUtcStamp, type SearchResult } from '../../lib/lab'
 
-// ResultsHeader — DESIGN.md §10.9. Run id (4 chars, full in title), config,
+// ResultsHeader — docs/design/README.md §10.9. Run id (4 chars, full in title), config,
 // data range, holdout start, features, trials (PARTIAL when cut short), the
 // deflated Sharpe's N (`N≈312`, when reported), duration, the run's age, then
 // the rank key named aloud (rule 2).

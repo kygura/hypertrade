@@ -6,7 +6,7 @@ import { loadJournal, weeklyReport, type JournalDeps } from "./journal.js";
 import { mapClusters, type MapperDeps } from "./mapper.js";
 import { message } from "./ingest/common.js";
 
-// The ingest cron cycle (SPEC.md § Intel I2 `POST /cron/intel/ingest`):
+// The ingest cron cycle (docs/SPEC.md § Intel I2 `POST /cron/intel/ingest`):
 // sources → catalyst alerts (first: they are time-boxed T−24 h / T−1 h
 // windows a slow mapper must not starve) → mapper (this run's new clusters
 // plus recent ones still unmapped) → the weekly feedback report when a week has passed

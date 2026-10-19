@@ -3,7 +3,7 @@ import { Badge } from '../Badge'
 import { SrcTag, type Source } from '../SrcTag'
 import { dsrCell, isStaleDate, sharpeCell, verdictBadge, verdictOf, type Direction, type PerfStats } from '../../lib/lab'
 
-// Small pieces every /lab surface repeats (DESIGN.md §10.9).
+// Small pieces every /lab surface repeats (docs/design/README.md §10.9).
 
 const LAB_SOURCES = new Set<string>(['ht', 'cm', 'fng', 'llama', 'hl', 'cg', 'fred', 'elfa'])
 

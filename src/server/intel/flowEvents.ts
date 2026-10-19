@@ -8,7 +8,7 @@ import { feedbackActions, sendIntel } from "./notify.js";
 import type { IntelStore } from "./store.js";
 import { computeWindows, LOOKBACK, parseThresholds, regimeFlags, seriesFromRows, type Series, type Threshold, type WindowResult } from "./windows.js";
 
-// Flow detector pipeline (SPEC.md § Flow F0.4). Runs as a stage of the ingest
+// Flow detector pipeline (docs/SPEC.md § Flow F0.4). Runs as a stage of the ingest
 // cron (every 15 min, after collect). Per held ∪ watched asset: series from
 // snapshots + flow rows → fixed windows → detectors, flips and crossings.
 // A hit that is not degraded becomes, once per episode (episodeKey) until its

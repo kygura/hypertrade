@@ -1,7 +1,7 @@
 import type { EventType, Magnitude } from "../../shared/intel.js";
 import type { NewEvent } from "./store.js";
 
-// Static US macro calendar (SPEC.md § Intel I0.10, I0.13): FOMC decisions,
+// Static US macro calendar (docs/SPEC.md § Intel I0.10, I0.13): FOMC decisions,
 // CPI and the Employment Situation (NFP) for 2026 and 2027, as scheduled
 // catalysts. CHECK THESE DATES EVERY YEAR against the schedule pages below:
 // agencies revise them (the 2025 shutdown moved several 2026 BLS releases).

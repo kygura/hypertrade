@@ -2,7 +2,7 @@ import type { PricedIn } from "../../shared/intel.js";
 import type { Bar } from "./diff.js";
 import type { IntelStore } from "./store.js";
 
-// Priced-in check (SPEC.md § Intel I0.11). Code, no LLM: how far price and
+// Priced-in check (docs/SPEC.md § Intel I0.11). Code, no LLM: how far price and
 // OI have already moved since the news was first seen. Baseline = the
 // nearest snapshot at/after first_seen (within MAX_GAP_MS, so a store that
 // only started later does not pose as the "before"); else the close of the

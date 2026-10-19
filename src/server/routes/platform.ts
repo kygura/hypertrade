@@ -18,7 +18,7 @@ import { defaultDeskService } from "./desk.js";
 import { defaultIntelDeps } from "./intel/index.js";
 import { body, failure, invalid } from "./intel/http.js";
 
-// /api/platform (SPEC.md § Platform P2). Cookie auth; GETs also take the read bearer (READ_PATH in auth.ts).
+// /api/platform (docs/SPEC.md § Platform P2). Cookie auth; GETs also take the read bearer (READ_PATH in auth.ts).
 // Every route answers 503 {error:"platform_offline"} while no PlatformContext is set (the worker loops are not running).
 // Approval reaches the book only through the desk's governor: placeOperatorOrder (preview + submit under one lock).
 // After approval the idea ends open (filled) or failed (system); a lost transition stays approved for reconcile.ts.

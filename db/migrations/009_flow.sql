@@ -1,4 +1,4 @@
--- Flow (SPEC.md § Flow F0.1): non-HL venue metrics (Coinalyze aggregate
+-- Flow (docs/SPEC.md § Flow F0.1): non-HL venue metrics (Coinalyze aggregate
 -- `agg`, or a spot exchange code), one row per (asset, venue, metric, ts).
 -- Volume and liquidation metrics are per 15-min interval values. HL OI and
 -- funding stay in intel_snapshots. 90-day retention (pruned by

@@ -3,7 +3,7 @@ import { Badge, StatusDot } from '../Badge'
 import { Segmented } from '../Segmented'
 import type { AnalystCatalog, AnalystCatalogModel, AnalystChoice, AnalystEffort, AnalystProviderId } from '../../lib/analyst'
 
-// ModelSelector — Analyst page header control (DESIGN.md language: dark,
+// ModelSelector — Analyst page header control (docs/design/README.md language: dark,
 // Geist Mono, zero border-radius, hairline borders, 220ms motion, no
 // spinners). Trigger is a pill "PROVIDER · Model" with an availability dot
 // (state colours §6) and a tier tag. Clicking opens a popover on desktop /
@@ -210,7 +210,7 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
   return (
     // Mobile (<md): stacked column — pill on its own full-width row, effort
     // control (when shown) on its own row beneath, left-aligned, no
-    // horizontal scroll (DESIGN.md forbids it). Desktop: the original
+    // horizontal scroll (docs/design/README.md forbids it). Desktop: the original
     // single inline row.
     <div className="relative flex flex-col items-start gap-2 w-full md:inline-flex md:flex-row md:items-center md:w-auto" ref={containerRef}>
       <button

@@ -1,6 +1,6 @@
 import { leanFill } from '../lib/lab'
 
-// LeanBar — DESIGN.md §10.9 Pulse/§11. Bipolar 8px bar: fill grows from a 1px
+// LeanBar — docs/design/README.md §10.9 Pulse/§11. Bipolar 8px bar: fill grows from a 1px
 // center tick, green right for lean > 0, red left for lean < 0, width
 // |lean| × 50%. Decoration only (aria-hidden): the caller always prints the
 // signed number beside it.

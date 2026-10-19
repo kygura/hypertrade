@@ -4,7 +4,7 @@ import { EmitProvider, llmDeps } from "./fixtures/emit-provider.js";
 import { completeStructured, usageCost, type LlmDeps } from "./llm.js";
 import { MemoryIntelStore } from "./store.js";
 
-// Dollar cap (SPEC.md § Flow F0.7): stored usage × per-model price, checked beside the call cap.
+// Dollar cap (docs/SPEC.md § Flow F0.7): stored usage × per-model price, checked beside the call cap.
 
 const NOW = new Date("2026-10-13T12:00:00Z");
 const schema = z.object({ ok: z.boolean() });

@@ -6,7 +6,7 @@ import { SrcTag } from '../SrcTag'
 import { DataTable, type Column } from '../DataTable'
 import type { EnrichedSector, SectorTokenRow } from './MindshareGrid'
 
-// SectorDrillPanel — DESIGN.md §10.5. rationale verbatim, sources as
+// SectorDrillPanel — docs/design/README.md §10.5. rationale verbatim, sources as
 // src-tags, constituent tokens as a DataTable (TOKEN/PRICE/24H%/OI/FUNDING,
 // same §4.4 drop order as Markets) built from GET /api/sectors's per-token
 // enrichment. Tokens with no HL listing (not in tokenRows) render as plain

@@ -4,7 +4,7 @@ import { Button } from '../components/Button'
 import { ErrorBlock } from '../components/state'
 import { api, ApiError, consumeRedirectTarget } from '../lib/api'
 
-// /login — DESIGN.md §10.1. Renders without the shell. Only idle/in-flight/
+// /login — docs/design/README.md §10.1. Renders without the shell. Only idle/in-flight/
 // error states — no skeletons here.
 
 export function Login() {

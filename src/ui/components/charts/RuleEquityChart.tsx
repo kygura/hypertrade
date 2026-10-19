@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { logSafeEquity } from '../../lib/lab'
 
-// Rule equity vs its benchmark — DESIGN.md §10.9 (§9.1 variant). Growth
+// Rule equity vs its benchmark — docs/design/README.md §10.9 (§9.1 variant). Growth
 // multiple on a log Y axis (a 40× benchmark no longer flattens the rule;
 // non-positive values become gaps); the holdout region (the one stretch the search
 // never saw) is shaded `--color-info-bg` with a HOLDOUT label; catalogued

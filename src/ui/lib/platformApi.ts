@@ -18,7 +18,7 @@ import {
   type PlatformHealth,
 } from '../../shared/platform'
 
-// Typed /api/platform client (SPEC.md § Platform P2). Every response is parsed
+// Typed /api/platform client (docs/SPEC.md § Platform P2). Every response is parsed
 // with its src/shared/platform.ts schema, so a contract drift fails loudly as
 // an ErrorBlock instead of rendering garbage. 401 → /login lives in api.ts.
 

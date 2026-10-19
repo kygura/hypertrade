@@ -9,7 +9,7 @@ import { HistoryStepper } from '../components/state/HistoryStepper'
 import { TriggerRoutineButton } from '../components/state/TriggerRoutineButton'
 import type { MarketStateData } from '../../shared/types'
 
-// /state — DESIGN.md §10.6. The reading surface: 760px column, single xl
+// /state — docs/design/README.md §10.6. The reading surface: 760px column, single xl
 // element (the headline), Observe/Infer/Forecast thesis, domain cards,
 // risks verbatim, history stepper, trigger button.
 

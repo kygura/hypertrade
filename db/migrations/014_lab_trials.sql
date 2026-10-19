@@ -1,4 +1,4 @@
--- Global trial log (FEATURES.md section 5): append-only, never reset. One row
+-- Global trial log (docs/FEATURES.md section 5): append-only, never reset. One row
 -- per authored rule idea; n is the idea number, the table size is N.
 create table if not exists lab_trials (
   n       bigserial primary key,

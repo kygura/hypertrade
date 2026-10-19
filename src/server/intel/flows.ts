@@ -1,7 +1,7 @@
 import type { FixedWindow, FlowFlag, HeatmapMetric } from "../../shared/intel.js";
 import { flowFlag, LOOKBACK, pickWindow, robustLevelZ, valueAt, type Series, type WindowResult } from "./windows.js";
 
-// Flow detectors (SPEC.md § Flow F0.4). Pure, deterministic. Each condition
+// Flow detectors (docs/SPEC.md § Flow F0.4). Pure, deterministic. Each condition
 // is true, false or unknown (a series missing or too short for its z):
 //   any false   → quiet (no flag)
 //   any unknown → degraded flag (outcome unknown, never a false negative)

@@ -1,7 +1,7 @@
 import type { NewEvent } from "../store.js";
 import { fetchText, fresh, headlineEvent, message, pastIso, plain, type AdapterResult, type IngestDeps } from "./common.js";
 
-// Telegram public channels (SPEC.md § Intel I0.10) via the t.me/s/<channel>
+// Telegram public channels (docs/SPEC.md § Intel I0.10) via the t.me/s/<channel>
 // web preview, regex-scraped. Behind INTEL_TG_CHANNELS (comma list). Vercel
 // IPs are often refused: a failure is recorded, never retried, and a refusal
 // (non-2xx, "preview unavailable", a page with no messages) stamps

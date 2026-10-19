@@ -3,7 +3,7 @@
 This file is the operating contract for trading a **Breakout** evaluation
 (and, if passed, a funded Breakout Account) with hypertrade as the journal,
 regime reader and rule enforcer. It sits next to ROUTINE.md (what the cloud
-routine produces) and SPEC.md (what the app does). ROUTINE.md's hard rule
+routine produces) and docs/SPEC.md (what the app does). ROUTINE.md's hard rule
 still holds for the routine: it produces market intelligence, never trade
 calls. This file is where the operator's own trading rules live, so the app
 can hold the operator to them.
@@ -149,7 +149,7 @@ After:
 ## (e) What the app has to add (journal + enforcement)
 
 hypertrade currently reads regimes and simulates allocations. It does not
-yet hold a trade record. Additions, tracked in TASKS.md as T13–T15:
+yet hold a trade record. Additions, tracked in docs/TASKS.md as T13–T15:
 
 **Tables** (`db/migrations/002_journal.sql`):
 

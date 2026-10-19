@@ -45,7 +45,7 @@ import {
 } from "./types.js";
 import { mapLimit, msg } from "./util.js";
 
-// Lab service (LAB.md "Tool contract"): one method per tool. A thin
+// Lab service (docs/LAB.md "Tool contract"): one method per tool. A thin
 // orchestration layer over the providers (data), the engine (all math) and
 // the store (persistence). Transports call it through tools.ts.
 
@@ -83,7 +83,7 @@ export type CallBudget = Pick<ToolContext, "deadlineMs">;
 const underDeadline = (ctx?: CallBudget) => (ctx?.deadlineMs != null ? { deadline: true } : {});
 
 export type CatalogueFlag = "decayed" | "overlap";
-/** `idea #n of N` (FEATURES.md § 5): n = first trial recorded for the rule, N = the global trial count. */
+/** `idea #n of N` (docs/FEATURES.md § 5): n = first trial recorded for the rule, N = the global trial count. */
 export type IdeaNumber = { n: number; of: number };
 export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flags: CatalogueFlag[]; idea: IdeaNumber | null };
 
@@ -273,7 +273,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     return out;
   }
 
-  /** Live stats, decay, overlap and gaps over a set of entries (LAB.md §9). */
+  /** Live stats, decay, overlap and gaps over a set of entries (docs/LAB.md §9). */
   async function analyse(entries: CatalogueEntry[], ctx?: CallBudget): Promise<CatalogueHealth> {
     const warnings: string[] = [];
     const data = await loadEntries(entries, warnings, ctx);
@@ -473,7 +473,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       return { candidates, trialCount, model: r.model };
     },
 
-    /** Reject-only event-study screen of a rule across coins (FEATURES.md § 2), recorded as a trial; informational, gates nothing. */
+    /** Reject-only event-study screen of a rule across coins (docs/FEATURES.md § 2), recorded as a trial; informational, gates nothing. */
     async eventStudy(input: EventStudyInput, ctx?: CallBudget): Promise<EventStudyResult & { eventListTotal: number; warnings: string[]; idea: IdeaNumber }> {
       const rule = parseInput(RuleSchema, input.rule, "rule");
       if (rule.price && rule.price !== "ht:price") throw new ToolInputError("the event study trades ht:price: stops and targets need its candles' open/high/low", "rule.price");

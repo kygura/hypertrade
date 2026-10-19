@@ -5,7 +5,7 @@ import { useLabData } from '../components/lab/LabData'
 import { PulseBoard } from '../components/lab/PulseBoard'
 import { LabFooter } from '../components/lab/common'
 
-// PULSE tab — DESIGN.md §10.9. Which catalogued rules fire on the latest
+// PULSE tab — docs/design/README.md §10.9. Which catalogued rules fire on the latest
 // data, aggregated per asset as a lean.
 
 export function LabPulse() {

@@ -1,4 +1,4 @@
-// Pure forward Monte Carlo projection — no I/O. See SPEC.md "Branch model".
+// Pure forward Monte Carlo projection — no I/O. See docs/SPEC.md "Branch model".
 import type { BranchConfig } from "../../shared/types.js";
 import type { EquityPoint } from "./engine.js";
 

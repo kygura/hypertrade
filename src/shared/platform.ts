@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { AssetSchema, SideSchema } from "./intel.js";
 
-// Platform contract (SPEC.md § Platform P0/P2): zod schemas and inferred types
+// Platform contract (docs/SPEC.md § Platform P0/P2): zod schemas and inferred types
 // for every /api/platform response and the rows behind them. Server and UI
 // both import this file. Request schemas are strict: they sit on the operator
 // trust boundary.
@@ -354,7 +354,7 @@ export type LedgerStatsResponse = z.infer<typeof LedgerStatsResponseSchema>;
 /** GET /ledger/:opportunityId: entries in insertion order. */
 export const LedgerEntriesResponseSchema = z.object({ opportunityId: z.string().uuid(), entries: z.array(LedgerEntrySchema) });
 export type LedgerEntriesResponse = z.infer<typeof LedgerEntriesResponseSchema>;
-// ─── Novelty (FEATURES.md section 4) ───
+// ─── Novelty (docs/FEATURES.md section 4) ───
 
 export const NoveltyFeatureSchema = z.object({ id: Text(32), value: Num, histMin: Num, histMax: Num, p1: Num, p99: Num, bars: z.number().int().nonnegative(), pctRank: Num });
 export type NoveltyFeature = z.infer<typeof NoveltyFeatureSchema>;

@@ -11,7 +11,7 @@ export { resolveOrder, type OrderMarket, type Resolution } from "./order-resolve
 
 const DAY = 86_400_000;
 
-// Order copilot (SPEC.md § Intel I0.18, DESIGN-terminal.md §7).
+// Order copilot (docs/SPEC.md § Intel I0.18, docs/design/terminal.md §7).
 //
 //   text ─parseOrder (LLM, zod)─▶ OrderIntent ─resolveOrder (pure)─▶ prices, size, liq, risk
 //        ─▶ DeskService.previewOperatorOrder ─▶ OrderPreview {verdict, previewHash}

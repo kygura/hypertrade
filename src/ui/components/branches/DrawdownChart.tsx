@@ -2,7 +2,7 @@ import { Area, AreaChart, ReferenceDot, ResponsiveContainer, XAxis, YAxis } from
 import type { EquityPoint } from './types'
 import { computeDrawdown, fmtChartDate } from './format'
 
-// Drawdown panel chart — DESIGN.md §9.2. Values <= 0, 0 sits naturally at
+// Drawdown panel chart — docs/design/README.md §9.2. Values <= 0, 0 sits naturally at
 // the top since it's the greatest value on the axis. Worst point gets a
 // small square ReferenceDot; the header's "MAX DD −x%" line is drawn by
 // the caller from the branch's own stats.maxDrawdownPct, not recomputed here.

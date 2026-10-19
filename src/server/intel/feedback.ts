@@ -2,7 +2,7 @@ import { EDGE_TYPE_WEIGHT, type FeedbackBucket, type FeedbackReport } from "../.
 import { DAMPEN_MIN_VOTES, DAMPEN_NET, dampened } from "./mapper.js";
 import type { IntelStore } from "./store.js";
 
-// Weekly feedback report (SPEC.md § Intel I0.12). Code only, no LLM: votes
+// Weekly feedback report (docs/SPEC.md § Intel I0.12). Code only, no LLM: votes
 // on the last 7 days of alerts, per (event type, edge type, hops), the worst
 // buckets first, each with a suggested adjustment the operator can apply by
 // hand. No auto-tuning beyond the mapper's push dampening (mapper.ts).

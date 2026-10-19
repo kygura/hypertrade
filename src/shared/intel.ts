@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ClaimSchema } from "./claims.js";
 
-// Intel contract (SPEC.md § Intel I0/I2): zod schemas and inferred types for
+// Intel contract (docs/SPEC.md § Intel I0/I2): zod schemas and inferred types for
 // every /api/intel request and response and the domain objects behind them.
 // Server and UI both import this file. Request schemas are strict: they sit
 // on trust boundaries (operator input, LLM output parsed into DSL/intents).
@@ -1023,7 +1023,7 @@ export type AssetDetailResponse = z.infer<typeof AssetDetailResponseSchema>;
 export const FlowsQuerySchema = z.object({ since: Iso.optional() });
 export const FlowsResponseSchema = z.object({ flags: z.array(FlowFlagSchema) });
 
-// ─── Scout research (SPEC.md § Scout S0.1) ───
+// ─── Scout research (docs/SPEC.md § Scout S0.1) ───
 
 export const RESEARCH_STATUSES = ["running", "found", "no_cause", "capped", "failed"] as const;
 export const ResearchStatusSchema = z.enum(RESEARCH_STATUSES);

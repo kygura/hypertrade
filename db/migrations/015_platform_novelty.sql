@@ -1,4 +1,4 @@
--- Novelty journal (FEATURES.md section 4): one entry per coin per closed daily
+-- Novelty journal (docs/FEATURES.md section 4): one entry per coin per closed daily
 -- bar, id `${bar_date}:${coin}`. The entry is the zod-validated NoveltyEntry; bar_date is
 -- kept apart for range reads and the 365-day prune.
 create table if not exists platform_novelty (

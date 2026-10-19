@@ -30,7 +30,7 @@ import {
 } from '../lib/lab'
 import type { AtSearch } from '../components/lab/WindowStatsTable'
 
-// /lab/rules/:id — rule drill (DESIGN.md §10.9). Full-view route like the
+// /lab/rules/:id — rule drill (docs/design/README.md §10.9). Full-view route like the
 // markets drill: linkable from MCP/CLI output, back-button friendly.
 // Resolution: ?run=<runId> → lab_get_run and that run's rule with this id;
 // else the catalogue entry with this id; else `rule not found`. Then one

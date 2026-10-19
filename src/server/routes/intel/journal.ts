@@ -4,7 +4,7 @@ import { JournalQuerySchema, TradeIdSchema, TradeNoteInputSchema } from "../../.
 import { loadJournal, putNote, tagStats, tagTrades, weeklyReport, type JournalDeps } from "../../intel/journal.js";
 import { body, failure, invalid } from "./http.js";
 
-// /journal — trade journal reviewer (SPEC.md § Intel I0.15, I2). Mounted
+// /journal — trade journal reviewer (docs/SPEC.md § Intel I0.15, I2). Mounted
 // under /api/intel by the intel aggregator.
 //
 // GET  /journal?days=30            → {trades, stats, sources}

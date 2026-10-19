@@ -1,7 +1,7 @@
 import { ClaimSchema, type Claim } from "../../shared/claims.js";
 import { lineVerdict, payloadNumbers } from "./numbers.js";
 
-// Claim validator (SPEC.md § Intel I0.7). Pure. Lines that are neither a
+// Claim validator (docs/SPEC.md § Intel I0.7). Pure. Lines that are neither a
 // sourced, timestamped `observed` fact nor a `hypothesis` are dropped before
 // display; the caller records `dropped` in the trace.
 
@@ -23,7 +23,7 @@ export interface LineCheck {
 }
 
 /**
- * The choke point (SPEC.md § Flow F0.5): every LLM line goes through here
+ * The choke point (docs/SPEC.md § Flow F0.5): every LLM line goes through here
  * before display or sending. Tag check, then the number and advice check
  * against `payload`, the call's input (object or the user prompt string).
  */

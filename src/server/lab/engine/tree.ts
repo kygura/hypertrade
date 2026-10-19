@@ -1,6 +1,6 @@
 import type { Rng } from "./rng.js";
 
-// Depth-2 CART forest (LAB.md §4). Gini on quantile-binned thresholds, rows
+// Depth-2 CART forest (docs/LAB.md §4). Gini on quantile-binned thresholds, rows
 // bootstrapped per tree, features subsampled per node.
 //
 // Class weights are balanced (each class carries half the weight), so a leaf

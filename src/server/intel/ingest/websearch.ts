@@ -5,7 +5,7 @@ import { isAdvice, lineVerdict, payloadNumbers } from "../numbers.js";
 import type { NewEvent } from "../store.js";
 import { fresh, hashKey, headlineEvent, hostLabel, message, pastIso, SKIPPED_DISABLED, SKIPPED_THROTTLED, type AdapterResult, type IngestDeps } from "./common.js";
 
-// LLM web-search sweep (SPEC.md § Intel I0.10, I0.13): strong tier with web
+// LLM web-search sweep (docs/SPEC.md § Intel I0.10, I0.13): strong tier with web
 // search, at most once an hour (store setting), only with INTEL_WEBSEARCH=true.
 // Returns recent headlines and scheduled catalysts (unlocks, listings and
 // delistings, mainnets/upgrades). An item without a usable https URL is a

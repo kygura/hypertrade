@@ -5,7 +5,7 @@ import { Button } from '../Button'
 import { AgeStamp, ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
 import { fmtSigned, type CatalogueHealth, type CatalogueListEntry, type LabState } from '../../lib/lab'
 
-// CatalogueHealthStrip — DESIGN.md §10.9. DECAYED · OVERLAPS · GAPS as ghost
+// CatalogueHealthStrip — docs/design/README.md §10.9. DECAYED · OVERLAPS · GAPS as ghost
 // toggles (amber when > 0); each expands its list. Health is computed on
 // request, so its age is the fetch time. Fails on its own: the table below
 // still renders.

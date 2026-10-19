@@ -7,13 +7,13 @@ import { isEnginePath } from './strategy/EngineTabs'
 import { isTerminalPath } from './intel/TerminalTabs'
 import { ThemeSwitcher } from './ThemeSwitcher'
 
-// AppShell — DESIGN.md §5. TopBar (>=768) / TopStrip + bottom tab bar
+// AppShell — docs/design/README.md §5. TopBar (>=768) / TopStrip + bottom tab bar
 // (<768) via CSS breakpoints only, no JS matchMedia. Freshness cluster reads
 // the most recent hl.total_oi_usd observation as a representative collector
 // heartbeat: green <30min, amber 30min-2h, red >2h or fetch failed.
 
 const NAV = [
-  // Intel Terminal family (DESIGN-terminal.md §1.2): one entry; /journal,
+  // Intel Terminal family (docs/design/terminal.md §1.2): one entry; /journal,
   // /theses, /query, /order, /watch and /overview switch inside via TerminalTabs.
   { to: '/', label: 'COCKPIT', tab: 'CKPT', glyph: '◉' },
   { to: '/branches', label: 'BRANCHES', tab: 'BRNCH', glyph: '⑂' },
@@ -23,11 +23,11 @@ const NAV = [
   // Strategy console: one shell entry so the mobile tab bar stays compact;
   // /strategies, /decisions and /governor switch inside via EngineTabs.
   { to: '/strategies', label: 'ENGINE', tab: 'ENGIN', glyph: '⚙' },
-  // Read-only LLM analyst (SPEC.md "Analyst"); a seventh cell on mobile.
+  // Read-only LLM analyst (docs/SPEC.md "Analyst"); a seventh cell on mobile.
   { to: '/analyst', label: 'ANALYST', tab: 'ASK', glyph: '?' },
-  // Agentic portfolio desk (SPEC.md "Desk"): agent team, governor, paper book.
+  // Agentic portfolio desk (docs/SPEC.md "Desk"): agent team, governor, paper book.
   { to: '/desk', label: 'DESK', tab: 'DESK', glyph: '◎' },
-  // Heuristic research (DESIGN.md §10.9); the ninth and last cell.
+  // Heuristic research (docs/design/README.md §10.9); the ninth and last cell.
   { to: '/lab', label: 'LAB', tab: 'LAB', glyph: '⚗' },
 ]
 

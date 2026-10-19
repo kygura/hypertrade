@@ -5,7 +5,7 @@ import { parseFeatureId } from "./features.js";
 import { exitText, ruleText } from "./rules.js";
 import { isoDate } from "./util.js";
 
-// Event-study screen (FEATURES.md § 2). Replays a Lab rule per coin on daily
+// Event-study screen (docs/FEATURES.md § 2). Replays a Lab rule per coin on daily
 // candles + funding through the same in-zone path as live evaluation
 // (inZoneDays → conditionSignal, the ruleFiresAt predicate), plays each event
 // out to stop / target / horizon, scores it in R net of fees, slippage and

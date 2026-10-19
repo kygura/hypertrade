@@ -7,7 +7,7 @@ import { assetExposure, deepLink, exposureHits, loadContext, MAGNITUDE_WEIGHT, p
 import { feedbackActions, sendIntel } from "./notify.js";
 import type { IntelStore } from "./store.js";
 
-// Catalyst alerts (SPEC.md § Intel I0.13). Scheduled events within the next
+// Catalyst alerts (docs/SPEC.md § Intel I0.13). Scheduled events within the next
 // 24 h alert once per window for every held/watched asset they reach (same
 // graph walk as the mapper, no LLM): T−24 h when first seen more than an hour
 // out, T−1 h inside the last hour. An event first seen inside the last hour

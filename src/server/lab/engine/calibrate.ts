@@ -4,7 +4,7 @@ import { isPlanted, synthetic } from "./testkit.js";
 import { verdictOf } from "./verdict.js";
 
 // Empirical calibration of the deflated-Sharpe cut-off of the save bar
-// (LAB.md "Calibration"). Pure-noise and planted-rule synthetic searches are
+// (docs/LAB.md "Calibration"). Pure-noise and planted-rule synthetic searches are
 // run once each; every candidate threshold is then applied to their top-K
 // rules. Run `bun src/server/lab/engine/calibrate.ts` to print the table.
 

@@ -11,7 +11,7 @@ import { loadDeskConfig } from "../../desk/config.js";
 import { buildBrief, type TerminalDeps } from "../../intel/terminal.js";
 import { body, failure, invalid } from "./http.js";
 
-// /api/intel terminal endpoints (SPEC.md § Intel I2). Session-cookie auth
+// /api/intel terminal endpoints (docs/SPEC.md § Intel I2). Session-cookie auth
 // comes from the global gate. Mounted by the intel aggregator.
 //
 // GET    /positions             → PositionsResponse (manual + hl + desk)

@@ -7,7 +7,7 @@ Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, La
 ## Status
 
 - **Live in the repo (master):** the platform backend in `src/server/platform/` (scanner, crawler, liquidation map, outcomes, alerts loops) on one Bun process, the cockpit UI, `/api/platform/*`, and the fallback routine (setups pulse, HTF view, daily brief; Opus 5.5 by default, Kimi as fallback).
-- **In progress:** the platform verification gate (review fix loop), then the Railway cutover; see `TASKS.platform.md`. Vercel is retired only at cutover: `vercel.json` still carries the collect, lab-collect and backfill crons until then.
+- **In progress:** the platform verification gate (review fix loop), then the Railway cutover; history in `docs/TASKS.md`. Vercel is retired only at cutover: `vercel.json` still carries the collect, lab-collect and backfill crons until then.
 - **Not committed yet:** an Ink terminal UI under `src/tui/` (`bun run tui`) with `SPEC-tui.md` and `DESIGN-tui.md`.
 
 ## Setup
@@ -190,11 +190,11 @@ changes.
 
 ## Prop-trading contract
 
-`PROP.md` is the operator's own rulebook for trading a Breakout evaluation
+`docs/PROP.md` is the operator's own rulebook for trading a Breakout evaluation
 with this app as journal and enforcer: the firm's limits, the risk framework
 derived from them, the setup ledger, the session protocol and the gates that
 must clear before a fee is paid. The journal that enforces it is T13–T15 in
-`TASKS.md`.
+`docs/TASKS.md`.
 
 ## Desk (optional)
 
@@ -304,7 +304,7 @@ page. All `DESK_*` settings are listed in `.env.example`.
 ## Intel (the Terminal)
 
 The Terminal (`/` and `/journal`, `/theses`, `/query`, `/order`, `/watch`;
-SPEC.md § Intel) reads `/api/intel/*`. Code: `src/server/intel/*`,
+docs/SPEC.md § Intel) reads `/api/intel/*`. Code: `src/server/intel/*`,
 `src/server/routes/intel/*`. Needs `db/migrations/007_intel.sql` (plus 008, 009 and
 010, see Setup below); LLM features
 use the Desk's model resolution and alerts go through the Desk notifier.
@@ -350,7 +350,7 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 `/` is now the Terminal. It shows what changed since your last look, measured
 against your positions and watchlist: a ranked diff, the alerts and catalysts
 that touch those assets, and a short brief. The Overview that used to live at
-`/` moved unchanged to `/overview`. Design: `DESIGN-terminal.md`. Spec: SPEC.md
+`/` moved unchanged to `/overview`. Design: `docs/design/terminal.md`. Spec: docs/SPEC.md
 § Intel. Code: `src/server/intel/*`, `src/server/routes/intel/*`,
 `src/ui/pages/terminal/*`.
 
@@ -605,7 +605,7 @@ BTC"), score them as strategies net of slippage, validate them walk-forward and
 on a holdout, and track the ones you save in a catalogue with live
 performance, health checks and a Market Pulse. It rebuilds the methodology
 Glassnode published for Alpha Lab over keyless data. Full spec and the tool
-contract: [`LAB.md`](LAB.md). Results are historical research, not advice.
+contract: [`docs/LAB.md`](docs/LAB.md). Results are historical research, not advice.
 
 Providers (all keyless): `ht` (hypertrade DB, live Hyperliquid fallback for
 price/funding), `cm` (Coin Metrics community API), `fng` (alternative.me Fear

@@ -1,7 +1,7 @@
 import type { Costs } from "../../shared/platform.js";
 import type { Side } from "../../shared/intel.js";
 
-// Directional cost model (SPEC.md § Platform P0.10). Pure.
+// Directional cost model (docs/SPEC.md § Platform P0.10). Pure.
 //   slippageBps  walk the live book at the planned size; avg fill vs mid
 //   feeBps       taker fee, paid on entry and again on exit (netEdge charges 2x)
 //   fundingBps   hourly funding x holding hours; positive means the trade pays

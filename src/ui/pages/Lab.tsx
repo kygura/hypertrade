@@ -6,7 +6,7 @@ import { LabRuns } from './LabRuns'
 import { LabCatalogue } from './LabCatalogue'
 import { LabPulse } from './LabPulse'
 
-// /lab — heuristic research (DESIGN.md §10.9, LAB.md). One shell entry; the
+// /lab — heuristic research (docs/design/README.md §10.9, docs/LAB.md). One shell entry; the
 // four tabs are paths (/lab/search, /lab/runs[/:runId], /lab/catalogue,
 // /lab/pulse) under one sticky Segmented. The rule drill (/lab/rules/:id) is
 // its own full-view route (LabRule.tsx). Nothing here trades.

@@ -1,6 +1,6 @@
 # FEATURES — signal evidence ideas
 
-Seven ideas for annotating signals with evidence instead of verdicts. They originated in a retired sibling prototype (perpsignal), a signal-only system for Hyperliquid perps on daily bars. Each section stands on its own: problem, mechanism, rationale, where it hooks into hypertrade, and its status. Tasks live in TASKS.md § Phase 9.
+Seven ideas for annotating signals with evidence instead of verdicts. They originated in a retired sibling prototype (perpsignal), a signal-only system for Hyperliquid perps on daily bars. Each section stands on its own: problem, mechanism, rationale, where it hooks into hypertrade, and its status. Tasks live in docs/TASKS.md § Phase 9.
 
 Ground rules that apply to every section:
 
@@ -248,7 +248,7 @@ Priority is by alert type, never by evidence: novelty sits one level below a sig
 
 ### Hypertrade hook and status
 
-**In scope (PS5).** Not covered: intel deltas use 7-day baselines (`src/server/intel/normalize.ts`) and platform features use a 24-hour ring and a 14-day funding percentile (SPEC.md § Platform P0.9). Hook: a pure `src/server/platform/novelty.ts`; a daily `novelty` loop in the loop definitions of `scripts/server.ts` that acts once per new closed UTC day; daily inputs from the `candles` table (1d, via `ensureHistory`), the `funding` table and the `observations` series `hl.oi.<COIN>`, the same data the Lab `ht` provider reads (`src/server/lab/providers/ht.ts`); persistence in the next free migration plus `PlatformStore` (memory and Postgres); pushes through the platform notifier (`src/server/platform/alerts.ts`). OI features stay skipped until 365 days of OI exist, and the skip is noted, never hidden.
+**In scope (PS5).** Not covered: intel deltas use 7-day baselines (`src/server/intel/normalize.ts`) and platform features use a 24-hour ring and a 14-day funding percentile (docs/SPEC.md § Platform P0.9). Hook: a pure `src/server/platform/novelty.ts`; a daily `novelty` loop in the loop definitions of `scripts/server.ts` that acts once per new closed UTC day; daily inputs from the `candles` table (1d, via `ensureHistory`), the `funding` table and the `observations` series `hl.oi.<COIN>`, the same data the Lab `ht` provider reads (`src/server/lab/providers/ht.ts`); persistence in the next free migration plus `PlatformStore` (memory and Postgres); pushes through the platform notifier (`src/server/platform/alerts.ts`). OI features stay skipped until 365 days of OI exist, and the skip is noted, never hidden.
 
 ---
 
@@ -279,7 +279,7 @@ The trial count is how the operator judges luck: the ninth idea tried that looks
 
 ### Hypertrade hook and status
 
-**Partly covered.** The ledger already computes, per setup kind and horizon, n, hit rate, mean net return and a 95% t-interval, null below n = 5 (`src/server/platform/stats.ts:9`), and the opportunity detail shows them (SPEC.md § Platform P0.14).
+**Partly covered.** The ledger already computes, per setup kind and horizon, n, hit rate, mean net return and a 95% t-interval, null below n = 5 (`src/server/platform/stats.ts:9`), and the opportunity detail shows them (docs/SPEC.md § Platform P0.14).
 
 **In scope (PS4):** the Telegram `Ready:` alert (`src/server/platform/alerts.ts:65`) gains the facts line `ledger 24h: n 37 · 11 clusters · +0.42% (−0.3…+1.1) · edge unvalidated`, built from PS2's clustered stats and showing the horizon used. The counter lives in the Lab store, written by PS1's authoring tool. Catalogue entries authored through it show `idea #n of N`.
 
@@ -331,7 +331,7 @@ P&L-blind premise tracking keeps the operator honest about *why*, without the to
 
 ### Hypertrade hook and status
 
-- **Static calendars: covered.** `src/server/intel/calendar.ts:48` holds FOMC, CPI and NFP dates for 2026–2027 with release times. Catalyst alerts fire at T−24h and T−1h (SPEC.md § Intel I0.13).
+- **Static calendars: covered.** `src/server/intel/calendar.ts:48` holds FOMC, CPI and NFP dates for 2026–2027 with release times. Catalyst alerts fire at T−24h and T−1h (docs/SPEC.md § Intel I0.13).
 - **Relative liquidity: covered.** The platform assigns liquidity tiers by universe tercile of 24h notional volume and sets thresholds per tier (`liquidityTiers`, `src/server/platform/features.ts:126`).
 - **In scope (PS7):** an ntfy channel in `createNotifier` (`src/server/desk/notify.ts:57`), which every alert path shares, and a macro label tag on platform opportunities, computed in `src/server/platform/scanner.ts` from `calendarEvents` (`src/server/intel/calendar.ts:86`). It is a tag only: no score or status effect.
 
@@ -341,7 +341,7 @@ P&L-blind premise tracking keeps the operator honest about *why*, without the to
 
 - **Near-miss ("why not").** Per coin: every health gate passed and exactly one setup condition failed, numeric and within 10% (relative) of its limit; the closest wins. Price-level conditions (close vs MA) never count, because 10% of price is not "near". Shown as the top near-miss (`GET /api/platform/near-miss`: top plus per-coin list); novelty `nearSetups` includes it. Informational only.
 - **Condition funnel.** For an authored rule, count coin-days surviving each condition in order and mark the step with the largest relative drop, to show where an idea dies. *Done (PS-B3): `funnel` in `lab_event_study`.*
-- **Narrative with a caution flag.** One capped LLM call per passing signal (why now, what invalidates it, counter-thesis) may attach a caution flag and never changes the signal. *Covered:* the platform research stage and bear case (SPEC.md § Platform P0.11, `src/server/intel/research.ts`).
+- **Narrative with a caution flag.** One capped LLM call per passing signal (why now, what invalidates it, counter-thesis) may attach a caution flag and never changes the signal. *Covered:* the platform research stage and bear case (docs/SPEC.md § Platform P0.11, `src/server/intel/research.ts`).
 
 ---
 

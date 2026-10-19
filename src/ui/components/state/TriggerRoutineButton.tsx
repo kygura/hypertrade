@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '../Button'
 import { api, ApiError } from '../../lib/api'
 
-// TriggerRoutineButton — DESIGN.md §7 "trigger-routine special case" (Level
+// TriggerRoutineButton — docs/design/README.md §7 "trigger-routine special case" (Level
 // 1 with consequence copy) + §10.6. Neutral tier, --control-lg. 60s disable
 // + "REQUESTED HH:MM" after a successful POST. An unset ROUTINE_WEBHOOK_URL
 // is server-reported configuration state, not an error — rendered as info.

@@ -1,7 +1,7 @@
 import { ApiError, NetworkError } from './api'
 import { splitFrames } from './analyst'
 
-// Client for /api/desk (SPEC.md "Desk"). Runs stream over POST + SSE like
+// Client for /api/desk (docs/SPEC.md "Desk"). Runs stream over POST + SSE like
 // the analyst; everything else is plain JSON through api.ts.
 
 export type Side = 'long' | 'short'

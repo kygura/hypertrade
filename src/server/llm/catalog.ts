@@ -16,7 +16,7 @@ export type { CatalogModel, Tier };
 // what a client may pick for POST /api/analyst/query's optional
 // provider/model/effort fields, and whether each provider is configured at
 // all — 200 even when nothing is configured, so the UI can explain what to
-// set (DESIGN.md state vocabulary §6, "unconfigured").
+// set (docs/design/README.md state vocabulary §6, "unconfigured").
 //
 // Anthropic's list is hand-maintained here; the vendor presets' lists live
 // in presets.ts; the generic openai-compatible slot lists whatever the

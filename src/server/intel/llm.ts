@@ -2,7 +2,7 @@ import type { ZodError, ZodType } from "zod";
 import { deskProviderFactory } from "../desk/agents.js";
 import type { AnalystEnv, LLMProvider, StepHooks, ToolSpec, Usage } from "../llm/provider.js";
 
-// The one LLM entry point for Intel (SPEC.md § Intel I0.6). A single client
+// The one LLM entry point for Intel (docs/SPEC.md § Intel I0.6). A single client
 // tool, `emit`, carries the target JSON schema; forced tool choice is
 // unsupported, so a fenced JSON block in the text is the fallback. Zod is the
 // authority: one retry with the validation error, then fail closed. Results

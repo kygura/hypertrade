@@ -5,7 +5,7 @@ import { CompileError, compile, parseQuery, runQuery, sanitizeDbError, screenerC
 import { llmErrorStatus } from "./theses.js";
 import { body, invalid } from "./http.js";
 
-// /api/intel/query — NL screener (SPEC.md § Intel I0.17, I2).
+// /api/intel/query — NL screener (docs/SPEC.md § Intel I0.17, I2).
 // POST /query/parse {question} → {dsl, sql, params, trace}
 // POST /query/run   {dsl}      → {sql, columns, rows, ms}  (read only, 5 s, ≤ 500 rows, ≤ 90 days)
 // Errors are returned verbatim, minus connection strings.

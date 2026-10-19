@@ -1,11 +1,11 @@
 # DESIGN-terminal — INTEL (the Terminal family)
 
-Binding interface brief for SPEC.md § "Intel — LLM trading tools (phase 5)".
-It **extends** DESIGN.md and never overrides it: tokens (§2), contrast (§2.1),
+Binding interface brief for docs/SPEC.md § "Intel — LLM trading tools (phase 5)".
+It **extends** docs/design/README.md and never overrides it: tokens (§2), contrast (§2.1),
 type scale (§2.2), button tiers (§3), responsive contract (§4), shell (§5),
 state vocabulary (§6), confirmation vocabulary (§7), motion (§8), a11y (§12)
-and themes (§15) all apply unchanged. Where this file is silent, DESIGN.md
-decides. On data shape SPEC.md wins; §13 below lists the fields the UI reads
+and themes (§15) all apply unchanged. Where this file is silent, docs/design/README.md
+decides. On data shape docs/SPEC.md wins; §13 below lists the fields the UI reads
 that SPEC I2 does not name yet.
 
 **No new tokens.** Every color, size and motion below already exists in
@@ -42,13 +42,13 @@ direction, prints a price target, or offers a trade; the only order path is
 | `/query` | QUERY | NL → DSL → SQL → result (§6) |
 | `/order` | ORDER | order copilot (§7) |
 | `/watch` | WATCH | doc/contract/wallet watches (§8); `?id=<id>` selects a watch |
-| `/overview` | OVERVIEW | DESIGN.md §10.2, unchanged (§9) |
+| `/overview` | OVERVIEW | docs/design/README.md §10.2, unchanged (§9) |
 
 Selection uses query params (the route family is pinned by SPEC I0.1), written
 with `replace: true` so back steps between routes, not rows (mobile exception:
 §5.1).
 
-### 1.2 Nav change (DESIGN.md §5)
+### 1.2 Nav change (docs/design/README.md §5)
 
 The `OVERVIEW` slot becomes `TERMINAL`. Same position (first), same count
 (nine cells on mobile, the §5.2 ceiling holds).
@@ -763,7 +763,7 @@ then CHANGES (same push/back rule as §5.1).
 
 ## 9. `/overview`
 
-DESIGN.md §10.2 unchanged (panels, data, states, optional PulseTile) at
+docs/design/README.md §10.2 unchanged (panels, data, states, optional PulseTile) at
 `/overview` under **TerminalTabs**. Links that meant "the overview" by `/` now
 point at `/overview`; it is reached through the sub-tab strip.
 
@@ -828,16 +828,16 @@ text, 409 messages) render **verbatim**; the UI never rewrites them.
 
 ---
 
-## 12. Edits DESIGN.md needs
+## 12. Edits docs/design/README.md needs
 
 | Section | Replacement intent |
 |---|---|
 | Intro item 2 "No money paths" | Add one sentence: the Intel order copilot places operator-confirmed orders on the Desk venue (paper/testnet) only; it uses Level 2 confirm + VenueBadge, not a Money tier (DESIGN-terminal §7.1). |
 | §5 opening list + §5.1 diagram | `OVERVIEW /` → `TERMINAL /` (active on the Terminal family); add `/overview` as a sub-tab destination; diagram's first route reads `TERMINAL`. |
 | §5.2 tab bar | Cell 1 `◈ OVIEW` → `▣ TERM`; glyph list and label list updated; nine-cell arithmetic unchanged. |
-| §10 route map | Add `/journal`, `/theses`, `/query`, `/order`, `/watch`, `/overview`; `/` becomes the Terminal; point to DESIGN-terminal.md as binding for them. |
+| §10 route map | Add `/journal`, `/theses`, `/query`, `/order`, `/watch`, `/overview`; `/` becomes the Terminal; point to docs/design/terminal.md as binding for them. |
 | §10.2 | Heading becomes `/overview — Overview`; first line notes it moved from `/` unchanged and renders under TerminalTabs. Layout, components and states untouched. |
-| §11 | New-shared rows: `ClaimLine`, `ClaimList`, `ClaimAge`, `SourceLink`, `VenueBadge`; `SrcTag` union gains `manual`, `desk`, `snap`. New view-scoped group "Intel (DESIGN-terminal.md)" listing §14's components. |
+| §11 | New-shared rows: `ClaimLine`, `ClaimList`, `ClaimAge`, `SourceLink`, `VenueBadge`; `SrcTag` union gains `manual`, `desk`, `snap`. New view-scoped group "Intel (docs/design/terminal.md)" listing §14's components. |
 | §13 | Add the §10 rows of this file (or one row per route referencing it). |
 | §2 / theme README | No token change; add one sentence to the `--color-info` role: "also marks model inference (HYP claims, LLM-proposed edges)". |
 
@@ -914,7 +914,7 @@ drawing (needs a library, fails at 390px), query CSV export, alert un-vote.
 
 ## 15. Flow (phase 6)
 
-Binding layout for SPEC.md § "Flow — quant gaps" (F0.8). Everything above
+Binding layout for docs/SPEC.md § "Flow — quant gaps" (F0.8). Everything above
 stands; this section adds one panel to `/`, one route, and no tokens. The
 principle is unchanged: every number here is computed by code and prints
 plainly; the only model text is the alert lines that already exist (§2).
@@ -1253,7 +1253,7 @@ no-narration row is the place reasons already live).
 
 ## 16. Scout / Research (phase 7)
 
-Binding layout for SPEC.md § "Scout — research on the Terminal" (S0.8). §15
+Binding layout for docs/SPEC.md § "Scout — research on the Terminal" (S0.8). §15
 stands; this section adds one panel to `/`, one action on the detector chips,
 one event kind on `/asset/:coin`, one badge on digest items, and no tokens.
 Research is **model output with code-checked provenance**: every evidence row
@@ -1491,7 +1491,7 @@ rows carry the tags).
 
 ## Cockpit (phase 8)
 
-Binding layout for SPEC.md § Platform P3. Everything above stands unless
+Binding layout for docs/SPEC.md § Platform P3. Everything above stands unless
 named here. Question the screen answers: **"what should I act on now, and is
 it worth the cost?"** It is a ranked feed with one selected opportunity,
 never a wall of charts. No new tokens, no new endpoints: data comes from

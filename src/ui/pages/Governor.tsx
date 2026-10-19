@@ -10,7 +10,7 @@ import { fmtUsdSigned } from '../components/strategy/format'
 // numeric limits save through PUT /governor (Level 1, verbatim ErrorBlock).
 // The kill switch is the one typed-word confirmation in this product: it
 // disables every strategy and rejects every open proposal, and the core
-// offers no un-kill route, so DESIGN.md §7's Level 2 dialog gains a typed
+// offers no un-kill route, so docs/design/README.md §7's Level 2 dialog gains a typed
 // word (KILL) here and nowhere else. Venues render beneath: status,
 // capabilities, open positions — the surface the kill switch acts on.
 

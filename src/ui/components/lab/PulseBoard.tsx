@@ -5,7 +5,7 @@ import { RuleText } from '../RuleText'
 import { fmtSigned, sortPulse, type CatalogueListEntry, type MetricDef, type PulseAsset } from '../../lib/lab'
 import { DirectionWord } from './common'
 
-// PulseBoard — DESIGN.md §10.9. One row per asset, sorted by |lean|: LeanBar
+// PulseBoard — docs/design/README.md §10.9. One row per asset, sorted by |lean|: LeanBar
 // + the signed LEAN number, active/total counts, and a chevron that lists
 // the asset's catalogued rules (row → the rule drill).
 

@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from 'react'
 import { ddTone, fmtPct0, fmtPctSigned, fmtSigned, foldBars, foldCell, liveCell, signTone, type DsrN, type PerfStats, type RuleEvaluation } from '../../lib/lab'
 import { DsrValue, SharpeValue } from './common'
 
-// WindowStatsTable — DESIGN.md §10.9. All four windows at every width (rule
+// WindowStatsTable — docs/design/README.md §10.9. All four windows at every width (rule
 // 1), so it is the §4.4 escape hatch: .table-scroll with a sticky row-header
 // column. SHARPE prints `untested` for a window with no trade. DSR and
 // WF FOLDS (reported, never ranked on) belong to the walk-forward columns

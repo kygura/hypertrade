@@ -1,4 +1,4 @@
-// Normal distribution helpers and the deflated Sharpe ratio (LAB.md §7).
+// Normal distribution helpers and the deflated Sharpe ratio (docs/LAB.md §7).
 
 /** Standard normal CDF (Abramowitz & Stegun 7.1.26 via erf; |error| < 1.5e-7). */
 export function normCdf(x: number): number {

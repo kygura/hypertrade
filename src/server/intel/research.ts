@@ -5,7 +5,7 @@ import { completeStructured, untrusted, usageCost, UNTRUSTED_RULE, webSearchAvai
 import { lineVerdict, payloadNumbers, stripExempt } from "./numbers.js";
 import type { IntelStore, NewResearch } from "./store.js";
 
-// Scout research engine (SPEC.md § Scout S0.2): one strong-tier call with
+// Scout research engine (docs/SPEC.md § Scout S0.2): one strong-tier call with
 // hosted web search, then provenance checked in code. The model's claims are
 // only believed as far as the provider's own citations back them. No
 // page-fetch tool exists, so hosted search is the only source of outside text.
@@ -303,7 +303,7 @@ export async function runResearch(deps: ResearchDeps, input: ResearchInput): Pro
   }
 }
 
-// ─── Limits, wiring and the automatic stage (SPEC.md § Scout S0.3) ───
+// ─── Limits, wiring and the automatic stage (docs/SPEC.md § Scout S0.3) ───
 
 const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : def);
 /** INTEL_RESEARCH_DAILY (10): manual runs per UTC day. */

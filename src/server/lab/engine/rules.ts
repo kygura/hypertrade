@@ -3,7 +3,7 @@ import { parseFeatureId, REGIME_PREFIX } from "./features.js";
 import type { Forest, TreeNode } from "./tree.js";
 import { hash64 } from "./util.js";
 
-// Rules (LAB.md §5): every root-to-leaf path ending in a class-1 leaf, plus
+// Rules (docs/LAB.md §5): every root-to-leaf path ending in a class-1 leaf, plus
 // its single-condition prefix. Conditions are canonicalised so equal rules
 // from different trees merge.
 

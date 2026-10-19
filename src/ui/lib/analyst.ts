@@ -1,7 +1,7 @@
 import type { SimBranchOutcome, SimIntent } from '../../shared/intent'
 import { ApiError, NetworkError } from './api'
 
-// Client for /api/analyst (SPEC.md "Analyst"). The query endpoint is a POST
+// Client for /api/analyst (docs/SPEC.md "Analyst"). The query endpoint is a POST
 // that answers with text/event-stream, so EventSource (GET-only) does not
 // fit; this reads the fetch body and splits SSE frames by hand. 401 follows
 // api.ts's redirect-to-login rule; 503/502 surface as ApiError so the page

@@ -5,7 +5,7 @@ import { fin, median } from "../intel/util.js";
 import { robustLevelZ, robustSigma, spanResult, valueAt } from "../intel/windows.js";
 import { depthWithin, midOf, type Book } from "./costs.js";
 
-// Per-asset feature set (SPEC.md § Platform P0.9). Pure: history in, numbers out.
+// Per-asset feature set (docs/SPEC.md § Platform P0.9). Pure: history in, numbers out.
 // z-scores reuse the Flow machinery (intel/windows.ts): non-overlapping window
 // changes of the asset's own ring, median and MAD-based robust sigma. The ring
 // is 24 h, so the lookback is 1 day with at least MIN_HIST window samples

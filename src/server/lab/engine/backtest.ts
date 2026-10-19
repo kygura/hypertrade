@@ -1,7 +1,7 @@
 import type { Objective, PerfStats } from "../types.js";
 import { isoDate } from "./util.js";
 
-// Strategy scoring (LAB.md §6). Day indices: pos[i] is the position decided
+// Strategy scoring (docs/LAB.md §6). Day indices: pos[i] is the position decided
 // at the close of day i and held over day i+1, so the return of day i is
 //   r[i] = pos[i−1] · pr[i] − cost · |pos[i−1] − pos[i−2]|,
 // with pr[i] = price[i]/price[i−1] − 1 and cost = slippageBps / 1e4. A

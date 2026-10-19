@@ -4,7 +4,7 @@ import { fmtChartDate, fmtUsdCompact } from '../branches/format'
 import { fmtUsd } from '../../../shared/format'
 import { buildBandData, ProjectionReadout } from './FanChart'
 
-// Equity curve vs benchmarks — DESIGN.md §9.1 (+ §9.3 forward fan on the
+// Equity curve vs benchmarks — docs/design/README.md §9.1 (+ §9.3 forward fan on the
 // same chart). One ComposedChart; each series carries its own `data` so
 // history/benchmarks (dense) and projection (sparser, continues past
 // history) don't need to be pre-merged into one array.

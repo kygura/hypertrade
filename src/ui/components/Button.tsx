@@ -1,6 +1,6 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
 
-// Button — DESIGN.md §3. Three tiers (money/arm dropped: no execution paths
+// Button — docs/design/README.md §3. Three tiers (money/arm dropped: no execution paths
 // in this product).
 //   ghost   — nav, filters, cancel, retry, secondary actions
 //   neutral — primary submits: login, save/create branch, run simulation,

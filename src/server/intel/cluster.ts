@@ -4,7 +4,7 @@ import { hostLabel } from "./ingest/common.js";
 import { lineVerdict, payloadNumbers } from "./numbers.js";
 import { completeStructured, untrusted, UNTRUSTED_RULE, type LlmDeps, type StructuredResult } from "./llm.js";
 
-// Headline clustering (SPEC.md § Intel I0.9). Pure, no embeddings
+// Headline clustering (docs/SPEC.md § Intel I0.9). Pure, no embeddings
 // (`// ponytail:` no keyless embedding source). Two passes:
 //   1. Titles → normalized token shingles (k = 1: the set of content words,
 //      since headlines are too short for word n-grams to overlap). Jaccard ≥

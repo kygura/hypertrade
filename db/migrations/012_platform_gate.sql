@@ -1,4 +1,4 @@
--- Platform gate amendments (SPEC.md § Platform P0.11, P0.13, 2026-10-16):
+-- Platform gate amendments (docs/SPEC.md § Platform P0.11, P0.13, 2026-10-16):
 -- terminal status 'failed', and at most one outcome entry per
 -- (opportunity, horizon). Apply after 011; safe to re-run.
 

@@ -351,7 +351,7 @@ export function fileStore(path: string, clock: () => Date = () => new Date()): L
       }
       const state = parseState(text);
       if (state) return state;
-      // Never start empty over a damaged file: that would reset the trial counter (FEATURES.md § 5).
+      // Never start empty over a damaged file: that would reset the trial counter (docs/FEATURES.md § 5).
       throw new Error(`lab store file ${path} is corrupt; fix or remove it by hand (the store will not start empty)`);
     })().catch((err) => {
       loading = null; // retry on the next call

@@ -8,7 +8,7 @@ import { verdictOf } from "./verdict.js";
 import { isoDate, parseDay, SearchRefused } from "./util.js";
 import { makeSplit, MIN_TRAIN_ROWS, positions, sensitivity, walkForwardSegments, type Split } from "./validate.js";
 
-// Full evaluation of one rule (LAB.md §6–8), shared by the search (top rules)
+// Full evaluation of one rule (docs/LAB.md §6–8), shared by the search (top rules)
 // and by explicit rule evaluation outside a search.
 
 export interface EvalInCtxOptions {

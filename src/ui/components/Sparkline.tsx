@@ -1,6 +1,6 @@
 import { Line, LineChart, ResponsiveContainer } from 'recharts'
 
-// Sparkline — DESIGN.md §4.5/§11. White 1px line, no axes, no tooltip.
+// Sparkline — docs/design/README.md §4.5/§11. White 1px line, no axes, no tooltip.
 // Height per breakpoint (48px mobile / 56px lg) via wrapper class, not JS.
 
 export function Sparkline({ points, className = '' }: { points: number[]; className?: string }) {

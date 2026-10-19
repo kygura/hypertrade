@@ -3,7 +3,7 @@ import type { BranchConfig } from '../../../shared/types'
 import type { MonteCarloResult } from '../branches/types'
 import { fmtChartDate, fmtUsdCompact } from '../branches/format'
 
-// Monte-carlo fan — DESIGN.md §9.3. `buildBandData` is the shared merge used
+// Monte-carlo fan — docs/design/README.md §9.3. `buildBandData` is the shared merge used
 // both by the standalone chart below and by EquityChart, which draws the
 // same band+median recipe inline on its own combined chart (recharts can't
 // reliably compose a nested chart's <Area>/<Line> into a parent chart, so
@@ -75,7 +75,7 @@ export function FanChart({ projection, height = 220 }: { projection: MonteCarloR
   )
 }
 
-// Terminal readout — plain text, not chart labels (DESIGN.md §9.3).
+// Terminal readout — plain text, not chart labels (docs/design/README.md §9.3).
 export function ProjectionReadout({ projection }: { projection: MonteCarloResult }) {
   const p10 = projection.p10.at(-1)?.value
   const p50 = projection.median.at(-1)?.value
@@ -88,7 +88,7 @@ export function ProjectionReadout({ projection }: { projection: MonteCarloResult
   )
 }
 
-// Assumptions line — always visible when a fan is drawn (DESIGN.md
+// Assumptions line — always visible when a fan is drawn (docs/design/README.md
 // principle 6 + §10.4): a projection without visible assumptions is forbidden.
 export function ProjectionAssumptions({ scenario }: { scenario: NonNullable<BranchConfig['scenario']> }) {
   const parts = scenario.assumptions.map(

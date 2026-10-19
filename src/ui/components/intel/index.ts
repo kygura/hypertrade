@@ -1,4 +1,4 @@
-// Intel / Terminal family components — DESIGN-terminal.md §2 and §14.
+// Intel / Terminal family components — docs/design/terminal.md §2 and §14.
 export { TerminalTabs, terminalTabOf, isTerminalPath, TERMINAL_TABS, type TerminalTab } from './TerminalTabs'
 export { ClaimLine } from './ClaimLine'
 export { ClaimList } from './ClaimList'

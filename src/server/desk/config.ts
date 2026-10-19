@@ -1,7 +1,7 @@
 import { addressOf, isPrivateKey } from "./hl/signing.js";
 import type { Confidence } from "./types.js";
 
-// Desk settings from the environment (SPEC.md "Desk", .env.example). Every
+// Desk settings from the environment (docs/SPEC.md "Desk", .env.example). Every
 // limit has a conservative default so an unconfigured deployment trades
 // paper only, with small risk, and always behind the governor.
 

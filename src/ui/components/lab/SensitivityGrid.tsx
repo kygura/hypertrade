@@ -1,6 +1,6 @@
 import { fmtFeature, fmtPctSigned, fmtSigned, parseFeature, SENS_BG, sensitivityTone, type MetricDef, type Rule, type Sensitivity } from '../../lib/lab'
 
-// SensitivityGrid — DESIGN.md §10.9. Per condition, a THRESHOLD row
+// SensitivityGrid — docs/design/README.md §10.9. Per condition, a THRESHOLD row
 // (q−0.10 · q−0.05 · BASE · q+0.05 · q+0.10) and a WINDOW row (one cell per
 // swapped window, base marked). Each cell prints Sharpe over total return;
 // the background ramps by sharpe / base.sharpe, never past pos1.

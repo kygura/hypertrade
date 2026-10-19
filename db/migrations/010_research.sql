@@ -1,4 +1,4 @@
--- Scout research (SPEC.md § Scout S0.4): one row per research run. `body`
+-- Scout research (docs/SPEC.md § Scout S0.4): one row per research run. `body`
 -- holds the rest of the ResearchResult (explanation, evidence, ...). A
 -- 'running' row is the cross-instance lock (S0.3): the partial unique index
 -- allows at most one, and a stale one is marked failed before a new run

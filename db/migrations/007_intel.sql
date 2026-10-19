@@ -1,4 +1,4 @@
--- Intel: LLM trading tools (SPEC.md § Intel). Manual positions, watchlist,
+-- Intel: LLM trading tools (docs/SPEC.md § Intel). Manual positions, watchlist,
 -- the snapshot store, exposure graph, events/clusters/alerts, briefs, the
 -- journal's notes and reports, theses, doc watches, settings and the LLM
 -- cache. Lists live in jsonb, not arrays (db.ts runs with fetch_types off).

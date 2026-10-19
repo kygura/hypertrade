@@ -2,8 +2,8 @@
 
 Authoritative visual and interaction design brief for the HYPERTRADE app
 (`app/`). Implementation follows this document exactly; a worker implementing
-UI from it needs no taste of its own. Where this document and SPEC.md disagree
-on visuals, this document wins; on data/API shape, SPEC.md wins.
+UI from it needs no taste of its own. Where this document and docs/SPEC.md disagree
+on visuals, this document wins; on data/API shape, docs/SPEC.md wins.
 
 HYPERTRADE iterates on the Hyperion Terminal design language
 (`../hyperion/dashboard/DESIGN.md`): dark-only, Geist Mono everywhere, zero
@@ -20,7 +20,7 @@ language. What is new:
    retired. The heaviest action in this product is deleting a branch. The
    Intel order copilot (`/order`) places operator-confirmed orders on the
    Desk venue (paper/testnet) only; it uses the Level 2 confirm + a
-   VenueBadge, not a Money tier (DESIGN-terminal.md §7.1).
+   VenueBadge, not a Money tier (docs/design/terminal.md §7.1).
 3. **Fixed layouts.** No react-grid-layout, no draggable panels. Fixed
    responsive CSS grid per view.
 4. **New data shapes** need new visual vocabulary: a sector momentum ramp, a
@@ -483,7 +483,7 @@ not a different product.
 
 Destinations post-login: Terminal `/` (grouping `/journal`, `/theses`,
 `/query`, `/order`, `/watch` and `/overview` under TerminalTabs,
-DESIGN-terminal.md §1), Branches `/branches`, Sectors `/sectors`, State
+docs/design/terminal.md §1), Branches `/branches`, Sectors `/sectors`, State
 `/state`, Markets `/markets` — plus the later shell entries Engine
 `/strategies` (grouping `/decisions` and `/governor`), Analyst `/analyst`,
 Desk `/desk` and Lab `/lab` (§10.9) — nine nav items — plus Logout.
@@ -738,7 +738,7 @@ delta, z30.
 ## 10. Views
 
 Route map: `/login`, the Terminal family `/` (Terminal), `/journal`,
-`/theses`, `/query`, `/order`, `/watch`, `/overview` (DESIGN-terminal.md is
+`/theses`, `/query`, `/order`, `/watch`, `/overview` (docs/design/terminal.md is
 binding for all of them; `/overview` is §10.2 below), `/branches`,
 `/branches/:id`, `/sectors`, `/state`, `/markets`, `/markets/:coin`,
 `/analyst`, and the lab family `/lab/{search,runs,catalogue,pulse}`,
@@ -773,7 +773,7 @@ All widths: a single centered panel, max-width 320px, vertically centered
 ### 10.2 `/overview` — Overview
 
 Moved from `/` unchanged; it now renders under TerminalTabs
-(DESIGN-terminal.md §9) and is reached through the sub-tab strip. Layout,
+(docs/design/terminal.md §9) and is reached through the sub-tab strip. Layout,
 components and states below are untouched.
 
 Purpose: 30-second morning read — where is the market, what does the routine
@@ -1136,7 +1136,7 @@ rail below the thread, and the composer sticks above the tab bar.
 
 ### 10.9 `/lab` — heuristic research
 
-Purpose: LAB.md's research loop as a page — search a metric universe for
+Purpose: docs/LAB.md's research loop as a page — search a metric universe for
 one- or two-condition rules, read them with their out-of-sample numbers
 beside the in-sample ones, keep the good ones, and see which are firing
 today. Everything renders from the lab tool results (`src/server/lab/
@@ -1657,7 +1657,7 @@ Lab (§10.9, under `src/ui/components/lab/`): `LabTabs`; `LabSearchForm`
 `CatalogueTable`; `PulseBoard` (+ `PulseAssetRow`); `PulseTile` (Overview,
 optional); `RunsTable`.
 
-Intel (DESIGN-terminal.md §14, under `src/ui/components/intel/`; pages under
+Intel (docs/design/terminal.md §14, under `src/ui/components/intel/`; pages under
 `src/ui/pages/terminal/`): `TerminalTabs` (+ `terminalTabOf`,
 `isTerminalPath`); `ExposurePathChips`; `ReviewStrip`; `WhatChangedPanel` (+
 `DiffTable`); `NewsFeedPanel` (+ `AlertItem`); `CatalystsPanel` (+

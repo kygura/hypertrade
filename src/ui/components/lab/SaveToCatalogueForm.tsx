@@ -5,7 +5,7 @@ import { Button } from '../Button'
 import { ErrorBlock } from '../state'
 import { errorText, lab, type CatalogueEntry, type Rule } from '../../lib/lab'
 
-// SaveToCatalogueForm — DESIGN.md §10.9. Inline panel (Level 1): NAME
+// SaveToCatalogueForm — docs/design/README.md §10.9. Inline panel (Level 1): NAME
 // (default: the rule text cut to 40ch), NOTE, SAVE TO CATALOGUE. Once saved
 // the panel becomes the IN CATALOGUE stamp + OPEN CATALOGUE →.
 
