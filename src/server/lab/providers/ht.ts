@@ -14,7 +14,8 @@ const HOUR_MS = 3_600_000;
 const ENSURE_MS = 10_000;
 const ENSURE_DEADLINE_MS = 4_000;
 const ENSURE_TTL_MS = 10 * 60_000;
-const LIVE_FUNDING_PAGES = 24; // × 500 hourly rows ≈ 500 days
+const LIVE_FUNDING_PAGES = 24;
+const CANDLE_REUSE_MS = 60_000; // × 500 hourly rows ≈ 500 days
 
 export interface Ohlcv {
   t: number;
@@ -174,7 +175,19 @@ export function createHtProvider(deps: HtDeps = defaultHtDeps): LabProvider {
     return p;
   }
 
-  async function candles(coin: string, fromMs: number, toMs: number, capMs: number): Promise<Ohlcv[]> {
+  // One fetch per coin and range serves price/open/high/low/volume/range (a dataset load asks for several within seconds).
+  const recent = new Map<string, { key: string; at: number; p: Promise<Ohlcv[]> }>();
+  function candles(coin: string, fromMs: number, toMs: number, capMs: number): Promise<Ohlcv[]> {
+    const key = `${fromMs}|${toMs}`;
+    const hit = recent.get(coin);
+    if (hit && hit.key === key && Date.now() - hit.at < CANDLE_REUSE_MS) return hit.p;
+    const p = fetchCandlesOnce(coin, fromMs, toMs, capMs);
+    recent.set(coin, { key, at: Date.now(), p });
+    p.catch(() => recent.get(coin)?.p === p && recent.delete(coin));
+    return p;
+  }
+
+  async function fetchCandlesOnce(coin: string, fromMs: number, toMs: number, capMs: number): Promise<Ohlcv[]> {
     if (deps.hasDb()) {
       await ensure(coin, fromMs, capMs);
       const stored = await deps.candles(coin, fromMs).catch(() => []);

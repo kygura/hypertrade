@@ -415,6 +415,7 @@ describe("lab_event_study (service)", () => {
   const studyKit = () =>
     kit({
       perpUniverse: async () => ["SYN", "FAIL", "SYN"],
+      hasDb: () => false,
       async loadDataset(cfg) {
         if (cfg.asset === "FAIL") throw new Error("no price history for FAIL");
         expect(cfg.price).toBe("ht:price");
@@ -436,6 +437,31 @@ describe("lab_event_study (service)", () => {
     const trials = await store.listTrials();
     expect(trials.at(-1)).toMatchObject({ ruleId: ruleId(planted), intent: "lab_event_study", verdict: r.verdict });
     expect(r.idea).toEqual({ n: trials.length, of: trials.length });
+  });
+
+  test("without a DB more than 20 coins is refused; coins de-dupe case-insensitively; eventList capped at 200", async () => {
+    const { service } = studyKit();
+    const many = Array.from({ length: 21 }, (_, i) => `C${i}`);
+    const err = await service.eventStudy({ rule: planted, stopAtr: 1, targetAtr: 2, coins: many }).catch((e) => e);
+    expect(err).toBeInstanceOf(ToolInputError);
+    expect((err as ToolInputError).field).toBe("coins");
+    const always1: Rule = { ...planted, horizonDays: 1, conditions: [{ feature: "syn:b|raw|0", op: ">=", threshold: -100 }] };
+    const r = await service.eventStudy({ rule: always1, stopAtr: 1, targetAtr: 2, coins: ["SYN", "syn"] });
+    expect(r.coins.map((c) => c.coin)).toEqual(["SYN"]);
+    expect(r.eventListTotal).toBe(r.screen.events);
+    expect(r.screen.events).toBeGreaterThan(200);
+    expect(r.eventList).toHaveLength(200);
+  });
+
+  test("a coin still loading at the deadline is listed insufficient and the call returns", async () => {
+    const { service } = kit({
+      async loadDataset() {
+        return new Promise(() => {}); // never settles
+      },
+    });
+    const r = await service.eventStudy({ rule: planted, stopAtr: 1, targetAtr: 2, coins: ["SLOW"] }, { deadlineMs: SEARCH_FINISH_MS + 50 });
+    expect(r.coins).toEqual([{ coin: "SLOW", bars: 0, from: null, to: null, events: 0, status: "insufficient", reason: "not loaded before the deadline" }]);
+    expect(r.verdict).toBe("insufficient");
   });
 
   test("a non-ht price is refused", async () => {
