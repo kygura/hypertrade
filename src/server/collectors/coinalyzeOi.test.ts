@@ -61,7 +61,7 @@ describe("coinalyze OI backfill", () => {
       });
       await expect(run("BTC")).rejects.toThrow();
       const first = n;
-      expect(await run("ETH")).toBe(0);
+      await expect(run("ETH")).rejects.toBeInstanceOf(OiRateLimited);
       expect(n).toBe(first);
       t += 3_600_001;
       await expect(run("BTC")).rejects.toThrow();
