@@ -76,8 +76,8 @@ existing databases never see the edit). Add the next number instead.
 
 ## Where things live
 
-Root has only: this file, `README.md` (setup, env, API overview), and the two routine
-runbooks. Everything else is under `docs/`.
+Root has only: this file, `README.md` (setup, env, API overview), and `ROUTINE.md`
+(the one routine runbook). Everything else is under `docs/`.
 
 | Path | Purpose |
 |---|---|
@@ -89,11 +89,10 @@ runbooks. Everything else is under `docs/`.
 | `docs/PROP.md` | Operator's prop-trading contract (Breakout evaluation). |
 | `docs/TASKS.md` | Open items, completed-phase summary, pointers to deleted task files in git history. |
 | `docs/fallback-routine.md`, `docs/research/` | Provider-agnostic fallback routine; research notes. |
-| `ROUTINE.md` | Runbook for the scheduled market-state/sectors/setups routine. |
-| `SIGNALS-ROUTINE.md` | Runbook for the scheduled signal-pipeline routine. |
+| `ROUTINE.md` | Self-contained runbook for the one scheduled routine (every 4 h): market state, sectors, setups, Lab, signals, one ntfy push. |
 | `tui/` | Separate terminal client with its own `SPEC.md`, `DESIGN.md`, `TASKS.md`. |
 
-**The two runbooks are for scheduled cloud routines only.** Scheduled sessions open them
-by path, so keep their names and root location. For ordinary development work, do not
+**The runbook is for the scheduled cloud routine only.** Scheduled sessions open it
+by path, so keep its name and root location. For ordinary development work, do not
 follow them and do not touch `data/**` unless asked; use `docs/SPEC.md`, the design docs
 and `docs/LAB.md`.
