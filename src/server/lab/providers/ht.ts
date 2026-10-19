@@ -91,6 +91,9 @@ type Def = [key: string, name: string, category: MetricCategory, units: string, 
 
 const ASSET_DEFS: Def[] = [
   ["price", "Price", "price", "USD", "Daily close: Hyperliquid perp, stitched with Binance/Bitstamp spot below HL's history."],
+  ["open", "Open", "price", "USD", "Daily open, from the same candles as price."],
+  ["high", "High", "price", "USD", "Daily high, from the same candles as price."],
+  ["low", "Low", "price", "USD", "Daily low, from the same candles as price."],
   ["volume", "Volume", "price", "USD", "Daily volume × close (approximate USD notional)."],
   ["range", "Daily range", "price", "fraction", "(high − low) / close."],
   ["funding", "Funding (daily)", "derivatives", "fraction/day", "Sum of the day's hourly Hyperliquid funding rates."],
@@ -123,7 +126,7 @@ const ASSET_SERIES: Record<string, (coin: string) => string> = {
 };
 
 /** Levels that trend (see LabMetricDef.stationary). */
-const LEVELS = new Set(["price", "volume", "oi", "total_mcap", "stablecoin_cap"]);
+const LEVELS = new Set(["price", "open", "high", "low", "volume", "oi", "total_mcap", "stablecoin_cap"]);
 /** Weekly FRED releases: forward-fill across the week (default is 3 days). */
 const WEEKLY = new Set(["fred.WALCL", "fred.WTREGEN", "fred.net_liquidity"]);
 const hints = (key: string) => ({ ...(LEVELS.has(key) ? { stationary: false } : {}), ...(WEEKLY.has(key) ? { maxFillDays: 8 } : {}) });
@@ -154,6 +157,7 @@ const METRICS: LabMetricDef[] = [
     ...hints(key),
   })),
 ];
+const CANDLE_KEYS = new Set(["price", "open", "high", "low", "volume", "range"]);
 const GLOBAL_SERIES = new Map(GLOBAL.map((g) => [g[0], g[5]]));
 
 /** HL coin names are uppercase except the k-prefixed thousands (kPEPE). */
@@ -204,9 +208,10 @@ export function createHtProvider(deps: HtDeps = defaultHtDeps): LabProvider {
       let out: DailySeries;
       if (global) out = await stored(global, fromMs, toMs, "last");
       else if (ASSET_SERIES[key]) out = await stored(ASSET_SERIES[key](coin), fromMs, toMs, "last");
-      else if (key === "price" || key === "volume" || key === "range") {
+      else if (CANDLE_KEYS.has(key)) {
         const bars = await candles(coin, fromMs, toMs, opts?.deadline ? ENSURE_DEADLINE_MS : ENSURE_MS);
-        const value = (b: Ohlcv) => (key === "price" ? b.c : key === "volume" ? b.v * b.c : b.c > 0 ? (b.h - b.l) / b.c : NaN);
+        const value = (b: Ohlcv) =>
+          key === "price" ? b.c : key === "open" ? b.o : key === "high" ? b.h : key === "low" ? b.l : key === "volume" ? b.v * b.c : b.c > 0 ? (b.h - b.l) / b.c : NaN;
         out = toDaily(
           bars.map((b) => ({ t: b.t, v: value(b) })),
           "last",

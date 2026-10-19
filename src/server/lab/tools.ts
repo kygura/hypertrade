@@ -59,6 +59,15 @@ const AuthorArgs = z
     direction: z.enum(["long", "short"]).optional(),
   })
   .strict();
+const EventStudyArgs = z
+  .object({
+    rule: RuleSchema,
+    coins: z.array(z.string().regex(ASSET_PATTERN, "expected a ticker of 1–20 letters or digits, e.g. BTC")).min(1).max(300).optional(),
+    stopAtr: z.number().positive().max(20),
+    targetAtr: z.number().positive().max(50),
+    slippageBps: z.number().min(0).max(200).default(5),
+  })
+  .strict();
 const RemoveArgs = z.object({ id: z.string().min(1).max(128) }).strict();
 const PulseArgs = z.object({ asset: z.string().min(1).max(20).optional() }).strict();
 
@@ -327,6 +336,27 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       async run(args, ctx) {
         return service.authorRule(parseInput(AuthorArgs, args), ctx);
+      },
+    },
+    {
+      name: "lab_event_study",
+      title: "Event-study screen",
+      description:
+        "Reject-only screen of a rule as discrete trades across coins (default: every listed HL perp; coins need ≥ 365 daily bars with funding, else status insufficient). Per coin, an event is a day the rule is in zone at the close (the same predicate as lab_market_pulse), at least horizonDays after the previous event (no overlapping holds). Entry at the signal close; stop/target = stopAtr/targetAtr × ATR(14); stop fills at the worse of stop and open and wins a bar that hits both; else exit at the horizon close. R per event is net of a 0.09% round-trip fee, slippageBps per side and the funding paid over the hold. Events cluster by ISO week; verdict over weekly means: insufficient (< 30 weeks), rejected (one-sided 95% upper bound < 0: clearly lost), else clear (not shown to lose; never proof of an edge). Returns { screen, verdict, train, holdout (last 30% by time, facts only), period, coins, eventList, survivorship, warnings, idea: { n, of } }; recorded as the next trial. Runs alongside the save-bar verdict, which it does not change. Fetches daily candles and funding per coin: seconds to tens of seconds. " +
+        HONESTY,
+      inputSchema: obj(
+        {
+          rule: ruleSchema,
+          coins: { type: "array", items: { type: "string", pattern: ASSET_PATTERN.source }, minItems: 1, maxItems: 300, description: "Coins to replay the rule on (rule.asset is ignored). Default: every listed HL perp." },
+          stopAtr: { type: "number", exclusiveMinimum: 0, maximum: 20, description: "Stop distance in ATR(14) at the signal bar, e.g. 1.5." },
+          targetAtr: { type: "number", exclusiveMinimum: 0, maximum: 50, description: "Target distance in ATR(14), e.g. 3." },
+          slippageBps: { type: "number", minimum: 0, maximum: 200, description: "Slippage per side, basis points. Default 5." },
+        },
+        ["rule", "stopAtr", "targetAtr"],
+      ),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      async run(args, ctx) {
+        return service.eventStudy(parseInput(EventStudyArgs, args), ctx);
       },
     },
     {

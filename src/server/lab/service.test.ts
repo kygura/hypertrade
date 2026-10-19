@@ -402,3 +402,46 @@ describe("lab service: market pulse", () => {
     expect(only.warnings).toEqual([]);
   });
 });
+
+describe("lab_event_study (service)", () => {
+  const c = base.price;
+  const o = c.map((_, i) => c[Math.max(0, i - 1)]!);
+  const ohlc: Record<string, number[]> = {
+    "ht:open": o,
+    "ht:high": c.map((x, i) => Math.max(x, o[i]!) * 1.01),
+    "ht:low": c.map((x, i) => Math.min(x, o[i]!) * 0.99),
+    "ht:funding": c.map(() => 0.0001),
+  };
+  const studyKit = () =>
+    kit({
+      perpUniverse: async () => ["SYN", "FAIL", "SYN"],
+      async loadDataset(cfg) {
+        if (cfg.asset === "FAIL") throw new Error("no price history for FAIL");
+        expect(cfg.price).toBe("ht:price");
+        const all = { ...base.metrics, ...ohlc };
+        return { dataset: { ...base, asset: cfg.asset, metrics: Object.fromEntries(cfg.metrics.map((m) => [m, all[m]!])) }, warnings: [] };
+      },
+    });
+
+  test("default coins = the HL universe; load failures are insufficient coins; the run is a trial with the screen verdict", async () => {
+    const { service, store } = studyKit();
+    const r = await service.eventStudy({ rule: planted, stopAtr: 1.5, targetAtr: 3 });
+    expect(r.coins.map((x) => [x.coin, x.status])).toEqual([
+      ["SYN", "ok"],
+      ["FAIL", "insufficient"],
+    ]);
+    expect(r.screen.events).toBeGreaterThan(0);
+    expect(["insufficient", "rejected", "clear"]).toContain(r.verdict);
+    expect(r.survivorship).toContain("Survivorship");
+    const trials = await store.listTrials();
+    expect(trials.at(-1)).toMatchObject({ ruleId: ruleId(planted), intent: "lab_event_study", verdict: r.verdict });
+    expect(r.idea).toEqual({ n: trials.length, of: trials.length });
+  });
+
+  test("a non-ht price is refused", async () => {
+    const { service } = studyKit();
+    const err = await service.eventStudy({ rule: { ...planted, price: "cm:PriceUSD" }, stopAtr: 1, targetAtr: 2, coins: ["SYN"] }).catch((e) => e);
+    expect(err).toBeInstanceOf(ToolInputError);
+    expect((err as ToolInputError).field).toBe("rule.price");
+  });
+});

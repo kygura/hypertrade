@@ -281,8 +281,11 @@ export interface Trial {
   at: string; // ISO
   ruleId: string;
   intent: string | null;
-  verdict: VerdictLevel | null;
+  verdict: VerdictLevel | EventVerdict | null;
 }
+
+/** lab_event_study screen (FEATURES.md § 2): reject-only, never a grant. */
+export type EventVerdict = "insufficient" | "rejected" | "clear";
 
 export interface CatalogueHealth {
   decayed: Array<{ id: string; name: string; liveDays: number; liveSharpe: number; holdoutSharpe: number | null }>;
