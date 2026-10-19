@@ -1,5 +1,5 @@
 import type postgres from "postgres";
-import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, Opportunity, Position } from "../../shared/platform.js";
+import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, NoveltyEntry, Opportunity, Position } from "../../shared/platform.js";
 import { LIVE_STATUSES, PRE_DECISION_STATUSES, TERMINAL_STATUSES } from "../../shared/platform.js";
 import { sql } from "../db.js";
 import {
@@ -201,6 +201,20 @@ export class PgPlatformStore implements PlatformStore {
   async scanSnapshotsSince(since: string) {
     const rows = await this.db.query<any>(`select * from scan_snapshots where ts >= $1::timestamptz order by ts, coin`, [iso(since)]);
     return rows.map((r): ScanSnapshot => ({ coin: r.coin, ts: iso(r.ts), inputs: r.inputs }));
+  }
+
+  async saveNovelty(entries: NoveltyEntry[]) {
+    for (const e of entries) {
+      await this.db.query(`insert into platform_novelty (id, bar_date, entry) values ($1, $2, $3::jsonb) on conflict (id) do update set entry = excluded.entry`, [e.id, e.barDate, J(e)]);
+    }
+  }
+
+  async listNovelty(sinceBar: string) {
+    return (await this.db.query<any>(`select entry from platform_novelty where bar_date >= $1 order by bar_date, entry->>'coin'`, [sinceBar])).map((r): NoveltyEntry => r.entry);
+  }
+
+  async pruneNovelty(beforeBar: string) {
+    return (await this.db.query(`delete from platform_novelty where bar_date < $1 returning 1`, [beforeBar])).length;
   }
 
   async pruneHistory(before: string) {

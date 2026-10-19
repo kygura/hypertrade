@@ -99,3 +99,22 @@ describe("ws silence", () => {
     expect(sent.map((s) => s.title)).toEqual(["Hyperliquid feed silent", "Hyperliquid feed recovered", "Hyperliquid feed silent"]);
   });
 });
+
+describe("novel push", () => {
+  const e = { id: "2026-02-09:SOL", detectedAt: "2026-02-10T00:30:00.000Z", barDate: "2026-02-09", coin: "SOL", kind: "new_extreme", families: ["funding"], nearSetups: [], marketWide: false, pushed: true, notified: [],
+    features: [{ id: "funding_z90", value: 9, histMin: -3, histMax: 8, p1: -2, p99: 3, bars: 400, pctRank: 100 }] } as const;
+  test("NOVEL: info alert, once per entry; a send no channel took is retried", async () => {
+    const sent: { level: string; title: string; body: string }[] = [];
+    let channels = ["telegram"];
+    const a = createAlerts({ notifier: { send: async (m) => (sent.push(m), channels) }, wsAgeSec: () => 1 });
+    const entry = { ...e, features: [...e.features] } as never;
+    channels = [];
+    expect(await a.novel(entry)).toEqual([]);
+    channels = ["telegram"];
+    expect(await a.novel(entry)).toEqual(["telegram"]);
+    expect(await a.novel(entry)).toEqual([]);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toMatchObject({ level: "info", title: "NOVEL: SOL — funding_z90 — no setup covers this" });
+    expect(sent[1]!.body).not.toContain("http");
+  });
+});

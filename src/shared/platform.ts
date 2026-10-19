@@ -354,5 +354,29 @@ export type LedgerStatsResponse = z.infer<typeof LedgerStatsResponseSchema>;
 /** GET /ledger/:opportunityId: entries in insertion order. */
 export const LedgerEntriesResponseSchema = z.object({ opportunityId: z.string().uuid(), entries: z.array(LedgerEntrySchema) });
 export type LedgerEntriesResponse = z.infer<typeof LedgerEntriesResponseSchema>;
+// ─── Novelty (FEATURES.md section 4) ───
+
+export const NoveltyFeatureSchema = z.object({ id: Text(32), value: Num, histMin: Num, histMax: Num, p1: Num, p99: Num, bars: z.number().int().nonnegative(), pctRank: Num });
+export type NoveltyFeature = z.infer<typeof NoveltyFeatureSchema>;
+/** One per coin per closed daily bar; id `${barDate}:${coin}`. Only new extremes are pushed. */
+export const NoveltyEntrySchema = z.object({
+  id: Text(64),
+  detectedAt: Iso,
+  barDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  coin: AssetSchema,
+  kind: z.enum(["new_extreme", "joint_extreme"]),
+  families: z.array(z.enum(["funding", "oi", "price"])),
+  features: z.array(NoveltyFeatureSchema),
+  nearSetups: z.array(z.string()),
+  marketWide: z.boolean(),
+  pushed: z.boolean(),
+  suppressed: z.enum(["cooldown", "run_cap"]).optional(),
+  notified: z.array(z.object({ at: Iso, channels: z.array(z.string()) })),
+});
+export type NoveltyEntry = z.infer<typeof NoveltyEntrySchema>;
+export const NoveltyQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(365).default(30), coin: AssetSchema.optional() }).strict();
+/** GET /novelty: newest bar first. */
+export const NoveltyResponseSchema = z.object({ entries: z.array(NoveltyEntrySchema) });
+export type NoveltyResponse = z.infer<typeof NoveltyResponseSchema>;
 /** GET /health. */
 export const PlatformHealthResponseSchema = PlatformHealthSchema;

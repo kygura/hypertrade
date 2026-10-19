@@ -1,5 +1,7 @@
 import type { Notifier } from "../desk/notify.js";
+import type { NoveltyEntry } from "../../shared/platform.js";
 import type { Bus } from "./bus.js";
+import { novelText } from "./novelty.js";
 import { evidenceLine, groupStats } from "./stats.js";
 import type { PlatformStore } from "./store.js";
 import type { LoopDef } from "./runtime.js";
@@ -31,6 +33,7 @@ export function createAlerts(deps: {
   const pushScore = deps.pushScore ?? envNum("PLATFORM_PUSH_SCORE", 3);
   const link = deps.appUrl ? `\n\n${deps.appUrl.replace(/\/+$/, "")}/` : "";
   const pushed = new Set<string>();
+  const novelSent = new Set<string>();
   let silent = false;
   let okStreak = 0;
   let lastSilentAt = -Infinity;
@@ -70,6 +73,13 @@ export function createAlerts(deps: {
         const line = rows ? `\n${evidenceLine(groupStats(rows).find((g) => g.horizon === "24h") ?? null, o.edgeBasis)}` : "";
         void send("info", `Ready: ${o.direction} ${o.coin}`, `${o.setupKind}, score ${o.score.toFixed(2)}, ${edge}${line}`);
       });
+    },
+    /** NOVEL: push of one novelty entry (information only, no cockpit link). Once per entry id per process; a send no channel took is retried. Returns the channels that took it. */
+    async novel(e: NoveltyEntry): Promise<string[]> {
+      if (novelSent.has(e.id)) return [];
+      const channels = await deps.notifier.send({ level: "info", ...novelText(e) }).catch((err) => (console.error("[alerts]", err instanceof Error ? err.message : err), [] as string[]));
+      if (channels.length) novelSent.add(e.id);
+      return channels;
     },
     check,
     def: { name: "alerts", intervalSec: 10, run: check } satisfies LoopDef,

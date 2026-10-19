@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import {
-  FeedResponseSchema, LedgerEntriesResponseSchema, LedgerStatsResponseSchema, LiqBoardResponseSchema, LiqMapHistoryResponseSchema, LiqMapResponseSchema, OpportunityDetailSchema,
+  FeedResponseSchema, LedgerEntriesResponseSchema, LedgerStatsResponseSchema, LiqBoardResponseSchema, LiqMapHistoryResponseSchema, LiqMapResponseSchema, NoveltyResponseSchema, OpportunityDetailSchema,
   type LedgerPayload, type Opportunity,
 } from "../../shared/platform.js";
 import { app as apiApp } from "../../../api/index.js";
@@ -70,7 +70,7 @@ describe("offline", () => {
   test("every route answers 503 platform_offline without a context", async () => {
     online = false;
     const id = crypto.randomUUID();
-    for (const [method, path] of [["GET", "/opportunities"], ["GET", `/opportunities/${id}`], ["POST", `/opportunities/${id}/approve`], ["POST", `/opportunities/${id}/reject`], ["POST", `/opportunities/${id}/snooze`], ["POST", `/opportunities/${id}/research`], ["GET", "/liqmap?coin=ETH"], ["GET", "/liqmap/board"], ["GET", "/liqmap/history?coin=ETH"], ["GET", "/ledger/stats"], ["GET", `/ledger/${id}`]] as const) {
+    for (const [method, path] of [["GET", "/opportunities"], ["GET", `/opportunities/${id}`], ["POST", `/opportunities/${id}/approve`], ["POST", `/opportunities/${id}/reject`], ["POST", `/opportunities/${id}/snooze`], ["POST", `/opportunities/${id}/research`], ["GET", "/liqmap?coin=ETH"], ["GET", "/liqmap/board"], ["GET", "/liqmap/history?coin=ETH"], ["GET", "/novelty"], ["GET", "/ledger/stats"], ["GET", `/ledger/${id}`]] as const) {
       const res = await req(path, { method });
       expect([method, path, res.status]).toEqual([method, path, 503]);
       expect(await res.json()).toEqual({ error: "platform_offline" });
@@ -134,6 +134,20 @@ describe("feed and detail", () => {
     expect(((await (await req(`/opportunities/${o.id}`)).json()) as { bearCase: string }).bearCase).toBe("Unlock next week.");
     expect((await req(`/opportunities/${crypto.randomUUID()}`)).status).toBe(404);
     expect((await req("/opportunities/nope")).status).toBe(400);
+  });
+});
+
+describe("novelty", () => {
+  const nov = (barDate: string, coin: string) => ({
+    id: `${barDate}:${coin}`, detectedAt: NOW.toISOString(), barDate, coin, kind: "new_extreme" as const, families: ["funding" as const], nearSetups: [], marketWide: false, pushed: true, notified: [],
+    features: [{ id: "funding_z90", value: 9, histMin: -3, histMax: 8, p1: -2, p99: 3, bars: 400, pctRank: 100 }],
+  });
+  test("newest bar first, within days, optional coin filter; bad query is 400", async () => {
+    await store.saveNovelty([nov("2026-10-15", "ETH"), nov("2026-10-15", "BTC"), nov("2026-10-10", "BTC"), nov("2026-08-01", "BTC")]);
+    const all = NoveltyResponseSchema.parse(await (await req("/novelty?days=10")).json());
+    expect(all.entries.map((e) => e.id)).toEqual(["2026-10-15:ETH", "2026-10-15:BTC", "2026-10-10:BTC"]);
+    expect(NoveltyResponseSchema.parse(await (await req("/novelty?days=10&coin=ETH")).json()).entries).toHaveLength(1);
+    expect((await req("/novelty?days=0")).status).toBe(400);
   });
 });
 
