@@ -424,7 +424,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         const t = await deps.store.appendTrial({ ruleId: id, intent: input.intent, verdict: evaluation?.verdict?.level ?? null });
         candidates.push({ id, rule, text: ruleText(rule), evaluation, ...(error && { error }), idea: { n: t.n, of: t.n } });
       }
-      const trialCount = candidates.at(-1)?.idea.n ?? 0;
+      const trialCount = (await deps.store.listTrials()).length;
       for (const c of candidates) c.idea.of = trialCount;
       return { candidates, trialCount, model: r.model };
     },

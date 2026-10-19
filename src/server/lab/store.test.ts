@@ -224,22 +224,15 @@ describe("fileStore persistence", () => {
     expect(existsSync(path)).toBe(false);
   });
 
-  test("corrupt file: starts empty and keeps a .bak", async () => {
+  test("corrupt or wrong-shape file: throws naming the file, leaves it untouched, no .bak", async () => {
     const dir = await tmp();
-    const path = join(dir, "lab.json");
-    await writeFile(path, "{not json");
-    const s = fileStore(path);
-    expect(await s.listCatalogue()).toEqual([]);
-    expect(await readFile(`${path}.bak`, "utf8")).toBe("{not json");
-    await s.saveCatalogueEntry(entry("fresh"));
-    expect((await fileStore(path).listCatalogue()).map((e) => e.id)).toEqual(["fresh"]);
-  });
-
-  test("wrong shape counts as corrupt", async () => {
-    const path = join(await tmp(), "lab.json");
-    await writeFile(path, JSON.stringify({ runs: "nope" }));
-    expect(await fileStore(path).listRuns(5)).toEqual([]);
-    expect(existsSync(`${path}.bak`)).toBe(true);
+    for (const body of ["{not json", JSON.stringify({ runs: "nope" })]) {
+      const path = join(dir, `lab-${body.length}.json`);
+      await writeFile(path, body);
+      await expect(fileStore(path).listTrials()).rejects.toThrow(path);
+      expect(await readFile(path, "utf8")).toBe(body);
+      expect(existsSync(`${path}.bak`)).toBe(false);
+    }
   });
 
   test("concurrent writes all land", async () => {
