@@ -2,6 +2,7 @@ import type { z, ZodTypeAny } from "zod";
 import { ToolInputError, UpstreamError, type ToolContext } from "../mcp/types.js";
 import {
   evaluateRule as evaluateRuleOn,
+  eventStudy as eventStudyOn,
   featureSpecs,
   inZoneDays,
   livePerf,
@@ -12,8 +13,11 @@ import {
   ruleText,
   runSearch,
   SearchRefused,
+  STUDY_METRICS,
   withVerdict,
+  type EventStudyResult,
 } from "./engine/index.js";
+import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
 import type { LlmDeps } from "../intel/llm.js";
 import { authorRules, type AuthorInput } from "./author.js";
 import { allMetrics, getMetric, loadDataset as registryLoadDataset, PROVIDERS, type LoadConfig } from "./providers/registry.js";
@@ -52,6 +56,8 @@ export interface LabServiceDeps {
   providers: LabProvider[];
   /** Model access for lab_author_rule; defaults to the Intel provider chain with an in-memory cache. */
   llm?: LlmDeps;
+  /** Listed HL perps for lab_event_study's default coins; defaults to Hyperliquid's meta. */
+  perpUniverse?: () => Promise<string[]>;
 }
 
 export const DEFAULT_WINDOWS = [7, 30, 90];
@@ -94,6 +100,14 @@ export interface EvaluateInput {
   windows?: number[];
   /** N for the deflated Sharpe (e.g. a run's effectiveTrials); default 1. */
   trials?: number;
+}
+
+export interface EventStudyInput {
+  rule: Rule;
+  coins?: string[];
+  stopAtr: number;
+  targetAtr: number;
+  slippageBps?: number;
 }
 
 export interface SaveInput {
@@ -159,6 +173,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     now: partial.now ?? Date.now,
     providers: partial.providers ?? PROVIDERS,
     llm: partial.llm,
+    perpUniverse: partial.perpUniverse ?? (async () => (await fetchPerpMetaAndCtxs()).ctxs.filter((c) => !c.isDelisted).map((c) => c.name)),
   };
   let llm = deps.llm;
   // Imported on first use: the Intel/Desk graph imports the lab tools, so a static import would be a cycle.
@@ -427,6 +442,44 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       const trialCount = (await deps.store.listTrials()).length;
       for (const c of candidates) c.idea.of = trialCount;
       return { candidates, trialCount, model: r.model };
+    },
+
+    /** Reject-only event-study screen of a rule across coins (FEATURES.md § 2), recorded as a trial; informational, gates nothing. */
+    async eventStudy(input: EventStudyInput, ctx?: CallBudget): Promise<EventStudyResult & { warnings: string[]; idea: IdeaNumber }> {
+      const rule = parseInput(RuleSchema, input.rule, "rule");
+      if (rule.price && rule.price !== "ht:price") throw new ToolInputError("the event study trades ht:price: stops and targets need its candles' open/high/low", "rule.price");
+      const metrics = [...new Set([...ruleMetrics(rule), ...STUDY_METRICS])];
+      const started = deps.now();
+      let coins = input.coins;
+      if (!coins) {
+        try {
+          coins = await deps.perpUniverse!();
+        } catch (err) {
+          throw new UpstreamError(`HL perp universe unavailable (${msg(err)}): pass coins`);
+        }
+      }
+      const warnings: string[] = [];
+      const failed: EventStudyResult["coins"] = [];
+      const loaded = await mapLimit([...new Set(coins)], LOAD_CONCURRENCY, async (coin) => {
+        const fail = (reason: string) => (failed.push({ coin, bars: 0, from: null, to: null, events: 0, status: "insufficient", reason }), null);
+        if (ctx?.deadlineMs != null && deps.now() - started > ctx.deadlineMs - SEARCH_FINISH_MS) return fail("not loaded before the deadline");
+        try {
+          const r = await deps.loadDataset({ asset: coin, metrics, price: "ht:price", ...underDeadline(ctx) });
+          warnings.push(...r.warnings.map((w) => `${coin}: ${w}`));
+          return r.dataset;
+        } catch (err) {
+          return fail(msg(err));
+        }
+      });
+      let result: EventStudyResult;
+      try {
+        result = eventStudyOn(rule, loaded.filter((d): d is LabDataset => d !== null), { stopAtr: input.stopAtr, targetAtr: input.targetAtr, slippageBps: input.slippageBps });
+      } catch (err) {
+        throw asInputError(err);
+      }
+      result.coins.push(...failed);
+      const t = await deps.store.appendTrial({ ruleId: ruleId(rule), intent: "lab_event_study", verdict: result.verdict });
+      return { ...result, warnings, idea: { n: t.n, of: (await deps.store.listTrials()).length } };
     },
 
     async catalogueSave(input: SaveInput, ctx?: CallBudget): Promise<CatalogueEntry> {

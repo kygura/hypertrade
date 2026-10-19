@@ -1,0 +1,189 @@
+import { describe, expect, test } from "bun:test";
+import { DAY_MS, type LabDataset, type Rule } from "../types.js";
+import { ruleFiresAt } from "./evaluate.js";
+import { ATR_WINDOW, eventStudy, FUNDING, HIGH, isoWeek, LOW, OPEN, replayCoin, screenOf, t95, verdictOfScreen, type StudyEvent } from "./eventStudy.js";
+import { synthetic } from "./testkit.js";
+import { isoDate } from "./util.js";
+
+const T0 = Date.UTC(2024, 0, 1); // a Monday
+
+interface Bar {
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  f?: number;
+  x?: number;
+}
+
+/** Flat bars (o = c = 100, h 101, l 99: TR = ATR = 2), funding 0.0001/day, syn:x 0; then the overrides. */
+function dataset(n: number, over: Record<number, Partial<Bar>> = {}, coin = "AAA"): LabDataset {
+  const bars = Array.from({ length: n }, (_, i): Bar => ({ o: 100, h: 101, l: 99, c: 100, f: 0.0001, x: 0, ...over[i] }));
+  return {
+    asset: coin,
+    t: bars.map((_, i) => T0 + i * DAY_MS),
+    price: bars.map((b) => b.c),
+    metrics: {
+      [OPEN]: bars.map((b) => b.o),
+      [HIGH]: bars.map((b) => b.h),
+      [LOW]: bars.map((b) => b.l),
+      [FUNDING]: bars.map((b) => b.f ?? NaN),
+      "syn:x": bars.map((b) => b.x ?? 0),
+    },
+  };
+}
+
+const rule = (direction: "long" | "short", horizonDays = 3): Rule => ({ asset: "AAA", direction, horizonDays, conditions: [{ feature: "syn:x|raw|0", op: ">=", threshold: 1 }] });
+const opts = { stopAtr: 1, targetAtr: 2, slippageBps: 5 }; // ATR 2 → risk 2 (stopPct 2%), target ±4
+
+describe("replayCoin: play-out and R", () => {
+  test("horizon exit, hand-checked R net of fee, slippage on both sides and funding (long pays)", () => {
+    const d = dataset(30, { 20: { x: 1 }, 23: { c: 101, h: 101.5, l: 100 } });
+    const [ev] = replayCoin(rule("long"), d, opts);
+    // gross (101 − 100) / 2 = 0.5; costs (0.09 + 2 × 0.05) / 2 = 0.095; funding 3 × 0.01% / 2 = 0.015
+    expect(ev).toMatchObject({ date: isoDate(T0 + 20 * DAY_MS), exit: "horizon", exitDate: isoDate(T0 + 23 * DAY_MS), ambiguous: false });
+    expect(ev!.r).toBeCloseTo(0.5 - 0.095 - 0.015, 10);
+    expect(ev!.fundingR).toBeCloseTo(-0.015, 10);
+  });
+
+  test("short receives positive funding", () => {
+    const d = dataset(30, { 20: { x: 1 }, 23: { c: 101, h: 101.5, l: 100 } });
+    const [ev] = replayCoin(rule("short"), d, opts);
+    expect(ev!.fundingR).toBeCloseTo(0.015, 10);
+    expect(ev!.r).toBeCloseTo(-0.5 - 0.095 + 0.015, 10);
+  });
+
+  test("slippage is charged on entry and exit", () => {
+    const d = dataset(30, { 20: { x: 1 } });
+    const r0 = replayCoin(rule("long"), d, { ...opts, slippageBps: 0 })[0]!.r;
+    const r10 = replayCoin(rule("long"), d, { ...opts, slippageBps: 10 })[0]!.r;
+    expect(r0 - r10).toBeCloseTo((2 * 0.1) / 2, 10);
+  });
+
+  test("ambiguous bar scores as stop; a gap fills at the open", () => {
+    const amb = replayCoin(rule("long"), dataset(30, { 20: { x: 1 }, 21: { h: 105, l: 97 } }), opts)[0]!;
+    expect(amb).toMatchObject({ exit: "stop", ambiguous: true });
+    expect(amb.r).toBeCloseTo(-1 - 0.095 - 0.005, 10);
+    const gap = replayCoin(rule("long"), dataset(30, { 20: { x: 1 }, 21: { o: 95, h: 96, l: 94, c: 95 } }), opts)[0]!;
+    expect(gap.exit).toBe("stop");
+    expect(gap.r).toBeCloseTo(-2.5 - 0.095 - 0.005, 10);
+    const tgt = replayCoin(rule("long"), dataset(30, { 20: { x: 1 }, 21: { h: 104.5, l: 99.5 } }), opts)[0]!;
+    expect(tgt.exit).toBe("target");
+    expect(tgt.r).toBeCloseTo(2 - 0.095 - 0.005, 10);
+    const shortStop = replayCoin(rule("short"), dataset(30, { 20: { x: 1 }, 21: { o: 103, h: 104, l: 102 } }), opts)[0]!;
+    expect(shortStop.r).toBeCloseTo(-1.5 - 0.095 + 0.005, 10);
+  });
+
+  test("cooldown = horizon: no overlapping holds", () => {
+    const over: Record<number, Partial<Bar>> = {};
+    for (let i = 20; i <= 40; i++) over[i] = { x: 1 };
+    const evs = replayCoin(rule("long", 3), dataset(60, over), opts);
+    expect(evs.map((e) => e.date)).toEqual([20, 23, 26, 29, 32, 35, 38].map((i) => isoDate(T0 + i * DAY_MS)));
+    for (let k = 1; k < evs.length; k++) expect(evs[k]!.date >= evs[k - 1]!.exitDate).toBe(true);
+  });
+
+  test("unscorable firing days are no events: before ATR warm-up, missing funding in the hold, data ending first", () => {
+    expect(replayCoin(rule("long"), dataset(30, { [ATR_WINDOW - 1]: { x: 1 } }), opts)).toEqual([]);
+    expect(replayCoin(rule("long"), dataset(30, { 20: { x: 1 }, 22: { f: undefined } }), opts)).toEqual([]);
+    expect(replayCoin(rule("long"), dataset(30, { 28: { x: 1 } }), opts)).toEqual([]);
+  });
+});
+
+describe("clustering and the screen", () => {
+  test("ISO week = Monday, across year boundaries (week 1 starting in December, week 53)", () => {
+    expect(isoWeek("2024-12-30")).toBe("2024-12-30"); // Mon, ISO 2025-W01
+    expect(isoWeek("2025-01-01")).toBe("2024-12-30");
+    expect(isoWeek("2025-01-05")).toBe("2024-12-30"); // Sun ends the week
+    expect(isoWeek("2025-01-06")).toBe("2025-01-06");
+    expect(isoWeek("2021-01-03")).toBe("2020-12-28"); // Sun of ISO 2020-W53
+    expect(isoWeek("2026-10-18")).toBe("2026-10-12");
+  });
+
+  test("one-sided t quantile, df = weeks − 1", () => {
+    expect(t95(1)).toBe(6.314);
+    expect(t95(29)).toBe(1.699);
+    expect(t95(40)).toBeCloseTo(1.6839, 3);
+    expect(t95(120)).toBeCloseTo(1.6577, 3);
+    expect(t95(0)).toBeNaN();
+  });
+
+  const ev = (date: string, r: number): StudyEvent => ({ coin: "A", date, exit: "horizon", exitDate: date, r, fundingR: 0, ambiguous: false });
+  const weekly = (rs: number[]) => rs.map((r, k) => ev(isoDate(T0 + k * 7 * DAY_MS), r));
+
+  test("a week is one observation: expectancy is the mean of weekly means", () => {
+    const s = screenOf([ev("2024-01-01", 1), ev("2024-01-02", 1), ev("2024-01-07", 1), ev("2024-01-08", -1)]);
+    expect(s).toMatchObject({ events: 4, weeks: 2, expectancy: 0 });
+    expect(s.upper95).toBeCloseTo((6.314 * Math.SQRT2) / Math.SQRT2, 10);
+  });
+
+  test("verdicts: < 30 weeks insufficient, upper95 < 0 rejected, else clear", () => {
+    const losing = (w: number) => weekly(Array.from({ length: w }, (_, k) => -1 + (k % 2 ? 0.1 : -0.1)));
+    expect(verdictOfScreen(screenOf(losing(29)))).toBe("insufficient");
+    const rej = screenOf(losing(30));
+    expect(rej.weeks).toBe(30);
+    const sd = Math.sqrt((30 * 0.01) / 29);
+    expect(rej.upper95).toBeCloseTo(-1 + (t95(29) * sd) / Math.sqrt(30), 10);
+    expect(verdictOfScreen(rej)).toBe("rejected");
+    // Negative mean but too noisy to call: not shown to lose.
+    const noisy = screenOf(weekly(Array.from({ length: 30 }, (_, k) => -0.1 + (k % 2 ? 2 : -2))));
+    expect(noisy.expectancy!).toBeLessThan(0);
+    expect(verdictOfScreen(noisy)).toBe("clear");
+  });
+});
+
+describe("eventStudy: pooled", () => {
+  test("holdout is the last 30% of the period by time, not by event count; facts only", () => {
+    const over: Record<number, Partial<Bar>> = {};
+    for (let i = 20; i < 100; i++) over[i] = { x: 1 }; // events only early
+    const r = eventStudy(rule("long"), [dataset(400, over)], opts);
+    expect(r.period).toEqual({ from: isoDate(T0), to: isoDate(T0 + 399 * DAY_MS), holdoutFrom: isoDate(T0 + Math.round(399 * 0.7) * DAY_MS) });
+    expect(r.screen.events).toBeGreaterThan(20);
+    expect(r.holdout.events).toBe(0);
+    expect(r.train.events).toBe(r.screen.events);
+    expect(r.survivorship).toContain("Survivorship");
+  });
+
+  test("coins with too little history or missing data are insufficient, never filled in", () => {
+    const short = dataset(200, { 50: { x: 1 } }, "NEW");
+    const noFunding = dataset(400, { 50: { x: 1 } }, "NOF");
+    delete noFunding.metrics[FUNDING];
+    const r = eventStudy(rule("long"), [short, noFunding], opts);
+    expect(r.coins).toEqual([
+      { coin: "NEW", bars: 200, from: isoDate(T0), to: isoDate(T0 + 199 * DAY_MS), events: 0, status: "insufficient", reason: "200 bars with funding < 365" },
+      { coin: "NOF", bars: 0, from: null, to: null, events: 0, status: "insufficient", reason: `no ${FUNDING}` },
+    ]);
+    expect(r).toMatchObject({ period: null, verdict: "insufficient", screen: { events: 0, weeks: 0, expectancy: null, upper95: null } });
+  });
+});
+
+describe("parity (FEATURES.md § 3): event days = live firing days after cooldown, no look-ahead", () => {
+  test("ruleFiresAt on data truncated at each bar picks the same entry days", () => {
+    const syn = synthetic({ seed: 7, days: 700 });
+    const c = syn.price;
+    const o = c.map((_, i) => c[Math.max(0, i - 1)]!);
+    const d: LabDataset = {
+      ...syn,
+      metrics: {
+        ...syn.metrics,
+        [OPEN]: o,
+        [HIGH]: c.map((x, i) => Math.max(x, o[i]!) * 1.01),
+        [LOW]: c.map((x, i) => Math.min(x, o[i]!) * 0.99),
+        [FUNDING]: c.map(() => 0.0001),
+      },
+    };
+    const r: Rule = { asset: "SYN", direction: "long", horizonDays: 5, conditions: [{ feature: "syn:a|z|30", op: "<", threshold: -1 }, { feature: "syn:b|raw|0", op: ">=", threshold: 0 }] };
+    const n = d.t.length;
+    const H = r.horizonDays;
+    const cut = (k: number): LabDataset => ({ ...d, t: d.t.slice(0, k + 1), price: d.price.slice(0, k + 1), metrics: Object.fromEntries(Object.entries(d.metrics).map(([id, v]) => [id, v.slice(0, k + 1)])) });
+    const expected: string[] = [];
+    let next = 0;
+    for (let k = ATR_WINDOW; k < n - H; k++) {
+      if (k < next || !ruleFiresAt(r, cut(k)).firing) continue;
+      expected.push(isoDate(d.t[k]!));
+      next = k + H;
+    }
+    const got = replayCoin(r, d, { stopAtr: 1.5, targetAtr: 3 }).map((e) => e.date).filter((x) => x < isoDate(d.t[n - H]!));
+    expect(expected.length).toBeGreaterThan(10);
+    expect(got).toEqual(expected);
+  });
+});

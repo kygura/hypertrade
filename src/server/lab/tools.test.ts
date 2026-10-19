@@ -60,7 +60,7 @@ async function fieldOf(name: string, args: unknown): Promise<string | undefined>
 }
 
 describe("lab tools: definitions", () => {
-  test("the thirteen contract tools, in order", () => {
+  test("the fourteen contract tools, in order", () => {
     expect(tools.map((t) => t.name)).toEqual([
       "lab_list_providers",
       "lab_list_metrics",
@@ -72,6 +72,7 @@ describe("lab tools: definitions", () => {
       "lab_catalogue_list",
       "lab_catalogue_save",
       "lab_author_rule",
+      "lab_event_study",
       "lab_catalogue_remove",
       "lab_catalogue_health",
       "lab_market_pulse",
@@ -92,6 +93,7 @@ describe("lab tools: definitions", () => {
       lab_sensitivity: ["rule"],
       lab_catalogue_save: ["rule", "name"],
       lab_catalogue_remove: ["id"],
+      lab_event_study: ["rule", "stopAtr", "targetAtr"],
       lab_list_runs: [],
       lab_market_pulse: [],
     });
@@ -131,6 +133,8 @@ describe("lab tools: argument validation", () => {
     expect(await fieldOf("lab_catalogue_save", { rule, name: "x", runId: "run-1" })).toBe("runId");
     expect(await fieldOf("lab_catalogue_list", { direction: "sideways" })).toBe("direction");
     expect(await fieldOf("lab_catalogue_health", { extra: 1 })).toBe("extra");
+    expect(await fieldOf("lab_event_study", { rule, stopAtr: 0, targetAtr: 3 })).toBe("stopAtr");
+    expect(await fieldOf("lab_event_study", { rule, stopAtr: 1, targetAtr: 3, coins: ["BT-C"] })).toBe("coins.0");
   });
 
   test("valid calls reach the service", async () => {
@@ -182,7 +186,7 @@ describe("lab tools: end to end", () => {
     expect(await bad.json()).toMatchObject({ ok: false, field: "windows.0" });
 
     const listed = (await (await app.request("/lab/tools")).json()) as { tools: Array<{ name: string }> };
-    expect(listed.tools.length).toBe(13);
+    expect(listed.tools.length).toBe(14);
   }, 20_000);
 
   test("autoresearch prompt and instructions", async () => {
