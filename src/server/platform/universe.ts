@@ -92,10 +92,14 @@ const RETRY_MS = 6 * 3_600_000;
 /** The scan waits at most this long for tags; a slower call is abandoned and the coins stay untagged. */
 const TAG_DEADLINE_MS = 15_000;
 
+const BATCH = 40;
+const OTHER_RECHECK_MS = 7 * 86_400_000;
+
 /**
- * Tags only the coins the store has no tags for (new listings), in one LLM call, and caches them. Returns coin -> sectors for
- * everything cached. Coins the LLM does not return are stored as ["Other"] (negative cache); on failure they stay untagged
- * and are not re-asked for 6h. It never throws.
+ * Tags the coins the store has no tags for (new listings) and re-asks "Other" rows older than 7 days, in LLM calls of
+ * at most 40 coins, and caches them. Returns coin -> sectors for everything cached. Coins the LLM omits are stored as
+ * ["Other"]; on failure they stay as they were and are not re-asked for 6h. Throws only if the cache cannot be read
+ * (callers use this only with a sector filter, where a silent empty universe would hide the outage); LLM failures never throw.
  */
 export async function ensureSectors(
   coins: string[],
@@ -103,38 +107,38 @@ export async function ensureSectors(
   llm: () => Promise<LlmDeps> = defaultLlmDeps,
   now: () => Date = () => new Date(),
 ): Promise<Record<string, string[]>> {
-  const have = new Map<string, SectorTag>();
-  let missing: string[] = [];
-  try {
-    for (const t of await store.listSectors()) have.set(t.coin, t);
-    missing = [...new Set(coins)].filter((c) => !have.has(c) && now().getTime() - (attempted.get(c) ?? -Infinity) >= RETRY_MS);
-  } catch (err) {
-    console.error("[sectors] cache read failed:", err instanceof Error ? err.message : err);
-  }
-  if (missing.length) {
-    for (const c of missing) attempted.set(c, now().getTime());
+  const have = new Map((await store.listSectors()).map((t) => [t.coin, t]));
+  const t0 = now().getTime();
+  const stale = (t?: SectorTag) => !t || (t.sectors.length === 1 && t.sectors[0] === "Other" && t0 - Date.parse(t.taggedAt) >= OTHER_RECHECK_MS);
+  const missing = [...new Set(coins)].filter((c) => stale(have.get(c)) && t0 - (attempted.get(c) ?? -Infinity) >= RETRY_MS);
+  for (let i = 0; i < missing.length; i += BATCH) {
+    const batch = missing.slice(i, i + BATCH);
+    for (const c of batch) attempted.set(c, t0);
     try {
       const { completeStructured } = await import("../intel/llm.js");
       const r = await completeStructured({
         tier: "cheap",
         system: SYSTEM,
-        user: `Coins: ${missing.join(", ")}`,
+        user: `Coins: ${batch.join(", ")}`,
         schema: sectorAnswerSchema,
         jsonSchema,
         promptVersion: SECTOR_PROMPT_VERSION,
         deadlineMs: TAG_DEADLINE_MS,
         deps: await llm(),
       });
-      if (r.ok) {
-        const asked = new Set(missing);
-        const taggedAt = now().toISOString();
-        const got = new Map(r.value.tags.filter((t) => asked.has(t.coin)).map((t) => [t.coin, [...new Set(t.sectors)]]));
-        const tags: SectorTag[] = missing.map((coin) => ({ coin, sectors: got.get(coin) ?? ["Other"], taggedAt }));
-        await store.saveSectors(tags);
-        for (const t of tags) have.set(t.coin, t);
-      } else console.error("[sectors] tagging failed:", r.error);
+      if (!r.ok) {
+        console.error("[sectors] tagging failed:", r.error);
+        break;
+      }
+      const asked = new Set(batch);
+      const taggedAt = now().toISOString();
+      const got = new Map(r.value.tags.filter((t) => asked.has(t.coin)).map((t) => [t.coin, [...new Set(t.sectors)]]));
+      const tags: SectorTag[] = batch.map((coin) => ({ coin, sectors: got.get(coin) ?? ["Other"], taggedAt }));
+      await store.saveSectors(tags);
+      for (const t of tags) have.set(t.coin, t);
     } catch (err) {
       console.error("[sectors] tagging failed:", err instanceof Error ? err.message : err);
+      break;
     }
   }
   return Object.fromEntries([...have].map(([c, t]) => [c, t.sectors]));
