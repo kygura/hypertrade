@@ -1,5 +1,5 @@
 import { DAY_MS, RuleSchema, type EventVerdict, type LabDataset, type Rule } from "../types.js";
-import { inZoneDays } from "./evaluate.js";
+import { funnel, inZoneDays, type FunnelStep } from "./evaluate.js";
 import { parseFeatureId } from "./features.js";
 import { ruleText } from "./rules.js";
 import { isoDate } from "./util.js";
@@ -79,6 +79,8 @@ export interface EventStudyResult {
   /** Facts, not a second verdict: the same screen on events before / from holdoutFrom (last 30% of the period by time). */
   train: Screen;
   holdout: Screen;
+  /** Informational: where the rule's coin-days die, over the studied coins. */
+  funnel: { steps: FunnelStep[]; bottleneck: number };
   coins: CoinStudy[];
   eventList: StudyEvent[];
   survivorship: string;
@@ -197,6 +199,7 @@ export function eventStudy(input: Rule, data: LabDataset[], opts: EventStudyOpti
   const minBars = opts.minBars ?? MIN_BARS;
   const coins: CoinStudy[] = [];
   const events: StudyEvent[] = [];
+  const studied: LabDataset[] = [];
   let lo = Infinity;
   let hi = -Infinity;
   const needed = [...new Set([...STUDY_METRICS, ...rule.conditions.map((c) => parseFeatureId(c.feature).metric)])];
@@ -214,6 +217,7 @@ export function eventStudy(input: Rule, data: LabDataset[], opts: EventStudyOpti
     }
     const evs = replayCoin(rule, d, opts);
     events.push(...evs);
+    studied.push(d);
     coins.push({ ...base, events: evs.length, status: "ok" });
     lo = Math.min(lo, funded[0]!);
     hi = Math.max(hi, funded.at(-1)!);
@@ -236,6 +240,7 @@ export function eventStudy(input: Rule, data: LabDataset[], opts: EventStudyOpti
     verdict: verdictOfScreen(screen),
     train: screenOf(period ? events.filter((e) => e.date < period.holdoutFrom) : []),
     holdout: screenOf(period ? events.filter((e) => e.date >= period.holdoutFrom) : []),
+    funnel: funnel(rule, studied),
     coins,
     eventList: events,
     survivorship: SURVIVORSHIP_NOTE,

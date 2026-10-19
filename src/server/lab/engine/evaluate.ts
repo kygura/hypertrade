@@ -171,6 +171,33 @@ export function inZoneDays(input: Rule, data: LabDataset): boolean[] {
   return Array.from(makeCtx(data).signal(rule.conditions), (x) => x === 1);
 }
 
+export interface FunnelStep {
+  condition: string;
+  /** Coin-days (summed over coins) passing this condition and every one before it. */
+  survivors: number;
+  /** Relative drop from the previous step (the first step: from all coin-days); 0 when that was 0. */
+  dropRel: number;
+}
+
+/** Where the idea dies: coin-days surviving each condition in rule order, via the same conditionSignal as evaluation. `bottleneck` = step with the largest dropRel (first on ties; -1 if none). */
+export function funnel(input: Rule, data: LabDataset | LabDataset[]): { steps: FunnelStep[]; bottleneck: number } {
+  const rule = RuleSchema.parse(input);
+  const sets = Array.isArray(data) ? data : [data];
+  const steps: FunnelStep[] = [];
+  const ctxs = sets.map((d) => (checkDataset(d), makeCtx(d)));
+  let prev = ctxs.reduce((a, c) => a + c.n, 0);
+  rule.conditions.forEach((c, k) => {
+    const sv = ctxs.reduce((a, ctx) => a + ctx.signal(rule.conditions.slice(0, k + 1)).reduce((x, v) => x + v, 0), 0);
+    steps.push({ condition: ruleText({ conditions: [c] }), survivors: sv, dropRel: prev ? 1 - sv / prev : 0 });
+    prev = sv;
+  });
+  let bottleneck = -1;
+  steps.forEach((s, k) => {
+    if (s.dropRel > (steps[bottleneck]?.dropRel ?? 0)) bottleneck = k;
+  });
+  return { steps, bottleneck };
+}
+
 /** Net performance over return days after `from` (a date or ISO time, e.g. savedAt); null with fewer than 2 return days. */
 export function livePerf(input: Rule, data: LabDataset, opts: { slippageBps: number; from: string }): PerfStats | null {
   const rule = RuleSchema.parse(input);

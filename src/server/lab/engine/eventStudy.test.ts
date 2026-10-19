@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DAY_MS, type LabDataset, type Rule } from "../types.js";
-import { ruleFiresAt } from "./evaluate.js";
+import { funnel, inZoneDays, ruleFiresAt } from "./evaluate.js";
 import { ATR_WINDOW, eventStudy, FUNDING, HIGH, isoWeek, LOW, OPEN, replayCoin, screenOf, t95, verdictOfScreen, type StudyEvent } from "./eventStudy.js";
 import { synthetic } from "./testkit.js";
 import { isoDate } from "./util.js";
@@ -185,5 +185,35 @@ describe("parity (FEATURES.md § 3): event days = live firing days after cooldow
     const got = replayCoin(r, d, { stopAtr: 1.5, targetAtr: 3 }).map((e) => e.date).filter((x) => x < isoDate(d.t[n - H]!));
     expect(expected.length).toBeGreaterThan(10);
     expect(got).toEqual(expected);
+  });
+});
+
+describe("funnel", () => {
+  const fr = (conds: Rule["conditions"]): Rule => ({ asset: "AAA", direction: "long", horizonDays: 3, conditions: conds });
+  const x = (op: "<" | ">=", threshold: number) => ({ feature: "syn:x|raw|0", op, threshold });
+  const d = dataset(10, { 1: { x: 2 }, 2: { x: 2 }, 3: { x: 2 }, 4: { x: 2 }, 5: { x: 5 }, 6: { x: 0.5 } });
+
+  test("hand-built: 10 -> 5 -> 1, bottleneck is the largest relative drop", () => {
+    const f = funnel(fr([x(">=", 1), x(">=", 5)]), d);
+    expect(f.steps.map((s) => s.survivors)).toEqual([5, 1]);
+    expect(f.steps[0]!.dropRel).toBeCloseTo(0.5);
+    expect(f.steps[1]!.dropRel).toBeCloseTo(0.8);
+    expect(f.bottleneck).toBe(1);
+  });
+
+  test("zero survivors: later steps drop 0, bottleneck stays on the killer", () => {
+    const f = funnel(fr([x(">=", 99), x(">=", 1)]), d);
+    expect(f.steps.map((s) => s.survivors)).toEqual([0, 0]);
+    expect(f.steps.map((s) => s.dropRel)).toEqual([1, 0]);
+    expect(f.bottleneck).toBe(0);
+  });
+
+  test("monotonic and last step equals inZoneDays firing count (parity), pooled over coins", () => {
+    const syn = synthetic({ seed: 7, days: 400 });
+    const r = fr([{ feature: "syn:a|z|30", op: "<", threshold: -0.5 }, { feature: "syn:b|raw|0", op: ">=", threshold: 0 }]);
+    const f = funnel(r, [syn, syn]);
+    const sv = f.steps.map((s) => s.survivors);
+    expect(sv.every((v, i) => i === 0 || v <= sv[i - 1]!)).toBe(true);
+    expect(sv.at(-1)).toBe(2 * inZoneDays(r, syn).filter(Boolean).length);
   });
 });
