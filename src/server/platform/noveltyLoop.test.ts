@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { alignDaily, createNoveltyLoop, type RawInputs } from "./noveltyLoop.js";
+import { alignDaily, createNoveltyLoop, storedInputs, type RawInputs } from "./noveltyLoop.js";
 import { MemoryPlatformStore } from "./store-memory.js";
 
 const DAY = 86_400_000;
@@ -27,14 +27,14 @@ describe("alignDaily()", () => {
 });
 
 describe("novelty loop", () => {
-  const setup = (lastFunding: number) => {
+  const setup = (lastFunding: number, now = NOW, inputsOver?: (coin: string) => Promise<RawInputs>) => {
     const store = new MemoryPlatformStore();
     const sent: string[] = [];
     let channels = ["telegram"];
     const loop = createNoveltyLoop({
-      store, now: () => NOW, maxTier: 1,
+      store, now: () => now, maxTier: 1,
       universe: async () => [{ coin: "SOL", dayNtlVlm: 5, oiUsd: 5 }, { coin: "DOGE", dayNtlVlm: 1, oiUsd: 1 }, { coin: "PEPE", dayNtlVlm: 0.5, oiUsd: 1 }],
-      inputs: async () => raw(lastFunding),
+      inputs: inputsOver ? async (c) => inputsOver(c) : async () => raw(lastFunding),
       notify: async (e) => (sent.push(e.id), channels),
     });
     return { store, sent, loop, setChannels: (c: string[]) => (channels = c) };
@@ -63,5 +63,51 @@ describe("novelty loop", () => {
     await loop.tick();
     expect((await store.listNovelty("2026-02-01")).map((x) => x.coin)).toEqual(["SOL"]);
     expect((await store.listNovelty("2026-02-01"))[0]!.notified).toHaveLength(1);
+  });
+
+  test("a coin that threw is re-checked next beat, not lost with the bar", async () => {
+    let calls = 0;
+    const { store, loop } = setup(0.05, NOW, async () => {
+      if (calls++ === 0) throw new Error("hl down");
+      return raw(0.05);
+    });
+    const log = console.error;
+    console.error = () => {};
+    await loop.tick();
+    console.error = log;
+    expect(await store.listNovelty("2026-02-01")).toEqual([]);
+    await loop.tick();
+    expect((await store.listNovelty("2026-02-01")).map((e) => e.id)).toEqual(["2026-02-09:SOL"]);
+  });
+
+  test("a bar not stored yet is retried; a fresh loop (restart) backfills the downtime window", async () => {
+    let stored = false;
+    const { store, loop } = setup(0.05, NOW, async () => {
+      const r = raw(0.05);
+      return stored ? r : { ...r, bars: r.bars.filter((b) => b.t < Date.UTC(2026, 1, 9)) };
+    });
+    await loop.tick();
+    expect(await store.listNovelty("2026-02-01")).toEqual([]);
+    stored = true;
+    await loop.tick();
+    expect((await store.listNovelty("2026-02-01")).map((e) => e.id)).toEqual(["2026-02-09:SOL"]);
+    // restart two beats later: the extreme is two bars back, still inside the 3-bar window
+    const restarted = setup(0.05, NOW + DAY);
+    await restarted.loop.tick();
+    expect((await restarted.store.listNovelty("2026-02-01")).map((e) => e.id)).toEqual(["2026-02-09:SOL"]);
+  });
+});
+
+describe("storedInputs()", () => {
+  test("syncs from now-400d but reads the baseline from the start of the stored history", async () => {
+    const calls: Record<string, unknown[]> = {};
+    const rec = (k: string, v: unknown) => async (...a: unknown[]) => ((calls[k] = a), v as never);
+    const ht = { ensureHistory: rec("ensure", undefined), candles: rec("candles", []), funding: rec("funding", []), series: rec("series", []) };
+    await storedInputs(ht, (async (...a: unknown[]) => ((calls.sync = a), {})) as never)("SOL", NOW);
+    expect(calls.ensure![1]).toBe(NOW - 400 * DAY);
+    expect(calls.sync![1]).toBe(NOW - 400 * DAY);
+    expect(calls.candles).toEqual(["SOL", 0]);
+    expect(calls.funding).toEqual(["SOL", 0, NOW]);
+    expect(calls.series).toEqual(["hl.oi.SOL", 0, NOW]);
   });
 });
