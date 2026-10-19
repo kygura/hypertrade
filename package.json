@@ -11,6 +11,8 @@
     "lab:mcp": "bun run scripts/lab-mcp.ts",
     "tui": "bun run --cwd tui start",
     "routine": "bun run scripts/routine.ts",
+    "signals:collect": "bun run scripts/signals.ts collect",
+    "signals:notify": "bun run scripts/signals.ts notify",
     "build": "bun run typecheck && vite build",
     "test": "bun test ./src",
     "db:migrate": "bun run db/migrate.ts",
