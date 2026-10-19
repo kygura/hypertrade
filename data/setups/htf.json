@@ -1,0 +1,68 @@
+{
+  "regime": "neutral",
+  "stance": "range",
+  "thesis": "BTC ($81.9K) is 14.8% above its 20-week average and 12.8% above the 200-day, so the weekly trend reads up, but hl-cycles' Compass is 47 (Neutral, -3.7 over 30 days) with Macro the weakest lens at 30 (Restrictive). Regime is mild risk-on with 2 of 6 stress conditions on (STH-SOPR below 1, ETF 7d outflow -5,032 BTC). Price sits between the True Market Mean ($79.2K) and the ETF cost basis ($81.7K) with the Mean MVRV price ($105.6K) far overhead, so we lean that the range persists while a hike at the Oct 28 FOMC stays a live risk. Funding is near zero on all four majors, so leverage is not the driver.",
+  "biases": [
+    {
+      "asset": "BTC",
+      "bias": "neutral",
+      "levels": [
+        {
+          "label": "True Market Mean",
+          "price": 79158
+        },
+        {
+          "label": "ETF cost basis",
+          "price": 81699
+        },
+        {
+          "label": "STH cost basis",
+          "price": 74415
+        }
+      ],
+      "note": "Range between TMM and ETF cost basis; a daily close below $81.7K ends risk-on per hl-cycles."
+    },
+    {
+      "asset": "ETH",
+      "bias": "neutral",
+      "levels": [
+        {
+          "label": "20W average distance +12.3%",
+          "price": 2135
+        }
+      ],
+      "note": "Trend up on weekly structure but follows BTC; no independent level from the pack."
+    },
+    {
+      "asset": "SOL",
+      "bias": "neutral",
+      "levels": [
+        {
+          "label": "20W average distance +16.8%",
+          "price": 89
+        }
+      ],
+      "note": "Higher beta to BTC, rv30 47%."
+    },
+    {
+      "asset": "HYPE",
+      "bias": "neutral",
+      "levels": [
+        {
+          "label": "200D distance +21.5%",
+          "price": 64
+        }
+      ],
+      "note": "Trend up, rv30 53%; OI $1.57B near its 30d mean."
+    }
+  ],
+  "what_changes_it": [
+    "BTC daily close below $79,158 (True Market Mean) would move the view toward risk_off",
+    "BTC daily close above $105,592 (Mean MVRV price) with realized cap growing would move it toward trend_long",
+    "hl-cycles regime.state changes from mild_risk_on",
+    "FOMC on Oct 28 raises rates, or VIX closes above 25"
+  ],
+  "generated_at": "2026-10-19T20:04:22.463Z",
+  "valid_until": "2026-10-26T20:04:22.463Z",
+  "hl_cycles_state": "mild_risk_on"
+}
