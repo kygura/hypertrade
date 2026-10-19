@@ -1,6 +1,6 @@
 import { conditionMet, fmtFeature, fmtFeatureValue, type MetricDef, type RuleEvaluation } from '../../lib/lab'
 
-// LatestValuesRow — DESIGN.md §10.9. One row per condition: the feature's
+// LatestValuesRow — docs/design/README.md §10.9. One row per condition: the feature's
 // latest value against its threshold, ✓/✗ with the word in title and
 // visually-hidden text. A null value prints `— no data` and grays the row.
 

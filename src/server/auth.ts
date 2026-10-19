@@ -123,7 +123,7 @@ const LAB_PATH = /^\/(lab|mcp)(\/|$)/;
 const READ_PATH = /^\/(metrics|sectors|marketstate|intel|platform)(\/|$)/;
 
 /**
- * Bearer token for the lab surfaces and the read-only paths above (LAB.md
+ * Bearer token for the lab surfaces and the read-only paths above (docs/LAB.md
  * "Auth"): any of the comma-separated LAB_API_TOKEN values. Every configured
  * token is compared, so timing does not reveal which one matched. Unset or
  * empty disables bearer.

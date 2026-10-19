@@ -18,7 +18,7 @@ import {
 } from '../../lib/lab'
 import { DirectionWord, DsrValue, ProviderTag, SharpeValue, StatCell, VerdictBadge } from './common'
 
-// SignalCard — DESIGN.md §10.9. One RuleEvaluation: rank, the rule in our
+// SignalCard — docs/design/README.md §10.9. One RuleEvaluation: rank, the rule in our
 // language (the hero), FIRING/FLAT, SAVE; then the meta line; then seven
 // stat cells. WF SHARPE, HOLDOUT and DSR always sit side by side (rule 1) and
 // ignore the stats window; HIT, MAX DD and TR/YR follow it. The server's

@@ -6,7 +6,7 @@ import { ACTION_LABEL, actionClass, fmtProb, fmtTsSec, fmtUsdSigned } from './fo
 // IntentRow — one intent with its verdict timeline beneath. Approve/reject
 // buttons appear only while the latest verdict is `proposed` and the record
 // is not a dry run (dry runs never reach the governor). The buttons open the
-// caller's confirm dialog (DESIGN.md §7 Level 2) — they never act directly.
+// caller's confirm dialog (docs/design/README.md §7 Level 2) — they never act directly.
 
 export function latestVerdict(verdicts: Verdict[], intentId: string): Verdict | null {
   const mine = verdicts.filter((v) => v.intent_id === intentId).sort((a, b) => a.ts.localeCompare(b.ts))

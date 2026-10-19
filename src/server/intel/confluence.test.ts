@@ -6,7 +6,7 @@ import { mapperDeps, position } from "./fixtures/mapper-deps.js";
 import { routeEntities, type RouteInput } from "./mapper.js";
 import type { MemoryIntelStore, NewAlert } from "./store.js";
 
-// Store-backed wiring of confluence (SPEC.md § Scout S0.6): the source classes
+// Store-backed wiring of confluence (docs/SPEC.md § Scout S0.6): the source classes
 // active on an asset in the last 6 h lift the materiality of a new alert.
 
 const H = 3_600_000;

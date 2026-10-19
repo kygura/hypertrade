@@ -12,7 +12,7 @@ import { LabFooter } from '../components/lab/common'
 import { searchStore, useSearchStore } from '../components/lab/searchStore'
 import { dateIso, DEFAULT_FILTERS, effectiveTrials, filterRules, readLocal, validateForm, writeLocal, type Direction, type ResultsFilterState, type RuleEvaluation } from '../lib/lab'
 
-// SEARCH tab — DESIGN.md §10.9. Form (sticky at lg) + the results of the
+// SEARCH tab — docs/design/README.md §10.9. Form (sticky at lg) + the results of the
 // current/last run in this browser; /lab/runs/:runId loads a stored run's
 // config and results into the same layout.
 

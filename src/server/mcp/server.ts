@@ -1,6 +1,6 @@
 import { describeTool, ToolInputError, UpstreamError, type Registry, type ToolContext } from "./types.js";
 
-// Hand-rolled MCP server core (LAB.md "Surfaces"): JSON-RPC 2.0 in, JSON-RPC
+// Hand-rolled MCP server core (docs/LAB.md "Surfaces"): JSON-RPC 2.0 in, JSON-RPC
 // out, no transport. HTTP (http.ts) and stdio (scripts/lab-mcp.ts) wrap it.
 
 export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;

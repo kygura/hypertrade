@@ -1,4 +1,4 @@
--- Desk: the agentic portfolio desk (SPEC.md "Desk"). Runs of the agent team,
+-- Desk: the agentic portfolio desk (docs/SPEC.md "Desk"). Runs of the agent team,
 -- their event logs, governed trade proposals, the paper book, alerts, and a
 -- small key/value table for switches and cursors. Apply after 002.
 

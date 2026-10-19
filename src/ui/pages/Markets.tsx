@@ -5,7 +5,7 @@ import { SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock, StaleBanner } from 
 import { useApi } from '../lib/api'
 import { fmtPrice, fmtPct, classForPnl, fmtUsd } from '../../shared/format'
 
-// Markets — DESIGN.md §10.7. HL universe table, live-ish (poll every 15s),
+// Markets — docs/design/README.md §10.7. HL universe table, live-ish (poll every 15s),
 // tick flash on price change, funding crowded-trade flag, filter + sort.
 
 const POLL_MS = 15_000

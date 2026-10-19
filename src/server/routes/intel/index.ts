@@ -26,7 +26,7 @@ import { createTerminalRoutes, type TerminalRouteDeps } from "./terminal.js";
 import { createThesesRoutes } from "./theses.js";
 import { createWatchRoutes } from "./watch.js";
 
-// /api/intel — the Intel aggregator (SPEC.md § Intel I1, I2). Mounts every
+// /api/intel — the Intel aggregator (docs/SPEC.md § Intel I1, I2). Mounts every
 // sub-router on one Hono app; auth is the global gate (session cookie, GET
 // also accepts the LAB_API_TOKEN bearer via READ_PATH in auth.ts).
 //

@@ -38,7 +38,7 @@ export function ForecastHero({ forecast, other }: { forecast: CycleForecast; oth
   return (
     <div className="p-3 flex flex-col gap-2">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[10px] text-text-secondary [text-transform:var(--label-case)] tracking-[var(--label-tracking)]">next bull run starts, central estimate</span>
+        <span className="text-[10px] text-text-secondary [text-transform:var(--label-case)] tracking-[var(--label-tracking)]">next bull run start, central estimate if past cycles repeat</span>
       </div>
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <span className="text-[22px] leading-none text-text-primary tabular">{fmtMonth(onset.median)}</span>
@@ -48,7 +48,7 @@ export function ForecastHero({ forecast, other }: { forecast: CycleForecast; oth
       </div>
       {top && (
         <span className="text-[11px] text-text-secondary tabular">
-          run peaks around <span className="text-text-primary">{fmtQuarter(top.median)}</span> (core {fmtMonth(top.p25)} – {fmtMonth(top.p75)}), using past
+          the run could peak around <span className="text-text-primary">{fmtQuarter(top.median)}</span> (core {fmtMonth(top.p25)} – {fmtMonth(top.p75)}), going by past
           start-to-top lengths of {runLengths(forecast.episodes, kind)}.
         </span>
       )}

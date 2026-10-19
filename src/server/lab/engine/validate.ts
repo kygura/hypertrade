@@ -5,7 +5,7 @@ import { featureId, parseFeatureId } from "./features.js";
 import { ecdf, quantileSorted } from "./util.js";
 import { zoneConditions } from "./rules.js";
 
-// Validation (LAB.md §7–8): holdout split, purged walk-forward folds,
+// Validation (docs/LAB.md §7–8): holdout split, purged walk-forward folds,
 // quantile-matched refits and threshold/window sensitivity.
 
 export const HOLDOUT_FRAC = 0.2;

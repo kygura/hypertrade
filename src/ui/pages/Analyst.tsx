@@ -20,17 +20,17 @@ import {
   type SimResultEvent,
 } from '../lib/analyst'
 
-// /analyst — natural-language analyst over the app's data (SPEC.md
+// /analyst — natural-language analyst over the app's data (docs/SPEC.md
 // "Analyst"). Read-only market intelligence: it reads briefings, sectors,
 // metrics, markets and the engine's decisions, and (on Anthropic models)
 // searches the web; it never places, approves or rejects anything.
 //
-// Layout (DESIGN.md §10.9): a thread panel with a sticky composer, and a
+// Layout (docs/design/README.md §10.9): a thread panel with a sticky composer, and a
 // rail with the prompt library, provider setup status and the tool list.
 // Each answer shows the model that wrote it, its reasoning (when the model
 // exposes any), a tool timeline, the markdown answer, sources and usage.
 //
-// State vocabulary (DESIGN.md §6): status probe → SkeletonRows; 503 →
+// State vocabulary (docs/design/README.md §6): status probe → SkeletonRows; 503 →
 // OfflineBlock "ANALYST NOT CONFIGURED"; 502/network → OfflineBlock
 // "ANALYST UNREACHABLE"; per-turn failures → verbatim ErrorBlock under it.
 

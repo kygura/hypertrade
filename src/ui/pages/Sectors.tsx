@@ -7,7 +7,7 @@ import { RotationsPanel } from '../components/sectors/RotationsPanel'
 import { SectorDrillPanel } from '../components/sectors/SectorDrillPanel'
 import type { SectorsData } from '../../shared/types'
 
-// /sectors — DESIGN.md §10.5. Desktop 12-col: MINDSHARE 8 / ROTATIONS 4,
+// /sectors — docs/design/README.md §10.5. Desktop 12-col: MINDSHARE 8 / ROTATIONS 4,
 // DRILL-IN full-width below when a sector is selected. Mobile: grid, then
 // drill-in (scrolled into view), then rotations.
 

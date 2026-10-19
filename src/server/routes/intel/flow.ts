@@ -19,7 +19,7 @@ import { computeWindows, LOOKBACK, pickWindow, seriesFromRows, spanResult } from
 import { failure, invalid } from "./http.js";
 import type { TerminalRouteDeps } from "./terminal.js";
 
-// /intel flow endpoints (SPEC.md § Flow F1).
+// /intel flow endpoints (docs/SPEC.md § Flow F1).
 //
 // GET /heatmap?window=review|1h|6h|24h → held ∪ watched × fixed metrics: signed z and Δ per cell
 //     (review = Δ since the last review, z against non-overlapping Δs of that span; 6 h with no review),

@@ -11,7 +11,7 @@ import { envNum } from "./scanner.js";
 import type { PlatformStore } from "./store.js";
 import { ensureSectors, myMarkets, parseUniverseSpec, selectUniverse, type UniverseOpts } from "./universe.js";
 
-// Novelty loop (FEATURES.md section 4): hourly beat, detection once per newly closed UTC day. Every coin in the
+// Novelty loop (docs/FEATURES.md section 4): hourly beat, detection once per newly closed UTC day. Every coin in the
 // liquidity gate (plus my markets, which bypass it; PLATFORM_NOVELTY_UNIVERSE replaces both) is checked against its own full history from `candles` (1d), `funding` and `observations`
 // hl.oi.<COIN>. Information only: it journals and pushes, it never gates or trades.
 

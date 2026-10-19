@@ -13,7 +13,7 @@ import { binFeatures, growForest, type Binned, type TreeParams } from "./tree.js
 import { isoDate, SearchRefused } from "./util.js";
 import { makeSplit, MIN_TRAIN_ROWS, walkForwardScore, walkForwardSegments, type Split } from "./validate.js";
 
-// The heuristic search (LAB.md §4–7). Each trial grows a forest per
+// The heuristic search (docs/LAB.md §4–7). Each trial grows a forest per
 // walk-forward fold on the purged training rows, takes the best rules by
 // training objective, trades them on the fold's test block, and is scored on
 // the concatenated test blocks. The best trial's parameters are refitted on

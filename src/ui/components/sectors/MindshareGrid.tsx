@@ -2,11 +2,11 @@ import { fmtPct } from '../../../shared/format'
 import type { Sector } from '../../../shared/types'
 import { MomentumBadge } from '../MomentumBadge'
 
-// MindshareGrid — DESIGN.md §10.5. Tiered heat-grid: cell SIZE tier from
+// MindshareGrid — docs/design/README.md §10.5. Tiered heat-grid: cell SIZE tier from
 // mindshare_score, cell BACKGROUND from the momentum ramp (§2 tokens).
-// Deliberately not a treemap — see DESIGN.md's rationale for the decision.
+// Deliberately not a treemap — see docs/design/README.md's rationale for the decision.
 
-// Per-matched-token row from GET /api/sectors enrichment (DESIGN.md §10.5
+// Per-matched-token row from GET /api/sectors enrichment (docs/design/README.md §10.5
 // drill-in table): TOKEN/PRICE/24H%/OI/FUNDING, mirrors
 // src/server/routes/sectors.ts's SectorTokenRow.
 export interface SectorTokenRow {

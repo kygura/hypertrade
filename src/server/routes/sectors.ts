@@ -93,7 +93,7 @@ export async function loadSocial(coins: string[]): Promise<Map<string, TokenSoci
 
 /**
  * Per-sector OI/funding aggregate over its constituent tokens, plus a
- * per-matched-token row (DESIGN.md §10.5 drill-in table). Tokens not listed
+ * per-matched-token row (docs/design/README.md §10.5 drill-in table). Tokens not listed
  * on Hyperliquid (or not found in the current universe) are skipped
  * silently — the sector still renders, just without that token's weight.
  */

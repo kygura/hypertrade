@@ -3,7 +3,7 @@ import { OrderConfirmRequestSchema, OrderPreviewRequestSchema } from "../../../s
 import { confirmOrder, previewOrder, type CopilotDeps } from "../../intel/copilot.js";
 import { body, failure } from "./http.js";
 
-// /api/intel/order — the order copilot (SPEC.md § Intel I0.18). Session-cookie
+// /api/intel/order — the order copilot (docs/SPEC.md § Intel I0.18). Session-cookie
 // protected by the global gate. Nothing here executes without the confirm
 // call, and confirm only goes through with the hash of the latest preview.
 //

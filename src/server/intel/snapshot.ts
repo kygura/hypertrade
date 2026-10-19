@@ -4,7 +4,7 @@ import type { PositionsResponse, SnapshotRow } from "../../shared/intel.js";
 import type { AssetCtx } from "../../shared/types.js";
 import type { IntelStore, StopRow } from "./store.js";
 
-// Snapshot rows (SPEC.md § Intel I0.3). Written inside POST /api/cron/collect
+// Snapshot rows (docs/SPEC.md § Intel I0.3). Written inside POST /api/cron/collect
 // from the same metaAndAssetCtxs fetch: held ∪ watched ∪ top-20 by OI. Book
 // depth and spread come from l2Book, fetched only for held ∪ watched (≤ 25
 // coins, under the shared HL weight guard). Raw ticks never reach the LLM.

@@ -1,6 +1,6 @@
 import type { NoveltyEntry, NoveltyFeature } from "../../shared/platform.js";
 
-// Novelty detector (FEATURES.md section 4): has this coin ever been here? Pure: detection on closed daily
+// Novelty detector (docs/FEATURES.md section 4): has this coin ever been here? Pure: detection on closed daily
 // bars against the coin's own history, then admission (dedupe, which hits are pushed). Information only.
 
 const DAY = 86_400_000;

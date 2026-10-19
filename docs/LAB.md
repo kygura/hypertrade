@@ -296,7 +296,7 @@ has the same id in a run, in the catalogue and in a URL.
   Hyperliquid, and a JSON-file store at `~/.hypertrade/lab.json`).
 - **CLI**: `bun run lab <tool> [--arg value ...] [--json '{...}']`, with
   `bun run lab tools` to list. Same remote/local switch as stdio.
-- **UI**: `/lab` (DESIGN.md §10.9): search form → signal cards, rule detail
+- **UI**: `/lab` (docs/design/README.md §10.9): search form → signal cards, rule detail
   with equity curve and sensitivity, catalogue with health flags, Market Pulse.
 
 **Auth.** `/api/lab/*` and `/api/mcp` accept the session cookie *or*
@@ -339,4 +339,4 @@ implementations: Postgres (deployed), in-memory (no DB), and JSON file
 - `POST /api/mcp` answers `initialize`, `tools/list` and `tools/call` per the
   MCP 2025-06-18 schema. `bun run lab tools` and
   `bun run lab lab_list_metrics` work locally.
-- `/lab` renders every state in DESIGN.md §6 (loading, empty, error, stale).
+- `/lab` renders every state in docs/design/README.md §6 (loading, empty, error, stale).

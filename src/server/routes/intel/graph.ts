@@ -4,7 +4,7 @@ import { walk } from "../../intel/graph.js";
 import type { IntelStore, NewEdge } from "../../intel/store.js";
 import { body, failure } from "./http.js";
 
-// /intel/graph — the exposure graph (SPEC.md § Intel I0.8, I2).
+// /intel/graph — the exposure graph (docs/SPEC.md § Intel I0.8, I2).
 //
 // GET    /graph?asset=SOL   → {asset, edges touching it, best ≤2-hop paths from it to held/watched assets}
 // POST   /graph/edges       {src, dst, type, weight?, source} → 201 Edge (the stored user edge; https source required)

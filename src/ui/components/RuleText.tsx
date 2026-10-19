@@ -1,7 +1,7 @@
 import { Fragment } from 'react'
 import { conditionParts, wireText, type MetricDef, type Rule } from '../lib/lab'
 
-// RuleText — DESIGN.md §10.9/§11. A rule's conditions in our language
+// RuleText — docs/design/README.md §10.9/§11. A rule's conditions in our language
 // (`z(90) MVRV < −1.12 AND funding ≥ 0.03%`): catalogue display names,
 // transform prefixes, thresholds by units, typeset ≥/< and a secondary AND.
 // The wire text stays reachable in `title`.

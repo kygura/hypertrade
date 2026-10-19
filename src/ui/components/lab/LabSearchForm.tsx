@@ -21,7 +21,7 @@ import { Field, invalidStyle } from './common'
 import { MetricPicker } from './MetricPicker'
 import type { SearchStoreState } from './searchStore'
 
-// LabSearchForm — DESIGN.md §10.9 (Easy mode, top → bottom, every field with
+// LabSearchForm — docs/design/README.md §10.9 (Easy mode, top → bottom, every field with
 // a visible .label). Validation is inline under the field; RUN stays
 // disabled while anything is invalid. While a search runs the form is
 // read-only (disabled, not hidden) and RUN shows an honest elapsed counter.

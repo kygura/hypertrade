@@ -2,7 +2,7 @@
 
 Binding UI brief for `tui/SPEC.md`. SPEC owns flows and data; `src/core/types.ts` owns shapes; this file
 owns layout, components, color, formatting and keys. Where this file is silent, follow the spirit of
-`DESIGN-terminal.md`: dense, tabular, numbers right-aligned, staleness always visible, **code computes
+`docs/design/terminal.md`: dense, tabular, numbers right-aligned, staleness always visible, **code computes
 and the model explains** (model text is never recolored green/red), and nothing ever trades without the
 human's own keypress.
 

@@ -3,7 +3,7 @@ import { ThesisInputSchema } from "../../../shared/intel.js";
 import { checkThesis, createThesis, type ThesisDeps } from "../../intel/thesis.js";
 import { body, failure, invalid } from "./http.js";
 
-// /api/intel/theses — thesis stress-tester (SPEC.md § Intel I0.16, I2).
+// /api/intel/theses — thesis stress-tester (docs/SPEC.md § Intel I0.16, I2).
 // GET    /theses            → {theses}
 // POST   /theses {text}     → Thesis (extracted by the model, checked by code)
 // POST   /theses/:id/check  → Thesis (re-evaluated from its saved checks, no model call)

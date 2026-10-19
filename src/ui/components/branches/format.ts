@@ -22,7 +22,7 @@ export function signClass(value: number): string {
   return 'text-text-secondary'
 }
 
-// MAX DD: signed negative, red text only past -20% (DESIGN.md §10.3).
+// MAX DD: signed negative, red text only past -20% (docs/design/README.md §10.3).
 // Engine reports maxDrawdownPct as a positive magnitude.
 export function maxDdClass(magnitudePct: number): string {
   return Math.abs(magnitudePct) >= 20 ? 'text-red-text' : 'text-text-primary'
@@ -55,7 +55,7 @@ export function oneYearAgoISODate(): string {
   return d.toISOString().slice(0, 10)
 }
 
-// DESIGN.md §10.3: NEW BRANCH default — UNTITLED, 100% USDC, 1y ago, $10k, no rebalance.
+// docs/design/README.md §10.3: NEW BRANCH default — UNTITLED, 100% USDC, 1y ago, $10k, no rebalance.
 export function defaultBranchConfig(): BranchConfig {
   return {
     startDate: oneYearAgoISODate(),
@@ -69,7 +69,7 @@ export function sumWeights(allocations: Allocation[]): number {
   return allocations.reduce((s, a) => s + (Number.isFinite(a.weightPct) ? a.weightPct : 0), 0)
 }
 
-// Percent-from-peak drawdown series, values <= 0 (DESIGN.md §9.2).
+// Percent-from-peak drawdown series, values <= 0 (docs/design/README.md §9.2).
 export function computeDrawdown(equity: EquityPoint[]): EquityPoint[] {
   let peak = -Infinity
   const out: EquityPoint[] = []

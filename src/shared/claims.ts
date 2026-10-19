@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Claim tagging (SPEC.md § Intel I0.7). Every LLM output line shown by Intel
+// Claim tagging (docs/SPEC.md § Intel I0.7). Every LLM output line shown by Intel
 // is either an observed fact with a source and a timestamp, or a hypothesis
 // marked as inference. The server validator (src/server/intel/claims.ts)
 // drops anything else before display.

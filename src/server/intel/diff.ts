@@ -2,14 +2,14 @@ import { SNAPSHOT_METRICS, type Alert, type Brief, type DeltaUnit, type DiffItem
 import { baselineZ, metricZ, type Point } from "./normalize.js";
 import { atr as atrOf } from "../desk/tools.js";
 
-// Diff items, materiality and ranking (SPEC.md § Intel I0.5). Pure.
+// Diff items, materiality and ranking (docs/SPEC.md § Intel I0.5). Pure.
 //   materiality    = |z| × exposure_weight × stop_proximity
 //   exposure_weight = asset notional / Σ notional (all three sources);
 //                    watchlist-only assets get WATCH_FLOOR
 //   stop_proximity = 1 + 2 · max(0, 1 − dist_to_stop / (2 · ATR14_1h)) with a
 //                    known stop, else 1
 // Every materiality in Intel goes through materiality() below: surprise ×
-// exposure × proximity × confluence(k) (SPEC.md § Scout S0.6).
+// exposure × proximity × confluence(k) (docs/SPEC.md § Scout S0.6).
 // An item clears at |z| ≥ minZ; the cleared ones rank by materiality and the
 // top k go into the brief. Nothing clears → silent. A level or ratio z is a
 // state, not a change, so it also has to have changed since the baseline
@@ -19,7 +19,7 @@ export const WATCH_FLOOR = 0.05;
 /** A level/ratio z already past minZ at the baseline clears only if it moved at least this much. */
 export const LEVEL_Z_MOVE = 1;
 
-/** The independent signal classes an asset can show at once (SPEC.md § Scout S0.6). */
+/** The independent signal classes an asset can show at once (docs/SPEC.md § Scout S0.6). */
 export type SignalSource = "snapshot" | "flow" | "regime" | "news";
 export const CONFLUENCE_WINDOW_MS = 6 * 3_600_000;
 export const CONFLUENCE_CAP = 1.5;

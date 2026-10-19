@@ -2,7 +2,7 @@ import { Badge } from '../Badge'
 import { DataTable, type Column } from '../DataTable'
 import { fmtSigned, relTime, runKey, runStatus, signTone, type RunSummary } from '../../lib/lab'
 
-// RunsTable — DESIGN.md §10.9, §4.4 drop order. Newest first; a row opens
+// RunsTable — docs/design/README.md §10.9, §4.4 drop order. Newest first; a row opens
 // /lab/runs/:runId. Columns are limited to what RunSummary carries (no
 // trial counts or duration in the summary). BEST WF SHARPE is walk-forward
 // only: `—` when the run has none (never the in-sample number).

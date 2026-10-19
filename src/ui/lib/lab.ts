@@ -22,8 +22,8 @@ import type {
 } from '../../server/lab/types'
 import type { RunSummary, StoredRun } from '../../server/lab/store'
 
-// Typed client for the lab tool registry (LAB.md "Tool contract") plus the
-// pure formatting/filter logic behind DESIGN.md §10.9. Wire shapes are the
+// Typed client for the lab tool registry (docs/LAB.md "Tool contract") plus the
+// pure formatting/filter logic behind docs/design/README.md §10.9. Wire shapes are the
 // server's own types (type-only import, erased at build), so a contract
 // change breaks typecheck here rather than a render.
 
@@ -723,7 +723,7 @@ export function sharpeCell(s: PerfStats | null | undefined): { text: string; ton
   return { text: fmtSigned(s.sharpe), tone: signTone(s.sharpe) }
 }
 
-/** Server verdict (LAB.md); the UI renders it, never computes it. */
+/** Server verdict (docs/LAB.md); the UI renders it, never computes it. */
 export type Verdict = NonNullable<RuleEvaluation['verdict']>
 
 const VERDICT_BADGE: Record<VerdictLevel, { label: string; tone: 'green' | 'amber' | 'red' | 'gray' }> = {

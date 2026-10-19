@@ -3,7 +3,7 @@ import { recordCollectorRun } from "../../db.js";
 import type { LlmDeps } from "../llm.js";
 import type { IntelStore, NewEvent } from "../store.js";
 
-// Shared plumbing for the ingest adapters (SPEC.md § Intel I0.10). Every
+// Shared plumbing for the ingest adapters (docs/SPEC.md § Intel I0.10). Every
 // adapter returns an AdapterResult and never throws; runIngestSources
 // (index.ts) records one collector_runs row per source as `intel:<source>`.
 

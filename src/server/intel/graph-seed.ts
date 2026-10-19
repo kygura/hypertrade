@@ -1,6 +1,6 @@
 import type { EdgeType } from "../../shared/intel.js";
 
-// Seed exposure graph (SPEC.md § Intel I0.8). Shipped in code, upserted
+// Seed exposure graph (docs/SPEC.md § Intel I0.8). Shipped in code, upserted
 // idempotently by ensureSeedEdges (graph.ts) with origin "seed". Direction
 // reads "src is exposed to dst through type" (jitoSOL is collateral-exposed
 // to SOL); the walk itself is undirected (graph.ts). Asset nodes use the

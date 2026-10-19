@@ -8,7 +8,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 // so it never reaches the browser. Session-cookie protection comes from the
 // global requireAuth gate in api/index.ts.
 //
-// Failure vocabulary (the UI maps both to DESIGN.md §6 OfflineBlock):
+// Failure vocabulary (the UI maps both to docs/design/README.md §6 OfflineBlock):
 //   503 { error: "engine not configured" }  — ENGINE_URL unset
 //   502 { error: "engine unreachable" }     — fetch rejected (DNS, refused…)
 //   502 { error: "engine timeout" }         — no response within TIMEOUT_MS

@@ -3,7 +3,7 @@ import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
 import type { AssetCtx } from "../../shared/types.js";
 
 // GET /hl/markets — live pass-through snapshot of the Hyperliquid universe
-// (SPEC.md API surface). Module-level 60s cache: serverless-ephemeral is
+// (docs/SPEC.md API surface). Module-level 60s cache: serverless-ephemeral is
 // fine here, each cold start just misses once.
 
 const CACHE_MS = 60_000;
@@ -75,7 +75,7 @@ export async function resolveCoin(param: string): Promise<string> {
 export async function getMarkets(): Promise<MarketsResponse> {
   const c = await refresh();
   // fetchedAt = when the cached snapshot was actually fetched upstream, not
-  // response time — Markets/MarketDrill (DESIGN.md §10.7) stale-check off
+  // response time — Markets/MarketDrill (docs/design/README.md §10.7) stale-check off
   // this, not client poll time.
   return { fetchedAt: new Date(c.ts).toISOString(), markets: c.markets };
 }

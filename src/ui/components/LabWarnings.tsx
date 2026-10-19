@@ -1,4 +1,4 @@
-// LabWarnings — DESIGN.md §10.9/§11. Full-width amber-bg strip, one row per
+// LabWarnings — docs/design/README.md §10.9/§11. Full-width amber-bg strip, one row per
 // engine warning with a 6px amber square bullet, verbatim 11px text-primary
 // (sentences, so not the uppercase StaleBanner idiom). Nothing when empty.
 

@@ -23,7 +23,7 @@ import { useTheme } from '../../themes/registry'
 import { Segmented } from '../Segmented'
 import { alpha, blend, css, fmtDay, fmtMonth, fmtUsdPx, PHASE_LABEL, PHASE_VAR } from './format'
 
-// CycleChart — the hl-cycles HTF chart (DESIGN.md §9.4 canvas chart family):
+// CycleChart — the hl-cycles HTF chart (docs/design/README.md §9.4 canvas chart family):
 // BTC daily/weekly candles on a log scale over phase-coloured bands, SMA200,
 // halvings and past bull-run onsets. Past the last bar it draws the forecast:
 // the pooled onset range and its core (interquartile) window in projection

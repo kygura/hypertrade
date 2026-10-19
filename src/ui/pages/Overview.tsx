@@ -10,7 +10,7 @@ import { engine, useEngine } from '../lib/engine'
 import { EngineOffline } from '../components/strategy/EngineOffline'
 import { fmtAge, fmtTs } from '../components/strategy/format'
 
-// Overview — DESIGN.md §10.2. 30-second morning read: metrics strip,
+// Overview — docs/design/README.md §10.2. 30-second morning read: metrics strip,
 // MarketState headline, sector heat, recent branches, engine glance. Nothing is edited
 // here — every panel is a read + a link deeper.
 

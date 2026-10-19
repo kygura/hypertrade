@@ -1,4 +1,4 @@
-// Always-on entry (SPEC.md § Platform P0.1): one Bun process serving /api/*
+// Always-on entry (docs/SPEC.md § Platform P0.1): one Bun process serving /api/*
 // (the Hono app), dist/ with SPA fallback, and the worker loops. Run with
 //   bun run start
 // The port is bound first and boot() (migrate, store, loops) runs behind it: a

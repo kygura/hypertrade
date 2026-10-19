@@ -26,7 +26,7 @@ import { loadPricedIn, pricedInText } from "./pricedIn.js";
 import type { IntelStore } from "./store.js";
 import { norm } from "./util.js";
 
-// News → position mapper (SPEC.md § Intel I0.11). Code does the routing:
+// News → position mapper (docs/SPEC.md § Intel I0.11). Code does the routing:
 // walk the exposure graph (stored edges over the seed) from the event's
 // entities to held ∪ watched assets; an entity that is itself a target is a
 // direct hit (hops 0, weight 1). Per exposed asset:

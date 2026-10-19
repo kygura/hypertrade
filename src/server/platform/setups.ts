@@ -3,7 +3,7 @@ import type { Side } from "../../shared/intel.js";
 import type { FeatureVector, LiquidityTier, NearMiss } from "../../shared/platform.js";
 import { fin } from "../intel/util.js";
 
-// Platform setups as data (TASKS PS-B1, FEATURES.md § 1): each setup is a
+// Platform setups as data (TASKS PS-B1, docs/FEATURES.md § 1): each setup is a
 // SetupSchema over the scanner's feature vector, compiled once into the
 // predicate the scanner calls. Port of perpsignal T9 (schema.ts / compile.ts),
 // cut to what the intraday setups need. Not the Lab Rule: that has only
@@ -164,7 +164,7 @@ export function explain(s: SetupSchema, fv: FeatureVector, tier: LiquidityTier, 
 
 const NEAR = 0.1;
 
-/** FEATURES.md near-miss: healthy bar, exactly one condition of a setup failed, numeric, not a price level, within 10% of its limit; the closest wins. */
+/** docs/FEATURES.md near-miss: healthy bar, exactly one condition of a setup failed, numeric, not a price level, within 10% of its limit; the closest wins. */
 export function nearMiss(coin: string, fv: FeatureVector, tier: LiquidityTier, thresholds = DEFAULT_THRESHOLDS, schemas: SetupSchema[] = SETUPS): NearMiss | null {
   if (!levels(fv)) return null;
   let best: NearMiss | null = null;

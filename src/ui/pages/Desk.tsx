@@ -21,7 +21,7 @@ import {
   type TradeProposal,
 } from '../lib/desk'
 
-// /desk — the agentic portfolio desk (SPEC.md "Desk"). Ask the team a
+// /desk — the agentic portfolio desk (docs/SPEC.md "Desk"). Ask the team a
 // question and watch the PM fan out to specialists; approve or reject what
 // the governor queued; see the paper book, alerts and past runs. Entries
 // only reach the book through the server's governor; this page never sizes.

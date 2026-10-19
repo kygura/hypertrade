@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { ANTHROPIC_MODELS, buildCatalog, parseOpenAIModels } from "./catalog.js";
 import { DEFAULT_MODEL, resolveChosenProvider, resolveProvider } from "./provider.js";
 
-// Catalog availability/precedence logic (SPEC.md "Analyst" model selector).
+// Catalog availability/precedence logic (docs/SPEC.md "Analyst" model selector).
 // See README.md's "Analyst" section for the plain-English precedence rules
 // this exercises.
 

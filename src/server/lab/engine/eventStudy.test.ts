@@ -164,7 +164,7 @@ describe("eventStudy: pooled", () => {
   });
 });
 
-describe("parity (FEATURES.md § 3): event days = live firing days after cooldown, no look-ahead", () => {
+describe("parity (docs/FEATURES.md § 3): event days = live firing days after cooldown, no look-ahead", () => {
   test("ruleFiresAt on data truncated at each bar picks the same entry days", () => {
     const syn = synthetic({ seed: 7, days: 700 });
     const c = syn.price;

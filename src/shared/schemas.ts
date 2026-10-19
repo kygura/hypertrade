@@ -3,7 +3,7 @@
 // Types in ./types.ts are inferred from these where the shape is data, not code.
 import { z } from "zod";
 
-// ─── Branch model (SPEC.md "Branch model") ───
+// ─── Branch model (docs/SPEC.md "Branch model") ───
 
 // side/leverage default to long/1 (a spot leg); short or leverage > 1 makes it a
 // perp leg. Refined here rather than on BranchConfigSchema so that one stays a
@@ -64,7 +64,7 @@ export const BranchConfigSchema = z.object({
   dca: z.array(DcaSchema).max(8).optional(),
 });
 
-// ─── Routine contract (SPEC.md "Routine Contract") ───
+// ─── Routine contract (docs/SPEC.md "Routine Contract") ───
 
 export const MarketStateSignalSchema = z.object({
   label: z.string(),

@@ -9,7 +9,7 @@ import { DecisionMeta, DecisionView } from '../components/strategy/DecisionView'
 import { ACTION_LABEL } from '../components/strategy/format'
 
 // /decisions/:id — the full record (DecisionView) plus approve/reject on
-// proposed intents. Both go through the DESIGN.md §7 Level 2 dialog: title
+// proposed intents. Both go through the docs/design/README.md §7 Level 2 dialog: title
 // = verb + object, body names the intent, confirm is Danger tier labeled
 // verb + object, dialog stays open on failure with the verbatim error.
 // Approving hands money to a venue; it is the heaviest per-intent action in

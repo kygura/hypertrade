@@ -1,7 +1,7 @@
 import { Segmented } from '../Segmented'
 import type { ResultsFilterState } from '../../lib/lab'
 
-// ResultsFilters — DESIGN.md §10.9. Kind, the stats window (where HIT, MAX
+// ResultsFilters — docs/design/README.md §10.9. Kind, the stats window (where HIT, MAX
 // DD, TR/YR and the numeric filters read from; the two Sharpe cells ignore
 // it), and blank-is-off numeric filters. No control sorts by holdout.
 

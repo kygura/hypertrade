@@ -30,7 +30,7 @@ import { snapshotRow } from "./snapshot.js";
 import { PgIntelStore, type IntelStore } from "./store.js";
 import { round } from "./util.js";
 
-// Terminal brief (SPEC.md § Intel I0.14). Code diffs held ∪ watched assets
+// Terminal brief (docs/SPEC.md § Intel I0.14). Code diffs held ∪ watched assets
 // against a baseline, ranks by materiality and merges batched alerts and the
 // next 24 h of catalysts; the strong tier only narrates what cleared, in
 // claim-tagged lines. Silent (nothing cleared, no batched alert) → no LLM

@@ -1,7 +1,7 @@
 import type { Direction } from "../types.js";
 import { parseDay, quantileSorted, sortedFinite } from "./util.js";
 
-// Labels (LAB.md §2): day t is good (1) when the forward return over
+// Labels (docs/LAB.md §2): day t is good (1) when the forward return over
 // horizonDays clears the labelQuantile tail of the search region and has the
 // right sign. Days whose forward window reaches past `end` (the search
 // region's edge) are NaN, so holdout prices never shape a label.

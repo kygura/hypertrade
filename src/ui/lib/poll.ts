@@ -7,7 +7,7 @@ import { ApiError, NetworkError } from './api'
 // 'hidden'` and, on becoming visible, refetches once only if the last
 // success is older than the interval (DESIGN-terminal §1.4). Refetches update
 // in place: `data` is kept during a failed poll so the surface never flashes
-// back to a skeleton (DESIGN.md §6). Unmounted callers never poll.
+// back to a skeleton (docs/design/README.md §6). Unmounted callers never poll.
 
 export function errorMessage(err: unknown, fallback = 'request failed'): string {
   return err instanceof Error && err.message ? err.message : fallback
@@ -16,7 +16,7 @@ export function errorMessage(err: unknown, fallback = 'request failed'): string 
 export interface PollState<T> {
   data: T | null
   loading: boolean
-  /** Server responded with a failure (verbatim message) — DESIGN.md §6 ErrorBlock. */
+  /** Server responded with a failure (verbatim message) — docs/design/README.md §6 ErrorBlock. */
   error: string | null
   /** No usable response (network, or what `isOffline` says) — OfflineBlock. Message is the verbatim reason. */
   offline: string | null

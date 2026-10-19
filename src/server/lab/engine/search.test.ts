@@ -51,7 +51,7 @@ describe("runSearch", () => {
 
   // Save-bar validation on seeds disjoint from the calibration. The threshold
   // itself is chosen by `bun src/server/lab/engine/calibrate.ts` (noise seeds
-  // 1000+, planted 2000+; LAB.md "Calibration"); these check it out of sample,
+  // 1000+, planted 2000+; docs/LAB.md "Calibration"); these check it out of sample,
   // on seeds that played no part in choosing it. Two tests to keep each short.
   const validate = (noiseSeeds: number[], plantedSeeds: number[]) =>
     calibrate({ thresholds: [MIN_DEFLATED_SHARPE], noiseSeeds, plantedSeeds, drifts: plantedSeeds.length ? [0.012] : [], config: { trials: 16 } }).rows[0]!;

@@ -5,7 +5,7 @@ import type { AccountState } from "../desk/types.js";
 import type { IntelStore } from "./store.js";
 import { message } from "./ingest/common.js";
 
-// Three position sources unified at read time (SPEC.md § Intel I0.2):
+// Three position sources unified at read time (docs/SPEC.md § Intel I0.2):
 // manual (intel_positions), hl (the watched address, read-only) and desk
 // (the Desk's paper/testnet book). A source that fails is reported in
 // `sources` and contributes nothing; loadExposure never throws.

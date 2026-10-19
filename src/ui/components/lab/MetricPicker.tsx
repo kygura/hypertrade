@@ -3,7 +3,7 @@ import { ErrorBlock, SkeletonRows } from '../state'
 import { metricAvailable, type LabState, type MetricDef } from '../../lib/lab'
 import { ProviderTag } from './common'
 
-// MetricPicker — DESIGN.md §10.9. Trigger reads `6 METRICS ▾`; selected
+// MetricPicker — docs/design/README.md §10.9. Trigger reads `6 METRICS ▾`; selected
 // metrics render as removable chips. Opens as a popover (md+) or a
 // focus-trapped bottom sheet (mobile); search, groups `PROVIDER · CATEGORY ·
 // n`, one real checkbox per metric. Selection applies live; Esc closes and

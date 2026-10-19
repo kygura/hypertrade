@@ -1,4 +1,4 @@
-// Middleware adapter between untrusted LLM intents and the engine (SPEC.md "Paths", decision 4).
+// Middleware adapter between untrusted LLM intents and the engine (docs/SPEC.md "Paths", decision 4).
 // Deterministic, no LLM, no network: all I/O comes in through deps.
 import { SimIntentSchema, type SimBranchOutcome, type SimIntent, type SimRunResult } from "../../shared/intent.js";
 import type { BranchConfig } from "../../shared/types.js";

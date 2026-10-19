@@ -66,8 +66,8 @@ import {
   type WatchlistResponse,
 } from '../../shared/intel'
 
-// Typed client over /api/intel/* (SPEC.md § Intel I2) for the Terminal family
-// (DESIGN-terminal.md). Every response is parsed with its shared zod schema
+// Typed client over /api/intel/* (docs/SPEC.md § Intel I2) for the Terminal family
+// (docs/design/terminal.md). Every response is parsed with its shared zod schema
 // (src/shared/intel.ts) so a drifting server fails loudly here, not deep
 // inside a render. Writes whose response SPEC I2 does not pin resolve to void:
 // the caller refetches ("on mount + after a write", DESIGN-terminal §1.4).

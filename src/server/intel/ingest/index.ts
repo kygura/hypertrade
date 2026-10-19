@@ -13,7 +13,7 @@ import { fetchX } from "./x.js";
 export type { AdapterResult, IngestDeps, RunRecorder } from "./common.js";
 export { recordRun } from "./common.js";
 
-// Ingest cycle (SPEC.md § Intel I0.9, I0.10): every source → upsert events →
+// Ingest cycle (docs/SPEC.md § Intel I0.9, I0.10): every source → upsert events →
 // cluster the new ones → extract once per new cluster (cheap tier, cached by
 // cluster id) → merge clusters on entity overlap. Returns the clusters that
 // are ready for the mapper (extracted, not merged away, not yet mapped).

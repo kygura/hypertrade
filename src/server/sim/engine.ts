@@ -1,4 +1,4 @@
-// Pure branch simulation engine — no I/O. See SPEC.md "Branch model".
+// Pure branch simulation engine — no I/O. See docs/SPEC.md "Branch model".
 import type { Allocation, BranchConfig } from "../../shared/types.js";
 import { isPerp, STABLES } from "../../shared/schemas.js";
 

@@ -20,7 +20,7 @@ import { DrawdownChart } from '../components/branches/DrawdownChart'
 import { maxDdClass, signClass, sumWeights } from '../components/branches/format'
 import { fmtPct, fmtUsd } from '../../shared/format'
 
-// /branches/:id — DESIGN.md §10.4. Editor (left, 4 cols) + results (right,
+// /branches/:id — docs/design/README.md §10.4. Editor (left, 4 cols) + results (right,
 // 8 cols: equity/fan, drawdown, stats), reordered on mobile so results
 // (checked far more often than edited) lead: equity header → chart →
 // config → drawdown → stats.

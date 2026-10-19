@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 // AnimatedDigits — verbatim port from Hyperion. Used only on the per-view
-// xl value (DESIGN.md §8) — tables never animate.
+// xl value (docs/design/README.md §8) — tables never animate.
 
 interface Props {
   text: string

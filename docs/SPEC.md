@@ -43,7 +43,7 @@ app/
   .github/workflows/collect.yml
   ROUTINE.md              # contract for the cloud routine (what to read, what to write, how to push)
   vercel.json             # rewrites: /api/* -> function; daily cron fallback
-  SPEC.md DESIGN.md TASKS.md README.md .env.example
+  docs/SPEC.md docs/design/README.md docs/TASKS.md README.md .env.example
 ```
 
 ## Data model (Postgres)
@@ -112,7 +112,7 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 - `/api/engine/*` — authenticated proxy to the Hyperion strategy core (`${ENGINE_URL}/api/strategy/*`, bearer `ENGINE_TOKEN`); 503 `engine not configured`, 502 `engine unreachable` / `engine timeout`
 - `POST /api/analyst/query` `{question, history?, provider?, model?, effort?}` → `text/event-stream` with events `text {delta}`, `reasoning {delta}`, `tool_call {id, name, input, server}`, `tool_result {id, name, ok, summary}`, `citations {citations}`, `error {error}`, `done {usage, model, provider, label?, rounds, stop, effort?}`; `GET /api/analyst/status` → provider, label, model, web search availability, tool list; `GET /api/analyst/models` → `{default: {provider, model}, providers: [{id, label, blurb, available, reason?, webSearch, models: [{id, label, note, tier, effort, efforts?, defaultEffort?}]}]}`, always 200. Server default unconfigured → falls back to the first ready provider; nothing configured → 503 `{ "error": "analyst not configured" }`; an explicit but invalid/unavailable `provider`/`model`/`effort` choice → 400 `{ error, field }`.
 
-## UI views (design pass produces DESIGN.md; implementation follows it)
+## UI views (design pass produces docs/design/README.md; implementation follows it)
 
 - `/login` — password gate
 - `/` **Terminal** — the main screen (§ Intel): what changed since the last look against the operator's positions and watchlist, news mapped to positions, catalysts, exposure. Sub-routes `/journal`, `/theses`, `/query`, `/order`, `/watch`, `/overview`.
@@ -124,10 +124,10 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 - `/cycles` — **CYCLES**: the BTC cycle view ported from hl-cycles (daily/weekly log chart over HTF phase bands — accumulation, expansion, euphoria, distribution, markdown, capitulation — with SMA200, halvings and past bull-run onsets) plus a next-bull-run estimate: four timing methods (run-to-run rhythm, halving offset, bear-market low, previous top) projected from past run starts — dated by breakout (start of the final doubling into euphoria: Oct 2016, Oct 2020, Oct 2023; default) or by euphoria onset (toggle) — pooled into a central month, core and full window drawn past the last bar; cycle analogs indexed to each top; past runs table. `GET /api/cycles?tf=1d|1w` (`src/server/routes/cycles.ts`, model in `src/shared/cycles.ts` + `cycleForecast.ts`) runs on stored BTC 1d candles, topped up from Bitstamp when storage doesn't reach 2011.
 - `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` — the **ENGINE** console: companion to the Hyperion operator terminal for the Jev-driven strategy runtime (configure, dry-run, approve/reject proposals, governor and kill switch, venues). The Overview carries a compact ENGINE card.
 - `/desk` — **DESK**: agentic portfolio desk (§ Desk). Header strip (venue, equity, day PnL, model, approval mode, kill switch), ask panel with agent lanes per run (PM + specialists, tool chips, reports) and the streamed answer, runs history with replay, proposals queue (approve/reject, governor verdict, sizing), book (paper + watched HL account, close), alerts feed.
-- `/analyst` (SIMULATE mode) — **PATHS**: semantic simulation chat, see § Paths and DESIGN-chat.md.
-- `/analyst` — **ANALYST**: thread + rail workspace (DESIGN.md §10.8). Model/provider selector in the header (`ModelSelector`, popover desktop / bottom sheet mobile, persisted per-browser, per-model effort levels), streamed markdown answers with the model's reasoning (when exposed), a tool timeline, citations, usage, copy / ask again; rail with the prompt library, provider setup status and the tool list; session persisted per browser; OfflineBlock when no provider is configured (503) or unreachable (502/network).
+- `/analyst` (SIMULATE mode) — **PATHS**: semantic simulation chat, see § Paths and docs/design/chat.md.
+- `/analyst` — **ANALYST**: thread + rail workspace (docs/design/README.md §10.8). Model/provider selector in the header (`ModelSelector`, popover desktop / bottom sheet mobile, persisted per-browser, per-model effort levels), streamed markdown answers with the model's reasoning (when exposed), a tool timeline, citations, usage, copy / ask again; rail with the prompt library, provider setup status and the tool list; session persisted per browser; OfflineBlock when no provider is configured (503) or unreachable (502/network).
 
-Design language: iterate on Hyperion (dark-only, Geist Mono, zero radius, dense terminal aesthetic, its exact color tokens as the base) but MUST additionally work on mobile — Hyperion never solved responsive; DESIGN.md must.
+Design language: iterate on Hyperion (dark-only, Geist Mono, zero radius, dense terminal aesthetic, its exact color tokens as the base) but MUST additionally work on mobile — Hyperion never solved responsive; docs/design/README.md must.
 
 ## Desk (phase 3)
 
@@ -143,11 +143,11 @@ An agentic portfolio desk inside the app: a PM agent runs a roster of specialist
 
 ## Lab (heuristic research)
 
-Pillar: find simple, human-readable trading rules ("when `cm:CapMVRVCur` z(90) < −1.1 and `ht:funding` ≥ 0, go long BTC"), score them net of slippage, validate them walk-forward and on a one-shot holdout, and track the saved ones live. Full spec and tool contract: LAB.md (it wins on any detail). Code: `src/server/lab/`, `src/server/mcp/`, `src/server/routes/lab.ts`, `src/ui/pages/Lab.tsx`.
+Pillar: find simple, human-readable trading rules ("when `cm:CapMVRVCur` z(90) < −1.1 and `ht:funding` ≥ 0, go long BTC"), score them net of slippage, validate them walk-forward and on a one-shot holdout, and track the saved ones live. Full spec and tool contract: docs/LAB.md (it wins on any detail). Code: `src/server/lab/`, `src/server/mcp/`, `src/server/routes/lab.ts`, `src/ui/pages/Lab.tsx`.
 
 - **Tools**: one registry (`src/server/lab/tools.ts`) serves REST, MCP (HTTP and stdio), the CLI and the UI. The Analyst also gets its read-only tools (no `lab_search`, save or remove).
 - **API**: `GET /api/lab/tools`, `POST /api/lab/tools/:name` → `{ok, result}` / `{ok: false, error, field?}`; `/api/mcp` is MCP over HTTP. Both accept the session cookie or `Authorization: Bearer <LAB_API_TOKEN>` (the token is valid on those paths only).
-- **Route**: `/lab` — see LAB.md and DESIGN.md §10.9.
+- **Route**: `/lab` — see docs/LAB.md and docs/design/README.md §10.9.
 - **Data** (`db/migrations/004_lab.sql`): `lab_runs` (stored searches), `lab_rules` (the catalogue: rule, evaluation at save, archived_at). Collected history the lab reads lives in `observations` under `lab.*` series ids, written by `POST /api/cron/lab-collect` (own route and workflow job, lease-guarded against overlapping runs; daily Vercel cron fallback) and by `bun run lab sync --local`.
 - **Honesty**: rank by walk-forward; the holdout never selects. Results are historical research, not advice.
 
@@ -210,7 +210,7 @@ SAVE AS BRANCH (user click) ──► existing POST /api/branches
 
 ### UI delta
 
-`/analyst` gains a mode `Segmented` (`ASK | SIMULATE`), sim example prompts in the rail, and **PathCard** results inline in the thread (one card per `sim_result`, branches compared within it): equity vs benchmarks (existing `EquityChart`, fan when present), drawdown, stats, assumptions and warnings visible (a path without visible assumptions is forbidden, principle 6), `SAVE AS BRANCH` per branch (→ `/branches/:id` link once saved) and `FORK` (prefills the composer). Layout, states and mobile behaviour: **DESIGN-chat.md** (binding for this feature, extends DESIGN.md). `/branches/:id` shows and preserves the new fields (side, leverage, DCA) so a saved path round-trips through the editor.
+`/analyst` gains a mode `Segmented` (`ASK | SIMULATE`), sim example prompts in the rail, and **PathCard** results inline in the thread (one card per `sim_result`, branches compared within it): equity vs benchmarks (existing `EquityChart`, fan when present), drawdown, stats, assumptions and warnings visible (a path without visible assumptions is forbidden, principle 6), `SAVE AS BRANCH` per branch (→ `/branches/:id` link once saved) and `FORK` (prefills the composer). Layout, states and mobile behaviour: **docs/design/chat.md** (binding for this feature, extends docs/design/README.md). `/branches/:id` shows and preserves the new fields (side, leverage, DCA) so a saved path round-trips through the editor.
 
 ### Done
 
@@ -220,7 +220,7 @@ SAVE AS BRANCH (user click) ──► existing POST /api/branches
 
 ## Intel — LLM trading tools (phase 5)
 
-Source brief: "LLM Trading Tools — Spec" v0.1 (2026-10-13), all eight modules. This section is the binding version for hypertrade; where it differs from the brief, this section wins. Layout and states: **DESIGN-terminal.md** (binding for this feature, extends DESIGN.md).
+Source brief: "LLM Trading Tools — Spec" v0.1 (2026-10-13), all eight modules. This section is the binding version for hypertrade; where it differs from the brief, this section wins. Layout and states: **docs/design/terminal.md** (binding for this feature, extends docs/design/README.md).
 
 **Principle.** Code detects and computes. The LLM turns unstructured text into structured events and explains what changed. It never predicts direction, sets price targets, or sends orders on its own. Every LLM output that reaches the screen or Telegram passes the claim validator (I4) first.
 
@@ -325,7 +325,7 @@ Source brief: "Flow + Scout: Spec" (2026-10-14). Intel (phase 5) already covers 
    - Every Intel alert message carries inline 👍/👎 buttons (`callback_data: "fb:<alertId>:1|-1"`). The callback writes the same feedback as `POST /api/intel/alerts/:id/feedback`, answers the callback, and edits the buttons to show the vote.
    - Only the configured chat id is accepted.
 7. **Spend cap in dollars.** `INTEL_LLM_DAILY_USD` (default 2.00) is computed from stored usage × a per-model price table in `llm.ts`. Unknown model → priced at the strongest tier's rate. It is checked alongside the existing call cap; whichever trips first wins. Over cap → fail closed exactly as today. Alerts and the brief still go out with raw numbers and no prose, and show "LLM cap reached ($x.xx / $y.yy)".
-8. **UI (Terminal family).** Binding layout in DESIGN-terminal.md § Flow.
+8. **UI (Terminal family).** Binding layout in docs/design/terminal.md § Flow.
    - **Heatmap** panel on `/`: rows are held ∪ watched assets, columns are metrics, with a window switch (since review / 1 h / 6 h / 24 h). Each cell is a signed z, with null shown as empty. A cell click opens the asset page.
    - **Detector chips** on the Terminal.
    - **Asset page** `/asset/:coin`: snapshot and flow time series with event markers (detector hits, flips, news alerts, catalysts) and the asset's exposure graph (edges plus 2-hop paths to held/watched, typed and weighted).
@@ -366,7 +366,7 @@ Source: the same "Flow + Scout" brief, § 4.3 and § 3.4. The operator asked (20
    - `INTEL_DIGEST_MATERIALITY` (new, default 0.10) is the digest threshold. Items below it are logged but not shown in the What-changed digest or `/digest`.
 6. **Confluence.** There is one seam, `materiality(parts, k)` in `diff.ts`, which returns `surprise × exposure × proximity × confluence(k)`, where `confluence(k) = min(1.5, 1 + 0.25 × (k − 1))`. The four inline formulas (diff, flowEvents, mapper, catalysts) call it. `k` counts the distinct signal sources on the asset within the window: snapshot z moves, flow detectors, flips/crossings, and news alerts. **The item's own source is excluded**, so a flag never boosts itself. `k` is computed before alerts are routed, because routing reads materiality at insert time. The factor is exposed on the item (`confluence: number`) so the UI can show it.
 7. **Graph diff-review.** A graph refresh never deletes edges for an asset whose rebuild failed or returned nothing. Each refresh records a diff per asset (`added`, `removed`, `changed`, `refused`) in its summary and in `collector_runs`. `refreshGraph` already never deletes, so the only new behaviour is this: edges that a successful rebuild no longer proposes are removed, unless they are `seed` or `manual` (a set diff plus one store delete method).
-8. **UI** (binding layout in DESIGN-terminal.md § 16):
+8. **UI** (binding layout in docs/design/terminal.md § 16):
    - **Research panel** on `/`: an ask box (question + optional asset) and the latest results, newest first, with status, explanation, evidence rows tagged OBS/HYP with link and ts, confidence and open questions.
    - **Detector chips:** a "research" action when a flag has no result yet, or "see research" when it does.
    - **`/asset/:coin`:** research results join the timeline as events.
@@ -464,7 +464,7 @@ src/server/platform/
   context.ts                      # runtime registry the routes read (null → 503 platform_offline)
 src/server/routes/platform.ts     # /api/platform/*
 src/ui/lib/platformApi.ts         # typed fetchers, parse every response with the shared schemas
-src/ui/pages/cockpit/*            # landing cockpit (see DESIGN-terminal.md § Cockpit); pure helpers in logic.ts
+src/ui/pages/cockpit/*            # landing cockpit (see docs/design/terminal.md § Cockpit); pure helpers in logic.ts
 ```
 
 ### P2. API delta (all under `/api/platform`, cookie auth; GETs also accept the read bearer)
@@ -479,7 +479,7 @@ src/ui/pages/cockpit/*            # landing cockpit (see DESIGN-terminal.md § C
 
 ### P3. UI delta
 
-The cockpit becomes `/`; the current Terminal moves to `/terminal`, with all its routes and panels unchanged. The cockpit layout, states and interactions follow `DESIGN-terminal.md` § Cockpit, written in the design pass of this phase:
+The cockpit becomes `/`; the current Terminal moves to `/terminal`, with all its routes and panels unchanged. The cockpit layout, states and interactions follow `docs/design/terminal.md` § Cockpit, written in the design pass of this phase:
 - a ranked feed (the spec's row fields);
 - the selected asset's liquidation heatmap, with live mark, nearest long and short clusters with their distance, a coverage figure and a time-by-price history;
 - the detail view, which answers the five questions;

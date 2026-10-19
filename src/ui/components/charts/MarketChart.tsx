@@ -25,7 +25,7 @@ import { useTheme } from '../../themes/registry'
 import { Segmented } from '../Segmented'
 import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
 
-// MarketChart — DESIGN.md §9.4. TradingView lightweight-charts (canvas), the
+// MarketChart — docs/design/README.md §9.4. TradingView lightweight-charts (canvas), the
 // one chart that isn't Recharts: it has to hold tens of thousands of bars,
 // pan/zoom, and stack panes on one time axis. Panes: price + volume, funding
 // APR, open interest, premium. Scrolling left pages in older history (the
@@ -459,7 +459,7 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
 
 function chartHeight(o: Record<Overlay, boolean>): string {
   const panes = (o.funding ? 1 : 0) + (o.oi ? 1 : 0) + (o.premium ? 1 : 0)
-  // DESIGN.md §4.5: price area 240px mobile / 340px desktop, plus each pane.
+  // docs/design/README.md §4.5: price area 240px mobile / 340px desktop, plus each pane.
   return `calc(${typeof window !== 'undefined' && window.innerWidth >= 1024 ? 340 : 240}px + ${panes} * 96px)`
 }
 

@@ -1,6 +1,6 @@
 import { decodeEntities, fetchText, fresh, hashKey, headlineEvent, hostLabel, message, pastIso, plain, type AdapterResult, type IngestDeps } from "./common.js";
 
-// RSS 2.0 + Atom (SPEC.md § Intel I0.10). A small regex parser on purpose (no
+// RSS 2.0 + Atom (docs/SPEC.md § Intel I0.10). A small regex parser on purpose (no
 // XML dependency): it reads the handful of fields a headline needs, unwraps
 // CDATA, decodes entities and strips markup. Feeds come from INTEL_RSS_FEEDS
 // (comma list) or the keyless defaults below.

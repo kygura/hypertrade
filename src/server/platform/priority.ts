@@ -1,7 +1,7 @@
 import type { AddressRow } from "../../shared/platform.js";
 import { fin } from "../intel/util.js";
 
-// Crawler priority (SPEC.md § Platform P0.6). Pure. Order of the result:
+// Crawler priority (docs/SPEC.md § Platform P0.6). Pure. Order of the result:
 //   1. never polled (largest last-known notional first, then most recently seen)
 //   2. overdue: holds positions and was last polled >= maxAgeMin ago; these outrank every
 //      fresher account whatever its priority (the floor), ordered by priority among themselves

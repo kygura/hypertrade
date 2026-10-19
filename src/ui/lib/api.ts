@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 // Tiny fetch wrapper — JSON in/out, credentials included, 401 redirects to
-// /login (SPEC.md: "Frontend route guard redirects to /login"). The intended
+// /login (docs/SPEC.md: "Frontend route guard redirects to /login"). The intended
 // path is remembered so LoginForm can return there on success.
 
 export class ApiError extends Error {
@@ -20,7 +20,7 @@ export class ApiError extends Error {
 
 // Thrown when fetch() itself rejects — no HTTP response was received at all
 // (DNS failure, offline, connection refused) — as opposed to ApiError, which
-// means the server responded with a non-2xx status. DESIGN.md §6 OfflineBlock
+// means the server responded with a non-2xx status. docs/design/README.md §6 OfflineBlock
 // is for this case specifically.
 export class NetworkError extends Error {}
 
@@ -76,7 +76,7 @@ interface ApiState<T> {
 
 // useApi — GET a path, tracking loading/error/offline/data. Pass null to
 // skip. `offline` (network-unreachable, no HTTP response at all) is distinct
-// from `error` (server responded with a failure) — DESIGN.md §6 renders
+// from `error` (server responded with a failure) — docs/design/README.md §6 renders
 // OfflineBlock vs ErrorBlock accordingly.
 export function useApi<T>(path: string | null): ApiState<T> & { refetch: () => void } {
   const [state, setState] = useState<ApiState<T>>({ data: null, loading: path != null, error: null, offline: false })

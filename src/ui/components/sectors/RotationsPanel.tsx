@@ -2,7 +2,7 @@ import type { Rotation } from '../../../shared/types'
 import { EmptyBlock } from '../state'
 import { Badge } from '../Badge'
 
-// RotationsPanel — DESIGN.md §10.5. `rotations[]`: FROM→TO, confidence
+// RotationsPanel — docs/design/README.md §10.5. `rotations[]`: FROM→TO, confidence
 // badge, trigger, note (§4.4 drop order: note is md+ only, 2-line clamp).
 
 export function RotationsPanel({

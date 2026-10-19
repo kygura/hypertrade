@@ -2,7 +2,7 @@ import { PGlite, type Transaction } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import type { Db } from "../platform/store-pg.js";
 
-// In-process Postgres for Postgres-only tests (SPEC.md § Platform P0.19): no
+// In-process Postgres for Postgres-only tests (docs/SPEC.md § Platform P0.19): no
 // local Postgres or Docker here. postgres.js cannot talk to PGlite, so tests
 // drive the same SQL through PGlite's query API behind the Db interface.
 

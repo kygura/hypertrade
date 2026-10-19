@@ -6,7 +6,7 @@ import { RuleText } from '../RuleText'
 import { fmtSigned, sharpeOf, signTone, type CatalogueHealth, type CatalogueListEntry, type MetricDef } from '../../lib/lab'
 import { DirectionWord, SharpeValue, VerdictBadge } from './common'
 
-// CatalogueTable — DESIGN.md §10.9, §4.4 drop order. Ranked by LIVE SHARPE
+// CatalogueTable — docs/design/README.md §10.9, §4.4 drop order. Ranked by LIVE SHARPE
 // (the "is it still working" column); WF and HOLDOUT are the numbers at
 // save time, printed as a pair and kept at every width, with the server
 // verdict Badge in the NAME cell. Per-row REMOVE at lg only.

@@ -1,7 +1,7 @@
 import type { MarketStateDomain } from '../../../shared/types'
 import { Panel, PanelHeader, PanelBody } from '../Panel'
 
-// DomainCard + SignalRow — DESIGN.md §10.6. Panel per domains[] entry:
+// DomainCard + SignalRow — docs/design/README.md §10.6. Panel per domains[] entry:
 // summary, then one row per signal (label + tabular value + direction
 // glyph). Direction word lives in the glyph + value sign; label carries
 // the semantics.

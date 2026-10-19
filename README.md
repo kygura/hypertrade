@@ -2,12 +2,12 @@
 
 A personal market terminal and signal platform for crypto perps. It tracks assets, simulates allocation branches against historical data, monitors sector dynamics, and runs an always-on worker that scans Hyperliquid and surfaces ranked setups.
 
-Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade routine (a scheduled Claude session that commits research to `data/*.json`; see `ROUTINE.md`) and a second, signal-pipeline routine (near-misses, novelty, ready opportunities, thesis watch, Lab ideas; commits `data/signals/`, one ntfy push only when something changed; see `SIGNALS-ROUTINE.md`).
+Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade routine (a scheduled Claude session that commits research to `data/*.json`; one routine every 4 h covers market state, setups, Lab and the signal pipeline: near-misses, novelty, ready opportunities, thesis watch, Lab ideas; one ntfy push only when something changed; see `ROUTINE.md`).
 
 ## Status
 
 - **Live in the repo (master):** the platform backend in `src/server/platform/` (scanner, crawler, liquidation map, outcomes, alerts loops) on one Bun process, the cockpit UI, `/api/platform/*`, and the fallback routine (setups pulse, HTF view, daily brief; Opus 5.5 by default, Kimi as fallback).
-- **In progress:** the platform verification gate (review fix loop), then the Railway cutover; see `TASKS.platform.md`. Vercel is retired only at cutover: `vercel.json` still carries the collect, lab-collect and backfill crons until then.
+- **In progress:** the platform verification gate (review fix loop), then the Railway cutover; history in `docs/TASKS.md`. Vercel is retired only at cutover: `vercel.json` still carries the collect, lab-collect and backfill crons until then.
 - **Not committed yet:** an Ink terminal UI under `src/tui/` (`bun run tui`) with `SPEC-tui.md` and `DESIGN-tui.md`.
 
 ## Setup
@@ -132,7 +132,7 @@ Cost: Hobby plan is about $5/mo plus usage. At 0.5 vCPU and 512 MB, usage is abo
 
 ## Signals routine (scheduled Claude session)
 
-Runbook `SIGNALS-ROUTINE.md`, next to the market routine (`ROUTINE.md`). `bun run signals:collect` prints one JSON snapshot (near-miss, novelty, ready evidence, thesis watch, Lab ideas, diff vs the previous run) from the worker's own endpoints; the session writes `data/signals/YYYY-MM-DD.{md,json}`, commits, and sends one ntfy push through the desk notifier only when something changed. Informational; it gates and places nothing. Secrets in the cloud environment:
+The signals step of the single runbook (`ROUTINE.md`). `bun run signals:collect` prints one JSON snapshot (near-miss, novelty, ready evidence, thesis watch, Lab ideas, diff vs the previous run) from the worker's own endpoints; the session writes `data/signals/YYYY-MM-DD.{md,json}`, commits, and sends one ntfy push through the desk notifier only when something changed. Informational; it gates and places nothing. Secrets in the cloud environment:
 
 | Variable | Purpose |
 | --- | --- |
@@ -190,11 +190,11 @@ changes.
 
 ## Prop-trading contract
 
-`PROP.md` is the operator's own rulebook for trading a Breakout evaluation
+`docs/PROP.md` is the operator's own rulebook for trading a Breakout evaluation
 with this app as journal and enforcer: the firm's limits, the risk framework
 derived from them, the setup ledger, the session protocol and the gates that
 must clear before a fee is paid. The journal that enforces it is T13–T15 in
-`TASKS.md`.
+`docs/TASKS.md`.
 
 ## Desk (optional)
 
@@ -304,7 +304,7 @@ page. All `DESK_*` settings are listed in `.env.example`.
 ## Intel (the Terminal)
 
 The Terminal (`/` and `/journal`, `/theses`, `/query`, `/order`, `/watch`;
-SPEC.md § Intel) reads `/api/intel/*`. Code: `src/server/intel/*`,
+docs/SPEC.md § Intel) reads `/api/intel/*`. Code: `src/server/intel/*`,
 `src/server/routes/intel/*`. Needs `db/migrations/007_intel.sql` (plus 008, 009 and
 010, see Setup below); LLM features
 use the Desk's model resolution and alerts go through the Desk notifier.
@@ -350,7 +350,7 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 `/` is now the Terminal. It shows what changed since your last look, measured
 against your positions and watchlist: a ranked diff, the alerts and catalysts
 that touch those assets, and a short brief. The Overview that used to live at
-`/` moved unchanged to `/overview`. Design: `DESIGN-terminal.md`. Spec: SPEC.md
+`/` moved unchanged to `/overview`. Design: `docs/design/terminal.md`. Spec: docs/SPEC.md
 § Intel. Code: `src/server/intel/*`, `src/server/routes/intel/*`,
 `src/ui/pages/terminal/*`.
 
@@ -605,7 +605,7 @@ BTC"), score them as strategies net of slippage, validate them walk-forward and
 on a holdout, and track the ones you save in a catalogue with live
 performance, health checks and a Market Pulse. It rebuilds the methodology
 Glassnode published for Alpha Lab over keyless data. Full spec and the tool
-contract: [`LAB.md`](LAB.md). Results are historical research, not advice.
+contract: [`docs/LAB.md`](docs/LAB.md). Results are historical research, not advice.
 
 Providers (all keyless): `ht` (hypertrade DB, live Hyperliquid fallback for
 price/funding), `cm` (Coin Metrics community API), `fng` (alternative.me Fear

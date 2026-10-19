@@ -1,6 +1,6 @@
 import { Button } from '../Button'
 
-// HistoryStepper — DESIGN.md §10.6. ◂/▸ ghost buttons around a date
+// HistoryStepper — docs/design/README.md §10.6. ◂/▸ ghost buttons around a date
 // <select>. Dates come from GET /api/marketstate's `history` field (server-
 // backed, per the actual routes/marketstate.ts contract) rather than a
 // build-time import.meta.glob.

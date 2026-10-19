@@ -39,7 +39,7 @@ export const THEMES: readonly ThemeDef[] = [
       'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Hanken+Grotesk:wght@300;400;500&display=swap',
     ],
   },
-  // The token defaults in index.css (DESIGN.md); no theme file.
+  // The token defaults in index.css (docs/design/README.md); no theme file.
   { id: 'hyperion', label: 'HYPERION', short: 'HYP', scheme: 'dark' },
 ]
 
