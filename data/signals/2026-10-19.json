@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-19T20:02:53.622Z",
-  "since": "2026-10-18T20:02:53.622Z",
+  "generatedAt": "2026-10-19T21:55:26.043Z",
+  "since": "2026-10-18T21:55:26.043Z",
   "nearMiss": {
     "top": null,
     "all": []
@@ -43,6 +43,10 @@
     {
       "source": "opportunities",
       "code": "HTTP 503"
+    },
+    {
+      "source": "lab-trials",
+      "code": "error"
     }
   ]
 }
