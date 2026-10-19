@@ -185,11 +185,12 @@ export class DeskService {
     await this.store.insertAlert({ ts: this.now().toISOString(), level, title, body, runId, channels });
   }
 
-  async submitOpen(input: TradeProposal, runId: string | null): Promise<ProposalRecord> {
+  /** `forceManual` queues an approved proposal for the operator without reading the approval mode, so a mode flip can't race it (the TUI). */
+  async submitOpen(input: TradeProposal, runId: string | null, opts: { forceManual?: boolean } = {}): Promise<ProposalRecord> {
     const ctx = await this.governorContext(input.coin);
     const p: TradeProposal = ctx.market ? { ...input, coin: ctx.market.coin } : input;
     const verdict = evaluateOpen(p, ctx);
-    const approval = await this.approval();
+    const approval = opts.forceManual ? "manual" : await this.approval();
     const base = { runId, kind: "open" as const, venue: this.broker.venue, proposal: p, verdict, execution: null };
     if (!verdict.approved) {
       const rec = await this.store.insertProposal({ ...base, status: "blocked", expiresAt: null, decidedBy: "governor" });

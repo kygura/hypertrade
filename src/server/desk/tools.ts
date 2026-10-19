@@ -24,6 +24,8 @@ export interface ToolContext {
   emit(e: DeskEvent): void;
   /** Per-run counters shared across agents (proposal and alert budgets). */
   budget: { proposals: number; alerts: number };
+  /** propose_trade always queues for approval, whatever the approval mode (the TUI). */
+  forceManual?: boolean;
   analystDeps?: ToolDeps;
 }
 
@@ -384,7 +386,7 @@ export const ACTION_TOOLS: DeskTool[] = [
     async (input, ctx) => {
       if (ctx.budget.proposals >= MAX_PROPOSALS_PER_RUN) return fail(`proposal budget for this run is spent (${MAX_PROPOSALS_PER_RUN})`);
       ctx.budget.proposals++;
-      const rec = await ctx.service.submitOpen(input, ctx.runId);
+      const rec = await ctx.service.submitOpen(input, ctx.runId, { forceManual: ctx.forceManual });
       ctx.emit({ type: "proposal", agent: ctx.agent, id: rec.id, kind: "open", status: rec.status, coin: input.coin, summary: `${input.side} ${input.coin}: ${input.setup}` });
       return ok({ id: rec.id, status: rec.status, verdict: rec.verdict, execution: rec.execution }, `${input.side} ${input.coin} → ${rec.status}`);
     },
