@@ -1,5 +1,6 @@
 import { hlInfo, parseMetaAndCtxs } from "../../shared/hl-client.js";
 import type { NoveltyEntry } from "../../shared/platform.js";
+import { defaultOiBackfill } from "../collectors/coinalyzeOi.js";
 import { toDaily } from "../lab/providers/series.js";
 import { defaultHtDeps, type HtDeps } from "../lab/providers/ht.js";
 import { syncFunding } from "../market/fundingSync.js";
@@ -50,14 +51,21 @@ export interface NoveltyLoopDeps {
 }
 
 /** `from` bounds only what is synced; the baseline is everything stored (full history since listing). */
-export const storedInputs = (ht: Pick<HtDeps, "ensureHistory" | "candles" | "funding" | "series"> = defaultHtDeps, sync: typeof syncFunding = syncFunding) =>
-  async (coin: string, now: number): Promise<RawInputs> => {
+export const storedInputs = (ht: Pick<HtDeps, "ensureHistory" | "candles" | "funding" | "series"> = defaultHtDeps, sync: typeof syncFunding = syncFunding, backfillOi?: (coin: string) => Promise<number>) => {
+  /** Coinalyze OI backfill runs once per coin per process (idempotent in the store; a failure waits for the next restart). */
+  const oiTried = new Set<string>();
+  return async (coin: string, now: number): Promise<RawInputs> => {
     const from = now - HISTORY_DAYS * DAY;
     await ht.ensureHistory(coin, from, ENSURE_CAP_MS);
+    if (backfillOi && !oiTried.has(coin)) {
+      oiTried.add(coin);
+      await backfillOi(coin).catch((err) => console.error(`[novelty] ${coin} OI backfill:`, err instanceof Error ? err.message : err));
+    }
     await sync(coin, from, { maxPages: FUNDING_PAGES, deadline: Date.now() + ENSURE_CAP_MS });
     const [bars, funding, oi] = await Promise.all([ht.candles(coin, 0), ht.funding(coin, 0, now), ht.series(`hl.oi.${coin}`, 0, now)]);
     return { bars, funding, oi };
   };
+};
 
 const defaultUniverse = async () =>
   parseMetaAndCtxs(await hlInfo<unknown>({ type: "metaAndAssetCtxs" })).ctxs
@@ -67,7 +75,7 @@ const defaultUniverse = async () =>
 export function createNoveltyLoop(deps: NoveltyLoopDeps) {
   const { store } = deps;
   const now = deps.now ?? Date.now;
-  const inputs = deps.inputs ?? storedInputs();
+  const inputs = deps.inputs ?? storedInputs(defaultHtDeps, syncFunding, defaultOiBackfill());
   const universe = deps.universe ?? defaultUniverse;
   const maxTier = deps.maxTier ?? envNum("PLATFORM_NOVELTY_MAX_TIER", 1);
   /** Coins whose bar was evaluated (hit or not), per bar. A coin that threw or lacks the bar stays out and is retried next beat. Lost on restart: the window is re-checked once and admit() dedupes. */
