@@ -13,7 +13,7 @@ import { researchDailyLimit, researchDeps, runResearch, RESEARCH_PROMPT_VERSION,
 import { aggregate, coverage } from "../platform/liqmap.js";
 import { getPlatformContext, placedBy, placing, type PlatformContext } from "../platform/context.js";
 import { Z_KEYS } from "../platform/score.js";
-import { groupStats } from "../platform/stats.js";
+import { evidenceLine, groupStats } from "../platform/stats.js";
 import { defaultDeskService } from "./desk.js";
 import { defaultIntelDeps } from "./intel/index.js";
 import { body, failure, invalid } from "./intel/http.js";
@@ -180,7 +180,8 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         const raw = RAW_OF[name as (typeof Z_KEYS)[number]];
         return { name, value: raw ? num(fv.inputs[raw]) : null, z: value };
       });
-      const stats = groupStats(await store.outcomeRows({ setupKind: opp.setupKind })).sort((a, b) => b.n - a.n)[0] ?? null;
+      const groups = groupStats(await store.outcomeRows({ setupKind: opp.setupKind }));
+      const stats = [...groups].sort((a, b) => b.n - a.n)[0] ?? null;
       const ticket = ticketOf(opp);
       let risk: { before: RiskVerdict; after: RiskVerdict } | null = null;
       if (ticket) risk = await deps.risk.assess(ticket).catch((err) => (console.error("[platform] risk preview failed", err), null));
@@ -192,6 +193,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         signals,
         bearCase: research && (research.status === "found" || research.status === "no_cause") ? research.explanation : null,
         stats,
+        evidence: evidenceLine(groups.find((g) => g.horizon === "24h") ?? null, opp.edgeBasis),
         risk,
         ticket: { side: opp.direction, entryPx: opp.entryPx, stopPx: opp.stopPx, targetPx: opp.targetPx, sizeUsd: size?.notionalUsd && size.notionalUsd > 0 ? size.notionalUsd : null, sizeSource: "governor" as const },
       });

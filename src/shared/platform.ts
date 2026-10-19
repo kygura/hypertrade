@@ -330,6 +330,8 @@ export const OpportunityDetailSchema = z.object({
   signals: z.array(SignalSchema),
   bearCase: z.string().nullable(),
   stats: LedgerStatsSchema.nullable(),
+  /** Facts line from the 24h ledger group (FEATURES 5). */
+  evidence: z.string(),
   risk: z.object({ before: RiskVerdictSchema, after: RiskVerdictSchema }).nullable(),
   /** Pre-filled ticket. sizeUsd comes from the governor preview only; null without one. */
   ticket: z.object({ side: SideSchema, entryPx: Pos.nullable(), stopPx: Pos.nullable(), targetPx: Pos.nullable(), sizeUsd: Pos.nullable(), sizeSource: z.literal("governor") }),

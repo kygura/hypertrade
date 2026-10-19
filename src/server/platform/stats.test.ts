@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { groupStats } from "./stats.js";
+import { evidenceLine, groupStats } from "./stats.js";
 import type { OutcomeRow } from "./store.js";
 
 let seq = 0; // default: each row in its own 2-day-apart bucket
@@ -66,5 +66,19 @@ describe("groupStats", () => {
   test("non-finite returns are skipped; empty input is empty", () => {
     expect(groupStats([row(NaN)])).toEqual([]);
     expect(groupStats([])).toEqual([]);
+  });
+});
+
+describe("evidenceLine", () => {
+  test("full line with interval", () => {
+    const [s] = groupStats([0.01, 0.02, 0.03, 0.04, 0.05].map((x) => row(x, { horizon: "24h" })));
+    expect(evidenceLine(s!, "ledger")).toBe("ledger 24h: n 5 \u00b7 5 clusters \u00b7 +3.00% (+1.0\u2026+5.0) \u00b7 edge ledger");
+  });
+  test("null interval below 5 clusters, negative mean uses a minus sign", () => {
+    const [s] = groupStats([row(-0.012), row(-0.004)]);
+    expect(evidenceLine(s!, "unvalidated", "4h")).toBe("ledger 4h: n 2 \u00b7 2 clusters \u00b7 \u2212" + "0.80% \u00b7 edge unvalidated");
+  });
+  test("no stats", () => {
+    expect(evidenceLine(null, "unvalidated")).toBe("ledger 24h: n 0 \u00b7 0 clusters \u00b7 edge unvalidated");
   });
 });

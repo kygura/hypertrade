@@ -121,7 +121,7 @@ async function boot() {
         }
       : undefined,
   });
-  const alerts = createAlerts({ notifier: createNotifier(), wsAgeSec: () => ws.lastMessageAgeSec(), appUrl: (process.env.APP_URL ?? process.env.DESK_APP_URL)?.trim() });
+  const alerts = createAlerts({ store, notifier: createNotifier(), wsAgeSec: () => ws.lastMessageAgeSec(), appUrl: (process.env.APP_URL ?? process.env.DESK_APP_URL)?.trim() });
 
   const defs: LoopDef[] = [
     // ws.tick opens/maintains the socket and refreshes the universe hourly; throws if the feed goes silent.

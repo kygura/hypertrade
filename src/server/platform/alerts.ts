@@ -1,5 +1,7 @@
 import type { Notifier } from "../desk/notify.js";
 import type { Bus } from "./bus.js";
+import { evidenceLine, groupStats } from "./stats.js";
+import type { PlatformStore } from "./store.js";
 import type { LoopDef } from "./runtime.js";
 import { envNum } from "./scanner.js";
 
@@ -18,6 +20,8 @@ export function createAlerts(deps: {
   notifier: Pick<Notifier, "send">;
   /** Seconds since the last WS message, null before the first. */
   wsAgeSec: () => number | null;
+  /** Source of the ledger evidence line on the Ready alert; omitted = no line. */
+  store?: Pick<PlatformStore, "outcomeRows">;
   appUrl?: string;
   pushScore?: number;
   now?: () => number;
@@ -58,11 +62,13 @@ export function createAlerts(deps: {
   return {
     /** Wire the ready-opportunity push; returns the unsubscribe. */
     subscribe(bus: Pick<Bus, "subscribe">) {
-      return bus.subscribe("opportunity", ({ opportunity: o, change }) => {
+      return bus.subscribe("opportunity", async ({ opportunity: o, change }) => {
         if (change !== "status" || o.status !== "ready" || o.score < pushScore || pushed.has(o.id)) return;
         pushed.add(o.id);
         const edge = o.netEdgeBps == null ? "edge n/a" : `net edge ${o.netEdgeBps.toFixed(0)} bps (${o.edgeBasis})`;
-        void send("info", `Ready: ${o.direction} ${o.coin}`, `${o.setupKind}, score ${o.score.toFixed(2)}, ${edge}`);
+        const rows = await deps.store?.outcomeRows({ setupKind: o.setupKind }).catch(() => null);
+        const line = rows ? `\n${evidenceLine(groupStats(rows).find((g) => g.horizon === "24h") ?? null, o.edgeBasis)}` : "";
+        void send("info", `Ready: ${o.direction} ${o.coin}`, `${o.setupKind}, score ${o.score.toFixed(2)}, ${edge}${line}`);
       });
     },
     check,

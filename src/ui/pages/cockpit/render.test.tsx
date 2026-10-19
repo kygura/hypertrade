@@ -16,7 +16,7 @@ const detail = (over: Partial<OpportunityDetail["ticket"]> = {}): OpportunityDet
     tags: [], liquidityTier: 1, regime: "trend", invalidation: "close below 39.9", entryPx: 42.18, stopPx: 39.9, targetPx: 45, invalidationPx: 39.9,
     createdAt: "2026-10-16T00:00:00Z", updatedAt: "2026-10-16T00:00:00Z", statusChangedAt: "2026-10-16T00:00:00Z", snoozedUntil: null, dedupeKey: "HYPE|long|oi-accel",
   },
-  signals: [], bearCase: null, stats: null, risk: null,
+  signals: [], bearCase: null, stats: null, evidence: "ledger 24h: n 0 · 0 clusters · edge unvalidated", risk: null,
   ticket: { side: "long", entryPx: 42.18, stopPx: 39.9, targetPx: 45, sizeUsd: 1500, sizeSource: "governor", ...over },
 });
 const noop = () => {};

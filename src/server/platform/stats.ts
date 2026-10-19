@@ -36,3 +36,12 @@ export function groupStats(rows: OutcomeRow[], by: { regime?: boolean; tier?: bo
     return { ...key, n, clusters: k, hitRate: xs.filter((x) => x > 0).length / n, meanNet, ci95 };
   });
 }
+
+const pct = (x: number, d: number) => `${x < 0 ? "\u2212" : "+"}${Math.abs(x * 100).toFixed(d)}`;
+
+/** Facts-only evidence line (FEATURES 5): `ledger 24h: n 37 \u00b7 11 clusters \u00b7 +0.42% (\u22120.3\u2026+1.1) \u00b7 edge unvalidated`. Null stats = empty ledger; the interval is omitted below 5 clusters. */
+export function evidenceLine(s: LedgerStats | null, basis: string, horizon = "24h"): string {
+  const parts = [`n ${s?.n ?? 0}`, `${s?.clusters ?? 0} clusters`];
+  if (s?.meanNet != null) parts.push(`${pct(s.meanNet, 2)}%${s.ci95 ? ` (${pct(s.ci95[0], 1)}\u2026${pct(s.ci95[1], 1)})` : ""}`);
+  return `ledger ${horizon}: ${parts.join(" \u00b7 ")} \u00b7 edge ${basis}`;
+}
