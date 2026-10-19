@@ -3,6 +3,7 @@ import { objectiveOf, sharpeOf, simulate, totalReturnOf, type Segment } from "./
 import type { EvalCtx } from "./context.js";
 import { featureId, parseFeatureId } from "./features.js";
 import { ecdf, quantileSorted } from "./util.js";
+import { zoneConditions } from "./rules.js";
 
 // Validation (LAB.md §7–8): holdout split, purged walk-forward folds,
 // quantile-matched refits and threshold/window sensitivity.
@@ -100,7 +101,7 @@ export function neighbourWindows(w: number, windows: readonly number[]): number[
 export function sensitivity(ctx: EvalCtx, rule: Rule, o: SensitivityOptions): Sensitivity {
   const dirSign = rule.direction === "long" ? 1 : -1;
   const score = (conds: Condition[]) => {
-    const seg = simulate(ctx.pr, positions(ctx.signal(conds, 0, o.evalEnd), dirSign), 1, o.evalEnd, o.slippageBps);
+    const seg = simulate(ctx.pr, positions(ctx.signal(zoneConditions({ conditions: conds, regime: rule.regime }), 0, o.evalEnd), dirSign), 1, o.evalEnd, o.slippageBps);
     return { sharpe: sharpeOf(seg.ret), totalReturn: totalReturnOf(seg.ret) };
   };
   const base = score(rule.conditions);

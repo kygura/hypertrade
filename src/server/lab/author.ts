@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { LlmDeps } from "../intel/llm.js";
 import type { ToolSpec } from "../llm/provider.js";
 import { canonicalConditions, parseFeatureId, ruleId } from "./engine/index.js";
-import { ASSET_PATTERN, RuleSchema, TRANSFORMS, type Direction, type MetricDef, type Rule } from "./types.js";
+import { ASSET_PATTERN, RULE_EXTRAS_JSON, RuleSchema, TRANSFORMS, type Direction, type MetricDef, type Rule } from "./types.js";
 
 // Rule authoring from intent (FEATURES.md § 1). The LLM only recombines the
 // audited feature vocabulary: every candidate is a plain `Rule`, validated
@@ -10,7 +10,7 @@ import { ASSET_PATTERN, RuleSchema, TRANSFORMS, type Direction, type MetricDef, 
 // feeds a validation failure back once (the repair round), then fails closed.
 // Nothing is saved here.
 
-export const AUTHOR_PROMPT_VERSION = "lab-author-1";
+export const AUTHOR_PROMPT_VERSION = "lab-author-2";
 export const MAX_CANDIDATES = 3;
 
 export interface AuthorInput {
@@ -54,6 +54,7 @@ const jsonSchema: ToolSpec["input_schema"] = {
               required: ["feature", "op", "threshold"],
             },
           },
+          ...RULE_EXTRAS_JSON,
         },
         required: ["asset", "direction", "horizonDays", "conditions"],
       },
@@ -70,8 +71,8 @@ function candidatesSchema(metrics: MetricDef[], input: AuthorInput) {
     if (input.asset && r.asset.toUpperCase() !== input.asset.toUpperCase()) bad(`asset must be ${input.asset}`, ["asset"]);
     if (input.direction && r.direction !== input.direction) bad(`direction must be ${input.direction}`, ["direction"]);
     if (r.price && !byId.has(r.price)) bad(`unknown price metric ${r.price}`, ["price"]);
-    r.conditions.forEach((c, i) => {
-      const at = ["conditions", i, "feature"];
+    const conds = [...r.conditions.map((c, i) => ({ c, at: ["conditions", i, "feature"] })), ...(r.invalidation ?? []).map((c, i) => ({ c, at: ["invalidation", i, "feature"] }))];
+    conds.forEach(({ c, at }) => {
       try {
         const s = parseFeatureId(c.feature);
         const m = byId.get(s.metric);
@@ -82,13 +83,19 @@ function candidatesSchema(metrics: MetricDef[], input: AuthorInput) {
       }
     });
     if (!canonicalConditions(r.conditions)) bad("conditions can never hold together", ["conditions"]);
+    if (r.invalidation && !canonicalConditions(r.invalidation)) bad("invalidation can never hold", ["invalidation"]);
+    // An entry-relative level's side is known now: a stop sits against the trade, a target with it.
+    const sign = r.direction === "long" ? 1 : -1;
+    if (r.stop?.ref === "entry" && !(sign * (r.stop.atr ?? 0) < 0)) bad(`a ${r.direction} stop at entry needs atr ${sign > 0 ? "< 0" : "> 0"}`, ["stop", "atr"]);
+    if (r.target?.ref === "entry" && !(sign * (r.target.atr ?? 0) > 0)) bad(`a ${r.direction} target at entry needs atr ${sign > 0 ? "> 0" : "< 0"}`, ["target", "atr"]);
   });
   return z.object({ candidates: z.array(rule).min(1).max(MAX_CANDIDATES) }).strict();
 }
 
 const SYSTEM = `You translate a trader's idea into Lab rules. A rule is: asset, direction (long|short), horizonDays (1-180) and 1 or 2 conditions. A condition is {feature, op, threshold} with op "<" or ">=" and feature "<metric>|<transform>|<window>".
 Transforms: ${TRANSFORMS.join(", ")}. Window is 0 for raw and 2-365 otherwise. Use ONLY metric ids from the catalogue in the user message.
-Rules for candidates: use the fewest conditions that express the idea (one if one is enough); round, defensible thresholds (e.g. z-scores -1, -2, 1, 2; percentiles 0.1, 0.9), never tuned values; no near-duplicate filters (do not stack two transforms of one metric); return 1 to ${MAX_CANDIDATES} genuinely different readings of the idea, fewer is better. You do not predict returns or judge the idea: you only write rules.`;
+Rules for candidates: use the fewest conditions that express the idea (one if one is enough); round, defensible thresholds (e.g. z-scores -1, -2, 1, 2; percentiles 0.1, 0.9), never tuned values; no near-duplicate filters (do not stack two transforms of one metric); return 1 to ${MAX_CANDIDATES} genuinely different readings of the idea, fewer is better. You do not predict returns or judge the idea: you only write rules.
+Optional, only when the idea names them: stop / target levels ({ref: entry|low|high|ma, n, atr}, atr signed, e.g. a long's stop {ref:"low",n:7,atr:-0.25}); invalidation (1-2 conditions that end the trade at the next open); regime {trend: [up|down|range]} to trade only in those daily trends.`;
 
 export async function authorRules(input: AuthorInput, deps: AuthorDeps): Promise<AuthorResult> {
   const catalogue = deps.metrics.map((m) => `${m.id} (${m.category}${m.stationary === false ? ", level: no raw" : ""}) ${m.name}`).join("\n");

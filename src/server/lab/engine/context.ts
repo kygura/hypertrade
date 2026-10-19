@@ -1,6 +1,6 @@
 import type { Condition, LabDataset } from "../types.js";
 import { priceReturns } from "./backtest.js";
-import { parseFeatureId, transformSeries } from "./features.js";
+import { parseFeatureId, REGIME_PREFIX, regimeColumn, transformSeries } from "./features.js";
 import { conditionSignal } from "./rules.js";
 import { parseDay, SearchRefused, sortedFinite } from "./util.js";
 
@@ -53,9 +53,12 @@ export function makeCtx(data: LabDataset, lo = 0, hi = data.t.length - 1): EvalC
     let c = cols.get(id);
     if (!c) {
       const spec = parseFeatureId(id);
-      const vals = data.metrics[spec.metric];
-      if (!vals) throw new Error(`metric ${spec.metric} is not in the dataset`);
-      c = transformSeries(vals, spec.transform, spec.window).slice(lo, hi + 1);
+      if (spec.metric.startsWith(REGIME_PREFIX)) c = regimeColumn(spec.metric, data.price).slice(lo, hi + 1);
+      else {
+        const vals = data.metrics[spec.metric];
+        if (!vals) throw new Error(`metric ${spec.metric} is not in the dataset`);
+        c = transformSeries(vals, spec.transform, spec.window).slice(lo, hi + 1);
+      }
       cols.set(id, c);
     }
     return c;
