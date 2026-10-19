@@ -567,7 +567,7 @@ export class PgIntelStore implements IntelStore {
   }
   async researchForFlags(flagIds: string[]) {
     if (!flagIds.length) return new Map<string, ResearchResult>();
-    const rows = await sql()`select distinct on (flag_id) * from intel_research where flag_id = any(${flagIds}::text[]) and status in ('found', 'no_cause') order by flag_id, created_at desc`;
+    const rows = await sql()`select distinct on (flag_id) * from intel_research where flag_id in ${sql()(flagIds)} and status in ('found', 'no_cause') order by flag_id, created_at desc`;
     return new Map(rows.map((r: any) => [r.flag_id as string, toResearch(r)] as [string, ResearchResult]));
   }
   async pruneResearch(before: Date) {
@@ -717,7 +717,7 @@ export class PgIntelStore implements IntelStore {
   }
   async setAlertRoute(ids: string[], route: Alert["route"]) {
     const valid = ids.filter(isUuid);
-    if (valid.length) await sql()`update intel_alerts set route = ${route} where id = any(${valid}::uuid[])`;
+    if (valid.length) await sql()`update intel_alerts set route = ${route} where id in ${sql()(valid)}`;
   }
   async feedbackStats(since?: Date) {
     const lo = since ?? null;
