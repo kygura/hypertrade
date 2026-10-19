@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { OiRateLimited } from "../collectors/coinalyzeOi.js";
+import { createOiBackfill, OiRateLimited } from "../collectors/coinalyzeOi.js";
 import { alignDaily, createNoveltyLoop, storedInputs, type RawInputs } from "./noveltyLoop.js";
 import { MemoryPlatformStore } from "./store-memory.js";
 
@@ -156,5 +156,33 @@ describe("novelty universe filter", () => {
     const tags = async () => ({ E: ["AI"], F: ["Meme"] });
     expect(await checked({ filter: { sectors: ["AI"] }, tags })).toEqual(["E"]);
     expect(await checked({ filter: { sectors: ["AI"], mine: ["F"] }, tags })).toEqual(["E", "F"]);
+  });
+
+  test("map outage then recovery: every coin is retried and backfilled", async () => {
+    const ht = { ensureHistory: async () => {}, candles: async () => [], funding: async () => [], series: async () => [] };
+    let t = NOW, up = false;
+    const inserted: string[] = [];
+    const bf = createOiBackfill({
+      fetch: (async (u: unknown) => {
+        const p = new URL(String(u)).pathname.replace(/^\/v1\//, "");
+        if (!up) return new Response("", { status: 500 });
+        return Response.json(p === "exchanges" ? [{ name: "Hyperliquid", code: "H" }] : p === "future-markets" ? ["A", "B", "C"].map((b) => ({ symbol: `${b}.H`, exchange: "H", base_asset: b, is_perpetual: true })) : [{ symbol: "x", history: [{ t: (NOW - 3 * DAY) / 1000, c: 1 }] }]);
+      }) as never,
+      env: { COINALYZE_API_KEY: "k" }, now: () => t, sleep: async () => {},
+      candles: async () => [{ t: Math.floor((NOW - 3 * DAY) / DAY) * DAY, c: 10 }], stored: async () => [], insert: async (c) => void inserted.push(c),
+    });
+    const inputs = storedInputs(ht as never, (async () => ({})) as never, bf);
+    const err = console.error;
+    console.error = () => {};
+    try {
+      for (const c of ["A", "B", "C"]) await inputs(c, NOW); // outage: A fails, B and C skipped, all un-marked
+      expect(inserted).toEqual([]);
+      up = true;
+      t += 3_600_001;
+      for (const c of ["A", "B", "C"]) await inputs(c, NOW);
+      expect(inserted.sort()).toEqual(["A", "B", "C"]);
+    } finally {
+      console.error = err;
+    }
   });
 });

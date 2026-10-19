@@ -65,7 +65,7 @@ export interface OiBackfillDeps {
   insert(coin: string, rows: OiRow[]): Promise<void>;
 }
 
-/** HTTP 429: the caller may retry the coin on its next run. */
+/** HTTP 429, or the symbol map is cached as failed: nothing was done for the coin, the caller may retry it on its next run. */
 export class OiRateLimited extends Error {}
 const MAP_RETRY_MS = 3_600_000;
 
@@ -90,14 +90,14 @@ export function createOiBackfill(deps: OiBackfillDeps) {
     const have = new Set((await deps.stored(coin)).map((p) => dayStart(p.t)));
     if (have.size >= NOVELTY.minOiDays) return 0;
     if (!symbols) {
-      if (deps.now() - mapFailedAt < MAP_RETRY_MS) return 0;
+      if (deps.now() - mapFailedAt < MAP_RETRY_MS) throw new OiRateLimited("coinalyze symbol map unavailable, retrying later");
       try {
         const m = hlSymbolMap(await get("exchanges"), await get("future-markets"));
         if (!m.size) throw new Error("coinalyze lists no Hyperliquid perps");
         symbols = m;
       } catch (e) {
         mapFailedAt = deps.now();
-        throw e;
+        throw new OiRateLimited(`coinalyze symbol map: ${e instanceof Error ? e.message : e}`);
       }
     }
     const symbol = symbols.get(coin);
