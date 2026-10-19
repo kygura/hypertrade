@@ -42,7 +42,7 @@ export type NewAlert = Omit<Alert, "id" | "createdAt" | "feedback">;
 export type NewBrief = Omit<Brief, "id" | "createdAt">;
 export type NewReport = DistributiveOmit<Report, "id" | "createdAt">;
 export type NewThesis = Omit<Thesis, "id" | "createdAt">;
-export type ThesisPatch = Partial<Pick<Thesis, "assets" | "claims" | "invalidation" | "wrongIf" | "checkedAt" | "trace">>;
+export type ThesisPatch = Partial<Pick<Thesis, "assets" | "claims" | "invalidation" | "wrongIf" | "checkedAt" | "trace" | "history">>;
 export type WatchState = Pick<Watch, "lastHash" | "lastSnapshot" | "checkedAt" | "error">;
 export type NewWatchChange = Omit<WatchChange, "id" | "ts" | "alertedAssets"> & { ts?: string; alertedAssets?: string[] };
 export type NewResearch = Omit<ResearchResult, "id" | "createdAt">;
@@ -355,6 +355,7 @@ function toThesis(r: any): Thesis {
     createdAt: isoOrNull(r.created_at)!,
     checkedAt: isoOrNull(r.checked_at),
     ...(r.trace ? { trace: r.trace } : {}),
+    history: r.history ?? [],
   };
 }
 
@@ -771,8 +772,8 @@ export class PgIntelStore implements IntelStore {
     return row ? toThesis(row) : null;
   }
   async insertThesis(t: NewThesis) {
-    const [row] = await sql()`insert into intel_theses (text, assets, claims, invalidation, wrong_if, trace, checked_at)
-      values (${t.text}, ${json(t.assets)}, ${json(t.claims)}, ${json(t.invalidation)}, ${json(t.wrongIf)}, ${json(t.trace)}, ${t.checkedAt})
+    const [row] = await sql()`insert into intel_theses (text, assets, claims, invalidation, wrong_if, trace, checked_at, history)
+      values (${t.text}, ${json(t.assets)}, ${json(t.claims)}, ${json(t.invalidation)}, ${json(t.wrongIf)}, ${json(t.trace)}, ${t.checkedAt}, ${json(t.history ?? [])})
       returning *`;
     return toThesis(row);
   }
@@ -781,7 +782,7 @@ export class PgIntelStore implements IntelStore {
     if (!cur) return null;
     const n = { ...cur, ...patch };
     const [row] = await sql()`update intel_theses set assets = ${json(n.assets)}, claims = ${json(n.claims)}, invalidation = ${json(n.invalidation)},
-      wrong_if = ${json(n.wrongIf)}, trace = ${json(n.trace)}, checked_at = ${n.checkedAt} where id = ${id} returning *`;
+      wrong_if = ${json(n.wrongIf)}, trace = ${json(n.trace)}, checked_at = ${n.checkedAt}, history = ${json(n.history ?? [])} where id = ${id} returning *`;
     return row ? toThesis(row) : null;
   }
   async deleteThesis(id: string) {
@@ -1218,7 +1219,7 @@ export class MemoryIntelStore implements IntelStore {
     return clone(this.theses.get(id) ?? null);
   }
   async insertThesis(t: NewThesis) {
-    const row: Thesis = { ...clone(t), checkedAt: isoOrNull(t.checkedAt), id: this.id(), createdAt: this.now() };
+    const row: Thesis = { ...clone(t), history: clone(t.history ?? []), checkedAt: isoOrNull(t.checkedAt), id: this.id(), createdAt: this.now() };
     this.theses.set(row.id, row);
     return clone(row);
   }

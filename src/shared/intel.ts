@@ -654,6 +654,13 @@ export const ThesisClaimSchema = z
   .strict();
 export type ThesisClaim = z.infer<typeof ThesisClaimSchema>;
 
+/** One check run: status and value of every claim, then every invalidation, in order. */
+export const ThesisHistoryEntrySchema = z.object({
+  ts: Iso,
+  checks: z.array(z.object({ status: z.enum(["supported", "contradicted", "unknown", "triggered", "clear"]), value: z.union([Num, z.string(), z.null()]) })),
+});
+export type ThesisHistoryEntry = z.infer<typeof ThesisHistoryEntrySchema>;
+
 export const ThesisSchema = z.object({
   id: z.string(),
   text: z.string(),
@@ -674,6 +681,8 @@ export const ThesisSchema = z.object({
   createdAt: Iso,
   checkedAt: Iso.nullable(),
   trace: LlmTraceSchema.optional(),
+  /** Appended on every check, newest last, capped at 365. */
+  history: z.array(ThesisHistoryEntrySchema).optional(),
 });
 export type Thesis = z.infer<typeof ThesisSchema>;
 

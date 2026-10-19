@@ -3,7 +3,8 @@ import type { IntelEvent, SnapshotRow, ThesisCheck } from "../../shared/intel.js
 import type { AssetCtx } from "../../shared/types.js";
 import { ScriptedProvider } from "../desk/testkit.js";
 import type { LLMProvider } from "../llm/provider.js";
-import { checkThesis, createThesis, evaluateCheck, extractThesis, loadCheckData, recheckForAssets, type CheckData, type ThesisDeps } from "./thesis.js";
+import { checkThesis, createThesis, HISTORY_CAP, evaluateCheck, extractThesis, loadCheckData, recheckAll, type CheckData, type ThesisDeps } from "./thesis.js";
+import type { Notifier } from "../desk/notify.js";
 import { MemoryIntelStore } from "./store.js";
 
 const NOW = "2026-10-13T12:00:00.000Z";
@@ -255,14 +256,41 @@ describe("createThesis / checkThesis / recheckForAssets", () => {
     expect(await checkThesis(deps, "00000000-0000-4000-8000-999999999999")).toBeNull();
   });
 
-  test("recheckForAssets only touches theses naming one of the assets", async () => {
+  test("recheckAll rechecks every thesis, not only flagged assets", async () => {
     const { store, deps } = setup();
     await seed(store);
     const a = await createThesis(deps, "HYPE thesis");
     const other = await store.insertThesis({ text: "SOL", assets: ["SOL"], claims: [], invalidation: [], wrongIf: [], checkedAt: null });
-    const out = await recheckForAssets(deps, ["HYPE"]);
-    expect(out.map((t) => t.id)).toEqual([a.ok ? a.thesis.id : ""]);
-    expect((await store.getThesis(other.id))!.checkedAt).toBeNull();
-    expect(await recheckForAssets(deps, [])).toEqual([]);
+    const out = await recheckAll(deps);
+    expect(out.map((t) => t.id).sort()).toEqual([a.ok ? a.thesis.id : "", other.id].sort());
+    expect((await store.getThesis(other.id))!.checkedAt).toBe(NOW);
+  });
+
+  test("history grows per check, is capped, and alerts once per transition", async () => {
+    const { store, deps } = setup();
+    await seed(store);
+    const sent: string[] = [];
+    const notifier: Notifier = { channels: ["t"], send: async (a) => (sent.push(`${a.title}\n${a.body}`), ["t"]) };
+    const d = { ...deps, notifier };
+    const r = await createThesis(d, "HYPE grinds higher; out below $35");
+    if (!r.ok) throw new Error(r.error);
+    expect(r.thesis.history).toHaveLength(1);
+    await checkThesis(d, r.thesis.id);
+    expect(sent).toEqual([]); // unchanged: no alert
+    await store.insertSnapshots([snap("HYPE", 0, { price: 33, funding: -0.0002 })]);
+    const t = await checkThesis(d, r.thesis.id);
+    expect(t!.history).toHaveLength(3);
+    expect(t!.history!.at(-1)!.checks[1]).toEqual({ status: "contradicted", value: -0.0002 });
+    // OI and funding claims (supported -> contradicted) + invalidation (clear -> triggered)
+    expect(sent).toHaveLength(3);
+    expect(sent[1]).toContain("Premise no longer holds: Funding stays positive");
+    expect(sent[1]).toContain("HYPE funding positive: now -0.0002 (snapshot,");
+    expect(sent[2]).toContain("Premise no longer holds: HYPE below $35");
+    expect(sent.join("")).not.toMatch(/consider|close|sell|buy/i);
+    await checkThesis(d, r.thesis.id);
+    expect(sent).toHaveLength(3); // state unchanged: no repeat
+
+    await store.updateThesis(r.thesis.id, { history: Array.from({ length: HISTORY_CAP }, () => ({ ts: NOW, checks: [] })) });
+    expect((await checkThesis(d, r.thesis.id))!.history).toHaveLength(HISTORY_CAP);
   });
 });

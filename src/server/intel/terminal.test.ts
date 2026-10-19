@@ -219,7 +219,7 @@ describe("buildBrief", () => {
     expect(h.store.briefs).toHaveLength(1);
   });
 
-  test("brief hook: runs with the brief when items cleared; skipped when silent; a failing hook never fails the brief", async () => {
+  test("brief hook: runs with the brief when items cleared; also runs when silent; a failing hook never fails the brief", async () => {
     const seen: string[][] = [];
     const h = harness({ price: (b) => b * Math.exp(0.1), replies: [{ text: "no json" }, { text: "still none" }] });
     await h.init();
@@ -235,7 +235,7 @@ describe("buildBrief", () => {
     await quiet.init();
     quiet.deps.onBrief = async () => void seen.push(["called"]);
     await buildBrief(quiet.deps, { surface: "ui" });
-    expect(seen).toEqual([["SOL"]]);
+    expect(seen).toEqual([["SOL"], ["called"]]);
   });
 
   test("a batched alert alone breaks the silence", async () => {

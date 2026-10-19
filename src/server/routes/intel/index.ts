@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import type { Brief } from "../../../shared/intel.js";
 import * as db from "../../db.js";
 import { loadDeskConfig } from "../../desk/config.js";
 import { createNotifier, type Notifier } from "../../desk/notify.js";
@@ -12,8 +11,8 @@ import { deepLink, routeEntities, type MapperDeps } from "../../intel/mapper.js"
 import type { IntelIngestDeps } from "../../intel/runIngest.js";
 import type { ReadClient } from "../../intel/screener.js";
 import { focusAssets } from "../../intel/snapshot.js";
-import { recheckForAssets, type ThesisDeps } from "../../intel/thesis.js";
-import { briefAssets, buildBrief, defaultTerminalDeps } from "../../intel/terminal.js";
+import { recheckAll, type ThesisDeps } from "../../intel/thesis.js";
+import { buildBrief, defaultTerminalDeps } from "../../intel/terminal.js";
 import { defaultDeskService } from "../desk.js";
 import { getCtxs } from "../hl.js";
 import { createAlertsRoutes } from "./alerts.js";
@@ -108,6 +107,7 @@ export function defaultIntelDeps(env: Record<string, string | undefined> = proce
     now,
     observations: (ids) => db.latestObservations(ids),
     ctxs: terminal.ctxs,
+    notifier,
   };
   const candles = async (asset: string, from: Date, to: Date) => db.getCandlesBetween(asset, "1h", from, to);
   let journalDeps: JournalDeps | null = null;
@@ -127,9 +127,9 @@ export function defaultIntelDeps(env: Record<string, string | undefined> = proce
   prod = {
     ...terminal,
     env,
-    // Brief hook (SPEC I0.16): a brief that flags changes or alerts rechecks the theses on those assets.
-    onBrief: async (brief: Brief) => {
-      await recheckForAssets(thesis, briefAssets(brief));
+    // Brief hook (SPEC I0.16, FEATURES §6): every brief run rechecks every thesis.
+    onBrief: async () => {
+      await recheckAll(thesis);
     },
     journal,
     thesis,

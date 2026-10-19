@@ -72,7 +72,7 @@ export interface TerminalDeps {
   llm: LlmDeps;
   thresholds: Thresholds;
   now(): Date;
-  /** Runs after a brief that flags any asset (items or alerts) is stored (thesis recheck). Best-effort: a failure never fails the brief. */
+  /** Runs after every brief is stored (thesis recheck). Best-effort: a failure never fails the brief. */
   onBrief?(brief: Brief): Promise<void>;
 }
 
@@ -296,7 +296,7 @@ export async function buildBrief(deps: TerminalDeps, o: BriefOptions): Promise<B
     ...(narration ? { trace: narration.trace } : {}),
   });
   if (o.surface === "ui") await deps.store.logReview({ via: o.via ?? "ui", briefId: brief.id });
-  if (deps.onBrief && briefAssets(brief).length) {
+  if (deps.onBrief) {
     try {
       await deps.onBrief(brief);
     } catch (e) {
