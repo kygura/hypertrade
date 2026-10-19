@@ -5,7 +5,7 @@ import type { JsonValue, LedgerStats, Opportunity } from "../../shared/platform.
 import { bus as defaultBus, type Bus } from "./bus.js";
 import { ABSORB_SHARE, bookFromL2, costs as costsFor, depthWithin, midOf, netEdge, type Book } from "./costs.js";
 import { computeFeatures, liquidityTiers, type RingPoint } from "./features.js";
-import { setupsFor } from "./setups.js";
+import { nearMiss, setupsFor, type NearMiss } from "./setups.js";
 import { nextAutoStatus, shouldExpire } from "./opportunity.js";
 import { SCORE_VERSION, scoreOpportunity } from "./score.js";
 import { groupStats } from "./stats.js";
@@ -91,6 +91,7 @@ export function createScanner(deps: ScannerDeps) {
   let seeded = false;
   let lastPersist = -Infinity;
   let lastScan: Date | null = null;
+  let near = new Map<string, NearMiss>();
 
   /** Rebuilds the ring from the persisted 5-min snapshots (once, at the first tick). */
   async function seed() {
@@ -154,9 +155,12 @@ export function createScanner(deps: ScannerDeps) {
     const tiers = liquidityTiers(vols);
     const macro = macroTags(new Date(t));
     const scanned = filter && new Set(selectUniverse(vols, { ...filter, tags: filter.sectors?.length ? await tags(vols.map((c) => c.coin)) : undefined }).map((c) => c.coin));
+    const nears = new Map<string, NearMiss>();
     const cands = live.filter((c) => !scanned || scanned.has(c.name)).flatMap((c) => {
       const fv = computeFeatures(ring.get(c.name) ?? [], t, { liqNearUsd: liqNear.get(c.name) ?? null });
       const tier = tiers[c.name]!;
+      const nm = nearMiss(c.name, fv, tier);
+      if (nm) nears.set(c.name, nm);
       return setupsFor(fv, tier).map((setup) => ({ ctx: c, fv, tier, setup, score: scoreOpportunity(fv) }));
     }).sort((a, b) => b.score - a.score);
 
@@ -233,6 +237,7 @@ export function createScanner(deps: ScannerDeps) {
       if (e) publish(e, "status");
     }
 
+    near = nears;
     lastScan = new Date(t);
     bus.publish("scan", { ts: lastScan.toISOString(), assets: live.length });
   }
@@ -242,6 +247,9 @@ export function createScanner(deps: ScannerDeps) {
     def: { name: "scanner", intervalSec, run: tick } satisfies LoopDef,
     intervalSec,
     lastScanAt: () => lastScan,
+    /** Informational only: the near-miss of the latest scan for a coin, and the closest one overall. */
+    nearMiss: (coin: string) => near.get(coin) ?? null,
+    topNearMiss: () => [...near.values()].sort((a, b) => a.relDistance - b.relDistance)[0] ?? null,
     /** Minutes of ring history for the median coin; null while the ring is empty. */
     historyMin: () => {
       const spans = [...ring.values()].filter((p) => p.length).map((p) => (p.at(-1)!.ts - p[0]!.ts) / MIN).sort((a, b) => a - b);

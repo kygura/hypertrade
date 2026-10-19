@@ -40,9 +40,9 @@ const Tags = z.array(z.string().min(1));
 
 /** A limit is a number or the tier's threshold × k (thinner books need a stronger signal). */
 const LimitZ = z.union([z.number().finite(), z.strictObject({ t: z.enum(THRESHOLD_KEYS), k: z.number().finite().optional() })]);
-/** An unknown (null) feature fails every condition. `abs` compares |f|. */
+/** An unknown (null) feature fails every condition. `abs` compares |f|. `level: true` marks a price-level condition (close vs MA), which never counts as a near-miss. */
 const CondZ = z.union([
-  z.strictObject({ f: Ref, op: z.enum(["<", "<=", ">", ">="]), to: LimitZ, abs: z.literal(true).optional() }),
+  z.strictObject({ f: Ref, op: z.enum(["<", "<=", ">", ">="]), to: LimitZ, abs: z.literal(true).optional(), level: z.literal(true).optional() }),
   z.strictObject({ sameSign: z.tuple([Ref, Ref]) }),
 ]);
 
@@ -129,24 +129,63 @@ export const SETUPS: SetupSchema[] = z.array(SetupSchemaZ).parse([
 type Env = { fv: FeatureVector; T: Thresholds };
 const val = (f: string, e: Env): number | null => (f === "funding" ? fin(e.fv.inputs.funding as number | null) : (e.fv.features[f] ?? null));
 
-function test(c: Cond, e: Env): boolean {
+export type CondResult = { pass: boolean; value: number | null; limit: number | null; relDistance: number | null; numeric: boolean; priceLevel: boolean };
+
+/** The one place a condition is evaluated: the predicate reads `pass`, the near-miss reads the rest. */
+function evalCond(c: Cond, e: Env): CondResult {
   if ("sameSign" in c) {
     const [a, b] = c.sameSign.map((f) => val(f, e));
-    return a != null && b != null && Math.sign(a) === Math.sign(b);
+    return { pass: a != null && b != null && Math.sign(a) === Math.sign(b), value: null, limit: null, relDistance: null, numeric: false, priceLevel: false };
   }
   const raw = val(c.f, e);
-  if (raw == null) return false;
-  const x = c.abs ? Math.abs(raw) : raw;
   const to = typeof c.to === "number" ? c.to : e.T[c.to.t] * (c.to.k ?? 1);
-  return c.op === "<" ? x < to : c.op === "<=" ? x <= to : c.op === ">" ? x > to : x >= to;
+  const priceLevel = c.level === true;
+  if (raw == null) return { pass: false, value: null, limit: to, relDistance: null, numeric: true, priceLevel };
+  const x = c.abs ? Math.abs(raw) : raw;
+  const pass = c.op === "<" ? x < to : c.op === "<=" ? x <= to : c.op === ">" ? x > to : x >= to;
+  // A zero limit has no relative scale: only an exact hit is "near".
+  const relDistance = to === 0 ? (x === 0 ? 0 : Infinity) : Math.abs(x - to) / Math.abs(to);
+  return { pass, value: x, limit: to, relDistance, numeric: true, priceLevel };
+}
+const test = (c: Cond, e: Env): boolean => evalCond(c, e).pass;
+
+/** Mark and σ the levels are built from; null = the bar is unusable and nothing fires (the health gate). */
+const levels = (fv: FeatureVector) => {
+  const mark = fin(fv.inputs.mark as number | null);
+  const sigma = fin(fv.inputs.sigma1h as number | null);
+  return mark == null || !(mark > 0) || sigma == null || !(sigma > 0) ? null : { mark, sigma };
+};
+
+/** Per-condition detail of one setup, in `when` order, over the same conditions compile() runs. */
+export function explain(s: SetupSchema, fv: FeatureVector, tier: LiquidityTier, thresholds = DEFAULT_THRESHOLDS): CondResult[] {
+  const e: Env = { fv, T: thresholds[tier] };
+  return s.when.map((c) => evalCond(c, e));
+}
+
+export type NearMiss = { coin: string; setupKind: string; cond: number; value: number; limit: number; relDistance: number };
+const NEAR = 0.1;
+
+/** FEATURES.md near-miss: healthy bar, exactly one condition of a setup failed, numeric, not a price level, within 10% of its limit; the closest wins. */
+export function nearMiss(coin: string, fv: FeatureVector, tier: LiquidityTier, thresholds = DEFAULT_THRESHOLDS, schemas: SetupSchema[] = SETUPS): NearMiss | null {
+  if (!levels(fv)) return null;
+  let best: NearMiss | null = null;
+  for (const s of schemas) {
+    const rs = explain(s, fv, tier, thresholds);
+    const i = rs.findIndex((r) => !r.pass);
+    const r = rs[i];
+    if (!r || rs.some((x, j) => j > i && !x.pass)) continue;
+    if (!r.numeric || r.priceLevel || r.value == null || r.limit == null || r.relDistance == null || !(r.relDistance <= NEAR)) continue;
+    if (!best || r.relDistance < best.relDistance) best = { coin, setupKind: s.kind, cond: i, value: r.value, limit: r.limit, relDistance: r.relDistance };
+  }
+  return best;
 }
 
 /** One predicate for all setups: feature vector and tier in, the setups that fire (with levels) out. */
 export function compile(schemas: SetupSchema[]): (fv: FeatureVector, tier: LiquidityTier, thresholds?: Record<LiquidityTier, Thresholds>) => Setup[] {
   return (fv, tier, thresholds = DEFAULT_THRESHOLDS) => {
-    const mark = fin(fv.inputs.mark as number | null);
-    const sigma = fin(fv.inputs.sigma1h as number | null);
-    if (mark == null || !(mark > 0) || sigma == null || !(sigma > 0)) return [];
+    const lv = levels(fv);
+    if (!lv) return [];
+    const { mark, sigma } = lv;
     const e: Env = { fv, T: thresholds[tier] };
     return schemas.flatMap((s) => {
       if (!s.when.every((c) => test(c, e))) return [];

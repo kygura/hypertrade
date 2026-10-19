@@ -134,7 +134,7 @@ async function boot() {
     outcomes.def,
     alerts.def,
     // Daily inputs live in Postgres (candles, funding, observations): no database, no novelty loop.
-    ...(databaseUrl ? [createNoveltyLoop({ store, notify: alerts.novel }).def] : []),
+    ...(databaseUrl ? [createNoveltyLoop({ store, notify: alerts.novel, nearMiss: scanner.nearMiss }).def] : []),
   ];
   const selected = parseWorkerLoops(process.env.WORKER_LOOPS);
   const wants = (n: string) => selected === "all" || selected.has(n);
