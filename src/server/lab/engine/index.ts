@@ -1,4 +1,4 @@
-// Pure heuristic-search engine (LAB.md Methodology). No I/O.
+// Pure heuristic-search engine (docs/LAB.md Methodology). No I/O.
 export * from "./backtest.js";
 export * from "./context.js";
 export * from "./evaluate.js";

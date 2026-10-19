@@ -7,7 +7,7 @@ import { EngineTabs } from '../components/strategy/EngineTabs'
 import { EngineOffline, OfflineStrip } from '../components/strategy/EngineOffline'
 import { ACTION_LABEL, actionClass, fmtAge, fmtTs } from '../components/strategy/format'
 
-// /strategies — manifests × configs. Columns (DESIGN.md §4.4 drop order):
+// /strategies — manifests × configs. Columns (docs/design/README.md §4.4 drop order):
 // P1 ID, ENABLED · P2 VENUE · P3 CADENCE, LAST RUN · P4 LAST ACTION.
 // The enabled toggle PUTs the config in place (Level 1 action; row click is
 // the drill-in, so the toggle stops propagation). LAST ACTION is derived

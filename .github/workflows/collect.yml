@@ -178,7 +178,7 @@ jobs:
             exit 1
           fi
 
-  # The agentic desk's watch tick (SPEC.md "Desk"): settles paper stops,
+  # The agentic desk's watch tick (docs/SPEC.md "Desk"): settles paper stops,
   # evaluates triggers, sends alerts, and wakes the agent team when warranted
   # (within DESK_MAX_CYCLES_PER_DAY). Runs after collection so OI snapshots are
   # fresh. Opt-in: set the repository variable DESK_ENABLED=true once
@@ -213,7 +213,7 @@ jobs:
             exit 1
           fi
 
-  # Intel (SPEC.md § Intel I2): ingest (news sources, mapper, catalyst
+  # Intel (docs/SPEC.md § Intel I2): ingest (news sources, mapper, catalyst
   # alerts), the cron brief to Telegram, the daily exposure-graph refresh and
   # the doc/contract watcher, in that order. Each endpoint is leased and
   # budgeted server side (200 s) and self-throttles: brief to

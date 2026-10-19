@@ -7,7 +7,7 @@ import { realDeps } from "../sim/run.js";
 import type { SimBranchOutcome, SimIntent } from "../../shared/intent.js";
 import { UpstreamError } from "../mcp/types.js";
 
-// Sim mode of the analyst (SPEC.md "Paths", decisions 2/5/7/9). The JSON schema
+// Sim mode of the analyst (docs/SPEC.md "Paths", decisions 2/5/7/9). The JSON schema
 // below is only a hint for the model; SimIntentSchema (zod, inside runIntent) is
 // the authority.
 

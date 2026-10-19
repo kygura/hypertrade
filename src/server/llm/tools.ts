@@ -51,7 +51,7 @@ export interface ToolDeps {
   series(id: string, from: string | undefined, buckets: number): Promise<unknown>;
   hlMarkets(): Promise<{ fetchedAt: string; markets: MarketRow[] }>;
   engine(rest: string): Promise<EngineResult>;
-  /** The Lab tool registry (LAB.md); the analyst only sees its read-only tools. Defaults to the shared registry. */
+  /** The Lab tool registry (docs/LAB.md); the analyst only sees its read-only tools. Defaults to the shared registry. */
   lab?: ToolDef[];
   /** Exa-backed real-time search (web_search tool); only called when EXA_API_KEY is set. */
   exaSearch(input: ExaSearchInput): Promise<ExaResult[]>;

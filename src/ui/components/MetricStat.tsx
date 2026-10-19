@@ -1,4 +1,4 @@
-// MetricStat — DESIGN.md §10.2/§11. One metrics-strip cell: label / value /
+// MetricStat — docs/design/README.md §10.2/§11. One metrics-strip cell: label / value /
 // signed delta with z30 eyebrow (amber when |z| >= 2 — an unusual reading).
 
 export function MetricStat({

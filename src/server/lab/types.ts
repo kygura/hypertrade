@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// LAB.md contract. Shared by the engine (pure), providers (I/O), the service,
+// docs/LAB.md contract. Shared by the engine (pure), providers (I/O), the service,
 // the tool registry and the UI (via the tool results). Keep wire shapes here.
 
 export const DAY_MS = 86_400_000;
@@ -194,7 +194,7 @@ export interface Sensitivity {
   points: SensitivityPoint[];
 }
 
-/** Save-bar verdict levels, best first (LAB.md §7 "Verdict"). */
+/** Save-bar verdict levels, best first (docs/LAB.md §7 "Verdict"). */
 export const VERDICT_LEVELS = ["robust", "candidate", "fragile", "weak", "fails_holdout"] as const;
 export type VerdictLevel = (typeof VERDICT_LEVELS)[number];
 
@@ -310,7 +310,7 @@ export interface SearchResult {
    * Correlation-adjusted number of independent trials, the N the deflated
    * Sharpe uses: the variants clustered greedily, a variant joining a cluster
    * when its in-zone days overlap the cluster's representative's by ≥ 0.5
-   * (LAB.md §7, trials.ts); ≤ variantsScored. Absent on runs stored before it existed.
+   * (docs/LAB.md §7, trials.ts); ≤ variantsScored. Absent on runs stored before it existed.
    */
   effectiveTrials?: number;
   bestTrial: TrialRecord | null;
@@ -346,7 +346,7 @@ export interface Trial {
   rule?: Rule | null;
 }
 
-/** lab_event_study screen (FEATURES.md § 2): reject-only, never a grant. */
+/** lab_event_study screen (docs/FEATURES.md § 2): reject-only, never a grant. */
 export type EventVerdict = "insufficient" | "rejected" | "clear";
 
 export interface CatalogueHealth {

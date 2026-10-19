@@ -1,6 +1,6 @@
 import { OfflineBlock } from '../state'
 
-// EngineOffline — DESIGN.md §6 OfflineBlock with the proxy's verbatim reason.
+// EngineOffline — docs/design/README.md §6 OfflineBlock with the proxy's verbatim reason.
 // "engine not configured" is configuration state (ENGINE_URL unset), so the
 // copy says what to set; anything else is the unreachable case.
 

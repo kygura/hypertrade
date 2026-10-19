@@ -1,4 +1,4 @@
-// Lab tool registry (LAB.md "Surfaces" and "Tool contract"). One definition
+// Lab tool registry (docs/LAB.md "Surfaces" and "Tool contract"). One definition
 // per tool: hand-written JSON Schema for clients, zod for validation, and a
 // handler that calls the lab service. REST, MCP (HTTP and stdio) and the CLI
 // all serve these.

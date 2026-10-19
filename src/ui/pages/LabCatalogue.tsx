@@ -8,7 +8,7 @@ import { RemoveRuleDialog } from '../components/lab/RemoveRuleDialog'
 import { LabFooter } from '../components/lab/common'
 import { dateIso, lab, useLab, type CatalogueListEntry } from '../lib/lab'
 
-// CATALOGUE tab — DESIGN.md §10.9. Saved rules with their live record since
+// CATALOGUE tab — docs/design/README.md §10.9. Saved rules with their live record since
 // saving, health flags, and the rank key said aloud (LIVE SHARPE — not the
 // search's key).
 

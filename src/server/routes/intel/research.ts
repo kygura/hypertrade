@@ -5,7 +5,7 @@ import { researchDailyLimit, researchDeps, runResearch, utcDayStart } from "../.
 import { body, failure, invalid } from "./http.js";
 import type { TerminalRouteDeps } from "./terminal.js";
 
-// /intel research endpoints (SPEC.md § Scout S1).
+// /intel research endpoints (docs/SPEC.md § Scout S1).
 //
 // POST /research {question, asset?, flagId?} → ResearchResult. Synchronous within RESEARCH_DEADLINE_MS (the function
 //     allows 300 s). Always trigger "manual" (a chip-started run stores flagId). 409 while a run is in flight, 429 at

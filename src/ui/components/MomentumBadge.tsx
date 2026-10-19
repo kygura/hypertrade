@@ -1,4 +1,4 @@
-// MomentumBadge — DESIGN.md §3/§11 (new). Signed momentum ∈ [-1, 1] as a
+// MomentumBadge — docs/design/README.md §3/§11 (new). Signed momentum ∈ [-1, 1] as a
 // tinted badge: ▲ +0.42 green / ▼ −0.31 red / — 0.05 gray for |m| < 0.15.
 // Glyph + sign + number always together (color is never the sole signal).
 

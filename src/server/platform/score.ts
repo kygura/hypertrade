@@ -2,7 +2,7 @@ import type { FeatureVector } from "../../shared/platform.js";
 import { materiality, type SignalSource } from "../intel/diff.js";
 import { round } from "../intel/util.js";
 
-// Opportunity score (SPEC.md § Platform P0.10, P0.12). Pure and deterministic:
+// Opportunity score (docs/SPEC.md § Platform P0.10, P0.12). Pure and deterministic:
 // the same stored feature vector reproduces the same number (the replay guarantee).
 //   score = materiality(surprise, exposure, proximity, k)  (intel/diff.ts)
 //   surprise  largest |z| among the z features

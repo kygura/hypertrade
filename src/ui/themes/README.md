@@ -1,7 +1,7 @@
 # Themes
 
 HYPERTRADE ships three looks. The token defaults in `../index.css` are
-Hyperion (DESIGN.md); every other look is a **theme**: one CSS file scoped to
+Hyperion (docs/design/README.md); every other look is a **theme**: one CSS file scoped to
 `:root[data-theme='<id>']` that only redefines tokens from the contract
 below. No component forks, no per-theme JSX.
 
@@ -9,7 +9,7 @@ below. No component forks, no per-theme JSX.
 |---|---|---|
 | `hyperdash` (default) | `hyperdash.css` | `design-systems/hyperdash/` |
 | `tradexyz` | `tradexyz.css` | `design-systems/tradexyz/` |
-| `hyperion` | `../index.css` (the unscoped defaults) | `DESIGN.md` |
+| `hyperion` | `../index.css` (the unscoped defaults) | `docs/design/README.md` |
 
 `registry.ts` lists themes (`DEFAULT_THEME` picks the default), applies
 `data-theme` on `<html>`, lazy-loads each theme's web fonts, and persists an

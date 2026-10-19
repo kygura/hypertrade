@@ -1,4 +1,4 @@
--- Lab: rule-discovery runs and the saved-rule catalogue (LAB.md "Persistence").
+-- Lab: rule-discovery runs and the saved-rule catalogue (docs/LAB.md "Persistence").
 -- Apply after 003.
 
 -- One search: the config it ran with, and the full SearchResult (or the error).

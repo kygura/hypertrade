@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Button } from './Button'
 import { StatusDot } from './Badge'
 
-// State vocabulary — DESIGN.md §6. Named patterns referenced by name from
+// State vocabulary — docs/design/README.md §6. Named patterns referenced by name from
 // every API-backed surface (see §13 state → view matrix). Loading is
 // SkeletonRows only and must resolve to data, EmptyBlock, or ErrorBlock —
 // never stay pending forever. No spinners anywhere.

@@ -10,7 +10,7 @@ import { decodeEntities, message, readCapped, stripTags } from "./ingest/common.
 import { completeStructured, untrusted, UNTRUSTED_RULE, type LlmDeps } from "./llm.js";
 import type { IntelStore, WatchState } from "./store.js";
 
-// Doc/contract watcher (SPEC.md § Intel I0.19). Code detects change: `url`
+// Doc/contract watcher (docs/SPEC.md § Intel I0.19). Code detects change: `url`
 // pages are fetched through safeFetch (public https only, re-validated on
 // every redirect hop and pinned to the vetted IPs, size/time/content-type
 // capped), stripped to text,

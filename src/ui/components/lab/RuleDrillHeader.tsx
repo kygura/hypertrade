@@ -22,7 +22,7 @@ import {
 import { DirectionWord, DsrValue, SharpeValue, VerdictBadge } from './common'
 import type { AtSearch } from './WindowStatsTable'
 
-// RuleDrillHeader — DESIGN.md §10.9. The rule at lg; walk-forward Sharpe is
+// RuleDrillHeader — docs/design/README.md §10.9. The rule at lg; walk-forward Sharpe is
 // the view's single xl value with holdout right beside it (rule 1) and the
 // gap badge when due, then DSR; the server verdict Badge with its reasons
 // listed; FIRING; direction/asset/horizon; the RAW wire text.

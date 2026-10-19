@@ -3,7 +3,7 @@ import { AssetSchema } from "../../../shared/intel.js";
 import type { NewEvent } from "../store.js";
 import { fetchText, message, pastIso, type AdapterResult, type IngestDeps } from "./common.js";
 
-// Snapshot governance (SPEC.md § Intel I0.10, I0.13): recent proposals for the
+// Snapshot governance (docs/SPEC.md § Intel I0.10, I0.13): recent proposals for the
 // spaces mapped from assets, as events; each proposal's vote end is its
 // scheduled_at, so open votes surface as catalysts. Keyless hub GraphQL.
 

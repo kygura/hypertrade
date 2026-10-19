@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { Opportunity, PlatformHealth } from "../../shared/platform.js";
 
-// In-process event bus (SPEC.md § Platform P0.3). One process, one consumer
+// In-process event bus (docs/SPEC.md § Platform P0.3). One process, one consumer
 // set: loops publish after the row is written, so a subscriber that misses an
 // event can always read the durable state. Add a topic by adding a key here.
 

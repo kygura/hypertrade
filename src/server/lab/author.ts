@@ -4,7 +4,7 @@ import type { ToolSpec } from "../llm/provider.js";
 import { canonicalConditions, parseFeatureId, ruleId } from "./engine/index.js";
 import { ASSET_PATTERN, RULE_EXTRAS_JSON, RuleSchema, TRANSFORMS, type Direction, type MetricDef, type Rule } from "./types.js";
 
-// Rule authoring from intent (FEATURES.md § 1). The LLM only recombines the
+// Rule authoring from intent (docs/FEATURES.md § 1). The LLM only recombines the
 // audited feature vocabulary: every candidate is a plain `Rule`, validated
 // against the metric catalogue before anyone sees it. completeStructured
 // feeds a validation failure back once (the repair round), then fails closed.

@@ -4,7 +4,7 @@ import { MarketChart } from '../components/charts/MarketChart'
 import { FundingPanel, PerpHeader, usePerpStats } from '../components/market/PerpPanels'
 import { isTimeframe, type Timeframe } from '../../shared/timeframes'
 
-// Markets drill-in — DESIGN.md §10.7. Full view (not an overlay), route
+// Markets drill-in — docs/design/README.md §10.7. Full view (not an overlay), route
 // /markets/:coin?tf=4h — back-button friendly, linkable. Header: live perp
 // context (mark/oracle/funding/OI over HL's websocket). Chart: every
 // timeframe from 1m to 1M with funding, OI and premium panes; history pages

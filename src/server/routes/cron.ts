@@ -385,7 +385,7 @@ export async function runLabCollect(
   return { ok: false, error, written: progress.written, sources: { ...progress.sources }, timedOut: true, inFlight };
 }
 
-// ── Intel cron jobs (SPEC.md § Intel I2) ──
+// ── Intel cron jobs (docs/SPEC.md § Intel I2) ──
 //
 // ingest (sources + mapper + catalyst alerts), brief (cron-surface brief to
 // Telegram), graph (seed edges + daily LLM refresh) and watch (doc/contract

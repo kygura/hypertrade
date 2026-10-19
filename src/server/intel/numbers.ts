@@ -1,4 +1,4 @@
-// Number validator (SPEC.md § Flow F0.5). Pure. Every number an LLM line
+// Number validator (docs/SPEC.md § Flow F0.5). Pure. Every number an LLM line
 // prints must match a number in the call's input payload within rounding, and
 // the line must carry no buy/sell/enter/exit imperative or price target.
 // claims.ts `validateLines` applies it; failing lines are dropped and counted.

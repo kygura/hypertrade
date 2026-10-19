@@ -11,7 +11,7 @@ import type { IntelStore } from "./store.js";
 import { message } from "./ingest/common.js";
 import { meanOrNull, round } from "./util.js";
 
-// Trade journal reviewer (SPEC.md § Intel I0.15). Code reconstructs round
+// Trade journal reviewer (docs/SPEC.md § Intel I0.15). Code reconstructs round
 // trips from fills (HL userFills of the watched address, Desk paper fills)
 // and computes every number: session, hold, R, MAE/MFE, entry state, per-tag
 // stats, the leaks and edges. The LLM only tags a trade's setup from a fixed

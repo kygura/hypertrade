@@ -3,7 +3,7 @@ import { metricValue } from "./diff.js";
 import type { Point } from "./normalize.js";
 import { median } from "./util.js";
 
-// Fixed windows, regime flips and threshold crossings (SPEC.md § Flow F0.2,
+// Fixed windows, regime flips and threshold crossings (docs/SPEC.md § Flow F0.2,
 // F0.3). Pure. Runs alongside the I0.4 last-review baseline, not instead of it.
 //   Δ per window: log change (price, OI, volume24h, depth, spread), plain
 //   difference (funding, basis, premium, long/short ratio), or the window total

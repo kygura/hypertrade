@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } fr
 import { Button } from './Button'
 import { ErrorBlock } from './state'
 
-// ConfirmDialog — DESIGN.md §7 Level 2 destructive confirm. Scrim + centered
+// ConfirmDialog — docs/design/README.md §7 Level 2 destructive confirm. Scrim + centered
 // panel (bottom sheet on mobile via CSS, same content/markup). Focus trap:
 // cancel gets initial focus; Esc closes; stays open on error.
 //

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-// Panel — DESIGN.md §11. Thin typed wrappers over .panel/.panel-header/
+// Panel — docs/design/README.md §11. Thin typed wrappers over .panel/.panel-header/
 // .panel-title/.panel-body (src/ui/index.css). Verbatim port from Hyperion.
 
 export function Panel({

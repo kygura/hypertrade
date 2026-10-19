@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Desk wire types (SPEC.md "Desk"). The agents propose through these
+// Desk wire types (docs/SPEC.md "Desk"). The agents propose through these
 // schemas; the governor (governor.ts) is the only thing that turns a
 // proposal into an order, and it never trusts the model's arithmetic: size,
 // risk in dollars and reward:risk are computed here from live marks.

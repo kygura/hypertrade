@@ -5,7 +5,7 @@ import { completeStructured, LLM_DEADLINE_MS, webSearchAvailable, type LlmDeps }
 import type { IntelStore, NewEdge } from "./store.js";
 import { norm } from "./util.js";
 
-// Exposure graph (SPEC.md § Intel I0.8): the pure walk, the seed upsert and
+// Exposure graph (docs/SPEC.md § Intel I0.8): the pure walk, the seed upsert and
 // the daily LLM refresh.
 //
 // Walk semantics. Edges are stored directed ("src is exposed to dst through
@@ -165,7 +165,7 @@ export interface GraphRefreshSummary {
   stored: number;
   /** Proposed edges refused: no https source, bad node name, self loop, or not touching the asset. */
   dropped: number;
-  /** Per asset rebuilt successfully (SPEC.md § Scout S0.7). */
+  /** Per asset rebuilt successfully (docs/SPEC.md § Scout S0.7). */
   diffs: Record<string, AssetGraphDiff>;
   /** Set when the refresh could not run at all (the day is not done: the cron must not stamp it). */
   warning?: string;

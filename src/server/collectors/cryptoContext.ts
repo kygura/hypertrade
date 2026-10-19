@@ -1,7 +1,7 @@
 // Keyless crypto market-context collector, ported from marketstate/src/crypto-context.ts:
 // CoinGecko global (mcap, BTC dominance), alternative.me Fear & Greed, DefiLlama
 // stablecoin cap, Deribit BTC DVOL. Per-source try/catch so one dead API never
-// discards the others (SPEC.md: never fail the whole run over one tool).
+// discards the others (docs/SPEC.md: never fail the whole run over one tool).
 import { z } from "zod";
 import { ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db.js";
 import type { CollectorResult } from "./types.js";

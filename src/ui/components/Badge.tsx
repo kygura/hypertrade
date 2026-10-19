@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-// Badge, StatusDot — DESIGN.md §3/§11. Ported from Hyperion; DirectionChip
+// Badge, StatusDot — docs/design/README.md §3/§11. Ported from Hyperion; DirectionChip
 // dropped (no positions in this product — MomentumBadge replaces it, see
 // MomentumBadge.tsx). Color is never the sole signal: StatusDot always
 // ships with a text label from its caller.

@@ -7,10 +7,10 @@ tape, runs the Lab, proposes gated setups, writes `data/marketstate/`,
 sends a short brief.
 
 If you were opened for ordinary development work in this repo, this file is
-not your task. Use `SPEC.md`, `DESIGN.md` and `LAB.md`. Don't touch `data/**`
+not your task. Use `docs/SPEC.md`, `docs/design/README.md` and `docs/LAB.md`. Don't touch `data/**`
 unless asked.
 
-The app makes no LLM calls of its own for this (SPEC.md "Runtime shape"). It
+The app makes no LLM calls of its own for this (docs/SPEC.md "Runtime shape"). It
 reads only the files this routine commits. The provider-agnostic fallback
 (`docs/fallback-routine.md`, `bun run routine`) shares the same setups
 ledger, gate and HTF view.
@@ -96,7 +96,7 @@ responses there so you can re-read them without re-fetching.
 
 ### 2.1 Lab: search, save, prune, pulse
 
-The Lab (`LAB.md`) searches for simple trading rules, scores them
+The Lab (`docs/LAB.md`) searches for simple trading rules, scores them
 walk-forward and on a holdout, and catalogues the ones that clear its bar. The
 CLI talks to the deployed app (because `LAB_URL` is set), so saves persist in
 Postgres across runs. **Never pass `--local`**: that writes to an ephemeral
@@ -130,7 +130,7 @@ bun run lab lab_catalogue_save --json '{"rule":<rule>,"name":"<short name, e.g. 
 - Cap: **2 saves per search, 8 per run.** If a search has more than 2
   robust rules, save the top 2 by walk-forward Sharpe and list the rest as
   "robust, over cap, not saved".
-- Never auto-save `candidate` or weaker. LAB.md requires a human-written
+- Never auto-save `candidate` or weaker. docs/LAB.md requires a human-written
   note for those. List every `candidate`-or-better rule in the brief with
   the failing number from `verdict.reasons`.
 
@@ -179,7 +179,7 @@ curl -sS "${AUTH[@]}" "$APP_URL/api/metrics/summary?ids=$IDS" > /tmp/run/metrics
 Each series present returns `latest, previous, mean30, mean90, z30`. A
 missing id means that collector has no key configured (FRED, Elfa). That's
 expected; fill those from §2.4 instead. **Flag every `|z30| ≥ 2`**, the
-app's own "unusual" threshold (DESIGN.md §10.2). On 401, write "app metrics
+app's own "unusual" threshold (docs/design/README.md §10.2). On 401, write "app metrics
 unavailable (401)" once and use §2.4 for everything.
 
 **Sectors with live enrichment.**
@@ -504,7 +504,7 @@ The same vocabulary applies to setup theses, rotation notes and the brief.
 ### 4.3 Sector rules
 
 **Goal: show where mindshare and liquidity are rotating before price
-follows** (SPEC.md pillar 3). The taxonomy is emergent: decide each run
+follows** (docs/SPEC.md pillar 3). The taxonomy is emergent: decide each run
 which narratives actually hold attention (CT trending, CoinGecko/DefiLlama
 trending, crypto news, the live OI/funding/social numbers from §2.2). A
 sector can vanish or appear between runs.
@@ -741,7 +741,7 @@ No notification otherwise.
 ## Repository map (routine's-eye view)
 
 - `ROUTINE.md`: this file.
-- `SPEC.md`: the app's contract ("Runtime shape", "Routine Contract").
+- `docs/SPEC.md`: the app's contract ("Runtime shape", "Routine Contract").
 - `src/shared/schemas.ts`: MarketState and Sectors schemas (source of truth).
 - `src/server/routine/`: the setups pipeline (`gate.ts`, `ledger.ts`,
   `schema.ts`, `run.ts`) shared with the fallback (`docs/fallback-routine.md`).

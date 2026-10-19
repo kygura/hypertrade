@@ -1,10 +1,10 @@
 # DESIGN-chat — PATHS (semantic simulation chat)
 
-Binding interface brief for SPEC.md § "Paths — semantic simulation chat
-(phase 4)". It **extends** DESIGN.md and never overrides it: tokens (§2),
+Binding interface brief for docs/SPEC.md § "Paths — semantic simulation chat
+(phase 4)". It **extends** docs/design/README.md and never overrides it: tokens (§2),
 responsive tiers (§4), state vocabulary (§6), confirmation levels (§7),
 motion (§8), charts (§9), a11y (§12) and themes (§15) all apply unchanged.
-Where this file is silent, DESIGN.md decides.
+Where this file is silent, docs/design/README.md decides.
 
 **No new tokens.** Every color, size and motion below already exists in
 `src/ui/index.css` and the theme contract (`src/ui/themes/README.md`), so all

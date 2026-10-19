@@ -4,7 +4,7 @@ import { SCREENER_TABLES, ScreenerDslSchema, type QueryResult, type ScreenerDsl,
 import { databaseUrl, sql as mainSql } from "../db.js";
 import { completeStructured, type LlmDeps, type LlmTrace } from "./llm.js";
 
-// NL screener (SPEC.md § Intel I0.17). The strong model turns a question into
+// NL screener (docs/SPEC.md § Intel I0.17). The strong model turns a question into
 // the screener DSL (ScreenerDslSchema is the authority); compile() turns the
 // DSL into one parameterized SELECT. Identifiers only ever come from the
 // SCREENER_TABLES allowlist (looked up, never echoed from input); every value

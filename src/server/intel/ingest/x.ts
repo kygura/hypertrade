@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { NewEvent } from "../store.js";
 import { fetchText, fresh, headlineEvent, message, pastIso, SKIPPED_NO_KEY, type AdapterResult, type IngestDeps } from "./common.js";
 
-// X list timeline (SPEC.md § Intel I0.10), behind X_BEARER_TOKEN +
+// X list timeline (docs/SPEC.md § Intel I0.10), behind X_BEARER_TOKEN +
 // INTEL_X_LIST_ID; either missing → skipped:no-key.
 
 export const X_API = "https://api.twitter.com/2";

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { labDeadlineMs, labRegistry, SERVER_DEADLINE_MS } from "../mcp/lab.js";
 import { describeTool, TOOL_SOURCES, ToolInputError, UpstreamError, type Registry, type ToolSource } from "../mcp/types.js";
 
-// /lab — REST face of the lab tool registry (LAB.md "Surfaces"). Cookie or
+// /lab — REST face of the lab tool registry (docs/LAB.md "Surfaces"). Cookie or
 // LAB_API_TOKEN bearer, both checked by the global gate in auth.ts.
 //
 // GET  /lab/tools        → { tools: [{ name, title, description, inputSchema, annotations }] }

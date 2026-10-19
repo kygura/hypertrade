@@ -1,4 +1,4 @@
-// Trust-boundary schema for LLM-authored simulation intents (SPEC.md "Paths", decision 3).
+// Trust-boundary schema for LLM-authored simulation intents (docs/SPEC.md "Paths", decision 3).
 // Zod is the authority; any hand-written JSON schema given to the model is only a hint.
 import { z } from "zod";
 import { BranchConfigSchema } from "./schemas.js";

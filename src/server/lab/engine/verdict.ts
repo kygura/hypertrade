@@ -1,6 +1,6 @@
 import { VERDICT_LEVELS, type RuleEvaluation, type Verdict, type VerdictLevel } from "../types.js";
 
-// The save bar as a verdict (LAB.md §7, "Verdict"). Checks run in order and
+// The save bar as a verdict (docs/LAB.md §7, "Verdict"). Checks run in order and
 // the first that fails sets the level; `reasons` names every failed check.
 //   fails_holdout  holdout missing, untested (no trade) or Sharpe ≤ 0
 //   weak           walk-forward missing or Sharpe ≤ 1
@@ -10,7 +10,7 @@ import { VERDICT_LEVELS, type RuleEvaluation, type Verdict, type VerdictLevel } 
 
 /**
  * Deflated-Sharpe cut-off of the save bar, calibrated on synthetic searches
- * (LAB.md "Calibration"): the lowest of {0.5, 0.8, 0.9, 0.95} at which no
+ * (docs/LAB.md "Calibration"): the lowest of {0.5, 0.8, 0.9, 0.95} at which no
  * more than 1 in 20 pure-noise searches has any top-10 rule passing the full
  * bar, which keeps the most planted rules.
  */

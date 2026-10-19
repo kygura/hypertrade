@@ -1,4 +1,4 @@
-// Shared component vocabulary — DESIGN.md §3 (tiers), §6 (state), §11
+// Shared component vocabulary — docs/design/README.md §3 (tiers), §6 (state), §11
 // (inventory). Every view imports from here rather than hand-rolling.
 export { Button, type ButtonTier, type ButtonProps } from './Button'
 export { Badge, StatusDot, type Tone, type DotStatus } from './Badge'

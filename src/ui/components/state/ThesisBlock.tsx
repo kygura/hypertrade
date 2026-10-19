@@ -1,7 +1,7 @@
 import type { MarketStateThesis } from '../../../shared/types'
 import { Panel, PanelHeader, PanelBody } from '../Panel'
 
-// ThesisBlock — DESIGN.md §10.6. Observe/Infer/Forecast, each an xs
+// ThesisBlock — docs/design/README.md §10.6. Observe/Infer/Forecast, each an xs
 // uppercase label followed by muted body text, disclaimer verbatim beneath.
 
 const SECTIONS = [

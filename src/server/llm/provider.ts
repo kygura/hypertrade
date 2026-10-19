@@ -1,4 +1,4 @@
-// Provider-neutral contract for the analyst (SPEC.md "Analyst"). The
+// Provider-neutral contract for the analyst (docs/SPEC.md "Analyst"). The
 // analyst loop (routes/analyst.ts) drives a Conversation step by step and
 // never sees provider wire formats; each provider owns its own message
 // history so tool results can be appended in its native shape.

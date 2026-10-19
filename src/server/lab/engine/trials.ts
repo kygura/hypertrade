@@ -1,6 +1,6 @@
 import { mulberry32 } from "./rng.js";
 
-// Effective number of independent trials (LAB.md §7) for the deflated Sharpe.
+// Effective number of independent trials (docs/LAB.md §7) for the deflated Sharpe.
 //
 // A search scores thousands of rule variants, but most are threshold
 // neighbours or family members of one another: their return tracks are

@@ -1,7 +1,7 @@
 import { fmtProb } from './format'
 
 // ProbBar — one horizontal probability bar per option of a choice answer.
-// Model estimates wear info-blue (DESIGN.md §2: speculation never wears the
+// Model estimates wear info-blue (docs/design/README.md §2: speculation never wears the
 // green/red of realized PnL); the chosen option is the only filled-info bar
 // and carries a ▸ glyph so color is never the sole signal. Number always
 // printed, tabular, right-aligned.

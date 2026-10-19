@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { errorText, lab, shortId, type CatalogueEntry } from '../../lib/lab'
 
-// REMOVE (catalogued rules) — DESIGN.md §10.9 / §7 Level 2. Cancel takes
+// REMOVE (catalogued rules) — docs/design/README.md §10.9 / §7 Level 2. Cancel takes
 // focus; the dialog stays open on failure with the verbatim error.
 
 export function removeBody(e: Pick<CatalogueEntry, 'name' | 'savedAt' | 'runId'>): string {

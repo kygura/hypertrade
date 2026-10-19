@@ -22,11 +22,11 @@ import { TerminalTabs } from './components/intel/TerminalTabs'
 
 // The drill-in carries the canvas chart library; load it with the route.
 const MarketDrill = lazy(() => import('./pages/MarketDrill').then((m) => ({ default: m.MarketDrill })))
-// Lab (DESIGN.md §10.9): research view, loaded with its routes.
+// Lab (docs/design/README.md §10.9): research view, loaded with its routes.
 const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
 const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
 const LAB_TAB_PATHS = ['/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
-// Terminal family (DESIGN-terminal.md §1.1, C1): `/` is the Cockpit, `/terminal`
+// Terminal family (docs/design/terminal.md §1.1, C1): `/` is the Cockpit, `/terminal`
 // the Terminal; each sub-tab is its own route, loaded with it. `/overview` is
 // the old glance under TerminalTabs.
 const Cockpit = lazy(() => import('./pages/cockpit/Cockpit').then((m) => ({ default: m.Cockpit })))
@@ -49,7 +49,7 @@ const TERMINAL_PAGES = [
   { path: '/asset/:coin', Page: Asset },
 ]
 
-// Router — SPEC.md route map. All routes except /login render inside
+// Router — docs/SPEC.md route map. All routes except /login render inside
 // AppShell. Auth guard: a session probe on shell mount plus the api.ts
 // 401 -> /login redirect on every later call.
 

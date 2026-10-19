@@ -1,7 +1,7 @@
 import type { SnapshotMetric } from "../../shared/intel.js";
 import { mean, median, stdev } from "./util.js";
 
-// Normalized deltas (SPEC.md § Intel I0.4). Pure. Each metric family has its
+// Normalized deltas (docs/SPEC.md § Intel I0.4). Pure. Each metric family has its
 // own z so a 3% move on a quiet coin and on a wild one do not read the same:
 //   price, oi_usd       z = Δ_h / (σ_1h · √h), Δ = log change, σ_1h from
 //                       hourly log changes over the 7-day history, h the

@@ -12,7 +12,7 @@ import type { IntelStore } from "../../intel/store.js";
 import { toCatalyst } from "../../intel/terminal.js";
 import { body, failure, invalid } from "./http.js";
 
-// /api/intel alerts, events, catalysts and feedback (SPEC.md § Intel I0.11–I0.13, I2).
+// /api/intel alerts, events, catalysts and feedback (docs/SPEC.md § Intel I0.11–I0.13, I2).
 // Session-cookie auth comes from the global gate. Mounted by the intel aggregator.
 //
 // GET    /alerts?since&kind          → {alerts} newest first

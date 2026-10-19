@@ -3,7 +3,7 @@ import { WatchInputSchema, type Watch } from "../../../shared/intel.js";
 import { checkWatch, type DocwatchDeps } from "../../intel/docwatch.js";
 import { body, failure, invalid } from "./http.js";
 
-// /api/intel/watches — doc/contract watcher (SPEC.md § Intel I0.19, I2).
+// /api/intel/watches — doc/contract watcher (docs/SPEC.md § Intel I0.19, I2).
 // GET    /watches              → {watches} (metadata: lastSnapshot stays server-side)
 // POST   /watches  WatchInput  → Watch (201; the first check is the baseline)
 // DELETE /watches/:id          → {ok: true}

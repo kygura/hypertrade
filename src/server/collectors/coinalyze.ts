@@ -1,4 +1,4 @@
-// Coinalyze flow collector (SPEC.md § Flow F0.1). Runs inside the collect
+// Coinalyze flow collector (docs/SPEC.md § Flow F0.1). Runs inside the collect
 // cron after the Intel snapshot write and fills intel_flow for held ∪ watched
 // coins (capped at INTEL_FLOW_MAX_COINS, by notional then watch order):
 // liquidations, perp and spot volume, long/short ratio, OI and funding at

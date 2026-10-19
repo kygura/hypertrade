@@ -1,5 +1,5 @@
 // FRED (Federal Reserve Economic Data) collector, ported from marketstate/src/fred.ts.
-// Series naming per SPEC.md: fred.<SERIES_ID>, plus derived fred.net_liquidity
+// Series naming per docs/SPEC.md: fred.<SERIES_ID>, plus derived fred.net_liquidity
 // and fred.spread_2s10s. Degrades to skipped:no-key when FRED_API_KEY unset —
 // keep that exact pattern (marketstate's fetcher, and downstream consumers,
 // expect a skip to be distinguishable from a real failure).
@@ -81,7 +81,7 @@ export async function collectFred(fetchFn: typeof fetch = fetch, deps: FredDbDep
   }
 
   // Per-series catch: one bad/rate-limited series must not discard the other
-  // eleven (SPEC.md: never fail the whole run over one tool).
+  // eleven (docs/SPEC.md: never fail the whole run over one tool).
   let firstError: string | undefined;
   const entries = await Promise.all(
     FRED_SERIES.map(async (id) => {

@@ -1,6 +1,6 @@
 import { fmtFeature, type MetricDef } from '../../lib/lab'
 
-// FeatureImportanceList — DESIGN.md §10.9. Top 10 features with a plain CSS
+// FeatureImportanceList — docs/design/README.md §10.9. Top 10 features with a plain CSS
 // bar (width = score / max); the printed number is the signal.
 
 export function FeatureImportanceList({ items, metrics }: { items: Array<{ feature: string; score: number }>; metrics: readonly MetricDef[] }) {

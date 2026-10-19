@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 
-// DataTable — DESIGN.md §4.4/§11. Priority-column drop mechanism via
+// DataTable — docs/design/README.md §4.4/§11. Priority-column drop mechanism via
 // hidden md:table-cell / hidden lg:table-cell — no JS column manager.
 // Wrap in .table-scroll so a wide table scrolls inside its panel, never the
 // page. Row height comes from --row-h (density var); rows are focusable so

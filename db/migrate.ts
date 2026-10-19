@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { releaseConnection } from "../src/server/db.js";
 import { pgDb, type Db } from "../src/server/platform/store-pg.js";
 
-// Migration runner (SPEC.md § Platform P0.17): applies db/migrations/*.sql in
+// Migration runner (docs/SPEC.md § Platform P0.17): applies db/migrations/*.sql in
 // name order, one transaction each, and records them in schema_migrations.
 // Every file runs on a database that has not recorded it: 001–010 predate the
 // runner but are idempotent, so an existing database just re-applies them once.

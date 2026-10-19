@@ -21,7 +21,7 @@ import { SIM_TOOL_SPEC, buildSimSystemPrompt, realSimDeps, runSimTool } from "..
 import type { IntentDeps } from "../sim/intent.js";
 import type { SimBranchOutcome, SimIntent } from "../../shared/intent.js";
 
-// /analyst — the classic-LLM analyst (SPEC.md "Analyst"). Read-only: it
+// /analyst — the classic-LLM analyst (docs/SPEC.md "Analyst"). Read-only: it
 // reads the app's data through tools/tools.ts and never places orders; Jev
 // stays the only model inside the trading loop. Session-cookie protection
 // comes from the global requireAuth gate in api/index.ts.

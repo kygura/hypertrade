@@ -1,6 +1,6 @@
 -- Intel: stop-loss triggers captured from the watched Hyperliquid account
 -- (DESK_WATCH_ADDRESS) on each /cron/collect, one row per (asset, side) per
--- collect. The journal reads them to compute R for HL trades (SPEC.md § Intel
+-- collect. The journal reads them to compute R for HL trades (docs/SPEC.md § Intel
 -- I0.15). 180-day retention (pruned by /cron/backfill). Apply after 007; safe
 -- to re-run.
 create table if not exists intel_stops (

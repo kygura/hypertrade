@@ -14,7 +14,7 @@ import { tick } from "../desk/watch.js";
 import { ExitProposalSchema } from "../desk/types.js";
 import { hasWebSearch } from "../llm/tools.js";
 
-// /desk — the agentic portfolio desk (SPEC.md "Desk"). Session-cookie
+// /desk — the agentic portfolio desk (docs/SPEC.md "Desk"). Session-cookie
 // protected by the global gate, except /desk/tick (x-cron-token, like
 // /cron/*) and /desk/telegram (Telegram's secret-token header); both are
 // listed in auth.ts.

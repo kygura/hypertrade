@@ -6,7 +6,7 @@ import type { Branch } from '../components/branches/types'
 import { allocationSummary, defaultBranchConfig, maxDdClass, rebalanceLabel, signClass } from '../components/branches/format'
 import { fmtPct } from '../../shared/format'
 
-// /branches — DESIGN.md §10.3. List + create; delete lives only in the
+// /branches — docs/design/README.md §10.3. List + create; delete lives only in the
 // editor (/branches/:id), not here (§4.4 column set has no delete column).
 // RETURN%/MAX DD/VS BTC come from GET /api/branches's left-joined cached
 // result; branches never simulated render "—".

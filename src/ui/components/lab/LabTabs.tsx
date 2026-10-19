@@ -2,7 +2,7 @@ import { useLocation, useNavigate } from 'react-router'
 import { Segmented, type SegmentOption } from '../Segmented'
 import { useLabData } from './LabData'
 
-// LabTabs — DESIGN.md §10.9. One Segmented (md) under the shell, workflow
+// LabTabs — docs/design/README.md §10.9. One Segmented (md) under the shell, workflow
 // order SEARCH · RUNS · CATALOGUE · PULSE, path-based so each tab is a
 // bookmarkable page. Sticky under the 40px top bar; the row is 52px tall
 // (the lg search form sticks at 92px under it).

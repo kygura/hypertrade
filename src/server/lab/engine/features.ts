@@ -1,6 +1,6 @@
 import { TRANSFORMS, type FeatureSpec, type LabDataset, type Transform, type Trend } from "../types.js";
 
-// Feature expansion (LAB.md §3). Every transform at day t reads only values at
+// Feature expansion (docs/LAB.md §3). Every transform at day t reads only values at
 // days ≤ t. NaN policy: the output at t is NaN when the raw value at t is
 // missing, or when the window holds fewer than half its length in usable
 // observations (minimum 2). Windows are direct loops, not running sums: exact,

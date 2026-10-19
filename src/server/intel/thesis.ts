@@ -20,7 +20,7 @@ import { sendIntel } from "./notify.js";
 import type { IntelStore } from "./store.js";
 import { iso, round } from "./util.js";
 
-// Thesis stress-tester (SPEC.md § Intel I0.16). The strong model only turns
+// Thesis stress-tester (docs/SPEC.md § Intel I0.16). The strong model only turns
 // free text into claims, assumptions, invalidation conditions and "wrong if"
 // lines, each claim mapped to one check from the fixed catalog. Code
 // evaluates every check against stored data (observations, snapshots, live
