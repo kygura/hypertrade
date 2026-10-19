@@ -60,7 +60,11 @@ export function telegramApi(token: string, method: string, body: unknown, fetchF
   });
 }
 
-export function createNotifier(env: Env = process.env, fetchFn: typeof fetch = fetch): Notifier {
+export function createNotifier(
+  env: Env = process.env,
+  fetchFn: typeof fetch = fetch,
+  sleep: (ms: number) => Promise<unknown> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Notifier {
   const tgToken = env.DESK_TELEGRAM_BOT_TOKEN?.trim();
   const tgChat = env.DESK_TELEGRAM_CHAT_ID?.trim();
   const discord = env.DESK_DISCORD_WEBHOOK_URL?.trim();
@@ -108,8 +112,9 @@ export function createNotifier(env: Env = process.env, fetchFn: typeof fetch = f
       }
       if (ntfy) {
         jobs.push(
-          post("ntfy", () =>
-            fetchFn(`${ntfyServer.replace(/\/+$/, "")}/${encodeURIComponent(ntfy)}`, {
+          post("ntfy", async () => {
+            const send = () =>
+              fetchFn(`${ntfyServer.replace(/\/+$/, "")}/${encodeURIComponent(ntfy)}`, {
               method: "POST",
               headers: {
                 Title: asciiHeader(a.title),
@@ -119,8 +124,14 @@ export function createNotifier(env: Env = process.env, fetchFn: typeof fetch = f
               },
               body: a.body.slice(0, 4000),
               signal: AbortSignal.timeout(10_000),
-            }),
-          ),
+              });
+            const r = await send();
+            if (r.status !== 429) return r;
+            // Rate limited (shared egress IPs): retry the same message once after Retry-After.
+            const wait = Number(r.headers.get("retry-after"));
+            await sleep(Math.min(Number.isFinite(wait) && wait > 0 ? wait : 10, 30) * 1000);
+            return send();
+          }),
         );
       }
       return (await Promise.all(jobs)).filter((x): x is string => !!x);

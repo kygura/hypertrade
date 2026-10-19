@@ -1,0 +1,53 @@
+name: Routine land
+
+# Merges routine PRs from claude-code/* branches into master once typecheck and
+# tests pass, but only when every changed file is under data/. Anything else is
+# left for a human. Cloud sessions can only push their own branch, and master
+# has no branch protection (routine.yml pushes to it directly).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [master]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: routine-land-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  land:
+    if: startsWith(github.head_ref, 'claude-code/') && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Only data/ changes?
+        id: scope
+        run: |
+          # Old and new paths, so a rename out of src/ into data/ is caught; an API
+          # failure aborts the step (fail closed).
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)')
+          if [ -z "$files" ] || printf '%s\n' "$files" | grep -qv '^data/'; then
+            echo "files outside data/; leaving the PR for a human"
+            echo "land=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "land=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: oven-sh/setup-bun@v2
+        if: steps.scope.outputs.land == 'true'
+      - if: steps.scope.outputs.land == 'true'
+        run: bun install --frozen-lockfile
+      - if: steps.scope.outputs.land == 'true'
+        run: bun run typecheck
+      - if: steps.scope.outputs.land == 'true'
+        run: bun test ./src
+      - if: steps.scope.outputs.land == 'true'
+        run: gh pr merge "$PR" --squash --delete-branch --match-head-commit "$HEAD_SHA"
