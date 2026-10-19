@@ -465,7 +465,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         } catch (err) {
           error = msg(err);
         }
-        const t = await deps.store.appendTrial({ ruleId: id, intent: input.intent, verdict: evaluation?.verdict?.level ?? null });
+        const t = await deps.store.appendTrial({ ruleId: id, intent: input.intent, verdict: evaluation?.verdict?.level ?? null, rule });
         candidates.push({ id, rule, text: ruleText(rule), evaluation, ...(error && { error }), idea: { n: t.n, of: t.n } });
       }
       const trialCount = (await deps.store.listTrials()).length;
@@ -528,7 +528,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       const warnings = [...warned].map(([w, cs]) => (cs.length === 1 ? `${cs[0]}: ${w}` : `${w} (${cs.length} coins: ${cs.join(", ")})`));
       const eventListTotal = result.eventList.length;
       result.eventList = result.eventList.slice(-EVENT_LIST_MAX);
-      const t = await deps.store.appendTrial({ ruleId: ruleId(rule), intent: "lab_event_study", verdict: result.verdict });
+      const t = await deps.store.appendTrial({ ruleId: ruleId(rule), intent: "lab_event_study", verdict: result.verdict, rule });
       return { ...result, eventListTotal, warnings, idea: { n: t.n, of: (await deps.store.listTrials()).length } };
     },
 

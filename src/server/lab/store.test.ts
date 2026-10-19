@@ -374,6 +374,20 @@ describe("trial log", () => {
       ruleId: "r",
       intent: null,
       verdict: "robust",
+      rule: null,
     });
+    expect(toTrial({ n: 4, at: new Date("2026-01-01T00:00:00Z"), rule_id: "r", intent: null, verdict: null, rule: { asset: "BTC" } }).rule).toEqual({ asset: "BTC" } as never);
+  });
+
+  test("memory and file stores round-trip the rule; a file without it still loads", async () => {
+    const rule = { asset: "BTC", direction: "long" } as never;
+    const m = memoryStore();
+    await m.appendTrial({ ruleId: "r", intent: "a", verdict: null, rule });
+    expect((await m.listTrials())[0]!.rule).toEqual(rule);
+    const path = join(await mkdtemp(join(tmpdir(), "lab-")), "lab.json");
+    await fileStore(path).appendTrial({ ruleId: "r", intent: "a", verdict: null, rule });
+    expect((await fileStore(path).listTrials())[0]!.rule).toEqual(rule);
+    await writeFile(path, JSON.stringify({ version: 1, runs: [], rules: [], trials: [{ n: 1, at: "2026-01-01T00:00:00Z", ruleId: "r", intent: null, verdict: null }] }));
+    expect((await fileStore(path).listTrials())[0]!.rule).toBeUndefined();
   });
 });
