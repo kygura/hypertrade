@@ -26,12 +26,16 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PR: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - uses: actions/checkout@v4
       - name: Only data/ changes?
         id: scope
         run: |
-          if gh pr diff "$PR" --name-only | grep -qv '^data/'; then
+          # Old and new paths, so a rename out of src/ into data/ is caught; an API
+          # failure aborts the step (fail closed).
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)')
+          if [ -z "$files" ] || printf '%s\n' "$files" | grep -qv '^data/'; then
             echo "files outside data/; leaving the PR for a human"
             echo "land=false" >> "$GITHUB_OUTPUT"
           else
@@ -46,4 +50,4 @@ jobs:
       - if: steps.scope.outputs.land == 'true'
         run: bun test ./src
       - if: steps.scope.outputs.land == 'true'
-        run: gh pr merge "$PR" --squash --delete-branch
+        run: gh pr merge "$PR" --squash --delete-branch --match-head-commit "$HEAD_SHA"
