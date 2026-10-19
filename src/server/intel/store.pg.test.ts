@@ -11,7 +11,7 @@ import { MemoryIntelStore, PgIntelStore, type IntelStore, type NewAlert, type Ne
 
 const PG_URL = process.env.INTEL_PG_TEST_URL;
 const SCHEMA = `intel_test_${process.pid}_${Date.now()}`;
-const MIGRATIONS = ["007_intel.sql", "008_intel_stops.sql", "009_flow.sql", "010_research.sql"].map((f) => new URL(`../../../db/migrations/${f}`, import.meta.url));
+const MIGRATIONS = ["007_intel.sql", "008_intel_stops.sql", "009_flow.sql", "010_research.sql", "016_thesis_history.sql"].map((f) => new URL(`../../../db/migrations/${f}`, import.meta.url));
 
 const snap = (asset: string, ts: string, price: number, over: Partial<SnapshotRow> = {}): SnapshotRow => ({
   asset, ts, price, vol24h: null, funding: null, oiUsd: null, premium: null, basis: null,
@@ -66,7 +66,12 @@ function normalizer() {
 }
 
 /** Every IntelStore method, in an order whose results do not depend on the store's clock. */
-async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
+async function scenario(store: IntelStore): Promise<Record<string, unknown>> {
+  // Server clocks can tick in whole milliseconds (PGlite), so back-to-back rows tie on created_at and
+  // "newest first" falls to random uuids. A pause before every call keeps stamps distinct on both stores.
+  const s = new Proxy(store, {
+    get: (t, k) => (typeof t[k as keyof IntelStore] === "function" ? async (...a: unknown[]) => (await Bun.sleep(3), (t[k as keyof IntelStore] as Function).apply(t, a)) : t[k as keyof IntelStore]),
+  });
   const out: Record<string, unknown> = {};
   const n = normalizer();
   const put = (k: string, v: unknown) => (out[k] = n(v));
@@ -364,11 +369,13 @@ async function scenario(s: IntelStore): Promise<Record<string, unknown>> {
 
 describe.skipIf(!PG_URL)("PgIntelStore (real Postgres) matches MemoryIntelStore", () => {
   const saved = process.env.DATABASE_URL;
+  const savedPool = process.env.DB_POOL_MAX;
   const pg = new PgIntelStore();
   const usePath = () => sql().unsafe(`set search_path to "${SCHEMA}"`);
 
   beforeAll(async () => {
     process.env.DATABASE_URL = PG_URL;
+    process.env.DB_POOL_MAX = "1"; // search_path is per connection
     await releaseConnection();
     await sql().unsafe(`create schema "${SCHEMA}"`);
     await usePath();
@@ -388,6 +395,8 @@ describe.skipIf(!PG_URL)("PgIntelStore (real Postgres) matches MemoryIntelStore"
       await releaseConnection();
       if (saved === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = saved;
+      if (savedPool === undefined) delete process.env.DB_POOL_MAX;
+      else process.env.DB_POOL_MAX = savedPool;
     }
   });
 
@@ -418,6 +427,18 @@ describe.skipIf(!PG_URL)("PgIntelStore (real Postgres) matches MemoryIntelStore"
     expect((await s.getAlert(a.id))!.feedback).toBe(-1);
     const fb = await s.feedbackStats();
     for (const bkt of fb) for (const k of ["hops", "up", "down", "total"] as const) expect(typeof bkt[k]).toBe("number");
+  });
+
+  test("updateThesis compare-and-set: stale history returns null and writes nothing", async () => {
+    const s = pg;
+    const h1 = [{ ts: "2026-10-13T00:00:00.000Z", note: "h1" }] as never;
+    const th = await s.insertThesis({ text: "cas", assets: [], claims: [], invalidation: [], wrongIf: [], checkedAt: null });
+    const stale = [{ ts: "2026-01-01T00:00:00.000Z", note: "stale" }] as never;
+    expect(await s.updateThesis(th.id, { history: h1 }, stale)).toBeNull();
+    expect((await s.getThesis(th.id))!.history).toEqual([]);
+    expect((await s.updateThesis(th.id, { history: h1 }, []))!.history).toEqual(h1);
+    expect((await s.getThesis(th.id))!.history).toEqual(h1);
+    expect(await s.updateThesis(th.id, { history: [] }, [])).toBeNull(); // now stale
   });
 
   test("ids that are not uuids read as missing, like the memory store (no SQL error)", async () => {
