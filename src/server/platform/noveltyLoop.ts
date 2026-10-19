@@ -1,6 +1,6 @@
 import { hlInfo, parseMetaAndCtxs } from "../../shared/hl-client.js";
 import type { NoveltyEntry } from "../../shared/platform.js";
-import { defaultOiBackfill } from "../collectors/coinalyzeOi.js";
+import { defaultOiBackfill, OiRateLimited } from "../collectors/coinalyzeOi.js";
 import { toDaily } from "../lab/providers/series.js";
 import { defaultHtDeps, type HtDeps } from "../lab/providers/ht.js";
 import { syncFunding } from "../market/fundingSync.js";
@@ -57,14 +57,17 @@ export interface NoveltyLoopDeps {
 
 /** `from` bounds only what is synced; the baseline is everything stored (full history since listing). */
 export const storedInputs = (ht: Pick<HtDeps, "ensureHistory" | "candles" | "funding" | "series"> = defaultHtDeps, sync: typeof syncFunding = syncFunding, backfillOi?: (coin: string) => Promise<number>) => {
-  /** Coinalyze OI backfill runs once per coin per process (idempotent in the store; a failure waits for the next restart). */
+  /** Coinalyze OI backfill runs once per coin per process (idempotent in the store; a failure waits for the next restart, a 429 retries on the next run). */
   const oiTried = new Set<string>();
   return async (coin: string, now: number): Promise<RawInputs> => {
     const from = now - HISTORY_DAYS * DAY;
     await ht.ensureHistory(coin, from, ENSURE_CAP_MS);
     if (backfillOi && !oiTried.has(coin)) {
       oiTried.add(coin);
-      await backfillOi(coin).catch((err) => console.error(`[novelty] ${coin} OI backfill:`, err instanceof Error ? err.message : err));
+      await backfillOi(coin).catch((err) => {
+        if (err instanceof OiRateLimited) oiTried.delete(coin);
+        console.error(`[novelty] ${coin} OI backfill:`, err instanceof Error ? err.message : err);
+      });
     }
     await sync(coin, from, { maxPages: FUNDING_PAGES, deadline: Date.now() + ENSURE_CAP_MS });
     const [bars, funding, oi] = await Promise.all([ht.candles(coin, 0), ht.funding(coin, 0, now), ht.series(`hl.oi.${coin}`, 0, now)]);

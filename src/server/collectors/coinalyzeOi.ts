@@ -65,16 +65,23 @@ export interface OiBackfillDeps {
   insert(coin: string, rows: OiRow[]): Promise<void>;
 }
 
+/** HTTP 429: the caller may retry the coin on its next run. */
+export class OiRateLimited extends Error {}
+const MAP_RETRY_MS = 3_600_000;
+
 /** Returns backfill(coin) -> rows inserted. Skips (0, no API call) without a key or when the coin already has the novelty minimum of OI days. Throws on HTTP errors. */
 export function createOiBackfill(deps: OiBackfillDeps) {
   const key = deps.env.COINALYZE_API_KEY?.trim();
   let last = 0;
-  let symbols: Promise<Map<string, string>> | undefined;
+  let symbols: Map<string, string> | undefined;
+  /** A failed (or empty) symbol-map fetch is not retried for MAP_RETRY_MS: every coin would otherwise repeat the slow calls. */
+  let mapFailedAt = -Infinity;
   const get = async (path: string, params: Record<string, string> = {}): Promise<unknown> => {
     const wait = last + CALL_GAP_MS - deps.now();
     if (wait > 0) await deps.sleep(wait);
     last = deps.now();
     const res = await deps.fetch(`${COINALYZE_BASE_URL}/${path}?${new URLSearchParams(params)}`, { headers: { api_key: key!, accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
+    if (res.status === 429) throw new OiRateLimited(`coinalyze ${path}: rate limited (429)`);
     if (!res.ok) throw new Error(`coinalyze ${path}: HTTP ${res.status}`);
     return res.json();
   };
@@ -82,8 +89,18 @@ export function createOiBackfill(deps: OiBackfillDeps) {
     if (!key) return 0;
     const have = new Set((await deps.stored(coin)).map((p) => dayStart(p.t)));
     if (have.size >= NOVELTY.minOiDays) return 0;
-    symbols ??= Promise.all([get("exchanges"), get("future-markets")]).then(([e, m]) => hlSymbolMap(e, m));
-    const symbol = (await symbols.catch((e) => ((symbols = undefined), Promise.reject(e)))).get(coin);
+    if (!symbols) {
+      if (deps.now() - mapFailedAt < MAP_RETRY_MS) return 0;
+      try {
+        const m = hlSymbolMap(await get("exchanges"), await get("future-markets"));
+        if (!m.size) throw new Error("coinalyze lists no Hyperliquid perps");
+        symbols = m;
+      } catch (e) {
+        mapFailedAt = deps.now();
+        throw e;
+      }
+    }
+    const symbol = symbols.get(coin);
     if (!symbol) return 0;
     const now = deps.now();
     const raw = await get("open-interest-history", { symbols: symbol, interval: "daily", from: String(Math.floor((now - BACKFILL_DAYS * DAY) / 1000)), to: String(Math.floor(now / 1000)), convert_to_usd: "false" });

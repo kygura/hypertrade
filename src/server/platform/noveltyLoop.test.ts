@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { OiRateLimited } from "../collectors/coinalyzeOi.js";
 import { alignDaily, createNoveltyLoop, storedInputs, type RawInputs } from "./noveltyLoop.js";
 import { MemoryPlatformStore } from "./store-memory.js";
 
@@ -109,5 +110,29 @@ describe("storedInputs()", () => {
     expect(calls.candles).toEqual(["SOL", 0]);
     expect(calls.funding).toEqual(["SOL", 0, NOW]);
     expect(calls.series).toEqual(["hl.oi.SOL", 0, NOW]);
+  });
+
+  test("OI backfill: once per coin, errors swallowed, a 429 retries next run", async () => {
+    const ht = { ensureHistory: async () => {}, candles: async () => [], funding: async () => [], series: async () => [] };
+    const sync = (async () => ({})) as never;
+    const calls: string[] = [];
+    let mode: "ok" | "fail" | "429" = "ok";
+    const backfill = async (c: string) => { calls.push(c); if (mode === "fail") throw new Error("boom"); if (mode === "429") throw new OiRateLimited("429"); return 0; };
+    const err = console.error;
+    console.error = () => {};
+    try {
+      const inputs = storedInputs(ht as never, sync, backfill);
+      await inputs("SOL", NOW);
+      await inputs("SOL", NOW);
+      mode = "fail";
+      await inputs("ETH", NOW); // swallowed
+      await inputs("ETH", NOW);
+      mode = "429";
+      await inputs("BTC", NOW);
+      await inputs("BTC", NOW); // retried
+      expect(calls).toEqual(["SOL", "ETH", "BTC", "BTC"]);
+    } finally {
+      console.error = err;
+    }
   });
 });
