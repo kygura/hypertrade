@@ -334,8 +334,7 @@ function parseState(text: string): State | null {
 
 /**
  * Memory store backed by a JSON file. Loaded on first use; a missing file
- * starts empty, a corrupt one is moved to `<path>.bak` and the store starts
- * empty. Every mutation rewrites the file atomically (tmp + rename).
+ * starts empty, a corrupt one makes every call throw and is left untouched. Every mutation rewrites the file atomically (tmp + rename).
  */
 export function fileStore(path: string, clock: () => Date = () => new Date()): LabStore {
   let loading: Promise<State> | null = null;
@@ -352,8 +351,8 @@ export function fileStore(path: string, clock: () => Date = () => new Date()): L
       }
       const state = parseState(text);
       if (state) return state;
-      await rename(path, `${path}.bak`);
-      return emptyState();
+      // Never start empty over a damaged file: that would reset the trial counter (FEATURES.md § 5).
+      throw new Error(`lab store file ${path} is corrupt; fix or remove it by hand (the store will not start empty)`);
     })().catch((err) => {
       loading = null; // retry on the next call
       throw err;
