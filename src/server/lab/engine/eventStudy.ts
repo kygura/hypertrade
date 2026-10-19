@@ -180,6 +180,8 @@ export function replayCoin(rule: Rule, data: LabDataset, opts: EventStudyOptions
     else (risk = opts.stopAtr * atrAt(j)), (stop = entry - dir * risk);
     if (!(risk > 0) || !(entry > 0)) return null;
     const target = rule.target ? levelAt(rule.target, j) : entry + dir * opts.targetAtr * atrAt(j);
+    // The default target reads ATR, NaN before ATR_WINDOW bars: no event and no cooldown, not a trade without a target.
+    if (!Number.isFinite(stop) || !Number.isFinite(target)) return null;
     if (rule.target && !(dir * (target - entry) > 0)) return null;
     const stopPct = (risk / entry) * 100;
     let funding = 0; // fraction of price paid over the hold
