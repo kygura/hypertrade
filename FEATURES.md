@@ -98,7 +98,7 @@ Validation rejects unknown features, wrong arity, wrong kind (a category in a co
 
 **In scope (PS1):** an authoring tool `lab_author_rule` in `src/server/lab/tools.ts` and `service.ts`. It turns intent text into 1–3 `Rule` candidates through `completeStructured` (`src/server/intel/llm.ts:111`), validates every feature id against the metric catalogue, evaluates each with the existing explicit-rule evaluation, records each candidate in the global trial counter (section 5), and writes nothing. The operator saves through `lab_catalogue_save`, which stays the approval step.
 
-**Out of scope for now:** stop/target/invalidation expressions, categorical regime conditions, and `within`/`crosses` on Lab rules, plus porting the platform's hardcoded intraday setups (`setupsFor`, `src/server/platform/features.ts:175`) to schemas. The platform has four setups on 1-minute z-scores that change rarely, and its score already has a determinism test. A compiler pays off only when setups are authored often. Revisit when the platform gains a fifth setup kind.
+**Out of scope for now:** stop/target/invalidation expressions, categorical regime conditions, and `within`/`crosses` on Lab rules. The platform's four intraday setups are schemas since PS-B1 (`src/server/platform/setups.ts`, compiled into the scanner's one predicate).
 
 ---
 

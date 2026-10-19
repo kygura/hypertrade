@@ -1,4 +1,3 @@
-import type { Side } from "../../shared/intel.js";
 import type { FeatureVector, LiquidityTier } from "../../shared/platform.js";
 import { classifyRegime } from "../desk/analytics.js";
 import type { Point } from "../intel/normalize.js";
@@ -126,76 +125,4 @@ export function computeFeatures(history: RingPoint[], now: number, extras: Featu
 export function liquidityTiers(universe: Array<{ coin: string; dayNtlVlm: number }>): Record<string, LiquidityTier> {
   const sorted = universe.map((u) => ({ coin: u.coin, v: u.dayNtlVlm > 0 && Number.isFinite(u.dayNtlVlm) ? u.dayNtlVlm : 0 })).sort((a, b) => b.v - a.v || (a.coin < b.coin ? -1 : 1));
   return Object.fromEntries(sorted.map((u, i) => [u.coin, (i * 3 < sorted.length ? 1 : i * 3 < 2 * sorted.length ? 2 : 3) as LiquidityTier]));
-}
-
-// ─── Setups ───
-
-export type Thresholds = {
-  /** |fundingZ24h| a crowded setup needs. */
-  fundingZ: number;
-  /** oiChg1hZ build (or drop) needed. */
-  oiZ: number;
-  /** |ret15mZ| for a move. */
-  retZ: number;
-  rvExpansion: number;
-  volZ: number;
-  /** |ret15mZ| below this counts as price flat. */
-  flatZ: number;
-};
-/** Thinner books move on less, so lower tiers need a stronger signal. */
-export const DEFAULT_THRESHOLDS: Record<LiquidityTier, Thresholds> = {
-  1: { fundingZ: 2, oiZ: 1, retZ: 2, rvExpansion: 1.8, volZ: 1.5, flatZ: 1 },
-  2: { fundingZ: 2.25, oiZ: 1.25, retZ: 2.25, rvExpansion: 2, volZ: 1.75, flatZ: 1 },
-  3: { fundingZ: 2.5, oiZ: 1.5, retZ: 2.5, rvExpansion: 2.25, volZ: 2, flatZ: 1 },
-};
-
-export type Setup = { setupKind: string; direction: Side; stopPx: number; targetPx: number; invalidationPx: number; tags: string[] };
-
-/**
- * Stop and target in σ units, σ = mark × sigma1h (24 h realized 1-min vol scaled to one hour, the ring's ATR stand-in).
- * invalidationPx = stopPx: the level that kills the thesis is the stop.
- */
-const LEVELS: Record<string, { stop: number; target: number }> = {
-  crowded_long: { stop: 1.5, target: 2 },
-  negative_funding_squeeze: { stop: 1.5, target: 3 },
-  deleveraging_washout: { stop: 1, target: 1.5 },
-  vol_expansion_breakout: { stop: 1, target: 2 },
-};
-
-const ge = (x: number | null | undefined, t: number) => x != null && x >= t;
-const le = (x: number | null | undefined, t: number) => x != null && x <= t;
-
-/**
- * Candidate setups (unknown feature = condition not met). Kinds:
- *  crowded_long              short  flows crowded_long: funding z hot and > 0, OI building, price flat
- *  negative_funding_squeeze  long   flows negative_funding_oi_build: funding < 0 and cold, OI building, price not falling
- *  deleveraging_washout      long   flows deleveraging: OI dropping hard on a dump with vol expanding (long flush -> bounce)
- *  vol_expansion_breakout    by sign of the move; no flows detector: vol expanding, move and acceleration agree, volume confirms
- */
-export function setupsFor(fv: FeatureVector, tier: LiquidityTier, thresholds: Record<LiquidityTier, Thresholds> = DEFAULT_THRESHOLDS): Setup[] {
-  const T = thresholds[tier];
-  const f = fv.features;
-  const mark = fin(fv.inputs.mark as number | null);
-  const funding = fin(fv.inputs.funding as number | null);
-  const sigma = fin(fv.inputs.sigma1h as number | null);
-  if (mark == null || !(mark > 0) || sigma == null || !(sigma > 0)) return [];
-  const ret = f.ret15mZ;
-  const out: Array<{ kind: string; direction: Side; tags: string[] }> = [];
-
-  if (ge(f.fundingZ24h, T.fundingZ) && (funding ?? 0) > 0 && ge(f.oiChg1hZ, T.oiZ) && ret != null && Math.abs(ret) < T.flatZ)
-    out.push({ kind: "crowded_long", direction: "short", tags: ["crowded_long", "funding_hot", "oi_building"] });
-  if (le(f.fundingZ24h, -T.fundingZ / 2) && (funding ?? 0) < 0 && ge(f.oiChg1hZ, T.oiZ) && ge(ret, -0.5))
-    out.push({ kind: "negative_funding_squeeze", direction: "long", tags: ["negative_funding", "oi_building", "squeeze_fuel"] });
-  if (le(f.oiChg1hZ, -T.oiZ) && le(ret, -T.retZ) && ge(f.rvExpansion, T.rvExpansion))
-    out.push({ kind: "deleveraging_washout", direction: "long", tags: ["deleveraging", "long_flush", "vol_expansion"] });
-  if (ge(f.rvExpansion, T.rvExpansion) && ret != null && Math.abs(ret) >= T.retZ && f.priceAccelZ != null && Math.sign(f.priceAccelZ) === Math.sign(ret) && ge(f.volRatio1hZ, T.volZ))
-    out.push({ kind: "vol_expansion_breakout", direction: ret > 0 ? "long" : "short", tags: ["vol_expansion", "volume_confirm", ret > 0 ? "breakout_up" : "breakout_down"] });
-
-  return out.flatMap((s) => {
-    const { stop, target } = LEVELS[s.kind]!;
-    const d = s.direction === "long" ? 1 : -1;
-    const stopPx = mark - d * stop * sigma * mark;
-    const targetPx = mark + d * target * sigma * mark;
-    return stopPx > 0 && targetPx > 0 ? [{ setupKind: s.kind, direction: s.direction, stopPx, targetPx, invalidationPx: stopPx, tags: s.tags }] : [];
-  });
 }

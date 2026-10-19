@@ -4,12 +4,14 @@ import { fin } from "../intel/util.js";
 import type { JsonValue, LedgerStats, Opportunity } from "../../shared/platform.js";
 import { bus as defaultBus, type Bus } from "./bus.js";
 import { ABSORB_SHARE, bookFromL2, costs as costsFor, depthWithin, midOf, netEdge, type Book } from "./costs.js";
-import { computeFeatures, liquidityTiers, setupsFor, type RingPoint } from "./features.js";
+import { computeFeatures, liquidityTiers, type RingPoint } from "./features.js";
+import { setupsFor } from "./setups.js";
 import { nextAutoStatus, shouldExpire } from "./opportunity.js";
 import { SCORE_VERSION, scoreOpportunity } from "./score.js";
 import { groupStats } from "./stats.js";
 import { dedupeKey, type OpportunityInput, type PlatformStore, type ScanSnapshot } from "./store.js";
 import type { LoopDef } from "./runtime.js";
+import { ensureSectors, parseUniverseSpec, selectUniverse, type UniverseOpts } from "./universe.js";
 
 // Scan loop (SPEC P0.4 scanner, P0.9-P0.11). Thin glue: one metaAndAssetCtxs per
 // tick -> ring -> features -> setups -> score -> upsert -> costs for the top N ->
@@ -63,6 +65,10 @@ export interface ScannerDeps {
   researchScore?: number;
   /** Extra history for the ring at boot (e.g. intel_snapshots); the scan_snapshots row wins on a shared timestamp. */
   seedFrom?: (sinceIso: string) => Promise<ScanSnapshot[]>;
+  /** Coins the setups run on (see parseUniverseSpec); default PLATFORM_SCAN_UNIVERSE, else every live coin. Tiers and the ring still cover all. */
+  filter?: UniverseOpts;
+  /** coin -> sectors for a sector filter; default tags new coins through the LLM and caches them in the store. */
+  tags?: (coins: string[]) => Promise<Record<string, string[]>>;
 }
 
 export function createScanner(deps: ScannerDeps) {
@@ -76,6 +82,9 @@ export function createScanner(deps: ScannerDeps) {
   const researchScore = deps.researchScore ?? envNum("PLATFORM_RESEARCH_SCORE", 4);
   const intervalSec = envNum("PLATFORM_SCAN_INTERVAL_SEC", 60);
   const cooldownMs = (deps.cooldownMin ?? envNum("PLATFORM_COOLDOWN_MIN", 240)) * MIN;
+  const spec = process.env.PLATFORM_SCAN_UNIVERSE?.trim();
+  const filter = deps.filter ?? (spec ? parseUniverseSpec(spec) : undefined);
+  const tags = deps.tags ?? ((coins: string[]) => ensureSectors(coins, store));
 
   const ring = new Map<string, RingPoint[]>();
   const marks = new Map<string, { px: number; ts: number }>();
@@ -141,9 +150,11 @@ export function createScanner(deps: ScannerDeps) {
       console.error("[scanner] positions read failed:", err instanceof Error ? err.message : err);
     }
 
-    const tiers = liquidityTiers(live.map((c) => ({ coin: c.name, dayNtlVlm: c.dayNtlVlm })));
+    const vols = live.map((c) => ({ coin: c.name, dayNtlVlm: c.dayNtlVlm }));
+    const tiers = liquidityTiers(vols);
     const macro = macroTags(new Date(t));
-    const cands = live.flatMap((c) => {
+    const scanned = filter && new Set(selectUniverse(vols, { ...filter, tags: filter.sectors?.length ? await tags(vols.map((c) => c.coin)) : undefined }).map((c) => c.coin));
+    const cands = live.filter((c) => !scanned || scanned.has(c.name)).flatMap((c) => {
       const fv = computeFeatures(ring.get(c.name) ?? [], t, { liqNearUsd: liqNear.get(c.name) ?? null });
       const tier = tiers[c.name]!;
       return setupsFor(fv, tier).map((setup) => ({ ctx: c, fv, tier, setup, score: scoreOpportunity(fv) }));
