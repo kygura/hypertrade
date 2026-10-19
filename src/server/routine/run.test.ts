@@ -241,6 +241,20 @@ describe("runRoutine end to end", () => {
     expect(logs.at(-1)).toContain("no usable entry");
   });
 
+  test("input replaces the model: no provider needed, invalid input exits 1 and adds nothing", async () => {
+    const r = await runRoutine({ mode: "pulse", dryRun: false, root, input: pulseReply }, deps(null, [], []));
+    expect(r.exitCode).toBe(0);
+    expect(LedgerSchema.parse(await read("data/setups/ledger.json")).open.map((s) => s.asset).sort()).toEqual(["BTC", "SOL"]);
+
+    const { brief: _brief, ...bad } = pulseReply;
+    const logs: string[] = [];
+    const r2 = await runRoutine({ mode: "pulse", dryRun: true, root, input: bad }, deps(null, [], logs));
+    expect(r2.exitCode).toBe(1);
+    expect(r2.brief).toContain("brief");
+    const d = await runRoutine({ mode: "daily", dryRun: true, root, input: pulseReply }, deps(null, [], logs));
+    expect(d.exitCode).toBe(2);
+  });
+
   test("htf mode refreshes the view and gates nothing", async () => {
     const stub = new StubProvider("kimi-k3", [{ emit: pulseReply }]);
     const r = await runRoutine({ mode: "htf", dryRun: false, root }, deps(stub, [], []));

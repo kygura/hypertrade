@@ -59,6 +59,18 @@ describe("DeskService", () => {
     await expect(service.approve(rec.id, "operator")).rejects.toBeInstanceOf(DeskError);
   });
 
+  test("forceManual queues for approval under auto, without reading the mode", async () => {
+    const { service, store, notifier } = makeService();
+    let reads = 0;
+    service.approval = async () => (reads++, "auto");
+    const rec = await service.submitOpen(proposal, null, { forceManual: true });
+    expect(rec.status).toBe("pending");
+    expect(rec.expiresAt).not.toBeNull();
+    expect(reads).toBe(0);
+    expect(await store.paperPositions()).toHaveLength(0);
+    expect(notifier.sent.at(-1)!.actions?.map((a) => a.data)).toEqual([`approve:${rec.id}`, `reject:${rec.id}`]);
+  });
+
   test("reject and expiry", async () => {
     const t = { now: new Date("2026-10-05T12:00:00Z") };
     const { service } = makeService({ env: { DESK_APPROVAL: "manual", DESK_APPROVAL_TTL_MIN: "30" }, now: () => t.now });

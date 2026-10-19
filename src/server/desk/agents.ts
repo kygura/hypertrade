@@ -126,6 +126,7 @@ interface RunState {
   /** Scouts' deadline: the run's own signal, tightened by PM_RESERVE_MS so a slow scout never costs the PM its own time. */
   scoutSignal: AbortSignal;
   budget: ToolContext["budget"];
+  forceManual?: boolean;
   agents: number;
   spawns: number;
   usage: Map<string, Usage>;
@@ -158,7 +159,7 @@ export async function runAgent(spec: AgentSpec, task: string, st: RunState): Pro
   const conv = spec.provider.start(spec.system, [], task);
   const specs = [...spec.tools.map((t) => t.spec), ...(spec.extra?.specs ?? [])];
   const byName = new Map(spec.tools.map((t) => [t.spec.name, t]));
-  const ctx: ToolContext = { service: st.service, runId: st.runId, agent: spec.id, emit: st.emit, budget: st.budget };
+  const ctx: ToolContext = { service: st.service, runId: st.runId, agent: spec.id, emit: st.emit, budget: st.budget, forceManual: st.forceManual };
   let text = "";
   let rounds = 0;
   let stop = "end";
@@ -363,6 +364,10 @@ export interface DeskRunOptions {
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   /** Whether the PM may propose/exit/alert. Cycles act; asks act only when the operator enables it. */
   act: boolean;
+  /** When acting, only these action tools (by name); all of them when unset. */
+  actions?: string[];
+  /** Every propose_trade queues for approval, whatever the approval mode (the TUI). */
+  forceManual?: boolean;
   makeProvider?: ProviderFactory;
   timeoutMs?: number;
   /** Overrides PM_RESERVE_MS (tests only). */
@@ -404,6 +409,7 @@ export async function runDesk(o: DeskRunOptions, emit: (e: DeskEvent) => void): 
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const onOuter = () => ctrl.abort();
   o.signal?.addEventListener("abort", onOuter);
+  if (o.signal?.aborted) ctrl.abort(); // aborted before this point (e.g. during createRun)
 
   // Scouts (consult_specialists, spawn_agent) stop PM_RESERVE_MS before the
   // run's own deadline, in every round, so a slow one never leaves the PM
@@ -419,6 +425,7 @@ export async function runDesk(o: DeskRunOptions, emit: (e: DeskEvent) => void): 
     makeProvider,
     scoutSignal,
     budget: { proposals: 0, alerts: 0 },
+    forceManual: o.forceManual,
     agents: 1,
     spawns: 0,
     usage: new Map(),
@@ -443,8 +450,8 @@ export async function runDesk(o: DeskRunOptions, emit: (e: DeskEvent) => void): 
         id: "pm",
         role: "Portfolio manager",
         parent: null,
-        system: pmSystem(roster, o.act),
-        tools: o.act ? [...ALL_READ_TOOLS, ...ACTION_TOOLS] : ALL_READ_TOOLS,
+        system: pmSystem(roster, o.act, o.actions),
+        tools: o.act ? [...ALL_READ_TOOLS, ...ACTION_TOOLS.filter((t) => !o.actions || o.actions.includes(t.spec.name))] : ALL_READ_TOOLS,
         extra: pmExtra(st),
         maxRounds: PM_MAX_ROUNDS,
         provider: pmProvider,

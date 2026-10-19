@@ -6,7 +6,8 @@ import { collect, MAJORS, type ContextPack, type HlClient } from "./collect.js";
 import { gateProposals, type Rejection } from "./gate.js";
 import { htfFeatures, htfRefreshReason, type HtfFeatures, HTF_MAX_AGE_MS } from "./htf.js";
 import { advanceSetup, cancelSetup, emptyLedger, settleLedger } from "./ledger.js";
-import { anyProviderConfigured, callChain, DEFAULT_MAX_USD, envProviderFactory, MemoryLlmCache, parseChain, type ChainAttempt, type ProviderFactory } from "./llm.js";
+import { anyProviderConfigured, callChain, DEFAULT_MAX_USD, envProviderFactory, MemoryLlmCache, parseChain, type ChainAttempt, type ChainResult, type ProviderFactory } from "./llm.js";
+import type { z } from "zod";
 import { DAILY_PROMPT_VERSION, DAILY_SYSTEM, dailyUser, PULSE_PROMPT_VERSION, PULSE_SYSTEM, pulseUser } from "./prompts.js";
 import {
   DailyOutputSchema,
@@ -35,6 +36,8 @@ export interface RunOptions {
   dryRun: boolean;
   /** Collect and print the context pack summary; no model, no writes. */
   collectOnly?: boolean;
+  /** A pulse/htf proposal produced by an external agent (--input): replaces the model call, no provider needed. */
+  input?: unknown;
   /** Repo root: data/ lives under it. */
   root: string;
 }
@@ -60,7 +63,7 @@ export interface RunResult {
 const TELEGRAM_LIMIT = 3900;
 const jsonText = (x: unknown) => `${JSON.stringify(x, null, 2)}\n`;
 
-/** YYYY-MM-DD in Atlantic/Canary (CLAUDE.md §1: the routine's execution date). */
+/** YYYY-MM-DD in Atlantic/Canary (ROUTINE.md §1: the routine's execution date). */
 export function runDate(now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Atlantic/Canary", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
@@ -184,15 +187,20 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
   // The workflow names the daily commit after the run's own date, not a second clock read.
   if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT, `run_date=${date}\n`).catch((e) => log(`GITHUB_OUTPUT: ${e instanceof Error ? e.message : String(e)}`));
 
+  const external = opts.input !== undefined;
+  if (external && opts.mode === "daily") {
+    log("--input supports pulse and htf modes only; daily needs a model to write the Lab read");
+    return { ...result, exitCode: 2 };
+  }
   const chain = parseChain(env.ROUTINE_LLM);
   for (const e of chain.errors) log(`ROUTINE_LLM: ignored ${e}`);
-  if (!opts.collectOnly && !chain.entries.length) {
+  if (!opts.collectOnly && !external && !chain.entries.length) {
     // A misconfigured chain is an error, unlike a missing key (exit 0 below).
     log(`ROUTINE_LLM has no usable entry: ${chain.errors.join("; ")}`);
     return { ...result, exitCode: 1 };
   }
   const makeProvider = deps.makeProvider ?? envProviderFactory(env as AnalystEnv);
-  if (!opts.collectOnly && !anyProviderConfigured(chain.entries, makeProvider)) {
+  if (!opts.collectOnly && !external && !anyProviderConfigured(chain.entries, makeProvider)) {
     log(`no LLM provider configured (ROUTINE_LLM=${env.ROUTINE_LLM?.trim() || "default"}; set the key for one of its providers). Nothing to do.`);
     return result;
   }
@@ -230,13 +238,21 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
   const attempts: ChainAttempt[] = [];
   const ledgerForPrompt: Ledger = { ...ledger0, open: advanced.filter((s) => s.status === "watching" || s.status === "triggered") };
   const pulseSchema = pulseOutputSchema(refreshReason !== null, opts.mode !== "htf");
-  const pulse = await callChain(chainDeps, {
-    system: PULSE_SYSTEM,
-    user: pulseUser({ pack, htf, view: view0, refreshReason, ledger: ledgerForPrompt, mode: opts.mode }),
-    schema: pulseSchema,
-    jsonSchema: toJsonSchema(pulseSchema),
-    promptVersion: PULSE_PROMPT_VERSION,
-  });
+  let pulse: ChainResult<z.infer<typeof pulseSchema>>;
+  if (external) {
+    const parsed = pulseSchema.safeParse(opts.input);
+    pulse = parsed.success
+      ? { ok: true, value: parsed.data, model: "input", attempts: [] }
+      : { ok: false, error: `--input is invalid: ${parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ")}`, attempts: [] };
+  } else {
+    pulse = await callChain(chainDeps, {
+      system: PULSE_SYSTEM,
+      user: pulseUser({ pack, htf, view: view0, refreshReason, ledger: ledgerForPrompt, mode: opts.mode }),
+      schema: pulseSchema,
+      jsonSchema: toJsonSchema(pulseSchema),
+      promptVersion: PULSE_PROMPT_VERSION,
+    });
+  }
   attempts.push(...pulse.attempts);
 
   // 6. Cancels, new view, gate.
@@ -375,7 +391,7 @@ async function runDaily(a: {
   const out = res.value;
   const live = new Set(Object.keys(a.pack.marks));
   const sectors = out.sectors.sectors.map((s) => {
-    // ROUTINE.md §e: only symbols listed on Hyperliquid. Without a live universe (HL gap) nothing can be checked, so keep them.
+    // ROUTINE.md §4.3: only symbols listed on Hyperliquid. Without a live universe (HL gap) nothing can be checked, so keep them.
     if (!live.size) return s;
     const dropped = s.tokens.filter((t) => !live.has(t));
     if (dropped.length) a.notes.push(`sector ${s.id}: dropped symbols not on Hyperliquid: ${dropped.join(", ")}`);
@@ -399,7 +415,7 @@ async function runDaily(a: {
   return { files, scorecard: out.scorecard.map((s) => `- ${s.call} → ${s.grade} — ${s.evidence}`), attempts: res.attempts };
 }
 
-/** data/lab/<date>.json (CLAUDE.md §4.2). Without a Lab read, the previous snapshot's pulse and ids carry over with a note. */
+/** data/lab/<date>.json (ROUTINE.md §4.5). Without a Lab read, the previous snapshot's pulse and ids carry over with a note. */
 async function labSnapshot(labDir: string, pack: ContextPack, nowIso: string, date: string, env: RunDeps["env"]) {
   const hl_cycles = { regime_state: pack.hlCycles?.regime?.state ?? null, as_of: pack.hlCycles?.asOf ?? null };
   const pulse = pack.lab?.pulse;
