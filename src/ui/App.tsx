@@ -22,6 +22,8 @@ import { TerminalTabs } from './components/intel/TerminalTabs'
 
 // The drill-in carries the canvas chart library; load it with the route.
 const MarketDrill = lazy(() => import('./pages/MarketDrill').then((m) => ({ default: m.MarketDrill })))
+// Cycles (ported from hl-cycles): canvas + Recharts charts, loaded with the route.
+const Cycles = lazy(() => import('./pages/Cycles').then((m) => ({ default: m.Cycles })))
 // Lab (docs/design/README.md §10.9): research view, loaded with its routes.
 const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
 const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
@@ -140,6 +142,16 @@ export default function App() {
             <Shell>
               <Suspense fallback={<SkeletonRows />}>
                 <MarketDrill />
+              </Suspense>
+            </Shell>
+          }
+        />
+        <Route
+          path="/cycles"
+          element={
+            <Shell>
+              <Suspense fallback={<SkeletonRows />}>
+                <Cycles />
               </Suspense>
             </Shell>
           }

@@ -20,6 +20,8 @@ const NAV = [
   { to: '/sectors', label: 'SECTORS', tab: 'SECTR', glyph: '▦' },
   { to: '/state', label: 'STATE', tab: 'STATE', glyph: '☰' },
   { to: '/markets', label: 'MARKETS', tab: 'MKTS', glyph: '≋' },
+  // BTC cycle phases and the next-bull-run estimate (ported from hl-cycles).
+  { to: '/cycles', label: 'CYCLES', tab: 'CYCLE', glyph: '◠' },
   // Strategy console: one shell entry so the mobile tab bar stays compact;
   // /strategies, /decisions and /governor switch inside via EngineTabs.
   { to: '/strategies', label: 'ENGINE', tab: 'ENGIN', glyph: '⚙' },
@@ -27,7 +29,7 @@ const NAV = [
   { to: '/analyst', label: 'ANALYST', tab: 'ASK', glyph: '?' },
   // Agentic portfolio desk (docs/SPEC.md "Desk"): agent team, governor, paper book.
   { to: '/desk', label: 'DESK', tab: 'DESK', glyph: '◎' },
-  // Heuristic research (docs/design/README.md §10.9); the ninth and last cell.
+  // Heuristic research (docs/design/README.md §10.9); the last cell.
   { to: '/lab', label: 'LAB', tab: 'LAB', glyph: '⚗' },
 ]
 
