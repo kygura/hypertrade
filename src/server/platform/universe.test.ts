@@ -90,6 +90,24 @@ describe("ensureSectors", () => {
     expect(llm.prompts).toHaveLength(1);
   });
 
+  test("stale Other rows are re-asked after 7 days, fresh ones not; calls are batched by 40", async () => {
+    const store = new MemoryPlatformStore();
+    await store.saveSectors([{ coin: "OLDO", sectors: ["Other"], taggedAt: "2026-01-01T00:00:00.000Z" }, { coin: "NEWO", sectors: ["Other"], taggedAt: "2026-01-09T00:00:00.000Z" }]);
+    const llm = fakeLlm([{ tags: [{ coin: "OLDO", sectors: ["AI"] }] }]);
+    const out = await ensureSectors(["OLDO", "NEWO"], store, async () => llm.deps, () => new Date("2026-01-10T00:00:00.000Z"));
+    expect(out).toEqual({ OLDO: ["AI"], NEWO: ["Other"] });
+    expect(llm.prompts).toHaveLength(1);
+    const many = Array.from({ length: 85 }, (_, i) => `BC${i}`);
+    const big = fakeLlm([{ tags: [] }, { tags: [] }, { tags: [] }]);
+    await ensureSectors(many, new MemoryPlatformStore(), async () => big.deps);
+    expect(big.prompts.map((p) => p.split(",").length)).toEqual([40, 40, 5]);
+  });
+
+  test("a cache read error throws", async () => {
+    const store = { listSectors: async () => { throw new Error("db blip"); }, saveSectors: async () => {} };
+    await expect(ensureSectors(["X"], store)).rejects.toThrow("db blip");
+  });
+
   test("llm construction failure leaves coins untagged", async () => {
     expect(await ensureSectors(["DOWNC"], new MemoryPlatformStore(), async () => { throw new Error("boom"); })).toEqual({});
   });
