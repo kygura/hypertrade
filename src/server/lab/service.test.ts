@@ -439,6 +439,29 @@ describe("lab_event_study (service)", () => {
     expect(r.idea).toEqual({ n: trials.length, of: trials.length });
   });
 
+  test("top/sectors/mine reach the universe; default is top 20; explicit coins win; empty or oversized universes are refused", async () => {
+    const calls: unknown[] = [];
+    let out = ["SYN"];
+    const k = kit({
+      perpUniverse: async (o) => (calls.push(o), out),
+      hasDb: () => false,
+      async loadDataset(cfg) {
+        const all = { ...base.metrics, ...ohlc };
+        return { dataset: { ...base, asset: cfg.asset, metrics: Object.fromEntries(cfg.metrics.map((m) => [m, all[m]!])) }, warnings: [] };
+      },
+    });
+    const run = (extra: object) => k.service.eventStudy({ rule: planted, stopAtr: 1, targetAtr: 2, ...extra });
+    await run({});
+    await run({ sectors: ["AI"] });
+    await run({ mine: true, top: 5 });
+    await run({ coins: ["SYN"], top: 5 });
+    expect(calls).toEqual([{ top: 20 }, { sectors: ["AI"] }, { top: 5, mine: true }].map((o) => ({ top: undefined, sectors: undefined, mine: undefined, ...o })));
+    out = [];
+    expect(await run({ sectors: ["AI"] }).catch((e) => e)).toBeInstanceOf(ToolInputError);
+    out = Array.from({ length: 21 }, (_, i) => `C${i}`);
+    expect((await run({ mine: true }).catch((e) => e)).field).toBe("top");
+  });
+
   test("without a DB more than 20 coins is refused; coins de-dupe case-insensitively; eventList capped at 200", async () => {
     const { service } = studyKit();
     const many = Array.from({ length: 21 }, (_, i) => `C${i}`);

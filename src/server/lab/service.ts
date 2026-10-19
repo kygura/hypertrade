@@ -190,6 +190,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       (async (o) => {
         const live = (await fetchPerpMetaAndCtxs()).ctxs.filter((c) => !c.isDelisted).map((c) => ({ coin: c.name, dayNtlVlm: c.dayNtlVlm }));
         const tags = o.sectors?.length ? await sectorTags(live.map((c) => c.coin)) : undefined;
+        if (tags && !Object.keys(tags).length) throw new ToolInputError("sector tags unavailable (the LLM is down or not configured): pass coins or drop sectors", "sectors");
         return selectUniverse(live, { top: o.top, sectors: o.sectors, mine: o.mine ? myMarkets() : undefined, tags }).map((c) => c.coin);
       }),
     hasDb: partial.hasDb ?? (() => Boolean(databaseUrl())),
@@ -486,6 +487,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
           const { top, sectors, mine } = input;
           coins = await deps.perpUniverse!({ top: top ?? (sectors?.length || mine ? undefined : STUDY_MAX_COINS), sectors, mine });
         } catch (err) {
+          if (err instanceof ToolInputError) throw err;
           throw new UpstreamError(`HL perp universe unavailable (${msg(err)}): pass coins`);
         }
         if (!coins.length) throw new ToolInputError("no listed coin matches top/sectors/mine", "sectors");

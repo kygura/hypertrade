@@ -26,6 +26,9 @@ test("parseUniverseSpec", () => {
   expect(parseUniverseSpec("sectors:AI,Perp DEX;mine")).toMatchObject({ sectors: ["AI", "Perp DEX"] });
   expect(() => parseUniverseSpec("sectors:Pizza")).toThrow();
   expect(() => parseUniverseSpec("nope")).toThrow();
+  expect(() => parseUniverseSpec(";")).toThrow();
+  expect(() => parseUniverseSpec("sectors:AI;sectors:L1")).toThrow(/duplicate/);
+  expect(() => parseUniverseSpec("sectors:Pizza")).toThrow(/^unknown sector "Pizza"[^\n]*$/);
 });
 
 test("sector answers reject unknown sectors and extra keys", () => {
@@ -67,16 +70,28 @@ describe("ensureSectors", () => {
     expect((await store.listSectors()).map((t) => t.coin)).toEqual(["BTC", "FET"]);
   });
 
-  test("unknown sector twice -> coin stays untagged, no throw", async () => {
+  test("unknown sector twice -> coin stays untagged, no throw, not re-asked", async () => {
     const store = new MemoryPlatformStore();
-    const bad = { tags: [{ coin: "FET", sectors: ["Pizza"] }] };
-    const llm = fakeLlm([bad, bad]);
-    expect(await ensureSectors(["FET"], store, async () => llm.deps)).toEqual({});
+    const bad = { tags: [{ coin: "BADC", sectors: ["Pizza"] }] };
+    const llm = fakeLlm([bad, bad, bad, bad]);
+    expect(await ensureSectors(["BADC"], store, async () => llm.deps)).toEqual({});
     expect(await store.listSectors()).toEqual([]);
+    const asked = llm.prompts.length;
+    await ensureSectors(["BADC"], store, async () => llm.deps);
+    expect(llm.prompts).toHaveLength(asked);
+  });
+
+  test("a coin the LLM leaves out is stored as Other and never re-asked", async () => {
+    const store = new MemoryPlatformStore();
+    const llm = fakeLlm([{ tags: [{ coin: "KEPT", sectors: ["AI"] }] }]);
+    const out = await ensureSectors(["KEPT", "DROPPED"], store, async () => llm.deps);
+    expect(out).toEqual({ KEPT: ["AI"], DROPPED: ["Other"] });
+    await ensureSectors(["KEPT", "DROPPED"], store, async () => llm.deps);
+    expect(llm.prompts).toHaveLength(1);
   });
 
   test("llm construction failure leaves coins untagged", async () => {
-    expect(await ensureSectors(["FET"], new MemoryPlatformStore(), async () => { throw new Error("boom"); })).toEqual({});
+    expect(await ensureSectors(["DOWNC"], new MemoryPlatformStore(), async () => { throw new Error("boom"); })).toEqual({});
   });
 });
 
