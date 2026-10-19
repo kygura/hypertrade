@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-10-19T05:58:04Z",
+  "pulse": {
+    "4b7b330b19cb2cc1": {
+      "firing": false,
+      "asset": "BTC",
+      "direction": "long"
+    },
+    "12cb9d5129185e2b": {
+      "firing": false,
+      "asset": "BTC",
+      "direction": "long"
+    },
+    "880aad52d0930040": {
+      "firing": false,
+      "asset": "ETH",
+      "direction": "long"
+    },
+    "d9257074ad9caebe": {
+      "firing": false,
+      "asset": "ETH",
+      "direction": "long"
+    },
+    "2be3c75f97e3f2f1": {
+      "firing": false,
+      "asset": "ETH",
+      "direction": "long"
+    }
+  },
+  "catalogue_ids": [
+    "4b7b330b19cb2cc1",
+    "12cb9d5129185e2b",
+    "880aad52d0930040",
+    "d9257074ad9caebe",
+    "2be3c75f97e3f2f1"
+  ],
+  "hl_cycles": {
+    "regime_state": "mild_risk_on",
+    "as_of": "2026-10-18"
+  }
+}
