@@ -176,6 +176,7 @@ Destination: FEATURES.md §§ 1–7 implemented where marked in scope. Every sig
 - [ ] PS-B2 DEFERRED Near-miss "why not" (FEATURES.md, other ideas): needs a per-condition gate list on platform setups (after PS-B1).
 - [ ] PS-B3 BACKLOG Condition funnel for authored rules (FEATURES.md, other ideas): coin-days surviving each condition, bottleneck marked; after PS1/PS3.
 - [ ] PS-B4 DEFERRED Stop/target/invalidation expressions and categorical regime conditions on Lab rules (FEATURES.md § 1): PS3 takes `stopAtr`/`targetAtr` as tool args instead; revisit if authored rules need structural stops.
+- [ ] PS-B5 DEFERRED Universe filters for `lab_event_study` and novelty: top-N by liquidity, a narrative-sector filter (AI, Privacy, Stablecoin, Perp DEX, ...) and a "my markets" set (BTC, ETH, HYPE, SOL, XPL, LIT, ZEC). The LLM tags each coin with its sectors once and caches the result in the store, refreshed when new coins are listed. Tags are not re-derived on each call, and they only filter the universe, never score it. This also bounds the HL request volume of the all-perps default.
 
 ## Decisions so far
 - P0 (2026-10-18): ideas carried from a retired sibling prototype into FEATURES.md. Static macro calendars, relative liquidity tiers and replay parity are already covered; the vault, Bonferroni screen and promotion/demotion are deliberately not ported (FEATURES.md § 2 rationale). Seed setups' screens predate the reject-only rule and are kept as history only (FEATURES.md appendix).
