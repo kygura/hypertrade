@@ -5,6 +5,7 @@ import type { AlertLevel } from "./types.js";
 //   Telegram  DESK_TELEGRAM_BOT_TOKEN + DESK_TELEGRAM_CHAT_ID (inline approve/reject buttons)
 //   Discord   DESK_DISCORD_WEBHOOK_URL
 //   Webhook   DESK_ALERT_WEBHOOK_URL (POST JSON {level, title, body, actions, ts})
+//   ntfy      NTFY_TOPIC (NTFY_SERVER defaults to https://ntfy.sh; NTFY_TOKEN optional)
 // A channel failing never fails the caller: the result lists what went out.
 
 export interface AlertAction {
@@ -18,6 +19,8 @@ export interface Alert {
   title: string;
   body: string;
   actions?: AlertAction[];
+  /** Link opened when an ntfy notification is tapped. */
+  click?: string;
 }
 
 export interface Notifier {
@@ -28,6 +31,9 @@ export interface Notifier {
 type Env = Record<string, string | undefined>;
 
 const ICON: Record<AlertLevel, string> = { info: "🔹", warn: "🟠", critical: "🔴" };
+const NTFY_PRIORITY: Record<AlertLevel, string> = { info: "3", warn: "4", critical: "5" };
+/** HTTP header values must be printable ASCII; fetch throws on anything else. */
+const asciiHeader = (s: string) => s.replace(/[^\x20-\x7e]/g, "").slice(0, 250);
 
 /** Telegram HTML needs only &, <, > escaped. */
 export function escapeHtml(s: string): string {
@@ -59,7 +65,10 @@ export function createNotifier(env: Env = process.env, fetchFn: typeof fetch = f
   const tgChat = env.DESK_TELEGRAM_CHAT_ID?.trim();
   const discord = env.DESK_DISCORD_WEBHOOK_URL?.trim();
   const hook = env.DESK_ALERT_WEBHOOK_URL?.trim();
-  const channels = [tgToken && tgChat ? "telegram" : null, discord ? "discord" : null, hook ? "webhook" : null].filter((x): x is string => !!x);
+  const ntfy = env.NTFY_TOPIC?.trim();
+  const ntfyServer = env.NTFY_SERVER?.trim() || "https://ntfy.sh";
+  const ntfyToken = env.NTFY_TOKEN?.trim();
+  const channels = [tgToken && tgChat ? "telegram" : null, discord ? "discord" : null, hook ? "webhook" : null, ntfy ? "ntfy" : null].filter((x): x is string => !!x);
 
   const post = async (name: string, f: () => Promise<Response>) => {
     try {
@@ -92,6 +101,23 @@ export function createNotifier(env: Env = process.env, fetchFn: typeof fetch = f
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ ...a, ts: new Date().toISOString(), source: "hypertrade-desk" }),
+              signal: AbortSignal.timeout(10_000),
+            }),
+          ),
+        );
+      }
+      if (ntfy) {
+        jobs.push(
+          post("ntfy", () =>
+            fetchFn(`${ntfyServer.replace(/\/+$/, "")}/${encodeURIComponent(ntfy)}`, {
+              method: "POST",
+              headers: {
+                Title: asciiHeader(a.title),
+                Priority: NTFY_PRIORITY[a.level],
+                ...(a.click ? { Click: asciiHeader(a.click) } : {}),
+                ...(ntfyToken ? { Authorization: `Bearer ${ntfyToken}` } : {}),
+              },
+              body: a.body.slice(0, 4000),
               signal: AbortSignal.timeout(10_000),
             }),
           ),

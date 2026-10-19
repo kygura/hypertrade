@@ -102,6 +102,7 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `DESK_MAX_CYCLES_PER_DAY` (8) | Agent cycle budget per day. |
    | `DESK_TELEGRAM_BOT_TOKEN`, `DESK_TELEGRAM_CHAT_ID` (unset) | Both needed for the Telegram loop. Without them it does not run. |
    | `DESK_TELEGRAM_WEBHOOK_SECRET` (unset) | If set, the Telegram long-poll turns off (webhook mode). Leave unset so the worker polls. |
+   | `NTFY_TOPIC` (unset) | Push alerts to this ntfy topic. `NTFY_SERVER` (`https://ntfy.sh`) and `NTFY_TOKEN` (bearer token, protected topics) are optional. |
    | `ANTHROPIC_API_KEY` (unset) | Optional LLM key for the analyst and desk. See Analyst. |
 
 5. **Cut over from Vercel.**
@@ -284,7 +285,7 @@ minutes (set the repo variable `DESK_ENABLED=true`), or every minute from
 `DESK_TELEGRAM_WEBHOOK_SECRET` and register
 `${APP_URL}/api/desk/telegram` with `setWebhook` (`secret_token` = that
 secret). Discord (`DESK_DISCORD_WEBHOOK_URL`) and a generic JSON webhook
-(`DESK_ALERT_WEBHOOK_URL`) also work. Every alert is stored and shown on the
+(`DESK_ALERT_WEBHOOK_URL`) and ntfy (`NTFY_TOPIC`) also work. Every alert is stored and shown on the
 page. All `DESK_*` settings are listed in `.env.example`.
 
 ## Intel (the Terminal)
