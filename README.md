@@ -326,6 +326,7 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 | `INTEL_RPC_<CHAIN>` | RPC override for the contract/wallet watcher (`ETHEREUM`, `ARBITRUM`, `BASE`, `OPTIMISM`, `POLYGON`, `BSC`, `AVALANCHE`, `HYPEREVM`); default public RPCs |
 | `DATABASE_URL_READONLY` | read-only Postgres role for `/api/intel/query/run`; default the main connection |
 | `COINALYZE_API_KEY` | Coinalyze flow collector in the collect cron (free key, 40 calls/min); unset → no flow rows and the heatmap's flow status reads `no_source` |
+| `bun scripts/backfill-oi.ts [COIN ...]` | one-off Coinalyze daily OI backfill into `hl.oi.<COIN>` (needs `COINALYZE_API_KEY`, `DATABASE_URL`); idempotent, the novelty loop also runs it once per coin per process |
 | `INTEL_FLOW_MAX_COINS` | held ∪ watched coins the flow collector covers (by notional, then watch order), 1–20, default 8 |
 | `INTEL_THRESHOLDS` | threshold-crossing events, comma list of `metric>value` / `metric<value`; default `funding>0.0000625` (0.05%/8 h, hourly) |
 | `INTEL_DELEV_OI_PCT` | deleveraging detector's OI 6 h drop, in %, default 8 |

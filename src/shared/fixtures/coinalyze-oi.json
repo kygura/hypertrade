@@ -1,0 +1,67 @@
+{
+ "exchanges": [
+  {
+   "name": "Binance",
+   "code": "A"
+  },
+  {
+   "name": "Hyperliquid",
+   "code": "H"
+  }
+ ],
+ "future-markets": [
+  {
+   "symbol": "BTCUSDT_PERP.A",
+   "exchange": "A",
+   "base_asset": "BTC",
+   "is_perpetual": true
+  },
+  {
+   "symbol": "BTCUSD.H",
+   "exchange": "H",
+   "base_asset": "BTC",
+   "is_perpetual": true
+  },
+  {
+   "symbol": "ETHUSD.H",
+   "exchange": "H",
+   "base_asset": "ETH",
+   "is_perpetual": true
+  }
+ ],
+ "open-interest-history": [
+  {
+   "symbol": "BTCUSD.H",
+   "history": [
+    {
+     "t": 1791676800,
+     "o": 0,
+     "h": 0,
+     "l": 0,
+     "c": 1003.0
+    },
+    {
+     "t": 1791763200,
+     "o": 0,
+     "h": 0,
+     "l": 0,
+     "c": 1002.0
+    },
+    {
+     "t": 1791849600,
+     "o": 0,
+     "h": 0,
+     "l": 0,
+     "c": 1001.0
+    },
+    {
+     "t": 1791936000,
+     "o": 0,
+     "h": 0,
+     "l": 0,
+     "c": 1000.0
+    }
+   ]
+  }
+ ]
+}
