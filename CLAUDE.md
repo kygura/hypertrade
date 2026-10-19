@@ -48,8 +48,10 @@ existing databases never see the edit). Add the next number instead.
   validator (`src/server/intel/numbers.ts`) drops lines whose numbers or imperatives
   are not backed by the input payload.
 - **Store parity.** Each store has memory and pg twins behind one interface
-  (`src/server/intel/store.ts`, `src/server/platform/store*.ts`) and one shared test
-  suite runs against them. Change one twin, change all.
+  (`src/server/intel/store.ts`, `src/server/platform/store*.ts`); the Lab store also
+  has a JSON-file twin (`fileStore` in `src/server/lab/store.ts`) that must keep
+  loading files written before a field existed. One shared test suite runs against
+  the twins. Change one twin, change all.
 - **postgres.js runs with `fetch_types: false`** (`src/server/db.ts`), so array params
   do not work. Build lists with `in ${sql()(ids)}`, never `any(${arr}::type[])`; store
   lists as jsonb.
