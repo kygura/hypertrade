@@ -173,8 +173,8 @@ Destination: FEATURES.md §§ 1–7 implemented where marked in scope. Every sig
 
 ### Deferred / backlog (out of scope for now)
 - [x] PS-B1 Platform setups as schemas (FEATURES.md § 1): the four intraday setups are `SetupSchema` data in `src/server/platform/setups.ts`, compiled into the one predicate the scanner calls; the hardcoded `setupsFor` is gone. Own minimal schema, not the Lab Rule (that has only `<`/`>=` over daily columns with a fixed direction and threshold; the setups need |x|, ≤, same-sign, sign-derived direction and per-tier thresholds). Parity as perpsignal T9 (239/239 there): 80000/80000 setup decisions on 20000 synthetic boundary bars identical before the deletion, frozen as `fixtures/setups-parity.json`. Adds `PLATFORM_SCAN_UNIVERSE` (PS-B5 syntax; unset = every live coin).
-- [ ] PS-B2 DEFERRED Near-miss "why not" (FEATURES.md, other ideas): needs a per-condition gate list on platform setups (after PS-B1).
-- [x] PS-B3 BACKLOG Condition funnel for authored rules (FEATURES.md, other ideas): coin-days surviving each condition, bottleneck marked; after PS1/PS3.
+- [x] PS-B2 Near-miss "why not" (FEATURES.md, other ideas): needs a per-condition gate list on platform setups (after PS-B1).
+- [x] PS-B3 Condition funnel for authored rules (FEATURES.md, other ideas): coin-days surviving each condition, bottleneck marked; after PS1/PS3.
 - [ ] PS-B4 DEFERRED Stop/target/invalidation expressions and categorical regime conditions on Lab rules (FEATURES.md § 1): PS3 takes `stopAtr`/`targetAtr` as tool args instead; revisit if authored rules need structural stops.
 - [x] PS-B5 Universe filters for `lab_event_study` and novelty: top-N by liquidity, a narrative-sector filter (AI, Privacy, Stablecoin, Perp DEX, ...) and a "my markets" set (BTC, ETH, HYPE, SOL, XPL, LIT, ZEC). The LLM tags each coin with its sectors once and caches the result in the store, refreshed when new coins are listed. Tags are not re-derived on each call, and they only filter the universe, never score it. This also bounds the HL request volume of the all-perps default.
 

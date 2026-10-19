@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import {
-  FeedResponseSchema, LedgerEntriesResponseSchema, LedgerStatsResponseSchema, LiqBoardResponseSchema, LiqMapHistoryResponseSchema, LiqMapResponseSchema, NoveltyResponseSchema, OpportunityDetailSchema,
+  FeedResponseSchema, LedgerEntriesResponseSchema, LedgerStatsResponseSchema, LiqBoardResponseSchema, LiqMapHistoryResponseSchema, LiqMapResponseSchema, NearMissResponseSchema, NoveltyResponseSchema, type NearMiss, OpportunityDetailSchema,
   type LedgerPayload, type Opportunity,
 } from "../../shared/platform.js";
 import { app as apiApp } from "../../../api/index.js";
@@ -35,6 +35,7 @@ let store: MemoryPlatformStore;
 let ctx: PlatformContext;
 let midAge: number | null;
 let lastScan: Date | null;
+let nearMisses: NearMiss[];
 let risk: ReturnType<typeof gate>;
 let online: boolean;
 const research = { run: async () => null as never, get: async () => null };
@@ -59,9 +60,10 @@ beforeEach(() => {
   store = new MemoryPlatformStore();
   midAge = 1;
   lastScan = new Date(NOW.getTime() - 10_000);
+  nearMisses = [];
   online = true;
   risk = gate();
-  ctx = { store, midAge: () => midAge, mid: (coin) => (coin === "ETH" ? 4000 : null), lastScanAt: () => lastScan, scanIntervalSec: 60 };
+  ctx = { store, midAge: () => midAge, mid: (coin) => (coin === "ETH" ? 4000 : null), lastScanAt: () => lastScan, nearMisses: () => nearMisses, scanIntervalSec: 60 };
   deps = { context: () => (online ? ctx : null), risk, research, now: () => NOW };
   app = new Hono().basePath("/api").route("/platform", createPlatformRoutes(deps));
 });
@@ -70,7 +72,7 @@ describe("offline", () => {
   test("every route answers 503 platform_offline without a context", async () => {
     online = false;
     const id = crypto.randomUUID();
-    for (const [method, path] of [["GET", "/opportunities"], ["GET", `/opportunities/${id}`], ["POST", `/opportunities/${id}/approve`], ["POST", `/opportunities/${id}/reject`], ["POST", `/opportunities/${id}/snooze`], ["POST", `/opportunities/${id}/research`], ["GET", "/liqmap?coin=ETH"], ["GET", "/liqmap/board"], ["GET", "/liqmap/history?coin=ETH"], ["GET", "/novelty"], ["GET", "/ledger/stats"], ["GET", `/ledger/${id}`]] as const) {
+    for (const [method, path] of [["GET", "/opportunities"], ["GET", `/opportunities/${id}`], ["POST", `/opportunities/${id}/approve`], ["POST", `/opportunities/${id}/reject`], ["POST", `/opportunities/${id}/snooze`], ["POST", `/opportunities/${id}/research`], ["GET", "/liqmap?coin=ETH"], ["GET", "/liqmap/board"], ["GET", "/liqmap/history?coin=ETH"], ["GET", "/novelty"], ["GET", "/near-miss"], ["GET", "/ledger/stats"], ["GET", `/ledger/${id}`]] as const) {
       const res = await req(path, { method });
       expect([method, path, res.status]).toEqual([method, path, 503]);
       expect(await res.json()).toEqual({ error: "platform_offline" });
@@ -134,6 +136,16 @@ describe("feed and detail", () => {
     expect(((await (await req(`/opportunities/${o.id}`)).json()) as { bearCase: string }).bearCase).toBe("Unlock next week.");
     expect((await req(`/opportunities/${crypto.randomUUID()}`)).status).toBe(404);
     expect((await req("/opportunities/nope")).status).toBe(400);
+  });
+});
+
+describe("near-miss", () => {
+  test("top is the first of all; empty scan gives null", async () => {
+    expect(NearMissResponseSchema.parse(await (await req("/near-miss")).json())).toEqual({ top: null, all: [] });
+    nearMisses = [{ coin: "ETH", setupKind: "crowded_long", cond: 2, value: 0.95, limit: 1, relDistance: 0.05 }, { coin: "SOL", setupKind: "crowded_long", cond: 2, value: 0.92, limit: 1, relDistance: 0.08 }];
+    const r = NearMissResponseSchema.parse(await (await req("/near-miss")).json());
+    expect(r.top?.coin).toBe("ETH");
+    expect(r.all).toHaveLength(2);
   });
 });
 

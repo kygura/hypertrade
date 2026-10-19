@@ -53,6 +53,8 @@ export interface NoveltyLoopDeps {
   filter?: UniverseOpts;
   /** coin -> sectors for a sector filter; default tags new coins through the LLM and caches them in the store. */
   tags?: (coins: string[]) => Promise<Record<string, string[]>>;
+  /** The scanner's latest near-miss for a coin; its setup joins nearSetups. */
+  nearMiss?: (coin: string) => { setupKind: string } | null;
 }
 
 /** `from` bounds only what is synced; the baseline is everything stored (full history since listing). */
@@ -119,7 +121,7 @@ export function createNoveltyLoop(deps: NoveltyLoopDeps) {
           if (i < 0) continue;
           (checked.get(b.bar) ?? checked.set(b.bar, new Set()).get(b.bar)!).add(c.coin);
           const { hit } = novelty(d, i);
-          if (hit) b.cands.push({ coin: c.coin, rank: byOi.indexOf(c.coin), hit, nearSetups: [...(near.get(c.coin) ?? [])] });
+          if (hit) b.cands.push({ coin: c.coin, rank: byOi.indexOf(c.coin), hit, nearSetups: [...new Set([...(near.get(c.coin) ?? []), ...(deps.nearMiss?.(c.coin) ? [deps.nearMiss(c.coin)!.setupKind] : [])])] });
         }
       } catch (err) {
         console.error(`[novelty] ${c.coin}:`, err instanceof Error ? err.message : err);

@@ -339,7 +339,7 @@ P&L-blind premise tracking keeps the operator honest about *why*, without the to
 
 ## Other ideas from the same prototype
 
-- **Near-miss ("why not").** Per coin: every health gate passed and exactly one setup condition failed, numeric and within 10% (relative) of its limit; the closest wins. Price-level conditions (close vs MA) never count, because 10% of price is not "near". Shown in the daily heartbeat as the top near-miss. *Backlog (PS-B2):* the platform has no per-condition gate list yet.
+- **Near-miss ("why not").** Per coin: every health gate passed and exactly one setup condition failed, numeric and within 10% (relative) of its limit; the closest wins. Price-level conditions (close vs MA) never count, because 10% of price is not "near". Shown as the top near-miss (`GET /api/platform/near-miss`: top plus per-coin list); novelty `nearSetups` includes it. Informational only.
 - **Condition funnel.** For an authored rule, count coin-days surviving each condition in order and mark the step with the largest relative drop, to show where an idea dies. *Backlog (PS-B3), after PS1.*
 - **Narrative with a caution flag.** One capped LLM call per passing signal (why now, what invalidates it, counter-thesis) may attach a caution flag and never changes the signal. *Covered:* the platform research stage and bear case (SPEC.md § Platform P0.11, `src/server/intel/research.ts`).
 

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import {
   FeedQuerySchema, FeedRowSchema, LedgerStatsQuerySchema, LiqBoardQuerySchema, NoveltyQuerySchema, LiqMapHistoryQuerySchema, LiqMapQuerySchema, RejectBodySchema, SECTORS, SnoozeBodySchema,
-  type Costs, type LedgerEntry, type LedgerPayload, type LiqBoardResponse, type Opportunity, type Position, type RiskVerdictSchema, type SectorsResponse,
+  type Costs, type LedgerEntry, type LedgerPayload, type LiqBoardResponse, type NearMissResponse, type Opportunity, type Position, type RiskVerdictSchema, type SectorsResponse,
 } from "../../shared/platform.js";
 import type { Side } from "../../shared/intel.js";
 import type { ResearchResult } from "../../shared/intel.js";
@@ -345,6 +345,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       const entries = await c.var.ctx.store.listNovelty(new Date(deps.now().getTime() - q.data.days * 86_400_000).toISOString().slice(0, 10));
       return c.json({ entries: entries.filter((e) => !q.data.coin || e.coin === q.data.coin).reverse() });
     })
+    .get("/near-miss", (c) => { const all = c.var.ctx.nearMisses(); return c.json({ top: all[0] ?? null, all } satisfies NearMissResponse); })
     .get("/sectors", async (c) => c.json({ vocabulary: [...SECTORS], tags: await c.var.ctx.store.listSectors() } satisfies SectorsResponse))
     .get("/ledger/stats", async (c) => {
       const q = LedgerStatsQuerySchema.safeParse(c.req.query());

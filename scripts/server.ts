@@ -134,7 +134,7 @@ async function boot() {
     outcomes.def,
     alerts.def,
     // Daily inputs live in Postgres (candles, funding, observations): no database, no novelty loop.
-    ...(databaseUrl ? [createNoveltyLoop({ store, notify: alerts.novel }).def] : []),
+    ...(databaseUrl ? [createNoveltyLoop({ store, notify: alerts.novel, nearMiss: scanner.nearMiss }).def] : []),
   ];
   const selected = parseWorkerLoops(process.env.WORKER_LOOPS);
   const wants = (n: string) => selected === "all" || selected.has(n);
@@ -181,6 +181,7 @@ async function boot() {
       midAge: (coin, now) => { const ms = ws.midAgeMs(coin, now); return ms == null ? null : ms / 1000; },
       mid: (coin) => ws.mid(coin),
       lastScanAt: scanner.lastScanAt,
+      nearMisses: scanner.nearMisses,
       scanIntervalSec: scanner.intervalSec,
     });
     bus.subscribe("ws", ({ state }) => console.log(new Date().toISOString(), "[ws]", state));
