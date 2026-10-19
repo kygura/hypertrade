@@ -159,7 +159,7 @@ export const OpportunityDetail = forwardRef<
           )}
         </Section>
         <Section n={4} title="HAVE SIMILAR SETUPS PAID">
-          <SimilarSetups stats={detail.stats} />
+          <SimilarSetups stats={detail.stats} evidence={detail.evidence} />
           {subStats?.regime && <SimilarSetups stats={subStats.regime} label={`REGIME ${o.regime}`} />}
           {subStats?.tier && <SimilarSetups stats={subStats.tier} label={`TIER T${o.liquidityTier}`} />}
         </Section>
@@ -171,13 +171,13 @@ export const OpportunityDetail = forwardRef<
   )
 })
 
-function SimilarSetups({ stats, label }: { stats: Detail['stats']; label?: string }) {
+function SimilarSetups({ stats, label, evidence }: { stats: Detail['stats']; label?: string; evidence?: string }) {
   const head = label && <span className="label">{label}</span>
   if (!stats || stats.ci95 == null)
     return (
       <p className="flex flex-wrap gap-2 text-[11px] tabular text-text-secondary">
         {head}
-        <span>n{stats ? ` ${stats.n}` : ''}&lt;5 — not enough outcomes</span>
+        <span>{evidence ?? `n ${stats?.n ?? 0} · ${stats?.clusters ?? 0} clusters`}</span>
       </p>
     )
   const [lo, hi] = stats.ci95
