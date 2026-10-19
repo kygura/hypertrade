@@ -19,6 +19,39 @@ type InvalidationStatus = NonNullable<Thesis['invalidation'][number]['status']>
 const INVALIDATION_TONE: Record<InvalidationStatus, Tone> = { triggered: 'red', clear: 'green', unknown: 'gray' }
 
 export const THESIS_STALE_H = 24
+const HISTORY_SHOWN = 12
+type HistoryStatus = NonNullable<Thesis['history']>[number]['checks'][number]['status']
+const HISTORY_TONE: Record<HistoryStatus, Tone> = { supported: 'green', contradicted: 'red', unknown: 'gray', triggered: 'red', clear: 'green' }
+
+/** Per-premise status over the last checks, oldest first. Claims then invalidation, as stored. */
+function StatusHistory({ thesis }: { thesis: Thesis }) {
+  const history = thesis.history ?? []
+  if (history.length === 0) return null
+  const premises = [...thesis.claims.map((c) => c.text), ...thesis.invalidation.map((i) => i.text)]
+  const shown = history.slice(-HISTORY_SHOWN)
+  return (
+    <section className="flex flex-col gap-1.5">
+      <h3 className="label">STATUS HISTORY · LAST {shown.length} OF {history.length} CHECKS</h3>
+      <ul className="flex flex-col gap-1.5">
+        {premises.map((text, i) => (
+          <li key={i} className="flex flex-col gap-0.5 text-[12px]">
+            <span className="text-text-primary min-w-0 break-words">{text}</span>
+            <span className="flex flex-wrap gap-1">
+              {shown.map((h, j) => {
+                const c = h.checks[i]
+                return c ? (
+                  <span key={j} title={`${h.ts}${c.value == null ? '' : ` · ${c.value}`}`}>
+                    <Badge tone={HISTORY_TONE[c.status]}>{c.status.slice(0, 3).toUpperCase()}</Badge>
+                  </span>
+                ) : null
+              })}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
 
 export function ThesisDetail({
   thesis,
@@ -90,6 +123,8 @@ export function ThesisDetail({
           </ul>
         </section>
       )}
+
+      <StatusHistory thesis={thesis} />
 
       {thesis.wrongIf.length > 0 && (
         <section className="flex flex-col gap-1.5">
