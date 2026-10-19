@@ -89,6 +89,12 @@ describe("replayCoin: play-out and R", () => {
     expect(replayCoin(rule("long"), dataset(30, { 20: { x: 1 }, 22: { f: undefined } }), opts)).toEqual([]);
     expect(replayCoin(rule("long"), dataset(30, { 28: { x: 1 } }), opts)).toEqual([]);
   });
+
+  test("a structural stop with no target, firing before ATR warm-up: no event, since the default target would be NaN", () => {
+    const structural: Rule = { ...rule("long"), stop: { ref: "low", n: 7 } };
+    expect(replayCoin(structural, dataset(30, { [ATR_WINDOW - 1]: { x: 1 } }), opts)).toEqual([]);
+    expect(replayCoin(structural, dataset(30, { 20: { x: 1 } }), opts)).toHaveLength(1); // control: same rule, ATR warm
+  });
 });
 
 describe("clustering and the screen", () => {
