@@ -63,11 +63,12 @@ date of the newest value you used in the signal label (`"10Y yield (Oct 9)"`).
 
 ## 1. Preflight (every run, in this order)
 
-1. **Environment.** Provided by the cloud environment: `APP_URL` (the
-   always-on backend origin), `LAB_API_TOKEN` (read bearer), `NTFY_TOPIC`
-   (delivery; optional `NTFY_SERVER`, `NTFY_TOKEN`), `LAB_URL` (set it to
-   `$APP_URL` if empty), and optionally `DATABASE_URL` (Lab trial log).
+1. **Environment.** Provided by the cloud environment: `LAB_API_TOKEN` (read
+   bearer), `NTFY_TOPIC` (delivery; optional `NTFY_SERVER`, `NTFY_TOKEN`), and
+   optionally `DATABASE_URL` (Lab trial log). `APP_URL` and `LAB_URL` default to
+   the production origin below; the environment may override them.
    ```bash
+   export APP_URL="${APP_URL:-https://hypertrade-ten.vercel.app}"
    export LAB_URL="${LAB_URL:-$APP_URL}"
    AUTH=(-H "authorization: Bearer $LAB_API_TOKEN")
    ```
