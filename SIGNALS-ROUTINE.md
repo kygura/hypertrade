@@ -35,8 +35,12 @@ pricing … / we read …`. No false-precision probabilities.
 
 ```bash
 mkdir -p data/signals
-bun run signals:collect ${PREV:+--prev "$PREV"} > data/signals/$RUN_DATE.json
+bun run signals:collect ${PREV:+--prev "$PREV"} --out data/signals/$RUN_DATE.json
 ```
+
+The script writes the file itself (temp file + rename), so a failed run leaves
+no partial JSON. If it exits non-zero, `rm -f data/signals/$RUN_DATE.*` and
+stop; a broken file committed now would become next run's `--prev`.
 
 Prints one JSON (`src/server/routine/signals.ts` assembles it from the
 server's own endpoints and stores; no logic is duplicated here):
@@ -50,9 +54,12 @@ server's own endpoints and stores; no logic is duplicated here):
 | `lab` | Lab trial log (needs `DATABASE_URL`) | `trials` = authored ideas since the last run, each with its `rule` (`lab_event_study` rows are screens, not ideas); `universe` = `PLATFORM_MY_MARKETS`; `trials: null` = log not reachable |
 | `changes`, `changed` | diff vs `--prev` | what is new; `changed: false` means nothing to report |
 
-A section whose endpoint failed makes the script exit non-zero with the HTTP
-code. Report that source as a gap with the code; don't fill it from memory.
-`platform_offline` (503) means the worker is down: say so and stop.
+A section that cannot be read does not abort the run: it is listed in
+`gaps: [{source, code}]` (e.g. `HTTP 503`), contributes nothing new, and keeps
+the previous run's value so it is not mistaken for a change. An unreadable
+`--prev` is a gap too (`source: "prev"`); the run then treats everything as new.
+Report each gap with its code; don't fill it from memory. If `gaps` covers every
+platform section (worker down, 503), say so and send no push.
 
 ### Lab screens for authored ideas
 
@@ -97,7 +104,7 @@ Top: <COIN> <setup> — condition <cond> failed: <value> vs limit <limit> (<relD
 ## Lab (my markets: <universe>)
 - idea #<n> "<intent>" — logged verdict <v>; screen <verdict>; funnel bottleneck: <condition> (<survivors before → after>)
 
-Data gaps: <source — HTTP code>, or omit
+Data gaps: <gaps[] as source — code>, or omit
 ```
 
 Carry the evidence line and screen verdicts verbatim; they already say
@@ -130,7 +137,7 @@ bun run signals:notify "signals $RUN_DATE" "<≤ 6 short lines>"
 Body: top near-miss (`COIN setup: cond failed by X%`), each new `NOVEL:`
 (coin, kind), ready opportunities added with their evidence line, broken
 premises, new Lab ideas with screen verdict. Hedged, facts first, no
-instructions. No retries beyond one; a failed push is a one-line gap in the
+instructions. No retries beyond one; `signals:notify` exits 1 when no channel accepted the push; that is a one-line gap in the
 final message, never a reason to push again. No reminders, no follow-ups.
 
 ## Final message
@@ -142,6 +149,6 @@ out, data gaps. Not the full report; that is the `.md`.
 
 - The top-of-file hard rule applies to the `.md`, the push and the final message.
 - Write only `data/signals/**`. Never edit `src/`, `api/`, `db/`, docs, or the other routine's `data/` folders.
-- No orders, no signing keys, no Desk calls. Read-only GETs plus `lab_event_study`.
+- No orders, no signing keys, no Desk calls. Read-only GETs plus `lab_event_study`, which is not read-only: each screen appends one row to the Lab trial log.
 - Never print `LAB_API_TOKEN`, `DATABASE_URL` or `NTFY_TOKEN`.
 - If a hook or tool blocks something this runbook needs, stop and report it. Don't route around it.
