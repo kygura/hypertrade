@@ -18,12 +18,14 @@ if (!coins.length) {
   coins = u.filter((c) => tiers[c.coin] === 1).map((c) => c.coin);
 }
 const backfill = defaultOiBackfill();
+let failed = 0;
 for (const coin of coins) {
   try {
     await defaultHtDeps.ensureHistory(coin, Date.now() - 1500 * 86_400_000, 60_000); // closes for the USD conversion
     console.log(`${coin}: ${await backfill(coin)} days inserted`);
   } catch (e) {
+    failed++;
     console.error(`${coin}: ${e instanceof Error ? e.message : e}`);
   }
 }
-process.exit(0);
+process.exit(failed === coins.length ? 1 : 0);

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import fixture from "../../shared/fixtures/coinalyze-oi.json" with { type: "json" };
-import { createOiBackfill, hlSymbolMap, oiRows, parseDailyOi, type OiRow } from "./coinalyzeOi.js";
+import { createOiBackfill, OiRateLimited, hlSymbolMap, oiRows, parseDailyOi, type OiRow } from "./coinalyzeOi.js";
 
 const DAY = 86_400_000;
 // Recorded 2026-10-19 from Coinalyze: /exchanges, the Hyperliquid rows of /future-markets, BTC.H daily open-interest-history (convert_to_usd=false).
@@ -49,5 +49,31 @@ describe("coinalyze OI backfill", () => {
   test("no key: no call, no rows", async () => {
     const run = createOiBackfill({ fetch: (() => { throw new Error("network"); }) as never, env: {}, now: () => NOW, sleep: async () => {}, candles: async () => [], stored: async () => [], insert: async () => {} });
     expect(await run("BTC")).toBe(0);
+  });
+
+  test("a failed or empty symbol map is cached for 1h: one attempt, then no calls; retried after", async () => {
+    for (const respond of [() => new Response("x", { status: 500 }), () => Response.json({ exchanges: [], "future-markets": [] }) ]) {
+      let t = NOW;
+      let n = 0;
+      const run = createOiBackfill({
+        fetch: (async (u: unknown) => ((n++), respond().status === 500 ? respond() : Response.json((({ exchanges: [], "future-markets": [] }) as Record<string, unknown>)[new URL(String(u)).pathname.slice(4)]))) as never,
+        env: { COINALYZE_API_KEY: "k" }, now: () => t, sleep: async () => {}, candles: async () => [], stored: async () => [], insert: async () => {},
+      });
+      await expect(run("BTC")).rejects.toThrow();
+      const first = n;
+      expect(await run("ETH")).toBe(0);
+      expect(n).toBe(first);
+      t += 3_600_001;
+      await expect(run("BTC")).rejects.toThrow();
+      expect(n).toBeGreaterThan(first);
+    }
+  });
+
+  test("429 on the history call throws OiRateLimited", async () => {
+    const run = createOiBackfill({
+      fetch: (async (u: unknown) => { const p = new URL(String(u)).pathname.replace(/^\/v1\//, ""); return p === "open-interest-history" ? new Response("", { status: 429 }) : Response.json((fixture as Record<string, unknown>)[p]); }) as never,
+      env: { COINALYZE_API_KEY: "k" }, now: () => NOW, sleep: async () => {}, candles: async () => [], stored: async () => [], insert: async () => {},
+    });
+    await expect(run("BTC")).rejects.toBeInstanceOf(OiRateLimited);
   });
 });
