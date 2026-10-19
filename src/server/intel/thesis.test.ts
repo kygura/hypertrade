@@ -293,4 +293,17 @@ describe("createThesis / checkThesis / recheckForAssets", () => {
     await store.updateThesis(r.thesis.id, { history: Array.from({ length: HISTORY_CAP }, () => ({ ts: NOW, checks: [] })) });
     expect((await checkThesis(d, r.thesis.id))!.history).toHaveLength(HISTORY_CAP);
   });
+
+  test("two concurrent checks on the same transition send exactly one alert", async () => {
+    const { store, deps } = setup();
+    await seed(store);
+    const sent: string[] = [];
+    const d = { ...deps, notifier: { channels: ["t"], send: async (a) => (sent.push(a.title), ["t"]) } as Notifier };
+    const r = await createThesis(d, "HYPE grinds higher; out below $35");
+    if (!r.ok) throw new Error(r.error);
+    await store.insertSnapshots([snap("HYPE", 0, { price: 33, funding: -0.0002 })]);
+    await Promise.all([checkThesis(d, r.thesis.id), checkThesis(d, r.thesis.id)]);
+    expect(sent).toHaveLength(3);
+    expect((await store.getThesis(r.thesis.id))!.history).toHaveLength(2);
+  });
 });
