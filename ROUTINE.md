@@ -746,12 +746,11 @@ Data gaps: <gaps[] as source — code>, or omit
    commit either way. If it is rejected as non-fast-forward (the fallback
    pulse pushed a ledger meanwhile), `git pull --rebase` and push again.
    If the session may only push to its own branch (a `claude-code/*` branch
-   rather than `master`), push the commit there, open a PR into `master` with
-   `mcp__github__create_pull_request`, then call
-   `mcp__github__enable_pr_auto_merge`. GitHub merges it when the required
-   `build` check passes, and the merge deploys to production. If enabling
-   auto-merge is refused (the repo setting or branch protection is off), leave
-   the PR open and put its link in the brief. Never merge it yourself.
+   rather than `master`), push the commit there and open a PR into `master`
+   with `mcp__github__create_pull_request`. The `routine-land` workflow merges
+   it after typecheck and tests when it only touches `data/`, and the merge
+   deploys to production. Do not call `mcp__github__enable_pr_auto_merge` and
+   never merge it yourself. Put the PR link in the brief.
    A red check on a signals-only change follows the same rule.
 5. Anything else on GitHub (PRs, check status) goes through the
    `mcp__github__*` tools. `gh` is blocked here.
@@ -844,9 +843,12 @@ bun run signals:notify "hypertrade $RUN_DATE" "<≤ 8 short lines>"
 Body: the header line, `Read:`, the Setups lines, then one line per signals
 change (top near-miss, each new `NOVEL:`, ready added with its evidence line,
 broken premises, new Lab ideas with screen verdict). Hedged, facts first, no
-instructions. No retries; `signals:notify` exits 1 when no channel accepted the
-push, which is a one-line gap in the final message, never a reason to push
-again. No reminders, no follow-ups.
+instructions. No retries (the notifier itself retries a 429 once). If
+`signals:notify` exits 1 (no channel accepted the push), send the same brief
+once through the session's own push-notification tool, if one is available, and
+list the ntfy failure as a gap in the final message. Still exactly one
+delivered push per run. Setting `NTFY_TOKEN` (an ntfy.sh access token) moves
+the rate limit from the shared IP to the account. No reminders, no follow-ups.
 
 ### Final message
 

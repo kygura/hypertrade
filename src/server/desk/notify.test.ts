@@ -28,4 +28,19 @@ describe("ntfy channel", () => {
     expect(calls[0]!.init.headers).toEqual({ Title: "Liq near BTC", Priority: "5", Click: "https://app.example/desk", Authorization: "Bearer tk" });
     expect((calls[0]!.init.body as string).length).toBe(4000);
   });
+
+  test("429 is retried once after Retry-After: one delivery", async () => {
+    const statuses = [429, 200];
+    const calls: string[] = [];
+    const waits: number[] = [];
+    const fetchFn = (async (url: string) => {
+      calls.push(String(url));
+      const status = statuses.shift()!;
+      return new Response("", { status, headers: status === 429 ? { "retry-after": "7" } : {} });
+    }) as unknown as typeof fetch;
+    const sent = await createNotifier({ NTFY_TOPIC: "desk" }, fetchFn, async (ms) => void waits.push(ms)).send({ level: "info", title: "t", body: "b" });
+    expect(sent).toEqual(["ntfy"]);
+    expect(calls.length).toBe(2);
+    expect(waits).toEqual([7000]);
+  });
 });
