@@ -1,4 +1,5 @@
 import { hlInfo, parseMetaAndCtxs } from "../../shared/hl-client.js";
+import { calendarEvents } from "../intel/calendar.js";
 import { fin } from "../intel/util.js";
 import type { JsonValue, LedgerStats, Opportunity } from "../../shared/platform.js";
 import { bus as defaultBus, type Bus } from "./bus.js";
@@ -28,6 +29,7 @@ export const REF_SIZE_USD = 10_000;
 /** Holding time funding is charged over. ponytail: fixed 4 h (the middle outcome horizon); per-setup holds when the ledger says they differ. */
 export const HOLD_HOURS = 4;
 const LIQ_NEAR = 0.02;
+const DAY_MS = 24 * 60 * MIN;
 
 /** Maps NaN/±Infinity/undefined to null, recursively: the ledger rejects non-finite numbers. */
 export function clean(v: unknown): JsonValue {
@@ -37,6 +39,17 @@ export function clean(v: unknown): JsonValue {
   return (v ?? null) as JsonValue;
 }
 const px = (n: number) => Number(n.toPrecision(6));
+
+/** Macro label (FOMC, CPI) for releases within one UTC day of `now`. A tag only: nothing reads it for score or status. */
+function macroTags(now: Date): string[] {
+  const today = Date.parse(now.toISOString().slice(0, 10));
+  return calendarEvents(now).flatMap((e) => {
+    const kind = e.entities[0]; // calendar.ts lists the macro kind first
+    const days = Math.round((Date.parse(e.scheduledAt!.slice(0, 10)) - today) / DAY_MS);
+    if ((kind !== "FOMC" && kind !== "CPI") || Math.abs(days) > 1) return [];
+    return [`macro:${kind} ${days === 0 ? "today" : days === 1 ? "in 1 day" : "1 day ago"}`];
+  });
+}
 
 export interface ScannerDeps {
   store: PlatformStore;
@@ -129,6 +142,7 @@ export function createScanner(deps: ScannerDeps) {
     }
 
     const tiers = liquidityTiers(live.map((c) => ({ coin: c.name, dayNtlVlm: c.dayNtlVlm })));
+    const macro = macroTags(new Date(t));
     const cands = live.flatMap((c) => {
       const fv = computeFeatures(ring.get(c.name) ?? [], t, { liqNearUsd: liqNear.get(c.name) ?? null });
       const tier = tiers[c.name]!;
@@ -156,7 +170,7 @@ export function createScanner(deps: ScannerDeps) {
         const mark = ctx.markPx;
         const input: OpportunityInput = {
           coin: ctx.name, direction: setup.direction, setupKind: setup.setupKind, tradeType: "directional", score, scoreVersion: SCORE_VERSION,
-          tags: setup.tags, liquidityTier: tier, regime: String(fv.inputs.regime ?? "unknown"),
+          tags: [...setup.tags, ...macro], liquidityTier: tier, regime: String(fv.inputs.regime ?? "unknown"),
           invalidation: `${setup.direction === "long" ? "Below" : "Above"} ${px(setup.invalidationPx)}: the thesis is dead`,
           entryPx: mark, stopPx: setup.stopPx, targetPx: setup.targetPx, invalidationPx: setup.invalidationPx,
         };

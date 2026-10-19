@@ -9,12 +9,12 @@ const MIN = 60_000;
 const NOW = Date.UTC(2026, 9, 15, 12);
 const N = 24 * 60;
 
-/** 24 h of 1-min points ending at NOW: quiet zig-zag, then (pump) a 15-min +3% run with OI and volume building. */
-function ring(pump: boolean): RingPoint[] {
+/** 24 h of 1-min points ending at `end` (NOW by default): quiet zig-zag, then (pump) a 15-min +3% run with OI and volume building. */
+function ring(pump: boolean, end = NOW): RingPoint[] {
   let mark = 100;
   return Array.from({ length: N }, (_, i) => {
     mark *= Math.exp(i % 2 ? -0.0005 : 0.0005 + (i % 7 === 0 ? 0.0002 : 0));
-    const p = { ts: NOW - (N - 1 - i) * MIN, mark, oiUsd: 1e8 + (i % 5) * 1e5, funding: 1e-5 + (i % 3) * 1e-6, dayNtlVlm: 5e8 + (i % 11) * 1e6 };
+    const p = { ts: end - (N - 1 - i) * MIN, mark, oiUsd: 1e8 + (i % 5) * 1e5, funding: 1e-5 + (i % 3) * 1e-6, dayNtlVlm: 5e8 + (i % 11) * 1e6 };
     return pump && i >= N - 15 ? { ...p, mark: p.mark * (1 + 0.03 * ((i - (N - 16)) / 15)), oiUsd: p.oiUsd * 1.05, dayNtlVlm: p.dayNtlVlm * 1.2 } : p;
   });
 }
@@ -30,9 +30,9 @@ const book = (mark: number) => ({
 });
 
 /** PUMP has the pumped history; the rest are flat filler so the tiers have a universe. */
-function setup() {
+function setup(end = NOW) {
   const store = new MemoryPlatformStore();
-  const pumped = ring(true);
+  const pumped = ring(true, end);
   const last = pumped.at(-1)!;
   const coins = ["PUMP", "A", "B", "C", "D", "E"];
   const marks: Record<string, number> = { PUMP: last.mark * 1.002, A: 100, B: 100, C: 100, D: 100, E: 100 };
@@ -76,15 +76,28 @@ describe("cold-start seeding", () => {
 
 describe("scanner tick", () => {
   let s: ReturnType<typeof setup>;
-  const seeded = async () => {
-    const x = setup();
+  const seeded = async (end = NOW) => {
+    const x = setup(end);
     await x.store.insertScanSnapshots(
-      ["PUMP", "A", "B", "C", "D", "E"].flatMap((coin) => (coin === "PUMP" ? x.pumped : ring(false)).map((p) => ({ coin, ts: new Date(p.ts).toISOString(), inputs: { mark: p.mark, oiUsd: p.oiUsd, funding: p.funding, dayNtlVlm: p.dayNtlVlm } }))),
+      ["PUMP", "A", "B", "C", "D", "E"].flatMap((coin) => (coin === "PUMP" ? x.pumped : ring(false, end)).map((p) => ({ coin, ts: new Date(p.ts).toISOString(), inputs: { mark: p.mark, oiUsd: p.oiUsd, funding: p.funding, dayNtlVlm: p.dayNtlVlm } }))),
     );
     return x;
   };
   beforeEach(async () => {
     s = await seeded();
+  });
+
+  test("macro tag: the day before CPI is tagged; the score matches a day with no release", async () => {
+    const top = async (end: number) => {
+      const x = await seeded(end);
+      await createScanner({ store: x.store, info: x.info, now: () => end + MIN, bus: x.bus }).tick();
+      return (await x.store.listOpportunities({ limit: 1 }))[0]!;
+    };
+    const eve = await top(Date.UTC(2026, 9, 13, 12)); // CPI is 2026-10-14
+    const quiet = await top(Date.UTC(2026, 9, 20, 12)); // no FOMC or CPI within a day
+    expect(eve.tags).toContain("macro:CPI in 1 day");
+    expect(quiet.tags.some((t) => t.startsWith("macro:"))).toBe(false);
+    expect(eve.score).toBe(quiet.score);
   });
 
   test("one tick: ranked opportunity with costs, a created ledger entry, calculated -> ready, events", async () => {
