@@ -111,3 +111,25 @@ describe("storedInputs()", () => {
     expect(calls.series).toEqual(["hl.oi.SOL", 0, NOW]);
   });
 });
+
+describe("novelty universe filter", () => {
+  const all = [["A", 7], ["B", 6], ["C", 5], ["D", 4], ["E", 3], ["F", 2], ["ZEC", 1]].map(([coin, v]) => ({ coin: coin as string, dayNtlVlm: v as number, oiUsd: v as number }));
+  const checked = async (over: Partial<Parameters<typeof createNoveltyLoop>[0]>) => {
+    const seen: string[] = [];
+    const loop = createNoveltyLoop({ store: new MemoryPlatformStore(), now: () => NOW, maxTier: 1, universe: async () => all, inputs: async (c) => (seen.push(c), raw(1e-4)), notify: async () => [], ...over });
+    await loop.tick();
+    return [...new Set(seen)].sort();
+  };
+
+  test("default: liquidity gate plus my markets", async () => {
+    expect(await checked({})).toEqual(["A", "B", "C", "ZEC"]);
+  });
+  test("top filter replaces the gate", async () => {
+    expect(await checked({ filter: { top: 2 } })).toEqual(["A", "B"]);
+  });
+  test("sectors filter uses the tags; mine adds", async () => {
+    const tags = async () => ({ E: ["AI"], F: ["Meme"] });
+    expect(await checked({ filter: { sectors: ["AI"] }, tags })).toEqual(["E"]);
+    expect(await checked({ filter: { sectors: ["AI"], mine: ["F"] }, tags })).toEqual(["E", "F"]);
+  });
+});

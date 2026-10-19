@@ -40,12 +40,21 @@ export function selectUniverse<T extends { coin: string; dayNtlVlm: number }>(ct
 /** PLATFORM_NOVELTY_UNIVERSE: `;`-separated `mine`, `top:N`, `sectors:A,B`. Throws on anything else. */
 export function parseUniverseSpec(spec: string): UniverseOpts {
   const o: UniverseOpts = {};
-  for (const part of spec.split(";").map((s) => s.trim()).filter(Boolean)) {
+  const parts = spec.split(";").map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) throw new Error(`empty universe spec "${spec}" (mine | top:N | sectors:A,B)`);
+  const seen = new Set<string>();
+  for (const part of parts) {
     const [k, ...rest] = part.split(":");
     const v = rest.join(":");
+    if (seen.has(k!)) throw new Error(`duplicate "${k}" in universe spec "${spec}"`);
+    seen.add(k!);
     if (k === "mine" && !v) o.mine = myMarkets();
     else if (k === "top" && /^[1-9]\d*$/.test(v)) o.top = Number(v);
-    else if (k === "sectors") o.sectors = z.array(SectorSchema).min(1).parse(v.split(",").map((s) => s.trim()));
+    else if (k === "sectors") {
+      o.sectors = v.split(",").map((s) => s.trim());
+      const bad = o.sectors.find((x) => !(SECTORS as readonly string[]).includes(x));
+      if (bad !== undefined) throw new Error(`unknown sector "${bad}" in universe spec (one of: ${SECTORS.join(", ")})`);
+    }
     else throw new Error(`bad universe spec "${part}" (mine | top:N | sectors:A,B)`);
   }
   return o;
@@ -77,9 +86,16 @@ export const defaultLlmDeps = (): Promise<LlmDeps> =>
     ([{ intelProviderFactory }, { MemoryLlmCache }]): LlmDeps => ({ makeProvider: intelProviderFactory(), cache: new MemoryLlmCache(), now: () => new Date(), dailyCap: 100 }),
   ));
 
+/** Coins asked of the LLM recently (answered or not): not asked again for RETRY_MS, so a failing or silent LLM costs one call per window. */
+const attempted = new Map<string, number>();
+const RETRY_MS = 6 * 3_600_000;
+/** The scan waits at most this long for tags; a slower call is abandoned and the coins stay untagged. */
+const TAG_DEADLINE_MS = 15_000;
+
 /**
  * Tags only the coins the store has no tags for (new listings), in one LLM call, and caches them. Returns coin -> sectors for
- * everything cached. An LLM failure leaves those coins untagged; it never throws.
+ * everything cached. Coins the LLM does not return are stored as ["Other"] (negative cache); on failure they stay untagged
+ * and are not re-asked for 6h. It never throws.
  */
 export async function ensureSectors(
   coins: string[],
@@ -87,9 +103,16 @@ export async function ensureSectors(
   llm: () => Promise<LlmDeps> = defaultLlmDeps,
   now: () => Date = () => new Date(),
 ): Promise<Record<string, string[]>> {
-  const have = new Map((await store.listSectors()).map((t) => [t.coin, t]));
-  const missing = [...new Set(coins)].filter((c) => !have.has(c));
+  const have = new Map<string, SectorTag>();
+  let missing: string[] = [];
+  try {
+    for (const t of await store.listSectors()) have.set(t.coin, t);
+    missing = [...new Set(coins)].filter((c) => !have.has(c) && now().getTime() - (attempted.get(c) ?? -Infinity) >= RETRY_MS);
+  } catch (err) {
+    console.error("[sectors] cache read failed:", err instanceof Error ? err.message : err);
+  }
   if (missing.length) {
+    for (const c of missing) attempted.set(c, now().getTime());
     try {
       const { completeStructured } = await import("../intel/llm.js");
       const r = await completeStructured({
@@ -99,11 +122,14 @@ export async function ensureSectors(
         schema: sectorAnswerSchema,
         jsonSchema,
         promptVersion: SECTOR_PROMPT_VERSION,
+        deadlineMs: TAG_DEADLINE_MS,
         deps: await llm(),
       });
       if (r.ok) {
         const asked = new Set(missing);
-        const tags: SectorTag[] = r.value.tags.filter((t) => asked.has(t.coin)).map((t) => ({ coin: t.coin, sectors: [...new Set(t.sectors)], taggedAt: now().toISOString() }));
+        const taggedAt = now().toISOString();
+        const got = new Map(r.value.tags.filter((t) => asked.has(t.coin)).map((t) => [t.coin, [...new Set(t.sectors)]]));
+        const tags: SectorTag[] = missing.map((coin) => ({ coin, sectors: got.get(coin) ?? ["Other"], taggedAt }));
         await store.saveSectors(tags);
         for (const t of tags) have.set(t.coin, t);
       } else console.error("[sectors] tagging failed:", r.error);
