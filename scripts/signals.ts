@@ -32,8 +32,7 @@ if (cmd === "notify") {
   let trials: SignalsRaw["trials"] = null;
   if (process.env.DATABASE_URL) {
     const { defaultStore } = await import("../src/server/lab/store.js");
-    const store = defaultStore();
-    trials = await Promise.all((await store.listTrials()).slice(-50).map(async (t) => ({ ...t, ruleInCatalogue: !!(await store.getCatalogueEntry(t.ruleId)) })));
+    trials = (await defaultStore().listTrials()).slice(-50);
   }
   const raw: SignalsRaw = {
     nearMisses: (await get<{ all: SignalsRaw["nearMisses"] }>("/platform/near-miss")).all,

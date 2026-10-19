@@ -10,8 +10,8 @@ export interface SignalsRaw {
   novelty: NoveltyEntry[];
   ready: Array<{ row: FeedRow; evidence: string }>;
   theses: Thesis[];
-  /** null when the lab store is unreachable. `ruleInCatalogue`: the rule can be re-screened by id. */
-  trials: Array<Trial & { ruleInCatalogue: boolean }> | null;
+  /** null when the lab store is unreachable. A trial with a `rule` can be re-screened; older rows have none. */
+  trials: Trial[] | null;
   myMarkets: string[];
 }
 

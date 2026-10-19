@@ -47,7 +47,7 @@ server's own endpoints and stores; no logic is duplicated here):
 | `novelty` | `GET /api/platform/novelty` | `NOVEL:` entries detected since `since`; `kind` `new_extreme` or `joint_extreme`, `families`, `features`, `nearSetups` |
 | `ready` | `GET /api/platform/opportunities?status=ready` + detail | each with its PS4 `evidence` line (n · clusters · interval · edge basis) |
 | `thesisWatch` | `GET /api/intel/theses` history | premises whose latest check turned `contradicted`/`triggered` after a good one at the previous run |
-| `lab` | Lab trial log (needs `DATABASE_URL`) | `trials` = authored ideas since the last run (`lab_event_study` rows are screens, not ideas); `universe` = `PLATFORM_MY_MARKETS`; `trials: null` = log not reachable |
+| `lab` | Lab trial log (needs `DATABASE_URL`) | `trials` = authored ideas since the last run, each with its `rule` (`lab_event_study` rows are screens, not ideas); `universe` = `PLATFORM_MY_MARKETS`; `trials: null` = log not reachable |
 | `changes`, `changed` | diff vs `--prev` | what is new; `changed: false` means nothing to report |
 
 A section whose endpoint failed makes the script exit non-zero with the HTTP
@@ -56,21 +56,18 @@ code. Report that source as a gap with the code; don't fill it from memory.
 
 ### Lab screens for authored ideas
 
-For each `lab.trials[]` entry with `ruleInCatalogue: true`, fetch the rule
-(`bun run lab lab_catalogue_list --json '{"live":false}'`, match `id` to
-`ruleId`) and screen it on my markets:
+For each `lab.trials[]` entry that carries a `rule`, screen that rule on my
+markets:
 
 ```bash
-bun run lab lab_event_study --json '{"rule":<rule>,"mine":true,"stopAtr":1.5,"targetAtr":3}'
+bun run lab lab_event_study --json '{"rule":<trial.rule>,"mine":true,"stopAtr":1.5,"targetAtr":3}'
 ```
 
 (needs `LAB_URL=$APP_URL`; never `--local`). Report `verdict`
 (`insufficient`/`rejected`/`clear`, a reject-only screen: `clear` is never
 evidence of an edge) and the funnel bottleneck (`funnel.steps[funnel.bottleneck]`:
-the condition where most coin-days die). The trial log keeps only a rule id,
-the intent text and a verdict, so a rule that was never saved to the catalogue
-cannot be re-screened: list it as "not screenable (rule not in catalogue)" with
-its logged verdict. The screens add `lab_event_study` rows to the log; they are
+the condition where most coin-days die). Older trials (logged before the rule was stored) have no `rule`: list them as
+"not screenable (no rule logged)" with their logged verdict. The screens add `lab_event_study` rows to the log; they are
 excluded from next run's idea list on purpose.
 
 ## 3. Write `data/signals/$RUN_DATE.md`
@@ -145,6 +142,6 @@ out, data gaps. Not the full report; that is the `.md`.
 
 - The top-of-file hard rule applies to the `.md`, the push and the final message.
 - Write only `data/signals/**`. Never edit `src/`, `api/`, `db/`, docs, or the other routine's `data/` folders.
-- No orders, no signing keys, no Desk calls. Read-only GETs plus `lab_catalogue_list` / `lab_event_study`.
+- No orders, no signing keys, no Desk calls. Read-only GETs plus `lab_event_study`.
 - Never print `LAB_API_TOKEN`, `DATABASE_URL` or `NTFY_TOKEN`.
 - If a hook or tool blocks something this runbook needs, stop and report it. Don't route around it.

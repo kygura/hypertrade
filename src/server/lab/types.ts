@@ -342,6 +342,8 @@ export interface Trial {
   ruleId: string;
   intent: string | null;
   verdict: VerdictLevel | EventVerdict | null;
+  /** The rule as authored or screened; absent/null on rows logged before it was stored. */
+  rule?: Rule | null;
 }
 
 /** lab_event_study screen (FEATURES.md § 2): reject-only, never a grant. */

@@ -153,7 +153,7 @@ export function toCatalogueEntry(r: any): CatalogueEntry {
 }
 
 export function toTrial(r: any): Trial {
-  return { n: Number(r.n), at: iso(r.at)!, ruleId: r.rule_id, intent: r.intent ?? null, verdict: r.verdict ?? null };
+  return { n: Number(r.n), at: iso(r.at)!, ruleId: r.rule_id, intent: r.intent ?? null, verdict: r.verdict ?? null, rule: r.rule ?? null };
 }
 
 export function pgStore(): LabStore {
@@ -215,7 +215,7 @@ export function pgStore(): LabStore {
       return res.count > 0;
     },
     async appendTrial(t) {
-      const [row] = await sql()`insert into lab_trials (rule_id, intent, verdict) values (${t.ruleId}, ${t.intent}, ${t.verdict}) returning *`;
+      const [row] = await sql()`insert into lab_trials (rule_id, intent, verdict, rule) values (${t.ruleId}, ${t.intent}, ${t.verdict}, ${t.rule ? json(t.rule) : null}) returning *`;
       return toTrial(row);
     },
     async listTrials() {

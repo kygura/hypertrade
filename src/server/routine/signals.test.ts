@@ -16,7 +16,7 @@ describe("signals assembly", () => {
   });
 
   test("diff against the previous run; identical input is silent", () => {
-    const first = assemble(raw({ trials: [{ n: 1, at: "2026-10-19T09:00:00Z", ruleId: "r", intent: "idea", verdict: "weak", ruleInCatalogue: false }, { n: 2, at: "2026-10-19T09:30:00Z", ruleId: "r", intent: "lab_event_study", verdict: "clear", ruleInCatalogue: false }] }), null, new Date(NOW.getTime() - 3_600_000));
+    const first = assemble(raw({ trials: [{ n: 1, at: "2026-10-19T09:00:00Z", ruleId: "r", intent: "idea", verdict: "weak" }, { n: 2, at: "2026-10-19T09:30:00Z", ruleId: "r", intent: "lab_event_study", verdict: "clear" }] }), null, new Date(NOW.getTime() - 3_600_000));
     expect(first.changes.labTrials).toEqual([1]); // event-study rows are not authored ideas
     expect(first.changed).toBe(true);
     const second = assemble(raw(), first, NOW);
