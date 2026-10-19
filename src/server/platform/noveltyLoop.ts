@@ -1,7 +1,7 @@
 import { hlInfo, parseMetaAndCtxs } from "../../shared/hl-client.js";
 import type { NoveltyEntry } from "../../shared/platform.js";
 import { toDaily } from "../lab/providers/series.js";
-import { defaultHtDeps } from "../lab/providers/ht.js";
+import { defaultHtDeps, type HtDeps } from "../lab/providers/ht.js";
 import { syncFunding } from "../market/fundingSync.js";
 import { liquidityTiers } from "./features.js";
 import { admitRun, novelty, pendingNovel, NOVELTY, type Candidate, type NoveltyDaily } from "./novelty.js";
@@ -49,17 +49,15 @@ export interface NoveltyLoopDeps {
   maxTier?: number;
 }
 
-const defaultInputs = async (coin: string, now: number): Promise<RawInputs> => {
-  const from = now - HISTORY_DAYS * DAY;
-  await defaultHtDeps.ensureHistory(coin, from, ENSURE_CAP_MS);
-  await syncFunding(coin, from, { maxPages: FUNDING_PAGES, deadline: Date.now() + ENSURE_CAP_MS });
-  const [bars, funding, oi] = await Promise.all([
-    defaultHtDeps.candles(coin, from),
-    defaultHtDeps.funding(coin, from, now),
-    defaultHtDeps.series(`hl.oi.${coin}`, 0, now),
-  ]);
-  return { bars, funding, oi };
-};
+/** `from` bounds only what is synced; the baseline is everything stored (full history since listing). */
+export const storedInputs = (ht: Pick<HtDeps, "ensureHistory" | "candles" | "funding" | "series"> = defaultHtDeps, sync: typeof syncFunding = syncFunding) =>
+  async (coin: string, now: number): Promise<RawInputs> => {
+    const from = now - HISTORY_DAYS * DAY;
+    await ht.ensureHistory(coin, from, ENSURE_CAP_MS);
+    await sync(coin, from, { maxPages: FUNDING_PAGES, deadline: Date.now() + ENSURE_CAP_MS });
+    const [bars, funding, oi] = await Promise.all([ht.candles(coin, 0), ht.funding(coin, 0, now), ht.series(`hl.oi.${coin}`, 0, now)]);
+    return { bars, funding, oi };
+  };
 
 const defaultUniverse = async () =>
   parseMetaAndCtxs(await hlInfo<unknown>({ type: "metaAndAssetCtxs" })).ctxs
@@ -69,15 +67,20 @@ const defaultUniverse = async () =>
 export function createNoveltyLoop(deps: NoveltyLoopDeps) {
   const { store } = deps;
   const now = deps.now ?? Date.now;
-  const inputs = deps.inputs ?? defaultInputs;
+  const inputs = deps.inputs ?? storedInputs();
   const universe = deps.universe ?? defaultUniverse;
   const maxTier = deps.maxTier ?? envNum("PLATFORM_NOVELTY_MAX_TIER", 1);
-  let lastBar = "";
+  /** Coins whose bar was evaluated (hit or not), per bar. A coin that threw or lacks the bar stays out and is retried next beat. Lost on restart: the window is re-checked once and admit() dedupes. */
+  const checked = new Map<string, Set<string>>();
 
-  /** Checks each closed bar in `bars` (a late run backfills several) and journals the hits, newest bar first for the push budget. */
+  /** Checks the missing (coin, bar) pairs and journals the hits, newest bar first for the push budget. */
   async function detect(bars: string[], t: number) {
-    const u = await universe();
-    const tiers = liquidityTiers(u);
+    const all = await universe();
+    const tiers = liquidityTiers(all);
+    const u = all.filter((c) => tiers[c.coin]! <= maxTier);
+    const todo = new Map(bars.map((b) => [b, u.filter((c) => !checked.get(b)?.has(c.coin))]));
+    const coins = u.filter((c) => bars.some((b) => todo.get(b)!.includes(c)));
+    if (!coins.length) return;
     const byOi = [...u].sort((a, b) => b.oiUsd - a.oiUsd).map((x) => x.coin);
     // Setups that signalled on the coin in the 3 days to now: opportunities carry no near-miss data.
     const near = new Map<string, Set<string>>();
@@ -85,13 +88,15 @@ export function createNoveltyLoop(deps: NoveltyLoopDeps) {
       if (Date.parse(o.createdAt) >= t - 3 * DAY) (near.get(o.coin) ?? near.set(o.coin, new Set()).get(o.coin)!).add(o.setupKind);
     }
     const byBar = bars.map((bar) => ({ bar, cands: [] as Candidate[] }));
-    for (const c of u) {
-      if (tiers[c.coin]! > maxTier) continue;
+    for (const c of coins) {
       try {
         const d = alignDaily(await inputs(c.coin, t), t);
         for (const b of byBar) {
-          const i = d.t.indexOf(Date.parse(b.bar)); // a bar not stored yet is skipped, never faked
-          const { hit } = i < 0 ? { hit: null } : novelty(d, i);
+          if (checked.get(b.bar)?.has(c.coin)) continue;
+          const i = d.t.indexOf(Date.parse(b.bar)); // a bar not stored yet is skipped, never faked, and retried
+          if (i < 0) continue;
+          (checked.get(b.bar) ?? checked.set(b.bar, new Set()).get(b.bar)!).add(c.coin);
+          const { hit } = novelty(d, i);
           if (hit) b.cands.push({ coin: c.coin, rank: byOi.indexOf(c.coin), hit, nearSetups: [...(near.get(c.coin) ?? [])] });
         }
       } catch (err) {
@@ -104,12 +109,10 @@ export function createNoveltyLoop(deps: NoveltyLoopDeps) {
 
   async function tick() {
     const t = now();
-    const bar = barOf(t - DAY); // the newest closed UTC day
-    if (bar !== lastBar) {
-      const gap = lastBar ? Math.round((Date.parse(bar) - Date.parse(lastBar)) / DAY) : 1;
-      await detect(Array.from({ length: Math.min(gap, NOVELTY.retryDays) }, (_, k) => barOf(Date.parse(bar) - k * DAY)), t);
-      lastBar = bar;
-    }
+    const newest = Date.parse(barOf(t - DAY)); // the newest closed UTC day
+    const bars = Array.from({ length: NOVELTY.retryDays }, (_, k) => barOf(newest - k * DAY));
+    for (const k of checked.keys()) if (!bars.includes(k)) checked.delete(k);
+    await detect(bars, t);
     // Deliver (and retry for 3 days) pushed entries no channel has taken.
     for (const e of pendingNovel(await store.listNovelty(barOf(t - 4 * DAY)), t)) {
       const channels = await deps.notify(e);
