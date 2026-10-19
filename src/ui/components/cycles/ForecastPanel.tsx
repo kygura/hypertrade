@@ -1,4 +1,4 @@
-import type { BullEpisode, CycleForecast, EstimateMethod, OnsetKind } from '../../../shared/cycleForecast'
+import type { BullEpisode, CoolingHigh, CycleForecast, EstimateMethod, OnsetKind } from '../../../shared/cycleForecast'
 import { DAY_MS, type CycleCoin } from '../../../shared/cycles'
 import { fmtPct } from '../../../shared/format'
 import { DataTable, type Column } from '../DataTable'
@@ -190,4 +190,34 @@ export function EpisodesTable({ episodes, kind }: { episodes: BullEpisode[]; kin
     },
   ]
   return <DataTable columns={columns} rows={episodes} rowKey={(e) => String(e.start)} />
+}
+
+export function CoolingHighsTable({ highs }: { highs: CoolingHigh[] }) {
+  const columns: Column<CoolingHigh>[] = [
+    { key: 'date', label: 'High', priority: 1, render: (h) => <span className="text-text-primary whitespace-nowrap">{fmtDay(h.t)}</span> },
+    { key: 'price', label: 'Close', priority: 1, align: 'right', render: (h) => fmtUsdPx(h.price) },
+    { key: 'heat', label: 'Heat', priority: 1, align: 'right', render: (h) => h.heat.toFixed(2) },
+    { key: 'prev', label: 'Previous high', priority: 2, render: (h) => <span className="whitespace-nowrap">{fmtDay(h.prev.t)}</span> },
+    { key: 'prevPrice', label: 'Close', priority: 3, align: 'right', render: (h) => fmtUsdPx(h.prev.price) },
+    { key: 'prevHeat', label: 'Heat', priority: 2, align: 'right', render: (h) => h.prev.heat.toFixed(2) },
+    {
+      key: 'delta',
+      label: 'Price / heat',
+      priority: 1,
+      align: 'right',
+      render: (h) => (
+        <span className="whitespace-nowrap">
+          {fmtPct(h.price / h.prev.price - 1, { decimals: 0, sign: true })} / {(h.heat - h.prev.heat).toFixed(2)}
+        </span>
+      ),
+    },
+  ]
+  return (
+    <DataTable
+      columns={columns}
+      rows={[...highs].reverse()}
+      rowKey={(h) => String(h.t)}
+      emptyLabel={<div className="p-3 text-[11px] text-text-secondary">no all-time-high leg has peaked on lower heat than the one before</div>}
+    />
+  )
 }

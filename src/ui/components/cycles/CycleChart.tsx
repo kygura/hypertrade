@@ -17,7 +17,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { fmtPct } from '../../../shared/format'
-import type { CycleForecast } from '../../../shared/cycleForecast'
+import type { CoolingHigh, CycleForecast } from '../../../shared/cycleForecast'
 import { CYCLE_PHASES, DAY_MS, weekStart, type CycleBar, type CycleCoin, type CyclePhase } from '../../../shared/cycles'
 import { useTheme } from '../../themes/registry'
 import { Segmented } from '../Segmented'
@@ -27,7 +27,8 @@ import { alpha, blend, css, fmtDay, fmtMonth, fmtUsdPx, PHASE_LABEL, PHASE_VAR }
 // BTC or ETH daily/weekly candles on a log scale over phase-coloured bands,
 // SMA200, BTC halvings and past bull-run onsets. Past the last bar it draws the forecast:
 // the pooled onset range and its core (interquartile) window in projection
-// blue, then the estimated top window in the euphoria colour.
+// blue, then the estimated top window in the euphoria colour. "cooler high"
+// arrows mark all-time-high legs that peaked on less heat than the leg before.
 
 type Range = 'all' | 'cycle'
 const RANGE_OPTIONS = [
@@ -74,6 +75,7 @@ export function CycleChart({
   halvings,
   nextHalving,
   forecast,
+  coolingHighs,
   tf,
   onTfChange,
 }: {
@@ -82,12 +84,14 @@ export function CycleChart({
   halvings: number[]
   nextHalving: number
   forecast: CycleForecast
+  coolingHighs: CoolingHigh[]
   tf: '1d' | '1w'
   onTfChange: (tf: '1d' | '1w') => void
 }) {
   const [theme] = useTheme()
   const [range, setRange] = useState<Range>('all')
   const [showProj, setShowProj] = useState(true)
+  const [showCool, setShowCool] = useState(true)
   const [hoverT, setHoverT] = useState<number | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -184,6 +188,13 @@ export function CycleChart({
         .map((e) => (forecast.kind === 'breakout' ? e.breakout.t : e.start))
         .filter((t) => t >= first)
         .map((t) => ({ time: sec(snap(t)), position: 'aboveBar' as const, shape: 'circle' as const, color: euph, size: 1, text: `run ${fmtMonth(t)}` })),
+      ...(showCool ? coolingHighs : []).map((h) => ({
+        time: sec(snap(h.t)),
+        position: 'aboveBar' as const,
+        shape: 'arrowDown' as const,
+        color: css('--color-text-primary', '#ffffff'),
+        text: 'cooler high',
+      })),
     ].sort((a, b) => (a.time as number) - (b.time as number))
     s.candleMarkers.setMarkers(past)
 
@@ -193,7 +204,7 @@ export function CycleChart({
     if (showProj && forecast.onset) ahead.push({ time: sec(snap(forecast.onset.median)), position: 'aboveBar', shape: 'circle', color: projLine, text: 'run' })
     if (showProj && forecast.top) ahead.push({ time: sec(snap(forecast.top.median)), position: 'aboveBar', shape: 'circle', color: euph, text: 'top' })
     s.projMarkers.setMarkers(ahead.sort((a, b) => (a.time as number) - (b.time as number)))
-  }, [version, coin, bars, halvings, nextHalving, forecast, showProj, tf, step, projEnd, last])
+  }, [version, coin, bars, halvings, nextHalving, forecast, coolingHighs, showProj, showCool, tf, step, projEnd, last])
 
   // ── visible range ──
   useEffect(() => {
@@ -213,6 +224,8 @@ export function CycleChart({
 
   const hovered = hoverT == null ? null : byTime.get(hoverT as UTCTimestamp)
   const shown = hovered ?? (hoverT == null ? last : null)
+  // Weekly bars carry the week's start; match a cooling high to the bar it falls in.
+  const coolAt = shown ? (coolingHighs.find((h) => h.t >= shown.t && h.t < shown.t + step) ?? null) : null
   const futureWindow = hoverT != null && !hovered && last && hoverT * 1000 > last.t ? windowAt(hoverT * 1000, forecast) : null
 
   return (
@@ -224,6 +237,16 @@ export function CycleChart({
           <div className="seg seg--sm" role="group" aria-label="Layers">
             <button type="button" role="checkbox" aria-checked={showProj} onClick={() => setShowProj((v) => !v)} className="seg-item" title="Projected bull-run window">
               PROJ
+            </button>
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={showCool}
+              onClick={() => setShowCool((v) => !v)}
+              className="seg-item"
+              title="Higher highs on lower heat: all-time-high legs that peaked less stretched than the leg before"
+            >
+              COOL
             </button>
           </div>
         </div>
@@ -242,6 +265,14 @@ export function CycleChart({
             {' · '}
             <span style={{ color: shown.phase ? `var(${PHASE_VAR[shown.phase]})` : undefined }}>{shown.phase ? PHASE_LABEL[shown.phase] : '—'}</span>
             <> · {shown.src}</>
+            {coolAt && (
+              <>
+                {' · '}
+                <span className="text-text-primary">
+                  cooler high: heat {coolAt.heat.toFixed(2)} vs {coolAt.prev.heat.toFixed(2)} at the {fmtDay(coolAt.prev.t)} high
+                </span>
+              </>
+            )}
           </>
         ) : hoverT != null ? (
           <>

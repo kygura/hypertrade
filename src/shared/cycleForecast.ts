@@ -325,3 +325,55 @@ export function cycleAnalogs(points: CyclePoint[], episodes: BullEpisode[], hori
     };
   });
 }
+
+// ─── higher highs on lower heat ───
+
+/** Pullback from the all-time high that separates one ATH leg from the next. */
+export const LEG_PULLBACK = 0.2;
+/** Heat drop from the previous leg's peak that counts as cooler. */
+export const HEAT_DROP = 0.05;
+
+export interface CoolingHigh {
+  /** The leg's highest close: a new all-time high. */
+  t: number;
+  price: number;
+  heat: number;
+  /** The previous leg's peak, which this one out-priced on less heat. */
+  prev: { t: number; price: number; heat: number };
+}
+
+/**
+ * New all-time-high legs whose peak printed on less heat than the leg
+ * before: price higher, stretch lower. 2021 did it twice (BTC Apr and Nov,
+ * ETH Nov) and BTC's 2024-25 run three times, ending at the coolest high.
+ * Legs are split by LEG_PULLBACK; legs with a bear market between them
+ * (BEAR_BREAK) belong to different cycles and are not compared. The live
+ * leg's peak is its high so far.
+ */
+export function coolingHighs(points: CyclePoint[]): CoolingHigh[] {
+  const peaks: { i: number; low: number }[] = []; // low: lowest close since the previous peak
+  let ath = -Infinity;
+  let armed = true;
+  let low = Infinity;
+  for (let i = 0; i < points.length; i++) {
+    const c = points[i]!.c;
+    low = Math.min(low, c);
+    if (c > ath) {
+      ath = c;
+      if (armed || peaks.length === 0) {
+        peaks.push({ i, low });
+        armed = false;
+      } else peaks[peaks.length - 1]!.i = i;
+      low = c;
+    } else if (c <= ath * (1 - LEG_PULLBACK)) armed = true;
+  }
+  const out: CoolingHigh[] = [];
+  for (let k = 1; k < peaks.length; k++) {
+    const a = points[peaks[k - 1]!.i]!;
+    const b = points[peaks[k]!.i]!;
+    if (a.heat == null || b.heat == null) continue;
+    if (peaks[k]!.low <= a.c * (1 + BEAR_BREAK)) continue; // a bear market in between
+    if (b.heat <= a.heat - HEAT_DROP) out.push({ t: b.t, price: b.c, heat: b.heat, prev: { t: a.t, price: a.c, heat: a.heat } });
+  }
+  return out;
+}

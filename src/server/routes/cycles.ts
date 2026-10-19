@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { cycleAnalogs, forecastNextRun } from "../../shared/cycleForecast.js";
+import { coolingHighs, cycleAnalogs, forecastNextRun } from "../../shared/cycleForecast.js";
 import { computeCycle, CYCLE_COINS, HALVINGS, NEXT_HALVING_ESTIMATE, resampleWeekly, smoothPhases, toCycleBar, type CycleCoin, type CyclesResponse, type DailyBar } from "../../shared/cycles.js";
 import * as db from "../db.js";
 import { cmProvider } from "../lab/providers/cm.js";
@@ -122,6 +122,7 @@ export function buildCycles(coin: CycleCoin, history: DailyBar[], now: number, t
     nextHalving: NEXT_HALVING_ESTIMATE,
     forecasts,
     analogs: cycleAnalogs(points, forecasts.breakout.episodes),
+    coolingHighs: coolingHighs(points),
     sources,
   };
 }
