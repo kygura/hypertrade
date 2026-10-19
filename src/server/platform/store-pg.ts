@@ -1,5 +1,5 @@
 import type postgres from "postgres";
-import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, NoveltyEntry, Opportunity, Position } from "../../shared/platform.js";
+import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
 import { LIVE_STATUSES, PRE_DECISION_STATUSES, TERMINAL_STATUSES } from "../../shared/platform.js";
 import { sql } from "../db.js";
 import {
@@ -215,6 +215,16 @@ export class PgPlatformStore implements PlatformStore {
 
   async pruneNovelty(beforeBar: string) {
     return (await this.db.query(`delete from platform_novelty where bar_date < $1 returning 1`, [beforeBar])).length;
+  }
+
+  async saveSectors(tags: SectorTag[]) {
+    for (const t of tags) {
+      await this.db.query(`insert into market_sectors (coin, sectors, tagged_at) values ($1, $2::jsonb, $3::timestamptz) on conflict (coin) do update set sectors = excluded.sectors, tagged_at = excluded.tagged_at`, [t.coin, J(t.sectors), iso(t.taggedAt)]);
+    }
+  }
+
+  async listSectors() {
+    return (await this.db.query<any>(`select coin, sectors, tagged_at from market_sectors order by coin`)).map((r): SectorTag => ({ coin: r.coin, sectors: r.sectors, taggedAt: iso(r.tagged_at) }));
   }
 
   async pruneHistory(before: string) {

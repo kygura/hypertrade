@@ -22,6 +22,8 @@ import { databaseUrl } from "../db.js";
 import type { LlmDeps } from "../intel/llm.js";
 import { authorRules, type AuthorInput } from "./author.js";
 import { allMetrics, getMetric, loadDataset as registryLoadDataset, PROVIDERS, type LoadConfig } from "./providers/registry.js";
+import { myMarkets, selectUniverse, ensureSectors } from "../platform/universe.js";
+import type { PlatformStore } from "../platform/store.js";
 import { defaultStore, type LabStore, type RunSummary, type StoredRun } from "./store.js";
 import {
   RuleSchema,
@@ -58,7 +60,7 @@ export interface LabServiceDeps {
   /** Model access for lab_author_rule; defaults to the Intel provider chain with an in-memory cache. */
   llm?: LlmDeps;
   /** Listed HL perps for lab_event_study's default coins; defaults to Hyperliquid's meta. */
-  perpUniverse?: () => Promise<string[]>;
+  perpUniverse?: (o: { top?: number; sectors?: string[]; mine?: boolean }) => Promise<string[]>;
   /** Whether stored history is available; without it lab_event_study fetches live and caps its coins. */
   hasDb?: () => boolean;
 }
@@ -111,6 +113,10 @@ export interface EvaluateInput {
 export interface EventStudyInput {
   rule: Rule;
   coins?: string[];
+  /** Default coins when `coins` is absent: the N most liquid, sector members (intersect), plus my markets (union). Default: top 20. */
+  top?: number;
+  sectors?: string[];
+  mine?: boolean;
   stopAtr: number;
   targetAtr: number;
   slippageBps?: number;
@@ -181,12 +187,11 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     llm: partial.llm,
     perpUniverse:
       partial.perpUniverse ??
-      (async () =>
-        (await fetchPerpMetaAndCtxs()).ctxs
-          .filter((c) => !c.isDelisted)
-          .sort((a, b) => b.dayNtlVlm - a.dayNtlVlm)
-          .slice(0, STUDY_MAX_COINS)
-          .map((c) => c.name)),
+      (async (o) => {
+        const live = (await fetchPerpMetaAndCtxs()).ctxs.filter((c) => !c.isDelisted).map((c) => ({ coin: c.name, dayNtlVlm: c.dayNtlVlm }));
+        const tags = o.sectors?.length ? await sectorTags(live.map((c) => c.coin)) : undefined;
+        return selectUniverse(live, { top: o.top, sectors: o.sectors, mine: o.mine ? myMarkets() : undefined, tags }).map((c) => c.coin);
+      }),
     hasDb: partial.hasDb ?? (() => Boolean(databaseUrl())),
   };
   let llm = deps.llm;
@@ -195,6 +200,14 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     if (llm) return llm;
     const [{ intelProviderFactory }, { MemoryLlmCache }] = await Promise.all([import("../intel/llm.js"), import("../routine/llm.js")]);
     return (llm = { makeProvider: intelProviderFactory(), cache: new MemoryLlmCache(), now: () => new Date(), dailyCap: 100 });
+  }
+  let platformStore: PlatformStore | undefined;
+  /** Cached sector tags for `coins`; tags the new ones. Platform store loaded on first use (keeps the lab graph light). */
+  async function sectorTags(coins: string[]) {
+    if (!platformStore) {
+      platformStore = deps.hasDb!() ? new (await import("../platform/store-pg.js")).PgPlatformStore() : new (await import("../platform/store-memory.js")).MemoryPlatformStore();
+    }
+    return ensureSectors(coins, platformStore, llmDeps);
   }
   const known = (id: string) => !!getMetric(id, deps.providers);
 
@@ -470,9 +483,14 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       }
       if (!coins) {
         try {
-          coins = await deps.perpUniverse!();
+          const { top, sectors, mine } = input;
+          coins = await deps.perpUniverse!({ top: top ?? (sectors?.length || mine ? undefined : STUDY_MAX_COINS), sectors, mine });
         } catch (err) {
           throw new UpstreamError(`HL perp universe unavailable (${msg(err)}): pass coins`);
+        }
+        if (!coins.length) throw new ToolInputError("no listed coin matches top/sectors/mine", "sectors");
+        if (coins.length > STUDY_MAX_COINS && !deps.hasDb!()) {
+          throw new ToolInputError(`the universe has ${coins.length} coins; at most ${STUDY_MAX_COINS} without a database: lower top`, "top");
         }
       }
       const unique = coins.filter((c, i) => coins!.findIndex((x) => x.toLowerCase() === c.toLowerCase()) === i);

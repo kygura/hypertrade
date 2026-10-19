@@ -1,4 +1,4 @@
-import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, NoveltyEntry, Opportunity, Position } from "../../shared/platform.js";
+import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
 import {
   checkTransition,
   dedupeKey,
@@ -34,6 +34,7 @@ export class MemoryPlatformStore implements PlatformStore {
   liqmaps = new Map<string, LiqMapSnapshot>();
   scans = new Map<string, ScanSnapshot>();
   novelty = new Map<string, NoveltyEntry>();
+  sectors = new Map<string, SectorTag>();
   opportunities = new Map<string, Opportunity>();
   /** Append-only: nothing in this class splices, sets or reassigns an element. */
   readonly ledger: LedgerEntry[] = [];
@@ -125,6 +126,14 @@ export class MemoryPlatformStore implements PlatformStore {
     let n = 0;
     for (const [k, e] of this.novelty) if (e.barDate < beforeBar) (this.novelty.delete(k), n++);
     return n;
+  }
+
+  async saveSectors(tags: SectorTag[]) {
+    for (const t of tags) this.sectors.set(t.coin, clone(t));
+  }
+
+  async listSectors() {
+    return [...this.sectors.values()].sort((a, b) => a.coin.localeCompare(b.coin)).map(clone);
   }
 
   async pruneHistory(before: string) {

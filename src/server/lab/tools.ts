@@ -4,6 +4,7 @@
 // all serve these.
 import { z } from "zod";
 import type { PromptDef, ToolDef, ToolInputSchema } from "../mcp/types.js";
+import { SECTORS, SectorSchema } from "../../shared/platform.js";
 import { createLabService, parseInput, type LabService } from "./service.js";
 import { MIN_DEFLATED_SHARPE, MIN_STABILITY, MIN_WALK_FORWARD_SHARPE } from "./engine/verdict.js";
 import { ASSET_PATTERN, DaySchema, RuleSchema, SearchConfigSchema, TRANSFORMS, VERDICT_LEVELS } from "./types.js";
@@ -63,6 +64,9 @@ const EventStudyArgs = z
   .object({
     rule: RuleSchema,
     coins: z.array(z.string().regex(ASSET_PATTERN, "expected a ticker of 1–20 letters or digits, e.g. BTC")).min(1).max(300).optional(),
+    top: z.number().int().min(1).max(300).optional(),
+    sectors: z.array(SectorSchema).min(1).optional(),
+    mine: z.boolean().optional(),
     stopAtr: z.number().positive().max(20),
     targetAtr: z.number().positive().max(50),
     slippageBps: z.number().min(0).max(200).default(5),
@@ -348,6 +352,9 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
         {
           rule: ruleSchema,
           coins: { type: "array", items: { type: "string", pattern: ASSET_PATTERN.source }, minItems: 1, maxItems: 300, description: "Coins to replay the rule on (rule.asset is ignored). Default: the 20 listed HL perps with the most day volume. Without a database at most 20." },
+          top: { type: "integer", minimum: 1, maximum: 300, description: "Default universe: the N listed HL perps with the most day volume (default 20 when no sectors/mine). Ignored when coins is set." },
+          sectors: { type: "array", items: { type: "string", enum: [...SECTORS] }, minItems: 1, description: "Default universe: keep only coins tagged with any of these sectors (intersects top). Tags are LLM-assigned once and cached; they only filter." },
+          mine: { type: "boolean", description: "Default universe: add my markets (PLATFORM_MY_MARKETS, default BTC,ETH,HYPE,SOL,XPL,LIT,ZEC). Alone, the universe is just those." },
           stopAtr: { type: "number", exclusiveMinimum: 0, maximum: 20, description: "Stop distance in ATR(14) at the signal bar, e.g. 1.5." },
           targetAtr: { type: "number", exclusiveMinimum: 0, maximum: 50, description: "Target distance in ATR(14), e.g. 3." },
           slippageBps: { type: "number", minimum: 0, maximum: 200, description: "Slippage per side, basis points. Default 5." },

@@ -378,5 +378,16 @@ export const NoveltyQuerySchema = z.object({ days: z.coerce.number().int().min(1
 /** GET /novelty: newest bar first. */
 export const NoveltyResponseSchema = z.object({ entries: z.array(NoveltyEntrySchema) });
 export type NoveltyResponse = z.infer<typeof NoveltyResponseSchema>;
+// ─── Market sectors (PS-B5) ───
+
+/** Fixed vocabulary the LLM tags coins from; anything else is rejected at the trust boundary. */
+export const SECTORS = ["AI", "Privacy", "Stablecoin", "Perp DEX", "L1", "L2", "DeFi", "Meme", "RWA", "Gaming", "Infra", "Exchange token", "Other"] as const;
+export const SectorSchema = z.enum(SECTORS);
+export type Sector = z.infer<typeof SectorSchema>;
+export const SectorTagSchema = z.object({ coin: AssetSchema, sectors: z.array(SectorSchema).min(1), taggedAt: Iso });
+export type SectorTag = z.infer<typeof SectorTagSchema>;
+/** GET /sectors: the cached tags. */
+export const SectorsResponseSchema = z.object({ vocabulary: z.array(SectorSchema), tags: z.array(SectorTagSchema) });
+export type SectorsResponse = z.infer<typeof SectorsResponseSchema>;
 /** GET /health. */
 export const PlatformHealthResponseSchema = PlatformHealthSchema;

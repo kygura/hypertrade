@@ -98,6 +98,8 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `PLATFORM_READY_TTL_MIN` (60) | Minutes before an undecided `ready` opportunity expires. |
    | `PLATFORM_RESEARCH_SCORE` (4) | Reserved; research is operator-triggered in phase 8. |
    | `PLATFORM_PUSH_SCORE` (3) | Score that triggers a Telegram alert on `ready`. |
+   | `PLATFORM_MY_MARKETS` (`BTC,ETH,HYPE,SOL,XPL,LIT,ZEC`) | "My markets": added to the novelty universe and to `lab_event_study` with `mine`. |
+   | `PLATFORM_NOVELTY_UNIVERSE` (unset) | Novelty universe: `;`-separated `mine`, `top:N`, `sectors:AI,Perp DEX`. Unset: liquidity tier 1 plus my markets. |
    | `DESK_WORKER_TICK_SEC` (60) | Desk watch tick period, minimum 30. |
    | `DESK_MAX_CYCLES_PER_DAY` (8) | Agent cycle budget per day. |
    | `DESK_TELEGRAM_BOT_TOKEN`, `DESK_TELEGRAM_CHAT_ID` (unset) | Both needed for the Telegram loop. Without them it does not run. |
