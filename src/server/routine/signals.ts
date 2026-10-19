@@ -2,7 +2,7 @@ import type { FeedRow, NearMiss, NoveltyEntry } from "../../shared/platform.js";
 import type { Thesis } from "../../shared/intel.js";
 import type { Trial } from "../lab/types.js";
 
-// Assembly of one signals-routine snapshot (SIGNALS-ROUTINE.md). Pure: scripts/signals.ts does the I/O.
+// Assembly of one signals-routine snapshot (ROUTINE.md). Pure: scripts/signals.ts does the I/O.
 // Informational only; nothing here gates or places anything.
 
 /** A section that could not be read this run: its source and a short code ("HTTP 503", "error"). */

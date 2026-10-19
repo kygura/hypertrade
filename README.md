@@ -2,7 +2,7 @@
 
 A personal market terminal and signal platform for crypto perps. It tracks assets, simulates allocation branches against historical data, monitors sector dynamics, and runs an always-on worker that scans Hyperliquid and surfaces ranked setups.
 
-Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade routine (a scheduled Claude session that commits research to `data/*.json`; see `ROUTINE.md`) and a second, signal-pipeline routine (near-misses, novelty, ready opportunities, thesis watch, Lab ideas; commits `data/signals/`, one ntfy push only when something changed; see `SIGNALS-ROUTINE.md`).
+Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade routine (a scheduled Claude session that commits research to `data/*.json`; one routine every 4 h covers market state, setups, Lab and the signal pipeline: near-misses, novelty, ready opportunities, thesis watch, Lab ideas; one ntfy push only when something changed; see `ROUTINE.md`).
 
 ## Status
 
@@ -132,7 +132,7 @@ Cost: Hobby plan is about $5/mo plus usage. At 0.5 vCPU and 512 MB, usage is abo
 
 ## Signals routine (scheduled Claude session)
 
-Runbook `SIGNALS-ROUTINE.md`, next to the market routine (`ROUTINE.md`). `bun run signals:collect` prints one JSON snapshot (near-miss, novelty, ready evidence, thesis watch, Lab ideas, diff vs the previous run) from the worker's own endpoints; the session writes `data/signals/YYYY-MM-DD.{md,json}`, commits, and sends one ntfy push through the desk notifier only when something changed. Informational; it gates and places nothing. Secrets in the cloud environment:
+The signals step of the single runbook (`ROUTINE.md`). `bun run signals:collect` prints one JSON snapshot (near-miss, novelty, ready evidence, thesis watch, Lab ideas, diff vs the previous run) from the worker's own endpoints; the session writes `data/signals/YYYY-MM-DD.{md,json}`, commits, and sends one ntfy push through the desk notifier only when something changed. Informational; it gates and places nothing. Secrets in the cloud environment:
 
 | Variable | Purpose |
 | --- | --- |
