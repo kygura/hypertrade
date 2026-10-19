@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import {
-  FeedQuerySchema, FeedRowSchema, LedgerStatsQuerySchema, LiqBoardQuerySchema, LiqMapHistoryQuerySchema, LiqMapQuerySchema, RejectBodySchema, SnoozeBodySchema,
+  FeedQuerySchema, FeedRowSchema, LedgerStatsQuerySchema, LiqBoardQuerySchema, NoveltyQuerySchema, LiqMapHistoryQuerySchema, LiqMapQuerySchema, RejectBodySchema, SnoozeBodySchema,
   type Costs, type LedgerEntry, type LedgerPayload, type LiqBoardResponse, type Opportunity, type Position, type RiskVerdictSchema,
 } from "../../shared/platform.js";
 import type { Side } from "../../shared/intel.js";
@@ -338,6 +338,12 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       if (!q.success) return invalid(c, q.error, "query");
       const snaps = await c.var.ctx.store.liqmapHistory(q.data.coin, new Date(deps.now().getTime() - q.data.hours * 3_600_000).toISOString());
       return c.json({ coin: q.data.coin, bucketBps: snaps.at(-1)?.bucketBps ?? 25, snapshots: snaps.map(({ ts, mark, buckets }) => ({ ts, mark, buckets })) });
+    })
+    .get("/novelty", async (c) => {
+      const q = NoveltyQuerySchema.safeParse(c.req.query());
+      if (!q.success) return invalid(c, q.error, "query");
+      const entries = await c.var.ctx.store.listNovelty(new Date(deps.now().getTime() - q.data.days * 86_400_000).toISOString().slice(0, 10));
+      return c.json({ entries: entries.filter((e) => !q.data.coin || e.coin === q.data.coin).reverse() });
     })
     .get("/ledger/stats", async (c) => {
       const q = LedgerStatsQuerySchema.safeParse(c.req.query());
