@@ -19,7 +19,9 @@ describe("startLoops", () => {
     const loops = startLoops(
       [
         { name: "bad", intervalSec: 0.01, run: async () => { throw new Error("boom"); } },
-        { name: "good", intervalSec: 0.01, run: async () => void good++ },
+        // Health window is 3x expectedIntervalSec on the wall clock; 1 s keeps a slow CI runner
+        // from reading a 10 ms beat as stale.
+        { name: "good", intervalSec: 0.01, expectedIntervalSec: 1, run: async () => void good++ },
       ],
       { errorBackoffSec: 0.01, log: () => {} },
     );
