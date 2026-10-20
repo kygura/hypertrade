@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-20T13:58:00Z",
+  "generated_at": "2026-10-20T17:54:05Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 Majors",
       "mindshare_score": 0.6,
       "momentum": 0,
-      "rationale": "BTC -0.2%, ETH +0.1%, SOL +0.4%, XRP +0.3% 24h; sector OI $6.84B (BTC $3.47B, ETH $2.56B). BTC dominance 59.57% (z30 -0.25), so attention is steady and the day is flat across the four. Social share unavailable (no Elfa data), so MS is unchecked. Low-confidence.",
+      "rationale": "BTC OI $3.40B (z30 +0.94), ETH OI $2.63B (z30 +1.73), SOL OI $585M (z30 +2.19); BTC dominance 59.5% flat (z30 -0.35). Prices +1.1% to +2.4% 24h.",
       "tokens": [
         "BTC",
         "ETH",
@@ -23,7 +23,7 @@
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.5,
       "momentum": -0.05,
-      "rationale": "HYPE +0.5% with OI $1.60B; the DeFi tail was weaker than HYPE in the prior read (AAVE -3.2%, UNI -3.9% then, not re-pulled this run). HYPE funding at the 0.00125%/h floor. Social share unavailable.",
+      "rationale": "HYPE OI $1.63B (z30 +2.89, the highest unusual reading), HYPE +2.6% 24h; HL total OI $11.38B z30 +2.03 points to venue-level activity.",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -102,14 +102,14 @@
       "to": "l1-majors",
       "confidence": 0.2,
       "trigger": "PUMP OI below $120M while BTC OI stays above $3.0B and BTC dominance stays above 59.5%",
-      "note": "Low-confidence; PUMP OI is $133M, so the tighter $120M line has not been met. We lean that memecoin attention is fading slowly rather than rotating fast."
+      "note": "Low-confidence; PUMP OI was not re-pulled this run, so we lean on the prior $133M read and treat the trigger as pending."
     },
     {
       "from": "ai-agents",
       "to": "l1-majors",
       "confidence": 0.15,
       "trigger": "SMH 5d change stays below -5% while TAO and FET OI stay under $60M combined",
-      "note": "Very low-confidence; SMH is -7.9% 5d and TAO+FET OI was $53M at the prior read (not re-pulled), so both conditions held again, but a semis stabilisation would remove it."
+      "note": "Very low-confidence; SMH is -6.5% 5d so the first leg held, TAO and FET OI were not re-pulled."
     }
   ]
 }
