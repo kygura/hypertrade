@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-10-20T17:54:05Z",
-  "headline": "BTC $82,779 (+1.1% 24h) holds 1.3% above the $81,699 ETF cost basis, hl-cycles' invalidation line; Hyperliquid OI is unusual at z30 +2.03 ($11.4B) while stablecoin supply stays unusual at z30 -2.10 ($304.5B)",
-  "tldr": "Regime: hl-cycles mild risk-off (33% BTC, since Oct 19) against an up weekly trend. Main change since the midday run: a broad bounce (BTC +1.1%, ETH +2.1%, HYPE +2.6%) with HL OI building (HYPE z30 +2.89, SOL +2.19) while funding stays near flat. Main disagreement: leverage is rising but stablecoin supply is contracting (z30 -2.10) and the Macro lens reads Restrictive. Next catalyst: FOMC Oct 28, with a hold priced as likely. Market intelligence only, not advice.",
+  "generated_at": "2026-10-20T21:57:43Z",
+  "headline": "BTC $82,861 (+1.0% 24h) holds 1.4% above the $81,699 ETF cost basis, hl-cycles' invalidation line; Hyperliquid OI stays unusual at z30 +2.07 ($11.41B), led by HYPE (z30 +2.71) and SOL (+2.23)",
+  "tldr": "Regime: hl-cycles mild risk-off (33% BTC, since Oct 19) against an up weekly trend. Change since the 17:54Z run: little; BTC +0.1% to $82.9K, HL OI edging up with funding near the floor, stablecoin supply no longer unusual (z30 -1.83). Main disagreement: leverage-light climb versus a Restrictive Macro lens (30) and flat stablecoin supply. Next catalyst: FOMC Oct 28. Market intelligence only, not advice.",
   "domains": [
     {
       "domain": "macro",
@@ -67,41 +67,41 @@
     },
     {
       "domain": "crypto",
-      "summary": "BTC $82,779 (+1.1% 24h), ETH $2,448 (+2.1%), SOL $106.58 (+2.4%), HYPE $80.09 (+2.6%): alts lead BTC, so ETH/BTC is firming. HL total OI $11.38B (z30 +2.03) with price up and OI up while funding is near flat (BTC 0.00125%/h; funding z30 +0.79) reads as new longs building without crowded carry, so we lean that leverage is not yet stretched; HYPE OI z30 +2.89 and SOL +2.19 are the hottest. Crypto is moving with risk assets on the day but stablecoin supply ($304.5B, z30 -2.10, 7d -0.78%) is contracting, a dry-powder drag. Fear & Greed 55 (Greed, flat vs mean30 55.2), DVOL 37.2 (z30 -1.58), BTC dominance 59.5%, total mcap $2.79T (z30 +2.39). A daily close below $81.7K would break the read; a close above would soften hl-cycles' risk-off label.",
+      "summary": "BTC $82,861 (+1.0% 24h), ETH $2,452 (+2.1%), SOL $106.53 (+1.8%), HYPE $81.03 (+3.0%): alts lead BTC, so ETH/BTC is firming. HL total OI $11.41B (z30 +2.07) with price up, OI up and funding at the floor (BTC 0.00125%/h, z30 +0.76) reads as new longs building without crowded carry, so we lean that leverage is not yet stretched; HYPE OI z30 +2.71 and SOL +2.23 are the hottest. Stablecoin supply $304.6B (z30 -1.83, 7d -0.78%) is a mild dry-powder drag. Fear & Greed 55 (Greed, flat), DVOL 37.1 (z30 -1.76), BTC dominance 59.5%, total mcap $2.78T (z30 +1.56). A daily close below $81.7K would break the read; a close above may soften the risk-off label.",
       "signals": [
         {
           "label": "BTC",
-          "value": "$82,779 (+1.1% 24h)",
+          "value": "$82,861 (+1.0% 24h)",
           "direction": "up"
         },
         {
           "label": "ETH",
-          "value": "$2,448 (+2.1% 24h)",
+          "value": "$2,452 (+2.1% 24h)",
           "direction": "up"
         },
         {
           "label": "SOL",
-          "value": "$106.58 (+2.4% 24h)",
+          "value": "$106.53 (+1.8% 24h)",
           "direction": "up"
         },
         {
           "label": "HYPE",
-          "value": "$80.09 (+2.6% 24h)",
+          "value": "$81.03 (+3.0% 24h)",
           "direction": "up"
         },
         {
           "label": "HL total OI",
-          "value": "$11.38B (z30 +2.03)",
+          "value": "$11.41B (z30 +2.07)",
           "direction": "up"
         },
         {
           "label": "HYPE OI",
-          "value": "$1.63B (z30 +2.89)",
+          "value": "$1.64B (z30 +2.71)",
           "direction": "up"
         },
         {
           "label": "Stablecoin supply",
-          "value": "$304.5B (z30 -2.10)",
+          "value": "$304.6B (z30 -1.83)",
           "direction": "down"
         },
         {
@@ -111,7 +111,7 @@
         },
         {
           "label": "BTC DVOL",
-          "value": "37.2 (z30 -1.58)",
+          "value": "37.1 (z30 -1.76)",
           "direction": "down"
         }
       ]
@@ -159,7 +159,7 @@
     },
     {
       "domain": "geopolitics",
-      "summary": "Live search this run returned only older-dated coverage for oil, tariffs and sanctions, so no new geopolitical development is confirmed; the standing context is oil above $100 (Brent $126.55 on Oct 14). Scheduled: FOMC Oct 28, NFP Nov 6, CPI Nov 10. An oil move back below $100 would ease the inflation input; a hawkish FOMC surprise is the scheduled tail.",
+      "summary": "Live search this run again returned only older-dated coverage for oil, tariffs and sanctions, so no new geopolitical development is confirmed; the standing context is oil above $100 (Brent $126.55 on Oct 14). Scheduled: FOMC Oct 28, NFP Nov 6, CPI Nov 10. An oil move back below $100 would ease the inflation input; a hawkish FOMC surprise is the scheduled tail.",
       "signals": [
         {
           "label": "FOMC",
@@ -190,7 +190,7 @@
     }
   ],
   "thesis": {
-    "observe": "BTC $82,779 (+1.1% 24h), ETH $2,448 (+2.1%), HYPE $80.09 (+2.6%). HL total OI $11.38B (z30 +2.03), HYPE OI z30 +2.89, SOL +2.19. Stablecoin supply $304.5B (z30 -2.10). hl-cycles mild risk-off since Oct 19, 2 of 6 stress conditions on; BTC is 0.26% above the ETF cost basis ($81,699) and 3.5% above the True Market Mean ($79,158). VIX 18.44, 10Y 5.09% (Oct 16), Brent $126.55 (Oct 14). Fed funds 3.75–4.00% after the Sept 16 hike.",
+    "observe": "BTC $82,861 (+1.0% 24h), ETH $2,452 (+2.1%), HYPE $81.03 (+3.0%). HL total OI $11.41B (z30 +2.07), HYPE OI z30 +2.71, SOL +2.23. Stablecoin supply $304.6B (z30 -1.83). hl-cycles mild risk-off since Oct 19, 2 of 6 stress conditions on; BTC is 0.26% above the ETF cost basis ($81,699) and 3.5% above the True Market Mean ($79,158). VIX 18.44, 10Y 5.09% (Oct 16), Brent $126.55 (Oct 14). Fed funds 3.75–4.00% after the Sept 16 hike.",
     "infer": "Price up, OI up and near-flat funding reads as new longs building without crowded carry. That diverges from a contracting stablecoin supply and a Restrictive Macro lens (30): a market climbing on leverage-light demand against a tightening backdrop. The hl-cycles frame itself disagrees with the weekly structure (HTF phase EXPANSION versus mild risk-off). Consensus is pricing a hold on Oct 28; we read the risk as skewing hawkish.",
     "forecast": "Base case (we lean here, low-confidence): BTC holds between the True Market Mean ($79.2K) and the ETF cost basis ($81.7K) edge into the Oct 28 FOMC; a daily close above $81.7K with OI still rising would soften the risk-off label, a daily close below it is hl-cycles' stated invalidation. Tail case (low-confidence): a daily close below $79.2K could put the STH cost basis ($74.4K, about 10% below) in play. Second tail case (low-confidence): a dovish hold with oil falling below $100 may let stablecoin supply recover and BTC extend toward the Mean MVRV price ($105.6K, far overhead).",
     "disclaimer": "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything."
