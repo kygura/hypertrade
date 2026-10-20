@@ -7,7 +7,7 @@ import {
 import { app as apiApp } from "../../../api/index.js";
 import { requireAuth, signSession } from "../auth.js";
 import { makeService } from "../desk/testkit.js";
-import type { PlatformContext } from "../platform/context.js";
+import { dbPlatformContext, type PlatformContext } from "../platform/context.js";
 import { reconcileOnce } from "../platform/reconcile.js";
 import { setHealthExtras } from "../platform/runtime.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
@@ -63,7 +63,7 @@ beforeEach(() => {
   nearMisses = [];
   online = true;
   risk = gate();
-  ctx = { store, midAge: () => midAge, mid: (coin) => (coin === "ETH" ? 4000 : null), lastScanAt: () => lastScan, nearMisses: () => nearMisses, scanIntervalSec: 60 };
+  ctx = { store, midAge: () => midAge, mid: (coin) => (coin === "ETH" ? 4000 : null), lastScanAt: async () => lastScan, nearMisses: async () => nearMisses, scanIntervalSec: 60 };
   deps = { context: () => (online ? ctx : null), risk, research, now: () => NOW };
   app = new Hono().basePath("/api").route("/platform", createPlatformRoutes(deps));
 });
@@ -146,6 +146,23 @@ describe("near-miss", () => {
     const r = NearMissResponseSchema.parse(await (await req("/near-miss")).json());
     expect(r.top?.coin).toBe("ETH");
     expect(r.all).toHaveLength(2);
+  });
+});
+
+describe("DB-only context (no worker, as on Vercel)", () => {
+  test("serves the persisted near-miss and the feed; approval stays blocked", async () => {
+    const nm = { coin: "ETH", setupKind: "crowded_long", cond: 2, value: 0.95, limit: 1, relDistance: 0.05 };
+    await store.saveNearMisses(new Date(NOW.getTime() - 600_000).toISOString(), [nm]);
+    const o = await seed();
+    const dbApp = new Hono().basePath("/api").route("/platform", createPlatformRoutes({ ...deps, context: () => dbPlatformContext(store) }));
+    const get = (path: string) => dbApp.request(`/api/platform${path}`);
+    expect(NearMissResponseSchema.parse(await (await get("/near-miss")).json())).toEqual({ top: nm, all: [nm] });
+    const feed = await get("/opportunities");
+    expect(feed.status).toBe(200);
+    expect((await feed.json() as { scanAgeSec: number }).scanAgeSec).toBe(600);
+    const r = await dbApp.request(`/api/platform/opportunities/${o.id}/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    expect(r.status).toBe(409);
+    expect((await r.json() as { error: string }).error).toBe("stale_feed");
   });
 });
 

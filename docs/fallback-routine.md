@@ -1,9 +1,11 @@
 # Fallback routine: provider-agnostic setups pulse and daily brief
 
-Status: spec for the GitHub Actions routine that runs without Claude Code.
-It reuses the app's own LLM layer (`src/server/llm/`: Claude Opus 5.5 by
-default, Kimi via the `moonshot` preset when the Anthropic call fails) and
-runs from `.github/workflows/routine.yml`.
+Status: spec for the routine pipeline that runs without Claude Code
+(`bun run routine`). It reuses the app's own LLM layer (`src/server/llm/`:
+Claude Opus 5.5 by default, Kimi via the `moonshot` preset when the Anthropic
+call fails). The scheduled workflow that ran it (`routine.yml`) was removed;
+the cron and Actions sections below describe how it ran and apply again if it
+is restored.
 
 The Claude Code scheduled routine (`ROUTINE.md`) keeps working while it
 exists. This pipeline adds two things it never had: a frequent **setups

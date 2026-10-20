@@ -17,7 +17,7 @@ Order of a run: **preflight (§1) → collect (§2) → market read, setups and 
 (§5) → one delivery (§6).**
 
 The app makes no LLM calls of its own for this. It reads only the files this
-routine commits. The provider-agnostic fallback (`bun run routine`, background:
+routine commits. The provider-agnostic pipeline (`bun run routine`, background:
 `docs/fallback-routine.md`) shares the same setups ledger, gate and HTF view.
 
 **Hard rule, unchanged:** this is market intelligence, not financial advice.
@@ -80,7 +80,12 @@ date of the newest value you used in the signal label (`"10Y yield (Oct 9)"`).
    `NTFY_TOKEN`.
 2. **Fresh checkout.** `git checkout master && git pull --ff-only` on
    `kygura/hypertrade`, then `bun install --frozen-lockfile`. Everything below
-   reads this checkout.
+   reads this checkout. Then run the platform tick, so the near-miss, novelty
+   and opportunity reads in §2 are fresh (a failed or skipped tick is a
+   one-line gap in the brief, never a stop):
+   ```bash
+   if [ -n "$DATABASE_URL" ]; then PLATFORM_READY_TTL_MIN=120 bun run platform:tick || echo "platform tick failed"; else echo "platform tick skipped: DATABASE_URL unset"; fi
+   ```
 3. **Execution date.** `RUN_DATE=$(TZ=Atlantic/Canary date +%F)` and
    `RUN_TS=$(date -u +%FT%TZ)`, captured once at start. Every dated file this
    run writes uses `RUN_DATE`, even if the run crosses midnight. Runs 4 h

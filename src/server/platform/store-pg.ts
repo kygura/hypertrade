@@ -1,5 +1,5 @@
 import type postgres from "postgres";
-import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
+import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
 import { LIVE_STATUSES, PRE_DECISION_STATUSES, TERMINAL_STATUSES } from "../../shared/platform.js";
 import { sql } from "../db.js";
 import {
@@ -215,6 +215,15 @@ export class PgPlatformStore implements PlatformStore {
 
   async pruneNovelty(beforeBar: string) {
     return (await this.db.query(`delete from platform_novelty where bar_date < $1 returning 1`, [beforeBar])).length;
+  }
+
+  async saveNearMisses(ts: string, items: NearMiss[]) {
+    await this.db.query(`insert into platform_near_miss (id, ts, items) values ('latest', $1::timestamptz, $2::jsonb) on conflict (id) do update set ts = excluded.ts, items = excluded.items`, [iso(ts), J(items)]);
+  }
+
+  async latestNearMisses() {
+    const [r] = await this.db.query<any>(`select ts, items from platform_near_miss where id = 'latest'`);
+    return r ? { ts: iso(r.ts), items: r.items as NearMiss[] } : null;
   }
 
   async saveSectors(tags: SectorTag[]) {

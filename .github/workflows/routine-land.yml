@@ -3,7 +3,7 @@ name: Routine land
 # Merges routine PRs from claude-code/* branches into master once typecheck and
 # tests pass, but only when every changed file is under data/. Anything else is
 # left for a human. Cloud sessions can only push their own branch, and master
-# has no branch protection (routine.yml pushes to it directly).
+# has no branch protection.
 
 on:
   pull_request:

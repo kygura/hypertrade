@@ -1,4 +1,4 @@
-import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
+import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
 import {
   checkTransition,
   dedupeKey,
@@ -35,6 +35,7 @@ export class MemoryPlatformStore implements PlatformStore {
   scans = new Map<string, ScanSnapshot>();
   novelty = new Map<string, NoveltyEntry>();
   sectors = new Map<string, SectorTag>();
+  nearMisses: { ts: string; items: NearMiss[] } | null = null;
   opportunities = new Map<string, Opportunity>();
   /** Append-only: nothing in this class splices, sets or reassigns an element. */
   readonly ledger: LedgerEntry[] = [];
@@ -126,6 +127,14 @@ export class MemoryPlatformStore implements PlatformStore {
     let n = 0;
     for (const [k, e] of this.novelty) if (e.barDate < beforeBar) (this.novelty.delete(k), n++);
     return n;
+  }
+
+  async saveNearMisses(ts: string, items: NearMiss[]) {
+    this.nearMisses = clone({ ts: iso(ts), items });
+  }
+
+  async latestNearMisses() {
+    return clone(this.nearMisses);
   }
 
   async saveSectors(tags: SectorTag[]) {
