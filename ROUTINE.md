@@ -84,7 +84,7 @@ date of the newest value you used in the signal label (`"10Y yield (Oct 9)"`).
    and opportunity reads in §2 are fresh (a failed or skipped tick is a
    one-line gap in the brief, never a stop):
    ```bash
-   if [ -n "$DATABASE_URL" ]; then PLATFORM_READY_TTL_MIN=120 bun run platform:tick || echo "platform tick failed"; else echo "platform tick skipped: DATABASE_URL unset"; fi
+   if [ -n "$DATABASE_URL" ]; then PLATFORM_READY_TTL_MIN=120 bun run platform:tick --skip=novelty || echo "platform tick failed"; else echo "platform tick skipped: DATABASE_URL unset"; fi
    ```
 3. **Execution date.** `RUN_DATE=$(TZ=Atlantic/Canary date +%F)` and
    `RUN_TS=$(date -u +%FT%TZ)`, captured once at start. Every dated file this

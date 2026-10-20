@@ -41,12 +41,18 @@ async function main() {
     const retentionDays = Number(process.env.PLATFORM_RETENTION_DAYS ?? 14) || 14;
     // Each stage runs even if an earlier one failed; any failure still fails the run.
     const failed: string[] = [];
+    // --skip=novelty,... (the routine skips novelty: daily bars, ~14 min, the hourly job runs it).
+    const skip = new Set((process.argv.find((a) => a.startsWith("--skip="))?.slice(7) ?? "").split(",").filter(Boolean));
     for (const [name, run] of [
       ["scanner", scanner.tick],
       ["novelty", novelty.tick],
       ["outcomes", outcomes.tick],
       ["prune", async () => void (await store.pruneHistory(new Date(Date.now() - retentionDays * 86_400_000).toISOString()))],
     ] as const) {
+      if (skip.has(name)) {
+        console.log(`[tick] ${name} skipped`);
+        continue;
+      }
       try {
         await run();
         console.log(`[tick] ${name} ok`);
