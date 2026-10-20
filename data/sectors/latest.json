@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-20T09:56:30Z",
+  "generated_at": "2026-10-20T13:58:00Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 Majors",
       "mindshare_score": 0.6,
-      "momentum": -0.05,
-      "rationale": "BTC -1.6%, ETH -2.3%, SOL -1.4%, XRP -1.6% 24h; sector OI $6.66B (BTC $3.29B, ETH $2.57B). BTC dominance 59.59% (z30 -0.15), so attention is steady and the pullback is even across the four. Social share unavailable (no Elfa data), so MS is unchecked. Low-confidence.",
+      "momentum": 0,
+      "rationale": "BTC -0.2%, ETH +0.1%, SOL +0.4%, XRP +0.3% 24h; sector OI $6.84B (BTC $3.47B, ETH $2.56B). BTC dominance 59.57% (z30 -0.25), so attention is steady and the day is flat across the four. Social share unavailable (no Elfa data), so MS is unchecked. Low-confidence.",
       "tokens": [
         "BTC",
         "ETH",
@@ -23,7 +23,7 @@
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.5,
       "momentum": -0.05,
-      "rationale": "HYPE -2.0% with OI $1.58B; AAVE -3.2%, UNI -3.9%, ENA -2.4%, PENDLE -1.9%. Sector OI $1.79B. The DeFi tail is weaker than HYPE, which held its OI. Social share unavailable.",
+      "rationale": "HYPE +0.5% with OI $1.60B; the DeFi tail was weaker than HYPE in the prior read (AAVE -3.2%, UNI -3.9% then, not re-pulled this run). HYPE funding at the 0.00125%/h floor. Social share unavailable.",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -70,7 +70,7 @@
       "label": "AI Agents",
       "mindshare_score": 0.3,
       "momentum": -0.1,
-      "rationale": "TAO -3.7% OI $43M, FET -1.0% OI $10M, VIRTUAL -1.4% OI $6M. Sector OI $59M; SMH is -7.2% over 5 sessions, in line with weak AI-cycle sentiment. Social share unavailable.",
+      "rationale": "TAO, FET and VIRTUAL not re-pulled this run (prior read: sector OI $59M). SMH is -7.88% over 5 sessions, in line with weak AI-cycle sentiment. Social share unavailable.",
       "tokens": [
         "FET",
         "TAO",
@@ -86,7 +86,7 @@
       "label": "RWA & Stablecoins",
       "mindshare_score": 0.25,
       "momentum": -0.2,
-      "rationale": "ONDO -1.4% with OI $26M, small next to the other sectors. Stablecoin supply $304.6B is z30 -3.05, which weighs on the narrative. Social share unavailable.",
+      "rationale": "ONDO not re-pulled this run (prior read: OI $26M, small next to the other sectors). Stablecoin supply $304.5B is z30 -2.44, which weighs on the narrative. Social share unavailable.",
       "tokens": [
         "ONDO"
       ],
@@ -109,7 +109,7 @@
       "to": "l1-majors",
       "confidence": 0.15,
       "trigger": "SMH 5d change stays below -5% while TAO and FET OI stay under $60M combined",
-      "note": "Very low-confidence; SMH is -7.2% 5d and TAO+FET OI is $53M, so both conditions held again, but a semis stabilisation would remove it."
+      "note": "Very low-confidence; SMH is -7.9% 5d and TAO+FET OI was $53M at the prior read (not re-pulled), so both conditions held again, but a semis stabilisation would remove it."
     }
   ]
 }
