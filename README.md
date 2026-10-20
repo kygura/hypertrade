@@ -7,7 +7,7 @@ Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, La
 ## Status
 
 - **Live in the repo (master):** the platform backend in `src/server/platform/` (scanner, crawler, liquidation map, outcomes, alerts loops) on one Bun process, the cockpit UI, `/api/platform/*`, and the fallback routine (setups pulse, HTF view, daily brief; Opus 5.5 by default, Kimi as fallback).
-- **In progress:** the platform verification gate (review fix loop), then the Railway cutover; history in `docs/TASKS.md`. Vercel is retired only at cutover: `vercel.json` still carries the collect, lab-collect and backfill crons until then.
+- **Hosting:** free tier first. Vercel serves the UI and API, a GitHub Actions hourly tick (`.github/workflows/platform-tick.yml`, `bun run platform:tick`) runs the platform worker loops against Postgres, and the Claude routine commits research. The always-on Railway worker below is the upgrade path for when live mids (order approval) or sub-hourly scans become a hard requirement. History in `docs/TASKS.md`.
 - **Not committed yet:** an Ink terminal UI under `src/tui/` (`bun run tui`) with `SPEC-tui.md` and `DESIGN-tui.md`.
 
 ## Setup
@@ -31,7 +31,7 @@ bun run build
 
 ## Deployment
 
-The database is Supabase Postgres. The app has run on Vercel (static UI, serverless API, crons in `vercel.json`); the target is the single always-on Railway service below. Set environment variables from `.env.example` in whichever host is active.
+The database is Supabase Postgres. The app has run on Vercel (static UI, serverless API, crons in `vercel.json`); the upgrade path is the single always-on Railway service below. Set environment variables from `.env.example` in whichever host is active.
 
 ## Railway (always-on backend, phase 8)
 

@@ -118,6 +118,8 @@ export function createScanner(deps: ScannerDeps) {
     }
   }
 
+  const nearList = (): NearMiss[] => [...near.values()].sort((a, b) => a.relDistance - b.relDistance);
+
   async function tick() {
     const t = now();
     if (!seeded) await seed();
@@ -239,6 +241,8 @@ export function createScanner(deps: ScannerDeps) {
 
     near = nears;
     lastScan = new Date(t);
+    // Best-effort: a process without the scanner (the DB-only API) reads this row.
+    await store.saveNearMisses(lastScan.toISOString(), nearList()).catch((err) => console.error("[scanner] near-miss persist failed:", err instanceof Error ? err.message : err));
     bus.publish("scan", { ts: lastScan.toISOString(), assets: live.length });
   }
 
@@ -249,7 +253,7 @@ export function createScanner(deps: ScannerDeps) {
     lastScanAt: () => lastScan,
     /** Informational only: the near-miss of the latest scan for a coin, and all of them closest first. */
     nearMiss: (coin: string) => near.get(coin) ?? null,
-    nearMisses: (): NearMiss[] => [...near.values()].sort((a, b) => a.relDistance - b.relDistance),
+    nearMisses: nearList,
     /** Minutes of ring history for the median coin; null while the ring is empty. */
     historyMin: () => {
       const spans = [...ring.values()].filter((p) => p.length).map((p) => (p.at(-1)!.ts - p[0]!.ts) / MIN).sort((a, b) => a - b);

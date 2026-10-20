@@ -1,0 +1,48 @@
+name: Platform tick
+
+# One-shot platform worker (scripts/platform-tick.ts): scanner, novelty, outcomes and prune
+# against Postgres once an hour, so /api/platform answers on Vercel without an always-on
+# server. Hourly resolution; GitHub may delay a scheduled run. Leased in the database, so an
+# overlapping run exits at once. Without DATABASE_URL it prints a notice and exits 0.
+
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: platform-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_POOL_MAX: "2"
+      PLATFORM_READY_TTL_MIN: "120"
+      COINALYZE_API_KEY: ${{ secrets.COINALYZE_API_KEY }}
+    steps:
+      - name: Check DATABASE_URL
+        id: db
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::notice::DATABASE_URL secret is not set; skipping the platform tick."
+          else
+            echo "set=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.db.outputs.set == '1'
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.db.outputs.set == '1'
+
+      - name: Install
+        if: steps.db.outputs.set == '1'
+        run: bun install --frozen-lockfile
+
+      - name: Platform tick
+        if: steps.db.outputs.set == '1'
+        run: bun run platform:tick

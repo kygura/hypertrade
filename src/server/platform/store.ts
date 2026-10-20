@@ -14,6 +14,7 @@ import {
   type LiqMapSnapshot,
   type LiquidityTier,
   type NewLedgerEntry,
+  type NearMiss,
   type NoveltyEntry,
   type SectorTag,
   type Opportunity,
@@ -161,6 +162,11 @@ export interface PlatformStore {
   listNovelty(sinceBar: string): Promise<NoveltyEntry[]>;
   /** Retention: deletes entries with barDate < beforeBar. Returns rows deleted. */
   pruneNovelty(beforeBar: string): Promise<number>;
+
+  /** Near-misses of the latest completed scan (one row, replaced each call): lets a process without the scanner serve them. */
+  saveNearMisses(ts: string, items: NearMiss[]): Promise<void>;
+  /** The row saveNearMisses wrote; null before the first scan. */
+  latestNearMisses(): Promise<{ ts: string; items: NearMiss[] } | null>;
 
   /** Market sector tags (PS-B5): upsert by coin. Tags only filter universes, never score. */
   saveSectors(tags: SectorTag[]): Promise<void>;

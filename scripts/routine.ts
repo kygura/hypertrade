@@ -1,7 +1,6 @@
 // bun run routine --mode <pulse|daily|htf> [--dry-run] [--collect-only] [--input <file>]
 // --input: a pulse/htf proposal JSON from an external agent stands in for the model call.
-// The provider-agnostic fallback routine (docs/fallback-routine.md). Runs from
-// .github/workflows/routine.yml; writes data/setups (and, in daily mode,
+// The provider-agnostic routine (docs/fallback-routine.md). Run by ROUTINE.md or by hand; writes data/setups (and, in daily mode,
 // data/marketstate, data/sectors, data/lab) under the current directory.
 import { readFile } from "node:fs/promises";
 import { runRoutine, type Mode } from "../src/server/routine/run.js";

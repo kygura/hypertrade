@@ -239,6 +239,14 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((await s.listNovelty("2026-01-02")).length).toBe(2);
   expect(await s.pruneNovelty("2026-01-02")).toBe(1);
   expect((await s.listNovelty("2026-01-01")).length).toBe(2);
+
+  // near-miss row: empty before the first scan, then replaced wholesale
+  expect(await s.latestNearMisses()).toBeNull();
+  const nm = (coin: string) => ({ coin, setupKind: "crowded_long", cond: 2, value: 0.95, limit: 1, relDistance: 0.05 });
+  await s.saveNearMisses(t(1), [nm("ETH"), nm("SOL")]);
+  await s.saveNearMisses(t(2), [nm("BTC")]);
+  put("nearMiss", await s.latestNearMisses());
+  expect(out["nearMiss"]).toEqual({ ts: t(2), items: [nm("BTC")] });
   return out;
 }
 

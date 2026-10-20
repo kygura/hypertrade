@@ -11,15 +11,16 @@ import { DeskService } from "../desk/service.js";
 import type { OperatorOrder } from "../desk/types.js";
 import { researchDailyLimit, researchDeps, runResearch, RESEARCH_PROMPT_VERSION, utcDayStart } from "../intel/research.js";
 import { aggregate, coverage } from "../platform/liqmap.js";
-import { getPlatformContext, placedBy, placing, type PlatformContext } from "../platform/context.js";
+import { dbPlatformContext, getPlatformContext, placedBy, placing, type PlatformContext } from "../platform/context.js";
 import { Z_KEYS } from "../platform/score.js";
+import { PgPlatformStore } from "../platform/store-pg.js";
 import { evidenceLine, groupStats } from "../platform/stats.js";
 import { defaultDeskService } from "./desk.js";
 import { defaultIntelDeps } from "./intel/index.js";
 import { body, failure, invalid } from "./intel/http.js";
 
 // /api/platform (docs/SPEC.md § Platform P2). Cookie auth; GETs also take the read bearer (READ_PATH in auth.ts).
-// Every route answers 503 {error:"platform_offline"} while no PlatformContext is set (the worker loops are not running).
+// Every route answers 503 {error:"platform_offline"} while no PlatformContext is set (no worker and no DATABASE_URL).
 // Approval reaches the book only through the desk's governor: placeOperatorOrder (preview + submit under one lock).
 // After approval the idea ends open (filled) or failed (system); a lost transition stays approved for reconcile.ts.
 
@@ -82,9 +83,11 @@ export function deskRisk(get: () => DeskService): RiskGate {
   };
 }
 
+let dbCtx: PlatformContext | null = null;
+
 export function defaultPlatformDeps(): PlatformDeps {
   return {
-    context: getPlatformContext,
+    context: () => getPlatformContext() ?? (process.env.DATABASE_URL?.trim() ? (dbCtx ??= dbPlatformContext(new PgPlatformStore())) : null),
     risk: deskRisk(defaultDeskService),
     research: {
       async run(q) {
@@ -162,7 +165,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       if (!q.success) return invalid(c, q.error, "query");
       const ctx = c.var.ctx;
       const rows = await ctx.store.listOpportunities({ statuses: q.data.status, tier: q.data.tier, limit: q.data.limit });
-      const last = ctx.lastScanAt();
+      const last = await ctx.lastScanAt();
       return c.json({
         opportunities: rows.map((r) => FeedRowSchema.parse(r)),
         scanAgeSec: last ? seenAge(last.toISOString(), deps.now()) : null,
@@ -206,7 +209,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       // P0.15 freshness gate: nothing reaches the governor on a stale feed.
       const now = deps.now();
       const age = ctx.midAge(opp.coin, now.getTime());
-      const scan = ctx.lastScanAt();
+      const scan = await ctx.lastScanAt();
       const stale =
         age == null ? `no live mid for ${opp.coin}`
         : age > MAX_MID_AGE_SEC ? `${opp.coin} mid is ${Math.round(age)} s old (limit ${MAX_MID_AGE_SEC} s)`
@@ -345,7 +348,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       const entries = await c.var.ctx.store.listNovelty(new Date(deps.now().getTime() - q.data.days * 86_400_000).toISOString().slice(0, 10));
       return c.json({ entries: entries.filter((e) => !q.data.coin || e.coin === q.data.coin).reverse() });
     })
-    .get("/near-miss", (c) => { const all = c.var.ctx.nearMisses(); return c.json({ top: all[0] ?? null, all } satisfies NearMissResponse); })
+    .get("/near-miss", async (c) => { const all = await c.var.ctx.nearMisses(); return c.json({ top: all[0] ?? null, all } satisfies NearMissResponse); })
     .get("/sectors", async (c) => c.json({ vocabulary: [...SECTORS], tags: await c.var.ctx.store.listSectors() } satisfies SectorsResponse))
     .get("/ledger/stats", async (c) => {
       const q = LedgerStatsQuerySchema.safeParse(c.req.query());
