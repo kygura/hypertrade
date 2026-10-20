@@ -81,7 +81,7 @@ const toEntry = (r: any): LedgerEntry =>
 async function insertEntries(db: Db, entries: NewLedgerEntry[], skipDuplicates = false): Promise<LedgerEntry[]> {
   const rows = await db.query(
     `insert into ledger_entries (opportunity_id, kind, payload)
-     select x.opportunity_id, x.kind, x.payload from jsonb_array_elements($1::jsonb) with ordinality as e(v, n), jsonb_to_record(e.v) as x(opportunity_id uuid, kind text, payload jsonb)
+     select x.opportunity_id, x.kind, x.payload from jsonb_array_elements($1::text::jsonb) with ordinality as e(v, n), jsonb_to_record(e.v) as x(opportunity_id uuid, kind text, payload jsonb)
      order by e.n ${skipDuplicates ? "on conflict do nothing" : ""} returning *`,
     [J(entries.map((e) => ({ opportunity_id: e.opportunityId, kind: e.kind, payload: e.payload })))],
   );
@@ -97,7 +97,7 @@ export class PgPlatformStore implements PlatformStore {
     if (!clean.length) return 0;
     await this.db.query(
       `insert into hl_addresses (address, first_seen_at, last_seen_at)
-       select x.address, x.seen_at, x.seen_at from jsonb_to_recordset($1::jsonb) as x(address text, seen_at timestamptz)
+       select x.address, x.seen_at, x.seen_at from jsonb_to_recordset($1::text::jsonb) as x(address text, seen_at timestamptz)
        on conflict (address) do update set last_seen_at = greatest(hl_addresses.last_seen_at, excluded.last_seen_at)`,
       [J(clean.map((r) => ({ address: r.address, seen_at: r.seenAt })))],
     );
@@ -134,7 +134,7 @@ export class PgPlatformStore implements PlatformStore {
         await db.query(
           `insert into hl_positions (address, coin, szi, entry_px, position_value, liquidation_px, leverage, updated_at)
            select $1, x.coin, x.szi, x.entry_px, x.position_value, x.liquidation_px, x.leverage, $2::timestamptz
-           from jsonb_to_recordset($3::jsonb) as x(coin text, szi float8, entry_px float8, position_value float8, liquidation_px float8, leverage float8)`,
+           from jsonb_to_recordset($3::text::jsonb) as x(coin text, szi float8, entry_px float8, position_value float8, liquidation_px float8, leverage float8)`,
           [address, ts, J(positions.map((p) => ({ coin: p.coin, szi: p.szi, entry_px: p.entryPx, position_value: p.positionValue, liquidation_px: p.liquidationPx, leverage: p.leverage })))],
         );
       }
@@ -142,7 +142,7 @@ export class PgPlatformStore implements PlatformStore {
         await db.query(
           `insert into hl_position_changes (address, coin, ts, kind, szi, liquidation_px, prev_szi, prev_liquidation_px)
            select x.address, x.coin, x.ts, x.kind, x.szi, x.liquidation_px, x.prev_szi, x.prev_liquidation_px
-           from jsonb_array_elements($1::jsonb) with ordinality as e(v, n),
+           from jsonb_array_elements($1::text::jsonb) with ordinality as e(v, n),
              jsonb_to_record(e.v) as x(address text, coin text, ts timestamptz, kind text, szi float8, liquidation_px float8, prev_szi float8, prev_liquidation_px float8)
            order by e.n`,
           [J(changes.map((c) => ({ address, coin: c.coin, ts, kind: c.kind, szi: c.szi, liquidation_px: c.liquidationPx, prev_szi: c.prevSzi, prev_liquidation_px: c.prevLiquidationPx })))],
@@ -175,7 +175,7 @@ export class PgPlatformStore implements PlatformStore {
     if (!rows.length) return 0;
     await this.db.query(
       `insert into liqmap_snapshots (coin, ts, mark, bucket_bps, buckets)
-       select x.coin, x.ts, x.mark, x.bucket_bps, x.buckets from jsonb_to_recordset($1::jsonb) as x(coin text, ts timestamptz, mark float8, bucket_bps float8, buckets jsonb)
+       select x.coin, x.ts, x.mark, x.bucket_bps, x.buckets from jsonb_to_recordset($1::text::jsonb) as x(coin text, ts timestamptz, mark float8, bucket_bps float8, buckets jsonb)
        on conflict (coin, ts) do update set mark = excluded.mark, bucket_bps = excluded.bucket_bps, buckets = excluded.buckets`,
       [J(rows.map((r) => ({ coin: r.coin, ts: iso(r.ts), mark: r.mark, bucket_bps: r.bucketBps, buckets: r.buckets })))],
     );
@@ -191,7 +191,7 @@ export class PgPlatformStore implements PlatformStore {
     if (!rows.length) return 0;
     await this.db.query(
       `insert into scan_snapshots (coin, ts, inputs)
-       select x.coin, x.ts, x.inputs from jsonb_to_recordset($1::jsonb) as x(coin text, ts timestamptz, inputs jsonb)
+       select x.coin, x.ts, x.inputs from jsonb_to_recordset($1::text::jsonb) as x(coin text, ts timestamptz, inputs jsonb)
        on conflict (coin, ts) do update set inputs = excluded.inputs`,
       [J(rows.map((r) => ({ coin: r.coin, ts: iso(r.ts), inputs: r.inputs })))],
     );
@@ -205,7 +205,7 @@ export class PgPlatformStore implements PlatformStore {
 
   async saveNovelty(entries: NoveltyEntry[]) {
     for (const e of entries) {
-      await this.db.query(`insert into platform_novelty (id, bar_date, entry) values ($1, $2, $3::jsonb) on conflict (id) do update set entry = excluded.entry`, [e.id, e.barDate, J(e)]);
+      await this.db.query(`insert into platform_novelty (id, bar_date, entry) values ($1, $2, $3::text::jsonb) on conflict (id) do update set entry = excluded.entry`, [e.id, e.barDate, J(e)]);
     }
   }
 
@@ -218,7 +218,7 @@ export class PgPlatformStore implements PlatformStore {
   }
 
   async saveNearMisses(ts: string, items: NearMiss[]) {
-    await this.db.query(`insert into platform_near_miss (id, ts, items) values ('latest', $1::timestamptz, $2::jsonb) on conflict (id) do update set ts = excluded.ts, items = excluded.items`, [iso(ts), J(items)]);
+    await this.db.query(`insert into platform_near_miss (id, ts, items) values ('latest', $1::timestamptz, $2::text::jsonb) on conflict (id) do update set ts = excluded.ts, items = excluded.items`, [iso(ts), J(items)]);
   }
 
   async latestNearMisses() {
@@ -228,7 +228,7 @@ export class PgPlatformStore implements PlatformStore {
 
   async saveSectors(tags: SectorTag[]) {
     for (const t of tags) {
-      await this.db.query(`insert into market_sectors (coin, sectors, tagged_at) values ($1, $2::jsonb, $3::timestamptz) on conflict (coin) do update set sectors = excluded.sectors, tagged_at = excluded.tagged_at`, [t.coin, J(t.sectors), iso(t.taggedAt)]);
+      await this.db.query(`insert into market_sectors (coin, sectors, tagged_at) values ($1, $2::text::jsonb, $3::timestamptz) on conflict (coin) do update set sectors = excluded.sectors, tagged_at = excluded.tagged_at`, [t.coin, J(t.sectors), iso(t.taggedAt)]);
     }
   }
 
@@ -255,7 +255,7 @@ export class PgPlatformStore implements PlatformStore {
       const [r] = await db.query<any>(
         `insert into opportunities (id, coin, direction, setup_kind, trade_type, status, score, score_version, edge_basis, tags,
            liquidity_tier, regime, invalidation, entry_px, stop_px, target_px, invalidation_px, dedupe_key)
-         values ($16::uuid, $1, $2, $3, $4, 'new', $5::float8, $6, 'unvalidated', $7::jsonb, $8::int, $9, $10, $11::float8, $12::float8, $13::float8, $14::float8, $15)
+         values ($16::uuid, $1, $2, $3, $4, 'new', $5::float8, $6, 'unvalidated', $7::text::jsonb, $8::int, $9, $10, $11::float8, $12::float8, $13::float8, $14::float8, $15)
          on conflict (dedupe_key) where status in (${LIVE_SQL}) do update set
            score = excluded.score, score_version = excluded.score_version, tags = excluded.tags, liquidity_tier = excluded.liquidity_tier,
            regime = excluded.regime, invalidation = excluded.invalidation, stop_px = excluded.stop_px, target_px = excluded.target_px,
@@ -284,7 +284,7 @@ export class PgPlatformStore implements PlatformStore {
   async listOpportunities({ statuses, tier, limit }: Parameters<PlatformStore["listOpportunities"]>[0]) {
     const rows = await this.db.query(
       `select * from opportunities
-       where ($1::jsonb is null or $1::jsonb ? status) and ($2::int is null or liquidity_tier = $2::int)
+       where ($1::text::jsonb is null or $1::text::jsonb ? status) and ($2::int is null or liquidity_tier = $2::int)
        order by score desc, created_at desc, id limit $3::int`,
       [statuses ? J(statuses) : null, tier ?? null, limit],
     );
@@ -314,7 +314,7 @@ export class PgPlatformStore implements PlatformStore {
     const { grossEdgeBps, netEdgeBps, edgeBasis, ...costs } = c;
     return this.db.tx(async (db) => {
       const [r] = await db.query(
-        `update opportunities set costs = $2::jsonb, gross_edge_bps = $3::float8, net_edge_bps = $4::float8, edge_basis = $5, updated_at = now()
+        `update opportunities set costs = $2::text::jsonb, gross_edge_bps = $3::float8, net_edge_bps = $4::float8, edge_basis = $5, updated_at = now()
          where id = $1::uuid and status in (${PRE_SQL}) returning *`,
         [id, J(costs), grossEdgeBps, netEdgeBps, edgeBasis],
       );
