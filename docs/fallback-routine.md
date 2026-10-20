@@ -121,7 +121,7 @@ configured"), so a missing secret never turns the schedule red.
    - entry zone width ≤ 4% of its midpoint; invalidation distance from
      entry mid between 1% and 25%;
    - R:R to first target, computed in code from entry mid, ≥ 2.0;
-   - `expires_at` ≤ 14 days (`swing`) or 45 days (`position`);
+   - `expires_at` ≤ 10 days (`swing` is the only horizon);
    - no other open setup on the same asset and direction;
    - counter-regime (`regime_alignment: counter`) ⇒ conviction `low`, and
      at most one counter-regime setup open;
@@ -144,14 +144,16 @@ Exit codes: 0 without an LLM key; 1 when `ROUTINE_LLM` has no usable
 entry, every provider failed, or the daily stage failed (pulse outputs
 computed before the failure are still written).
 
-## Data shapes (`src/server/routine/schema.ts`)
+## Data shapes (`src/shared/setups.ts`, model shapes in `src/server/routine/schema.ts`)
 
 ```ts
 Setup {
   id: string            // `${asset}-${direction}-${YYYYMMDD}-${n}`
   asset: string         // HL symbol, case-sensitive
   direction: "long" | "short"
-  horizon: "swing" | "position"
+  setup_id: string | null  // catalogue definition (src/shared/setups.ts SETUP_IDS); null = model proposal
+  levels_source: "code" | "model"
+  horizon: "swing"
   thesis: string        // why, citing measured numbers
   regime_alignment: "with" | "counter"
   trigger: string       // the checkable condition to act on

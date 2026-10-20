@@ -8,7 +8,7 @@ import { DISCLAIMER, type HtfView, type Ledger } from "./schema.js";
 // prompts hand over computed numbers and ask for a read, never a fetch.
 // Bump a version when its prompt changes meaning.
 
-export const PULSE_PROMPT_VERSION = "routine-pulse-v1";
+export const PULSE_PROMPT_VERSION = "routine-pulse-v2";
 export const DAILY_PROMPT_VERSION = "routine-daily-v1";
 
 const HEDGES = "Hedge vocabulary, exactly these terms: `base case`, `tail case`, `low-confidence`, `we lean`, `risk skews`, `consensus is pricing … / we read …`. No point-estimate probabilities.";
@@ -23,7 +23,7 @@ Rules, in priority order:
 2. "Nothing worth doing" is a valid, common and respected answer. Return new_setups: [] with a stand_aside_reason whenever no setup clearly earns its place. Most runs should propose nothing. Never propose a setup to look busy.
 3. A setup is a conditional plan for a human, not an order: a checkable trigger, an entry zone, an invalidation level with its reason, and 1–3 targets. No position size, no leverage, no execution path. Risk is expressed only in R multiples, which the code computes.
 4. Cite measured numbers from the context in thesis and evidence. Never invent a number or a level that is not derivable from the context. evidence lists the context keys you relied on (e.g. "htf.BTC.sma200d", "hl-cycles.levels.true_market_mean", "hl.BTC.funding").
-5. The code gates every proposal and drops it with a logged reason when it breaks a rule: long ⇒ invalidation < entry.low ≤ entry.high < targets ascending (short mirrored); entry zone ≤ ${GATE.maxZoneWidthPct}% of its midpoint; invalidation ${GATE.minInvalidationPct}–${GATE.maxInvalidationPct}% from the entry midpoint; reward to the first target ≥ ${GATE.minRr}R from the entry midpoint; expires_at ≤ ${GATE.maxDays.swing} days out (swing) or ${GATE.maxDays.position} days (position); one open setup per asset and direction; at most ${GATE.maxOpen} open; HTF stance stand_aside ⇒ no new setups at all. Do the arithmetic before you propose.
+5. The code gates every proposal and drops it with a logged reason when it breaks a rule: long ⇒ invalidation < entry.low ≤ entry.high < targets ascending (short mirrored); entry zone ≤ ${GATE.maxZoneWidthPct}% of its midpoint; invalidation ${GATE.minInvalidationPct}–${GATE.maxInvalidationPct}% from the entry midpoint; reward to the first target ≥ ${GATE.minRr}R from the entry midpoint; expires_at ≤ ${GATE.maxDays.swing} days out (swing is the only horizon); one open setup per asset and direction; at most ${GATE.maxOpen} open; HTF stance stand_aside ⇒ no new setups at all. Do the arithmetic before you propose.
 6. Status of open setups (triggered, stopped, target hit, expired) is decided by code against prices; you see the outcome. Use cancel only when an open setup's thesis broke before price did, and say what broke.
 7. When the context says an HTF refresh is due, write htf_view: regime, stance, a 3–6 sentence thesis citing the weekly features and hl-cycles, per-major biases with levels taken from the context, and what_changes_it as checkable conditions (metric, threshold, direction). Otherwise htf_view is null.
 8. brief: short, delta-first, plain text. What changed since the last run, what it means, what would prove it wrong. Name data gaps that matter.

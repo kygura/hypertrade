@@ -24,10 +24,8 @@ intelligence, every setup is a hypothesis for a human, no sizing, no orders.
 
 The fields are spelled differently in each (`invalidation` vs `invalidationPx`
 vs `stop`), outcomes are measured in four different units (R to first target,
-bps net return, Sharpe, paper P&L), and PROP's three setup ids
-(`funding_fade`, `sector_continuation`, `post_liquidation_reclaim`,
-`docs/PROP.md` §(d)) appear nowhere in code. The Intel journal's `SETUP_TAGS`
-list has eleven entries and shares one with PROP.
+bps net return, Sharpe, paper P&L). The Intel journal's `SETUP_TAGS` list
+has eleven entries that match no other generator's vocabulary.
 
 ### A.2 What one scheduled routine run does
 
@@ -144,7 +142,7 @@ worker and has seen only 503s.
 
 1. **One setup, one ledger, one outcome unit.** The routine's `SetupSchema`
    (entry zone, invalidation + reason, targets, R, horizon, expiry, evidence,
-   status machine) is the right shape and the closest to PROP. Promote it to
+   status machine) is the right shape. Promote it to
    `src/shared/setups.ts`, add `setup_id` from a finite catalogue, and give it
    a Postgres store with a memory twin plus a JSON export to `data/setups/`
    for the stateless session. Outcomes are R multiples, clustered by week,
@@ -155,7 +153,7 @@ worker and has seen only 503s.
    frame computed from stored history. Code builds the predicate, the entry
    zone, the invalidation and the targets. The LLM never sets a level.
 3. **Conditional generation.** Candidates are produced only when the regime
-   filter, the PROP budget and the setup predicate all hold; otherwise the
+   filter, the budget and the setup predicate all hold; otherwise the
    run says why, in code-generated facts. "Stand aside" is a computed state,
    not an LLM mood.
 4. **Validated before promoted.** A setup definition enters the catalogue only
@@ -173,12 +171,12 @@ worker and has seen only 503s.
 ### B.2 Pipeline
 
 ```
-daily 00:45 UTC (after PROP's 00:30 reset)              every 4 h
+daily 00:45 UTC                                        every 4 h
 ┌──────────────────────────────────────────────┐  ┌──────────────────────┐
 │ 1 collect   stored tables only (no curl)      │  │ advance              │
 │ 2 frame     daily + 4h features per coin      │  │  hourly candles →    │
 │ 3 regime    HTF view (code) + hl-cycles state │  │  watching/triggered/ │
-│ 4 budget    PROP gate: slots, weekly R, blackouts │ invalidated/target │
+│ 4 budget    slots, weekly R, event blackouts  │  │ invalidated/target │
 │ 5 scan      catalogue predicates → hits + near-miss │ R + ledger stats  │
 │ 6 levels    entry zone / invalidation / targets │ │  ntfy only on       │
 │ 7 gate      existing gate.ts (structure, R, caps) │ status change      │
@@ -221,7 +219,7 @@ Lab `ht:funding`. Reuse `intel/windows.ts` for robust z.
 
 ### B.4 Catalogue v1 (`src/server/candidates/catalogue.ts`)
 
-Five definitions, three of them PROP's, each a data object with a predicate,
+Five definitions, each a data object with a predicate,
 a direction, a level builder, a horizon and a regime rule. Thresholds are
 starting points for the event study, not claims.
 
@@ -231,12 +229,12 @@ starting points for the event study, not claims.
 | `post_liquidation_reclaim` | long | `ret_1d ≤ −2 atr14` (or ≤ −5 %), `oi_from_peak_20 ≤ −15 %`, `funding_1d < 0`, `liq_long_z30 ≥ 2` | 4 h close back above washout day midpoint | midpoint ± 1 % | washout day low, reason "reclaim failed" | 2R, 3R | swing, 7 d |
 | `sector_continuation` | long | `sector_momentum ≥ 0.5` and sector in `rotations[].to`, `breakout_20`, `oi_chg_7d ≥ +10 %`, `funding_z90 < 1.5` | retest of breakout level | breakout level … +1 atr14 × 0.5 | breakout day low, reason "breakout failed" | measured move (20 d range) at ≥2R, else drop | swing, 10 d |
 | `negative_funding_build` | long | `funding_z90 ≤ −1.5`, `oi_chg_7d ≥ +10 %`, `ret_7d ≥ −1 atr14` | 4 h close above prior 4 h high | prior day low … close | 20 d low or entry mid − 1.5 atr14 | 2R, 3R | swing, 7 d |
-| `htf_pullback` | with `htf_trend` | `htf_trend ∈ {up, down}`, `|sma20_dist| ≤ 0.5 atr14`, funding not crowded in trend direction (`|funding_z90| < 1`) | 4 h close back through SMA20 in trend direction | SMA20 ± 0.5 atr14 | 2 atr14 beyond SMA20 against trend | 2R, 3R | position, 10 d |
+| `htf_pullback` | with `htf_trend` | `htf_trend ∈ {up, down}`, `|sma20_dist| ≤ 0.5 atr14`, funding not crowded in trend direction (`|funding_z90| < 1`) | 4 h close back through SMA20 in trend direction | SMA20 ± 0.5 atr14 | 2 atr14 beyond SMA20 against trend | 2R, 3R | swing, 10 d |
 
-Everything is bounded by PROP: max hold 10 days, so `maxDays` becomes
-`{ swing: 7, position: 10 }` (today 14 / 45); R ≥ 2 to first target stays;
-one target per position (PROP forbids partial take-profit) is expressed as
-"first target is the plan, later targets are scale-out alternatives".
+Swing is the only horizon (decided 2026-10-20): `GATE.maxDays` is
+`{ swing: 10 }`, down from 14 swing / 45 position. R ≥ 2 to the first target
+stays. The first target is the plan; later targets are scale-out
+alternatives.
 
 Each definition ships with a Lab rule twin using the PS-B4 fields
 (`stop`, `target`, `invalidation`, `regime`) so `lab_event_study` can replay
@@ -251,10 +249,10 @@ these held so the brief can explain a quiet day in facts:
 
 - HTF stance `stand_aside` (from the existing `htf.ts` refresh rule) → no new
   candidates, near-miss list only.
-- Open slots: PROP `max concurrent 2`, same sector counts as one, `max open
-  risk 1 %` expressed as "sum of open setups' planned risk at 0.5 % each".
-- Weekly stop: realised R over the trailing 5 trading days ≤ −3R → stand
-  aside 5 calendar days.
+- Open slots: at most `GATE.maxOpen` open setups, and at most one open per
+  sector.
+- Weekly stop: realised R over the trailing 7 days ≤ −3R → stand aside for
+  5 calendar days.
 - Weekly cap: ≤ 6 new setups per ISO week.
 - Event blackout: no new candidate whose trigger window overlaps ±30 min of
   CPI/FOMC/NFP; a swing candidate created < 24 h before FOMC is tagged
@@ -262,8 +260,10 @@ these held so the brief can explain a quiet day in facts:
 - Catalogue health: a `setup_id` in `watch_only` state produces near-misses,
   never candidates.
 
-These constants live in one `PROP` object beside `GATE`, replacing the desk
-governor's conflicting defaults for anything that writes to the ledger.
+These constants live in one `BUDGET` object beside `GATE`. The values above
+are proposed defaults, to confirm when phase 3 lands; they replace the desk
+governor's defaults for anything that writes to the ledger. (They were first
+drafted from `docs/PROP.md`, which was removed as outdated on 2026-10-20.)
 
 ### B.6 Level construction and existing gate
 
@@ -358,7 +358,7 @@ One collector set, all into `observations` or `candles`, no prose curl:
 
 | Phase | Deliverable | Check that fails if it breaks |
 |---|---|---|
-| 0 | `src/shared/setups.ts` (schema + `setup_id` + `levels_source`), pg + memory store, JSON export, `PROP` constants, `GATE.maxDays` to 7/10 | shared store suite runs on both twins; gate tests updated |
+| 0 ✅ | `src/shared/setups.ts` (schema + `setup_id` + `levels_source`, swing-only), pg + memory store (migration 021), `bun run setups:export`, `GATE.maxDays.swing` 10 | `src/server/setups/store.test.ts` runs one scenario on both twins; gate expiry test |
 | 1 | `candidates/features.ts` daily/4 h frame from stored tables | parity with novelty `funding_z90` and Lab `ht:funding`; frame is deterministic on fixtures |
 | 2 | `candidates/catalogue.ts` five definitions + `levels.ts`; Lab rule twins | scanner hits == event-study entries on 20 k synthetic bars (digest fixture) |
 | 3 | `bun run candidates` and `candidates:advance`; `budget.ts`; one LLM narration call; ntfy on change only | end-to-end test on fixtures with `--input`; dry-run prints why zero candidates |
@@ -369,12 +369,17 @@ Phase 0–2 are pure and testable without a network. Phase 3 is the first run
 that can put a setup in the ledger. Until then the ledger stays empty, which
 is the honest state of the record today.
 
-### B.13 Open questions for the operator
+### B.13 Decisions and open questions
 
-- Horizon split: keep `position` at all for the prop account, given the 10
-  day hold cap, or run swing-only until the record exists?
-- Universe: PROP leverage tiers make BTC/ETH/SOL/HYPE the practical set;
-  should the catalogue scan the top 30 or only those plus sector leaders?
+Decided 2026-10-20:
+
+- **Swing only.** No `position` horizon; expiry cap 10 days.
+- **Universe: top 30** by 24 h notional plus `PLATFORM_MY_MARKETS`.
+- **`docs/PROP.md` removed** as outdated. Budget numbers in B.5 are defaults
+  to confirm at phase 3.
+
+Still open:
+
 - Coinalyze budget: raising the focus set to 30 coins is ~4× the calls;
   within the 40/min key, but worth confirming.
 - Thresholds in B.4 are placeholders; the event study decides, and the first

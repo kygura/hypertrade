@@ -63,9 +63,8 @@ describe("gate", () => {
     expect(rule(good({ invalidation: 79_900, targets: [86_000] }))).toBe("invalidation_distance"); // 0.75%
     expect(rule(good({ invalidation: 50_000, targets: [200_000] }))).toBe("invalidation_distance"); // 38%
     expect(rule(good({ targets: [84_000] }))).toBe("rr"); // 1.4R
-    expect(rule(good({ expires_at: inDays(15) }))).toBe("expiry");
-    expect(rule(good({ horizon: "position", expires_at: inDays(40) }))).toBeNull();
-    expect(rule(good({ horizon: "position", expires_at: inDays(46) }))).toBe("expiry");
+    expect(rule(good({ expires_at: inDays(10) }))).toBeNull();
+    expect(rule(good({ expires_at: inDays(11) }))).toBe("expiry");
     expect(rule(good({ expires_at: inDays(-1) }))).toBe("expiry");
     expect(rule(good({ expires_at: "soon" }))).toBe("expiry");
     expect(rule(good(), ctx({ open: [openSetup({ asset: "BTC", direction: "long" })] }))).toBe("duplicate");

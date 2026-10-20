@@ -188,14 +188,6 @@ shared with the provenance repo, whose social yardstick spends most of the
 rest. Without a key the collector records `skipped:no-key` and nothing else
 changes.
 
-## Prop-trading contract
-
-`docs/PROP.md` is the operator's own rulebook for trading a Breakout evaluation
-with this app as journal and enforcer: the firm's limits, the risk framework
-derived from them, the setup ledger, the session protocol and the gates that
-must clear before a fee is paid. The journal that enforces it is T13–T15 in
-`docs/TASKS.md`.
-
 ## Desk (optional)
 
 `/desk` is an agentic portfolio desk: a portfolio-manager agent that runs a

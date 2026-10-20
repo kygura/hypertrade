@@ -86,7 +86,6 @@ Root has only: this file, `README.md` (setup, env, API overview), and `ROUTINE.m
 | `docs/design/terminal.md`, `docs/design/chat.md` | Binding briefs for the Intel Terminal/Cockpit and the Paths chat; extend the main design doc. |
 | `docs/FEATURES.md` | Signal-evidence ideas (phase 9) and what is in scope. |
 | `docs/LAB.md` | Lab research engine contract: rules, validation, tools, MCP. |
-| `docs/PROP.md` | Operator's prop-trading contract (Breakout evaluation). |
 | `docs/TASKS.md` | Open items, completed-phase summary, pointers to deleted task files in git history. |
 | `docs/fallback-routine.md`, `docs/research/` | Provider-agnostic fallback routine; research notes. |
 | `ROUTINE.md` | Self-contained runbook for the one scheduled routine (every 4 h): market state, sectors, setups, Lab, signals, one ntfy push. |

@@ -11,6 +11,8 @@ const iso = (ms: number) => new Date(ms).toISOString();
 function setup(over: Partial<Setup> = {}): Setup {
   return {
     id: "BTC-long-20261010-1",
+    setup_id: null,
+    levels_source: "model",
     asset: "BTC",
     direction: "long",
     horizon: "swing",

@@ -417,7 +417,7 @@ that breaks any of these. Do the arithmetic before you propose:
   mirrored);
 - entry zone ≤ 4% of its midpoint; invalidation 1–25% from the entry
   midpoint; reward to the first target ≥ 2R from the entry midpoint;
-- `expires_at` ≤ 14 days out (`swing`) or ≤ 45 days (`position`);
+- `expires_at` ≤ 10 days out (`swing` is the only horizon);
 - at most 2 new per run, 5 open in total, one open per asset and
   direction;
 - `regime_alignment: "counter"` (fights the HTF view) only with
@@ -634,7 +634,7 @@ The input is the pulse output shape (`PulseOutputSchema` in
     "targets": [87000, 90500],
     "conviction": "medium",
     "evidence": ["hl-cycles.levels.true_market_mean", "hl.BTC.funding"],
-    "expires_at": "<ISO UTC, within 14 days for swing>"
+    "expires_at": "<ISO UTC, within 10 days>"
   }],
   "cancel": [{ "id": "<open setup id>", "reason": "What broke before price did" }],
   "stand_aside_reason": null,

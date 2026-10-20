@@ -1,6 +1,7 @@
 import { z, type ZodTypeAny } from "zod";
 import type { ToolSpec } from "../llm/provider.js";
 import { MarketStateDataSchema, SectorsDataSchema } from "../../shared/schemas.js";
+import { DirectionSchema, HorizonSchema } from "../../shared/setups.js";
 
 // Data shapes of the fallback routine (docs/fallback-routine.md § Data
 // shapes). Persisted shapes (Setup, Ledger, HtfView) are what lives in
@@ -10,49 +11,9 @@ import { MarketStateDataSchema, SectorsDataSchema } from "../../shared/schemas.j
 
 const Price = z.number().finite().positive();
 
-export const DirectionSchema = z.enum(["long", "short"]);
-export const SetupStatusSchema = z.enum(["watching", "triggered", "invalidated", "target_hit", "expired", "cancelled"]);
-
-export const SetupSchema = z.object({
-  id: z.string(),
-  asset: z.string(),
-  direction: DirectionSchema,
-  horizon: z.enum(["swing", "position"]),
-  thesis: z.string(),
-  regime_alignment: z.enum(["with", "counter"]),
-  trigger: z.string(),
-  entry: z.object({ low: Price, high: Price }),
-  invalidation: Price,
-  invalidation_reason: z.string(),
-  targets: z.array(Price).min(1).max(3),
-  rr: z.number(),
-  conviction: z.enum(["low", "medium", "high"]),
-  evidence: z.array(z.string()),
-  status: SetupStatusSchema,
-  status_note: z.string().nullable(),
-  r_result: z.number().nullable(),
-  /** When the entry zone first traded; null if it never did. Older ledgers lack it. */
-  triggered_at: z.string().nullable().default(null),
-  created_at: z.string(),
-  updated_at: z.string(),
-  expires_at: z.string(),
-});
-export type Setup = z.infer<typeof SetupSchema>;
-
-export const LedgerStatsSchema = z.object({
-  closed_90d: z.number(),
-  triggered_90d: z.number(),
-  hit_rate: z.number().nullable(),
-  avg_r: z.number().nullable(),
-});
-export const LedgerSchema = z.object({
-  updated_at: z.string(),
-  open: z.array(SetupSchema),
-  closed: z.array(SetupSchema),
-  stats: LedgerStatsSchema,
-});
-export type Ledger = z.infer<typeof LedgerSchema>;
-export type LedgerStats = z.infer<typeof LedgerStatsSchema>;
+// Setup, Ledger and their parts live in src/shared/setups.ts (one shape for every
+// generator); re-exported here so routine modules keep importing from one place.
+export { DirectionSchema, SetupStatusSchema, SetupSchema, LedgerStatsSchema, LedgerSchema, type Setup, type Ledger, type LedgerStats } from "../../shared/setups.js";
 
 export const BiasSchema = z.object({
   asset: z.string().min(1).max(24),
@@ -79,7 +40,7 @@ export type HtfView = z.infer<typeof HtfViewSchema>;
 export const SetupProposalSchema = z.object({
   asset: z.string().min(1).max(24).describe("Hyperliquid symbol, case-sensitive"),
   direction: DirectionSchema,
-  horizon: z.enum(["swing", "position"]).describe("swing: expires within 14 days; position: within 45 days"),
+  horizon: HorizonSchema.describe("swing: expires within 10 days"),
   thesis: z.string().min(1).max(800).describe("Why, citing measured numbers from the context"),
   regime_alignment: z.enum(["with", "counter"]).describe("counter = fights the HTF view; must then be conviction low"),
   trigger: z.string().min(1).max(300).describe("The checkable condition a human would act on"),
