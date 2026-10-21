@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-20T21:57:43Z",
+  "generated_at": "2026-10-21T02:05:00Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 Majors",
       "mindshare_score": 0.6,
-      "momentum": 0,
-      "rationale": "BTC OI $3.40B (z30 +0.94), ETH OI $2.63B (z30 +1.73), SOL OI $585M (z30 +2.19); BTC dominance 59.5% flat (z30 -0.35). Prices +1.1% to +2.4% 24h.",
+      "momentum": 0.1,
+      "rationale": "BTC OI $3.40B (z30 +1.34), ETH OI $2.63B (z30 +1.50), SOL OI $581M (z30 +1.30); prices +1.5% to +2.5% 24h; BTC dominance 59.5% flat (z30 -0.5). Social share not available (Elfa unset).",
       "tokens": [
         "BTC",
         "ETH",
@@ -21,9 +21,9 @@
     {
       "id": "perp-dex-defi",
       "label": "Perp DEX & DeFi",
-      "mindshare_score": 0.5,
-      "momentum": -0.05,
-      "rationale": "HYPE OI $1.63B (z30 +2.89, the highest unusual reading), HYPE +2.6% 24h; HL total OI $11.38B z30 +2.03 points to venue-level activity.",
+      "mindshare_score": 0.55,
+      "momentum": 0.1,
+      "rationale": "HYPE OI $1.65B (z30 +2.38, unusual), HYPE +3.9% 24h, funding 0.00043%/h falling from 0.00125%; HL total OI $11.63B z30 +2.74.",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -39,15 +39,15 @@
     {
       "id": "privacy",
       "label": "Privacy",
-      "mindshare_score": 0.45,
-      "momentum": 0.05,
-      "rationale": "ZEC -2.9% with OI $517M (87% of sector OI $596M), XMR +4.2% with OI $79M. Positioning is concentrated in one name. Social share unavailable.",
+      "mindshare_score": 0.4,
+      "momentum": 0,
+      "rationale": "Not re-pulled this run; carried at lower weight, no fresh OI or funding numbers.",
       "tokens": [
         "ZEC",
         "XMR"
       ],
       "sources": [
-        "hyperliquid metaAndAssetCtxs (live)"
+        "prior run (not re-measured)"
       ]
     },
     {
@@ -55,61 +55,47 @@
       "label": "Memecoins",
       "mindshare_score": 0.3,
       "momentum": 0.05,
-      "rationale": "PUMP -2.2% with OI $133M (flat versus $134M at the prior read), DOGE -1.0% OI $93M, WIF -0.5% OI $4M. Sector OI $230M. Attention is steady with no new OI. Social share unavailable.",
+      "rationale": "PUMP OI not re-pulled; with F&G 63 and OI rising a risk-appetite bid is plausible but unmeasured here.",
       "tokens": [
         "WIF",
         "DOGE",
         "PUMP"
       ],
       "sources": [
-        "hyperliquid metaAndAssetCtxs (live)"
+        "prior run (not re-measured)"
       ]
     },
     {
       "id": "ai-agents",
-      "label": "AI Agents",
-      "mindshare_score": 0.3,
-      "momentum": -0.1,
-      "rationale": "TAO, FET and VIRTUAL not re-pulled this run (prior read: sector OI $59M). SMH is -7.88% over 5 sessions, in line with weak AI-cycle sentiment. Social share unavailable.",
+      "label": "AI & Agents",
+      "mindshare_score": 0.25,
+      "momentum": -0.15,
+      "rationale": "SMH -7.1% 5d, NVDA -5.3% 5d; AI-linked tokens not re-pulled.",
       "tokens": [
         "FET",
         "TAO",
         "VIRTUAL"
       ],
       "sources": [
-        "hyperliquid metaAndAssetCtxs (live)",
-        "yahoo SMH"
-      ]
-    },
-    {
-      "id": "rwa-stablecoins",
-      "label": "RWA & Stablecoins",
-      "mindshare_score": 0.25,
-      "momentum": -0.2,
-      "rationale": "ONDO not re-pulled this run (prior read: OI $26M, small next to the other sectors). Stablecoin supply $304.5B is z30 -2.44, which weighs on the narrative. Social share unavailable.",
-      "tokens": [
-        "ONDO"
-      ],
-      "sources": [
-        "hyperliquid metaAndAssetCtxs (live)",
-        "defillama stablecoin supply"
+        "yahoo SMH/NVDA",
+        "prior run"
       ]
     }
   ],
   "rotations": [
     {
-      "from": "memecoins",
-      "to": "l1-majors",
-      "confidence": 0.2,
-      "trigger": "PUMP OI below $120M while BTC OI stays above $3.0B and BTC dominance stays above 59.5%",
-      "note": "Low-confidence; PUMP OI was not re-pulled this run, so we lean on the prior $133M read and treat the trigger as pending."
-    },
-    {
       "from": "ai-agents",
       "to": "l1-majors",
-      "confidence": 0.15,
-      "trigger": "SMH 5d change stays below -5% while TAO and FET OI stay under $60M combined",
-      "note": "Very low-confidence; SMH is -6.5% 5d so the first leg held, TAO and FET OI were not re-pulled."
+      "confidence": 0.2,
+      "trigger": "SMH 5d change stays below -5% while BTC OI stays above $3.3B",
+      "note": "Low-confidence; equity AI weakness might keep flows in the majors, but AI token OI was not re-measured."
+    },
+    {
+      "from": "memecoins",
+      "to": "perp-dex-defi",
+      "confidence": 0.2,
+      "trigger": "HYPE OI stays above $1.6B while HL total OI stays above $11.3B",
+      "note": "Low-confidence; venue activity is rising, which we lean reads as HL-native demand, not memecoin demand."
     }
   ]
 }
