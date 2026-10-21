@@ -42,6 +42,11 @@ describe('databaseUrl', () => {
     expect(databaseUrl({})).toBeUndefined()
   })
 
+  test('ignores blank values and trims the one it uses', () => {
+    expect(databaseUrl({ DATABASE_URL: '  ', DATABASE_POSTGRES_URL: ' postgres://b@h/db\n' })).toBe('postgres://b@h/db')
+    expect(databaseUrl({ DATABASE_URL: '', POSTGRES_URL: ' ' })).toBeUndefined()
+  })
+
   test('keeps sslmode and drops parameters Postgres would reject', () => {
     const url = databaseUrl({
       DATABASE_POSTGRES_URL: 'postgres://u:p@aws-0.pooler.supabase.com:6543/postgres?sslmode=require&supa=base-pooler.x&pgbouncer=true',

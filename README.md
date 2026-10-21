@@ -136,8 +136,7 @@ The signals step of the single runbook (`ROUTINE.md`). `bun run signals:collect`
 
 | Variable | Purpose |
 | --- | --- |
-| `APP_URL`, `LAB_API_TOKEN` | Worker origin and the read bearer (GETs under `/api/platform`, `/api/intel`; `LAB_URL=$APP_URL` for the Lab CLI). |
-| `DATABASE_URL` | Optional: the Lab trial log for authored ideas. Without it the Lab section says so. |
+| `APP_URL`, `LAB_API_TOKEN` | Worker origin and the read bearer (GETs under `/api/platform`, `/api/intel`, and `/api/lab/trials` for authored ideas; `LAB_URL=$APP_URL` for the Lab CLI). The session needs no `DATABASE_URL`: it has no route to Postgres. |
 | `NTFY_TOPIC` (`NTFY_SERVER`, `NTFY_TOKEN` optional) | The push channel. No Telegram setup is needed. |
 
 ## Chart history

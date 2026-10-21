@@ -64,7 +64,7 @@ const poolMax = () => Math.max(1, Math.floor(Number(process.env.DB_POOL_MAX)) ||
  * or with no prefix.
  */
 export function databaseUrl(env: Record<string, string | undefined> = process.env): string | undefined {
-  const raw = env.DATABASE_URL || env.DATABASE_POSTGRES_URL || env.POSTGRES_URL
+  const raw = env.DATABASE_URL?.trim() || env.DATABASE_POSTGRES_URL?.trim() || env.POSTGRES_URL?.trim()
   if (!raw) return undefined
   // postgres.js forwards unknown query parameters to the server as settings,
   // and the integration's URL carries ones Postgres rejects (`supa=...`,

@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { defaultStore } from "../lab/store.js";
+import type { Trial } from "../lab/types.js";
 import { labDeadlineMs, labRegistry, SERVER_DEADLINE_MS } from "../mcp/lab.js";
 import { describeTool, TOOL_SOURCES, ToolInputError, UpstreamError, type Registry, type ToolSource } from "../mcp/types.js";
 
@@ -6,6 +8,8 @@ import { describeTool, TOOL_SOURCES, ToolInputError, UpstreamError, type Registr
 // LAB_API_TOKEN bearer, both checked by the global gate in auth.ts.
 //
 // GET  /lab/tools        → { tools: [{ name, title, description, inputSchema, annotations }] }
+// GET  /lab/trials?limit=N → { trials } the newest N (default 50, max 500) of the global trial log, n ascending.
+//                        The routine reads it here: its session cannot open a Postgres connection.
 // POST /lab/tools/:name  JSON args → { ok: true, result }
 //                        | 400 { ok: false, error, field? } (bad args)
 //                        | 404 unknown tool | 502 { ok: false, error } (upstream data)
@@ -14,12 +18,29 @@ import { describeTool, TOOL_SOURCES, ToolInputError, UpstreamError, type Registr
 
 export interface LabRouteOptions {
   env?: Record<string, string | undefined>;
+  /** The whole trial log, n ascending (LabStore.listTrials). */
+  listTrials?: () => Promise<Trial[]>;
 }
+
+export const TRIALS_DEFAULT_LIMIT = 50;
+export const TRIALS_MAX_LIMIT = 500;
 
 export function labRoutes(registryFactory: () => Registry = labRegistry, opts: LabRouteOptions = {}) {
   const env = opts.env ?? process.env;
+  const listTrials = opts.listTrials ?? (() => defaultStore(env).listTrials());
   return new Hono()
     .get("/tools", (c) => c.json({ tools: registryFactory().tools.map(describeTool) }))
+    .get("/trials", async (c) => {
+      const raw = c.req.query("limit");
+      const limit = raw === undefined ? TRIALS_DEFAULT_LIMIT : Number(raw);
+      if (!Number.isInteger(limit) || limit < 1 || limit > TRIALS_MAX_LIMIT) return c.json({ ok: false, error: `limit must be an integer 1–${TRIALS_MAX_LIMIT}` }, 400);
+      try {
+        return c.json({ trials: (await listTrials()).slice(-limit) });
+      } catch (err) {
+        console.error("[lab] trials", err);
+        return c.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    })
     .post("/tools/:name", async (c) => {
       const name = c.req.param("name");
       const tool = registryFactory().tools.find((t) => t.name === name);

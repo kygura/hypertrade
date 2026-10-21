@@ -33,7 +33,7 @@ import { createCrawler } from "../src/server/platform/crawler";
 import { createLiqmapLoop } from "../src/server/platform/liqmapLoop";
 import { createNoveltyLoop } from "../src/server/platform/noveltyLoop";
 import { createOutcomesLoop, skipped as outcomesSkipped } from "../src/server/platform/outcomesLoop";
-import { sql, setLongRunning } from "../src/server/db";
+import { databaseUrl, sql, setLongRunning } from "../src/server/db";
 import { defaultDeskService } from "../src/server/routes/desk";
 import { PgIntelStore } from "../src/server/intel/store";
 import { usageCost } from "../src/server/intel/llm";
@@ -90,20 +90,20 @@ function cached<T>(ttlMs: number, fn: () => Promise<T>, fallback: T): () => Prom
 
 async function boot() {
   setLongRunning(true);
-  const databaseUrl = process.env.DATABASE_URL?.trim();
+  const dbUrl = databaseUrl();
   if (process.env.MIGRATE_ON_BOOT === "1") {
-    if (!databaseUrl) throw new Error("MIGRATE_ON_BOOT=1 needs DATABASE_URL");
+    if (!dbUrl) throw new Error("MIGRATE_ON_BOOT=1 needs DATABASE_URL");
     await migrate(pgDb());
   }
-  const storeKind: PlatformHealth["store"] = databaseUrl ? "pg" : "memory";
-  const store: PlatformStore = databaseUrl ? new PgPlatformStore() : new MemoryPlatformStore();
+  const storeKind: PlatformHealth["store"] = dbUrl ? "pg" : "memory";
+  const store: PlatformStore = dbUrl ? new PgPlatformStore() : new MemoryPlatformStore();
 
   const addresses = createAddressBuffer(store);
   const ws = createWsIngest({ onAddresses: (a, t) => addresses.add(a, t) });
   const retentionDays = Number(process.env.PLATFORM_RETENTION_DAYS ?? 14) || 14;
 
   // Cold start: intel_snapshots (15-min rows from /cron/collect) fills the ring until scan_snapshots has 24 h of its own.
-  const seedFrom = databaseUrl
+  const seedFrom = dbUrl
     ? async (since: string) =>
         (await sql()`select asset, ts, price, vol24h, funding, oi_usd from intel_snapshots where ts >= ${since} order by ts`).map((r: any) => ({
           coin: String(r.asset), ts: new Date(r.ts).toISOString(), inputs: { mark: r.price, oiUsd: r.oi_usd, funding: r.funding, dayNtlVlm: r.vol24h },
@@ -114,7 +114,7 @@ async function boot() {
   const liqmap = createLiqmapLoop({ store });
   // A ws mid older than MID_MAX_AGE_MS is not a price; the outcomes loop then falls back to the last scan's mark.
   const outcomes = createOutcomesLoop({ store, mid: (c) => ((ws.midAgeMs(c) ?? Infinity) <= MID_MAX_AGE_MS ? ws.mid(c) : null), scanMark: scanner.latestMark,
-    fillPx: databaseUrl
+    fillPx: dbUrl
       ? async (id) => {
           if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
           const [r] = await sql()`select px from desk_paper_fills where proposal_id = ${id} order by ts asc limit 1`;
@@ -134,14 +134,14 @@ async function boot() {
     outcomes.def,
     alerts.def,
     // Daily inputs live in Postgres (candles, funding, observations): no database, no novelty loop.
-    ...(databaseUrl ? [createNoveltyLoop({ store, notify: alerts.novel, nearMiss: scanner.nearMiss }).def] : []),
+    ...(dbUrl ? [createNoveltyLoop({ store, notify: alerts.novel, nearMiss: scanner.nearMiss }).def] : []),
   ];
   const selected = parseWorkerLoops(process.env.WORKER_LOOPS);
   const wants = (n: string) => selected === "all" || selected.has(n);
   const unsubAlerts = wants("alerts") ? alerts.subscribe(bus) : () => {};
   // Desk loops need the Postgres-backed desk store; in memory mode they would only fail.
-  if (databaseUrl) defs.push(createReconcileLoop({ store, desk: defaultDeskService, now: () => new Date() }));
-  if (databaseUrl && (wants("desk") || wants("telegram"))) {
+  if (dbUrl) defs.push(createReconcileLoop({ store, desk: defaultDeskService, now: () => new Date() }));
+  if (dbUrl && (wants("desk") || wants("telegram"))) {
     // Dynamic: importing desk-worker builds the desk service, which only the worker needs.
     const desk = await import("./desk-worker");
     if (wants("desk")) defs.push({ name: "desk", intervalSec: desk.deskTickSec, run: desk.deskTickOnce });
@@ -160,7 +160,7 @@ async function boot() {
   // Loops are already running: if the rest of boot throws, stop them rather than orphan them behind a "boot failed" health.
   return orStop(() => {
     const addressCount = cached(30_000, () => store.addressCount(), 0);
-    const intel = databaseUrl ? new PgIntelStore() : null;
+    const intel = dbUrl ? new PgIntelStore() : null;
     const llmSpend = cached<number | null>(60_000, async () => {
       const n = new Date();
       const dayStart = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()));
@@ -213,7 +213,7 @@ export function start({ port, boot: bootFn = boot, api = app.fetch, dist = DIST 
       console.error("boot failed; serving degraded:", err);
       // Full non-redacted shape, so the cockpit shows the failed `boot` loop instead of gray items.
       setHealthExtras(() => ({
-        store: process.env.DATABASE_URL?.trim() ? "pg" : "memory",
+        store: databaseUrl() ? "pg" : "memory",
         loops: [{ name: "boot", lastBeatAt: null, expectedIntervalSec: 1, ok: false, error }],
         ws: { state: "off", lastMessageAgeSec: null },
         scanAgeSec: null,

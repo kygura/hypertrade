@@ -5,7 +5,7 @@
 // Env: DATABASE_URL (unset = prints a notice and exits 0), PLATFORM_* as in scripts/server.ts, PLATFORM_READY_TTL_MIN
 // should cover the gap between ticks (120 for an hourly cron).
 import { randomUUID } from "node:crypto";
-import { acquireLease, releaseConnection, releaseLease, sql } from "../src/server/db";
+import { acquireLease, databaseUrl, releaseConnection, releaseLease, sql } from "../src/server/db";
 import { createNotifier } from "../src/server/desk/notify";
 import { createAlerts } from "../src/server/platform/alerts";
 import { createNoveltyLoop } from "../src/server/platform/noveltyLoop";
@@ -16,7 +16,7 @@ import { PgPlatformStore } from "../src/server/platform/store-pg";
 const LEASE_MS = 15 * 60_000;
 
 async function main() {
-  if (!process.env.DATABASE_URL?.trim()) return console.log("platform tick skipped: DATABASE_URL is not set");
+  if (!databaseUrl()) return console.log("platform tick skipped: DATABASE_URL is not set");
   const holder = randomUUID();
   if (!(await acquireLease("_platform", "tick", holder, LEASE_MS))) return console.log("platform tick skipped: another tick holds the lease");
   try {

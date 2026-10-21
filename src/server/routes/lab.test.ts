@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import { fakeRegistry } from "../mcp/testkit.js";
+import type { Trial } from "../lab/types.js";
 import { labRoutes } from "./lab.js";
 
 function app(env: Record<string, string> = {}) {
@@ -86,5 +87,32 @@ describe("/lab routes", () => {
     } finally {
       console.error = orig;
     }
+  });
+});
+
+describe("GET /lab/trials", () => {
+  const trial = (n: number): Trial => ({ n, at: new Date(Date.UTC(2026, 9, 1) + n * 60_000).toISOString(), ruleId: `r${n}`, intent: n % 2 ? "idea" : "lab_event_study", verdict: null, rule: null });
+  const log = Array.from({ length: 120 }, (_, i) => trial(i + 1));
+  const trialsApp = (listTrials: () => Promise<Trial[]>) => new Hono().route("/lab", labRoutes(() => fakeRegistry().registry, { env: {}, listTrials }));
+
+  test("returns the newest 50 by default, n ascending", async () => {
+    const res = await trialsApp(async () => log).request("/lab/trials");
+    expect(res.status).toBe(200);
+    const { trials } = (await res.json()) as { trials: Trial[] };
+    expect(trials.map((t) => t.n)).toEqual(log.slice(-50).map((t) => t.n));
+  });
+
+  test("honours limit and rejects a bad one", async () => {
+    const a = trialsApp(async () => log);
+    expect(((await (await a.request("/lab/trials?limit=3")).json()) as { trials: Trial[] }).trials.map((t) => t.n)).toEqual([118, 119, 120]);
+    for (const bad of ["0", "501", "2.5", "x"]) expect((await a.request(`/lab/trials?limit=${bad}`)).status).toBe(400);
+  });
+
+  test("a store failure is a 500 with the message, not a hang", async () => {
+    const res = await trialsApp(async () => {
+      throw new Error("connect ETIMEDOUT");
+    }).request("/lab/trials");
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ ok: false, error: "connect ETIMEDOUT" });
   });
 });

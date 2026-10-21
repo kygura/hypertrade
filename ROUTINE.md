@@ -64,9 +64,11 @@ date of the newest value you used in the signal label (`"10Y yield (Oct 9)"`).
 ## 1. Preflight (every run, in this order)
 
 1. **Environment.** Provided by the cloud environment: `LAB_API_TOKEN` (read
-   bearer), `NTFY_TOPIC` (delivery; optional `NTFY_SERVER`, `NTFY_TOKEN`), and
-   optionally `DATABASE_URL` (Lab trial log). `APP_URL` and `LAB_URL` default to
-   the production origin below; the environment may override them.
+   bearer) and `NTFY_TOPIC` (delivery; optional `NTFY_SERVER`, `NTFY_TOKEN`).
+   `APP_URL` and `LAB_URL` default to the production origin below; the
+   environment may override them. The session reads everything over HTTPS and
+   never opens a database connection: a cloud session has no route to
+   Postgres, so even a set `DATABASE_URL` only times out.
    ```bash
    export APP_URL="${APP_URL:-https://hypertrade-ten.vercel.app}"
    export LAB_URL="${LAB_URL:-$APP_URL}"
@@ -80,12 +82,9 @@ date of the newest value you used in the signal label (`"10Y yield (Oct 9)"`).
    `NTFY_TOKEN`.
 2. **Fresh checkout.** `git checkout master && git pull --ff-only` on
    `kygura/hypertrade`, then `bun install --frozen-lockfile`. Everything below
-   reads this checkout. Then run the platform tick, so the near-miss, novelty
-   and opportunity reads in §2 are fresh (a failed or skipped tick is a
-   one-line gap in the brief, never a stop):
-   ```bash
-   if [ -n "$DATABASE_URL" ]; then PLATFORM_READY_TTL_MIN=120 bun run platform:tick --skip=novelty || echo "platform tick failed"; else echo "platform tick skipped: DATABASE_URL unset"; fi
-   ```
+   reads this checkout. The near-miss, novelty and opportunity reads in §2
+   come from the hourly platform tick (`.github/workflows/platform-tick.yml`);
+   the session does not run it.
 3. **Execution date.** `RUN_DATE=$(TZ=Atlantic/Canary date +%F)` and
    `RUN_TS=$(date -u +%FT%TZ)`, captured once at start. Every dated file this
    run writes uses `RUN_DATE`, even if the run crosses midnight. Runs 4 h
@@ -289,7 +288,7 @@ duplicated here):
 | `novelty` | `GET $APP_URL/api/platform/novelty` | `NOVEL:` entries detected since `since`; `kind` `new_extreme` or `joint_extreme`, `families`, `features`, `nearSetups` |
 | `ready` | `GET $APP_URL/api/platform/opportunities?status=ready` + detail | each with its PS4 `evidence` line (n · clusters · interval · edge basis) |
 | `thesisWatch` | `GET $APP_URL/api/intel/theses` history | premises whose latest check turned `contradicted`/`triggered` after a good one at the previous run |
-| `lab` | Lab trial log (needs `DATABASE_URL`) | `trials` = authored ideas since the last run, each with its `rule` (`lab_event_study` rows are screens, not ideas); `universe` = `PLATFORM_MY_MARKETS`; `trials: null` = log not reachable |
+| `lab` | `GET $APP_URL/api/lab/trials?limit=50` | `trials` = authored ideas since the last run, each with its `rule` (`lab_event_study` rows are screens, not ideas); `universe` = `PLATFORM_MY_MARKETS`; `trials: null` = log not reachable |
 | `changes`, `changed` | diff vs `--prev` | what is new; `changed: false` means nothing new in the signals |
 
 A section that cannot be read does not abort the run: it is listed in

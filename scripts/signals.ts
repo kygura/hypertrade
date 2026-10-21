@@ -1,6 +1,7 @@
 // bun run signals:collect [--prev <file>] [--out <file>]   one JSON snapshot (stdout, or --out via temp file + rename)
 // bun run signals:notify "<title>" "<body>"  one ntfy push via the desk notifier (NTFY_TOPIC, NTFY_SERVER, NTFY_TOKEN)
-// Reads the deployed app (APP_URL + LAB_API_TOKEN bearer, GETs only) and, if DATABASE_URL is set, the Lab trial log.
+// Reads the deployed app only (APP_URL + LAB_API_TOKEN bearer, GETs), the Lab trial log included: the routine's
+// cloud session has no route to Postgres, so nothing here opens a database connection.
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { createNotifier } from "../src/server/desk/notify.js";
 import { collectSignals, type Signals, type SignalsRaw } from "../src/server/routine/signals.js";
@@ -41,11 +42,7 @@ if (cmd === "notify") {
         return Promise.all(rows.map(async (row) => ({ row, evidence: (await get<{ evidence: string }>(`/platform/opportunities/${row.id}`)).evidence })));
       },
       theses: async () => (await get<{ theses: NonNullable<SignalsRaw["theses"]> }>("/intel/theses")).theses,
-      trials: async () => {
-        if (!process.env.DATABASE_URL) return null;
-        const { defaultStore } = await import("../src/server/lab/store.js");
-        return (await defaultStore().listTrials()).slice(-50);
-      },
+      trials: async () => (await get<{ trials: NonNullable<SignalsRaw["trials"]> }>("/lab/trials?limit=50")).trials,
       myMarkets: myMarkets(),
     },
     new Date(),

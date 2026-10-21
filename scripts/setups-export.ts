@@ -2,12 +2,12 @@
 //   bun run setups:export [--out data/setups/ledger.json]
 // Env: DATABASE_URL (unset = prints a notice and exits 0). Same shape and formatting as the routine's own write.
 import { writeFile } from "node:fs/promises";
-import { releaseConnection } from "../src/server/db";
+import { databaseUrl, releaseConnection } from "../src/server/db";
 import { pgDb } from "../src/server/platform/store-pg";
 import { exportLedger, PgSetupStore } from "../src/server/setups/store";
 
 async function main() {
-  if (!process.env.DATABASE_URL?.trim()) return console.log("setups export skipped: DATABASE_URL is not set");
+  if (!databaseUrl()) return console.log("setups export skipped: DATABASE_URL is not set");
   const i = process.argv.indexOf("--out");
   const out = i >= 0 ? process.argv[i + 1] : "data/setups/ledger.json";
   if (!out) throw new Error("--out needs a path");
