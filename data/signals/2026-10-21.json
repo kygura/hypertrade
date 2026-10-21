@@ -1,11 +1,49 @@
 {
-  "generatedAt": "2026-10-21T09:55:55.899Z",
+  "generatedAt": "2026-10-21T13:53:41.799Z",
   "since": "2026-10-20T17:55:27.721Z",
   "nearMiss": {
     "top": null,
     "all": []
   },
-  "novelty": [],
+  "novelty": [
+    {
+      "id": "2026-10-20:COMP",
+      "coin": "COMP",
+      "kind": "new_extreme",
+      "pushed": true,
+      "barDate": "2026-10-20",
+      "families": [
+        "funding",
+        "price"
+      ],
+      "features": [
+        {
+          "id": "funding_z90",
+          "p1": -8.2964,
+          "p99": 0.8017,
+          "bars": 356,
+          "value": 1.2207,
+          "histMax": 0.8621,
+          "histMin": -16.3968,
+          "pctRank": 100
+        },
+        {
+          "id": "vol_x",
+          "p1": 0.1454,
+          "p99": 6.9349,
+          "bars": 1171,
+          "value": 37.6289,
+          "histMax": 45.4985,
+          "histMin": 0.06,
+          "pctRank": 99.9
+        }
+      ],
+      "notified": [],
+      "detectedAt": "2026-10-21T04:34:17.818Z",
+      "marketWide": false,
+      "nearSetups": []
+    }
+  ],
   "ready": [],
   "thesisWatch": [],
   "lab": {
@@ -18,11 +56,13 @@
       "LIT",
       "ZEC"
     ],
-    "trials": null
+    "trials": []
   },
   "changes": {
     "nearMiss": false,
-    "novelty": [],
+    "novelty": [
+      "2026-10-20:COMP"
+    ],
     "ready": {
       "added": [],
       "removed": []
@@ -30,23 +70,6 @@
     "thesis": [],
     "labTrials": []
   },
-  "changed": false,
-  "gaps": [
-    {
-      "source": "near-miss",
-      "code": "HTTP 503"
-    },
-    {
-      "source": "novelty",
-      "code": "HTTP 503"
-    },
-    {
-      "source": "opportunities",
-      "code": "HTTP 503"
-    },
-    {
-      "source": "lab-trials",
-      "code": "error"
-    }
-  ]
+  "changed": true,
+  "gaps": []
 }
