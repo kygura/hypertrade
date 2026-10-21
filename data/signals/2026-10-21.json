@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2026-10-21T01:55:24.621Z",
+  "since": "2026-10-20T17:55:27.721Z",
+  "nearMiss": {
+    "top": null,
+    "all": []
+  },
+  "novelty": [],
+  "ready": [],
+  "thesisWatch": [],
+  "lab": {
+    "universe": [
+      "BTC",
+      "ETH",
+      "HYPE",
+      "SOL",
+      "XPL",
+      "LIT",
+      "ZEC"
+    ],
+    "trials": null
+  },
+  "changes": {
+    "nearMiss": false,
+    "novelty": [],
+    "ready": {
+      "added": [],
+      "removed": []
+    },
+    "thesis": [],
+    "labTrials": []
+  },
+  "changed": false,
+  "gaps": [
+    {
+      "source": "near-miss",
+      "code": "HTTP 503"
+    },
+    {
+      "source": "novelty",
+      "code": "HTTP 503"
+    },
+    {
+      "source": "opportunities",
+      "code": "HTTP 503"
+    },
+    {
+      "source": "lab-trials",
+      "code": "error"
+    }
+  ]
+}
