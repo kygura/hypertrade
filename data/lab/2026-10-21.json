@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-21T02:05:00Z",
+  "generated_at": "2026-10-21T09:56:00Z",
   "pulse": {
     "fd4c0f75e3a152f3": {
       "firing": false,
@@ -7,11 +7,6 @@
       "direction": "long"
     },
     "02f027adc844355f": {
-      "firing": false,
-      "asset": "BTC",
-      "direction": "long"
-    },
-    "a3184481f0adc8cf": {
       "firing": false,
       "asset": "BTC",
       "direction": "long"
@@ -25,11 +20,10 @@
   "catalogue_ids": [
     "fd4c0f75e3a152f3",
     "02f027adc844355f",
-    "a3184481f0adc8cf",
     "880aad52d0930040"
   ],
   "hl_cycles": {
     "regime_state": "mild_risk_off",
-    "as_of": "2026-10-20"
+    "as_of": "2026-10-21"
   }
 }
