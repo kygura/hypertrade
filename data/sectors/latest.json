@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-21T02:05:00Z",
+  "generated_at": "2026-10-21T09:56:00Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 Majors",
       "mindshare_score": 0.6,
       "momentum": 0.1,
-      "rationale": "BTC OI $3.40B (z30 +1.34), ETH OI $2.63B (z30 +1.50), SOL OI $581M (z30 +1.30); prices +1.5% to +2.5% 24h; BTC dominance 59.5% flat (z30 -0.5). Social share not available (Elfa unset).",
+      "rationale": "BTC OI $3.43B (z30 +1.04), ETH OI $2.70B (z30 +1.52), SOL OI $581M (z30 +0.17); prices +2.4% to +3.2% 24h, XRP +5.0%; BTC dominance 59.5% flat (z30 -0.6). Social share not available (Elfa unset).",
       "tokens": [
         "BTC",
         "ETH",
@@ -23,7 +23,7 @@
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.55,
       "momentum": 0.1,
-      "rationale": "HYPE OI $1.65B (z30 +2.38, unusual), HYPE +3.9% 24h, funding 0.00043%/h falling from 0.00125%; HL total OI $11.63B z30 +2.74.",
+      "rationale": "HYPE OI $1.65B (z30 +1.80), HYPE +3.7% 24h, funding at the 0.00125%/h floor; AAVE +5.3% 24h; HL total OI $11.60B (z30 +2.10).",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -41,7 +41,7 @@
       "label": "Privacy",
       "mindshare_score": 0.4,
       "momentum": 0,
-      "rationale": "Not re-pulled this run; carried at lower weight, no fresh OI or funding numbers.",
+      "rationale": "Not re-pulled this run (unchanged since 02:05 UTC); carried at lower weight, no fresh OI or funding numbers.",
       "tokens": [
         "ZEC",
         "XMR"

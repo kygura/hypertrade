@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-10-21T02:05:00Z",
-  "headline": "HL total OI rose to $11.63B (z30 +2.74) as Fear & Greed jumped 55 → 63 (z30 +3.0) while BTC reclaimed $83.0K, 1.6% above the ETF cost basis.",
-  "tldr": "hl-cycles reads mild risk-off (33% allocation, since Oct 19, feed 25.9 h stale) yet price is bouncing: BTC $83.0K +1.5% 24h with OI, sentiment and total market cap all rising. The main disagreement is a leverage-and-sentiment bounce against a Restrictive Macro lens and contracting stablecoin supply. Next catalyst: FOMC Oct 28, PCE Oct 29. Not financial advice; market intelligence only.",
+  "generated_at": "2026-10-21T09:56:00Z",
+  "headline": "HL total OI $11.60B (z30 +2.10) and Fear & Greed 63 (z30 +2.24) stay unusual while BTC holds $83.4K, 2.1% above the ETF cost basis; no setup passes the gate.",
+  "tldr": "hl-cycles reads mild risk-off (33% allocation, since Oct 19, feed 5.5 h stale) while price bounces: BTC $83.4K +2.4% 24h on rising OI and sentiment with funding at the floor. The main disagreement is that bounce against a Restrictive Macro lens (30) and stablecoin supply at $304.3B (30d mean $305.6B). Next catalyst: FOMC Oct 28. Not financial advice; market intelligence only.",
   "domains": [
     {
       "domain": "macro",
-      "summary": "10Y 5.15% (Oct 19), 2Y 4.77% (Oct 19), 2s10s +33bp (Oct 20, down from +38bp), DXY proxy 121.40 (Oct 16). WTI $101.91 (Oct 14), Brent $126.55 (Oct 14): oil stays well above $100 and keeps inflation in play ahead of the Oct 28 FOMC; secondary reports cite a hot September CPI (3.7% y/y vs 3.6% expected) and a hold as the base case with hike odds of roughly 17–20%, unverified against BLS/Fed. Bias reads hawkish. Liquidity call: tightening, with stablecoin supply down to $304.2B (z30 -1.9). A hike repricing or oil above $130 would deepen that read; a dovish hold would soften it.",
+      "summary": "10Y 5.15% (Oct 19), 2Y 4.77% (Oct 19), 2s10s +33bp (Oct 20, down from +38bp), DXY proxy 121.40 (Oct 16), WTI $101.91 and Brent $126.55 (Oct 14): oil stays well above $100 and keeps inflation in play. Search previews put the Fed funds range at 3.75-4.00% after a September hike, with roughly 17-25% odds of an Oct 28 hike and a December hike favoured, per secondary sources unverified against CME/Fed. Bias reads hawkish. Liquidity call: tightening, with stablecoin supply $304.3B (z30 -1.57). A hike repricing or oil above $130 would deepen that read; a dovish hold would soften it.",
       "signals": [
         {
           "label": "10Y yield (Oct 19)",
@@ -41,7 +41,7 @@
     },
     {
       "domain": "equities",
-      "summary": "US cash market closed at press time; as of last close SPY $769.05 (+0.3% 1d, -1.2% 5d), QQQ $717.63 (-0.1% 1d, -3.5% 5d), IWM $275.78 (+1.7% 1d). Small caps outperform while growth lags, a rotation away from mega-cap tech. VIX 17.3 (Yahoo) vs 18.4 (FRED, Oct 19): calm but above the mid-16s of last week. Put/call not sourced. A VIX close above 25 would change the read.",
+      "summary": "US cash market closed; as of last close (Oct 20) SPY $769.05 (+0.3% 1d, -1.2% 5d), QQQ $717.63 (-0.1%, -3.5% 5d), IWM $275.78 (+1.7%, -0.3% 5d), DIA $524.36 (+1.0%, +1.6% 5d). Value and small caps outperform while growth lags. VIX 18.44 (FRED, Oct 19), 17.4 on Yahoo: calm but above last week's 16.5. Put/call not sourced. A VIX close above 25 would change the read.",
       "signals": [
         {
           "label": "SPY",
@@ -67,48 +67,48 @@
     },
     {
       "domain": "crypto",
-      "summary": "BTC $83.0K (+1.5% 24h), ETH $2,458 (+2.5%), SOL $106.8 (+1.8%), HYPE $82.0 (+3.9%). HL total OI $11.63B, z30 +2.74; HYPE OI $1.65B (z30 +2.38); F&G 63 (z30 +3.0, +8 in a day). Price up, OI up, funding positive but near the floor (BTC 0.00125%/h, z30 +0.8): new longs are building, though leverage is not crowded by funding. Longs lean in, crowding is moderate, and sentiment has moved faster than funding. Crypto is rising while 10Y, oil and the dollar sit high and QQQ falls, so it trades on its own rather than on macro. BTC dominance 59.5%, DVOL 37.2 (z30 -1.3), stablecoins 7d -0.85%. Would change if funding z30 reaches 2 or BTC closes below $81.7K.",
+      "summary": "BTC $83.4K (+2.4% 24h), ETH $2,459 (+3.2%), SOL $106.7 (+2.6%), HYPE $81.1 (+3.7%). HL total OI $11.60B (z30 +2.10), HYPE OI $1.65B (z30 +1.80), BTC OI $3.39B (z30 +1.04). Funding sits at the 0.00125%/h floor on BTC, ETH, SOL and HYPE (z30 +0.4 to +1.0). F&G 63 (z30 +2.24). Price up, OI up, funding positive but flat at the floor: new longs are building without crowded carry. Crypto rises while the 10Y, oil and the dollar stay high and QQQ falls, so it trades on its own rather than on macro. BTC dominance 59.5%, DVOL 37.9 (z30 -0.1), stablecoins 7d -0.87%. Would change if funding z30 reaches 2 or BTC closes below $81.7K.",
       "signals": [
         {
           "label": "BTC",
-          "value": "$83,031 (+1.5% 24h)",
+          "value": "$83,444 (+2.4% 24h)",
           "direction": "up"
         },
         {
           "label": "ETH",
-          "value": "$2,458 (+2.5% 24h)",
+          "value": "$2,459 (+3.2% 24h)",
           "direction": "up"
         },
         {
           "label": "SOL",
-          "value": "$106.76 (+1.8% 24h)",
+          "value": "$106.71 (+2.6% 24h)",
           "direction": "up"
         },
         {
           "label": "HYPE",
-          "value": "$82.0 (+3.9% 24h)",
+          "value": "$81.13 (+3.7% 24h)",
           "direction": "up"
         },
         {
-          "label": "HL total OI (z30 +2.74)",
-          "value": "$11.63B",
+          "label": "HL total OI (z30 +2.10)",
+          "value": "$11.60B",
           "direction": "up"
         },
         {
-          "label": "Fear & Greed (z30 +3.0)",
+          "label": "Fear & Greed (z30 +2.24)",
           "value": "63",
           "direction": "up"
         },
         {
           "label": "BTC DVOL",
-          "value": "37.2",
+          "value": "37.9",
           "direction": "flat"
         }
       ]
     },
     {
       "domain": "tech",
-      "summary": "Dispersion: AMZN $262.63 (+0.1% 1d, +1.6% 5d) holds; AAPL $339.50 (-1.0%, -0.5% 5d); MSFT $531.87 (-0.3%, -2.1%); GOOGL $340.27 (-1.1%, -3.8%); NVDA $216.47 (-0.3%, -5.3%); META $694.25 (-1.6%, -9.0%). SMH $546.36 is -7.1% over 5d with NVDA part of it, so the weakness is broad within semis rather than a single name. AI-cycle news and earnings dates not sourced this run. A SMH recovery above its 5d-ago level would soften the read.",
+      "summary": "Last close (Oct 20) dispersion: AMZN $262.63 (+0.1% 1d, +1.6% 5d) holds; AAPL $339.50 (-1.0%, -0.5%); MSFT $531.87 (-0.3%, -2.1%); GOOGL $340.27 (-1.1%, -3.8%); NVDA $216.47 (-0.3%, -5.3%); META $694.25 (-1.6%, -9.0%). SMH $546.36 is -7.1% over 5d, so semis weakness is broad rather than one name. AI-cycle news and earnings dates not sourced this run. A SMH recovery above its 5d-ago level would soften the read.",
       "signals": [
         {
           "label": "AAPL",
@@ -149,7 +149,7 @@
     },
     {
       "domain": "geopolitics",
-      "summary": "Live search returned no coverage dated Oct 20, 2026 (results were mostly 2025 sanctions/tariff stories), so active tensions are unverified this run; Brent at $126.55 (Oct 14) still implies a large supply-risk premium. Scheduled: FOMC Oct 28 (hold is the secondary-source base case, no dot plot), PCE Oct 29, NFP Nov 6, CPI Nov 10. A hawkish FOMC surprise would pressure risk assets.",
+      "summary": "Live search again returned no coverage dated Oct 20-21, 2026 (results from 2022 and 2025), so active tensions are unverified this run; Brent $126.55 (Oct 14) still implies a large supply-risk premium. Scheduled: FOMC Oct 28 (hold is the secondary-source base case), PCE Oct 29, NFP Nov 6, CPI Nov 10. A hawkish FOMC surprise would pressure risk assets.",
       "signals": [
         {
           "label": "FOMC",
@@ -170,9 +170,9 @@
     }
   ],
   "thesis": {
-    "observe": "BTC $83,031 (+1.5% 24h), ETH +2.5%, HYPE +3.9%. HL total OI $11.63B (z30 +2.74), HYPE OI z30 +2.38, F&G 63 (z30 +3.0), total market cap z30 +1.96. hl-cycles: mild_risk_off since Oct 19, 2 of 6 stress conditions on, Compass 46.7 Neutral with Macro weakest at 30. 10Y 5.15%, WTI $101.91, Brent $126.55 (Oct 14). Stablecoins $304.2B (7d -0.85%). QQQ -3.5% 5d, SMH -7.1% 5d.",
-    "infer": "Price, OI and sentiment are rising together while funding stays near its floor, so we read this as new longs adding without crowded carry. Consensus is pricing a hold on Oct 28; we read the risk as a hawkish surprise given oil above $100 and a hot CPI print reported by secondary sources. The disagreement: crypto bounces while equities' growth leg and semis fade and stablecoin supply contracts, which risk skews toward a fragile bounce.",
-    "forecast": "Base case (we lean here, low-confidence): BTC holds above the ETF cost basis ($81.7K) into the Oct 28 FOMC; a daily close below $81.7K breaks it and is hl-cycles' stated invalidation. Tail case (low-confidence): a daily close below the True Market Mean ($79.2K) could put the STH cost basis ($74.4K) in play. Second tail case (low-confidence): a dovish hold with oil under $100 may let stablecoin supply recover and support a move toward the Mean MVRV price ($105.6K, far overhead).",
+    "observe": "BTC $83,444 (+2.4% 24h), ETH +3.2%, HYPE +3.7%. HL total OI $11.60B (z30 +2.10), F&G 63 (z30 +2.24), funding at 0.00125%/h on all four majors. hl-cycles: mild_risk_off since Oct 19, 2 of 6 stress conditions on (STH-SOPR 7d mean below 1, ETF 7d outflow), Compass 47.2 Neutral with Macro weakest at 30. 10Y 5.15% (Oct 19), WTI $101.91 and Brent $126.55 (Oct 14). Stablecoins $304.3B (7d -0.87%). QQQ -3.5% 5d, SMH -7.1% 5d.",
+    "infer": "Price, OI and sentiment are rising together while funding stays at its floor, so we read this as new longs adding without crowded carry. Consensus is pricing a hold on Oct 28; we read the risk as a hawkish surprise given oil above $100 and a hawkish September minutes tone. The disagreement: crypto bounces while growth equities and semis fade and stablecoin supply contracts, so risk skews toward a fragile bounce.",
+    "forecast": "Base case (we lean here, low-confidence): BTC holds above the ETF cost basis ($81.7K) into the Oct 28 FOMC; a daily close below $81.7K breaks it and is hl-cycles' stated invalidation. Tail case (low-confidence): a daily close below the True Market Mean ($79.4K) could put the STH cost basis ($74.6K) in play. Second tail case (low-confidence): a dovish hold with oil under $100 may let stablecoin supply recover and support a move toward the Mean MVRV price ($105.7K, far overhead).",
     "disclaimer": "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything."
   },
   "risks": [
