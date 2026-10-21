@@ -1,11 +1,48 @@
 {
-  "generatedAt": "2026-10-21T13:53:41.799Z",
+  "generatedAt": "2026-10-21T17:53:46.661Z",
   "since": "2026-10-20T17:55:27.721Z",
   "nearMiss": {
     "top": null,
     "all": []
   },
   "novelty": [
+    {
+      "id": "2026-10-20:W",
+      "coin": "W",
+      "kind": "joint_extreme",
+      "pushed": false,
+      "barDate": "2026-10-20",
+      "families": [
+        "funding",
+        "price"
+      ],
+      "features": [
+        {
+          "id": "funding_apr(7)",
+          "p1": -34.1168,
+          "p99": 18.157,
+          "bars": 118,
+          "value": -41.2026,
+          "histMax": 18.1893,
+          "histMin": -48.0991,
+          "pctRank": 0.8
+        },
+        {
+          "id": "vol_x",
+          "p1": 0.1773,
+          "p99": 7.3566,
+          "bars": 966,
+          "value": 0.1712,
+          "histMax": 259.6045,
+          "histMin": 0.0677,
+          "pctRank": 0.9
+        }
+      ],
+      "notified": [],
+      "detectedAt": "2026-10-21T15:09:15.847Z",
+      "marketWide": false,
+      "nearSetups": []
+    },
     {
       "id": "2026-10-20:COMP",
       "coin": "COMP",
@@ -42,6 +79,32 @@
       "detectedAt": "2026-10-21T04:34:17.818Z",
       "marketWide": false,
       "nearSetups": []
+    },
+    {
+      "id": "2026-10-19:W",
+      "coin": "W",
+      "kind": "new_extreme",
+      "pushed": true,
+      "barDate": "2026-10-19",
+      "families": [
+        "funding"
+      ],
+      "features": [
+        {
+          "id": "funding_apr(7)",
+          "p1": -32.834,
+          "p99": 18.1589,
+          "bars": 117,
+          "value": -48.0991,
+          "histMax": 18.1893,
+          "histMin": -34.3777,
+          "pctRank": 0
+        }
+      ],
+      "notified": [],
+      "detectedAt": "2026-10-21T15:09:15.847Z",
+      "marketWide": false,
+      "nearSetups": []
     }
   ],
   "ready": [],
@@ -61,7 +124,9 @@
   "changes": {
     "nearMiss": false,
     "novelty": [
-      "2026-10-20:COMP"
+      "2026-10-20:W",
+      "2026-10-20:COMP",
+      "2026-10-19:W"
     ],
     "ready": {
       "added": [],
