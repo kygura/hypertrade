@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-21T13:58:00Z",
+  "generated_at": "2026-10-21T17:55:00Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 Majors",
-      "mindshare_score": 0.6,
-      "momentum": 0.1,
-      "rationale": "BTC OI $3.48B, ETH OI $2.72B, SOL OI $581M on live marks; 24h +2.0% BTC, +2.5% ETH, +1.4% SOL, XRP +3.6%; BTC dominance 59.5% flat (z30 -0.6). Social share not available (Elfa unset).",
+      "mindshare_score": 0.62,
+      "momentum": 0.15,
+      "rationale": "BTC OI $3.44B, ETH OI $2.81B (z30 +3.24), SOL OI $586M; 24h +2.2% BTC, +2.7% ETH, +1.8% SOL, XRP +4.3%. BTC dominance 59.6% flat (z30 -0.3). Social share not available (Elfa unset).",
       "tokens": [
         "BTC",
         "ETH",
@@ -22,8 +22,8 @@
       "id": "perp-dex-defi",
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.55,
-      "momentum": 0.1,
-      "rationale": "HYPE OI $1.65B (z30 +1.80 at 06:36 UTC), HYPE +0.9% 24h with funding below the floor; ENA +7.0%, AAVE +2.1%; HL total OI $11.91B live. Social share not available (Elfa unset).",
+      "momentum": 0.15,
+      "rationale": "HYPE OI $1.67B (z30 +1.94), HYPE +1.8% 24h with funding negative (z30 -3.57); ENA +14.1%, AAVE +3.6%, UNI +2.6%. HL total OI $12.08B. Social share not available (Elfa unset).",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -41,21 +41,21 @@
       "label": "Privacy",
       "mindshare_score": 0.4,
       "momentum": 0.1,
-      "rationale": "ZEC +10.8% 24h with OI $737M and funding 0.0026%/h; XMR flat with funding -0.0085%/h. Social share not available (Elfa unset).",
+      "rationale": "ZEC +11.3% 24h with OI $747M at the 0.00125%/h funding cap; XMR -2.7% with OI $95M. Social share not available (Elfa unset).",
       "tokens": [
         "ZEC",
         "XMR"
       ],
       "sources": [
-        "prior run (not re-measured)"
+        "hyperliquid metaAndAssetCtxs (live)"
       ]
     },
     {
       "id": "memecoins",
       "label": "Memecoins",
-      "mindshare_score": 0.3,
-      "momentum": 0.05,
-      "rationale": "Not re-measured this run (PUMP OI not pulled); carried at lower weight, F&G 63 only suggests risk appetite.",
+      "mindshare_score": 0.28,
+      "momentum": 0.0,
+      "rationale": "Not re-measured this run; carried at lower weight while F&G 63 only suggests general risk appetite.",
       "tokens": [
         "WIF",
         "DOGE",
@@ -69,8 +69,8 @@
       "id": "ai-agents",
       "label": "AI & Agents",
       "mindshare_score": 0.25,
-      "momentum": -0.15,
-      "rationale": "Not re-measured this run; carried at low weight. SMH 5d -2.4% is milder than the -5% trigger.",
+      "momentum": -0.1,
+      "rationale": "Not re-measured on-chain this run. SMH 5d -1.3% and NVDA +2.4% on the day, milder than the -5% trigger.",
       "tokens": [
         "FET",
         "TAO",
@@ -88,14 +88,14 @@
       "to": "l1-majors",
       "confidence": 0.15,
       "trigger": "SMH 5d change falls below -5% while BTC OI stays above $3.3B",
-      "note": "Low-confidence; last run's trigger was not met (SMH 5d -2.4%), so this is rewritten with a fresh threshold."
+      "note": "Low-confidence; last run's trigger was not met (SMH 5d -1.3%), so it carries over with the same threshold."
     },
     {
       "from": "memecoins",
       "to": "perp-dex-defi",
       "confidence": 0.2,
-      "trigger": "HYPE OI stays above $1.6B while HL total OI stays above $11.3B",
-      "note": "Low-confidence; the trigger was met this run, which we lean reads as HL-native demand, not memecoin demand."
+      "trigger": "HYPE OI stays above $1.6B while HL total OI stays above $12.0B",
+      "note": "Low-confidence; the prior trigger was met again (HYPE OI $1.66B, total OI $12.08B), so the bar is raised."
     }
   ]
 }
