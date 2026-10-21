@@ -190,9 +190,10 @@ describe('query timeout', () => {
     const unhandled: unknown[] = []
     const onUnhandled: NodeJS.UnhandledRejectionListener = (e) => void unhandled.push(e)
     process.on('unhandledRejection', onUnhandled)
+    let c: ReturnType<typeof sql> | undefined
     try {
       await releaseConnection()
-      const c = sql()
+      c = sql()
       await c`select 1`
       fake.mode = 'silent'
       fake.refuseCancel = true
@@ -200,6 +201,9 @@ describe('query timeout', () => {
       await new Promise((r) => setTimeout(r, 200))
       expect(unhandled).toEqual([])
     } finally {
+      // The refused cancel leaves select 2 pending forever; without this,
+      // afterEach's releaseConnection waits its full 5s and races bun's 5s hook timeout.
+      await c?.end({ timeout: 0 })
       ;(process as NodeJS.EventEmitter).off('unhandledRejection', onUnhandled)
       delete process.env.DB_POOL_MAX
     }
