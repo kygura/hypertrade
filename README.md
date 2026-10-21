@@ -136,8 +136,7 @@ The signals step of the single runbook (`ROUTINE.md`). `bun run signals:collect`
 
 | Variable | Purpose |
 | --- | --- |
-| `APP_URL`, `LAB_API_TOKEN` | Worker origin and the read bearer (GETs under `/api/platform`, `/api/intel`; `LAB_URL=$APP_URL` for the Lab CLI). |
-| `DATABASE_URL` | Optional: the Lab trial log for authored ideas. Without it the Lab section says so. |
+| `APP_URL`, `LAB_API_TOKEN` | Worker origin and the read bearer (GETs under `/api/platform`, `/api/intel`, and `/api/lab/trials` for authored ideas; `LAB_URL=$APP_URL` for the Lab CLI). The session needs no `DATABASE_URL`: it has no route to Postgres. |
 | `NTFY_TOPIC` (`NTFY_SERVER`, `NTFY_TOKEN` optional) | The push channel. No Telegram setup is needed. |
 
 ## Chart history
@@ -187,14 +186,6 @@ credits a month) however often the cron fires. The key is meant to be
 shared with the provenance repo, whose social yardstick spends most of the
 rest. Without a key the collector records `skipped:no-key` and nothing else
 changes.
-
-## Prop-trading contract
-
-`docs/PROP.md` is the operator's own rulebook for trading a Breakout evaluation
-with this app as journal and enforcer: the firm's limits, the risk framework
-derived from them, the setup ledger, the session protocol and the gates that
-must clear before a fee is paid. The journal that enforces it is T13–T15 in
-`docs/TASKS.md`.
 
 ## Desk (optional)
 

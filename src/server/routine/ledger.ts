@@ -1,4 +1,5 @@
 import type { Candle } from "../../shared/types.js";
+import { isOpenSetup as isOpen } from "../../shared/setups.js";
 import type { Ledger, LedgerStats, Setup } from "./schema.js";
 
 // Setup status is decided here, against prices, never by the model
@@ -17,8 +18,6 @@ export function rMultiple(s: Pick<Setup, "entry" | "invalidation" | "direction">
   const gain = s.direction === "long" ? price - mid : mid - price;
   return Math.round((gain / risk) * 100) / 100;
 }
-
-const isOpen = (s: Setup) => s.status === "watching" || s.status === "triggered";
 
 /**
  * Walks one open setup through the candle path in time order. Only candles

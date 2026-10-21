@@ -10,7 +10,7 @@ export const GATE = {
   minInvalidationPct: 1,
   maxInvalidationPct: 25,
   minRr: 2,
-  maxDays: { swing: 14, position: 45 },
+  maxDays: { swing: 10 },
   maxOpen: 5,
   maxNew: { pulse: 2, daily: 3 },
   maxCounterOpen: 1,
@@ -104,6 +104,8 @@ export function gateProposals(proposals: SetupProposal[], ctx: GateContext): { a
     used.add(id);
     accepted.push({
       id,
+      setup_id: null,
+      levels_source: "model",
       asset: p.asset,
       direction: p.direction,
       horizon: p.horizon,

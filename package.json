@@ -14,6 +14,7 @@
     "routine": "bun run scripts/routine.ts",
     "signals:collect": "bun run scripts/signals.ts collect",
     "signals:notify": "bun run scripts/signals.ts notify",
+    "setups:export": "bun run scripts/setups-export.ts",
     "build": "bun run typecheck && vite build",
     "test": "bun test ./src",
     "db:migrate": "bun run db/migrate.ts",

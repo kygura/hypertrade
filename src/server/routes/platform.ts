@@ -13,6 +13,7 @@ import { researchDailyLimit, researchDeps, runResearch, RESEARCH_PROMPT_VERSION,
 import { aggregate, coverage } from "../platform/liqmap.js";
 import { dbPlatformContext, getPlatformContext, placedBy, placing, type PlatformContext } from "../platform/context.js";
 import { Z_KEYS } from "../platform/score.js";
+import { databaseUrl } from "../db.js";
 import { PgPlatformStore } from "../platform/store-pg.js";
 import { evidenceLine, groupStats } from "../platform/stats.js";
 import { defaultDeskService } from "./desk.js";
@@ -20,7 +21,7 @@ import { defaultIntelDeps } from "./intel/index.js";
 import { body, failure, invalid } from "./intel/http.js";
 
 // /api/platform (docs/SPEC.md § Platform P2). Cookie auth; GETs also take the read bearer (READ_PATH in auth.ts).
-// Every route answers 503 {error:"platform_offline"} while no PlatformContext is set (no worker and no DATABASE_URL).
+// Every route answers 503 {error:"platform_offline"} while no PlatformContext is set (no worker and no database URL, see databaseUrl in db.ts).
 // Approval reaches the book only through the desk's governor: placeOperatorOrder (preview + submit under one lock).
 // After approval the idea ends open (filled) or failed (system); a lost transition stays approved for reconcile.ts.
 
@@ -87,7 +88,7 @@ let dbCtx: PlatformContext | null = null;
 
 export function defaultPlatformDeps(): PlatformDeps {
   return {
-    context: () => getPlatformContext() ?? (process.env.DATABASE_URL?.trim() ? (dbCtx ??= dbPlatformContext(new PgPlatformStore())) : null),
+    context: () => getPlatformContext() ?? (databaseUrl() ? (dbCtx ??= dbPlatformContext(new PgPlatformStore())) : null),
     risk: deskRisk(defaultDeskService),
     research: {
       async run(q) {

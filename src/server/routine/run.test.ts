@@ -80,6 +80,8 @@ function fakeFetch(sent: Sent[]): typeof fetch {
 const iso = (ms: number) => new Date(ms).toISOString();
 const openBtc: Setup = {
   id: "BTC-long-20261016-1",
+  setup_id: null,
+  levels_source: "model",
   asset: "BTC",
   direction: "long",
   horizon: "swing",

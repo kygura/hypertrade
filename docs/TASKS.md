@@ -5,12 +5,23 @@ lists live in git history (see History).
 
 ## Open
 
-Carried from the v1 task list; `docs/PROP.md` references them as T13–T15. Status as
-last recorded there: open.
+Candidate pipeline, per `docs/research/candidates-redesign.md` § B.12. Swing-only
+setups, candidate universe = top 30 by 24 h notional plus "my markets".
 
-- [ ] T13 Journal DB + routes (trades, sessions, accounts per `docs/PROP.md` §(e)), CRUD + `/stats`, tests.
-- [ ] T14 Journal UI: daily check-in, plan-before-trigger form, sizing calculator (`docs/PROP.md` §(b)), setup picker limited to the §(c) ledger, server-computed lockout banner, venue tag paper/eval/live.
-- [ ] T15 Gate page: `docs/PROP.md` §(f) checklist computed from the paper record; stays red until cleared; weekly per-setup expectancy review.
+- [x] Phase 0: one setup shape (`src/shared/setups.ts`: `setup_id`, `levels_source`,
+  swing-only), setups store with memory and pg twins (migration 021,
+  `src/server/setups/store.ts`), `bun run setups:export` to `data/setups/ledger.json`,
+  gate expiry cap 10 days.
+- [ ] Phase 1: daily/4 h feature frame from stored tables, with parity against novelty
+  `funding_z90` and Lab `ht:funding`.
+- [ ] Phase 2: catalogue definitions as data plus level builder, each with a Lab rule
+  twin; scanner hits equal event-study entries.
+- [ ] Phase 3: `bun run candidates` and `candidates:advance`, budget gate, one LLM
+  narration call, routine writes through the setups store.
+- [ ] Phase 4: workflows, ROUTINE.md as a thin wrapper, narrative job split out,
+  duplicate collectors removed.
+- [ ] Phase 5: weekly review job: event-study refresh, demotion to watch-only, edge
+  facts on candidates.
 
 ## Completed
 

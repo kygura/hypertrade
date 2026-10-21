@@ -11,7 +11,7 @@ import { dbPlatformContext, type PlatformContext } from "../platform/context.js"
 import { reconcileOnce } from "../platform/reconcile.js";
 import { setHealthExtras } from "../platform/runtime.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
-import { createPlatformRoutes, deskRisk, type PlatformDeps, type RiskGate } from "./platform.js";
+import { createPlatformRoutes, defaultPlatformDeps, deskRisk, type PlatformDeps, type RiskGate } from "./platform.js";
 
 const NOW = new Date("2026-10-16T12:00:00Z");
 const ADDR = `0x${"a".repeat(40)}`;
@@ -150,6 +150,20 @@ describe("near-miss", () => {
 });
 
 describe("DB-only context (no worker, as on Vercel)", () => {
+  test("the default deps find the database under the Supabase integration's variable name", () => {
+    // Vercel's Supabase integration sets DATABASE_POSTGRES_URL, never DATABASE_URL: the context must come up anyway.
+    const keys = ["DATABASE_URL", "DATABASE_POSTGRES_URL", "POSTGRES_URL"] as const;
+    const saved = keys.map((k) => process.env[k]);
+    try {
+      for (const k of keys) delete process.env[k];
+      expect(defaultPlatformDeps().context()).toBeNull();
+      process.env.DATABASE_POSTGRES_URL = "postgres://u@127.0.0.1:1/db"; // never dialled: the store connects lazily
+      expect(defaultPlatformDeps().context()).not.toBeNull();
+    } finally {
+      keys.forEach((k, i) => (saved[i] === undefined ? delete process.env[k] : (process.env[k] = saved[i])));
+    }
+  });
+
   test("serves the persisted near-miss and the feed; approval stays blocked", async () => {
     const nm = { coin: "ETH", setupKind: "crowded_long", cond: 2, value: 0.95, limit: 1, relDistance: 0.05 };
     await store.saveNearMisses(new Date(NOW.getTime() - 600_000).toISOString(), [nm]);
