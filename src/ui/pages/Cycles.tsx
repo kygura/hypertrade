@@ -6,7 +6,7 @@ import { ErrorBlock, OfflineBlock, SkeletonRows } from '../components/state'
 import { useApi } from '../lib/api'
 import { CycleChart } from '../components/cycles/CycleChart'
 import { AnalogChart } from '../components/cycles/AnalogChart'
-import { EpisodesTable, ForecastHero, MethodsTable, ReadinessStrip } from '../components/cycles/ForecastPanel'
+import { CoolingHighsTable, EpisodesTable, ForecastHero, MethodsTable, ReadinessStrip } from '../components/cycles/ForecastPanel'
 import { fmtDay } from '../components/cycles/format'
 import { CYCLE_COINS, type CycleCoin, type CyclesResponse } from '../../shared/cycles'
 import type { OnsetKind } from '../../shared/cycleForecast'
@@ -91,6 +91,7 @@ export function Cycles() {
             halvings={body.halvings}
             nextHalving={body.nextHalving}
             forecast={forecast}
+            coolingHighs={body.coolingHighs}
             tf={tf}
             onTfChange={setTf}
           />
@@ -108,6 +109,17 @@ export function Cycles() {
         <PanelHeader title="TIMING METHODS" />
         <PanelBody className="p-0">
           <MethodsTable forecast={forecast} coin={shownCoin} />
+        </PanelBody>
+      </Panel>
+
+      <Panel className="lg:col-span-12">
+        <PanelHeader title="HIGHER HIGHS ON LOWER HEAT" />
+        <PanelBody className="p-0">
+          <p className="px-3 pt-2 pb-1 text-[11px] text-text-secondary">
+            All-time-high legs (split by 20% pullbacks) whose peak printed on at least 0.05 less heat than the leg before, within one cycle. In past
+            cycles these came late in the run: price still rising while the stretch behind it faded. A reading of what happened, not a signal.
+          </p>
+          <CoolingHighsTable highs={body.coolingHighs} />
         </PanelBody>
       </Panel>
 

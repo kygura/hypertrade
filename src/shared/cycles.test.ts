@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bullEpisodes, cycleAnalogs, forecastNextRun, quantile } from "./cycleForecast.js";
+import { bullEpisodes, coolingHighs, cycleAnalogs, forecastNextRun, quantile } from "./cycleForecast.js";
 import { commitWithHysteresis, computeCycle, DAY_MS, fillGaps, MIN_PHASE_DAYS, percentileRank, resampleWeekly, sma, smoothPhases, type CyclePhase, type DailyBar } from "./cycles.js";
 import daily from "./fixtures/cycles/btc-daily.json";
 import ethDaily from "./fixtures/cycles/eth-daily.json";
@@ -201,6 +201,31 @@ describe("cycleAnalogs", () => {
     expect(a[2]!.onsetDay).toBe(846);
     expect(a[2]!.breakoutDay).toBe(714);
     expect(a[3]!.points[a[3]!.points.length - 1]!.r).toBeCloseTo(points[points.length - 1]!.c / a[3]!.topPrice, 6);
+  });
+});
+
+describe("coolingHighs", () => {
+  test("BTC: Apr and Nov 2021, then Jan and Oct 2025, each cooler than the high before", () => {
+    const hs = coolingHighs(points);
+    expect(hs.map((h) => [iso(h.t), iso(h.prev.t)])).toEqual([
+      ["2021-04-13", "2021-02-21"],
+      ["2021-11-08", "2021-04-13"],
+      ["2025-01-21", "2024-03-13"],
+      ["2025-10-06", "2025-01-21"],
+    ]);
+    for (const h of hs) {
+      expect(h.price).toBeGreaterThan(h.prev.price);
+      expect(h.heat).toBeLessThanOrEqual(h.prev.heat - 0.05);
+    }
+  });
+
+  test("ETH: Sep 2017 and Nov 2021; Aug 2025 is not compared across the 2022 bear", () => {
+    const eth = dailyBars(ethDaily);
+    const hs = coolingHighs(computeCycle(eth, eth[eth.length - 1]!.t + DAY_MS));
+    expect(hs.map((h) => [iso(h.t), iso(h.prev.t)])).toEqual([
+      ["2017-09-01", "2017-06-12"],
+      ["2021-11-08", "2021-05-11"],
+    ]);
   });
 });
 

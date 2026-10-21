@@ -109,6 +109,7 @@ describe("GET /cycles", () => {
     expect(daily.forecasts.euphoria.kind).toBe("euphoria");
     expect(daily.forecasts.breakout.episodes.length).toBeGreaterThanOrEqual(2);
     expect(daily.analogs.length).toBe(daily.forecasts.breakout.episodes.length);
+    expect(Array.isArray(daily.coolingHighs)).toBe(true);
     expect(daily.sources).toEqual({ hl: daily.bars.length });
 
     const weekly = (await (await app(d).request("/cycles?tf=1w")).json()) as CyclesResponse;
