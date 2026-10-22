@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-22T06:05:00Z",
+  "generated_at": "2026-10-22T13:56:35Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 Majors",
       "mindshare_score": 0.6,
-      "momentum": 0.05,
-      "rationale": "BTC OI $3.35B (z30 +0.13, -2.6% vs prior), ETH OI $2.72B (z30 +1.52), SOL OI $582M; 24h +0.1% BTC, -0.2% ETH, -0.7% SOL, +0.6% XRP. BTC dominance 59.6% (z30 -0.29). Social share not available (Elfa unset).",
+      "momentum": -0.1,
+      "rationale": "BTC OI $3.50B (z30 +0.83, $3.40B on the metric snapshot), ETH OI $2.63B, SOL OI $582M; 24h -2.7% BTC, -2.7% ETH, -1.7% SOL, -2.3% XRP on HL marks. BTC dominance 59.46% (z30 -1.00). Social share not available (Elfa unset).",
       "tokens": [
         "BTC",
         "ETH",
@@ -22,8 +22,8 @@
       "id": "perp-dex-defi",
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.5,
-      "momentum": -0.1,
-      "rationale": "HYPE OI $1.63B (z30 +0.83), HYPE -2.7% 24h with funding negative (z30 -3.10); AAVE -2.9%, UNI -3.8%, ENA +0.6%. Social share not available (Elfa unset).",
+      "momentum": -0.2,
+      "rationale": "HYPE OI $1.62B (z30 +0.22), HYPE -2.8% 24h with funding back to the floor; AAVE -4.7%, UNI -4.0%, ENA -2.7%, PENDLE -5.0%, so DeFi lags the majors. Social share not available (Elfa unset).",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -40,8 +40,8 @@
       "id": "privacy",
       "label": "Privacy",
       "mindshare_score": 0.42,
-      "momentum": 0.1,
-      "rationale": "Carried over from the live taxonomy; ZEC and XMR OI were not re-measured this run beyond the live sector feed. Treat as unrefreshed.",
+      "momentum": 0,
+      "rationale": "ZEC OI $616M with price -4.8% 24h, XMR +3.7% on funding 0.0092%/h (the only major above the 0.00125% floor); the pair diverges, so the sector read is mixed.",
       "tokens": [
         "ZEC",
         "XMR"
@@ -54,8 +54,8 @@
       "id": "memecoins",
       "label": "Memecoins",
       "mindshare_score": 0.28,
-      "momentum": 0.0,
-      "rationale": "Carried over from the live taxonomy with no fresh per-token measurement this run; low relative OI.",
+      "momentum": -0.1,
+      "rationale": "WIF -4.4%, DOGE -3.1% 24h, DOGE OI $95M and WIF OI $5M; PUMP +0.8% with OI $155M is the outlier. Low relative OI overall.",
       "tokens": [
         "WIF",
         "DOGE",
@@ -69,8 +69,8 @@
       "id": "ai-agents",
       "label": "AI Agents",
       "mindshare_score": 0.22,
-      "momentum": -0.1,
-      "rationale": "SMH -1.42% 5d and NVDA +0.30% 5d; AI-agent tokens not re-measured this run. Treat as unrefreshed.",
+      "momentum": -0.2,
+      "rationale": "TAO -4.5%, FET -3.5%, VIRTUAL -4.2% 24h with small OI (TAO $42M); SMH -3.69% 5d and NVDA -0.39% 5d, so the tokens are weakening alongside tech.",
       "tokens": [
         "FET",
         "TAO",
@@ -88,14 +88,14 @@
       "to": "l1-majors",
       "confidence": 0.15,
       "trigger": "SMH 5d change falls below -5% while BTC OI stays above $3.3B",
-      "note": "Low-confidence; not met (SMH 5d -1.4%, BTC OI $3.35B), so it carries over unchanged."
+      "note": "Low-confidence; not met (SMH 5d -3.69%, BTC OI $3.40-3.50B), so it carries over and is closer than last run."
     },
     {
       "from": "perp-dex-defi",
       "to": "privacy",
-      "confidence": 0.15,
+      "confidence": 0.1,
       "trigger": "ZEC OI stays above $600M while HYPE OI falls below $1.6B",
-      "note": "Low-confidence; HYPE OI is still $1.63B so the trigger is not met, and OI alone is thin evidence."
+      "note": "Low-confidence; ZEC OI $616M but HYPE OI $1.62B is still above the line, so not met; OI alone is thin evidence."
     }
   ]
 }
