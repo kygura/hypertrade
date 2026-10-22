@@ -1,0 +1,101 @@
+{
+  "generated_at": "2026-10-22T02:05:00Z",
+  "sectors": [
+    {
+      "id": "l1-majors",
+      "label": "L1 Majors",
+      "mindshare_score": 0.6,
+      "momentum": 0.05,
+      "rationale": "BTC OI $3.36B (z30 +0.13), ETH OI $2.72B (z30 +1.52), SOL OI $582M; 24h +0.6% BTC, -0.1% ETH, -0.4% SOL, +0.9% XRP. BTC dominance 59.6% (z30 -0.29). Group OI $6.90B. Social share not available (Elfa unset).",
+      "tokens": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "hypertrade rolling baselines (z30)"
+      ]
+    },
+    {
+      "id": "perp-dex-defi",
+      "label": "Perp DEX & DeFi",
+      "mindshare_score": 0.5,
+      "momentum": -0.05,
+      "rationale": "HYPE OI $1.63B (z30 +0.83), HYPE -2.1% 24h with funding negative (z30 -3.10); ENA +5.5%, AAVE -2.2%, UNI -2.8%. Group OI $1.88B. Social share not available (Elfa unset).",
+      "tokens": [
+        "HYPE",
+        "AAVE",
+        "UNI",
+        "ENA",
+        "PENDLE"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "hypertrade rolling baselines (z30)"
+      ]
+    },
+    {
+      "id": "privacy",
+      "label": "Privacy",
+      "mindshare_score": 0.42,
+      "momentum": 0.1,
+      "rationale": "ZEC OI $664M (+3.3% 24h), XMR OI $96M (+4.8%, funding 0.0094%/h, well above the 0.00125%/h typical of the universe). Group OI $761M.",
+      "tokens": [
+        "ZEC",
+        "XMR"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)"
+      ]
+    },
+    {
+      "id": "memecoins",
+      "label": "Memecoins",
+      "mindshare_score": 0.28,
+      "momentum": 0.0,
+      "rationale": "PUMP OI $173M (+5.7% 24h), DOGE OI $96M (-1.2%), WIF OI $5M (+0.3%). Group OI $274M. Attention not re-measured beyond OI and price.",
+      "tokens": [
+        "WIF",
+        "DOGE",
+        "PUMP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "label": "AI & Agents",
+      "mindshare_score": 0.22,
+      "momentum": -0.1,
+      "rationale": "TAO OI $46M (-2.3% 24h), FET OI $9.5M (-2.9%), VIRTUAL OI $6.7M (-0.3%). Group OI $62M. NVDA +2.5% 1d but SMH -1.4% 5d.",
+      "tokens": [
+        "FET",
+        "TAO",
+        "VIRTUAL"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs (live)",
+        "yahoo SMH/NVDA"
+      ]
+    }
+  ],
+  "rotations": [
+    {
+      "from": "ai-agents",
+      "to": "l1-majors",
+      "confidence": 0.15,
+      "trigger": "SMH 5d change falls below -5% while BTC OI stays above $3.3B",
+      "note": "Low-confidence; last run's trigger was not met (SMH 5d -1.4%, BTC OI $3.35B), so it carries over with the same threshold."
+    },
+    {
+      "from": "perp-dex-defi",
+      "to": "privacy",
+      "confidence": 0.15,
+      "trigger": "ZEC OI stays above $600M while HYPE OI falls below $1.6B",
+      "note": "Low-confidence; HYPE slipped 2.1% on negative funding while ZEC OI rose, which may hint at attention moving, though OI alone is thin evidence."
+    }
+  ]
+}

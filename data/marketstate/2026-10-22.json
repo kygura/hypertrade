@@ -1,0 +1,194 @@
+{
+  "generated_at": "2026-10-22T02:05:00Z",
+  "headline": "BTC eased to $83,534 from $84,784 at the last run as HL total OI fell to $11.74B (z30 +1.26), while HYPE funding dropped to z30 -3.10 and Fear & Greed rose to 68 (z30 +2.43).",
+  "tldr": "hl-cycles still reads mild risk-off (33% allocation, since Oct 19; feed 21.5 h stale) while BTC sits $83.5K, 2.2% above the ETF cost basis ($81.7K). Main change since the last read: leverage trimmed (total OI -1.5%), BTC funding back near zero, sentiment stretched at 68. Main disagreement: greed rising against a Restrictive Macro lens (30) and a 10Y near 5.15%. Next catalyst: FOMC Oct 28. Not financial advice; market intelligence only.",
+  "domains": [
+    {
+      "domain": "macro",
+      "summary": "FRED returned a maintenance page (HTTP 200, no CSV) for every series, so Yahoo quotes stand in (live, Oct 22 early): 10Y 5.15% (^TNX; 5.12% prior close, 5.19% five sessions ago), dollar index 101.72 (102.00 five sessions ago), WTI $98.18 (from $101.79 prior close), Brent $110.11 (from $108.79), gold $4,130 (from $4,143). Fed funds, CPI and payrolls not refreshed this run. The 10Y above 5% keeps the bias hawkish even with the dollar easing; oil near $100 stays an inflation input ahead of CPI on Nov 10. Liquidity call: tightening, since stablecoin supply is $303.8B (DefiLlama, 7d -0.56%, 30d -0.51%). A hawkish hold at the Oct 28 FOMC, or WTI back above $105, would deepen that read.",
+      "signals": [
+        {
+          "label": "10Y yield (Yahoo)",
+          "value": "5.15%",
+          "direction": "up"
+        },
+        {
+          "label": "Dollar index (Yahoo)",
+          "value": "101.72",
+          "direction": "down"
+        },
+        {
+          "label": "WTI (Yahoo)",
+          "value": "$98.18",
+          "direction": "down"
+        },
+        {
+          "label": "Brent (Yahoo)",
+          "value": "$110.11",
+          "direction": "up"
+        },
+        {
+          "label": "Gold (Yahoo)",
+          "value": "$4,130",
+          "direction": "flat"
+        },
+        {
+          "label": "Stablecoin supply (7d -0.56%)",
+          "value": "$303.8B",
+          "direction": "down"
+        }
+      ]
+    },
+    {
+      "domain": "equities",
+      "summary": "As of the Oct 21 close (Yahoo): SPY $773.09 (+0.5% 1d, +0.5% 5d), QQQ $725.20 (+1.1%, -0.5% 5d), IWM $276.48 (+0.3%, +1.9% 5d). VIX 16.68 (-3.6% 1d, +12% over a month): calm. Small caps lead on five sessions while Nasdaq lags. Put/call not sourced; VIX-only regime read. A VIX close above 25 would change the read.",
+      "signals": [
+        {
+          "label": "SPY",
+          "value": "773.09",
+          "direction": "up"
+        },
+        {
+          "label": "QQQ",
+          "value": "725.20",
+          "direction": "up"
+        },
+        {
+          "label": "IWM",
+          "value": "276.48",
+          "direction": "up"
+        },
+        {
+          "label": "VIX",
+          "value": "16.68",
+          "direction": "down"
+        }
+      ]
+    },
+    {
+      "domain": "crypto",
+      "summary": "Hyperliquid marks: BTC $83,534 (+0.7% 24h), ETH $2,453 (-0.1%), SOL $106.25 (-0.4%), HYPE $80.07 (-2.1%). HL total OI $11.74B (z30 +1.26, from $11.92B previous), BTC OI $3.35B (z30 +0.13), ETH OI $2.72B (z30 +1.52), HYPE OI $1.63B (z30 +0.83). Funding: BTC about zero (z30 -1.06), ETH and SOL 0.00125%/h (z30 +0.60, +0.79), HYPE slightly negative (z30 -3.10, unusual). Fear & Greed 68 (z30 +2.43, unusual; 63 prior, 78 thirty days ago). Price flat to up, OI down, funding flat: modest deleveraging with no crowded carry; the HYPE funding reading means shorts are paying there while price slipped 2.1%. Total market cap $2.81T (z30 +1.17), BTC dominance 59.6%, DVOL 37.5. BTC rose against a firm 10Y and easing dollar, so macro is mixed and the move is largely its own. Would change if ETH or SOL funding z30 reaches 2 or BTC closes below $81.7K.",
+      "signals": [
+        {
+          "label": "BTC",
+          "value": "$83,534 (+0.7% 24h)",
+          "direction": "up"
+        },
+        {
+          "label": "ETH",
+          "value": "$2,453 (-0.1% 24h)",
+          "direction": "flat"
+        },
+        {
+          "label": "SOL",
+          "value": "$106.25 (-0.4% 24h)",
+          "direction": "flat"
+        },
+        {
+          "label": "HYPE (funding z30 -3.10)",
+          "value": "$80.07 (-2.1% 24h)",
+          "direction": "down"
+        },
+        {
+          "label": "HL total OI (z30 +1.26)",
+          "value": "$11.74B",
+          "direction": "down"
+        },
+        {
+          "label": "BTC funding (z30 -1.06)",
+          "value": "~0%/h",
+          "direction": "flat"
+        },
+        {
+          "label": "Fear & Greed (z30 +2.43)",
+          "value": "68",
+          "direction": "up"
+        },
+        {
+          "label": "Total crypto mcap (z30 +1.17)",
+          "value": "$2.81T",
+          "direction": "down"
+        },
+        {
+          "label": "BTC DVOL",
+          "value": "37.5",
+          "direction": "flat"
+        }
+      ]
+    },
+    {
+      "domain": "tech",
+      "summary": "Yahoo closes Oct 21: NVDA $221.97 (+2.5% 1d, +0.3% 5d, -3.0% 1m), AAPL $343.99 (+1.3%, +0.3%), MSFT $532.95 (+0.2%, -0.1%, +7.0% 1m), AMZN $262.37 (-0.1%, +3.3%), GOOGL $334.76 (-1.6%, -3.7%), META $697.52 (+0.5%, -5.4%). SMH $556.70 (+1.9% 1d, -1.4% 5d, -8.4% 1m): the semis bounce is led by NVDA, so breadth is concentrated rather than wide. AMZN leads on five sessions while META and GOOGL lag. AI-cycle news and earnings dates were not sourced this run. A SMH five-day change below -5% would deepen the lag.",
+      "signals": [
+        {
+          "label": "AAPL",
+          "value": "343.99",
+          "direction": "up"
+        },
+        {
+          "label": "MSFT",
+          "value": "532.95",
+          "direction": "flat"
+        },
+        {
+          "label": "NVDA",
+          "value": "221.97",
+          "direction": "up"
+        },
+        {
+          "label": "GOOGL",
+          "value": "334.76",
+          "direction": "down"
+        },
+        {
+          "label": "AMZN",
+          "value": "262.37",
+          "direction": "flat"
+        },
+        {
+          "label": "META (5d -5.4%)",
+          "value": "697.52",
+          "direction": "up"
+        },
+        {
+          "label": "SMH (5d -1.4%)",
+          "value": "556.70",
+          "direction": "up"
+        }
+      ]
+    },
+    {
+      "domain": "geopolitics",
+      "summary": "Live search returned one item dated Oct 2026, from a niche energy publisher and unconfirmed by a wire: an executive order implementing the Graham Russia and Iran sanctions act of 2026 was reported signed around Oct 16 while waiving most new sanctions, ahead of an Oct 18 effective date. Everything else was Jan–Feb 2026 or older, so tensions, tariffs and OPEC+ status are otherwise unverified. Market pricing is the fresher evidence: Brent $110.11 and WTI $98.18 imply a remaining supply-risk premium. Scheduled: FOMC Oct 28, NFP Nov 6, CPI Nov 10. A hawkish FOMC surprise could pressure risk assets.",
+      "signals": [
+        {
+          "label": "FOMC",
+          "value": "Oct 28",
+          "direction": "flat"
+        },
+        {
+          "label": "NFP",
+          "value": "Nov 6",
+          "direction": "flat"
+        },
+        {
+          "label": "CPI",
+          "value": "Nov 10",
+          "direction": "flat"
+        }
+      ]
+    }
+  ],
+  "thesis": {
+    "observe": "BTC $83,534 (-1.5% since the last run at $84,784), ETH $2,453, SOL $106.25, HYPE $80.07. HL total OI $11.74B (z30 +1.26), BTC funding about zero (z30 -1.06), HYPE funding z30 -3.10, Fear & Greed 68 (z30 +2.43). hl-cycles: mild_risk_off since Oct 19, 2 of 6 stress conditions on (STH-SOPR 7d mean below 1, ETF 7d outflow), Compass 47.2 Neutral with Macro weakest at 30; feed 21.5 h stale. BTC is 2.2% above the ETF cost basis ($81.7K) and 5.3% above the True Market Mean ($79.4K). 10Y 5.15%, WTI $98.18, Brent $110.11, VIX 16.68, stablecoins $303.8B (7d -0.56%). FRED unavailable (maintenance page).",
+    "infer": "Price eased while OI fell and funding sat near zero, so we read a mild unwind of the leverage that built earlier in the week, not crowded carry; ETH and SOL funding remain within normal range. Consensus is pricing a hold on Oct 28; we read the risk as a hawkish tone given the 10Y above 5%. The disagreement: Fear & Greed is stretched (z30 +2.43) while stablecoin supply is shrinking and the Macro lens is Restrictive, so risk skews toward a fragile, sentiment-led advance if the dollar firms.",
+    "forecast": "Base case (we lean here, low-confidence): BTC holds above the ETF cost basis ($81.7K) into the Oct 28 FOMC; a daily close below $81.7K breaks it and is hl-cycles' stated invalidation. Tail case (low-confidence): a daily close below the True Market Mean ($79.4K) could put the STH cost basis ($74.6K) in play. Second tail case (low-confidence): a dovish hold with oil under $100 may let stablecoin supply recover and support a move toward the Mean MVRV price ($105.7K), far overhead.",
+    "disclaimer": "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything."
+  },
+  "risks": [
+    "Daily BTC close below $81,699 (ETF cost basis, hl-cycles invalidation)",
+    "Daily BTC close below $79,354 (True Market Mean)",
+    "ETH or SOL funding z30 (hl.funding.ETH / hl.funding.SOL) reaches +2 or higher",
+    "VIX closing above 25 before the Oct 28 FOMC"
+  ]
+}
