@@ -1,68 +1,68 @@
 {
   "regime": "neutral",
   "stance": "range",
-  "thesis": "BTC ($81.7K) is 14.6% above its 20-week average and 12.5% above the 200-day, so the weekly trend reads up, but hl-cycles flipped to mild risk-off on Oct 19 (allocation 33%, 2 of 6 stress conditions on: STH-SOPR below 1 and ETF 7d outflow) and the Compass Macro lens is the weakest at 30 (Restrictive). Price sits 0.03% above the ETF cost basis ($81.7K) and 3.2% above the True Market Mean ($79.2K), with the Mean MVRV price ($105.6K) far overhead, so we lean that the range persists into the Oct 28 FOMC. Funding is at the floor on the majors, so leverage is not the driver; the bull case sees an up weekly trend and an HTF phase of expansion.",
+  "thesis": "BTC ($82.7K) is 14.0% above its 20-week average and 13.6% above the 200-day, so the weekly trend reads up, and hl-cycles reads mild risk-on (allocation 66%, 2 of 6 stress conditions on: STH-SOPR below 1 and falling stablecoin supply). The Compass Macro lens is the weakest at 28 (Restrictive) and 10Y is 5.12%, so we lean that the range persists into the Oct 28 FOMC. Price sits 1.2% above the ETF cost basis ($81.7K) and 4.2% above the True Market Mean ($79.2K), with the Mean MVRV price ($105.7K) far overhead. Funding is near zero on BTC so leverage is not the driver; the bull case sees an up weekly trend and risk-on regime.",
   "biases": [
     {
       "asset": "BTC",
       "bias": "neutral",
       "levels": [
         {
-          "label": "True Market Mean",
-          "price": 79158
+          "label": "ETF cost basis",
+          "price": 81700
         },
         {
-          "label": "ETF cost basis",
-          "price": 81699
+          "label": "True Market Mean",
+          "price": 79198
         },
         {
           "label": "STH cost basis",
-          "price": 74415
+          "price": 74568
         }
       ],
-      "note": "Range between TMM and ETF cost basis; hl-cycles is mild risk-off while the weekly trend is up."
+      "note": "Range between the ETF cost basis and True Market Mean; hl-cycles risk-on while the Macro lens is Restrictive."
     },
     {
       "asset": "ETH",
       "bias": "neutral",
       "levels": [
         {
-          "label": "20W average (distance +12.3%)",
-          "price": 2135
+          "label": "20W average (distance +11.7%)",
+          "price": 2179
         }
       ],
-      "note": "Trend up on weekly structure but follows BTC; no independent level from the pack."
+      "note": "Weekly trend up but follows BTC; no independent level from the pack."
     },
     {
       "asset": "SOL",
       "bias": "neutral",
       "levels": [
         {
-          "label": "20W average (distance +17.5%)",
-          "price": 89
+          "label": "20W average (distance +14.8%)",
+          "price": 91
         }
       ],
-      "note": "Higher beta to BTC, rv30 47%."
+      "note": "Higher beta to BTC, rv30 41%."
     },
     {
       "asset": "HYPE",
       "bias": "neutral",
       "levels": [
         {
-          "label": "200D average (distance +22.8%)",
-          "price": 64
+          "label": "200D average (distance +21.1%)",
+          "price": 64.8
         }
       ],
-      "note": "Trend up, rv30 53%; OI $1.60B near its 30d mean."
+      "note": "Trend up, rv30 52%; funding negative at z30 -3.10."
     }
   ],
   "what_changes_it": [
-    "BTC daily close below $79,158 (True Market Mean) would move the view toward risk_off",
-    "BTC daily close above $105,592 (Mean MVRV price) with realized cap growing would move it toward trend_long",
-    "hl-cycles regime.state changes from mild_risk_off",
+    "BTC daily close below $81,700 (ETF cost basis, hl-cycles invalidation) would move the view toward risk_off",
+    "BTC daily close above $105,713 (Mean MVRV price) with realized cap growing would move it toward trend_long",
+    "hl-cycles regime.state changes from mild_risk_on",
     "FOMC on Oct 28 raises rates, or VIX closes above 25"
   ],
-  "generated_at": "2026-10-20T01:56:30.030Z",
-  "valid_until": "2026-10-27T01:56:30.030Z",
-  "hl_cycles_state": "mild_risk_off"
+  "generated_at": "2026-10-22T05:56:56.953Z",
+  "valid_until": "2026-10-29T05:56:56.953Z",
+  "hl_cycles_state": "mild_risk_on"
 }

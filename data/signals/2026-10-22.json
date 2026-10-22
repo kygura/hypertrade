@@ -1,11 +1,49 @@
 {
-  "generatedAt": "2026-10-22T01:54:14.240Z",
+  "generatedAt": "2026-10-22T05:55:18.648Z",
   "since": "2026-10-21T21:55:31.440Z",
   "nearMiss": {
     "top": null,
     "all": []
   },
-  "novelty": [],
+  "novelty": [
+    {
+      "id": "2026-10-21:W",
+      "coin": "W",
+      "kind": "new_extreme",
+      "pushed": false,
+      "barDate": "2026-10-21",
+      "families": [
+        "funding"
+      ],
+      "features": [
+        {
+          "id": "funding_z90",
+          "p1": -4.0528,
+          "p99": 1.2695,
+          "bars": 356,
+          "value": -4.6082,
+          "histMax": 3.3456,
+          "histMin": -5.067,
+          "pctRank": 0.6
+        },
+        {
+          "id": "funding_apr(7)",
+          "p1": -36.8269,
+          "p99": 23.1886,
+          "bars": 410,
+          "value": -49.0164,
+          "histMax": 27.8128,
+          "histMin": -48.0991,
+          "pctRank": 0
+        }
+      ],
+      "notified": [],
+      "detectedAt": "2026-10-22T04:32:59.095Z",
+      "marketWide": false,
+      "nearSetups": [],
+      "suppressed": "cooldown"
+    }
+  ],
   "ready": [],
   "thesisWatch": [],
   "lab": {
@@ -22,7 +60,9 @@
   },
   "changes": {
     "nearMiss": false,
-    "novelty": [],
+    "novelty": [
+      "2026-10-21:W"
+    ],
     "ready": {
       "added": [],
       "removed": []
@@ -30,6 +70,6 @@
     "thesis": [],
     "labTrials": []
   },
-  "changed": false,
+  "changed": true,
   "gaps": []
 }
