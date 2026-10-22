@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-22T17:58:00Z",
+  "generated_at": "2026-10-22T21:55:07Z",
   "sectors": [
     {
       "id": "l1-majors",
-      "label": "L1 Majors",
+      "label": "L1 majors",
       "mindshare_score": 0.6,
       "momentum": -0.1,
-      "rationale": "BTC OI $3.50B (z30 +2.07), ETH OI $2.62B, SOL OI $577M; HL marks vs prior day BTC -3.9%, ETH -5.3%, SOL -4.4%. BTC dominance 59.48% (z30 -0.88). Social share not available (Elfa unset), so the score is my own judgment.",
+      "rationale": "BTC -4.0%, ETH -4.3%, SOL -4.3% on the day; BTC OI $3.50B (z30 +2.07) rose while price fell, ETH OI $2.63B flat (z30 -0.01). Majors still hold most OI.",
       "tokens": [
         "BTC",
         "ETH",
@@ -14,8 +14,8 @@
         "XRP"
       ],
       "sources": [
-        "hyperliquid metaAndAssetCtxs (live)",
-        "hypertrade rolling baselines (z30)"
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
       ]
     },
     {
@@ -23,7 +23,7 @@
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.5,
       "momentum": -0.2,
-      "rationale": "HYPE OI $1.59B (z30 -0.43), HYPE -5.3% vs prior day with funding at the floor; the sector is falling at least as fast as the majors. Social share not available (Elfa unset).",
+      "rationale": "HYPE -5.0% with OI $1.59B (z30 -0.4); AAVE -6.1%, UNI -7.8%, ENA -8.1%. DeFi sold harder than majors; AAVE and DOGE funding turned slightly negative.",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -32,53 +32,53 @@
         "PENDLE"
       ],
       "sources": [
-        "hyperliquid metaAndAssetCtxs (live)",
-        "hypertrade rolling baselines (z30)"
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
       ]
     },
     {
       "id": "privacy",
       "label": "Privacy",
-      "mindshare_score": 0.42,
-      "momentum": 0,
-      "rationale": "Carried from the midday read (not re-measured this run): ZEC OI near $616M and XMR firmer than ZEC; the pair diverged, so the sector read is mixed. Social share not available.",
+      "mindshare_score": 0.4,
+      "momentum": -0.1,
+      "rationale": "ZEC -10.4% to $1,215 with OI about $553M (below $600M); XMR -5.6%. Privacy lost the most among large OI names.",
       "tokens": [
         "ZEC",
         "XMR"
       ],
       "sources": [
-        "hyperliquid metaAndAssetCtxs (live)"
+        "hyperliquid metaAndAssetCtxs"
       ]
     },
     {
       "id": "memecoins",
       "label": "Memecoins",
       "mindshare_score": 0.28,
-      "momentum": -0.1,
-      "rationale": "Carried from the midday read (not re-measured): WIF -4.4%, DOGE -3.1%, PUMP the outlier, low relative OI. Social share not available.",
+      "momentum": -0.15,
+      "rationale": "PUMP -10.7% (OI about $139M), WIF -7.5%, DOGE -5.0% with funding slightly negative; beta-heavy drawdown.",
       "tokens": [
         "WIF",
         "DOGE",
         "PUMP"
       ],
       "sources": [
-        "hyperliquid metaAndAssetCtxs (live)"
+        "hyperliquid metaAndAssetCtxs"
       ]
     },
     {
       "id": "ai-agents",
-      "label": "AI Agents",
+      "label": "AI agents",
       "mindshare_score": 0.22,
       "momentum": -0.2,
-      "rationale": "Carried token moves from midday (TAO -4.5%, FET -3.5%, VIRTUAL -4.2%); SMH is now -5.75% over 5 days, which meets the rotation trigger's threshold. Social share not available.",
+      "rationale": "TAO -6.7%, FET -6.9%, VIRTUAL -6.4% on the day, in step with SMH -6.0%; OI small (TAO about $43M).",
       "tokens": [
         "FET",
         "TAO",
         "VIRTUAL"
       ],
       "sources": [
-        "hyperliquid metaAndAssetCtxs (live)",
-        "yahoo SMH/NVDA"
+        "hyperliquid metaAndAssetCtxs",
+        "yahoo SMH"
       ]
     }
   ],
@@ -86,16 +86,16 @@
     {
       "from": "ai-agents",
       "to": "l1-majors",
-      "confidence": 0.15,
-      "trigger": "SMH 5d change falls below -5% while BTC OI stays above $3.3B",
-      "note": "Low-confidence; SMH 5d is -5.75% (below -5%) and BTC OI is $3.50B (above $3.3B), so the trigger is met on both legs; a single reading, so treat it as thin evidence."
+      "confidence": 0.12,
+      "trigger": "SMH 5d change stays below -5% while BTC OI stays above $3.3B",
+      "note": "Low-confidence; SMH fell -6.0% on the day and BTC OI is $3.50B, so both legs hold; one session, so thin evidence."
     },
     {
       "from": "perp-dex-defi",
       "to": "privacy",
-      "confidence": 0.1,
-      "trigger": "ZEC OI stays above $600M while HYPE OI falls below $1.6B",
-      "note": "Low-confidence; ZEC OI near $616M (midday) but HYPE OI $1.59B is below the $1.6B line, so the trigger is met; OI alone is thin evidence."
+      "confidence": 0.05,
+      "trigger": "ZEC OI rises above $600M while HYPE OI falls below $1.55B",
+      "note": "Low-confidence; ZEC OI fell to about $553M and HYPE OI is $1.59B, so the trigger is not met and the idea is fading."
     }
   ]
 }
