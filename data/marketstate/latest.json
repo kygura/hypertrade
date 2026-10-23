@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-10-23T05:57:06Z",
-  "headline": "BTC $81,858 sits 0.2% above the ETF cost basis ($81.7K), hl-cycles confirm level and the line its brief ties to the regime; BTC OI z30 rose to +1.78 (from +1.51) while Fear & Greed stayed at 50 after 68.",
-  "tldr": "Regime: hl-cycles mild risk-on since Oct 9 (1 of 6 stress conditions on, Compass 43.5 Neutral, feed 13.7 h old). Change: price edged up on HL (BTC $81,544 to $81,858) but BTC OI built (z30 +1.78) with funding at the floor. Disagreement: a risk-on regime against a Restrictive Macro lens (26), 10Y 5.13% and Brent $115 (Oct 20); Nasdaq-led selloff in the last US session (QQQ -2.9%, SMH -6.0%). Next catalyst: FOMC Oct 28. Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything.",
+  "generated_at": "2026-10-23T09:55:04Z",
+  "headline": "BTC $81,659 on HL is 0.05% below the ETF cost basis ($81.7K), hl-cycles' stated invalidation line, while BTC OI z30 rose to +1.94 (from +1.78), just under the +2 flag, and Fear & Greed held at 50; the daily close that would confirm a break has not printed.",
+  "tldr": "Regime: hl-cycles mild risk-on since Oct 9 (1 of 6 stress conditions on, Compass 43.5 Neutral, feed 5.4 h old). Change: BTC drifted to $81,659 (-0.35% 24h), now level with the ETF cost basis, while BTC OI kept building (z30 +1.94) with funding at the floor. Disagreement: a risk-on regime against a Restrictive Macro lens (26), 10Y 5.13% and Brent near $110-115 on Middle East supply fears; the Oct 22 Nasdaq-led selloff (QQQ -2.9%, SMH -6.0%, META -7.0%) has not yet been fully echoed by crypto. Next catalyst: FOMC Oct 28. Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything.",
   "domains": [
     {
       "domain": "macro",
-      "summary": "10Y 5.13% and 2Y 4.81% (Oct 21), 2s10s +31bp (Oct 22) vs +38bp on Oct 19, a bear flattener driven by the front end (2Y +4bp vs 10Y -2bp since Oct 19). Brent $115.22 and WTI $107.89 (Oct 20) remain above $100 but Brent is down from $126.55 (Oct 14), an inflation input into the Oct 28 FOMC and Nov 10 CPI. Fed funds 3.88%. Broad dollar 121.40 (Oct 16, stale). Two live searches this run returned nothing dated Oct 21-23, so current rate pricing is unverified. We lean hawkish while the 10Y is above 5% and oil above $100; liquidity reads tightening (stablecoins -0.67% 7d, -0.64% 30d). A dovish FOMC hold or Brent below $100 would soften the read.",
+      "summary": "10Y 5.13% and 2Y 4.81% (Oct 21), 2s10s +31bp (Oct 22) vs +38bp on Oct 19, a bear flattener driven by the front end (2Y +4bp vs 10Y -2bp since Oct 19). Brent $115.22 and WTI $107.89 (Oct 20) remain above $100 but Brent is down from $126.55 (Oct 14), an inflation input into the Oct 28 FOMC and Nov 10 CPI. Fed funds 3.88%. Broad dollar 121.40 (Oct 16, stale). Live search this run put Brent near $110-113 on Oct 22-23 (secondary reports, vs FRED $115.22 on Oct 20); current FOMC rate pricing is unverified. We lean hawkish while the 10Y is above 5% and oil above $100; liquidity reads tightening (stablecoins -0.67% 7d, -0.64% 30d). A dovish FOMC hold or Brent below $100 would soften the read.",
       "signals": [
         {
           "label": "US 10Y yield (Oct 21)",
@@ -77,36 +77,36 @@
     },
     {
       "domain": "crypto",
-      "summary": "HL marks vs prior day: BTC $81,858 (-1.15%), ETH $2,404 (-1.40%), SOL $104.42 (-0.55%), HYPE $77.93 (-0.69%). HL total OI $11.42B (z30 +0.20); BTC OI $3.52B in the app series (z30 +1.78, up from +1.51) while ETH OI z30 -0.42 and SOL -1.22, so BTC is where positions are being added. Funding sits at the floor (about 0.00125%/h) on all four, so no crowded carry. Read: price down modestly, OI up on BTC, funding flat means new positioning without leverage stress; who leans which way is unclear from funding alone. Fear & Greed 50 (68 the day before; app z30 -1.91, just inside the unusual threshold), DVOL 38.2 (z30 +0.63), stablecoin supply $303.2B (7d -0.67%), BTC dominance 59.4%. BTC -1.15% against QQQ -2.86% is a same-sign but smaller move, so we read the tape as partly macro-led.",
+      "summary": "HL marks vs prior day: BTC $81,659 (-0.35%), ETH $2,398.7 (-0.35%), SOL $104.19 (-0.09%), HYPE $78.11 (-0.38%). HL total OI $11.54B (z30 +0.43); BTC OI $3.57B in the app series (z30 +1.94, up from +1.78, just under the +2 flag) while ETH OI z30 -0.21 and SOL -0.88, so BTC is where positions are being added. Funding sits at the floor (about 0.00125%/h) on BTC, SOL and HYPE and lower on ETH, so no crowded carry. Read: price drifting lower, OI up on BTC, funding flat means new positioning without leverage stress; funding alone does not say who leans which way. Fear & Greed 50 (68 the day before; z30 -1.77), DVOL 37.2 (z30 -0.87), stablecoin supply $303.2B (7d -0.65%), BTC dominance 59.4%. BTC -0.35% against a QQQ -2.9% session on Oct 22 is a same-sign but much smaller move, so we read the tape as partly macro-led. A BTC OI z30 at or above +2 while price falls would be the flagged condition.",
       "signals": [
         {
           "label": "BTC",
-          "value": "$81,858 (-1.15% 24h)",
+          "value": "$81,659 (-0.35% 24h)",
           "direction": "down"
         },
         {
           "label": "ETH",
-          "value": "$2,404 (-1.40% 24h)",
+          "value": "$2,399 (-0.35% 24h)",
           "direction": "down"
         },
         {
           "label": "SOL",
-          "value": "$104.42 (-0.55% 24h)",
+          "value": "$104.19 (-0.09% 24h)",
           "direction": "down"
         },
         {
           "label": "HYPE",
-          "value": "$77.93 (-0.69% 24h)",
+          "value": "$78.11 (-0.38% 24h)",
           "direction": "down"
         },
         {
           "label": "HL total OI",
-          "value": "$11.42B (z30 +0.20)",
+          "value": "$11.54B (z30 +0.43)",
           "direction": "flat"
         },
         {
           "label": "BTC OI",
-          "value": "$3.52B (z30 +1.78)",
+          "value": "$3.57B (z30 +1.94)",
           "direction": "up"
         },
         {
@@ -116,12 +116,12 @@
         },
         {
           "label": "BTC DVOL",
-          "value": "38.2 (z30 +0.63)",
+          "value": "37.2 (z30 -0.87)",
           "direction": "flat"
         },
         {
           "label": "Stablecoin supply",
-          "value": "$303.2B (7d -0.67%)",
+          "value": "$303.2B (7d -0.65%)",
           "direction": "down"
         }
       ]
@@ -169,7 +169,7 @@
     },
     {
       "domain": "geopolitics",
-      "summary": "Scheduled: FOMC decision Oct 28, NFP Nov 6, CPI Nov 10. Live searches this run (markets/oil/tariffs and the Nasdaq selloff) returned only older items, none dated Oct 21-23, so current tensions are not confirmed and nothing is carried from memory. For the tape: Brent above $100 may keep inflation pressure elevated into the FOMC; Brent fell from $126.55 (Oct 14) to $115.22 (Oct 20), which may ease it if sustained.",
+      "summary": "Scheduled: FOMC decision Oct 28, NFP Nov 6, CPI Nov 10. Live search this run found reports dated Oct 22-23 of Brent near $110-113 after a deadly attack in Saudi Arabia raised escalation fears and kept Strait of Hormuz transit uncertain, with no diplomatic breakthrough reported; one source also ties the Oct 22 equity drop to Meta's earnings and AI capex worries. These are secondary reports, so levels are approximate. For the tape: Brent above $100 may keep inflation pressure elevated into the FOMC and Nov 10 CPI; a sustained fall below $100 may ease it.",
       "signals": [
         {
           "label": "FOMC decision",
@@ -195,8 +195,8 @@
     }
   ],
   "thesis": {
-    "observe": "BTC $81,858, ETH $2,404, SOL $104.42, HYPE $77.93 on HL (-0.6% to -1.4% vs prior day). HL total OI $11.42B (z30 +0.20), BTC OI $3.52B (z30 +1.78), funding at the floor on all four, Fear & Greed 50 (68 prior day), DVOL 38.2, stablecoins $303.2B (7d -0.67%). Last US close (Oct 22): QQQ -2.86%, SMH -6.0%, META -7.0%, IWM +0.07%, VIX 19.03. hl-cycles (13.7 h old): mild risk-on since Oct 9, 1 of 6 stress conditions on, Compass 43.5 Neutral, Macro lens 26 Restrictive; ETF cost basis $81.7K (BTC 0.2% above), True Market Mean $79.4K (2.6% below), STH cost basis $74.6K (9.1% below).",
-    "infer": "Flat funding with BTC OI building suggests positions are being added without leverage stress, while the drop is smaller than the Nasdaq move, so we read the tape as partly macro-led and partly idiosyncratic. Consensus is pricing a calm regime (VIX under 20); we read the risk as sentiment (F&G 68 to 50) catching down to a hawkish backdrop (10Y 5.13%, Brent $115) and a tech-led equity drawdown that crypto has not yet fully echoed. The disagreement is a risk-on regime against a Restrictive Macro lens.",
+    "observe": "BTC $81,659, ETH $2,398.7, SOL $104.19, HYPE $78.11 on HL (-0.1% to -0.4% vs prior day). HL total OI $11.54B (z30 +0.43), BTC OI $3.57B (z30 +1.94), funding at the floor on BTC, SOL and HYPE, Fear & Greed 50 (68 prior day), DVOL 37.2, stablecoins $303.2B (7d -0.65%). Last US close (Oct 22): QQQ -2.86%, SMH -6.0%, META -7.0%, IWM +0.07%, VIX 19.03. hl-cycles (5.4 h old): mild risk-on since Oct 9, 1 of 6 stress conditions on, Compass 43.5 Neutral, Macro lens 26 Restrictive; ETF cost basis $81.7K (BTC 0.05% below), True Market Mean $79.4K (2.6% below), STH cost basis $74.6K (9.1% below).",
+    "infer": "Flat funding with BTC OI building suggests positions are being added without leverage stress, while BTC's drift is much smaller than the Nasdaq move, so we read the tape as partly macro-led and partly idiosyncratic. Consensus is pricing a calm regime (VIX under 20); we read the risk as sentiment (F&G 68 to 50) catching down to a hawkish backdrop (10Y 5.13%, Brent about $110+) and a tech-led drawdown that crypto has not yet fully echoed. The disagreement is a risk-on regime against a Restrictive Macro lens.",
     "forecast": "Base case (we lean here, low-confidence): BTC chops around the ETF cost basis ($81.7K) into the Oct 28 FOMC; a daily close above $81.7K keeps the hl-cycles confirm condition in view, a daily close below it is the stated invalidation. Tail case (low-confidence): a daily close below the True Market Mean ($79.4K) could put the STH cost basis ($74.6K) in play, more likely with a hawkish surprise or a VIX close above 25. Second tail case (low-confidence): a further Nasdaq leg lower may drag crypto if BTC OI keeps building into weakness; risk skews slightly to the downside while Macro stays Restrictive.",
     "disclaimer": "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything."
   },
