@@ -1,9 +1,13 @@
+import type { SetupId } from "../../shared/setups.js";
 import { entryMid, rMultiple } from "./ledger.js";
 import type { HtfView, Setup, SetupProposal } from "./schema.js";
 
 // Restraint is enforced here, not requested (docs/fallback-routine.md,
 // pipeline step 6). Pure. A proposal that breaks a rule is dropped with the
 // rule's name; nothing the model says about rr, status or ids is trusted.
+// The HTF view is the operator's optional stance: while it is valid,
+// stand_aside blocks every new setup; without one, the scan's code-computed
+// trend alignment is the regime rule.
 
 export const GATE = {
   maxZoneWidthPct: 4,
@@ -12,7 +16,7 @@ export const GATE = {
   minRr: 2,
   maxDays: { swing: 10 },
   maxOpen: 5,
-  maxNew: { pulse: 2, daily: 3 },
+  maxNew: { scan: 2, daily: 3 },
   maxCounterOpen: 1,
 } as const;
 
@@ -29,6 +33,9 @@ export interface GateContext {
   htf: HtfView | null;
 }
 
+/** What the scan adds to a priced proposal; absent fields default to a free-price model proposal. */
+export type GateProposal = SetupProposal & { setup_id?: SetupId | null; timeframe?: Setup["timeframe"]; levels_source?: Setup["levels_source"] };
+
 export interface Rejection {
   asset: string;
   direction: string;
@@ -42,8 +49,8 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
 /** The first rule a proposal breaks, or null. `accepted` counts toward the open-setup rules. */
 export function checkProposal(p: SetupProposal, ctx: GateContext, accepted: Setup[]): { rule: string; detail: string } | null {
   const open = [...ctx.open, ...accepted];
-  if (!ctx.htf) return { rule: "htf_missing", detail: "no HTF view: nothing is proposed before the view exists" };
-  if (ctx.htf.stance === "stand_aside") return { rule: "htf_stand_aside", detail: "HTF stance is stand_aside" };
+  if (ctx.htf?.stance === "stand_aside" && !(Date.parse(ctx.htf.valid_until) <= ctx.now.getTime()))
+    return { rule: "htf_stand_aside", detail: `HTF stance is stand_aside until ${ctx.htf.valid_until}` };
   if (accepted.length >= GATE.maxNew[ctx.mode]) return { rule: "cap_new", detail: `at most ${GATE.maxNew[ctx.mode]} new setups per ${ctx.mode} run` };
   if (open.length >= GATE.maxOpen) return { rule: "cap_open", detail: `at most ${GATE.maxOpen} open setups` };
 
@@ -89,7 +96,7 @@ export function makeSetupId(asset: string, direction: string, now: Date, used: S
 }
 
 /** Gates proposals in the model's order; accepted ones become `watching` setups with code-computed rr and id. */
-export function gateProposals(proposals: SetupProposal[], ctx: GateContext): { accepted: Setup[]; rejected: Rejection[] } {
+export function gateProposals(proposals: GateProposal[], ctx: GateContext): { accepted: Setup[]; rejected: Rejection[] } {
   const accepted: Setup[] = [];
   const rejected: Rejection[] = [];
   const used = new Set(ctx.usedIds);
@@ -104,11 +111,12 @@ export function gateProposals(proposals: SetupProposal[], ctx: GateContext): { a
     used.add(id);
     accepted.push({
       id,
-      setup_id: null,
-      levels_source: "model",
+      setup_id: p.setup_id ?? null,
+      levels_source: p.levels_source ?? "model",
       asset: p.asset,
       direction: p.direction,
       horizon: p.horizon,
+      timeframe: p.timeframe ?? null,
       thesis: p.thesis,
       regime_alignment: p.regime_alignment,
       trigger: p.trigger,

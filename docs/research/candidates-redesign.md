@@ -1,5 +1,9 @@
 # Candidate pipeline: audit and redesign proposal
 
+> Update 2026-10-23: the routine now runs a board scan (`docs/fallback-routine.md`). It keeps this
+> doc's code-measures principle and catalogue idea (as tripwires) but departs from § B.8: the model
+> creates setups, choosing levels by key from a code-built menu, and code resolves and gates them.
+
 Scouted 2026-10-20 across the routine, platform, Lab, Intel, desk and every
 collector. Part A is what exists and what it actually produces. Part B is the
 proposed rewrite: one code-first pipeline that generates daily-to-weekly setup

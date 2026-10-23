@@ -1,13 +1,14 @@
 import { z, type ZodTypeAny } from "zod";
 import type { ToolSpec } from "../llm/provider.js";
 import { MarketStateDataSchema, SectorsDataSchema } from "../../shared/schemas.js";
-import { DirectionSchema, HorizonSchema } from "../../shared/setups.js";
+import { DirectionSchema, HorizonSchema, SetupIdSchema, SetupTimeframeSchema } from "../../shared/setups.js";
+import { LEVEL_KEYS } from "./board.js";
 
 // Data shapes of the fallback routine (docs/fallback-routine.md § Data
 // shapes). Persisted shapes (Setup, Ledger, HtfView) are what lives in
 // data/setups/*.json; the *Draft / *Output shapes are what the model may
-// emit. Fields the code owns (ids, status, rr, timestamps) never appear in a
-// model shape, so the model cannot set them.
+// emit. Fields the code owns (ids, status, rr, prices, alignment, expiry,
+// timestamps) never appear in a model shape, so the model cannot set them.
 
 const Price = z.number().finite().positive();
 
@@ -22,13 +23,13 @@ export const BiasSchema = z.object({
   note: z.string().max(400),
 });
 
-/** The part of the HTF view the model writes; the code adds the timestamps and the hl-cycles state. */
+/** The operator's stance file (data/setups/htf.json). Optional: while it is valid, stance stand_aside blocks every new setup. */
 export const HtfViewDraftSchema = z.object({
   regime: z.enum(["risk_on", "neutral", "risk_off"]),
-  stance: z.enum(["trend_long", "range", "trend_short", "stand_aside"]).describe("stand_aside blocks every new setup until the next refresh"),
-  thesis: z.string().min(1).max(1500).describe("The long-term view, 3-6 sentences, citing measured numbers"),
-  biases: z.array(BiasSchema).max(4).describe("BTC, ETH, SOL, HYPE"),
-  what_changes_it: z.array(z.string().min(1).max(300)).min(1).max(5).describe("Checkable: a metric, a threshold and a direction"),
+  stance: z.enum(["trend_long", "range", "trend_short", "stand_aside"]),
+  thesis: z.string().min(1).max(1500),
+  biases: z.array(BiasSchema).max(4),
+  what_changes_it: z.array(z.string().min(1).max(300)).min(1).max(5),
 });
 export const HtfViewSchema = HtfViewDraftSchema.extend({
   generated_at: z.string(),
@@ -37,40 +38,97 @@ export const HtfViewSchema = HtfViewDraftSchema.extend({
 });
 export type HtfView = z.infer<typeof HtfViewSchema>;
 
+/** A priced proposal: what the gate checks. Built by code from a SetupDraft (scan.ts), never emitted by the model. */
 export const SetupProposalSchema = z.object({
-  asset: z.string().min(1).max(24).describe("Hyperliquid symbol, case-sensitive"),
+  asset: z.string().min(1).max(24),
   direction: DirectionSchema,
-  horizon: HorizonSchema.describe("swing: expires within 10 days"),
-  thesis: z.string().min(1).max(800).describe("Why, citing measured numbers from the context"),
-  regime_alignment: z.enum(["with", "counter"]).describe("counter = fights the HTF view; must then be conviction low"),
-  trigger: z.string().min(1).max(300).describe("The checkable condition a human would act on"),
+  horizon: HorizonSchema,
+  thesis: z.string().min(1).max(800),
+  regime_alignment: z.enum(["with", "counter"]),
+  trigger: z.string().min(1).max(300),
   entry: z.object({ low: Price, high: Price }),
   invalidation: Price,
   invalidation_reason: z.string().min(1).max(300),
-  targets: z.array(Price).min(1).max(3).describe("In profit order"),
+  targets: z.array(Price).min(1).max(3),
   conviction: z.enum(["low", "medium", "high"]),
-  evidence: z.array(z.string().max(120)).min(1).max(8).describe("Context keys the setup rests on, e.g. hl-cycles.levels.sth_cost_basis"),
-  expires_at: z.string().describe("ISO-8601 UTC time after which the plan lapses"),
+  evidence: z.array(z.string().max(120)).min(1).max(8),
+  expires_at: z.string(),
 });
 export type SetupProposal = z.infer<typeof SetupProposalSchema>;
 
-export const PulseOutputSchema = z.object({
-  regime_read: z.string().min(1).max(400).describe("One or two sentences: where we stand"),
-  htf_view: HtfViewDraftSchema.nullable().describe("Required when the context says an HTF refresh is due; otherwise null"),
-  new_setups: z.array(SetupProposalSchema).max(3).describe("0-3 proposals; an empty list is a normal answer"),
-  cancel: z.array(z.object({ id: z.string(), reason: z.string().min(1).max(300) })).max(5).describe("Open setups whose thesis broke before price did"),
-  stand_aside_reason: z.string().max(400).nullable().describe("Required when new_setups is empty"),
-  brief: z.string().min(1).max(1500).describe("Short delta-first text for a human"),
-});
-export type PulseOutput = z.infer<typeof PulseOutputSchema>;
+/** Commonplace imbalances the scan names. "other" needs its note to say what it is. */
+export const IMBALANCE_KINDS = [
+  "crowded_longs",
+  "crowded_shorts",
+  "shorts_pressing",
+  "short_covering",
+  "long_liquidation",
+  "absorption",
+  "venue_divergence",
+  "relative_strength",
+  "relative_weakness",
+  "compression",
+  "trend_exhaustion",
+  "other",
+] as const;
+export const ImbalanceKindSchema = z.enum(IMBALANCE_KINDS);
 
-/** Pulse output plus the cross-field rules the model must meet (completeStructured retries once on a miss). */
-export function pulseOutputSchema(htfDue: boolean, setupsAllowed = true) {
-  return PulseOutputSchema.superRefine((o, ctx) => {
-    if (htfDue && !o.htf_view) ctx.addIssue({ code: "custom", path: ["htf_view"], message: "an HTF refresh is due: htf_view is required" });
-    if (setupsAllowed && o.new_setups.length === 0 && !o.stand_aside_reason?.trim()) ctx.addIssue({ code: "custom", path: ["stand_aside_reason"], message: "required when new_setups is empty" });
+const LevelRefSchema = z.object({
+  level: z.enum(LEVEL_KEYS).describe("A key from this market's level menu"),
+  atr: z.number().min(-3).max(3).optional().describe("ATR multiples added to the level, signed; the 4h ATR for a 4h setup, else the 1d ATR"),
+});
+const TARGET_KEYS = [...LEVEL_KEYS, "R"] as const;
+const TargetRefSchema = z
+  .object({
+    level: z.enum(TARGET_KEYS).describe('A level key, or "R" for a multiple of the risk measured from the entry midpoint'),
+    atr: z.number().min(-3).max(3).optional().describe("With a level key: ATR multiples added, signed"),
+    r: z.number().min(1).max(10).optional().describe('With level "R": the multiple, e.g. 2 for 2R'),
+  })
+  .superRefine((t, ctx) => {
+    if (t.level === "R" && t.r === undefined) ctx.addIssue({ code: "custom", path: ["r"], message: 'level "R" needs r' });
   });
-}
+
+/** A setup as the model writes it: structure and reasons, with every price a reference into the level menu. */
+export const SetupDraftSchema = z.object({
+  asset: z.string().min(1).max(24).describe("Board symbol, case-sensitive"),
+  direction: DirectionSchema,
+  template: SetupIdSchema.nullable().describe("The tripwire template this writes up, or null for an imbalance no template covers"),
+  timeframe: SetupTimeframeSchema.describe("The bar the trigger is read on; code sets the expiry from it (4h: 3 days, 1d: 7, 1w: 10)"),
+  imbalance: ImbalanceKindSchema,
+  thesis: z.string().min(1).max(800).describe("Why, with board numbers, and one clause on what the other side sees"),
+  trigger: z.string().min(1).max(300).describe("The checkable condition a human would watch for, on the timeframe's bar"),
+  entry: z.object({ low: LevelRefSchema, high: LevelRefSchema }),
+  invalidation: LevelRefSchema,
+  invalidation_reason: z.string().min(1).max(300).describe("Why losing that level breaks the thesis"),
+  targets: z.array(TargetRefSchema).min(1).max(3).describe("In profit order; the first must sit at least 2R away"),
+  conviction: z.enum(["low", "medium", "high"]),
+  evidence: z.array(z.string().max(120)).min(1).max(8).describe("Board keys, e.g. HYPE.pos.fundingAnnPct, HYPE.tf.1d.rangePos"),
+});
+export type SetupDraft = z.infer<typeof SetupDraftSchema>;
+
+export const WatchItemSchema = z.object({
+  asset: z.string().min(1).max(24),
+  kind: ImbalanceKindSchema,
+  skew: z.enum(["up", "down", "either"]).describe("Which way the imbalance would likely resolve, if it does"),
+  timeframe: SetupTimeframeSchema,
+  note: z.string().min(1).max(300).describe("What the board shows, with its numbers, including the signals that only lean"),
+  arms: z.string().min(1).max(200).describe("The checkable condition that would turn this into a setup"),
+  evidence: z.array(z.string().max(120)).min(1).max(6),
+});
+export type WatchItem = z.infer<typeof WatchItemSchema>;
+
+export const ScanOutputSchema = z.object({
+  read: z.string().min(1).max(400).describe("One or two sentences: where the board leans and where the largest imbalance sits"),
+  watchlist: z.array(WatchItemSchema).max(6).describe("Most imbalanced markets first"),
+  setups: z.array(SetupDraftSchema).max(3).describe("Conditional plans where an imbalance meets a level; [] when none has both"),
+  passes: z
+    .array(z.object({ asset: z.string(), template: SetupIdSchema, direction: DirectionSchema, reason: z.string().min(1).max(200) }))
+    .max(20)
+    .describe("Every tripwire hit not written up as a setup, with why"),
+  cancel: z.array(z.object({ id: z.string(), reason: z.string().min(1).max(300) })).max(5).describe("Open setups whose premise broke before price did"),
+  brief: z.string().min(1).max(1200).describe("Short, delta-first text for a human"),
+});
+export type ScanOutput = z.infer<typeof ScanOutputSchema>;
 
 export const DOMAINS = ["macro", "equities", "crypto", "tech", "geopolitics"] as const;
 export const DISCLAIMER = "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything.";

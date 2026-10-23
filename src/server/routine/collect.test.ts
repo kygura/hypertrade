@@ -69,6 +69,8 @@ describe("collect failures become gaps", () => {
       candles: async () => {
         throw new Error("HL request failed: 503");
       },
+      funding: async () => [],
+      predicted: async () => new Map(),
     };
     const pack = await collect({ env: { APP_URL: "https://app.invalid", LAB_API_TOKEN: "t" }, now: NOW, fetch: f, hl, openPaths: [{ asset: "SOL", since: "2026-10-17T00:00:00Z" }] });
     expect(pack.hl).toBeNull();

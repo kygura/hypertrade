@@ -2,11 +2,11 @@
 
 A personal market terminal and signal platform for crypto perps. It tracks assets, simulates allocation branches against historical data, monitors sector dynamics, and runs an always-on worker that scans Hyperliquid and surfaces ranked setups.
 
-Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade routine (a scheduled Claude session that commits research to `data/*.json`; one routine every 4 h covers market state, setups, Lab and the signal pipeline: near-misses, novelty, ready opportunities, thesis watch, Lab ideas; one ntfy push only when something changed; see `ROUTINE.md`).
+Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade routine (a scheduled Claude session that commits research to `data/*.json`: every 4 h it scans the top-30 Hyperliquid perps on their 4h/1d/1w bars, names where positioning is imbalanced and writes conditional setups through a code gate; market state, sectors and the Lab snapshot once a day, Lab search weekly; one ntfy push only when something is new; see `ROUTINE.md`).
 
 ## Status
 
-- **Live in the repo (master):** the platform backend in `src/server/platform/` (scanner, crawler, liquidation map, outcomes, alerts loops) on one Bun process, the cockpit UI, `/api/platform/*`, and the fallback routine (setups pulse, HTF view, daily brief; Opus 5.5 by default, Kimi as fallback).
+- **Live in the repo (master):** the platform backend in `src/server/platform/` (scanner, crawler, liquidation map, outcomes, alerts loops) on one Bun process, the cockpit UI, `/api/platform/*`, and the routine pipeline (`bun run routine`: board scan, tripwires, setups ledger, daily brief; Opus 5.5 by default, Kimi as fallback).
 - **Hosting:** free tier first. Vercel serves the UI and API, a GitHub Actions hourly tick (`.github/workflows/platform-tick.yml`, `bun run platform:tick`) runs the platform worker loops against Postgres, and the Claude routine commits research. The always-on Railway worker below is the upgrade path for when live mids (order approval) or sub-hourly scans become a hard requirement. History in `docs/TASKS.md`.
 - **Not committed yet:** an Ink terminal UI under `src/tui/` (`bun run tui`) with `SPEC-tui.md` and `DESIGN-tui.md`.
 
@@ -130,9 +130,9 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
 
 Cost: Hobby plan is about $5/mo plus usage. At 0.5 vCPU and 512 MB, usage is about $15/mo at the rates in the research notes. Check current Railway pricing before relying on this.
 
-## Signals routine (scheduled Claude session)
+## Routine (scheduled Claude session)
 
-The signals step of the single runbook (`ROUTINE.md`). `bun run signals:collect` prints one JSON snapshot (near-miss, novelty, ready evidence, thesis watch, Lab ideas, diff vs the previous run) from the worker's own endpoints; the session writes `data/signals/YYYY-MM-DD.{md,json}`, commits, and sends one ntfy push through the desk notifier only when something changed. Informational; it gates and places nothing. Secrets in the cloud environment:
+The single runbook is `ROUTINE.md`. Each run collects the board (`bun run routine --collect-only`: top-30 perps by volume plus majors and `PLATFORM_MY_MARKETS`, with 4h/1d/1w structure, funding vs its own week and vs Binance/Bybit, OI change from the committed `data/board/history.json`, and a level menu), reads it, and writes setups that code resolves, gates and grades (`data/setups/ledger.json`). `bun run signals:collect` adds an optional snapshot of the platform's intraday signals. One ntfy push through the desk notifier only when something is new. Informational; it gates and places nothing. Secrets in the cloud environment:
 
 | Variable | Purpose |
 | --- | --- |

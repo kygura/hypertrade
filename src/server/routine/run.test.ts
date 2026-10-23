@@ -6,7 +6,7 @@ import { parseMetaAndCtxs } from "../../shared/hl-client.js";
 import type { Candle } from "../../shared/types.js";
 import type { HlClient } from "./collect.js";
 import { StubProvider } from "./llm.test.js";
-import { registerDate, runDate, runRoutine, splitMessage, type RunDeps } from "./run.js";
+import { registerDate, runDate, runRoutine, ScanRecordSchema, splitMessage, type RunDeps } from "./run.js";
 import { DISCLAIMER, LedgerSchema, MarketStateDataSchema, SectorsDataSchema, type Setup } from "./schema.js";
 
 const NOW = new Date("2026-10-18T10:00:00Z");
@@ -14,7 +14,8 @@ const H = 3_600_000;
 const DAY = 24 * H;
 const MARKS: Record<string, number> = { BTC: 82_000, ETH: 2420, SOL: 104, HYPE: 79 };
 
-function fakeHl(): HlClient {
+/** Four markets whose daily and 4h bars ramp up into the mark: an aligned uptrend, so htf_pullback trips on each. */
+function fakeHl(calls: string[] = []): HlClient {
   const meta = {
     universe: Object.keys(MARKS).map((name) => ({ name, szDecimals: 2, maxLeverage: 20 })),
   };
@@ -31,21 +32,34 @@ function fakeHl(): HlClient {
   return {
     metaAndCtxs: async () => parseMetaAndCtxs([meta, ctxs]),
     candles: async (coin, interval, start, end = NOW.getTime()) => {
-      const step = interval === "1w" ? 7 * DAY : interval === "1d" ? DAY : H;
-      const n = Math.min(60, Math.floor((end - start) / step));
+      calls.push(`${coin}.${interval}`);
+      const step = interval === "1w" ? 7 * DAY : interval === "1d" ? DAY : interval === "4h" ? 4 * H : H;
+      const n = Math.min(400, Math.floor((end - start) / step));
       const last = MARKS[coin]!;
       const out: Candle[] = [];
       for (let i = 0; i < n; i++) {
         const t = end - (n - i) * step;
-        const c = interval === "1h" ? last : last * (0.8 + (0.2 * (i + 1)) / n); // daily/weekly trend up, hourly flat
+        const c = interval === "1h" ? last : last * (0.8 + (0.2 * (i + 1)) / n); // daily/4h trend up, hourly flat
         out.push({ t, T: t + step - 1, o: c, h: c * 1.005, l: c * 0.995, c, v: 1 });
       }
       // The BTC hourly path dips into the open setup's entry zone (80,000–81,000) two hours ago.
       if (coin === "BTC" && interval === "1h" && out.length > 2) out[out.length - 2] = { ...out.at(-2)!, l: 80_500 };
       return out;
     },
+    funding: async (coin, start, end = NOW.getTime()) => {
+      calls.push(`${coin}.funding`);
+      return Array.from({ length: Math.floor((end - start) / H) }, (_, i) => ({ t: start + i * H, rate: 0.0000125, premium: 0 }));
+    },
+    predicted: async () => new Map(Object.keys(MARKS).map((c) => [c, [{ venue: "BinPerp", rate: 0.0001, intervalHours: 8, nextFundingTime: null }]])),
   };
 }
+
+const downHl = (): HlClient => {
+  const boom = async (): Promise<never> => {
+    throw new Error("HL request failed: 503");
+  };
+  return { metaAndCtxs: boom, candles: boom, funding: boom, predicted: boom };
+};
 
 interface Sent {
   url: string;
@@ -85,6 +99,7 @@ const openBtc: Setup = {
   asset: "BTC",
   direction: "long",
   horizon: "swing",
+  timeframe: null,
   thesis: "holds the True Market Mean",
   regime_alignment: "with",
   trigger: "reclaim of 81,000",
@@ -104,49 +119,36 @@ const openBtc: Setup = {
   expires_at: iso(NOW.getTime() + 8 * DAY),
 };
 
-const pulseReply = {
-  regime_read: "BTC holds 3.4% above the True Market Mean with funding flat.",
-  htf_view: {
-    regime: "risk_on",
-    stance: "trend_long",
-    thesis: "Weekly closes sit above the 20W and 50W averages; we lean constructive while the True Market Mean holds.",
-    biases: [{ asset: "BTC", bias: "long", levels: [{ label: "True Market Mean", price: 79_287 }], note: "first slip below TMM" }],
-    what_changes_it: ["BTC daily close below 79,287 (True Market Mean)"],
-  },
-  new_setups: [
-    {
-      asset: "SOL",
-      direction: "long",
-      horizon: "swing",
-      thesis: "SOL pullback into the 20D band",
-      regime_alignment: "with",
-      trigger: "hourly reclaim of 102",
-      entry: { low: 100, high: 102 },
-      invalidation: 96,
-      invalidation_reason: "below the 4w low",
-      targets: [115],
-      conviction: "medium",
-      evidence: ["htf.SOL.vs20wPct"],
-      expires_at: iso(NOW.getTime() + 10 * DAY),
-    },
-    {
-      asset: "ETH",
-      direction: "long",
-      horizon: "swing",
-      thesis: "too tight a target",
-      regime_alignment: "with",
-      trigger: "x",
-      entry: { low: 2400, high: 2420 },
-      invalidation: 2350,
-      invalidation_reason: "y",
-      targets: [2450],
-      conviction: "low",
-      evidence: ["hl.ETH"],
-      expires_at: iso(NOW.getTime() + 5 * DAY),
-    },
+const draft = (asset: string, over: Record<string, unknown> = {}) => ({
+  asset,
+  direction: "long",
+  template: "htf_pullback",
+  timeframe: "1d",
+  imbalance: "trend_exhaustion",
+  thesis: `${asset} holds above its 1d SMA20 with funding at 10.95% annualised; the other side sees a trend that has not paused.`,
+  trigger: "1d close holding above the 1d SMA20",
+  entry: { low: { level: "1d.sma20" }, high: { level: "mark" } },
+  invalidation: { level: "1d.low20", atr: -0.5 },
+  invalidation_reason: "a 1d close under the range low breaks the pullback",
+  targets: [{ level: "R", r: 2 }, { level: "R", r: 3 }],
+  conviction: "medium",
+  evidence: [`${asset}.tf.1d.sma20`],
+  ...over,
+});
+
+const scanReply = {
+  read: "The board leans long in an aligned uptrend; SOL sits closest to its 1d SMA20.",
+  watchlist: [
+    { asset: "SOL", kind: "trend_exhaustion", skew: "down", timeframe: "1d", note: "Mark 104 with funding at 10.95% annualised", arms: "a 1d close under the 1d SMA20", evidence: ["SOL.tf.1d.vsSma20Atr"] },
+    { asset: "DOGE", kind: "crowded_longs", skew: "down", timeframe: "4h", note: "not on the board", arms: "x", evidence: ["DOGE.pos"] },
   ],
+  setups: [
+    draft("SOL"),
+    draft("ETH", { targets: [{ level: "1d.pdh" }] }), // first target under 2R: the gate drops it
+    draft("HYPE", { template: null, thesis: "Funding at 123456% annualised." }), // a number the board never showed
+  ],
+  passes: [{ asset: "BTC", template: "htf_pullback", direction: "long", reason: "an open BTC long already covers it" }],
   cancel: [{ id: "NOPE-long-1", reason: "unknown id" }],
-  stand_aside_reason: null,
   brief: "BTC entry zone traded; one SOL plan added.",
 };
 
@@ -185,8 +187,8 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-function deps(provider: StubProvider | null, sent: Sent[], logs: string[], env: Record<string, string> = {}): RunDeps {
-  return { env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHAT_ID: "c", ...env }, now: () => NOW, fetch: fakeFetch(sent), hl: fakeHl(), makeProvider: () => provider, log: (l) => logs.push(l) };
+function deps(provider: StubProvider | null, sent: Sent[], logs: string[], env: Record<string, string> = {}, hl: HlClient = fakeHl(), now = NOW): RunDeps {
+  return { env: { TELEGRAM_BOT_TOKEN: "t", TELEGRAM_CHAT_ID: "c", ...env }, now: () => now, fetch: fakeFetch(sent), hl, makeProvider: () => provider, log: (l) => logs.push(l) };
 }
 const read = async (p: string) => JSON.parse(await readFile(join(root, p), "utf8"));
 
@@ -194,101 +196,130 @@ describe("runRoutine end to end", () => {
   test("no provider: notice, exit 0, nothing fetched or written", async () => {
     const sent: Sent[] = [];
     const logs: string[] = [];
-    const r = await runRoutine({ mode: "pulse", dryRun: false, root }, deps(null, sent, logs));
+    const r = await runRoutine({ mode: "scan", dryRun: false, root }, deps(null, sent, logs));
     expect(r).toMatchObject({ exitCode: 0, wrote: [] });
     expect(logs[0]).toContain("no LLM provider configured");
     expect(sent).toEqual([]);
   });
 
-  test("pulse: settles the open setup, refreshes the HTF view, gates proposals, writes, notifies", async () => {
+  test("scan: builds the board, settles the open setup, resolves and gates the plans, writes, notifies", async () => {
     const sent: Sent[] = [];
     const logs: string[] = [];
-    const stub = new StubProvider("kimi-k3", [{ emit: pulseReply }]);
-    const r = await runRoutine({ mode: "pulse", dryRun: false, root }, deps(stub, sent, logs));
+    const calls: string[] = [];
+    const stub = new StubProvider("kimi-k3", [{ emit: scanReply }]);
+    const r = await runRoutine({ mode: "scan", dryRun: false, root }, deps(stub, sent, logs, {}, fakeHl(calls)));
     expect(r.exitCode).toBe(0);
 
     const ledger = LedgerSchema.parse(await read("data/setups/ledger.json"));
-    const btc = ledger.open.find((s) => s.id === openBtc.id)!;
-    expect(btc.status).toBe("triggered");
+    expect(ledger.open.find((s) => s.id === openBtc.id)!.status).toBe("triggered");
     const sol = ledger.open.find((s) => s.asset === "SOL")!;
-    expect(sol).toMatchObject({ id: "SOL-long-20261018-1", status: "watching", rr: 2.8 });
+    expect(sol).toMatchObject({ id: "SOL-long-20261018-1", status: "watching", setup_id: "htf_pullback", timeframe: "1d", levels_source: "menu", regime_alignment: "with", rr: 2 });
+    expect(sol.entry.high).toBe(104); // the mark
+    expect(sol.expires_at).toBe(new Date(NOW.getTime() + 7 * DAY).toISOString());
     expect(ledger.open).toHaveLength(2);
-    expect(r.rejected).toEqual([{ asset: "ETH", direction: "long", rule: "rr", detail: expect.stringContaining("R:R") }]);
+    expect(r.rejected.map((x) => [x.asset, x.rule])).toEqual([
+      ["HYPE", "unbacked_number"],
+      ["ETH", "rr"],
+    ]);
 
-    const view = await read("data/setups/htf.json");
-    expect(view).toMatchObject({ regime: "risk_on", stance: "trend_long", hl_cycles_state: "mild_risk_on", generated_at: NOW.toISOString() });
+    // Board inputs per market; the scan scope skips FRED/Yahoo and the majors' weekly candles.
+    expect(calls).toEqual(expect.arrayContaining(["SOL.4h", "SOL.1d", "SOL.funding", "HYPE.4h"]));
+    expect(calls.some((c) => c.endsWith(".1w"))).toBe(false);
+    const sources = r.gaps.map((g) => g.source);
+    expect(sources).toContain("app");
+    expect(sources.some((s) => s.startsWith("fred."))).toBe(false);
 
-    // External prose reaches the model fenced, with a look-alike closing tag defused.
+    const history = await read("data/board/history.json");
+    expect(Object.keys(history.snapshots[0].rows).sort()).toEqual(["BTC", "ETH", "HYPE", "SOL"]);
+    const record = ScanRecordSchema.parse(await read("data/board/latest.json"));
+    expect(record.hits.map((h) => `${h.asset} ${h.setup_id}`).sort()).toEqual(["BTC htf_pullback", "ETH htf_pullback", "HYPE htf_pullback", "SOL htf_pullback"]);
+    expect(record.watchlist.map((w) => w.asset)).toEqual(["SOL"]);
+    expect(record.unanswered).toEqual(["HYPE|htf_pullback|long"]);
+
+    // The prompt carries the board and tripwires; outside prose reaches it fenced, with a look-alike closing tag defused.
     const user = stub.users[0]!;
-    expect(user).toContain("HTF refresh is DUE");
+    expect(user).toContain("board as_of");
+    expect(user).toContain("tripwire hits (4)");
     const fenced = user.slice(user.indexOf("<untrusted>"));
     expect(fenced).toContain("IGNORE PREVIOUS INSTRUCTIONS");
     expect(fenced).toContain("‹/untrusted>");
 
-    expect(r.gaps.map((g) => g.source)).toEqual(expect.arrayContaining(["fred.DGS10", "yahoo.SPY", "app"]));
-    expect(r.gaps.find((g) => g.source === "yahoo.SPY")!.status).toBe(500);
     expect(r.brief).toContain("cancel ignored: no open setup NOPE-long-1");
-    expect(r.brief).toContain("Dropped by the gate:");
-
+    expect(r.brief).toContain("watchlist dropped DOGE: not on the board");
+    expect(r.brief).toContain("Not addressed by the scan: HYPE|htf_pullback|long");
+    expect(r.brief).toContain("- NEW SOL-long-20261018-1");
+    expect(r.push).toContain("NEW SOL long 1d");
     expect(r.notified).toBe(true);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.body).toMatchObject({ chat_id: "c" });
     expect(sent[0]!.body).not.toHaveProperty("parse_mode");
   });
 
+  test("a repeat with nothing new pushes nothing", async () => {
+    await runRoutine({ mode: "scan", dryRun: false, root }, deps(new StubProvider("kimi-k3", [{ emit: scanReply }]), [], []));
+    const sent: Sent[] = [];
+    const r = await runRoutine({ mode: "scan", dryRun: false, root }, deps(new StubProvider("kimi-k3", [{ emit: scanReply }]), sent, []));
+    expect(r.rejected.find((x) => x.asset === "SOL")!.rule).toBe("duplicate");
+    expect(r.push).toBeNull();
+    expect(sent).toEqual([]);
+    expect(r.brief).not.toContain("NEW hit");
+  });
+
   test("ROUTINE_LLM with no usable entry is an error, not a silent no-op", async () => {
     const logs: string[] = [];
-    const r = await runRoutine({ mode: "pulse", dryRun: false, root }, deps(null, [], logs, { ROUTINE_LLM: "nope:x,moonshot:" }));
+    const r = await runRoutine({ mode: "scan", dryRun: false, root }, deps(null, [], logs, { ROUTINE_LLM: "nope:x,moonshot:" }));
     expect(r.exitCode).toBe(1);
     expect(logs.at(-1)).toContain("no usable entry");
   });
 
-  test("input replaces the model: no provider needed, invalid input exits 1 and adds nothing", async () => {
-    const r = await runRoutine({ mode: "pulse", dryRun: false, root, input: pulseReply }, deps(null, [], []));
+  test("collect-only saves the collection; an input resolves against it without collecting again", async () => {
+    const context = join(root, "context.json");
+    const logs: string[] = [];
+    const c = await runRoutine({ mode: "scan", dryRun: false, collectOnly: true, context, root }, deps(null, [], logs));
+    expect(c).toMatchObject({ exitCode: 0, wrote: [] });
+    expect(logs[0]).toContain("=== rules (the scan system prompt) ===");
+    expect(logs[0]).toContain("tripwire hits (4)");
+
+    const pushOut = join(root, "push.txt");
+    const r = await runRoutine({ mode: "scan", dryRun: false, input: scanReply, context, pushOut, root }, deps(null, [], [], {}, downHl()));
     expect(r.exitCode).toBe(0);
     expect(LedgerSchema.parse(await read("data/setups/ledger.json")).open.map((s) => s.asset).sort()).toEqual(["BTC", "SOL"]);
+    expect(await readFile(pushOut, "utf8")).toContain("NEW SOL long");
+    expect(r.notified).toBe(false); // the push went to the file, not to Telegram
 
-    const { brief: _brief, ...bad } = pulseReply;
-    const logs: string[] = [];
-    const r2 = await runRoutine({ mode: "pulse", dryRun: true, root, input: bad }, deps(null, [], logs));
+    const later = await runRoutine({ mode: "scan", dryRun: true, input: scanReply, context, root }, deps(null, [], [], {}, downHl(), new Date(NOW.getTime() + 3 * H)));
+    expect(later.exitCode).toBe(1); // a 3 h old board no longer describes the market
+
+    const { brief: _brief, ...bad } = scanReply;
+    const r2 = await runRoutine({ mode: "scan", dryRun: true, root, input: bad }, deps(null, [], []));
     expect(r2.exitCode).toBe(1);
     expect(r2.brief).toContain("brief");
-    const d = await runRoutine({ mode: "daily", dryRun: true, root, input: pulseReply }, deps(null, [], logs));
+    const d = await runRoutine({ mode: "daily", dryRun: true, root, input: scanReply }, deps(null, [], []));
     expect(d.exitCode).toBe(2);
   });
 
-  test("htf mode refreshes the view and gates nothing", async () => {
-    const stub = new StubProvider("kimi-k3", [{ emit: pulseReply }]);
-    const r = await runRoutine({ mode: "htf", dryRun: false, root }, deps(stub, [], []));
-    expect(r.rejected).toEqual([]);
-    expect(r.brief).toContain("htf mode: ignored 2 proposed setup(s)");
-    expect(stub.users[0]).toContain("new_setups must be []");
-    expect((await read("data/setups/htf.json")).stance).toBe("trend_long");
-    expect(LedgerSchema.parse(await read("data/setups/ledger.json")).open.map((s) => s.asset)).toEqual(["BTC"]);
-  });
-
-  test("a throw in the daily stage keeps the pulse outputs and exits 1", async () => {
+  test("a throw in the daily stage keeps the scan outputs and exits 1", async () => {
     // No data/marketstate/index.ts in this root: registering the date throws.
-    const stub = new StubProvider("kimi-k3", [{ emit: pulseReply }, { emit: dailyReply }]);
+    const stub = new StubProvider("kimi-k3", [{ emit: scanReply }, { emit: dailyReply }]);
     const r = await runRoutine({ mode: "daily", dryRun: false, root }, deps(stub, [], []));
     expect(r.exitCode).toBe(1);
     expect(r.brief).toContain("daily MarketState/Sectors not written");
     expect(LedgerSchema.parse(await read("data/setups/ledger.json")).open.some((s) => s.asset === "SOL")).toBe(true);
-    expect((await read("data/setups/htf.json")).regime).toBe("risk_on");
   });
 
   test("dry run: model is called, nothing is written or sent", async () => {
     const sent: Sent[] = [];
     const logs: string[] = [];
     const before = await readFile(join(root, "data/setups/ledger.json"), "utf8");
-    const r = await runRoutine({ mode: "pulse", dryRun: true, root }, deps(new StubProvider("kimi-k3", [{ emit: pulseReply }]), sent, logs));
+    const r = await runRoutine({ mode: "scan", dryRun: true, root }, deps(new StubProvider("kimi-k3", [{ emit: scanReply }]), sent, logs));
     expect(r.wrote).toEqual([]);
     expect(await readFile(join(root, "data/setups/ledger.json"), "utf8")).toBe(before);
     expect(logs.some((l) => l.startsWith("--- would write") && l.includes("ledger.json"))).toBe(true);
+    expect(logs.some((l) => l.startsWith("--- would write") && l.includes("board/history.json"))).toBe(true);
     expect(sent).toEqual([]);
   });
 
-  test("daily: MarketState, Sectors, indexes and the lab snapshot", async () => {
+  test("daily: scan, then MarketState, Sectors, indexes and the lab snapshot", async () => {
     for (const [dir, name] of [
       ["marketstate", "MARKETSTATE_HISTORY"],
       ["sectors", "SECTORS_HISTORY"],
@@ -302,7 +333,7 @@ describe("runRoutine end to end", () => {
 
     const sent: Sent[] = [];
     const logs: string[] = [];
-    const stub = new StubProvider("kimi-k3", [{ emit: pulseReply }, { emit: dailyReply }]);
+    const stub = new StubProvider("kimi-k3", [{ emit: scanReply }, { emit: dailyReply }]);
     const r = await runRoutine({ mode: "daily", dryRun: false, root }, deps(stub, sent, logs));
     expect(r.exitCode).toBe(0);
     const date = runDate(NOW);
@@ -318,6 +349,8 @@ describe("runRoutine end to end", () => {
     expect(r.brief).toContain("dropped symbols not on Hyperliquid: FAKECOIN");
     expect(r.brief).toContain("BTC close below $81.6K → missed");
     expect(stub.users[1]).toContain("BTC close below $81.6K"); // previous run's risks reach the scorecard prompt
+    expect(stub.users[1]).toContain("This run's board scan brief");
+    expect(r.gaps.map((g) => g.source)).toEqual(expect.arrayContaining(["fred.DGS10", "yahoo.SPY"])); // daily collects the macro sources
 
     const index = await readFile(join(root, "data/marketstate/index.ts"), "utf8");
     expect(index).toContain(`import d20261018 from "./2026-10-18.json" with { type: "json" };`);

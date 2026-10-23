@@ -8,7 +8,7 @@ import { z } from "zod";
 const Price = z.number().finite().positive();
 
 /** Setup definitions of the candidate catalogue. A setup with `setup_id: null` came from a model proposal, not a definition. */
-export const SETUP_IDS = ["funding_fade", "post_liquidation_reclaim", "sector_continuation", "negative_funding_build", "htf_pullback"] as const;
+export const SETUP_IDS = ["funding_fade", "post_liquidation_reclaim", "sector_continuation", "negative_funding_build", "htf_pullback", "range_breakout", "failed_breakout"] as const;
 export const SetupIdSchema = z.enum(SETUP_IDS);
 export type SetupId = z.infer<typeof SetupIdSchema>;
 
@@ -17,8 +17,13 @@ export const DirectionSchema = z.enum(["long", "short"]);
 export const HorizonSchema = z.enum(["swing"]);
 export const SetupStatusSchema = z.enum(["watching", "triggered", "invalidated", "target_hit", "expired", "cancelled"]);
 export const OPEN_STATUSES = ["watching", "triggered"] as const satisfies readonly z.infer<typeof SetupStatusSchema>[];
-/** Who built the levels: "code" = a catalogue definition, "model" = an LLM proposal the gate accepted. */
-export const LevelsSourceSchema = z.enum(["code", "model"]);
+/**
+ * Who built the levels: "code" = a catalogue definition, "menu" = the model picked them from the code-computed level
+ * menu of the board scan (src/server/routine/scan.ts), "model" = free prices from an LLM proposal the gate accepted.
+ */
+export const LevelsSourceSchema = z.enum(["code", "menu", "model"]);
+/** The bar the trigger is read on; it sets the expiry (src/server/routine/scan.ts EXPIRY_DAYS). */
+export const SetupTimeframeSchema = z.enum(["4h", "1d", "1w"]);
 
 export const SetupSchema = z.object({
   id: z.string(),
@@ -28,6 +33,8 @@ export const SetupSchema = z.object({
   asset: z.string(),
   direction: DirectionSchema,
   horizon: HorizonSchema,
+  /** Older ledgers lack it. */
+  timeframe: SetupTimeframeSchema.nullable().default(null),
   thesis: z.string(),
   regime_alignment: z.enum(["with", "counter"]),
   trigger: z.string(),

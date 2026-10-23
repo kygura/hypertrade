@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { fetchCandles, fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
+import { fetchCandles, fetchFundingPage, fetchPerpMetaAndCtxs, fetchPredictedFundings, type FundingPoint } from "../../shared/hl-client.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
 import { calendarEvents } from "../intel/calendar.js";
+import { boardUniverse, buildBoard, type Board, type BoardHistory, type BoardInput } from "./board.js";
 
 // Collect stage of the fallback routine (docs/fallback-routine.md, pipeline
 // step 2). Every number the model sees is fetched here. Every fetch has a
@@ -57,7 +58,8 @@ export interface HlCyclesRead {
 
 export interface ContextPack {
   asOf: string;
-  hl: { assets: HlAsset[]; universeSize: number } | null;
+  /** ctxs: every live market, for the board universe. */
+  hl: { assets: HlAsset[]; universeSize: number; ctxs: AssetCtx[] } | null;
   /** Mark per live HL symbol (gate + token checks); empty when HL failed. */
   marks: Record<string, number>;
   daily: Record<string, Candle[]>;
@@ -79,6 +81,8 @@ export interface ContextPack {
 export interface CollectOptions {
   env: Record<string, string | undefined>;
   now: Date;
+  /** "scan" skips the macro sources (FRED, Yahoo, Fear & Greed, stablecoins) and the majors' HTF candles: the board covers them. Default "full". */
+  scope?: "full" | "scan";
   fetch?: typeof fetch;
   /** Assets with an open setup, and since when their path is needed. */
   openPaths?: Array<{ asset: string; since: string }>;
@@ -89,7 +93,11 @@ export interface CollectOptions {
 export interface HlClient {
   metaAndCtxs: typeof fetchPerpMetaAndCtxs;
   candles: typeof fetchCandles;
+  funding: typeof fetchFundingPage;
+  predicted: typeof fetchPredictedFundings;
 }
+
+export const defaultHlClient = (): HlClient => ({ metaAndCtxs: fetchPerpMetaAndCtxs, candles: fetchCandles, funding: fetchFundingPage, predicted: fetchPredictedFundings });
 
 class FetchError extends Error {
   constructor(
@@ -145,7 +153,7 @@ async function source<T>(gaps: Gap[], name: string, fn: () => Promise<T>): Promi
 
 /** Hyperliquid symbol shape (shared/schemas.ts CoinSchema): names reach the prompt, so anything else is dropped. */
 export const SYMBOL = /^([A-Za-z0-9]+:)?[A-Za-z0-9]{1,24}$/;
-const liveCtx = (c: AssetCtx) => !c.isDelisted && c.markPx > 0 && SYMBOL.test(c.name);
+export const liveCtx = (c: AssetCtx) => !c.isDelisted && c.markPx > 0 && SYMBOL.test(c.name);
 
 export function summariseHl(ctxs: AssetCtx[]): HlAsset[] {
   const live = ctxs.filter(liveCtx);
@@ -335,14 +343,15 @@ export function nextCatalysts(now: Date): Array<{ kind: string; at: string }> {
 
 export async function collect(opts: CollectOptions): Promise<ContextPack> {
   const f = opts.fetch ?? fetch;
-  const hlc: HlClient = opts.hl ?? { metaAndCtxs: fetchPerpMetaAndCtxs, candles: fetchCandles };
+  const hlc: HlClient = opts.hl ?? defaultHlClient();
   const { now, env } = opts;
+  const full = opts.scope !== "scan";
   const gaps: Gap[] = [];
   const nowMs = now.getTime();
 
   const hlP = source(gaps, "hyperliquid.metaAndAssetCtxs", () => hlc.metaAndCtxs(f));
   const candlesP = Promise.all(
-    MAJORS.map(async (coin) => ({
+    (full ? MAJORS : []).map(async (coin) => ({
       coin,
       daily: await source(gaps, `hyperliquid.candles.${coin}.1d`, () => hlc.candles(coin, "1d", nowMs - 400 * DAY, nowMs, f)),
       weekly: await source(gaps, `hyperliquid.candles.${coin}.1w`, () => hlc.candles(coin, "1w", nowMs - 3 * 365 * DAY, nowMs, f)),
@@ -363,13 +372,13 @@ export async function collect(opts: CollectOptions): Promise<ContextPack> {
     source(gaps, "hl-cycles.vector", () => fetchJson(f, "https://hl-cycles.vercel.app/api/vector.json")),
     source(gaps, "hl-cycles.health", () => fetchJson(f, "https://hl-cycles.vercel.app/api/health.json")),
   ]);
-  const fredP = Promise.all(FRED_IDS.map(async (id) => ({ id, points: await source(gaps, `fred.${id}`, () => fred(f, id, now)) })));
-  const yahooP = Promise.all(YAHOO_SYMBOLS.map(async (sym) => ({ sym, data: await source(gaps, `yahoo.${sym}`, () => yahoo(f, sym)) })));
-  const fngP = source(gaps, "alternative.me.fng", async () => {
+  const fredP = Promise.all((full ? FRED_IDS : []).map(async (id) => ({ id, points: await source(gaps, `fred.${id}`, () => fred(f, id, now)) })));
+  const yahooP = Promise.all((full ? YAHOO_SYMBOLS : []).map(async (sym) => ({ sym, data: await source(gaps, `yahoo.${sym}`, () => yahoo(f, sym)) })));
+  const fngP = !full ? Promise.resolve(null) : source(gaps, "alternative.me.fng", async () => {
     const d = FngResponse.parse(await fetchJson(f, "https://api.alternative.me/fng/?limit=31")).data;
     return { value: Number(d[0]!.value), label: d[0]!.value_classification, series: d.map((x) => ({ date: day(Number(x.timestamp) * 1000), value: Number(x.value) })).reverse() };
   });
-  const stableP = source(gaps, "defillama.stablecoins", async () => {
+  const stableP = !full ? Promise.resolve(null) : source(gaps, "defillama.stablecoins", async () => {
     const rows = z.array(StableRow).parse(await fetchJson(f, "https://stablecoins.llama.fi/stablecoincharts/all"));
     const read = stablecoinRead(rows);
     if (!read) throw new FetchError("empty", "no rows");
@@ -420,7 +429,7 @@ export async function collect(opts: CollectOptions): Promise<ContextPack> {
 
   return {
     asOf: now.toISOString(),
-    hl: hl ? { assets: summariseHl(hl.ctxs), universeSize: Object.keys(marks).length } : null,
+    hl: hl ? { assets: summariseHl(hl.ctxs), universeSize: Object.keys(marks).length, ctxs: hl.ctxs.filter(liveCtx) } : null,
     marks,
     daily: pick(candles.map((c) => ({ k: c.coin, v: c.daily }))),
     weekly: pick(candles.map((c) => ({ k: c.coin, v: c.weekly }))),
@@ -435,4 +444,47 @@ export async function collect(opts: CollectOptions): Promise<ContextPack> {
     calendar: nextCatalysts(now),
     gaps,
   };
+}
+
+const BOARD_CONCURRENCY = 3;
+const BOARD_LOOKBACK = { "4h": 30 * DAY, "1d": 365 * DAY, funding: 7 * DAY };
+
+/** Runs `fn` over `items` with at most `n` in flight, keeping input order (the HL weight guard paces the calls). */
+async function pool<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(n, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i]!);
+      }
+    }),
+  );
+  return out;
+}
+
+/**
+ * The board's raw inputs for the top-N live markets plus `always` (majors, "my markets"): 4h candles (30 d), daily
+ * candles (365 d; weeks are built from them), 7 d of hourly funding, and the predicted funding on other venues. A
+ * failed fetch is a gap and leaves that market's field null; the market stays on the board with what it has.
+ */
+export async function collectBoard(
+  o: { ctxs: AssetCtx[]; always: readonly string[]; history: BoardHistory | null; now: Date; fetch?: typeof fetch; hl?: HlClient },
+  gaps: Gap[],
+): Promise<Board> {
+  const f = o.fetch ?? fetch;
+  const hlc = o.hl ?? defaultHlClient();
+  const nowMs = o.now.getTime();
+  const universe = boardUniverse(o.ctxs.filter(liveCtx), o.always);
+  const predicted = await source(gaps, "hyperliquid.predictedFundings", () => hlc.predicted(f));
+  const inputs = await pool(universe, BOARD_CONCURRENCY, async (ctx): Promise<BoardInput> => {
+    const coin = ctx.name;
+    const c4h = await source(gaps, `hyperliquid.candles.${coin}.4h`, () => hlc.candles(coin, "4h", nowMs - BOARD_LOOKBACK["4h"], nowMs, f));
+    const c1d = await source(gaps, `hyperliquid.candles.${coin}.1d`, () => hlc.candles(coin, "1d", nowMs - BOARD_LOOKBACK["1d"], nowMs, f));
+    const funding: FundingPoint[] | null = await source(gaps, `hyperliquid.funding.${coin}`, () => hlc.funding(coin, nowMs - BOARD_LOOKBACK.funding, nowMs, f));
+    const cexHourly = (predicted?.get(coin) ?? []).filter((v) => v.venue !== "HlPerp" && v.intervalHours > 0).map((v) => v.rate / v.intervalHours);
+    return { ctx, c4h, c1d, funding, cexHourly };
+  });
+  return buildBoard(inputs, o.history, o.now);
 }

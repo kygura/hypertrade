@@ -1,5 +1,4 @@
 import type { Candle } from "../../shared/types.js";
-import type { HtfView } from "./schema.js";
 
 // Higher-timeframe features per major (docs/fallback-routine.md, pipeline
 // step 3). Pure and deterministic: the model reads these numbers, it never
@@ -89,16 +88,4 @@ export function htfFeatures(daily: Candle[], weekly: Candle[]): HtfFeatures | nu
     sma20wSlope4wPct: round(slope),
     trend,
   };
-}
-
-export const HTF_MAX_AGE_MS = 7 * 86_400_000;
-
-/** Why the HTF view needs a refresh, or null when it is current (pipeline § Modes). */
-export function htfRefreshReason(view: HtfView | null, hlCyclesState: string | null, now: Date, forced = false): string | null {
-  if (forced) return "forced (htf mode)";
-  if (!view) return "no HTF view yet";
-  const age = now.getTime() - Date.parse(view.generated_at);
-  if (!(age < HTF_MAX_AGE_MS)) return `view is ${Math.floor(age / 86_400_000)} days old`;
-  if (hlCyclesState !== null && hlCyclesState !== view.hl_cycles_state) return `hl-cycles regime changed: ${view.hl_cycles_state ?? "unknown"} → ${hlCyclesState}`;
-  return null;
 }

@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Candle } from "../../shared/types.js";
-import { htfFeatures, htfRefreshReason, realisedVol, sma } from "./htf.js";
-import type { HtfView } from "./schema.js";
+import { htfFeatures, realisedVol, sma } from "./htf.js";
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2025, 0, 1);
@@ -53,18 +52,5 @@ describe("htf features", () => {
     expect(realisedVol(candles(Array(40).fill(100)))).toBe(0);
     const alt = Array.from({ length: 41 }, (_, i) => (i % 2 ? 101 : 100));
     expect(realisedVol(candles(alt))!).toBeCloseTo(19.1, 0);
-  });
-});
-
-describe("htf refresh", () => {
-  const now = new Date("2026-10-18T12:00:00Z");
-  const view = { generated_at: "2026-10-15T00:00:00Z", hl_cycles_state: "mild_risk_on" } as HtfView;
-  test("missing, old, regime changed, forced; current view → null", () => {
-    expect(htfRefreshReason(null, "x", now)).toBe("no HTF view yet");
-    expect(htfRefreshReason({ ...view, generated_at: "2026-10-10T00:00:00Z" }, "mild_risk_on", now)).toContain("8 days old");
-    expect(htfRefreshReason(view, "mild_risk_off", now)).toContain("mild_risk_on → mild_risk_off");
-    expect(htfRefreshReason(view, "mild_risk_on", now, true)).toContain("forced");
-    expect(htfRefreshReason(view, "mild_risk_on", now)).toBeNull();
-    expect(htfRefreshReason(view, null, now)).toBeNull(); // hl-cycles down: no evidence of a change
   });
 });

@@ -82,7 +82,7 @@ Simulation engine (`src/server/sim/`): daily resolution over `candles` (backfill
 
 ## Routine Contract (summary — full detail in ROUTINE.md, which is itself a deliverable)
 
-The cloud routine (managed on Claude Desktop, executed in Anthropic's cloud env, checked out on this repo) is asked to:
+The cloud routine (managed on Claude Desktop, executed in Anthropic's cloud env, checked out on this repo) runs every 4 h. Each run scans the top Hyperliquid perps on 4h/1d/1w, names the imbalances and writes conditional setups through code's gate (`data/board/`, `data/setups/`; pipeline in `docs/fallback-routine.md`). On the first run of each day it is also asked to:
 
 1. Read `ROUTINE.md`, `data/` history, and live sources (it has web access + this repo's marketstate prompt corpus, which gets copied into `ROUTINE.md`'s appendix or referenced).
 2. Write `data/marketstate/latest.json` + dated copy — schema:
@@ -91,7 +91,7 @@ The cloud routine (managed on Claude Desktop, executed in Anthropic's cloud env,
 3. Write `data/sectors/latest.json` + dated copy — schema:
    `{ generated_at, sectors: [{ id, label, mindshare_score /*0-1*/, momentum /*-1..1*/, rationale, tokens: [string], sources: [string] }], rotations: [{ from, to, confidence, trigger, note }] }`
    Sector list is the routine's own judgment each run — emergent taxonomy, not fixed.
-4. Commit both with `chore(data): routine run <ISO date>` and push. The push redeploys Vercel.
+4. Commit (message per `ROUTINE.md` § 6) and push. A push that changes more than `data/setups` and `data/board` redeploys Vercel.
 
 App-side: `data/**/*.json` files are bundled at build time via static imports — `latest.json` directly, history through routine-maintained `data/*/index.ts` static-import index files (Vercel's bundler ships no directory scans) — no runtime GitHub fetching. "Trigger routine" button → `POST /api/routines/trigger` → if `ROUTINE_WEBHOOK_URL` set, POST `{source:"hypertrade", requested_at}` to it (user wires the webhook to their cloud routine launcher); always records the request; UI shows last trigger + last `generated_at` so staleness is visible.
 
