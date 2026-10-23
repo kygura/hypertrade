@@ -16,6 +16,7 @@ function setup(over: Partial<Setup> = {}): Setup {
     asset: "BTC",
     direction: "long",
     horizon: "swing",
+    timeframe: null,
     thesis: "t",
     regime_alignment: "with",
     trigger: "x",

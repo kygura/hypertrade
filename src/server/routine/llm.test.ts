@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import type { Conversation, LLMProvider, StepResult } from "../llm/provider.js";
 import { callChain, envProviderFactory, MemoryLlmCache, parseChain, type ChainEntry } from "./llm.js";
-import { DailyOutputSchema, pulseOutputSchema, toJsonSchema } from "./schema.js";
+import { DailyOutputSchema, ScanOutputSchema, toJsonSchema } from "./schema.js";
 
 type Reply = { emit?: unknown; throws?: string };
 
@@ -99,21 +99,39 @@ describe("provider chain", () => {
 });
 
 describe("emit schemas", () => {
-  test("toJsonSchema mirrors zod: required, nullable, enums, nested objects", () => {
-    const js = toJsonSchema(pulseOutputSchema(true)) as { properties: Record<string, any>; required: string[] };
-    expect(js.required).toEqual(["regime_read", "htf_view", "new_setups", "cancel", "stand_aside_reason", "brief"]);
-    expect(js.properties.htf_view.anyOf[1]).toEqual({ type: "null" });
-    expect(js.properties.new_setups.items.properties.direction).toEqual({ type: "string", enum: ["long", "short"] });
-    expect(js.properties.new_setups.items.additionalProperties).toBe(false);
+  test("toJsonSchema mirrors zod: required, optional, enums, nested objects", () => {
+    const js = toJsonSchema(ScanOutputSchema) as { properties: Record<string, any>; required: string[] };
+    expect(js.required).toEqual(["read", "watchlist", "setups", "passes", "cancel", "brief"]);
+    const setup = js.properties.setups.items;
+    expect(setup.properties.direction).toEqual({ type: "string", enum: ["long", "short"] });
+    expect(setup.additionalProperties).toBe(false);
+    expect(setup.properties.template.anyOf[1]).toEqual({ type: "null" });
+    // Prices are references into the level menu, never free numbers.
+    expect(setup.properties.entry.properties.low.required).toEqual(["level"]);
+    expect(setup.properties.targets.items.properties.level.enum).toContain("R");
     const daily = toJsonSchema(DailyOutputSchema) as { properties: Record<string, any> };
     expect(daily.properties.marketstate.properties.domains.items.properties.domain.enum).toEqual(["macro", "equities", "crypto", "tech", "geopolitics"]);
   });
 
-  test("pulse schema: htf_view required when due, stand_aside_reason required when no setups", () => {
-    const base = { regime_read: "r", htf_view: null, new_setups: [], cancel: [], stand_aside_reason: null, brief: "b" };
-    expect(pulseOutputSchema(false).safeParse({ ...base, stand_aside_reason: "quiet" }).success).toBe(true);
-    expect(pulseOutputSchema(false).safeParse(base).success).toBe(false);
-    expect(pulseOutputSchema(true).safeParse({ ...base, stand_aside_reason: "quiet" }).success).toBe(false);
-    expect(pulseOutputSchema(false, false).safeParse(base).success).toBe(true); // htf mode: no setups, no reason needed
+  test("scan schema: an R target needs its multiple", () => {
+    const draft = (targets: unknown) => ({
+      asset: "BTC",
+      direction: "long",
+      template: null,
+      timeframe: "1d",
+      imbalance: "shorts_pressing",
+      thesis: "t",
+      trigger: "t",
+      entry: { low: { level: "1d.pdl" }, high: { level: "mark" } },
+      invalidation: { level: "1d.low20", atr: -0.25 },
+      invalidation_reason: "r",
+      targets,
+      conviction: "low",
+      evidence: ["BTC.pos.oiChg24hPct"],
+    });
+    const out = (targets: unknown) => ({ read: "r", watchlist: [], setups: [draft(targets)], passes: [], cancel: [], brief: "b" });
+    expect(ScanOutputSchema.safeParse(out([{ level: "R", r: 2 }, { level: "1d.high20" }])).success).toBe(true);
+    expect(ScanOutputSchema.safeParse(out([{ level: "R" }])).success).toBe(false);
+    expect(ScanOutputSchema.safeParse(out([{ level: "1d.made_up" }])).success).toBe(false);
   });
 });

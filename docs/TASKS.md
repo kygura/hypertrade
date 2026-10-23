@@ -5,6 +5,17 @@ lists live in git history (see History).
 
 ## Open
 
+Routine redesign (2026-10-23, `docs/fallback-routine.md`): the 4 h routine is a board scan of the
+top-30 perps on 4h/1d/1w with tripwires (the commonplace setups as thresholds), a level menu, and the
+model as the interpretation layer that names imbalances and writes setups by level key; code resolves
+prices, R, alignment and expiry, then gates. MarketState/Sectors daily, Lab search weekly. It ships the
+scan-side parts of phases 1–3 below from HL directly instead of stored tables, and departs from § B.8:
+the model creates setups, from code-built levels only.
+
+- [ ] Grade the tripwire thresholds: an event study per template on the board's own features
+  (needs the board history to accumulate, or a replay from stored candles and funding).
+- [ ] Per-template outcome stats in the ledger brief (`setup_id`, `timeframe` now ride on every setup).
+
 Candidate pipeline, per `docs/research/candidates-redesign.md` § B.12. Swing-only
 setups, candidate universe = top 30 by 24 h notional plus "my markets".
 

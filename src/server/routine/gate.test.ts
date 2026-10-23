@@ -4,7 +4,7 @@ import type { HtfView, Setup, SetupProposal } from "./schema.js";
 
 const now = new Date("2026-10-18T12:00:00Z");
 const inDays = (d: number) => new Date(now.getTime() + d * 86_400_000).toISOString();
-const view = { stance: "trend_long", regime: "risk_on" } as HtfView;
+const view = { stance: "trend_long", regime: "risk_on", valid_until: inDays(3) } as HtfView;
 
 // Long BTC: entry 80,000–81,000 (mid 80,500), invalidation 78,000 (3.1%), target 86,000 (2.2R).
 const good = (over: Partial<SetupProposal> = {}): SetupProposal => ({
@@ -27,7 +27,7 @@ const goodShort = (over: Partial<SetupProposal> = {}): SetupProposal =>
   good({ asset: "ETH", direction: "short", entry: { low: 2400, high: 2440 }, invalidation: 2500, targets: [2250, 2100], ...over });
 
 const ctx = (over: Partial<GateContext> = {}): GateContext => ({
-  mode: "pulse",
+  mode: "scan",
   now,
   marks: new Map([
     ["BTC", 82_000],
@@ -71,8 +71,10 @@ describe("gate", () => {
     expect(rule(good({ regime_alignment: "counter", conviction: "medium" }))).toBe("counter_conviction");
     expect(rule(good({ regime_alignment: "counter", conviction: "low" }), ctx({ open: [openSetup({ asset: "SOL", regime_alignment: "counter" })] }))).toBe("counter_cap");
     expect(rule(good({ regime_alignment: "counter", conviction: "low" }))).toBeNull();
+    // The HTF view is an optional operator stance: stand_aside blocks while valid; a lapsed or missing view does not.
     expect(rule(good(), ctx({ htf: { ...view, stance: "stand_aside" } }))).toBe("htf_stand_aside");
-    expect(rule(good(), ctx({ htf: null }))).toBe("htf_missing");
+    expect(rule(good(), ctx({ htf: { ...view, stance: "stand_aside", valid_until: inDays(-1) } }))).toBeNull();
+    expect(rule(good(), ctx({ htf: null }))).toBeNull();
   });
 
   test("caps: new per mode, open total, duplicates within one batch", () => {

@@ -1,89 +1,114 @@
-# Fallback routine: provider-agnostic setups pulse and daily brief
+# Routine pipeline: board scan, setups and the daily brief
 
-Status: spec for the routine pipeline that runs without Claude Code
-(`bun run routine`). It reuses the app's own LLM layer (`src/server/llm/`:
-Claude Opus 5.5 by default, Kimi via the `moonshot` preset when the Anthropic
-call fails). The scheduled workflow that ran it (`routine.yml`) was removed;
-the cron and Actions sections below describe how it ran and apply again if it
-is restored.
-
-The Claude Code scheduled routine (`ROUTINE.md`) keeps working while it
-exists. This pipeline adds two things it never had: a frequent **setups
-pulse** and a persistent **HTF view**. It can also take over the daily
-MarketState/Sectors write (`--mode daily`) once `ROUTINE_FALLBACK=true`.
+Status: the contract for `bun run routine`, the code path behind the
+scheduled routine. The Claude Code session (`ROUTINE.md`) runs the same
+pipeline and stands in for the model call with `--input`; without a session
+the pipeline calls the app's own LLM layer (`src/server/llm/`: Claude Opus
+5.5 by default, Kimi via the `moonshot` preset when the Anthropic call
+fails). The scheduled workflow that ran it (`routine.yml`) was removed; the
+cron and Actions sections below describe how it ran and apply again if it is
+restored.
 
 ## Principles
 
-1. **Code measures, the model interprets.** Every number the model sees is
-   fetched and computed in code (collect + HTF features). The model never
-   fetches. Status of a setup (triggered, invalidated, target hit, expired)
-   is decided by code against prices, never by the model.
-2. **Restraint is enforced, not requested.** The prompt asks for restraint;
-   `gate.ts` enforces it. A setup that breaks a rule is dropped and the
-   reason is logged in the run output.
-3. **HTF first.** Every run reads the HTF view before proposing anything.
-   Setups that fight the view are allowed only as low-conviction
-   counter-trend ideas, at most one open at a time.
-4. **"Nothing worth doing" is a valid, common answer.** A run with zero new
-   setups and no status change sends no notification.
+1. **Code measures, the model interprets.** Every number is fetched and
+   computed in code: the board, the tripwires, the level menu. The model
+   names structure (which market, which side, which levels by key, why) and
+   reads what one-dimensional thresholds miss. It never fetches, never
+   computes, never writes a price.
+2. **Proactive, not restless.** The board nearly always has something
+   leaning, so every run names the most imbalanced markets and what would
+   arm them, and a setup is proposed wherever an imbalance meets a level.
+   Restraint is enforced by `gate.ts` (R, zone, caps, one per market and
+   side), not by a default of standing aside.
+3. **The ledger grades the hypotheses.** Status (triggered, invalidated,
+   target hit, expired) is decided by code against prices. Template ids and
+   timeframes ride on every setup, so outcomes can be grouped per setup type.
+4. **Facts in, numbers checked out.** Text the model writes (theses,
+   triggers, watchlist notes) is dropped when it cites a number the board
+   did not show (`numbersBacked`, `src/server/intel/numbers.ts`).
 5. **Setups are conditional plans for a human, not orders.** No position
    size, no leverage, no execution path. Risk is expressed in R multiples.
 
 ## Modes
 
-`bun run routine --mode <pulse|daily|htf> [--dry-run]`
+`bun run routine [--mode <scan|daily>] [--dry-run] [--collect-only] [--context <file>] [--input <file>] [--push-out <file>]`
 
-| Mode | Cron (UTC) | Writes | Gate |
+| Mode | Cadence | Collects | Writes |
 |---|---|---|---|
-| `pulse` | `17 */4 * * *` | `data/setups/ledger.json`, `data/setups/htf.json` (when refreshed) | runs whenever an LLM key is present |
-| `daily` | `40 6 * * *` | pulse outputs + MarketState, Sectors, `data/lab/<date>.json` | repo variable `ROUTINE_FALLBACK == 'true'` |
-| `htf` | manual dispatch | `data/setups/htf.json` | forced refresh; proposes no setups |
+| `scan` (default) | every 4 h | HL, the board, hl-cycles, app metrics and Lab pulse (when keyed), calendar | `data/setups/ledger.json` (when something moved), `data/board/history.json`, `data/board/latest.json` |
+| `daily` | once a day | the above plus FRED, Yahoo, Fear & Greed, stablecoins, the majors' HTF candles | scan outputs + MarketState, Sectors, `data/lab/<date>.json` |
 
-`pulse` refreshes the HTF view itself when the view is missing, older than
-7 days, or the hl-cycles `regime.state` differs from the view's
-`hl_cycles_state`. So the HTF view stays current even while `daily` is
-dormant.
+- `--collect-only` prints the scan rules (the system prompt), the board and
+  the context, then stops. With `--context <file>` it saves the collection.
+- `--input <file>` replaces the model call with a scan output written by an
+  external agent; with `--context` it resolves against the saved board and
+  collects nothing. A context older than 2 h is refused. `daily` does not
+  take `--input`.
+- `--push-out <file>` writes the push text there (empty on a quiet run)
+  instead of sending it to Telegram.
+- `--dry-run`: collect, call the model, validate, print the brief and the
+  would-be files; write nothing, send nothing.
 
-`--dry-run`: collect, call the model, validate, print the brief and the
-would-be file diffs; write nothing, send nothing.
-
-Without an LLM key the run exits 0 with a notice ("no LLM provider
-configured"), so a missing secret never turns the schedule red.
+Without an LLM key (and without `--input`) the run exits 0 with a notice
+("no LLM provider configured"), so a missing secret never turns a schedule
+red.
 
 ## Pipeline per run
 
 1. **Load state**: `data/setups/ledger.json`, `data/setups/htf.json`,
-   latest `data/marketstate`, `data/sectors`, `data/lab` files.
+   `data/board/history.json`, `data/board/latest.json`. A ledger or view that
+   exists but does not parse stops the run. The board files are derived
+   data: an unreadable one is a note and starts over.
 2. **Collect** (`collect.ts`), every fetch with a timeout; a failure becomes
    a `gaps[]` entry `{source, status, detail}`, never a crash:
-   - Hyperliquid `metaAndAssetCtxs`: mark, prevDayPx, OI (USD), funding for
-     the whole universe; keep BTC, ETH, SOL, HYPE plus the top 25 by OI.
-   - Hyperliquid `candleSnapshot` daily (400 d) and weekly (3 y) for BTC,
-     ETH, SOL, HYPE, and hourly (`1h`) candles since each open setup's
-     `updated_at` for every asset with an open setup (status checks need
-     the high/low path, not only the mark; hourly bars keep the "which came
-     first" ambiguity of one bar small).
-   - hl-cycles `vector.json` + `health.json` (regime, levels, compass,
-     brief confirm/invalidate).
-   - FRED CSV: DGS10, DGS2, T10Y2Y, VIXCLS, DTWEXBGS, DCOILBRENTEU,
-     NASDAQCOM. Retry once on a fresh connection (`connection: close`) on a
-     transport error.
-   - Yahoo chart: SPY, QQQ, NVDA, ^VIX (1mo daily).
-   - Fear & Greed (31 d), DefiLlama stablecoin total (now, −7 d, −30 d).
-   - App (only when `APP_URL` and `LAB_API_TOKEN` are set):
-     `/api/metrics/summary` (ids from ROUTINE.md §2.2), `/api/sectors`,
-     `POST /api/lab/tools/lab_market_pulse`, `lab_catalogue_list`.
-   A gap's `detail` is a short reason written by the code (`HTTP 503`,
-   `response is not JSON`), never response text. Strings from outside
-   sources (hl-cycles, Lab rules, gaps) reach the model only inside
+   - Hyperliquid `metaAndAssetCtxs` for the whole universe and
+     `predictedFundings` (Binance, Bybit and HL next funding).
+   - **Board** (`collectBoard`): the top 30 live markets by 24 h notional
+     volume above a $5M OI floor, plus BTC, ETH, SOL, HYPE and
+     `PLATFORM_MY_MARKETS` wherever listed. Per market: 4h candles (30 d),
+     daily candles (365 d; weeks are built from them), hourly funding (7 d).
+     Three markets in flight; the HL weight guard paces the rest (about
+     2–3 min for 33 markets).
+   - Hourly candles since each open setup's last check (status needs the
+     high/low path).
+   - hl-cycles `vector.json` + `health.json`, the intel calendar's next FOMC,
+     CPI and NFP, app metrics and Lab pulse when `APP_URL` and
+     `LAB_API_TOKEN` are set.
+   - `daily` only: FRED CSV (DGS10, DGS2, T10Y2Y, VIXCLS, DTWEXBGS,
+     DCOILBRENTEU, NASDAQCOM), Yahoo (SPY, QQQ, NVDA, ^VIX), Fear & Greed,
+     DefiLlama stablecoins, the majors' daily (400 d) and weekly (3 y)
+     candles.
+   A gap's `detail` is a short reason written by the code, never response
+   text. Strings from outside sources reach the model only inside
    `untrusted()`; HL symbols and the hl-cycles regime state are
    shape-checked at parse.
-3. **HTF features** (`htf.ts`, pure, unit-tested) per major: close vs
-   20W/50W SMA and 200D SMA, distance from 52-week high/low, 30-day
-   realised vol (annualised), 4-week return, weekly trend label
-   (`up | down | range` from SMA slope and price position). Deterministic.
-4. **Update open setups** (`ledger.ts`, pure, unit-tested) against the
-   candle path since `updated_at`, in time order:
+3. **Board** (`board.ts`, pure). Per market and timeframe, on completed bars
+   only (a forming bar is not a close): ATR14 and ATR%, SMA20/50, mark vs
+   SMA20 in ATRs, trend (`up` = close > SMA20 > SMA50 with SMA20 up ≥ 0.25
+   ATR over 5 bars; `down` mirrored; else `range`), the prior range
+   (20 bars on 4h and 1d, 12 on 1w), the mark's position in it, breakout
+   and sweep of the last bar, volume ratio, ATR5/ATR20. Positioning: funding
+   now, 24 h and 7 d annualised, its 7 d percentile, Binance/Bybit funding
+   and the HL spread to it, premium, OI and OI/volume, OI change in
+   contracts over 4 h / 24 h / 7 d from the committed history, price change
+   over the same windows, and the 24 h price × OI quadrant. Then relative
+   strength vs BTC and a robust cross-sectional z (median/MAD) for funding,
+   OI change and 24 h return. HL funding carries a fixed interest component:
+   neutral reads ~10.95% annualised.
+   The **level menu** per market: `mark`, `4h.high20/low20/sma20`,
+   `1d.pdh/pdl/high20/low20/sma20/sma50/sma200`,
+   `1w.pwh/pwl/high12/low12/sma20`. A setup may use no other price.
+4. **Tripwires** (`tripwires.ts`, pure): commonplace setups as data, each a
+   list of hard conditions over a board row. `funding_fade` (short),
+   `negative_funding_build` (long), `post_liquidation_reclaim` (long),
+   `range_breakout`, `failed_breakout` and `htf_pullback` (both sides).
+   All conditions met = a hit; all but one numeric condition, within one
+   limit-width of its limit = a near-miss. Missing data fails a condition.
+   Thresholds live in `TRIPWIRES`; they are starting points for the ledger
+   and the Lab event study to grade, not claims of an edge.
+5. **Update open setups** (`ledger.ts`, pure, unit-tested) against the
+   hourly path since `updated_at`, in time order:
    - `watching` → `triggered` when a candle trades into the entry zone.
    - `watching` → `invalidated` ("never filled") when price crosses the
      invalidation level first.
@@ -92,95 +117,106 @@ configured"), so a missing secret never turns the schedule red.
      (−1R). Targets are not checked on the candle that triggers.
    - `triggered` → `invalidated` (stopped, −1R) when invalidation trades.
    - `triggered` → `target_hit` when the first target trades (record R).
-   - Same candle touches both invalidation and target → invalidation wins
-     (conservative).
+   - Same candle touches both invalidation and target → invalidation wins.
    - Any open setup past `expires_at` → `expired` (a triggered one is
      marked to the last close in R; a cancelled triggered one to the mark).
-   Keep closed setups for 90 days in `closed[]`, then drop them. The ledger
-   file is rewritten only when something besides the check timestamps
-   changed, so a quiet pulse leaves no commit.
-5. **Model call** via `completeStructured` from `src/server/intel/llm.ts`
-   with an in-memory cache and the provider chain below. Input: HTF view,
-   HTF features, the condensed context pack, open and recently closed
-   setups with their outcomes, the gaps list. Output (zod-validated):
-   - `regime_read`: one or two sentences, where we stand.
-   - `htf_view` (only when a refresh is due).
-   - `new_setups[]` (0–3 proposals).
-   - `cancel[]`: `{id, reason}` for open setups whose thesis broke before
-     price did.
-   - `stand_aside_reason` when `new_setups` is empty.
-   - `brief`: short delta-first text.
-   - In `daily` mode also MarketState + Sectors per `src/shared/schemas.ts`
-     and ROUTINE.md §4.1–4.3 (separate call, same provider chain).
-6. **Gate** (`gate.ts`, pure, unit-tested) each proposal:
-   - asset exists in the live HL universe;
-   - the mark is not already beyond the invalidation level
-     (`already_invalid`);
-   - direction-consistent levels: long ⇒ invalidation < entry.low ≤
-     entry.high < targets ascending; short mirrored;
-   - entry zone width ≤ 4% of its midpoint; invalidation distance from
-     entry mid between 1% and 25%;
-   - R:R to first target, computed in code from entry mid, ≥ 2.0;
+   Closed setups are kept 90 days.
+6. **Scan** (model call via `completeStructured`, or `--input`). The prompt
+   (`SCAN_SYSTEM`, `scanUser` in `prompts.ts`) carries the board one market
+   per line, the tripwires with every condition's value, open and recently
+   closed setups, last run's watchlist, hl-cycles, catalysts, unusual app
+   metrics, firing Lab rules and gaps. Output (`ScanOutputSchema`):
+   - `read`: where the board leans and the largest imbalance.
+   - `watchlist[]` (≤ 6): `{asset, kind, skew, timeframe, note, arms,
+     evidence}`; `kind` from a fixed list of commonplace imbalances
+     (`crowded_longs`, `shorts_pressing`, `short_covering`,
+     `venue_divergence`, `compression`, …).
+   - `setups[]` (≤ 3): `{asset, direction, template, timeframe, imbalance,
+     thesis, trigger, entry: {low, high}, invalidation, invalidation_reason,
+     targets, conviction, evidence}` where every price is a reference
+     `{level: <menu key>, atr?: <signed multiple>}` and a target may be
+     `{level: "R", r: <multiple>}`.
+   - `passes[]`: every tripwire hit not written up, with why.
+   - `cancel[]`: `{id, reason}` for open setups whose premise broke.
+   - `brief`: short, delta-first text.
+7. **Resolve** (`scan.ts`, pure): level keys and ATR offsets (the 4h ATR for
+   a 4h setup, else the 1d ATR) become prices at 5 significant figures; R
+   targets are measured from the entry midpoint; `regime_alignment` is
+   `counter` when the setup fights the market's weekly trend (daily when
+   the market is too young), and a counter setup's conviction is capped at
+   low; `expires_at` comes from the timeframe (4h: 3 days, 1d: 7, 1w: 10).
+   A draft is dropped as `unknown_asset`, `level_missing` or
+   `unbacked_number`; a watchlist item off the board or citing an unshown
+   number is dropped too. Hits neither set up nor passed are listed as not
+   addressed.
+8. **Gate** (`gate.ts`, pure, unit-tested) each resolved proposal:
+   - the operator's HTF view (`data/setups/htf.json`), while `valid_until`
+     has not passed, with stance `stand_aside` ⇒ no new setups; a missing
+     or lapsed view blocks nothing;
+   - asset in the live HL universe; mark not already beyond invalidation;
+   - long ⇒ invalidation < entry.low ≤ entry.high < targets ascending;
+     short mirrored;
+   - entry zone ≤ 4% of its midpoint; invalidation 1–25% from it;
+   - R to the first target ≥ 2.0, computed by code;
    - `expires_at` ≤ 10 days (`swing` is the only horizon);
    - no other open setup on the same asset and direction;
-   - counter-regime (`regime_alignment: counter`) ⇒ conviction `low`, and
-     at most one counter-regime setup open;
-   - HTF stance `stand_aside` ⇒ no new setups at all;
-   - caps: at most 5 open setups, at most 2 new per `pulse`, 3 per `daily`.
-   Rejected proposals are listed in the run output with the failing rule.
-   `htf` mode skips this step: it asks for no setups and ignores any.
-7. **Write** ledger/view (and daily files), print the brief, write the
-   GitHub step summary.
-8. **Notify** (Telegram, plain text, split under 4000 chars) only when:
-   a setup was added, changed status or was cancelled; the HTF view was
-   refreshed with a regime change; or `daily` ran.
-9. **Commit** (workflow): pulse/htf stage `data/setups/*.json` only. A
-   daily commit runs `bun run typecheck && bun test src` first; green goes
-   to the default branch, red is committed anyway and pushed to
-   `routine/<RUN_DATE>` (no deploy there), then the job fails. The run
-   date comes from the run itself (`run_date` step output).
+   - counter-trend ⇒ conviction low, at most one counter setup open;
+   - caps: at most 5 open, 2 new per `scan`, 3 per `daily`.
+   Accepted setups carry `setup_id` (the template, or null), `timeframe`
+   and `levels_source: "menu"`.
+9. **Write**: the ledger when something besides check timestamps changed;
+   a board snapshot every run (`[mark, OI in contracts, hourly funding]`
+   per market, 8 days kept, a re-run within 30 min replaces it); the scan
+   record; in `daily`, MarketState, Sectors (tokens checked against the live
+   universe), the history indexes and the Lab snapshot.
+10. **Notify** only when something is new: a setup accepted, an open setup
+    changed status or was cancelled, a tripwire hit the last run did not
+    have, or `daily` wrote its files. Telegram (plain text, split under
+    4000 chars), or the push text to `--push-out` for the Claude routine's
+    ntfy push. A watchlist change alone never pushes.
 
-Exit codes: 0 without an LLM key; 1 when `ROUTINE_LLM` has no usable
-entry, every provider failed, or the daily stage failed (pulse outputs
-computed before the failure are still written).
+Exit codes: 0 without an LLM key; 1 when `ROUTINE_LLM` has no usable entry,
+every provider failed, the input is invalid, the context is stale, or the
+daily stage failed (scan outputs computed before the failure are still
+written); 2 for `daily` with `--input`.
 
-## Data shapes (`src/shared/setups.ts`, model shapes in `src/server/routine/schema.ts`)
+## Data shapes
+
+`src/shared/setups.ts` (persisted setups), `src/server/routine/schema.ts`
+(model shapes), `src/server/routine/board.ts` and `run.ts` (board files).
 
 ```ts
 Setup {
   id: string            // `${asset}-${direction}-${YYYYMMDD}-${n}`
   asset: string         // HL symbol, case-sensitive
   direction: "long" | "short"
-  setup_id: string | null  // catalogue definition (src/shared/setups.ts SETUP_IDS); null = model proposal
-  levels_source: "code" | "model"
+  setup_id: string | null  // tripwire template (SETUP_IDS); null = an imbalance no template covers
+  levels_source: "code" | "menu" | "model"  // menu = model-picked keys resolved by code
   horizon: "swing"
-  thesis: string        // why, citing measured numbers
-  regime_alignment: "with" | "counter"
-  trigger: string       // the checkable condition to act on
-  entry: { low: number; high: number }
-  invalidation: number
-  invalidation_reason: string
+  timeframe: "4h" | "1d" | "1w" | null      // the trigger's bar; null on older ledgers
+  thesis: string; regime_alignment: "with" | "counter"; trigger: string
+  entry: { low: number; high: number }; invalidation: number; invalidation_reason: string
   targets: number[]     // 1–3, in profit order
-  rr: number            // computed by code, never taken from the model
+  rr: number            // computed by code
   conviction: "low" | "medium" | "high"
-  evidence: string[]    // context keys, e.g. "hl-cycles.levels.sth_cost_basis"
+  evidence: string[]    // board keys, e.g. "HYPE.pos.fundingAnnPct"
   status: "watching" | "triggered" | "invalidated" | "target_hit" | "expired" | "cancelled"
-  status_note: string | null
-  r_result: number | null   // realised R when closed after a trigger
-  triggered_at: string | null  // when the entry zone first traded
+  status_note: string | null; r_result: number | null; triggered_at: string | null
   created_at: string; updated_at: string; expires_at: string
 }
-Ledger { updated_at: string; open: Setup[]; closed: Setup[];
-         stats: { closed_90d: number; triggered_90d: number; hit_rate: number | null; avg_r: number | null } }
-         // triggered_90d counts setups with triggered_at; avg_r averages those with a realised R
-HtfView {
-  generated_at: string; valid_until: string
-  hl_cycles_state: string | null
+Ledger { updated_at; open: Setup[]; closed: Setup[]; stats: { closed_90d; triggered_90d; hit_rate; avg_r } }
+BoardHistory { updated_at; snapshots: { t: string; rows: Record<coin, [mark, oiContracts, fundingHourly]> }[] }
+ScanRecord {   // data/board/latest.json
+  generated_at; read; watchlist: WatchItem[]
+  hits, near: { asset; setup_id; direction; gap? }[]
+  new_setups: string[]; rejected: { asset; direction; rule; detail }[]
+  passes: { asset; template; direction; reason }[]; unanswered: string[]; brief
+}
+HtfView {   // data/setups/htf.json: the operator's optional stance
+  generated_at; valid_until; hl_cycles_state
   regime: "risk_on" | "neutral" | "risk_off"
   stance: "trend_long" | "range" | "trend_short" | "stand_aside"
-  thesis: string              // the long-term view, 3–6 sentences
-  biases: { asset: string; bias: "long" | "short" | "neutral"; levels: { label: string; price: number }[]; note: string }[]
-  what_changes_it: string[]   // checkable: metric, threshold, direction
+  thesis; biases[]; what_changes_it[]
 }
 ```
 
@@ -206,14 +242,15 @@ variables → Actions → Variables); clearing it restores the default. Any pres
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | secret | notifications (optional) |
 | `APP_URL`, `LAB_API_TOKEN` | secret | app metrics, sectors, Lab pulse (optional; without them the run uses public sources only and says so) |
 | `ROUTINE_LLM`, `ROUTINE_MAX_USD` | variable | optional overrides |
+| `PLATFORM_MY_MARKETS` | variable | markets always on the board (default `BTC,ETH,HYPE,SOL,XPL,LIT,ZEC`) |
 | `ROUTINE_FALLBACK` | variable | `true` enables `daily` |
 
 ## Deploys
 
-`data/setups/**` changes alone must not redeploy the app.
-`vercel.json` `ignoreCommand` skips the build when nothing outside
-`data/setups/` changed. `daily` touches `data/marketstate` and
-`data/sectors`, so it still deploys.
+`data/setups/**` and `data/board/**` changes alone must not redeploy the
+app. `vercel.json` `ignoreCommand` skips the build when nothing outside
+them changed. `daily` touches `data/marketstate` and `data/sectors`, so it
+still deploys.
 
 ## Out of scope
 

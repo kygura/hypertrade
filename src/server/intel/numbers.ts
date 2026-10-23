@@ -101,8 +101,13 @@ export function isAdvice(text: string): boolean {
 /** Within rounding: relative 0.5 %, or one unit of the last printed decimal. */
 const near = (t: NumToken, p: number) => Math.abs(t.value - p) <= Math.max(0.005 * p, t.unit) * (1 + 1e-9);
 
+/** True when every number the text prints matches one in the payload within rounding. `payload` = payloadNumbers(input). */
+export function numbersBacked(text: string, payload: number[]): boolean {
+  return extractNumbers(text).every((t) => payload.some((p) => near(t, p)));
+}
+
 /** Why a line must be dropped, or null when it passes. `payload` = payloadNumbers(input). */
 export function lineVerdict(text: string, payload: number[]): "advice" | "numbers" | null {
   if (isAdvice(text)) return "advice";
-  return extractNumbers(text).every((t) => payload.some((p) => near(t, p))) ? null : "numbers";
+  return numbersBacked(text, payload) ? null : "numbers";
 }
