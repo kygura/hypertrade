@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-10-23T01:53:49.515Z",
+  "since": "2026-10-22T21:53:46.381Z",
+  "nearMiss": {
+    "top": null,
+    "all": []
+  },
+  "novelty": [],
+  "ready": [],
+  "thesisWatch": [],
+  "lab": {
+    "universe": [
+      "BTC",
+      "ETH",
+      "HYPE",
+      "SOL",
+      "XPL",
+      "LIT",
+      "ZEC"
+    ],
+    "trials": []
+  },
+  "changes": {
+    "nearMiss": false,
+    "novelty": [],
+    "ready": {
+      "added": [],
+      "removed": []
+    },
+    "thesis": [],
+    "labTrials": []
+  },
+  "changed": false,
+  "gaps": []
+}
