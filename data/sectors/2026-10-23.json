@@ -1,0 +1,101 @@
+{
+  "generated_at": "2026-10-23T01:52:56Z",
+  "sectors": [
+    {
+      "id": "l1-majors",
+      "label": "L1 majors",
+      "mindshare_score": 0.6,
+      "momentum": -0.1,
+      "rationale": "BTC -2.2%, ETH -2.2%, SOL -1.8% vs prior day; BTC OI $3.48B (z30 +1.51, from +2.07), ETH OI $2.60B (z30 -0.43). Majors hold about $6.9B of OI; funding at the floor.",
+      "tokens": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
+      ]
+    },
+    {
+      "id": "perp-dex-defi",
+      "label": "Perp DEX & DeFi",
+      "mindshare_score": 0.5,
+      "momentum": -0.2,
+      "rationale": "HYPE -2.8% with OI $1.60B (z30 -0.24); AAVE -3.4%, UNI -4.8%, ENA -5.6%. DeFi fell harder than majors; AAVE funding is slightly negative.",
+      "tokens": [
+        "HYPE",
+        "AAVE",
+        "UNI",
+        "ENA",
+        "PENDLE"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
+      ]
+    },
+    {
+      "id": "privacy",
+      "label": "Privacy",
+      "mindshare_score": 0.4,
+      "momentum": -0.1,
+      "rationale": "ZEC -6.2% to $1,225 with OI about $554M; XMR -0.5%. Privacy is the largest decliner among big-OI names.",
+      "tokens": [
+        "ZEC",
+        "XMR"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    },
+    {
+      "id": "memecoins",
+      "label": "Memecoins",
+      "mindshare_score": 0.28,
+      "momentum": -0.15,
+      "rationale": "PUMP -9.1%, WIF -4.0%, DOGE -2.3%; sector OI about $234M, the weakest by price among the listed groups.",
+      "tokens": [
+        "WIF",
+        "DOGE",
+        "PUMP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "label": "AI agents",
+      "mindshare_score": 0.22,
+      "momentum": -0.2,
+      "rationale": "FET -2.9%, TAO -3.2%, VIRTUAL -3.6%; sector OI about $58M, the smallest tracked.",
+      "tokens": [
+        "FET",
+        "TAO",
+        "VIRTUAL"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "yahoo SMH"
+      ]
+    }
+  ],
+  "rotations": [
+    {
+      "from": "ai-agents",
+      "to": "l1-majors",
+      "confidence": 0.1,
+      "trigger": "SMH 5d change stays below -5% while BTC OI stays above $3.3B",
+      "note": "Low-confidence; trigger met on both legs (SMH 5d -6.35%, BTC OI $3.48B) but the evidence is thin and unchanged since the last run."
+    },
+    {
+      "from": "perp-dex-defi",
+      "to": "privacy",
+      "confidence": 0.04,
+      "trigger": "ZEC OI rises above $600M while HYPE OI falls below $1.55B",
+      "note": "Low-confidence; ZEC OI is about $554M and HYPE OI $1.60B, so the trigger is not met and the idea is fading."
+    }
+  ]
+}

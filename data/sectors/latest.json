@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-22T21:55:07Z",
+  "generated_at": "2026-10-23T01:52:56Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 majors",
       "mindshare_score": 0.6,
       "momentum": -0.1,
-      "rationale": "BTC -4.0%, ETH -4.3%, SOL -4.3% on the day; BTC OI $3.50B (z30 +2.07) rose while price fell, ETH OI $2.63B flat (z30 -0.01). Majors still hold most OI.",
+      "rationale": "BTC -2.2%, ETH -2.2%, SOL -1.8% vs prior day; BTC OI $3.48B (z30 +1.51, from +2.07), ETH OI $2.60B (z30 -0.43). Majors hold about $6.9B of OI; funding at the floor.",
       "tokens": [
         "BTC",
         "ETH",
@@ -23,7 +23,7 @@
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.5,
       "momentum": -0.2,
-      "rationale": "HYPE -5.0% with OI $1.59B (z30 -0.4); AAVE -6.1%, UNI -7.8%, ENA -8.1%. DeFi sold harder than majors; AAVE and DOGE funding turned slightly negative.",
+      "rationale": "HYPE -2.8% with OI $1.60B (z30 -0.24); AAVE -3.4%, UNI -4.8%, ENA -5.6%. DeFi fell harder than majors; AAVE funding is slightly negative.",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -41,7 +41,7 @@
       "label": "Privacy",
       "mindshare_score": 0.4,
       "momentum": -0.1,
-      "rationale": "ZEC -10.4% to $1,215 with OI about $553M (below $600M); XMR -5.6%. Privacy lost the most among large OI names.",
+      "rationale": "ZEC -6.2% to $1,225 with OI about $554M; XMR -0.5%. Privacy is the largest decliner among big-OI names.",
       "tokens": [
         "ZEC",
         "XMR"
@@ -55,7 +55,7 @@
       "label": "Memecoins",
       "mindshare_score": 0.28,
       "momentum": -0.15,
-      "rationale": "PUMP -10.7% (OI about $139M), WIF -7.5%, DOGE -5.0% with funding slightly negative; beta-heavy drawdown.",
+      "rationale": "PUMP -9.1%, WIF -4.0%, DOGE -2.3%; sector OI about $234M, the weakest by price among the listed groups.",
       "tokens": [
         "WIF",
         "DOGE",
@@ -70,7 +70,7 @@
       "label": "AI agents",
       "mindshare_score": 0.22,
       "momentum": -0.2,
-      "rationale": "TAO -6.7%, FET -6.9%, VIRTUAL -6.4% on the day, in step with SMH -6.0%; OI small (TAO about $43M).",
+      "rationale": "FET -2.9%, TAO -3.2%, VIRTUAL -3.6%; sector OI about $58M, the smallest tracked.",
       "tokens": [
         "FET",
         "TAO",
@@ -86,16 +86,16 @@
     {
       "from": "ai-agents",
       "to": "l1-majors",
-      "confidence": 0.12,
+      "confidence": 0.1,
       "trigger": "SMH 5d change stays below -5% while BTC OI stays above $3.3B",
-      "note": "Low-confidence; SMH fell -6.0% on the day and BTC OI is $3.50B, so both legs hold; one session, so thin evidence."
+      "note": "Low-confidence; trigger met on both legs (SMH 5d -6.35%, BTC OI $3.48B) but the evidence is thin and unchanged since the last run."
     },
     {
       "from": "perp-dex-defi",
       "to": "privacy",
-      "confidence": 0.05,
+      "confidence": 0.04,
       "trigger": "ZEC OI rises above $600M while HYPE OI falls below $1.55B",
-      "note": "Low-confidence; ZEC OI fell to about $553M and HYPE OI is $1.59B, so the trigger is not met and the idea is fading."
+      "note": "Low-confidence; ZEC OI is about $554M and HYPE OI $1.60B, so the trigger is not met and the idea is fading."
     }
   ]
 }
