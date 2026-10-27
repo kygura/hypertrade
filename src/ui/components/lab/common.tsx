@@ -22,11 +22,11 @@ export function DataTo({ date }: { date: string }) {
   )
 }
 
-/** Honesty rule 3: disclaimer + slippage + data age on every result surface. */
+/** Honesty rule 3: slippage + data age on every result surface. */
 export function LabFooter({ dataTo, slippageBps = 10, className = '' }: { dataTo?: string | null; slippageBps?: number; className?: string }) {
   return (
     <p className={`text-xs text-text-secondary ${className}`}>
-      historical research, not advice · net of {slippageBps} bps slippage
+      historical research · net of {slippageBps} bps slippage
       {dataTo ? (
         <>
           {' · '}

@@ -15,7 +15,6 @@ import { DAILY_PROMPT_VERSION, DAILY_SYSTEM, dailyUser, numbersBlock, SCAN_PROMP
 import { checkWatchlist, resolveDraft, unanswered, watchKey } from "./scan.js";
 import {
   DailyOutputSchema,
-  DISCLAIMER,
   HtfViewSchema,
   LedgerSchema,
   MarketStateDataSchema,
@@ -97,7 +96,7 @@ export type ScanRecord = z.infer<typeof ScanRecordSchema>;
 
 const SavedContextSchema = z.object({ version: z.literal(1), pack: z.object({ asOf: z.string() }).passthrough(), board: z.object({ asOf: z.string(), rows: z.array(z.unknown()) }).passthrough() });
 
-/** YYYY-MM-DD in Atlantic/Canary (ROUTINE.md §1: the routine's execution date). */
+/** YYYY-MM-DD in Atlantic/Canary (ROUTINE.md §0: the routine's execution date). */
 export function runDate(now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Atlantic/Canary", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
@@ -439,7 +438,6 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
   if (notes.length) body.push("", ...notes.map((n) => `Note: ${n}`));
   if (pack.gaps.length) body.push("", `Data gaps: ${pack.gaps.map((g) => `${g.source} (${g.status})`).join(", ")}`);
   body.push("", `Stats 90d: ${ledger.stats.closed_90d} closed, ${ledger.stats.triggered_90d} triggered, hit rate ${ledger.stats.hit_rate ?? "n/a"}, avg ${ledger.stats.avg_r ?? "n/a"}R · ${ledger.open.length} open`);
-  body.push("Market intelligence, not financial advice.");
   result.brief = body.join("\n");
   log(result.brief);
   log(`llm: ${attempts.map((a) => `${a.entry} ${a.ok ? "ok" : `failed (${a.error})`} ${Math.round(a.ms / 1000)}s ${a.usage.input_tokens}/${a.usage.output_tokens} tok`).join("; ") || "no calls"} · est. $${cache.spentUsd().toFixed(2)} of $${maxUsd.toFixed(2)}`);
@@ -452,7 +450,7 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
     for (const s of statusChanges) lines.push(`${s.id} → ${s.status}${s.r_result !== null ? ` (${s.r_result}R)` : ""}`);
     for (const s of cancelled) lines.push(`Cancelled ${s.id}`);
     for (const t of newHits) lines.push(`Tripwire: ${t.asset} ${t.setup_id} ${t.direction}`);
-    result.push = [...lines.slice(0, 7), "Conditional plans and facts, not advice."].join("\n");
+    result.push = [...lines.slice(0, 7), "Conditional plans and facts."].join("\n");
   }
 
   // 9. Write.
@@ -517,7 +515,7 @@ async function runDaily(a: {
     if (dropped.length) a.notes.push(`sector ${s.id}: dropped symbols not on Hyperliquid: ${dropped.join(", ")}`);
     return { ...s, tokens: s.tokens.filter((t) => live.has(t)) };
   });
-  const marketstate = MarketStateDataSchema.parse({ generated_at: a.nowIso, ...out.marketstate, thesis: { ...out.marketstate.thesis, disclaimer: DISCLAIMER } });
+  const marketstate = MarketStateDataSchema.parse({ generated_at: a.nowIso, ...out.marketstate });
   const sectorsData = SectorsDataSchema.parse({ generated_at: a.nowIso, sectors, rotations: out.sectors.rotations });
 
   const files: Array<{ path: string; text: string }> = [];

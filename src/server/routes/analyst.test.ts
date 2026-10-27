@@ -3,7 +3,6 @@ import { createAnalystRoutes, runAnalyst, type AnalystEvent } from "./analyst.js
 import type { AnalystCatalog } from "../llm/catalog.js";
 import type { Conversation, Effort, LLMProvider, ProviderId, StepHooks, StepOptions, StepResult, ToolOutcome, ToolSpec, Turn } from "../llm/provider.js";
 import type { ToolDeps } from "../llm/tools.js";
-import { DISCLAIMER } from "../llm/system.js";
 
 // A scripted provider: each step() runs the next script entry, which can
 // stream text, call server-tool hooks, and return tool calls.
@@ -148,7 +147,7 @@ describe("/analyst", () => {
         hooks.onText("AI is rotating into RWA. ");
         hooks.onCitation?.({ url: "https://example.com/a", title: "A" });
         hooks.onCitation?.({ url: "https://example.com/a", title: "A dup" });
-        hooks.onText(DISCLAIMER);
+        hooks.onText("Rotation looks early.");
         return { stop: "end", toolCalls: [], usage };
       },
     ]);
@@ -174,7 +173,7 @@ describe("/analyst", () => {
     expect(provider.toolResults[0]![1]!.content).toContain("ENGINE_URL unset");
     expect(provider.history.length).toBe(2);
     expect(provider.question).toMatch(/^\[current time \d{4}-/);
-    expect(provider.system).toContain("not financial advice");
+    expect(provider.system).toContain("Hedge vocabulary");
   });
 
   test("stops after the tool-round cap with a final no-tools round", async () => {

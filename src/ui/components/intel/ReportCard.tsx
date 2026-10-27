@@ -105,7 +105,7 @@ export function ReportCard({
       <PanelHeader title={title}>{report && <ClaimAge ts={report.createdAt} thresholdHours={REPORT_STALE_H} prefix="GEN" />}</PanelHeader>
       {generateError && <ErrorBlock message={generateError} onRetry={onGenerate} />}
       {body}
-      <p className="px-3 py-2 border-t border-border-subtle text-[10px] text-text-secondary">historical record, not advice</p>
+      <p className="px-3 py-2 border-t border-border-subtle text-[10px] text-text-secondary">historical record</p>
     </Panel>
   )
 }

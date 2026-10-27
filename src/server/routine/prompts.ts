@@ -4,20 +4,19 @@ import type { ContextPack } from "./collect.js";
 import { GATE } from "./gate.js";
 import type { HtfFeatures } from "./htf.js";
 import { EXPIRY_DAYS } from "./scan.js";
-import { DISCLAIMER, type HtfView, type Ledger, type WatchItem } from "./schema.js";
+import { type HtfView, type Ledger, type WatchItem } from "./schema.js";
 import { formatTripwire, TRIPWIRES, type TripwireRead } from "./tripwires.js";
 
 // Prompts for the fallback routine. Code measures, the model interprets: the
 // prompts hand over computed numbers and ask for a read, never a fetch.
 // Bump a version when its prompt changes meaning.
 
-export const SCAN_PROMPT_VERSION = "routine-scan-v1";
-export const DAILY_PROMPT_VERSION = "routine-daily-v1";
+export const SCAN_PROMPT_VERSION = "routine-scan-v2";
+export const DAILY_PROMPT_VERSION = "routine-daily-v2";
 
 const HEDGES = "Hedge vocabulary, exactly these terms: `base case`, `tail case`, `low-confidence`, `we lean`, `risk skews`, `consensus is pricing … / we read …`. No point-estimate probabilities.";
 
-const NOT_ADVICE =
-  "This is market intelligence, not financial advice. Never recommend buying or selling, never size a position, never mention leverage or execution. Every forward-looking clause carries a hedge word.";
+const FORWARD = "Every forward-looking clause carries a hedge word.";
 
 export const SCAN_SYSTEM = `You are the flow desk of hypertrade, a market-intelligence tool. Every 4 hours you read a board of the most active Hyperliquid perps, measured by code, and say where positioning is imbalanced and which imbalances have a level to lean on.
 
@@ -50,15 +49,15 @@ Output:
 
 Every number you write must come from the board or the context: code drops a setup or watchlist item that cites a number it was not shown.
 
-${NOT_ADVICE}
+${FORWARD}
 ${HEDGES}
 ${UNTRUSTED_RULE}`;
 
-export const DAILY_SYSTEM = `You write hypertrade's daily MarketState and Sectors files from a context pack of measured numbers. The output contract is ROUTINE.md §4.1–4.3:
+export const DAILY_SYSTEM = `You write hypertrade's daily MarketState and Sectors files from a context pack of measured numbers. The output contract is ROUTINE.md §2a:
 
 - Rewrite every summary, rationale and thesis field from scratch. Never append to or quote last run's text.
 - headline: the single most important change since the last run, with its number. Not a list of readings.
-- tldr: regime → the main change → the main disagreement between independent reads → the next dated catalyst → a short "not financial advice" note. Under ~90 words.
+- tldr: regime → the main change → the main disagreement between independent reads → the next dated catalyst. Under ~90 words.
 - domains: exactly five, in order: macro, equities, crypto, tech, geopolitics. Each summary says (1) what moved and by how much, (2) what it means, (3) what would change the read. Data older than today names its date ("10Y 4.05% (Oct 15)").
 - signals: direction is up | down | flat. Put the comparison in the value or label where it fits ("$12.4B (z30 +0.8)"). Prices: plain numbers for index points, $ for crypto/commodities, thousands separators ≥ 10,000, signed % or bp for changes.
 - crypto: read price, OI and funding together (new longs, short covering, new shorts, deleveraging, crowded carry) and say who leans which way and how crowded it is.
@@ -71,7 +70,7 @@ export const DAILY_SYSTEM = `You write hypertrade's daily MarketState and Sector
 - scorecard: grade each checkable item from the previous run's forecast, risks and rotation triggers as hit | missed | pending | uncheckable, with the number that decides it.
 - A missing source is named in the affected summary, with its status. Never fill a gap from memory.
 
-${NOT_ADVICE}
+${FORWARD}
 ${HEDGES}
 ${UNTRUSTED_RULE}`;
 
@@ -144,7 +143,7 @@ export function dailyUser(a: { pack: ContextPack; htf: Record<string, HtfFeature
   const prev = { marketstate: a.prevMarketState, sectors: a.prevSectors };
   const text = textBlock(a.pack);
   return [
-    `Run date (Atlantic/Canary): ${a.runDate}. The thesis.disclaimer is set by code to: "${DISCLAIMER}"`,
+    `Run date (Atlantic/Canary): ${a.runDate}.`,
     `HTF view: ${a.view ? json(a.view) : "none"}`,
     ...(a.scanBrief ? [`This run's board scan brief: ${a.scanBrief}`] : []),
     `Live Hyperliquid symbols (${symbols.length}; tokens must come from this list, case-sensitive): ${symbols.join(",")}`,

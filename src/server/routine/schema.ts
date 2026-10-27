@@ -131,10 +131,9 @@ export const ScanOutputSchema = z.object({
 export type ScanOutput = z.infer<typeof ScanOutputSchema>;
 
 export const DOMAINS = ["macro", "equities", "crypto", "tech", "geopolitics"] as const;
-export const DISCLAIMER = "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything.";
 
 // Model-side MarketState/Sectors: the app's schemas minus generated_at (code
-// sets it), with the vocabulary ROUTINE.md §4.1–4.3 asks for made strict.
+// sets it), with the vocabulary ROUTINE.md §2a asks for made strict.
 const SignalDraft = z.object({ label: z.string().min(1), value: z.string().min(1), direction: z.enum(["up", "down", "flat"]) });
 const MarketStateDraftSchema = z.object({
   headline: z.string().min(1).max(300).describe("The single most important change since the last run, with its number"),

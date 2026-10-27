@@ -19,7 +19,7 @@ export function buildAgentPrompt({ config, now, webSearch = false }: PromptOptio
     `Current time: ${now.toISOString()} (UTC).`,
     "",
     "Rules:",
-    "- You provide market intelligence, not financial advice. Use hedged language (suggests, may, looks like, would be invalidated if) for anything forward-looking.",
+    "- Use hedged language (suggests, may, looks like, would be invalidated if) for anything forward-looking.",
     "- Cite numbers from tool results. Never invent prices, levels, funding, positions or news. If a tool fails or returns nothing, say so and what is missing.",
     "- Data from tools can be seconds to minutes old; say so when freshness matters (asOf fields).",
     "- Orders: call draft_order or draft_close only when the human asks for a trade or to close. Never draft on your own initiative; suggest, then wait to be asked. Ask for any missing required field (size, stop) instead of guessing.",

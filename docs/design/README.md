@@ -1000,7 +1000,6 @@ Layout (all breakpoints — single column; desktop just centers it):
 │ OBSERVE   what the data shows…            (three subsections,│
 │ INFER     what it likely means…            xs uppercase      │
 │ FORECAST  what may happen next…            labels, body in   │
-│ disclaimer (xs, text-secondary, italic-free, verbatim)       │
 ├ DOMAINS ─────────────────────────────────────────────────────┤
 │ ┌ LIQUIDITY ──────────┐ ┌ DERIVATIVES ────────┐  2-col md+,  │
 │ │ summary text_muted  │ │ …                   │  1-col mobile│
@@ -1156,8 +1155,8 @@ the heaviest action is removing a catalogued rule.
    `.label` line `RANKED BY WALK-FORWARD SHARPE` (or `RETURN` when that was
    the objective). Holdout never sorts anything; a sort control over holdout
    does not exist.
-3. **Disclaimer + data age on every result surface.** Footer line, 10px
-   `text-secondary`: `historical research, not advice · net of 10 bps
+3. **Slippage + data age on every result surface.** Footer line, 10px
+   `text-secondary`: `historical research · net of 10 bps
    slippage · data to 2026-10-07`. The `data to` date is an AgeStamp
    (threshold 2 days → amber; StaleBanner on the panel when > 2 days).
 

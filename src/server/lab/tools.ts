@@ -184,7 +184,7 @@ const searchSchema = obj(
 
 // ---------------------------------------------------------------- tools
 
-const HONESTY = "Results are historical research, net of slippage, not trading advice.";
+const HONESTY = "Results are historical research, net of slippage.";
 
 /** The save bar in words (engine/verdict.ts holds the numbers). */
 const BAR = `verdict.level "robust": walk-forward Sharpe > ${MIN_WALK_FORWARD_SHARPE}, holdout Sharpe > 0 (not untested), stability ≥ ${MIN_STABILITY} and deflatedSharpe ≥ ${MIN_DEFLATED_SHARPE}`;
@@ -435,7 +435,7 @@ export function labPrompts(): PromptDef[] {
           `6. Save with lab_catalogue_save (origin "agent", runId, a note with the evidence) ONLY rules with ${BAR}. ${CANDIDATE} Then lab_catalogue_health: if a new rule overlaps an existing one, keep the better and remove the other.`,
           "7. Report: rules saved (text, verdict, walk-forward and holdout Sharpe, deflatedSharpe, stability, trades per year, firingNow), promising rules rejected and why (verdict.reasons), and what to try next.",
           "",
-          "Rules: rank and choose by walk-forward results only; the holdout confirms, it never selects. Do not re-run searches to chase a better holdout number. Say plainly when nothing passed. Results are historical research, not trading advice.",
+          "Rules: rank and choose by walk-forward results only; the holdout confirms, it never selects. Do not re-run searches to chase a better holdout number. Say plainly when nothing passed. Results are historical research.",
         ].join("\n");
       },
     },
@@ -446,4 +446,4 @@ export const LAB_INSTRUCTIONS = `Hypertrade Lab finds simple, human-readable tra
 
 Loop: lab_list_metrics → lab_search with a small related metric group (5–50 s) → inspect walk-forward vs holdout and stability of the top rules → refine metrics, windows or horizon → lab_catalogue_save only rules that hold up → lab_catalogue_health and lab_market_pulse to monitor. The autoresearch prompt walks through it.
 
-Honesty rules: rank and select by walk-forward results. The holdout (most recent 20%) is never used for selection; treat it as a one-shot check. Every rule carries a save-bar verdict; save only rules with ${BAR}. ${CANDIDATE} Low support, few trades, deflatedSharpe below ${MIN_DEFLATED_SHARPE} or stability below ${MIN_STABILITY} mean the rule is likely noise. Every number is historical research, not investment advice.`;
+Honesty rules: rank and select by walk-forward results. The holdout (most recent 20%) is never used for selection; treat it as a one-shot check. Every rule carries a save-bar verdict; save only rules with ${BAR}. ${CANDIDATE} Low support, few trades, deflatedSharpe below ${MIN_DEFLATED_SHARPE} or stability below ${MIN_STABILITY} mean the rule is likely noise. Every number is historical research.`;

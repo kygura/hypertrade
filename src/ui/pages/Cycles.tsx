@@ -131,7 +131,7 @@ export function Cycles() {
             {forecast.episodes.length} runs is a small sample and the spread between methods is the honest error bar.
             {shallower && ' This bear market has bottomed shallower than every past one so far; a lower low would move the bear-low anchor, and the estimate with it, later.'}{' '}
             Halving dates are BTC's{shownCoin !== 'BTC' && `, used as the market's clock for ${shownCoin}`}; the next one is a block-time estimate.
-            {body.sources.coinmetrics ? ' Coin Metrics days are daily reference closes, so they draw as flat bars.' : ''} Not financial advice. History: {sources}.
+            {body.sources.coinmetrics ? ' Coin Metrics days are daily reference closes, so they draw as flat bars.' : ''} History: {sources}.
           </p>
         </PanelBody>
       </Panel>

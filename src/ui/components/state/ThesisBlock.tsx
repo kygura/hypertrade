@@ -2,7 +2,7 @@ import type { MarketStateThesis } from '../../../shared/types'
 import { Panel, PanelHeader, PanelBody } from '../Panel'
 
 // ThesisBlock — docs/design/README.md §10.6. Observe/Infer/Forecast, each an xs
-// uppercase label followed by muted body text, disclaimer verbatim beneath.
+// uppercase label followed by muted body text.
 
 const SECTIONS = [
   { key: 'observe', label: 'OBSERVE' },
@@ -21,7 +21,6 @@ export function ThesisBlock({ thesis }: { thesis: MarketStateThesis }) {
             <p className="text-[13px] text-text-muted">{thesis[key]}</p>
           </div>
         ))}
-        <p className="text-[10px] text-text-secondary">{thesis.disclaimer}</p>
       </PanelBody>
     </Panel>
   )

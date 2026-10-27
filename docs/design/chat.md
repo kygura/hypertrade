@@ -78,7 +78,7 @@ Storage failure (quota) is already handled: the session lives for the tab.
 
 - Heading (16px, text-primary): `Simulate a path`
 - Body (11px, text-secondary, max 560px):
-  `Describe a what-if in plain words — sizes, leverage, shorts, DCA, a start date. It becomes one to four branches, backtested on daily candles against HODL BTC and USDC, with every assumption it made listed on the card. Historical simulation, not advice.`
+  `Describe a what-if in plain words — sizes, leverage, shorts, DCA, a start date. It becomes one to four branches, backtested on daily candles against HODL BTC and USDC, with every assumption it made listed on the card. Historical simulation.`
 
 **SIM_PROMPTS** (group → items; same shape as `PROMPTS`):
 

@@ -86,7 +86,7 @@ The cloud routine (managed on Claude Desktop, executed in Anthropic's cloud env,
 
 1. Read `ROUTINE.md`, `data/` history, and live sources (it has web access + this repo's marketstate prompt corpus, which gets copied into `ROUTINE.md`'s appendix or referenced).
 2. Write `data/marketstate/latest.json` + dated copy — schema:
-   `{ generated_at, headline, tldr, domains: [{ domain, summary, signals: [{label, value, direction}] }], thesis: { observe, infer, forecast, disclaimer }, risks: [string] }`
+   `{ generated_at, headline, tldr, domains: [{ domain, summary, signals: [{label, value, direction}] }], thesis: { observe, infer, forecast }, risks: [string] }`
    (structure derived from marketstate's 8-message DESIGN.md; hedged-vocabulary rules carried into ROUTINE.md verbatim.)
 3. Write `data/sectors/latest.json` + dated copy — schema:
    `{ generated_at, sectors: [{ id, label, mindshare_score /*0-1*/, momentum /*-1..1*/, rationale, tokens: [string], sources: [string] }], rotations: [{ from, to, confidence, trigger, note }] }`
@@ -149,7 +149,7 @@ Pillar: find simple, human-readable trading rules ("when `cm:CapMVRVCur` z(90) <
 - **API**: `GET /api/lab/tools`, `POST /api/lab/tools/:name` → `{ok, result}` / `{ok: false, error, field?}`; `/api/mcp` is MCP over HTTP. Both accept the session cookie or `Authorization: Bearer <LAB_API_TOKEN>` (the token is valid on those paths only).
 - **Route**: `/lab` — see docs/LAB.md and docs/design/README.md §10.9.
 - **Data** (`db/migrations/004_lab.sql`): `lab_runs` (stored searches), `lab_rules` (the catalogue: rule, evaluation at save, archived_at). Collected history the lab reads lives in `observations` under `lab.*` series ids, written by `POST /api/cron/lab-collect` (own route and workflow job, lease-guarded against overlapping runs; daily Vercel cron fallback) and by `bun run lab sync --local`.
-- **Honesty**: rank by walk-forward; the holdout never selects. Results are historical research, not advice.
+- **Honesty**: rank by walk-forward; the holdout never selects. Results are historical research.
 
 ## Paths — semantic simulation chat (phase 4)
 
@@ -201,7 +201,7 @@ SAVE AS BRANCH (user click) ──► existing POST /api/branches
 6. **"My stack"**: there is no reliable holdings source (the Desk's paper book is the desk's, not the operator's). Default `initialCapitalUsd` 10 000 unless the user states an amount; implicit holdings ("hedge my ETH") become explicit allocations. Every such inference goes in `assumptions` — the sim prompt requires it, and the card renders them.
 7. **Tool result to the model** is compact (per branch: name, final value, total return, CAGR, max DD, vs BTC, warnings, error) — never the equity arrays. The full result goes only to the UI via `sim_result {id, intent, branches}`.
 8. **Forks**: in sim mode, prior assistant turns sent back as `history` carry a compact trailer with each path's normalized config JSON, so "same but 5x" / "now without the DCA" modifies the previous intent instead of re-guessing it.
-9. **Sim prompt rules**: the same hedge vocabulary and disclaimer as the Analyst (`system.ts`); results are historical simulation, not advice; always call `simulate_paths` before quoting numbers; prefer 2–3 contrasting branches when the intention is open-ended ("hedge my ETH" → unhedged vs 50% hedge vs full hedge); ask a one-line clarifying question only when no reasonable default exists.
+9. **Sim prompt rules**: the same hedge vocabulary as the Analyst (`system.ts`); results are historical simulation, not a forecast; always call `simulate_paths` before quoting numbers; prefer 2–3 contrasting branches when the intention is open-ended ("hedge my ETH" → unhedged vs 50% hedge vs full hedge); ask a one-line clarifying question only when no reasonable default exists.
 
 ### API delta
 
