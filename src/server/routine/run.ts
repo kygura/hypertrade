@@ -97,7 +97,7 @@ export type ScanRecord = z.infer<typeof ScanRecordSchema>;
 
 const SavedContextSchema = z.object({ version: z.literal(1), pack: z.object({ asOf: z.string() }).passthrough(), board: z.object({ asOf: z.string(), rows: z.array(z.unknown()) }).passthrough() });
 
-/** YYYY-MM-DD in Atlantic/Canary (ROUTINE.md §1: the routine's execution date). */
+/** YYYY-MM-DD in Atlantic/Canary (ROUTINE.md §0: the routine's execution date). */
 export function runDate(now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Atlantic/Canary", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }

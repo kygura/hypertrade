@@ -1,10 +1,8 @@
 import { toolCatalog } from "./tools.js";
 
-// The analyst's system prompt. The hard rule and the hedge vocabulary are
-// copied verbatim from ROUTINE.md (the hard rule and § 4.2 "Hedge
-// vocabulary") so the analyst speaks with the same discipline as the
-// briefing. Kept free of timestamps so the prefix caches; the current time
-// travels with each question instead.
+// The analyst's system prompt, with the hard rule and the hedge vocabulary
+// the briefing used to carry. Kept free of timestamps so the prefix caches;
+// the current time travels with each question instead.
 
 export const HARD_RULE = `**Hard rule, unchanged:** this is market intelligence, not financial advice.
 No trade recommendations, no position sizing, no "buy/sell X". Every

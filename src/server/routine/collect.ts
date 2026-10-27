@@ -18,7 +18,7 @@ export interface Gap {
 export const MAJORS = ["BTC", "ETH", "SOL", "HYPE"] as const;
 export const FRED_IDS = ["DGS10", "DGS2", "T10Y2Y", "VIXCLS", "DTWEXBGS", "DCOILBRENTEU", "NASDAQCOM"] as const;
 export const YAHOO_SYMBOLS = ["SPY", "QQQ", "NVDA", "^VIX"] as const;
-/** ROUTINE.md §2.2. */
+/** ROUTINE.md §2a. */
 export const APP_METRIC_IDS = [
   "hl.total_oi_usd", "hl.funding_skew", "hl.oi.BTC", "hl.oi.ETH", "hl.oi.SOL", "hl.oi.HYPE", "hl.funding.BTC", "hl.funding.ETH", "hl.funding.SOL", "hl.funding.HYPE",
   "fng.value", "cg.btc_dominance", "cg.total_mcap_usd", "llama.stablecoin_cap_usd", "deribit.btc_dvol", "fred.net_liquidity", "fred.spread_2s10s", "fred.VIXCLS",

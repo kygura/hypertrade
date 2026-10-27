@@ -71,7 +71,7 @@ existing databases never see the edit). Add the next number instead.
 ## Where things live
 
 Root has only: this file, `README.md` (setup, env, API overview), and `ROUTINE.md`
-(the one routine runbook). Everything else is under `docs/`.
+(the routine runbook). Everything else is under `docs/`.
 
 | Path | Purpose |
 |---|---|
@@ -82,7 +82,7 @@ Root has only: this file, `README.md` (setup, env, API overview), and `ROUTINE.m
 | `docs/LAB.md` | Lab research engine contract: rules, validation, tools, MCP. |
 | `docs/TASKS.md` | Open items, completed-phase summary, pointers to deleted task files in git history. |
 | `docs/fallback-routine.md`, `docs/research/` | Provider-agnostic fallback routine; research notes. |
-| `ROUTINE.md` | Self-contained runbook for the one scheduled routine (every 4 h): market state, sectors, setups, Lab, signals, one ntfy push. |
+| `ROUTINE.md` | Runbook for the scheduled routines, dispatched by clock from one 4 h trigger: board scan, daily market state and post-mortems, weekly journal and review, monthly tune PR, on-demand check. They share `data/playbook.md`. |
 | `tui/` | Separate terminal client with its own `SPEC.md`, `DESIGN.md`, `TASKS.md`. |
 
 **The runbook is for the scheduled cloud routine only.** Scheduled sessions open it

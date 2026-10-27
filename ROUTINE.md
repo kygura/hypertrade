@@ -1,288 +1,181 @@
-# ROUTINE.md — hypertrade scheduled routine
+# ROUTINE.md — hypertrade routines
 
-This file is the whole runbook for the **one scheduled routine**, run every 4
-hours: a stateless Claude Code cloud session that scans the most active
-Hyperliquid perps on their 4h, 1d and 1w bars, reads where positioning is
-imbalanced, and writes conditional setups through code's gate. It writes
-`data/board/` and `data/setups/` every run, `data/marketstate/`,
-`data/sectors/` and `data/lab/` once a day, runs the Lab search once a week,
-pushes, and sends **one** ntfy push only when something is new.
+Runbook for the scheduled Claude Code cloud sessions. If you were opened for
+ordinary development work, this file is not your task: use `docs/SPEC.md`,
+`docs/design/README.md` and `docs/LAB.md`, and leave `data/**` alone.
 
-If you were opened for ordinary development work in this repo, this file is
-not your task. Use `docs/SPEC.md`, `docs/design/README.md` and `docs/LAB.md`.
-Don't touch `data/**` unless asked.
+## Why a session with a codebase
 
-Order of a run: **preflight (§1) → collect the board (§2) → read it (§3) →
-write the scan and gate it (§4) → daily and weekly extras (§5) → validate,
-commit, push (§6) → one delivery (§7).**
+A cron job can fetch and threshold. A chat can interpret. A session holding
+this repo can do both and one more thing: it reads its own past output from
+git, grades it with the repo's code, and changes the code when the grades say
+so. Every routine below leaves a file the next one reads. That loop is the
+point; a routine that writes nothing a later routine reads does not belong
+here.
 
-**Hard rule, unchanged:** this is market intelligence, not financial advice.
-No trade recommendations, no position sizing, no "buy/sell X". Every
-forward-looking statement is framed with explicit confidence language — see
-the hedge vocabulary. Never state a future market outcome as fact.
-No leverage. A setup is a conditional plan for a human: a checkable trigger,
-an entry zone, an invalidation with its reason, targets, and the evidence.
-Nothing here gates, approves, rejects or places anything. It applies to
-every file, the push and the final message.
+```
+ board (4h) ──setups──▶ ledger ──closed──▶ post-mortem (daily) ──lessons──▶ playbook
+    ▲                                                                        │
+    └──────────────── read before every board run ◀──────────────────────────┘
+ journal (weekly) ──your fills vs the ledger──▶ playbook "Operator" section
+ review (weekly) ──graded templates, Lab rules──▶ catalogue + data/review/
+ tune (monthly) ──evidence from review──▶ one PR to src/server/routine/ (human merges)
+```
 
-**Who does what.** Code measures; you interpret.
+Code measures, you judge, code grades you. Prices, R, status, gate decisions,
+event-study verdicts and Lab statistics come from code. You never type a
+price or a statistic that a command did not print.
 
-| Code (`src/server/routine/`) | You |
-|---|---|
-| The board: top-30 perps by 24 h volume plus majors and "my markets"; per market 4h/1d/1w structure, funding vs its own week and vs Binance/Bybit, OI change, premium, relative strength, cross-sectional z (`board.ts`) | Where the board leans and the largest imbalance (`read`) |
-| Tripwires: commonplace setups as hard thresholds, hits and near-misses (`tripwires.ts`) | The imbalances thresholds miss: weak signals that agree, price vs positioning, timeframe and venue disagreements, outliers (`watchlist`) |
-| The level menu per market; resolving your level keys to prices; R; alignment with the weekly trend; expiry from the timeframe (`scan.ts`) | Setups where an imbalance meets a level, with levels picked **by key** from the menu (`setups`) |
-| The gate (`gate.ts`), status against prices (`ledger.ts`), the brief and the push text (`run.ts`) | A reason for every tripwire hit you pass on (`passes`); cancels when a premise broke (`cancel`); the delta-first `brief` |
+## Dispatch
 
-The app makes no LLM calls for this. The same pipeline runs without a Claude
-session (`bun run routine`, which calls the model itself; background:
-`docs/fallback-routine.md`). This session stands in for that model call
-through `--input`.
+The trigger prompt may name a routine (`run ROUTINE.md: review`). If it does,
+run that one. If not, pick by the clock in `Atlantic/Canary`, first match wins:
 
----
-
-## 0. The bar: what a good run looks like
-
-Each run leaves the reader knowing **which markets are leaning, how hard,
-what would turn each into a plan, and which plans are on**: new setups where
-an imbalance meets a level, every tripwire hit answered, the open setups'
-status, and what would prove the read wrong.
-
-Failures seen in past runs. Don't repeat them:
-
-| Failure | Example | Do this instead |
+| When | Routine | Section |
 |---|---|---|
-| Standing aside by default | 2 weeks of 4-hourly runs, 0 setups ever, while the gate allowed them | A board of 30+ perps nearly always has something leaning. Propose when the structure is clean: a setup is a hypothesis with an invalidation, and the ledger grades it. Never propose one without both an imbalance and a level. |
-| Generic market reads every 4 h | Five domains of macro prose, rewritten each run, nothing to act on | The 4 h job is the board. The macro narrative is once a day (§5). |
-| Readings listed, never read together | "OI z30 +0.8, funding z30 +0.7" | Read price, OI and funding together and across 4h/1d/1w; say what the combination means. |
-| Invented levels | Round numbers with no source | Prices come only from the level menu, by key; code resolves them. |
-| The same Lab searches every 4 h | Four identical searches on near-identical data: a multiple-testing layer the deflated Sharpe does not see | Lab search is weekly (§5). |
+| prompt names one | that routine | |
+| 1st Monday of the month, first run of the day | tune, then board | §6, §1 |
+| Monday, first run of the day | review, then board | §5, §1 |
+| Sunday, first run of the day | journal, then board | §4, §1 |
+| first run of the day | daily, then board | §2, §1 |
+| otherwise | board | §1 |
 
-If a source is down, the board says which (gaps at the bottom of
-`board.txt`). Name it in the brief; don't fill it from memory.
+"First run of the day": no `data/marketstate/$RUN_DATE.json` yet. On-demand
+only, never scheduled: **check** (§7).
 
----
+## 0. Preflight (every routine)
 
-## 1. Preflight (every run, in this order)
-
-1. **Environment.** Provided by the cloud environment: `LAB_API_TOKEN` (read
-   bearer) and `NTFY_TOPIC` (delivery; optional `NTFY_SERVER`, `NTFY_TOKEN`).
-   The session reads everything over HTTPS and never opens a database
-   connection: a cloud session has no route to Postgres.
+1. **Environment** (cloud environment secrets): `LAB_API_TOKEN` (read bearer
+   for `/api/lab`, `/api/intel`, `/api/platform` GETs), `NTFY_TOPIC` (optional
+   `NTFY_SERVER`, `NTFY_TOKEN`), `DESK_WATCH_ADDRESS` (your HL account, for
+   §4). There is no database route from a cloud session; everything is HTTPS.
    ```bash
    export APP_URL="${APP_URL:-https://hypertrade-ten.vercel.app}"
    export LAB_URL="${LAB_URL:-$APP_URL}"
+   RUN_DATE=$(TZ=Atlantic/Canary date +%F)   # once, at start; every dated file uses it
+   mkdir -p /tmp/run
    ```
-   Missing `LAB_API_TOKEN`: the board still runs on public data; write
-   "LAB_API_TOKEN not set" in the brief and skip the Lab parts of §5. Missing
-   `NTFY_TOPIC`: do the run, skip §7's push, list it as a gap. Never print
-   `LAB_API_TOKEN`, `DATABASE_URL` or `NTFY_TOKEN`.
-2. **Fresh checkout.** `git checkout master && git pull --ff-only` on
-   `kygura/hypertrade`, then `bun install --frozen-lockfile`.
-3. **Execution date.** `RUN_DATE=$(TZ=Atlantic/Canary date +%F)`, captured
-   once at start. Every dated file uses it, even past midnight.
-4. **Previous state** is read by code: `data/setups/ledger.json` (open and
-   closed setups, 90-day stats), `data/board/history.json` (the snapshots OI
-   changes are measured against), `data/board/latest.json` (last run's
-   watchlist and tripwire hits, for deltas), and `data/setups/htf.json`, the
-   operator's optional stance: while it is valid, `stance: stand_aside`
-   blocks every new setup. You don't edit any of them.
+   A missing secret skips the parts that need it and is named as a gap in
+   the final message. Never print a secret.
+2. **Checkout.** `git checkout master && git pull --ff-only`, then
+   `bun install --frozen-lockfile`.
+3. **Read the playbook.** `data/playbook.md`, every time, before anything
+   else is written. It is what earlier runs learned. If it does not exist,
+   create it from the template in §8.
 
----
+## 1. Board (every 4 h)
 
-## 2. Collect the board
+Find where positioning is imbalanced on the top Hyperliquid perps and turn
+the clean ones into conditional setups that code gates and grades.
 
 ```bash
-mkdir -p /tmp/run
-MODE=scan; [ -f data/marketstate/$RUN_DATE.json ] || MODE=daily   # first run of the date also collects the macro context (§5)
+MODE=scan; [ -f data/marketstate/$RUN_DATE.json ] || MODE=daily
 bun run routine --mode $MODE --collect-only --context /tmp/run/context.json > /tmp/run/board.txt
 ```
 
-About 2–3 minutes (Hyperliquid's weight budget paces the candle and funding
-calls). `board.txt` has three parts (four with `MODE=daily`):
+`board.txt` opens with the scan rules. They are the contract for
+`scan.json`, including the gate; where they disagree with this file, they
+win. Then one row per market (4h/1d/1w structure, funding vs its own week
+and vs Binance/Bybit, OI change, premium, relative strength, the level
+menu), tripwire hits and near-misses, open setups, last run's watchlist,
+upcoming FOMC/CPI/NFP and firing Lab rules. If `hyperliquid.metaAndAssetCtxs`
+is a gap the board is empty: stop, commit nothing, send nothing.
 
-1. **Rules**: the scan system prompt. It is the contract for §3 and §4,
-   including the gate's rules; if this file and it disagree, it wins.
-2. **Board and context**: one line per market (structure per timeframe,
-   positioning, relative strength, cross-sectional z, the level menu), the
-   tripwire hits and near-misses with each condition's value, open setups,
-   last run's watchlist, hl-cycles regime and levels, the next FOMC/CPI/NFP,
-   unusual app metrics, firing Lab rules.
-3. **Macro context** (`MODE=daily` only): FRED, Yahoo, Fear & Greed,
-   stablecoins and the majors' 20W/50W/200D features, for §5.
-4. **Collection**: a summary and every gap.
+How to read it:
 
-`context.json` freezes what was collected so §4 resolves against the same
-board. If `hyperliquid.metaAndAssetCtxs` is a gap, the board is empty: say so
-in the final message, commit nothing, send nothing.
+- Price, OI and funding together, across 1w (context), 1d (structure and
+  levels), 4h (trigger). A single reading is not a read.
+- Every row, not only the hits. Near-misses go on the watchlist with what
+  would complete them.
+- **Apply the playbook.** If a lesson covers a market or template on the
+  board, the setup or pass cites it by its id (`L3`). A lesson you override
+  is named with the reason.
+- Up to three web searches, only for watchlist markets with a move the board
+  cannot explain (listing, unlock, exploit, delisting). Findings go in words:
+  a number not on the board fails the number check.
+- Cancel an open setup when its premise broke before price did, and say
+  what broke. Price outcomes are code's.
 
-Optional, one call: the platform's intraday signals (near-miss, novelty,
-ready opportunities, thesis watch). Read them as extra context for the
-watchlist; they are not part of the scan.
-
-```bash
-PREV_SIG=$(ls data/signals/????-??-??.json 2>/dev/null | grep -v "$RUN_DATE" | sort | tail -1)
-bun run signals:collect ${PREV_SIG:+--prev "$PREV_SIG"} --out data/signals/$RUN_DATE.json || rm -f data/signals/$RUN_DATE.json
-```
-
----
-
-## 3. Read the board
-
-This is the job. Follow the rules section of `board.txt`; on top of it:
-
-- **Read every row, not only the hits.** A tripwire is one-dimensional; the
-  useful reads are usually combinations: funding in its 90th percentile on
-  a market pressed into its 1d range high while OI builds and the 4h stalls;
-  OI rising into a 4h breakdown with funding going negative into a 1w level;
-  HL funding 30 points above Binance/Bybit (crowding local to HL); one market
-  up while the board is down.
-- **Timeframes in order.** 1w sets the context (code uses it for
-  alignment), 1d the structure and the levels, 4h the trigger.
-- **Near-misses are watchlist material.** Say what would complete them.
-- **Outliers may have a cause the board can't see.** You may run up to three
-  web searches, only for markets on your watchlist with an unexplained move
-  (listing, unlock, exploit, governance, delisting). Prefer sources under
-  72 h old. Put what you find in words: a number that is not on the board
-  fails the number check.
-- **Open setups.** Cancel one when its premise broke before price did
-  (funding reset, OI unwound, structure lost), and say what broke. Price
-  outcomes (triggered, stopped, target hit, expired) are code's job.
-
----
-
-## 4. Write the scan, gate it
-
-Write `/tmp/run/scan.json` in the `ScanOutputSchema` shape
-(`src/server/routine/schema.ts`; the rules in `board.txt` describe each
-field):
-
-```json
-{
-  "read": "The board leans long into resistance: funding is above neutral on 9 of 31 markets, and HYPE is the most stretched.",
-  "watchlist": [{
-    "asset": "HYPE", "kind": "crowded_longs", "skew": "down", "timeframe": "1d",
-    "note": "Funding 41.2% annualised (7d percentile 96, 30 points over Binance/Bybit), OI +6.1% 24h, mark at 0.92 of the 1d range",
-    "arms": "a 4h close back under the 4h range low",
-    "evidence": ["HYPE.pos.fundingAnnPct", "HYPE.pos.fundingVsCexAnnPct", "HYPE.tf.1d.rangePos"]
-  }],
-  "setups": [{
-    "asset": "HYPE", "direction": "short", "template": "funding_fade", "timeframe": "4h",
-    "imbalance": "crowded_longs",
-    "thesis": "Longs pay 41.2% annualised to hold at the 1d range high while OI builds 6.1% in a day; the other side sees a 1w uptrend that has not broken.",
-    "trigger": "4h close back under the 4h range low",
-    "entry": { "low": { "level": "4h.low20" }, "high": { "level": "4h.low20", "atr": 0.5 } },
-    "invalidation": { "level": "1d.high20", "atr": 0.25 },
-    "invalidation_reason": "a hold above the 1d range high means the crowding resolved higher",
-    "targets": [{ "level": "R", "r": 2 }, { "level": "R", "r": 3 }],
-    "conviction": "medium",
-    "evidence": ["HYPE.pos.fundingAnnPct", "HYPE.pos.oiChg24hPct", "HYPE.levels.1d.high20"]
-  }],
-  "passes": [{ "asset": "SOL", "template": "htf_pullback", "direction": "long", "reason": "first target under 2R from the menu" }],
-  "cancel": [],
-  "brief": "Delta-first: what changed on the board since the last run, what it means, what would prove it wrong."
-}
-```
-
-Then:
+Write `/tmp/run/scan.json` (`ScanOutputSchema`, `src/server/routine/schema.ts`),
+levels by menu key only, then:
 
 ```bash
 bun run routine --mode scan --input /tmp/run/scan.json --context /tmp/run/context.json --dry-run
 bun run routine --mode scan --input /tmp/run/scan.json --context /tmp/run/context.json --push-out /tmp/run/push.txt | tee /tmp/run/brief.txt
 ```
 
-- The dry run prints the brief and the would-be files. An input that fails
-  the schema exits 1 and names the field.
-- Every drop is listed with its rule: `level_missing`, `unbacked_number`
-  (thesis, trigger or reason cites a number not on the board), or a gate
-  rule (`levels_order`, `zone_width`, `invalidation_distance`, `rr`,
-  `duplicate`, `cap_new`, …). Fix the draft and dry-run again, or accept the
-  drop: it is in the brief either way.
-- A context older than 2 hours is refused: collect again (§2).
-- The real run writes `data/setups/ledger.json` (when something moved),
-  `data/board/history.json` and `data/board/latest.json`, prints the brief,
-  and writes the push text to `push.txt` only when something is new. Code
-  owns ids, status, prices, R, alignment, expiry and timestamps.
+The dry run names every drop and its rule. Fix and dry-run again, or accept
+the drop. A context older than 2 h is refused: collect again. Standing aside
+on a board of 30+ markets for days is a failure mode, not caution; a setup
+is a hypothesis with an invalidation, and the ledger grades it.
 
----
+Writes (through code only): `data/board/{latest,history}.json`,
+`data/setups/ledger.json`.
 
-## 5. Daily and weekly extras
+## 2. Daily (first run of the day)
 
-**Daily: the first run of `RUN_DATE`** (`MODE=daily` in §2).
+**2a. Market state and sectors.** The `MODE=daily` board adds a macro
+section (FRED, equities, Fear & Greed, stablecoins, the majors' 20W/50W/200D).
+Run one live web search for today's scheduled catalysts and live geopolitical
+risks; never from memory. Write `data/marketstate/{latest,$RUN_DATE}.json`
+(`MarketStateDataSchema`) and `data/sectors/{latest,$RUN_DATE}.json`
+(`SectorsDataSchema`), both in `src/shared/schemas.ts`. `headline` is the one
+change since yesterday that matters, with its number. `risks` are checkable
+(metric, threshold, direction). Sector `tokens` are HL symbols only. The
+latest and dated copies are byte-identical; on a new date add one import and
+one entry to each `data/*/index.ts`. Forecasts say "base case" / "tail case"
+and give no point probabilities.
 
-1. Read the macro context section of `board.txt` (FRED yields, curve, VIX,
-   dollar, oil and Nasdaq; SPY, QQQ, NVDA; Fear & Greed; stablecoin supply;
-   the majors' 20W/50W/200D features), and run one live web search for
-   scheduled catalysts and active geopolitical tensions. That search is
-   mandatory once a day and never served from memory.
-2. Write `data/marketstate/{latest,$RUN_DATE}.json` (`MarketStateDataSchema`)
-   and `data/sectors/{latest,$RUN_DATE}.json` (`SectorsDataSchema`), both in
-   `src/shared/schemas.ts`, the source of truth. Rules:
-   - `headline`: the single most important change since yesterday, with its
-     number. `tldr` under ~90 words. Rewrite every text field from scratch;
-     data older than today names its date.
-   - `domains`: exactly `macro, equities, crypto, tech, geopolitics`, in that
-     order. Crypto's summary carries the board's read: who leans which way
-     and how crowded.
-   - `thesis`: `observe` facts only; `infer` the positioning read and the
-     main disagreement; `forecast` a labelled base case and at least one
-     labelled low-confidence tail case, each with its confirm/break level,
-     in the hedge vocabulary below. `disclaimer`, verbatim:
-     `"Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything."`
-   - `risks`: 2–4 checkable conditions (metric, threshold, direction).
-   - Sectors: an emergent taxonomy from the board's OI, funding and moves;
-     `tokens` only Hyperliquid symbols on the board or in the live universe
-     (case-sensitive); `rotations[]` from/to sector ids with a checkable
-     `trigger` and an honest `confidence` (mostly well under 0.7).
-   - `latest.json` and the dated file match byte for byte. On a new date add
-     one import line and one array entry to `data/marketstate/index.ts` and
-     `data/sectors/index.ts`, following the existing lines.
-   The same vocabulary applies to setup theses, watchlist notes and the
-   brief.
+**2b. Lab snapshot.** `data/lab/$RUN_DATE.json` from
+`bun run lab lab_market_pulse --json '{}'` and
+`bun run lab lab_catalogue_list --json '{"live":false}'`
+(`{generated_at, pulse, catalogue_ids, hl_cycles}`). Without the Lab, copy
+the previous snapshot with `"note": "lab skipped: <why>"`.
 
-### Hedge vocabulary (carried over verbatim — do not invent substitutes)
+**2c. Post-mortems.** For every setup in `ledger.json` `closed[]` not yet
+reviewed (its id appears in no `data/review/postmortems/*.md`), code first:
 
-Use these terms, exactly, in the `thesis` block:
-`base case`, `tail case`, `low-confidence`, `we lean`, `risk skews`,
-`consensus is pricing … / we read …`.
+```bash
+bun -e "
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { excursions } from './src/server/intel/journal.ts';
+import { entryMid } from './src/server/routine/ledger.ts';
+const dir = 'data/review/postmortems';
+const seen = existsSync(dir) ? readdirSync(dir).map((f) => readFileSync(dir + '/' + f, 'utf8')).join('\n') : '';
+const { closed } = JSON.parse(readFileSync('data/setups/ledger.json', 'utf8'));
+for (const s of closed.filter((s) => !seen.includes(s.id))) {
+  const from = Date.parse(s.triggered_at ?? s.created_at), to = Date.parse(s.updated_at);
+  const res = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'candleSnapshot', req: { coin: s.asset, interval: '1h', startTime: from, endTime: to } }) });
+  const candles = (await res.json()).map((c) => ({ ts: new Date(c.t), h: +c.h, l: +c.l }));
+  const mid = entryMid(s), riskPct = Math.abs(mid - s.invalidation) / mid * 100;
+  const x = s.triggered_at ? excursions({ side: s.direction, entryPx: mid, openedAt: s.triggered_at, closedAt: s.updated_at }, candles, new Date()) : null;
+  console.log(JSON.stringify({ id: s.id, setup_id: s.setup_id, status: s.status, r: s.r_result, conviction: s.conviction,
+    maeR: x && +(x.maePct / riskPct).toFixed(2), mfeR: x && +(x.mfePct / riskPct).toFixed(2), note: s.status_note }));
+}" > /tmp/run/closed.jsonl
+```
 
-A probability may be hedged qualitatively ("a bit above even odds")
-but **never** given as a false-precision point estimate ("73%"). Every
-forward-looking clause carries a hedge word — no bare future-tense
-assertion of a market outcome.
+Then append one entry per setup to `data/review/postmortems/$(date +%Y-%m).md`:
 
-3. Write `data/lab/$RUN_DATE.json`: `{ generated_at, pulse: {<ruleId>:
-   {firing, asset, direction}}, catalogue_ids, hl_cycles: {regime_state,
-   as_of} }`, from `bun run lab lab_market_pulse --json '{}'` and
-   `bun run lab lab_catalogue_list --json '{"live":false}'`. Without a Lab
-   read, copy the previous snapshot's `pulse` and `catalogue_ids` and add
-   `"note": "lab skipped: <why>"`.
+```markdown
+### XMR-long-20261027-1 · htf_pullback · target_hit · +2.0R · MAE 0.4R / MFE 2.3R
+- Premise: <the thesis, one line>
+- What happened: <which part of the premise held or broke, from the board rows since>
+- Missed or got right: <the one thing the read should repeat or avoid>
+- Lesson: L3 (+1) | new: <candidate lesson> | none
+```
 
-**Weekly: the first run on a Monday** (`RUN_DATE`'s weekday). The Lab CLI
-talks to the deployed app because `LAB_URL` is set; **never pass
-`--local`**.
+MAE/MFE in R is the useful part: a winner that sat at −0.9R first was a bad
+stop that got lucky; a loser that reached +1.5R first was a missing partial.
 
-1. Search BTC and ETH, long and short:
-   ```bash
-   M='["cm:CapMVRVCur","cm:NVTAdj","ht:funding","ht:oi","ht:premium","fng:value","llama:stablecoin_cap"]'
-   for A in BTC ETH; do for D in long short; do
-     bun run lab lab_search --json "{\"asset\":\"$A\",\"direction\":\"$D\",\"metrics\":$M,\"trials\":40}" > /tmp/run/search-$A-$D.json
-   done; done
-   ```
-2. Save only `verdict.level: "robust"`, at most 2 per search:
-   `bun run lab lab_catalogue_save --json '{"rule":<rule>,"name":"<short name>","note":"WF <x> / holdout <y> / DSR <z>","runId":"<runId>","origin":"agent"}'`.
-   List `candidate`-or-better rules in the brief with the failing number.
-3. Prune only `origin: "agent"` rules: `lab_catalogue_health` flags
-   `decayed` and `overlaps`; join their ids against `lab_catalogue_list`
-   entries for `origin`. Remove (`lab_catalogue_remove {"id":…}`) a decayed
-   agent rule, or the lower-Sharpe agent rule of an overlapping pair. Report
-   user/seed rules, never remove them.
+**2d. Playbook.** Fold the day's post-mortems into `data/playbook.md` (§8):
+increment a lesson's evidence when a post-mortem supports it, add a lesson
+only when two post-mortems agree, retire one that a post-mortem contradicts
+twice. Edit in place; the file stays under ~120 lines.
 
----
+## 3. Delivery and landing (every routine)
 
-## 6. Validate, commit, push
-
-1. Schema gate:
+1. Validate what you touched:
    ```bash
    bun -e "
    import { LedgerSchema } from './src/server/routine/schema.ts';
@@ -294,68 +187,167 @@ talks to the deployed app because `LAB_URL` is set; **never pass
    LedgerSchema.parse(j('data/setups/ledger.json')); ScanRecordSchema.parse(j('data/board/latest.json')); BoardHistorySchema.parse(j('data/board/history.json'));
    MarketStateDataSchema.parse(j('data/marketstate/latest.json')); SectorsDataSchema.parse(j('data/sectors/latest.json'));
    console.log('ok');"
+   bun run typecheck && bun test ./src
    ```
-   On a daily run also `cmp` each `latest.json` with its dated copy and
-   check the lab snapshot parses.
-2. `bun run typecheck && bun test ./src`.
-3. Stage only `data/`. Commit, conventional and with no AI attribution:
-   `feat(routine): board scan $RUN_DATE` (daily run:
-   `feat(routine): board scan + marketstate + sectors + lab $RUN_DATE`).
-4. Green → `git push origin master`. Red → push to `routine/$RUN_DATE` and
-   name the failing check in the brief; master never goes red from a data
-   commit. Non-fast-forward → `git pull --rebase` and push again. If the
-   session may only push its own branch (`claude-code/*`), push there and
-   open a PR into `master` with `mcp__github__create_pull_request`; the
-   `routine-land` workflow merges data-only PRs after typecheck and tests.
-   Never merge it yourself or enable auto-merge. Put the PR link in the
-   final message. GitHub goes through the `mcp__github__*` tools; `gh` is
-   blocked here.
+2. Data routines stage only `data/`. Commit `feat(routine): <routines> $RUN_DATE`,
+   no AI attribution. Push to `master`; red checks go to `routine/$RUN_DATE`
+   instead and the brief names the failure. A session limited to its own
+   `claude-code/*` branch opens a PR into `master` with
+   `mcp__github__create_pull_request`; `routine-land` merges data-only PRs
+   after typecheck and tests. Never merge it yourself. `gh` is blocked; use
+   the `mcp__github__*` tools.
+3. One push per session, after the commit, only when something is new:
+   ```bash
+   [ -s /tmp/run/push.txt ] && bun run signals:notify "hypertrade $RUN_DATE" "$(cat /tmp/run/push.txt)"
+   ```
+   `push.txt` is written by the board when a setup passed, changed status or
+   a tripwire hit is new. Review, journal and tune append one line each to
+   it (§5–§6). Empty → silent run. If ntfy fails, use the session's own push
+   tool once and name the gap.
+4. Final message: the brief, then one line: commit sha or PR link, push
+   sent or not, gaps.
 
----
+## 4. Journal (Sunday)
 
-## 7. Delivery: one push, only when something is new
-
-`push.txt` is non-empty only when code saw something new: a setup passed the
-gate, an open setup changed status or was cancelled, a tripwire hit the last
-run did not have, or the daily files were written.
+Compare what you traded with what the board proposed. Needs `DESK_WATCH_ADDRESS`.
 
 ```bash
-[ -s /tmp/run/push.txt ] && bun run signals:notify "hypertrade $RUN_DATE" "$(cat /tmp/run/push.txt)"
+bun -e "
+import { hlLegs, roundTrips } from './src/server/intel/journal.ts';
+const res = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ type: 'userFillsByTime', user: process.env.DESK_WATCH_ADDRESS, startTime: Date.now() - 30 * 86_400_000, aggregateByTime: true }) });
+const { legs, skipped } = hlLegs(await res.json());
+console.log(JSON.stringify({ skipped, trips: roundTrips(legs) }, null, 1));" > /tmp/run/trips.json
 ```
 
-Exactly one push per run, after the commit. If `signals:notify` exits 1, send
-the same text once through the session's own push-notification tool, if
-there is one, and list the ntfy failure as a gap. Empty `push.txt` → a silent
-run: commit, send nothing. No reminders, no follow-ups.
+Code gave you round trips (entry, exit, size, net PnL, fees). You:
 
-**Final message:** the brief from `/tmp/run/brief.txt`, then one line:
-commit sha or branch/PR, whether a push went out, data gaps.
+1. Tag each trade closed in the last 7 days with one of `SETUP_TAGS`
+   (`src/server/intel/journal.ts`) and match it to a ledger setup on the same
+   asset and side within its life, or to none.
+2. Write `data/review/journal/$RUN_DATE.md`: matched trades vs the setup
+   (entered inside the zone? stop where the invalidation was? exited at a
+   target or early?), unmatched trades (what they were), setups you skipped
+   that hit target, and two numbers per tag: count and net PnL. No dollar
+   totals beyond what `trips.json` holds.
+3. Update the playbook's **Operator** section: a pattern needs 3 trades
+   (`FINDING_MIN_TRADES`). "Exits before the first target on 4 of 5 matched
+   longs" is a pattern; one bad trade is not.
+4. One line to `push.txt` only if an Operator entry was added or changed.
 
----
+## 5. Review (Monday)
+
+Grade the machinery, not the market.
+
+1. **Templates.** For each tripwire template in `src/server/routine/tripwires.ts`
+   that has a Lab rule twin or can be written as one, run
+   `bun run lab lab_event_study --json '{"rule":<rule>,"stopAtr":1.5,"targetAtr":3,"mine":true}'`.
+   Record verdict (`rejected` / `clear` / `insufficient`), weeks, train and
+   holdout mean R. Never pass `--local`.
+2. **Ledger by template and conviction.** From `ledger.json` closed setups
+   and the post-mortems: count, hit rate, mean R, mean MAE/MFE in R, per
+   `setup_id` and per `conviction`. If "high" does not beat "low" on mean R
+   over 10+ closed setups, conviction is noise; say so.
+3. **Lab search from hypotheses.** Take at most two candidate lessons from
+   the playbook or the post-mortems and turn each into a rule:
+   `bun run lab lab_author_rule --json '{"intent":"<the lesson in words>","asset":"BTC"}'`,
+   then `lab_event_study` on the best candidate. Save to the catalogue only
+   `verdict.level: "robust"` (`lab_catalogue_save`, `origin: "agent"`, note
+   with WF / holdout / DSR). Quote the trial count (`idea #n of N`) next to
+   every result. This replaces a fixed weekly metric grid: each search tests
+   something the ledger raised.
+4. **Prune.** `lab_catalogue_health`: remove `origin: "agent"` rules that are
+   decayed or the weaker of an overlapping pair. Report user and seed rules,
+   never remove them.
+5. Write `data/review/weekly/$(date +%G-W%V).md`: the template table, the
+   ledger table, the searches with trial counts, catalogue changes, and a
+   **Tune candidates** list: each item a code change (threshold, template,
+   gate rule) with the evidence row that supports it. One line to `push.txt`.
+
+## 6. Tune (first Monday of the month)
+
+The only routine that touches code, and the reason this runs as a session
+with the repo instead of a cron job.
+
+1. Read the last four `data/review/weekly/*.md`. A tune candidate qualifies
+   when it shows up in at least two of them, with evidence: an event study
+   `rejected`, a template at negative mean R over 10+ closed setups, a gate
+   drop rule that discards most proposals while the dropped ones would have
+   worked (check against candles), or a playbook lesson with 5+ supporting
+   post-mortems that a threshold could encode.
+2. Pick **one**. Branch `tune/$RUN_DATE`, change `src/server/routine/`
+   (tripwires, gate, scan prompt), and add or update the test that pins the
+   new behaviour. Done gate from `CLAUDE.md`: `bun run typecheck`,
+   `bun test ./src`, `bun run check:api`, `bun run build`.
+3. Open a PR into `master`: the evidence rows quoted from the weekly files,
+   what changes, what would show it was wrong. `routine-land` does not merge
+   it (it touches `src/`); you review and merge. One PR open at a time: if a
+   tune PR is still open, comment the new evidence on it instead.
+4. One line to `push.txt` with the PR link.
+
+Nothing qualifies → write that in the weekly file and open nothing.
+
+## 7. Check (on demand)
+
+Run when the prompt is `run ROUTINE.md: check <ASSET> <long|short> [idea]`.
+Read-only: commits nothing, pushes nothing.
+
+1. The asset's board row: `bun run routine --collect-only` and read its line,
+   tripwires and level menu.
+2. Liquidation map and crowding: `GET $APP_URL/api/platform/liqmap?coin=<ASSET>`
+   with `Authorization: Bearer $LAB_API_TOKEN`; upcoming catalysts from the
+   board's calendar lines.
+3. The idea as a rule: `lab_author_rule` with the idea, then `lab_event_study`
+   on the best candidate. Quote verdict, weeks and the trial count.
+4. The playbook lessons and Operator entries that apply.
+5. Answer in five lines: the strongest case for, the strongest case
+   against, the level that invalidates it (from the menu), what the Lab says
+   with its trial count, which of your own patterns this trade risks.
+
+## 8. Playbook format
+
+`data/playbook.md` is the only file every routine reads. Keep it short; it
+is a working set, not an archive (the post-mortems are the archive).
+
+```markdown
+# Playbook
+
+## Lessons
+- **L1** · funding_fade · Fades of HL-only crowding (HL funding 20+ pts over CEX) worked; fades of crowding shared with Binance/Bybit did not. · evidence: 4 (XMR-short-…, …) · since 2026-11-02
+- **L2** · all · 4h triggers fired within 2 bars of FOMC were stopped 3 of 3. · evidence: 3 · since …
+
+## Operator
+- **O1** · Exits before the first target on matched longs: 4 of 5. · since …
+
+## Retired
+- **L0** · <lesson> · contradicted by <ids> on <date>
+```
+
+Rules: every lesson cites setup or trade ids; at most 15 lessons and 8
+Operator entries (retire the weakest to add one); a lesson with no new
+evidence in 45 days is retired. The board cites lessons by id, so ids are
+never reused.
 
 ## Hard rules
 
-- The hard rule at the top applies everywhere: files, brief, push, final
-  message. Never write a setup as an instruction, never size it, never
-  mention leverage or execution.
-- Write only inside `data/**`. Never edit `src/`, `api/`, `db/` or docs as
-  part of a routine run.
-- `data/setups/` and `data/board/` change only through `bun run routine`.
+- Prices, statistics, status and gate decisions come from code. If a number
+  is not in a command's output, it does not go in a file.
+- Data routines write only under `data/`. `data/setups/` and `data/board/`
+  change only through `bun run routine`. Only §6 edits code, on its own
+  branch, through a PR a human merges.
+- No orders and no Desk writes from any routine.
 - Remove Lab catalogue rules only when `origin` is `"agent"`.
-- No orders, no signing keys, no Desk calls (`src/server/desk/*` is out of
-  scope). App reads are GETs; the Lab calls in §5 write to the Lab.
-- Never print or log `LAB_API_TOKEN`, `DATABASE_URL` or `NTFY_TOKEN`.
-- If a tool or hook blocks something this runbook needs, stop and report the
-  block. Don't route around it.
+- Never print `LAB_API_TOKEN`, `DATABASE_URL`, `NTFY_TOKEN` or the watch
+  address.
+- If a tool or hook blocks a step, stop that step and report it. Don't route
+  around it.
 
-## Repository map (background only)
+## Map
 
-- `src/server/routine/`: `board.ts` (features, level menu, history),
-  `tripwires.ts`, `scan.ts` (level resolution, number check), `gate.ts`,
-  `ledger.ts`, `prompts.ts` (the scan rules), `run.ts` (orchestration),
-  `collect.ts` (every fetch), `signals.ts`.
-- `data/board/`: `history.json`, `latest.json`. `data/setups/`:
-  `ledger.json`, `htf.json`. `data/marketstate/`, `data/sectors/`: `latest.json`,
-  dated copies, `index.ts`. `data/lab/`: dated snapshots. `data/signals/`.
-- Background: `docs/fallback-routine.md` (the pipeline), `docs/SPEC.md`,
-  `docs/LAB.md`.
+- `src/server/routine/`: `board.ts`, `tripwires.ts`, `scan.ts`, `gate.ts`,
+  `ledger.ts`, `prompts.ts`, `run.ts`, `collect.ts`. Pipeline background:
+  `docs/fallback-routine.md`.
+- `src/server/intel/journal.ts`: round trips, excursions, tags.
+- Lab tools: `bun run lab <tool> --json '<args>'`; contract in `docs/LAB.md`.
+- `data/board/`, `data/setups/`, `data/marketstate/`, `data/sectors/`,
+  `data/lab/`, `data/review/{postmortems,journal,weekly}/`, `data/playbook.md`.

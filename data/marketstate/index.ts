@@ -1,6 +1,6 @@
 // Static history index. Vercel's Node function bundler only includes files
 // reachable via static imports (no directory scan), so this file is the
-// mechanism for "list available history dates" — see ROUTINE.md §4.6
+// mechanism for "list available history dates" — see ROUTINE.md §2a
 // for the exact append instructions the routine follows each run.
 import d20260830 from "./2026-08-30.json" with { type: "json" };
 import d20261008 from "./2026-10-08.json" with { type: "json" };

@@ -132,12 +132,13 @@ Cost: Hobby plan is about $5/mo plus usage. At 0.5 vCPU and 512 MB, usage is abo
 
 ## Routine (scheduled Claude session)
 
-The single runbook is `ROUTINE.md`. Each run collects the board (`bun run routine --collect-only`: top-30 perps by volume plus majors and `PLATFORM_MY_MARKETS`, with 4h/1d/1w structure, funding vs its own week and vs Binance/Bybit, OI change from the committed `data/board/history.json`, and a level menu), reads it, and writes setups that code resolves, gates and grades (`data/setups/ledger.json`). `bun run signals:collect` adds an optional snapshot of the platform's intraday signals. One ntfy push through the desk notifier only when something is new. Secrets in the cloud environment:
+The runbook is `ROUTINE.md`. One 4 h trigger dispatches by clock: the board scan every run; market state, sectors and post-mortems of closed setups daily; a journal of your HL fills against the ledger on Sundays; a review of templates, conviction and Lab rules on Mondays; one tune PR to `src/server/routine/` a month, which a human merges. Lessons accumulate in `data/playbook.md`, which every run reads. The board run collects the board (`bun run routine --collect-only`: top-30 perps by volume plus majors and `PLATFORM_MY_MARKETS`, with 4h/1d/1w structure, funding vs its own week and vs Binance/Bybit, OI change from the committed `data/board/history.json`, and a level menu), reads it, and writes setups that code resolves, gates and grades (`data/setups/ledger.json`). `bun run signals:collect` adds an optional snapshot of the platform's intraday signals. One ntfy push through the desk notifier only when something is new. Secrets in the cloud environment:
 
 | Variable | Purpose |
 | --- | --- |
 | `APP_URL`, `LAB_API_TOKEN` | Worker origin and the read bearer (GETs under `/api/platform`, `/api/intel`, and `/api/lab/trials` for authored ideas; `LAB_URL=$APP_URL` for the Lab CLI). The session needs no `DATABASE_URL`: it has no route to Postgres. |
 | `NTFY_TOPIC` (`NTFY_SERVER`, `NTFY_TOKEN` optional) | The push channel. No Telegram setup is needed. |
+| `DESK_WATCH_ADDRESS` (optional) | Your Hyperliquid account, read-only, for the Sunday journal. |
 
 ## Chart history
 
