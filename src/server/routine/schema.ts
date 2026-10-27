@@ -131,7 +131,6 @@ export const ScanOutputSchema = z.object({
 export type ScanOutput = z.infer<typeof ScanOutputSchema>;
 
 export const DOMAINS = ["macro", "equities", "crypto", "tech", "geopolitics"] as const;
-export const DISCLAIMER = "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything.";
 
 // Model-side MarketState/Sectors: the app's schemas minus generated_at (code
 // sets it), with the vocabulary ROUTINE.md §2a asks for made strict.

@@ -15,7 +15,6 @@ import { DAILY_PROMPT_VERSION, DAILY_SYSTEM, dailyUser, numbersBlock, SCAN_PROMP
 import { checkWatchlist, resolveDraft, unanswered, watchKey } from "./scan.js";
 import {
   DailyOutputSchema,
-  DISCLAIMER,
   HtfViewSchema,
   LedgerSchema,
   MarketStateDataSchema,
@@ -516,7 +515,7 @@ async function runDaily(a: {
     if (dropped.length) a.notes.push(`sector ${s.id}: dropped symbols not on Hyperliquid: ${dropped.join(", ")}`);
     return { ...s, tokens: s.tokens.filter((t) => live.has(t)) };
   });
-  const marketstate = MarketStateDataSchema.parse({ generated_at: a.nowIso, ...out.marketstate, thesis: { ...out.marketstate.thesis, disclaimer: DISCLAIMER } });
+  const marketstate = MarketStateDataSchema.parse({ generated_at: a.nowIso, ...out.marketstate });
   const sectorsData = SectorsDataSchema.parse({ generated_at: a.nowIso, sectors, rotations: out.sectors.rotations });
 
   const files: Array<{ path: string; text: string }> = [];

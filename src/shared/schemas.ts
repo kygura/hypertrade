@@ -82,7 +82,6 @@ export const MarketStateThesisSchema = z.object({
   observe: z.string(),
   infer: z.string(),
   forecast: z.string(),
-  disclaimer: z.string(),
 });
 
 export const MarketStateDataSchema = z.object({

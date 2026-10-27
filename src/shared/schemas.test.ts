@@ -120,7 +120,6 @@ describe("MarketStateDataSchema", () => {
       observe: "Rates fell.",
       infer: "Markets pricing a cut.",
       forecast: "base case: continued easing",
-      disclaimer: "Not financial advice.",
     },
     risks: ["geopolitical escalation"],
   };

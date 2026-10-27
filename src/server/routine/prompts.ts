@@ -4,7 +4,7 @@ import type { ContextPack } from "./collect.js";
 import { GATE } from "./gate.js";
 import type { HtfFeatures } from "./htf.js";
 import { EXPIRY_DAYS } from "./scan.js";
-import { DISCLAIMER, type HtfView, type Ledger, type WatchItem } from "./schema.js";
+import { type HtfView, type Ledger, type WatchItem } from "./schema.js";
 import { formatTripwire, TRIPWIRES, type TripwireRead } from "./tripwires.js";
 
 // Prompts for the fallback routine. Code measures, the model interprets: the
@@ -143,7 +143,7 @@ export function dailyUser(a: { pack: ContextPack; htf: Record<string, HtfFeature
   const prev = { marketstate: a.prevMarketState, sectors: a.prevSectors };
   const text = textBlock(a.pack);
   return [
-    `Run date (Atlantic/Canary): ${a.runDate}. The thesis.disclaimer is set by code to: "${DISCLAIMER}"`,
+    `Run date (Atlantic/Canary): ${a.runDate}.`,
     `HTF view: ${a.view ? json(a.view) : "none"}`,
     ...(a.scanBrief ? [`This run's board scan brief: ${a.scanBrief}`] : []),
     `Live Hyperliquid symbols (${symbols.length}; tokens must come from this list, case-sensitive): ${symbols.join(",")}`,

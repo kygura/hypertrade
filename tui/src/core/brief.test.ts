@@ -37,7 +37,7 @@ test("loadBrief takes top 5 sectors by mindshare and tolerates a missing sectors
       headline: "H",
       tldr: "Regime: risk-off (33% BTC, since Oct 12). Main change: x.",
       domains: [],
-      thesis: { observe: "o", infer: "i", forecast: "f", disclaimer: "d" },
+      thesis: { observe: "o", infer: "i", forecast: "f" },
       risks: ["Daily BTC close below $79.2K"],
     };
     await writeFile(join(dir, "data", "marketstate", "latest.json"), JSON.stringify(ms));

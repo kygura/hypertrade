@@ -1000,7 +1000,6 @@ Layout (all breakpoints — single column; desktop just centers it):
 │ OBSERVE   what the data shows…            (three subsections,│
 │ INFER     what it likely means…            xs uppercase      │
 │ FORECAST  what may happen next…            labels, body in   │
-│ disclaimer (xs, text-secondary, italic-free, verbatim)       │
 ├ DOMAINS ─────────────────────────────────────────────────────┤
 │ ┌ LIQUIDITY ──────────┐ ┌ DERIVATIVES ────────┐  2-col md+,  │
 │ │ summary text_muted  │ │ …                   │  1-col mobile│
