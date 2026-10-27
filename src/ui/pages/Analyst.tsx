@@ -491,7 +491,7 @@ function EmptyThread({ onAsk, disabled, mode }: { onAsk: (q: string) => void; di
         <span className="text-[11px] text-text-secondary max-w-[560px]">
           {sim
             ? 'Describe a what-if in plain words — sizes, leverage, shorts, DCA, a start date. It becomes one to four branches, backtested on daily candles against HODL BTC and USDC, with every assumption it made listed on the card. Historical simulation, not advice.'
-            : "It reads the briefing and its history, the sector map, collected metrics, the live Hyperliquid universe and the engine's decisions, then answers with its sources. Read-only, and not financial advice."}
+            : "It reads the briefing and its history, the sector map, collected metrics, the live Hyperliquid universe and the engine's decisions, then answers with its sources. Read-only."}
         </span>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -605,8 +605,8 @@ function Rail({
 
       <p className="text-[10px] text-text-secondary px-1">
         {mode === 'sim'
-          ? "Historical simulation on daily candles. Perp legs ignore funding, fees and slippage and liquidate at 100% margin loss on the day's low or high. Saving creates a branch; nothing is traded. Not financial advice."
-          : 'Read-only market intelligence. It cannot trade or change strategies; Jev and the operator do that on the engine pages. Not financial advice.'}
+          ? "Historical simulation on daily candles. Perp legs ignore funding, fees and slippage and liquidate at 100% margin loss on the day's low or high. Saving creates a branch; nothing is traded."
+          : 'Read-only market intelligence. It cannot trade or change strategies; Jev and the operator do that on the engine pages.'}
       </p>
     </aside>
   )

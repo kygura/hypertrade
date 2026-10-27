@@ -439,7 +439,6 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
   if (notes.length) body.push("", ...notes.map((n) => `Note: ${n}`));
   if (pack.gaps.length) body.push("", `Data gaps: ${pack.gaps.map((g) => `${g.source} (${g.status})`).join(", ")}`);
   body.push("", `Stats 90d: ${ledger.stats.closed_90d} closed, ${ledger.stats.triggered_90d} triggered, hit rate ${ledger.stats.hit_rate ?? "n/a"}, avg ${ledger.stats.avg_r ?? "n/a"}R · ${ledger.open.length} open`);
-  body.push("Market intelligence, not financial advice.");
   result.brief = body.join("\n");
   log(result.brief);
   log(`llm: ${attempts.map((a) => `${a.entry} ${a.ok ? "ok" : `failed (${a.error})`} ${Math.round(a.ms / 1000)}s ${a.usage.input_tokens}/${a.usage.output_tokens} tok`).join("; ") || "no calls"} · est. $${cache.spentUsd().toFixed(2)} of $${maxUsd.toFixed(2)}`);

@@ -122,8 +122,8 @@ describe("analyst sim mode", () => {
     expect(slow.maxLeverage?.("BTC")).toBeUndefined();
   });
 
-  test("prompt keeps the disclaimer", () => {
-    expect(buildSimSystemPrompt(false)).toContain("Not financial advice");
+  test("prompt carries no advice disclaimer", () => {
+    expect(buildSimSystemPrompt(false)).not.toMatch(/financial advice|not advice/i);
   });
 
   test("tool JSON schema keys mirror SimIntentSchema / AllocationSchema", () => {

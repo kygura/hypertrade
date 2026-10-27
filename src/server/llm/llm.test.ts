@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { resolveChosenProvider, resolveProvider, DEFAULT_MODEL, type StepHooks } from "./provider.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OpenAICompatibleProvider, postWithRetry429 } from "./openai.js";
-import { DISCLAIMER, FORECAST_RULE, HARD_RULE, HEDGE_VOCABULARY, buildSystemPrompt } from "./system.js";
+import { FORECAST_RULE, HEDGE_VOCABULARY, buildSystemPrompt } from "./system.js";
 import { LAB_DEADLINE_MS, MAX_TOOL_CHARS, TOOL_SPECS, exaSearch, runLabTool, runTool, type ToolDeps } from "./tools.js";
 import { labTools } from "../lab/tools.js";
 import { createLabService } from "../lab/service.js";
@@ -49,9 +49,10 @@ describe("resolveProvider", () => {
 });
 
 describe("system prompt", () => {
-  test("carries the hard rule, hedge vocabulary and disclaimer verbatim", () => {
+  test("carries the hedge vocabulary verbatim and no advice disclaimer", () => {
     const s = buildSystemPrompt(true);
-    for (const part of [HARD_RULE, HEDGE_VOCABULARY, FORECAST_RULE, DISCLAIMER]) expect(s).toContain(part);
+    for (const part of [HEDGE_VOCABULARY, FORECAST_RULE]) expect(s).toContain(part);
+    expect(s).not.toMatch(/financial advice|trade recommendation|position sizing/i);
     expect(s).toContain("- web_search — Anthropic's native web search");
     expect(s).toContain("- lab_evaluate_rule\n");
     expect(s).toMatch(/rank and compare rules by walk-forward results; the holdout .* is a one-shot check/);
