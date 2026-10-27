@@ -101,8 +101,23 @@ const num = (s: string | null | undefined): number | null => {
 
 export async function fetchPerpMetaAndCtxs(
   fetchFn: typeof fetch = fetch,
+  dex?: string,
 ): Promise<{ meta: HlRawPerpMeta; ctxs: AssetCtx[] }> {
-  return parseMetaAndCtxs(await post<unknown>({ type: "metaAndAssetCtxs" }, fetchFn));
+  return parseMetaAndCtxs(await post<unknown>(dex ? { type: "metaAndAssetCtxs", dex } : { type: "metaAndAssetCtxs" }, fetchFn));
+}
+
+// perpDexs: entry 0 is null (the main dex); the rest are HIP-3 builder dexes.
+const PerpDexsSchema = z.array(z.object({ name: z.string(), fullName: z.string().optional() }).passthrough().nullable());
+
+export interface PerpDex {
+  name: string;
+  fullName: string;
+}
+
+/** HIP-3 builder-deployed perp dexes (the main dex excluded). */
+export async function fetchPerpDexs(fetchFn: typeof fetch = fetch): Promise<PerpDex[]> {
+  const raw = await post<unknown>({ type: "perpDexs" }, fetchFn);
+  return PerpDexsSchema.parse(raw).flatMap((d) => (d ? [{ name: d.name, fullName: d.fullName ?? d.name }] : []));
 }
 
 /** Parses a raw metaAndAssetCtxs payload (any network). Universe order is the asset index. */

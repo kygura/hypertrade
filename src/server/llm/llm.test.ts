@@ -388,7 +388,7 @@ describe("tools", () => {
     series: async (id, from, buckets) => [{ id, from, buckets }],
     hlMarkets: async () => ({
       fetchedAt: "t",
-      markets: ["BTC", "ETH", "SOL", "HYPE"].map((coin) => ({ coin, markPx: 1, oraclePx: 1, premium: 0, funding: 0, openInterestUsd: 1, dayNtlVlm: 1, dayChangePct: 0 })),
+      markets: ["BTC", "ETH", "SOL", "HYPE"].map((coin) => ({ coin, markPx: 1, oraclePx: 1, premium: 0, funding: 0, openInterestUsd: 1, dayNtlVlm: 1, dayChangePct: 0, dex: "", assetClass: "crypto" as const, maxLeverage: null })),
     }),
     engine: async (rest) =>
       rest.startsWith("decisions")

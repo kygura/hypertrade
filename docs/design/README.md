@@ -1051,6 +1051,13 @@ src-tag `HL` + result count (`142 PERPS`, xs secondary) + a filter input
 (ghost-styled, placeholder `FILTER`, filters by coin substring, right-
 aligned, 160px).
 
+The universe spans the main dex and every HIP-3 builder dex
+(`?scope=all`). Under the header, a Segmented asset-class row: `ALL`,
+`CRYPTO`, `STOCKS`, `CMDTY`, `INDEX`, `FX`, `RATES`, each with its count;
+classes with no markets are hidden. Columns add DEX (`HL` for the main dex,
+else the dex prefix, secondary) and MAX LEV; COIN shows the bare ticker. A
+dex whose snapshot failed is named in one amber xs line above the table.
+
 - PRICE: tabular, tick-flash on refetch delta (poll `GET /api/hl/markets`
   every 15s; flash cells whose value changed, §8 coalescing).
 - 24H%: signed, colored, glyph.
