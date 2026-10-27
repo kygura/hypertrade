@@ -91,6 +91,15 @@ describe("selectSnapshotAssets", () => {
     expect(many.books).toHaveLength(23); // every listed, non-delisted coin (THIN included), under the cap
     expect(selectSnapshotAssets(Array.from({ length: 30 }, (_, i) => ctx(`X${i}`)), Array.from({ length: 30 }, (_, i) => `X${i}`)).books).toHaveLength(25);
   });
+
+  test("extra (sector basket) coins get a row but no book; unlisted and delisted ones are skipped", () => {
+    const { rows, books } = selectSnapshotAssets(ctxs, ["C0"], ["C1", "C21", "DEAD", "NOTLISTED"]);
+    expect(rows).toContain("C1");
+    expect(rows).toHaveLength(22); // C0, the top 20, C1
+    expect(rows).not.toContain("DEAD");
+    expect(rows).not.toContain("NOTLISTED");
+    expect(books).toEqual(["C0"]);
+  });
 });
 
 describe("focusAssets", () => {

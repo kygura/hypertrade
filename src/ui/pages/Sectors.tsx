@@ -5,16 +5,20 @@ import { useApi } from '../lib/api'
 import { MindshareGrid, type EnrichedSector } from '../components/sectors/MindshareGrid'
 import { RotationsPanel } from '../components/sectors/RotationsPanel'
 import { SectorDrillPanel } from '../components/sectors/SectorDrillPanel'
+import { NarrativesPanel } from '../components/sectors/NarrativesPanel'
+import type { NarrativesResponse } from '../../shared/intel'
 import type { SectorsData } from '../../shared/types'
 
-// /sectors — docs/design/README.md §10.5. Desktop 12-col: MINDSHARE 8 / ROTATIONS 4,
-// DRILL-IN full-width below when a sector is selected. Mobile: grid, then
-// drill-in (scrolled into view), then rotations.
+// /sectors — docs/design/README.md §10.5. Desktop 12-col: NARRATIVES full-width
+// (docs/SPEC.md § Narratives), then MINDSHARE 8 / ROTATIONS 4, DRILL-IN full-width
+// below when a sector is selected. Mobile: narratives, grid, then drill-in
+// (scrolled into view), then rotations.
 
 type SectorsResponse = Omit<SectorsData, 'sectors'> & { sectors: EnrichedSector[] }
 
 export function Sectors() {
   const { data, loading, error, offline, refetch } = useApi<SectorsResponse>('/sectors')
+  const narratives = useApi<NarrativesResponse>('/intel/narratives')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const drillRef = useRef<HTMLDivElement>(null)
 
@@ -27,6 +31,16 @@ export function Sectors() {
 
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)] flex flex-col gap-3 lg:grid lg:grid-cols-12 lg:gap-3">
+      <Panel className="lg:col-span-12">
+        <PanelHeader title="NARRATIVES">{narratives.data && <AgeStamp generatedAt={narratives.data.sectorsAsOf} thresholdHours={24} />}</PanelHeader>
+        <PanelBody>
+          {narratives.loading && !narratives.data && <SkeletonRows />}
+          {!narratives.loading && narratives.offline && <OfflineBlock onRetry={narratives.refetch} />}
+          {!narratives.loading && !narratives.offline && narratives.error && <ErrorBlock message={narratives.error} onRetry={narratives.refetch} />}
+          {narratives.data && <NarrativesPanel data={narratives.data} onChanged={narratives.refetch} />}
+        </PanelBody>
+      </Panel>
+
       <Panel className="lg:col-span-8">
         {data && <StaleBanner generatedAt={data.generated_at} thresholdHours={24} noun="sector data" />}
         <PanelHeader title="MINDSHARE">{data && <AgeStamp generatedAt={data.generated_at} thresholdHours={24} />}</PanelHeader>

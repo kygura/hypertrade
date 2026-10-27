@@ -15,10 +15,12 @@ import { collectLab, LAB_SYNC_COIN, type LabCollectResult, type LabProgress } fr
 import { syncHead } from "../market/candleSync.js";
 import { syncFunding } from "../market/fundingSync.js";
 import { backfillCoin } from "../sim/backfill.js";
-import { STABLES } from "../../shared/schemas.js";
+import sectorsLatest from "../../../data/sectors/latest.json" with { type: "json" };
+import { SectorsDataSchema, STABLES } from "../../shared/schemas.js";
 import type { AssetCtx } from "../../shared/types.js";
 import { runIntelWatch } from "../intel/docwatch.js";
 import { flowAlerts } from "../intel/flowEvents.js";
+import { basketCoins } from "../intel/narratives.js";
 import { refreshGraph } from "../intel/graph.js";
 import { AUTO_RESEARCH_MARGIN_MS, autoResearch, RESEARCH_DEADLINE_MS, type AutoResearchDeps, type AutoResearchRun } from "../intel/research.js";
 import { runIntelIngest } from "../intel/runIngest.js";
@@ -194,11 +196,17 @@ const collectWriter = (): BatchWriter => {
   };
 };
 
+/** The routine's sector tokens (narrative baskets); none when the committed file fails its schema. */
+function sectorBasketCoins(): string[] {
+  const parsed = SectorsDataSchema.safeParse(sectorsLatest);
+  return parsed.success ? basketCoins(parsed.data) : [];
+}
+
 /** Intel snapshot rows from the collect's own metaAndAssetCtxs, into the collect's batch. Never throws (failures land in collector_runs). */
 function runIntelSnapshots(ctxs: AssetCtx[], ts: Date, collectDeadline: number, sink: ReturnType<typeof createBatchSink>): Promise<SnapshotResult> {
   const focus = () => capped(intelFocus(), COLLECT_READ_MS, { held: [], watched: [], stops: [], errors: [`focus: no answer from the database in ${COLLECT_READ_MS / 1000}s`] });
   return collectIntelSnapshots(
-    { store: sink.store, focus, l2Book: (coin) => fetchL2Book(coin), recordRun: sink.db.recordCollectorRun, deadline: Math.min(Date.now() + SNAPSHOT_BOOK_BUDGET_MS, collectDeadline) },
+    { store: sink.store, focus, l2Book: (coin) => fetchL2Book(coin), extra: sectorBasketCoins(), recordRun: sink.db.recordCollectorRun, deadline: Math.min(Date.now() + SNAPSHOT_BOOK_BUDGET_MS, collectDeadline) },
     ctxs,
     ts,
   );
