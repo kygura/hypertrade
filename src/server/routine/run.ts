@@ -450,7 +450,7 @@ export async function runRoutine(opts: RunOptions, deps: RunDeps): Promise<RunRe
     for (const s of statusChanges) lines.push(`${s.id} → ${s.status}${s.r_result !== null ? ` (${s.r_result}R)` : ""}`);
     for (const s of cancelled) lines.push(`Cancelled ${s.id}`);
     for (const t of newHits) lines.push(`Tripwire: ${t.asset} ${t.setup_id} ${t.direction}`);
-    result.push = [...lines.slice(0, 7), "Conditional plans and facts, not advice."].join("\n");
+    result.push = [...lines.slice(0, 7), "Conditional plans and facts."].join("\n");
   }
 
   // 9. Write.

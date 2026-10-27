@@ -5,7 +5,7 @@ import { LabFooter } from '../components/lab/common'
 import { lab, useLab } from '../lib/lab'
 
 // RUNS tab — docs/design/README.md §10.9. Recent runs from every client (ui, mcp, cli);
-// a row opens the run in the SEARCH layout. Footer (rule 3): disclaimer +
+// a row opens the run in the SEARCH layout. Footer (rule 3):
 // data age, dated by the newest run (no run's data reaches past its start).
 
 export function LabRuns() {

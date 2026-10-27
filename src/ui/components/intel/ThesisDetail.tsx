@@ -133,7 +133,7 @@ export function ThesisDetail({
         </section>
       )}
 
-      <p className="text-[10px] text-text-secondary">checks are code over stored data; the model only extracted them · not advice</p>
+      <p className="text-[10px] text-text-secondary">checks are code over stored data; the model only extracted them</p>
 
       {confirming && (
         <ConfirmDialog

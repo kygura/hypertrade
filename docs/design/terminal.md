@@ -487,7 +487,7 @@ is selected).
   trade ids (`hl:BTC:8812`); click sets `?trade=` (and the window to 90D if
   the trade is outside the current one) and scrolls to that row. Neutral
   `GENERATE REPORT` (`POST /journal/report`, `GENERATING…` pulse). Footer
-  10px secondary: `historical record, not advice`.
+  10px secondary: `historical record`.
 
 ---
 
@@ -550,7 +550,7 @@ then the detail only; on mobile, selecting from the list sets `?id` with
   - **What has to be true for this to be wrong**: ClaimList (normally all
     `HYP`).
   - Footer 10px secondary: `checks are code over stored data; the model only
-    extracted them · not advice`.
+    extracted them`.
 
 ---
 

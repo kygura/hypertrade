@@ -490,7 +490,7 @@ function EmptyThread({ onAsk, disabled, mode }: { onAsk: (q: string) => void; di
         <span className="text-[16px] text-text-primary">{sim ? 'Simulate a path' : 'Ask the analyst'}</span>
         <span className="text-[11px] text-text-secondary max-w-[560px]">
           {sim
-            ? 'Describe a what-if in plain words — sizes, leverage, shorts, DCA, a start date. It becomes one to four branches, backtested on daily candles against HODL BTC and USDC, with every assumption it made listed on the card. Historical simulation, not advice.'
+            ? 'Describe a what-if in plain words — sizes, leverage, shorts, DCA, a start date. It becomes one to four branches, backtested on daily candles against HODL BTC and USDC, with every assumption it made listed on the card. Historical simulation.'
             : "It reads the briefing and its history, the sector map, collected metrics, the live Hyperliquid universe and the engine's decisions, then answers with its sources. Read-only."}
         </span>
       </div>
