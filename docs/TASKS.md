@@ -48,7 +48,7 @@ items B1..B5 shipped too: platform setups as `SetupSchema` data
 the condition funnel in `lab_event_study`, stop/target/invalidation expressions and
 categorical regime conditions on Lab rules, and universe filters (top-N liquidity,
 sector, "my markets"). Rule throughout: signals carry facts (n, clusters, interval, trial
-count), never a verdict; nothing places orders, gates the operator or nags.
+count), never a verdict; nothing nags.
 
 Earlier phases (v1 app, v2 semantic simulation chat, platform P1–P4, Intel, Flow, Scout)
 are done and recorded in the contracts: `docs/SPEC.md` and `docs/design/`.
