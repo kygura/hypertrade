@@ -8,8 +8,7 @@ Scouted 2026-10-20 across the routine, platform, Lab, Intel, desk and every
 collector. Part A is what exists and what it actually produces. Part B is the
 proposed rewrite: one code-first pipeline that generates daily-to-weekly setup
 candidates conditionally, with the LLM narrating and challenging rather than
-inventing levels. Nothing here changes the hard rule: output is market
-intelligence, every setup is a hypothesis for a human, no sizing, no orders.
+inventing levels. Every setup is a hypothesis for a human.
 
 ---
 
@@ -348,8 +347,8 @@ One collector set, all into `observations` or `candles`, no prose curl:
 - Platform intraday scanner: keep the code and tests, stop scheduling it
   until an always-on deployment exists. Its near-miss feed is replaced by
   the daily one. Its `setups.ts` pattern is what the new catalogue copies.
-- Desk autonomous cycles: `approval: auto` on an LLM proposal path conflicts
-  with the repo's hard rule in spirit even on paper. Default to `manual` and
+- Desk autonomous cycles: `approval: auto` on an LLM proposal path is
+  risky on an LLM proposal path even on paper. Default to `manual` and
   remove `propose_trade` from the cycle task, or have proposals write to the
   shared ledger as `watching` with `levels_source: model` and conviction
   low. Not a candidate source for v1.
