@@ -136,24 +136,12 @@ the previous snapshot with `"note": "lab skipped: <why>"`.
 reviewed (its id appears in no `data/review/postmortems/*.md`), code first:
 
 ```bash
-bun -e "
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { excursions } from './src/server/intel/journal.ts';
-import { entryMid } from './src/server/routine/ledger.ts';
-const dir = 'data/review/postmortems';
-const seen = existsSync(dir) ? readdirSync(dir).map((f) => readFileSync(dir + '/' + f, 'utf8')).join('\n') : '';
-const { closed } = JSON.parse(readFileSync('data/setups/ledger.json', 'utf8'));
-for (const s of closed.filter((s) => !seen.includes(s.id))) {
-  const from = Date.parse(s.triggered_at ?? s.created_at), to = Date.parse(s.updated_at);
-  const res = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ type: 'candleSnapshot', req: { coin: s.asset, interval: '1h', startTime: from, endTime: to } }) });
-  const candles = (await res.json()).map((c) => ({ ts: new Date(c.t), h: +c.h, l: +c.l }));
-  const mid = entryMid(s), riskPct = Math.abs(mid - s.invalidation) / mid * 100;
-  const x = s.triggered_at ? excursions({ side: s.direction, entryPx: mid, openedAt: s.triggered_at, closedAt: s.updated_at }, candles, new Date()) : null;
-  console.log(JSON.stringify({ id: s.id, setup_id: s.setup_id, status: s.status, r: s.r_result, conviction: s.conviction,
-    maeR: x && +(x.maePct / riskPct).toFixed(2), mfeR: x && +(x.mfePct / riskPct).toFixed(2), note: s.status_note }));
-}" > /tmp/run/closed.jsonl
+bun run review:postmortem > /tmp/run/closed.jsonl
 ```
+
+One line per setup: status, R, conviction, and `maeR` / `mfeR`, the worst and
+best excursion while triggered, in R from the entry midpoint
+(`src/server/routine/review.ts`). Empty output: nothing to review.
 
 Then append one entry per setup to `data/review/postmortems/$(date +%Y-%m).md`:
 
@@ -212,17 +200,13 @@ twice. Edit in place; the file stays under ~120 lines.
 Compare what you traded with what the board proposed. Needs `DESK_WATCH_ADDRESS`.
 
 ```bash
-bun -e "
-import { hlLegs, roundTrips } from './src/server/intel/journal.ts';
-const res = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ type: 'userFillsByTime', user: process.env.DESK_WATCH_ADDRESS, startTime: Date.now() - 30 * 86_400_000, aggregateByTime: true }) });
-const { legs, skipped } = hlLegs(await res.json());
-console.log(JSON.stringify({ skipped, trips: roundTrips(legs) }, null, 1));" > /tmp/run/trips.json
+bun run review:journal > /tmp/run/trips.json
 ```
 
-Code gave you round trips (entry, exit, size, net PnL, fees). You:
+Code gave you round trips (entry, exit, size, net PnL, fees) over 30 days;
+`recent` are the ones closed in the last 7. You:
 
-1. Tag each trade closed in the last 7 days with one of `SETUP_TAGS`
+1. Tag each `recent` trade with one of `SETUP_TAGS`
    (`src/server/intel/journal.ts`) and match it to a ledger setup on the same
    asset and side within its life, or to none.
 2. Write `data/review/journal/$RUN_DATE.md`: matched trades vs the setup
@@ -347,7 +331,8 @@ never reused.
 - `src/server/routine/`: `board.ts`, `tripwires.ts`, `scan.ts`, `gate.ts`,
   `ledger.ts`, `prompts.ts`, `run.ts`, `collect.ts`. Pipeline background:
   `docs/fallback-routine.md`.
-- `src/server/intel/journal.ts`: round trips, excursions, tags.
+- `src/server/routine/review.ts` (`bun run review:*`): post-mortem and
+  journal facts, on `src/server/intel/journal.ts` round trips and excursions.
 - Lab tools: `bun run lab <tool> --json '<args>'`; contract in `docs/LAB.md`.
 - `data/board/`, `data/setups/`, `data/marketstate/`, `data/sectors/`,
   `data/lab/`, `data/review/{postmortems,journal,weekly}/`, `data/playbook.md`.
