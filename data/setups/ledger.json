@@ -1,6 +1,43 @@
 {
-  "updated_at": "2026-10-18T00:00:00.000Z",
-  "open": [],
+  "updated_at": "2026-10-27T14:57:19.130Z",
+  "open": [
+    {
+      "id": "XMR-long-20261027-1",
+      "setup_id": "htf_pullback",
+      "levels_source": "menu",
+      "asset": "XMR",
+      "direction": "long",
+      "horizon": "swing",
+      "timeframe": "1d",
+      "thesis": "1w and 1d trends are both up and the mark is 0.57 ATR from the 1d SMA20 with funding at 10.95, the neutral reading, so the pullback is not crowded; the other side sees a 1w high sweep with volume ratio 2.41 that may mark exhaustion.",
+      "regime_alignment": "with",
+      "trigger": "1d close holding above the 1d SMA20 after a test of it",
+      "entry": {
+        "low": 570.11,
+        "high": 590.96
+      },
+      "invalidation": 552.71,
+      "invalidation_reason": "a close below the 1d SMA50 would mean the daily uptrend structure was lost",
+      "targets": [
+        636.19,
+        664.01
+      ],
+      "rr": 2,
+      "conviction": "low",
+      "evidence": [
+        "XMR.tf.1d.vsSma20Atr",
+        "XMR.pos.fundingAnnPct",
+        "XMR.levels.1d.sma50"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-27T14:57:19.130Z",
+      "updated_at": "2026-10-27T14:57:19.130Z",
+      "expires_at": "2026-11-03T14:57:19.130Z"
+    }
+  ],
   "closed": [],
   "stats": {
     "closed_90d": 0,

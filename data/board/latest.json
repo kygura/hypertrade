@@ -1,0 +1,92 @@
+{
+  "generated_at": "2026-10-27T14:57:19.130Z",
+  "read": "The board is quiet on funding: nearly every market sits at the 10.95 neutral reading, so the leans are in structure. Majors and large alts are pressed into 1d range lows (SOL 0.08, LINK 0.05, AAVE -0.04), while WLD is the one market where funding has moved off neutral.",
+  "watchlist": [
+    {
+      "asset": "WLD",
+      "kind": "long_liquidation",
+      "skew": "up",
+      "timeframe": "1d",
+      "note": "1d rangePos -0.01 with a 4h breakdown, 7d return -20.91%, funding 1.87% annualised (7d percentile 30, funding z -9.08) against 10.95 neutral; the downside may be stretched, but a bounce has not started",
+      "arms": "a 4h close back above the 4h range low",
+      "evidence": [
+        "WLD.tf.1d.rangePos",
+        "WLD.pos.fundingAnnPct",
+        "WLD.xs.fundingZ",
+        "WLD.pos.ret7dPct"
+      ]
+    },
+    {
+      "asset": "AAVE",
+      "kind": "long_liquidation",
+      "skew": "up",
+      "timeframe": "1d",
+      "note": "1d rangePos -0.04 with a low sweep on both 4h and 1d, vsSma20Atr -2.54 on 1d, 7d return -11.36%, funding at the 10.95 neutral reading",
+      "arms": "a 1d close back above the 1d range low",
+      "evidence": [
+        "AAVE.tf.1d.rangePos",
+        "AAVE.tf.1d.vsSma20Atr",
+        "AAVE.pos.ret7dPct"
+      ]
+    },
+    {
+      "asset": "CHIP",
+      "kind": "trend_exhaustion",
+      "skew": "down",
+      "timeframe": "4h",
+      "note": "24h return 9.96%, 7d return 21.64%, 4h vsSma20Atr 2.05, return z 5.44 across the board; funding 10.95 and thin OI mean the move may fade, or may not",
+      "arms": "a 4h close back under the 4h SMA20",
+      "evidence": [
+        "CHIP.pos.ret7dPct",
+        "CHIP.tf.4h.vsSma20Atr",
+        "CHIP.xs.ret24hZ"
+      ]
+    },
+    {
+      "asset": "VVV",
+      "kind": "venue_divergence",
+      "skew": "down",
+      "timeframe": "4h",
+      "note": "HL funding 18.21 points over the CEX reading (CEX -7.26), crowding local to HL; 4h volRatio 3.05 with the mark in the upper part of its 4h range",
+      "arms": "a 4h close back under the 4h SMA20",
+      "evidence": [
+        "VVV.pos.fundingVsCexAnnPct",
+        "VVV.tf.4h.volRatio"
+      ]
+    },
+    {
+      "asset": "SUI",
+      "kind": "venue_divergence",
+      "skew": "down",
+      "timeframe": "1d",
+      "note": "HL funding 6.46 points over CEX, 1d rangePos 0.06 after a low sweep, 7d return -7.21%",
+      "arms": "a 1d close back above the 1d range low",
+      "evidence": [
+        "SUI.pos.fundingVsCexAnnPct",
+        "SUI.tf.1d.rangePos"
+      ]
+    }
+  ],
+  "hits": [
+    {
+      "asset": "XMR",
+      "setup_id": "htf_pullback",
+      "direction": "long"
+    }
+  ],
+  "near": [
+    {
+      "asset": "DOGE",
+      "setup_id": "htf_pullback",
+      "direction": "short",
+      "gap": 0.3
+    }
+  ],
+  "new_setups": [
+    "XMR-long-20261027-1"
+  ],
+  "rejected": [],
+  "passes": [],
+  "unanswered": [],
+  "brief": "First run on this ledger: no prior watchlist or open setups, and OI history has no snapshots yet, so OI changes are null. Funding is at the 10.95 neutral reading on almost every market, so crowding is not the story; structure is. SOL, LINK and AAVE sit near the bottom of their 1d ranges and WLD broke its 1d range low with funding 1.87, the only clear funding deviation. The one tripwire hit, XMR htf_pullback long, is written up as a low-conviction setup; DOGE htf_pullback short is a near-miss (1.05 ATR from the 1d SMA20 against a 0.75 limit). hl-cycles reads mild risk-off since 2026-10-26 (feed stale, 10.2 h old); FOMC lands 2026-10-28. A 4h close back above range lows on WLD would be the first sign the washout is resolving; XMR closing under its 1d SMA50 would prove the pullback read wrong."
+}
