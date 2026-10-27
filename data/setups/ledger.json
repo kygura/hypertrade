@@ -1,6 +1,82 @@
 {
-  "updated_at": "2026-10-27T14:57:19.130Z",
+  "updated_at": "2026-10-27T22:56:27.487Z",
   "open": [
+    {
+      "id": "ZEC-long-20261027-1",
+      "setup_id": null,
+      "levels_source": "menu",
+      "asset": "ZEC",
+      "direction": "long",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "ZEC broke the 4h range high with volume ratio 1.14, is +10.28 vs BTC over 7d and sits inside a 1w uptrend; funding is 9.88 points over Binance/Bybit so the move is somewhat HL-local, which risk skews against a clean hold. The other side sees a mark 2.34 ATR over the 4h SMA20 that may fade.",
+      "regime_alignment": "with",
+      "trigger": "4h close holding above the 4h range high after a retest",
+      "entry": {
+        "low": 1280.7,
+        "high": 1299
+      },
+      "invalidation": 1203.7,
+      "invalidation_reason": "a 4h close under the 4h SMA20 means the breakout failed",
+      "targets": [
+        1462.1,
+        1548.3
+      ],
+      "rr": 2,
+      "conviction": "low",
+      "evidence": [
+        "ZEC.tf.4h.breakout",
+        "ZEC.rs.vsBtc7dPct",
+        "ZEC.pos.fundingVsCexAnnPct",
+        "ZEC.levels.4h.high20"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-27T22:56:27.487Z",
+      "updated_at": "2026-10-27T22:56:27.487Z",
+      "expires_at": "2026-10-30T22:56:27.487Z"
+    },
+    {
+      "id": "ENA-short-20261027-1",
+      "setup_id": null,
+      "levels_source": "menu",
+      "asset": "ENA",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "HL funding is 24.63 points over Binance/Bybit, which reads -13.68%, so the crowding is local to HL; the 4h swept its high while price slipped -2.13% over 4h. The other side sees a 1w that is up 10.33 vs BTC over 7d and a 4h uptrend that has not broken.",
+      "regime_alignment": "with",
+      "trigger": "4h close back under the 4h SMA20 after a rejection from the swept high",
+      "entry": {
+        "low": 0.20277,
+        "high": 0.21026
+      },
+      "invalidation": 0.21894,
+      "invalidation_reason": "a hold above the swept 4h high means the HL premium was absorbed",
+      "targets": [
+        0.18167,
+        0.16924
+      ],
+      "rr": 2,
+      "conviction": "low",
+      "evidence": [
+        "ENA.pos.fundingVsCexAnnPct",
+        "ENA.pos.cexFundingAnnPct",
+        "ENA.tf.4h.sweep",
+        "ENA.levels.4h.high20"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-27T22:56:27.487Z",
+      "updated_at": "2026-10-27T22:56:27.487Z",
+      "expires_at": "2026-10-30T22:56:27.487Z"
+    }
+  ],
+  "closed": [
     {
       "id": "XMR-long-20261027-1",
       "setup_id": "htf_pullback",
@@ -29,20 +105,19 @@
         "XMR.pos.fundingAnnPct",
         "XMR.levels.1d.sma50"
       ],
-      "status": "watching",
-      "status_note": null,
-      "r_result": null,
-      "triggered_at": null,
+      "status": "cancelled",
+      "status_note": "The thesis rested on neutral funding (not crowded); HL funding is now 43.83% annualised, 21.76 points over Binance/Bybit, so the premise broke.",
+      "r_result": 1.04,
+      "triggered_at": "2026-10-27T14:00:00.000Z",
       "created_at": "2026-10-27T14:57:19.130Z",
-      "updated_at": "2026-10-27T14:57:19.130Z",
+      "updated_at": "2026-10-27T22:56:27.487Z",
       "expires_at": "2026-11-03T14:57:19.130Z"
     }
   ],
-  "closed": [],
   "stats": {
-    "closed_90d": 0,
-    "triggered_90d": 0,
-    "hit_rate": null,
-    "avg_r": null
+    "closed_90d": 1,
+    "triggered_90d": 1,
+    "hit_rate": 0,
+    "avg_r": 1.04
   }
 }
