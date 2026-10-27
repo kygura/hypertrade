@@ -2,13 +2,7 @@
 
 Hypertrade is a market-intelligence app for Hyperliquid perps: an always-on Bun/Hono
 backend (scanner, crawler, Intel, Lab, desk) plus a React cockpit and a Lab research
-engine. It produces facts, ranked context and research, not advice.
-
-**Hard rule: market intelligence, not financial advice.** Output is informational. Nothing
-in this repo gates, approves or rejects the operator, recommends or sizes a trade, or
-places an order. Forward-looking text carries hedge words and never states an outcome as
-fact. The alpha is in the operator's head; LLM output translates and challenges, it is
-not a signal source.
+engine.
 
 ## Stack and commands
 
