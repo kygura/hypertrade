@@ -132,7 +132,7 @@ Cost: Hobby plan is about $5/mo plus usage. At 0.5 vCPU and 512 MB, usage is abo
 
 ## Routine (scheduled Claude session)
 
-The single runbook is `ROUTINE.md`. Each run collects the board (`bun run routine --collect-only`: top-30 perps by volume plus majors and `PLATFORM_MY_MARKETS`, with 4h/1d/1w structure, funding vs its own week and vs Binance/Bybit, OI change from the committed `data/board/history.json`, and a level menu), reads it, and writes setups that code resolves, gates and grades (`data/setups/ledger.json`). `bun run signals:collect` adds an optional snapshot of the platform's intraday signals. One ntfy push through the desk notifier only when something is new. Informational; it gates and places nothing. Secrets in the cloud environment:
+The single runbook is `ROUTINE.md`. Each run collects the board (`bun run routine --collect-only`: top-30 perps by volume plus majors and `PLATFORM_MY_MARKETS`, with 4h/1d/1w structure, funding vs its own week and vs Binance/Bybit, OI change from the committed `data/board/history.json`, and a level menu), reads it, and writes setups that code resolves, gates and grades (`data/setups/ledger.json`). `bun run signals:collect` adds an optional snapshot of the platform's intraday signals. One ntfy push through the desk notifier only when something is new. Secrets in the cloud environment:
 
 | Variable | Purpose |
 | --- | --- |
