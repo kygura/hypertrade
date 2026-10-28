@@ -554,6 +554,26 @@ Operator ask (2026-10-27): find short- and long-timeframe narratives and positio
 - `PUT /api/intel/narratives/:id/view {lean, note?}` → `NarrativeView`. 404 for an id not in the current sector file, 400 on a bad body.
 - `POST /api/intel/narratives/:id/contrast` → `NarrativeContrast` (`status: done | failed | capped | no_web_search`). 404, 409, 429 as above.
 
+### N3. Slice 2: headlines, stage alerts, automatic contrast
+
+1. **Headlines per narrative** (`narrativeHeadlines`, pure, in `narratives.ts`). Intel events from the last 72 h whose mapped `assets` overlap the basket tokens (case-insensitive), newest first, one per news cluster (an event without a cluster stands alone). Each carries `{title, firstSeen, url (first source with a url, else null), assets (the basket tokens it names)}`. `GET /narratives` adds `headlines` (≤ 5 per row). The contrast prompt takes its headlines from the same function (≤ 20).
+2. **Stage alerts** (`narrativeStageAlerts`, `src/server/intel/narrativeWatch.ts`). Runs in the ingest cron right after the flow detectors. Per narrative, state in `intel_settings` (`narrative_stages`): `{stage, since, alertedAt, pending}`.
+   - A stage of `unknown` changes nothing (a data gap is not a transition).
+   - First sight records the stage silently.
+   - A different known stage must hold for 2 consecutive runs before it is committed.
+   - A committed change alerts unless the narrative alerted in the last 12 h (then it is committed silently).
+   - The alert is kind `narrative` (migration `022_narrative_alerts.sql`), `asset` = narrative id, `ref` = `stage:<id>:<to>:<since>`, `eventType` = `stage_<to>`. The line is an `observed` claim (source `snapshot`) written by code from the flow facts: `<Label>: <from> → <to> · 7d vs BTC <pp>, OI 7d <pct>, funding z <z>`.
+   - Materiality is 1 when the operator has a continuation or fade view on the narrative or holds/watches one of its tokens, else 0.2. Routing is the mapper's `routeFor` (push ≥ `INTEL_PUSH_MATERIALITY` unless feedback-dampened). A push that reaches no channel falls back to batch.
+   - Narrative alerts add no confluence to any coin (`alertSource` → null).
+3. **Automatic contrast** (`narrativeAutoContrast`, same file). Runs as the ingest job's last stage, after automatic research.
+   - Candidates:
+     - lean `continuation` with `alignment` `against`, or
+     - lean `fade` with `alignment` `with` (the move being faded is extending),
+     - and in both cases `flowScore` ≥ 2.5. Strongest first.
+   - Limits: at most `INTEL_NARRATIVE_AUTO_DAILY` (default 2) runs per UTC day and one per narrative per UTC day (`narrative_contrast_auto` setting). A run starts only with more than its deadline + 15 s of budget left. The stage stops on a `capped` result. A `no_web_search` result does not count.
+   - A `done` result becomes the narrative's latest contrast and raises one `narrative` alert (`ref` = `contrast:<id>`, `eventType` = `contrast_<favours>`, a `hypothesis` line written by code: the window and quadrant that triggered it, the view, what the contrast favours, its confidence and agreement). It is routed like a stage alert; the operator has a view by construction.
+4. The automatic and manual counters are separate.
+
 ### N2. Done
 
 - Tests: `narratives.test.ts` (composite chaining and coverage entry, quadrants, stage rules and floors, alignment, ranking, a synthetic expanding basket with a 6 h long build, missing history), `narrativeContrast.test.ts` (provenance, dropped advice and unbacked numbers, `unclear` without observed evidence, agreement table, prompt carries the view and untrusted headlines, no web search, fail closed), route tests (view round trip, contrast stored, 404/429), snapshot coverage.

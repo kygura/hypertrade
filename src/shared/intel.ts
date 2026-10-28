@@ -424,7 +424,7 @@ export const CatalystsResponseSchema = z.object({ catalysts: z.array(CatalystSch
 
 // ─── Alerts and feedback (I0.11, I0.12) ───
 
-export const AlertKindSchema = z.enum(["mapper", "catalyst", "docwatch", "terminal", "flow"]);
+export const AlertKindSchema = z.enum(["mapper", "catalyst", "docwatch", "terminal", "flow", "narrative"]);
 export type AlertKind = z.infer<typeof AlertKindSchema>;
 export const CatalystWindowSchema = z.enum(["24h", "1h"]);
 export type CatalystWindow = z.infer<typeof CatalystWindowSchema>;
@@ -440,7 +440,7 @@ export type PricedIn = z.infer<typeof PricedInSchema>;
 export const AlertSchema = z.object({
   id: z.string(),
   kind: AlertKindSchema,
-  /** Dedupe reference: cluster id (mapper), event id (catalyst, flow), watch change id (docwatch), brief id (terminal). */
+  /** Dedupe reference: cluster id (mapper), event id (catalyst, flow), watch change id (docwatch), brief id (terminal), stage change or contrast id (narrative; asset = narrative id). */
   ref: z.string(),
   /** Catalyst alerts only (T−24 h / T−1 h). */
   window: CatalystWindowSchema.nullable(),
@@ -1152,9 +1152,19 @@ export const NarrativeContrastSchema = z.object({
 });
 export type NarrativeContrast = z.infer<typeof NarrativeContrastSchema>;
 
+/** A recent headline whose mapped assets overlap the basket; one per news cluster. */
+export interface NarrativeHeadline {
+  title: string;
+  firstSeen: string;
+  url: string | null;
+  /** The basket tokens it names. */
+  assets: string[];
+}
+
 export interface NarrativeRow extends NarrativeFlow {
   view: NarrativeView | null;
   contrast: NarrativeContrast | null;
+  headlines: NarrativeHeadline[];
 }
 
 export interface NarrativesResponse {

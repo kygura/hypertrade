@@ -42,6 +42,7 @@ export function kindWord(a: Pick<Alert, 'kind' | 'window'>): string | null {
   if (a.kind === 'catalyst') return a.window ? `CATALYST T−${a.window.toUpperCase()}` : 'CATALYST'
   if (a.kind === 'docwatch') return 'WATCH CHANGE'
   if (a.kind === 'terminal') return 'TERMINAL'
+  if (a.kind === 'narrative') return 'NARRATIVE'
   return null
 }
 
