@@ -1,26 +1,57 @@
 # DESIGN — HYPERTRADE
 
 Authoritative visual and interaction design brief for the HYPERTRADE app
-(`app/`). Implementation follows this document exactly; a worker implementing
+(`src/ui/`). Implementation follows this document exactly; a worker implementing
 UI from it needs no taste of its own. Where this document and docs/SPEC.md disagree
 on visuals, this document wins; on data/API shape, docs/SPEC.md wins.
 
 HYPERTRADE iterates on the Hyperion Terminal design language
-(`../hyperion/dashboard/DESIGN.md`): dark-only, Geist Mono everywhere, zero
-border-radius, hairline borders, dense tabular data, one motion rhythm
-(220ms), no spinners, a single named state vocabulary. It is NOT a new
-language. What is new:
+(`../hyperion/dashboard/DESIGN.md`): dark-only, hairline borders, dense
+tabular data, one motion rhythm (220ms), no spinners, a single named state
+vocabulary. It is NOT a new language.
+
+**Default look.** The default theme is **Hyperdash** (`DEFAULT_THEME` in
+`src/ui/themes/registry.ts`; `index.html` also ships `data-theme="hyperdash"`
+so first paint matches). Every look is a theme (§15): Hyperdash and
+Trade[XYZ] are CSS files that override tokens under
+`:root[data-theme='<id>']`, and **Hyperion** is the third, selectable theme
+with no file — it is the unscoped token defaults in `src/ui/index.css`.
+The token listing in §2 is therefore the Hyperion look (Geist Mono
+everywhere, zero radius, 13px base, `#ed3602` accent); under the default
+theme the same tokens read as below. The choice persists per browser
+(`localStorage['hypertrade.theme']`; a visitor who never chose follows the
+default) and is switched from the top bar.
+
+| Token | Hyperion (defaults) | Hyperdash (default theme) | Trade[XYZ] |
+|---|---|---|---|
+| `--topbar-h` | 40px | 54px | 48px |
+| `--subnav-h` | 52px | 52px | 52px |
+| `--base-font-size` | 13px | 12px | 14px |
+| `--radius-panel` / `-control` / `-badge` | 0 / 0 / 0 | 4 / 4 / 2px | 10 / 6 / 4px |
+| `--color-accent` | `#ed3602` | `#fd4612` | `#ffce55` |
+| `--font-sans`, `--font-mono` | Geist Mono | BDO Grotesk, Host Grotesk | Inter, IBM Plex Sans |
+
+`--topbar-h` and `--subnav-h` are the only sanctioned sources of sticky
+offsets: the top bar is `h-[var(--topbar-h)]`, a sub-tab row sticks at
+`top-[var(--topbar-h)]` and is `--subnav-h` tall, anything sticking under
+both uses `top-[calc(var(--topbar-h)+var(--subnav-h))]`, and scroll anchors
+use `scroll-mt-[calc(...)]` from the same tokens. No literal `top-10` or
+`top-[92px]`.
+
+What is new:
 
 1. **Genuinely responsive.** Hyperion was a fixed desktop grid with
    `overflow: hidden` on body. HYPERTRADE must work on a phone in portrait
    and on a laptop. Section 4 is the responsive contract; every view section
    specifies both layouts.
-2. **No money paths.** There is no execution, no wallet, no signing. The
-   Money and Arm button tiers and the typed-word confirmation level are
-   retired. The heaviest action in this product is deleting a branch. The
-   Intel order copilot (`/order`) places operator-confirmed orders on the
-   Desk venue (paper/testnet) only; it uses the Level 2 confirm + a
-   VenueBadge, not a Money tier (docs/design/terminal.md §7.1).
+2. **Gated money paths.** There is no mainnet execution, wallet or signing
+   in the app, and the Money and Arm button tiers stay retired. Orders the
+   app places itself (Desk APPROVE, Cockpit APPROVE, the `/order` copilot)
+   reach only the Desk venue, paper or Hyperliquid testnet; the ENGINE
+   console approves intents for the external Hyperion engine. Each of those
+   actions sits behind a Level 2 dialog, and the two kill switches add a
+   typed word (Level 3, §7). Details: docs/design/terminal.md
+   §7.1.
 3. **Fixed layouts.** No react-grid-layout, no draggable panels. Fixed
    responsive CSS grid per view.
 4. **New data shapes** need new visual vocabulary: a sector momentum ramp, a
@@ -373,17 +404,20 @@ Three tiers, Tailwind default breakpoints, mobile-first:
 
 | Tier | Width | Shell |
 |---|---|---|
-| Mobile | < 768px | Single column, bottom tab bar (§5.2), pages scroll vertically, `--gutter` 8px |
+| Mobile | < 768px | Single column, bottom tab bar (§5.2), pages scroll vertically, `--gutter` 12px |
 | Mid (`md:`) | 768–1023px | Top bar (§5.1), two-column grids where a view defines them, gutter 12px |
 | Desktop (`lg:`) | ≥ 1024px | Top bar, full per-view grid, content max-width 1440px centered |
 
-Only `md:` and `lg:` prefixes may appear in layout code. No `sm:`, no `xl:`,
-no arbitrary breakpoints — two switch points keep every view testable at
-exactly three widths (test at 390px, 768px, 1280px).
+`md:` and `lg:` are the two layout switch points, so every view is testable
+at three widths (390px, 768px, 1280px). `xl:` (1280px) is used only where a
+view earns a third column or a wider split (Cockpit, Desk, the review strip,
+the cycles forecast panel); `sm:` only for small in-component grids
+(mindshare grid, perp header, rule text). No arbitrary breakpoints.
 
 Pages scroll normally (body `overflow-y` visible). Hyperion's fixed-viewport
 grid is gone. The nav (top bar or tab bar) is `position: sticky`/`fixed`
-respectively; content never hides under it (mobile pages get
+respectively, and sub-tab rows stick under the top bar via the preamble's
+`--topbar-h` / `--subnav-h` tokens; content never hides under it (mobile pages get
 `padding-bottom: calc(56px + env(safe-area-inset-bottom))`).
 
 ### 4.2 Pointer vs viewport
@@ -428,11 +462,9 @@ Per-table drop order (P1 = never dropped):
 | Table | P1 (always) | P2 (always) | P3 (md+ only) | P4 (lg only) |
 |---|---|---|---|---|
 | Markets universe | COIN, PRICE | 24H% | OI | FUNDING, VOLUME |
-| Metrics summary rows | METRIC, VALUE | Δ (delta) | Z30 | MEAN30 |
 | Branches list | NAME, RETURN% | MAX DD | VS BTC | UPDATED |
 | Sector tokens (drill-in) | TOKEN, PRICE | 24H% | OI | FUNDING |
 | Rotations list | FROM→TO, CONF | TRIGGER | NOTE (full) | — |
-| MarketState history | DATE, HEADLINE | — | — | — |
 | Lab catalogue (§10.9) | NAME (+ verdict Badge), LIVE SHARPE | WF, HOLDOUT | FIRING, HEALTH, DIR·HZN | LIVE DAYS, SAVED, ORIGIN |
 | Lab runs (§10.9) | STARTED, ASSET·DIR·HZN | BEST WF SHARPE, RULES | TRIALS, STATUS | METRICS, DURATION, SOURCE |
 | Lab stats by window (§10.9) | all four windows — `.table-scroll`, sticky first column | | | |
@@ -455,7 +487,6 @@ it holds tens of thousands of bars, pans/zooms and stacks panes:
 | Monte-carlo fan | 200px | 280px |
 | Market chart price pane (drill-in) | 240px | 340px (+96px per perp pane) |
 | Overview sparkline | 48px | 56px |
-| Metric mini-series (drill) | 160px | 220px |
 
 Mobile chart adaptations, uniform across all charts:
 
@@ -481,90 +512,118 @@ not a different product.
 
 ## 5. App shell and navigation
 
-Destinations post-login: Terminal `/` (grouping `/journal`, `/theses`,
-`/query`, `/order`, `/watch` and `/overview` under TerminalTabs,
-docs/design/terminal.md §1), Branches `/branches`, Sectors `/sectors`, State
-`/state`, Markets `/markets` — plus the later shell entries Engine
-`/strategies` (grouping `/decisions` and `/governor`), Analyst `/analyst`,
-Desk `/desk` and Lab `/lab` (§10.9) — nine nav items — plus Logout.
-`/login` renders outside the shell entirely.
+**Principle: one cell per operator job, one home per object.** A top-level
+cell exists only for a job no other cell answers. A new feature becomes a tab
+inside the cell whose job it serves. A drill-in (`/x/:id`) keeps its family's
+tabs and a back link, or is a full view with a back link, and every coin page
+links to every other coin page for the same coin (`/markets/:coin` ↔
+`/asset/:coin`, and the Cockpit detail links to both). An action has one
+implementation, and its confirmation weight follows the action, not the page
+(§7). The ceiling is nine cells and the target is five.
 
-### 5.1 Desktop / mid (≥768px): TopBar, 40px, sticky
+**Current state: ten cells, over the nine-cell ceiling.** Cells were appended
+as features shipped (CYCLES was the tenth). `docs/CONSOLIDATION.md` is the
+plan that brings the shell back under the ceiling (10 → 7 → 5) and folds the
+old landing pages into tabs; until it lands, this section describes what
+ships. The cells, left to right (`NAV` in `AppShell.tsx`):
+
+| # | Desktop | Mobile | Glyph | Link | Active on |
+|---|---|---|---|---|---|
+| 1 | COCKPIT | CKPT | `◉` | `/` | the whole Terminal family (`isTerminalPath`): `/`, `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch`, `/overview`, `/asset/:coin` |
+| 2 | BRANCHES | BRNCH | `⑂` | `/branches` | `/branches`, `/branches/:id` |
+| 3 | SECTORS | SECTR | `▦` | `/sectors` | `/sectors` |
+| 4 | STATE | STATE | `☰` | `/state` | `/state` |
+| 5 | MARKETS | MKTS | `≋` | `/markets` | `/markets`, `/markets/:coin` |
+| 6 | CYCLES | CYCLE | `◠` | `/cycles` | `/cycles`, `/cycles/:coin` |
+| 7 | ENGINE | ENGIN | `⚙` | `/strategies` | the strategy console (`isEnginePath`): `/strategies`, `/decisions`, `/governor` and their `/:id` drills |
+| 8 | ANALYST | ASK | `?` | `/analyst` | `/analyst` |
+| 9 | DESK | DESK | `◎` | `/desk` | `/desk` |
+| 10 | LAB | LAB | `⚗` | `/lab` | `/lab/*`, including `/lab/rules/:id` |
+
+Three cells group several routes behind an in-view sub-nav: COCKPIT (the
+TerminalTabs strip, docs/design/terminal.md §1.3), ENGINE (`EngineTabs`,
+§10.12) and LAB (`LabTabs`, §10.9). `/overview` has no cell of its own: it is
+the OVERVIEW tab of the Terminal family. After login the landing is `/`.
+`/login` renders outside the shell entirely. Unknown paths redirect to `/`.
+
+### 5.1 Desktop / mid (≥768px): TopBar, `--topbar-h`, sticky
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│ HYPERTRADE ▪ │ TERMINAL  BRANCHES  SECTORS  STATE  MARKETS  ENGINE  ANALYST  DESK  LAB │ ● DATA 12:41 │ LOGOUT │
-└────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ HYPERTRADE ▪ │ COCKPIT BRANCHES SECTORS STATE MARKETS CYCLES ENGINE ANALYST DESK LAB │ theme ● DATA 12:41 │ LOGOUT │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
-
-`TERMINAL` is the first route; active on the whole Terminal family (`/`,
-`/journal`, `/theses`, `/query`, `/order`, `/watch`, `/overview` —
-`isTerminalPath`). The old Overview is the `/overview` sub-tab destination.
-
-`LAB` is the last route (research sits after the surfaces it researches);
-active on `/lab` and every `/lab/*` path, including `/lab/rules/:id`.
 
 Left → right:
 
-1. **Wordmark** `HYPERTRADE` 11px uppercase bold + a 6×6px
-   `--color-red-accent` square. Click → `/`.
-2. **Routes**: 10px uppercase ghost links, 12px gap. Active route gets the
-   Hyperion treatment: `text-primary` + 2px `--color-red-accent` bottom
-   border (`.tab-active`).
-3. **Data-freshness cluster** (right-aligned): a StatusDot + `DATA 12:41` in
-   10px `text-secondary` — the most recent successful collector run time
-   (from `/api/metrics/summary` metadata). Dot: green if < 30min old, amber
-   30min–2h, red > 2h or fetch failed. Tooltip (`title`): per-collector last
-   run. This is the shell-level staleness signal from principle 3.
-4. **LOGOUT** ghost button → `POST /api/auth/logout`, redirect `/login`.
+1. **Wordmark** `HYPERTRADE` 11px uppercase bold + a 6×6px accent square
+   (`--color-accent`). Click → `/`.
+2. **Routes**: the ten cells above as 10px control-case links, 12px gap.
+   Active route gets the theme's active treatment (Hyperion: `text-primary` +
+   2px accent bottom border, `.tab-active`; Hyperdash: white text, the orange
+   rule is reserved for tabs) and `aria-current="page"`.
+3. **ThemeSwitcher**: a `Segmented` toggle (`HYPERDASH · TRADE[XYZ] ·
+   HYPERION`, short codes `HD · XYZ · HYP` below `xl:`).
+4. **Data-freshness cluster** (md+ only): a StatusDot + `DATA 12:41` in 10px
+   `text-secondary` — the time of the newest `hl.total_oi_usd` observation
+   from `GET /api/metrics/summary?ids=hl.total_oi_usd`, used as the collector
+   heartbeat. Dot: green if < 30min old, amber 30min–2h, red > 2h or fetch
+   failed (`DATA —`). Tooltip (`title`): `last collector run
+   (hl.total_oi_usd)`. This is the shell-level staleness signal from
+   principle 3.
+5. **LOGOUT** ghost button → `POST /api/auth/logout`, redirect `/login`.
 
-Sticky (`position: sticky; top: 0; z-index: 40`), `bg-panel-alt`, 1px bottom
-border.
+Sticky (`position: sticky; top: 0; z-index: 40`), height
+`var(--topbar-h)` (40px Hyperion, 54px Hyperdash, 48px Trade[XYZ]),
+`bg-topbar`, 1px bottom border.
 
 ### 5.2 Mobile (<768px): bottom tab bar + slim top strip
 
-Top strip (40px, sticky): wordmark left, freshness dot + LOGOUT right.
-Route links move to a **bottom tab bar**:
+Top strip (`--topbar-h`, sticky): wordmark left, ThemeSwitcher + LOGOUT
+right (the freshness cluster is desktop-only). Route links move to a
+**bottom tab bar**, one cell per NAV entry:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ TERM  BRNCH SECTR STATE MKTS  ENGIN  ASK  DESK  LAB         │  56px + safe-area
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ CKPT BRNCH SECTR STATE MKTS CYCLE ENGIN ASK DESK LAB             │  56px + safe-area
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-- `position: fixed; bottom: 0`, full width, `bg-panel-alt`, 1px top border,
+- `position: fixed; bottom: 0`, full width, `bg-topbar`, 1px top border,
   height `calc(56px + env(safe-area-inset-bottom))` with the inset as
   padding-bottom.
 - Equal cells (`flex: 1`), each a flex column: a 12px glyph over a 9px
-  uppercase label. Glyphs are text characters, no icon library: `▣`
-  Terminal, `⑂` Branches, `▦` Sectors, `☰` State, `≋` Markets, `⚙` Engine,
-  `?` Analyst, `◎` Desk, `⚗` Lab.
-- Active cell: `text-primary` + a 2px `--color-red-accent` top border on the
-  cell (the underline idiom, flipped to the touchable edge).
-  Inactive: `text-secondary`.
-- Labels: `TERM / BRNCH / SECTR / STATE / MKTS / ENGIN / ASK / DESK / LAB`
-  — 5 chars max, `letter-spacing` ≤ 0.02em on the tab bar only (the theme's
-  control tracking would push a 5-char label past a 35px cell).
+  control-case label. Glyphs are text characters, no icon library: `◉`
+  Cockpit, `⑂` Branches, `▦` Sectors, `☰` State, `≋` Markets, `◠` Cycles,
+  `⚙` Engine, `?` Analyst, `◎` Desk, `⚗` Lab.
+- Active cell: `text-primary` + a 2px accent top border on the cell (the
+  underline idiom, flipped to the touchable edge). Inactive: `text-secondary`.
+- Labels: `CKPT / BRNCH / SECTR / STATE / MKTS / CYCLE / ENGIN / ASK / DESK /
+  LAB` — 5 chars max, `letter-spacing` ≤ 0.02em on the tab bar only (the
+  theme's control tracking would push a 5-char label past a 32px cell).
 - Whole cell is the target (≥56px tall — over `--tap-min`).
 
 No hamburger, no drawer. A drawer would hide the map of the product behind
 a tap.
 
-**Nine cells is the ceiling — decision and arithmetic.** LAB was added as a
-ninth cell rather than merged, because its one plausible host, ENGINE,
-groups the strategy console (strategies, decisions, governor); Lab is
-research that feeds strategies, not a console tab, and hiding it one level
-down on mobile while it is a top-bar route on desktop would make the two
-shells disagree. At 320px nine cells are 35px wide; a 5-char label at 9px
-Geist Mono is ≈27px, so labels fit without abbreviating further. Cells are
-56px tall: the target is 35×56, above WCAG 2.5.8's 24×24 and the iOS
-tab-bar norm, but below the 44px `--tap-min` horizontally — accepted for
-this one surface because neighbouring cells are separated by the full cell
-boundary (a mis-tap lands on a route, never on an action). A tenth
+**Nine cells is the ceiling — decision and arithmetic; ten is a known
+violation.** LAB was added as the ninth cell rather than merged, because its
+one plausible host, ENGINE, groups the strategy console (strategies,
+decisions, governor); Lab is research that feeds strategies, not a console
+tab, and hiding it one level down on mobile while it is a top-bar route on
+desktop would make the two shells disagree. CYCLES then arrived as a tenth
+cell, which the ceiling forbids; the plan to
+remove it, and the old landing pages that were demoted to sub-tabs instead of
+removed, is `docs/CONSOLIDATION.md`. At 320px ten cells are 32px wide; a
+5-char label at 9px Geist Mono is ≈27px, so labels fit without abbreviating
+further. Cells are 56px tall: the target is 32×56, above WCAG 2.5.8's 24×24
+and the iOS tab-bar norm, but below the 44px `--tap-min` horizontally —
+accepted for this one surface because neighbouring cells are separated by the
+full cell boundary (a mis-tap lands on a route, never on an action). A new
 destination may not add a cell: it merges into an existing one the way
 ENGINE already does, or replaces one. Rejected: a scrolling tab bar (hidden
-cells defeat the map, §4.3's argument) and 4-char labels (no legibility
-gain at 35px; they would rename eight settled labels).
+cells defeat the map, §4.3's argument) and 4-char labels (no legibility gain
+at 32px; they would rename settled labels).
 
 ### 5.3 Route guard
 
@@ -612,20 +671,48 @@ Exact timestamp in the `title` tooltip.
 
 ## 7. Confirmation vocabulary
 
-Two levels only. No typed-word confirmations exist in this product.
+Three levels. Weight follows the action, not the page: the same action asks
+for the same confirmation wherever its button sits. (`docs/CONSOLIDATION.md`
+"Confirmation levels".)
 
-**Level 1 — plain action** (reversible or additive): save/create branch, run
-simulation, login, trigger routine, edit allocations. Single click, inline
+**Level 1 — plain click** (reversible or read-only): save/create branch, run
+simulation, login, trigger routine, edit allocations, save a rule to the Lab
+catalogue, toggle a strategy on or off, save governor limits, reject a Desk
+proposal, add or edit a note, watch or catalyst. Single click, inline
 verbatim ErrorBlock on failure.
 
-**Level 2 — destructive confirm**: delete branch, remove a branch's scenario.
-A confirmation dialog: scrim (`--color-scrim`) + centered panel
-(`--shadow-overlay`, max-width 360px), title `DELETE BRANCH`, body names the
-object — `Delete "60/40 ETH-stables"? Its simulation history goes with it.`
-Confirm is Danger tier labeled with verb + object (`DELETE BRANCH`), cancel
-is ghost and receives initial focus. Dialog stays open on failure showing the
-verbatim error; closes only on success or cancel. On mobile the dialog is a
-bottom sheet: full-width, pinned to the bottom edge, same content.
+**Level 2 — dialog** (`ConfirmDialog`): anything that places, approves or
+closes an order or position, and every destructive delete.
+
+- Orders: Desk APPROVE, Desk position CLOSE, Cockpit APPROVE (the ticket
+  dialog, `APPROVE — PAPER` / `— TESTNET`, built on the same `DialogShell`),
+  `/order` place (`PLACE PAPER ORDER` / `PLACE TESTNET ORDER`), engine
+  decision APPROVE INTENT and REJECT INTENT. Resuming the Desk after a kill
+  is also a plain Level 2 dialog.
+- Deletes: delete branch, remove a branch's scenario, remove a Lab rule, and
+  the Intel deletes (thesis, catalyst, watch, position, exposure edge; each
+  named in docs/design/terminal.md).
+
+A scrim (`--color-scrim`) + centered panel (`--shadow-overlay`, max-width
+360px), title `DELETE BRANCH`, body names the object — `Delete "60/40
+ETH-stables"? Its simulation history goes with it.` Confirm is Danger tier
+labeled with verb + object (`DELETE BRANCH`), cancel is ghost and receives
+initial focus. Dialog stays open on failure showing the verbatim error;
+closes only on success or cancel. On mobile the dialog is a bottom sheet:
+full-width, pinned to the bottom edge, same content. An order dialog restates
+the order and names the venue.
+
+**Level 3 — typed word**: kill switches only. The dialog is the Level 2
+dialog plus an input labeled `TYPE KILL TO CONFIRM`; confirm stays disabled
+until the word matches exactly, and the input (not cancel) gets initial
+focus.
+
+- Desk KILL — one implementation, `KillSwitchDialog` + `useDeskKill`, used by
+  the Desk header and the Cockpit header (each keeps its own button; the
+  Cockpit adds the `x` shortcut and focus return). It blocks every new entry; exits stay allowed.
+  Resuming is Level 2, no typed word.
+- Engine KILL (`/governor`) — disables every strategy and rejects open
+  proposals; the engine offers no un-kill route.
 
 **Trigger-routine special case** (Level 1 with consequence copy): the button
 in `/state` shows, beneath it in 10px `text-secondary`:
@@ -657,13 +744,13 @@ Hyperion §8 carried over whole, minus grid-drag and sockets:
   pulse becomes a static `…` suffix. One global media query.
 - **Keyboard**: `Esc` closes topmost dialog; dialogs trap and restore focus;
   table rows focusable (`tabindex=0`), Enter activates the row's drill-in.
-  No command palette in v1 — five routes and a tab bar do not need one.
+  No command palette — the cells and their sub-tabs are the map.
 
 ---
 
 ## 9. Chart specifications (shared, Recharts)
 
-### 9.1 Equity curve vs benchmarks (branch detail; sparkline variant on Overview)
+### 9.1 Equity curve vs benchmarks (branch detail; sparkline variant on Overview and in Paths cards)
 
 `ComposedChart` over daily points `{ ts, equity, btcHodl, usdc }`:
 
@@ -727,24 +814,32 @@ bar streams over Hyperliquid's websocket; after a socket drop the latest
 300 bars are refetched. Colors come from the theme tokens and the chart is
 rebuilt on theme change.
 
-### 9.5 Metric series (metric drill / overview strip tap)
-
-Single `Line`, white, 1px, with the 30-day mean as a
-`--color-bench-usdc` dashed reference line. Header shows latest value (lg),
-delta, z30.
-
 ---
 
 ## 10. Views
 
-Route map: `/login`, the Terminal family `/` (Terminal), `/journal`,
-`/theses`, `/query`, `/order`, `/watch`, `/overview` (docs/design/terminal.md is
-binding for all of them; `/overview` is §10.2 below), `/branches`,
-`/branches/:id`, `/sectors`, `/state`, `/markets`, `/markets/:coin`,
-`/analyst`, and the lab family `/lab/{search,runs,catalogue,pulse}`,
-`/lab/runs/:runId`, `/lab/rules/:id` (§10.9). Every view gets: purpose,
-mobile layout, desktop layout, components with data fields, states,
-interactions.
+Route map (`src/ui/App.tsx`). Every route renders inside the shell except
+`/login`; unknown paths redirect to `/`.
+
+| Route | View | Brief |
+|---|---|---|
+| `/login` | password gate | §10.1 |
+| `/` | COCKPIT: ranked opportunity feed, liquidation map, detail | docs/design/terminal.md "Cockpit" |
+| `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch` | the Terminal family tabs (`/?review=1` redirects to `/terminal?review=1`) | docs/design/terminal.md §1, §3–§8 |
+| `/asset/:coin` | asset page, a drill-in of `/terminal` | docs/design/terminal.md §15.4 |
+| `/overview` | the OVERVIEW tab of the Terminal family | §10.2 |
+| `/branches`, `/branches/:id` | branch list; editor + results | §10.3, §10.4; docs/design/chat.md §4 |
+| `/sectors` | narratives, mindshare map, rotations, drill-in | §10.5 |
+| `/state` | MarketState briefing | §10.6 |
+| `/markets`, `/markets/:coin` | HL universe; candle drill-in | §10.7 |
+| `/cycles`, `/cycles/:coin` | BTC / ETH cycle phases and next-bull-run estimate | §10.10 |
+| `/analyst` | read-only analyst (ASK) and Paths chat (SIMULATE) | §10.8; docs/design/chat.md |
+| `/desk` | agentic portfolio desk | §10.11 |
+| `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` | ENGINE console | §10.12 |
+| `/lab` → `/lab/search`; `/lab/{search,runs,catalogue,pulse}`, `/lab/runs/:runId`, `/lab/rules/:id` | heuristic research | §10.9 |
+
+Every view gets: purpose, mobile layout, desktop layout, components with
+data fields, states, interactions.
 
 ### 10.1 `/login`
 
@@ -772,13 +867,13 @@ All widths: a single centered panel, max-width 320px, vertically centered
 
 ### 10.2 `/overview` — Overview
 
-Moved from `/` unchanged; it now renders under TerminalTabs
-(docs/design/terminal.md §9) and is reached through the sub-tab strip. Layout,
-components and states below are untouched.
+The OVERVIEW tab of the Terminal family: it renders under TerminalTabs
+(docs/design/terminal.md §9) and is reached through the sub-tab strip, not a
+shell cell. It is the only UI for the metrics strip.
 
 Purpose: 30-second morning read — where is the market, what does the routine
-think, how are my branches doing. Everything links deeper; nothing is edited
-here.
+think, how are my branches doing, what is the engine doing. Everything links
+deeper; nothing is edited here.
 
 Desktop (`lg:`, 12-col grid, gutter 12px):
 
@@ -792,15 +887,19 @@ Desktop (`lg:`, 12-col grid, gutter 12px):
 │ (headline, 16px lg, text-primary)   │ RWA           ▲ +0.31   │
 │ tldr paragraph in text-muted…       │ MEMES         ▼ −0.44   │
 │ GEN 4H AGO          READ BRIEFING → │ L2S           — 0.08    │
-├ BRANCHES ──────────────────────── 7 ┼─────────────────────────┤
-│ 60/40 ETH   +18.2% ▲   ▁▂▃▅▆▅▇     │ (top 6 by mindshare,    │
-│ SOL MAX     −4.1% ▼    ▇▆▅▃▂▃▂     │  MomentumBadge each,    │
-│ (top 3 by updated_at)  ALL →       │  ALL SECTORS →)         │
+├ BRANCHES ──────────────────────── 7 ┤ (top 6 by mindshare,    │
+│ 60/40 ETH   +18.2% ▲   ▁▂▃▅▆▅▇     │  MomentumBadge each,    │
+│ SOL MAX     −4.1% ▼    ▇▆▅▃▂▃▂     │  ALL SECTORS →)         │
+│ (top 3 by updated_at)  ALL →       │                         │
+├ ENGINE ───────── MANUAL · 2/3 ON ─ 7 ┤                         │
+│ strat-a · hl   OPEN LONG BTC  4M   │                         │
+│ (every strategy)       ENGINE →    │                         │
 └─────────────────────────────────────┴─────────────────────────┘
 ```
 
 Mobile: single column, order — metrics strip (2-col grid per §4.3),
-MarketState card, Sector heat card, Branches card. Bottom tab bar.
+MarketState card, Sector heat card, Branches card, Engine card. Bottom tab
+bar.
 
 Components and data:
 
@@ -809,9 +908,8 @@ Components and data:
   `llama.stablecoin_cap_usd`). Each **MetricStat** cell: label (xs,
   secondary), value (lg, primary, compact-formatted), third line (xs): signed
   delta with glyph + z30 as `z1.2` when |z| ≥ 1 (amber when |z| ≥ 2 — an
-  unusual reading is worth an eyebrow). Cell tap → `/markets` is wrong —
-  metric cells are NOT links in v1 (no metric-detail route in spec). Fear/
-  greed prints its word (`72 GREED`).
+  unusual reading is worth an eyebrow). Metric cells are not links (there is
+  no metric-detail route). Fear/greed prints its word (`72 GREED`).
 - **MarketStateCard** — from `GET /api/marketstate`: `headline` (lg 16px —
   the view's xl-equivalent; only Overview element allowed above `base`),
   `tldr` (base, `text-muted`, clamp to 4 lines with CSS `line-clamp`),
@@ -825,12 +923,20 @@ Components and data:
   `updated_at`. Row: name (sm), total return signed/colored, 90-day equity
   **Sparkline** (§4.5, white 1px line, no axes). Tap → `/branches/:id`.
   Ghost `ALL →`.
+- **EngineCard** — read-only glance at the external strategy engine (the
+  ENGINE console, §10.12), polled every 30s: header carries a governor
+  Badge (`KILLED` red, else the mode `MANUAL` gray / `THRESHOLD`, `AUTO`
+  amber) and `2/3 ON`; one row per strategy — id · venue, last action (or
+  red `ERROR`), age. Row tap → `/strategies/:id`; ghost `ENGINE →` →
+  `/strategies`.
 
 States: MetricsStrip — SkeletonRows / ErrorBlock / StaleBanner (> 2h);
 MarketStateCard — SkeletonRows / EmptyBlock (`no briefing yet — trigger the
 routine from STATE`) / StaleBanner; SectorHeatCard — same pattern;
 BranchesCard — SkeletonRows / EmptyBlock (`no branches yet` + ghost
-`CREATE A BRANCH` → `/branches`).
+`CREATE A BRANCH` → `/branches`); EngineCard — SkeletonRows / EngineOffline
+(`ENGINE NOT CONFIGURED` / `ENGINE UNREACHABLE`) / ErrorBlock / EmptyBlock
+(`no strategies registered`).
 
 ### 10.3 `/branches` — list + create
 
@@ -843,10 +949,12 @@ Desktop: one full-width panel. Header: `BRANCHES` + right-aligned Neutral
 - MAX DD: signed negative, red text when < −20%.
 - VS BTC: branch return minus HODL-BTC return, signed/colored — the one
   number that says whether the strategy beat doing nothing.
+- NAME carries a 10px secondary line under it: the allocation summary
+  (`60% ETH / 40% USDC`, `+ DCA` when it has DCA legs) and the rebalance rule.
 - Row tap → `/branches/:id`.
 
 Mobile: same table with P3+ columns dropped (NAME, RETURN%, MAX DD). NEW
-BRANCH becomes a full-width Neutral button above the table.
+BRANCH stays in the panel header at every width.
 
 `NEW BRANCH` creates immediately via `POST /api/branches` with a default
 config (name `UNTITLED`, 100% USDC, startDate = 1y ago, $10,000, rebalance
@@ -891,13 +999,15 @@ than you edit it; results lead.
 
 Components:
 
-- **BranchConfigPanel**: name/description/startDate (`<input type="date">`)/
-  capital inputs. **AllocationEditor**: table rows COIN (uppercase text
+- **Config panel** (inline in `BranchDetail.tsx`): name/description/startDate (`<input type="date">`)/
+  capital inputs. **Allocations**: table rows COIN (uppercase text
   input, 6ch), WEIGHT% (numeric input, 5ch), Danger `✕` per row; `+ ADD
   COIN` ghost; footer sum `Σ 100%` — green when 100, `--color-red-text`
   `Σ 87% — must equal 100` otherwise, RUN disabled while invalid.
-  **RebalanceSelect**: 4 ghost chips in a row (`NONE / MONTHLY / WEEKLY /
-  5% BAND`), active chip selected-style. **ScenarioEditor** (collapsed
+  **Rebalance**: a `Segmented` (`NONE / MONTHLY / WEEKLY / 5% BAND`),
+  disabled and forced to NONE while the branch has DCA rows. The allocation
+  table also carries SIDE and LEV columns, and a DCA section sits between
+  ALLOCATIONS and REBALANCE: docs/design/chat.md §4. **Scenario** (collapsed
   behind `+ ADD PROJECTION` when config has no scenario): horizonDays
   (numeric), paths (numeric, default 200), per-allocated-coin rows of
   `annualReturnPct` / `annualVolPct` inputs; Danger `REMOVE PROJECTION`
@@ -925,7 +1035,8 @@ candles for a coin: the server's message names the coin).
 ### 10.5 `/sectors` — mindshare map + rotations + drill-in
 
 Purpose: see where the routine thinks mindshare sits and where it is
-rotating, with quantitative enrichment per sector.
+rotating, with quantitative enrichment per sector, and which sector baskets
+the live flow data says are moving (NARRATIVES, docs/SPEC.md § Narratives).
 
 **Decision: heat-grid, not treemap.** Two shapes were considered. A treemap
 (Recharts has one) encodes mindshare as exact area — but the taxonomy is
@@ -956,10 +1067,22 @@ drill-in. Selected cell: 2px inset `--color-focus` outline… no — selected
 cell gets the standard 2px left inset border `--color-red-accent` +
 `--color-selected` overlay (the Hyperion selection idiom).
 
-Layout desktop (`lg:`): grid 12-col — MINDSHARE panel 8, ROTATIONS panel 4;
-DRILL-IN panel full-width 12 below, rendered only when a sector is selected.
-Mobile: mindshare grid, then drill-in (auto-scrolled into view on select),
-then rotations.
+Layout desktop (`lg:`): grid 12-col — NARRATIVES panel full-width 12 on
+top; then MINDSHARE panel 8, ROTATIONS panel 4; DRILL-IN panel full-width 12
+below, rendered only when a sector is selected. Mobile: narratives, mindshare
+grid, then drill-in (auto-scrolled into view on select), then rotations.
+
+- **NarrativesPanel** (`GET /api/intel/narratives`; header AgeStamp on
+  `sectorsAsOf`, threshold 24h): one row per routine sector basket, strongest
+  short-horizon flow first — HTF stage Badge (`EMERGING`, `EXPANDING`,
+  `CROWDED`, `FADING`, `QUIET`, `UNKNOWN`) with its numbers, the 1h/6h/24h
+  price × OI quadrant codes (`L+` long build, `S−` short cover, `S+` short
+  build, `L−` long unwind, `·` quiet; words in the `title`), and the
+  operator's lean. Selecting a row opens its detail: the view editor (lean
+  `CONTINUATION` / `FADE` / `UNSURE` + note, saved server-side), the basket's
+  recent headlines, and the continuation-vs-fade contrast research rendered as
+  claim lines (docs/design/terminal.md §2). The sector selection here and the
+  one in MINDSHARE are independent.
 
 - **MindsharePanel** header: `MINDSHARE` + AgeStamp (`GEN 6H AGO`) + src-tag
   `ROUTINE`. StaleBanner > 24h.
@@ -1015,8 +1138,8 @@ Layout (all breakpoints — single column; desktop just centers it):
 Components:
 
 - **HistoryStepper**: `◂` / `▸` ghost buttons around a date `<select>`
-  listing all dated files (build-time `import.meta.glob` of
-  `data/marketstate/*.json`). Viewing a non-latest date: an info-toned
+  listing the dates in `GET /api/marketstate`'s `history` field; picking one
+  loads `GET /api/marketstate/history/:date`. Viewing a non-latest date: an info-toned
   banner (`--color-info-bg`) at the top — `viewing 2026-08-12 — not the
   latest briefing` with a ghost `LATEST` button. The whole page renders the
   selected snapshot.
@@ -1032,12 +1155,13 @@ Components:
   uppercase, secondary) + value (sm, primary, tabular) + direction glyph
   `▲`/`▼`/`—` colored green/red/gray. Direction word is in the glyph +
   value sign; the label carries the semantics.
-- **RisksList**: verbatim strings, one per row, 6px red square bullets.
+- **Risks** (inline in `State.tsx`): verbatim strings, one per row, 6px red
+  square bullets.
 
-States: SkeletonRows on load; EmptyBlock when `data/marketstate/` has no
-files (`no briefing yet` + the trigger button); StaleBanner + AgeStamp per
-§6; ErrorBlock for API failures. History browsing is build-time data — no
-network states beyond initial load.
+States: SkeletonRows on load; EmptyBlock when the API lists no briefings
+(`no briefing yet` + the trigger button); StaleBanner + AgeStamp per
+§6; ErrorBlock for API failures. While a history date loads, the previous
+snapshot stays on screen (no skeleton flash).
 
 ### 10.7 `/markets` — Hyperliquid universe + candle drill-in
 
@@ -1058,10 +1182,12 @@ aligned, 160px).
 - Row tap → drill-in.
 
 **Drill-in** — route `/markets/:coin?tf=4h`. Desktop AND mobile: a full view
-(not an overlay — back button friendly, linkable; `tf` omitted = 1D):
+(not an overlay — back button friendly, linkable; `tf` omitted = 1D). The top
+row carries ghost `← MARKETS` and ghost `INTEL →` (`/asset/:coin`, the same
+coin's Intel page; that page's `CHART →` links back here):
 
 ```
-┌ ← MARKETS ───────────────────────────────────────────────────┐
+┌ ← MARKETS ──────────────────────────────────────────── INTEL → ┐
 │ ETH  $3,512.40 (xl, AnimatedDigits) +2.1% ▲  LIVE  AT OI CAP  25x MAX │
 │ ORACLE | FUNDING 1H | NEXT FUNDING | OPEN INTEREST | OI 7D |   │
 │ 24H VOLUME | IMPACT SPREAD | MID            (MetricStat grid)  │
@@ -1092,6 +1218,9 @@ States: SkeletonRows / ErrorBlock / EmptyBlock (filter matches nothing:
 surface, tight threshold).
 
 ### 10.8 `/analyst` — read-only analyst (phase 2)
+
+The panel header also carries the `ASK | SIMULATE` mode toggle (Paths
+semantic simulation chat): docs/design/chat.md. This section is ASK mode.
 
 ```
 ┌ ANALYST ──────── [● ANTHROPIC · Opus 5.5 FRONTIER] [low|MED|high…] [WEB SEARCH] [CLEAR] ┐ ┌ PROMPTS ─────────┐
@@ -1130,7 +1259,7 @@ States: SkeletonRows while the status probe runs; OfflineBlock
 `ANALYST NOT CONFIGURED` (naming the provider key vars) on 503; OfflineBlock
 `ANALYST UNREACHABLE` on 502 or no network; a per-turn verbatim ErrorBlock
 for timeouts, refusals and provider errors. No spinners: pulse labels only.
-Mobile: the seventh tab-bar cell (`ASK`, glyph `?`); single column with the
+Mobile: the eighth tab-bar cell (`ASK`, glyph `?`); single column with the
 rail below the thread, and the composer sticks above the tab bar.
 
 ### 10.9 `/lab` — heuristic research
@@ -1179,10 +1308,10 @@ bookmarkable page and the browser back button steps between them:
 **LabTabs**: one `Segmented` (`size: 'md'`) directly under the shell:
 `SEARCH · RUNS · CATALOGUE · PULSE`, in workflow order (search → its
 history → what you kept → what it says today). Default `SEARCH`: the page
-exists to run searches; the glanceable Pulse is one tap away and also has
-an Overview tile. Mobile: four segments fit 320px with `short` labels
-`SRCH · RUNS · CTLG · PULSE`; the tab row is `position: sticky; top: 40px`
-under the top strip. The catalogue segment carries a count suffix
+exists to run searches; the glanceable Pulse is one tap away. Mobile: four
+segments fit 320px with `short` labels `SRCH · RUNS · CTLG · PULSE`; the tab
+row is `position: sticky; top: var(--topbar-h)`, `--subnav-h` tall, under the
+top strip. The catalogue segment carries a count suffix
 (`CATALOGUE · 7`) at md+; the Pulse segment carries a 6px dot, green if any
 rule fires, gray otherwise (number + word remain inside the tab).
 
@@ -1195,8 +1324,9 @@ friendly. Header: ghost `← RESULTS` / `← CATALOGUE` / `← PULSE` per
 #### SEARCH tab
 
 Desktop (`lg:`, 12-col grid, gutter 12px). The form column is
-`position: sticky; top: 92px` (40px bar + 52px tab row) so RUN and the
-filters stay in reach while scrolling cards:
+`position: sticky; top: calc(var(--topbar-h) + var(--subnav-h))` (top bar +
+tab row, 92px under the base tokens) so RUN and the filters stay in reach while
+scrolling cards:
 
 ```
 ┌ SEARCH ──────────────── 4 ┬ RESULTS ────────────────────────────────── 8 ┐
@@ -1546,13 +1676,6 @@ sorted by |lean| desc:
 States: SkeletonRows; EmptyBlock `no catalogued rules — nothing to
 pulse` + ghost `SEARCH`; ErrorBlock; StaleBanner when `asOf` > 2 days.
 
-**PulseTile** (Overview `/`, optional, describe-only): a card under SECTOR
-HEAT in the 5-col column (mobile: after Sector heat) — header `LAB PULSE`
-+ AgeStamp; up to 4 assets, each `BTC` + 80px LeanBar + `+0.33`; footer
-ghost `LAB →` to `/lab/pulse`. EmptyBlock `no rules catalogued` when
-empty. Not rendered at all if `lab_market_pulse` is unreachable (Overview
-stays a 30-second read; no error noise from an optional tile).
-
 #### RUNS tab
 
 **RunsTable** (`DataTable`, `lab_list_runs`, newest first, row tap →
@@ -1582,6 +1705,152 @@ config loaded for correction.
 - `prefers-reduced-motion`: the elapsed counter still ticks (it is
   content), the pulse becomes `…`.
 
+### 10.10 `/cycles` — BTC and ETH cycle view
+
+Purpose: where is this coin in its multi-year cycle, and when is the next
+bull run likely to start. Ported from hl-cycles; spec and data model in
+docs/SPEC.md ("CYCLES"). The estimate is a reading of past cycles with its
+spread shown, never a signal. Routes: `/cycles` (BTC) and `/cycles/eth`;
+`/cycles/btc` and unknown coins redirect to `/cycles`. Loaded lazily with the
+route (canvas and Recharts).
+
+Layout (`lg:` 12-col, single column below), top → bottom:
+
+- **Estimate panel** (12): title `NEXT <COIN> BULL RUN · ESTIMATE`, `as of`
+  date (md+), a coin `Segmented` (`BTC | ETH`) and a `RUN START` `Segmented`
+  (`BREAKOUT | EUPHORIA`; how a past run is dated, with the dates in the
+  `title`). Body: `ForecastHero` (the central month and the core and full
+  window, or the in-run / not-enough-history sentence) and `ReadinessStrip`
+  (`MetricStat`s: phase and since, days since top, bear-market low, distance
+  to ATH).
+- **Cycle chart** (12): `CYCLE · <COIN>/USD · LOG`; phase-banded log price
+  with SMA200, halvings, the projected window and the cooling-highs markers;
+  `1D | 1W` timeframe toggle.
+- **CYCLES FROM THE TOP** (6): analog lines indexed to each past top, the
+  live cycle in `text-primary`. **TIMING METHODS** (6): the four methods
+  (run-to-run rhythm, halving offset, bear-market low, previous top) with
+  every past offset each one uses.
+- **HIGHER HIGHS ON LOWER HEAT** (12): the all-time-high legs that peaked on
+  at least 0.05 less heat than the leg before, with a one-line caveat: a
+  reading of what happened, not a signal.
+- **PAST BULL RUNS** (12): episodes table, a small-sample footnote (the
+  spread between methods is the honest error bar), the halving clock note
+  (ETH is read on BTC's) and the history sources.
+
+Phase colors are the `--color-ph-*` and `--color-cyc-*` tokens in §2; the
+crimson capitulation band is under 3:1, so phases always ship with their
+label. Data: `GET /api/cycles?coin=BTC|ETH&tf=1d|1w` (15 min server cache);
+the previous body stays on screen while a coin or timeframe switch loads.
+States: SkeletonRows plus the pulse line `loading <COIN> history since
+<year>…` on first load (no spinner), OfflineBlock, ErrorBlock.
+
+### 10.11 `/desk` — agentic portfolio desk
+
+Purpose: ask the agent team a question and watch the PM fan out to its
+specialists; approve or reject what the governor queued; see the paper (or
+testnet) book, alerts and past runs. Spec: docs/SPEC.md ("Desk"). The page
+never sizes a trade — entries reach the book only through the server's
+governor.
+
+Desktop: a header strip, then `xl:` (1280px) two columns of 2 : 1. Below
+`xl:` and on mobile it is one column in this order.
+
+```
+┌ DESK [PAPER] [KILL SWITCH]  EQUITY  DAY  POSITIONS  MODEL   [APPROVE EACH|AUTO] [REVIEW 12H] [KILL] ┐
+├ ASK THE DESK ─ [NEW SESSION] [RUN REVIEW] ───────────────── 2 ┬ PROPOSALS ─ 2 PENDING ───────── 1 ┤
+│ question textarea · ☐ let the desk act · [STOP STREAM] [ASK]    │ proposal cards · APPROVE / REJECT │
+│ streamed run: one lane per agent (PM, specialists)             ├ BOOK ──────────────────────────────┤
+├ RUNS ───────────────────────────────────────────────────────── │ DESK (PAPER) COIN SIZE ENTRY STOP UPNL CLOSE │
+│ past runs, tap to expand their events                          ├ ALERTS ────────────────────────────┤
+└─────────────────────────────────────────────────────────────────┴────────────────────────────────────┘
+```
+
+- **Header strip**: venue Badge (`PAPER` info; `TESTNET` amber when live, with
+  the amber line `Live orders on Hyperliquid testnet for <account>. Stops and
+  targets rest on the exchange.`), red `KILL SWITCH` Badge when engaged,
+  EQUITY, DAY (signed, colored), POSITIONS, MODEL (`pm / scouts`, or `not
+  configured`). Right: approval `Segmented` (`APPROVE EACH` | `AUTO`; every
+  entry waits for you, or the governor-passed ones execute), the scheduled
+  review interval control (`4H … 48H`, or off), and Danger `KILL` / `RESUME`.
+  A venue note the server could not honour renders as a red line.
+- **ASK THE DESK**: textarea (Cmd/Ctrl+Enter sends), a `let the desk act`
+  checkbox (proposals still go through the governor and wait for approval
+  when approval is manual), `ASK`, `STOP STREAM`, `NEW SESSION`, `RUN
+  REVIEW` (an operator-requested cycle). Answers stream over SSE as one lane
+  per agent. Suggested questions show until a run starts. Without a model key
+  the panel says so in an ErrorBlock and disables sending.
+- **PROPOSALS**: a pending count Badge; each proposal card shows kind, coin,
+  side or exit fraction, status Badge
+  (`EXECUTED`/`PENDING`/`BLOCKED`/`FAILED`/`REJECTED`/`EXPIRED`) and the
+  governor's sizing, reasons and warnings; pending cards start open. `APPROVE`
+  opens the Level 2 dialog `Approve <side coin>` / `Approve exit <n>% of
+  <coin>` (§7), the same weight as Cockpit APPROVE; `REJECT` is a plain click.
+- **BOOK**: the desk's own positions (COIN, SIZE, ENTRY, STOP, UPNL) with a
+  per-row `CLOSE` (Level 2 dialog: a reduce-only close at the live mark), an
+  optional read-only watched Hyperliquid account, and the six latest fills.
+- **ALERTS** (scrolling list) and **RUNS** (past runs; tap loads and expands
+  the run's events).
+- **KILL**: the shared `KillSwitchDialog` (Level 3, typed `KILL`; `RESUME`
+  is Level 2), the same flow as the Cockpit header (§7).
+
+Data: `GET /api/desk/{status,portfolio,proposals,alerts,runs}`; `POST
+/api/desk/{ask,review}` (SSE), `/proposals/:id/{approve,reject}`, `/exit`,
+`/kill`; `PUT /api/desk/{approval,settings}`. States: status offline or error
+replaces the page (OfflineBlock / ErrorBlock + RETRY); each panel then has its
+own SkeletonRows and EmptyBlock (`no proposals yet`, `no alerts yet`, `no runs
+yet`); failed actions render their verbatim error in the panel.
+
+### 10.12 ENGINE console — `/strategies`, `/decisions`, `/governor`
+
+Purpose: operate the external Hyperion strategy engine from the cockpit. One
+shell cell (ENGINE → `/strategies`, active on all three routes and their
+drills); the three views switch through `EngineTabs`, a link row with the
+`.tab-active` idiom (`STRATEGIES · DECISIONS · GOVERNOR`; not sticky, unlike
+the Segmented sub-nav of the Terminal and Lab families). Every page renders it
+first, including the `/strategies/:id` and `/decisions/:id` drills.
+
+Data: the app proxies the engine's strategy API (`/api/engine/*` ⇄ the core's
+`/api/strategy/*`; `ENGINE_URL` and the token stay on the server) and the
+client (`src/ui/lib/engine.ts`) parses every body with the shared zod
+protocol, polling every 5s. The engine's governor and kill switch are not the
+Desk's (separate vocabulary and state).
+
+- **`/strategies`** — manifests × configs table (`DataTable`): P1 `ID`,
+  `ENABLED` (an inline toggle, Level 1 — it PUTs the config; the row click is
+  the drill-in), P2 `VENUE`, P3 `CADENCE`, `LAST RUN`, P4 `LAST ACTION`
+  (newest decision per strategy: `OPEN LONG BTC +1`, `HOLD`, red `ERROR`, `(DRY)`).
+- **`/strategies/:id`** — editor. Desktop: config panel (5 cols) beside the
+  result (7); mobile: config first. Config: `ENABLED` on/off, `VENUE`, the
+  `PARAMS` form generated from the manifest (min/max/step/enum validated
+  client-side, mirrored by the core's 400 `{error, field}`), a `GOVERNOR
+  OVERRIDE` (`INHERIT | MANUAL | THRESHOLD | AUTO` and per-strategy limits),
+  `SAVE` (amber dot while dirty) and `DRY RUN` (runs the saved config; an
+  amber line warns that unsaved changes are not used). The `DRY RUN` result is
+  the decision record inline, with `RAN` / `NEXT` stamps.
+- **`/decisions`** — newest first, filter by strategy (`?strategy=<id>`,
+  linkable): P1 `TS` (an info `DRY RUN` Badge rides on it), `STRATEGY`, P2
+  `ACTION`, P3 `VENUE`, `VERDICT`, P4 `MODEL`. Row → `/decisions/:id`.
+- **`/decisions/:id`** — the full record (`DecisionView`: the model's choice and score rubric,
+  confidence, intents with their verdicts) with `APPROVE` / `REJECT` on each proposed intent, each
+  through a Level 2 dialog (`APPROVE INTENT` / `REJECT INTENT`; approving
+  hands the intent to a venue, so it gets the same dialog as reject). Back
+  link `← DECISIONS`.
+- **`/governor`** — global settings (5 cols) beside `VENUES` (7): `MODE`
+  (`MANUAL | THRESHOLD | AUTO`), `MIN CONFIDENCE` (0–1), `MAX NOTIONAL
+  (USD)`, `MAX OPEN INTENTS`, `SAVE` (Level 1, verbatim ErrorBlock). Below
+  them the engine `KILL SWITCH`: Level 3 typed `KILL`, one-way — it disables
+  every strategy and rejects open proposals, positions already on a venue
+  stay open, and the core offers no un-kill route from here. `VENUES`: one
+  card per venue with status Badge, kind/chain, metadata, capabilities and
+  open positions.
+
+States: SkeletonRows; EmptyBlock (`no strategies registered`, `no venues
+registered`); `EngineOffline` replaces a page with no data — `ENGINE NOT
+CONFIGURED` (`set ENGINE_URL on the server and retry`) or `ENGINE
+UNREACHABLE` (the proxy's reason, verbatim) with RETRY; when a later poll
+fails over cached data, an amber `OfflineStrip` (`<reason> — showing data
+from 14:02 UTC`) sits above the undimmed data.
+
 ---
 
 ## 11. Component inventory
@@ -1608,7 +1877,8 @@ Ported components keep their Hyperion source semantics (files:
 
 | Component | Props | Spec |
 |---|---|---|
-| `AppShell` | `children` | TopBar ≥768 / TopStrip + BottomTabBar <768 (§5); freshness cluster; route guard redirect |
+| `AppShell` | `children` | TopBar ≥768 / TopStrip + BottomTabBar <768 (§5); ThemeSwitcher; freshness cluster (md+) |
+| `ThemeSwitcher` | none | §15; `Segmented` toggle over `THEMES`, persists per browser |
 | `StaleBanner` | `generatedAt: string`, `thresholdHours: number`, `noun: string` | §6; renders nothing under threshold |
 | `AgeStamp` | `generatedAt: string`, `thresholdHours: number` | §6; xs, gray→amber; `title` = full timestamp |
 | `SrcTag` | `source: 'hl'\|'cg'\|'fred'\|'routine'\|'ht'\|'cm'\|'fng'\|'llama'\|'manual'\|'desk'\|'snap'` | §2 `.src-tag`; `hl` gets jade; the four lab providers (§10.9) and the Intel sources `manual`/`desk`/`snap` (DESIGN-terminal §1.6) render gray like `cg` |
@@ -1621,13 +1891,14 @@ Ported components keep their Hyperion source semantics (files:
 | `LeanBar` | `lean: number` (−1..1), `width?: number` | §10.9 Pulse; bipolar fill from a center tick, green right / red left, always paired with the printed signed number by its caller |
 | `RuleText` | `rule: Rule`, `metrics: MetricDef[]`, `size?: 'xs'\|'sm'\|'lg'` | §10.9; conditions typeset in our language (`z(90) MVRV < −1.12 AND funding ≥ 0.03%`); wire text in `title` |
 | `FiringBadge` | `firing: boolean` | §10.9; `● FIRING` green / `○ FLAT` gray Badge, glyph + word |
-| `ConfirmDialog` | `title`, `body`, `confirmLabel`, `onConfirm`, `onCancel`, `error?` | §7 Level 2; centered lg / bottom sheet mobile; focus trap; stays open on error |
+| `ConfirmDialog` | `title`, `body`, `confirmLabel`, `onConfirm`, `onCancel`, `error?`, `busy?`, `typedWord?`, `returnFocus?` | §7 Level 2; centered lg / bottom sheet mobile; focus trap; stays open on error; `typedWord` adds Level 3 (confirm disabled until the word matches) |
+| `DialogShell` | `title`, `onClose`, `children`, `className?`, `returnFocus?` | the dialog frame `ConfirmDialog` and the Cockpit ticket / reject / keys dialogs share |
+| `KillSwitchDialog` | `killOn`, `busy`, `error`, `onConfirm`, `onCancel`, `returnFocus?` | §7 Level 3 for the Desk kill (`KILL` typed); resume is Level 2. Driven by the `useDeskKill(killOn, refetch)` hook (`src/ui/lib/useDeskKill.ts`), used by Desk and the Cockpit header |
+| `Segmented` | `options: {value, label, short?, title?, tone?}[]`, `value`, `onChange`, `label`, `size?`, `disabled?` | §15; the one-of-N control (radiogroup); `short` labels below `md:` |
 | `DataTable` | `columns: {key, label, priority: 1\|2\|3\|4, align, render}[]`, `rows`, `onRowClick?`, `sortable?` | §4.4 priority hiding via `hidden md:table-cell`/`hidden lg:table-cell`; row height `var(--row-h)`; focusable rows |
-| `MetricStat` | `label`, `value`, `delta?`, `z30?`, `unit?` | §10.2 cell |
+| `MetricStat` | `label`, `value`, `delta?`, `deltaPositive?`, `z30?` | §10.2 cell |
 | `MomentumBadge` | `momentum: number` | §3; bucket thresholds ±0.15/±0.5 |
 | `Sparkline` | `points: number[]`, `height?` | §4.5; white 1px, no axes, no tooltip |
-| `LegendRow` | `items: {swatch: string, label: string, dashed?: boolean}[]` | §4.5 chart legend |
-| `ChartTooltip` | Recharts tooltip props | dark panel style, tap-to-pin on touch |
 
 **Chart components** (each wraps ResponsiveContainer + breakpoint height)
 
@@ -1636,25 +1907,35 @@ Ported components keep their Hyperion source semantics (files:
 | `EquityChart` | `history: {ts, equity, btcHodl, usdc}[]`, `projection?: {ts, p10, p50, p90}[]` | §9.1 + §9.3, TODAY divider |
 | `DrawdownChart` | `points: {ts, ddPct}[]`, `maxDd: number` | §9.2 |
 | `MarketChart` | `coin`, `tf`, `onTfChange` (fetches its own pages) | §9.4, lightweight-charts |
-| `MetricSeriesChart` | `points: {ts, value}[]`, `mean30?: number` | §9.5 |
+| `FanChart` | `projection: MonteCarloResult`, `height?` | §9.3 standalone fan (Paths cards); the branch editor draws the same band inline on §9.1's chart |
 | `RuleEquityChart` | `equity: {t, strategy, benchmark}[]`, `holdoutFrom: string`, `savedAt?: string`, `benchmarkLabel: string` | §10.9 rule drill; §9.1 geometry, growth-multiple axis, holdout `ReferenceArea` in `--color-info-bg`, dashed `SAVED` reference |
 
 **View-scoped components** (built per §10, live next to their route)
 
-`LoginForm`; `MetricsStrip`; `MarketStateCard`; `SectorHeatCard`;
-`BranchesCard`; `BranchConfigPanel` (containing `AllocationEditor`,
-`RebalanceSelect`, `ScenarioEditor`); `StatsPanel`; `MindshareGrid` (+
-`SectorCell`); `RotationsPanel`; `SectorDrillPanel`; `ThesisBlock`;
-`DomainCard` (+ `SignalRow`); `RisksList`; `HistoryStepper`;
-`TriggerRoutineButton`; `MarketsTable`; `MarketDrillHeader`.
+Overview (`pages/Overview.tsx`, inline): `MetricsStrip`; `MarketStateCard`;
+`SectorHeatCard`; `BranchesCard`; `EngineCard`. Branches: the config panel,
+allocation / DCA / rebalance / scenario editors and stats panel are inline in
+`pages/BranchDetail.tsx`; `components/branches/` holds `DrawdownChart` and
+the format helpers. Sectors: `MindshareGrid`; `RotationsPanel`;
+`SectorDrillPanel`; `NarrativesPanel`. State: `ThesisBlock`; `DomainCard` (+
+`SignalRow`); `HistoryStepper`; `TriggerRoutineButton`. Markets:
+`PerpHeader`; `FundingPanel` (`components/market/PerpPanels.tsx`).
+Cycles (`components/cycles/`): `CycleChart`; `AnalogChart`; `ForecastHero`;
+`ReadinessStrip`; `MethodsTable`; `CoolingHighsTable`; `EpisodesTable`.
+Analyst and Paths: `Markdown`; `ModelSelector`; `PathCard`;
+`SaveBranchButton` (docs/design/chat.md §5). ENGINE console
+(`components/strategy/`, §10.12): `EngineTabs` (+ `isEnginePath`);
+`EngineOffline` (+ `OfflineStrip`); `DecisionView`; `IntentRow`; `ParamForm`;
+`VerdictBadge`; `ProbBar`; `ScoreRubric`; `NoulBar`. Desk (§10.11): panels
+are local to `pages/Desk.tsx`. Login is `pages/Login.tsx`.
 
 Lab (§10.9, under `src/ui/components/lab/`): `LabTabs`; `LabSearchForm`
 (+ `MetricPicker`, `AdvancedDisclosure`, `SearchSummaryBar`);
 `ResultsHeader`; `ResultsFilters`; `SignalCard`; `FeatureImportanceList`;
-`RuleDrill` (+ `RuleDrillHeader`, `WindowStatsTable`, `SensitivityGrid`,
-`LatestValuesRow`, `SaveToCatalogueForm`); `CatalogueHealthStrip`;
-`CatalogueTable`; `PulseBoard` (+ `PulseAssetRow`); `PulseTile` (Overview,
-optional); `RunsTable`.
+`RuleDrillHeader` (+ `WindowStatsTable`, `SensitivityGrid`,
+`LatestValuesRow`, `SaveToCatalogueForm`); `RemoveRuleDialog`;
+`CatalogueHealthStrip`; `CatalogueTable`; `PulseBoard` (+ `PulseAssetRow`);
+`RunsTable`.
 
 Intel (docs/design/terminal.md §14, under `src/ui/components/intel/`; pages under
 `src/ui/pages/terminal/`): `TerminalTabs` (+ `terminalTabOf`,
@@ -1668,6 +1949,13 @@ Intel (docs/design/terminal.md §14, under `src/ui/components/intel/`; pages und
 `SqlBlock`; `ResultTable`; `OrderBanner`; `OrderComposer` (+
 `AdjustDisclosure`); `PreviewCard`; `OrderResult`; `WatchesTable`;
 `WatchForm`; `WatchChanges` (+ `ChangeEntry`).
+
+Cockpit (docs/design/terminal.md "Cockpit", under `src/ui/pages/cockpit/`):
+`Cockpit` (container); `CockpitHeader`; `HealthStrip`; `KeysHelp`;
+`OpportunityFeed` (+ `FeedFilters`, `StatusPill`, `EdgeCell`, `WarmingLine`);
+`LiqMapPanel` (+ `LiqProfile`, `LiqHistory`, `CoverageLine`, `LiqBoard`);
+`OpportunityDetail`; `ActionBar`; `SnoozeMenu`; `TicketDialog`; `RejectDialog`;
+pure logic in `logic.ts`.
 
 ---
 
@@ -1712,13 +2000,18 @@ Non-negotiable, verified before done:
 | Lab results | `SEARCHING…` pulse + elapsed counter, previous results at 70% | EmptyBlock (`no results yet` / `no rule survived`) | ErrorBlock / OfflineBlock | AgeStamp `data to` > 2d + StaleBanner; `PARTIAL` Badge + LabWarnings |
 | Rule drill | SkeletonRows per panel, `computing sensitivity…` pulse | EmptyBlock (`rule not found`) | ErrorBlock per panel | AgeStamp on `latest.date` and `data to` |
 | Catalogue | SkeletonRows | EmptyBlock (`no saved rules`) + `SEARCH` | ErrorBlock (health strip fails independently) | StaleBanner live `to` > 2d; `DECAYED` Badges |
-| Market Pulse / tile | SkeletonRows | EmptyBlock (`no catalogued rules`) | ErrorBlock (tile: not rendered) | StaleBanner `asOf` > 2d + LabWarnings |
+| Market Pulse | SkeletonRows | EmptyBlock (`no catalogued rules`) | ErrorBlock | StaleBanner `asOf` > 2d + LabWarnings |
 | Runs | SkeletonRows | EmptyBlock (`no runs yet`) | ErrorBlock | `PARTIAL`/`FAILED` Badges |
-| Terminal `/` (review strip, what changed, news, catalysts, positions, watchlist, exposure) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |
+| Terminal `/terminal` (review strip, what changed, news, catalysts, positions, watchlist, exposure) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |
 | Journal `/journal` (trades, tag stats, report) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |
 | Theses `/theses` (composer, list, detail) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |
 | Query `/query` (DSL/SQL, result) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 |
 | Order `/order` (composer, preview, banner venue) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §7.4 / §10 |
+| Cockpit `/` (feed, liquidation map, detail, health) | per DESIGN-terminal C7 | per DESIGN-terminal C7 | per DESIGN-terminal C7 | per DESIGN-terminal C7 |
+| Sectors narratives | SkeletonRows | EmptyBlock per row set | ErrorBlock / OfflineBlock | AgeStamp `sectorsAsOf` > 24h |
+| Cycles | SkeletonRows + `loading <COIN> history since <year>…` | in-run / not-enough-history sentence in the estimate | ErrorBlock / OfflineBlock | — |
+| Desk (§10.11) | SkeletonRows per panel | EmptyBlock (`no proposals yet`, `no alerts yet`, `no runs yet`) | page-level OfflineBlock / ErrorBlock; verbatim line in a panel | red venue note; amber live-testnet line |
+| Engine console (§10.12) | SkeletonRows | EmptyBlock (`no strategies registered`, `no venues registered`) | `EngineOffline` (`ENGINE NOT CONFIGURED` / `ENGINE UNREACHABLE`) | amber `OfflineStrip` over cached data |
 | Watch `/watch` (watches, changes) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |
 
 Every cell above is one of the §6 named patterns — no bespoke states.
@@ -1728,12 +2021,13 @@ Every cell above is one of the §6 named patterns — no bespoke states.
 ## 14. Deliberate departures from Hyperion (summary)
 
 1. Body scrolls; the fixed-viewport grid and react-grid-layout are gone.
-2. Money/Arm button tiers and Level-3 typed confirmations removed — no
-   execution paths exist. Danger tier added for branch deletion.
+2. Money/Arm button tiers removed; orders go through a Level 2 dialog and
+   the two kill switches keep a Level 3 typed word (§7). Danger tier added
+   for deletes and confirms.
 3. StaleChip (socket seconds-counter) replaced by StaleBanner + AgeStamp
    (routine/collector data ages in hours, not seconds).
-4. No command palette, no chat drawer, no bottom ticker — five routes, a
-   tab bar, and a freshness dot carry the shell.
+4. No command palette, no chat drawer, no bottom ticker — the cells (§5),
+   their sub-tabs and a freshness dot carry the shell.
 5. Density scale becomes CSS variables with a `pointer: coarse` override —
    the single mechanism that makes every ported component touch-safe.
 6. DirectionChip dropped; MomentumBadge added.
@@ -1745,11 +2039,13 @@ Every cell above is one of the §6 named patterns — no bespoke states.
 
 ## 15. Themes
 
-Hyperdash is the default look; Hyperion, as specified above, stays the
+Hyperdash is the default look (`DEFAULT_THEME` in
+`src/ui/themes/registry.ts`); Hyperion, as specified above, stays the
 reference for meaning (state vocabulary, confirmation levels, motion,
 responsive contract) and remains selectable. Every look is a theme that
-overrides tokens only, never behavior. The top bar's segmented toggle
-switches between them. The
+overrides tokens only, never behavior; Hyperion is the unscoped token
+defaults in `src/ui/index.css` and has no theme file. The top bar's
+segmented toggle switches between them. The
 token contract, the structural hook classes a theme may style, and the steps
 to add one live in `src/ui/themes/README.md`.
 
