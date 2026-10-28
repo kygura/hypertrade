@@ -577,7 +577,8 @@ Operator ask (2026-10-27): find short- and long-timeframe narratives and positio
 ### N2. Done
 
 - Tests: `narratives.test.ts` (composite chaining and coverage entry, quadrants, stage rules and floors, alignment, ranking, a synthetic expanding basket with a 6 h long build, missing history), `narrativeContrast.test.ts` (provenance, dropped advice and unbacked numbers, `unclear` without observed evidence, agreement table, prompt carries the view and untrusted headlines, no web search, fail closed), route tests (view round trip, contrast stored, 404/429), snapshot coverage.
-- Out of scope for now: narrative-level alerts, news clusters mapped to narratives through `narrative` graph edges, Elfa attention trends, an automatic contrast stage.
+- Slice 2 tests: `narrativeHeadlines` (cluster dedupe, overlap, order), stage transitions (first sight, unknown, confirm, cooldown), contrast candidates, stage alert push vs batch and dedupe, automatic contrast limits, budget, capped stop and stored result.
+- Out of scope for now: graph-edge expansion of headlines (token overlap only), Elfa attention trends.
 
 ## What is explicitly OUT of scope
 
@@ -587,7 +588,7 @@ Operator ask (2026-10-27): find short- and long-timeframe narratives and positio
 
 ## Environment variables
 
-`DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `CRON_TOKEN`, `FRED_API_KEY` (optional), `ELFA_API_KEY` / `ELFA_MIN_INTERVAL_HOURS` (optional), `ROUTINE_WEBHOOK_URL` (optional), `ENGINE_URL` / `ENGINE_TOKEN` (optional, engine console), `ANALYST_PROVIDER` / `DESK_ANALYST_MODEL` / `ANALYST_API_KEY` / `ANALYST_BASE_URL` / `ANALYST_EFFORT` / `ANALYST_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` / `DESK_ANTHROPIC_FIRST` / `ANALYST_OPENAI_API_KEY` / `ANALYST_OPENAI_BASE_URL` / `ANALYST_MODELS`, and the vendor keys `OPENAI_API_KEY` / `GEMINI_API_KEY` / `XAI_API_KEY` / `DEEPSEEK_API_KEY` / `MOONSHOT_API_KEY` / `DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY` (all optional, analyst — see README.md "Analyst" for precedence and per-preset overrides). Intel tuning (all optional, defaults in README.md "Intel"): `COINALYZE_API_KEY`, `INTEL_FLOW_MAX_COINS`, `INTEL_DELEV_OI_PCT`, `INTEL_THRESHOLDS`, `INTEL_LLM_DAILY_USD`, `INTEL_PUSH_MATERIALITY`, `INTEL_DIGEST_MATERIALITY`, `INTEL_RESEARCH_DAILY`, `INTEL_RESEARCH_AUTO_DAILY`, `INTEL_NARRATIVE_DAILY`.
+`DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `CRON_TOKEN`, `FRED_API_KEY` (optional), `ELFA_API_KEY` / `ELFA_MIN_INTERVAL_HOURS` (optional), `ROUTINE_WEBHOOK_URL` (optional), `ENGINE_URL` / `ENGINE_TOKEN` (optional, engine console), `ANALYST_PROVIDER` / `DESK_ANALYST_MODEL` / `ANALYST_API_KEY` / `ANALYST_BASE_URL` / `ANALYST_EFFORT` / `ANALYST_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` / `DESK_ANTHROPIC_FIRST` / `ANALYST_OPENAI_API_KEY` / `ANALYST_OPENAI_BASE_URL` / `ANALYST_MODELS`, and the vendor keys `OPENAI_API_KEY` / `GEMINI_API_KEY` / `XAI_API_KEY` / `DEEPSEEK_API_KEY` / `MOONSHOT_API_KEY` / `DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY` (all optional, analyst — see README.md "Analyst" for precedence and per-preset overrides). Intel tuning (all optional, defaults in README.md "Intel"): `COINALYZE_API_KEY`, `INTEL_FLOW_MAX_COINS`, `INTEL_DELEV_OI_PCT`, `INTEL_THRESHOLDS`, `INTEL_LLM_DAILY_USD`, `INTEL_PUSH_MATERIALITY`, `INTEL_DIGEST_MATERIALITY`, `INTEL_RESEARCH_DAILY`, `INTEL_RESEARCH_AUTO_DAILY`, `INTEL_NARRATIVE_DAILY`, `INTEL_NARRATIVE_AUTO_DAILY`.
 
 GitHub Actions repository secrets (Settings > Secrets and variables > Actions), used by `.github/workflows/collect.yml`:
 

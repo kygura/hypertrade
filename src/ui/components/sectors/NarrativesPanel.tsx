@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { FlowQuadrant, NarrativeContrast, NarrativeLean, NarrativeRow, NarrativesResponse, NarrativeStage, NarrativeView } from '../../../shared/intel'
+import type { FlowQuadrant, NarrativeContrast, NarrativeHeadline, NarrativeLean, NarrativeRow, NarrativesResponse, NarrativeStage, NarrativeView } from '../../../shared/intel'
 import { fmtPct, fmtUsd, classForPnl } from '../../../shared/format'
 import { api } from '../../lib/api'
 import { Badge, type Tone } from '../Badge'
@@ -10,13 +10,15 @@ import { EmptyBlock } from '../state'
 import { ClaimAge } from '../intel/ClaimAge'
 import { ClaimList } from '../intel/ClaimList'
 import { fmtCost, toClaim } from '../intel/research'
+import { sourceHref } from '../intel/SourceLink'
 
 // NarrativesPanel — docs/SPEC.md § Narratives. One row per routine sector
 // basket, strongest LTF flow first: HTF stage with the numbers it comes from,
 // the 1h/6h/24h price × OI quadrants, the operator's lean and the latest
 // contrast's read. Selecting a row opens the detail: the view editor (lean +
-// note, saved server-side) and the contrast research (continuation vs fade,
-// vetted evidence, where it sits against the view).
+// note, saved server-side), the basket's recent headlines (one per news
+// cluster) and the contrast research (continuation vs fade, vetted evidence,
+// where it sits against the view).
 
 const STAGE_TONE: Record<NarrativeStage, Tone> = { emerging: 'info', expanding: 'green', crowded: 'amber', fading: 'red', quiet: 'gray', unknown: 'gray' }
 const QUAD: Record<FlowQuadrant, { short: string; title: string; cls: string }> = {
@@ -112,8 +114,36 @@ function NarrativeDetail({ row, onChanged }: { row: NarrativeRow; onChanged: () 
         {row.firstSeen && <span>LISTED SINCE {row.firstSeen}</span>}
         <span>ALIGNMENT {row.alignment.toUpperCase()}</span>
       </div>
+      <Headlines items={row.headlines} />
       <ViewEditor id={row.id} view={row.view} onSaved={onChanged} />
       <Contrast id={row.id} contrast={row.contrast} onDone={onChanged} />
+    </div>
+  )
+}
+
+function Headlines({ items }: { items: NarrativeHeadline[] }) {
+  if (!items.length) return null
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="label">HEADLINES</span>
+      <ul className="flex flex-col gap-0.5">
+        {items.map((h, i) => {
+          const link = sourceHref(h.url ?? undefined)
+          return (
+            <li key={i} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+              {link?.kind === 'external' ? (
+                <a href={link.href} target="_blank" rel="noreferrer" className="text-text-primary hover:underline break-words">
+                  {h.title} ↗
+                </a>
+              ) : (
+                <span className="text-text-primary break-words">{h.title}</span>
+              )}
+              <span className="text-text-muted">{h.assets.join(' · ')}</span>
+              <ClaimAge ts={h.firstSeen} />
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }
