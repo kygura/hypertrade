@@ -32,9 +32,14 @@ export function MarketDrill() {
 
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)] flex flex-col gap-3">
-      <Button tier="ghost" onClick={() => navigate('/markets')} className="self-start">
-        ← MARKETS
-      </Button>
+      <div className="flex items-center justify-between gap-2">
+        <Button tier="ghost" onClick={() => navigate('/markets')}>
+          ← MARKETS
+        </Button>
+        <Button tier="ghost" onClick={() => navigate(`/asset/${encodeURIComponent(name)}`)}>
+          INTEL →
+        </Button>
+      </div>
 
       <Panel>
         <PerpHeader coin={name} stats={stats} />

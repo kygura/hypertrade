@@ -168,7 +168,7 @@ export function LabSearch() {
     <div className="flex flex-col gap-3">
       {store.collapsed && landed && <SearchSummaryBar form={store.form} onEdit={() => searchStore.setCollapsed(false)} />}
       <div className="grid gap-3 lg:grid-cols-12 items-start">
-        <div className={`lg:col-span-4 lg:sticky lg:top-[92px] ${store.collapsed && landed ? 'hidden lg:block' : ''}`}>
+        <div className={`lg:col-span-4 lg:sticky lg:top-[calc(var(--topbar-h)+var(--subnav-h))] ${store.collapsed && landed ? 'hidden lg:block' : ''}`}>
           <Panel>
             <PanelHeader title="SEARCH" />
             <LabSearchForm
@@ -186,7 +186,7 @@ export function LabSearch() {
             />
           </Panel>
         </div>
-        <div ref={resultsRef} className={`lg:col-span-8 flex flex-col gap-3 scroll-mt-[136px] transition-opacity duration-200 ${busy && result ? 'opacity-70' : ''}`}>
+        <div ref={resultsRef} className={`lg:col-span-8 flex flex-col gap-3 scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+44px)] transition-opacity duration-200 ${busy && result ? 'opacity-70' : ''}`}>
           {body}
         </div>
       </div>

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Badge, Button, ConfirmDialog, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelBody, PanelHeader, Segmented, SkeletonRows } from '../components'
 import { Markdown } from '../components/analyst/Markdown'
+import { KillSwitchDialog } from '../components/KillSwitchDialog'
 import { api, ApiError, NetworkError, useApi } from '../lib/api'
+import { useDeskKill } from '../lib/useDeskKill'
 import {
   emptyRun,
   fmtPx,
@@ -79,30 +81,14 @@ export function Desk() {
 }
 
 function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | null; portfolio: Portfolio | null; onChange: () => void }) {
-  const [confirm, setConfirm] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
   const kill = status?.killSwitch.on ?? false
+  const killSwitch = useDeskKill(kill, onChange)
   const desk = portfolio?.desk
 
   const setApproval = async (approval: 'manual' | 'auto') => {
     await api.put('/desk/approval', { approval }).catch(() => undefined)
     onChange()
   }
-  const toggleKill = async () => {
-    setBusy(true)
-    setErr(null)
-    try {
-      await api.post('/desk/kill', { on: !kill })
-      setConfirm(false)
-      onChange()
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'failed')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
     <Panel>
       <PanelBody className="flex flex-wrap items-center gap-x-5 gap-y-2 p-3">
@@ -129,7 +115,7 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
             />
           )}
           <ReviewIntervalControl status={status} onChange={onChange} />
-          <Button tier="danger" onClick={() => setConfirm(true)} disabled={!status}>
+          <Button tier="danger" onClick={killSwitch.arm} disabled={!status}>
             {kill ? 'RESUME' : 'KILL'}
           </Button>
         </div>
@@ -140,17 +126,8 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
         </div>
       )}
       {status?.venueNote && <div className="px-3 pb-2 text-[10px] text-red-text">{status.venueNote}.</div>}
-      {confirm && (
-        <ConfirmDialog
-          title={kill ? 'Resume entries' : 'Kill switch'}
-          body={kill ? 'New entries will be allowed again, within the governor limits.' : 'Blocks every new entry, from agents and approvals alike. Exits stay allowed.'}
-          confirmLabel={kill ? 'RESUME' : 'KILL'}
-          typedWord={kill ? undefined : 'KILL'}
-          onConfirm={() => void toggleKill()}
-          onCancel={() => setConfirm(false)}
-          error={err}
-          busy={busy}
-        />
+      {killSwitch.open && (
+        <KillSwitchDialog killOn={kill} busy={killSwitch.busy} error={killSwitch.error} onConfirm={() => void killSwitch.confirm()} onCancel={killSwitch.cancel} />
       )}
     </Panel>
   )
@@ -405,6 +382,7 @@ function AgentLane({ agent, defaultOpen }: { agent: AgentView; defaultOpen: bool
 function ApprovalsPanel({ proposals, loading, onChange }: { proposals: ProposalRecord[] | undefined; loading: boolean; onChange: () => void }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [approving, setApproving] = useState<ProposalRecord | null>(null)
   const pending = proposals?.filter((p) => p.status === 'pending') ?? []
   const recent = proposals?.filter((p) => p.status !== 'pending').slice(0, 8) ?? []
 
@@ -413,13 +391,16 @@ function ApprovalsPanel({ proposals, loading, onChange }: { proposals: ProposalR
     setErr(null)
     try {
       await api.post(`/desk/proposals/${id}/${verb}`)
+      return true
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'failed')
+      return false
     } finally {
       setBusy(null)
       onChange()
     }
   }
+  const approvingWhat = approving && (approving.kind === 'exit' ? `exit ${Math.round(((approving.proposal as ExitProposal).fraction ?? 0) * 100)}% of ${approving.proposal.coin}` : `${(approving.proposal as TradeProposal).side} ${approving.proposal.coin}`)
 
   return (
     <Panel>
@@ -429,9 +410,20 @@ function ApprovalsPanel({ proposals, loading, onChange }: { proposals: ProposalR
         {proposals && proposals.length === 0 && <EmptyBlock label="no proposals yet" />}
         {err && <div className="px-3 pt-2 text-[11px] text-red-text">{err}</div>}
         {[...pending, ...recent].map((p) => (
-          <ProposalCard key={p.id} p={p} busy={busy === p.id} onDecide={(v) => void decide(p.id, v)} />
+          <ProposalCard key={p.id} p={p} busy={busy === p.id} onDecide={(v) => (v === 'approve' ? (setErr(null), setApproving(p)) : void decide(p.id, v))} />
         ))}
       </PanelBody>
+      {approving && (
+        <ConfirmDialog
+          title={`Approve ${approvingWhat}`}
+          body={`Approve ${approvingWhat}? The desk places it on its venue, within the governor limits.`}
+          confirmLabel="APPROVE"
+          onConfirm={() => void decide(approving.id, 'approve').then((ok) => ok && setApproving(null))}
+          onCancel={() => setApproving(null)}
+          error={err}
+          busy={busy === approving.id}
+        />
+      )}
     </Panel>
   )
 }

@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link } from 'react-router'
 import { Badge, Button, DialogShell, EmptyBlock, ErrorBlock, MetricStat, OfflineBlock, Panel, SkeletonRows, StaleStrip } from '../../components'
 import { VenueBadge } from '../../components/intel/VenueBadge'
 import { fmtUsdCompact } from '../../components/branches/format'
@@ -30,6 +31,9 @@ function Section({ n, title, children }: { n: number; title: string; children: R
     </section>
   )
 }
+
+const COIN_LINK =
+  'btn inline-flex items-center h-[var(--control-md)] px-2.5 text-[10px] border border-border text-text-secondary hover:text-text-primary hover:bg-hover rounded-control font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)]'
 
 export const OpportunityDetail = forwardRef<
   HTMLHeadingElement,
@@ -83,11 +87,19 @@ export const OpportunityDetail = forwardRef<
         <span className="text-[11px] tabular text-text-secondary">score {o.score.toFixed(2)}</span>
         <span className="text-[10px] tabular text-text-secondary">{fmtAge(o.createdAt)}</span>
         {!inFeed && <Badge tone="gray">NOT IN FEED</Badge>}
+        <span className="ml-auto inline-flex gap-2">
+          <Link to={`/markets/${encodeURIComponent(o.coin)}`} className={COIN_LINK}>
+            CHART →
+          </Link>
+          <Link to={`/asset/${encodeURIComponent(o.coin)}`} className={COIN_LINK}>
+            INTEL →
+          </Link>
+        </span>
       </div>
       {midAgeSec != null && midAgeSec > 30 && <StaleStrip>live price {Math.floor(midAgeSec)}s old — approve is blocked</StaleStrip>}
       {liqSlot && <div className="px-2 pb-2">{liqSlot}</div>}
       <div className="flex flex-col">
-        <div className="order-last lg:order-none sticky bottom-0 lg:bottom-auto lg:top-[92px] z-10 bg-[var(--color-panel)] border-t lg:border-t-0 lg:border-b border-border-subtle pb-[env(safe-area-inset-bottom)]">
+        <div className="order-last lg:order-none sticky bottom-0 lg:bottom-auto lg:top-[calc(var(--topbar-h)+var(--subnav-h))] z-10 bg-[var(--color-panel)] border-t lg:border-t-0 lg:border-b border-border-subtle pb-[env(safe-area-inset-bottom)]">
           {actionBar}
         </div>
         <Section n={1} title="WHY IT PASSED">

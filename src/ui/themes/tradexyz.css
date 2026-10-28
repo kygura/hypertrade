@@ -183,8 +183,10 @@
 }
 
 /* ── Top bar: borderless, translucent over the screen, 48px ─────────── */
+:root[data-theme='tradexyz'] {
+  --topbar-h: 48px;
+}
 :root[data-theme='tradexyz'] .app-topbar {
-  height: 48px;
   border-bottom-color: transparent;
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);

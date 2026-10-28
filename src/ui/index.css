@@ -147,6 +147,8 @@
   --control-md: 26px;
   --control-lg: 32px;
   --tap-min: 24px; /* NEW: minimum interactive target */
+  --topbar-h: 40px; /* themes override; sticky offsets derive from it */
+  --subnav-h: 52px; /* sticky sub-tab row under the top bar */
 
   /* Label treatment (theme contract). Hyperion: uppercase, tracked. */
   --label-case: uppercase;

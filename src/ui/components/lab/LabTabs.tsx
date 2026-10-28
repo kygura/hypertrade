@@ -4,8 +4,8 @@ import { useLabData } from './LabData'
 
 // LabTabs — docs/design/README.md §10.9. One Segmented (md) under the shell, workflow
 // order SEARCH · RUNS · CATALOGUE · PULSE, path-based so each tab is a
-// bookmarkable page. Sticky under the 40px top bar; the row is 52px tall
-// (the lg search form sticks at 92px under it).
+// bookmarkable page. Sticky under the top bar (--topbar-h); the row is
+// --subnav-h tall (the lg search form sticks under both).
 
 export type LabTab = 'search' | 'runs' | 'catalogue' | 'pulse'
 
@@ -42,7 +42,7 @@ export function LabTabs() {
   ]
 
   return (
-    <div className="sticky top-10 z-30 h-[52px] flex items-center bg-body">
+    <div className="sticky top-[var(--topbar-h)] z-30 h-[var(--subnav-h)] flex items-center bg-body">
       <Segmented
         label="lab sections"
         size="md"

@@ -8,13 +8,14 @@ import { isTerminalPath } from './intel/TerminalTabs'
 import { ThemeSwitcher } from './ThemeSwitcher'
 
 // AppShell — docs/design/README.md §5. TopBar (>=768) / TopStrip + bottom tab bar
-// (<768) via CSS breakpoints only, no JS matchMedia. Freshness cluster reads
+// (<768) via CSS breakpoints only, no JS matchMedia. NAV is 10 cells, over the
+// 9-cell ceiling (docs/CONSOLIDATION.md); every cell shows in the tab bar. Freshness cluster reads
 // the most recent hl.total_oi_usd observation as a representative collector
 // heartbeat: green <30min, amber 30min-2h, red >2h or fetch failed.
 
 const NAV = [
-  // Intel Terminal family (docs/design/terminal.md §1.2): one entry; /journal,
-  // /theses, /query, /order, /watch and /overview switch inside via TerminalTabs.
+  // Intel Terminal family (docs/design/terminal.md §1.2): one entry; /terminal,
+  // /journal, /theses, /query, /order, /watch and /overview switch inside via TerminalTabs.
   { to: '/', label: 'COCKPIT', tab: 'CKPT', glyph: '◉' },
   { to: '/branches', label: 'BRANCHES', tab: 'BRNCH', glyph: '⑂' },
   { to: '/sectors', label: 'SECTORS', tab: 'SECTR', glyph: '▦' },
@@ -25,11 +26,11 @@ const NAV = [
   // Strategy console: one shell entry so the mobile tab bar stays compact;
   // /strategies, /decisions and /governor switch inside via EngineTabs.
   { to: '/strategies', label: 'ENGINE', tab: 'ENGIN', glyph: '⚙' },
-  // Read-only LLM analyst (docs/SPEC.md "Analyst"); a seventh cell on mobile.
+  // Read-only LLM analyst (docs/SPEC.md "Analyst").
   { to: '/analyst', label: 'ANALYST', tab: 'ASK', glyph: '?' },
   // Agentic portfolio desk (docs/SPEC.md "Desk"): agent team, governor, paper book.
   { to: '/desk', label: 'DESK', tab: 'DESK', glyph: '◎' },
-  // Heuristic research (docs/design/README.md §10.9); the last cell.
+  // Heuristic research (docs/design/README.md §10.9).
   { to: '/lab', label: 'LAB', tab: 'LAB', glyph: '⚗' },
 ]
 
@@ -62,7 +63,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-dvh flex flex-col">
-      <header className="app-topbar sticky top-0 z-40 h-10 flex items-center justify-between px-3 border-b border-border bg-topbar">
+      <header className="app-topbar sticky top-0 z-40 h-[var(--topbar-h)] flex items-center justify-between px-3 border-b border-border bg-topbar">
         <Link to="/" className="app-wordmark flex items-center gap-1.5 text-[11px] uppercase font-semibold tracking-wider font-display">
           HYPERTRADE
           <span className="app-wordmark-dot inline-block w-1.5 h-1.5 bg-accent" />

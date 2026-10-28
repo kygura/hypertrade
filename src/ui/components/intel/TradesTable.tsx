@@ -62,7 +62,7 @@ const COLUMNS: Column<Trade>[] = [
     priority: 1,
     render: (t) => (
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-        <span id={tradeAnchorId(t.id)} className="scroll-mt-[140px]" />
+        <span id={tradeAnchorId(t.id)} className="scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+48px)]" />
         <span className="text-text-primary">{t.asset}</span>
         <SrcTag source={t.venue} />
       </span>
