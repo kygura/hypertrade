@@ -1,5 +1,5 @@
 import { Panel, MetricStat } from '..'
-import { SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock, StaleBanner } from '../state'
+import { AsyncBody, StaleBanner } from '../state'
 import { useApi } from '../../lib/api'
 import { fmtUsd } from '../../../shared/format'
 
@@ -73,36 +73,38 @@ export function MetricsStrip() {
   const ids = METRIC_DEFS.map((d) => d.id).join(',')
   const { data, loading, error, offline, refetch } = useApi<MetricSummaryRow[]>(`/metrics/summary?ids=${ids}`)
 
-  if (loading && !data) return <Panel><SkeletonRows /></Panel>
-  if (offline) return <Panel><OfflineBlock onRetry={refetch} /></Panel>
-  if (error) return <Panel><ErrorBlock message={error} onRetry={refetch} /></Panel>
-  if (!data || data.length === 0) return <Panel><EmptyBlock label="no metrics yet" /></Panel>
-
-  const bySeriesId = new Map(data.map((d) => [d.seriesId, d]))
-  const newestTs = data.reduce<string | null>((acc, d) => (d.ts && (!acc || d.ts > acc) ? d.ts : acc), null)
-
   return (
     <Panel>
-      {newestTs && <StaleBanner generatedAt={newestTs} thresholdHours={STALE_METRICS_H} noun="metrics" />}
-      <div className="grid grid-cols-2 md:grid-cols-5 border border-border divide-x divide-y md:divide-y-0 divide-border-subtle">
-        {METRIC_DEFS.map((def) => {
-          const row = bySeriesId.get(def.id)
-          if (!row || row.latest == null) {
-            return <MetricStat key={def.id} label={def.label} value="--" />
-          }
-          const delta = def.fmtDelta(row)
+      <AsyncBody loading={loading} data={data} error={error} offline={offline} empty={{ label: 'no metrics yet' }} onRetry={refetch}>
+        {(rows) => {
+          const bySeriesId = new Map(rows.map((d) => [d.seriesId, d]))
+          const newestTs = rows.reduce<string | null>((acc, d) => (d.ts && (!acc || d.ts > acc) ? d.ts : acc), null)
           return (
-            <MetricStat
-              key={def.id}
-              label={def.label}
-              value={def.fmtValue(row.latest)}
-              delta={delta?.text}
-              deltaPositive={delta?.positive ?? null}
-              z30={row.z30}
-            />
+            <>
+              {newestTs && <StaleBanner generatedAt={newestTs} thresholdHours={STALE_METRICS_H} noun="metrics" />}
+              <div className="grid grid-cols-2 md:grid-cols-5 border border-border divide-x divide-y md:divide-y-0 divide-border-subtle">
+                {METRIC_DEFS.map((def) => {
+                  const row = bySeriesId.get(def.id)
+                  if (!row || row.latest == null) {
+                    return <MetricStat key={def.id} label={def.label} value="--" />
+                  }
+                  const delta = def.fmtDelta(row)
+                  return (
+                    <MetricStat
+                      key={def.id}
+                      label={def.label}
+                      value={def.fmtValue(row.latest)}
+                      delta={delta?.text}
+                      deltaPositive={delta?.positive ?? null}
+                      z30={row.z30}
+                    />
+                  )
+                })}
+              </div>
+            </>
           )
-        })}
-      </div>
+        }}
+      </AsyncBody>
     </Panel>
   )
 }

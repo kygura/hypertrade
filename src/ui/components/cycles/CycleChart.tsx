@@ -253,7 +253,7 @@ export function CycleChart({
         <PhaseLegend />
       </div>
 
-      <div className="px-[var(--panel-pad)] pb-1 min-h-[16px] text-[10px] tabular text-text-secondary truncate">
+      <div className="px-[var(--panel-pad)] pb-1 min-h-[16px] text-xs tabular text-text-secondary truncate">
         {shown ? (
           <>
             {fmtDay(shown.t)} · C <span className="text-text-primary">{fmtUsdPx(shown.c)}</span>
@@ -288,7 +288,7 @@ export function CycleChart({
         aria-label={`${coin} ${tf === '1w' ? 'weekly' : 'daily'} log price with cycle phase bands, halvings, and the projected next bull-run window`}
       />
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 px-[var(--panel-pad)] py-1.5 text-[10px] text-text-secondary">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 px-[var(--panel-pad)] py-1.5 text-xs text-text-secondary">
         <Swatch color="var(--color-text-muted)" line label="SMA200" />
         <Swatch color="color-mix(in srgb, var(--color-proj-line) 30%, transparent)" label="est. run start, core" />
         <Swatch color="color-mix(in srgb, var(--color-proj-line) 12%, transparent)" label="est. run start, range" />
@@ -309,7 +309,7 @@ function Swatch({ color, label, line }: { color: string; label: string; line?: b
 
 export function PhaseLegend() {
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-text-secondary">
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-secondary">
       {CYCLE_PHASES.map((p) => (
         <span key={p} className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5" style={{ background: `var(${PHASE_VAR[p]})` }} />

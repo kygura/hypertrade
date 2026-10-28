@@ -8,3 +8,11 @@ describe('App routes', () => {
     expect(src).toMatch(re)
   })
 })
+
+// /desk is in the TRADE family: the tab row sits above it.
+describe('App TRADE family', () => {
+  const src = require('node:fs').readFileSync(`${import.meta.dir}/App.tsx`, 'utf8') as string
+  test('Desk sits inside TradeLayout', () => {
+    expect(src).toMatch(/<TradeLayout>[\s\S]{0,80}<Desk \/>[\s\S]{0,80}<\/TradeLayout>/)
+  })
+})

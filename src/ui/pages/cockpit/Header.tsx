@@ -39,9 +39,9 @@ export function CockpitHeader({
   return (
     <div className="flex flex-col gap-1 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="text-[13px] text-text-primary font-display tracking-wider">COCKPIT</h1>
+        <h1 className="text-base text-text-primary font-display tracking-wider">COCKPIT</h1>
         {deskDown ? (
-          <span className="text-[10px] text-text-secondary" title={deskDown}>
+          <span className="text-xs text-text-secondary" title={deskDown}>
             DESK —
           </span>
         ) : (
@@ -49,7 +49,7 @@ export function CockpitHeader({
         )}
         {noDb && <Badge tone="gray">NO DATABASE — MEMORY STORE</Badge>}
         {liveCount != null && (
-          <span className="text-[11px] tabular text-text-secondary">
+          <span className="text-sm tabular text-text-secondary">
             {liveCount} LIVE · {readyCount} READY
           </span>
         )}
@@ -60,7 +60,7 @@ export function CockpitHeader({
           {kill?.on ? (
             <>
               <Badge tone="red">KILLED</Badge>
-              <span className="text-[10px] text-text-secondary" title={kill.reason}>
+              <span className="text-xs text-text-secondary" title={kill.reason}>
                 {[kill.reason, kill.at ? fmtAge(kill.at) : null].filter(Boolean).join(' · ')}
               </span>
               <Button tier="ghost" ref={killRef} onClick={onKill} className="min-h-[var(--tap-min)]">
@@ -74,7 +74,7 @@ export function CockpitHeader({
           )}
         </div>
       </div>
-      {desk.error && <p className="text-[10px] text-red-text">{desk.error}</p>}
+      {desk.error && <p className="text-xs text-red-text">{desk.error}</p>}
     </div>
   )
 }
@@ -87,7 +87,7 @@ export function HealthStrip({ health, loading, offline, error, now }: { health: 
   if (!health && loading) return <div className="h-3 my-2 w-1/2 bg-elevated pulse-label" />
   if (!health && (offline || error))
     return (
-      <div className="flex items-center gap-2 py-1.5 text-[10px] text-red-text" role="status" title={offline ?? error ?? undefined}>
+      <div className="flex items-center gap-2 py-1.5 text-xs text-red-text" role="status" title={offline ?? error ?? undefined}>
         <StatusDot status="down" /> HEALTH UNREACHABLE
       </div>
     )
@@ -95,7 +95,7 @@ export function HealthStrip({ health, loading, offline, error, now }: { health: 
   const items = health ? healthItems(health, now) : (['WS', 'SCAN', 'CRAWL', 'LOOPS', 'LLM'] as const).map((key) => ({ key, level: 'unknown' as const, value: '—', title: 'platform loops not running' }))
   const worst = worstItem(items)
   const strip = (
-    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] tabular" aria-label="system health">
+    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular" aria-label="system health">
       {items.map((i) => (
         <li key={i.key} className={`flex items-center gap-1.5 ${TEXT[i.level]}`} title={i.title}>
           <StatusDot status={DOT[i.level]} />
@@ -110,7 +110,7 @@ export function HealthStrip({ health, loading, offline, error, now }: { health: 
   return (
     <div className="py-1.5 border-y border-border-subtle">
       <div className="md:hidden">
-        <button type="button" className="flex items-center gap-1.5 text-[10px] tabular min-h-[var(--tap-min)]" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
+        <button type="button" className="flex items-center gap-1.5 text-xs tabular min-h-[var(--tap-min)]" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
           {items.map((i) => (
             <StatusDot key={i.key} status={DOT[i.level]} />
           ))}
@@ -142,7 +142,7 @@ const KEYS: [string, string][] = [
 export function KeysHelp({ onClose }: { onClose: () => void }) {
   return (
     <DialogShell title="KEYS" onClose={onClose} className="md:max-w-[400px]">
-      <table className="text-[11px] w-full">
+      <table className="text-sm w-full">
         <tbody>
           {KEYS.map(([k, v]) => (
             <tr key={k} className="border-b border-border-subtle">

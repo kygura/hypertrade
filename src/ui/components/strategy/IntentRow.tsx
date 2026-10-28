@@ -34,7 +34,7 @@ export function IntentRow({
 
   return (
     <div className="flex flex-col gap-2 py-2 border-b border-border-subtle last:border-b-0">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
         <span className="text-text-primary font-medium">{intent.market}</span>
         <span className={`uppercase tracking-wider ${actionClass(intent.action)}`}>{ACTION_LABEL[intent.action]}</span>
         {intent.size_usd != null && <span className="tabular text-text-primary">${intent.size_usd.toLocaleString()}</span>}
@@ -45,19 +45,19 @@ export function IntentRow({
         {intent.confidence != null && <span className="tabular text-text-secondary">CONF {fmtProb(intent.confidence)}</span>}
         <span className="text-text-secondary">{intent.venue}</span>
         <span className="ml-auto flex items-center gap-2">
-          {dryRun && <span className="text-[10px] uppercase tracking-wider text-text-secondary">dry run · not governed</span>}
+          {dryRun && <span className="text-xs uppercase tracking-wider text-text-secondary">dry run · not governed</span>}
           {latest ? (
             <VerdictBadge status={latest.status} />
           ) : (
-            !dryRun && <span className="text-[10px] uppercase tracking-wider text-text-secondary">no verdict</span>
+            !dryRun && <span className="text-xs uppercase tracking-wider text-text-secondary">no verdict</span>
           )}
         </span>
       </div>
 
-      {intent.reason && <p className="text-[12px] text-text-muted break-words">{intent.reason}</p>}
+      {intent.reason && <p className="text-md text-text-muted break-words">{intent.reason}</p>}
 
       {timeline.length > 0 && (
-        <ol className="flex flex-col gap-0.5 text-[10px] tabular">
+        <ol className="flex flex-col gap-0.5 text-xs tabular">
           {timeline.map((v, i) => (
             <li key={`${v.ts}-${i}`} className="flex flex-wrap items-center gap-x-2 text-text-secondary">
               <span className="text-text-muted uppercase">{v.status}</span>

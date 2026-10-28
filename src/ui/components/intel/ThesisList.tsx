@@ -38,7 +38,7 @@ export function ThesisList({ theses, selectedId, onSelect }: { theses: Thesis[];
             onClick={() => onSelect(t.id)}
             onKeyDown={(e) => onKey(e, t.id)}
             style={{ minHeight: 'var(--row-h)' }}
-            className={`flex items-center gap-2 px-3 text-[12px] border-b border-border-subtle cursor-pointer hover:bg-hover ${sel ? 'bg-selected' : ''}`}
+            className={`flex items-center gap-2 px-3 text-md border-b border-border-subtle cursor-pointer hover:bg-hover ${sel ? 'bg-selected' : ''}`}
           >
             <span aria-hidden="true" className="w-2 flex-shrink-0 text-text-secondary">
               {sel ? '▸' : ''}
@@ -46,7 +46,7 @@ export function ThesisList({ theses, selectedId, onSelect }: { theses: Thesis[];
             <span className="flex-1 min-w-0 truncate text-text-primary" title={t.text}>
               {firstLine(t.text)}
             </span>
-            <span className="flex-shrink-0 tabular text-[11px] whitespace-nowrap">
+            <span className="flex-shrink-0 tabular text-sm whitespace-nowrap">
               <span className={n.contradicted > 0 ? 'text-red-text' : 'text-text-secondary'}>
                 {n.contradicted}
                 <span aria-hidden="true">✗</span>
@@ -63,7 +63,7 @@ export function ThesisList({ theses, selectedId, onSelect }: { theses: Thesis[];
                 <span className="sr-only"> unknown</span>
               </span>
             </span>
-            <span className="flex-shrink-0 w-8 text-right">{t.checkedAt ? <ClaimAge ts={t.checkedAt} /> : <span className="text-[10px] text-text-secondary">—</span>}</span>
+            <span className="flex-shrink-0 w-8 text-right">{t.checkedAt ? <ClaimAge ts={t.checkedAt} /> : <span className="text-xs text-text-secondary">—</span>}</span>
           </li>
         )
       })}

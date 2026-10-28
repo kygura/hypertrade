@@ -262,7 +262,7 @@ export function BranchDetail() {
                       <AnimatedDigits text={fmtUsd(result.stats.finalValue, { decimals: 0 })} />
                     </span>
                   </div>
-                  <div className="text-[12px] tabular mb-3">
+                  <div className="text-md tabular mb-3">
                     <span className={signClass(result.stats.finalValue / form.initialCapitalUsd - 1)}>
                       {fmtPct(result.stats.finalValue / form.initialCapitalUsd - 1, { decimals: 1, sign: true })}
                     </span>{' '}
@@ -369,7 +369,7 @@ export function BranchDetail() {
                               className="w-full min-w-0"
                               aria-label={`${a.coin || 'allocation'} weight`}
                             />
-                            <span className="text-text-secondary text-[11px]">%</span>
+                            <span className="text-text-secondary text-sm">%</span>
                           </div>
                           <div className="self-center" title={lock}>
                             <Segmented
@@ -392,7 +392,7 @@ export function BranchDetail() {
                               className="w-full min-w-0"
                               aria-label={`${a.coin || 'allocation'} leverage`}
                             />
-                            <span className="text-text-secondary text-[11px]">×</span>
+                            <span className="text-text-secondary text-sm">×</span>
                           </div>
                           <Button tier="danger" className="!px-1.5" onClick={() => removeAllocation(i)}>
                             ✕
@@ -406,11 +406,11 @@ export function BranchDetail() {
                   <Button tier="ghost" onClick={addAllocation}>
                     + ADD COIN
                   </Button>
-                  <span className={`text-[11px] tabular ${weightsValid ? 'text-green' : 'text-red-text'}`}>
+                  <span className={`text-sm tabular ${weightsValid ? 'text-green' : 'text-red-text'}`}>
                     {weightsValid ? `Σ ${weightSum}%` : `Σ ${weightSum}% — must equal 100`}
                   </span>
                 </div>
-                {!levValid && <span className="text-[11px] text-red-text">leverage must be 1–50</span>}
+                {!levValid && <span className="text-sm text-red-text">leverage must be 1–50</span>}
               </div>
 
               <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
@@ -433,7 +433,7 @@ export function BranchDetail() {
                             aria-label="DCA coin"
                           />
                           <div className="flex items-center gap-1">
-                            <span className="text-text-secondary text-[11px]">$</span>
+                            <span className="text-text-secondary text-sm">$</span>
                             <input
                               type="number"
                               min={1}
@@ -476,12 +476,12 @@ export function BranchDetail() {
                     + ADD DCA
                   </Button>
                 </div>
-                <span className="text-[10px] text-text-secondary">buys from the USDC/USDT sleeve; stops when it runs out</span>
+                <span className="text-xs text-text-secondary">buys from the USDC/USDT sleeve; stops when it runs out</span>
                 {!dcaValid && (
-                  <span className="text-[11px] text-red-text">each DCA row needs a coin and an amount above $0</span>
+                  <span className="text-sm text-red-text">each DCA row needs a coin and an amount above $0</span>
                 )}
                 {form.dca.length > 0 && !form.allocations.some((a) => STABLES.has(a.coin.toUpperCase())) && (
-                  <span className="text-[10px] text-amber">no USDC/USDT allocation — DCA has nothing to spend</span>
+                  <span className="text-xs text-amber">no USDC/USDT allocation — DCA has nothing to spend</span>
                 )}
               </div>
 
@@ -496,7 +496,7 @@ export function BranchDetail() {
                   className="self-start"
                 />
                 {form.dca.length > 0 && (
-                  <span className="text-[10px] text-text-secondary">
+                  <span className="text-xs text-text-secondary">
                     NONE — DCA needs no rebalance (a rebalance would undo the buys)
                   </span>
                 )}
@@ -522,7 +522,7 @@ export function BranchDetail() {
                   </Button>
                 )}
                 {perp && (
-                  <span className={perpConflict ? 'text-[11px] text-red-text' : 'text-[10px] text-text-secondary'}>
+                  <span className={perpConflict ? 'text-sm text-red-text' : 'text-xs text-text-secondary'}>
                     {perpConflict ? 'remove the projection or the perp leg' : 'projection unavailable'} — Monte Carlo
                     models unlevered long-only portfolios
                   </span>
@@ -531,7 +531,7 @@ export function BranchDetail() {
                   <div className="flex flex-col gap-1.5">
                     <div className="flex items-center gap-1.5">
                       <label className="flex items-center gap-1">
-                        <span className="text-[10px] text-text-secondary">DAYS</span>
+                        <span className="text-xs text-text-secondary">DAYS</span>
                         <input
                           type="number"
                           min={1}
@@ -542,7 +542,7 @@ export function BranchDetail() {
                         />
                       </label>
                       <label className="flex items-center gap-1">
-                        <span className="text-[10px] text-text-secondary">PATHS</span>
+                        <span className="text-xs text-text-secondary">PATHS</span>
                         <input
                           type="number"
                           min={1}
@@ -554,7 +554,7 @@ export function BranchDetail() {
                       </label>
                     </div>
                     {(resolvedScenario?.assumptions ?? []).map((a) => (
-                      <div key={a.coin} className="flex items-center gap-1.5 text-[11px]">
+                      <div key={a.coin} className="flex items-center gap-1.5 text-sm">
                         <span className="w-[5ch] text-text-secondary">{a.coin}</span>
                         <input
                           type="number"
@@ -563,7 +563,7 @@ export function BranchDetail() {
                           value={a.annualReturnPct}
                           onChange={(e) => updateAssumption(a.coin, { annualReturnPct: Number(e.target.value) })}
                         />
-                        <span className="text-text-secondary text-[10px]">% RET</span>
+                        <span className="text-text-secondary text-xs">% RET</span>
                         <input
                           type="number"
                           className="w-[6ch]"
@@ -571,7 +571,7 @@ export function BranchDetail() {
                           value={a.annualVolPct}
                           onChange={(e) => updateAssumption(a.coin, { annualVolPct: Number(e.target.value) })}
                         />
-                        <span className="text-text-secondary text-[10px]">% VOL</span>
+                        <span className="text-text-secondary text-xs">% VOL</span>
                       </div>
                     ))}
                     <Button tier="danger" onClick={() => setRemoveProjectionOpen(true)} className="self-start">
@@ -607,7 +607,7 @@ export function BranchDetail() {
             <div className="panel-header">
               <span className="panel-title">DRAWDOWN</span>
               {result && (
-                <span className={`text-[11px] tabular ${maxDdClass(result.stats.maxDrawdownPct)}`}>
+                <span className={`text-sm tabular ${maxDdClass(result.stats.maxDrawdownPct)}`}>
                   MAX DD {fmtPct(-Math.abs(result.stats.maxDrawdownPct) / 100, { decimals: 1 })}
                 </span>
               )}
@@ -642,7 +642,7 @@ export function BranchDetail() {
                       {fmtPct(result.stats.vsUsdcPct / 100, { decimals: 1, sign: true })}
                     </StatCell>
                   </div>
-                  <div className="text-[10px] text-text-secondary mt-3">COMPUTED —</div>
+                  <div className="text-xs text-text-secondary mt-3">COMPUTED —</div>
                 </>
               )}
             </div>

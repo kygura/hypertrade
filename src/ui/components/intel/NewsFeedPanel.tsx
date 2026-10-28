@@ -1,7 +1,7 @@
 import type { Alert, FeedbackReport, IngestHealth } from '../../../shared/intel'
 import { intel, useIntel, type IntelState } from '../../lib/intel'
 import { Panel, PanelBody, PanelHeader } from '../Panel'
-import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows, StaleBanner } from '../state'
+import { AsyncBody, StaleBanner } from '../state'
 import { AlertItem } from './AlertItem'
 import { ClaimAge, claimAgeText } from './ClaimAge'
 import { fmtSigned, newestTs } from './format'
@@ -34,27 +34,28 @@ function FeedbackBlock() {
   return (
     <section className="flex flex-col gap-1 border-t border-border-subtle px-2 py-2" aria-label="feedback, last 7 days">
       <h3 className="label">FEEDBACK · 7D</h3>
-      {report.offline && !report.data ? (
-        <OfflineBlock message={report.offline} onRetry={report.refetch} />
-      ) : report.error && !report.data ? (
-        <ErrorBlock message={report.error} onRetry={report.refetch} />
-      ) : report.loading && !report.data ? (
-        <SkeletonRows rows={2} />
-      ) : buckets.length === 0 ? (
-        <EmptyBlock label="no noisy buckets this week" />
-      ) : (
-        <ol className="flex flex-col gap-1.5">
-          {buckets.map((b) => (
-            <li key={`${b.eventType}|${b.edgeType}|${b.hops}`} className="flex flex-col gap-0.5">
-              <span className="text-[11px] tabular text-text-primary">
-                {b.eventType ?? 'unclassified'} · {b.edgeType ?? 'direct'} · {b.hops} {b.hops === 1 ? 'hop' : 'hops'} · n {b.up + b.down} · net{' '}
-                {fmtSigned(bucketNet(b), 0, '%')}
-              </span>
-              <span className="text-[11px] text-text-muted">{b.suggestion}</span>
-            </li>
-          ))}
-        </ol>
-      )}
+      <AsyncBody
+        {...report}
+        staleError={false}
+        rows={2}
+        empty={{ label: 'no noisy buckets this week' }}
+        isEmpty={() => buckets.length === 0}
+        onRetry={report.refetch}
+      >
+        {() => (
+          <ol className="flex flex-col gap-1.5">
+            {buckets.map((b) => (
+              <li key={`${b.eventType}|${b.edgeType}|${b.hops}`} className="flex flex-col gap-0.5">
+                <span className="text-sm tabular text-text-primary">
+                  {b.eventType ?? 'unclassified'} · {b.edgeType ?? 'direct'} · {b.hops} {b.hops === 1 ? 'hop' : 'hops'} · n {b.up + b.down} · net{' '}
+                  {fmtSigned(bucketNet(b), 0, '%')}
+                </span>
+                <span className="text-sm text-text-muted">{b.suggestion}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </AsyncBody>
     </section>
   )
 }
@@ -82,22 +83,23 @@ export function NewsFeedPanel({
       <PanelHeader title="NEWS → POSITIONS">{ageTs && <ClaimAge ts={ageTs} thresholdHours={0.5} />}</PanelHeader>
       {ageTs && <StaleBanner generatedAt={ageTs} thresholdHours={2} noun={noun} />}
       <PanelBody>
-        {state.offline && alerts.length === 0 ? (
-          <OfflineBlock message={state.offline} onRetry={state.refetch} />
-        ) : state.error && alerts.length === 0 ? (
-          <ErrorBlock message={state.error} onRetry={state.refetch} />
-        ) : state.loading && alerts.length === 0 ? (
-          <SkeletonRows rows={4} />
-        ) : alerts.length === 0 ? (
-          <EmptyBlock label={since ? `no news touched your positions since ${claimAgeText(since)}` : 'no news touched your positions'} />
-        ) : (
-          <div className="flex flex-col">
-            {(state.error || state.offline) && <ErrorBlock message={state.error ?? state.offline ?? ''} onRetry={state.refetch} />}
-            {alerts.map((a) => (
-              <AlertItem key={a.id} alert={a} pushMateriality={pushMateriality} onVote={(v) => intel.alertFeedback(a.id, v)} />
-            ))}
-          </div>
-        )}
+        <AsyncBody
+          loading={state.loading}
+          data={alerts.length === 0 ? null : alerts}
+          error={state.error}
+          offline={state.offline}
+          rows={4}
+          empty={{ label: since ? `no news touched your positions since ${claimAgeText(since)}` : 'no news touched your positions' }}
+          onRetry={state.refetch}
+        >
+          {(list) => (
+            <div className="flex flex-col">
+              {list.map((a) => (
+                <AlertItem key={a.id} alert={a} pushMateriality={pushMateriality} onVote={(v) => intel.alertFeedback(a.id, v)} />
+              ))}
+            </div>
+          )}
+        </AsyncBody>
         <FeedbackBlock />
       </PanelBody>
     </Panel>

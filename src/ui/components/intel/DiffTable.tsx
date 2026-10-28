@@ -20,8 +20,8 @@ export function diffColumns(pushMateriality?: number): Column<DiffItem>[] {
       priority: 1,
       render: (i) => (
         <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-          <span className="text-[12px] text-text-primary">{i.asset}</span>
-          <span className={`text-[9px] uppercase tracking-wider ${i.held ? 'text-text-primary' : 'text-text-secondary'}`}>{i.held ? 'HELD' : 'WATCH'}</span>
+          <span className="text-md text-text-primary">{i.asset}</span>
+          <span className={`text-2xs uppercase tracking-wider ${i.held ? 'text-text-primary' : 'text-text-secondary'}`}>{i.held ? 'HELD' : 'WATCH'}</span>
         </span>
       ),
     },

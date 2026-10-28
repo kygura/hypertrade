@@ -34,7 +34,7 @@ function StatusHistory({ thesis }: { thesis: Thesis }) {
       <h3 className="label">STATUS HISTORY · LAST {shown.length} OF {history.length} CHECKS</h3>
       <ul className="flex flex-col gap-1.5">
         {premises.map((text, i) => (
-          <li key={i} className="flex flex-col gap-0.5 text-[12px]">
+          <li key={i} className="flex flex-col gap-0.5 text-md">
             <span className="text-text-primary min-w-0 break-words">{text}</span>
             <span className="flex flex-wrap gap-1">
               {shown.map((h, j) => {
@@ -71,7 +71,7 @@ export function ThesisDetail({
 
   return (
     <div className={`flex flex-col gap-4 p-3 ${recheck.busy ? 'opacity-70' : ''}`}>
-      <p className="text-[13px] text-text-muted whitespace-pre-wrap break-words">{thesis.text}</p>
+      <p className="text-base text-text-muted whitespace-pre-wrap break-words">{thesis.text}</p>
 
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -79,7 +79,7 @@ export function ThesisDetail({
             <span className={`text-xl tabular ${n.contradicted > 0 ? 'text-red-text' : 'text-text-primary'}`}>{n.contradicted}</span>
             <span className="label">CONTRADICTED</span>
           </span>
-          <span className="text-[11px] tabular text-text-muted">
+          <span className="text-sm tabular text-text-muted">
             {n.supported} SUPPORTED · {n.unknown} UNKNOWN
           </span>
         </div>
@@ -97,7 +97,7 @@ export function ThesisDetail({
       <section className="flex flex-col">
         <h3 className="label">CLAIMS &amp; ASSUMPTIONS</h3>
         {thesis.claims.length === 0 ? (
-          <p className="text-[11px] text-text-secondary py-2">no claims extracted</p>
+          <p className="text-sm text-text-secondary py-2">no claims extracted</p>
         ) : (
           <ol>
             {sortChecks(thesis.claims).map((c, i) => (
@@ -112,7 +112,7 @@ export function ThesisDetail({
           <h3 className="label">INVALIDATION</h3>
           <ul className="flex flex-col gap-1">
             {thesis.invalidation.map((inv, i) => (
-              <li key={i} className="flex flex-wrap items-baseline gap-2 text-[12px] text-text-primary">
+              <li key={i} className="flex flex-wrap items-baseline gap-2 text-md text-text-primary">
                 <span aria-hidden="true" className="text-text-secondary">
                   ·
                 </span>
@@ -133,7 +133,7 @@ export function ThesisDetail({
         </section>
       )}
 
-      <p className="text-[10px] text-text-secondary">checks are code over stored data; the model only extracted them</p>
+      <p className="text-xs text-text-secondary">checks are code over stored data; the model only extracted them</p>
 
       {confirming && (
         <ConfirmDialog

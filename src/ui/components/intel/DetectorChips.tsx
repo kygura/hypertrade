@@ -23,7 +23,7 @@ export interface ChipResearchActions {
 /** `·R` — research available (chips and the asset header flags). */
 export function ResearchSuffix() {
   return (
-    <span className="text-[9px] text-text-secondary" title="research available">
+    <span className="text-2xs text-text-secondary" title="research available">
       ·R
     </span>
   )
@@ -47,7 +47,7 @@ export function ChipResearchAction({ flag, onResearch, onSeeResearch, askDisable
 }
 
 const MAX_VISIBLE = 8
-const CHIP = 'badge inline-flex items-center px-1.5 py-0.5 text-[10px] rounded-badge font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)]'
+const CHIP = 'badge inline-flex items-center px-1.5 py-0.5 text-xs rounded-badge font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)]'
 
 export function DetectorChips({
   flags,
@@ -70,7 +70,7 @@ export function DetectorChips({
     <div className="flex flex-col gap-1.5 px-3 py-2" onKeyDown={(e) => e.key === 'Escape' && setOpen(null)}>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="label">DETECTORS</span>
-        {firing.length === 0 && <span className="text-[10px] text-text-secondary">no detectors firing</span>}
+        {firing.length === 0 && <span className="text-xs text-text-secondary">no detectors firing</span>}
         {shown.map((f) => (
           <button
             key={f.id}
@@ -108,7 +108,7 @@ export function DetectorChips({
         ))}
       </div>
       {openFlag && (
-        <p className="flex flex-wrap items-center gap-x-2 text-[11px] text-text-primary tabular">
+        <p className="flex flex-wrap items-center gap-x-2 text-sm text-text-primary tabular">
           <span>{numbersLine(openFlag)}</span>
           <ClaimAge ts={openFlag.ts} />
           <Button tier="ghost" onClick={() => navigate(`/asset/${encodeURIComponent(openFlag.asset)}`)}>
@@ -118,7 +118,7 @@ export function DetectorChips({
         </p>
       )}
       {openDegraded && (
-        <p className="text-[11px] text-text-secondary">
+        <p className="text-sm text-text-secondary">
           {openDegraded.reason} · see docs/research/flow-sources.md
         </p>
       )}

@@ -1,5 +1,5 @@
 import { Panel, PanelBody, PanelHeader } from '../Panel'
-import { EmptyBlock, SkeletonRows } from '../state'
+import { AsyncBody } from '../state'
 import { ExposureAssetRow } from './ExposureAssetRow'
 
 // ExposurePanel — DESIGN-terminal §3.8. One row per held asset (watch-only
@@ -13,13 +13,9 @@ export function ExposurePanel({ assets }: { assets: string[] | null }) {
         <span className="label">HELD ASSETS · 1–2 HOPS</span>
       </PanelHeader>
       <PanelBody>
-        {assets == null ? (
-          <SkeletonRows rows={2} />
-        ) : assets.length === 0 ? (
-          <EmptyBlock label="hold a position to see its exposure" />
-        ) : (
-          assets.map((a, i) => <ExposureAssetRow key={a} asset={a} defaultOpen={i === 0} />)
-        )}
+        <AsyncBody loading data={assets} error={null} rows={2} empty={{ label: 'hold a position to see its exposure' }}>
+          {(held) => held.map((a, i) => <ExposureAssetRow key={a} asset={a} defaultOpen={i === 0} />)}
+        </AsyncBody>
       </PanelBody>
     </Panel>
   )

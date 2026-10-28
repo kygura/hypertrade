@@ -5,7 +5,7 @@ import { errorMessage } from '../../lib/poll'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { Panel, PanelBody, PanelHeader } from '../Panel'
-import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
+import { AsyncBody, EmptyBlock } from '../state'
 import { ClaimAge } from './ClaimAge'
 import { CatalystForm } from './CatalystForm'
 import { CatalystRow } from './CatalystRow'
@@ -57,15 +57,9 @@ export function CatalystsPanel({ state, held, watched }: { state: IntelState<Cat
     <Panel className="h-full">
       <PanelHeader title="CATALYSTS · 14D">{fetchedIso && <ClaimAge ts={fetchedIso} thresholdHours={1 / 6} />}</PanelHeader>
       <PanelBody>
-        {state.offline && !rows ? (
-          <OfflineBlock message={state.offline} onRetry={state.refetch} />
-        ) : state.error && !rows ? (
-          <ErrorBlock message={state.error} onRetry={state.refetch} />
-        ) : !rows ? (
-          <SkeletonRows rows={3} />
-        ) : (
+        <AsyncBody {...state} data={rows} onRetry={state.refetch}>
+          {(rows) => (
           <>
-            {(state.error || state.offline) && <ErrorBlock message={state.error ?? state.offline ?? ''} onRetry={state.refetch} />}
             {rows.length === 0 && !form.open ? (
               <EmptyBlock label="no catalysts in the next 14 days" action={{ label: 'ADD CATALYST', onClick: form.show }} />
             ) : (
@@ -94,7 +88,8 @@ export function CatalystsPanel({ state, held, watched }: { state: IntelState<Cat
               )
             )}
           </>
-        )}
+          )}
+        </AsyncBody>
       </PanelBody>
       {del && (
         <ConfirmDialog

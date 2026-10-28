@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button, ConfirmDialog, DataTable, EmptyBlock, ErrorBlock, Segmented, SkeletonRows, type Column } from '../components'
+import { AsyncBody, Badge, Button, ConfirmDialog, DataTable, ErrorBlock, Segmented, SkeletonRows, type Column } from '../components'
 import { engine, errorMessage, useEngine } from '../lib/engine'
 import type { GovernorMode, GovernorSettings, VenueStatus } from '../../shared/strategy-protocol'
 import { GovernorLimitFields, governorLimitErrors } from '../components/strategy/GovernorLimits'
@@ -94,44 +94,51 @@ function VenuesPanel() {
       {offline && data && <OfflineStrip reason={offline} fetchedAt={fetchedAt} />}
       <div className="panel-header">
         <span className="panel-title">VENUES</span>
-        {data && <span className="text-[10px] text-text-secondary tabular">{data.length}</span>}
+        {data && <span className="text-xs text-text-secondary tabular">{data.length}</span>}
       </div>
       <div className="panel-body">
-        {loading && !data && <SkeletonRows rows={2} />}
-        {!loading && offline && !data && <EngineOffline reason={offline} onRetry={refetch} />}
-        {!loading && !offline && error && !data && <ErrorBlock message={error} onRetry={refetch} />}
-        {data && data.length === 0 && <EmptyBlock label="no venues registered" />}
-        {data && data.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border-subtle">
-            {data.map((v: VenueStatus) => (
-              <div key={v.id} className="p-3 flex flex-col gap-2 min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-text-primary text-[13px]">{v.id}</span>
-                  <Badge tone={venueDot(v.status)}>{v.status}</Badge>
-                  <span className="text-[10px] text-text-secondary">
-                    {v.kind}
-                    {v.chain && v.chain !== 'none' ? ` · ${v.chain}` : ''}
-                  </span>
-                </div>
-                {venueMeta(v) && <span className="text-[10px] text-text-secondary tabular break-all">{venueMeta(v)}</span>}
-                {v.error && <span className="text-[11px] text-red-text break-words" role="alert">{v.error}</span>}
-                <div className="flex flex-wrap gap-1">
-                  {v.capabilities.length === 0 && <span className="text-[10px] text-text-secondary">no capabilities</span>}
-                  {v.capabilities.map((c) => (
-                    <span key={c} className="src-tag">
-                      {c}
+        <AsyncBody
+          loading={loading}
+          data={data}
+          error={error}
+          offline={data ? null : offline}
+          rows={2}
+          empty={{ label: 'no venues registered' }}
+          renderOffline={(reason) => <EngineOffline reason={reason ?? ''} onRetry={refetch} />}
+          onRetry={refetch}
+        >
+          {(rows) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border-subtle">
+              {rows.map((v: VenueStatus) => (
+                <div key={v.id} className="p-3 flex flex-col gap-2 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-text-primary text-base">{v.id}</span>
+                    <Badge tone={venueDot(v.status)}>{v.status}</Badge>
+                    <span className="text-xs text-text-secondary">
+                      {v.kind}
+                      {v.chain && v.chain !== 'none' ? ` · ${v.chain}` : ''}
                     </span>
-                  ))}
+                  </div>
+                  {venueMeta(v) && <span className="text-xs text-text-secondary tabular break-all">{venueMeta(v)}</span>}
+                  {v.error && <span className="text-sm text-red-text break-words" role="alert">{v.error}</span>}
+                  <div className="flex flex-wrap gap-1">
+                    {v.capabilities.length === 0 && <span className="text-xs text-text-secondary">no capabilities</span>}
+                    {v.capabilities.map((c) => (
+                      <span key={c} className="src-tag">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                  {v.positions.length === 0 ? (
+                    <span className="text-xs uppercase tracking-wider text-text-secondary">no open positions</span>
+                  ) : (
+                    <DataTable columns={POSITION_COLUMNS} rows={v.positions} rowKey={(p) => p.market} />
+                  )}
                 </div>
-                {v.positions.length === 0 ? (
-                  <span className="text-[10px] uppercase tracking-wider text-text-secondary">no open positions</span>
-                ) : (
-                  <DataTable columns={POSITION_COLUMNS} rows={v.positions} rowKey={(p) => p.market} />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </AsyncBody>
       </div>
     </div>
   )
@@ -211,7 +218,7 @@ export function Governor() {
         <div className="lg:col-span-5 panel">
           {offline && data && <OfflineStrip reason={offline} fetchedAt={fetchedAt} />}
           {killed && (
-            <div role="status" className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-red-text bg-red-bg border-b border-border-subtle">
+            <div role="status" className="px-3 py-1.5 text-xs uppercase tracking-wider text-red-text bg-red-bg border-b border-border-subtle">
               killed — every strategy disabled, open proposals rejected. re-enable from the core.
             </div>
           )}
@@ -243,7 +250,7 @@ export function Governor() {
                     }}
                     className="self-start"
                   />
-                  <span className="text-[10px] text-text-secondary">{MODES.find((m) => m.value === form.mode)?.title}</span>
+                  <span className="text-xs text-text-secondary">{MODES.find((m) => m.value === form.mode)?.title}</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -268,7 +275,7 @@ export function Governor() {
                   <Button tier="danger" onClick={() => setKillOpen(true)} disabled={killed} style={{ height: 'var(--control-lg)' }}>
                     {killed ? 'KILLED' : 'KILL SWITCH'}
                   </Button>
-                  <span className="text-[10px] text-text-secondary">
+                  <span className="text-xs text-text-secondary">
                     disables every strategy and rejects open proposals — there is no un-kill from here
                   </span>
                 </div>

@@ -64,7 +64,7 @@ export function ResearchPanel({
         <span className="label">NEWEST FIRST</span>
         <span className="ml-auto inline-flex items-center gap-2">
           {d?.usedToday != null && d.limit != null && (
-            <span className={`text-[10px] tabular ${atLimit ? 'text-amber' : 'text-text-secondary'}`} title={USAGE_TITLE}>
+            <span className={`text-xs tabular ${atLimit ? 'text-amber' : 'text-text-secondary'}`} title={USAGE_TITLE}>
               {d.usedToday} / {d.limit} TODAY
             </span>
           )}

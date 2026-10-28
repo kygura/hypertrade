@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { DataTable, EmptyBlock, ErrorBlock, SkeletonRows, type Column } from '../components'
+import { AsyncBody, DataTable, EmptyBlock, ErrorBlock, SkeletonRows, type Column } from '../components'
 import { engine, errorMessage, useEngine } from '../lib/engine'
 import type { DecisionRecord, StrategyStatus } from '../../shared/strategy-protocol'
 import { EngineTabs } from '../components/strategy/EngineTabs'
@@ -52,10 +52,10 @@ export function Strategies() {
       render: (s) => (
         <div className="flex flex-col gap-0.5 py-1 min-w-0">
           <span className="text-text-primary">{s.config.id}</span>
-          <span className="text-[10px] text-text-secondary truncate">
+          <span className="text-xs text-text-secondary truncate">
             {s.manifest.name} · v{s.manifest.version}
           </span>
-          {s.last_error && <span className="text-[10px] text-red-text truncate">{s.last_error}</span>}
+          {s.last_error && <span className="text-xs text-red-text truncate">{s.last_error}</span>}
         </div>
       ),
     },
@@ -78,7 +78,7 @@ export function Strategies() {
               void toggle(s)
             }}
             onKeyDown={(e) => e.stopPropagation()}
-            className={`h-[var(--control-sm)] min-w-[5ch] px-2 text-[10px] font-mono uppercase tracking-wider border border-border ${
+            className={`h-[var(--control-sm)] min-w-[5ch] px-2 text-xs font-mono uppercase tracking-wider border border-border ${
               on ? 'text-green bg-green-bg' : 'text-text-secondary'
             } ${busy ? 'pulse-label' : ''}`}
           >
@@ -132,31 +132,35 @@ export function Strategies() {
         {offline && data && <OfflineStrip reason={offline} fetchedAt={fetchedAt} />}
         <div className="panel-header">
           <span className="panel-title">STRATEGIES</span>
-          {data && <span className="text-[10px] text-text-secondary tabular">{data.length} CONFIGURED</span>}
+          {data && <span className="text-xs text-text-secondary tabular">{data.length} CONFIGURED</span>}
         </div>
         <div className="panel-body">
           {toggleError && <ErrorBlock message={toggleError} />}
-          {loading && !data && (
-            <table className="w-full">
-              <tbody>
-                <SkeletonRows rows={3} colSpan={columns.length} />
-              </tbody>
-            </table>
-          )}
-          {!loading && offline && !data && <EngineOffline reason={offline} onRetry={refetch} />}
-          {!loading && !offline && error && !data && <ErrorBlock message={error} onRetry={refetch} />}
-          {data && (
-            <>
-              {error && <ErrorBlock message={error} onRetry={refetch} />}
+          <AsyncBody
+            loading={loading}
+            data={data}
+            error={error}
+            offline={data ? null : offline}
+            skeleton={
+              <table className="w-full">
+                <tbody>
+                  <SkeletonRows rows={3} colSpan={columns.length} />
+                </tbody>
+              </table>
+            }
+            renderOffline={(reason) => <EngineOffline reason={reason ?? ''} onRetry={refetch} />}
+            onRetry={refetch}
+          >
+            {(rows) => (
               <DataTable
                 columns={columns}
-                rows={data}
+                rows={rows}
                 rowKey={(s) => s.config.id}
                 onRowClick={(s) => navigate(`/strategies/${s.config.id}`)}
                 emptyLabel={<EmptyBlock label="no strategies registered on the core" />}
               />
-            </>
-          )}
+            )}
+          </AsyncBody>
         </div>
       </div>
     </div>

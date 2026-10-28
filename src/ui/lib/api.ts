@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { z } from 'zod'
 
 // Tiny fetch wrapper — JSON in/out, credentials included, 401 redirects to
@@ -91,39 +91,58 @@ export function consumeRedirectTarget(fallback = '/'): string {
   return target ?? fallback
 }
 
-interface ApiState<T> {
+export interface ApiState<T> {
   data: T | null
   loading: boolean
   error: string | null
   offline: boolean
 }
 
+/** Latest-wins guard: only the most recently issued ticket is current, so a slower earlier response can be dropped. */
+export function makeSequencer() {
+  let n = 0
+  return { next: () => ++n, isCurrent: (t: number) => t === n }
+}
+
+/** State after a failed fetch: the last good `data` is kept alongside the error/offline flag. */
+export function apiFailed<T>(prev: ApiState<T>, err: unknown): ApiState<T> {
+  if (err instanceof NetworkError) return { data: prev.data, loading: false, error: null, offline: true }
+  return { data: prev.data, loading: false, error: err instanceof Error ? err.message : String(err), offline: false }
+}
+
 // useApi — GET a path, tracking loading/error/offline/data. Pass null to
 // skip. `offline` (network-unreachable, no HTTP response at all) is distinct
 // from `error` (server responded with a failure) — docs/design/README.md §6 renders
-// OfflineBlock vs ErrorBlock accordingly.
+// OfflineBlock vs ErrorBlock accordingly. A failed refetch keeps the last good
+// `data` (exposed next to `error`/`offline`); a changed `path` resets it.
 export function useApi<T>(path: string | null): ApiState<T> & { refetch: () => void } {
   const [state, setState] = useState<ApiState<T>>({ data: null, loading: path != null, error: null, offline: false })
+  const seq = useRef(makeSequencer())
+  const lastPath = useRef(path)
 
   const refetch = useCallback(() => {
     if (!path) return
+    const ticket = seq.current.next()
     setState((s) => ({ ...s, loading: true, error: null, offline: false }))
     api
       .get<T>(path)
-      .then((data) => setState({ data, loading: false, error: null, offline: false }))
+      .then((data) => {
+        if (seq.current.isCurrent(ticket)) setState({ data, loading: false, error: null, offline: false })
+      })
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 401) return // redirect already in flight
-        if (err instanceof NetworkError) {
-          setState({ data: null, loading: false, error: null, offline: true })
-          return
-        }
-        setState({ data: null, loading: false, error: err instanceof Error ? err.message : String(err), offline: false })
+        if (seq.current.isCurrent(ticket)) setState((s) => apiFailed(s, err))
       })
   }, [path])
 
   useEffect(() => {
+    if (lastPath.current !== path) {
+      lastPath.current = path
+      seq.current.next()
+      setState({ data: null, loading: path != null, error: null, offline: false })
+    }
     refetch()
-  }, [refetch])
+  }, [path, refetch])
 
   return { ...state, refetch }
 }

@@ -24,13 +24,13 @@ export function SqlBlock({ sql, params, stale }: { sql: string | null; params: (
   return (
     <div className="flex flex-col gap-1.5 p-3">
       <div className={`flex flex-col gap-1.5 ${stale ? 'opacity-70' : ''}`}>
-        <pre className="text-[11px] leading-snug whitespace-pre-wrap break-words bg-panel-alt border border-border-subtle p-2 overflow-auto max-h-[160px] lg:max-h-[280px]" aria-label="compiled SQL">
+        <pre className="text-sm leading-snug whitespace-pre-wrap break-words bg-panel-alt border border-border-subtle p-2 overflow-auto max-h-[160px] lg:max-h-[280px]" aria-label="compiled SQL">
           {sql}
         </pre>
-        {params && <p className="text-[10px] tabular text-text-secondary break-words">params: {JSON.stringify(params)}</p>}
+        {params && <p className="text-xs tabular text-text-secondary break-words">params: {JSON.stringify(params)}</p>}
       </div>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] text-text-secondary">{stale ? 'DSL edited — SQL recompiles on RUN' : ''}</span>
+        <span className="text-xs text-text-secondary">{stale ? 'DSL edited — SQL recompiles on RUN' : ''}</span>
         <Button tier="ghost" onClick={() => void copy()}>
           {copied ? 'COPIED ✓' : 'COPY'}
         </Button>

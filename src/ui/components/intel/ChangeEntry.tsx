@@ -16,7 +16,7 @@ export function ChangeEntry({ change }: { change: WatchChange }) {
   const lines = change.diff ? change.diff.replace(/\n$/, '').split('\n') : []
   return (
     <article aria-label={`Change detected ${fmtTs(change.ts)}`} className="flex flex-col gap-2 py-3 border-b border-border-subtle last:border-b-0">
-      <div className="flex flex-wrap items-center gap-2 text-[10px] tabular text-text-secondary">
+      <div className="flex flex-wrap items-center gap-2 text-xs tabular text-text-secondary">
         <span>{fmtTs(change.ts)}</span>
         <span aria-hidden="true">·</span>
         <ClaimAge ts={change.ts} />
@@ -25,7 +25,7 @@ export function ChangeEntry({ change }: { change: WatchChange }) {
       {change.facts.length > 0 && (
         <ul aria-label="detected facts" className="flex flex-col gap-0.5">
           {change.facts.map((f, i) => (
-            <li key={i} className="text-[11px] tabular text-text-primary break-words">
+            <li key={i} className="text-sm tabular text-text-primary break-words">
               {f}
             </li>
           ))}
@@ -42,7 +42,7 @@ export function ChangeEntry({ change }: { change: WatchChange }) {
             </span>
             DIFF ({lines.length} {lines.length === 1 ? 'line' : 'lines'})
           </summary>
-          <pre className="mt-1 text-[11px] leading-snug max-h-[320px] overflow-auto bg-panel-alt border border-border-subtle p-2 whitespace-pre-wrap break-words">
+          <pre className="mt-1 text-sm leading-snug max-h-[320px] overflow-auto bg-panel-alt border border-border-subtle p-2 whitespace-pre-wrap break-words">
             {lines.map((l, i) => {
               const k = diffLineKind(l)
               const body = k === 'ctx' ? l : l.slice(1)

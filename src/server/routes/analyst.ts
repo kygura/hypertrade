@@ -17,6 +17,7 @@ import {
   type ToolSpec,
   type Usage,
 } from "../llm/provider.js";
+import { wireAgentReadTools } from "./agentData.js";
 import { TOOL_SPECS, defaultToolDeps, hasWebSearch, runTool, toolCatalog, type ToolDeps, type ToolRun } from "../llm/tools.js";
 import { SIM_TOOL_SPEC, buildSimSystemPrompt, realSimDeps, runSimTool } from "../llm/sim.js";
 import type { IntentDeps } from "../sim/intent.js";
@@ -296,4 +297,5 @@ export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
     });
 }
 
+wireAgentReadTools();
 export const analystRoutes = createAnalystRoutes();

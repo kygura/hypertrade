@@ -36,16 +36,15 @@ bun run build     # typecheck + vite build
 
 ## Screens
 
-Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is the contract). The top bar has six cells, under the nine-cell ceiling in `docs/design/README.md` §5.2; `docs/CONSOLIDATION.md` PR 4 cuts it to five.
+Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is the contract). The top bar has five cells, under the nine-cell ceiling in `docs/design/README.md` §5.2; each family switches through one `SectionTabs` row.
 
 | Cell | Routes |
 |---|---|
-| COCKPIT | `/` the landing (ranked opportunities, liquidation map, approve/reject, desk kill switch). One sub-tab strip, `TerminalTabs`, spans `/`, `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch`; `/asset/:coin` is the Terminal's per-coin page. |
-| MARKET | One sub-tab strip, `MarketTabs`, with the metrics strip under it: `/markets` (and `/markets/:coin`, chart; links to `/asset/:coin`), `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`. |
+| TRADE | `TerminalTabs`, intel to act: `/terminal` (CHANGES), `/watch`, `/journal`, `/theses`, `/query`, then `/` (FEED, the Cockpit landing: ranked opportunities, liquidation map, approve/reject, desk kill switch), `/order`, `/desk`. `/asset/:coin` is the per-coin page under CHANGES. |
+| MARKET | `MarketTabs`, with the metrics strip under it: `/markets` (and `/markets/:coin`, chart; links to `/asset/:coin`), `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`. |
 | RESEARCH | `LabTabs`: `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id`, and `/branches`, `/branches/:id` |
-| ENGINE | `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` |
-| ANALYST | `/analyst` (ASK and SIMULATE) |
-| DESK | `/desk` |
+| ASK | `/analyst` (ASK and SIMULATE) |
+| ENGINE | `EngineTabs`: `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` |
 
 Themes: `hyperdash` (default), `tradexyz` and `hyperion`, switched from the top bar (`src/ui/themes/README.md`).
 

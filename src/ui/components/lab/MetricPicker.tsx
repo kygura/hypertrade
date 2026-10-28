@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { ErrorBlock, SkeletonRows } from '../state'
+import { AsyncBody, ErrorBlock } from '../state'
 import { metricAvailable, type LabState, type MetricDef } from '../../lib/lab'
 import { ProviderTag } from './common'
 
@@ -204,60 +204,65 @@ function PickerPanel({
           />
         </div>
         <div className="flex-1 min-h-0 overflow-auto">
-          {metrics.loading && !metrics.data ? (
-            <SkeletonRows rows={4} />
-          ) : metrics.error || metrics.offline ? (
-            <ErrorBlock message={metrics.error ?? 'API unreachable'} onRetry={metrics.refetch} />
-          ) : groups.length === 0 ? (
-            <p className="px-3 py-4 text-xs text-text-secondary">no metric matches</p>
-          ) : (
-            groups.map(([key, list]) => {
-              const isCollapsed = collapsed.has(key)
-              return (
-                <div key={key}>
-                  <button
-                    type="button"
-                    aria-expanded={!isCollapsed}
-                    onClick={() =>
-                      setCollapsed((s) => {
-                        const next = new Set(s)
-                        if (next.has(key)) next.delete(key)
-                        else next.add(key)
-                        return next
-                      })
-                    }
-                    className="label w-full flex items-center gap-1.5 px-2 h-[var(--control-md)] bg-panel-alt hover:bg-hover text-left"
-                  >
-                    <span aria-hidden="true">{isCollapsed ? '▸' : '▾'}</span>
-                    {key} · {list.length}
-                  </button>
-                  {!isCollapsed &&
-                    list.map((m) => {
-                      const checked = selected.includes(m.id)
-                      return (
-                        <label
-                          key={m.id}
-                          className={`flex items-center gap-2 px-2 min-h-[var(--row-h)] ${atCap && !checked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-hover'}`}
-                          title={m.description}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={atCap && !checked}
-                            onChange={(e) => toggle(m.id, e.target.checked)}
-                            className="min-h-0"
-                          />
-                          <span className="text-sm text-text-primary truncate">{m.name}</span>
-                          <ProviderTag provider={m.provider} />
-                          {m.units && <span className="text-xs text-text-secondary truncate">{m.units}</span>}
-                          {m.lagDays > 0 && <span className="text-xs text-text-secondary ml-auto">LAG {m.lagDays}D</span>}
-                        </label>
-                      )
-                    })}
-                </div>
+          <AsyncBody
+            {...metrics}
+            rows={4}
+            renderOffline={() => <ErrorBlock message="API unreachable" onRetry={metrics.refetch} />}
+            onRetry={metrics.refetch}
+          >
+            {() =>
+              groups.length === 0 ? (
+                <p className="px-3 py-4 text-xs text-text-secondary">no metric matches</p>
+              ) : (
+                groups.map(([key, list]) => {
+                  const isCollapsed = collapsed.has(key)
+                  return (
+                    <div key={key}>
+                      <button
+                        type="button"
+                        aria-expanded={!isCollapsed}
+                        onClick={() =>
+                          setCollapsed((s) => {
+                            const next = new Set(s)
+                            if (next.has(key)) next.delete(key)
+                            else next.add(key)
+                            return next
+                          })
+                        }
+                        className="label w-full flex items-center gap-1.5 px-2 h-[var(--control-md)] bg-panel-alt hover:bg-hover text-left"
+                      >
+                        <span aria-hidden="true">{isCollapsed ? '▸' : '▾'}</span>
+                        {key} · {list.length}
+                      </button>
+                      {!isCollapsed &&
+                        list.map((m) => {
+                          const checked = selected.includes(m.id)
+                          return (
+                            <label
+                              key={m.id}
+                              className={`flex items-center gap-2 px-2 min-h-[var(--row-h)] ${atCap && !checked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-hover'}`}
+                              title={m.description}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={atCap && !checked}
+                                onChange={(e) => toggle(m.id, e.target.checked)}
+                                className="min-h-0"
+                              />
+                              <span className="text-sm text-text-primary truncate">{m.name}</span>
+                              <ProviderTag provider={m.provider} />
+                              {m.units && <span className="text-xs text-text-secondary truncate">{m.units}</span>}
+                              {m.lagDays > 0 && <span className="text-xs text-text-secondary ml-auto">LAG {m.lagDays}D</span>}
+                            </label>
+                          )
+                        })}
+                    </div>
               )
             })
-          )}
+              )
+            }
+          </AsyncBody>
         </div>
         {hidden > 0 && (
           <p className="px-3 py-1.5 border-t border-border-subtle text-xs text-text-secondary">

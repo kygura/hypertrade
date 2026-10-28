@@ -16,8 +16,8 @@ import { RCell, SideWord, fmtExcursion } from './TradesTable'
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-0.5">
-      <dt className="label text-[10px]">{label}</dt>
-      <dd className="text-[12px] tabular text-text-primary text-right min-w-0 break-words">{children}</dd>
+      <dt className="label text-xs">{label}</dt>
+      <dd className="text-md tabular text-text-primary text-right min-w-0 break-words">{children}</dd>
     </div>
   )
 }
@@ -32,7 +32,7 @@ export function TradeDetail({ trade, onNoteSaved }: { trade: Trade; onNoteSaved:
   return (
     <div className="flex flex-col gap-3 p-3">
       <div className="flex items-center gap-2 min-w-0">
-        <span className="text-[10px] text-text-secondary truncate" title={trade.id}>
+        <span className="text-xs text-text-secondary truncate" title={trade.id}>
           {trade.id}
         </span>
       </div>
@@ -64,12 +64,12 @@ export function TradeDetail({ trade, onNoteSaved }: { trade: Trade; onNoteSaved:
         <Row label="MAE/MFE">{fmtExcursion(trade)}</Row>
       </dl>
       <div className="flex flex-col gap-1">
-        <span className="label text-[10px]">ENTRY STATE</span>
-        <span className="text-[12px] tabular text-text-primary">{entryStateText(trade.entryState)}</span>
+        <span className="label text-xs">ENTRY STATE</span>
+        <span className="text-md tabular text-text-primary">{entryStateText(trade.entryState)}</span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="label text-[10px]">TAG</span>
-        {trade.tag ? <span className="src-tag">{trade.tag}</span> : <span className="text-[12px] text-text-secondary">—</span>}
+        <span className="label text-xs">TAG</span>
+        {trade.tag ? <span className="src-tag">{trade.tag}</span> : <span className="text-md text-text-secondary">—</span>}
       </div>
       <NoteEditor key={trade.id} tradeId={trade.id} note={trade.note} onSaved={onNoteSaved} />
       {trade.noteSummary && <ClaimLine claim={trade.noteSummary} />}

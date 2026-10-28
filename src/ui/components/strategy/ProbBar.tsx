@@ -21,7 +21,7 @@ export function ProbBar({
   return (
     <div className="flex items-center gap-2 min-h-[var(--tap-min)] md:min-h-0" title={hint}>
       <span
-        className={`w-[11ch] md:w-[14ch] flex-shrink-0 truncate text-[11px] ${chosen ? 'text-text-primary' : 'text-text-muted'}`}
+        className={`w-[11ch] md:w-[14ch] flex-shrink-0 truncate text-sm ${chosen ? 'text-text-primary' : 'text-text-muted'}`}
       >
         {chosen ? '▸ ' : '  '}
         {label}
@@ -32,7 +32,7 @@ export function ProbBar({
           style={{ width: `${pct}%` }}
         />
       </span>
-      <span className={`w-[5ch] text-right tabular text-[11px] ${chosen ? 'text-text-primary' : 'text-text-muted'}`}>
+      <span className={`w-[5ch] text-right tabular text-sm ${chosen ? 'text-text-primary' : 'text-text-muted'}`}>
         {fmtProb(p)}
       </span>
     </div>

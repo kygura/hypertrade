@@ -83,8 +83,8 @@ under its own selector (`:root[data-theme='<id>'] .btn--neutral { … }`):
 · `.state-title`
 · `.dt` (DataTable `<table>`) · `.metric` `.metric-label` `.metric-value` ·
 `.app-topbar` `.app-wordmark` `.app-wordmark-dot` `.app-nav` `.app-nav-link`
-(`[aria-current=page]` when active) `.app-tabbar` `.app-tab` · `.subtabs`
-`.subtab` · `.tab-active` · `.label` · `.src-tag` · `.seg` `.seg--{sm,md}`
+(`[aria-current=page]` when active) `.app-tabbar` `.app-tab`
+· `.tab-active` · `.label` · `.src-tag` · `.seg` `.seg--{sm,md}`
 `.seg-item` (`[aria-checked=true]`, `[data-tone=green|red]`) · `.theme-switcher`.
 
 Keep the Hyperion rules that are about meaning, not looks: color is never the

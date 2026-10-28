@@ -1,6 +1,6 @@
 import type { Brief } from '../../../shared/intel'
 import { Panel, PanelBody, PanelHeader } from '../Panel'
-import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows, StaleBanner } from '../state'
+import { AsyncBody, EmptyBlock, StaleBanner } from '../state'
 import { ClaimAge, claimAgeText } from './ClaimAge'
 import { ClaimList } from './ClaimList'
 import { DiffTable } from './DiffTable'
@@ -52,15 +52,9 @@ export function WhatChangedPanel({
       </PanelHeader>
       {snapTs && <StaleBanner generatedAt={snapTs} thresholdHours={2} noun="snapshots" />}
       <PanelBody>
-        {offline && !brief ? (
-          <OfflineBlock message={offline} onRetry={onRetry} />
-        ) : error && !brief ? (
-          <ErrorBlock message={error} onRetry={onRetry} />
-        ) : !brief ? (
-          loading ? <SkeletonRows rows={4} /> : <EmptyBlock label="no brief yet" />
-        ) : (
+        <AsyncBody loading={loading} data={brief} error={error ?? null} offline={offline} rows={4} empty={{ label: 'no brief yet' }} onRetry={onRetry}>
+          {(brief) => (
           <div className={`flex flex-col ${superseded ? 'opacity-70' : ''}`}>
-            {(error || offline) && <ErrorBlock message={error ?? offline ?? ''} onRetry={onRetry} />}
             {brief.silent ? (
               <div className="flex flex-col items-center pb-6">
                 <EmptyBlock
@@ -71,13 +65,13 @@ export function WhatChangedPanel({
                   }
                 />
                 {brief.diffedCount != null && (
-                  <span className="text-[10px] text-text-secondary -mt-4">{brief.diffedCount} assets diffed · held ∪ watched</span>
+                  <span className="text-xs text-text-secondary -mt-4">{brief.diffedCount} assets diffed · held ∪ watched</span>
                 )}
               </div>
             ) : (
               <>
                 {reason ? (
-                  <p className="flex items-center gap-2 px-3 py-2 text-[11px] text-text-muted">
+                  <p className="flex items-center gap-2 px-3 py-2 text-sm text-text-muted">
                     <span aria-hidden="true" className="inline-block w-1.5 h-1.5 bg-amber flex-shrink-0" />
                     no narration — {reason}
                   </p>
@@ -94,7 +88,8 @@ export function WhatChangedPanel({
               </>
             )}
           </div>
-        )}
+          )}
+        </AsyncBody>
       </PanelBody>
     </Panel>
   )

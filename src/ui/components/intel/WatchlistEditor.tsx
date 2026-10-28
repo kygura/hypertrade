@@ -59,16 +59,16 @@ export function WatchlistEditor({
         {fallback && (
           <>
             <Badge tone="gray">FALLBACK</Badge>
-            <span className="text-[10px] text-text-secondary">empty — using DESK_WATCHLIST</span>
+            <span className="text-xs text-text-secondary">empty — using DESK_WATCHLIST</span>
           </>
         )}
       </div>
       <ul className="flex flex-wrap items-center gap-1.5">
         {items.map((i) => (
-          <li key={i.asset} className="inline-flex items-center gap-1 border border-border-subtle pl-1.5 text-[11px] text-text-primary">
+          <li key={i.asset} className="inline-flex items-center gap-1 border border-border-subtle pl-1.5 text-sm text-text-primary">
             <span className="py-0.5">{i.asset}</span>
             {i.tags.map((t) => (
-              <span key={t} className="text-[9px] text-text-secondary">
+              <span key={t} className="text-2xs text-text-secondary">
                 [{t}]
               </span>
             ))}

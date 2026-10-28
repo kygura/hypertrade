@@ -28,7 +28,7 @@ export function ParamForm({
   disabled?: boolean
 }) {
   if (specs.length === 0) {
-    return <span className="text-[11px] uppercase tracking-wider text-text-secondary">no parameters</span>
+    return <span className="text-sm uppercase tracking-wider text-text-secondary">no parameters</span>
   }
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -94,16 +94,16 @@ export function ParamForm({
                 className="self-start"
               />
             )}
-            {spec.description && <span className="text-[10px] text-text-secondary">{spec.description}</span>}
+            {spec.description && <span className="text-xs text-text-secondary">{spec.description}</span>}
             {(spec.min != null || spec.max != null || spec.step != null) && (
-              <span className="text-[10px] text-text-secondary tabular">
+              <span className="text-xs text-text-secondary tabular">
                 {spec.min != null && `min ${spec.min}`}
                 {spec.max != null && ` · max ${spec.max}`}
                 {spec.step != null && ` · step ${spec.step}`}
               </span>
             )}
             {err && (
-              <span role="alert" className="text-[10px] text-red-text">
+              <span role="alert" className="text-xs text-red-text">
                 {err}
               </span>
             )}

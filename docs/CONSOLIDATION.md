@@ -1,6 +1,9 @@
 # Consolidation — one front, fewer cells, one way to do each thing
 
-Status: four PRs. PR 1 to PR 3 done; PR 4 next. This file is the contract for the
+Status: Done: all four PRs shipped, including the type-scale codemod and its grep check
+(`bun run check:type-scale`; the scale classes set font-size only). Deferred, not done:
+the optional `runToolLoop` extraction (the analyst and desk loops stay separate), and a
+human visual pass on the non-default themes. This file is the contract for the
 consolidation work; `docs/SPEC.md` and `docs/design/README.md` win on data, API shape
 and visuals, and each PR updates them in the same change.
 
@@ -150,7 +153,9 @@ Each moved function keeps or gains a table-driven test.
 - Agents: the analyst and desk agents get read tools for opportunities, alerts, the
   latest brief, exposure and theses, through an injected deps interface (no import cycle).
 - Optional: one `runToolLoop` for analyst and desk, with parity tests on both event
-  streams.
+  streams. Not done: the two loops (`routes/analyst.ts`, `desk/agents.ts`) stay separate.
+- Type scale: done (`scripts/check-type-scale.sh` in the done gate); only the visual pass on
+  the non-default themes is left to a human.
 - Docs: README §5 final rule and TRADE family brief; SPEC Desk/Platform note that
   Cockpit APPROVE, Desk APPROVE and `/order` share one preview-and-submit path; a SPEC
   glossary for flow flag, scanner setup, tripwire, desk trigger and Lab rule.

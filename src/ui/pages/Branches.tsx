@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Button, DataTable, EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows, type Column } from '../components'
+import { AsyncBody, Button, DataTable, EmptyBlock, SkeletonRows, type Column } from '../components'
 import { api, useApi } from '../lib/api'
 import type { Branch } from '../components/branches/types'
 import { allocationSummary, defaultBranchConfig, maxDdClass, rebalanceLabel, signClass } from '../components/branches/format'
@@ -34,7 +34,7 @@ export function Branches() {
       render: (b) => (
         <div className="flex flex-col gap-0.5 py-1">
           <span className="text-text-primary">{b.name}</span>
-          <span className="text-[10px] text-text-secondary">
+          <span className="text-xs text-text-secondary">
             {allocationSummary(b.config.allocations, b.config.dca)} · {rebalanceLabel(b.config.rebalance)}
           </span>
         </div>
@@ -101,24 +101,30 @@ export function Branches() {
           </Button>
         </div>
         <div className="panel-body">
-          {loading && (
-            <table className="w-full">
-              <tbody>
-                <SkeletonRows rows={4} colSpan={columns.length} />
-              </tbody>
-            </table>
-          )}
-          {!loading && offline && <OfflineBlock onRetry={refetch} />}
-          {!loading && !offline && error && <ErrorBlock message={error} onRetry={refetch} />}
-          {!loading && !offline && !error && (
-            <DataTable
-              columns={columns}
-              rows={data ?? []}
-              rowKey={(b) => b.id}
-              onRowClick={(b) => navigate(`/branches/${b.id}`)}
-              emptyLabel={<EmptyBlock label="no branches yet" action={{ label: 'NEW BRANCH', onClick: createBranch }} />}
-            />
-          )}
+          <AsyncBody
+            loading={loading}
+            data={data}
+            error={error}
+            offline={offline}
+            skeleton={
+              <table className="w-full">
+                <tbody>
+                  <SkeletonRows rows={4} colSpan={columns.length} />
+                </tbody>
+              </table>
+            }
+            onRetry={refetch}
+          >
+            {(rows) => (
+              <DataTable
+                columns={columns}
+                rows={rows}
+                rowKey={(b) => b.id}
+                onRowClick={(b) => navigate(`/branches/${b.id}`)}
+                emptyLabel={<EmptyBlock label="no branches yet" action={{ label: 'NEW BRANCH', onClick: createBranch }} />}
+              />
+            )}
+          </AsyncBody>
         </div>
       </div>
     </div>

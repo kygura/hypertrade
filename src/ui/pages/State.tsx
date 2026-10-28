@@ -53,7 +53,7 @@ export function State() {
             <Panel>
               <StaleBanner generatedAt={briefing.generated_at} thresholdHours={24} noun="briefing" />
               <PanelHeader title="MARKETSTATE">
-                <span className="flex items-center gap-1.5 text-[10px] text-text-secondary tabular">
+                <span className="flex items-center gap-1.5 text-xs text-text-secondary tabular">
                   <AgeStamp generatedAt={briefing.generated_at} thresholdHours={24} />
                   <span>· {fullStamp(briefing.generated_at)}</span>
                 </span>
@@ -67,7 +67,7 @@ export function State() {
             </Panel>
 
             {isHistorical && (
-              <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] bg-info-bg text-info">
+              <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm bg-info-bg text-info">
                 <span>
                   viewing {viewDate} — not the latest briefing
                 </span>
@@ -78,8 +78,8 @@ export function State() {
             )}
 
             <div>
-              <h1 className="text-[22px] leading-snug text-text-primary">{briefing.headline}</h1>
-              <p className="mt-2 text-[13px] text-text-muted">{briefing.tldr}</p>
+              <h1 className="text-xl leading-snug text-text-primary">{briefing.headline}</h1>
+              <p className="mt-2 text-base text-text-muted">{briefing.tldr}</p>
             </div>
 
             <ThesisBlock thesis={briefing.thesis} />
@@ -94,7 +94,7 @@ export function State() {
               <PanelHeader title="RISKS" />
               <PanelBody className="p-3 flex flex-col gap-1.5">
                 {briefing.risks.map((r, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[13px] text-text-muted">
+                  <div key={i} className="flex items-start gap-2 text-base text-text-muted">
                     <span className="mt-1.5 w-1.5 h-1.5 bg-red flex-shrink-0" />
                     <span>{r}</span>
                   </div>

@@ -29,16 +29,16 @@ export function ScoreRubric({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-baseline gap-2 text-[11px]">
+      <div className="flex items-baseline gap-2 text-sm">
         <span className="label">SCORE</span>
-        <span className="tabular text-text-primary text-[13px]">{fmtProb(score)}</span>
+        <span className="tabular text-text-primary text-base">{fmtProb(score)}</span>
         <span className="text-text-secondary">/ {span}</span>
         <span className="text-text-muted">≈ {labelFor(nearest)}</span>
       </div>
 
       <div className="relative pt-3 pb-5">
         <span
-          className="absolute top-0 text-[10px] leading-none text-info -translate-x-1/2"
+          className="absolute top-0 text-xs leading-none text-info -translate-x-1/2"
           style={{ left: `${pos}%` }}
           aria-hidden="true"
         >
@@ -58,7 +58,7 @@ export function ScoreRubric({
           {keys.map((k, i) => (
             <span
               key={k}
-              className={`absolute top-1 text-[10px] uppercase tracking-wider whitespace-nowrap ${
+              className={`absolute top-1 text-xs uppercase tracking-wider whitespace-nowrap ${
                 i === nearest ? 'text-text-primary' : 'text-text-secondary'
               } ${i === 0 ? '' : i === n - 1 ? '-translate-x-full' : '-translate-x-1/2'}`}
               style={{ left: `${(i / span) * 100}%` }}

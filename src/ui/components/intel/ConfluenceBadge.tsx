@@ -9,7 +9,7 @@ export function ConfluenceBadge({ factor, asset }: { factor: number | undefined;
   if (!text || factor == null) return null
   return (
     <span title={confluenceTitle(factor, asset)}>
-      <Badge tone="gray" className="!text-[9px] !px-1 !py-0 tabular">
+      <Badge tone="gray" className="!text-2xs !px-1 !py-0 tabular">
         {text}
       </Badge>
     </span>

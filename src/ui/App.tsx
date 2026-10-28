@@ -16,6 +16,7 @@ import { Governor } from './pages/Governor'
 import { Analyst } from './pages/Analyst'
 import { Desk } from './pages/Desk'
 import { SkeletonRows } from './components/state'
+import { TerminalTabs } from './components/intel/TerminalTabs'
 import { MarketTabs } from './components/market/MarketTabs'
 import { MetricsStrip } from './components/market/MetricsStrip'
 import { LabTabs } from './components/lab/LabTabs'
@@ -63,6 +64,18 @@ function Shell({ children }: { children: React.ReactNode }) {
     <AppShell>
       <ErrorBoundary key={pathname}>{children}</ErrorBoundary>
     </AppShell>
+  )
+}
+
+// TRADE family page that does not render its own tab row (Desk).
+function TradeLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Shell>
+      <PageContainer>
+        <TerminalTabs />
+      </PageContainer>
+      {children}
+    </Shell>
   )
 }
 
@@ -226,9 +239,9 @@ export default function App() {
         <Route
           path="/desk"
           element={
-            <Shell>
+            <TradeLayout>
               <Desk />
-            </Shell>
+            </TradeLayout>
           }
         />
         <Route path="/lab" element={<Navigate to="/lab/search" replace />} />

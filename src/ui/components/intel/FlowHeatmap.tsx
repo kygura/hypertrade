@@ -49,7 +49,7 @@ export function HeatCell({
         onOpen()
       }}
       style={{ background: BUCKET_BG[b], height: 'var(--tap-min)' }}
-      className={`min-w-[44px] px-1 text-center text-[11px] tabular cursor-pointer ${b === 'zero' ? 'text-text-secondary' : 'text-text-primary'} ${
+      className={`min-w-[44px] px-1 text-center text-sm tabular cursor-pointer ${b === 'zero' ? 'text-text-secondary' : 'text-text-primary'} ${
         divider ? 'border-l border-border' : ''
       } ${focused ? 'outline outline-1 outline-text-primary -outline-offset-1' : ''}`}
     >
@@ -69,7 +69,7 @@ function FlagsCell({ flags }: { flags: FlowFlag[] }) {
             {flagWord(f).toLowerCase()}
           </Badge>
         ))}
-        {flags.length > 2 && <span className="text-[10px] text-text-secondary">+{flags.length - 2}</span>}
+        {flags.length > 2 && <span className="text-xs text-text-secondary">+{flags.length - 2}</span>}
       </span>
     </td>
   )
@@ -97,7 +97,7 @@ export function FlowHeatmap({ data, window }: { data: HeatmapResponse; window: H
 
   return (
     <div className="table-scroll max-h-[70vh]">
-      <table className="w-full text-[11px] tabular border-separate [border-spacing:1px] bg-body">
+      <table className="w-full text-sm tabular border-separate [border-spacing:1px] bg-body">
         <thead className="sticky top-0 z-[2] bg-panel">
           <tr>
             <th className="sticky left-0 z-[3] bg-panel" />
@@ -112,7 +112,7 @@ export function FlowHeatmap({ data, window }: { data: HeatmapResponse; window: H
           <tr>
             <th className="sticky left-0 z-[3] bg-panel label text-left px-2 py-1">ASSET</th>
             {HEAT_COLUMNS.map((c, i) => (
-              <th key={c.metric} title={c.title} className={`text-[9px] uppercase tracking-wider text-text-secondary font-normal px-1 py-1 ${i === flowStart ? 'border-l border-border' : ''}`}>
+              <th key={c.metric} title={c.title} className={`text-2xs uppercase tracking-wider text-text-secondary font-normal px-1 py-1 ${i === flowStart ? 'border-l border-border' : ''}`}>
                 {c.header}
               </th>
             ))}
@@ -136,8 +136,8 @@ export function FlowHeatmap({ data, window }: { data: HeatmapResponse; window: H
               >
                 <td className="sticky left-0 z-[1] bg-panel px-2 whitespace-nowrap hover:bg-hover">
                   <span className="inline-flex items-baseline gap-1.5">
-                    <span className="text-[12px] text-text-primary">{r.asset}</span>
-                    <span className={`text-[9px] uppercase tracking-wider ${r.held ? 'text-text-primary' : 'text-text-secondary'}`}>{r.held ? 'HELD' : 'WATCH'}</span>
+                    <span className="text-md text-text-primary">{r.asset}</span>
+                    <span className={`text-2xs uppercase tracking-wider ${r.held ? 'text-text-primary' : 'text-text-secondary'}`}>{r.held ? 'HELD' : 'WATCH'}</span>
                   </span>
                 </td>
                 {HEAT_COLUMNS.map((c, i) => (

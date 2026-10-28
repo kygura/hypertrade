@@ -36,7 +36,7 @@ export function SourceLink({ source }: { source: SourceRef }) {
       </Link>
     ) : (
       <a href={link.href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5">
-        {tag} <span aria-hidden="true" className="text-[9px] text-text-secondary">↗</span>
+        {tag} <span aria-hidden="true" className="text-2xs text-text-secondary">↗</span>
         <span className="sr-only"> (opens in a new tab)</span>
       </a>
     )

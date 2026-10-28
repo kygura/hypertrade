@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { Button, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelBody, PanelHeader, SkeletonRows } from '../../components'
+import { AsyncBody, Button, EmptyBlock, Panel, PanelBody, PanelHeader, SkeletonRows } from '../../components'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { WatchesTable } from '../../components/intel/WatchesTable'
 import { WatchForm } from '../../components/intel/WatchForm'
@@ -48,18 +48,15 @@ export function Watch() {
           <Panel>
             <PanelHeader title={watches.data ? `WATCHES · ${list.length}` : 'WATCHES'} />
             <PanelBody className="p-0">
-              {watches.loading && !watches.data ? (
-                <SkeletonRows rows={4} />
-              ) : watches.offline && !watches.data ? (
-                <OfflineBlock message={watches.offline} onRetry={watches.refetch} />
-              ) : watches.error && !watches.data ? (
-                <ErrorBlock message={watches.error} onRetry={watches.refetch} />
-              ) : list.length === 0 && !adding ? (
-                <EmptyBlock label="nothing watched — add a doc page, contract or wallet" action={{ label: 'ADD WATCH', onClick: () => setAdding(true) }} />
-              ) : (
-                <WatchesTable watches={list} selectedId={selectedId} onSelect={(id) => select(id, isMobile())} />
-              )}
-              {watches.data && watches.error && <ErrorBlock message={watches.error} onRetry={watches.refetch} />}
+              <AsyncBody
+                {...watches}
+                rows={4}
+                empty={{ label: 'nothing watched — add a doc page, contract or wallet', action: { label: 'ADD WATCH', onClick: () => setAdding(true) } }}
+                isEmpty={() => list.length === 0 && !adding}
+                onRetry={watches.refetch}
+              >
+                {() => <WatchesTable watches={list} selectedId={selectedId} onSelect={(id) => select(id, isMobile())} />}
+              </AsyncBody>
               {adding ? (
                 <WatchForm
                   onCancel={closeForm}
