@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-10-28T18:56:45.254Z",
-  "read": "The board is mostly range-bound with BTC in a mild risk-off regime; the largest imbalances sit in the weak tails (WLD, LIT) and in HL-local funding premiums.",
+  "generated_at": "2026-10-28T22:56:47.968Z",
+  "read": "The board is range-bound under a mild risk-off BTC regime; the cleanest imbalances are swept 1d/4h lows on VVV and AAVE with funding at the neutral floor, and kPEPE is stretched on the upside.",
   "watchlist": [
     {
-      "asset": "WLD",
-      "kind": "shorts_pressing",
-      "skew": "up",
+      "asset": "kPEPE",
+      "kind": "crowded_longs",
+      "skew": "down",
       "timeframe": "4h",
-      "note": "WLD is -20.01 vs BTC over 7d with a 1d rangePos of 0.06 and 1.47 ATR under the 1d SMA20; HL funding reads 10.95 against -0.11 on CEX, so risk skews to a squeeze if the 4h stops falling.",
-      "arms": "a 4h close above the 4h SMA20",
+      "note": "kPEPE is +11 vs BTC over 24h, 3.43 ATR over the 4h SMA20 with OI up 11.11% over 24h; funding matches CEX, so base case is a fade only after a sweep of the high.",
+      "arms": "a 4h sweep of the high with a close back under the 4h range high",
       "evidence": [
-        "WLD.rs.vsBtc7dPct",
-        "WLD.tf.1d.rangePos",
-        "WLD.pos.fundingVsCexAnnPct"
+        "kPEPE.rs.vsBtc24hPct",
+        "kPEPE.tf.4h.vsSma20Atr",
+        "kPEPE.pos.oiChg24hPct"
       ]
     },
     {
@@ -20,29 +20,62 @@
       "kind": "relative_weakness",
       "skew": "down",
       "timeframe": "1d",
-      "note": "LIT trends down on 4h and 1d, is -10.92 vs BTC over 7d, and HL funding is 21.45 points over CEX at 10.95 versus -10.5, so the crowding is local to HL; we lean toward continuation, low-confidence.",
+      "note": "LIT trends down on 4h and 1d, is -21.05 vs BTC over 7d and HL funding is 49.74 points over CEX; the 4h just swept its low, so a short needs a bounce first. We lean continuation, low-confidence.",
       "arms": "a 4h close back under the 4h SMA20 after a bounce, with a level in the menu at least 2R away",
       "evidence": [
         "LIT.rs.vsBtc7dPct",
         "LIT.pos.fundingVsCexAnnPct",
-        "LIT.tf.1d.trend"
+        "LIT.tf.4h.sweep"
       ]
     },
     {
-      "asset": "kPEPE",
-      "kind": "crowded_longs",
-      "skew": "down",
+      "asset": "WLD",
+      "kind": "shorts_pressing",
+      "skew": "up",
       "timeframe": "4h",
-      "note": "kPEPE is +9.71 vs BTC over 24h and 2.5 ATR over the 4h SMA20 with its 7d funding percentile at 98, though funding matches CEX at 0 points; the base case is a fade only if the 4h sweeps its high.",
-      "arms": "a 4h sweep of the high with a close back under the 4h range high",
+      "note": "WLD was stopped out and sits at 1d rangePos 0.08 after a 1d low sweep, -19.43 vs BTC over 7d; OI 24h is -0.5%, 0.5 short of the failed-breakout threshold.",
+      "arms": "OI 24h at or above 0 with the 1d sweep still in place",
       "evidence": [
-        "kPEPE.rs.vsBtc24hPct",
-        "kPEPE.tf.4h.vsSma20Atr",
-        "kPEPE.pos.fundingPctile7d"
+        "WLD.tf.1d.rangePos",
+        "WLD.rs.vsBtc7dPct",
+        "WLD.pos.oiChg24hPct"
+      ]
+    },
+    {
+      "asset": "XMR",
+      "kind": "other",
+      "skew": "up",
+      "timeframe": "1d",
+      "note": "XMR is in a 1w and 1d uptrend, 0.85 ATR from the 1d SMA20 against the 0.75 threshold, but 24h funding is 39.78% annualised, the reason last run's long was cancelled; risk skews to a crowded-long pullback.",
+      "arms": "mark within 0.75 ATR of the 1d SMA20 with 24h funding back near neutral",
+      "evidence": [
+        "XMR.tf.1d.vsSma20Atr",
+        "XMR.pos.funding24hAnnPct",
+        "XMR.pos.oiChg24hPct"
       ]
     }
   ],
   "hits": [
+    {
+      "asset": "LIT",
+      "setup_id": "failed_breakout",
+      "direction": "long"
+    },
+    {
+      "asset": "VVV",
+      "setup_id": "failed_breakout",
+      "direction": "long"
+    },
+    {
+      "asset": "ZRO",
+      "setup_id": "failed_breakout",
+      "direction": "long"
+    },
+    {
+      "asset": "AAVE",
+      "setup_id": "failed_breakout",
+      "direction": "long"
+    },
     {
       "asset": "DOGE",
       "setup_id": "htf_pullback",
@@ -54,12 +87,39 @@
       "asset": "XMR",
       "setup_id": "htf_pullback",
       "direction": "long",
-      "gap": 0.04
+      "gap": 0.1
+    },
+    {
+      "asset": "WLD",
+      "setup_id": "failed_breakout",
+      "direction": "long",
+      "gap": 0.5
+    },
+    {
+      "asset": "CHIP",
+      "setup_id": "post_liquidation_reclaim",
+      "direction": "long",
+      "gap": 0.51
     }
   ],
-  "new_setups": [],
+  "new_setups": [
+    "VVV-long-20261028-1",
+    "AAVE-long-20261028-1"
+  ],
   "rejected": [],
   "passes": [
+    {
+      "asset": "LIT",
+      "template": "failed_breakout",
+      "direction": "long",
+      "reason": "relative weakness of -21.05 vs BTC over 7d and a 1d downtrend; the sweep is a continuation, not a reclaim, and no 2R level is within reach"
+    },
+    {
+      "asset": "ZRO",
+      "template": "failed_breakout",
+      "direction": "long",
+      "reason": "at most 2 new per run; 1d volRatio 0.32 shows a thin sweep and the 1d ATR ratio is compressed at 0.64"
+    },
     {
       "asset": "DOGE",
       "template": "htf_pullback",
@@ -68,5 +128,5 @@
     }
   ],
   "unanswered": [],
-  "brief": "Delta since the last run: XMR-long was cancelled after HL funding moved to 43.83, which broke its neutral-funding premise. Open book is ZEC long, ENA short and DOGE short, all triggered, none closed. The one tripwire hit (DOGE htf_pullback short) is the setup already open, so no new plans this run. Watchlist leans on WLD and LIT weakness and kPEPE crowding. Risk skews to a BTC move through the cost-basis levels; hl-cycles data is stale (13.6 h) and OI history is only 4 snapshots, so OI changes are null."
+  "brief": "Delta since the 18:56 run: no open setup closed; ZEC long, ENA short and DOGE short remain triggered. WLD long was stopped at -1R earlier today, and XMR long was cancelled last run when funding crowded. New this run: two low-conviction failed-breakout longs, VVV (4h sweep of the low) and AAVE (1d sweep of the low), both with funding at the neutral floor. Risk skews to a BTC break of the cost-basis levels, which would invalidate both; hl-cycles data is stale (17.6 h) and 7d OI changes are null."
 }
