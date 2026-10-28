@@ -1,83 +1,87 @@
 {
-  "generated_at": "2026-10-28T06:58:59.847Z",
-  "read": "The board leans mildly long on a broad 24h bounce into FOMC, but 1d structure on ETH and SOL is still down; the largest imbalance sits in DOGE, a 1d and 1w downtrend bouncing 2.1 ATR over its 4h SMA20.",
+  "generated_at": "2026-10-28T10:58:08.795Z",
+  "read": "Majors sit in ranges with neutral funding at 10.95, so the lean is in the alts: WLD has shorts paying at -16.06 after a 7d move of -25.1, and kPEPE is stretched at +15.18 over 24h.",
   "watchlist": [
     {
       "asset": "WLD",
-      "kind": "long_liquidation",
-      "skew": "up",
-      "timeframe": "1d",
-      "note": "-26.5% over 7d, mark at 0.06 of the 1d range after a 1d low sweep, funding -10.16% annualised with a 7d percentile of 19",
-      "arms": "a 4h close back above the 4h SMA20",
-      "evidence": [
-        "WLD.pos.ret7dPct",
-        "WLD.tf.1d.rangePos",
-        "WLD.pos.fundingAnnPct"
-      ]
-    },
-    {
-      "asset": "AAVE",
-      "kind": "long_liquidation",
-      "skew": "up",
-      "timeframe": "1d",
-      "note": "1d low sweep, 2 ATR under the 1d SMA20 and -13.02% over 7d; HL funding 11.79 points over Binance/Bybit, so a bounce risks being sold by HL longs",
-      "arms": "a 1d close back above the 1d range low",
-      "evidence": [
-        "AAVE.tf.1d.sweep",
-        "AAVE.tf.1d.vsSma20Atr",
-        "AAVE.pos.ret7dPct"
-      ]
-    },
-    {
-      "asset": "HYPE",
-      "kind": "relative_strength",
+      "kind": "shorts_pressing",
       "skew": "up",
       "timeframe": "4h",
-      "note": "+4.52% 24h and +2.33 vs BTC over 7d, 4h high sweep at 2 ATR over the 4h SMA20; app OI z30 2.39 while 1d rangePos is 0.38",
-      "arms": "a 1d close above the 1d SMA20",
+      "note": "Funding -16.06 (7d percentile 13), -9.67 under Binance/Bybit, OI +2.08 over 4h while price is flat at 0.05 over 4h; 1d swept its low after -25.1 over 7d. Shorts pressing into a low, so risk skews to a squeeze if price stops falling.",
+      "arms": "a 4h close above the 4h SMA20",
       "evidence": [
-        "HYPE.tf.4h.sweep",
-        "HYPE.rs.vsBtc7dPct",
-        "HYPE.tf.1d.rangePos"
+        "WLD.pos.fundingAnnPct",
+        "WLD.pos.fundingVsCexAnnPct",
+        "WLD.pos.oiChg4hPct",
+        "WLD.tf.1d.sweep"
+      ]
+    },
+    {
+      "asset": "kPEPE",
+      "kind": "crowded_longs",
+      "skew": "down",
+      "timeframe": "4h",
+      "note": "Up 15.18 over 24h and 13.01 vs BTC, 3.61 ATR over the 4h SMA20, OI +6.57 over 4h; HL funding is 5.98 under Binance/Bybit so the crowding is not HL-local. Base case is a mean-reversion risk, low-confidence.",
+      "arms": "a 4h sweep of the high with a close back under the 4h range high",
+      "evidence": [
+        "kPEPE.tf.4h.vsSma20Atr",
+        "kPEPE.pos.oiChg4hPct",
+        "kPEPE.pos.ret24hPct",
+        "kPEPE.pos.fundingVsCexAnnPct"
       ]
     },
     {
       "asset": "XMR",
-      "kind": "relative_strength",
-      "skew": "up",
+      "kind": "crowded_longs",
+      "skew": "down",
       "timeframe": "1d",
-      "note": "Funding reset to neutral from last run's crowded reading; +8.56 vs BTC over 7d and 1w high sweep, but 1.09 ATR over the 1d SMA20 keeps the htf_pullback long a near-miss",
-      "arms": "mark within 0.75 ATR of the 1d SMA20 with funding under 25%",
+      "note": "HL funding 31.47 (24h 49.76), 19.08 over Binance/Bybit, funding z 20.52, 4h and 1w swept highs; the premise that cancelled the long setup now leans the other way, risk skews to a local-crowding fade.",
+      "arms": "a 4h close back under the 4h SMA20 after the swept high",
       "evidence": [
-        "XMR.rs.vsBtc7dPct",
-        "XMR.tf.1w.sweep",
-        "XMR.tf.1d.vsSma20Atr"
+        "XMR.pos.fundingAnnPct",
+        "XMR.pos.fundingVsCexAnnPct",
+        "XMR.xs.fundingZ",
+        "XMR.tf.4h.sweep"
       ]
     },
     {
       "asset": "VVV",
       "kind": "venue_divergence",
       "skew": "down",
-      "timeframe": "1d",
-      "note": "HL funding 33.56 points over Binance/Bybit with a 7d percentile of 91, -5.99% over 7d and -1.91% 24h",
+      "timeframe": "4h",
+      "note": "HL funding 9.73 over Binance/Bybit, OI +3.39 over 4h while price is -2.63 over 4h, 4h swept its low; we lean to continuation lower if the low is not reclaimed.",
       "arms": "a 4h close back under the 4h range low",
       "evidence": [
         "VVV.pos.fundingVsCexAnnPct",
-        "VVV.pos.fundingPctile7d",
-        "VVV.pos.ret7dPct"
+        "VVV.pos.oiChg4hPct",
+        "VVV.pos.ret4hPct",
+        "VVV.tf.4h.sweep"
       ]
     },
     {
-      "asset": "GRASS",
+      "asset": "HYPE",
       "kind": "relative_strength",
-      "skew": "either",
-      "timeframe": "4h",
-      "note": "+16.87% over 7d and +10.11% 24h, 4h high sweep at 1.27 ATR over the 4h SMA20; funding neutral so not crowded yet",
-      "arms": "a 4h close holding above the 4h SMA20",
+      "skew": "up",
+      "timeframe": "1d",
+      "note": "+2.26 vs BTC over 7d, +5.08 over 24h, 1w uptrend, 4h at 0.99 of its range and 2.4 ATR over the 4h SMA20; extended, so we wait for a pullback.",
+      "arms": "mark within 0.75 ATR of the 1d SMA20 with funding under 25%",
       "evidence": [
-        "GRASS.pos.ret7dPct",
-        "GRASS.tf.4h.sweep",
-        "GRASS.rs.vsBtc7dPct"
+        "HYPE.rs.vsBtc7dPct",
+        "HYPE.tf.4h.vsSma20Atr",
+        "HYPE.tf.1w.trend"
+      ]
+    },
+    {
+      "asset": "NEAR",
+      "kind": "relative_weakness",
+      "skew": "down",
+      "timeframe": "1d",
+      "note": "-9.84 over 7d and -7.9 vs BTC with a bounce of 5.27 over 24h and OI +2.61 over 4h into a 1d SMA20 that sits above the mark; low-confidence.",
+      "arms": "a 4h close back under the 4h SMA20",
+      "evidence": [
+        "NEAR.pos.ret7dPct",
+        "NEAR.rs.vsBtc7dPct",
+        "NEAR.pos.oiChg4hPct"
       ]
     }
   ],
@@ -88,19 +92,19 @@
       "direction": "short"
     }
   ],
-  "near": [
-    {
-      "asset": "XMR",
-      "setup_id": "htf_pullback",
-      "direction": "long",
-      "gap": 0.34
-    }
-  ],
+  "near": [],
   "new_setups": [
-    "DOGE-short-20261028-1"
+    "WLD-long-20261028-1"
   ],
   "rejected": [],
-  "passes": [],
+  "passes": [
+    {
+      "asset": "DOGE",
+      "template": "htf_pullback",
+      "direction": "short",
+      "reason": "already open as DOGE-short-20261028-1, triggered at 06:00 UTC"
+    }
+  ],
   "unanswered": [],
-  "brief": "Delta: a broad 24h bounce (BTC +1.52%, ETH +2.07%, HYPE +4.86%, ZEC +7.21%) while 7d returns stay negative for BTC, ETH and SOL. Funding is back at the neutral 10.95 on most markets, so XMR's crowded-long premise from last run is gone (its setup closed at +1.04R). HL total OI is up (z30 2.17) into FOMC at 18:00 UTC, so the base case is a sharp two-way reaction. New: DOGE htf_pullback short (low conviction) from the one tripwire hit. Open: ZEC long triggered, ENA short triggered, both premises intact. Watch WLD, AAVE reclaim setups and VVV (HL funding 33.56 points over CEX). Wrong if DOGE holds above its 1d SMA20. Gaps: HL 429 on AAVE funding, FARTCOIN funding, LINK/INJ/ARB candles; OI changes are null (2 snapshots)."
+  "brief": "Delta: DOGE's htf_pullback short is still the only tripwire hit and is already open. ZEC, ENA and DOGE stay triggered; none has hit a stop or target. New: WLD shorts are paying (funding -16.06) with OI up on flat price after a 1d low sweep, written up as a low-conviction long. kPEPE (+15.18 over 24h) and XMR (HL funding 19.08 over CEX) are the crowding fades to watch. FOMC at 18:00 UTC today, so we lean to caution on 4h triggers into it. hl-cycles data is stale (5.6 h); regime reads mild risk-off. What would prove the WLD read wrong: a hold under the swept 1d low."
 }
