@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-27T22:56:27.487Z",
+  "updated_at": "2026-10-28T06:58:59.847Z",
   "open": [
     {
       "id": "ZEC-long-20261027-1",
@@ -30,12 +30,12 @@
         "ZEC.pos.fundingVsCexAnnPct",
         "ZEC.levels.4h.high20"
       ],
-      "status": "watching",
-      "status_note": null,
+      "status": "triggered",
+      "status_note": "entry zone traded (2026-10-28 00:00 UTC)",
       "r_result": null,
-      "triggered_at": null,
+      "triggered_at": "2026-10-28T00:00:00.000Z",
       "created_at": "2026-10-27T22:56:27.487Z",
-      "updated_at": "2026-10-27T22:56:27.487Z",
+      "updated_at": "2026-10-28T06:58:59.847Z",
       "expires_at": "2026-10-30T22:56:27.487Z"
     },
     {
@@ -67,13 +67,50 @@
         "ENA.tf.4h.sweep",
         "ENA.levels.4h.high20"
       ],
+      "status": "triggered",
+      "status_note": "entry zone traded (2026-10-27 22:00 UTC)",
+      "r_result": null,
+      "triggered_at": "2026-10-27T22:00:00.000Z",
+      "created_at": "2026-10-27T22:56:27.487Z",
+      "updated_at": "2026-10-28T06:58:59.847Z",
+      "expires_at": "2026-10-30T22:56:27.487Z"
+    },
+    {
+      "id": "DOGE-short-20261028-1",
+      "setup_id": "htf_pullback",
+      "levels_source": "menu",
+      "asset": "DOGE",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "DOGE sits in a 1d and 1w downtrend with a 4h breakout up that left it 2.1 ATR over the 4h SMA20 and 0.41 ATR under the 1d SMA20; funding is neutral at 10.95 so no crowded carry, and the bounce may stall at the 1d SMA20. The other side sees +3.02% over 24h on a breakout and a 7d return only -2.07%.",
+      "regime_alignment": "with",
+      "trigger": "4h close back under the 4h range high after a rejection near the 1d SMA20",
+      "entry": {
+        "low": 0.079771,
+        "high": 0.08116
+      },
+      "invalidation": 0.082749,
+      "invalidation_reason": "a hold above the 1d SMA20 by 1.5 ATR means the pullback in the downtrend failed",
+      "targets": [
+        0.075484,
+        0.07475
+      ],
+      "rr": 2.18,
+      "conviction": "low",
+      "evidence": [
+        "DOGE.tf.1d.trend",
+        "DOGE.tf.1w.trend",
+        "DOGE.tf.4h.vsSma20Atr",
+        "DOGE.pos.fundingAnnPct"
+      ],
       "status": "watching",
       "status_note": null,
       "r_result": null,
       "triggered_at": null,
-      "created_at": "2026-10-27T22:56:27.487Z",
-      "updated_at": "2026-10-27T22:56:27.487Z",
-      "expires_at": "2026-10-30T22:56:27.487Z"
+      "created_at": "2026-10-28T06:58:59.847Z",
+      "updated_at": "2026-10-28T06:58:59.847Z",
+      "expires_at": "2026-10-31T06:58:59.847Z"
     }
   ],
   "closed": [
