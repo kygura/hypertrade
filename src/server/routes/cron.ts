@@ -21,6 +21,7 @@ import type { AssetCtx } from "../../shared/types.js";
 import { runIntelWatch } from "../intel/docwatch.js";
 import { flowAlerts } from "../intel/flowEvents.js";
 import { basketCoins } from "../intel/narratives.js";
+import { narrativeAutoContrast, narrativeStageAlerts } from "../intel/narrativeWatch.js";
 import { refreshGraph } from "../intel/graph.js";
 import { AUTO_RESEARCH_MARGIN_MS, autoResearch, RESEARCH_DEADLINE_MS, type AutoResearchDeps, type AutoResearchRun } from "../intel/research.js";
 import { runIntelIngest } from "../intel/runIngest.js";
@@ -530,9 +531,30 @@ const defaultIntelCronDeps = (): IntelCronDeps => {
         await db.recordCollectorRun("intel:flow:detect", flowStart, !flows.errors.length, flows.errors.join("; ").slice(0, 500) || null).catch((e) =>
           console.error("[intel:flow] collector run not recorded:", e),
         );
-        // Automatic research (SPEC S0.3) is the last stage: it needs this run's flow alerts and more than its own deadline of budget. Never fatal.
+        // Narrative stage alerts (SPEC N3.2) right after the flow detectors; code only. Never fatal.
+        const stageStart = new Date();
+        const narratives = await narrativeStageAlerts(d.ingest, stageStart).then(
+          (r) => ({ alerts: r.alerts.length, pushed: r.alerts.filter((a) => a.route === "push").length, committed: r.committed, errors: r.errors }),
+          (e) => ({ alerts: 0, pushed: 0, committed: 0, errors: [e instanceof Error ? e.message : String(e)] }),
+        );
+        await db.recordCollectorRun("intel:narratives", stageStart, !narratives.errors.length, narratives.errors.join("; ").slice(0, 500) || null).catch((e) =>
+          console.error("[intel:narratives] collector run not recorded:", e),
+        );
+        // Automatic research (SPEC S0.3) needs this run's flow alerts and more than its own deadline of budget. Never fatal.
         const research = await researchStage(d.ingest, { left, signal: o.signal });
-        return { ok: true, complete: true, result: { ...result, flows, research } };
+        // Automatic contrast (SPEC N3.3) is the last stage. Never fatal.
+        const contrastStart = new Date();
+        const contrast = await narrativeAutoContrast(d.ingest, { left, signal: o.signal }).catch((e) => ({
+          ran: 0,
+          statuses: { done: 0, failed: 0 },
+          stopped: "none" as const,
+          errors: [e instanceof Error ? e.message : String(e)],
+        }));
+        const contrastError = [...contrast.errors, ...(contrast.statuses.failed ? [`${contrast.statuses.failed} failed`] : [])].join("; ").slice(0, 500);
+        await db.recordCollectorRun("intel:narratives:contrast", contrastStart, !contrastError, contrastError || null).catch((e) =>
+          console.error("[intel:narratives:contrast] collector run not recorded:", e),
+        );
+        return { ok: true, complete: true, result: { ...result, flows, narratives, research, contrast } };
       },
       brief: async (o) => {
         const r = await runIntelBrief({ ...d, notifier: d.notifier, appUrl: d.appUrl }, o);
