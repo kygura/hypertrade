@@ -13,7 +13,9 @@ const testApp = new Hono({ strict: false }).basePath("/api");
 testApp.use("*", requireAuth);
 testApp.get("/health", (c) => c.json({ ok: true }));
 testApp.get("/branches", (c) => c.json({ protected: true }));
+testApp.post("/branches", (c) => c.json({ wrote: true }));
 testApp.post("/cron/collect", (c) => c.json({ collected: true }));
+testApp.all("/engine/status", (c) => c.json({ proxied: true }));
 for (const p of ["/lab", "/lab/tools", "/mcp", "/mcp/x", "/labx", "/mcpfoo", "/labx/tools"]) {
   testApp.all(p, (c) => c.json({ reached: p }));
 }
@@ -292,5 +294,66 @@ describe("lab bearer (LAB_API_TOKEN)", () => {
       expect(res.headers.get("www-authenticate")).toBe("Bearer");
       expect(await res.json()).toEqual({ error: "unauthorized" });
       expect((await req("/lab/tools")).status).toBe(401);
+    }));
+});
+
+describe("PUBLIC_MODE guest access", () => {
+  const withPublic = async (value: string | undefined, fn: () => Promise<void>) => {
+    const prev = process.env.PUBLIC_MODE;
+    if (value === undefined) delete process.env.PUBLIC_MODE;
+    else process.env.PUBLIC_MODE = value;
+    try {
+      await fn();
+    } finally {
+      if (prev === undefined) delete process.env.PUBLIC_MODE;
+      else process.env.PUBLIC_MODE = prev;
+    }
+  };
+  const req = (path: string, method = "GET", headers: Record<string, string> = {}) =>
+    testApp.request(`/api${path}`, { method, headers });
+
+  test("off by default and for any value but 1/true", async () => {
+    for (const v of [undefined, "", "0", "false", "yes"]) {
+      await withPublic(v, async () => {
+        expect((await req("/branches")).status).toBe(401);
+      });
+    }
+  });
+
+  test("guests can GET and HEAD any read path", () =>
+    withPublic("true", async () => {
+      for (const path of ["/branches", "/metrics/summary", "/intel/positions", "/lab/tools"]) {
+        expect((await req(path)).status).toBe(200);
+      }
+      expect((await req("/branches", "HEAD")).status).toBe(200);
+    }));
+
+  test("guests cannot write anywhere", () =>
+    withPublic("1", async () => {
+      for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
+        expect((await req("/intel/positions", method)).status).toBe(401);
+        expect((await req("/lab/tools", method)).status).toBe(401);
+      }
+      expect((await req("/branches", "POST")).status).toBe(401);
+      expect((await req("/cron/collect", "POST")).status).toBe(401);
+    }));
+
+  test("guests never reach the engine or MCP proxies", () =>
+    withPublic("1", async () => {
+      expect((await req("/engine/status")).status).toBe(401);
+      expect((await req("/mcp")).status).toBe(401);
+    }));
+
+  test("a session still writes in public mode", () =>
+    withPublic("1", async () => {
+      const cookie = (await postLogin("correct-horse")).headers.get("set-cookie")!.split(";")[0];
+      expect((await req("/branches", "POST", { cookie })).status).toBe(200);
+    }));
+
+  test("/auth/me reports guest vs session", () =>
+    withPublic("1", async () => {
+      expect(await (await app.request("/api/auth/me")).json()).toEqual({ ok: true, guest: true });
+      const cookie = (await postLogin("correct-horse")).headers.get("set-cookie")!.split(";")[0];
+      expect(await (await app.request("/api/auth/me", { headers: { cookie } })).json()).toEqual({ ok: true, guest: false });
     }));
 });
