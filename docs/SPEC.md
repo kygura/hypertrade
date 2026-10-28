@@ -556,22 +556,23 @@ Operator ask (2026-10-27): find short- and long-timeframe narratives and positio
 
 ### N3. Slice 2: headlines, stage alerts, automatic contrast
 
-1. **Headlines per narrative** (`narrativeHeadlines`, pure, in `narratives.ts`). Intel events from the last 72 h whose mapped `assets` overlap the basket tokens (case-insensitive), newest first, one per news cluster (an event without a cluster stands alone). Each carries `{title, firstSeen, url (first source with a url, else null), assets (the basket tokens it names)}`. `GET /narratives` adds `headlines` (≤ 5 per row). The contrast prompt takes its headlines from the same function (≤ 20).
+1. **Headlines per narrative** (`narrativeHeadlines`, pure, in `narratives.ts`). Intel events from the last 72 h, except flow-detector events (`origin: "flow"`, which are numbers, not news), whose mapped `assets` overlap the basket tokens (case-insensitive), newest first, one per news cluster (an event without a cluster stands alone). Each carries `{title, firstSeen, url (first source with a url, else null), assets (the basket tokens it names)}`. `GET /narratives` adds `headlines` (≤ 5 per row). The contrast prompt takes its headlines from the same function (≤ 20).
 2. **Stage alerts** (`narrativeStageAlerts`, `src/server/intel/narrativeWatch.ts`). Runs in the ingest cron right after the flow detectors. Per narrative, state in `intel_settings` (`narrative_stages`): `{stage, since, alertedAt, pending}`.
    - A stage of `unknown` changes nothing (a data gap is not a transition).
    - First sight records the stage silently.
-   - A different known stage must hold for 2 consecutive runs before it is committed.
-   - A committed change alerts unless the narrative alerted in the last 12 h (then it is committed silently).
-   - The alert is kind `narrative` (migration `022_narrative_alerts.sql`), `asset` = narrative id, `ref` = `stage:<id>:<to>:<since>`, `eventType` = `stage_<to>`. The line is an `observed` claim (source `snapshot`) written by code from the flow facts: `<Label>: <from> → <to> · 7d vs BTC <pp>, OI 7d <pct>, funding z <z>`.
+   - A different known stage must hold for 2 consecutive runs and at least 2 h before it is committed.
+   - A committed change alerts unless the narrative alerted in the last 12 h, or the change returns to the stage it left less than 24 h ago (a narrative sitting on a threshold never ping-pongs). Either way it is committed silently.
+   - The alert is kind `narrative` (migration `022_narrative_alerts.sql`), `asset` = narrative id, linking to `/sectors`, `ref` = `stage:<id>:<to>:<since>`, `eventType` = `stage_<to>`. The line is an `observed` claim (source `snapshot`) written by code from the flow facts: `<Label>: <from> → <to> · 7d vs BTC <pp>, OI 7d <pct>, funding z <z>`.
    - Materiality is 1 when the operator has a continuation or fade view on the narrative or holds/watches one of its tokens, else 0.2. Routing is the mapper's `routeFor` (push ≥ `INTEL_PUSH_MATERIALITY` unless feedback-dampened). A push that reaches no channel falls back to batch.
-   - Narrative alerts add no confluence to any coin (`alertSource` → null).
+   - Narrative alerts add no confluence to any coin (`alertSource` → null). Batched narrative alerts join the brief like any other batched alert (subject to `INTEL_DIGEST_MATERIALITY`), though their `asset` is not a held or watched coin.
 3. **Automatic contrast** (`narrativeAutoContrast`, same file). Runs as the ingest job's last stage, after automatic research.
    - Candidates:
      - lean `continuation` with `alignment` `against`, or
      - lean `fade` with `alignment` `with` (the move being faded is extending),
      - and in both cases `flowScore` ≥ 2.5. Strongest first.
    - Limits: at most `INTEL_NARRATIVE_AUTO_DAILY` (default 2) runs per UTC day and one per narrative per UTC day (`narrative_contrast_auto` setting). A run starts only with more than its deadline + 15 s of budget left. The stage stops on a `capped` result. A `no_web_search` result does not count.
-   - A `done` result becomes the narrative's latest contrast and raises one `narrative` alert (`ref` = `contrast:<id>`, `eventType` = `contrast_<favours>`, a `hypothesis` line written by code: the window and quadrant that triggered it, the view, what the contrast favours, its confidence and agreement). It is routed like a stage alert; the operator has a view by construction.
+   - The stage reads views before it loads any flow: with no continuation or fade lean saved, it does nothing.
+   - A `done` result becomes the narrative's latest contrast. It raises one `narrative` alert only when its `favours` or `agreement` differs from the previous stored contrast for that narrative (no daily repeat of the same read) (`ref` = `contrast:<id>`, `eventType` = `contrast_<favours>`, a `hypothesis` line written by code: the window and quadrant that triggered it, the view, what the contrast favours, its confidence and agreement). It is routed like a stage alert; the operator has a view by construction.
 4. The automatic and manual counters are separate.
 
 ### N2. Done
