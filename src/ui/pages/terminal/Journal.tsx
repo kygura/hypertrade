@@ -187,7 +187,7 @@ export function Journal() {
           {statsBody}
         </Panel>
 
-        <Panel className="lg:col-span-8 min-w-0 scroll-mt-[100px]" id="journal-trades">
+        <Panel className="lg:col-span-8 min-w-0 scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)]" id="journal-trades">
           <PanelHeader title="TRADES" />
           {journal.error && journal.data && <ErrorBlock message={journal.error} onRetry={journal.refetch} />}
           {tagFilter && (
@@ -200,7 +200,7 @@ export function Journal() {
           {tradesBody}
         </Panel>
 
-        <div ref={detailRef} className="lg:col-span-4 min-w-0 lg:sticky lg:top-[92px] scroll-mt-[100px]">
+        <div ref={detailRef} className="lg:col-span-4 min-w-0 lg:sticky lg:top-[calc(var(--topbar-h)+var(--subnav-h))] scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)]">
           <Panel>
             <PanelHeader title="TRADE" />
             {selected ? <TradeDetail trade={selected} onNoteSaved={onNoteSaved} /> : <EmptyBlock label="select a trade" />}

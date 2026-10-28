@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
 import type { LiqBoardResponse, LiqMap, LiqMapHistory, OpportunityDetail, PlatformHealth } from "../../../shared/platform";
 import { ActionBar, OpportunityDetail as DetailView, RejectDialog, TicketDialog } from "./Detail";
 import { OpportunityFeed, StatusPill, WarmingLine } from "./Feed";
@@ -181,12 +182,19 @@ describe("OpportunityDetail states (C7)", () => {
     expect(renderToStaticMarkup(<DetailView {...p} detail={null} notFound offline={null} error={null} />)).toContain("opportunity not found");
     expect(renderToStaticMarkup(<DetailView {...p} detail={null} notFound={false} offline="x" error={null} />)).toContain("platform API unreachable");
     expect(renderToStaticMarkup(<DetailView {...p} detail={null} notFound={false} offline={null} error="boom" />)).toContain("boom");
-    expect(renderToStaticMarkup(<DetailView {...p} detail={detail()} notFound={false} offline={null} error={null} midAgeSec={45} />)).toContain("live price 45s old — approve is blocked");
+    expect(renderToStaticMarkup(<MemoryRouter><DetailView {...p} detail={detail()} notFound={false} offline={null} error={null} midAgeSec={45} /></MemoryRouter>)).toContain("live price 45s old — approve is blocked");
+  });
+  test("links to both other coin pages: CHART /markets/:coin, INTEL /asset/:coin", () => {
+    const d = detail();
+    const html = renderToStaticMarkup(<MemoryRouter><DetailView {...p} detail={d} notFound={false} offline={null} error={null} /></MemoryRouter>);
+    const coin = encodeURIComponent(d.opportunity.coin);
+    expect(html).toContain(`href="/markets/${coin}"`);
+    expect(html).toContain(`href="/asset/${coin}"`);
   });
   test("signals show VALUE and Z apart; regime/tier sub-rows; margin out of scope", () => {
     const stats = { setupKind: "oi-accel", horizon: "4h", regime: null, tier: null, n: 41, clusters: 9, hitRate: 0.54, meanNet: 0.0021, ci95: [-0.0008, 0.005] as [number, number] };
     const d = { ...detail(), signals: [{ name: "ret15mZ", value: 0.012, z: 2.1 }], stats, risk: { before: { approved: true, reasons: [], warnings: [] }, after: { approved: true, reasons: [], warnings: [], sizing: { notionalUsd: 1500, grossLeverageAfter: 1.2, riskUsd: 50 } } } };
-    const html = renderToStaticMarkup(<DetailView {...p} detail={d} subStats={{ regime: { ...stats, regime: "trend", n: 12 }, tier: null }} notFound={false} offline={null} error={null} />);
+    const html = renderToStaticMarkup(<MemoryRouter><DetailView {...p} detail={d} subStats={{ regime: { ...stats, regime: "trend", n: 12 }, tier: null }} notFound={false} offline={null} error={null} /></MemoryRouter>);
     expect(html).toContain("0.012");
     expect(html).toContain("+2.1");
     expect(html).toContain("REGIME trend");

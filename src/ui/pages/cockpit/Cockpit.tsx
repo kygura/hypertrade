@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router'
-import { Button, ConfirmDialog } from '../../components'
+import { Button } from '../../components'
+import { KillSwitchDialog } from '../../components/KillSwitchDialog'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { api, ApiError } from '../../lib/api'
 import type { DeskStatus } from '../../lib/desk'
 import { useHlSubscription, type WsAssetCtx } from '../../lib/hlWs'
 import { actionFailure, platform, PLATFORM_POLL } from '../../lib/platformApi'
-import { errorMessage, usePoll } from '../../lib/poll'
+import { usePoll } from '../../lib/poll'
+import { useDeskKill } from '../../lib/useDeskKill'
 import type { OpportunityDetail as DetailT } from '../../../shared/platform'
 import { filterFeed, isLive, keyAction, stepSelection, STATUS_WORD, type StatusFilter, type TierFilter } from './logic'
 import { ActionBar, canApprove, canReject, OpportunityDetail, RejectDialog, TicketDialog } from './Detail'
@@ -55,7 +57,7 @@ export function Cockpit() {
   return <CockpitPage />
 }
 
-type DialogKind = 'approve' | 'reject' | 'kill' | 'help' | null
+type DialogKind = 'approve' | 'reject' | 'help' | null
 
 function CockpitPage() {
   const [params, setParams] = useSearchParams()
@@ -187,6 +189,7 @@ function CockpitPage() {
           : null
   const venue: 'paper' | 'testnet' | null = desk.data ? (desk.data.live ? 'testnet' : 'paper') : null
   const killOn = desk.data?.killSwitch.on ?? false
+  const kill = useDeskKill(killOn, desk.refetch)
 
   const approve = () => d && run(() => platform.approve(d.opportunity.id), true).then((ok) => ok && setDialog(null))
   const reject = (reason: string) => d && run(() => platform.reject(d.opportunity.id, reason), true).then((ok) => ok && setDialog(null))
@@ -195,20 +198,6 @@ function CockpitPage() {
     if (d) void run(() => platform.snooze(d.opportunity.id, minutes), false)
   }
   const research = () => d && d.opportunity.status !== 'investigating' && void run(() => platform.research(d.opportunity.id), false)
-  const toggleKill = async () => {
-    setBusy(true)
-    setDialogError(null)
-    try {
-      await api.post('/desk/kill', { on: !killOn })
-      setDialog(null)
-    } catch (e) {
-      setDialogError(errorMessage(e))
-    } finally {
-      setBusy(false)
-      desk.refetch()
-    }
-  }
-
   const tryApprove = () => {
     if (!d) return
     if (!canApprove(d.opportunity.status)) return setHint(`approve needs READY — status is ${STATUS_WORD[d.opportunity.status]}`)
@@ -295,7 +284,7 @@ function CockpitPage() {
         else research()
         break
       case 'kill':
-        if (desk.data) openDialog('kill')
+        if (desk.data) kill.arm()
         break
       case 'help':
         openDialog('help')
@@ -363,7 +352,7 @@ function CockpitPage() {
         desk={desk}
         noDb={health.data?.store === 'memory'}
         killRef={killRef}
-        onKill={() => openDialog('kill')}
+        onKill={kill.arm}
         onHelp={() => openDialog('help')}
       />
       <HealthStrip health={health.data} loading={health.loading} offline={health.offline} error={health.error} now={now} />
@@ -429,18 +418,8 @@ function CockpitPage() {
         <TicketDialog detail={d} venue={venue} busy={busy} error={dialogError} stale={stale} onConfirm={() => void approve()} onCancel={() => setDialog(null)} />
       )}
       {dialog === 'reject' && <RejectDialog busy={busy} error={dialogError} onConfirm={(r) => void reject(r)} onCancel={() => setDialog(null)} />}
-      {dialog === 'kill' && (
-        <ConfirmDialog
-          title={killOn ? 'Resume entries' : 'Kill switch'}
-          body={killOn ? 'New entries will be allowed again, within the governor limits.' : 'Blocks every new entry, from agents and approvals alike. Exits stay allowed.'}
-          confirmLabel={killOn ? 'RESUME' : 'KILL'}
-          typedWord={killOn ? undefined : 'KILL'}
-          onConfirm={() => void toggleKill()}
-          onCancel={() => setDialog(null)}
-          error={dialogError}
-          busy={busy}
-          returnFocus={killRef}
-        />
+      {kill.open && (
+        <KillSwitchDialog killOn={killOn} busy={kill.busy} error={kill.error} onConfirm={() => void kill.confirm()} onCancel={kill.cancel} returnFocus={killRef} />
       )}
       {dialog === 'help' && <KeysHelp onClose={() => setDialog(null)} />}
     </div>

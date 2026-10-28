@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router'
 
 // EngineTabs — sub-navigation for the strategy console. The shell keeps one
-// nav entry (ENGINE → /strategies) so the mobile tab bar stays at six cells;
+// nav entry (ENGINE → /strategies) so the mobile tab bar stays compact;
 // the three console routes switch here with the .tab-active idiom.
 
 const TABS = [

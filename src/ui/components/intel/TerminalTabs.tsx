@@ -1,11 +1,11 @@
 import { useLocation, useNavigate } from 'react-router'
 import { Segmented, type SegmentOption } from '../Segmented'
 
-// TerminalTabs — DESIGN-terminal §1.3. One Segmented (md) under the shell,
-// the LabTabs pattern: sticky under the 40px top bar, 52px row, path-based
-// (changing a segment navigates). Order: the review, the operator's own
-// record, the tools, the old glance. No count suffixes (a fetch per route).
-// Mobile: seven ≤ 4-char short labels fit at 320px; overflow-x stays only as
+// TerminalTabs — docs/design/terminal.md §1.3. One Segmented (md) under the shell,
+// the LabTabs pattern: sticky under the top bar (--topbar-h), --subnav-h row,
+// path-based (changing a segment navigates). Order: the review, the operator's
+// own record, the tools, the old glance. No count suffixes (a fetch per route).
+// Mobile: eight ≤ 4-char short labels fit at 320px; overflow-x stays only as
 // a safety net (wider theme --seg-pad, 200% zoom).
 
 export type TerminalTab = 'cockpit' | 'terminal' | 'journal' | 'theses' | 'query' | 'order' | 'watch' | 'overview'
@@ -23,7 +23,7 @@ export const TERMINAL_TABS: readonly (SegmentOption<TerminalTab> & { path: strin
 
 /** The Terminal-family tab a path belongs to, or null outside the family. */
 export function terminalTabOf(pathname: string): TerminalTab | null {
-  // `/asset/:coin` is a drill-in of `/terminal` (DESIGN-terminal §15.4, C1).
+  // `/asset/:coin` is a drill-in of `/terminal` (docs/design/terminal.md §15.4, C1).
   if (pathname.startsWith('/asset/')) return 'terminal'
   for (const t of TERMINAL_TABS) {
     if (t.path === '/' ? pathname === '/' : pathname === t.path || pathname.startsWith(`${t.path}/`)) return t.value
@@ -40,7 +40,7 @@ export function TerminalTabs() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   return (
-    <div className="sticky top-10 z-30 h-[52px] flex items-center bg-body overflow-x-auto">
+    <div className="sticky top-[var(--topbar-h)] z-30 h-[var(--subnav-h)] flex items-center bg-body overflow-x-auto">
       <Segmented
         label="terminal sections"
         size="md"

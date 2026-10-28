@@ -38,7 +38,7 @@ export function ResearchCard({
       id={`research-${r.id}`}
       aria-label={`Research: ${r.asset ?? 'no asset'}, ${word.toLowerCase()}`}
       data-status={r.status}
-      className={`flex flex-col gap-1.5 px-3 py-2.5 border-b border-border-subtle last:border-b-0 scroll-mt-[100px] ${highlighted ? 'bg-hover shadow-[inset_2px_0_0_var(--color-red-accent)]' : ''}`}
+      className={`flex flex-col gap-1.5 px-3 py-2.5 border-b border-border-subtle last:border-b-0 scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)] ${highlighted ? 'bg-hover shadow-[inset_2px_0_0_var(--color-red-accent)]' : ''}`}
     >
       {!compact && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

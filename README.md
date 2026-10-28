@@ -8,7 +8,7 @@ Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, La
 
 - **Live in the repo (master):** the platform backend in `src/server/platform/` (scanner, crawler, liquidation map, outcomes, alerts loops) on one Bun process, the cockpit UI, `/api/platform/*`, and the routine pipeline (`bun run routine`: board scan, tripwires, setups ledger, daily brief; Opus 5.5 by default, Kimi as fallback).
 - **Hosting:** free tier first. Vercel serves the UI and API, a GitHub Actions hourly tick (`.github/workflows/platform-tick.yml`, `bun run platform:tick`) runs the platform worker loops against Postgres, and the Claude routine commits research. The always-on Railway worker below is the upgrade path for when live mids (order approval) or sub-hourly scans become a hard requirement. History in `docs/TASKS.md`.
-- **Not committed yet:** an Ink terminal UI under `src/tui/` (`bun run tui`) with `SPEC-tui.md` and `DESIGN-tui.md`.
+- **Terminal client:** `tui/` is a separate Ink package (`bun run tui`) with its own `README.md`, `SPEC.md`, `DESIGN.md` and `TASKS.md`.
 
 ## Setup
 
@@ -21,13 +21,39 @@ bun install
 ```bash
 bun run dev       # Vite dev server (localhost:5173)
 bun run dev:api   # API server (localhost:8787)
+bun start         # always-on server: API, built UI and worker loops (scripts/server.ts)
+bun run db:migrate
 ```
 
-## Build
+## Checks and build
 
 ```bash
-bun run build
+bun run typecheck
+bun test ./src    # CI runs exactly this
+bun run check:api # the API entry must stay ESM-clean
+bun run build     # typecheck + vite build
 ```
+
+## Screens
+
+Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is the contract). The top bar has ten cells today, one over the nine-cell ceiling in `docs/design/README.md` §5.2; `docs/CONSOLIDATION.md` is the plan to cut it to five.
+
+| Cell | Routes |
+|---|---|
+| COCKPIT | `/` the landing (ranked opportunities, liquidation map, approve/reject, desk kill switch). One sub-tab strip, `TerminalTabs`, spans `/`, `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch`, `/overview`; `/asset/:coin` is the Terminal's per-coin page. |
+| BRANCHES | `/branches`, `/branches/:id` |
+| SECTORS | `/sectors` |
+| STATE | `/state` |
+| MARKETS | `/markets`, `/markets/:coin` (chart; links to `/asset/:coin`) |
+| CYCLES | `/cycles`, `/cycles/:coin` |
+| ENGINE | `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` |
+| ANALYST | `/analyst` (ASK and SIMULATE) |
+| DESK | `/desk` |
+| LAB | `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id` |
+
+Themes: `hyperdash` (default), `tradexyz` and `hyperion`, switched from the top bar (`src/ui/themes/README.md`).
+
+Confirmations: a plain click for reversible actions; a dialog for anything that places, approves or cancels an order (Desk and Cockpit APPROVE, `/order` place, engine decision approve); a typed word for the kill switches (desk and engine).
 
 ## Deployment
 
@@ -38,7 +64,7 @@ The database is Supabase Postgres. The app has run on Vercel (static UI, serverl
 One Bun process (`scripts/server.ts`) serves the API, the built UI and the platform worker loops (scanner, crawler, liqmap, outcomes, alerts, desk, Telegram). Follow the steps in order: migrations before the first boot, restricted role after migrations.
 
 1. **Create the service.** New Railway project, deploy from this GitHub repo. Builder: `Dockerfile` (Railpack does not detect Bun). Region: `asia-southeast1` (Singapore). Generate a public domain under Networking. Healthcheck path: `/api/health` (public, no login).
-2. **Database.** Set `DATABASE_URL` to the Supabase transaction pooler URL (port 6543, IPv4). Railway egress is IPv4 by default, and `prepare: false` is already set in code. Set `DB_POOL_MAX=4`. For the first deploy set `MIGRATE_ON_BOOT=1`, or run `bun run db:migrate` once with the owner URL. Migrations apply in name order, one transaction each, under an advisory lock, so concurrent boots cannot race. An existing database re-applies `001`–`010` once; they are idempotent. `011`–`013` add the platform tables, the gate hardening and the dedupe index.
+2. **Database.** Set `DATABASE_URL` to the Supabase transaction pooler URL (port 6543, IPv4). Railway egress is IPv4 by default, and `prepare: false` is already set in code. Set `DB_POOL_MAX=4`. For the first deploy set `MIGRATE_ON_BOOT=1`, or run `bun run db:migrate` once with the owner URL. Migrations apply in name order, one transaction each, under an advisory lock, so concurrent boots cannot race. An existing database re-applies `001`–`010` once; they are idempotent. `011`–`013` add the platform tables, the gate hardening and the dedupe index; `014`–`022` add Lab trials, novelty, thesis history, sector tags, near-miss, setups, row level security and narrative alerts.
 3. **Restricted app role (recommended).** `ledger_entries` is append-only through a trigger. Only the table owner can drop or disable that trigger, so run the app as a non-owner role. Run this in the Supabase SQL editor as `postgres`, after step 2 (the `revoke` needs the table to exist). Replace the password and keep it in Railway only.
 
    ```sql
@@ -87,7 +113,7 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `DB_POOL_MAX` (1) | Connection pool size. Use 4. |
    | `DB_QUERY_TIMEOUT_MS` (30000) | Per-query timeout. |
    | `MIGRATE_ON_BOOT` (unset) | `1` runs migrations before serving. Needs `DATABASE_URL`. |
-   | `WORKER_LOOPS` (`all`) | `all`, `off`, or a comma list of `ws`, `scanner`, `crawler`, `liqmap`, `outcomes`, `alerts`, `prune`, `desk`, `telegram`. |
+   | `WORKER_LOOPS` (`all`) | `all`, `off`, or a comma list of `ws`, `scanner`, `crawler`, `liqmap`, `outcomes`, `alerts`, `prune`, `novelty`, `reconcile`, `desk`, `telegram`. `novelty` and `reconcile` need `DATABASE_URL`. |
    | `PLATFORM_SCAN_INTERVAL_SEC` (60) | Universe scan period. |
    | `PLATFORM_COST_TOP_N` (25) | Coins costed from `l2Book` per scan. |
    | `PLATFORM_LIQMAP_COINS` (30) | Coins in each 15-minute liquidation snapshot. |
@@ -97,7 +123,8 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `PLATFORM_OUTCOME_HORIZONS` (`1h,4h,24h,72h`) | Outcome horizons. |
    | `PLATFORM_EDGE_MIN_N` (30) | Resolved outcomes needed before edge leaves `unvalidated`. |
    | `PLATFORM_READY_TTL_MIN` (60) | Minutes before an undecided `ready` opportunity expires. |
-   | `PLATFORM_RESEARCH_SCORE` (4) | Reserved; research is operator-triggered in phase 8. |
+   | `PLATFORM_RESEARCH_SCORE` (4) | Score at which a new opportunity moves to `investigating` and runs the research stage, when the research budget allows. |
+   | `PLATFORM_COOLDOWN_MIN` (240) | Minutes before a rejected, expired, failed or closed idea can be recreated for the same coin, direction and setup. |
    | `PLATFORM_PUSH_SCORE` (3) | Score that triggers a Telegram alert on `ready`. |
    | `PLATFORM_MY_MARKETS` (`BTC,ETH,HYPE,SOL,XPL,LIT,ZEC`) | "My markets": added to the novelty universe and to `lab_event_study` with `mine`. |
    | `PLATFORM_NOVELTY_UNIVERSE` (unset) | Novelty universe: `;`-separated `mine`, `top:N`, `sectors:AI,Perp DEX`. Unset: liquidity tier 1 plus my markets. |
@@ -114,7 +141,7 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    - Repository variable `DESK_ENABLED=false`. The desk tick runs inside the worker now; leaving the job on runs two ticks per window.
    - `INTEL_ENABLED` stays as it was.
    - `vercel.json` still schedules collect, lab-collect and backfill on Vercel. Pause the Vercel project after one green day on Railway.
-   - Telegram review links open `/terminal?review=1`.
+   - Telegram review links open `/terminal?review=1` (`/?review=1` redirects there).
 6. **Verify.**
 
    ```bash
@@ -195,7 +222,7 @@ changes.
 team of specialist "scout" agents, answers market questions, proposes and
 manages trades, and alerts you. Code: `src/server/desk/*`,
 `src/server/routes/desk.ts`, `src/ui/pages/Desk.tsx`, `scripts/desk-worker.ts`.
-Needs `db/migrations/003_desk.sql` and any analyst provider key.
+Needs `db/migrations/003_desk.sql` and any analyst provider key. Approving a proposal on the page opens a confirm dialog (the Cockpit's APPROVE does the same); the kill switch needs the typed word `KILL`, on `/desk` and in the Cockpit header alike (one shared dialog). Resuming entries is a plain confirm.
 
 **Models.** Anthropic goes first. With an Anthropic key (`ANTHROPIC_API_KEY`
 or `ANALYST_ANTHROPIC_API_KEY`) the PM runs Claude Opus 5.5 at high effort and
@@ -296,7 +323,7 @@ page. All `DESK_*` settings are listed in `.env.example`.
 
 ## Intel (the Terminal)
 
-The Terminal (`/` and `/journal`, `/theses`, `/query`, `/order`, `/watch`;
+The Terminal (`/terminal` and `/journal`, `/theses`, `/query`, `/order`, `/watch`, `/asset/:coin`;
 docs/SPEC.md § Intel) reads `/api/intel/*`. Code: `src/server/intel/*`,
 `src/server/routes/intel/*`. Needs `db/migrations/007_intel.sql` (plus 008, 009 and
 010, see Setup below); LLM features
@@ -342,26 +369,27 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 
 ### How the Terminal works
 
-`/` is now the Terminal. It shows what changed since your last look, measured
+`/terminal` shows what changed since your last look, measured
 against your positions and watchlist: a ranked diff, the alerts and catalysts
-that touch those assets, and a short brief. The Overview that used to live at
-`/` moved unchanged to `/overview`. Design: `docs/design/terminal.md`. Spec: docs/SPEC.md
+that touch those assets, and a short brief. `/` is the Cockpit (phase 8) and the
+old Overview lives at `/overview`. Design: `docs/design/terminal.md`. Spec: docs/SPEC.md
 § Intel. Code: `src/server/intel/*`, `src/server/routes/intel/*`,
 `src/ui/pages/terminal/*`.
 
-**Routes.** Seven, sharing one sub-tab strip:
+**Routes.** These share one sub-tab strip (`TerminalTabs`) with the Cockpit at `/`:
 
 | route | what it does |
 |---|---|
-| `/` | Terminal: brief, alerts, catalysts, exposure. A UI open logs a review. |
+| `/terminal` | Terminal: brief, alerts, catalysts, exposure, flow heatmap, research. A UI open logs a review. |
+| `/asset/:coin` | One coin: snapshot and flow series with event markers, exposure graph, research. Linked from Terminal rows, the Cockpit detail and `/markets/:coin`. |
 | `/journal` | Round trips from the watched address and the Desk paper book, with session, hold time, R, MAE/MFE, per-tag stats and a weekly report. |
 | `/theses` | Paste a thesis. The LLM extracts claims; code checks each against a fixed catalogue. |
 | `/query` | Natural language to a screener DSL over the snapshot store. The DSL is editable; the SQL is shown read-only. |
 | `/order` | Order copilot, preview then confirm (below). |
 | `/watch` | Watches on URLs, EVM contracts and EVM wallets. Changes are summarised and routed to exposed assets only. |
-| `/overview` | The former Overview, unchanged. |
+| `/overview` | The former Overview. |
 
-Telegram deep links to `/?review=1` open the Terminal and log a review.
+Telegram deep links to `/terminal?review=1` open the Terminal and log a review; `/?review=1` redirects there.
 
 **Positions.** Three sources, unified at read time into one shape. `manual`
 rows live in `intel_positions` and are edited from the Terminal. `hl` is the
@@ -413,15 +441,13 @@ without it. Then `008_intel_stops.sql` (stop triggers of the watched HL
 account, for journal R; without it the capture is skipped and reported).
 `009_flow.sql` (non-HL venue flow rows; without it the flow collector, heatmap
 and digest log fail) and `010_research.sql` (research runs and their lock;
-without it `/api/intel/research` and auto-research fail). Apply 009 and 010
-before deploying this code, as with 002, 003, 004 and 007.
-Environment variables are in the table under
-[Intel (optional)](#intel-optional), which also covers `INTEL_ENABLED`;
+without it `/api/intel/research` and auto-research fail). Migrations apply in name order with `bun run db:migrate`; Vercel production builds and `MIGRATE_ON_BOOT=1` run it too.
+Environment variables are in the table at the top of this section, which also covers `INTEL_ENABLED`;
 `.env.example` lists the same keys.
 
 ### Research
 
-The RESEARCH panel on `/` asks one question about a coin (optionally tied to a
+The RESEARCH panel on `/terminal` asks one question about a coin (optionally tied to a
 flow flag) and returns an explanation, evidence and open questions. Routes:
 `POST /api/intel/research` (`{question, asset?, flagId?}`; 429 at the daily
 limit, 409 while another run is in flight) and `GET /api/intel/research`
@@ -495,7 +521,7 @@ Desk's approval mode does not change this path. Nothing executes autonomously.
 
 ## Strategy engine (optional)
 
-The `/strategies`, `/decisions` and `/governor` pages talk to the hyperion core
+The ENGINE pages (`/strategies`, `/decisions`, `/governor` and their drill-ins) talk to the hyperion core
 through the `/api/engine/*` proxy (`src/server/routes/engine.ts`), which forwards
 to `${ENGINE_URL}/api/strategy/*` with `Authorization: Bearer ${ENGINE_TOKEN}`.
 
@@ -503,6 +529,8 @@ to `${ENGINE_URL}/api/strategy/*` with `Authorization: Bearer ${ENGINE_TOKEN}`.
   Unset: the proxy answers `503 { "error": "engine not configured" }` and the
   pages render their offline state.
 - `ENGINE_TOKEN` — the core's API bearer token. Optional; omitted when unset.
+
+Approving a decision intent opens a confirm dialog; the engine kill switch on `/governor` needs a typed word and is one-way from this page.
 
 Upstream failures surface as `502 { "error": "engine unreachable" }` (or
 `"engine timeout"` after 10s). Wire types live in
@@ -664,7 +692,7 @@ flagged non-stationary, so searches skip their raw values.
 | `LAB_ASSETS` | assets the cron collector stores `cm` history for, default `BTC,ETH` |
 | `LAB_ALLOWED_ORIGINS` | extra browser origins allowed on `/api/mcp` (besides `APP_URL` and localhost) |
 
-The same 12 tools (`lab_search`, `lab_evaluate_rule`, `lab_catalogue_*`,
+The same 14 tools (`lab_search`, `lab_evaluate_rule`, `lab_catalogue_*`,
 `lab_market_pulse`, …) are served over every surface, plus an `autoresearch`
 MCP prompt that runs the research loop.
 

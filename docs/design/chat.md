@@ -10,8 +10,8 @@ Where this file is silent, docs/design/README.md decides.
 `src/ui/index.css` and the theme contract (`src/ui/themes/README.md`), so all
 three themes work without edits.
 
-**Reused as-is:** `Segmented`, `Button`, `Badge`, `DataTable` (one new
-optional prop, §3.3), `EquityChart`, `ProjectionAssumptions`,
+**Reused as-is:** `Segmented`, `Button`, `Badge`, `DataTable` (its
+`isSelected` prop, §2.5), `EquityChart`, `ProjectionAssumptions`,
 `DrawdownChart`, `LabWarnings`, `ErrorBlock`, `SkeletonRows`, `fmtUsd`,
 `fmtPct`, `signClass`, `maxDdClass`, `rebalanceLabel`, `STABLE_COINS`.
 
@@ -255,9 +255,8 @@ at every width.
 
 - Row click / Enter selects it (`onRowClick`). Selected row: `bg-selected`
   + the `▸` glyph + `aria-selected="true"` (glyph is the non-color signal).
-  This needs one optional prop on `DataTable`: `isSelected?: (row) => boolean`
-  → adds `bg-selected` and `aria-selected` on that `<tr>`. Nothing else in
-  DataTable changes.
+  This uses the optional `DataTable` prop `isSelected?: (row) => boolean`,
+  which adds `bg-selected` and `aria-selected` on that `<tr>`.
 - Initial selection: the first branch without `error`; if all failed, the
   first branch.
 - Selection is card-local state (not persisted).
@@ -368,7 +367,7 @@ against the named path.
 All editable — each is a small extension of the existing allocation row
 pattern. A saved path opens, edits, saves and re-runs like any branch.
 
-### 4.1 AllocationEditor: SIDE and LEV columns
+### 4.1 Allocations: SIDE and LEV columns
 
 ```
 ALLOCATIONS
@@ -411,7 +410,8 @@ buys from the USDC/USDT sleeve; stops when it runs out
   `min=1`, `w-[7ch]`), EVERY (`Segmented` sm: `WEEKLY` short `WK` /
   `MONTHLY` short `MO`), Danger `✕`. `aria-label`s: `DCA coin`,
   `DCA amount USD`, `DCA <COIN> every`.
-- `+ ADD DCA` ghost adds `{ coin: '', amountUsd: 100, every: 'weekly' }`.
+- `+ ADD DCA` ghost adds `{ coin: '', amountUsd: 100, every: 'weekly' }`; it
+  is disabled at 8 rows.
 - Footnote, 10px text-secondary: `buys from the USDC/USDT sleeve; stops when it runs out`.
 - Invalid row (empty coin or amount ≤ 0): 11px red-text line
   `each DCA row needs a coin and an amount above $0`; RUN/SAVE disabled.
@@ -454,15 +454,17 @@ dropped the scenario and the card warned.
 
 ## 5. Components and boundaries
 
-New files under `src/ui/components/paths/`:
+Files under `src/ui/components/paths/`. `PathCard.tsx` exports `PathCard` and
+`PathPending`; the other pieces are local to it. `SaveBranchButton.tsx` is its
+own file.
 
 | Component | Props | Owns |
 |---|---|---|
 | `PathCard` | `sim: SimResultEvent`, `saved: Record<string,string>`, `onSaved(key, branchId)`, `onFork(name)` | header, ASSUMED, selection state, picks table vs single |
-| `PathCompare` | `branches`, `selected: number`, `onSelect(i)` | the `DataTable` config of §2.5 |
-| `PathBranch` | `branch`, `letter`, `title`, `assumptions`, `savedId?`, `onSaved(id)`, `onFork()` | §2.4 item 4 (legs, DCA, config line, warnings, stats, charts, or ErrorBlock) |
-| `PathLegs` | `config` | legs + DCA line + config line |
-| `PathStats` | `result`, `initialCapitalUsd` | 5-cell grid |
+| `PathCompare` (local) | `branches`, `selected: number`, `onSelect(i)` | the `DataTable` config of §2.5 |
+| `PathBranch` (local) | `branch`, `letter`, `title`, `assumptions`, `savedId?`, `onSaved(id)`, `onFork()` | §2.4 item 4 (legs, DCA, config line, warnings, stats, charts, or ErrorBlock) |
+| `PathLegs` (local) | `config` | legs + DCA line + config line |
+| `PathStats` (local) | `result`, `config` | 5-cell grid |
 | `SaveBranchButton` | `name`, `config`, `description`, `savedId?`, `onSaved(id)` | §3.1 state machine + POST |
 | `PathPending` | `input: unknown` | §2.7 shell |
 
