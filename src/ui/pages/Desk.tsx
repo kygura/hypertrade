@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Badge, Button, ConfirmDialog, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelBody, PanelHeader, Segmented, SkeletonRows } from '../components'
+import { Badge, Button, ConfirmDialog, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelBody, PanelHeader, Segmented, SkeletonRows, DataTable, type Column } from '../components'
 import { Markdown } from '../components/analyst/Markdown'
 import { KillSwitchDialog } from '../components/KillSwitchDialog'
 import { api, ApiError, NetworkError, useApi } from '../lib/api'
@@ -507,6 +507,31 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
   )
 }
 
+type DeskPosition = Portfolio['desk']['positions'][number]
+
+const BOOK_COLUMNS: Column<DeskPosition>[] = [
+  {
+    key: 'coin',
+    label: 'COIN',
+    priority: 1,
+    render: (p) => (
+      <span className={p.side === 'long' ? 'text-green' : 'text-red-text'}>
+        {p.side === 'long' ? '▲' : '▼'} {p.coin}
+      </span>
+    ),
+  },
+  { key: 'size', label: 'SIZE', priority: 1, align: 'right', render: (p) => p.size },
+  { key: 'entry', label: 'ENTRY', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.entryPx)}</span> },
+  { key: 'stop', label: 'STOP', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.stopPx)}</span> },
+  {
+    key: 'upnl',
+    label: 'UPNL',
+    priority: 1,
+    align: 'right',
+    render: (p) => <span className={p.unrealizedPnl >= 0 ? 'text-green' : 'text-red-text'}>{fmtUsd(p.unrealizedPnl)}</span>,
+  },
+]
+
 function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio | null; loading: boolean; onChange: () => void }) {
   const [closing, setClosing] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -520,6 +545,17 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
       setErr(e instanceof Error ? e.message : 'failed')
     }
   }
+  const closeColumn: Column<DeskPosition> = {
+    key: 'close',
+    label: '',
+    priority: 1,
+    align: 'right',
+    render: (p) => (
+      <Button tier="ghost" className="!h-5 !px-1.5" onClick={() => setClosing(p.coin)}>
+        CLOSE
+      </Button>
+    ),
+  }
   const book = (title: string, acc: Portfolio['desk'], closable: boolean) => (
     <div className="flex flex-col">
       <div className="px-3 pt-2 flex items-center gap-2">
@@ -529,40 +565,7 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
       {acc.positions.length === 0 ? (
         <span className="px-3 py-2 text-[10px] text-text-secondary">flat</span>
       ) : (
-        <div className="table-scroll">
-          <table className="w-full text-[11px] tabular border-collapse">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="px-2 py-1 label text-left">COIN</th>
-                <th className="px-2 py-1 label text-right">SIZE</th>
-                <th className="px-2 py-1 label text-right">ENTRY</th>
-                <th className="px-2 py-1 label text-right">STOP</th>
-                <th className="px-2 py-1 label text-right">UPNL</th>
-                {closable && <th />}
-              </tr>
-            </thead>
-            <tbody>
-              {acc.positions.map((p) => (
-                <tr key={p.coin} className="border-b border-border-subtle" style={{ height: 'var(--row-h)' }}>
-                  <td className={`px-2 ${p.side === 'long' ? 'text-green' : 'text-red-text'}`}>
-                    {p.side === 'long' ? '▲' : '▼'} {p.coin}
-                  </td>
-                  <td className="px-2 text-right">{p.size}</td>
-                  <td className="px-2 text-right text-text-muted">{fmtPx(p.entryPx)}</td>
-                  <td className="px-2 text-right text-text-muted">{fmtPx(p.stopPx)}</td>
-                  <td className={`px-2 text-right ${p.unrealizedPnl >= 0 ? 'text-green' : 'text-red-text'}`}>{fmtUsd(p.unrealizedPnl)}</td>
-                  {closable && (
-                    <td className="px-1 text-right">
-                      <Button tier="ghost" className="!h-5 !px-1.5" onClick={() => setClosing(p.coin)}>
-                        CLOSE
-                      </Button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable columns={closable ? [...BOOK_COLUMNS, closeColumn] : BOOK_COLUMNS} rows={acc.positions} rowKey={(p) => p.coin} />
       )}
     </div>
   )

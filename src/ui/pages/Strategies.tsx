@@ -5,7 +5,8 @@ import { engine, errorMessage, useEngine } from '../lib/engine'
 import type { DecisionRecord, StrategyStatus } from '../../shared/strategy-protocol'
 import { EngineTabs } from '../components/strategy/EngineTabs'
 import { EngineOffline, OfflineStrip } from '../components/strategy/EngineOffline'
-import { ACTION_LABEL, actionClass, fmtAge, fmtTs } from '../components/strategy/format'
+import { fmtAge, fmtTs } from '../components/strategy/format'
+import { summarizeDecision } from '../components/strategy/summarize'
 
 // /strategies — manifests × configs. Columns (docs/design/README.md §4.4 drop order):
 // P1 ID, ENABLED · P2 VENUE · P3 CADENCE, LAST RUN · P4 LAST ACTION.
@@ -13,17 +14,6 @@ import { ACTION_LABEL, actionClass, fmtAge, fmtTs } from '../components/strategy
 // the drill-in, so the toggle stops propagation). LAST ACTION is derived
 // from the newest decision per strategy — StrategyStatus carries only
 // last_decision_id, so the page also polls /decisions.
-
-function lastActionOf(d: DecisionRecord | undefined, fallback?: string | null): { text: string; className: string } {
-  // No decision in the polled window (older, or the core restarted with
-  // history): the status's own last_action still says what happened.
-  if (!d) return fallback ? { text: fallback, className: 'text-text-muted' } : { text: '—', className: 'text-text-secondary' }
-  if (d.error) return { text: 'ERROR', className: 'text-red-text' }
-  const first = d.intents[0]
-  if (!first) return { text: 'HOLD', className: 'text-text-muted' }
-  const more = d.intents.length > 1 ? ` +${d.intents.length - 1}` : ''
-  return { text: `${ACTION_LABEL[first.action]} ${first.market}${more}${d.dry_run ? ' (DRY)' : ''}`, className: actionClass(first.action) }
-}
 
 export function Strategies() {
   const navigate = useNavigate()
@@ -127,7 +117,7 @@ export function Strategies() {
       priority: 4,
       align: 'right',
       render: (s) => {
-        const a = lastActionOf(latestByStrategy.get(s.config.id), s.last_action)
+        const a = summarizeDecision(latestByStrategy.get(s.config.id), { fallback: s.last_action, dry: true })
         return <span className={`uppercase ${a.className}`}>{a.text}</span>
       },
     },

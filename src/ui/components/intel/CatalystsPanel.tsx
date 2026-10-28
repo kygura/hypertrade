@@ -9,7 +9,8 @@ import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
 import { ClaimAge } from './ClaimAge'
 import { CatalystForm } from './CatalystForm'
 import { CatalystRow } from './CatalystRow'
-import { hoursSince, isoOf, useInlineForm, useNow } from './format'
+import { useNow } from '../../lib/hooks'
+import { hoursSince, isoOf, useInlineForm } from './format'
 
 // CatalystsPanel (CATALYSTS · 14D) — DESIGN-terminal §3.6. Rows ascending by
 // scheduledAt; rows more than 1 h past are hidden. Countdowns tick each

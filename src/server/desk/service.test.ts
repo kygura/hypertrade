@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { protectiveHit } from "./paper.js";
-import { DeskError } from "./service.js";
+import { DeskError, OPERATOR_PREVIEW_KEY } from "./service.js";
 import { makeService } from "./testkit.js";
 import type { OperatorOrder, TradeProposal } from "./types.js";
 
@@ -136,6 +136,19 @@ describe("operator orders (copilot)", () => {
       () => 0,
       (e) => (e instanceof DeskError ? e.status : -1),
     );
+
+  test("assessOperatorOrder is read-only: matches the preview verdict, writes no preview key, leaves a pending preview valid", async () => {
+    const { service, store } = makeService();
+    const a = await service.assessOperatorOrder(order);
+    expect(await store.getState(OPERATOR_PREVIEW_KEY)).toBeFalsy();
+    expect(a.account.positions).toHaveLength(0);
+    const pv = await service.previewOperatorOrder(order);
+    expect(a.verdict).toEqual(pv.verdict);
+    const stored = await store.getState(OPERATOR_PREVIEW_KEY);
+    await service.assessOperatorOrder({ ...order, stop: 3700 });
+    expect(await store.getState(OPERATOR_PREVIEW_KEY)).toEqual(stored as never);
+    expect((await service.submitOperatorOrder(order, { previewHash: pv.previewHash }, BY)).status).toBe("executed");
+  });
 
   test("preview then submit fills on paper, decided by operator:copilot", async () => {
     const { service, store, notifier } = makeService();

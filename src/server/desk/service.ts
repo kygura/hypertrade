@@ -229,6 +229,12 @@ export class DeskService {
     return { ctx, risk, verdict: { ...v, warnings: [...warnings, ...v.warnings] } };
   }
 
+  /** Read-only governor verdict for an operator order plus the account it was sized against. Writes nothing (no preview key, no lock), so a caller's pending preview stays valid. */
+  async assessOperatorOrder(order: OperatorOrder): Promise<{ account: AccountState; verdict: Verdict }> {
+    const { ctx, verdict } = await this.operatorVerdict(order);
+    return { account: ctx.account, verdict };
+  }
+
   /** What the governor would do with an operator order right now. Executes nothing. Under the operator lock: a preview never lands inside another caller's preview → submit. */
   previewOperatorOrder(input: OperatorOrder): Promise<OperatorPreview> {
     return this.serial(() => this.previewOperatorOrderNow(input));

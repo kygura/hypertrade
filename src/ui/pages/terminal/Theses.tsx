@@ -7,6 +7,7 @@ import { isDesktop } from '../../components/intel/format'
 import { ThesisComposer } from '../../components/intel/ThesisComposer'
 import { ThesisDetail, THESIS_STALE_H } from '../../components/intel/ThesisDetail'
 import { ThesisList } from '../../components/intel/ThesisList'
+import { useQueryPatch } from '../../lib/hooks'
 import { intel, useIntel } from '../../lib/intel'
 import type { Thesis } from '../../../shared/intel'
 
@@ -17,18 +18,14 @@ import type { Thesis } from '../../../shared/intel'
 // picks push history (the one exception to §1.1) so Back returns to the list.
 
 export function Theses() {
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
+  const patch = useQueryPatch()
   const selectedId = params.get('id')
   const theses = useIntel(() => intel.theses(), [])
   const list = theses.data ?? []
   const selected = selectedId ? (list.find((t) => t.id === selectedId) ?? null) : null
 
-  const select = (id: string | null) => {
-    const next = new URLSearchParams(params)
-    if (id) next.set('id', id)
-    else next.delete('id')
-    setParams(next, { replace: isDesktop() || id == null })
-  }
+  const select = (id: string | null) => patch({ id }, !(isDesktop() || id == null))
 
   const upsert = (t: Thesis) => {
     const cur = theses.data ?? []

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { api, ApiError } from './api'
+import { api, ApiError, parseWith } from './api'
 import { usePoll, type PollState } from './poll'
 import {
   AlertsResponseSchema,
@@ -72,15 +72,6 @@ import {
 // inside a render. Writes whose response SPEC I2 does not pin resolve to void:
 // the caller refetches ("on mount + after a write", docs/design/terminal.md §1.4).
 
-function parse<S extends z.ZodTypeAny>(schema: S, body: unknown): z.infer<S> {
-  const r = schema.safeParse(body)
-  if (!r.success) {
-    const issue = r.error.issues[0]
-    throw new Error(`intel response mismatch: ${issue?.path.join('.') || '<root>'} ${issue?.message ?? ''}`.trim())
-  }
-  return r.data
-}
-
 /** `GET /journal/report/latest` mirrors `GET /brief/latest`: `{report: JournalReport | null}`. */
 const JournalReportLatestSchema = z.object({ report: JournalReportSchema.nullable() })
 
@@ -118,93 +109,93 @@ const done = () => undefined
 
 export const intel = {
   // ── positions + watchlist (I0.2) ──
-  positions: async (): Promise<PositionsResponse> => parse(PositionsResponseSchema, await api.get(`${base}/positions`)),
+  positions: async (): Promise<PositionsResponse> => parseWith(PositionsResponseSchema, 'intel')(await api.get(`${base}/positions`)),
   addPosition: async (input: ManualPositionInput): Promise<ManualPosition> =>
-    parse(ManualPositionSchema, await api.post(`${base}/positions`, input)),
+    parseWith(ManualPositionSchema, 'intel')(await api.post(`${base}/positions`, input)),
   updatePosition: async (id: string, input: ManualPositionInput): Promise<ManualPosition> =>
-    parse(ManualPositionSchema, await api.put(`${base}/positions/${enc(id)}`, input)),
+    parseWith(ManualPositionSchema, 'intel')(await api.put(`${base}/positions/${enc(id)}`, input)),
   deletePosition: (id: string): Promise<void> => api.del(`${base}/positions/${enc(id)}`).then(done),
-  watchlist: async (): Promise<WatchlistResponse> => parse(WatchlistResponseSchema, await api.get(`${base}/watchlist`)),
+  watchlist: async (): Promise<WatchlistResponse> => parseWith(WatchlistResponseSchema, 'intel')(await api.get(`${base}/watchlist`)),
   /** Full replace (docs/design/terminal.md §3.7: every write is a full PUT). */
   putWatchlist: async (items: WatchlistPut['items']): Promise<WatchlistResponse> =>
-    parse(WatchlistResponseSchema, await api.put(`${base}/watchlist`, { items })),
+    parseWith(WatchlistResponseSchema, 'intel')(await api.put(`${base}/watchlist`, { items })),
 
   // ── brief + reviews (I0.14) ──
   /** Logs a review. Only a real open calls this (docs/design/terminal.md §1.5); `deeplink` for `/terminal?review=1`. */
-  brief: async (via: Review['via'] = 'ui'): Promise<Brief> => parse(BriefSchema, await api.post(`${base}/brief`, { via })),
-  latestBrief: async (): Promise<Brief | null> => parse(BriefLatestResponseSchema, await api.get(`${base}/brief/latest`)).brief,
+  brief: async (via: Review['via'] = 'ui'): Promise<Brief> => parseWith(BriefSchema, 'intel')(await api.post(`${base}/brief`, { via })),
+  latestBrief: async (): Promise<Brief | null> => parseWith(BriefLatestResponseSchema, 'intel')(await api.get(`${base}/brief/latest`)).brief,
   reviews: async (limit?: number): Promise<Review[]> =>
-    parse(ReviewsResponseSchema, await api.get(`${base}/reviews${qs({ limit })}`)).reviews,
+    parseWith(ReviewsResponseSchema, 'intel')(await api.get(`${base}/reviews${qs({ limit })}`)).reviews,
 
   // ── alerts, catalysts (I0.9–I0.13) ──
   alerts: async (q: { since?: string; kind?: AlertKind } = {}): Promise<Alert[]> =>
-    parse(AlertsResponseSchema, await api.get(`${base}/alerts${qs(q)}`)).alerts,
+    parseWith(AlertsResponseSchema, 'intel')(await api.get(`${base}/alerts${qs(q)}`)).alerts,
   alertFeedback: (id: string, vote: AlertFeedbackInput['vote']): Promise<void> =>
     api.post(`${base}/alerts/${enc(id)}/feedback`, { vote } satisfies AlertFeedbackInput).then(done),
   catalysts: async (days = 14): Promise<Catalyst[]> =>
-    parse(CatalystsResponseSchema, await api.get(`${base}/catalysts${qs({ days })}`)).catalysts,
+    parseWith(CatalystsResponseSchema, 'intel')(await api.get(`${base}/catalysts${qs({ days })}`)).catalysts,
   addCatalyst: (input: ManualCatalystInput): Promise<void> => api.post(`${base}/catalysts`, input).then(done),
   /** Manual catalysts only; `id` is the catalyst's `eventId`. */
   deleteCatalyst: (id: string): Promise<void> => api.del(`${base}/catalysts/${enc(id)}`).then(done),
   /** Weekly feedback report (worst buckets first), or null before the first one. */
   feedbackReport: async (): Promise<FeedbackReport | null> =>
-    parse(FeedbackReportLatestSchema, await api.get(`${base}/feedback/report/latest`)).report,
+    parseWith(FeedbackReportLatestSchema, 'intel')(await api.get(`${base}/feedback/report/latest`)).report,
 
   // ── exposure graph (I0.8) ──
-  graph: async (asset: string): Promise<GraphResponse> => parse(GraphResponseSchema, await api.get(`${base}/graph${qs({ asset })}`)),
-  addEdge: async (input: UserEdgeInput): Promise<Edge> => parse(EdgeSchema, await api.post(`${base}/graph/edges`, input)),
+  graph: async (asset: string): Promise<GraphResponse> => parseWith(GraphResponseSchema, 'intel')(await api.get(`${base}/graph${qs({ asset })}`)),
+  addEdge: async (input: UserEdgeInput): Promise<Edge> => parseWith(EdgeSchema, 'intel')(await api.post(`${base}/graph/edges`, input)),
   /** User edges only; the edge key travels in the DELETE body. */
   deleteEdge: (key: EdgeKey): Promise<void> => api.del(`${base}/graph/edges`, key).then(done),
 
   // ── journal (I0.15) ──
-  journal: async (days = 30): Promise<JournalResponse> => parse(JournalResponseSchema, await api.get(`${base}/journal${qs({ days })}`)),
+  journal: async (days = 30): Promise<JournalResponse> => parseWith(JournalResponseSchema, 'intel')(await api.get(`${base}/journal${qs({ days })}`)),
   saveNote: async (tradeId: string, note: string): Promise<TradeNote> =>
-    parse(TradeNoteSchema, await api.put(`${base}/journal/${enc(tradeId)}/note`, { note })),
+    parseWith(TradeNoteSchema, 'intel')(await api.put(`${base}/journal/${enc(tradeId)}/note`, { note })),
   /** Tags untagged trades in the window (≤ 25 per call). 503 = no LLM configured. */
   tagUntagged: async (days?: number): Promise<JournalTagResult> =>
-    parse(JournalTagResultSchema, await api.post(`${base}/journal/tag`, days == null ? {} : { days })),
+    parseWith(JournalTagResultSchema, 'intel')(await api.post(`${base}/journal/tag`, days == null ? {} : { days })),
   latestReport: async (): Promise<JournalReport | null> =>
-    parse(JournalReportLatestSchema, await api.get(`${base}/journal/report/latest`)).report,
-  generateReport: async (): Promise<JournalReport> => parse(JournalReportSchema, await api.post(`${base}/journal/report`)),
+    parseWith(JournalReportLatestSchema, 'intel')(await api.get(`${base}/journal/report/latest`)).report,
+  generateReport: async (): Promise<JournalReport> => parseWith(JournalReportSchema, 'intel')(await api.post(`${base}/journal/report`)),
 
   // ── theses (I0.16) ──
-  theses: async (): Promise<Thesis[]> => parse(ThesesResponseSchema, await api.get(`${base}/theses`)).theses,
+  theses: async (): Promise<Thesis[]> => parseWith(ThesesResponseSchema, 'intel')(await api.get(`${base}/theses`)).theses,
   /** Extracts claims and checks them (up to ~30 s). */
-  createThesis: async (text: string): Promise<Thesis> => parse(ThesisSchema, await api.post(`${base}/theses`, { text })),
-  checkThesis: async (id: string): Promise<Thesis> => parse(ThesisSchema, await api.post(`${base}/theses/${enc(id)}/check`)),
+  createThesis: async (text: string): Promise<Thesis> => parseWith(ThesisSchema, 'intel')(await api.post(`${base}/theses`, { text })),
+  checkThesis: async (id: string): Promise<Thesis> => parseWith(ThesisSchema, 'intel')(await api.post(`${base}/theses/${enc(id)}/check`)),
   deleteThesis: (id: string): Promise<void> => api.del(`${base}/theses/${enc(id)}`).then(done),
 
   // ── screener (I0.17) ──
   parseQuery: async (question: string): Promise<QueryParseResponse> =>
-    parse(QueryParseResponseSchema, await api.post(`${base}/query/parse`, { question })),
-  runQuery: async (dsl: ScreenerDslInput): Promise<QueryResult> => parse(QueryResultSchema, await api.post(`${base}/query/run`, { dsl })),
+    parseWith(QueryParseResponseSchema, 'intel')(await api.post(`${base}/query/parse`, { question })),
+  runQuery: async (dsl: ScreenerDslInput): Promise<QueryResult> => parseWith(QueryResultSchema, 'intel')(await api.post(`${base}/query/run`, { dsl })),
 
   // ── order copilot (I0.18) ──
   previewOrder: async (req: OrderPreviewRequest): Promise<OrderPreview> =>
-    parse(OrderPreviewSchema, await api.post(`${base}/order/preview`, req)),
+    parseWith(OrderPreviewSchema, 'intel')(await api.post(`${base}/order/preview`, req)),
   /** 409 = stale preview (isStalePreview). Never called without the operator's confirm click. */
   confirmOrder: async (intent: OrderIntent, previewHash: string): Promise<OrderConfirmResponse> =>
-    parse(OrderConfirmResponseSchema, await api.post(`${base}/order/confirm`, { intent, previewHash })),
+    parseWith(OrderConfirmResponseSchema, 'intel')(await api.post(`${base}/order/confirm`, { intent, previewHash })),
 
   // ── doc/contract watcher (I0.19) ──
-  watches: async (): Promise<Watch[]> => parse(WatchesResponseSchema, await api.get(`${base}/watches`)).watches,
-  addWatch: async (input: WatchInput): Promise<Watch> => parse(WatchSchema, await api.post(`${base}/watches`, input)),
+  watches: async (): Promise<Watch[]> => parseWith(WatchesResponseSchema, 'intel')(await api.get(`${base}/watches`)).watches,
+  addWatch: async (input: WatchInput): Promise<Watch> => parseWith(WatchSchema, 'intel')(await api.post(`${base}/watches`, input)),
   deleteWatch: (id: string): Promise<void> => api.del(`${base}/watches/${enc(id)}`).then(done),
   watchChanges: async (id: string): Promise<WatchChange[]> =>
-    parse(WatchChangesResponseSchema, await api.get(`${base}/watches/${enc(id)}/changes`)).changes,
+    parseWith(WatchChangesResponseSchema, 'intel')(await api.get(`${base}/watches/${enc(id)}/changes`)).changes,
   checkWatch: (id: string): Promise<void> => api.post(`${base}/watches/${enc(id)}/check`).then(done),
 
   // ── flow (SPEC § Flow F1) ──
   heatmap: async (window: HeatmapWindow): Promise<HeatmapResponse> =>
-    parse(HeatmapResponseSchema, await api.get(`${base}/heatmap${qs({ window })}`)),
+    parseWith(HeatmapResponseSchema, 'intel')(await api.get(`${base}/heatmap${qs({ window })}`)),
   asset: async (coin: string, days: number): Promise<AssetDetailResponse> =>
-    parse(AssetDetailResponseSchema, await api.get(`${base}/asset/${enc(coin)}${qs({ days })}`)),
+    parseWith(AssetDetailResponseSchema, 'intel')(await api.get(`${base}/asset/${enc(coin)}${qs({ days })}`)),
 
   // ── scout research (SPEC § Scout S1) ──
   research: async (q: { asset?: string; limit?: number } = {}): Promise<ResearchListResponse> =>
-    parse(ResearchListResponseSchema, await api.get(`${base}/research${qs(q)}`)),
+    parseWith(ResearchListResponseSchema, 'intel')(await api.get(`${base}/research${qs(q)}`)),
   /** Synchronous up to ~45 s. 409 = a run in flight, 429 = daily limit (the researchGate reducer in components/intel/research.ts); over the $ cap → 200 `capped`. */
-  ask: async (input: ResearchAskInput): Promise<ResearchResult> => parse(ResearchResultSchema, await api.post(`${base}/research`, input)),
+  ask: async (input: ResearchAskInput): Promise<ResearchResult> => parseWith(ResearchResultSchema, 'intel')(await api.post(`${base}/research`, input)),
 }
 
 /** 409 from `POST /order/confirm`: marks moved > 0.5% or > 60 s (docs/design/terminal.md §7.4). */

@@ -1,6 +1,7 @@
 import type { ZodError, ZodType } from "zod";
 import { deskProviderFactory } from "../desk/agents.js";
 import type { AnalystEnv, LLMProvider, StepHooks, ToolSpec, Usage } from "../llm/provider.js";
+import { CLAUDE_PRICES } from "../llm/prices.js";
 
 // The one LLM entry point for Intel (docs/SPEC.md § Intel I0.6). A single client
 // tool, `emit`, carries the target JSON schema; forced tool choice is
@@ -32,11 +33,7 @@ export interface LlmDeps {
 
 /** $/MTok (input, output). Unknown model → the priciest row (SPEC F0.7). */
 export const LLM_PRICES: Record<string, [number, number]> = {
-  "claude-fable-5-1": [10, 50],
-  "claude-opus-5-5": [4, 20],
-  "claude-opus-5": [5, 25],
-  "claude-sonnet-5-5": [2, 10],
-  "claude-haiku-4-5": [1, 5],
+  ...CLAUDE_PRICES,
   // Moonshot list prices (provenance cost.ts carries the same rows); the fallback routine runs on these.
   "kimi-k3": [3, 15],
   "kimi-k2.6": [0.95, 4],

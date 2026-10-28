@@ -48,6 +48,8 @@ test("fmtSigned: one signed formatter for bp and %", () => {
   expect(fmtSigned(38, "bp")).toBe("+38bp");
   expect(fmtSigned(-12, "bp")).toBe("−12bp");
   expect(fmtSigned(0, "bp")).toBe("0bp");
+  expect(fmtSigned(-0.2, "bp")).toBe("0bp");
+  expect(fmtSigned(null, "bp")).toBe("—");
   expect(fmtSignedPct(-0.054, 1)).toBe("−5.4%");
   expect(fmtSigned(4.8, "%", 1)).toBe("+4.8%");
 });

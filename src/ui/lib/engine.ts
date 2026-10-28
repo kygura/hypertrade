@@ -1,5 +1,4 @@
-import type { z } from 'zod'
-import { api, ApiError, NetworkError } from './api'
+import { api, ApiError, NetworkError, parseWith } from './api'
 import { errorMessage, usePoll, type PollState } from './poll'
 import {
   DecisionRecordSchema,
@@ -22,64 +21,51 @@ import {
 // here, not deep inside a render. WS is not proxied in this scaffold; the
 // pages poll through useEngine (5s, paused while the tab is hidden).
 
-function parse<S extends z.ZodTypeAny>(schema: S, body: unknown): z.infer<S> {
-  const r = schema.safeParse(body)
-  if (!r.success) {
-    const issue = r.error.issues[0]
-    throw new Error(`engine response mismatch: ${issue?.path.join('.') || '<root>'} ${issue?.message ?? ''}`.trim())
-  }
-  return r.data
-}
-
 const base = '/engine'
 
 export const engine = {
   listManifests: async (): Promise<Manifest[]> =>
-    parse(ManifestsResponseSchema, await api.get(`${base}/manifests`)).manifests,
+    parseWith(ManifestsResponseSchema, 'engine')(await api.get(`${base}/manifests`)).manifests,
 
   listStrategies: async (): Promise<StrategyStatus[]> =>
-    parse(StrategiesResponseSchema, await api.get(`${base}/configs`)).strategies,
+    parseWith(StrategiesResponseSchema, 'engine')(await api.get(`${base}/configs`)).strategies,
 
   getStrategy: async (id: string): Promise<StrategyStatus> =>
-    parse(StrategyStatusSchema, await api.get(`${base}/configs/${encodeURIComponent(id)}`)),
+    parseWith(StrategyStatusSchema, 'engine')(await api.get(`${base}/configs/${encodeURIComponent(id)}`)),
 
   putConfig: async (id: string, config: StrategyConfig): Promise<StrategyStatus> =>
-    parse(StrategyStatusSchema, await api.put(`${base}/configs/${encodeURIComponent(id)}`, config)),
+    parseWith(StrategyStatusSchema, 'engine')(await api.put(`${base}/configs/${encodeURIComponent(id)}`, config)),
 
   run: async (id: string, dryRun = true): Promise<DecisionRecord> =>
-    parse(DecisionRecordSchema, await api.post(`${base}/configs/${encodeURIComponent(id)}/run`, { dry_run: dryRun })),
+    parseWith(DecisionRecordSchema, 'engine')(await api.post(`${base}/configs/${encodeURIComponent(id)}/run`, { dry_run: dryRun })),
 
   listDecisions: async (opts: { limit?: number; strategy?: string } = {}): Promise<DecisionRecord[]> => {
     const q = new URLSearchParams()
     q.set('limit', String(opts.limit ?? 50))
     if (opts.strategy) q.set('strategy', opts.strategy)
-    return parse(DecisionsResponseSchema, await api.get(`${base}/decisions?${q.toString()}`)).decisions
+    return parseWith(DecisionsResponseSchema, 'engine')(await api.get(`${base}/decisions?${q.toString()}`)).decisions
   },
 
   getDecision: async (id: string): Promise<DecisionRecord> =>
-    parse(DecisionRecordSchema, await api.get(`${base}/decisions/${encodeURIComponent(id)}`)),
+    parseWith(DecisionRecordSchema, 'engine')(await api.get(`${base}/decisions/${encodeURIComponent(id)}`)),
 
   approveIntent: async (decisionId: string, intentId: string): Promise<DecisionRecord> =>
-    parse(
-      DecisionRecordSchema,
-      await api.post(`${base}/decisions/${encodeURIComponent(decisionId)}/intents/${encodeURIComponent(intentId)}/approve`),
+    parseWith(DecisionRecordSchema, 'engine')(await api.post(`${base}/decisions/${encodeURIComponent(decisionId)}/intents/${encodeURIComponent(intentId)}/approve`),
     ),
 
   rejectIntent: async (decisionId: string, intentId: string): Promise<DecisionRecord> =>
-    parse(
-      DecisionRecordSchema,
-      await api.post(`${base}/decisions/${encodeURIComponent(decisionId)}/intents/${encodeURIComponent(intentId)}/reject`),
+    parseWith(DecisionRecordSchema, 'engine')(await api.post(`${base}/decisions/${encodeURIComponent(decisionId)}/intents/${encodeURIComponent(intentId)}/reject`),
     ),
 
   listVenues: async (): Promise<VenueStatus[]> =>
-    parse(VenuesResponseSchema, await api.get(`${base}/venues`)).venues,
+    parseWith(VenuesResponseSchema, 'engine')(await api.get(`${base}/venues`)).venues,
 
-  getGovernor: async (): Promise<GovernorSettings> => parse(GovernorSettingsSchema, await api.get(`${base}/governor`)),
+  getGovernor: async (): Promise<GovernorSettings> => parseWith(GovernorSettingsSchema, 'engine')(await api.get(`${base}/governor`)),
 
   putGovernor: async (settings: GovernorSettings): Promise<GovernorSettings> =>
-    parse(GovernorSettingsSchema, await api.put(`${base}/governor`, settings)),
+    parseWith(GovernorSettingsSchema, 'engine')(await api.put(`${base}/governor`, settings)),
 
-  kill: async (): Promise<GovernorSettings> => parse(GovernorSettingsSchema, await api.post(`${base}/kill`)),
+  kill: async (): Promise<GovernorSettings> => parseWith(GovernorSettingsSchema, 'engine')(await api.post(`${base}/kill`)),
 }
 
 /** True for the proxy's own "engine not configured" (503) / "engine unreachable" (502) answers. */

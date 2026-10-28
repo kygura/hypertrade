@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { providerError } from "../llm/providerError.js";
 import { buildSystemPrompt } from "../llm/system.js";
 import { buildCatalog, type AnalystCatalog } from "../llm/catalog.js";
 import {
@@ -170,7 +171,7 @@ export async function runAnalyst(opts: RunOptions, emit: (e: AnalystEvent) => Pr
       stop = "aborted";
     } else {
       stop = "error";
-      await emit({ type: "error", error: providerError(err) });
+      await emit({ type: "error", error: providerError(err, "analyst provider") });
     }
   } finally {
     clearTimeout(timer);
@@ -178,18 +179,6 @@ export async function runAnalyst(opts: RunOptions, emit: (e: AnalystEvent) => Pr
   }
   if (citations.length) await emit({ type: "citations", citations });
   await emit({ type: "done", usage, model: provider.model, provider: provider.id, label: provider.label, rounds, stop, effort: provider.effort });
-}
-
-/** Provider failures without leaking request details (keys never appear here). */
-function providerError(err: unknown): string {
-  if (err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number") {
-    const status = (err as { status: number }).status;
-    if (status === 401 || status === 403) return "analyst provider rejected the credentials";
-    if (status === 429) return "analyst provider is rate limiting; try again shortly";
-    return `analyst provider error (HTTP ${status})`;
-  }
-  const msg = err instanceof Error ? err.message : String(err);
-  return `analyst provider error: ${msg.slice(0, 200)}`;
 }
 
 export interface AnalystRouteOptions {

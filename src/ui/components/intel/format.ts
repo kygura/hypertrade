@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useRef, useState, type KeyboardEvent } from 'react'
 import { classForPnl, fmtPct, fmtPrice, fmtUsd } from '../../../shared/format'
 import type { DiffItem, SnapshotMetric } from '../../../shared/intel'
 
@@ -117,16 +117,6 @@ export function newestTs(list: (string | null | undefined)[]): string | null {
   let best: string | null = null
   for (const t of list) if (t && (!best || new Date(t).getTime() > new Date(best).getTime())) best = t
   return best
-}
-
-/** Re-render every `ms` (countdowns are content, not motion: they tick under reduced motion too). */
-export function useNow(ms = 60_000): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), ms)
-    return () => clearInterval(t)
-  }, [ms])
-  return now
 }
 
 /**

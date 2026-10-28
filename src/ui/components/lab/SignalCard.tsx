@@ -10,13 +10,12 @@ import {
   holdoutGap,
   ruleProviders,
   sharpeOf,
-  stabWord,
   statsFor,
   type MetricDef,
   type RuleEvaluation,
   type StatsWindow,
 } from '../../lib/lab'
-import { DirectionWord, DsrValue, ProviderTag, SharpeValue, StatCell, VerdictBadge } from './common'
+import { DirectionWord, DsrValue, ProviderTag, SharpeValue, StabValue, StatCell, VerdictBadge } from './common'
 
 // SignalCard — docs/design/README.md §10.9. One RuleEvaluation: rank, the rule in our
 // language (the hero), FIRING/FLAT, SAVE; then the meta line; then seven
@@ -48,7 +47,6 @@ export function SignalCard({
 }) {
   const s = statsFor(ev, window)
   const gap = holdoutGap(sharpeOf(ev.walkForward), sharpeOf(ev.holdout))
-  const stab = ev.sensitivity ? stabWord(ev.sensitivity.stability) : null
   const pair = ev.rule.conditions.length > 1
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
@@ -120,13 +118,7 @@ export function SignalCard({
         <StatCell label="TR/YR">{s ? s.tradesPerYear.toFixed(1) : '—'}</StatCell>
         <StatCell label="SUPPORT">{ev.support}</StatCell>
         <StatCell label="STAB">
-          {stab && ev.sensitivity ? (
-            <>
-              {ev.sensitivity.stability.toFixed(2)} <span className={stab.tone}>{stab.word}</span>
-            </>
-          ) : (
-            '—'
-          )}
+          <StabValue stability={ev.sensitivity?.stability} />
         </StatCell>
       </div>
     </article>

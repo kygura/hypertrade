@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Button } from './Button'
 import { StatusDot } from './Badge'
+import { fmtUtcStamp } from '../lib/format'
 
 // State vocabulary — docs/design/README.md §6. Named patterns referenced by name from
 // every API-backed surface (see §13 state → view matrix). Loading is
@@ -115,7 +116,7 @@ export function StaleBanner({
 }) {
   if (ageHours(generatedAt) <= thresholdHours) return null
   const hours = Math.floor(ageHours(generatedAt))
-  const stamp = new Date(generatedAt).toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
+  const stamp = fmtUtcStamp(generatedAt)
   return (
     <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-amber bg-amber-bg border-b border-border-subtle">
       {noun} {hours}h old — generated {stamp}
@@ -128,7 +129,7 @@ export function StaleBanner({
 export function AgeStamp({ generatedAt, thresholdHours }: { generatedAt: string; thresholdHours: number }) {
   const hours = ageHours(generatedAt)
   const stale = hours > thresholdHours
-  const full = new Date(generatedAt).toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
+  const full = fmtUtcStamp(generatedAt)
   return (
     <span
       className={`text-[10px] tabular ${stale ? 'text-amber' : 'text-text-secondary'}`}

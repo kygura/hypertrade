@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 // MomentumBadge.tsx). Color is never the sole signal: StatusDot always
 // ships with a text label from its caller.
 
-export type Tone = 'green' | 'red' | 'amber' | 'info' | 'gray'
+export type Tone = 'green' | 'red' | 'amber' | 'info' | 'gray' | 'neutral'
 
 const TONE_TEXT: Record<Tone, string> = {
   green: 'text-green',
@@ -13,6 +13,7 @@ const TONE_TEXT: Record<Tone, string> = {
   amber: 'text-amber',
   info: 'text-info',
   gray: 'text-text-secondary',
+  neutral: 'text-text-primary',
 }
 
 const TONE_BG: Record<Tone, string> = {
@@ -21,6 +22,7 @@ const TONE_BG: Record<Tone, string> = {
   amber: 'bg-amber-bg',
   info: 'bg-info-bg',
   gray: 'bg-elevated',
+  neutral: 'bg-elevated',
 }
 
 export interface BadgeProps {

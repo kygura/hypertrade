@@ -1,4 +1,7 @@
 import type { CyclePhase } from '../../../shared/cycles'
+import { alpha } from '../charts/theme'
+
+export { alpha, css } from '../charts/theme'
 
 // Shared helpers for the /cycles view. Dates are UTC: cycle anchors are
 // whole UTC days and must not shift a month under a local timezone.
@@ -52,11 +55,6 @@ export function fmtDays(n: number): string {
   return `${n < 0 ? '−' : ''}${Math.abs(n).toLocaleString('en-US')}d`
 }
 
-export function css(name: string, fallback: string): string {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  return v || fallback
-}
-
 function rgb(color: string): [number, number, number] | null {
   if (color.startsWith('#') && color.length === 7) {
     const n = parseInt(color.slice(1), 16)
@@ -79,18 +77,4 @@ export function blend(color: string, base: string, a: number): string {
   if (!c || !b) return alpha(color, a)
   const mix = (i: number) => Math.round(b[i]! + (c[i]! - b[i]!) * a)
   return `rgb(${mix(0)},${mix(1)},${mix(2)})`
-}
-
-/** Scales a hex or rgb(a) color's opacity by `a` (theme tokens may already carry alpha). */
-export function alpha(color: string, a: number): string {
-  if (color.startsWith('#') && color.length === 7) {
-    const n = parseInt(color.slice(1), 16)
-    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
-  }
-  const m = /rgba?\(([^)]+)\)/.exec(color)
-  if (m) {
-    const [r, g, b, a0] = m[1]!.split(',').map((x) => x.trim())
-    return `rgba(${r},${g},${b},${(a0 == null ? 1 : Number(a0)) * a})`
-  }
-  return color
 }

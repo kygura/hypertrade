@@ -5,6 +5,7 @@ import { engine, errorMessage, useEngine } from '../lib/engine'
 import { ApiError } from '../lib/api'
 import type { DecisionRecord, GovernorMode, GovernorOverride, StrategyConfig, StrategyStatus } from '../../shared/strategy-protocol'
 import { defaultParams, validateParams, type ParamValues } from '../../shared/strategy-params'
+import { GovernorLimitFields, governorLimitErrors } from '../components/strategy/GovernorLimits'
 import { EngineTabs } from '../components/strategy/EngineTabs'
 import { EngineOffline, OfflineStrip } from '../components/strategy/EngineOffline'
 import { ParamForm } from '../components/strategy/ParamForm'
@@ -58,18 +59,6 @@ function formToOverride(f: OverrideForm, existing: GovernorOverride | undefined)
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function overrideErrors(f: OverrideForm): Record<string, string> {
-  const e: Record<string, string> = {}
-  const num = (s: string) => (s.trim() === '' ? null : Number(s))
-  const mc = num(f.min_confidence)
-  if (mc != null && (Number.isNaN(mc) || mc < 0 || mc > 1)) e.min_confidence = 'must be between 0 and 1'
-  const mn = num(f.max_notional_usd)
-  if (mn != null && (Number.isNaN(mn) || mn < 0)) e.max_notional_usd = 'must be ≥ 0'
-  const mo = num(f.max_open_intents)
-  if (mo != null && (Number.isNaN(mo) || mo < 0 || !Number.isInteger(mo))) e.max_open_intents = 'must be a whole number ≥ 0'
-  return e
-}
-
 export function StrategyDetail() {
   const { id } = useParams<{ id: string }>()
   const status = useEngine(() => engine.getStrategy(id!), [id], { enabled: !!id })
@@ -103,7 +92,7 @@ export function StrategyDetail() {
 
   const manifest = status.data?.manifest
   const paramErrors = manifest && params ? validateParams(manifest.params, params) : {}
-  const govErrors = overrideErrors(override)
+  const govErrors = governorLimitErrors(override, { allowBlank: true })
   const valid = Object.keys(paramErrors).length === 0 && Object.keys(govErrors).length === 0
 
   function candidate(): StrategyConfig | null {
@@ -280,38 +269,15 @@ export function StrategyDetail() {
                       className="self-start"
                     />
                   </div>
-                  {(
-                    [
-                      ['min_confidence', 'MIN CONFIDENCE', '0', '1', '0.01'],
-                      ['max_notional_usd', 'MAX NOTIONAL (USD)', '0', undefined, '1'],
-                      ['max_open_intents', 'MAX OPEN INTENTS', '0', undefined, '1'],
-                    ] as const
-                  ).map(([key, label, min, max, step]) => (
-                    <label key={key} className="flex flex-col gap-1">
-                      <span className="label">{label}</span>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min={min}
-                        max={max}
-                        step={step}
-                        placeholder="inherit"
-                        value={override[key]}
-                        aria-invalid={!!govErrors[key]}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          setOverride((o) => ({ ...o, [key]: v }))
-                          setDirty(true)
-                        }}
-                        className="w-full"
-                      />
-                      {govErrors[key] && (
-                        <span role="alert" className="text-[10px] text-red-text">
-                          {govErrors[key]}
-                        </span>
-                      )}
-                    </label>
-                  ))}
+                  <GovernorLimitFields
+                    form={override}
+                    errors={govErrors}
+                    placeholder="inherit"
+                    onChange={(key, v) => {
+                      setOverride((o) => ({ ...o, [key]: v }))
+                      setDirty(true)
+                    }}
+                  />
                 </div>
               </div>
 
