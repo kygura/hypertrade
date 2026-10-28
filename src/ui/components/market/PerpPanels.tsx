@@ -3,6 +3,7 @@ import { classForPnl, fmtPct, fmtPrice, fmtUsd } from '../../../shared/format'
 import { fundingApr, type PerpStats } from '../../../shared/market'
 import { useApi } from '../../lib/api'
 import { useHlSubscription, type WsAssetCtx } from '../../lib/hlWs'
+import { useNow } from '../../lib/hooks'
 import { AnimatedDigits } from '../AnimatedDigits'
 import { Badge } from '../Badge'
 import { MetricStat } from '../MetricStat'
@@ -64,15 +65,6 @@ export function usePerpStats(coin: string) {
   return { ...res, ctx, live: live != null, updatedAt }
 }
 
-function useNow(ms = 1000) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), ms)
-    return () => clearInterval(id)
-  }, [ms])
-  return now
-}
-
 function countdown(ms: number): string {
   if (ms <= 0) return '00:00'
   const s = Math.floor(ms / 1000)
@@ -88,7 +80,7 @@ const bp = (frac: number) => `${(frac * 1e4).toFixed(1)}bp`
 
 /** Title row + stats grid for the drill-in header panel. */
 export function PerpHeader({ coin, stats }: { coin: string; stats: ReturnType<typeof usePerpStats> }) {
-  const now = useNow()
+  const now = useNow(1000)
   const { ctx, data } = stats
   const hlNext = data?.predicted.find((p) => p.venue === 'HlPerp')?.nextFundingTime ?? null
   // HL settles on the hour; without a prediction, the next top of the hour.
@@ -160,7 +152,7 @@ const VENUE: Record<string, string> = { HlPerp: 'HYPERLIQUID', BinPerp: 'BINANCE
 
 /** Predicted funding across venues + trailing averages. */
 export function FundingPanel({ stats }: { stats: ReturnType<typeof usePerpStats> }) {
-  const now = useNow()
+  const now = useNow(1000)
   const data = stats.data
   const avg = data?.fundingAvg
   return (

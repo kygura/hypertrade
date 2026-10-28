@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, NetworkError } from './api'
+import { ApiError, failFrom, NetworkError } from './api'
 import { fmtUsd } from '../../shared/format'
+import { fmtAge, fmtUtcStamp, signClass } from './format'
 import type {
   CatalogueEntry,
   CatalogueHealth,
@@ -53,8 +54,6 @@ export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flag
 
 // ------------------------------------------------------------------ transport
 
-const REDIRECT_KEY = 'ht_redirect_to'
-
 type Envelope<T> = { ok: true; result: T } | { ok: false; error: string; field?: string }
 
 export function isAbort(err: unknown): boolean {
@@ -76,11 +75,7 @@ export async function labCall<T>(name: string, args: object = {}, signal?: Abort
     if (isAbort(err)) throw err
     throw new NetworkError(err instanceof Error ? err.message : 'network unreachable')
   }
-  if (res.status === 401) {
-    sessionStorage.setItem(REDIRECT_KEY, location.pathname)
-    location.href = '/login'
-    throw new ApiError('unauthorized', 401)
-  }
+  if (res.status === 401) return failFrom(res)
   const body = (await res.json().catch(() => null)) as Envelope<T> | null
   if (signal?.aborted) throw new DOMException('aborted', 'AbortError')
   if (body && body.ok === true && res.ok) return body.result
@@ -230,10 +225,7 @@ export function fmtPct0(frac: number | null | undefined): string {
   return `${Math.round(frac * 100)}%`
 }
 
-export function signTone(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return 'text-text-secondary'
-  return n >= 0 ? 'text-green' : 'text-red-text'
-}
+export const signTone = signClass
 
 /** MAX DD reads red past −20% (§10.9 SignalCard). */
 export function ddTone(maxDrawdown: number | null | undefined): string {
@@ -244,20 +236,10 @@ export function shortId(id: string | null | undefined): string {
   return id ? id.slice(0, 4) : '—'
 }
 
-export function fmtUtcStamp(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
-}
+export { fmtUtcStamp }
 
-export function relTime(iso: string, now = Date.now()): string {
-  const s = Math.max(0, (now - new Date(iso).getTime()) / 1000)
-  if (!Number.isFinite(s)) return '—'
-  if (s < 60) return `${Math.floor(s)}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86_400)}d ago`
-}
+/** `3M AGO` (was relTime; same rounding, uppercase words). */
+export const relTime = (iso: string, now = Date.now()) => fmtAge(iso, now)
 
 /** Age of a YYYY-MM-DD (or ISO) date over `days` (default 2) → stale. */
 export function isStaleDate(date: string, now = Date.now(), days = 2): boolean {

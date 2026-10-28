@@ -62,18 +62,11 @@ export function deskRisk(get: () => DeskService): RiskGate {
   return {
     async assess(t) {
       const d = get();
-      const { ctxs, marks } = await d.marks();
-      const account = await d.broker.account(marks, d.now());
-      const ctx = {
-        limits: d.config.limits, account, now: d.now(), killSwitch: (await d.killSwitch()).on,
-        market: d.broker.market ? await d.broker.market(t.coin) : DeskService.findMarket(ctxs, t.coin),
-      };
-      const { order: r, warnings } = operatorRiskOrder(order(t, d.config.limits.maxRiskPct), ctx);
-      const v = evaluateRisk(r, ctx);
+      const { account, verdict: v } = await d.assessOperatorOrder(order(t, d.config.limits.maxRiskPct));
       const gross = account.positions.reduce((a, p) => a + p.notionalUsd, 0);
       return {
         before: { approved: true, reasons: [], warnings: [], equityUsd: account.equityUsd, positions: account.positions.length, grossLeverage: account.equityUsd > 0 ? gross / account.equityUsd : null },
-        after: { ...v, warnings: [...warnings, ...v.warnings] },
+        after: { ...v },
       };
     },
     async place(t, by) {

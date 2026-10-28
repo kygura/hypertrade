@@ -10,6 +10,7 @@ import { TradeDetail } from '../../components/intel/TradeDetail'
 import { isDesktop } from '../../components/intel/format'
 import { TradesTable, matchesTag, tradeAnchorId, UNTAGGED_TAG } from '../../components/intel/TradesTable'
 import { useAction } from '../../components/intel/useAction'
+import { useQueryPatch } from '../../lib/hooks'
 import { intel, useIntel } from '../../lib/intel'
 import type { JournalResponse, TradeNote } from '../../../shared/intel'
 
@@ -38,7 +39,8 @@ function writeDays(d: JournalDays): void {
 }
 
 export function Journal() {
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
+  const patchParams = useQueryPatch()
   const selectedId = params.get('trade')
   const tagFilter = params.get('tag')
   const [days, setDaysState] = useState<JournalDays>(readDays)
@@ -61,15 +63,6 @@ export function Journal() {
     writeDays(d)
   }
 
-  const patchParams = (patch: Record<string, string | null>) =>
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        for (const [k, v] of Object.entries(patch)) v ? next.set(k, v) : next.delete(k)
-        return next
-      },
-      { replace: true },
-    )
 
   // Scroll to a row picked from the report once it is rendered (after a window change refetch too).
   useEffect(() => {

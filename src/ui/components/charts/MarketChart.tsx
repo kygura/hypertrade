@@ -24,6 +24,7 @@ import { useHlReconnect, useHlSubscription, type WsCandle } from '../../lib/hlWs
 import { useTheme } from '../../themes/registry'
 import { Segmented } from '../Segmented'
 import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
+import { alpha, css } from './theme'
 
 // MarketChart — docs/design/README.md §9.4. TradingView lightweight-charts (canvas), the
 // one chart that isn't Recharts: it has to hold tens of thousands of bars,
@@ -52,25 +53,6 @@ const SRC_LABEL: Record<string, string> = { hl: 'HL', binance: 'BINANCE', bitsta
 const PREFETCH_BARS = 150
 /** Bars in view on first load. */
 const INITIAL_VIEW = 180
-
-function css(name: string, fallback: string): string {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  return v || fallback
-}
-
-/** Scales a hex or rgb(a) color's opacity by `a` (theme tokens may already carry alpha). */
-function alpha(color: string, a: number): string {
-  if (color.startsWith('#') && color.length === 7) {
-    const n = parseInt(color.slice(1), 16)
-    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
-  }
-  const m = /rgba?\(([^)]+)\)/.exec(color)
-  if (m) {
-    const [r, g, b, a0] = m[1]!.split(',').map((x) => x.trim())
-    return `rgba(${r},${g},${b},${(a0 == null ? 1 : Number(a0)) * a})`
-  }
-  return color
-}
 
 function loadPrefs(): Record<Overlay, boolean> {
   try {

@@ -9,6 +9,7 @@ import {
   OfflineBlock,
   Segmented,
   SkeletonRows,
+  StatCell,
 } from '../components'
 import { api, ApiError, useApi } from '../lib/api'
 import { BranchConfigSchema, isPerp, STABLES } from '../../shared/schemas'
@@ -621,34 +622,19 @@ export function BranchDetail() {
               {result && (
                 <>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="label">CAGR</span>
-                      <span className={`tabular ${signClass(result.stats.cagrPct)}`}>
-                        {fmtPct(result.stats.cagrPct / 100, { decimals: 1, sign: true })}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="label">MAX DD</span>
-                      <span className={`tabular ${maxDdClass(result.stats.maxDrawdownPct)}`}>
-                        {fmtPct(-Math.abs(result.stats.maxDrawdownPct) / 100, { decimals: 1 })}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="label">FINAL</span>
-                      <span className="tabular text-text-primary">{fmtUsd(result.stats.finalValue, { decimals: 0 })}</span>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="label">VS BTC</span>
-                      <span className={`tabular ${signClass(result.stats.vsBtcPct)}`}>
-                        {fmtPct(result.stats.vsBtcPct / 100, { decimals: 1, sign: true })}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="label">VS USDC</span>
-                      <span className={`tabular ${signClass(result.stats.vsUsdcPct)}`}>
-                        {fmtPct(result.stats.vsUsdcPct / 100, { decimals: 1, sign: true })}
-                      </span>
-                    </div>
+                    <StatCell label="CAGR" className={signClass(result.stats.cagrPct)}>
+                      {fmtPct(result.stats.cagrPct / 100, { decimals: 1, sign: true })}
+                    </StatCell>
+                    <StatCell label="MAX DD" className={maxDdClass(result.stats.maxDrawdownPct)}>
+                      {fmtPct(-Math.abs(result.stats.maxDrawdownPct) / 100, { decimals: 1 })}
+                    </StatCell>
+                    <StatCell label="FINAL">{fmtUsd(result.stats.finalValue, { decimals: 0 })}</StatCell>
+                    <StatCell label="VS BTC" className={signClass(result.stats.vsBtcPct)}>
+                      {fmtPct(result.stats.vsBtcPct / 100, { decimals: 1, sign: true })}
+                    </StatCell>
+                    <StatCell label="VS USDC" className={signClass(result.stats.vsUsdcPct)}>
+                      {fmtPct(result.stats.vsUsdcPct / 100, { decimals: 1, sign: true })}
+                    </StatCell>
                   </div>
                   <div className="text-[10px] text-text-secondary mt-3">COMPUTED —</div>
                 </>

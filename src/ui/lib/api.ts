@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { z } from 'zod'
 
 // Tiny fetch wrapper — JSON in/out, credentials included, 401 redirects to
 // /login (docs/SPEC.md: "Frontend route guard redirects to /login"). The intended
@@ -24,7 +25,30 @@ export class ApiError extends Error {
 // is for this case specifically.
 export class NetworkError extends Error {}
 
-const REDIRECT_KEY = 'ht_redirect_to'
+export const REDIRECT_KEY = 'ht_redirect_to'
+
+/** 401 → remember the path and go to /login; any other failure → ApiError carrying the server's `error`. Never returns. */
+export async function failFrom(res: Response): Promise<never> {
+  if (res.status === 401) {
+    sessionStorage.setItem(REDIRECT_KEY, location.pathname)
+    location.href = '/login'
+    throw new ApiError('unauthorized', 401)
+  }
+  const body = (await res.json().catch(() => null)) as { error?: string } | null
+  throw new ApiError(body?.error ?? res.statusText, res.status)
+}
+
+/** Parses a response body with its zod schema; a mismatch throws `<prefix> response mismatch: <path> <message>`. */
+export function parseWith<S extends z.ZodTypeAny>(schema: S, prefix: string): (body: unknown) => z.infer<S> {
+  return (body) => {
+    const r = schema.safeParse(body)
+    if (!r.success) {
+      const issue = r.error.issues[0]
+      throw new Error(`${prefix} response mismatch: ${issue?.path.join('.') || '<root>'} ${issue?.message ?? ''}`.trim())
+    }
+    return r.data
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response

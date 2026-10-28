@@ -3,6 +3,7 @@ import { Panel, PanelHeader, PanelBody } from '../components/Panel'
 import { AgeStamp, StaleBanner, SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock } from '../components/state'
 import { Button } from '../components/Button'
 import { useApi } from '../lib/api'
+import { fmtUtcStamp } from '../lib/format'
 import { DomainCard } from '../components/state/DomainCard'
 import { ThesisBlock } from '../components/state/ThesisBlock'
 import { HistoryStepper } from '../components/state/HistoryStepper'
@@ -16,7 +17,7 @@ import type { MarketStateData } from '../../shared/types'
 type LatestResponse = MarketStateData & { history: string[] }
 
 function fullStamp(iso: string): string {
-  return new Date(iso).toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
+  return fmtUtcStamp(iso)
 }
 
 export function State() {

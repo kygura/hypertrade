@@ -5,6 +5,7 @@ import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { WatchesTable } from '../../components/intel/WatchesTable'
 import { WatchForm } from '../../components/intel/WatchForm'
 import { WatchChanges } from '../../components/intel/WatchChanges'
+import { useQueryPatch } from '../../lib/hooks'
 import { INTEL_POLL_MS, intel, useIntel } from '../../lib/intel'
 
 // `/watch` — doc/contract/wallet watches (DESIGN-terminal §8); `?id=` selects.
@@ -22,18 +23,14 @@ function isMobile(): boolean {
 }
 
 export function Watch() {
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
+  const patch = useQueryPatch()
   const selectedId = params.get('id')
   const watches = useIntel(() => intel.watches(), [], { intervalMs: INTEL_POLL_MS.watches })
   const [adding, setAdding] = useState(false)
   const openerRef = useRef<HTMLButtonElement>(null)
 
-  const select = (id: string | null, push = false) => {
-    const next = new URLSearchParams(params)
-    if (id) next.set('id', id)
-    else next.delete('id')
-    setParams(next, { replace: !push })
-  }
+  const select = (id: string | null, push = false) => patch({ id }, push)
 
   const closeForm = () => {
     setAdding(false)

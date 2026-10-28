@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { Panel, PanelHeader, PanelBody, SrcTag, DataTable, type Column } from '../components'
 import { SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock, StaleBanner } from '../components/state'
 import { useApi } from '../lib/api'
+import type { MarketRow, MarketsResponse } from '../../server/routes/hl'
 import { fmtPrice, fmtPct, classForPnl, fmtUsd } from '../../shared/format'
 
 // Markets — docs/design/README.md §10.7. HL universe table, live-ish (poll every 15s),
@@ -11,23 +12,7 @@ import { fmtPrice, fmtPct, classForPnl, fmtUsd } from '../../shared/format'
 const POLL_MS = 15_000
 const STALE_MIN = 5
 
-export interface MarketRow {
-  coin: string
-  markPx: number
-  oraclePx: number
-  premium: number
-  funding: number
-  openInterestUsd: number
-  dayNtlVlm: number
-  dayChangePct: number
-}
-
 const FUNDING_CROWDED = 0.001 // |funding| >= 0.1%/8h
-
-interface MarketsResponse {
-  fetchedAt: string
-  markets: MarketRow[]
-}
 
 export function Markets() {
   const navigate = useNavigate()

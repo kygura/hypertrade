@@ -7,6 +7,7 @@ import { api, ApiError } from '../../lib/api'
 import type { DeskStatus } from '../../lib/desk'
 import { useHlSubscription, type WsAssetCtx } from '../../lib/hlWs'
 import { actionFailure, platform, PLATFORM_POLL } from '../../lib/platformApi'
+import { useMedia, useNow, useQueryPatch } from '../../lib/hooks'
 import { usePoll } from '../../lib/poll'
 import { useDeskKill } from '../../lib/useDeskKill'
 import type { OpportunityDetail as DetailT } from '../../../shared/platform'
@@ -29,27 +30,6 @@ const STATUS_VALUES: readonly StatusFilter[] = ['live', 'ready', 'decided', 'all
 const LG = '(min-width: 1024px)'
 const DEFAULT_COIN = 'BTC'
 
-function useNow(ms: number): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), ms)
-    return () => clearInterval(t)
-  }, [ms])
-  return now
-}
-
-function useMedia(q: string): boolean {
-  const [m, setM] = useState(() => globalThis.matchMedia?.(q).matches ?? true)
-  useEffect(() => {
-    const mq = globalThis.matchMedia?.(q)
-    if (!mq) return
-    const on = () => setM(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [q])
-  return m
-}
-
 export function Cockpit() {
   const [params] = useSearchParams()
   // Old Telegram links (§1.5 now applies to /terminal).
@@ -60,7 +40,7 @@ export function Cockpit() {
 type DialogKind = 'approve' | 'reject' | 'help' | null
 
 function CockpitPage() {
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
   const navigate = useNavigate()
   const desktop = useMedia(LG)
   const now = useNow(1000)
@@ -73,18 +53,7 @@ function CockpitPage() {
   const liqh: HistWindow = liqhRaw === 6 || liqhRaw === 72 ? liqhRaw : 24
   const liqParam = params.get('liq')
 
-  const patch = useCallback(
-    (next: Record<string, string | null>, push = false) =>
-      setParams(
-        (p) => {
-          const q = new URLSearchParams(p)
-          for (const [k, v] of Object.entries(next)) v == null ? q.delete(k) : q.set(k, v)
-          return q
-        },
-        { replace: !push },
-      ),
-    [setParams],
-  )
+  const patch = useQueryPatch()
 
   // ── pollers (C8) ──
   const feed = usePoll(platform.feed, [], { intervalMs: 15_000, ...PLATFORM_POLL })

@@ -1,19 +1,9 @@
 import { Hono } from "hono";
 import { SectorsDataSchema } from "../../shared/schemas.js";
-import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
-import type { AssetCtx } from "../../shared/types.js";
 import latest from "../../../data/sectors/latest.json" with { type: "json" };
 import { latestObservations } from "../db.js";
-
-const CACHE_MS = 60_000;
-let cache: { ts: number; ctxs: AssetCtx[] } | null = null;
-
-async function getCtxs(): Promise<AssetCtx[]> {
-  if (cache && Date.now() - cache.ts < CACHE_MS) return cache.ctxs;
-  const { ctxs } = await fetchPerpMetaAndCtxs();
-  cache = { ts: Date.now(), ctxs };
-  return ctxs;
-}
+import type { AssetCtx } from "../../shared/types.js";
+import { getCtxs } from "./hl.js";
 
 export interface SectorTokenRow {
   coin: string;
@@ -144,7 +134,7 @@ export type SectorsDeps = {
   ctxs: () => Promise<AssetCtx[]>;
   social: (coins: string[]) => Promise<Map<string, TokenSocial>>;
 };
-const defaultSectorsDeps: SectorsDeps = { ctxs: getCtxs, social: loadSocial };
+const defaultSectorsDeps: SectorsDeps = { ctxs: async () => (await getCtxs()).ctxs, social: loadSocial };
 
 /**
  * The routine's latest sector read joined with live per-token HL aggregates

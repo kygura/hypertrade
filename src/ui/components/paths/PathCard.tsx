@@ -4,7 +4,7 @@ import { isPerp } from '../../../shared/schemas'
 import type { SimBranchOutcome, SimResult } from '../../../shared/intent'
 import { fmtPct, fmtUsd } from '../../../shared/format'
 import type { SimResultEvent } from '../../lib/analyst'
-import { Badge, Button, DataTable, ErrorBlock, LabWarnings, SkeletonRows, type Column } from '..'
+import { Badge, Button, DataTable, ErrorBlock, LabWarnings, SkeletonRows, StatCell, type Column } from '..'
 import { DrawdownChart } from '../branches/DrawdownChart'
 import { maxDdClass, rebalanceLabel, signClass } from '../branches/format'
 import { EquityChart } from '../charts/EquityChart'
@@ -51,25 +51,16 @@ function PathLegs({ config }: { config: BranchConfig }) {
   )
 }
 
-function Cell({ label, className, children }: { label: string; className?: string; children: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="label">{label}</span>
-      <span className={`tabular ${className ?? 'text-text-primary'}`}>{children}</span>
-    </div>
-  )
-}
-
 function PathStats({ result, config }: { result: SimResult; config: BranchConfig }) {
   const s = result.stats
   const ret = returnPct(result, config)
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-      <Cell label="FINAL">{fmtUsd(s.finalValue, { decimals: 0 })}</Cell>
-      <Cell label="RETURN" className={signClass(ret)}>{pct1(ret)}</Cell>
-      <Cell label="CAGR" className={signClass(s.cagrPct)}>{pct1(s.cagrPct)}</Cell>
-      <Cell label="MAX DD" className={maxDdClass(s.maxDrawdownPct)}>{pct1(-Math.abs(s.maxDrawdownPct), false)}</Cell>
-      <Cell label="VS BTC" className={signClass(s.vsBtcPct)}>{pct1(s.vsBtcPct)}</Cell>
+      <StatCell label="FINAL">{fmtUsd(s.finalValue, { decimals: 0 })}</StatCell>
+      <StatCell label="RETURN" className={signClass(ret)}>{pct1(ret)}</StatCell>
+      <StatCell label="CAGR" className={signClass(s.cagrPct)}>{pct1(s.cagrPct)}</StatCell>
+      <StatCell label="MAX DD" className={maxDdClass(s.maxDrawdownPct)}>{pct1(-Math.abs(s.maxDrawdownPct), false)}</StatCell>
+      <StatCell label="VS BTC" className={signClass(s.vsBtcPct)}>{pct1(s.vsBtcPct)}</StatCell>
     </div>
   )
 }

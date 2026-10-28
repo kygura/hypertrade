@@ -1,6 +1,6 @@
 # Consolidation — one front, fewer cells, one way to do each thing
 
-Status: planned, four PRs. PR 1 in progress. This file is the contract for the
+Status: four PRs. PR 1 and PR 2 done; PR 3 next. This file is the contract for the
 consolidation work; `docs/SPEC.md` and `docs/design/README.md` win on data, API shape
 and visuals, and each PR updates them in the same change.
 
