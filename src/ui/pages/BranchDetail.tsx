@@ -213,6 +213,12 @@ export function BranchDetail() {
 
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)]">
+      <div className="mb-3">
+        <Button tier="ghost" onClick={() => navigate('/branches')}>
+          ← BRANCHES
+        </Button>
+      </div>
+
       {loading && (
         <div className="panel">
           <div className="panel-body">

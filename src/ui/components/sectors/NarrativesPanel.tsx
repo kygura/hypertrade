@@ -59,8 +59,17 @@ function Quads({ row }: { row: NarrativeRow }) {
   )
 }
 
-export function NarrativesPanel({ data, onChanged }: { data: NarrativesResponse; onChanged: () => void }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+export function NarrativesPanel({
+  data,
+  selectedId,
+  onSelect,
+  onChanged,
+}: {
+  data: NarrativesResponse
+  selectedId: string | null
+  onSelect: (id: string) => void
+  onChanged: () => void
+}) {
   const selected = data.narratives.find((n) => n.id === selectedId) ?? null
 
   const columns: Column<NarrativeRow>[] = [
@@ -92,12 +101,13 @@ export function NarrativesPanel({ data, onChanged }: { data: NarrativesResponse;
         columns={columns}
         rows={data.narratives}
         rowKey={(r) => r.id}
-        onRowClick={(r) => setSelectedId((cur) => (cur === r.id ? null : r.id))}
+        onRowClick={(r) => onSelect(r.id)}
         isSelected={(r) => r.id === selectedId}
         sortable
         emptyLabel={<EmptyBlock label="no narratives: the routine has not written sector baskets yet" />}
       />
       {selected && <NarrativeDetail key={selected.id} row={selected} onChanged={onChanged} />}
+      {selectedId && !selected && <EmptyBlock label="no narrative for this sector" />}
     </div>
   )
 }

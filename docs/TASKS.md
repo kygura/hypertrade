@@ -6,16 +6,16 @@ lists live in git history (see History).
 ## Open
 
 UI consolidation, per `docs/CONSOLIDATION.md` (one cell per operator job, one home per
-object; 10 shell cells today against a ceiling of 9, target 5):
+object; 6 shell cells today against a ceiling of 9, target 5):
 
 - [x] PR 1: visible bugs, one kill switch, docs made true (sticky offsets per theme,
   coin cross-links, `useDeskKill` and `KillSwitchDialog`, same APPROVE dialog on Desk
-  and Cockpit, stale comments, docs). In progress.
+  and Cockpit, stale comments, docs).
 - [x] PR 2: code dedupe, no IA change (one `format.ts`, shared transport helpers, one
   SSE reader, shared state ladders and desk types).
-- [ ] PR 3: MARKET and RESEARCH families on `SectionTabs` (10 cells to 7; `/overview`
+- [x] PR 3: MARKET and RESEARCH families on `SectionTabs` (10 cells to 6; `/overview`
   redirects to `/markets`; `/sectors` gets one selection).
-- [ ] PR 4: one TRADE front (7 cells to 5, tab order Intel to Act), ENGINE on
+- [ ] PR 4: one TRADE front (6 cells to 5, tab order Intel to Act), ENGINE on
   `SectionTabs`, loading/error states normalised, type scale applied.
 
 Routine redesign (2026-10-23, `docs/fallback-routine.md`): the 4 h routine is a board scan of the

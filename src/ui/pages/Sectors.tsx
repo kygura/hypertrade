@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Panel, PanelHeader, PanelBody } from '../components/Panel'
 import { AgeStamp, StaleBanner, SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock } from '../components/state'
 import { useApi } from '../lib/api'
+import { resolveSelection, toggleSelection } from '../components/sectors/selection'
 import { MindshareGrid, type EnrichedSector } from '../components/sectors/MindshareGrid'
 import { RotationsPanel } from '../components/sectors/RotationsPanel'
 import { SectorDrillPanel } from '../components/sectors/SectorDrillPanel'
@@ -26,7 +27,8 @@ export function Sectors() {
     if (selectedId) drillRef.current?.scrollIntoView({ block: 'nearest' })
   }, [selectedId])
 
-  const selected = data?.sectors.find((s) => s.id === selectedId) ?? null
+  const { sector: selected } = resolveSelection(selectedId, data?.sectors, narratives.data?.narratives)
+  const select = (id: string) => setSelectedId((cur) => toggleSelection(cur, id))
   const sectorLabel = (id: string) => data?.sectors.find((s) => s.id === id)?.label.toUpperCase() ?? id.toUpperCase()
 
   return (
@@ -37,7 +39,7 @@ export function Sectors() {
           {narratives.loading && !narratives.data && <SkeletonRows />}
           {!narratives.loading && narratives.offline && <OfflineBlock onRetry={narratives.refetch} />}
           {!narratives.loading && !narratives.offline && narratives.error && <ErrorBlock message={narratives.error} onRetry={narratives.refetch} />}
-          {narratives.data && <NarrativesPanel data={narratives.data} onChanged={narratives.refetch} />}
+          {narratives.data && <NarrativesPanel data={narratives.data} selectedId={selectedId} onSelect={select} onChanged={narratives.refetch} />}
         </PanelBody>
       </Panel>
 
@@ -53,16 +55,20 @@ export function Sectors() {
             <MindshareGrid
               sectors={data.sectors}
               selectedId={selectedId}
-              onSelect={(id) => setSelectedId((cur) => (cur === id ? null : id))}
+              onSelect={select}
             />
           )}
         </PanelBody>
       </Panel>
 
-      {selected && (
+      {selectedId && (
         <div ref={drillRef} className="order-2 lg:order-none lg:col-span-12">
           <Panel>
-            <SectorDrillPanel sector={selected} onClose={() => setSelectedId(null)} />
+            {selected ? (
+              <SectorDrillPanel sector={selected} onClose={() => setSelectedId(null)} />
+            ) : (
+              <EmptyBlock label="no sector data for this narrative" />
+            )}
           </Panel>
         </div>
       )}
