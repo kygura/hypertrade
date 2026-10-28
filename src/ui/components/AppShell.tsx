@@ -55,6 +55,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const freshness = useFreshness()
+  // Route-guard probe: a 401 redirects to /login (api.ts). In PUBLIC_MODE the
+  // server lets visitors through as guests, so offer LOGIN instead of LOGOUT.
+  const me = useApi<{ ok: boolean; guest?: boolean }>('/auth/me')
 
   const logout = async () => {
     await api.post('/auth/logout').catch(() => {})
@@ -90,9 +93,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             <StatusDot status={freshness.status} />
             <span className="text-[10px] text-text-secondary tabular">{freshness.label}</span>
           </span>
-          <Button tier="ghost" onClick={logout}>
-            LOGOUT
-          </Button>
+          {me.data?.guest ? (
+            <Button tier="ghost" onClick={() => navigate('/login')}>
+              LOGIN
+            </Button>
+          ) : (
+            <Button tier="ghost" onClick={logout}>
+              LOGOUT
+            </Button>
+          )}
         </div>
       </header>
 

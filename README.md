@@ -108,6 +108,7 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | Variable | Purpose |
    | --- | --- |
    | `PORT` (8787) | Listen port. Railway sets it. |
+| `PUBLIC_MODE` (unset) | `1` or `true` opens the app read-only to visitors without a login: GET/HEAD on every API path except `/engine` and `/mcp`. Writes (orders, positions, briefs, analyst runs) still need the password; the topbar shows LOGIN for guests. Unset it and restart to lock the app again. |
    | `DATABASE_URL` (unset) | Postgres. Without it the store is in memory and nothing survives a restart. `DATABASE_POSTGRES_URL` and `POSTGRES_URL` are also read. |
    | `DB_POOL_MAX` (1) | Connection pool size. Use 4. |
    | `DB_QUERY_TIMEOUT_MS` (30000) | Per-query timeout. |

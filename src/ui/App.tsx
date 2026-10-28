@@ -1,8 +1,7 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { api } from './lib/api'
 import { Login } from './pages/Login'
 import { Overview } from './pages/Overview'
 import { Markets } from './pages/Markets'
@@ -52,13 +51,10 @@ const TERMINAL_PAGES = [
 ]
 
 // Router — docs/SPEC.md route map. All routes except /login render inside
-// AppShell. Auth guard: a session probe on shell mount plus the api.ts
+// AppShell. Auth guard: AppShell's /auth/me probe on mount plus the api.ts
 // 401 -> /login redirect on every later call.
 
 function Shell({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    api.get('/auth/me').catch(() => {}) // 401 redirect handled in api.ts
-  }, [])
   const { pathname } = useLocation()
   return (
     <AppShell>
