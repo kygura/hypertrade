@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-10-28T07:05:00Z",
+  "sectors": [
+    {
+      "id": "l1-majors",
+      "label": "L1 majors",
+      "mindshare_score": 0.6,
+      "momentum": -0.05,
+      "rationale": "BTC +1.52%, ETH +2.07%, SOL +2.45%, XRP +2.32% over 24h; BTC OI $3.49B, ETH OI $2.63B on HL, SOL OI z30 2.07. Funding at neutral on BTC, SOL, XRP and 7.67% on ETH; 1d structure of ETH and SOL still trend down at rangePos 0.17 and 0.15. Social share not reported.",
+      "tokens": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
+      ]
+    },
+    {
+      "id": "perp-dex-defi",
+      "label": "Perp DEX & DeFi",
+      "mindshare_score": 0.5,
+      "momentum": 0.1,
+      "rationale": "HYPE +4.86% (OI $1.69B, z30 2.39), AAVE +2.76%, UNI +1.53%, ENA -1.0%. HYPE leads; AAVE is 7d -13.02% after a 1d low sweep, so the sector is bouncing off weak structure with ENA diverging on a 21.56-point HL premium to CEX.",
+      "tokens": [
+        "HYPE",
+        "AAVE",
+        "UNI",
+        "ENA",
+        "PENDLE"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
+      ]
+    },
+    {
+      "id": "privacy",
+      "label": "Privacy",
+      "mindshare_score": 0.4,
+      "momentum": 0.3,
+      "rationale": "ZEC +7.21% 24h (OI $700M, +5.89 vs BTC over 7d), XMR +2.83% with a 1w high sweep and +8.56 vs BTC over 7d. Still the strongest big-OI group on relative strength.",
+      "tokens": [
+        "ZEC",
+        "XMR"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    },
+    {
+      "id": "memecoins",
+      "label": "Memecoins",
+      "mindshare_score": 0.28,
+      "momentum": 0.1,
+      "rationale": "kPEPE +10.27%, PONS +20.64% (thin OI), PUMP +4.25%, DOGE +3.41% 24h; PUMP is still -8.8% over 7d. Thin-OI names move most; DOGE is a tripwire hit (1d and 1w trend down).",
+      "tokens": [
+        "WIF",
+        "DOGE",
+        "PUMP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "label": "AI agents",
+      "mindshare_score": 0.22,
+      "momentum": 0.05,
+      "rationale": "GRASS +7.48% (+19.11 vs BTC over 7d), TAO +3.6%; WLD flat at +0.04% after -26.5% over 7d with funding at -10.16%. Dispersion is wide, with new strength in GRASS and exhaustion-type weakness in WLD.",
+      "tokens": [
+        "FET",
+        "TAO",
+        "VIRTUAL"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "yahoo SMH"
+      ]
+    }
+  ],
+  "rotations": [
+    {
+      "from": "perp-dex-defi",
+      "to": "privacy",
+      "confidence": 0.2,
+      "trigger": "ZEC OI stays above $600M while ZEC 7d return stays above HYPE 7d return (+0.09%)",
+      "note": "Low-confidence; ZEC OI is $700M and ZEC 7d is +3.65% against HYPE +0.09%, so the trigger is met on both legs, but the gap narrowed from last week and one week of price is a thin basis."
+    }
+  ]
+}

@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-27T15:05:00Z",
+  "generated_at": "2026-10-28T07:05:00Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 majors",
       "mindshare_score": 0.6,
-      "momentum": -0.1,
-      "rationale": "BTC -0.07%, ETH -0.03%, SOL -1.09%, XRP +1.81% over 24h; BTC OI $3.47B, ETH OI $2.63B on HL. Funding at the 10.95 neutral reading on all four; SOL sits at 0.08 of its 1d range. Social share not reported, so mindshare is unchecked.",
+      "momentum": -0.05,
+      "rationale": "BTC +1.52%, ETH +2.07%, SOL +2.45%, XRP +2.32% over 24h; BTC OI $3.49B, ETH OI $2.63B on HL, SOL OI z30 2.07. Funding at neutral on BTC, SOL, XRP and 7.67% on ETH; 1d structure of ETH and SOL still trend down at rangePos 0.17 and 0.15. Social share not reported.",
       "tokens": [
         "BTC",
         "ETH",
@@ -22,8 +22,8 @@
       "id": "perp-dex-defi",
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.5,
-      "momentum": -0.15,
-      "rationale": "HYPE +2.12% (OI $1.63B), AAVE -3.23% (1d rangePos -0.04, low sweep), UNI +1.13%, ENA +0.85%. Dispersion inside the sector: HYPE and UNI hold while AAVE breaks its 1d range; funding at neutral.",
+      "momentum": 0.1,
+      "rationale": "HYPE +4.86% (OI $1.69B, z30 2.39), AAVE +2.76%, UNI +1.53%, ENA -1.0%. HYPE leads; AAVE is 7d -13.02% after a 1d low sweep, so the sector is bouncing off weak structure with ENA diverging on a 21.56-point HL premium to CEX.",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -40,8 +40,8 @@
       "id": "privacy",
       "label": "Privacy",
       "mindshare_score": 0.4,
-      "momentum": 0.15,
-      "rationale": "ZEC +4.25% 24h and +12.45% 7d (OI $667M), XMR +0.01% 24h with a 1w high sweep (OI $107M). Privacy is the strongest big-OI group on 7d price, reversing last week's weakness.",
+      "momentum": 0.3,
+      "rationale": "ZEC +7.21% 24h (OI $700M, +5.89 vs BTC over 7d), XMR +2.83% with a 1w high sweep and +8.56 vs BTC over 7d. Still the strongest big-OI group on relative strength.",
       "tokens": [
         "ZEC",
         "XMR"
@@ -54,8 +54,8 @@
       "id": "memecoins",
       "label": "Memecoins",
       "mindshare_score": 0.28,
-      "momentum": -0.1,
-      "rationale": "PUMP -1.22% (OI $109M), FARTCOIN +3.47%, CASHCAT +5.13%, DOGE +0.12%; mixed, with thin-OI names moving most.",
+      "momentum": 0.1,
+      "rationale": "kPEPE +10.27%, PONS +20.64% (thin OI), PUMP +4.25%, DOGE +3.41% 24h; PUMP is still -8.8% over 7d. Thin-OI names move most; DOGE is a tripwire hit (1d and 1w trend down).",
       "tokens": [
         "WIF",
         "DOGE",
@@ -69,8 +69,8 @@
       "id": "ai-agents",
       "label": "AI agents",
       "mindshare_score": 0.22,
-      "momentum": -0.1,
-      "rationale": "Not read this run: the board's top-30 list has no AI-agent names, so the sector is carried unchanged in kind and the read is thin.",
+      "momentum": 0.05,
+      "rationale": "GRASS +7.48% (+19.11 vs BTC over 7d), TAO +3.6%; WLD flat at +0.04% after -26.5% over 7d with funding at -10.16%. Dispersion is wide, with new strength in GRASS and exhaustion-type weakness in WLD.",
       "tokens": [
         "FET",
         "TAO",
@@ -86,16 +86,9 @@
     {
       "from": "perp-dex-defi",
       "to": "privacy",
-      "confidence": 0.25,
-      "trigger": "ZEC OI stays above $600M while HYPE 7d return stays below ZEC 7d return (12.45%)",
-      "note": "Low-confidence; ZEC OI is $667M and ZEC 7d is +12.45% against HYPE +1.13%, so the trigger is met on both legs, but one week of price is a thin basis."
-    },
-    {
-      "from": "l1-majors",
-      "to": "privacy",
-      "confidence": 0.1,
-      "trigger": "BTC dominance z30 stays above +1.0 while ZEC 7d outperforms BTC",
-      "note": "Low-confidence; dominance z30 is +1.35 and ZEC leads BTC by 13.86 points over 7d, a mixed pair that may reflect idiosyncratic ZEC strength."
+      "confidence": 0.2,
+      "trigger": "ZEC OI stays above $600M while ZEC 7d return stays above HYPE 7d return (+0.09%)",
+      "note": "Low-confidence; ZEC OI is $700M and ZEC 7d is +3.65% against HYPE +0.09%, so the trigger is met on both legs, but the gap narrowed from last week and one week of price is a thin basis."
     }
   ]
 }
