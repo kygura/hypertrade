@@ -1,6 +1,6 @@
 # Consolidation — one front, fewer cells, one way to do each thing
 
-Status: four PRs. PR 1 and PR 2 done; PR 3 next. This file is the contract for the
+Status: four PRs. PR 1 to PR 3 done; PR 4 next. This file is the contract for the
 consolidation work; `docs/SPEC.md` and `docs/design/README.md` win on data, API shape
 and visuals, and each PR updates them in the same change.
 
@@ -122,7 +122,7 @@ Gate: `bun run typecheck`, `bun test ./src`, `bun run check:api`, `bun run build
 
 Each moved function keeps or gains a table-driven test.
 
-## PR 3 — MARKET and RESEARCH families (10 cells → 7)
+## PR 3 — MARKET and RESEARCH families (10 cells → 6)
 
 - `SectionTabs` and a `PageContainer` layout route per family.
 - MARKET family: Markets, Sectors, State, Cycles. MetricsStrip moves into the MARKET
@@ -134,7 +134,7 @@ Each moved function keeps or gains a table-driven test.
 - Docs first: README §5 cells, §10 route map, §13 state matrix; SPEC "UI views" and
   §I0 item 1; terminal.md tab list.
 
-## PR 4 — one TRADE front (7 cells → 5) and normalised states
+## PR 4 — one TRADE front (6 cells → 5) and normalised states
 
 - Fold COCKPIT, DESK and the Terminal tabs into TRADE with the Intel → Act tab order
   above, on `SectionTabs`. `isActive` keeps `/`, `/asset/:coin`, `/desk` in the family.

@@ -9,6 +9,8 @@ export { SkeletonRows, EmptyBlock, OfflineBlock, ErrorBlock, StaleBanner, StaleS
 export { SrcTag, type Source } from './SrcTag'
 export { ConfirmDialog, DialogShell } from './ConfirmDialog'
 export { Segmented, type SegmentOption, type SegmentedProps } from './Segmented'
+export { SectionTabs, type SectionTab } from './SectionTabs'
+export { PageContainer } from './PageContainer'
 export { DataTable, type Column } from './DataTable'
 export { AppShell } from './AppShell'
 export { MetricStat } from './MetricStat'

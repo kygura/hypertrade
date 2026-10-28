@@ -434,7 +434,7 @@ Components never hard-code heights that the density variables cover. Minimum
 effective target: `var(--tap-min)` (24px fine / 44px coarse). Full-width
 table rows count as targets when the row is clickable.
 
-### 4.3 The metrics strip (Overview) wrapping rule
+### 4.3 The metrics strip (MARKET header) wrapping rule
 
 Desktop: one row of stat cells separated by 1px borders, each cell
 `minmax(140px, 1fr)`. Mobile: a 2-column grid (`grid-cols-2`), cells keep
@@ -486,7 +486,7 @@ it holds tens of thousands of bars, pans/zooms and stacks panes:
 | Drawdown | 90px | 120px |
 | Monte-carlo fan | 200px | 280px |
 | Market chart price pane (drill-in) | 240px | 340px (+96px per perp pane) |
-| Overview sparkline | 48px | 56px |
+| Paths-card sparkline | 48px | 56px |
 
 Mobile chart adaptations, uniform across all charts:
 
@@ -521,36 +521,33 @@ links to every other coin page for the same coin (`/markets/:coin` ↔
 implementation, and its confirmation weight follows the action, not the page
 (§7). The ceiling is nine cells and the target is five.
 
-**Current state: ten cells, over the nine-cell ceiling.** Cells were appended
-as features shipped (CYCLES was the tenth). `docs/CONSOLIDATION.md` is the
-plan that brings the shell back under the ceiling (10 → 7 → 5) and folds the
-old landing pages into tabs; until it lands, this section describes what
-ships. The cells, left to right (`NAV` in `AppShell.tsx`):
+**Current state: six cells, under the ceiling; one more PR reaches five**
+(`docs/CONSOLIDATION.md` PR 4 folds COCKPIT and DESK, with the Terminal tabs,
+into one TRADE front). Each family keeps one sub-nav, `SectionTabs` (§11), and
+one `PageContainer` gutter. The cells, left to right (`NAV` in `AppShell.tsx`):
 
 | # | Desktop | Mobile | Glyph | Link | Active on |
 |---|---|---|---|---|---|
-| 1 | COCKPIT | CKPT | `◉` | `/` | the whole Terminal family (`isTerminalPath`): `/`, `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch`, `/overview`, `/asset/:coin` |
-| 2 | BRANCHES | BRNCH | `⑂` | `/branches` | `/branches`, `/branches/:id` |
-| 3 | SECTORS | SECTR | `▦` | `/sectors` | `/sectors` |
-| 4 | STATE | STATE | `☰` | `/state` | `/state` |
-| 5 | MARKETS | MKTS | `≋` | `/markets` | `/markets`, `/markets/:coin` |
-| 6 | CYCLES | CYCLE | `◠` | `/cycles` | `/cycles`, `/cycles/:coin` |
-| 7 | ENGINE | ENGIN | `⚙` | `/strategies` | the strategy console (`isEnginePath`): `/strategies`, `/decisions`, `/governor` and their `/:id` drills |
-| 8 | ANALYST | ASK | `?` | `/analyst` | `/analyst` |
-| 9 | DESK | DESK | `◎` | `/desk` | `/desk` |
-| 10 | LAB | LAB | `⚗` | `/lab` | `/lab/*`, including `/lab/rules/:id` |
+| 1 | COCKPIT | CKPT | `◉` | `/` | the whole Terminal family (`isTerminalPath`): `/`, `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch`, `/asset/:coin` |
+| 2 | MARKET | MKT | `≋` | `/markets` | the MARKET family (`isMarketPath`): `/markets`, `/sectors`, `/state`, `/cycles` and their `/:coin` drills |
+| 3 | RESEARCH | RSRCH | `⚗` | `/lab` | `/lab/*` (including `/lab/rules/:id`) and `/branches`, `/branches/:id` |
+| 4 | ENGINE | ENGIN | `⚙` | `/strategies` | the strategy console (`isEnginePath`): `/strategies`, `/decisions`, `/governor` and their `/:id` drills |
+| 5 | ANALYST | ASK | `?` | `/analyst` | `/analyst` |
+| 6 | DESK | DESK | `◎` | `/desk` | `/desk` |
 
-Three cells group several routes behind an in-view sub-nav: COCKPIT (the
-TerminalTabs strip, docs/design/terminal.md §1.3), ENGINE (`EngineTabs`,
-§10.12) and LAB (`LabTabs`, §10.9). `/overview` has no cell of its own: it is
-the OVERVIEW tab of the Terminal family. After login the landing is `/`.
-`/login` renders outside the shell entirely. Unknown paths redirect to `/`.
+Four cells group several routes behind an in-view sub-nav: COCKPIT
+(`TerminalTabs`, docs/design/terminal.md §1.3), MARKET (`MarketTabs`: PERPS ·
+SECTORS · STATE · CYCLES, with the `MetricsStrip` under the tabs on every
+MARKET route, §10.2), RESEARCH (`LabTabs`, §10.9) and ENGINE (`EngineTabs`,
+§10.12). There is no Overview page: `/overview` redirects to `/markets`.
+After login the landing is `/`. `/login` renders outside the shell entirely.
+Unknown paths redirect to `/`.
 
 ### 5.1 Desktop / mid (≥768px): TopBar, `--topbar-h`, sticky
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ HYPERTRADE ▪ │ COCKPIT BRANCHES SECTORS STATE MARKETS CYCLES ENGINE ANALYST DESK LAB │ theme ● DATA 12:41 │ LOGOUT │
+│ HYPERTRADE ▪ │ COCKPIT MARKET RESEARCH ENGINE ANALYST DESK │ theme ● DATA 12:41 │ LOGOUT │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -558,7 +555,7 @@ Left → right:
 
 1. **Wordmark** `HYPERTRADE` 11px uppercase bold + a 6×6px accent square
    (`--color-accent`). Click → `/`.
-2. **Routes**: the ten cells above as 10px control-case links, 12px gap.
+2. **Routes**: the six cells above as 10px control-case links, 12px gap.
    Active route gets the theme's active treatment (Hyperion: `text-primary` +
    2px accent bottom border, `.tab-active`; Hyperdash: white text, the orange
    rule is reserved for tabs) and `aria-current="page"`.
@@ -585,7 +582,7 @@ right (the freshness cluster is desktop-only). Route links move to a
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ CKPT BRNCH SECTR STATE MKTS CYCLE ENGIN ASK DESK LAB             │  56px + safe-area
+│ CKPT MKT RSRCH ENGIN ASK DESK                                    │  56px + safe-area
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -594,36 +591,30 @@ right (the freshness cluster is desktop-only). Route links move to a
   padding-bottom.
 - Equal cells (`flex: 1`), each a flex column: a 12px glyph over a 9px
   control-case label. Glyphs are text characters, no icon library: `◉`
-  Cockpit, `⑂` Branches, `▦` Sectors, `☰` State, `≋` Markets, `◠` Cycles,
-  `⚙` Engine, `?` Analyst, `◎` Desk, `⚗` Lab.
+  Cockpit, `≋` Market, `⚗` Research, `⚙` Engine, `?` Analyst, `◎` Desk.
 - Active cell: `text-primary` + a 2px accent top border on the cell (the
   underline idiom, flipped to the touchable edge). Inactive: `text-secondary`.
-- Labels: `CKPT / BRNCH / SECTR / STATE / MKTS / CYCLE / ENGIN / ASK / DESK /
-  LAB` — 5 chars max, `letter-spacing` ≤ 0.02em on the tab bar only (the
-  theme's control tracking would push a 5-char label past a 32px cell).
+- Labels: `CKPT / MKT / RSRCH / ENGIN / ASK / DESK` — 5 chars max,
+  `letter-spacing` ≤ 0.02em on the tab bar only (the theme's control tracking
+  would push a 5-char label past the cell).
 - Whole cell is the target (≥56px tall — over `--tap-min`).
 
 No hamburger, no drawer. A drawer would hide the map of the product behind
 a tap.
 
-**Nine cells is the ceiling — decision and arithmetic; ten is a known
-violation.** LAB was added as the ninth cell rather than merged, because its
-one plausible host, ENGINE, groups the strategy console (strategies,
-decisions, governor); Lab is research that feeds strategies, not a console
-tab, and hiding it one level down on mobile while it is a top-bar route on
-desktop would make the two shells disagree. CYCLES then arrived as a tenth
-cell, which the ceiling forbids; the plan to
-remove it, and the old landing pages that were demoted to sub-tabs instead of
-removed, is `docs/CONSOLIDATION.md`. At 320px ten cells are 32px wide; a
-5-char label at 9px Geist Mono is ≈27px, so labels fit without abbreviating
-further. Cells are 56px tall: the target is 32×56, above WCAG 2.5.8's 24×24
-and the iOS tab-bar norm, but below the 44px `--tap-min` horizontally —
-accepted for this one surface because neighbouring cells are separated by the
-full cell boundary (a mis-tap lands on a route, never on an action). A new
-destination may not add a cell: it merges into an existing one the way
-ENGINE already does, or replaces one. Rejected: a scrolling tab bar (hidden
-cells defeat the map, §4.3's argument) and 4-char labels (no legibility gain
-at 32px; they would rename settled labels).
+**Nine cells is the ceiling; the shell has six, and the target is five.** The
+ceiling is arithmetic. At 320px six cells are about 53px wide, and a 5-char
+label at 9px Geist Mono is ≈27px, so labels fit without abbreviating further.
+Cells are 56px tall: above WCAG 2.5.8's 24×24 and the iOS tab-bar norm, but
+below the 44px `--tap-min` horizontally at higher cell counts, which is why
+the count stays low: neighbouring cells are separated by the full cell
+boundary (a mis-tap lands on a route, never on an action). A new destination
+may not add a cell: it becomes a tab in the cell whose job it serves (the
+way CYCLES joined MARKET and BRANCHES joined RESEARCH), or replaces one. The
+remaining step to five is `docs/CONSOLIDATION.md` PR 4 (COCKPIT and DESK, with
+the Terminal tabs, become one TRADE front). Rejected: a scrolling tab bar
+(hidden cells defeat the map, §4.3's argument) and 4-char labels (no
+legibility gain; they would rename settled labels).
 
 ### 5.3 Route guard
 
@@ -750,7 +741,7 @@ Hyperion §8 carried over whole, minus grid-drag and sockets:
 
 ## 9. Chart specifications (shared, Recharts)
 
-### 9.1 Equity curve vs benchmarks (branch detail; sparkline variant on Overview and in Paths cards)
+### 9.1 Equity curve vs benchmarks (branch detail; sparkline variant in Paths cards)
 
 `ComposedChart` over daily points `{ ts, equity, btcHodl, usdc }`:
 
@@ -827,16 +818,16 @@ Route map (`src/ui/App.tsx`). Every route renders inside the shell except
 | `/` | COCKPIT: ranked opportunity feed, liquidation map, detail | docs/design/terminal.md "Cockpit" |
 | `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch` | the Terminal family tabs (`/?review=1` redirects to `/terminal?review=1`) | docs/design/terminal.md §1, §3–§8 |
 | `/asset/:coin` | asset page, a drill-in of `/terminal` | docs/design/terminal.md §15.4 |
-| `/overview` | the OVERVIEW tab of the Terminal family | §10.2 |
-| `/branches`, `/branches/:id` | branch list; editor + results | §10.3, §10.4; docs/design/chat.md §4 |
-| `/sectors` | narratives, mindshare map, rotations, drill-in | §10.5 |
-| `/state` | MarketState briefing | §10.6 |
-| `/markets`, `/markets/:coin` | HL universe; candle drill-in | §10.7 |
-| `/cycles`, `/cycles/:coin` | BTC / ETH cycle phases and next-bull-run estimate | §10.10 |
+| `/overview` | redirects to `/markets` | — |
+| `/markets`, `/markets/:coin` | MARKET · PERPS: HL universe; candle drill-in | §10.7 |
+| `/sectors` | MARKET · SECTORS: narratives, mindshare map, rotations, drill-in (one selection drives both panels) | §10.5 |
+| `/state` | MARKET · STATE: MarketState briefing | §10.6 |
+| `/cycles`, `/cycles/:coin` | MARKET · CYCLES: BTC / ETH cycle phases and next-bull-run estimate | §10.10 |
+| `/branches`, `/branches/:id` | RESEARCH · BRANCHES: branch list; editor + results (back link `← BRANCHES`) | §10.3, §10.4; docs/design/chat.md §4 |
 | `/analyst` | read-only analyst (ASK) and Paths chat (SIMULATE) | §10.8; docs/design/chat.md |
 | `/desk` | agentic portfolio desk | §10.11 |
 | `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` | ENGINE console | §10.12 |
-| `/lab` → `/lab/search`; `/lab/{search,runs,catalogue,pulse}`, `/lab/runs/:runId`, `/lab/rules/:id` | heuristic research | §10.9 |
+| `/lab` → `/lab/search`; `/lab/{search,runs,catalogue,pulse}`, `/lab/runs/:runId`, `/lab/rules/:id` | RESEARCH: heuristic research | §10.9 |
 
 Every view gets: purpose, mobile layout, desktop layout, components with
 data fields, states, interactions.
@@ -865,78 +856,42 @@ All widths: a single centered panel, max-width 320px, vertically centered
 - Success → redirect to the remembered path or `/`.
 - States: only idle/in-flight/error — no skeletons here.
 
-### 10.2 `/overview` — Overview
+### 10.2 MARKET header — MetricsStrip
 
-The OVERVIEW tab of the Terminal family: it renders under TerminalTabs
-(docs/design/terminal.md §9) and is reached through the sub-tab strip, not a
-shell cell. It is the only UI for the metrics strip.
+There is no Overview page (`/overview` redirects to `/markets`). The
+`MetricsStrip` sits under `MarketTabs` on every MARKET route (`/markets`,
+`/sectors`, `/state`, `/cycles`, and their drills), inside the family's
+`PageContainer`. It is the only UI for funding skew, fear/greed, BTC dominance
+and stablecoin cap. The MarketState headline lives on `/state` (§10.6), sector
+heat on `/sectors` (§10.5), branch equity on `/branches` (§10.3), and the
+engine glance in the ENGINE console (§10.12).
 
-Purpose: 30-second morning read — where is the market, what does the routine
-think, how are my branches doing, what is the engine doing. Everything links
-deeper; nothing is edited here.
-
-Desktop (`lg:`, 12-col grid, gutter 12px):
+Purpose: a 5-second read of where the market is, above whichever MARKET tab
+is open. Nothing is edited here.
 
 ```
-┌ METRICS STRIP ──────────────────────────────────────────── 12 ┐
+┌ MARKET: [PERPS|SECTORS|STATE|CYCLES] ───────────────────────────┐
+├ METRICS STRIP ─────────────────────────────────────────────────┤
 │ TOTAL OI      FUND SKEW    FEAR/GREED   BTC DOM    STABLES    │
 │ $4.21B        +0.0031      72 GREED     54.2%      $168B      │
 │ +2.1% ▲ z1.2  −0.0004 ▼    +4 ▲         −0.3% ▼    +0.8% ▲    │
-├ MARKETSTATE ───────────────────── 7 ┬ SECTOR HEAT ────────── 5 ┤
-│ RISK APPETITE ROTATES OUT OF…       │ AI INFRA      ▲ +0.62   │
-│ (headline, 16px lg, text-primary)   │ RWA           ▲ +0.31   │
-│ tldr paragraph in text-muted…       │ MEMES         ▼ −0.44   │
-│ GEN 4H AGO          READ BRIEFING → │ L2S           — 0.08    │
-├ BRANCHES ──────────────────────── 7 ┤ (top 6 by mindshare,    │
-│ 60/40 ETH   +18.2% ▲   ▁▂▃▅▆▅▇     │  MomentumBadge each,    │
-│ SOL MAX     −4.1% ▼    ▇▆▅▃▂▃▂     │  ALL SECTORS →)         │
-│ (top 3 by updated_at)  ALL →       │                         │
-├ ENGINE ───────── MANUAL · 2/3 ON ─ 7 ┤                         │
-│ strat-a · hl   OPEN LONG BTC  4M   │                         │
-│ (every strategy)       ENGINE →    │                         │
-└─────────────────────────────────────┴─────────────────────────┘
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-Mobile: single column, order — metrics strip (2-col grid per §4.3),
-MarketState card, Sector heat card, Branches card, Engine card. Bottom tab
-bar.
+Layout per §4.3 (five cells on md+, 2-column grid on mobile).
 
-Components and data:
-
-- **MetricsStrip** — from `GET /api/metrics/summary`. Five cells (series:
-  `hl.total_oi_usd`, `hl.funding_skew`, `fng.value`, `cg.btc_dominance`,
+- **MetricsStrip** (`components/market/MetricsStrip.tsx`) fetches its own data
+  from `GET /api/metrics/summary` (series: `hl.total_oi_usd`,
+  `hl.funding_skew`, `fng.value`, `cg.btc_dominance`,
   `llama.stablecoin_cap_usd`). Each **MetricStat** cell: label (xs,
   secondary), value (lg, primary, compact-formatted), third line (xs): signed
   delta with glyph + z30 as `z1.2` when |z| ≥ 1 (amber when |z| ≥ 2 — an
   unusual reading is worth an eyebrow). Metric cells are not links (there is
-  no metric-detail route). Fear/greed prints its word (`72 GREED`).
-- **MarketStateCard** — from `GET /api/marketstate`: `headline` (lg 16px —
-  the view's xl-equivalent; only Overview element allowed above `base`),
-  `tldr` (base, `text-muted`, clamp to 4 lines with CSS `line-clamp`),
-  AgeStamp in header, ghost `READ BRIEFING →` → `/state`. StaleBanner when
-  > 24h.
-- **SectorHeatCard** — from `GET /api/sectors`: top 6 sectors by
-  `mindshare_score`, each row: label (sm, primary) + MomentumBadge.
-  Row tap → `/sectors` (whole list, not per-sector deep link — the drill-in
-  lives there). Ghost `ALL SECTORS →`.
-- **BranchesCard** — from `GET /api/branches` (+ cached results): top 3 by
-  `updated_at`. Row: name (sm), total return signed/colored, 90-day equity
-  **Sparkline** (§4.5, white 1px line, no axes). Tap → `/branches/:id`.
-  Ghost `ALL →`.
-- **EngineCard** — read-only glance at the external strategy engine (the
-  ENGINE console, §10.12), polled every 30s: header carries a governor
-  Badge (`KILLED` red, else the mode `MANUAL` gray / `THRESHOLD`, `AUTO`
-  amber) and `2/3 ON`; one row per strategy — id · venue, last action (or
-  red `ERROR`), age. Row tap → `/strategies/:id`; ghost `ENGINE →` →
-  `/strategies`.
+  no metric-detail route). Fear/greed prints its word (`72 GREED`). A series
+  with no value prints `--`.
 
-States: MetricsStrip — SkeletonRows / ErrorBlock / StaleBanner (> 2h);
-MarketStateCard — SkeletonRows / EmptyBlock (`no briefing yet — trigger the
-routine from STATE`) / StaleBanner; SectorHeatCard — same pattern;
-BranchesCard — SkeletonRows / EmptyBlock (`no branches yet` + ghost
-`CREATE A BRANCH` → `/branches`); EngineCard — SkeletonRows / EngineOffline
-(`ENGINE NOT CONFIGURED` / `ENGINE UNREACHABLE`) / ErrorBlock / EmptyBlock
-(`no strategies registered`).
+States: SkeletonRows / OfflineBlock / ErrorBlock / EmptyBlock (`no metrics
+yet`) / StaleBanner (> 2h).
 
 ### 10.3 `/branches` — list + create
 
@@ -1303,13 +1258,14 @@ bookmarkable page and the browser back button steps between them:
 | `/lab/runs/:runId` | SEARCH | the Search tab with that run's config in the form and its results below; header stamp `RUN 7f3a · 2026-10-08 09:12 UTC` |
 | `/lab/catalogue` | CATALOGUE | saved rules, health, live stats |
 | `/lab/pulse` | PULSE | Market Pulse board |
+| `/branches`, `/branches/:id` | BRANCHES | the Branches simulator (§10.3, §10.4), under the same tab row |
 | `/lab/rules/:id` | (drill) | rule detail; `?run=<runId>` when the rule is not catalogued; `?from=catalogue\|results\|pulse` sets the back link |
 
-**LabTabs**: one `Segmented` (`size: 'md'`) directly under the shell:
-`SEARCH · RUNS · CATALOGUE · PULSE`, in workflow order (search → its
-history → what you kept → what it says today). Default `SEARCH`: the page
-exists to run searches; the glanceable Pulse is one tap away. Mobile: four
-segments fit 320px with `short` labels `SRCH · RUNS · CTLG · PULSE`; the tab
+**LabTabs**: a `SectionTabs` (`size: 'md'` Segmented) directly under the
+shell: `SEARCH · RUNS · CATALOGUE · PULSE · BRANCHES`, in workflow order
+(search → its history → what you kept → what it says today → portfolio
+simulation). It is the RESEARCH cell's sub-nav. Default `SEARCH`: the page
+exists to run searches; the glanceable Pulse is one tap away. Mobile: `short` labels `SRCH · RUNS · CTLG · PULSE · BRNCH`; the tab
 row is `position: sticky; top: var(--topbar-h)`, `--subnav-h` tall, under the
 top strip. The catalogue segment carries a count suffix
 (`CATALOGUE · 7`) at md+; the Pulse segment carries a 6px dot, green if any
@@ -1707,6 +1663,8 @@ config loaded for correction.
 
 ### 10.10 `/cycles` — BTC and ETH cycle view
 
+The CYCLES tab of the MARKET family (`MarketTabs`, MetricsStrip above it, §10.2).
+
 Purpose: where is this coin in its multi-year cycle, and when is the next
 bull run likely to start. Ported from hl-cycles; spec and data model in
 docs/SPEC.md ("CYCLES"). The estimate is a reading of past cycles with its
@@ -1894,9 +1852,13 @@ Ported components keep their Hyperion source semantics (files:
 | `ConfirmDialog` | `title`, `body`, `confirmLabel`, `onConfirm`, `onCancel`, `error?`, `busy?`, `typedWord?`, `returnFocus?` | §7 Level 2; centered lg / bottom sheet mobile; focus trap; stays open on error; `typedWord` adds Level 3 (confirm disabled until the word matches) |
 | `DialogShell` | `title`, `onClose`, `children`, `className?`, `returnFocus?` | the dialog frame `ConfirmDialog` and the Cockpit ticket / reject / keys dialogs share |
 | `KillSwitchDialog` | `killOn`, `busy`, `error`, `onConfirm`, `onCancel`, `returnFocus?` | §7 Level 3 for the Desk kill (`KILL` typed); resume is Level 2. Driven by the `useDeskKill(killOn, refetch)` hook (`src/ui/lib/useDeskKill.ts`), used by Desk and the Cockpit header |
+| `SectionTabs` | `label`, `tabs: {to, label, short?, title?, match?, dot?}[]` | §5; the family sub-nav: a sticky `Segmented` (md) under the top bar (`--topbar-h`, `--subnav-h` tall), path-based. `TerminalTabs`, `MarketTabs` and `LabTabs` are thin wrappers |
+| `PageContainer` | `children`, `className?` | §5; max width 1440, shell gutter; wraps a family's tab row and header strip |
 | `Segmented` | `options: {value, label, short?, title?, tone?}[]`, `value`, `onChange`, `label`, `size?`, `disabled?` | §15; the one-of-N control (radiogroup); `short` labels below `md:` |
 | `DataTable` | `columns: {key, label, priority: 1\|2\|3\|4, align, render}[]`, `rows`, `onRowClick?`, `sortable?` | §4.4 priority hiding via `hidden md:table-cell`/`hidden lg:table-cell`; row height `var(--row-h)`; focusable rows |
 | `MetricStat` | `label`, `value`, `delta?`, `deltaPositive?`, `z30?` | §10.2 cell |
+| `MetricsStrip` | none (fetches its own data) | §10.2; the five-cell strip in the MARKET header (`components/market/MetricsStrip.tsx`) |
+| `MarketTabs` | none | §5; `SectionTabs` over PERPS · SECTORS · STATE · CYCLES, with `isMarketPath` (`components/market/MarketTabs.tsx`) |
 | `MomentumBadge` | `momentum: number` | §3; bucket thresholds ±0.15/±0.5 |
 | `Sparkline` | `points: number[]`, `height?` | §4.5; white 1px, no axes, no tooltip |
 
@@ -1912,8 +1874,7 @@ Ported components keep their Hyperion source semantics (files:
 
 **View-scoped components** (built per §10, live next to their route)
 
-Overview (`pages/Overview.tsx`, inline): `MetricsStrip`; `MarketStateCard`;
-`SectorHeatCard`; `BranchesCard`; `EngineCard`. Branches: the config panel,
+Branches: the config panel,
 allocation / DCA / rebalance / scenario editors and stats panel are inline in
 `pages/BranchDetail.tsx`; `components/branches/` holds `DrawdownChart` and
 the format helpers. Sectors: `MindshareGrid`; `RotationsPanel`;
@@ -1929,7 +1890,7 @@ Analyst and Paths: `Markdown`; `ModelSelector`; `PathCard`;
 `VerdictBadge`; `ProbBar`; `ScoreRubric`; `NoulBar`. Desk (§10.11): panels
 are local to `pages/Desk.tsx`. Login is `pages/Login.tsx`.
 
-Lab (§10.9, under `src/ui/components/lab/`): `LabTabs`; `LabSearchForm`
+Lab (§10.9, under `src/ui/components/lab/`): `LabTabs` (a `SectionTabs`, includes BRANCHES); `LabSearchForm`
 (+ `MetricPicker`, `AdvancedDisclosure`, `SearchSummaryBar`);
 `ResultsHeader`; `ResultsFilters`; `SignalCard`; `FeatureImportanceList`;
 `RuleDrillHeader` (+ `WindowStatsTable`, `SensitivityGrid`,
@@ -1938,7 +1899,7 @@ Lab (§10.9, under `src/ui/components/lab/`): `LabTabs`; `LabSearchForm`
 `RunsTable`.
 
 Intel (docs/design/terminal.md §14, under `src/ui/components/intel/`; pages under
-`src/ui/pages/terminal/`): `TerminalTabs` (+ `terminalTabOf`,
+`src/ui/pages/terminal/`): `TerminalTabs` (a `SectionTabs`; + `terminalTabOf`,
 `isTerminalPath`); `ExposurePathChips`; `ReviewStrip`; `WhatChangedPanel` (+
 `DiffTable`); `NewsFeedPanel` (+ `AlertItem`); `CatalystsPanel` (+
 `CatalystRow`, `CatalystForm`); `PositionsPanel` (+ `PositionsTable`,
@@ -1987,8 +1948,8 @@ Non-negotiable, verified before done:
 
 | Surface | Loading | Empty | Error | Stale |
 |---|---|---|---|---|
-| Metrics strip | SkeletonRows | — | ErrorBlock | StaleBanner > 2h + shell dot |
-| MarketState card / view | SkeletonRows | EmptyBlock (`no briefing yet`) | ErrorBlock | StaleBanner > 24h + AgeStamp |
+| Metrics strip (MARKET header; `/overview` is gone) | SkeletonRows | EmptyBlock (`no metrics yet`) | ErrorBlock / OfflineBlock | StaleBanner > 2h + shell dot |
+| MarketState view | SkeletonRows | EmptyBlock (`no briefing yet`) | ErrorBlock | StaleBanner > 24h + AgeStamp |
 | Sector grid / drill | SkeletonRows | EmptyBlock (`no sector data yet`) | ErrorBlock | StaleBanner > 24h + AgeStamp |
 | Branches list | SkeletonRows | EmptyBlock + `NEW BRANCH` | ErrorBlock | — |
 | Branch results | SkeletonRows (first run) | EmptyBlock (`not simulated yet`) | verbatim ErrorBlock | `COMPUTED <ts>` stamp |

@@ -46,7 +46,6 @@ Enter, or on preview.
 | `/query` | QUERY | NL → DSL → SQL → result (§6) |
 | `/order` | ORDER | order copilot (§7) |
 | `/watch` | WATCH | doc/contract/wallet watches (§8); `?id=<id>` selects a watch |
-| `/overview` | OVERVIEW | docs/design/README.md §10.2 (§9) |
 | `/asset/:coin` | (drill-in) | asset page (§15.4); a drill-in of `/terminal`: renders under TerminalTabs with the TERMINAL segment active |
 
 Selection uses query params (the route family is pinned by SPEC I0.1), written
@@ -60,14 +59,14 @@ label `CKPT` (under the 5-char limit), glyph `◉` (U+25C9, a text character
 like the others), link `/`.
 
 - Active on every route of the family: `/`, `/terminal`, `/journal`,
-  `/theses`, `/query`, `/order`, `/watch`, `/overview` and `/asset/*`
+  `/theses`, `/query`, `/order`, `/watch` and `/asset/*`
   (`isTerminalPath(pathname)`, beside `isEnginePath`).
 - Wordmark click → `/` (the Cockpit).
 - The freshness cluster is unchanged; per-source health lives in §3.3 and
   the Cockpit health strip (C6).
-- The shell is over its nine-cell ceiling and this family is one of the
-  folds `docs/CONSOLIDATION.md` plans (Intel → Act tabs in one front); until
-  then this section describes what ships.
+- The shell has six cells, under its nine-cell ceiling; this family is one of
+  the folds `docs/CONSOLIDATION.md` PR 4 plans (Intel → Act tabs in one
+  front); until then this section describes what ships.
 
 ### 1.3 TerminalTabs (sub-tab strip)
 
@@ -79,12 +78,11 @@ use `scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)]`.
 
 Order and labels (desktop `label` / below-md `short`):
 
-`COCKPIT / CKPT · TERMINAL / TERM · JOURNAL / JRNL · THESES / THES · QUERY / QRY · ORDER / ORDR · WATCH / WTCH · OVERVIEW / OVW`
+`COCKPIT / CKPT · TERMINAL / TERM · JOURNAL / JRNL · THESES / THES · QUERY / QRY · ORDER / ORDR · WATCH / WTCH`
 
-Order: what to act on now, the review, the operator's own record, the tools,
-the old glance.
+Order: what to act on now, the review, the operator's own record, the tools.
 
-**Mobile: no horizontal scroll by design.** Eight ≤ 4-char short labels at the
+**Mobile: no horizontal scroll by design.** Seven ≤ 4-char short labels at the
 `.seg-item` 10px size + 8px padding measure ≈ 308px: they fit at 400px, and
 the wrapper's `overflow-x: auto` safety net covers 320px (and a wider theme
 `--seg-pad`, 200% zoom). Rejected: a scrolling strip (hidden tabs defeat the
@@ -94,7 +92,7 @@ No count suffixes or dots on segments: each would cost a fetch on every route
 of the family. Segment `title`s state the route's question: `what to act on now` · `what
 changed since I last looked` · `what my trades say` · `test a thesis against
 the data` · `ask the snapshot store` · `preview and place a Desk order` ·
-`watch docs, contracts and wallets` · `market glance`. Links reading
+`watch docs, contracts and wallets`. Links reading
 `← TERMINAL` (asset page) point at `/terminal`.
 
 ### 1.4 Polling and the hidden tab
@@ -237,7 +235,7 @@ book, and the exposure map connecting news to the book.
 ### 3.1 Desktop layout (`lg:`, 12-col grid, gutter 12px)
 
 ```
-┌ TerminalTabs: [COCKPIT|TERMINAL|JOURNAL|THESES|QUERY|ORDER|WATCH|OVERVIEW] ─────────────────────┐
+┌ TerminalTabs: [COCKPIT|TERMINAL|JOURNAL|THESES|QUERY|ORDER|WATCH] ─────────────────────────┐
 ├ REVIEW STRIP ─────────────────────────────────────────────────────────────────────────── 12 ┤
 │ 4  THINGS CHANGED · SINCE 9H AGO · 2 ALERTS · NEXT CPI T−1D 04H        [REVIEW NOW]          │
 │ (xl)  SOURCES ● MANUAL  ● HL  ✕ DESK  ● SNAP 12M  ● NEWS 18M  ● LLM                          │
@@ -777,9 +775,8 @@ then CHANGES (same push/back rule as §5.1).
 
 ## 9. `/overview`
 
-docs/design/README.md §10.2 (metrics strip, MarketState, sector heat,
-branches and engine cards, states) at `/overview` under **TerminalTabs**,
-the OVERVIEW tab. It has no shell cell of its own.
+Removed. `/overview` redirects to `/markets`; its metrics strip is the MARKET
+header (docs/design/README.md §10.2).
 
 ---
 
@@ -845,7 +842,7 @@ text, 409 messages) render **verbatim**; the UI never rewrites them.
 ## 12. Where docs/design/README.md points here
 
 README §5 (the Terminal family is cell 1, COCKPIT), §7 (Level 2 order
-dialogs, Level 3 kill switches), §10 (route map; §10.2 is `/overview`), §11
+dialogs, Level 3 kill switches), §10 (route map; §10.2 is the MARKET-header metrics strip), §11
 (shared rows `ClaimLine`, `ClaimList`, `ClaimAge`, `SourceLink`, `VenueBadge`;
 `SrcTag` union incl. `manual`, `desk`, `snap`; the Intel and Cockpit
 component groups from §14 and C9) and §13 (one row per route here, defined by
@@ -911,7 +908,7 @@ Route pages under `src/ui/pages/terminal/`; panels and cards under
 | `WatchesTable` / `WatchForm` / `WatchChanges` / `ChangeEntry` | `components/intel/Watch*.tsx`, `ChangeEntry.tsx` | `watches, selectedId, onSelect` / `onAdded()` / `watch` / `change` |
 | `Terminal` | `pages/terminal/Terminal.tsx` | route `/terminal`; owns the brief POST cache (§1.5) and `?review=1` |
 | `Journal`, `Theses`, `Query`, `Order`, `Watch` | `pages/terminal/<Name>.tsx` | routes `/journal` … `/watch`; own their fetches and `?id`/`?trade`/`?tag` params |
-| (Overview) | `pages/Overview.tsx` | route `/overview`, wrapped with TerminalTabs |
+| 
 | `Asset` | `pages/terminal/Asset.tsx` | route `/asset/:coin` (§15.4); `AssetHeader` is local to it |
 | `Cockpit` | `pages/cockpit/Cockpit.tsx` | route `/`; see C9 |
 

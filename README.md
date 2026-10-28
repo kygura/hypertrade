@@ -36,20 +36,16 @@ bun run build     # typecheck + vite build
 
 ## Screens
 
-Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is the contract). The top bar has ten cells today, one over the nine-cell ceiling in `docs/design/README.md` §5.2; `docs/CONSOLIDATION.md` is the plan to cut it to five.
+Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is the contract). The top bar has six cells, under the nine-cell ceiling in `docs/design/README.md` §5.2; `docs/CONSOLIDATION.md` PR 4 cuts it to five.
 
 | Cell | Routes |
 |---|---|
-| COCKPIT | `/` the landing (ranked opportunities, liquidation map, approve/reject, desk kill switch). One sub-tab strip, `TerminalTabs`, spans `/`, `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch`, `/overview`; `/asset/:coin` is the Terminal's per-coin page. |
-| BRANCHES | `/branches`, `/branches/:id` |
-| SECTORS | `/sectors` |
-| STATE | `/state` |
-| MARKETS | `/markets`, `/markets/:coin` (chart; links to `/asset/:coin`) |
-| CYCLES | `/cycles`, `/cycles/:coin` |
+| COCKPIT | `/` the landing (ranked opportunities, liquidation map, approve/reject, desk kill switch). One sub-tab strip, `TerminalTabs`, spans `/`, `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch`; `/asset/:coin` is the Terminal's per-coin page. |
+| MARKET | One sub-tab strip, `MarketTabs`, with the metrics strip under it: `/markets` (and `/markets/:coin`, chart; links to `/asset/:coin`), `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`. |
+| RESEARCH | `LabTabs`: `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id`, and `/branches`, `/branches/:id` |
 | ENGINE | `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` |
 | ANALYST | `/analyst` (ASK and SIMULATE) |
 | DESK | `/desk` |
-| LAB | `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id` |
 
 Themes: `hyperdash` (default), `tradexyz` and `hyperion`, switched from the top bar (`src/ui/themes/README.md`).
 
@@ -371,8 +367,8 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 
 `/terminal` shows what changed since your last look, measured
 against your positions and watchlist: a ranked diff, the alerts and catalysts
-that touch those assets, and a short brief. `/` is the Cockpit (phase 8) and the
-old Overview lives at `/overview`. Design: `docs/design/terminal.md`. Spec: docs/SPEC.md
+that touch those assets, and a short brief. `/` is the Cockpit (phase 8) and
+there is no Overview (`/overview` redirects to `/markets`). Design: `docs/design/terminal.md`. Spec: docs/SPEC.md
 § Intel. Code: `src/server/intel/*`, `src/server/routes/intel/*`,
 `src/ui/pages/terminal/*`.
 
@@ -387,7 +383,6 @@ old Overview lives at `/overview`. Design: `docs/design/terminal.md`. Spec: docs
 | `/query` | Natural language to a screener DSL over the snapshot store. The DSL is editable; the SQL is shown read-only. |
 | `/order` | Order copilot, preview then confirm (below). |
 | `/watch` | Watches on URLs, EVM contracts and EVM wallets. Changes are summarised and routed to exposed assets only. |
-| `/overview` | The former Overview. |
 
 Telegram deep links to `/terminal?review=1` open the Terminal and log a review; `/?review=1` redirects there.
 
