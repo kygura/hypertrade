@@ -1,12 +1,12 @@
 import { SECTORS_HISTORY } from "../../../data/sectors/index.js";
 import sectorsLatest from "../../../data/sectors/latest.json" with { type: "json" };
 import type { Claim } from "../../shared/claims.js";
-import type { Alert, EventSource, NarrativeContrast, NarrativeFlow, NarrativeStage, NarrativeView, NarrativeWindow } from "../../shared/intel.js";
+import type { Alert, EventSource, NarrativeContrast, NarrativeFlow, NarrativeStage, NarrativeView } from "../../shared/intel.js";
 import { SectorsDataSchema } from "../../shared/schemas.js";
 import type { SectorsData } from "../../shared/types.js";
-import { deepLink, loadContext, routeFor, type MapperDeps, type RoutingContext } from "./mapper.js";
+import { loadContext, routeFor, type MapperDeps, type RoutingContext } from "./mapper.js";
 import { CONTRAST_DEADLINE_MS, CONTRASTS_SETTING, runContrast, VIEWS_SETTING } from "./narrativeContrast.js";
-import { loadNarrativeFlows, rankNarratives } from "./narratives.js";
+import { loadNarrativeFlows, rankNarratives, strongestMove } from "./narratives.js";
 import { feedbackActions, sendIntel } from "./notify.js";
 import { AUTO_RESEARCH_MARGIN_MS, utcDayStart } from "./research.js";
 
@@ -15,29 +15,38 @@ import { AUTO_RESEARCH_MARGIN_MS, utcDayStart } from "./research.js";
 //
 // Stage alerts (right after the flow detectors). Per narrative the committed HTF
 // stage lives in intel_settings (narrative_stages): {stage, since, alertedAt,
-// pending}. An "unknown" stage changes nothing; the first sight is recorded
+// pending, left}. An "unknown" stage changes nothing; the first sight is recorded
 // silently; a different known stage must hold STAGE_CONFIRM_RUNS consecutive runs
-// (pending) before it is committed; a committed change alerts unless the
-// narrative alerted within STAGE_COOLDOWN_MS (then it is committed silently).
+// and STAGE_CONFIRM_MS (pending) before it is committed; a committed change is
+// silent when the narrative alerted within STAGE_COOLDOWN_MS or returns to the
+// stage it left less than STAGE_RETURN_MS ago (a threshold never ping-pongs).
 // The alert is kind "narrative", asset = narrative id, ref =
-// stage:<id>:<to>:<since>, an observed line written by code from the flow facts.
-// Materiality 1 when the operator has a continuation/fade view on the narrative
-// or holds/watches one of its tokens, else 0.2; routed like the mapper.
+// stage:<id>:<to>:<since>, an observed line written by code from the flow facts,
+// linking to /sectors. Materiality 1 when the operator has a continuation/fade
+// view on the narrative or holds/watches one of its tokens, else 0.2; routed
+// like the mapper.
 //
 // Automatic contrast (the ingest job's last stage, after automatic research).
 // Candidates: lean continuation with the LTF flow against the 7d move, or lean
 // fade with the flow extending it, flowScore ≥ AUTO_CONTRAST_Z, strongest first.
 // At most INTEL_NARRATIVE_AUTO_DAILY runs per UTC day and one per narrative per
-// UTC day (narrative_contrast_auto; the manual counter is separate). A run needs
-// more than its deadline + margin of budget; a capped result stops the stage; a
-// no_web_search result does not count. A done result becomes the latest contrast
-// and raises one "narrative" alert (ref = contrast:<contrast id>) with a
-// hypothesis line written by code. Neither stage ever throws.
+// UTC day (narrative_contrast_auto; the manual counter is separate). Views are
+// read first: with no continuation/fade lean saved nothing else is loaded. A run
+// needs more than its deadline + margin of budget; a capped result stops the
+// stage; a no_web_search result does not count. A done result becomes the latest
+// contrast and raises one "narrative" alert (ref = contrast:<contrast id>, a
+// hypothesis line written by code) only when its favours or agreement differs
+// from the previous stored contrast: the same read is not pinged daily. Neither
+// stage ever throws.
 
 export const STAGES_SETTING = "narrative_stages";
 export const AUTO_SETTING = "narrative_contrast_auto";
 export const STAGE_CONFIRM_RUNS = 2;
+/** A pending stage must also be at least this old before it is committed. */
+export const STAGE_CONFIRM_MS = 2 * 3_600_000;
 export const STAGE_COOLDOWN_MS = 12 * 3_600_000;
+/** Returning to the stage left less than this long ago is committed silently. */
+export const STAGE_RETURN_MS = 24 * 3_600_000;
 export const AUTO_CONTRAST_Z = 2.5;
 /** Where a narrative line points: the NARRATIVES panel. */
 const SOURCE: EventSource = { label: "snapshot", url: "/sectors" };
@@ -53,6 +62,8 @@ export interface StageState {
   alertedAt: string | null;
   /** A different known stage seen `runs` consecutive runs, first at `since`. */
   pending: { stage: NarrativeStage; since: string; runs: number } | null;
+  /** The stage the last commit left, and when (absent on rows written before it was tracked). */
+  left?: { stage: NarrativeStage; at: string };
 }
 export type StageStates = Record<string, StageState>;
 
@@ -65,7 +76,7 @@ export interface StageChange {
   alert: boolean;
 }
 
-/** The next stage state per narrative and the changes committed this run. Narratives no longer in the flows are dropped. Pure. */
+/** The next stage state per narrative and the changes committed this run (alerted or silent). Narratives no longer in the flows are dropped. Pure. */
 export function stageTransitions(prev: StageStates, flows: NarrativeFlow[], nowIso: string): { next: StageStates; changes: StageChange[] } {
   const next: StageStates = {};
   const changes: StageChange[] = [];
@@ -85,13 +96,15 @@ export function stageTransitions(prev: StageStates, flows: NarrativeFlow[], nowI
       continue;
     }
     const pending = cur.pending?.stage === f.stage ? { ...cur.pending, runs: cur.pending.runs + 1 } : { stage: f.stage, since: nowIso, runs: 1 };
-    if (pending.runs < STAGE_CONFIRM_RUNS) {
+    if (pending.runs < STAGE_CONFIRM_RUNS || t - Date.parse(pending.since) < STAGE_CONFIRM_MS) {
       next[f.id] = { ...cur, pending };
       continue;
     }
-    const alert = cur.alertedAt == null || t - Date.parse(cur.alertedAt) >= STAGE_COOLDOWN_MS;
+    const cooled = cur.alertedAt == null || t - Date.parse(cur.alertedAt) >= STAGE_COOLDOWN_MS;
+    const flipBack = cur.left?.stage === f.stage && t - Date.parse(cur.left.at) < STAGE_RETURN_MS;
+    const alert = cooled && !flipBack;
     changes.push({ id: f.id, from: cur.stage, to: f.stage, since: pending.since, alert });
-    next[f.id] = { stage: f.stage, since: pending.since, alertedAt: alert ? nowIso : cur.alertedAt, pending: null };
+    next[f.id] = { stage: f.stage, since: pending.since, alertedAt: alert ? nowIso : cur.alertedAt, pending: null, left: { stage: cur.stage, at: nowIso } };
   }
   return { next, changes };
 }
@@ -104,10 +117,6 @@ export function stageLine(f: NarrativeFlow, from: NarrativeStage): string {
   return `${f.label}: ${from} → ${f.stage} · 7d vs BTC ${signed(f.htf.relBtc7d, " pp")}, OI 7d ${signed(f.htf.oiPct7d, "%")}, funding z ${plain(f.htf.fundingZ)}`.slice(0, 600);
 }
 
-const strength = (w: NarrativeWindow) => Math.max(Math.abs(w.priceZ ?? 0), Math.abs(w.oiZ ?? 0));
-/** The LTF window whose flow set the alignment: the strongest one with a direction. */
-const trigger = (f: NarrativeFlow) => f.ltf.filter((w) => w.quadrant !== "quiet" && w.quadrant !== "unknown").sort((a, b) => strength(b) - strength(a))[0];
-
 const AGREEMENT: Record<NarrativeContrast["view"]["agreement"], string> = {
   agrees: "agrees with your view",
   conflicts: "conflicts with your view",
@@ -117,8 +126,8 @@ const AGREEMENT: Record<NarrativeContrast["view"]["agreement"], string> = {
 
 /** Code-written line: "Privacy: 6h long build (z 2.9) against the 7d move · your view: continuation · contrast favours fade (medium confidence, conflicts with your view)". */
 export function contrastLine(f: NarrativeFlow, view: NarrativeView, c: NarrativeContrast): string {
-  const w = trigger(f);
-  const flow = w ? `${w.window} ${w.quadrant.replace(/_/g, " ")} (z ${plain(strength(w))}) ${f.alignment} the 7d move` : "LTF flow";
+  const w = strongestMove(f.ltf);
+  const flow = w ? `${w.window} ${w.quadrant.replace(/_/g, " ")} (z ${plain(Math.max(Math.abs(w.priceZ ?? 0), Math.abs(w.oiZ ?? 0)))}) ${f.alignment} the 7d move` : "LTF flow";
   return `${f.label}: ${flow} · your view: ${view.lean} · contrast favours ${c.favours} (${c.confidence} confidence, ${AGREEMENT[c.view.agreement]})`.slice(0, 600);
 }
 
@@ -146,6 +155,9 @@ const sectorsOf = (deps: NarrativeWatchDeps) => (deps.sectors ?? (() => SectorsD
 const flowsOf = (deps: NarrativeWatchDeps, sectors: SectorsData) =>
   (deps.flows ?? (() => loadNarrativeFlows({ store: deps.store, now: deps.now, sectors, history: deps.history ?? SECTORS_HISTORY })))();
 const viewsOf = async (deps: NarrativeWatchDeps) => (await deps.store.getSetting<Record<string, NarrativeView>>(VIEWS_SETTING)) ?? {};
+const contrastsOf = async (deps: NarrativeWatchDeps) => (await deps.store.getSetting<Record<string, NarrativeContrast>>(CONTRASTS_SETTING)) ?? {};
+/** Narrative alerts open the NARRATIVES panel. */
+const sectorsLink = (appUrl?: string) => (appUrl ? `${appUrl.replace(/\/+$/, "")}/sectors` : undefined);
 
 /** Inserts one narrative alert (null when its ref already exists) and pushes it; a push that reaches no channel falls back to batch. */
 async function narrativeAlert(
@@ -171,7 +183,7 @@ async function narrativeAlert(
     route: routeFor(deps.pushMateriality, ctx.feedback, a.materiality, { eventType: a.eventType, edgeType: null, hops: 0 }),
   });
   if (alert?.route === "push") {
-    const sent = await sendIntel(deps.notifier, { title: a.title, lines: [a.line], link: deepLink(deps.appUrl), actions: feedbackActions([alert]) });
+    const sent = await sendIntel(deps.notifier, { title: a.title, lines: [a.line], link: sectorsLink(deps.appUrl), actions: feedbackActions([alert]) });
     if (!sent.length) {
       // Nothing reached a channel: the next brief carries it.
       await deps.store.setAlertRoute([alert.id], "batch");
@@ -251,8 +263,11 @@ export async function narrativeAutoContrast(deps: NarrativeWatchDeps, o: { left(
     const prev = await deps.store.getSetting<AutoState>(AUTO_SETTING);
     const state: AutoState = prev?.day === day ? prev : { day, n: 0, ids: [] };
     if (state.n >= limit) return { ...out, stopped: "limit" };
+    // Views first: without a continuation or fade lean there is no candidate, so no flow is loaded.
+    const views = await viewsOf(deps);
+    if (!Object.values(views).some((v) => v.lean === "continuation" || v.lean === "fade")) return out;
     const sectors = sectorsOf(deps);
-    const [flows, views, ctx] = await Promise.all([flowsOf(deps, sectors), viewsOf(deps), loadContext(deps)]);
+    const [flows, ctx] = await Promise.all([flowsOf(deps, sectors), loadContext(deps)]);
     for (const flow of contrastCandidates(flows, views)) {
       if (state.n >= limit) return { ...out, stopped: "limit" };
       if (o.left() <= CONTRAST_DEADLINE_MS + AUTO_RESEARCH_MARGIN_MS) return { ...out, stopped: "budget" };
@@ -269,7 +284,10 @@ export async function narrativeAutoContrast(deps: NarrativeWatchDeps, o: { left(
       out.ran++;
       out.statuses[res.status]++;
       if (res.status !== "done") continue;
-      await deps.store.setSetting(CONTRASTS_SETTING, { ...((await deps.store.getSetting<Record<string, NarrativeContrast>>(CONTRASTS_SETTING)) ?? {}), [flow.id]: res });
+      const before = (await contrastsOf(deps))[flow.id];
+      await deps.store.setSetting(CONTRASTS_SETTING, { ...(await contrastsOf(deps)), [flow.id]: res });
+      // The same read as last time is stored, not pinged again.
+      if (before && before.favours === res.favours && before.view.agreement === res.view.agreement) continue;
       try {
         await narrativeAlert(deps, ctx, {
           ref: `contrast:${res.id}`,

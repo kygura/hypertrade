@@ -190,13 +190,14 @@ const event = (key: string, firstSeen: string, assets: string[], over: Partial<I
 
 describe("narrativeHeadlines", () => {
   const tokens = ["TAO", "FET"];
-  test("basket overlap is case-insensitive, newest first, one per cluster, assets in basket spelling", () => {
+  test("basket overlap is case-insensitive, newest first, one per cluster, assets in basket spelling; flow events are not news", () => {
     const events = [
       event("old", "2026-10-26T08:00:00.000Z", ["tao"]),
       event("sol", "2026-10-27T11:00:00.000Z", ["SOL"]),
       event("dup", "2026-10-27T09:00:00.000Z", ["FET"], { clusterId: "c1" }),
       event("new", "2026-10-27T10:00:00.000Z", ["Fet", "TAO", "SOL", "tao"], { clusterId: "c1", sources: [{ label: "x" }, { label: "y", url: "https://a/1" }, { label: "z", url: "https://a/2" }] }),
       event("solo", "2026-10-27T09:30:00.000Z", ["TAO"]),
+      event("flow", "2026-10-27T11:30:00.000Z", ["TAO"], { origin: "flow", type: "data" }),
     ];
     expect(narrativeHeadlines(events, tokens, 10)).toEqual([
       { title: "new", firstSeen: "2026-10-27T10:00:00.000Z", url: "https://a/1", assets: ["FET", "TAO"] },

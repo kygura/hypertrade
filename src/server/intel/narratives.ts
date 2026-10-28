@@ -144,8 +144,13 @@ export function stage(h: NarrativeHtf): NarrativeStage {
 const DIRECTION: Record<FlowQuadrant, 1 | -1 | 0> = { long_build: 1, short_cover: 1, short_build: -1, long_unwind: -1, quiet: 0, unknown: 0 };
 const strength = (w: NarrativeWindow) => Math.max(Math.abs(w.priceZ ?? 0), Math.abs(w.oiZ ?? 0));
 
+/** The strongest window with a direction (a quadrant other than quiet/unknown), if any. */
+export function strongestMove(ltf: NarrativeWindow[]): NarrativeWindow | undefined {
+  return ltf.filter((w) => DIRECTION[w.quadrant] !== 0).sort((a, b) => strength(b) - strength(a))[0];
+}
+
 export function alignment(ltf: NarrativeWindow[], pricePct7d: number | null): NarrativeFlow["alignment"] {
-  const moving = ltf.filter((w) => DIRECTION[w.quadrant] !== 0).sort((a, b) => strength(b) - strength(a))[0];
+  const moving = strongestMove(ltf);
   if (!moving || pricePct7d == null || pricePct7d === 0) return "none";
   return DIRECTION[moving.quadrant] === Math.sign(pricePct7d) ? "with" : "against";
 }
@@ -212,6 +217,7 @@ export function rankNarratives<T extends Pick<NarrativeFlow, "flowScore">>(rows:
 /**
  * Events whose mapped assets name a basket token (case-insensitive), newest first,
  * one per news cluster (an event without a cluster stands alone), at most `max`.
+ * Flow-detector events are numbers, not news, and are left out.
  */
 export function narrativeHeadlines(events: IntelEvent[], tokens: string[], max: number): NarrativeHeadline[] {
   const byLower = new Map(tokens.map((t) => [t.toLowerCase(), t]));
@@ -220,6 +226,7 @@ export function narrativeHeadlines(events: IntelEvent[], tokens: string[], max: 
   const sorted = [...events].sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen));
   for (const e of sorted) {
     if (out.length >= max) break;
+    if (e.origin === "flow") continue;
     const assets = [...new Set(e.assets.map((a) => byLower.get(a.toLowerCase())).filter((t): t is string => t != null))];
     if (!assets.length) continue;
     if (e.clusterId) {

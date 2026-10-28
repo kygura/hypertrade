@@ -10,7 +10,9 @@ import {
   contrastCandidates,
   narrativeAutoContrast,
   narrativeStageAlerts,
+  STAGE_CONFIRM_MS,
   STAGE_COOLDOWN_MS,
+  STAGE_RETURN_MS,
   STAGES_SETTING,
   stageLine,
   stageTransitions,
@@ -55,26 +57,53 @@ describe("stageTransitions", () => {
     expect(stageTransitions({}, [flowOf({ stage: "unknown" })], ISO)).toEqual({ next: {}, changes: [] });
   });
 
-  test("a different stage holds two runs before it is committed; the committed stage returning clears it; a third stage restarts it", () => {
+  test("a different stage holds two runs and 2 h before it is committed; the committed stage returning clears it; a third stage restarts it", () => {
     const prev: StageStates = { privacy: state("emerging") };
-    const r1 = stageTransitions(prev, [flowOf()], at(-H));
+    const r1 = stageTransitions(prev, [flowOf()], at(-STAGE_CONFIRM_MS));
     expect(r1.changes).toEqual([]);
-    expect(r1.next.privacy).toEqual({ ...prev.privacy!, pending: { stage: "crowded", since: at(-H), runs: 1 } });
+    expect(r1.next.privacy).toEqual({ ...prev.privacy!, pending: { stage: "crowded", since: at(-STAGE_CONFIRM_MS), runs: 1 } });
+    const early = stageTransitions(r1.next, [flowOf()], at(-STAGE_CONFIRM_MS + 60_000)); // second run, but the stage is too young
+    expect(early.changes).toEqual([]);
+    expect(early.next.privacy!.pending).toEqual({ stage: "crowded", since: at(-STAGE_CONFIRM_MS), runs: 2 });
     const r2 = stageTransitions(r1.next, [flowOf()], ISO);
-    expect(r2.changes).toEqual([{ id: "privacy", from: "emerging", to: "crowded", since: at(-H), alert: true }]);
-    expect(r2.next.privacy).toEqual({ stage: "crowded", since: at(-H), alertedAt: ISO, pending: null });
+    expect(r2.changes).toEqual([{ id: "privacy", from: "emerging", to: "crowded", since: at(-STAGE_CONFIRM_MS), alert: true }]);
+    expect(r2.next.privacy).toEqual({ stage: "crowded", since: at(-STAGE_CONFIRM_MS), alertedAt: ISO, pending: null, left: { stage: "emerging", at: ISO } });
     expect(stageTransitions(r1.next, [flowOf({ stage: "emerging" })], ISO).next.privacy).toEqual(prev.privacy!);
     expect(stageTransitions(r1.next, [flowOf({ stage: "fading" })], ISO).next.privacy!.pending).toEqual({ stage: "fading", since: ISO, runs: 1 });
   });
 
+  const pending = { stage: "crowded" as const, since: at(-STAGE_CONFIRM_MS), runs: 1 };
+
   test("inside the 12 h cooldown the change is committed silently and alertedAt is kept", () => {
-    const pending = { stage: "crowded" as const, since: at(-H), runs: 1 };
     const hot: StageStates = { privacy: state("emerging", { alertedAt: at(-STAGE_COOLDOWN_MS + 60_000), pending }) };
     const r = stageTransitions(hot, [flowOf()], ISO);
     expect(r.changes[0]!.alert).toBe(false);
-    expect(r.next.privacy).toEqual({ stage: "crowded", since: at(-H), alertedAt: hot.privacy!.alertedAt, pending: null });
+    expect(r.next.privacy).toEqual({ stage: "crowded", since: at(-STAGE_CONFIRM_MS), alertedAt: hot.privacy!.alertedAt, pending: null, left: { stage: "emerging", at: ISO } });
     const cold: StageStates = { privacy: state("emerging", { alertedAt: at(-STAGE_COOLDOWN_MS), pending }) };
     expect(stageTransitions(cold, [flowOf()], ISO).changes[0]!.alert).toBe(true);
+  });
+
+  test("returning to the stage left less than 24 h ago is committed silently; rows without `left` still load", () => {
+    const recent: StageStates = { privacy: state("emerging", { pending, left: { stage: "crowded", at: at(-STAGE_RETURN_MS + 60_000) } }) };
+    expect(stageTransitions(recent, [flowOf()], ISO).changes[0]!.alert).toBe(false);
+    const old: StageStates = { privacy: state("emerging", { pending, left: { stage: "crowded", at: at(-STAGE_RETURN_MS) } }) };
+    expect(stageTransitions(old, [flowOf()], ISO).changes[0]!.alert).toBe(true);
+    const other: StageStates = { privacy: state("emerging", { pending, left: { stage: "quiet", at: at(-60_000) } }) };
+    expect(stageTransitions(other, [flowOf()], ISO).changes[0]!.alert).toBe(true);
+    expect(stageTransitions({ privacy: state("emerging", { pending }) }, [flowOf()], ISO).changes[0]!.alert).toBe(true);
+  });
+
+  test("a narrative flapping crowded ↔ expanding on a threshold for two days alerts once", () => {
+    let st: StageStates = {};
+    const alerts: string[] = [];
+    for (let h = 0; h <= 48; h++) {
+      const stage = Math.floor(h / 6) % 2 ? "expanding" : "crowded";
+      const r = stageTransitions(st, [flowOf({ stage })], at(h * H));
+      st = r.next;
+      for (const c of r.changes) if (c.alert) alerts.push(`${h}h ${c.from}→${c.to}`);
+    }
+    expect(alerts).toEqual(["8h crowded→expanding"]);
+    expect(st.privacy).toMatchObject({ stage: "expanding", pending: { stage: "crowded", runs: 1 } });
   });
 
   test("a narrative gone from the sector file is dropped", () => {
@@ -119,7 +148,7 @@ function setup(o: { flows?: NarrativeFlow[]; positions?: string[]; watched?: str
 }
 
 describe("narrativeStageAlerts", () => {
-  const pendingCrowded = (): StageStates => ({ privacy: state("emerging", { pending: { stage: "crowded", since: at(-H), runs: 1 } }) });
+  const pendingCrowded = (): StageStates => ({ privacy: state("emerging", { pending: { stage: "crowded", since: at(-2 * H), runs: 1 } }) });
 
   test("a committed change on a held token pushes an observed line with the flow numbers", async () => {
     const { deps, store, notifier } = setup({ positions: ["ZEC"] });
@@ -131,7 +160,7 @@ describe("narrativeStageAlerts", () => {
     expect(r.alerts[0]).toMatchObject({
       kind: "narrative",
       asset: "privacy",
-      ref: `stage:privacy:crowded:${at(-H)}`,
+      ref: `stage:privacy:crowded:${at(-2 * H)}`,
       eventType: "stage_crowded",
       materiality: 1,
       route: "push",
@@ -139,7 +168,8 @@ describe("narrativeStageAlerts", () => {
     });
     expect(notifier.sent).toHaveLength(1);
     expect(notifier.sent[0]!.body).toContain("Privacy: emerging → crowded");
-    expect((await store.getSetting<StageStates>(STAGES_SETTING))!.privacy).toEqual({ stage: "crowded", since: at(-H), alertedAt: ISO, pending: null });
+    expect(notifier.sent[0]!.body).toContain("https://app.example.com/sectors");
+    expect((await store.getSetting<StageStates>(STAGES_SETTING))!.privacy).toEqual({ stage: "crowded", since: at(-2 * H), alertedAt: ISO, pending: null, left: { stage: "emerging", at: ISO } });
   });
 
   test("a view on the narrative is focus too; nothing held, watched or viewed batches at 0.2", async () => {
@@ -173,6 +203,21 @@ describe("narrativeStageAlerts", () => {
     expect(again).toEqual({ alerts: [], committed: 1, errors: [] });
     expect(notifier.sent).toHaveLength(1);
     expect(await store.listAlerts({ kind: "narrative", limit: 10 })).toHaveLength(1);
+  });
+
+  test("a throwing insert leaves the change pending, so the next run commits it again and alerts", async () => {
+    const { deps, store, notifier } = setup({ positions: ["ZEC"] });
+    await store.setSetting(STAGES_SETTING, pendingCrowded());
+    const insert = store.insertAlert.bind(store);
+    store.insertAlert = () => Promise.reject(new Error("db down"));
+    const r = await narrativeStageAlerts(deps, NOW);
+    expect(r).toEqual({ alerts: [], committed: 1, errors: ["privacy: db down"] });
+    expect(await store.getSetting<StageStates>(STAGES_SETTING)).toEqual(pendingCrowded());
+    store.insertAlert = insert;
+    const again = await narrativeStageAlerts(deps, new Date(NOW.getTime() + 15 * 60_000));
+    expect(again.alerts).toHaveLength(1);
+    expect(notifier.sent).toHaveLength(1);
+    expect((await store.getSetting<StageStates>(STAGES_SETTING))!.privacy!.stage).toBe("crowded");
   });
 
   test("a push that reached no channel is re-routed to the next brief; a failed flow load is an error, not a throw", async () => {
@@ -251,6 +296,35 @@ describe("narrativeAutoContrast", () => {
     expect(await store.getSetting<unknown>(AUTO_SETTING)).toEqual({ day: "2026-10-27T00:00:00.000Z", n: 1, ids: ["privacy"] });
     expect(await run(deps)).toMatchObject({ ran: 0, stopped: "none" });
     expect(provider.prompts).toHaveLength(1);
+  });
+
+  test("the same read the next day is stored again but not pinged again; a changed read is", async () => {
+    const provider = new Provider();
+    const { deps, store, clock } = setup({ provider, flows: [AGAINST] });
+    await store.setSetting(VIEWS_SETTING, { privacy: view("continuation") });
+    const first = (await run(deps), (await store.getSetting<Record<string, { id: string }>>(CONTRASTS_SETTING))!.privacy!.id);
+    clock.now = new Date("2026-10-28T12:00:00Z");
+    expect(await run(deps)).toMatchObject({ ran: 1, statuses: { done: 1 } });
+    const second = (await store.getSetting<Record<string, { id: string }>>(CONTRASTS_SETTING))!.privacy!.id;
+    expect(second).not.toBe(first);
+    expect(await store.listAlerts({ kind: "narrative", limit: 10 })).toHaveLength(1);
+    await store.setSetting(VIEWS_SETTING, { privacy: view("fade") }); // same favours, agreement now conflicts
+    clock.now = new Date("2026-10-29T12:00:00Z");
+    await run({ ...deps, flows: async () => [flowOf({ alignment: "with" })] });
+    expect((await store.listAlerts({ kind: "narrative", limit: 10 })).map((a) => a.line.text)).toEqual([
+      "Privacy: 6h long build (z 2.9) with the 7d move · your view: fade · contrast favours continuation (medium confidence, conflicts with your view)",
+      "Privacy: 6h long build (z 2.9) against the 7d move · your view: continuation · contrast favours continuation (medium confidence, agrees with your view)",
+    ]);
+  });
+
+  test("views are read first: with no continuation or fade lean no flow is loaded", async () => {
+    const { deps, store } = setup({ provider: new Provider() });
+    deps.flows = () => Promise.reject(new Error("should not load"));
+    expect(await run(deps)).toEqual({ ran: 0, statuses: { done: 0, failed: 0 }, stopped: "none", errors: [] });
+    await store.setSetting(VIEWS_SETTING, { privacy: view("unsure") });
+    expect((await run(deps)).errors).toEqual([]);
+    await store.setSetting(VIEWS_SETTING, { privacy: view("fade") });
+    expect((await run(deps)).errors).toEqual(["should not load"]);
   });
 
   test("INTEL_NARRATIVE_AUTO_DAILY (default 2) per UTC day; the counter resets the next day", async () => {
