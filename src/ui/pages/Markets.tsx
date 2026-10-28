@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Panel, PanelHeader, PanelBody, SrcTag, DataTable, type Column } from '../components'
-import { SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock, StaleBanner } from '../components/state'
+import { AsyncBody, StaleBanner } from '../components/state'
 import { useApi } from '../lib/api'
 import type { MarketRow, MarketsResponse } from '../../server/routes/hl'
 import { fmtPrice, fmtPct, classForPnl, fmtUsd } from '../../shared/format'
@@ -110,34 +110,37 @@ export function Markets() {
       <Panel>
         <PanelHeader title="MARKETS">
           <SrcTag source="hl" />
-          <span className="text-[10px] text-text-secondary tabular">{markets ? `${filtered.length} PERPS` : ''}</span>
+          <span className="text-xs text-text-secondary tabular">{markets ? `${filtered.length} PERPS` : ''}</span>
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="FILTER"
-            className="!h-[var(--control-sm)] !py-0 !px-2 !text-[10px] w-24 md:w-40 uppercase placeholder:text-text-secondary"
+            className="!h-[var(--control-sm)] !py-0 !px-2 !text-xs w-24 md:w-40 uppercase placeholder:text-text-secondary"
           />
         </PanelHeader>
         <PanelBody>
           {data && <StaleBanner generatedAt={data.fetchedAt} thresholdHours={STALE_MIN / 60} noun="snapshot" />}
-          {loading && !data ? (
-            <SkeletonRows rows={5} />
-          ) : offline ? (
-            <OfflineBlock onRetry={refetch} />
-          ) : error ? (
-            <ErrorBlock message={error} onRetry={refetch} />
-          ) : filtered.length === 0 ? (
-            <EmptyBlock label={filter ? 'no coins match' : 'no markets yet'} />
-          ) : (
-            <DataTable
-              columns={columns}
-              rows={filtered}
-              rowKey={(r) => r.coin}
-              onRowClick={(r) => navigate(`/markets/${r.coin}`)}
-              sortable
-              defaultSort={{ key: 'oi', dir: 'desc' }}
-            />
-          )}
+          <AsyncBody
+            loading={loading}
+            data={data}
+            error={error}
+            offline={offline}
+            rows={5}
+            empty={{ label: filter ? 'no coins match' : 'no markets yet' }}
+            isEmpty={() => filtered.length === 0}
+            onRetry={refetch}
+          >
+            {() => (
+              <DataTable
+                columns={columns}
+                rows={filtered}
+                rowKey={(r) => r.coin}
+                onRowClick={(r) => navigate(`/markets/${r.coin}`)}
+                sortable
+                defaultSort={{ key: 'oi', dir: 'desc' }}
+              />
+            )}
+          </AsyncBody>
         </PanelBody>
       </Panel>
     </div>

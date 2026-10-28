@@ -51,7 +51,7 @@ export function SaveBranchButton({
       <Link
         ref={linkRef}
         to={`/branches/${savedId}`}
-        className="btn inline-flex items-center justify-center flex-1 md:flex-none h-[var(--control-md)] px-2.5 text-[10px] uppercase tracking-wider border border-border text-text-secondary hover:text-text-primary hover:bg-hover"
+        className="btn inline-flex items-center justify-center flex-1 md:flex-none h-[var(--control-md)] px-2.5 text-xs uppercase tracking-wider border border-border text-text-secondary hover:text-text-primary hover:bg-hover"
       >
         SAVED · OPEN ↗
       </Link>

@@ -3,7 +3,7 @@ import type { IntelState } from '../../lib/intel'
 import { Panel, PanelBody, PanelHeader } from '../Panel'
 import { Segmented, type SegmentOption } from '../Segmented'
 import { SrcTag } from '../SrcTag'
-import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows, StaleBanner } from '../state'
+import { AsyncBody, StaleBanner } from '../state'
 import { ClaimAge } from './ClaimAge'
 import { DetectorChips, type ChipResearchActions } from './DetectorChips'
 import { FlowHeatmap } from './FlowHeatmap'
@@ -68,21 +68,20 @@ export function FlowPanel({
       </PanelHeader>
       {d && <StaleBanner generatedAt={d.asOf} thresholdHours={2} noun="snapshots" />}
       <PanelBody>
-        {state.offline && !d ? (
-          <OfflineBlock message={state.offline} onRetry={state.refetch} />
-        ) : state.error && !d ? (
-          <ErrorBlock message={state.error} onRetry={state.refetch} />
-        ) : !d ? (
-          <SkeletonRows rows={4} />
-        ) : d.rows.length === 0 ? (
-          <EmptyBlock label="nothing held or watched — add a position or watch an asset" />
-        ) : (
-          <>
-            {(state.error || state.offline) && <ErrorBlock message={state.error ?? state.offline ?? ''} onRetry={state.refetch} />}
-            <DetectorChips flags={d.flags} materiality={new Map(d.rows.map((r) => [r.asset, r.materiality]))} {...research} />
-            <FlowHeatmap data={d} window={window} />
-          </>
-        )}
+        <AsyncBody
+          {...state}
+          rows={4}
+          empty={{ label: 'nothing held or watched — add a position or watch an asset' }}
+          isEmpty={(x) => x.rows.length === 0}
+          onRetry={state.refetch}
+        >
+          {(x) => (
+            <>
+              <DetectorChips flags={x.flags} materiality={new Map(x.rows.map((r) => [r.asset, r.materiality]))} {...research} />
+              <FlowHeatmap data={x} window={window} />
+            </>
+          )}
+        </AsyncBody>
       </PanelBody>
     </Panel>
   )

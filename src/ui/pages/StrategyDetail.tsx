@@ -145,7 +145,7 @@ export function StrategyDetail() {
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)]">
       <EngineTabs />
-      <div className="flex items-center gap-2 mb-3 text-[10px] uppercase tracking-wider">
+      <div className="flex items-center gap-2 mb-3 text-xs uppercase tracking-wider">
         <Link to="/strategies" className="text-text-secondary hover:text-text-primary">
           ← STRATEGIES
         </Link>
@@ -185,17 +185,17 @@ export function StrategyDetail() {
                 <span className="panel-title">CONFIG</span>
                 {dirty && <span className="inline-block w-1.5 h-1.5 bg-amber" title="unsaved changes" />}
               </span>
-              <span className="text-[10px] text-text-secondary tabular" title={fmtTs(data.last_run_at)}>
+              <span className="text-xs text-text-secondary tabular" title={fmtTs(data.last_run_at)}>
                 LAST RUN {fmtAge(data.last_run_at)}
               </span>
             </div>
             <div className="panel-body p-3 flex flex-col gap-3">
               <div className="flex flex-col gap-1">
-                <span className="text-[16px] text-text-primary">{manifest.name}</span>
-                <span className="text-[10px] text-text-secondary tabular">
+                <span className="text-lg text-text-primary">{manifest.name}</span>
+                <span className="text-xs text-text-secondary tabular">
                   v{manifest.version} · {manifest.cadence || '—'} · {manifest.markets.join(', ') || 'no default markets'}
                 </span>
-                <p className="text-[13px] text-text-muted">{manifest.description || 'no description'}</p>
+                <p className="text-base text-text-muted">{manifest.description || 'no description'}</p>
                 {data.last_error && <ErrorBlock message={data.last_error} />}
               </div>
 
@@ -250,11 +250,11 @@ export function StrategyDetail() {
               <div className="flex flex-col gap-2 pt-2 border-t border-border-subtle">
                 <div className="flex items-center justify-between">
                   <span className="label">GOVERNOR OVERRIDE</span>
-                  <Link to="/governor" className="text-[10px] uppercase tracking-wider text-text-secondary hover:text-text-primary">
+                  <Link to="/governor" className="text-xs uppercase tracking-wider text-text-secondary hover:text-text-primary">
                     GLOBAL →
                   </Link>
                 </div>
-                <span className="text-[10px] text-text-secondary">blank fields inherit the global governor</span>
+                <span className="text-xs text-text-secondary">blank fields inherit the global governor</span>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
                     <span className="label">MODE</span>
@@ -291,10 +291,10 @@ export function StrategyDetail() {
                   <span className={busy === 'running' ? 'pulse-label' : undefined}>{busy === 'running' ? 'RUNNING…' : 'DRY RUN'}</span>
                 </Button>
               </div>
-              <span className="text-[10px] text-text-secondary">
+              <span className="text-xs text-text-secondary">
                 dry run uses the saved config — it never touches a venue or the governor
               </span>
-              {dirty && <span className="text-[10px] text-amber">unsaved changes are not used by DRY RUN until saved</span>}
+              {dirty && <span className="text-xs text-amber">unsaved changes are not used by DRY RUN until saved</span>}
             </div>
           </div>
 
@@ -309,7 +309,7 @@ export function StrategyDetail() {
                 {runError && <ErrorBlock message={runError} onRetry={runDry} />}
                 {!dryRun && busy !== 'running' && !runError && (
                   <div className="flex flex-col items-center gap-2 py-8 text-center">
-                    <span className="text-[11px] uppercase tracking-wider text-text-secondary">not run yet</span>
+                    <span className="text-sm uppercase tracking-wider text-text-secondary">not run yet</span>
                     <Button tier="ghost" onClick={runDry}>
                       DRY RUN
                     </Button>
@@ -331,12 +331,12 @@ export function StrategyDetail() {
                   <span className="panel-title">LAST DECISION</span>
                   <Link
                     to={`/decisions/${data.last_decision_id}`}
-                    className="text-[10px] uppercase tracking-wider text-text-secondary hover:text-text-primary"
+                    className="text-xs uppercase tracking-wider text-text-secondary hover:text-text-primary"
                   >
                     OPEN →
                   </Link>
                 </div>
-                <div className="panel-body p-3 text-[10px] tabular text-text-secondary flex flex-wrap gap-x-3 gap-y-1">
+                <div className="panel-body p-3 text-xs tabular text-text-secondary flex flex-wrap gap-x-3 gap-y-1">
                   <span className="text-text-muted truncate max-w-full">{data.last_decision_id}</span>
                   <span title={fmtTs(data.last_run_at)}>RAN {fmtAge(data.last_run_at)}</span>
                   {data.next_run_at && <span title={fmtTs(data.next_run_at)}>NEXT {fmtTs(data.next_run_at)}</span>}

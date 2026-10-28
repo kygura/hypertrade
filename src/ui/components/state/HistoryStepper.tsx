@@ -22,7 +22,7 @@ export function HistoryStepper({
       <Button tier="ghost" disabled={idx <= 0} onClick={() => onChange(sorted[idx - 1])}>
         ◂
       </Button>
-      <select value={current} onChange={(e) => onChange(e.target.value)} className="text-[11px] h-[var(--control-md)]">
+      <select value={current} onChange={(e) => onChange(e.target.value)} className="text-sm h-[var(--control-md)]">
         {sorted.map((d) => (
           <option key={d} value={d}>
             {d}

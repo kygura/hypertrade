@@ -47,7 +47,7 @@ export function OrderComposer({
       </Button>
       {error && <ErrorBlock message={error} />}
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[10px] text-text-secondary">examples:</span>
+        <span className="text-xs text-text-secondary">examples:</span>
         {ORDER_EXAMPLES.map((ex) => (
           <Button key={ex} tier="ghost" type="button" title="fills the box; does not preview" onClick={() => onText(ex)}>
             {ex}

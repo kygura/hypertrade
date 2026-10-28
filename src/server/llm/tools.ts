@@ -7,6 +7,7 @@ import { engineFetch, type EngineResult } from "../routes/engine.js";
 import { getMarkets, type MarketRow } from "../routes/hl.js";
 import { getSectorsPayload } from "../routes/sectors.js";
 import { labTools } from "../lab/tools.js";
+import { INTEL_TOOL_SPECS, intelInputs, isIntelTool, registeredIntelReadDeps, runIntelTool, type IntelReadDeps } from "./intelTools.js";
 import { ToolInputError, UpstreamError, type ToolDef } from "../mcp/types.js";
 import type { ToolSpec } from "./provider.js";
 
@@ -55,6 +56,8 @@ export interface ToolDeps {
   lab?: ToolDef[];
   /** Exa-backed real-time search (web_search tool); only called when EXA_API_KEY is set. */
   exaSearch(input: ExaSearchInput): Promise<ExaResult[]>;
+  /** Intel and platform reads (opportunities, alerts, brief, exposure, theses). Injected: intel imports desk/tools.ts, so importing the stores here would be a cycle. */
+  intel?: IntelReadDeps;
 }
 
 const EXA_SEARCH_URL = "https://api.exa.ai/search";
@@ -127,6 +130,7 @@ export const defaultToolDeps: ToolDeps = {
   engine: (rest) => engineFetch(rest),
   lab: LAB_TOOLS,
   exaSearch: (input) => exaSearch(input, EXA_API_KEY ?? ""),
+  intel: registeredIntelReadDeps,
 };
 
 const empty = { type: "object" as const, properties: {}, additionalProperties: false };
@@ -226,6 +230,7 @@ export const TOOL_SPECS: ToolSpec[] = [
         },
       ]
     : []),
+  ...INTEL_TOOL_SPECS,
   ...analystLabTools().map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema })),
 ];
 
@@ -274,11 +279,12 @@ function fail(summary: string, detail: Record<string, unknown> = {}): ToolRun {
 export async function runTool(name: string, rawInput: unknown, deps: ToolDeps = defaultToolDeps): Promise<ToolRun> {
   const lab = analystLabTools(deps.lab).find((t) => t.name === name);
   if (lab) return runLabTool(lab, rawInput);
-  const schema = (inputs as Record<string, z.ZodTypeAny>)[name];
+  const schema = (inputs as Record<string, z.ZodTypeAny>)[name] ?? (isIntelTool(name) ? intelInputs[name] : undefined);
   if (!schema) return fail(`unknown tool ${name}`);
   const parsed = schema.safeParse(rawInput ?? {});
   if (!parsed.success) return fail("invalid input", { issues: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
   try {
+    if (isIntelTool(name)) return deps.intel ? await runIntelTool(name, parsed.data, deps.intel) : fail(`${name}: intel data is not connected`);
     return await dispatch(name as ToolName, parsed.data, deps);
   } catch (err) {
     return fail(`${name} failed: ${err instanceof Error ? err.message : String(err)}`);

@@ -53,17 +53,17 @@ function rowColumns(now: number, readyTtlMin: number): Column<Row>[] {
         return (
           <div className="flex flex-col gap-0.5 py-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span className="text-[12px] text-text-primary w-14 truncate">{r.coin}</span>
+              <span className="text-md text-text-primary w-14 truncate">{r.coin}</span>
               <span className="w-10">{r.direction.toUpperCase()}</span>
               <span className="tabular text-text-primary">{r.score.toFixed(2)}</span>
               <EdgeCell row={r} />
               <StatusPill status={r.status} />
               {snoozed && <Badge tone="gray">SNOOZED {snoozeLeft(r.snoozedUntil!, now)}</Badge>}
-              <span className={`ml-auto tabular text-[10px] ${nearExpiry ? 'text-amber' : 'text-text-secondary'}`} title={nearExpiry ? 'READY expires soon' : undefined}>
+              <span className={`ml-auto tabular text-xs ${nearExpiry ? 'text-amber' : 'text-text-secondary'}`} title={nearExpiry ? 'READY expires soon' : undefined}>
                 {fmtAge(r.createdAt)}
               </span>
             </div>
-            <div className="flex flex-wrap gap-x-2 text-[10px] text-text-secondary">
+            <div className="flex flex-wrap gap-x-2 text-xs text-text-secondary">
               {tags.map((t) => (
                 <span key={t}>{t}</span>
               ))}
@@ -85,7 +85,7 @@ const WARM_MIN = 60
 export function WarmingLine({ scanHistoryMin, hasRows }: { scanHistoryMin: number | null | undefined; hasRows: boolean }) {
   if (scanHistoryMin == null || scanHistoryMin >= WARM_MIN || hasRows) return null
   return (
-    <p className="px-3 py-1.5 text-[10px] tabular text-amber" role="status">
+    <p className="px-3 py-1.5 text-xs tabular text-amber" role="status">
       SCANNER WARMING UP — {Math.floor(scanHistoryMin)} of {WARM_MIN} MIN HISTORY
     </p>
   )
@@ -165,7 +165,7 @@ export function OpportunityFeed({
   else if (count === 0)
     body = (
       <>
-        <p className="px-3 py-2 text-[11px] text-text-secondary">{hasRows ? `no ${filterWord} opportunities` : 'nothing cleared the bar — the scanner runs every minute'}</p>
+        <p className="px-3 py-2 text-sm text-text-secondary">{hasRows ? `no ${filterWord} opportunities` : 'nothing cleared the bar — the scanner runs every minute'}</p>
         {emptySlot}
       </>
     )
@@ -186,7 +186,7 @@ export function OpportunityFeed({
   return (
     <Panel className="min-w-0">
       <PanelHeader title="FEED ─ BY SCORE">
-        <span className="text-[10px] tabular text-text-secondary">{count}</span>
+        <span className="text-xs tabular text-text-secondary">{count}</span>
       </PanelHeader>
       {scanAgeSec != null && scanAgeSec > 120 && <StaleStrip>scan {Math.floor(scanAgeSec / 60)}m old — scores are frozen</StaleStrip>}
       <div className="px-2 py-2 border-b border-border-subtle">

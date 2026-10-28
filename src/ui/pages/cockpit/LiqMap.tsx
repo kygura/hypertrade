@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Badge, DataTable, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column } from '../../components'
+import { AsyncBody, Badge, DataTable, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column } from '../../components'
 import { fmtUsdCompact } from '../../components/branches/format'
 import { fmtAge, fmtDur } from '../../components/strategy/format'
 import { fmtPx } from '../../lib/desk'
@@ -90,7 +90,7 @@ export function LiqMapView({
   return (
     <Panel className="min-w-0">
       <PanelHeader title={`LIQUIDATIONS · ${coin}`}>
-        <select aria-label="liquidation coin" value={coin} onChange={(e) => onCoin(e.target.value)} className="text-[10px] min-h-[var(--tap-min)] md:min-h-0">
+        <select aria-label="liquidation coin" value={coin} onChange={(e) => onCoin(e.target.value)} className="text-xs min-h-[var(--tap-min)] md:min-h-0">
           {(coins.includes(coin) ? coins : [coin, ...coins]).map((c) => (
             <option key={c} value={c}>
               {c}
@@ -112,7 +112,7 @@ export function LiqMapView({
       {data && <CoverageLine coverage={data.coverage} />}
       {data && ageSec > 60 && <StaleStrip>liquidation map {Math.floor(ageSec / 60)}m old</StaleStrip>}
       {data && partial && (
-        <p className="px-3 pt-1 text-[10px] text-amber">
+        <p className="px-3 pt-1 text-xs text-amber">
           only {Math.round((data.coverage.ratio ?? 0) * 100)}% of open interest is mapped — missing clusters are likely
         </p>
       )}
@@ -143,7 +143,7 @@ export function CoverageLine({ coverage }: { coverage: Coverage }) {
   const t = coverageTreatment(coverage.ratio)
   const slowP90 = coverage.pollAgeP90Sec != null && coverage.pollAgeP90Sec > 30 * 60
   return (
-    <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 text-[10px] tabular border-b border-border-subtle ${t === 'full' || t === 'unknown' ? 'text-text-secondary' : 'text-amber'}`}>
+    <div className={`flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 text-xs tabular border-b border-border-subtle ${t === 'full' || t === 'unknown' ? 'text-text-secondary' : 'text-amber'}`}>
       <span>
         {coverage.ratio == null ? 'COVERAGE — OI UNKNOWN' : `COVERAGE ${Math.round(coverage.ratio * 100)}% OF OI`} · {coverage.addresses.toLocaleString()} ADDR · POLL p50 {ageMin(coverage.pollAgeP50Sec)}{' '}
         <span className={slowP90 ? 'text-amber' : undefined}>p90 {ageMin(coverage.pollAgeP90Sec)}</span>
@@ -162,7 +162,7 @@ const clusterParts = (c: Cluster, side: 'long' | 'short', t: CoverageTreatment) 
 
 function Callouts({ clusters, ratio }: { clusters: LiqMap['nearestClusters']; ratio: number | null }) {
   const t = coverageTreatment(ratio)
-  if (t === 'none') return <p className="px-3 pb-2 text-[10px] text-text-secondary">too little coverage to name clusters</p>
+  if (t === 'none') return <p className="px-3 pb-2 text-xs text-text-secondary">too little coverage to name clusters</p>
   const line = (word: string, side: 'long' | 'short') => {
     const c = clusters[side]
     if (!c) return `${word} CLUSTER —`
@@ -170,7 +170,7 @@ function Callouts({ clusters, ratio }: { clusters: LiqMap['nearestClusters']; ra
     return `${word} CLUSTER ${p.usd} @ ${p.px} · ${p.dist}`
   }
   return (
-    <div className="flex flex-wrap gap-x-4 px-3 pb-2 text-[10px] tabular text-text-primary">
+    <div className="flex flex-wrap gap-x-4 px-3 pb-2 text-xs tabular text-text-primary">
       <span>{line('SHORT', 'short')}</span>
       <span>{line('LONG', 'long')}</span>
     </div>
@@ -231,21 +231,25 @@ export function LiqBoard({
   onSelect: (coin: string) => void
   onRetry: () => void
 }) {
-  let body
-  if (!rows && loading) body = <SkeletonRows rows={8} />
-  else if (!rows && offline) body = <OfflineBlock message={offline} onRetry={onRetry} />
-  else if (!rows && error) body = <ErrorBlock message={error} onRetry={onRetry} />
-  else if (!rows || rows.length === 0) body = <EmptyBlock label="no marks yet — the board fills after the first scan" />
-  else
-    body = (
-      <div data-feed>
-        <DataTable columns={BOARD_COLUMNS} rows={rows} rowKey={(r) => r.coin} onRowClick={(r) => onSelect(r.coin)} isSelected={(r) => r.coin === selectedCoin} />
-      </div>
-    )
   return (
     <section aria-label="liquidation board" className="border-t border-border-subtle">
       <h3 className="label px-3 pt-2 pb-1">LIQUIDATION BOARD ─ BY NEAREST CLUSTER</h3>
-      {body}
+      <AsyncBody
+        loading={loading}
+        data={rows}
+        error={error}
+        offline={offline}
+        rows={8}
+        staleError={false}
+        empty={{ label: 'no marks yet — the board fills after the first scan' }}
+        onRetry={onRetry}
+      >
+        {(r) => (
+          <div data-feed>
+            <DataTable columns={BOARD_COLUMNS} rows={r} rowKey={(x) => x.coin} onRowClick={(x) => onSelect(x.coin)} isSelected={(x) => x.coin === selectedCoin} />
+          </div>
+        )}
+      </AsyncBody>
     </section>
   )
 }
@@ -256,7 +260,7 @@ export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBuck
   const max = Math.max(1, ...rows.map((r) => r.longUsd + r.shortUsd))
   return (
     <figure aria-label={`liquidation profile for ${coin}: long liquidations below mark ${fmtPx(mark)}, short above; ${coverage.ratio == null ? 'open interest unknown' : `${Math.round(coverage.ratio * 100)}% of open interest mapped`}`}>
-      <div className="flex justify-between h-4 text-[10px] label px-1">
+      <div className="flex justify-between h-4 text-xs label px-1">
         <span style={{ color: SHORT }}>▲ SHORT LIQS</span>
         <span style={{ color: LONG }}>▼ LONG LIQS</span>
       </div>
@@ -286,7 +290,7 @@ export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBuck
               const r = payload?.[0]?.payload as (typeof rows)[number] | undefined
               if (!r) return null
               return (
-                <div className="panel px-2 py-1 text-[10px] tabular">
+                <div className="panel px-2 py-1 text-xs tabular">
                   {r.label} · long liqs {fmtUsdCompact(r.longUsd)} · short liqs {fmtUsdCompact(r.shortUsd)}
                 </div>
               )
@@ -396,7 +400,7 @@ export function LiqHistory({ history, lo, hi, coin }: { history: LiqMapHistory; 
 
   return (
     <div ref={wrap} className="relative" style={{ height: CHART_H + 16 }}>
-      <div className="flex justify-between h-4 text-[10px] label px-1" aria-hidden>
+      <div className="flex justify-between h-4 text-xs label px-1" aria-hidden>
         <span>TIME × PRICE</span>
         <span>
           <span style={{ color: SHORT }}>■ SHORT LIQS</span> <span style={{ color: LONG }}>■ LONG LIQS</span>
@@ -411,7 +415,7 @@ export function LiqHistory({ history, lo, hi, coin }: { history: LiqMapHistory; 
         onPointerDown={onPointer}
         onPointerLeave={() => setTip(null)}
       />
-      <div className="relative text-[10px] tabular text-text-secondary" style={{ height: X_AXIS_H }} aria-hidden>
+      <div className="relative text-xs tabular text-text-secondary" style={{ height: X_AXIS_H }} aria-hidden>
         {labels.map((s, k) => (
           <span key={s.ts} className="absolute top-1" style={{ left: `${(k / Math.max(1, labels.length - 1)) * 100}%`, transform: `translateX(${k === 0 ? '0' : k === labels.length - 1 ? '-100%' : '-50%'})` }}>
             {hhmm(s.ts)}
@@ -419,7 +423,7 @@ export function LiqHistory({ history, lo, hi, coin }: { history: LiqMapHistory; 
         ))}
       </div>
       {tip && (
-        <div className="panel absolute px-2 py-1 text-[10px] tabular pointer-events-none whitespace-nowrap" style={{ left: Math.max(0, Math.min(tip.x + 8, width - 200)), top: Math.max(0, tip.y - 8) }}>
+        <div className="panel absolute px-2 py-1 text-xs tabular pointer-events-none whitespace-nowrap" style={{ left: Math.max(0, Math.min(tip.x + 8, width - 200)), top: Math.max(0, tip.y - 8) }}>
           {tip.text}
         </div>
       )}

@@ -56,7 +56,7 @@ export function GovernorLimitFields({
             className="w-full"
           />
           {errors[key] && (
-            <span role="alert" className="text-[10px] text-red-text">
+            <span role="alert" className="text-xs text-red-text">
               {errors[key]}
             </span>
           )}

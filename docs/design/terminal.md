@@ -1,4 +1,4 @@
-# DESIGN-terminal — INTEL (the Terminal family)
+# DESIGN-terminal — TRADE (the Terminal family)
 
 Binding interface brief for docs/SPEC.md § "Intel — LLM trading tools (phase 5)".
 It **extends** docs/design/README.md and never overrides it: tokens (§2), contrast (§2.1),
@@ -39,14 +39,15 @@ Enter, or on preview.
 
 | Path | Tab | Content |
 |---|---|---|
-| `/` | COCKPIT | the landing: ranked opportunity feed, liquidation map, detail (Cockpit section); `/?id=<opportunityId>` selects (`replace: true`) |
-| `/terminal` | TERMINAL | what changed since I last looked (§3); `/terminal?review=1` = Telegram deep link (§1.5); `/?review=1` redirects here with `replace` |
+| `/terminal` | CHANGES | what changed since I last looked (§3); `/terminal?review=1` = Telegram deep link (§1.5); `/?review=1` redirects here with `replace` |
+| `/watch` | WATCH | doc/contract/wallet watches (§8); `?id=<id>` selects a watch |
 | `/journal` | JOURNAL | trades, per-tag stats, weekly report (§4); `?trade=<id>` selects a trade, `?tag=<tag>` filters |
 | `/theses` | THESES | compose + saved list + detail (§5); `?id=<id>` selects a thesis |
 | `/query` | QUERY | NL → DSL → SQL → result (§6) |
+| `/` | FEED | the landing: ranked opportunity feed, liquidation map, detail (Cockpit section); `/?id=<opportunityId>` selects (`replace: true`) |
 | `/order` | ORDER | order copilot (§7) |
-| `/watch` | WATCH | doc/contract/wallet watches (§8); `?id=<id>` selects a watch |
-| `/asset/:coin` | (drill-in) | asset page (§15.4); a drill-in of `/terminal`: renders under TerminalTabs with the TERMINAL segment active |
+| `/desk` | DESK | agentic portfolio desk (docs/design/README.md §10.11) |
+| `/asset/:coin` | (drill-in) | asset page (§15.4); a drill-in of CHANGES: renders under TerminalTabs with the CHANGES segment active |
 
 Selection uses query params (the route family is pinned by SPEC I0.1), written
 with `replace: true` so back steps between routes, not rows (mobile exception:
@@ -54,46 +55,50 @@ with `replace: true` so back steps between routes, not rows (mobile exception:
 
 ### 1.2 Nav (docs/design/README.md §5)
 
-The family is one shell cell, the first: top-bar label `COCKPIT`, mobile cell
-label `CKPT` (under the 5-char limit), glyph `◉` (U+25C9, a text character
-like the others), link `/`.
+The family is one shell cell, the first: top-bar and mobile label `TRADE`,
+glyph `◉` (U+25C9, a text character like the others), link `/`. The shell has
+five cells; DESK is a tab here, not a cell.
 
-- Active on every route of the family: `/`, `/terminal`, `/journal`,
-  `/theses`, `/query`, `/order`, `/watch` and `/asset/*`
-  (`isTerminalPath(pathname)`, beside `isEnginePath`).
-- Wordmark click → `/` (the Cockpit).
+- Active on every route of the family: `/terminal`, `/watch`, `/journal`,
+  `/theses`, `/query`, `/`, `/order`, `/desk` and `/asset/*`
+  (`isTerminalPath(pathname)`, beside `isEnginePath` and `isMarketPath`).
+- Wordmark click → `/` (the Cockpit feed).
 - The freshness cluster is unchanged; per-source health lives in §3.3 and
   the Cockpit health strip (C6).
-- The shell has six cells, under its nine-cell ceiling; this family is one of
-  the folds `docs/CONSOLIDATION.md` PR 4 plans (Intel → Act tabs in one
-  front); until then this section describes what ships.
+- Cockpit feed items and Terminal change items are two separate lists (the
+  feed has a status machine and cost vs edge; change items have neither). The
+  family shares the tab bar, the coin drill (`/asset/:coin`, `CHART →`,
+  `INTEL →`, C1) and the action path (Level 2 dialogs, the shared kill
+  switch). Neither list is merged into the other.
 
 ### 1.3 TerminalTabs (sub-tab strip)
 
-One `Segmented` (`size: 'md'`, label `terminal sections`) directly under the
-shell, the LabTabs pattern exactly: `position: sticky;
+One `SectionTabs` (a `Segmented`, `size: 'md'`, label `trade sections`) directly
+under the shell, the LabTabs pattern exactly: `position: sticky;
 top: var(--topbar-h)`, row height `var(--subnav-h)` (52px), `bg-body`, z-30.
 Path-based: changing a segment navigates. Pages that anchor-scroll under it
 use `scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)]`.
 
 Order and labels (desktop `label` / below-md `short`):
 
-`COCKPIT / CKPT · TERMINAL / TERM · JOURNAL / JRNL · THESES / THES · QUERY / QRY · ORDER / ORDR · WATCH / WTCH`
+`CHANGES / CHNG · WATCH / WTCH · JOURNAL / JRNL · THESES / THES · QUERY / QRY · FEED / FEED · ORDER / ORDR · DESK / DESK`
 
-Order: what to act on now, the review, the operator's own record, the tools.
+Order: a funnel from intel (what changed for my book, the operator's own
+record, the tools) to act (what to act on now, place an order, run the desk).
+`SectionTabs` has no group separator, so the order alone carries it.
 
-**Mobile: no horizontal scroll by design.** Seven ≤ 4-char short labels at the
-`.seg-item` 10px size + 8px padding measure ≈ 308px: they fit at 400px, and
+**Mobile: no horizontal scroll by design.** Eight ≤ 4-char short labels at the
+`.seg-item` 10px size + 8px padding measure ≈ 350px: they fit at 400px, and
 the wrapper's `overflow-x: auto` safety net covers 320px (and a wider theme
 `--seg-pad`, 200% zoom). Rejected: a scrolling strip (hidden tabs defeat the
 map, DESIGN §4.3/§5.2) and two rows (52px more on every route).
 
 No count suffixes or dots on segments: each would cost a fetch on every route
-of the family. Segment `title`s state the route's question: `what to act on now` · `what
-changed since I last looked` · `what my trades say` · `test a thesis against
-the data` · `ask the snapshot store` · `preview and place a Desk order` ·
-`watch docs, contracts and wallets`. Links reading
-`← TERMINAL` (asset page) point at `/terminal`.
+of the family. Segment `title`s state the route's question: `what changed
+since I last looked` · `watch docs, contracts and wallets` · `what my trades
+say` · `test a thesis against the data` · `ask the snapshot store` · `what to
+act on now` · `preview and place a Desk order` · `agent team, governor and
+paper book`. Links reading `← CHANGES` (asset page) point at `/terminal`.
 
 ### 1.4 Polling and the hidden tab
 
@@ -226,7 +231,7 @@ claim lines with untagged prose.
 
 ---
 
-## 3. `/terminal` — TERMINAL
+## 3. `/terminal` — CHANGES
 
 Purpose: answer **"What changed since I last looked that could affect my
 positions?"** in one screen: computed changes, model explanation, calendar,
@@ -235,7 +240,7 @@ book, and the exposure map connecting news to the book.
 ### 3.1 Desktop layout (`lg:`, 12-col grid, gutter 12px)
 
 ```
-┌ TerminalTabs: [COCKPIT|TERMINAL|JOURNAL|THESES|QUERY|ORDER|WATCH] ─────────────────────────┐
+┌ TerminalTabs: [CHANGES|WATCH|JOURNAL|THESES|QUERY|FEED|ORDER|DESK] ─────────────────────────┐
 ├ REVIEW STRIP ─────────────────────────────────────────────────────────────────────────── 12 ┤
 │ 4  THINGS CHANGED · SINCE 9H AGO · 2 ALERTS · NEXT CPI T−1D 04H        [REVIEW NOW]          │
 │ (xl)  SOURCES ● MANUAL  ● HL  ✕ DESK  ● SNAP 12M  ● NEWS 18M  ● LLM                          │
@@ -841,7 +846,7 @@ text, 409 messages) render **verbatim**; the UI never rewrites them.
 
 ## 12. Where docs/design/README.md points here
 
-README §5 (the Terminal family is cell 1, COCKPIT), §7 (Level 2 order
+README §5 (the Terminal family is cell 1, TRADE), §7 (Level 2 order
 dialogs, Level 3 kill switches), §10 (route map; §10.2 is the MARKET-header metrics strip), §11
 (shared rows `ClaimLine`, `ClaimList`, `ClaimAge`, `SourceLink`, `VenueBadge`;
 `SrcTag` union incl. `manual`, `desk`, `snap`; the Intel and Cockpit
@@ -1096,13 +1101,13 @@ Reached by click only (heatmap cell, detector chip, and the row taps of
 DiffTable §3.4 and PositionsTable §3.7, which go to `/asset/:coin` instead
 of `/markets/:coin`; the candle chart stays one click away via `CHART →`).
 It is a drill-in of `/terminal`, not a sub-tab: it renders under TerminalTabs
-with the TERMINAL segment active (`isTerminalPath` covers `/asset/*`), the
+with the CHANGES segment active (`isTerminalPath` covers `/asset/*`), the
 `/markets/:coin` precedent. `?days=1|7|30` (default 7), `?metric=` highlights
 a pane on arrival.
 
 ```
 ┌ TerminalTabs ──────────────────────────────────────────────────────────────── 12 ┐
-├ [← TERMINAL]  HYPE (lg)  HELD · LONG 3× · 12.4 HYPE · $12.4K  MANUAL   [1D|7D|30D] ─ 12 ┤
+├ [← CHANGES]  HYPE (lg)  HELD · LONG 3× · 12.4 HYPE · $12.4K  MANUAL   [1D|7D|30D] ─ 12 ┤
 │ MARK $32.18 · STOP −3.1% · 0.8×ATR · MAT 0.71 · FLAGS crowded long   SNAP 12M  [CHART →]   │
 ├ TIMELINE ─────────────────────────────────────────────────── 8 ┬ EXPOSURE ──────── 4 ┤
 │ PRICE  ╱╲╱╲╲╱╱   ┆      ┆  ┆                                   │ 9 EDGES · 4 PATHS     │
@@ -1122,7 +1127,7 @@ DESIGN §4.5 table extended: price 160 / 220px (mobile / lg), each other pane
 90 / 120px.
 
 **Header** (a `Panel` without title, `bg-panel-alt`, the ReviewStrip idiom):
-ghost `← TERMINAL`; coin (lg, primary); `HELD` / `WATCH` tag; when held, one
+ghost `← CHANGES`; coin (lg, primary); `HELD` / `WATCH` tag; when held, one
 line per position from the shared `/positions` fetch: side word green/red +
 leverage, size in coins, notional (`fmtUsd`), `SrcTag` of the source; `MARK
 <px>`; `STOP −3.1% · 0.8×ATR` (`title` stop px) or amber Badge `NO STOP`;
@@ -1215,7 +1220,7 @@ reformatted by the UI) and renders where reasons already render:
 | FLOW heatmap | SkeletonRows (4) | EmptyBlock `nothing held or watched — add a position or watch an asset` | ErrorBlock / OfflineBlock + `RETRY` | ClaimAge amber > 30 min; StaleBanner `snapshots Nh old` > 2 h; FLOW group `NO SOURCE`; null cells |
 | Detector chips | — (rendered with the grid) | `no detectors firing` (10px) | — (the panel's ErrorBlock) | degraded summary chips |
 | Asset header | SkeletonRows (1) | `WATCH`-only header without position line | — (the page's ErrorBlock) | `NO STOP` Badge |
-| Asset timeline | SkeletonRows per pane | EmptyBlock `no snapshots yet — the collector adds <COIN> once it is held, watched or top-20 by OI`; unknown coin (404) → EmptyBlock `no data for <COIN>` + ghost `← TERMINAL` | ErrorBlock / OfflineBlock | StaleBanner `snapshots Nh old` > 2 h; LIQS pane replaced by the no-source line |
+| Asset timeline | SkeletonRows per pane | EmptyBlock `no snapshots yet — the collector adds <COIN> once it is held, watched or top-20 by OI`; unknown coin (404) → EmptyBlock `no data for <COIN>` + ghost `← CHANGES` | ErrorBlock / OfflineBlock | StaleBanner `snapshots Nh old` > 2 h; LIQS pane replaced by the no-source line |
 | Asset events | SkeletonRows (2) | EmptyBlock `no events in <window>` (`1 day`, `7 days`, `30 days`) | — | alert rows without a line → amber-square row |
 | Asset exposure | SkeletonRows | EmptyBlock `no edges — the daily refresh adds them for held and watched assets` | ErrorBlock, timeline unaffected | edge ClaimAge amber > 48 h |
 
@@ -1519,10 +1524,10 @@ Recharts.
 ### C1. Routes and navigation
 
 The route table, the shell cell and the tab strip are §1.1–§1.3 and §1.5:
-`/` is this page, `/terminal` the Terminal, and `/?review=1` redirects to
-`/terminal?review=1`. This page owns `/?id=<opportunityId>` (selection,
-`replace: true`; a real history entry on mobile), `?status=`, `?tier=`,
-`?liqh=` and `?liq=<coin>`.
+`/` is this page (the FEED tab), `/terminal` is CHANGES, and `/?review=1`
+redirects to `/terminal?review=1`. This page owns `/?id=<opportunityId>`
+(selection, `replace: true`; a real history entry on mobile), `?status=`,
+`?tier=`, `?liqh=` and `?liq=<coin>`.
 
 Coin cross-links: the detail header carries ghost `CHART →`
 (`/markets/:coin`) and `INTEL →` (`/asset/:coin`); `/asset/:coin` links back
@@ -1534,7 +1539,7 @@ other two are one click away.
 **Desktop ≥1280 (`xl:`, 12-col, gutter 12px).** Feed 4 | right column 8.
 
 ```
-┌ TerminalTabs [COCKPIT|TERMINAL|JOURNAL|…] ─────────────────────────────────────────────┐
+┌ TerminalTabs [CHANGES|WATCH|…|FEED|ORDER|DESK] ─────────────────────────────────────────────┐
 ├ COCKPIT  [PAPER]  14 LIVE · 3 READY                         [? KEYS]  [KILL] / ●KILLED ┤
 ├ HEALTH  ● WS 2S  ● SCAN 41S  ● CRAWL 388/MIN · 9.4K ADDR  ● LOOPS 8/8  ● LLM $0.42/$2.00┤
 ├ FEED ─ BY SCORE ─ [LIVE|READY|DECIDED|ALL] [ALL|T1|T2|T3] 4 ┬ LIQUIDATIONS · HYPE ─ [6H|24H|72H] ─ 8 ┤

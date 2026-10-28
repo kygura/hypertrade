@@ -143,10 +143,10 @@ export function ExposureGraph({ asset, edges, paths, onChanged }: { asset: strin
                       const src = edgeSource(e.source)
                       return (
                         <li key={e.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span className="text-[12px] text-text-primary">
+                          <span className="text-md text-text-primary">
                             {e.src} → {e.dst}
                           </span>
-                          <span className="text-[11px] tabular text-text-muted">{e.weight.toFixed(2)}</span>
+                          <span className="text-sm tabular text-text-muted">{e.weight.toFixed(2)}</span>
                           {ORIGIN_BADGE[e.origin]}
                           {src && <SourceLink source={src} />}
                           {e.lastVerified && <ClaimAge ts={e.lastVerified} thresholdHours={48} prefix="verified" />}
@@ -166,13 +166,13 @@ export function ExposureGraph({ asset, edges, paths, onChanged }: { asset: strin
           <div className="lg:col-span-5 flex flex-col gap-1">
             <span className="label">PATHS</span>
             {paths.length === 0 ? (
-              <span className="text-[10px] text-text-secondary">no two-hop paths to held or watched assets</span>
+              <span className="text-xs text-text-secondary">no two-hop paths to held or watched assets</span>
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {paths.slice(0, 8).map((p, i) => (
                   <li key={i} className="flex flex-wrap items-center gap-2">
                     <ExposurePathChips path={p.edges} weight={p.weight} />
-                    <span className="text-[11px] tabular text-text-muted">w {p.weight.toFixed(2)}</span>
+                    <span className="text-sm tabular text-text-muted">w {p.weight.toFixed(2)}</span>
                   </li>
                 ))}
               </ul>

@@ -190,8 +190,8 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
             >
               <span className="w-3 shrink-0 text-text-primary">{isSelected ? '✓' : ''}</span>
               <span className="flex-1 min-w-0 flex flex-col py-1">
-                <span className="text-[12px] text-text-primary">{m.label}</span>
-                <span className="text-[10px] text-text-secondary truncate">{m.note}</span>
+                <span className="text-md text-text-primary">{m.label}</span>
+                <span className="text-xs text-text-secondary truncate">{m.note}</span>
               </span>
               <TierTag tier={m.tier} />
             </div>
@@ -201,7 +201,7 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
         p.models.map((m) => (
           <div key={m.id} role="option" aria-selected={false} aria-disabled tabIndex={-1} className="flex items-center gap-2 px-2 min-h-[var(--row-h)] opacity-40 cursor-not-allowed">
             <span className="w-3 shrink-0" />
-            <span className="flex-1 min-w-0 text-[11px] text-text-secondary truncate">{m.label}</span>
+            <span className="flex-1 min-w-0 text-sm text-text-secondary truncate">{m.label}</span>
           </div>
         ))}
     </div>
@@ -221,7 +221,7 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
         aria-label="Analyst model selector"
         onClick={() => setOpen(!open)}
         onKeyDown={onTriggerKeyDown}
-        className="flex md:inline-flex items-center gap-1.5 w-full md:w-auto min-w-0 h-[var(--control-md)] px-2 border border-border bg-elevated text-[10px] uppercase tracking-wider text-text-primary hover:bg-hover transition-colors duration-100 whitespace-nowrap"
+        className="flex md:inline-flex items-center gap-1.5 w-full md:w-auto min-w-0 h-[var(--control-md)] px-2 border border-border bg-elevated text-xs uppercase tracking-wider text-text-primary hover:bg-hover transition-colors duration-100 whitespace-nowrap"
       >
         <StatusDot status={selected ? 'ok' : 'down'} />
         {selected ? (
@@ -237,7 +237,7 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
       </button>
 
       {!anyAvailable && reasons && (
-        <span className="text-[10px] text-text-secondary normal-case" title={allReasons.join('\n')}>
+        <span className="text-xs text-text-secondary normal-case" title={allReasons.join('\n')}>
           {reasons}
         </span>
       )}
@@ -263,7 +263,7 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
           >
             {configured.map((p) => renderGroup(p))}
             {unconfigured.length > 0 && (
-              <div className="px-2 py-1 text-[10px] text-text-secondary uppercase tracking-wider bg-panel-header">
+              <div className="px-2 py-1 text-xs text-text-secondary uppercase tracking-wider bg-panel-header">
                 Not configured · {unconfigured.length}
               </div>
             )}

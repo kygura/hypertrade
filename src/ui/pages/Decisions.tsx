@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { Badge, DataTable, EmptyBlock, ErrorBlock, SkeletonRows, type Column } from '../components'
+import { AsyncBody, Badge, DataTable, EmptyBlock, SkeletonRows, type Column } from '../components'
 import { engine, useEngine } from '../lib/engine'
 import { useQueryPatch } from '../lib/hooks'
 import type { DecisionRecord } from '../../shared/strategy-protocol'
@@ -46,7 +46,7 @@ export function Decisions() {
             {fmtAge(d.ts)}
             {d.dry_run && <Badge tone="info">DRY</Badge>}
           </span>
-          <span className="text-[10px] text-text-secondary tabular">{fmtTsSec(d.ts)}</span>
+          <span className="text-xs text-text-secondary tabular">{fmtTsSec(d.ts)}</span>
         </div>
       ),
     },
@@ -78,8 +78,8 @@ export function Decisions() {
       render: (d) => {
         const first = d.intents[0]
         const v = first ? latestVerdict(d.verdicts, first.id) : null
-        if (d.dry_run) return <span className="text-[10px] uppercase text-text-secondary">—</span>
-        return v ? <VerdictBadge status={v.status} /> : <span className="text-[10px] uppercase text-text-secondary">—</span>
+        if (d.dry_run) return <span className="text-xs uppercase text-text-secondary">—</span>
+        return v ? <VerdictBadge status={v.status} /> : <span className="text-xs uppercase text-text-secondary">—</span>
       },
     },
     {
@@ -106,7 +106,7 @@ export function Decisions() {
         <div className="panel-header flex-wrap gap-2">
           <span className="panel-title">DECISIONS</span>
           <label className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-wider text-text-secondary">STRATEGY</span>
+            <span className="text-xs uppercase tracking-wider text-text-secondary">STRATEGY</span>
             <select
               value={strategy}
               onChange={(e) => patch({ strategy: e.target.value })}
@@ -123,18 +123,22 @@ export function Decisions() {
           </label>
         </div>
         <div className="panel-body">
-          {loading && !data && (
-            <table className="w-full">
-              <tbody>
-                <SkeletonRows rows={4} colSpan={columns.length} />
-              </tbody>
-            </table>
-          )}
-          {!loading && offline && !data && <EngineOffline reason={offline} onRetry={refetch} />}
-          {!loading && !offline && error && !data && <ErrorBlock message={error} onRetry={refetch} />}
-          {data && (
-            <>
-              {error && <ErrorBlock message={error} onRetry={refetch} />}
+          <AsyncBody
+            loading={loading}
+            data={data}
+            error={error}
+            offline={data ? null : offline}
+            skeleton={
+              <table className="w-full">
+                <tbody>
+                  <SkeletonRows rows={4} colSpan={columns.length} />
+                </tbody>
+              </table>
+            }
+            renderOffline={(reason) => <EngineOffline reason={reason ?? ''} onRetry={refetch} />}
+            onRetry={refetch}
+          >
+            {() => (
               <DataTable
                 columns={columns}
                 rows={rows}
@@ -142,8 +146,8 @@ export function Decisions() {
                 onRowClick={(d) => navigate(`/decisions/${d.id}`)}
                 emptyLabel={<EmptyBlock label={strategy ? `no decisions for ${strategy}` : 'no decisions yet'} />}
               />
-            </>
-          )}
+            )}
+          </AsyncBody>
         </div>
       </div>
     </div>

@@ -21,7 +21,8 @@
     "test": "bun test ./src",
     "db:migrate": "bun run db/migrate.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
-    "check:api": "sh scripts/check-api-esm.sh"
+    "check:api": "sh scripts/check-api-esm.sh",
+    "check:type-scale": "sh scripts/check-type-scale.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

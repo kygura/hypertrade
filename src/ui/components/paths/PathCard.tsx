@@ -31,7 +31,7 @@ function PathLegs({ config }: { config: BranchConfig }) {
   }
   return (
     <div className="flex flex-col gap-0.5">
-      <div className="flex flex-wrap items-center gap-x-1 text-[11px] text-text-primary">
+      <div className="flex flex-wrap items-center gap-x-1 text-sm text-text-primary">
         {config.allocations.map((a, i) => (
           <span key={a.coin + i} className="inline-flex items-center gap-1">
             {i > 0 && <span>·</span>}
@@ -40,11 +40,11 @@ function PathLegs({ config }: { config: BranchConfig }) {
         ))}
       </div>
       {config.dca && config.dca.length > 0 && (
-        <div className="text-[11px] text-text-muted">
+        <div className="text-sm text-text-muted">
           DCA {config.dca.map((d) => `${fmtUsd(d.amountUsd, { decimals: 0 })} → ${d.coin} ${d.every.toUpperCase()}`).join(' · ')}
         </div>
       )}
-      <div className="text-[10px] text-text-secondary">
+      <div className="text-xs text-text-secondary">
         FROM {config.startDate} · {fmtUsd(config.initialCapitalUsd, { decimals: 0 })} · {rebalanceLabel(config.rebalance)}
       </div>
     </div>
@@ -87,7 +87,7 @@ function PathBranch({
   return (
     <div className="flex flex-col gap-2 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[12px] text-text-primary min-w-0 basis-full md:basis-0 md:flex-1 break-words">
+        <span className="text-md text-text-primary min-w-0 basis-full md:basis-0 md:flex-1 break-words">
           {letter} · {branch.name}
         </span>
         {!branch.error && <SaveBranchButton name={branch.name} config={config} description={description} savedId={savedId} onSaved={onSaved} />}
@@ -105,7 +105,7 @@ function PathBranch({
           {result.montecarlo && config.scenario && <ProjectionAssumptions scenario={config.scenario} />}
           <div className="flex items-baseline justify-between">
             <span className="label">DRAWDOWN</span>
-            <span className={`text-[11px] tabular ${maxDdClass(result.stats.maxDrawdownPct)}`}>MAX DD {pct1(-Math.abs(result.stats.maxDrawdownPct), false)}</span>
+            <span className={`text-sm tabular ${maxDdClass(result.stats.maxDrawdownPct)}`}>MAX DD {pct1(-Math.abs(result.stats.maxDrawdownPct), false)}</span>
           </div>
           <DrawdownChart equity={result.equity} height={90} />
         </>
@@ -136,7 +136,7 @@ function PathCompare({ branches, selected, onSelect }: { branches: SimBranchOutc
               <Badge tone="red">FAILED</Badge>
             </>
           ) : (
-            b.warnings.length > 0 && <span className="text-[10px] text-amber"> {b.warnings.length} WARN</span>
+            b.warnings.length > 0 && <span className="text-xs text-amber"> {b.warnings.length} WARN</span>
           )}
         </span>
       ),
@@ -178,18 +178,18 @@ export function PathCard({
       <div className="panel-header">
         <span className="flex items-baseline gap-2 min-w-0">
           <span className="panel-title">SIM</span>
-          <span className="text-[12px] text-text-primary break-words">{intent.title}</span>
+          <span className="text-md text-text-primary break-words">{intent.title}</span>
         </span>
-        <span className="text-[10px] text-text-secondary shrink-0">{branches.length === 1 ? '1 PATH' : `${branches.length} PATHS`}</span>
+        <span className="text-xs text-text-secondary shrink-0">{branches.length === 1 ? '1 PATH' : `${branches.length} PATHS`}</span>
       </div>
       <div className="panel-body bg-panel-alt">
         <div className="flex flex-col gap-0.5 px-3 py-2">
           <span className="label">ASSUMED</span>
           {intent.assumptions.length === 0 ? (
-            <span className="text-[11px] text-text-muted">· nothing inferred — every input was stated</span>
+            <span className="text-sm text-text-muted">· nothing inferred — every input was stated</span>
           ) : (
             intent.assumptions.map((a, i) => (
-              <span key={i} className="text-[11px] text-text-muted">
+              <span key={i} className="text-sm text-text-muted">
                 · {a}
               </span>
             ))
@@ -225,9 +225,9 @@ export function PathPending({ input }: { input: unknown }) {
       <div className="panel-header">
         <span className="flex items-baseline gap-2 min-w-0">
           <span className="panel-title">SIM</span>
-          {typeof o.title === 'string' && <span className="text-[12px] text-text-primary break-words">{o.title}</span>}
+          {typeof o.title === 'string' && <span className="text-md text-text-primary break-words">{o.title}</span>}
         </span>
-        <span className="text-[10px] text-text-secondary pulse-label shrink-0">
+        <span className="text-xs text-text-secondary pulse-label shrink-0">
           {Array.isArray(o.branches) ? `SIMULATING ${o.branches.length} PATHS…` : 'SIMULATING…'}
         </span>
       </div>

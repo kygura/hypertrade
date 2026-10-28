@@ -85,7 +85,7 @@ export function CatalystForm({ onAdded, onCancel, onKeyDown }: { onAdded: () => 
         <span className="label">SIZE</span>
         <input value={d.size} onChange={set('size')} maxLength={120} placeholder="optional" />
       </label>
-      {invalid && <span className="text-[11px] text-red-text">{invalid}</span>}
+      {invalid && <span className="text-sm text-red-text">{invalid}</span>}
       {error && <ErrorBlock message={error} />}
       <div className="flex gap-2">
         <Button tier="neutral" type="submit" disabled={busy}>

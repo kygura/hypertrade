@@ -17,8 +17,8 @@ export function ThesisBlock({ thesis }: { thesis: MarketStateThesis }) {
       <PanelBody className="p-3 flex flex-col gap-3">
         {SECTIONS.map(({ key, label }) => (
           <div key={key}>
-            <div className="text-[10px] uppercase tracking-wider text-text-secondary mb-1">{label}</div>
-            <p className="text-[13px] text-text-muted">{thesis[key]}</p>
+            <div className="text-xs uppercase tracking-wider text-text-secondary mb-1">{label}</div>
+            <p className="text-base text-text-muted">{thesis[key]}</p>
           </div>
         ))}
       </PanelBody>

@@ -124,8 +124,8 @@ export function ReviewStrip({
               )}
               {fromTelegram && <Badge tone="gray">FROM TELEGRAM</Badge>}
             </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10px]">
-              <span className="label text-[10px]">SOURCES</span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+              <span className="label text-xs">SOURCES</span>
               {(sources ?? []).map((s) => (
                 <Src key={s.source} status={s.ok ? 'ok' : 'down'} label={SOURCE_LABEL[s.source]} title={s.error} failed={!s.ok} />
               ))}

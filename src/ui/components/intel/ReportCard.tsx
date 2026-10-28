@@ -1,7 +1,7 @@
 import type { JournalReport, ReportFinding } from '../../../shared/intel'
 import { Button } from '../Button'
 import { Panel, PanelHeader } from '../Panel'
-import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
+import { AsyncBody, ErrorBlock } from '../state'
 import { ClaimAge } from './ClaimAge'
 import { ClaimLine } from './ClaimLine'
 import { ClaimList } from './ClaimList'
@@ -24,7 +24,7 @@ export function weekOf(report: Pick<JournalReport, 'createdAt' | 'periodDays'>):
 function Finding({ f, onPickTrade }: { f: ReportFinding; onPickTrade: (id: string) => void }) {
   return (
     <li className="flex flex-col gap-1">
-      <span className="text-[11px] tabular text-text-primary">
+      <span className="text-sm tabular text-text-primary">
         {f.tag} · {f.trades} {f.trades === 1 ? 'trade' : 'trades'} · EXP{' '}
         {f.expectancyR != null ? (
           <span className={signClass(f.expectancyR)}>{fmtR(f.expectancyR, 2)}</span>
@@ -80,32 +80,38 @@ export function ReportCard({
     </Button>
   )
 
-  let body
-  if (loading && !report) body = <SkeletonRows />
-  else if (offline && !report) body = <OfflineBlock onRetry={onRetry} />
-  else if (loadError && !report) body = <ErrorBlock message={loadError} onRetry={onRetry} />
-  else if (!report)
-    body = generating ? <SkeletonRows /> : <EmptyBlock label="no report yet" action={{ label: 'GENERATE REPORT', onClick: onGenerate }} />
-  else {
-    const empty = report.leaks.length === 0 && report.edges.length === 0 && report.lines.length === 0
-    body = (
-      <div className={`flex flex-col gap-4 p-3 ${generating ? 'opacity-70' : ''}`}>
-        {report.trace?.error && <ErrorBlock message={report.trace.error} onRetry={onGenerate} />}
-        {empty && <p className="text-[11px] text-text-secondary">no closed trades in the {report.periodDays}-day period</p>}
-        <Section label="LEAKS" findings={report.leaks.slice(0, 3)} onPickTrade={onPickTrade} />
-        <Section label="EDGES" findings={report.edges.slice(0, 2)} onPickTrade={onPickTrade} />
-        {(report.lines.length > 0 || (report.trace?.dropped ?? 0) > 0) && <ClaimList claims={report.lines} dropped={report.trace?.dropped} />}
-        <div>{generateBtn}</div>
-      </div>
-    )
-  }
+  const body = (
+    <AsyncBody
+      loading={!!loading || generating}
+      data={report}
+      error={loadError ?? null}
+      offline={!!offline}
+      staleError={false}
+      empty={{ label: 'no report yet', action: { label: 'GENERATE REPORT', onClick: onGenerate } }}
+      onRetry={onRetry}
+    >
+      {(report) => {
+        const empty = report.leaks.length === 0 && report.edges.length === 0 && report.lines.length === 0
+        return (
+          <div className={`flex flex-col gap-4 p-3 ${generating ? 'opacity-70' : ''}`}>
+            {report.trace?.error && <ErrorBlock message={report.trace.error} onRetry={onGenerate} />}
+            {empty && <p className="text-sm text-text-secondary">no closed trades in the {report.periodDays}-day period</p>}
+            <Section label="LEAKS" findings={report.leaks.slice(0, 3)} onPickTrade={onPickTrade} />
+            <Section label="EDGES" findings={report.edges.slice(0, 2)} onPickTrade={onPickTrade} />
+            {(report.lines.length > 0 || (report.trace?.dropped ?? 0) > 0) && <ClaimList claims={report.lines} dropped={report.trace?.dropped} />}
+            <div>{generateBtn}</div>
+          </div>
+        )
+      }}
+    </AsyncBody>
+  )
 
   return (
     <Panel>
       <PanelHeader title={title}>{report && <ClaimAge ts={report.createdAt} thresholdHours={REPORT_STALE_H} prefix="GEN" />}</PanelHeader>
       {generateError && <ErrorBlock message={generateError} onRetry={onGenerate} />}
       {body}
-      <p className="px-3 py-2 border-t border-border-subtle text-[10px] text-text-secondary">historical record</p>
+      <p className="px-3 py-2 border-t border-border-subtle text-xs text-text-secondary">historical record</p>
     </Panel>
   )
 }

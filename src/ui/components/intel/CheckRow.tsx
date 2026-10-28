@@ -58,15 +58,15 @@ export function fmtEvidenceValue(c: ThesisCheck, v: ThesisEvidence['value']): st
 }
 
 export function Evidence({ check, evidence }: { check: ThesisCheck; evidence?: ThesisEvidence }) {
-  if (!evidence) return <span className="text-[11px] text-text-secondary">no data</span>
+  if (!evidence) return <span className="text-sm text-text-secondary">no data</span>
   return (
-    <span className="inline-flex flex-wrap items-center gap-1 text-[11px]">
+    <span className="inline-flex flex-wrap items-center gap-1 text-sm">
       <span className="text-text-primary tabular">now {fmtEvidenceValue(check, evidence.value)}</span>
-      <span aria-hidden="true" className="text-[10px] text-text-secondary">
+      <span aria-hidden="true" className="text-xs text-text-secondary">
         ·
       </span>
       <SourceLink source={evidence.source} />
-      <span aria-hidden="true" className="text-[10px] text-text-secondary">
+      <span aria-hidden="true" className="text-xs text-text-secondary">
         ·
       </span>
       <ClaimAge ts={evidence.ts} />
@@ -80,11 +80,11 @@ export function CheckRow({ check }: { check: ThesisClaim }) {
     <li className="flex flex-col gap-1 py-2 border-b border-border-subtle last:border-b-0" data-status={check.status}>
       <div className="flex flex-wrap items-baseline gap-2">
         <StatusBadge status={check.status} />
-        <span className="text-[10px] uppercase tracking-wider text-text-secondary">{check.kind === 'claim' ? 'CLAIM' : 'ASSUMPTION'}</span>
-        <span className="text-[12px] text-text-primary min-w-0 break-words">{check.text}</span>
+        <span className="text-xs uppercase tracking-wider text-text-secondary">{check.kind === 'claim' ? 'CLAIM' : 'ASSUMPTION'}</span>
+        <span className="text-md text-text-primary min-w-0 break-words">{check.text}</span>
       </div>
       <div className="pl-1 flex flex-col gap-0.5">
-        <span className="text-[11px] text-text-muted" title={reason}>
+        <span className="text-sm text-text-muted" title={reason}>
           <span className="text-text-secondary">check:</span> {fmtCheck(check.check)}
         </span>
         <Evidence check={check.check} evidence={check.evidence} />

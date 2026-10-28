@@ -20,7 +20,7 @@ bun run dev              # vite UI; bun run dev:api for the API; bun start = alw
 bun run db:migrate       # db/migrate.ts
 ```
 
-Done gate for any change: typecheck, `bun test ./src`, `check:api`, `build` all green.
+Done gate for any change: typecheck, `bun test ./src`, `check:api`, `check:type-scale`, `build` all green.
 
 Postgres-only tests (`*.pg.test.ts`) skip unless `INTEL_PG_TEST_URL` is set, e.g.
 `INTEL_PG_TEST_URL=postgres://postgres@127.0.0.1:5433/hypertrade bun test src/server/intel/store.pg.test.ts`

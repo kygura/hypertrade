@@ -49,7 +49,7 @@ export function ResearchCard({
               ·
             </span>
           )}
-          <span className="min-w-0 break-words text-[12px] text-text-primary">{r.question}</span>
+          <span className="min-w-0 break-words text-md text-text-primary">{r.question}</span>
           <span className="ml-auto inline-flex items-center gap-2">
             {answered && (
               <span title={CONFIDENCE_TITLE}>
@@ -64,12 +64,12 @@ export function ResearchCard({
       {r.status === 'running' ? (
         <SkeletonRows rows={2} />
       ) : r.status === 'capped' ? (
-        <p className="flex items-center gap-2 text-[11px] text-text-muted">
+        <p className="flex items-center gap-2 text-sm text-text-muted">
           <span aria-hidden="true" className="inline-block w-1.5 h-1.5 bg-amber flex-shrink-0" />
           {r.explanation}
         </p>
       ) : r.status === 'failed' ? (
-        <p className="text-[11px] text-text-muted">{r.explanation}</p>
+        <p className="text-sm text-text-muted">{r.explanation}</p>
       ) : (
         <>
           {compact && (
@@ -79,7 +79,7 @@ export function ResearchCard({
           )}
           <div className="flex flex-col gap-0.5">
             <span className="label">EXPLANATION</span>
-            <p className="text-[12px] text-text-primary break-words whitespace-pre-line">{r.explanation}</p>
+            <p className="text-md text-text-primary break-words whitespace-pre-line">{r.explanation}</p>
           </div>
           {r.evidence.length > 0 && <ClaimList claims={r.evidence.map(toClaim)} />}
           {r.openQuestions.length > 0 && (
@@ -87,7 +87,7 @@ export function ResearchCard({
               <span className="label">OPEN QUESTIONS</span>
               <ul className="flex flex-col gap-0.5">
                 {r.openQuestions.map((q, i) => (
-                  <li key={i} className="flex gap-2 text-[11px] text-text-muted">
+                  <li key={i} className="flex gap-2 text-sm text-text-muted">
                     <span className="w-[4ch] flex-shrink-0">?</span>
                     <span className="min-w-0 break-words">{q}</span>
                   </li>
@@ -95,7 +95,7 @@ export function ResearchCard({
               </ul>
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-text-secondary tabular">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-text-secondary tabular">
             {meta.map((m, i) => (
               <span key={i}>
                 {i > 0 && <span aria-hidden="true">· </span>}

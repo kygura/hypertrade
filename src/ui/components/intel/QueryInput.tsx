@@ -54,7 +54,7 @@ export function QueryInput({ onParsed }: { onParsed: (r: QueryParseResponse) => 
         </Button>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[10px] text-text-secondary">examples:</span>
+        <span className="text-xs text-text-secondary">examples:</span>
         {QUERY_EXAMPLES.map((ex) => (
           <Button key={ex} tier="ghost" onClick={() => setQ(ex)}>
             {ex}

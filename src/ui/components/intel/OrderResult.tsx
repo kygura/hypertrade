@@ -57,7 +57,7 @@ export function OrderResult({
           <Badge tone={placed ? 'green' : 'red'}>
             {word} · {v}
           </Badge>
-          <span className="text-[10px] text-text-secondary tabular">proposal {result.proposalId}</span>
+          <span className="text-xs text-text-secondary tabular">proposal {result.proposalId}</span>
         </div>
         {exec && exec.fills.length > 0 && (
           <ul aria-label="fills" className="flex flex-col gap-0.5 text-sm tabular text-text-primary">
@@ -72,14 +72,14 @@ export function OrderResult({
         {!placed && (
           <ul aria-label="reasons" className="flex flex-col gap-0.5">
             {[...result.verdict.reasons, ...(exec?.error ? [exec.error] : [])].map((r, i) => (
-              <li key={i} className="text-[11px] text-red-text">
+              <li key={i} className="text-sm text-red-text">
                 {r}
               </li>
             ))}
           </ul>
         )}
         <div className="flex flex-wrap gap-2">
-          <Link to="/desk" className="btn inline-flex items-center h-[var(--control-md)] px-2.5 text-[10px] border border-border text-text-secondary hover:text-text-primary hover:bg-hover rounded-control font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)]">
+          <Link to="/desk" className="btn inline-flex items-center h-[var(--control-md)] px-2.5 text-xs border border-border text-text-secondary hover:text-text-primary hover:bg-hover rounded-control font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)]">
             OPEN DESK →
           </Link>
           <Button tier="ghost" onClick={onNew}>

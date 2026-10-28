@@ -19,15 +19,15 @@ const BASE =
 
 const TIER_CLASS: Record<ButtonTier, string> = {
   ghost:
-    'h-[var(--control-md)] px-2.5 text-[10px] border border-border text-text-secondary ' +
+    'h-[var(--control-md)] px-2.5 text-xs border border-border text-text-secondary ' +
     'hover:text-text-primary hover:bg-hover active:bg-active ' +
     'disabled:text-text-disabled disabled:border-border-subtle',
   neutral:
-    'h-[var(--control-md)] px-2.5 text-[10px] border border-border bg-primary text-on-primary ' +
+    'h-[var(--control-md)] px-2.5 text-xs border border-border bg-primary text-on-primary ' +
     'hover:bg-primary-hover active:bg-active ' +
     'disabled:text-text-disabled disabled:border-border-subtle disabled:bg-transparent',
   danger:
-    'h-[var(--control-md)] px-2.5 text-[10px] border border-border text-red-text ' +
+    'h-[var(--control-md)] px-2.5 text-xs border border-border text-red-text ' +
     'hover:bg-red-bg active:bg-active ' +
     'disabled:text-text-disabled disabled:border-border-subtle',
 }

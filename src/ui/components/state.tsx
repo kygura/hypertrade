@@ -42,7 +42,7 @@ export function EmptyBlock({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-8 px-3 text-center">
-      <span className="state-title text-[11px] [text-transform:var(--label-case)] tracking-[var(--label-tracking)] font-[number:var(--label-weight)] text-text-secondary">{label}</span>
+      <span className="state-title text-sm [text-transform:var(--label-case)] tracking-[var(--label-tracking)] font-[number:var(--label-weight)] text-text-secondary">{label}</span>
       {action && (
         <Button tier="ghost" onClick={action.onClick}>
           {action.label}
@@ -65,8 +65,8 @@ export function OfflineBlock({
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-8 px-3 text-center">
       <StatusDot status="unknown" />
-      <span className="state-title text-[11px] [text-transform:var(--label-case)] tracking-[var(--label-tracking)] font-[number:var(--label-weight)] text-text-secondary">{title}</span>
-      <span className="text-[10px] text-text-secondary">{message}</span>
+      <span className="state-title text-sm [text-transform:var(--label-case)] tracking-[var(--label-tracking)] font-[number:var(--label-weight)] text-text-secondary">{title}</span>
+      <span className="text-xs text-text-secondary">{message}</span>
       {onRetry && (
         <Button tier="ghost" onClick={onRetry}>
           RETRY
@@ -82,7 +82,7 @@ export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: ()
   return (
     <div
       role="alert"
-      className="flex items-center justify-between gap-3 px-3 py-2 text-[12px] text-red-text bg-red-bg"
+      className="flex items-center justify-between gap-3 px-3 py-2 text-md text-red-text bg-red-bg"
     >
       <span className="text-left">{message}</span>
       {onRetry && (
@@ -94,13 +94,77 @@ export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: ()
   )
 }
 
+// AsyncBody — the §6 ladder as one component. With data, children(data) renders (or the
+// EmptyBlock when `empty` is given and the data is empty) and a failed refetch adds a
+// verbatim ErrorBlock above it instead of dropping the data; without data it is
+// SkeletonRows while loading, then OfflineBlock, then ErrorBlock, else the EmptyBlock
+// (or nothing when no `empty` is given).
+// `offline` takes useApi's boolean or usePoll's reason string (used as the message).
+export interface AsyncBodyProps<T> {
+  loading: boolean
+  data: T | null | undefined
+  error: string | null
+  offline?: boolean | string | null
+  /** EmptyBlock shown for loaded data that `isEmpty` accepts (default: an empty array). */
+  empty?: { label: string; action?: { label: string; onClick: () => void } }
+  isEmpty?: (data: T) => boolean
+  /** Skeleton bars while loading; `colSpan` renders them as table rows. */
+  rows?: number
+  colSpan?: number
+  /** Replaces the skeleton for first-load layouts SkeletonRows alone cannot draw (a table, a caption). */
+  skeleton?: ReactNode
+  /** Overrides the OfflineBlock text when `offline` is a boolean. */
+  offlineMessage?: string
+  offlineTitle?: string
+  /** Replaces the OfflineBlock (e.g. the engine's own copy); receives the reason when `offline` is a string. */
+  renderOffline?: (reason: string | undefined) => ReactNode
+  onRetry?: () => void
+  /** false: a failed refetch over kept data renders nothing (the caller shows it elsewhere). */
+  staleError?: boolean
+  children: (data: T) => ReactNode
+}
+
+export function AsyncBody<T>({
+  loading,
+  data,
+  error,
+  offline,
+  empty,
+  isEmpty,
+  rows,
+  colSpan,
+  skeleton,
+  offlineMessage,
+  offlineTitle,
+  renderOffline,
+  onRetry,
+  staleError = true,
+  children,
+}: AsyncBodyProps<T>) {
+  const offlineText = typeof offline === 'string' && offline ? offline : offlineMessage
+  if (data != null) {
+    const stale = staleError ? (error ?? (typeof offline === 'string' ? offline : offline ? (offlineMessage ?? 'api unreachable') : null)) : null
+    const none = empty && (isEmpty ? isEmpty(data) : Array.isArray(data) && data.length === 0)
+    return (
+      <>
+        {stale && <ErrorBlock message={stale} onRetry={onRetry} />}
+        {none ? <EmptyBlock label={empty.label} action={empty.action} /> : children(data)}
+      </>
+    )
+  }
+  if (loading) return <>{skeleton ?? <SkeletonRows rows={rows} colSpan={colSpan} />}</>
+  if (offline) return renderOffline ? <>{renderOffline(offlineText)}</> : <OfflineBlock title={offlineTitle} message={offlineText} onRetry={onRetry} />
+  if (error) return <ErrorBlock message={error} onRetry={onRetry} />
+  return empty ? <EmptyBlock label={empty.label} action={empty.action} /> : null
+}
+
 function ageHours(generatedAt: string): number {
   return (Date.now() - new Date(generatedAt).getTime()) / 3_600_000
 }
 
 /** Amber strip with minute/second copy (StaleBanner is hour-based, so the same look with free words). */
 export function StaleStrip({ children }: { children: ReactNode }) {
-  return <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-amber bg-amber-bg border-b border-border-subtle">{children}</div>
+  return <div className="px-3 py-1.5 text-xs uppercase tracking-wider text-amber bg-amber-bg border-b border-border-subtle">{children}</div>
 }
 
 // StaleBanner (NEW, §6) — full-width strip at panel top, shown when routine
@@ -118,7 +182,7 @@ export function StaleBanner({
   const hours = Math.floor(ageHours(generatedAt))
   const stamp = fmtUtcStamp(generatedAt)
   return (
-    <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-amber bg-amber-bg border-b border-border-subtle">
+    <div className="px-3 py-1.5 text-xs uppercase tracking-wider text-amber bg-amber-bg border-b border-border-subtle">
       {noun} {hours}h old — generated {stamp}
     </div>
   )
@@ -132,7 +196,7 @@ export function AgeStamp({ generatedAt, thresholdHours }: { generatedAt: string;
   const full = fmtUtcStamp(generatedAt)
   return (
     <span
-      className={`text-[10px] tabular ${stale ? 'text-amber' : 'text-text-secondary'}`}
+      className={`text-xs tabular ${stale ? 'text-amber' : 'text-text-secondary'}`}
       title={full}
     >
       GEN {Math.floor(hours)}H AGO

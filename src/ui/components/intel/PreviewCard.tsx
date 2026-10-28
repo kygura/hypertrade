@@ -40,7 +40,7 @@ function Fact({ label, children, sub }: { label: string; children: ReactNode; su
     <div className="flex flex-col gap-0.5 min-w-0">
       <span className="label text-xs">{label}</span>
       <span className="text-sm tabular text-text-primary break-words">{children}</span>
-      {sub && <span className="text-[10px] text-text-muted break-words">{sub}</span>}
+      {sub && <span className="text-xs text-text-muted break-words">{sub}</span>}
     </div>
   )
 }
@@ -105,15 +105,15 @@ export function PreviewCard({
       <PanelHeader title="PREVIEW">
         <VenueBadge venue={venue} />
         {isStale ? (
-          <span className="text-[10px] tabular text-amber">STALE</span>
+          <span className="text-xs tabular text-amber">STALE</span>
         ) : (
-          <span className={`text-[10px] tabular ${remaining < PREVIEW_AMBER_MS ? 'text-amber' : 'text-text-secondary'}`} title="confirm is refused after 60 s">
+          <span className={`text-xs tabular ${remaining < PREVIEW_AMBER_MS ? 'text-amber' : 'text-text-secondary'}`} title="confirm is refused after 60 s">
             VALID {fmtPreviewClock(remaining)}
           </span>
         )}
       </PanelHeader>
       {isStale && (
-        <div role="status" className="px-3 py-1.5 text-[11px] text-amber bg-amber-bg border-b border-border-subtle">
+        <div role="status" className="px-3 py-1.5 text-sm text-amber bg-amber-bg border-b border-border-subtle">
           {stale ?? STALE_TEXT}
         </div>
       )}
@@ -146,12 +146,12 @@ export function PreviewCard({
             <div className="flex flex-wrap items-center gap-2">
               <span className="label">GOVERNOR</span>
               <Badge tone={v.tone}>{v.word}</Badge>
-              {verdict.clip && <span className="text-[11px] text-text-primary">{verdict.clip}</span>}
+              {verdict.clip && <span className="text-sm text-text-primary">{verdict.clip}</span>}
             </div>
             {verdict.reasons.length > 0 && (
               <ul aria-label="governor reasons" className="flex flex-col gap-0.5">
                 {verdict.reasons.map((reason, i) => (
-                  <li key={i} className="text-[11px] text-text-muted">
+                  <li key={i} className="text-sm text-text-muted">
                     {reason}
                   </li>
                 ))}
@@ -163,7 +163,7 @@ export function PreviewCard({
               <span className="label text-xs">HOW IT RESOLVED</span>
               <ul aria-label="resolution notes" className="flex flex-col gap-0.5">
                 {otherNotes.map((n, i) => (
-                  <li key={i} className="text-[10px] text-text-muted">
+                  <li key={i} className="text-xs text-text-muted">
                     {n}
                   </li>
                 ))}
@@ -182,7 +182,7 @@ export function PreviewCard({
           )}
         </div>
         <LabWarnings warnings={warnings} />
-        {parsedFrom && <p className="text-[10px] text-text-secondary break-words">PARSED FROM "{parsedFrom}"</p>}
+        {parsedFrom && <p className="text-xs text-text-secondary break-words">PARSED FROM "{parsedFrom}"</p>}
         {isStale ? (
           <Button tier="neutral" className="h-[var(--control-lg)] w-full" onClick={onRepreview} disabled={busy}>
             <span className={busy ? 'pulse-label' : undefined}>{busy ? 'PREVIEWING…' : 'RE-PREVIEW'}</span>
@@ -193,7 +193,7 @@ export function PreviewCard({
               {confirmLabel(venue)}
             </Button>
             {block && (
-              <span id="confirm-block" className="text-[10px] text-red-text">
+              <span id="confirm-block" className="text-xs text-red-text">
                 {block}
               </span>
             )}

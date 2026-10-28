@@ -54,9 +54,9 @@ export function TriggerRoutineButton() {
       <Button tier="neutral" style={{ height: 'var(--control-lg)' }} disabled={pending || cooling} onClick={trigger}>
         {label}
       </Button>
-      <span className="text-[10px] text-text-secondary">requests a cloud routine run — results land on the next deploy</span>
+      <span className="text-xs text-text-secondary">requests a cloud routine run — results land on the next deploy</span>
       {notice && (
-        <span className={`text-[10px] ${notice.kind === 'info' ? 'text-info' : 'text-red-text'}`}>{notice.message}</span>
+        <span className={`text-xs ${notice.kind === 'info' ? 'text-info' : 'text-red-text'}`}>{notice.message}</span>
       )}
     </div>
   )

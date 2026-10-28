@@ -115,7 +115,7 @@ export function NarrativesPanel({
 function NarrativeDetail({ row, onChanged }: { row: NarrativeRow; onChanged: () => void }) {
   return (
     <div className="flex flex-col gap-3 px-3 py-3 border-t border-border">
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-text-secondary">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-secondary">
         <span>
           {row.tokens.join(' · ')}
           {row.missing.length > 0 && <span className="text-text-disabled"> (no data: {row.missing.join(', ')})</span>}
@@ -140,7 +140,7 @@ function Headlines({ items }: { items: NarrativeHeadline[] }) {
         {items.map((h, i) => {
           const link = sourceHref(h.url ?? undefined)
           return (
-            <li key={i} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+            <li key={i} className="flex flex-wrap items-baseline gap-x-2 text-sm">
               {link?.kind === 'external' ? (
                 <a href={link.href} target="_blank" rel="noreferrer" className="text-text-primary hover:underline break-words">
                   {h.title} ↗
@@ -189,14 +189,14 @@ function ViewEditor({ id, view, onSaved }: { id: string; view: NarrativeView | n
         rows={2}
         disabled={busy}
         placeholder="why: what you see that the numbers don't"
-        className="w-full resize-y text-[12px]"
+        className="w-full resize-y text-md"
       />
       <div className="flex items-center gap-2">
         <Button tier="ghost" onClick={save} disabled={busy || !dirty}>
           {busy ? <span className="pulse-label">SAVING…</span> : 'SAVE VIEW'}
         </Button>
-        {view && <span className="text-[10px] text-text-muted">saved <ClaimAge ts={view.updatedAt} /></span>}
-        {error && <span className="text-[11px] text-red-text">{error}</span>}
+        {view && <span className="text-xs text-text-muted">saved <ClaimAge ts={view.updatedAt} /></span>}
+        {error && <span className="text-sm text-red-text">{error}</span>}
       </div>
     </div>
   )
@@ -230,8 +230,8 @@ function Contrast({ id, contrast, onDone }: { id: string; contrast: NarrativeCon
           {busy ? <span className="pulse-label">RESEARCHING…</span> : result ? 'RE-RUN' : 'RUN CONTRAST'}
         </Button>
       </div>
-      {error && <p className="text-[11px] text-red-text">{error}</p>}
-      {result && result.status !== 'done' && <p className="text-[11px] text-text-muted">{result.error ?? result.status}</p>}
+      {error && <p className="text-sm text-red-text">{error}</p>}
+      {result && result.status !== 'done' && <p className="text-sm text-text-muted">{result.error ?? result.status}</p>}
       {result && result.status === 'done' && <ContrastBody c={result} />}
     </div>
   )
@@ -244,7 +244,7 @@ function Lines({ title, lines }: { title: string; lines: string[] }) {
       <span className="label">{title}</span>
       <ul className="flex flex-col gap-0.5">
         {lines.map((l, i) => (
-          <li key={i} className="text-[11px] text-text-muted">
+          <li key={i} className="text-sm text-text-muted">
             {l}
           </li>
         ))}
@@ -262,17 +262,17 @@ function ContrastBody({ c }: { c: NarrativeContrast }) {
           <Badge tone="gray">{c.confidence.toUpperCase()}</Badge>
         </span>
         <Badge tone={c.view.agreement === 'conflicts' ? 'amber' : 'gray'}>{AGREEMENT_WORD[c.view.agreement]}</Badge>
-        <span className="ml-auto text-[10px] text-text-muted">
+        <span className="ml-auto text-xs text-text-muted">
           {c.searches} SEARCHES · {fmtCost(c.costUsd)} · <ClaimAge ts={c.createdAt} />
         </span>
       </div>
-      {c.summary && <p className="text-[12px] text-text-primary break-words">{c.summary}</p>}
-      {c.view.why && <p className="text-[11px] text-text-secondary break-words">{c.view.why}</p>}
+      {c.summary && <p className="text-md text-text-primary break-words">{c.summary}</p>}
+      {c.view.why && <p className="text-sm text-text-secondary break-words">{c.view.why}</p>}
       <div className="grid gap-3 md:grid-cols-2">
         {(['continuation', 'fade'] as const).map((side) => (
           <div key={side} className="flex flex-col gap-1">
             <span className="label">{side.toUpperCase()}</span>
-            <p className="text-[12px] text-text-primary break-words">{c[side].case || <span className="text-text-disabled">no case survived validation</span>}</p>
+            <p className="text-md text-text-primary break-words">{c[side].case || <span className="text-text-disabled">no case survived validation</span>}</p>
             {c[side].evidence.length > 0 && <ClaimList claims={c[side].evidence.map(toClaim)} />}
           </div>
         ))}

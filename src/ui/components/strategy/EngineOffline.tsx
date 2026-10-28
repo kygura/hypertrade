@@ -22,7 +22,7 @@ export function OfflineStrip({ reason, fetchedAt }: { reason: string; fetchedAt:
   return (
     <div
       role="status"
-      className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-amber bg-amber-bg border-b border-border-subtle"
+      className="px-3 py-1.5 text-xs uppercase tracking-wider text-amber bg-amber-bg border-b border-border-subtle"
     >
       {reason} — showing data from {stamp}
     </div>

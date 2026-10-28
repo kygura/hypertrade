@@ -13,7 +13,7 @@ export function pathTitle(path: PathEdge[], weight?: number): string {
 }
 
 function Node({ name }: { name: string }) {
-  return <span className="border border-border-subtle px-[5px] py-px text-[11px] text-text-primary whitespace-nowrap">{name}</span>
+  return <span className="border border-border-subtle px-[5px] py-px text-sm text-text-primary whitespace-nowrap">{name}</span>
 }
 
 export function ExposurePathChips({ path, weight }: { path: PathEdge[]; weight?: number }) {
@@ -23,7 +23,7 @@ export function ExposurePathChips({ path, weight }: { path: PathEdge[]; weight?:
       <Node name={path[0]!.from} />
       {path.map((e, i) => (
         <Fragment key={i}>
-          <span className="text-[9px] uppercase tracking-wider text-text-secondary whitespace-nowrap">
+          <span className="text-2xs uppercase tracking-wider text-text-secondary whitespace-nowrap">
             <span aria-hidden="true">→{e.type.toUpperCase()}→</span>
             <span className="sr-only">, via {e.type.replace(/_/g, ' ')} to </span>
           </span>

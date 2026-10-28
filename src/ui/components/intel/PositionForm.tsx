@@ -206,7 +206,7 @@ export function PositionForm({
           <input value={d.venue} onChange={set('venue')} maxLength={40} />
         </Field>
       </div>
-      {invalid && <span className="text-[11px] text-red-text">{invalid}</span>}
+      {invalid && <span className="text-sm text-red-text">{invalid}</span>}
       {error && <ErrorBlock message={error} />}
       <div className="flex flex-wrap gap-2">
         <Button tier="neutral" type="submit" disabled={busy}>

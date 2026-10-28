@@ -92,7 +92,7 @@ export function intentFromForm(f: AdjustForm): { intent: OrderIntent; errors?: u
 function FieldError({ id, msg }: { id: string; msg?: string }) {
   if (!msg) return null
   return (
-    <span id={id} className="text-[10px] text-red-text">
+    <span id={id} className="text-xs text-red-text">
       {msg}
     </span>
   )

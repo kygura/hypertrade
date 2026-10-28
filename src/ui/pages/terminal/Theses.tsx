@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router'
 import { Button, Panel, PanelHeader } from '../../components'
-import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../../components/state'
+import { AsyncBody, EmptyBlock } from '../../components/state'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { ClaimAge } from '../../components/intel/ClaimAge'
 import { isDesktop } from '../../components/intel/format'
@@ -37,35 +37,30 @@ export function Theses() {
     select(t.id)
   }
 
-  // ── saved list (DESIGN-terminal §10 "Thesis list") ──
-  let listBody
-  if (theses.loading && !theses.data) listBody = <SkeletonRows />
-  else if (theses.offline && !theses.data) listBody = <OfflineBlock onRetry={theses.refetch} />
-  else if (theses.error && !theses.data) listBody = <ErrorBlock message={theses.error} onRetry={theses.refetch} />
-  else if (list.length === 0) listBody = <EmptyBlock label="no theses yet — write one above" />
-  else listBody = <ThesisList theses={list} selectedId={selectedId} onSelect={select} />
-
   // ── detail ──
-  let detailBody
-  if (!selectedId) detailBody = <EmptyBlock label="select a thesis" />
-  else if (theses.loading && !theses.data) detailBody = <SkeletonRows rows={4} />
-  else if (theses.offline && !theses.data) detailBody = <OfflineBlock onRetry={theses.refetch} />
-  else if (theses.error && !theses.data) detailBody = <ErrorBlock message={theses.error} onRetry={theses.refetch} />
-  else if (!selected) detailBody = <EmptyBlock label="thesis not found" />
-  else
-    detailBody = (
-      <ThesisDetail
-        key={selected.id}
-        thesis={selected}
-        onRecheck={async () => upsert(await intel.checkThesis(selected.id))}
-        onDelete={async () => {
-          await intel.deleteThesis(selected.id)
-          theses.setData(list.filter((t) => t.id !== selected.id))
-          select(null)
-          return true
-        }}
-      />
-    )
+  const detailBody = !selectedId ? (
+    <EmptyBlock label="select a thesis" />
+  ) : (
+    <AsyncBody {...theses} offline={!!theses.offline} rows={4} staleError={false} onRetry={theses.refetch}>
+      {() =>
+        selected ? (
+          <ThesisDetail
+            key={selected.id}
+            thesis={selected}
+            onRecheck={async () => upsert(await intel.checkThesis(selected.id))}
+            onDelete={async () => {
+              await intel.deleteThesis(selected.id)
+              theses.setData(list.filter((t) => t.id !== selected.id))
+              select(null)
+              return true
+            }}
+          />
+        ) : (
+          <EmptyBlock label="thesis not found" />
+        )
+      }
+    </AsyncBody>
+  )
 
   return (
     <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col">
@@ -78,8 +73,9 @@ export function Theses() {
           </Panel>
           <Panel>
             <PanelHeader title={theses.data ? `SAVED · ${list.length}` : 'SAVED'} />
-            {theses.error && theses.data && <ErrorBlock message={theses.error} onRetry={theses.refetch} />}
-            {listBody}
+            <AsyncBody {...theses} offline={!!theses.offline} empty={{ label: 'no theses yet — write one above' }} onRetry={theses.refetch}>
+              {(d) => <ThesisList theses={d} selectedId={selectedId} onSelect={select} />}
+            </AsyncBody>
           </Panel>
         </div>
 
@@ -97,7 +93,7 @@ export function Theses() {
                 (selected.checkedAt ? (
                   <ClaimAge ts={selected.checkedAt} thresholdHours={THESIS_STALE_H} prefix="LAST CHECKED" />
                 ) : (
-                  <span className="text-[10px] text-text-secondary">NOT CHECKED</span>
+                  <span className="text-xs text-text-secondary">NOT CHECKED</span>
                 ))}
             </PanelHeader>
             {detailBody}

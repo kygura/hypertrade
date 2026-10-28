@@ -22,7 +22,7 @@ const STICKY_COL = 'sticky left-0 z-[1] bg-panel'
 export function ResultTable({ columns, rows }: { columns: string[]; rows: Cell[][] }) {
   return (
     <div className="table-scroll max-h-[70vh] overflow-y-auto">
-      <table className="dt w-full text-[11px] tabular border-collapse">
+      <table className="dt w-full text-sm tabular border-collapse">
         <thead className="sticky top-0 z-[2] bg-panel">
           <tr className="border-b border-border">
             {columns.map((c, i) => (

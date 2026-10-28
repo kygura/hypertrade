@@ -157,12 +157,12 @@ function cellTone(c: string): string {
 export function Markdown({ text, className = '' }: { text: string; className?: string }) {
   const blocks = parseBlocks(text)
   return (
-    <div className={`analyst-md flex flex-col gap-2.5 text-[13px] leading-relaxed text-text-muted break-words ${className}`}>
+    <div className={`analyst-md flex flex-col gap-2.5 text-base leading-relaxed text-text-muted break-words ${className}`}>
       {blocks.map((b, i) => {
         switch (b.kind) {
           case 'heading':
             return b.level <= 2 ? (
-              <h3 key={i} className="text-[13px] text-text-primary font-semibold mt-1">
+              <h3 key={i} className="text-base text-text-primary font-semibold mt-1">
                 {inline(b.text)}
               </h3>
             ) : (
@@ -185,11 +185,11 @@ export function Markdown({ text, className = '' }: { text: string; className?: s
           case 'table':
             return (
               <div key={i} className="overflow-x-auto border border-border-subtle">
-                <table className="w-full text-[12px] tabular">
+                <table className="w-full text-md tabular">
                   <thead>
                     <tr className="bg-panel-header">
                       {b.head.map((h, j) => (
-                        <th key={j} className="px-2 py-1 font-normal text-[10px] text-text-secondary uppercase tracking-wider" style={{ textAlign: b.align[j] ?? 'left' }}>
+                        <th key={j} className="px-2 py-1 font-normal text-xs text-text-secondary uppercase tracking-wider" style={{ textAlign: b.align[j] ?? 'left' }}>
                           {inline(h)}
                         </th>
                       ))}
@@ -211,7 +211,7 @@ export function Markdown({ text, className = '' }: { text: string; className?: s
             )
           case 'code':
             return (
-              <pre key={i} className="bg-elevated border border-border-subtle px-2 py-1.5 text-[12px] text-text-primary overflow-x-auto whitespace-pre">
+              <pre key={i} className="bg-elevated border border-border-subtle px-2 py-1.5 text-md text-text-primary overflow-x-auto whitespace-pre">
                 {b.text}
               </pre>
             )

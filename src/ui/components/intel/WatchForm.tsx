@@ -61,7 +61,7 @@ export function WatchForm({ onAdded, onCancel, initial = EMPTY_WATCH_FORM }: { o
   const err = (k: keyof WatchFormValues) => (errors[k] ? { 'aria-invalid': true, 'aria-describedby': id(`${k}-err`) } : {})
   const msg = (k: keyof WatchFormValues) =>
     errors[k] ? (
-      <span id={id(`${k}-err`)} className="text-[10px] text-red-text">
+      <span id={id(`${k}-err`)} className="text-xs text-red-text">
         {errors[k]}
       </span>
     ) : null
@@ -103,7 +103,7 @@ export function WatchForm({ onAdded, onCancel, initial = EMPTY_WATCH_FORM }: { o
           {...err('target')}
         />
         {msg('target')}
-        {v.kind === 'url' && <span className="text-[10px] text-text-secondary">JS-rendered or bot-blocked pages fail visibly</span>}
+        {v.kind === 'url' && <span className="text-xs text-text-secondary">JS-rendered or bot-blocked pages fail visibly</span>}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {v.kind !== 'url' && (

@@ -50,7 +50,7 @@ export function WatchesTable({ watches, selectedId, onSelect }: { watches: Watch
           <span className="text-text-primary truncate max-w-[22ch] md:max-w-[32ch]" title={w.target}>
             {w.label || shortTarget(w.kind, w.target)}
           </span>
-          {w.error && <span className="hidden lg:block text-[10px] text-red-text break-words">{w.error}</span>}
+          {w.error && <span className="hidden lg:block text-xs text-red-text break-words">{w.error}</span>}
         </div>
       ),
     },

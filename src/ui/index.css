@@ -99,6 +99,12 @@
   --text-base: 13px;
   --text-lg: 16px;
   --text-xl: 22px;
+  /* Scale classes set font-size only: Tailwind's default per-size line-heights are cleared so rows inherit the body's 1.5. */
+  --text-xs--line-height: initial;
+  --text-sm--line-height: initial;
+  --text-base--line-height: initial;
+  --text-lg--line-height: initial;
+  --text-xl--line-height: initial;
 
   --font-mono: 'Geist Mono', ui-monospace, monospace;
   --font-sans: 'Geist Mono', ui-monospace, monospace;

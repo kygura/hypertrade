@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Panel, PanelHeader, PanelBody } from '../components/Panel'
-import { AgeStamp, StaleBanner, SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock } from '../components/state'
+import { AgeStamp, AsyncBody, EmptyBlock, StaleBanner } from '../components/state'
 import { useApi } from '../lib/api'
 import { resolveSelection, toggleSelection } from '../components/sectors/selection'
 import { MindshareGrid, type EnrichedSector } from '../components/sectors/MindshareGrid'
@@ -36,10 +36,9 @@ export function Sectors() {
       <Panel className="lg:col-span-12">
         <PanelHeader title="NARRATIVES">{narratives.data && <AgeStamp generatedAt={narratives.data.sectorsAsOf} thresholdHours={24} />}</PanelHeader>
         <PanelBody>
-          {narratives.loading && !narratives.data && <SkeletonRows />}
-          {!narratives.loading && narratives.offline && <OfflineBlock onRetry={narratives.refetch} />}
-          {!narratives.loading && !narratives.offline && narratives.error && <ErrorBlock message={narratives.error} onRetry={narratives.refetch} />}
-          {narratives.data && <NarrativesPanel data={narratives.data} selectedId={selectedId} onSelect={select} onChanged={narratives.refetch} />}
+          <AsyncBody {...narratives} staleError={false} onRetry={narratives.refetch}>
+            {(d) => <NarrativesPanel data={d} selectedId={selectedId} onSelect={select} onChanged={narratives.refetch} />}
+          </AsyncBody>
         </PanelBody>
       </Panel>
 
@@ -47,17 +46,18 @@ export function Sectors() {
         {data && <StaleBanner generatedAt={data.generated_at} thresholdHours={24} noun="sector data" />}
         <PanelHeader title="MINDSHARE">{data && <AgeStamp generatedAt={data.generated_at} thresholdHours={24} />}</PanelHeader>
         <PanelBody>
-          {loading && <SkeletonRows />}
-          {!loading && offline && <OfflineBlock onRetry={refetch} />}
-          {!loading && !offline && error && <ErrorBlock message={error} onRetry={refetch} />}
-          {data && data.sectors.length === 0 && <EmptyBlock label="no sector data yet — trigger the routine from STATE" />}
-          {data && data.sectors.length > 0 && (
-            <MindshareGrid
-              sectors={data.sectors}
-              selectedId={selectedId}
-              onSelect={select}
-            />
-          )}
+          <AsyncBody
+            loading={loading}
+            data={data}
+            error={error}
+            offline={offline}
+            staleError={false}
+            empty={{ label: 'no sector data yet — trigger the routine from STATE' }}
+            isEmpty={(d) => d.sectors.length === 0}
+            onRetry={refetch}
+          >
+            {(d) => <MindshareGrid sectors={d.sectors} selectedId={selectedId} onSelect={select} />}
+          </AsyncBody>
         </PanelBody>
       </Panel>
 
@@ -76,8 +76,9 @@ export function Sectors() {
       <Panel className="order-3 lg:order-none lg:col-span-4">
         <PanelHeader title="ROTATIONS" />
         <PanelBody>
-          {loading && <SkeletonRows />}
-          {data && <RotationsPanel rotations={data.rotations} sectorLabel={sectorLabel} />}
+          <AsyncBody loading={loading} data={data} error={null}>
+            {(d) => <RotationsPanel rotations={d.rotations} sectorLabel={sectorLabel} />}
+          </AsyncBody>
         </PanelBody>
       </Panel>
     </div>

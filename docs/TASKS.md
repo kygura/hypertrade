@@ -15,8 +15,10 @@ object; 6 shell cells today against a ceiling of 9, target 5):
   SSE reader, shared state ladders and desk types).
 - [x] PR 3: MARKET and RESEARCH families on `SectionTabs` (10 cells to 6; `/overview`
   redirects to `/markets`; `/sectors` gets one selection).
-- [ ] PR 4: one TRADE front (6 cells to 5, tab order Intel to Act), ENGINE on
-  `SectionTabs`, loading/error states normalised, type scale applied.
+- [x] PR 4: one TRADE front (6 cells to 5, tab order Intel to Act), ENGINE on
+  `SectionTabs`, `useApi`/`usePoll` fixed and `AsyncBody` ladders, agents get intel and
+  platform read tools. Type-scale codemod and `check:type-scale` done. Deferred: the
+  `runToolLoop` extraction (see `docs/CONSOLIDATION.md`).
 
 Routine redesign (2026-10-23, `docs/fallback-routine.md`): the 4 h routine is a board scan of the
 top-30 perps on 4h/1d/1w with tripwires (the commonplace setups as thresholds), a level menu, and the

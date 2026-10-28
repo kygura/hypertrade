@@ -52,7 +52,7 @@ export function JournalBar({
             {sources.map((s) => (
               <li
                 key={s.source}
-                className={`flex items-center gap-1.5 text-[10px] uppercase tracking-wider ${s.ok ? 'text-text-secondary' : 'text-red-text'}`}
+                className={`flex items-center gap-1.5 text-xs uppercase tracking-wider ${s.ok ? 'text-text-secondary' : 'text-red-text'}`}
                 title={s.ok ? `${s.source}: ok` : (s.error ?? `${s.source}: failed`)}
               >
                 <StatusDot status={s.ok ? 'ok' : 'down'} />
@@ -63,7 +63,7 @@ export function JournalBar({
           </ul>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {tagNote && <span className="text-[10px] text-text-secondary">{tagNote}</span>}
+          {tagNote && <span className="text-xs text-text-secondary">{tagNote}</span>}
           <Button tier="ghost" onClick={onTag} disabled={tagging || untagged === 0} title="the model tags each untagged trade's setup type">
             <span className={tagging ? 'pulse-label' : undefined}>{tagging ? 'TAGGING…' : `TAG UNTAGGED · ${untagged}`}</span>
           </Button>

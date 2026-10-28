@@ -75,7 +75,7 @@ export function AnalogChart({ analogs, forecast }: { analogs: CycleAnalog[]; for
             cursor={{ stroke: 'var(--color-border)' }}
             content={({ active, label, payload }) =>
               active && payload?.length ? (
-                <div className="bg-elevated border border-border px-2 py-1.5 text-[10px] tabular flex flex-col gap-0.5">
+                <div className="bg-elevated border border-border px-2 py-1.5 text-xs tabular flex flex-col gap-0.5">
                   <span className="text-text-secondary">day {label} after the top</span>
                   {payload.map((p) => (
                     <span key={String(p.dataKey)} className="flex items-center gap-1.5 text-text-primary">
@@ -106,7 +106,7 @@ export function AnalogChart({ analogs, forecast }: { analogs: CycleAnalog[]; for
             })}
         </LineChart>
       </ResponsiveContainer>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 px-[var(--panel-pad)] py-1.5 text-[10px] text-text-secondary">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 px-[var(--panel-pad)] py-1.5 text-xs text-text-secondary">
         {shown.map((a) => (
           <span key={a.label} className="flex items-center gap-1.5">
             <span className="w-3 h-0.5" style={{ background: color(a) }} />

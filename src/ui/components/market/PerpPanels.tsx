@@ -8,7 +8,7 @@ import { AnimatedDigits } from '../AnimatedDigits'
 import { Badge } from '../Badge'
 import { MetricStat } from '../MetricStat'
 import { PanelHeader } from '../Panel'
-import { AgeStamp, ErrorBlock, SkeletonRows } from '../state'
+import { AgeStamp, AsyncBody } from '../state'
 
 // Perp context for the markets drill-in: everything Hyperliquid exposes
 // about one perp beyond candles. GET /api/perp/:coin every 60s for the slow
@@ -90,16 +90,16 @@ export function PerpHeader({ coin, stats }: { coin: string; stats: ReturnType<ty
   return (
     <>
       <div className="flex flex-wrap items-baseline gap-3 px-3 py-3 border-b border-border">
-        <span className="text-[16px] text-text-secondary">{coin}</span>
+        <span className="text-lg text-text-secondary">{coin}</span>
         {ctx ? (
           <>
-            <AnimatedDigits text={fmtPrice(ctx.markPx)} className="text-[22px] text-text-primary" />
-            <span className={`text-[12px] tabular ${classForPnl(ctx.dayChange)}`}>
+            <AnimatedDigits text={fmtPrice(ctx.markPx)} className="text-xl text-text-primary" />
+            <span className={`text-md tabular ${classForPnl(ctx.dayChange)}`}>
               {fmtPct(ctx.dayChange, { sign: true })} {ctx.dayChange >= 0 ? '▲' : '▼'}
             </span>
           </>
         ) : (
-          <span className="text-[13px] text-text-secondary">--</span>
+          <span className="text-base text-text-secondary">--</span>
         )}
         <span className="flex items-center gap-1.5">
           {stats.live && <Badge tone="green">LIVE</Badge>}
@@ -109,11 +109,8 @@ export function PerpHeader({ coin, stats }: { coin: string; stats: ReturnType<ty
         </span>
         {stats.updatedAt > 0 && !stats.live && <AgeStamp generatedAt={new Date(stats.updatedAt).toISOString()} thresholdHours={STALE_HOURS} />}
       </div>
-      {stats.error && !data ? (
-        <ErrorBlock message={stats.error} onRetry={stats.refetch} />
-      ) : !ctx ? (
-        stats.loading ? <SkeletonRows rows={2} /> : null
-      ) : (
+      <AsyncBody loading={stats.loading} data={ctx} error={data ? null : stats.error} rows={2} onRetry={stats.refetch}>
+        {(ctx) => (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 border-b border-border">
           <MetricStat label="Oracle" value={fmtPrice(ctx.oraclePx)} delta={`prem ${bp(ctx.premium)}`} deltaPositive={null} />
           <MetricStat
@@ -143,7 +140,8 @@ export function PerpHeader({ coin, stats }: { coin: string; stats: ReturnType<ty
           <MetricStat label="Impact spread" value={spread == null ? '--' : bp(spread)} delta="market-order cost" deltaPositive={null} />
           <MetricStat label="Mid" value={fmtPrice(ctx.midPx)} delta={`prev day ${fmtPrice(ctx.prevDayPx)}`} deltaPositive={null} />
         </div>
-      )}
+        )}
+      </AsyncBody>
     </>
   )
 }
@@ -158,13 +156,12 @@ export function FundingPanel({ stats }: { stats: ReturnType<typeof usePerpStats>
   return (
     <>
       <PanelHeader title="FUNDING" />
-      {!data ? (
-        stats.loading ? <SkeletonRows rows={3} /> : null
-      ) : (
+      <AsyncBody loading={stats.loading} data={data} error={null} rows={3}>
+        {(data) => (
         <div className="grid md:grid-cols-2">
-          <table className="w-full text-[11px] tabular">
+          <table className="w-full text-sm tabular">
             <thead>
-              <tr className="text-[10px] text-text-secondary text-left">
+              <tr className="text-xs text-text-secondary text-left">
                 <th className="px-3 py-1.5 font-normal">VENUE</th>
                 <th className="px-3 py-1.5 font-normal text-right">PREDICTED</th>
                 <th className="px-3 py-1.5 font-normal text-right">APR</th>
@@ -215,7 +212,8 @@ export function FundingPanel({ stats }: { stats: ReturnType<typeof usePerpStats>
             ))}
           </div>
         </div>
-      )}
+        )}
+      </AsyncBody>
     </>
   )
 }
