@@ -151,7 +151,7 @@ export function PositionForm({
     <form
       ref={ref}
       aria-label={initial ? `edit ${initial.asset} position` : 'add position'}
-      className="flex flex-col gap-3 p-3 border-t border-border-subtle scroll-mt-[100px]"
+      className="flex flex-col gap-3 p-3 border-t border-border-subtle scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)]"
       onKeyDown={confirm ? undefined : onKeyDown}
       onSubmit={(e) => {
         e.preventDefault()

@@ -158,8 +158,10 @@
 
 /* Top bar: 54px base-colored strip, Geist Mono uppercase nav, active = white
    text only (no underline — Hyperdash reserves the orange rule for tabs). */
+:root[data-theme='hyperdash'] {
+  --topbar-h: 54px;
+}
 :root[data-theme='hyperdash'] .app-topbar {
-  height: 54px;
   padding-left: 12px;
   padding-right: 12px;
   border-bottom-color: var(--color-border-subtle);

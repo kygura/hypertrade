@@ -21,11 +21,11 @@ import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows, StaleBanner } from 
 import { ApiError } from '../../lib/api'
 import { intel, INTEL_POLL_MS, useIntel } from '../../lib/intel'
 
-// `/asset/:coin` — AssetPage (DESIGN-terminal §15.4). A drill-in of `/` under
+// `/asset/:coin` — AssetPage (docs/design/terminal.md §15.4). A drill-in of `/terminal` under
 // TerminalTabs (TERMINAL active). Owns `?days=1|7|30` (default 7) and
 // `?metric=` (highlights a pane until any click). Polls the asset on mount,
 // on days change and every 5 min; reads positions (held lines, stop) and the
-// heatmap (materiality, flags, flow source status) like `/` does.
+// heatmap (materiality, flags, flow source status) like `/terminal` does.
 // Mobile order: header → TIMELINE → EVENTS → EXPOSURE.
 
 type Days = 1 | 7 | 30
@@ -127,7 +127,7 @@ function AssetHeader({
               </span>
             )}
             <Button tier="ghost" onClick={() => navigate(`/markets/${encodeURIComponent(coin)}`)}>
-              MARKETS →
+              CHART →
             </Button>
           </span>
         </div>

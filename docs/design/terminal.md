@@ -25,8 +25,11 @@ danger), `Badge`, `StatusDot`, `Segmented`, `DataTable` (incl. `isSelected`),
 **Principle for every surface here:** code detects, the model explains.
 Numbers computed by code render as plain values. Words written by the model
 render only as claim lines (§2), never as bare prose. No surface predicts
-direction, prints a price target, or offers a trade; the only order path is
-`/order`, and it never executes without the operator's confirm click.
+direction, prints a price target, or offers a trade on its own. Orders reach
+the Desk venue (paper or testnet) only from an operator's click on a Level 2
+dialog: here, the `/order` copilot (§7); on `/`, the Cockpit's APPROVE
+(Cockpit section C5). Nothing on this surface places an order on a timer, on
+Enter, or on preview.
 
 ---
 
@@ -36,53 +39,63 @@ direction, prints a price target, or offers a trade; the only order path is
 
 | Path | Tab | Content |
 |---|---|---|
-| `/` | TERMINAL | the main screen (§3); `/?review=1` = Telegram deep link (§1.5) |
+| `/` | COCKPIT | the landing: ranked opportunity feed, liquidation map, detail (Cockpit section); `/?id=<opportunityId>` selects (`replace: true`) |
+| `/terminal` | TERMINAL | what changed since I last looked (§3); `/terminal?review=1` = Telegram deep link (§1.5); `/?review=1` redirects here with `replace` |
 | `/journal` | JOURNAL | trades, per-tag stats, weekly report (§4); `?trade=<id>` selects a trade, `?tag=<tag>` filters |
 | `/theses` | THESES | compose + saved list + detail (§5); `?id=<id>` selects a thesis |
 | `/query` | QUERY | NL → DSL → SQL → result (§6) |
 | `/order` | ORDER | order copilot (§7) |
 | `/watch` | WATCH | doc/contract/wallet watches (§8); `?id=<id>` selects a watch |
-| `/overview` | OVERVIEW | docs/design/README.md §10.2, unchanged (§9) |
+| `/overview` | OVERVIEW | docs/design/README.md §10.2 (§9) |
+| `/asset/:coin` | (drill-in) | asset page (§15.4); a drill-in of `/terminal`: renders under TerminalTabs with the TERMINAL segment active |
 
 Selection uses query params (the route family is pinned by SPEC I0.1), written
 with `replace: true` so back steps between routes, not rows (mobile exception:
-§5.1).
+§5.1 and the Cockpit detail screen).
 
-### 1.2 Nav change (docs/design/README.md §5)
+### 1.2 Nav (docs/design/README.md §5)
 
-The `OVERVIEW` slot becomes `TERMINAL`. Same position (first), same count
-(nine cells on mobile, the §5.2 ceiling holds).
+The family is one shell cell, the first: top-bar label `COCKPIT`, mobile cell
+label `CKPT` (under the 5-char limit), glyph `◉` (U+25C9, a text character
+like the others), link `/`.
 
-- Top bar label: `TERMINAL`. Mobile cell label: `TERM` (4 chars, under the
-  5-char limit). Mobile glyph: `▣` (U+25A3, text character like the others).
-- Active on `/`, `/journal`, `/theses`, `/query`, `/order`, `/watch`,
-  `/overview` (an `isTerminalPath(pathname)` helper beside `isEnginePath`).
-- Wordmark click → `/` (now the Terminal), unchanged behavior.
-- The freshness cluster is unchanged; per-source health lives in §3.3.
+- Active on every route of the family: `/`, `/terminal`, `/journal`,
+  `/theses`, `/query`, `/order`, `/watch`, `/overview` and `/asset/*`
+  (`isTerminalPath(pathname)`, beside `isEnginePath`).
+- Wordmark click → `/` (the Cockpit).
+- The freshness cluster is unchanged; per-source health lives in §3.3 and
+  the Cockpit health strip (C6).
+- The shell is over its nine-cell ceiling and this family is one of the
+  folds `docs/CONSOLIDATION.md` plans (Intel → Act tabs in one front); until
+  then this section describes what ships.
 
 ### 1.3 TerminalTabs (sub-tab strip)
 
 One `Segmented` (`size: 'md'`, label `terminal sections`) directly under the
-shell, the LabTabs pattern exactly: `position: sticky; top: 40px` (`top-10`),
-row height 52px, `bg-body`, z-30. Path-based: changing a segment navigates.
+shell, the LabTabs pattern exactly: `position: sticky;
+top: var(--topbar-h)`, row height `var(--subnav-h)` (52px), `bg-body`, z-30.
+Path-based: changing a segment navigates. Pages that anchor-scroll under it
+use `scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)]`.
 
 Order and labels (desktop `label` / below-md `short`):
 
-`TERMINAL / TERM · JOURNAL / JRNL · THESES / THES · QUERY / QRY · ORDER / ORDR · WATCH / WTCH · OVERVIEW / OVW`
+`COCKPIT / CKPT · TERMINAL / TERM · JOURNAL / JRNL · THESES / THES · QUERY / QRY · ORDER / ORDR · WATCH / WTCH · OVERVIEW / OVW`
 
-Order: the review, the operator's own record, the tools, the old glance.
+Order: what to act on now, the review, the operator's own record, the tools,
+the old glance.
 
-**Mobile: no horizontal scroll by design.** Seven ≤ 4-char short labels at the
-`.seg-item` 10px size + 8px padding measure ≈ 270px, inside the 304px at 320px
-width. The wrapper keeps `overflow-x: auto` only as a safety net (a wider theme
+**Mobile: no horizontal scroll by design.** Eight ≤ 4-char short labels at the
+`.seg-item` 10px size + 8px padding measure ≈ 308px: they fit at 400px, and
+the wrapper's `overflow-x: auto` safety net covers 320px (and a wider theme
 `--seg-pad`, 200% zoom). Rejected: a scrolling strip (hidden tabs defeat the
 map, DESIGN §4.3/§5.2) and two rows (52px more on every route).
 
 No count suffixes or dots on segments: each would cost a fetch on every route
-of the family. Segment `title`s state the route's question: `what changed since
-I last looked` · `what my trades say` · `test a thesis against the data` · `ask
-the snapshot store` · `preview and place a Desk order` · `watch docs, contracts
-and wallets` · `market glance`.
+of the family. Segment `title`s state the route's question: `what to act on now` · `what
+changed since I last looked` · `what my trades say` · `test a thesis against
+the data` · `ask the snapshot store` · `preview and place a Desk order` ·
+`watch docs, contracts and wallets` · `market glance`. Links reading
+`← TERMINAL` (asset page) point at `/terminal`.
 
 ### 1.4 Polling and the hidden tab
 
@@ -100,21 +113,22 @@ interval, then resumes. Unmounted routes never poll. Refetches update in place.
 | Exposure graph | `GET /graph?asset=` | on expand, then 10 min while expanded |
 | Journal, theses, watches | their GETs | on mount + after a write; watches list 5 min |
 | Order preview | `POST /order/preview` | never polled; it expires (§7.4) |
-| Desk venue | `GET /api/desk/status` | on mount of `/order` + 60 s |
+| Desk venue | `GET /api/desk/status` | on mount of `/order` + 60 s (the Cockpit polls it every 30 s) |
 
-### 1.5 Review semantics and `/?review=1`
+### 1.5 Review semantics and `/terminal?review=1`
 
 `POST /brief` logs a review, so it must fire only on a real open:
 
-- **Mount of `/`** → `POST /brief` once, unless this tab posted one in the
+- **Mount of `/terminal`** → `POST /brief` once, unless this tab posted one in the
   last 5 minutes (in-memory module cache mirrored to sessionStorage, so it is
   per tab and survives a reload; every storage access is in try/catch and the
   module cache alone still throttles; never localStorage), so hopping between
   sub-tabs does not reset the baseline.
 - **`REVIEW NOW`** (ghost) → `POST /brief`; `title` `marks now as reviewed —
   the next brief diffs from here`.
-- **`/?review=1`** → `POST /brief`, bypassing the cache; once sent, the param
-  is dropped with `navigate('/', { replace: true })`. Gray Badge `FROM
+- **`/terminal?review=1`** → `POST /brief`, bypassing the cache; once sent, the
+  param is dropped with `navigate('/terminal', { replace: true })`. The old
+  Telegram link `/?review=1` redirects here first. Gray Badge `FROM
   TELEGRAM` for this load only; WHAT CHANGED scrolls into view once.
 - While a POST is in flight, `GET /brief/latest` (if any) renders at 70% with
   `LAST BRIEF · 2H OLD — REVIEWING…` (pulse) and is replaced in place (the
@@ -214,7 +228,7 @@ claim lines with untagged prose.
 
 ---
 
-## 3. `/` — TERMINAL
+## 3. `/terminal` — TERMINAL
 
 Purpose: answer **"What changed since I last looked that could affect my
 positions?"** in one screen: computed changes, model explanation, calendar,
@@ -223,7 +237,7 @@ book, and the exposure map connecting news to the book.
 ### 3.1 Desktop layout (`lg:`, 12-col grid, gutter 12px)
 
 ```
-┌ TerminalTabs: [TERMINAL|JOURNAL|THESES|QUERY|ORDER|WATCH|OVERVIEW] ─────────────────────────────┐
+┌ TerminalTabs: [COCKPIT|TERMINAL|JOURNAL|THESES|QUERY|ORDER|WATCH|OVERVIEW] ─────────────────────┐
 ├ REVIEW STRIP ─────────────────────────────────────────────────────────────────────────── 12 ┤
 │ 4  THINGS CHANGED · SINCE 9H AGO · 2 ALERTS · NEXT CPI T−1D 04H        [REVIEW NOW]          │
 │ (xl)  SOURCES ● MANUAL  ● HL  ✕ DESK  ● SNAP 12M  ● NEWS 18M  ● LLM                          │
@@ -627,7 +641,7 @@ still cannot be undone, so it is signalled by **words and placement**:
    `CONFIRM TESTNET ORDER`; the dialog's confirm reads `PLACE PAPER ORDER` /
    `PLACE TESTNET ORDER`.
 4. **Level 2** (DESIGN §7) via the existing `ConfirmDialog`, **no typed
-   word** (reserved for the kill switch; the preview card is the review, the
+   word** (Level 3 is reserved for the kill switches; the preview card is the review, the
    dialog restates it). Its Danger confirm reads as "irreversible" here.
 
 If the Desk status reports a venue other than paper/testnet, or is
@@ -763,9 +777,9 @@ then CHANGES (same push/back rule as §5.1).
 
 ## 9. `/overview`
 
-docs/design/README.md §10.2 unchanged (panels, data, states, optional PulseTile) at
-`/overview` under **TerminalTabs**. Links that meant "the overview" by `/` now
-point at `/overview`; it is reached through the sub-tab strip.
+docs/design/README.md §10.2 (metrics strip, MarketState, sector heat,
+branches and engine cards, states) at `/overview` under **TerminalTabs**,
+the OVERVIEW tab. It has no shell cell of its own.
 
 ---
 
@@ -815,7 +829,7 @@ text, 409 messages) render **verbatim**; the UI never rewrites them.
   feedback buttons use `aria-pressed`.
 - Countdowns (`T−1D 04H`, `VALID 0:42`) are **not** live regions. The only
   live regions are ErrorBlocks (`role="alert"`) and one `aria-live="polite"`
-  line on `/` announcing `4 things changed since 9 hours ago` when a brief
+  line on `/terminal` announcing `4 things changed since 9 hours ago` when a brief
   lands, and on `/order` announcing `preview ready` / `preview stale`.
 - Inline forms: visible `.label` per input; first field focused on open;
   `Esc` closes and refocuses the opener. Trade-id chips are real links
@@ -828,18 +842,15 @@ text, 409 messages) render **verbatim**; the UI never rewrites them.
 
 ---
 
-## 12. Edits docs/design/README.md needs
+## 12. Where docs/design/README.md points here
 
-| Section | Replacement intent |
-|---|---|
-| Intro item 2 "No money paths" | Add one sentence: the Intel order copilot places operator-confirmed orders on the Desk venue (paper/testnet) only; it uses Level 2 confirm + VenueBadge, not a Money tier (DESIGN-terminal §7.1). |
-| §5 opening list + §5.1 diagram | `OVERVIEW /` → `TERMINAL /` (active on the Terminal family); add `/overview` as a sub-tab destination; diagram's first route reads `TERMINAL`. |
-| §5.2 tab bar | Cell 1 `◈ OVIEW` → `▣ TERM`; glyph list and label list updated; nine-cell arithmetic unchanged. |
-| §10 route map | Add `/journal`, `/theses`, `/query`, `/order`, `/watch`, `/overview`; `/` becomes the Terminal; point to docs/design/terminal.md as binding for them. |
-| §10.2 | Heading becomes `/overview — Overview`; first line notes it moved from `/` unchanged and renders under TerminalTabs. Layout, components and states untouched. |
-| §11 | New-shared rows: `ClaimLine`, `ClaimList`, `ClaimAge`, `SourceLink`, `VenueBadge`; `SrcTag` union gains `manual`, `desk`, `snap`. New view-scoped group "Intel (docs/design/terminal.md)" listing §14's components. |
-| §13 | Add the §10 rows of this file (or one row per route referencing it). |
-| §2 / theme README | No token change; add one sentence to the `--color-info` role: "also marks model inference (HYP claims, LLM-proposed edges)". |
+README §5 (the Terminal family is cell 1, COCKPIT), §7 (Level 2 order
+dialogs, Level 3 kill switches), §10 (route map; §10.2 is `/overview`), §11
+(shared rows `ClaimLine`, `ClaimList`, `ClaimAge`, `SourceLink`, `VenueBadge`;
+`SrcTag` union incl. `manual`, `desk`, `snap`; the Intel and Cockpit
+component groups from §14 and C9) and §13 (one row per route here, defined by
+§10 of this file). The theme README's `--color-info` role also marks model
+inference (HYP claims, LLM-proposed edges).
 
 ---
 
@@ -898,12 +909,14 @@ Route pages under `src/ui/pages/terminal/`; panels and cards under
 | `OrderComposer` / `AdjustDisclosure` | `components/intel/OrderComposer.tsx`, `AdjustDisclosure.tsx` | `onPreview(text)` / `intent, onRepreview(intent)` |
 | `PreviewCard` / `OrderResult` | `components/intel/PreviewCard.tsx`, `OrderResult.tsx` | `preview, venue, receivedAt, stale, onConfirm(), onRepreview()` / `result, onNew()` |
 | `WatchesTable` / `WatchForm` / `WatchChanges` / `ChangeEntry` | `components/intel/Watch*.tsx`, `ChangeEntry.tsx` | `watches, selectedId, onSelect` / `onAdded()` / `watch` / `change` |
-| `Terminal` | `pages/terminal/Terminal.tsx` | route `/`; owns the brief POST cache (§1.5) and `?review=1` |
+| `Terminal` | `pages/terminal/Terminal.tsx` | route `/terminal`; owns the brief POST cache (§1.5) and `?review=1` |
 | `Journal`, `Theses`, `Query`, `Order`, `Watch` | `pages/terminal/<Name>.tsx` | routes `/journal` … `/watch`; own their fetches and `?id`/`?trade`/`?tag` params |
-| (Overview) | `pages/Overview.tsx` (existing) | route `/overview`, wrapped with TerminalTabs |
+| (Overview) | `pages/Overview.tsx` | route `/overview`, wrapped with TerminalTabs |
+| `Asset` | `pages/terminal/Asset.tsx` | route `/asset/:coin` (§15.4); `AssetHeader` is local to it |
+| `Cockpit` | `pages/cockpit/Cockpit.tsx` | route `/`; see C9 |
 
-Shared edits outside these folders: `AppShell.tsx` NAV entry and
-`isTerminalPath`; `SrcTag.tsx` union; `App.tsx` routes. Nothing else changes.
+Shared files outside these folders: `AppShell.tsx` NAV entry and
+`isTerminalPath`; `SrcTag.tsx` union; `App.tsx` routes.
 
 ---
 
@@ -915,7 +928,7 @@ drawing (needs a library, fails at 390px), query CSV export, alert un-vote.
 ## 15. Flow (phase 6)
 
 Binding layout for docs/SPEC.md § "Flow — quant gaps" (F0.8). Everything above
-stands; this section adds one panel to `/`, one route, and no tokens. The
+stands; this section adds one panel to `/terminal`, one route, and no tokens. The
 principle is unchanged: every number here is computed by code and prints
 plainly; the only model text is the alert lines that already exist (§2).
 
@@ -925,7 +938,7 @@ plainly; the only model text is the alert lines that already exist (§2).
 (extracted, §15.6), Recharts (DESIGN §4.5/§9) for the timeline, the momentum
 ramp tokens `--color-mom-*` (DESIGN §2) for the heatmap scale.
 
-### 15.1 FLOW panel on `/`
+### 15.1 FLOW panel on `/terminal`
 
 **Desktop (`lg:`)** — a full-width 12 row between the WHAT CHANGED / NEWS row
 and the POSITIONS / CATALYSTS row. The brief answers "what cleared the
@@ -1083,17 +1096,17 @@ scrolls to FLOW (`FLOW_ANCHOR`, the NEWS/CATALYSTS precedent).
 ### 15.4 `/asset/:coin` — AssetPage
 
 Reached by click only (heatmap cell, detector chip, and the row taps of
-DiffTable §3.4 and PositionsTable §3.7, which now go to `/asset/:coin` instead
-of `/markets/:coin`; the candle chart stays one click away via `MARKETS →`).
-It is a drill-in of `/`, not a sub-tab: it renders under TerminalTabs with
-the TERMINAL segment active (`isTerminalPath` gains `/asset/`), the
+DiffTable §3.4 and PositionsTable §3.7, which go to `/asset/:coin` instead
+of `/markets/:coin`; the candle chart stays one click away via `CHART →`).
+It is a drill-in of `/terminal`, not a sub-tab: it renders under TerminalTabs
+with the TERMINAL segment active (`isTerminalPath` covers `/asset/*`), the
 `/markets/:coin` precedent. `?days=1|7|30` (default 7), `?metric=` highlights
 a pane on arrival.
 
 ```
 ┌ TerminalTabs ──────────────────────────────────────────────────────────────── 12 ┐
 ├ [← TERMINAL]  HYPE (lg)  HELD · LONG 3× · 12.4 HYPE · $12.4K  MANUAL   [1D|7D|30D] ─ 12 ┤
-│ MARK $32.18 · STOP −3.1% · 0.8×ATR · MAT 0.71 · FLAGS crowded long   SNAP 12M  [MARKETS →] │
+│ MARK $32.18 · STOP −3.1% · 0.8×ATR · MAT 0.71 · FLAGS crowded long   SNAP 12M  [CHART →]   │
 ├ TIMELINE ─────────────────────────────────────────────────── 8 ┬ EXPOSURE ──────── 4 ┤
 │ PRICE  ╱╲╱╲╲╱╱   ┆      ┆  ┆                                   │ 9 EDGES · 4 PATHS     │
 │ OI     ────╱╱─   ┆      ┆  ┆                                   │ COLLATERAL · 2        │
@@ -1117,7 +1130,7 @@ line per position from the shared `/positions` fetch: side word green/red +
 leverage, size in coins, notional (`fmtUsd`), `SrcTag` of the source; `MARK
 <px>`; `STOP −3.1% · 0.8×ATR` (`title` stop px) or amber Badge `NO STOP`;
 `MAT 0.71` (the row's materiality, 2 decimals); the row's flags as gray
-Badges; `SrcTag snap` + ClaimAge of the newest snapshot; ghost `MARKETS →`
+Badges; `SrcTag snap` + ClaimAge of the newest snapshot; ghost `CHART →`
 (`/markets/:coin`). `Segmented` `1D | 7D | 30D` (label `asset window`).
 
 ### 15.5 AssetTimeline
@@ -1174,9 +1187,9 @@ edges grouped by type in weight order with weight, origin Badge (`SEED` gray /
 `LLM` info / `USER` gray), SourceLink, `verified` ClaimAge (amber > 48 h),
 Danger `✕` on user edges; then `PATHS` as ExposurePathChips + `w 0.30` (2-hop
 paths to held ∪ watched); `+ ADD EDGE` form. `ExposureAssetRow` becomes a
-disclosure around `ExposureGraph`, so `/` and `/asset/:coin` render the same
+disclosure around `ExposureGraph`, so `/terminal` and `/asset/:coin` render the same
 thing from the same code. Header right: `9 EDGES · 4 PATHS`. The asset page
-passes the `graph` it already has; the `/` row keeps fetching on expand.
+passes the `graph` it already has; the `/terminal` row keeps fetching on expand.
 
 ### 15.7 LLM cap copy
 
@@ -1254,7 +1267,7 @@ no-narration row is the place reasons already live).
 ## 16. Scout / Research (phase 7)
 
 Binding layout for docs/SPEC.md § "Scout — research on the Terminal" (S0.8). §15
-stands; this section adds one panel to `/`, one action on the detector chips,
+stands; this section adds one panel to `/terminal`, one action on the detector chips,
 one event kind on `/asset/:coin`, one badge on digest items, and no tokens.
 Research is **model output with code-checked provenance**: every evidence row
 is a Claim and renders through §2, so OBS and HYP stay unmistakable, and a
@@ -1267,7 +1280,7 @@ operator what to do; a result explains, it never recommends.
 pulse label (`REVIEWING…`), the §15.3 expanded-line disclosure, the §15.5
 selection inset.
 
-### 16.1 RESEARCH panel on `/`
+### 16.1 RESEARCH panel on `/terminal`
 
 **Desktop (`lg:`)** — a full-width 12 row directly under FLOW, before
 POSITIONS / CATALYSTS. FLOW shows *what* moved; research is the attempt to
@@ -1384,7 +1397,7 @@ after `OPEN HYPE →`:
   conditions as the box button. Degraded summary chips have no action.
 - `flag.researchId` set → ghost `SEE RESEARCH →`. Click scrolls to the card
   in RESEARCH and highlights it (§16.2). **Why the panel and not the asset
-  page:** the chip is on `/` and the result is already on `/`; a page hop
+  page:** the chip is on `/terminal` and the result is already on `/terminal`; a page hop
   would drop the heatmap context the operator is reading the chip against.
   If the id is not among the 20 loaded cards, the panel refetches with
   `?asset=<coin>` and highlights on arrival; still missing → `/asset/:coin`
@@ -1407,7 +1420,7 @@ so the state is visible before expanding.
   tap/Enter opens the full `ResearchCard` body (explanation, evidence, open
   questions, meta) under the row. When the event carries no `research`
   payload (§16.6), the row is not expandable and ends with ghost `SEE ON
-  TERMINAL →` (`/#research-<id>`).
+  TERMINAL →` (`/terminal#research-<id>`).
 - The header's flags Badges gain the same `·R` suffix as the chips.
 
 ### 16.5 Confluence on digest items
@@ -1457,7 +1470,7 @@ hidden. `/asset/:coin` needs no new fetch (events carry research).
 **Keyboard / a11y (extends §11):** the textarea has a visible `.label` and
 `aria-describedby` on the counter; Enter submits, Shift+Enter inserts a
 newline; the asset input is a labeled `<input list>`; ErrorBlocks are the
-only live regions, plus the existing `/` polite line, which announces
+only live regions, plus the existing `/terminal` polite line, which announces
 `research ready: <status word>` when a POST resolves; cards are `<article>`s
 with the status word in `aria-label`; the chip action and `OPEN HYPE →` are
 ordinary buttons inside the expanded line (tab order after the chip);
@@ -1499,25 +1512,25 @@ never a wall of charts. No new tokens, no new endpoints: data comes from
 `POST /api/desk/kill` for the kill switch.
 
 **Reused as-is:** `Panel`, `Badge` (`green|red|amber|info|gray`), `Button`,
-`Segmented`, `DataTable` (`isSelected`), `ConfirmDialog` (incl. `typedWord`),
+`Segmented`, `DataTable` (`isSelected`), `ConfirmDialog`, `DialogShell`,
+`KillSwitchDialog` (typed `KILL`),
 `StatusDot`, `SkeletonRows`, `EmptyBlock`, `OfflineBlock`, `ErrorBlock`,
 `StaleBanner`, `ClaimAge`, `ClaimLine`, `VenueBadge`, `fmtUsd`, `fmtAge`,
 `usePoll`, the shared HL WS client (`activeAssetCtx` for the selected mark),
 Recharts.
 
-### C1. Routes and navigation (supersedes §1.1 row `/`, §1.2, §1.5 path)
+### C1. Routes and navigation
 
-- `/` = COCKPIT (`src/ui/pages/cockpit/Cockpit.tsx`). `/terminal` = the old
-  TERMINAL page, unchanged. `/?id=<opportunityId>` selects (`replace: true`).
-- `/?review=1` → `navigate('/terminal?review=1', { replace: true })`, so old
-  Telegram links keep working; §1.5 now applies to `/terminal`.
-- AppShell NAV first cell: label `COCKPIT`, mobile `CKPT`, glyph `◉`, to `/`;
-  still one cell (the 9-cell ceiling holds). Active on `isTerminalPath`, which
-  gains `/terminal` and `/asset/*`. Wordmark → `/`.
-- TerminalTabs gains `COCKPIT / CKPT` first at `/`; `TERMINAL / TERM` moves to
-  `/terminal`. Eight short labels ≈ 308 px: fits at 400 px; the existing
-  `overflow-x: auto` safety net covers 320 px. Links reading `← TERMINAL`
-  (asset page) point at `/terminal`.
+The route table, the shell cell and the tab strip are §1.1–§1.3 and §1.5:
+`/` is this page, `/terminal` the Terminal, and `/?review=1` redirects to
+`/terminal?review=1`. This page owns `/?id=<opportunityId>` (selection,
+`replace: true`; a real history entry on mobile), `?status=`, `?tier=`,
+`?liqh=` and `?liq=<coin>`.
+
+Coin cross-links: the detail header carries ghost `CHART →`
+(`/markets/:coin`) and `INTEL →` (`/asset/:coin`); `/asset/:coin` links back
+with `CHART →` and `/markets/:coin` with `INTEL →`, so from any coin page the
+other two are one click away.
 
 ### C2. Layout
 
@@ -1544,6 +1557,13 @@ Above the fold on load (1280×800): header, health strip, ~14 feed rows, the
 liquidation panel (320 px) and the detail's action bar + questions 1–2. On
 load the top row of the filtered feed is selected, so the map and detail are
 populated without a click.
+
+The liquidation panel always renders: its coin is the one picked (`?liq=`,
+set from the board), else the selected idea's coin, else BTC. When the feed is
+empty its column shows a **LIQUIDATION BOARD ─ BY NEAREST CLUSTER**
+(`DataTable`: COIN, MARK, LONG LIQS, SHORT LIQS, COV; row tap picks the coin),
+preceded by a `SCANNER WARMING UP — n OF 60 MIN HISTORY` line while the
+scanner ring is short.
 
 **Laptop ~1024 (`lg:`).** Feed 5 | right 7. The liquidation panel shows one
 view at a time via `Segmented` `PROFILE | HISTORY` (default PROFILE); detail
@@ -1601,7 +1621,7 @@ input/textarea/select, while any dialog is open, or with Ctrl/Meta/Alt):
 | `r` | reject dialog |
 | `s` | snooze menu; `1`/`2`/`3` = 15M/1H/4H, `Esc` closes |
 | `d` | deeper research (`POST /research`) |
-| `x` | kill-switch confirm (Desk dialog: `typedWord` `KILL`; resume has none) |
+| `x` | kill switch (`KillSwitchDialog`: typed `KILL`; resume has none) |
 | `?` | keys overlay (dialog listing this table) |
 | `Esc` | closes the topmost dialog/menu, refocuses the opener |
 
@@ -1683,10 +1703,12 @@ sections in this fixed order, each a `.label` heading:
    verdict → red Badge `GOVERNOR BLOCKS` and the reasons.
 
 **Actions.**
-- `APPROVE` (neutral tier; enabled only in `ready`) → `ConfirmDialog` titled
-  `APPROVE — PAPER` / `— TESTNET` (VenueBadge, large, from desk status): the
-  pre-filled ticket (side, size USD, entry ref, stop, target, net edge) read
-  from detail; CONFIRM → `POST /approve`. Governor blocked → APPROVE disabled
+- `APPROVE` (neutral tier; enabled only in `ready`) → the Level 2 ticket
+  dialog (`TicketDialog`, on `DialogShell`) titled `APPROVE — PAPER` /
+  `— TESTNET` (VenueBadge, large, from desk status): the pre-filled ticket
+  (side, size USD, entry ref, stop, target, net edge) read from detail;
+  CONFIRM → `POST /approve`. Desk APPROVE asks the same weight of
+  confirmation (docs/design/README.md §7). Governor blocked → APPROVE disabled
   with `title` = first reason.
 - `REJECT` (ghost) → dialog with a required `REASON` textarea; CONFIRM
   disabled while blank → `POST /reject {reason}`.
@@ -1712,7 +1734,10 @@ Green = ok, amber = warn, red = critical, gray = unknown (field absent).
 | `LLM` | `$spent/$cap` today | ≥ 80% | ≥ 100% (`LLM CAP REACHED`) |
 
 Desk kill switch lives in the cockpit header, not the strip: `KILL` (danger)
-when off; when on, red Badge `KILLED` + `RESUME` (ghost) with reason/age.
+when off; when on, red Badge `KILLED` + `RESUME` (ghost) with reason/age. Both
+open the shared `KillSwitchDialog` driven by `useDeskKill`, the Desk page's
+implementation (README §7); the page refetches desk status after every
+attempt, success or failure.
 
 ### C7. Named states (extends §10; copy verbatim)
 
@@ -1734,23 +1759,23 @@ Feed 15 s · detail on select + 30 s · liqmap live on coin change + 15 s ·
 history on coin/window change + 5 min · health 15 s · desk status 30 s · WS
 mark live. Every POST refetches feed + detail.
 
-### C9. Components (`src/ui/pages/cockpit/`, client `src/ui/lib/platform.ts`)
+### C9. Components (`src/ui/pages/cockpit/`, client `src/ui/lib/platformApi.ts`)
 
 | Component | Kind | Consumes / props |
 |---|---|---|
-| `Cockpit.tsx` | container (route `/`) | owns pollers (C8), `?id/status/tier/liqh`, keyboard handler, action state |
-| `CockpitHeader` | presentational | `venue, liveCount, readyCount, kill, onKill(), onHelp()`; `GET /api/desk/status` via Cockpit |
-| `HealthStrip` | presentational | `health` (`GET /health`), `compact` (phone) |
-| `OpportunityFeed` / `FeedRow` / `FeedFilters` | presentational | `GET /opportunities`: `rows, selectedId, status, tier, onSelect, onFilter` |
-| `LiqMapPanel` | container | `coin`; polls `GET /liqmap`, `GET /liqmap/history`; WS mark |
-| `LiqProfile` / `LiqHistory` / `CoverageLine` | presentational | `buckets, mark, clusters` / `snapshots, window` / `coverage` |
-| `OpportunityDetail` | presentational | `GET /opportunities/:id` → sections `WhyPassed`, `CostToTrade`, `Invalidation`, `SimilarSetups` (`ledger stats` inside detail), `PortfolioRisk` |
-| `ActionBar` / `TicketDialog` / `RejectDialog` / `SnoozeMenu` | presentational | `status, blocked, venue, busy, error, onApprove/onReject(reason)/onSnooze(min)/onResearch` → the four POSTs |
-| `KeysHelp` | presentational | C3 table |
-| `cockpit.ts` | pure, tested | `filterFeed`, `nearestCluster`, `healthLevel(item, value)`, `keyAction(event)`, `edgeWord(row)` |
+| `Cockpit` (`Cockpit.tsx`) | container (route `/`) | owns pollers (C8), `?id/status/tier/liqh/liq`, keyboard handler, action state, the `?review=1` redirect |
+| `CockpitHeader`, `KeyHint` (`Header.tsx`) | presentational | `venue, liveCount, readyCount, desk, noDb, killRef, onKill(), onHelp()`; desk status via Cockpit |
+| `HealthStrip` (`Header.tsx`) | presentational | `health` (`GET /health`), `loading, offline, error, now` |
+| `OpportunityFeed` / `FeedFilters` / `StatusPill` / `EdgeCell` / `WarmingLine` (`Feed.tsx`) | presentational | `GET /opportunities`: rows, selection, status/tier filters |
+| `LiqMapPanel` (`LiqMap.tsx`) | container | `coin`; polls `GET /liqmap`, `GET /liqmap/history`; WS mark |
+| `LiqProfile` / `LiqHistory` / `CoverageLine` / `LiqBoard` (`LiqMap.tsx`) | presentational | `buckets, mark, coverage` / `history` / `coverage` / board rows from `GET /liqmap/board` |
+| `OpportunityDetail` (`Detail.tsx`) | presentational | `GET /opportunities/:id` → the five numbered sections of C5 (`SimilarSetups` and `PortfolioRisk` are local components; ledger stats come inside the detail) |
+| `ActionBar` / `TicketDialog` / `RejectDialog` / `SnoozeMenu` (`Detail.tsx`) | presentational | `status, blocked, venue, busy, error, onApprove/onReject(reason)/onSnooze(min)/onResearch` → the four POSTs |
+| `KeysHelp` (`Header.tsx`) | presentational | C3 table |
+| `logic.ts` | pure, tested | `filterFeed`, `stepSelection`, `edgeWord`, `coverageTreatment`, `healthItems`, `worstItem`, `keyAction`, `denseBuckets`, `alphaStep`, `priceY` |
 
-Shared edits: `App.tsx` routes (`/` Cockpit, `/terminal` Terminal),
-`AppShell.tsx` NAV, `TerminalTabs.tsx`, `ReviewStrip`'s `?review=1` path.
+Shared files: `App.tsx` routes (`/` Cockpit, `/terminal` Terminal),
+`AppShell.tsx` NAV, `TerminalTabs.tsx`.
 
 **Fields read beyond SPEC P2** (pin in `src/shared/platform.ts`; if absent the
 named fallback applies): row `direction`, `setupKind`, `liquidityTier`,

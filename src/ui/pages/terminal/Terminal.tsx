@@ -29,7 +29,7 @@ import { ApiError, NetworkError } from '../../lib/api'
 import { intel, INTEL_POLL_MS, reviewThrottle, useIntel, type ResearchAskInput } from '../../lib/intel'
 import { errorMessage } from '../../lib/poll'
 
-// `/` — TERMINAL (DESIGN-terminal §3): "what changed since I last looked that
+// `/terminal` — TERMINAL (docs/design/terminal.md §3): "what changed since I last looked that
 // could affect my positions?". Owns the brief POST (§1.5: on a real open only,
 // throttled to once per tab per 5 min; `?review=1` and REVIEW NOW bypass the
 // throttle) and the shared pollers (§1.4) the panels read: positions 60 s,
@@ -237,7 +237,7 @@ export function Terminal() {
             onReview={() => void post('ui')}
           />
         </div>
-        <div id={WHAT_CHANGED_ANCHOR} className="lg:col-span-7 scroll-mt-[100px] min-w-0">
+        <div id={WHAT_CHANGED_ANCHOR} className="lg:col-span-7 scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)] min-w-0">
           <WhatChangedPanel
             brief={brief}
             loading={reviewing}
@@ -247,7 +247,7 @@ export function Terminal() {
             onRetry={() => void post('ui')}
           />
         </div>
-        <div id={NEWS_ANCHOR} className="lg:col-span-5 scroll-mt-[100px] min-w-0">
+        <div id={NEWS_ANCHOR} className="lg:col-span-5 scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)] min-w-0">
           <NewsFeedPanel
             state={alerts}
             batched={batched}
@@ -256,7 +256,7 @@ export function Terminal() {
             pushMateriality={brief?.threshold?.pushMateriality}
           />
         </div>
-        <div id={FLOW_ANCHOR} className="lg:col-span-12 scroll-mt-[100px] min-w-0">
+        <div id={FLOW_ANCHOR} className="lg:col-span-12 scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)] min-w-0">
           <FlowPanel
             state={heatmap}
             window={flowWindow}
@@ -273,7 +273,7 @@ export function Terminal() {
             }}
           />
         </div>
-        <div id={RESEARCH_ANCHOR} className="lg:col-span-12 scroll-mt-[100px] min-w-0">
+        <div id={RESEARCH_ANCHOR} className="lg:col-span-12 scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)] min-w-0">
           <ResearchPanel
             state={research}
             ask={askAction}
@@ -289,7 +289,7 @@ export function Terminal() {
         <div className="lg:col-span-8 min-w-0">
           <PositionsPanel positions={positions} watchlist={watchlist} />
         </div>
-        <div id={CATALYSTS_ANCHOR} className="lg:col-span-4 scroll-mt-[100px] min-w-0">
+        <div id={CATALYSTS_ANCHOR} className="lg:col-span-4 scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)] min-w-0">
           <CatalystsPanel state={catalysts} held={held} watched={watched} />
         </div>
         <div className="lg:col-span-12 min-w-0">

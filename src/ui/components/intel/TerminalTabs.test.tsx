@@ -45,7 +45,7 @@ describe("TerminalTabs", () => {
   test("sticky radiogroup with eight segments, the current route checked", () => {
     const html = render("/theses");
     expect(html).toContain('aria-label="terminal sections"');
-    expect(html).toContain("sticky top-10");
+    expect(html).toContain("sticky top-[var(--topbar-h)]");
     const btns = html.match(/<button[^>]*>/g) ?? [];
     expect(btns).toHaveLength(8);
     const checked = btns.filter((b) => b.includes('aria-checked="true"'));

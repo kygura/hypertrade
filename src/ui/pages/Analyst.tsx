@@ -530,7 +530,7 @@ function Rail({
   mode: AnalystMode
 }) {
   return (
-    <aside className="flex flex-col gap-3 lg:sticky lg:top-3">
+    <aside className="flex flex-col gap-3 lg:sticky lg:top-[calc(var(--topbar-h)+12px)]">
       <div className="panel">
         <div className="panel-header">
           <span className="panel-title">PROMPTS</span>

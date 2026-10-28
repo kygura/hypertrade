@@ -8,10 +8,10 @@ import { fmtUsdSigned } from '../components/strategy/format'
 
 // /governor — global mode, limits, and the kill switch. Mode chips + three
 // numeric limits save through PUT /governor (Level 1, verbatim ErrorBlock).
-// The kill switch is the one typed-word confirmation in this product: it
-// disables every strategy and rejects every open proposal, and the core
-// offers no un-kill route, so docs/design/README.md §7's Level 2 dialog gains a typed
-// word (KILL) here and nowhere else. Venues render beneath: status,
+// The engine kill switch is a Level 3 typed-word confirmation (the desk kill is
+// the other, KillSwitchDialog): it disables every strategy and rejects every
+// open proposal, and the core offers no un-kill route, so docs/design/README.md
+// §7's Level 2 dialog gains a typed word (KILL). Venues render beneath: status,
 // capabilities, open positions — the surface the kill switch acts on.
 
 const MODES: { value: GovernorMode; label: string; title: string }[] = [

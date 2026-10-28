@@ -5,6 +5,19 @@ lists live in git history (see History).
 
 ## Open
 
+UI consolidation, per `docs/CONSOLIDATION.md` (one cell per operator job, one home per
+object; 10 shell cells today against a ceiling of 9, target 5):
+
+- [ ] PR 1: visible bugs, one kill switch, docs made true (sticky offsets per theme,
+  coin cross-links, `useDeskKill` and `KillSwitchDialog`, same APPROVE dialog on Desk
+  and Cockpit, stale comments, docs). In progress.
+- [ ] PR 2: code dedupe, no IA change (one `format.ts`, shared transport helpers, one
+  SSE reader, shared state ladders and desk types).
+- [ ] PR 3: MARKET and RESEARCH families on `SectionTabs` (10 cells to 7; `/overview`
+  redirects to `/markets`; `/sectors` gets one selection).
+- [ ] PR 4: one TRADE front (7 cells to 5, tab order Intel to Act), ENGINE on
+  `SectionTabs`, loading/error states normalised, type scale applied.
+
 Routine redesign (2026-10-23, `docs/fallback-routine.md`): the 4 h routine is a board scan of the
 top-30 perps on 4h/1d/1w with tripwires (the commonplace setups as thresholds), a level menu, and the
 model as the interpretation layer that names imbalances and writes setups by level key; code resolves
@@ -55,13 +68,6 @@ are done and recorded in the contracts: `docs/SPEC.md` and `docs/design/`.
 
 ## History
 
-Deleted task files, recoverable at the last commit that touched them:
-
-| File | Last commit |
-|---|---|
-| `TASKS.v1.md` | `13f699d` |
-| `TASKS.v2.md` | `848b291` |
-| `TASKS.platform.md` | `c307e82` |
-| earlier phases of this file (Intel, Flow, Scout, full phase 9 task list) | `git log --follow docs/TASKS.md` |
-
-Show one with `git show <sha>:TASKS.v1.md`.
+`TASKS.v1.md`, `TASKS.v2.md`, `TASKS.platform.md` and the earlier root `TASKS.md` (Intel,
+Flow, Scout, the full phase 9 task list) were deleted in `8858b3a`. Show one with
+`git show 8858b3a^:TASKS.v1.md`; the history of this file is `git log --follow docs/TASKS.md`.
