@@ -3,6 +3,7 @@ import type { NarrativeContrast, NarrativeFlow, NarrativeLean, NarrativeView, Re
 import { completeStructured, untrusted, usageCost, UNTRUSTED_RULE, webSearchAvailable, type LlmDeps } from "./llm.js";
 import { lineVerdict, payloadNumbers } from "./numbers.js";
 import { vetResearch, type Seen } from "./research.js";
+import { narrativeHeadlines } from "./narratives.js";
 import type { IntelStore } from "./store.js";
 import { round } from "./util.js";
 
@@ -26,7 +27,8 @@ export const CONTRAST_PROMPT_VERSION = "narrative-contrast-v1";
 export const CONTRASTS_SETTING = "narrative_contrasts";
 export const CONTRAST_RUNS_SETTING = "narrative_contrast_runs";
 export const VIEWS_SETTING = "narrative_views";
-const HEADLINE_HOURS = 72;
+/** Headline lookback for the contrast prompt and GET /narratives. */
+export const HEADLINE_HOURS = 72;
 const MAX_HEADLINES = 20;
 
 const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : def);
@@ -215,9 +217,8 @@ export async function runContrast(deps: ContrastDeps, input: ContrastInput): Pro
   const deadline = AbortSignal.timeout(CONTRAST_DEADLINE_MS);
   const signal = input.signal ? AbortSignal.any([input.signal, deadline]) : deadline;
   try {
-    const tokens = new Set(input.flow.tokens.map((t) => t.toLowerCase()));
     const events = await deps.store.listEvents({ since: new Date(now.getTime() - HEADLINE_HOURS * 3_600_000), limit: 300 });
-    const headlines = events.filter((e) => e.assets.some((a) => tokens.has(a.toLowerCase()))).slice(0, MAX_HEADLINES).map((e) => e.title);
+    const headlines = narrativeHeadlines(events, input.flow.tokens, MAX_HEADLINES).map((h) => h.title);
     const payload = { narrative: flowPayload(input.flow), rationale: input.rationale, view: input.view && { lean: input.view.lean, note: input.view.note } };
     const seen: Seen = new Map();
     const res = await completeStructured({

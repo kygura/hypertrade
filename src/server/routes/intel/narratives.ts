@@ -4,8 +4,8 @@ import sectorsLatest from "../../../../data/sectors/latest.json" with { type: "j
 import { NarrativeViewInputSchema, type NarrativeContrast, type NarrativeFlow, type NarrativesResponse, type NarrativeView } from "../../../shared/intel.js";
 import { SectorsDataSchema } from "../../../shared/schemas.js";
 import type { SectorsData } from "../../../shared/types.js";
-import { CONTRAST_RUNS_SETTING, CONTRASTS_SETTING, contrastDailyLimit, runContrast, VIEWS_SETTING } from "../../intel/narrativeContrast.js";
-import { loadNarrativeFlows } from "../../intel/narratives.js";
+import { CONTRAST_RUNS_SETTING, CONTRASTS_SETTING, contrastDailyLimit, HEADLINE_HOURS, runContrast, VIEWS_SETTING } from "../../intel/narrativeContrast.js";
+import { loadNarrativeFlows, narrativeHeadlines } from "../../intel/narratives.js";
 import type { IntelStore } from "../../intel/store.js";
 import type { LlmDeps } from "../../intel/llm.js";
 import { utcDayStart } from "../../intel/research.js";
@@ -14,12 +14,14 @@ import { body, failure, invalid } from "./http.js";
 // /intel narrative endpoints (docs/SPEC.md § Narratives).
 //
 // GET  /narratives → NarrativesResponse: every routine sector basket with its HTF stage, LTF windows, the
-//     operator's view and the latest contrast, strongest LTF flow first. Flows are cached FLOW_CACHE_MS.
+//     operator's view, the latest contrast and its last HEADLINE_HOURS of headlines (≤ HEADLINES_PER_ROW, one
+//     per cluster), strongest LTF flow first. Flows are cached FLOW_CACHE_MS; events are read per request.
 // PUT  /narratives/:id/view {lean, note} → NarrativeView. 404 for an id not in the current sector file.
 // POST /narratives/:id/contrast → NarrativeContrast (research, synchronous within CONTRAST_DEADLINE_MS).
 //     409 while a run for any narrative is in flight, 429 at INTEL_NARRATIVE_DAILY runs since UTC midnight.
 
 export const FLOW_CACHE_MS = 120_000;
+export const HEADLINES_PER_ROW = 5;
 
 export interface NarrativeRouteDeps {
   store: Pick<IntelStore, "snapshotRange" | "listEvents" | "getSetting" | "setSetting">;
@@ -56,11 +58,12 @@ export function createNarrativeRoutes(deps: NarrativeRouteDeps) {
   return new Hono()
     .get("/narratives", async (c) => {
       try {
-        const [f, v, k] = await Promise.all([flows(), views(), contrasts()]);
+        const since = new Date(deps.now().getTime() - HEADLINE_HOURS * 3_600_000);
+        const [f, v, k, events] = await Promise.all([flows(), views(), contrasts(), store.listEvents({ since, limit: 300 })]);
         const res: NarrativesResponse = {
           generatedAt: deps.now().toISOString(),
           sectorsAsOf: f.asOf,
-          narratives: f.flows.map((n) => ({ ...n, view: v[n.id] ?? null, contrast: k[n.id] ?? null })),
+          narratives: f.flows.map((n) => ({ ...n, view: v[n.id] ?? null, contrast: k[n.id] ?? null, headlines: narrativeHeadlines(events, n.tokens, HEADLINES_PER_ROW) })),
         };
         return c.json(res);
       } catch (err) {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { NarrativeHtf, NarrativeWindow, SnapshotRow } from "../../shared/intel.js";
+import type { IntelEvent, NarrativeHtf, NarrativeWindow, SnapshotRow } from "../../shared/intel.js";
 import type { SectorsData } from "../../shared/types.js";
-import { alignment, basketCoins, basketSeries, firstSeenById, flowScore, loadNarrativeFlows, quadrant, rankNarratives, stage } from "./narratives.js";
+import { alignment, basketCoins, basketSeries, firstSeenById, flowScore, loadNarrativeFlows, narrativeHeadlines, quadrant, rankNarratives, stage } from "./narratives.js";
 import { MemoryIntelStore } from "./store.js";
 
 const NOW = Date.parse("2026-10-27T12:00:00Z");
@@ -166,5 +166,49 @@ describe("basketCoins and firstSeenById", () => {
   test("earliest date per id, unsorted input, invalid files skipped", () => {
     const seen = firstSeenById([{ date: "2026-10-20", data: SECTORS }, { date: "2026-09-01", data: { nope: 1 } }]);
     expect(Object.fromEntries(seen)).toEqual({ quiet: "2026-10-20", hot: "2026-10-20" });
+  });
+});
+
+const event = (key: string, firstSeen: string, assets: string[], over: Partial<IntelEvent> = {}): IntelEvent => ({
+  id: key,
+  key,
+  clusterId: null,
+  type: "other",
+  title: key,
+  summary: null,
+  entities: [],
+  assets,
+  magnitude: "med",
+  sources: [{ label: "rss" }],
+  origin: "rss",
+  firstSeen,
+  scheduledAt: null,
+  catalyst: null,
+  tag: "observed",
+  ...over,
+});
+
+describe("narrativeHeadlines", () => {
+  const tokens = ["TAO", "FET"];
+  test("basket overlap is case-insensitive, newest first, one per cluster, assets in basket spelling", () => {
+    const events = [
+      event("old", "2026-10-26T08:00:00.000Z", ["tao"]),
+      event("sol", "2026-10-27T11:00:00.000Z", ["SOL"]),
+      event("dup", "2026-10-27T09:00:00.000Z", ["FET"], { clusterId: "c1" }),
+      event("new", "2026-10-27T10:00:00.000Z", ["Fet", "TAO", "SOL", "tao"], { clusterId: "c1", sources: [{ label: "x" }, { label: "y", url: "https://a/1" }, { label: "z", url: "https://a/2" }] }),
+      event("solo", "2026-10-27T09:30:00.000Z", ["TAO"]),
+    ];
+    expect(narrativeHeadlines(events, tokens, 10)).toEqual([
+      { title: "new", firstSeen: "2026-10-27T10:00:00.000Z", url: "https://a/1", assets: ["FET", "TAO"] },
+      { title: "solo", firstSeen: "2026-10-27T09:30:00.000Z", url: null, assets: ["TAO"] },
+      { title: "old", firstSeen: "2026-10-26T08:00:00.000Z", url: null, assets: ["TAO"] },
+    ]);
+  });
+
+  test("max caps after dedupe; unclustered events never dedupe each other", () => {
+    const events = [event("a", "2026-10-27T10:00:00.000Z", ["TAO"]), event("b", "2026-10-27T09:00:00.000Z", ["TAO"], { clusterId: "c" }), event("c", "2026-10-27T08:00:00.000Z", ["TAO"], { clusterId: "c" }), event("d", "2026-10-27T07:00:00.000Z", ["TAO"])];
+    expect(narrativeHeadlines(events, tokens, 2).map((h) => h.title)).toEqual(["a", "b"]);
+    expect(narrativeHeadlines(events, tokens, 10).map((h) => h.title)).toEqual(["a", "b", "d"]);
+    expect(narrativeHeadlines(events, [], 10)).toEqual([]);
   });
 });

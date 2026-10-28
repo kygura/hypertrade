@@ -46,6 +46,25 @@ describe("/narratives", () => {
     expect(body.narratives.map((n) => [n.id, n.stage, n.view, n.contrast])).toEqual([["ai", "unknown", null, null]]);
   });
 
+  test("GET joins the basket's recent headlines, one per cluster, newest first", async () => {
+    const { call, store } = setup();
+    const ev = (key: string, firstSeen: string, assets: string[], clusterId: string | null = null, url?: string) => ({
+      key, type: "other", title: key, summary: null, entities: [], assets, magnitude: "med", sources: [{ label: "rss", url }], origin: "rss", firstSeen, scheduledAt: null, catalyst: null, tag: "observed", clusterId,
+    });
+    await store.upsertEvents([
+      ev("stale", "2026-10-24T11:00:00.000Z", ["TAO"]),
+      ev("sol", "2026-10-27T11:00:00.000Z", ["SOL"]),
+      ev("first", "2026-10-27T09:00:00.000Z", ["tao"], "c1"),
+      ev("later", "2026-10-27T10:00:00.000Z", ["FET", "SOL"], "c1", "https://a/1"),
+      ev("alone", "2026-10-27T08:00:00.000Z", ["TAO"]),
+    ] as never);
+    const get = (await call("GET", "/narratives")).body as unknown as NarrativesResponse;
+    expect(get.narratives[0]!.headlines).toEqual([
+      { title: "later", firstSeen: "2026-10-27T10:00:00.000Z", url: "https://a/1", assets: ["FET"] },
+      { title: "alone", firstSeen: "2026-10-27T08:00:00.000Z", url: null, assets: ["TAO"] },
+    ]);
+  });
+
   test("PUT view is validated, stored and joined into GET", async () => {
     const { call } = setup();
     expect((await call("PUT", "/narratives/ai/view", { lean: "maybe" })).status).toBe(400);

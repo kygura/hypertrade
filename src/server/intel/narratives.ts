@@ -1,5 +1,5 @@
 import { SectorsDataSchema } from "../../shared/schemas.js";
-import type { FixedWindow, FlowQuadrant, NarrativeFlow, NarrativeHtf, NarrativeStage, NarrativeWindow, SnapshotRow } from "../../shared/intel.js";
+import type { FixedWindow, FlowQuadrant, IntelEvent, NarrativeFlow, NarrativeHeadline, NarrativeHtf, NarrativeStage, NarrativeWindow, SnapshotRow } from "../../shared/intel.js";
 import type { SectorsData } from "../../shared/types.js";
 import type { Point } from "./normalize.js";
 import type { IntelStore } from "./store.js";
@@ -207,6 +207,28 @@ export function rankNarratives<T extends Pick<NarrativeFlow, "flowScore">>(rows:
     .map((r, i) => ({ r, i }))
     .sort((a, b) => (b.r.flowScore ?? -1) - (a.r.flowScore ?? -1) || a.i - b.i)
     .map((x) => x.r);
+}
+
+/**
+ * Events whose mapped assets name a basket token (case-insensitive), newest first,
+ * one per news cluster (an event without a cluster stands alone), at most `max`.
+ */
+export function narrativeHeadlines(events: IntelEvent[], tokens: string[], max: number): NarrativeHeadline[] {
+  const byLower = new Map(tokens.map((t) => [t.toLowerCase(), t]));
+  const clusters = new Set<string>();
+  const out: NarrativeHeadline[] = [];
+  const sorted = [...events].sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen));
+  for (const e of sorted) {
+    if (out.length >= max) break;
+    const assets = [...new Set(e.assets.map((a) => byLower.get(a.toLowerCase())).filter((t): t is string => t != null))];
+    if (!assets.length) continue;
+    if (e.clusterId) {
+      if (clusters.has(e.clusterId)) continue;
+      clusters.add(e.clusterId);
+    }
+    out.push({ title: e.title, firstSeen: e.firstSeen, url: e.sources.find((s) => s.url)?.url ?? null, assets });
+  }
+  return out;
 }
 
 export interface NarrativeFlowDeps {
