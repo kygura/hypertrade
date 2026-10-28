@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-28T18:56:45.254Z",
+  "updated_at": "2026-10-28T22:56:47.968Z",
   "open": [
     {
       "id": "ZEC-long-20261027-1",
@@ -35,7 +35,7 @@
       "r_result": null,
       "triggered_at": "2026-10-28T00:00:00.000Z",
       "created_at": "2026-10-27T22:56:27.487Z",
-      "updated_at": "2026-10-28T18:56:45.254Z",
+      "updated_at": "2026-10-28T22:56:47.968Z",
       "expires_at": "2026-10-30T22:56:27.487Z"
     },
     {
@@ -72,7 +72,7 @@
       "r_result": null,
       "triggered_at": "2026-10-27T22:00:00.000Z",
       "created_at": "2026-10-27T22:56:27.487Z",
-      "updated_at": "2026-10-28T18:56:45.254Z",
+      "updated_at": "2026-10-28T22:56:47.968Z",
       "expires_at": "2026-10-30T22:56:27.487Z"
     },
     {
@@ -109,8 +109,82 @@
       "r_result": null,
       "triggered_at": "2026-10-28T06:00:00.000Z",
       "created_at": "2026-10-28T06:58:59.847Z",
-      "updated_at": "2026-10-28T18:56:45.254Z",
+      "updated_at": "2026-10-28T22:56:47.968Z",
       "expires_at": "2026-10-31T06:58:59.847Z"
+    },
+    {
+      "id": "VVV-long-20261028-1",
+      "setup_id": "failed_breakout",
+      "levels_source": "menu",
+      "asset": "VVV",
+      "direction": "long",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "VVV swept the 4h low and sits at 4h rangePos 0.08 after -8.41% over 24h and -9.01 vs BTC, with a 1w uptrend; 24h OI is up 2.91% on new_shorts flow, so shorts that chased the break could be squeezed (base case, low-confidence). HL funding is 14.34 points over CEX, so some of the crowding is long-side, which is what the other side sees.",
+      "regime_alignment": "with",
+      "trigger": "4h close back above the 4h range low after the sweep, holding the zone",
+      "entry": {
+        "low": 23.759,
+        "high": 23.926
+      },
+      "invalidation": 22.943,
+      "invalidation_reason": "a hold under the swept 4h low by 0.9 ATR means the sweep was a real break, not a failed one",
+      "targets": [
+        25.841,
+        28.366
+      ],
+      "rr": 2.22,
+      "conviction": "low",
+      "evidence": [
+        "VVV.tf.4h.sweep",
+        "VVV.tf.4h.rangePos",
+        "VVV.pos.flow24h",
+        "VVV.pos.fundingVsCexAnnPct"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-28T22:56:47.968Z",
+      "updated_at": "2026-10-28T22:56:47.968Z",
+      "expires_at": "2026-10-31T22:56:47.968Z"
+    },
+    {
+      "id": "AAVE-long-20261028-1",
+      "setup_id": "failed_breakout",
+      "levels_source": "menu",
+      "asset": "AAVE",
+      "direction": "long",
+      "horizon": "swing",
+      "timeframe": "1d",
+      "thesis": "AAVE swept the 1d range low (1d rangePos 0.11) after -14.61% over 7d, with 24h OI up 3.48% and funding at the 10.95 neutral floor, 4.47 points over CEX; a reclaim of the range low could mean sellers were absorbed (base case, low-confidence). The other side sees the 1d trend still pointing down, 2.01 ATR under the 1d SMA20.",
+      "regime_alignment": "with",
+      "trigger": "1d close back above the 1d range low after the sweep",
+      "entry": {
+        "low": 133.5,
+        "high": 134.75
+      },
+      "invalidation": 126.8,
+      "invalidation_reason": "a 1d close under the swept low by 0.75 ATR means the break was accepted",
+      "targets": [
+        152.71,
+        179.74
+      ],
+      "rr": 2.54,
+      "conviction": "low",
+      "evidence": [
+        "AAVE.tf.1d.sweep",
+        "AAVE.tf.1d.rangePos",
+        "AAVE.pos.oiChg24hPct",
+        "AAVE.tf.1d.vsSma20Atr"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-28T22:56:47.968Z",
+      "updated_at": "2026-10-28T22:56:47.968Z",
+      "expires_at": "2026-11-04T22:56:47.968Z"
     }
   ],
   "closed": [
