@@ -319,6 +319,8 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 | `INTEL_DIGEST_MATERIALITY` | digest floor: items below it are hidden from the digest (still logged); default 0.10 |
 | `INTEL_RESEARCH_DAILY` | manual research runs per UTC day, default 10 |
 | `INTEL_RESEARCH_AUTO_DAILY` | automatic (flow-flag) research runs per UTC day, default 3 |
+| `INTEL_NARRATIVE_DAILY` | narrative contrast runs per UTC day, default 10 |
+| `INTEL_NARRATIVE_AUTO_DAILY` | automatic narrative contrast runs per UTC day, default 2 |
 | `INTEL_LLM_DAILY_CAP` | Intel LLM calls per day before failing closed, default 200 |
 | `INTEL_LLM_DAILY_USD` | Intel LLM spend per UTC day (usage × model price) before failing closed, default 2.00 |
 | `INTEL_BRIEF_HOURS` | cron brief at most every N hours, default 6 |
@@ -429,6 +431,22 @@ unexplained flags on its own. Limits: `INTEL_RESEARCH_DAILY` manual and
 and 45 s per run, and the `INTEL_LLM_DAILY_USD` spend cap. Evidence that cites
 a source and time is `observed`; everything else is a `hypothesis`, and any
 number that is not in the inputs is dropped.
+
+**Narratives.** The NARRATIVES panel on `/sectors` reads each routine sector
+basket on two clocks from stored snapshots: HTF (7d/30d vs BTC, OI change,
+funding z, and a stage: emerging, expanding, crowded, fading, quiet) and LTF
+(1h/6h/24h price × OI quadrants). Save your own lean (continuation, fade,
+unsure) and a note per narrative, then run a contrast: one web-searching call
+builds the continuation case and the fade case, says which the evidence
+favours, and where it agrees or conflicts with your view, vetted like research.
+Routes: `GET /api/intel/narratives`, `PUT /api/intel/narratives/:id/view`,
+`POST /api/intel/narratives/:id/contrast` (429 at `INTEL_NARRATIVE_DAILY`, 409
+while a run is in flight). Each row also lists the basket's recent headlines.
+The ingest job alerts when a narrative's stage changes (held for two runs, at
+most once per 12 h per narrative; pushed when you have a view on it or hold or
+watch one of its tokens, else batched into the brief), and runs a contrast on
+its own when strong short-timeframe flow moves against your saved lean
+(`INTEL_NARRATIVE_AUTO_DAILY`). Contract: docs/SPEC.md § Narratives.
 
 **Order copilot.** Paper or Hyperliquid testnet only. Mainnet is not
 selectable; the Desk venue config refuses it.

@@ -424,7 +424,7 @@ export const CatalystsResponseSchema = z.object({ catalysts: z.array(CatalystSch
 
 // ─── Alerts and feedback (I0.11, I0.12) ───
 
-export const AlertKindSchema = z.enum(["mapper", "catalyst", "docwatch", "terminal", "flow"]);
+export const AlertKindSchema = z.enum(["mapper", "catalyst", "docwatch", "terminal", "flow", "narrative"]);
 export type AlertKind = z.infer<typeof AlertKindSchema>;
 export const CatalystWindowSchema = z.enum(["24h", "1h"]);
 export type CatalystWindow = z.infer<typeof CatalystWindowSchema>;
@@ -440,7 +440,7 @@ export type PricedIn = z.infer<typeof PricedInSchema>;
 export const AlertSchema = z.object({
   id: z.string(),
   kind: AlertKindSchema,
-  /** Dedupe reference: cluster id (mapper), event id (catalyst, flow), watch change id (docwatch), brief id (terminal). */
+  /** Dedupe reference: cluster id (mapper), event id (catalyst, flow), watch change id (docwatch), brief id (terminal), stage change or contrast id (narrative; asset = narrative id). */
   ref: z.string(),
   /** Catalyst alerts only (T−24 h / T−1 h). */
   window: CatalystWindowSchema.nullable(),
@@ -1058,3 +1058,118 @@ export const ResearchResultSchema = z.object({
   createdAt: Iso,
 });
 export type ResearchResult = z.infer<typeof ResearchResultSchema>;
+
+// ─── Narratives (docs/SPEC.md § Narratives) ───
+// A narrative is a routine sector basket read on two clocks: HTF (7d/30d, the
+// narrative's stage) and LTF (1h/6h/24h, the flow that moves it). Code computes
+// both; the contrast research is the one LLM step, and it carries the operator's
+// own view as an input it must weigh, not defer to.
+
+export const NarrativeLeanSchema = z.enum(["continuation", "fade", "unsure"]);
+export type NarrativeLean = z.infer<typeof NarrativeLeanSchema>;
+
+/** PUT /intel/narratives/:id/view body: the operator's own read. */
+export const NarrativeViewInputSchema = z.object({
+  lean: NarrativeLeanSchema,
+  note: z.string().trim().max(1000).default(""),
+});
+export type NarrativeView = z.output<typeof NarrativeViewInputSchema> & { updatedAt: string };
+
+export const NARRATIVE_STAGES = ["emerging", "expanding", "crowded", "fading", "quiet", "unknown"] as const;
+export type NarrativeStage = (typeof NARRATIVE_STAGES)[number];
+
+/** Price × OI quadrant of one window (both |z| ≥ 1), else quiet; unknown when either z is null. */
+export const FLOW_QUADRANTS = ["long_build", "short_build", "short_cover", "long_unwind", "quiet", "unknown"] as const;
+export type FlowQuadrant = (typeof FLOW_QUADRANTS)[number];
+
+export interface NarrativeWindow {
+  window: FixedWindow;
+  pricePct: number | null;
+  priceZ: number | null;
+  oiPct: number | null;
+  oiZ: number | null;
+  quadrant: FlowQuadrant;
+}
+
+export interface NarrativeHtf {
+  pricePct7d: number | null;
+  pricePct30d: number | null;
+  /** Basket price change minus BTC's, in percentage points. */
+  relBtc7d: number | null;
+  relBtc30d: number | null;
+  oiPct7d: number | null;
+  oiPct30d: number | null;
+  /** OI-weighted hourly funding now, and its level z vs the trailing 30 days. */
+  funding: number | null;
+  fundingZ: number | null;
+}
+
+export interface NarrativeFlow {
+  id: string;
+  label: string;
+  tokens: string[];
+  /** Tokens with stored snapshots in the window; the rest are listed in `missing`. */
+  covered: string[];
+  missing: string[];
+  oiUsd: number | null;
+  /** Earliest routine sector file that lists this id. */
+  firstSeen: string | null;
+  htf: NarrativeHtf;
+  stage: NarrativeStage;
+  ltf: NarrativeWindow[];
+  /** Strongest LTF window's direction vs the basket's 7d price direction. */
+  alignment: "with" | "against" | "none";
+  /** max |z| (price or OI) over the LTF windows; the rank key. */
+  flowScore: number | null;
+}
+
+export const NarrativeCaseSchema = z.object({
+  case: z.string(),
+  evidence: z.array(ResearchEvidenceSchema),
+});
+
+export const NarrativeContrastSchema = z.object({
+  id: z.string(),
+  narrativeId: z.string(),
+  status: z.enum(["done", "failed", "capped", "no_web_search"]),
+  /** Which case the vetted evidence favours, as the model reads it. A hypothesis, never an order. */
+  favours: z.enum(["continuation", "fade", "unclear"]),
+  confidence: z.enum(["low", "medium", "high"]),
+  summary: z.string(),
+  continuation: NarrativeCaseSchema,
+  fade: NarrativeCaseSchema,
+  /** The operator's view the run was given, and how the evidence sits against it. */
+  view: z.object({ lean: NarrativeLeanSchema.nullable(), note: z.string(), agreement: z.enum(["agrees", "conflicts", "mixed", "no_view"]), why: z.string() }),
+  /** What would confirm the favoured case / invalidate it. */
+  confirms: z.array(z.string()),
+  invalidates: z.array(z.string()),
+  openQuestions: z.array(z.string()),
+  searches: z.number().int().min(0),
+  costUsd: Num.min(0),
+  model: z.string(),
+  error: z.string().optional(),
+  createdAt: Iso,
+});
+export type NarrativeContrast = z.infer<typeof NarrativeContrastSchema>;
+
+/** A recent headline whose mapped assets overlap the basket; one per news cluster. */
+export interface NarrativeHeadline {
+  title: string;
+  firstSeen: string;
+  url: string | null;
+  /** The basket tokens it names. */
+  assets: string[];
+}
+
+export interface NarrativeRow extends NarrativeFlow {
+  view: NarrativeView | null;
+  contrast: NarrativeContrast | null;
+  headlines: NarrativeHeadline[];
+}
+
+export interface NarrativesResponse {
+  generatedAt: string;
+  /** generated_at of the routine sector file the baskets come from. */
+  sectorsAsOf: string;
+  narratives: NarrativeRow[];
+}

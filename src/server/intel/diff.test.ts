@@ -136,10 +136,11 @@ describe("confluence", () => {
     expect(confluenceK(new Set<SignalSource>(["snapshot", "flow", "regime", "news"]), "news")).toBe(4);
   });
 
-  test("alerts map to source classes: detectors, flips/crossings, news; terminal none", () => {
+  test("alerts map to source classes: detectors, flips/crossings, news; terminal and narrative none", () => {
     const src = (kind: Alert["kind"], eventType: string | null) => alertSource({ kind, eventType });
     expect([src("flow", "crowded_long"), src("flow", "funding_flip"), src("flow", "oi_up_price_down"), src("flow", "funding>0.0001")]).toEqual(["flow", "regime", "regime", "regime"]);
     expect([src("mapper", "exploit"), src("catalyst", "unlock"), src("docwatch", null), src("terminal", null)]).toEqual(["news", "news", "news", null]);
+    expect(src("narrative", "stage_crowded")).toBeNull();
   });
 
   test("buildDiffItems: other sources on the asset lift materiality and expose the factor; the snapshot source itself does not", () => {

@@ -532,6 +532,55 @@ Gate amendments (2026-10-16):
 
 New env vars: `PORT`, `WORKER_LOOPS`, `MIGRATE_ON_BOOT`, `DB_POOL_MAX`, `PLATFORM_SCAN_INTERVAL_SEC`, `PLATFORM_COST_TOP_N`, `PLATFORM_CRAWL_WEIGHT_PER_MIN`, `PLATFORM_CRAWL_MAX_AGE_MIN`, `PLATFORM_LIQMAP_COINS`, `PLATFORM_RETENTION_DAYS`, `PLATFORM_READY_TTL_MIN`, `PLATFORM_RESEARCH_SCORE`, `PLATFORM_PUSH_SCORE`, `PLATFORM_EDGE_MIN_N`, `PLATFORM_OUTCOME_HORIZONS`. All are optional, with the defaults above.
 
+## Narratives — LTF/HTF flow and contrast research
+
+Operator ask (2026-10-27): find short- and long-timeframe narratives and position for the flows that move them, with the model doing the research and the operator's own judgment in the loop, contrasting continuation against fade. A narrative is one of the routine's sector baskets (`data/sectors/latest.json`, emergent taxonomy, § Routine Contract). § Intel, § Flow and § Scout stay binding; this section adds to them.
+
+### N0. Decisions
+
+1. **Coverage.** The snapshot collect (§ Intel I0.3) also writes rows for every sector basket token (`basketCoins`, capped at 60), so baskets beyond the top-20 by OI gain history. They get rows, not books.
+2. **Basket composite** (`src/server/intel/narratives.ts`, pure). From the tokens' stored snapshots: an equal-weight price index and a summed-OI index, both chained over the tokens present at consecutive snapshot times (a token entering coverage never reads as a move), plus OI-weighted funding as a level. The composite runs through `windows.ts` unchanged. Tokens with no rows are listed as `missing`; numbers without enough history read null, never zero.
+3. **Two clocks.**
+   - **HTF:** 7d and 30d price change, the same minus BTC's (`relBtc7d`, `relBtc30d`, percentage points), 7d/30d OI change, and funding's 30-day level z. Stage: `crowded` (funding z ≥ 2, 7d OI up), `emerging` (beating BTC over 7d with OI up, not over 30d), `expanding` (beating BTC over 7d and 30d, OI up), `fading` (beat BTC over 30d, now lagging over 7d or 7d OI down), `quiet`, `unknown`. "Beating" and "up" mean by more than 1 point / 1 %, so noise never names a stage.
+   - **LTF:** 1h/6h/24h price and OI Δ and z per window, labelled by quadrant at |z| ≥ 1: `long_build`, `short_build`, `short_cover`, `long_unwind`, else `quiet` (`unknown` without a z). `alignment` compares the strongest moving window's direction with the basket's 7d price direction. Rows rank by `flowScore` = max |z| over the LTF windows.
+4. **Operator view.** Per narrative: `lean` (`continuation | fade | unsure`) and a free-text `note` (≤ 1000 chars), stored in `intel_settings` (`narrative_views`). No migration.
+5. **Contrast research** (`src/server/intel/narrativeContrast.ts`). One strong-tier `completeStructured` call with hosted web search (≤ 10 searches, 90 s deadline). Input: the rounded flow facts, the routine's rationale for the basket, the operator's view and the basket's headlines from the last 72 h (`untrusted()`). Output: the strongest continuation case and the strongest fade case, each with evidence, which one the evidence favours, why the evidence supports or contradicts the operator's view, and what would confirm or invalidate the favoured case. Vetting reuses Scout's (§ S0.2): `observed` only when the provider's citations print it, every other line must carry only payload or observed-evidence numbers and no advice. Code, not the model, sets two fields: `favours` is `unclear` at low confidence when neither case keeps an observed claim, and `agreement` is lean vs favours (`agrees | conflicts | mixed | no_view`). The view is an input the model must weigh, not an answer to confirm. The read is research, never an order.
+6. **Limits and storage.** `INTEL_NARRATIVE_DAILY` (default 10) runs per UTC day, counted in `intel_settings`; one run in flight per process (409); the § F0.7 caps apply (`capped`). The latest `done` result per narrative is kept (`narrative_contrasts`).
+7. **UI.** `/sectors` opens with a NARRATIVES panel: one row per basket (HTF stage badge, LTF quadrants, 7d vs BTC, OI 7d, funding z, OI, your lean, the latest read). Selecting a row shows the detail numbers, the view editor and the contrast (continuation and fade side by side, OBS/HYP evidence, agreement with your view, confirms/invalidates).
+
+### N1. API
+
+- `GET /api/intel/narratives` → `{generatedAt, sectorsAsOf, narratives: NarrativeRow[]}` (`NarrativeFlow` + `view` + `contrast`). Flow is cached 120 s.
+- `PUT /api/intel/narratives/:id/view {lean, note?}` → `NarrativeView`. 404 for an id not in the current sector file, 400 on a bad body.
+- `POST /api/intel/narratives/:id/contrast` → `NarrativeContrast` (`status: done | failed | capped | no_web_search`). 404, 409, 429 as above.
+
+### N3. Slice 2: headlines, stage alerts, automatic contrast
+
+1. **Headlines per narrative** (`narrativeHeadlines`, pure, in `narratives.ts`). Intel events from the last 72 h, except flow-detector events (`origin: "flow"`, which are numbers, not news), whose mapped `assets` overlap the basket tokens (case-insensitive), newest first, one per news cluster (an event without a cluster stands alone). Each carries `{title, firstSeen, url (first source with a url, else null), assets (the basket tokens it names)}`. `GET /narratives` adds `headlines` (≤ 5 per row). The contrast prompt takes its headlines from the same function (≤ 20).
+2. **Stage alerts** (`narrativeStageAlerts`, `src/server/intel/narrativeWatch.ts`). Runs in the ingest cron right after the flow detectors. Per narrative, state in `intel_settings` (`narrative_stages`): `{stage, since, alertedAt, pending}`.
+   - A stage of `unknown` changes nothing (a data gap is not a transition).
+   - First sight records the stage silently.
+   - A different known stage must hold for 2 consecutive runs and at least 2 h before it is committed.
+   - A committed change alerts unless the narrative alerted in the last 12 h, or the change returns to the stage it left less than 24 h ago (a narrative sitting on a threshold never ping-pongs). Either way it is committed silently.
+   - The alert is kind `narrative` (migration `022_narrative_alerts.sql`), `asset` = narrative id, linking to `/sectors`, `ref` = `stage:<id>:<to>:<since>`, `eventType` = `stage_<to>`. The line is an `observed` claim (source `snapshot`) written by code from the flow facts: `<Label>: <from> → <to> · 7d vs BTC <pp>, OI 7d <pct>, funding z <z>`.
+   - Materiality is 1 when the operator has a continuation or fade view on the narrative or holds/watches one of its tokens, else 0.2. Routing is the mapper's `routeFor` (push ≥ `INTEL_PUSH_MATERIALITY` unless feedback-dampened). A push that reaches no channel falls back to batch.
+   - Narrative alerts add no confluence to any coin (`alertSource` → null). Batched narrative alerts join the brief like any other batched alert (subject to `INTEL_DIGEST_MATERIALITY`), though their `asset` is not a held or watched coin.
+3. **Automatic contrast** (`narrativeAutoContrast`, same file). Runs as the ingest job's last stage, after automatic research.
+   - Candidates:
+     - lean `continuation` with `alignment` `against`, or
+     - lean `fade` with `alignment` `with` (the move being faded is extending),
+     - and in both cases `flowScore` ≥ 2.5. Strongest first.
+   - Limits: at most `INTEL_NARRATIVE_AUTO_DAILY` (default 2) runs per UTC day and one per narrative per UTC day (`narrative_contrast_auto` setting). A run starts only with more than its deadline + 15 s of budget left. The stage stops on a `capped` result. A `no_web_search` result does not count.
+   - The stage reads views before it loads any flow: with no continuation or fade lean saved, it does nothing.
+   - A `done` result becomes the narrative's latest contrast. It raises one `narrative` alert only when its `favours` or `agreement` differs from the previous stored contrast for that narrative (no daily repeat of the same read) (`ref` = `contrast:<id>`, `eventType` = `contrast_<favours>`, a `hypothesis` line written by code: the window and quadrant that triggered it, the view, what the contrast favours, its confidence and agreement). It is routed like a stage alert; the operator has a view by construction.
+4. The automatic and manual counters are separate.
+
+### N2. Done
+
+- Tests: `narratives.test.ts` (composite chaining and coverage entry, quadrants, stage rules and floors, alignment, ranking, a synthetic expanding basket with a 6 h long build, missing history), `narrativeContrast.test.ts` (provenance, dropped advice and unbacked numbers, `unclear` without observed evidence, agreement table, prompt carries the view and untrusted headlines, no web search, fail closed), route tests (view round trip, contrast stored, 404/429), snapshot coverage.
+- Slice 2 tests: `narrativeHeadlines` (cluster dedupe, overlap, order), stage transitions (first sight, unknown, confirm, cooldown), contrast candidates, stage alert push vs batch and dedupe, automatic contrast limits, budget, capped stop and stored result.
+- Out of scope for now: graph-edge expansion of headlines (token overlap only), Elfa attention trends.
+
 ## What is explicitly OUT of scope
 
 - The ENGINE pages only proxy operator actions to the Hyperion core, which owns its own governor and venues.
@@ -540,7 +589,7 @@ New env vars: `PORT`, `WORKER_LOOPS`, `MIGRATE_ON_BOOT`, `DB_POOL_MAX`, `PLATFOR
 
 ## Environment variables
 
-`DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `CRON_TOKEN`, `FRED_API_KEY` (optional), `ELFA_API_KEY` / `ELFA_MIN_INTERVAL_HOURS` (optional), `ROUTINE_WEBHOOK_URL` (optional), `ENGINE_URL` / `ENGINE_TOKEN` (optional, engine console), `ANALYST_PROVIDER` / `DESK_ANALYST_MODEL` / `ANALYST_API_KEY` / `ANALYST_BASE_URL` / `ANALYST_EFFORT` / `ANALYST_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` / `DESK_ANTHROPIC_FIRST` / `ANALYST_OPENAI_API_KEY` / `ANALYST_OPENAI_BASE_URL` / `ANALYST_MODELS`, and the vendor keys `OPENAI_API_KEY` / `GEMINI_API_KEY` / `XAI_API_KEY` / `DEEPSEEK_API_KEY` / `MOONSHOT_API_KEY` / `DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY` (all optional, analyst — see README.md "Analyst" for precedence and per-preset overrides). Intel tuning (all optional, defaults in README.md "Intel"): `COINALYZE_API_KEY`, `INTEL_FLOW_MAX_COINS`, `INTEL_DELEV_OI_PCT`, `INTEL_THRESHOLDS`, `INTEL_LLM_DAILY_USD`, `INTEL_PUSH_MATERIALITY`, `INTEL_DIGEST_MATERIALITY`, `INTEL_RESEARCH_DAILY`, `INTEL_RESEARCH_AUTO_DAILY`.
+`DATABASE_URL`, `APP_PASSWORD`, `SESSION_SECRET`, `CRON_TOKEN`, `FRED_API_KEY` (optional), `ELFA_API_KEY` / `ELFA_MIN_INTERVAL_HOURS` (optional), `ROUTINE_WEBHOOK_URL` (optional), `ENGINE_URL` / `ENGINE_TOKEN` (optional, engine console), `ANALYST_PROVIDER` / `DESK_ANALYST_MODEL` / `ANALYST_API_KEY` / `ANALYST_BASE_URL` / `ANALYST_EFFORT` / `ANALYST_ANTHROPIC_API_KEY` / `ANTHROPIC_API_KEY` / `DESK_ANTHROPIC_FIRST` / `ANALYST_OPENAI_API_KEY` / `ANALYST_OPENAI_BASE_URL` / `ANALYST_MODELS`, and the vendor keys `OPENAI_API_KEY` / `GEMINI_API_KEY` / `XAI_API_KEY` / `DEEPSEEK_API_KEY` / `MOONSHOT_API_KEY` / `DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY` (all optional, analyst — see README.md "Analyst" for precedence and per-preset overrides). Intel tuning (all optional, defaults in README.md "Intel"): `COINALYZE_API_KEY`, `INTEL_FLOW_MAX_COINS`, `INTEL_DELEV_OI_PCT`, `INTEL_THRESHOLDS`, `INTEL_LLM_DAILY_USD`, `INTEL_PUSH_MATERIALITY`, `INTEL_DIGEST_MATERIALITY`, `INTEL_RESEARCH_DAILY`, `INTEL_RESEARCH_AUTO_DAILY`, `INTEL_NARRATIVE_DAILY`, `INTEL_NARRATIVE_AUTO_DAILY`.
 
 GitHub Actions repository secrets (Settings > Secrets and variables > Actions), used by `.github/workflows/collect.yml`:
 
