@@ -3,7 +3,7 @@ import { fetchPerpsAtOpenInterestCap, fetchPredictedFundings, type PredictedFund
 import type { PerpStats } from "../../shared/market.js";
 import * as db from "../db.js";
 import { syncFunding } from "../market/fundingSync.js";
-import { getCtxs, resolveCoin } from "./hl.js";
+import { getAllCtxs, getCtxs, resolveCoin } from "./hl.js";
 
 export type { PerpStats };
 
@@ -58,7 +58,7 @@ export const perpRoutes = new Hono().get("/:coin", async (c) => {
   const now = Date.now();
 
   const [ctxRes, pred, cap] = await Promise.all([
-    getCtxs().catch(() => null),
+    (coin.includes(":") ? getAllCtxs() : getCtxs()).catch(() => null),
     predicted(coin).catch(() => []),
     atCap(coin).catch(() => false),
   ]);

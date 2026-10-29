@@ -1,24 +1,38 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Panel, PanelHeader, PanelBody, SrcTag, DataTable, type Column } from '../components'
+import { Panel, PanelHeader, PanelBody, SrcTag, DataTable, Segmented, type Column } from '../components'
 import { AsyncBody, StaleBanner } from '../components/state'
 import { useApi } from '../lib/api'
 import type { MarketRow, MarketsResponse } from '../../server/routes/hl'
 import { fmtPrice, fmtPct, classForPnl, fmtUsd } from '../../shared/format'
+import { ASSET_CLASSES, tickerOf, type AssetClass } from '../../shared/assetClass'
 
 // Markets — docs/design/README.md §10.7. HL universe table, live-ish (poll every 15s),
-// tick flash on price change, funding crowded-trade flag, filter + sort.
+// tick flash on price change, funding crowded-trade flag, filter + sort. Covers
+// the main dex and every HIP-3 builder dex (GET /hl/markets?scope=all), split by
+// asset class.
 
 const POLL_MS = 15_000
 const STALE_MIN = 5
 
 const FUNDING_CROWDED = 0.001 // |funding| >= 0.1%/8h
 
+type ClassFilter = 'all' | AssetClass
+const CLASS_LABEL: Record<AssetClass, string> = {
+  crypto: 'CRYPTO',
+  equity: 'STOCKS',
+  commodity: 'CMDTY',
+  index: 'INDEX',
+  fx: 'FX',
+  rates: 'RATES',
+}
+
 export function Markets() {
   const navigate = useNavigate()
-  const { data, loading, error, offline, refetch } = useApi<MarketsResponse>('/hl/markets')
+  const { data, loading, error, offline, refetch } = useApi<MarketsResponse>('/hl/markets?scope=all')
   const markets = data?.markets ?? null
   const [filter, setFilter] = useState('')
+  const [cls, setCls] = useState<ClassFilter>('all')
 
   const prevPx = useRef<Map<string, number>>(new Map())
   const [flash, setFlash] = useState<Map<string, 'up' | 'down'>>(new Map())
@@ -43,14 +57,35 @@ export function Markets() {
     }
   }, [markets])
 
+  const counts = useMemo(() => {
+    const m = new Map<ClassFilter, number>([['all', markets?.length ?? 0]])
+    for (const r of markets ?? []) m.set(r.assetClass, (m.get(r.assetClass) ?? 0) + 1)
+    return m
+  }, [markets])
+
   const filtered = useMemo(() => {
     const q = filter.trim().toUpperCase()
-    if (!q) return markets ?? []
-    return (markets ?? []).filter((r) => r.coin.includes(q))
-  }, [markets, filter])
+    return (markets ?? []).filter((r) => (cls === 'all' || r.assetClass === cls) && (!q || r.coin.toUpperCase().includes(q)))
+  }, [markets, filter, cls])
+
+  const classOptions = [
+    { value: 'all' as ClassFilter, label: `ALL ${counts.get('all') ?? 0}`, short: 'ALL' },
+    ...ASSET_CLASSES.filter((c) => counts.has(c)).map((c) => ({
+      value: c as ClassFilter,
+      label: `${CLASS_LABEL[c]} ${counts.get(c)}`,
+      short: CLASS_LABEL[c],
+    })),
+  ]
 
   const columns: Column<MarketRow>[] = [
-    { key: 'coin', label: 'COIN', priority: 1, sortValue: (r) => r.coin, render: (r) => r.coin },
+    { key: 'coin', label: 'COIN', priority: 1, sortValue: (r) => tickerOf(r.coin), render: (r) => tickerOf(r.coin) },
+    {
+      key: 'dex',
+      label: 'DEX',
+      priority: 3,
+      sortValue: (r) => r.dex,
+      render: (r) => <span className="text-text-secondary">{r.dex ? r.dex.toUpperCase() : 'HL'}</span>,
+    },
     {
       key: 'price',
       label: 'PRICE',
@@ -103,6 +138,14 @@ export function Markets() {
       sortValue: (r) => r.dayNtlVlm,
       render: (r) => fmtUsd(r.dayNtlVlm, { compact: true }),
     },
+    {
+      key: 'lev',
+      label: 'MAX LEV',
+      priority: 4,
+      align: 'right',
+      sortValue: (r) => r.maxLeverage ?? 0,
+      render: (r) => (r.maxLeverage == null ? '—' : `${r.maxLeverage}x`),
+    },
   ]
 
   return (
@@ -118,7 +161,15 @@ export function Markets() {
             className="!h-[var(--control-sm)] !py-0 !px-2 !text-xs w-24 md:w-40 uppercase placeholder:text-text-secondary"
           />
         </PanelHeader>
+        <div className="px-3 pt-2 overflow-x-auto">
+          <Segmented options={classOptions} value={cls} onChange={setCls} label="Asset class" />
+        </div>
         <PanelBody>
+          {data?.failedDexes && data.failedDexes.length > 0 && (
+            <p className="text-2xs text-amber mb-2">
+              {data.failedDexes.map((d) => d.toUpperCase()).join(', ')} unavailable: snapshot failed upstream
+            </p>
+          )}
           {data && <StaleBanner generatedAt={data.fetchedAt} thresholdHours={STALE_MIN / 60} noun="snapshot" />}
           <AsyncBody
             loading={loading}
@@ -135,7 +186,7 @@ export function Markets() {
                 columns={columns}
                 rows={filtered}
                 rowKey={(r) => r.coin}
-                onRowClick={(r) => navigate(`/markets/${r.coin}`)}
+                onRowClick={(r) => navigate(`/markets/${encodeURIComponent(r.coin)}`)}
                 sortable
                 defaultSort={{ key: 'oi', dir: 'desc' }}
               />
