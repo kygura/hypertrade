@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-29T07:02:48.838Z",
+  "updated_at": "2026-10-29T15:16:46.215Z",
   "open": [
     {
       "id": "ZEC-long-20261027-1",
@@ -35,7 +35,7 @@
       "r_result": null,
       "triggered_at": "2026-10-28T00:00:00.000Z",
       "created_at": "2026-10-27T22:56:27.487Z",
-      "updated_at": "2026-10-29T07:02:48.838Z",
+      "updated_at": "2026-10-29T15:16:46.215Z",
       "expires_at": "2026-10-30T22:56:27.487Z"
     },
     {
@@ -72,7 +72,7 @@
       "r_result": null,
       "triggered_at": "2026-10-28T06:00:00.000Z",
       "created_at": "2026-10-28T06:58:59.847Z",
-      "updated_at": "2026-10-29T07:02:48.838Z",
+      "updated_at": "2026-10-29T15:16:46.215Z",
       "expires_at": "2026-10-31T06:58:59.847Z"
     },
     {
@@ -109,7 +109,7 @@
       "r_result": null,
       "triggered_at": "2026-10-28T22:00:00.000Z",
       "created_at": "2026-10-28T22:56:47.968Z",
-      "updated_at": "2026-10-29T07:02:48.838Z",
+      "updated_at": "2026-10-29T15:16:46.215Z",
       "expires_at": "2026-11-04T22:56:47.968Z"
     },
     {
@@ -142,13 +142,52 @@
         "kPEPE.pos.fundingAnnPct",
         "kPEPE.tf.1d.vsSma20Atr"
       ],
+      "status": "triggered",
+      "status_note": "entry zone traded (2026-10-29 07:00 UTC)",
+      "r_result": null,
+      "triggered_at": "2026-10-29T07:00:00.000Z",
+      "created_at": "2026-10-29T07:02:48.838Z",
+      "updated_at": "2026-10-29T15:16:46.215Z",
+      "expires_at": "2026-11-05T07:02:48.838Z"
+    },
+    {
+      "id": "HYPE-short-20261029-1",
+      "setup_id": null,
+      "levels_source": "menu",
+      "asset": "HYPE",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "HYPE is +15.29% over 24h and +20.16 vs BTC over 7d on a 4h breakout with volume ratio 6.14, 6.62 ATR over the 4h SMA20, funding 138.76 annualised at the 100th percentile and premium 12.13 bps; a vertical move with paid carry may mean-revert toward the broken 4h high (base case, low-confidence). The other side sees an intact 1w uptrend and 1w rangePos 0.91, so risk skews toward a squeeze into the 12-bar weekly high.",
+      "regime_alignment": "counter",
+      "trigger": "4h close back under the 1w 12-bar high minus 1 ATR after a rejection wick",
+      "entry": {
+        "low": 93.775,
+        "high": 95.879
+      },
+      "invalidation": 98.847,
+      "invalidation_reason": "acceptance above the 1w 12-bar high means the breakout is being bought, not faded",
+      "targets": [
+        82.385,
+        80.267
+      ],
+      "rr": 3.1,
+      "conviction": "low",
+      "evidence": [
+        "HYPE.tf.4h.breakout",
+        "HYPE.tf.4h.volRatio",
+        "HYPE.tf.4h.vsSma20Atr",
+        "HYPE.pos.fundingAnnPct",
+        "HYPE.pos.premiumBps",
+        "HYPE.tf.1w.rangePos"
+      ],
       "status": "watching",
       "status_note": null,
       "r_result": null,
       "triggered_at": null,
-      "created_at": "2026-10-29T07:02:48.838Z",
-      "updated_at": "2026-10-29T07:02:48.838Z",
-      "expires_at": "2026-11-05T07:02:48.838Z"
+      "created_at": "2026-10-29T15:16:46.215Z",
+      "updated_at": "2026-10-29T15:16:46.215Z",
+      "expires_at": "2026-11-01T15:16:46.215Z"
     }
   ],
   "closed": [
