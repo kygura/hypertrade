@@ -1,6 +1,84 @@
 {
-  "updated_at": "2026-10-29T18:57:01.029Z",
+  "updated_at": "2026-10-29T22:56:24.930Z",
   "open": [
+    {
+      "id": "XMR-short-20261029-1",
+      "setup_id": null,
+      "levels_source": "menu",
+      "asset": "XMR",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "HL funding 193.62 against CEX 53.36 (140.26 points over) with OI 24h +14.01 and premium 22.75 bps while ret24h is only 1.94: crowded longs paying to hold at the top of the 4h range (rangePos 0.84), a local imbalance that base case unwinds toward the 1d sma20. The other side sees a 1d and 1w uptrend and rs vs BTC +5.21, so this is counter-trend and low-confidence.",
+      "regime_alignment": "counter",
+      "trigger": "4h close back under the 4h high20 after pushing into it, with funding still above 30",
+      "entry": {
+        "low": 613.79,
+        "high": 619.62
+      },
+      "invalidation": 632.62,
+      "invalidation_reason": "A 4h acceptance a full ATR above the range high means longs are absorbing the supply and the crowding premise is not leading to a fade.",
+      "targets": [
+        575.79,
+        556.46
+      ],
+      "rr": 2.57,
+      "conviction": "low",
+      "evidence": [
+        "XMR.pos.fundingAnnPct",
+        "XMR.pos.fundingVsCexAnnPct",
+        "XMR.pos.oiChg24hPct",
+        "XMR.tf.4h.rangePos",
+        "XMR.levels.4h.high20"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-29T22:56:24.930Z",
+      "updated_at": "2026-10-29T22:56:24.930Z",
+      "expires_at": "2026-11-01T22:56:24.930Z"
+    },
+    {
+      "id": "BNB-long-20261029-1",
+      "setup_id": null,
+      "levels_source": "menu",
+      "asset": "BNB",
+      "direction": "long",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "HL funding -132.27 (103.15 under CEX) with OI 24h +114.81, premium -12.81 bps and ret24h -7.03 (new_shorts): shorts pressing a market whose 1d trend is range, fuel for a squeeze if price stops falling. The mark is already under the 1d low20, so the plan waits for a reclaim close rather than catching the knife (L1); the other side sees a broken low and a 1d ATR still expanding, and the risk skews to a failed reclaim (low-confidence).",
+      "regime_alignment": "with",
+      "trigger": "4h close back above the 1d low20 after the sweep, with funding still under -10",
+      "entry": {
+        "low": 705.19,
+        "high": 732.01
+      },
+      "invalidation": 693.96,
+      "invalidation_reason": "A move a full 1d ATR below the 1d low20 means the sweep is a breakdown, not a flush, and shorts are being paid.",
+      "targets": [
+        767.88,
+        810
+      ],
+      "rr": 2,
+      "conviction": "low",
+      "evidence": [
+        "BNB.pos.fundingAnnPct",
+        "BNB.pos.fundingVsCexAnnPct",
+        "BNB.pos.oiChg24hPct",
+        "BNB.levels.1d.low20",
+        "BNB.tf.4h.rangePos"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-29T22:56:24.930Z",
+      "updated_at": "2026-10-29T22:56:24.930Z",
+      "expires_at": "2026-11-01T22:56:24.930Z"
+    }
+  ],
+  "closed": [
     {
       "id": "ZEC-long-20261027-1",
       "setup_id": null,
@@ -30,12 +108,12 @@
         "ZEC.pos.fundingVsCexAnnPct",
         "ZEC.levels.4h.high20"
       ],
-      "status": "triggered",
-      "status_note": "entry zone traded (2026-10-28 00:00 UTC)",
-      "r_result": null,
+      "status": "invalidated",
+      "status_note": "stopped at 1203.7 (2026-10-29 20:00 UTC)",
+      "r_result": -1,
       "triggered_at": "2026-10-28T00:00:00.000Z",
       "created_at": "2026-10-27T22:56:27.487Z",
-      "updated_at": "2026-10-29T18:57:01.029Z",
+      "updated_at": "2026-10-29T20:59:59.999Z",
       "expires_at": "2026-10-30T22:56:27.487Z"
     },
     {
@@ -67,12 +145,12 @@
         "DOGE.tf.4h.vsSma20Atr",
         "DOGE.pos.fundingAnnPct"
       ],
-      "status": "triggered",
-      "status_note": "entry zone traded (2026-10-28 06:00 UTC)",
-      "r_result": null,
+      "status": "target_hit",
+      "status_note": "first target 0.075484 traded (2026-10-29 20:00 UTC)",
+      "r_result": 2.18,
       "triggered_at": "2026-10-28T06:00:00.000Z",
       "created_at": "2026-10-28T06:58:59.847Z",
-      "updated_at": "2026-10-29T18:57:01.029Z",
+      "updated_at": "2026-10-29T20:59:59.999Z",
       "expires_at": "2026-10-31T06:58:59.847Z"
     },
     {
@@ -104,12 +182,12 @@
         "AAVE.pos.oiChg24hPct",
         "AAVE.tf.1d.vsSma20Atr"
       ],
-      "status": "triggered",
-      "status_note": "entry zone traded (2026-10-28 22:00 UTC)",
-      "r_result": null,
+      "status": "invalidated",
+      "status_note": "stopped at 126.8 (2026-10-29 20:00 UTC)",
+      "r_result": -1,
       "triggered_at": "2026-10-28T22:00:00.000Z",
       "created_at": "2026-10-28T22:56:47.968Z",
-      "updated_at": "2026-10-29T18:57:01.029Z",
+      "updated_at": "2026-10-29T20:59:59.999Z",
       "expires_at": "2026-11-04T22:56:47.968Z"
     },
     {
@@ -142,16 +220,14 @@
         "XPL.pos.flow24h",
         "XPL.tf.1w.rangePos"
       ],
-      "status": "watching",
-      "status_note": null,
-      "r_result": null,
-      "triggered_at": null,
+      "status": "target_hit",
+      "status_note": "first target 0.0706 traded (2026-10-29 20:00 UTC)",
+      "r_result": 2.6,
+      "triggered_at": "2026-10-29T18:00:00.000Z",
       "created_at": "2026-10-29T18:57:01.029Z",
-      "updated_at": "2026-10-29T18:57:01.029Z",
+      "updated_at": "2026-10-29T20:59:59.999Z",
       "expires_at": "2026-11-01T18:57:01.029Z"
-    }
-  ],
-  "closed": [
+    },
     {
       "id": "HYPE-short-20261029-1",
       "setup_id": null,
@@ -415,9 +491,9 @@
     }
   ],
   "stats": {
-    "closed_90d": 7,
-    "triggered_90d": 7,
-    "hit_rate": 0,
-    "avg_r": -0.12
+    "closed_90d": 11,
+    "triggered_90d": 11,
+    "hit_rate": 0.18,
+    "avg_r": 0.17
   }
 }
