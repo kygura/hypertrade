@@ -54,14 +54,17 @@ describe("POST /cron/collect", () => {
     try {
       const res = await post();
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { threw?: string[]; flush: { spilled: number; errors: string[] }; spill: { runs: { collector: string }[] } };
+      const body = (await res.json()) as { threw?: string[]; flush: { spilled: number; errors: string[] }; spill: { runs: { collector: string; startedAt: string; finishedAt: string }[] } };
       expect(body.threw).toBeUndefined();
       expect(body.flush.errors.join(" ")).toContain("DATABASE_URL is not set");
       // Every collector's run record is kept for the next run.
       expect(body.spill.runs.map((r) => r.collector).sort()).toEqual(["crypto-context", "elfa", "fred", "hyperliquid"]);
 
       const old = { seriesId: "test.series", ts: "2026-10-17T00:00:00.000Z", value: 1 };
-      const again = await post({ replay: { ...body.spill, series: [{ id: "test.series" }], observations: [old] } });
+      // A spill comes from an earlier run; runs merge on collector + startedAt, and both posts can land in the same ms.
+      const earlier = (iso: string) => new Date(Date.parse(iso) - 3_600_000).toISOString();
+      const runs = body.spill.runs.map((r) => ({ ...r, startedAt: earlier(r.startedAt), finishedAt: earlier(r.finishedAt) }));
+      const again = await post({ replay: { ...body.spill, runs, series: [{ id: "test.series" }], observations: [old] } });
       const next = (await again.json()) as { flush: { replayed: number }; spill: { observations: unknown[]; runs: unknown[] } };
       expect(next.flush.replayed).toBe(body.spill.runs.length + 1);
       expect(next.spill.observations).toContainEqual(old);
