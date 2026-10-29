@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-28T22:56:47.968Z",
+  "updated_at": "2026-10-29T02:56:06.927Z",
   "open": [
     {
       "id": "ZEC-long-20261027-1",
@@ -35,44 +35,7 @@
       "r_result": null,
       "triggered_at": "2026-10-28T00:00:00.000Z",
       "created_at": "2026-10-27T22:56:27.487Z",
-      "updated_at": "2026-10-28T22:56:47.968Z",
-      "expires_at": "2026-10-30T22:56:27.487Z"
-    },
-    {
-      "id": "ENA-short-20261027-1",
-      "setup_id": null,
-      "levels_source": "menu",
-      "asset": "ENA",
-      "direction": "short",
-      "horizon": "swing",
-      "timeframe": "4h",
-      "thesis": "HL funding is 24.63 points over Binance/Bybit, which reads -13.68%, so the crowding is local to HL; the 4h swept its high while price slipped -2.13% over 4h. The other side sees a 1w that is up 10.33 vs BTC over 7d and a 4h uptrend that has not broken.",
-      "regime_alignment": "with",
-      "trigger": "4h close back under the 4h SMA20 after a rejection from the swept high",
-      "entry": {
-        "low": 0.20277,
-        "high": 0.21026
-      },
-      "invalidation": 0.21894,
-      "invalidation_reason": "a hold above the swept 4h high means the HL premium was absorbed",
-      "targets": [
-        0.18167,
-        0.16924
-      ],
-      "rr": 2,
-      "conviction": "low",
-      "evidence": [
-        "ENA.pos.fundingVsCexAnnPct",
-        "ENA.pos.cexFundingAnnPct",
-        "ENA.tf.4h.sweep",
-        "ENA.levels.4h.high20"
-      ],
-      "status": "triggered",
-      "status_note": "entry zone traded (2026-10-27 22:00 UTC)",
-      "r_result": null,
-      "triggered_at": "2026-10-27T22:00:00.000Z",
-      "created_at": "2026-10-27T22:56:27.487Z",
-      "updated_at": "2026-10-28T22:56:47.968Z",
+      "updated_at": "2026-10-29T02:56:06.927Z",
       "expires_at": "2026-10-30T22:56:27.487Z"
     },
     {
@@ -109,45 +72,8 @@
       "r_result": null,
       "triggered_at": "2026-10-28T06:00:00.000Z",
       "created_at": "2026-10-28T06:58:59.847Z",
-      "updated_at": "2026-10-28T22:56:47.968Z",
+      "updated_at": "2026-10-29T02:56:06.927Z",
       "expires_at": "2026-10-31T06:58:59.847Z"
-    },
-    {
-      "id": "VVV-long-20261028-1",
-      "setup_id": "failed_breakout",
-      "levels_source": "menu",
-      "asset": "VVV",
-      "direction": "long",
-      "horizon": "swing",
-      "timeframe": "4h",
-      "thesis": "VVV swept the 4h low and sits at 4h rangePos 0.08 after -8.41% over 24h and -9.01 vs BTC, with a 1w uptrend; 24h OI is up 2.91% on new_shorts flow, so shorts that chased the break could be squeezed (base case, low-confidence). HL funding is 14.34 points over CEX, so some of the crowding is long-side, which is what the other side sees.",
-      "regime_alignment": "with",
-      "trigger": "4h close back above the 4h range low after the sweep, holding the zone",
-      "entry": {
-        "low": 23.759,
-        "high": 23.926
-      },
-      "invalidation": 22.943,
-      "invalidation_reason": "a hold under the swept 4h low by 0.9 ATR means the sweep was a real break, not a failed one",
-      "targets": [
-        25.841,
-        28.366
-      ],
-      "rr": 2.22,
-      "conviction": "low",
-      "evidence": [
-        "VVV.tf.4h.sweep",
-        "VVV.tf.4h.rangePos",
-        "VVV.pos.flow24h",
-        "VVV.pos.fundingVsCexAnnPct"
-      ],
-      "status": "watching",
-      "status_note": null,
-      "r_result": null,
-      "triggered_at": null,
-      "created_at": "2026-10-28T22:56:47.968Z",
-      "updated_at": "2026-10-28T22:56:47.968Z",
-      "expires_at": "2026-10-31T22:56:47.968Z"
     },
     {
       "id": "AAVE-long-20261028-1",
@@ -178,16 +104,127 @@
         "AAVE.pos.oiChg24hPct",
         "AAVE.tf.1d.vsSma20Atr"
       ],
+      "status": "triggered",
+      "status_note": "entry zone traded (2026-10-28 22:00 UTC)",
+      "r_result": null,
+      "triggered_at": "2026-10-28T22:00:00.000Z",
+      "created_at": "2026-10-28T22:56:47.968Z",
+      "updated_at": "2026-10-29T02:56:06.927Z",
+      "expires_at": "2026-11-04T22:56:47.968Z"
+    },
+    {
+      "id": "XMR-long-20261029-1",
+      "setup_id": "htf_pullback",
+      "levels_source": "menu",
+      "asset": "XMR",
+      "direction": "long",
+      "horizon": "swing",
+      "timeframe": "1d",
+      "thesis": "XMR sits in a 1w and 1d uptrend, 0.48 ATR over the 1d SMA20 with funding now 14.04 annualised, 15.09 points under CEX, so the earlier crowding has reset on HL; a hold of the 1d SMA20 could resume the trend (base case, low-confidence). The other side sees 24h funding of 30.9 annualised, the reason the last XMR long was cancelled, and a 1d range high that may cap it.",
+      "regime_alignment": "with",
+      "trigger": "1d close holding above the 1d SMA20 after a dip into it",
+      "entry": {
+        "low": 575.79,
+        "high": 593.63
+      },
+      "invalidation": 556.46,
+      "invalidation_reason": "a 1d close under the 1d SMA50 means the pullback became a trend break",
+      "targets": [
+        661.84
+      ],
+      "rr": 2.73,
+      "conviction": "low",
+      "evidence": [
+        "XMR.tf.1d.trend",
+        "XMR.tf.1w.trend",
+        "XMR.tf.1d.vsSma20Atr",
+        "XMR.pos.fundingAnnPct",
+        "XMR.pos.fundingVsCexAnnPct"
+      ],
       "status": "watching",
       "status_note": null,
       "r_result": null,
       "triggered_at": null,
-      "created_at": "2026-10-28T22:56:47.968Z",
-      "updated_at": "2026-10-28T22:56:47.968Z",
-      "expires_at": "2026-11-04T22:56:47.968Z"
+      "created_at": "2026-10-29T02:56:06.927Z",
+      "updated_at": "2026-10-29T02:56:06.927Z",
+      "expires_at": "2026-11-05T02:56:06.927Z"
     }
   ],
   "closed": [
+    {
+      "id": "ENA-short-20261027-1",
+      "setup_id": null,
+      "levels_source": "menu",
+      "asset": "ENA",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "HL funding is 24.63 points over Binance/Bybit, which reads -13.68%, so the crowding is local to HL; the 4h swept its high while price slipped -2.13% over 4h. The other side sees a 1w that is up 10.33 vs BTC over 7d and a 4h uptrend that has not broken.",
+      "regime_alignment": "with",
+      "trigger": "4h close back under the 4h SMA20 after a rejection from the swept high",
+      "entry": {
+        "low": 0.20277,
+        "high": 0.21026
+      },
+      "invalidation": 0.21894,
+      "invalidation_reason": "a hold above the swept 4h high means the HL premium was absorbed",
+      "targets": [
+        0.18167,
+        0.16924
+      ],
+      "rr": 2,
+      "conviction": "low",
+      "evidence": [
+        "ENA.pos.fundingVsCexAnnPct",
+        "ENA.pos.cexFundingAnnPct",
+        "ENA.tf.4h.sweep",
+        "ENA.levels.4h.high20"
+      ],
+      "status": "cancelled",
+      "status_note": "the premise was HL-local crowding, 24.63 points over Binance/Bybit; HL funding is now 7.7, 3.25 points under CEX, so the premium is gone",
+      "r_result": 0.87,
+      "triggered_at": "2026-10-27T22:00:00.000Z",
+      "created_at": "2026-10-27T22:56:27.487Z",
+      "updated_at": "2026-10-29T02:56:06.927Z",
+      "expires_at": "2026-10-30T22:56:27.487Z"
+    },
+    {
+      "id": "VVV-long-20261028-1",
+      "setup_id": "failed_breakout",
+      "levels_source": "menu",
+      "asset": "VVV",
+      "direction": "long",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "VVV swept the 4h low and sits at 4h rangePos 0.08 after -8.41% over 24h and -9.01 vs BTC, with a 1w uptrend; 24h OI is up 2.91% on new_shorts flow, so shorts that chased the break could be squeezed (base case, low-confidence). HL funding is 14.34 points over CEX, so some of the crowding is long-side, which is what the other side sees.",
+      "regime_alignment": "with",
+      "trigger": "4h close back above the 4h range low after the sweep, holding the zone",
+      "entry": {
+        "low": 23.759,
+        "high": 23.926
+      },
+      "invalidation": 22.943,
+      "invalidation_reason": "a hold under the swept 4h low by 0.9 ATR means the sweep was a real break, not a failed one",
+      "targets": [
+        25.841,
+        28.366
+      ],
+      "rr": 2.22,
+      "conviction": "low",
+      "evidence": [
+        "VVV.tf.4h.sweep",
+        "VVV.tf.4h.rangePos",
+        "VVV.pos.flow24h",
+        "VVV.pos.fundingVsCexAnnPct"
+      ],
+      "status": "invalidated",
+      "status_note": "stopped at 22.943 (2026-10-29 02:00 UTC)",
+      "r_result": -1,
+      "triggered_at": "2026-10-28T22:00:00.000Z",
+      "created_at": "2026-10-28T22:56:47.968Z",
+      "updated_at": "2026-10-29T02:56:06.927Z",
+      "expires_at": "2026-10-31T22:56:47.968Z"
+    },
     {
       "id": "WLD-long-20261028-1",
       "setup_id": null,
@@ -263,9 +300,9 @@
     }
   ],
   "stats": {
-    "closed_90d": 2,
-    "triggered_90d": 2,
+    "closed_90d": 4,
+    "triggered_90d": 4,
     "hit_rate": 0,
-    "avg_r": 0.02
+    "avg_r": -0.02
   }
 }
