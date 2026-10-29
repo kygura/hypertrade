@@ -29,31 +29,31 @@ export function ForecastHero({ forecast, other }: { forecast: CycleForecast; oth
   const { onset, top, status, kind } = forecast
   if (status === 'in_run') {
     return (
-      <div className="p-3 text-[13px] text-text-muted">
+      <div className="p-3 text-base text-text-muted">
         A bull run is in progress (euphoria within the last 90 days and price within 35% of the top). The next-run estimate resumes once
         the cycle tops out.
       </div>
     )
   }
-  if (!onset) return <div className="p-3 text-[13px] text-text-muted">Not enough history for an estimate: it needs two completed bull runs.</div>
+  if (!onset) return <div className="p-3 text-base text-text-muted">Not enough history for an estimate: it needs two completed bull runs.</div>
   return (
     <div className="p-3 flex flex-col gap-2">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[10px] text-text-secondary [text-transform:var(--label-case)] tracking-[var(--label-tracking)]">next bull run start, central estimate if past cycles repeat</span>
+        <span className="text-xs text-text-secondary [text-transform:var(--label-case)] tracking-[var(--label-tracking)]">next bull run start, central estimate if past cycles repeat</span>
       </div>
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <span className="text-[22px] leading-none text-text-primary tabular">{fmtMonth(onset.median)}</span>
-        <span className="text-[13px] text-text-muted tabular">
+        <span className="text-xl leading-none text-text-primary tabular">{fmtMonth(onset.median)}</span>
+        <span className="text-base text-text-muted tabular">
           core {fmtMonth(onset.p25)} – {fmtMonth(onset.p75)} · range {fmtMonth(onset.min)} – {fmtMonth(onset.max)}
         </span>
       </div>
       {top && (
-        <span className="text-[11px] text-text-secondary tabular">
+        <span className="text-sm text-text-secondary tabular">
           the run could peak around <span className="text-text-primary">{fmtQuarter(top.median)}</span> (core {fmtMonth(top.p25)} – {fmtMonth(top.p75)}), going by past
           start-to-top lengths of {runLengths(forecast.episodes, kind)}.
         </span>
       )}
-      <span className="text-[11px] text-text-secondary">
+      <span className="text-sm text-text-secondary">
         {KIND_NOTE[kind]} Past starts: {pastStarts(forecast.episodes, kind)}. Core = middle half of the{' '}
         {forecast.methods.reduce((n, m) => n + m.samples.length, 0)} candidate dates below.
         {other.onset && (
@@ -111,7 +111,7 @@ export function MethodsTable({ forecast, coin }: { forecast: CycleForecast; coin
       render: (m) => (
         <span className="flex flex-col py-0.5">
           <span className="text-text-primary">{m.label}</span>
-          <span className="text-[10px] text-text-secondary whitespace-normal">{METHOD_NOTE[m.key](m, coin)}</span>
+          <span className="text-xs text-text-secondary whitespace-normal">{METHOD_NOTE[m.key](m, coin)}</span>
         </span>
       ),
     },
@@ -131,7 +131,7 @@ export function MethodsTable({ forecast, coin }: { forecast: CycleForecast; coin
       label: 'Past offsets → date',
       priority: 2,
       render: (m) => (
-        <span className="flex flex-col py-0.5 text-[10px]">
+        <span className="flex flex-col py-0.5 text-xs">
           {m.samples.map((s) => (
             <span key={s.cycle} className="whitespace-nowrap">
               <span className="text-text-secondary">{s.cycle}</span> {s.days >= 0 ? '+' : ''}
@@ -154,7 +154,7 @@ export function MethodsTable({ forecast, coin }: { forecast: CycleForecast; coin
       ),
     },
   ]
-  return <DataTable columns={columns} rows={forecast.methods} rowKey={(m) => m.key} emptyLabel={<div className="p-3 text-[11px] text-text-secondary">no estimate</div>} />
+  return <DataTable columns={columns} rows={forecast.methods} rowKey={(m) => m.key} emptyLabel={<div className="p-3 text-sm text-text-secondary">no estimate</div>} />
 }
 
 export function EpisodesTable({ episodes, kind }: { episodes: BullEpisode[]; kind: OnsetKind }) {
@@ -217,7 +217,7 @@ export function CoolingHighsTable({ highs }: { highs: CoolingHigh[] }) {
       columns={columns}
       rows={[...highs].reverse()}
       rowKey={(h) => String(h.t)}
-      emptyLabel={<div className="p-3 text-[11px] text-text-secondary">no all-time-high leg has peaked on lower heat than the one before</div>}
+      emptyLabel={<div className="p-3 text-sm text-text-secondary">no all-time-high leg has peaked on lower heat than the one before</div>}
     />
   )
 }

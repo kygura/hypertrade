@@ -5,6 +5,7 @@ import { engine, errorMessage, useEngine } from '../lib/engine'
 import { ApiError } from '../lib/api'
 import type { DecisionRecord, GovernorMode, GovernorOverride, StrategyConfig, StrategyStatus } from '../../shared/strategy-protocol'
 import { defaultParams, validateParams, type ParamValues } from '../../shared/strategy-params'
+import { GovernorLimitFields, governorLimitErrors } from '../components/strategy/GovernorLimits'
 import { EngineTabs } from '../components/strategy/EngineTabs'
 import { EngineOffline, OfflineStrip } from '../components/strategy/EngineOffline'
 import { ParamForm } from '../components/strategy/ParamForm'
@@ -58,18 +59,6 @@ function formToOverride(f: OverrideForm, existing: GovernorOverride | undefined)
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function overrideErrors(f: OverrideForm): Record<string, string> {
-  const e: Record<string, string> = {}
-  const num = (s: string) => (s.trim() === '' ? null : Number(s))
-  const mc = num(f.min_confidence)
-  if (mc != null && (Number.isNaN(mc) || mc < 0 || mc > 1)) e.min_confidence = 'must be between 0 and 1'
-  const mn = num(f.max_notional_usd)
-  if (mn != null && (Number.isNaN(mn) || mn < 0)) e.max_notional_usd = 'must be ≥ 0'
-  const mo = num(f.max_open_intents)
-  if (mo != null && (Number.isNaN(mo) || mo < 0 || !Number.isInteger(mo))) e.max_open_intents = 'must be a whole number ≥ 0'
-  return e
-}
-
 export function StrategyDetail() {
   const { id } = useParams<{ id: string }>()
   const status = useEngine(() => engine.getStrategy(id!), [id], { enabled: !!id })
@@ -103,7 +92,7 @@ export function StrategyDetail() {
 
   const manifest = status.data?.manifest
   const paramErrors = manifest && params ? validateParams(manifest.params, params) : {}
-  const govErrors = overrideErrors(override)
+  const govErrors = governorLimitErrors(override, { allowBlank: true })
   const valid = Object.keys(paramErrors).length === 0 && Object.keys(govErrors).length === 0
 
   function candidate(): StrategyConfig | null {
@@ -156,7 +145,7 @@ export function StrategyDetail() {
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)]">
       <EngineTabs />
-      <div className="flex items-center gap-2 mb-3 text-[10px] uppercase tracking-wider">
+      <div className="flex items-center gap-2 mb-3 text-xs uppercase tracking-wider">
         <Link to="/strategies" className="text-text-secondary hover:text-text-primary">
           ← STRATEGIES
         </Link>
@@ -196,17 +185,17 @@ export function StrategyDetail() {
                 <span className="panel-title">CONFIG</span>
                 {dirty && <span className="inline-block w-1.5 h-1.5 bg-amber" title="unsaved changes" />}
               </span>
-              <span className="text-[10px] text-text-secondary tabular" title={fmtTs(data.last_run_at)}>
+              <span className="text-xs text-text-secondary tabular" title={fmtTs(data.last_run_at)}>
                 LAST RUN {fmtAge(data.last_run_at)}
               </span>
             </div>
             <div className="panel-body p-3 flex flex-col gap-3">
               <div className="flex flex-col gap-1">
-                <span className="text-[16px] text-text-primary">{manifest.name}</span>
-                <span className="text-[10px] text-text-secondary tabular">
+                <span className="text-lg text-text-primary">{manifest.name}</span>
+                <span className="text-xs text-text-secondary tabular">
                   v{manifest.version} · {manifest.cadence || '—'} · {manifest.markets.join(', ') || 'no default markets'}
                 </span>
-                <p className="text-[13px] text-text-muted">{manifest.description || 'no description'}</p>
+                <p className="text-base text-text-muted">{manifest.description || 'no description'}</p>
                 {data.last_error && <ErrorBlock message={data.last_error} />}
               </div>
 
@@ -261,11 +250,11 @@ export function StrategyDetail() {
               <div className="flex flex-col gap-2 pt-2 border-t border-border-subtle">
                 <div className="flex items-center justify-between">
                   <span className="label">GOVERNOR OVERRIDE</span>
-                  <Link to="/governor" className="text-[10px] uppercase tracking-wider text-text-secondary hover:text-text-primary">
+                  <Link to="/governor" className="text-xs uppercase tracking-wider text-text-secondary hover:text-text-primary">
                     GLOBAL →
                   </Link>
                 </div>
-                <span className="text-[10px] text-text-secondary">blank fields inherit the global governor</span>
+                <span className="text-xs text-text-secondary">blank fields inherit the global governor</span>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
                     <span className="label">MODE</span>
@@ -280,38 +269,15 @@ export function StrategyDetail() {
                       className="self-start"
                     />
                   </div>
-                  {(
-                    [
-                      ['min_confidence', 'MIN CONFIDENCE', '0', '1', '0.01'],
-                      ['max_notional_usd', 'MAX NOTIONAL (USD)', '0', undefined, '1'],
-                      ['max_open_intents', 'MAX OPEN INTENTS', '0', undefined, '1'],
-                    ] as const
-                  ).map(([key, label, min, max, step]) => (
-                    <label key={key} className="flex flex-col gap-1">
-                      <span className="label">{label}</span>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min={min}
-                        max={max}
-                        step={step}
-                        placeholder="inherit"
-                        value={override[key]}
-                        aria-invalid={!!govErrors[key]}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          setOverride((o) => ({ ...o, [key]: v }))
-                          setDirty(true)
-                        }}
-                        className="w-full"
-                      />
-                      {govErrors[key] && (
-                        <span role="alert" className="text-[10px] text-red-text">
-                          {govErrors[key]}
-                        </span>
-                      )}
-                    </label>
-                  ))}
+                  <GovernorLimitFields
+                    form={override}
+                    errors={govErrors}
+                    placeholder="inherit"
+                    onChange={(key, v) => {
+                      setOverride((o) => ({ ...o, [key]: v }))
+                      setDirty(true)
+                    }}
+                  />
                 </div>
               </div>
 
@@ -325,10 +291,10 @@ export function StrategyDetail() {
                   <span className={busy === 'running' ? 'pulse-label' : undefined}>{busy === 'running' ? 'RUNNING…' : 'DRY RUN'}</span>
                 </Button>
               </div>
-              <span className="text-[10px] text-text-secondary">
+              <span className="text-xs text-text-secondary">
                 dry run uses the saved config — it never touches a venue or the governor
               </span>
-              {dirty && <span className="text-[10px] text-amber">unsaved changes are not used by DRY RUN until saved</span>}
+              {dirty && <span className="text-xs text-amber">unsaved changes are not used by DRY RUN until saved</span>}
             </div>
           </div>
 
@@ -343,7 +309,7 @@ export function StrategyDetail() {
                 {runError && <ErrorBlock message={runError} onRetry={runDry} />}
                 {!dryRun && busy !== 'running' && !runError && (
                   <div className="flex flex-col items-center gap-2 py-8 text-center">
-                    <span className="text-[11px] uppercase tracking-wider text-text-secondary">not run yet</span>
+                    <span className="text-sm uppercase tracking-wider text-text-secondary">not run yet</span>
                     <Button tier="ghost" onClick={runDry}>
                       DRY RUN
                     </Button>
@@ -365,12 +331,12 @@ export function StrategyDetail() {
                   <span className="panel-title">LAST DECISION</span>
                   <Link
                     to={`/decisions/${data.last_decision_id}`}
-                    className="text-[10px] uppercase tracking-wider text-text-secondary hover:text-text-primary"
+                    className="text-xs uppercase tracking-wider text-text-secondary hover:text-text-primary"
                   >
                     OPEN →
                   </Link>
                 </div>
-                <div className="panel-body p-3 text-[10px] tabular text-text-secondary flex flex-wrap gap-x-3 gap-y-1">
+                <div className="panel-body p-3 text-xs tabular text-text-secondary flex flex-wrap gap-x-3 gap-y-1">
                   <span className="text-text-muted truncate max-w-full">{data.last_decision_id}</span>
                   <span title={fmtTs(data.last_run_at)}>RAN {fmtAge(data.last_run_at)}</span>
                   {data.next_run_at && <span title={fmtTs(data.next_run_at)}>NEXT {fmtTs(data.next_run_at)}</span>}

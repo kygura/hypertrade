@@ -17,14 +17,14 @@ export function DomainCard({ domain }: { domain: MarketStateDomain }) {
     <Panel>
       <PanelHeader title={domain.domain.toUpperCase()} />
       <PanelBody className="p-3 flex flex-col gap-2">
-        <p className="text-[13px] text-text-muted">{domain.summary}</p>
+        <p className="text-base text-text-muted">{domain.summary}</p>
         <div className="flex flex-col gap-1">
           {domain.signals.map((sig, i) => {
             const g = glyph(sig.direction)
             return (
               <div key={i} className="flex items-center justify-between gap-2">
-                <span className="text-[10px] uppercase text-text-secondary">{sig.label}</span>
-                <span className="text-[11px] tabular text-text-primary flex items-center gap-1">
+                <span className="text-xs uppercase text-text-secondary">{sig.label}</span>
+                <span className="text-sm tabular text-text-primary flex items-center gap-1">
                   {sig.value}
                   <span className={g.cls}>{g.icon}</span>
                 </span>

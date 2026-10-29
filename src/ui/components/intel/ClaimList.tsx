@@ -18,7 +18,7 @@ export function ClaimList({ claims, dropped }: { claims: LineClaim[]; dropped?: 
           ))}
         </ol>
       )}
-      {dropped != null && dropped > 0 && <p className="text-[10px] text-text-secondary">{droppedText(dropped)}</p>}
+      {dropped != null && dropped > 0 && <p className="text-xs text-text-secondary">{droppedText(dropped)}</p>}
     </div>
   )
 }

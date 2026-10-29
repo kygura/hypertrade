@@ -28,7 +28,7 @@ export type LineClaim =
 export function ClaimLine({ claim, as: Tag = 'div' }: { claim: LineClaim; as?: 'li' | 'div' }) {
   const observed = claim.tag === 'observed'
   return (
-    <Tag className="claim-line flex items-start gap-2 text-[12px] leading-snug" data-claim={claim.tag}>
+    <Tag className="claim-line flex items-start gap-2 text-md leading-snug" data-claim={claim.tag}>
       <span
         className="w-[4ch] flex-shrink-0 pt-px"
         title={observed ? `observed: ${claim.source.label}${claim.ts ? `, ${fmtTs(claim.ts)}` : ''}` : 'inference by the model — not an observed fact'}
@@ -45,7 +45,7 @@ export function ClaimLine({ claim, as: Tag = 'div' }: { claim: LineClaim; as?: '
             <SourceLink source={claim.source} />
             {claim.ts && (
               <>
-                <span aria-hidden="true" className="text-[10px] text-text-secondary">
+                <span aria-hidden="true" className="text-xs text-text-secondary">
                   ·
                 </span>
                 <ClaimAge ts={claim.ts} />

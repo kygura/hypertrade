@@ -1,5 +1,8 @@
 import type { SimBranchOutcome, SimIntent } from '../../shared/intent'
-import { ApiError, NetworkError } from './api'
+import { api } from './api'
+import { splitFrames, streamSse } from './sse'
+
+export { splitFrames }
 
 // Client for /api/analyst (docs/SPEC.md "Analyst"). The query endpoint is a POST
 // that answers with text/event-stream, so EventSource (GET-only) does not
@@ -86,60 +89,11 @@ export interface AnalystChoice {
   effort?: AnalystEffort
 }
 
-const REDIRECT_KEY = 'ht_redirect_to'
-
-async function failFrom(res: Response): Promise<never> {
-  if (res.status === 401) {
-    sessionStorage.setItem(REDIRECT_KEY, location.pathname)
-    location.href = '/login'
-    throw new ApiError('unauthorized', 401)
-  }
-  const body = (await res.json().catch(() => null)) as { error?: string } | null
-  throw new ApiError(body?.error ?? res.statusText, res.status)
-}
-
-export async function getAnalystStatus(): Promise<AnalystStatus> {
-  let res: Response
-  try {
-    res = await fetch('/api/analyst/status', { credentials: 'include' })
-  } catch (err) {
-    throw new NetworkError(err instanceof Error ? err.message : 'network unreachable')
-  }
-  if (!res.ok) return failFrom(res)
-  return (await res.json()) as AnalystStatus
-}
+export const getAnalystStatus = () => api.get<AnalystStatus>('/analyst/status')
 
 /** Always resolves — the catalog is 200 even fully unconfigured (both
  * providers `available: false`), so the selector can explain what to set. */
-export async function getAnalystModels(): Promise<AnalystCatalog> {
-  let res: Response
-  try {
-    res = await fetch('/api/analyst/models', { credentials: 'include' })
-  } catch (err) {
-    throw new NetworkError(err instanceof Error ? err.message : 'network unreachable')
-  }
-  if (!res.ok) return failFrom(res)
-  return (await res.json()) as AnalystCatalog
-}
-
-/** Splits an SSE text buffer into complete frames; returns [frames, rest]. */
-export function splitFrames(buf: string): [Array<{ event: string; data: string }>, string] {
-  const frames: Array<{ event: string; data: string }> = []
-  let rest = buf.replace(/\r\n/g, '\n')
-  let idx: number
-  while ((idx = rest.indexOf('\n\n')) >= 0) {
-    const raw = rest.slice(0, idx)
-    rest = rest.slice(idx + 2)
-    let event = 'message'
-    const data: string[] = []
-    for (const line of raw.split('\n')) {
-      if (line.startsWith('event:')) event = line.slice(6).trim()
-      else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''))
-    }
-    if (data.length) frames.push({ event, data: data.join('\n') })
-  }
-  return [frames, rest]
-}
+export const getAnalystModels = () => api.get<AnalystCatalog>('/analyst/models')
 
 /** POST /api/analyst/query body; `mode` is only sent for sim (ask stays byte-identical). */
 export function queryBody(question: string, history: HistoryTurn[], choice?: AnalystChoice, mode: AnalystMode = 'ask') {
@@ -187,41 +141,5 @@ export async function streamAnalyst(
   choice?: AnalystChoice,
   mode: AnalystMode = 'ask',
 ): Promise<void> {
-  let res: Response
-  try {
-    res = await fetch('/api/analyst/query', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify(queryBody(question, history, choice, mode)),
-      signal,
-    })
-  } catch (err) {
-    if (signal?.aborted) return
-    throw new NetworkError(err instanceof Error ? err.message : 'network unreachable')
-  }
-  if (!res.ok || !res.body) return failFrom(res)
-
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buf = ''
-  try {
-    for (;;) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const [frames, rest] = splitFrames(buf)
-      buf = rest
-      for (const f of frames) {
-        try {
-          onEvent({ type: f.event, ...JSON.parse(f.data) } as AnalystStreamEvent)
-        } catch {
-          // A malformed frame is skipped; the done event still arrives.
-        }
-      }
-    }
-  } catch (err) {
-    if (signal?.aborted) return
-    throw new NetworkError(err instanceof Error ? err.message : 'stream interrupted')
-  }
+  return streamSse<AnalystStreamEvent>('/api/analyst/query', queryBody(question, history, choice, mode), onEvent, signal)
 }

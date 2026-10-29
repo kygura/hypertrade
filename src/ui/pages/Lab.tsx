@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router'
+import { PageContainer } from '../components/PageContainer'
 import { LabDataProvider } from '../components/lab/LabData'
 import { LabTabs, labTabOf } from '../components/lab/LabTabs'
 import { LabSearch } from './LabSearch'
@@ -16,13 +17,13 @@ export function Lab() {
   const tab = labTabOf(pathname)
   return (
     <LabDataProvider>
-      <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col">
+      <PageContainer className="pb-3 md:pb-[var(--gutter)] flex flex-col">
         <LabTabs />
         {tab === 'search' && <LabSearch />}
         {tab === 'runs' && <LabRuns />}
         {tab === 'catalogue' && <LabCatalogue />}
         {tab === 'pulse' && <LabPulse />}
-      </div>
+      </PageContainer>
     </LabDataProvider>
   )
 }

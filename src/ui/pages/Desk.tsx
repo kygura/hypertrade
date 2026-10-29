@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Badge, Button, ConfirmDialog, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelBody, PanelHeader, Segmented, SkeletonRows } from '../components'
+import { AsyncBody, Badge, Button, ConfirmDialog, ErrorBlock, OfflineBlock, Panel, PanelBody, PanelHeader, Segmented, SkeletonRows, DataTable, type Column } from '../components'
 import { Markdown } from '../components/analyst/Markdown'
+import { KillSwitchDialog } from '../components/KillSwitchDialog'
 import { api, ApiError, NetworkError, useApi } from '../lib/api'
+import { useDeskKill } from '../lib/useDeskKill'
 import {
   emptyRun,
   fmtPx,
@@ -66,12 +68,12 @@ export function Desk() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 min-w-0">
         <div className="xl:col-span-2 flex flex-col gap-3 min-w-0">
           <AskPanel status={status.data} onRunFinished={refreshBook} />
-          <RunsPanel runs={runs.data?.runs} loading={runs.loading} />
+          <RunsPanel runs={runs.data?.runs} loading={runs.loading} error={runs.error} offline={runs.offline} onRetry={runs.refetch} />
         </div>
         <div className="flex flex-col gap-3 min-w-0">
-          <ApprovalsPanel proposals={proposals.data?.proposals} loading={proposals.loading} onChange={refreshBook} />
+          <ApprovalsPanel proposals={proposals.data?.proposals} loading={proposals.loading} error={proposals.error} offline={proposals.offline} onRetry={proposals.refetch} onChange={refreshBook} />
           <PositionsPanel portfolio={portfolio.data} loading={portfolio.loading} onChange={refreshBook} />
-          <AlertsPanel alerts={alerts.data?.alerts} loading={alerts.loading} />
+          <AlertsPanel alerts={alerts.data?.alerts} loading={alerts.loading} error={alerts.error} offline={alerts.offline} onRetry={alerts.refetch} />
         </div>
       </div>
     </div>
@@ -79,35 +81,19 @@ export function Desk() {
 }
 
 function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | null; portfolio: Portfolio | null; onChange: () => void }) {
-  const [confirm, setConfirm] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
   const kill = status?.killSwitch.on ?? false
+  const killSwitch = useDeskKill(kill, onChange)
   const desk = portfolio?.desk
 
   const setApproval = async (approval: 'manual' | 'auto') => {
     await api.put('/desk/approval', { approval }).catch(() => undefined)
     onChange()
   }
-  const toggleKill = async () => {
-    setBusy(true)
-    setErr(null)
-    try {
-      await api.post('/desk/kill', { on: !kill })
-      setConfirm(false)
-      onChange()
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'failed')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   return (
     <Panel>
       <PanelBody className="flex flex-wrap items-center gap-x-5 gap-y-2 p-3">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] text-text-primary font-display tracking-wider">DESK</span>
+          <span className="text-base text-text-primary font-display tracking-wider">DESK</span>
           <Badge tone={status?.live ? 'amber' : 'info'}>{(status?.venue ?? 'paper').toUpperCase()}</Badge>
           {kill && <Badge tone="red">KILL SWITCH</Badge>}
         </div>
@@ -129,28 +115,19 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
             />
           )}
           <ReviewIntervalControl status={status} onChange={onChange} />
-          <Button tier="danger" onClick={() => setConfirm(true)} disabled={!status}>
+          <Button tier="danger" onClick={killSwitch.arm} disabled={!status}>
             {kill ? 'RESUME' : 'KILL'}
           </Button>
         </div>
       </PanelBody>
       {status?.live && (
-        <div className="px-3 pb-2 text-[10px] text-amber break-all">
+        <div className="px-3 pb-2 text-xs text-amber break-all">
           Live orders on Hyperliquid testnet for {status.venueAccount}. Stops and targets rest on the exchange.
         </div>
       )}
-      {status?.venueNote && <div className="px-3 pb-2 text-[10px] text-red-text">{status.venueNote}.</div>}
-      {confirm && (
-        <ConfirmDialog
-          title={kill ? 'Resume entries' : 'Kill switch'}
-          body={kill ? 'New entries will be allowed again, within the governor limits.' : 'Blocks every new entry, from agents and approvals alike. Exits stay allowed.'}
-          confirmLabel={kill ? 'RESUME' : 'KILL'}
-          typedWord={kill ? undefined : 'KILL'}
-          onConfirm={() => void toggleKill()}
-          onCancel={() => setConfirm(false)}
-          error={err}
-          busy={busy}
-        />
+      {status?.venueNote && <div className="px-3 pb-2 text-xs text-red-text">{status.venueNote}.</div>}
+      {killSwitch.open && (
+        <KillSwitchDialog killOn={kill} busy={killSwitch.busy} error={killSwitch.error} onConfirm={() => void killSwitch.confirm()} onCancel={killSwitch.cancel} />
       )}
     </Panel>
   )
@@ -196,7 +173,7 @@ function ReviewIntervalControl({ status, onChange }: { status: DeskStatus | null
           SAVE
         </Button>
       )}
-      {err && <span className="text-[10px] text-red-text">{err}</span>}
+      {err && <span className="text-xs text-red-text">{err}</span>}
     </div>
   )
 }
@@ -204,8 +181,8 @@ function ReviewIntervalControl({ status, onChange }: { status: DeskStatus | null
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="flex flex-col min-w-0">
-      <span className="label text-[9px]">{label}</span>
-      <span className={`text-[12px] tabular truncate ${tone ?? 'text-text-primary'}`}>{value}</span>
+      <span className="label text-2xs">{label}</span>
+      <span className={`text-md tabular truncate ${tone ?? 'text-text-primary'}`}>{value}</span>
     </div>
   )
 }
@@ -270,7 +247,7 @@ function AskPanel({ status, onRunFinished }: { status: DeskStatus | null; onRunF
       <PanelBody className="flex flex-col gap-3 p-3">
         {status && !status.configured && <ErrorBlock message="No model configured. Set an analyst provider key (see README: Desk)." />}
         <textarea
-          className="input w-full min-h-[72px] text-[12px] p-2 bg-transparent border border-border resize-y"
+          className="input w-full min-h-[72px] text-md p-2 bg-transparent border border-border resize-y"
           placeholder="Is the current rally a bull trap or driven by genuine flows?"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
@@ -280,7 +257,7 @@ function AskPanel({ status, onRunFinished }: { status: DeskStatus | null; onRunF
           disabled={busy}
         />
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-1.5 text-[11px] text-text-secondary cursor-pointer">
+          <label className="flex items-center gap-1.5 text-sm text-text-secondary cursor-pointer">
             <input type="checkbox" checked={act} onChange={(e) => setAct(e.target.checked)} disabled={busy} />
             let the desk act (proposals go through the governor{status?.approval === 'manual' ? ' and wait for approval' : ''})
           </label>
@@ -298,7 +275,7 @@ function AskPanel({ status, onRunFinished }: { status: DeskStatus | null; onRunF
         {!run && (
           <div className="flex flex-col gap-1">
             {SUGGESTIONS.map((s) => (
-              <button key={s} className="text-left text-[11px] text-text-secondary hover:text-text-primary" onClick={() => ask(s)} disabled={busy || !status?.configured}>
+              <button key={s} className="text-left text-sm text-text-secondary hover:text-text-primary" onClick={() => ask(s)} disabled={busy || !status?.configured}>
                 → {s}
               </button>
             ))}
@@ -327,7 +304,7 @@ function RunDetail({ run, live }: { run: RunView; live: boolean }) {
       {run.proposals.length > 0 && (
         <div className="flex flex-col gap-1">
           {run.proposals.map((p) => (
-            <div key={p.id} className="flex items-center gap-2 text-[11px]">
+            <div key={p.id} className="flex items-center gap-2 text-sm">
               <Badge tone={STATUS_TONE[p.status] ?? 'gray'}>{p.status.toUpperCase()}</Badge>
               <span className="text-text-primary">{p.summary}</span>
             </div>
@@ -335,7 +312,7 @@ function RunDetail({ run, live }: { run: RunView; live: boolean }) {
         </div>
       )}
       {run.errors.map((e) => (
-        <div key={e} className="text-[11px] text-red-text" role="alert">
+        <div key={e} className="text-sm text-red-text" role="alert">
           {e}
         </div>
       ))}
@@ -344,20 +321,20 @@ function RunDetail({ run, live }: { run: RunView; live: boolean }) {
           <Markdown text={pm.text} />
         </div>
       ) : (
-        live && <span className="text-[11px] text-text-secondary">the team is working…</span>
+        live && <span className="text-sm text-text-secondary">the team is working…</span>
       )}
       {run.citations.length > 0 && (
         <div className="flex flex-col gap-0.5 border-t border-border-subtle pt-2">
-          <span className="label text-[9px]">SOURCES</span>
+          <span className="label text-2xs">SOURCES</span>
           {run.citations.slice(0, 12).map((c) => (
-            <a key={c.url} href={c.url} target="_blank" rel="noreferrer" className="text-[10px] text-text-secondary hover:text-text-primary truncate">
+            <a key={c.url} href={c.url} target="_blank" rel="noreferrer" className="text-xs text-text-secondary hover:text-text-primary truncate">
               {c.title ?? c.url}
             </a>
           ))}
         </div>
       )}
       {run.done && (
-        <span className="text-[10px] text-text-secondary tabular">
+        <span className="text-xs text-text-secondary tabular">
           {run.done.stop} · {run.agents.length} agents · {(run.done.usage.input_tokens / 1000).toFixed(0)}k in / {(run.done.usage.output_tokens / 1000).toFixed(1)}k out
           {run.done.costUsd != null ? ` · ~$${run.done.costUsd.toFixed(2)}` : ''}
         </span>
@@ -373,8 +350,8 @@ function AgentLane({ agent, defaultOpen }: { agent: AgentView; defaultOpen: bool
     <div className="border border-border-subtle p-2 flex flex-col gap-1 min-w-0">
       <button className="flex items-center gap-2 text-left min-w-0" onClick={() => setOpen((o) => !o)}>
         <Badge tone={tone}>{agent.state === 'running' ? 'RUN' : agent.state === 'done' ? 'DONE' : (agent.stop ?? 'ERR').toUpperCase()}</Badge>
-        <span className="text-[11px] text-text-primary truncate">{agent.role}</span>
-        <span className="text-[10px] text-text-secondary ml-auto shrink-0">{agent.tools.length} tools</span>
+        <span className="text-sm text-text-primary truncate">{agent.role}</span>
+        <span className="text-xs text-text-secondary ml-auto shrink-0">{agent.tools.length} tools</span>
       </button>
       <div className="flex flex-wrap gap-1">
         {agent.tools.map((t) => (
@@ -385,10 +362,10 @@ function AgentLane({ agent, defaultOpen }: { agent: AgentView; defaultOpen: bool
       </div>
       {open && (
         <div className="flex flex-col gap-2 pt-1 min-w-0">
-          <span className="text-[10px] text-text-secondary whitespace-pre-wrap break-words">{agent.task}</span>
+          <span className="text-xs text-text-secondary whitespace-pre-wrap break-words">{agent.task}</span>
           {agent.text && agent.id !== 'pm' && <Markdown text={agent.text} />}
           {agent.tools.some((t) => t.summary) && (
-            <ul className="text-[10px] text-text-secondary">
+            <ul className="text-xs text-text-secondary">
               {agent.tools.map((t) => (
                 <li key={t.id} className="break-words">
                   {t.name}: {t.summary ?? '…'}
@@ -402,9 +379,10 @@ function AgentLane({ agent, defaultOpen }: { agent: AgentView; defaultOpen: bool
   )
 }
 
-function ApprovalsPanel({ proposals, loading, onChange }: { proposals: ProposalRecord[] | undefined; loading: boolean; onChange: () => void }) {
+function ApprovalsPanel({ proposals, loading, error, offline, onRetry, onChange }: { proposals: ProposalRecord[] | undefined; loading: boolean; error: string | null; offline: boolean; onRetry: () => void; onChange: () => void }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [approving, setApproving] = useState<ProposalRecord | null>(null)
   const pending = proposals?.filter((p) => p.status === 'pending') ?? []
   const recent = proposals?.filter((p) => p.status !== 'pending').slice(0, 8) ?? []
 
@@ -413,25 +391,41 @@ function ApprovalsPanel({ proposals, loading, onChange }: { proposals: ProposalR
     setErr(null)
     try {
       await api.post(`/desk/proposals/${id}/${verb}`)
+      return true
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'failed')
+      return false
     } finally {
       setBusy(null)
       onChange()
     }
   }
+  const approvingWhat = approving && (approving.kind === 'exit' ? `exit ${Math.round(((approving.proposal as ExitProposal).fraction ?? 0) * 100)}% of ${approving.proposal.coin}` : `${(approving.proposal as TradeProposal).side} ${approving.proposal.coin}`)
 
   return (
     <Panel>
       <PanelHeader title="PROPOSALS">{pending.length > 0 && <Badge tone="amber">{pending.length} PENDING</Badge>}</PanelHeader>
       <PanelBody className="flex flex-col">
-        {loading && !proposals && <SkeletonRows rows={3} />}
-        {proposals && proposals.length === 0 && <EmptyBlock label="no proposals yet" />}
-        {err && <div className="px-3 pt-2 text-[11px] text-red-text">{err}</div>}
-        {[...pending, ...recent].map((p) => (
-          <ProposalCard key={p.id} p={p} busy={busy === p.id} onDecide={(v) => void decide(p.id, v)} />
-        ))}
+        {err && <div className="px-3 pt-2 text-sm text-red-text">{err}</div>}
+        <AsyncBody loading={loading} data={proposals} error={error} offline={offline} onRetry={onRetry} rows={3} empty={{ label: 'no proposals yet' }}>
+          {() =>
+            [...pending, ...recent].map((p) => (
+              <ProposalCard key={p.id} p={p} busy={busy === p.id} onDecide={(v) => (v === 'approve' ? (setErr(null), setApproving(p)) : void decide(p.id, v))} />
+            ))
+          }
+        </AsyncBody>
       </PanelBody>
+      {approving && (
+        <ConfirmDialog
+          title={`Approve ${approvingWhat}`}
+          body={`Approve ${approvingWhat}? The desk places it on its venue, within the governor limits.`}
+          confirmLabel="APPROVE"
+          onConfirm={() => void decide(approving.id, 'approve').then((ok) => ok && setApproving(null))}
+          onCancel={() => setApproving(null)}
+          error={err}
+          busy={busy === approving.id}
+        />
+      )}
     </Panel>
   )
 }
@@ -448,14 +442,14 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
     <div className="border-b border-border-subtle p-3 flex flex-col gap-1.5 min-w-0">
       <button className="flex items-center gap-2 text-left min-w-0" onClick={() => setOpen((o) => !o)}>
         <Badge tone={STATUS_TONE[p.status] ?? 'gray'}>{p.status.toUpperCase()}</Badge>
-        <span className={`text-[12px] ${entry?.side === 'short' ? 'text-red-text' : 'text-green'}`}>
+        <span className={`text-md ${entry?.side === 'short' ? 'text-red-text' : 'text-green'}`}>
           {entry ? `${entry.side.toUpperCase()} ${entry.coin}` : `EXIT ${Math.round((exit?.fraction ?? 0) * 100)}% ${exit?.coin}`}
         </span>
-        <span className="text-[10px] text-text-secondary truncate">{op ? 'operator order (copilot)' : (open_?.setup ?? exit?.reason)}</span>
-        <span className="text-[10px] text-text-secondary ml-auto shrink-0 tabular">{new Date(p.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+        <span className="text-xs text-text-secondary truncate">{op ? 'operator order (copilot)' : (open_?.setup ?? exit?.reason)}</span>
+        <span className="text-xs text-text-secondary ml-auto shrink-0 tabular">{new Date(p.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
       </button>
       {s && (
-        <div className="text-[10px] text-text-secondary tabular">
+        <div className="text-xs text-text-secondary tabular">
           mark {fmtPx(s.markPx)}
           {entry &&
             ` · stop ${fmtPx(entry.stop)} (${s.stopDistPct}%) · target ${entry.target != null ? fmtPx(entry.target) : 'none'} · R:R ${s.rr ?? 'n/a'} · risk ${fmtUsd(s.riskUsd)}`}{' '}
@@ -466,38 +460,38 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
         <div className="flex flex-col gap-1.5">
           {open_ && (
             <>
-              <p className="text-[11px] text-text-primary whitespace-pre-wrap break-words">{open_.thesis}</p>
-              <p className="text-[10px] text-text-secondary">Invalidation: {open_.invalidation}</p>
-              <ul className="text-[10px] text-text-secondary">
+              <p className="text-sm text-text-primary whitespace-pre-wrap break-words">{open_.thesis}</p>
+              <p className="text-xs text-text-secondary">Invalidation: {open_.invalidation}</p>
+              <ul className="text-xs text-text-secondary">
                 {open_.evidence.map((e, i) => (
                   <li key={i} className="break-words">
                     [{e.source}] {e.point}
                   </li>
                 ))}
               </ul>
-              <span className="text-[10px] text-text-secondary">
+              <span className="text-xs text-text-secondary">
                 {open_.horizon} · confidence {open_.confidence} · asked {open_.riskPct}% risk
               </span>
             </>
           )}
           {op && (
-            <span className="text-[10px] text-text-secondary">
+            <span className="text-xs text-text-secondary">
               asked {op.notionalUsd != null ? `${fmtUsd(op.notionalUsd)} notional` : op.leverage != null ? `${op.leverage}x equity` : `${op.riskPct}% risk`} · sized at{' '}
               {op.resolvedRiskPct.toFixed(2)}% risk
             </span>
           )}
           {p.verdict.reasons.map((r) => (
-            <span key={r} className="text-[10px] text-red-text">
+            <span key={r} className="text-xs text-red-text">
               ✕ {r}
             </span>
           ))}
           {p.verdict.warnings.map((w) => (
-            <span key={w} className="text-[10px] text-amber">
+            <span key={w} className="text-xs text-amber">
               ⚠ {w}
             </span>
           ))}
-          {p.execution?.error && <span className="text-[10px] text-red-text">{p.execution.error}</span>}
-          {p.decidedBy && <span className="text-[10px] text-text-secondary">decided by {p.decidedBy}</span>}
+          {p.execution?.error && <span className="text-xs text-red-text">{p.execution.error}</span>}
+          {p.decidedBy && <span className="text-xs text-text-secondary">decided by {p.decidedBy}</span>}
         </div>
       )}
       {p.status === 'pending' && (
@@ -508,12 +502,37 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
           <Button tier="ghost" onClick={() => onDecide('reject')} disabled={busy}>
             REJECT
           </Button>
-          {p.expiresAt && <span className="text-[10px] text-text-secondary self-center ml-auto">expires {new Date(p.expiresAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>}
+          {p.expiresAt && <span className="text-xs text-text-secondary self-center ml-auto">expires {new Date(p.expiresAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>}
         </div>
       )}
     </div>
   )
 }
+
+type DeskPosition = Portfolio['desk']['positions'][number]
+
+const BOOK_COLUMNS: Column<DeskPosition>[] = [
+  {
+    key: 'coin',
+    label: 'COIN',
+    priority: 1,
+    render: (p) => (
+      <span className={p.side === 'long' ? 'text-green' : 'text-red-text'}>
+        {p.side === 'long' ? '▲' : '▼'} {p.coin}
+      </span>
+    ),
+  },
+  { key: 'size', label: 'SIZE', priority: 1, align: 'right', render: (p) => p.size },
+  { key: 'entry', label: 'ENTRY', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.entryPx)}</span> },
+  { key: 'stop', label: 'STOP', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.stopPx)}</span> },
+  {
+    key: 'upnl',
+    label: 'UPNL',
+    priority: 1,
+    align: 'right',
+    render: (p) => <span className={p.unrealizedPnl >= 0 ? 'text-green' : 'text-red-text'}>{fmtUsd(p.unrealizedPnl)}</span>,
+  },
+]
 
 function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio | null; loading: boolean; onChange: () => void }) {
   const [closing, setClosing] = useState<string | null>(null)
@@ -528,49 +547,27 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
       setErr(e instanceof Error ? e.message : 'failed')
     }
   }
+  const closeColumn: Column<DeskPosition> = {
+    key: 'close',
+    label: '',
+    priority: 1,
+    align: 'right',
+    render: (p) => (
+      <Button tier="ghost" className="!h-5 !px-1.5" onClick={() => setClosing(p.coin)}>
+        CLOSE
+      </Button>
+    ),
+  }
   const book = (title: string, acc: Portfolio['desk'], closable: boolean) => (
     <div className="flex flex-col">
       <div className="px-3 pt-2 flex items-center gap-2">
-        <span className="label text-[9px]">{title}</span>
-        <span className="text-[10px] text-text-secondary tabular ml-auto">{acc.available ? fmtUsd(acc.equityUsd) : (acc.note ?? 'unavailable')}</span>
+        <span className="label text-2xs">{title}</span>
+        <span className="text-xs text-text-secondary tabular ml-auto">{acc.available ? fmtUsd(acc.equityUsd) : (acc.note ?? 'unavailable')}</span>
       </div>
       {acc.positions.length === 0 ? (
-        <span className="px-3 py-2 text-[10px] text-text-secondary">flat</span>
+        <span className="px-3 py-2 text-xs text-text-secondary">flat</span>
       ) : (
-        <div className="table-scroll">
-          <table className="w-full text-[11px] tabular border-collapse">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="px-2 py-1 label text-left">COIN</th>
-                <th className="px-2 py-1 label text-right">SIZE</th>
-                <th className="px-2 py-1 label text-right">ENTRY</th>
-                <th className="px-2 py-1 label text-right">STOP</th>
-                <th className="px-2 py-1 label text-right">UPNL</th>
-                {closable && <th />}
-              </tr>
-            </thead>
-            <tbody>
-              {acc.positions.map((p) => (
-                <tr key={p.coin} className="border-b border-border-subtle" style={{ height: 'var(--row-h)' }}>
-                  <td className={`px-2 ${p.side === 'long' ? 'text-green' : 'text-red-text'}`}>
-                    {p.side === 'long' ? '▲' : '▼'} {p.coin}
-                  </td>
-                  <td className="px-2 text-right">{p.size}</td>
-                  <td className="px-2 text-right text-text-muted">{fmtPx(p.entryPx)}</td>
-                  <td className="px-2 text-right text-text-muted">{fmtPx(p.stopPx)}</td>
-                  <td className={`px-2 text-right ${p.unrealizedPnl >= 0 ? 'text-green' : 'text-red-text'}`}>{fmtUsd(p.unrealizedPnl)}</td>
-                  {closable && (
-                    <td className="px-1 text-right">
-                      <Button tier="ghost" className="!h-5 !px-1.5" onClick={() => setClosing(p.coin)}>
-                        CLOSE
-                      </Button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable columns={closable ? [...BOOK_COLUMNS, closeColumn] : BOOK_COLUMNS} rows={acc.positions} rowKey={(p) => p.coin} />
       )}
     </div>
   )
@@ -583,16 +580,16 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
         {portfolio?.watched && book('WATCHED HYPERLIQUID ACCOUNT (READ-ONLY)', portfolio.watched, false)}
         {portfolio && portfolio.fills.length > 0 && (
           <div className="px-3 pt-2 flex flex-col gap-0.5">
-            <span className="label text-[9px]">RECENT FILLS</span>
+            <span className="label text-2xs">RECENT FILLS</span>
             {portfolio.fills.slice(0, 6).map((f) => (
-              <span key={f.id} className="text-[10px] text-text-secondary tabular">
+              <span key={f.id} className="text-xs text-text-secondary tabular">
                 {new Date(f.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} {f.side} {f.size} {f.coin} @ {fmtPx(f.px)} · {f.reason}
                 {f.pnl !== 0 ? ` · ${fmtUsd(f.pnl)}` : ''}
               </span>
             ))}
           </div>
         )}
-        {err && <span className="px-3 text-[11px] text-red-text">{err}</span>}
+        {err && <span className="px-3 text-sm text-red-text">{err}</span>}
       </PanelBody>
       {closing && (
         <ConfirmDialog
@@ -608,29 +605,31 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
   )
 }
 
-function AlertsPanel({ alerts, loading }: { alerts: AlertRow[] | undefined; loading: boolean }) {
+function AlertsPanel({ alerts, loading, error, offline, onRetry }: { alerts: AlertRow[] | undefined; loading: boolean; error: string | null; offline: boolean; onRetry: () => void }) {
   return (
     <Panel>
       <PanelHeader title="ALERTS" />
       <PanelBody className="flex flex-col max-h-[420px] overflow-y-auto">
-        {loading && !alerts && <SkeletonRows rows={3} />}
-        {alerts && alerts.length === 0 && <EmptyBlock label="no alerts yet" />}
-        {alerts?.map((a) => (
-          <div key={a.id} className="border-b border-border-subtle px-3 py-2 flex flex-col gap-0.5 min-w-0">
-            <div className="flex items-center gap-2">
-              <Badge tone={a.level === 'critical' ? 'red' : a.level === 'warn' ? 'amber' : 'info'}>{a.level.toUpperCase()}</Badge>
-              <span className="text-[11px] text-text-primary truncate">{a.title}</span>
-              <span className="text-[10px] text-text-secondary ml-auto shrink-0 tabular">{new Date(a.ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
-            </div>
-            <span className="text-[10px] text-text-secondary whitespace-pre-wrap break-words line-clamp-4">{a.body}</span>
-          </div>
-        ))}
+        <AsyncBody loading={loading} data={alerts} error={error} offline={offline} onRetry={onRetry} rows={3} empty={{ label: 'no alerts yet' }}>
+          {(rows) =>
+            rows.map((a) => (
+              <div key={a.id} className="border-b border-border-subtle px-3 py-2 flex flex-col gap-0.5 min-w-0">
+                <div className="flex items-center gap-2">
+                  <Badge tone={a.level === 'critical' ? 'red' : a.level === 'warn' ? 'amber' : 'info'}>{a.level.toUpperCase()}</Badge>
+                  <span className="text-sm text-text-primary truncate">{a.title}</span>
+                  <span className="text-xs text-text-secondary ml-auto shrink-0 tabular">{new Date(a.ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <span className="text-xs text-text-secondary whitespace-pre-wrap break-words line-clamp-4">{a.body}</span>
+              </div>
+            ))
+          }
+        </AsyncBody>
       </PanelBody>
     </Panel>
   )
 }
 
-function RunsPanel({ runs, loading }: { runs: RunRow[] | undefined; loading: boolean }) {
+function RunsPanel({ runs, loading, error, offline, onRetry }: { runs: RunRow[] | undefined; loading: boolean; error: string | null; offline: boolean; onRetry: () => void }) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [view, setView] = useState<RunView | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -656,27 +655,29 @@ function RunsPanel({ runs, loading }: { runs: RunRow[] | undefined; loading: boo
     <Panel>
       <PanelHeader title="RUNS" />
       <PanelBody className="flex flex-col">
-        {loading && !runs && <SkeletonRows rows={3} />}
-        {runs && runs.length === 0 && <EmptyBlock label="no runs yet" />}
-        {runs?.map((r) => (
-          <div key={r.id} className="border-b border-border-subtle">
-            <button className="w-full px-3 py-2 flex items-center gap-2 text-left min-w-0" onClick={() => void openRun(r)}>
-              <Badge tone={r.status === 'done' ? 'green' : r.status === 'running' ? 'amber' : 'red'}>{r.kind.toUpperCase()}</Badge>
-              <span className="text-[11px] text-text-primary truncate">{r.question}</span>
-              <span className="text-[10px] text-text-secondary ml-auto shrink-0 tabular">
-                {new Date(r.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                {r.costUsd != null ? ` · $${r.costUsd.toFixed(2)}` : ''}
-              </span>
-            </button>
-            {openId === r.id && (
-              <div className="px-3 pb-3">
-                {err && <ErrorBlock message={err} />}
-                {!view && !err && <SkeletonRows rows={2} />}
-                {view && <RunDetail run={view} live={false} />}
+        <AsyncBody loading={loading} data={runs} error={error} offline={offline} onRetry={onRetry} rows={3} empty={{ label: 'no runs yet' }}>
+          {(list) =>
+            list.map((r) => (
+              <div key={r.id} className="border-b border-border-subtle">
+                <button className="w-full px-3 py-2 flex items-center gap-2 text-left min-w-0" onClick={() => void openRun(r)}>
+                  <Badge tone={r.status === 'done' ? 'green' : r.status === 'running' ? 'amber' : 'red'}>{r.kind.toUpperCase()}</Badge>
+                  <span className="text-sm text-text-primary truncate">{r.question}</span>
+                  <span className="text-xs text-text-secondary ml-auto shrink-0 tabular">
+                    {new Date(r.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {r.costUsd != null ? ` · $${r.costUsd.toFixed(2)}` : ''}
+                  </span>
+                </button>
+                {openId === r.id && (
+                  <div className="px-3 pb-3">
+                    {err && <ErrorBlock message={err} />}
+                    {!view && !err && <SkeletonRows rows={2} />}
+                    {view && <RunDetail run={view} live={false} />}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+            ))
+          }
+        </AsyncBody>
       </PanelBody>
     </Panel>
   )

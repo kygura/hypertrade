@@ -277,7 +277,8 @@ export async function buildBrief(deps: TerminalDeps, o: BriefOptions): Promise<B
     deps.store.listAlerts({ since, route: "batch", limit: 100 }),
     deps.store.listCatalysts(now, new Date(now.getTime() + CATALYST_AHEAD_MS)),
   ]);
-  const alerts = batched.filter((a) => focus.has(a.asset) && a.materiality >= deps.thresholds.digestMateriality);
+  // Narrative alerts name a basket, not a coin, so focus cannot filter them; only the materiality floor applies.
+  const alerts = batched.filter((a) => (a.kind === "narrative" || focus.has(a.asset)) && a.materiality >= deps.thresholds.digestMateriality);
   const catalysts = scheduled.map((e) => toCatalyst(e, focus)).filter((c) => c.exposed.length > 0);
   const silent = items.length === 0 && alerts.length === 0;
 

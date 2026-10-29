@@ -1,103 +1,33 @@
-import { ApiError, NetworkError } from './api'
-import { splitFrames } from './analyst'
+import type {
+  AccountState,
+  DeskEvent,
+  ExitProposal,
+  OperatorOrderRecord,
+  Position,
+  ProposalRecord as ServerProposalRecord,
+  ProposalStatus,
+  Side,
+  Sizing,
+  TradeProposal,
+  Verdict,
+} from '../../server/desk/types'
+import type { AlertRow as ServerAlertRow, RunRow as ServerRunRow } from '../../server/desk/store'
+import { streamSse } from './sse'
+import { fmtUsd, fmtPx } from './format'
 
 // Client for /api/desk (docs/SPEC.md "Desk"). Runs stream over POST + SSE like
-// the analyst; everything else is plain JSON through api.ts.
+// the analyst; everything else is plain JSON through api.ts. Wire types are the
+// server's own (type-only import, erased at build), as in lib/lab.ts.
 
-export type Side = 'long' | 'short'
-export type ProposalStatus = 'pending' | 'rejected' | 'blocked' | 'executed' | 'failed' | 'expired'
+export type { AccountState, DeskEvent, ExitProposal, OperatorOrderRecord, Position, ProposalStatus, Side, Sizing, TradeProposal, Verdict }
 
-export interface Sizing {
-  markPx: number
-  size: number
-  notionalUsd: number
-  riskUsd: number
-  stopDistPct: number
-  /** Null when the order had no target. */
-  rr: number | null
-  feeUsd: number
-  grossLeverageAfter: number
-}
-
-export interface Verdict {
-  approved: boolean
-  reasons: string[]
-  warnings: string[]
-  sizing?: Sizing
-  equityUsd: number
-  checkedAt: string
-}
-
-export interface TradeProposal {
-  coin: string
-  side: Side
-  setup: string
-  thesis: string
-  horizon: string
-  confidence: string
-  stop: number
-  target: number
-  riskPct: number
-  entryLimit?: number
-  invalidation: string
-  evidence: Array<{ source: string; point: string }>
-}
-
-export interface ExitProposal {
-  coin: string
-  fraction: number
-  reason: string
-}
-
-/** An order the operator confirmed through the copilot (no thesis or confidence). */
-export interface OperatorOrderRecord {
-  coin: string
-  side: Side
-  stop: number
-  target?: number
-  riskPct?: number
-  entryLimit?: number
-  leverage?: number
-  notionalUsd?: number
-  source: 'copilot'
-  resolvedRiskPct: number
-}
-
-export interface ProposalRecord {
-  id: string
-  runId: string | null
-  kind: 'open' | 'exit'
-  status: ProposalStatus
-  venue: string
-  proposal: TradeProposal | ExitProposal | OperatorOrderRecord
-  verdict: Verdict
+/** Server record with the field the wire narrows: `execution` is `unknown` server-side. */
+export type ProposalRecord = Omit<ServerProposalRecord, 'execution'> & {
   execution: { ok: boolean; fills: Array<{ side: string; size: number; px: number; fee: number; pnl: number }>; error?: string } | null
-  decidedBy: string | null
-  decidedAt: string | null
-  expiresAt: string | null
-  createdAt: string
 }
-
-export interface Position {
-  coin: string
-  side: Side
-  size: number
-  entryPx: number
-  markPx: number
-  stopPx: number | null
-  tpPx: number | null
-  unrealizedPnl: number
-  notionalUsd: number
-}
-
-export interface AccountState {
-  venue: string
-  equityUsd: number
-  dayPnlUsd: number
-  positions: Position[]
-  available: boolean
-  note?: string
-}
+export type RunRow = Omit<ServerRunRow, 'trigger' | 'usage'>
+/** Rows from GET /desk/alerts always carry their id. */
+export type AlertRow = Omit<ServerAlertRow, 'id' | 'runId'> & { id: number }
 
 export interface DeskStatus {
   configured: boolean
@@ -126,41 +56,6 @@ export interface Portfolio {
   fills: Array<{ id: number; ts: string; coin: string; side: string; size: number; px: number; fee: number; pnl: number; reason: string }>
   startingEquity: number
 }
-
-export interface RunRow {
-  id: string
-  kind: 'ask' | 'cycle'
-  question: string
-  status: 'running' | 'done' | 'error' | 'timeout'
-  answer: string | null
-  costUsd: number | null
-  error: string | null
-  startedAt: string
-  finishedAt: string | null
-}
-
-export interface AlertRow {
-  id: number
-  ts: string
-  level: 'info' | 'warn' | 'critical'
-  title: string
-  body: string
-  channels: string[]
-}
-
-export type DeskEvent =
-  | { type: 'run_start'; runId: string; kind: 'ask' | 'cycle'; question: string }
-  | { type: 'agent_start'; agent: string; role: string; parent: string | null; task: string; model: string }
-  | { type: 'agent_done'; agent: string; stop: string; rounds: number; report?: string }
-  | { type: 'text'; agent: string; delta: string }
-  | { type: 'reasoning'; agent: string; delta: string }
-  | { type: 'tool_call'; agent: string; id: string; name: string; input: unknown; server: boolean }
-  | { type: 'tool_result'; agent: string; id: string; name: string; ok: boolean; summary: string }
-  | { type: 'citations'; citations: Array<{ url: string; title: string | null }> }
-  | { type: 'proposal'; agent: string; id: string; kind: 'open' | 'exit'; status: ProposalStatus; coin: string; summary: string }
-  | { type: 'alert'; agent: string; level: string; title: string }
-  | { type: 'error'; agent: string; error: string }
-  | { type: 'done'; runId: string; stop: string; usage: { input_tokens: number; output_tokens: number }; costUsd: number | null }
 
 export interface AgentView {
   id: string
@@ -222,60 +117,8 @@ export function reduceRun(v: RunView, e: DeskEvent): RunView {
   }
 }
 
-async function failFrom(res: Response): Promise<never> {
-  if (res.status === 401) {
-    sessionStorage.setItem('ht_redirect_to', location.pathname)
-    location.href = '/login'
-    throw new ApiError('unauthorized', 401)
-  }
-  const body = (await res.json().catch(() => null)) as { error?: string } | null
-  throw new ApiError(body?.error ?? res.statusText, res.status)
-}
-
 /** POSTs to a streaming desk endpoint (/desk/ask, /desk/review) and feeds each event to onEvent. */
-export async function streamDesk(path: '/desk/ask' | '/desk/review', body: unknown, onEvent: (e: DeskEvent) => void, signal?: AbortSignal): Promise<void> {
-  let res: Response
-  try {
-    res = await fetch(`/api${path}`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify(body ?? {}),
-      signal,
-    })
-  } catch (err) {
-    if (signal?.aborted) return
-    throw new NetworkError(err instanceof Error ? err.message : 'network unreachable')
-  }
-  if (!res.ok || !res.body) return failFrom(res)
-  const reader = res.body.getReader()
-  const decoder = new TextDecoder()
-  let buf = ''
-  try {
-    for (;;) {
-      const { value, done } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const [frames, rest] = splitFrames(buf)
-      buf = rest
-      for (const f of frames) {
-        try {
-          onEvent({ type: f.event, ...JSON.parse(f.data) } as DeskEvent)
-        } catch {
-          // skip a malformed frame
-        }
-      }
-    }
-  } catch (err) {
-    if (signal?.aborted) return
-    throw new NetworkError(err instanceof Error ? err.message : 'stream interrupted')
-  }
-}
+export const streamDesk = (path: '/desk/ask' | '/desk/review', body: unknown, onEvent: (e: DeskEvent) => void, signal?: AbortSignal): Promise<void> =>
+  streamSse<DeskEvent>(`/api${path}`, body ?? {}, onEvent, signal)
 
-export const fmtUsd = (x: number) => `${x < 0 ? '−' : ''}$${Math.abs(x).toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
-
-export function fmtPx(x: number | null | undefined): string {
-  if (x == null || !Number.isFinite(x)) return '—'
-  const a = Math.abs(x)
-  return a >= 1000 ? x.toLocaleString(undefined, { maximumFractionDigits: 1 }) : a >= 1 ? x.toFixed(3) : x.toPrecision(4)
-}
+export { fmtUsd, fmtPx }

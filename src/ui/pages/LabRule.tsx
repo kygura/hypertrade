@@ -10,7 +10,7 @@ import { SensitivityGrid } from '../components/lab/SensitivityGrid'
 import { LatestValuesRow } from '../components/lab/LatestValuesRow'
 import { SaveToCatalogueForm } from '../components/lab/SaveToCatalogueForm'
 import { RemoveRuleDialog } from '../components/lab/RemoveRuleDialog'
-import { DataTo, LabFooter } from '../components/lab/common'
+import { DataTo, LabFooter, StabValue } from '../components/lab/common'
 import {
   benchmarkLabel,
   dateIso,
@@ -21,7 +21,6 @@ import {
   fmtSigned,
   isStaleDate,
   lab,
-  stabWord,
   useLab,
   type CatalogueEntry,
   type CatalogueListEntry,
@@ -161,7 +160,6 @@ export function LabRule() {
   const equity = evaluation.data?.equity ?? null
   const maxDd = equity ? computeDrawdown(equity.map((p) => ({ ts: p.t, value: p.strategy }))).reduce((m, p) => Math.min(m, p.value), 0) : 0
   const sens = fresh?.sensitivity ?? (evaluating ? null : (base?.sensitivity ?? null))
-  const stab = sens ? stabWord(sens.stability) : null
   const slip = slippageBps ?? 10
   const live = listed?.live ?? null
 
@@ -261,9 +259,9 @@ export function LabRule() {
 
           <Panel className="order-5 lg:order-none">
             <PanelHeader title="SENSITIVITY">
-              {sens && stab ? (
+              {sens ? (
                 <span className="text-xs tabular">
-                  STABILITY {sens.stability.toFixed(2)} <span className={stab.tone}>{stab.word}</span>
+                  STABILITY <StabValue stability={sens.stability} />
                 </span>
               ) : null}
             </PanelHeader>

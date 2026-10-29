@@ -5,7 +5,7 @@ import type { Notifier } from "../desk/notify.js";
 import type { Conversation, LLMProvider, StepResult } from "../llm/provider.js";
 import { formatIntel, sendIntel } from "./notify.js";
 import { MemoryIntelStore, type NewAlert } from "./store.js";
-import { briefAssets, buildBrief, FALLBACK_BASELINE_MS, itemLine, loadThresholds, runIntelBrief, type TerminalDeps } from "./terminal.js";
+import { briefAssets, briefLines, buildBrief, FALLBACK_BASELINE_MS, itemLine, loadThresholds, runIntelBrief, type TerminalDeps } from "./terminal.js";
 
 const H = 3_600_000;
 const NOW = Date.UTC(2026, 9, 13, 12);
@@ -248,6 +248,22 @@ describe("buildBrief", () => {
     expect(brief).toMatchObject({ silent: false, items: [] });
     expect(brief.alerts).toHaveLength(1);
     expect(h.provider.steps).toBe(1);
+  });
+
+  test("a batched narrative alert joins the brief although its asset is a basket id, still under the materiality floor", async () => {
+    const h = harness({ price: (b) => b, replies: [{ emit: { lines: [] } }] });
+    await h.init();
+    h.clock.t = NOW - H;
+    const narrative = (ref: string, materiality: number): NewAlert => ({ ...alert("ai", "batch"), kind: "narrative", ref, materiality, eventType: "stage_crowded", title: "AI: emerging → crowded", line: { tag: "observed", text: "AI: emerging → crowded · 7d vs BTC +4.10 pp, OI 7d +12.00 %, funding z 2.30", source: { label: "snapshot" }, ts: iso(NOW - H) } });
+    await h.store.insertAlert(narrative("stage:ai:crowded", 1));
+    await h.store.insertAlert(narrative("stage:ai:faint", 0.05));
+    await h.store.insertAlert(alert("DOGE", "batch")); // not held or watched: still dropped
+    h.clock.t = NOW;
+    const brief = await buildBrief(h.deps, { surface: "ui" });
+    expect(brief.silent).toBe(false);
+    expect(brief.alerts.map((a) => a.ref)).toEqual(["stage:ai:crowded"]);
+    expect(briefAssets(brief)).toEqual(["ai"]);
+    expect(briefLines(brief)).toEqual([brief.alerts[0]!.line]);
   });
 
   test("brief hook: an alert-only brief still rechecks — assets are items ∪ alerts", async () => {

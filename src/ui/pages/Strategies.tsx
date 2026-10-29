@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { DataTable, EmptyBlock, ErrorBlock, SkeletonRows, type Column } from '../components'
+import { AsyncBody, DataTable, EmptyBlock, ErrorBlock, SkeletonRows, type Column } from '../components'
 import { engine, errorMessage, useEngine } from '../lib/engine'
 import type { DecisionRecord, StrategyStatus } from '../../shared/strategy-protocol'
 import { EngineTabs } from '../components/strategy/EngineTabs'
 import { EngineOffline, OfflineStrip } from '../components/strategy/EngineOffline'
-import { ACTION_LABEL, actionClass, fmtAge, fmtTs } from '../components/strategy/format'
+import { fmtAge, fmtTs } from '../components/strategy/format'
+import { summarizeDecision } from '../components/strategy/summarize'
 
 // /strategies — manifests × configs. Columns (docs/design/README.md §4.4 drop order):
 // P1 ID, ENABLED · P2 VENUE · P3 CADENCE, LAST RUN · P4 LAST ACTION.
@@ -13,17 +14,6 @@ import { ACTION_LABEL, actionClass, fmtAge, fmtTs } from '../components/strategy
 // the drill-in, so the toggle stops propagation). LAST ACTION is derived
 // from the newest decision per strategy — StrategyStatus carries only
 // last_decision_id, so the page also polls /decisions.
-
-function lastActionOf(d: DecisionRecord | undefined, fallback?: string | null): { text: string; className: string } {
-  // No decision in the polled window (older, or the core restarted with
-  // history): the status's own last_action still says what happened.
-  if (!d) return fallback ? { text: fallback, className: 'text-text-muted' } : { text: '—', className: 'text-text-secondary' }
-  if (d.error) return { text: 'ERROR', className: 'text-red-text' }
-  const first = d.intents[0]
-  if (!first) return { text: 'HOLD', className: 'text-text-muted' }
-  const more = d.intents.length > 1 ? ` +${d.intents.length - 1}` : ''
-  return { text: `${ACTION_LABEL[first.action]} ${first.market}${more}${d.dry_run ? ' (DRY)' : ''}`, className: actionClass(first.action) }
-}
 
 export function Strategies() {
   const navigate = useNavigate()
@@ -62,10 +52,10 @@ export function Strategies() {
       render: (s) => (
         <div className="flex flex-col gap-0.5 py-1 min-w-0">
           <span className="text-text-primary">{s.config.id}</span>
-          <span className="text-[10px] text-text-secondary truncate">
+          <span className="text-xs text-text-secondary truncate">
             {s.manifest.name} · v{s.manifest.version}
           </span>
-          {s.last_error && <span className="text-[10px] text-red-text truncate">{s.last_error}</span>}
+          {s.last_error && <span className="text-xs text-red-text truncate">{s.last_error}</span>}
         </div>
       ),
     },
@@ -88,7 +78,7 @@ export function Strategies() {
               void toggle(s)
             }}
             onKeyDown={(e) => e.stopPropagation()}
-            className={`h-[var(--control-sm)] min-w-[5ch] px-2 text-[10px] font-mono uppercase tracking-wider border border-border ${
+            className={`h-[var(--control-sm)] min-w-[5ch] px-2 text-xs font-mono uppercase tracking-wider border border-border ${
               on ? 'text-green bg-green-bg' : 'text-text-secondary'
             } ${busy ? 'pulse-label' : ''}`}
           >
@@ -127,7 +117,7 @@ export function Strategies() {
       priority: 4,
       align: 'right',
       render: (s) => {
-        const a = lastActionOf(latestByStrategy.get(s.config.id), s.last_action)
+        const a = summarizeDecision(latestByStrategy.get(s.config.id), { fallback: s.last_action, dry: true })
         return <span className={`uppercase ${a.className}`}>{a.text}</span>
       },
     },
@@ -142,31 +132,35 @@ export function Strategies() {
         {offline && data && <OfflineStrip reason={offline} fetchedAt={fetchedAt} />}
         <div className="panel-header">
           <span className="panel-title">STRATEGIES</span>
-          {data && <span className="text-[10px] text-text-secondary tabular">{data.length} CONFIGURED</span>}
+          {data && <span className="text-xs text-text-secondary tabular">{data.length} CONFIGURED</span>}
         </div>
         <div className="panel-body">
           {toggleError && <ErrorBlock message={toggleError} />}
-          {loading && !data && (
-            <table className="w-full">
-              <tbody>
-                <SkeletonRows rows={3} colSpan={columns.length} />
-              </tbody>
-            </table>
-          )}
-          {!loading && offline && !data && <EngineOffline reason={offline} onRetry={refetch} />}
-          {!loading && !offline && error && !data && <ErrorBlock message={error} onRetry={refetch} />}
-          {data && (
-            <>
-              {error && <ErrorBlock message={error} onRetry={refetch} />}
+          <AsyncBody
+            loading={loading}
+            data={data}
+            error={error}
+            offline={data ? null : offline}
+            skeleton={
+              <table className="w-full">
+                <tbody>
+                  <SkeletonRows rows={3} colSpan={columns.length} />
+                </tbody>
+              </table>
+            }
+            renderOffline={(reason) => <EngineOffline reason={reason ?? ''} onRetry={refetch} />}
+            onRetry={refetch}
+          >
+            {(rows) => (
               <DataTable
                 columns={columns}
-                rows={data}
+                rows={rows}
                 rowKey={(s) => s.config.id}
                 onRowClick={(s) => navigate(`/strategies/${s.config.id}`)}
                 emptyLabel={<EmptyBlock label="no strategies registered on the core" />}
               />
-            </>
-          )}
+            )}
+          </AsyncBody>
         </div>
       </div>
     </div>

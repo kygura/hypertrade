@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { buildCatalog } from "../llm/catalog.js";
+import { CLAUDE_PRICES } from "../llm/prices.js";
+import { providerError } from "../llm/providerError.js";
 import {
   DEFAULT_MODEL,
   isProviderId,
@@ -42,18 +44,10 @@ export type ProviderRole = "pm" | "specialist";
 export type ProviderFactory = (role: ProviderRole) => LLMProvider | null;
 
 /** $/MTok (input, output) for cost estimates; unknown models report null. */
-const PRICES: Record<string, [number, number]> = {
-  "claude-fable-5-1": [10, 50],
-  "claude-opus-5-5": [4, 20],
-  "claude-opus-5": [5, 25],
-  "claude-sonnet-5-5": [2, 10],
-  "claude-haiku-4-5": [1, 5],
-};
-
 export function estimateCost(byModel: Map<string, Usage>): number | null {
   let total = 0;
   for (const [model, u] of byModel) {
-    const p = PRICES[model];
+    const p = CLAUDE_PRICES[model];
     if (!p) return null;
     total += (u.input_tokens * p[0] + u.output_tokens * p[1]) / 1e6;
   }
@@ -216,20 +210,10 @@ export async function runAgent(spec: AgentSpec, task: string, st: RunState): Pro
     }
   } catch (err) {
     stop = spec.signal.aborted ? "timeout" : "error";
-    st.emit({ type: "error", agent: spec.id, error: spec.signal.aborted ? "out of time" : providerError(err) });
+    st.emit({ type: "error", agent: spec.id, error: spec.signal.aborted ? "out of time" : providerError(err, "model provider") });
   }
   st.emit({ type: "agent_done", agent: spec.id, stop, rounds, report: text.slice(0, 8000) });
   return { text, stop, rounds };
-}
-
-function providerError(err: unknown): string {
-  if (err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number") {
-    const status = (err as { status: number }).status;
-    if (status === 401 || status === 403) return "model provider rejected the credentials";
-    if (status === 429) return "model provider is rate limiting";
-    return `model provider error (HTTP ${status})`;
-  }
-  return `model provider error: ${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`;
 }
 
 const toolsNamed = (names: string[]) => ALL_READ_TOOLS.filter((t) => names.includes(t.spec.name));

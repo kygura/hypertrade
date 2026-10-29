@@ -21,16 +21,16 @@ function QuestionBlock({ id, question, answer }: { id: string; question: Questio
     <div className="flex flex-col gap-2 py-3 border-b border-border-subtle last:border-b-0">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <span className="label">{id}</span>
-        <span className="text-[10px] uppercase tracking-wider text-text-secondary">{answer?.type ?? question?.type ?? '?'}</span>
+        <span className="text-xs uppercase tracking-wider text-text-secondary">{answer?.type ?? question?.type ?? '?'}</span>
         {confidence != null && (
-          <span className="ml-auto text-[10px] tabular text-text-secondary" title="model confidence">
+          <span className="ml-auto text-xs tabular text-text-secondary" title="model confidence">
             CONF {fmtProb(confidence)}
           </span>
         )}
       </div>
-      <p className="text-[12px] text-text-muted">{instructions}</p>
+      <p className="text-md text-text-muted">{instructions}</p>
 
-      {!answer && <span className="text-[11px] uppercase tracking-wider text-text-secondary">no answer</span>}
+      {!answer && <span className="text-sm uppercase tracking-wider text-text-secondary">no answer</span>}
 
       {answer?.type === 'choice' && (
         <div className="flex flex-col gap-1">
@@ -64,7 +64,7 @@ function QuestionBlock({ id, question, answer }: { id: string; question: Questio
 
 export function DecisionMeta({ decision, linkStrategy = true }: { decision: DecisionRecord; linkStrategy?: boolean }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] tabular text-text-secondary">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular text-text-secondary">
       <span className="text-text-muted">{fmtTsSec(decision.ts)}</span>
       {linkStrategy ? (
         <Link to={`/strategies/${decision.strategy_id}`} className="text-text-primary hover:underline">
@@ -110,11 +110,11 @@ export function DecisionView({
       <div className="panel">
         <div className="panel-header">
           <span className="panel-title">QUESTIONS</span>
-          <span className="text-[10px] text-text-secondary tabular">{questionIds.length}</span>
+          <span className="text-xs text-text-secondary tabular">{questionIds.length}</span>
         </div>
         <div className="panel-body px-3">
           {questionIds.length === 0 && (
-            <div className="py-6 text-center text-[11px] uppercase tracking-wider text-text-secondary">no questions</div>
+            <div className="py-6 text-center text-sm uppercase tracking-wider text-text-secondary">no questions</div>
           )}
           {questionIds.map((id) => (
             <QuestionBlock key={id} id={id} question={decision.questions[id]} answer={decision.answers[id]} />
@@ -125,11 +125,11 @@ export function DecisionView({
       <div className="panel">
         <div className="panel-header">
           <span className="panel-title">INTENTS</span>
-          <span className="text-[10px] text-text-secondary tabular">{decision.intents.length}</span>
+          <span className="text-xs text-text-secondary tabular">{decision.intents.length}</span>
         </div>
         <div className="panel-body px-3">
           {decision.intents.length === 0 && (
-            <div className="py-6 text-center text-[11px] uppercase tracking-wider text-text-secondary">
+            <div className="py-6 text-center text-sm uppercase tracking-wider text-text-secondary">
               {decision.error ? 'no intents — decision errored' : 'no intents — hold'}
             </div>
           )}
@@ -152,7 +152,7 @@ export function DecisionView({
           <summary className="panel-header cursor-pointer select-none">
             <span className="panel-title">STATE SENT TO JEV</span>
           </summary>
-          <pre className="panel-body p-3 text-[10px] text-text-muted whitespace-pre-wrap break-all">
+          <pre className="panel-body p-3 text-xs text-text-muted whitespace-pre-wrap break-all">
             {JSON.stringify(decision.state, null, 2)}
           </pre>
         </details>

@@ -151,7 +151,7 @@ export function PositionForm({
     <form
       ref={ref}
       aria-label={initial ? `edit ${initial.asset} position` : 'add position'}
-      className="flex flex-col gap-3 p-3 border-t border-border-subtle scroll-mt-[100px]"
+      className="flex flex-col gap-3 p-3 border-t border-border-subtle scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)]"
       onKeyDown={confirm ? undefined : onKeyDown}
       onSubmit={(e) => {
         e.preventDefault()
@@ -206,7 +206,7 @@ export function PositionForm({
           <input value={d.venue} onChange={set('venue')} maxLength={40} />
         </Field>
       </div>
-      {invalid && <span className="text-[11px] text-red-text">{invalid}</span>}
+      {invalid && <span className="text-sm text-red-text">{invalid}</span>}
       {error && <ErrorBlock message={error} />}
       <div className="flex flex-wrap gap-2">
         <Button tier="neutral" type="submit" disabled={busy}>

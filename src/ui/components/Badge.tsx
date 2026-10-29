@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 // MomentumBadge.tsx). Color is never the sole signal: StatusDot always
 // ships with a text label from its caller.
 
-export type Tone = 'green' | 'red' | 'amber' | 'info' | 'gray'
+export type Tone = 'green' | 'red' | 'amber' | 'info' | 'gray' | 'neutral'
 
 const TONE_TEXT: Record<Tone, string> = {
   green: 'text-green',
@@ -13,6 +13,7 @@ const TONE_TEXT: Record<Tone, string> = {
   amber: 'text-amber',
   info: 'text-info',
   gray: 'text-text-secondary',
+  neutral: 'text-text-primary',
 }
 
 const TONE_BG: Record<Tone, string> = {
@@ -21,6 +22,7 @@ const TONE_BG: Record<Tone, string> = {
   amber: 'bg-amber-bg',
   info: 'bg-info-bg',
   gray: 'bg-elevated',
+  neutral: 'bg-elevated',
 }
 
 export interface BadgeProps {
@@ -30,7 +32,7 @@ export interface BadgeProps {
 }
 
 export function Badge({ tone, children, className = '' }: BadgeProps) {
-  const base = 'badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] border rounded-badge font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)] font-[number:var(--control-weight)]'
+  const base = 'badge inline-flex items-center gap-1 px-1.5 py-0.5 text-xs border rounded-badge font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)] font-[number:var(--control-weight)]'
   const look = `badge--${tone} border-transparent ${TONE_TEXT[tone]} ${TONE_BG[tone]}`
   return <span className={`${base} ${look} ${className}`}>{children}</span>
 }

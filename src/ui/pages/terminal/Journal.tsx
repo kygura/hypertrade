@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { Panel, PanelHeader, Button } from '../../components'
-import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../../components/state'
+import { AsyncBody, EmptyBlock } from '../../components/state'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { JournalBar, type JournalDays } from '../../components/intel/JournalBar'
 import { ReportCard } from '../../components/intel/ReportCard'
@@ -10,6 +10,7 @@ import { TradeDetail } from '../../components/intel/TradeDetail'
 import { isDesktop } from '../../components/intel/format'
 import { TradesTable, matchesTag, tradeAnchorId, UNTAGGED_TAG } from '../../components/intel/TradesTable'
 import { useAction } from '../../components/intel/useAction'
+import { useQueryPatch } from '../../lib/hooks'
 import { intel, useIntel } from '../../lib/intel'
 import type { JournalResponse, TradeNote } from '../../../shared/intel'
 
@@ -38,7 +39,8 @@ function writeDays(d: JournalDays): void {
 }
 
 export function Journal() {
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
+  const patchParams = useQueryPatch()
   const selectedId = params.get('trade')
   const tagFilter = params.get('tag')
   const [days, setDaysState] = useState<JournalDays>(readDays)
@@ -61,15 +63,6 @@ export function Journal() {
     writeDays(d)
   }
 
-  const patchParams = (patch: Record<string, string | null>) =>
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        for (const [k, v] of Object.entries(patch)) v ? next.set(k, v) : next.delete(k)
-        return next
-      },
-      { replace: true },
-    )
 
   // Scroll to a row picked from the report once it is rendered (after a window change refetch too).
   useEffect(() => {
@@ -125,28 +118,11 @@ export function Journal() {
     journal.setData(next)
   }
 
-  // ── trades panel body (DESIGN-terminal §10 "Journal trades") ──
-  let tradesBody
-  if (journal.loading && !journal.data) tradesBody = <SkeletonRows rows={4} />
-  else if (journal.offline && !journal.data) tradesBody = <OfflineBlock onRetry={journal.refetch} />
-  else if (journal.error && !journal.data) tradesBody = <ErrorBlock message={journal.error} onRetry={journal.refetch} />
-  else if (trades.length === 0)
-    tradesBody = <EmptyBlock label={`no closed trades in ${days} days`} />
-  else tradesBody = <TradesTable trades={trades} selectedId={selectedId} tagFilter={tagFilter} onSelect={onSelectRow} />
-
   // ── tag stats body ──
-  let statsBody
-  if (journal.loading && !journal.data) statsBody = <SkeletonRows />
-  else if (journal.offline && !journal.data) statsBody = <OfflineBlock onRetry={journal.refetch} />
-  else if (journal.error && !journal.data) statsBody = <ErrorBlock message={journal.error} onRetry={journal.refetch} />
-  else if (stats.every((s) => s.tag === UNTAGGED_TAG))
-    statsBody = (
-      <EmptyBlock
-        label="no tagged trades — TAG UNTAGGED"
-        action={untagged > 0 && !tag.busy ? { label: `TAG UNTAGGED · ${untagged}`, onClick: () => void onTag() } : undefined}
-      />
-    )
-  else statsBody = <TagStatsTable stats={stats} onTag={onTagRow} selectedTag={tagFilter} />
+  const statsEmpty = {
+    label: 'no tagged trades — TAG UNTAGGED',
+    action: untagged > 0 && !tag.busy ? { label: `TAG UNTAGGED · ${untagged}`, onClick: () => void onTag() } : undefined,
+  }
 
   return (
     <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col">
@@ -184,12 +160,13 @@ export function Journal() {
           <PanelHeader title="BY TAG">
             <span className="label">RANKED BY EXPECTANCY</span>
           </PanelHeader>
-          {statsBody}
+          <AsyncBody {...journal} offline={!!journal.offline} staleError={false} empty={statsEmpty} isEmpty={() => stats.every((s) => s.tag === UNTAGGED_TAG)} onRetry={journal.refetch}>
+            {() => <TagStatsTable stats={stats} onTag={onTagRow} selectedTag={tagFilter} />}
+          </AsyncBody>
         </Panel>
 
-        <Panel className="lg:col-span-8 min-w-0 scroll-mt-[100px]" id="journal-trades">
+        <Panel className="lg:col-span-8 min-w-0 scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)]" id="journal-trades">
           <PanelHeader title="TRADES" />
-          {journal.error && journal.data && <ErrorBlock message={journal.error} onRetry={journal.refetch} />}
           {tagFilter && (
             <div className="px-3 py-2 border-b border-border-subtle">
               <Button tier="ghost" onClick={() => patchParams({ tag: null })} aria-label={`clear tag filter ${tagFilter}`}>
@@ -197,10 +174,19 @@ export function Journal() {
               </Button>
             </div>
           )}
-          {tradesBody}
+          <AsyncBody
+            {...journal}
+            offline={!!journal.offline}
+            rows={4}
+            empty={{ label: `no closed trades in ${days} days` }}
+            isEmpty={() => trades.length === 0}
+            onRetry={journal.refetch}
+          >
+            {() => <TradesTable trades={trades} selectedId={selectedId} tagFilter={tagFilter} onSelect={onSelectRow} />}
+          </AsyncBody>
         </Panel>
 
-        <div ref={detailRef} className="lg:col-span-4 min-w-0 lg:sticky lg:top-[92px] scroll-mt-[100px]">
+        <div ref={detailRef} className="lg:col-span-4 min-w-0 lg:sticky lg:top-[calc(var(--topbar-h)+var(--subnav-h))] scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+8px)]">
           <Panel>
             <PanelHeader title="TRADE" />
             {selected ? <TradeDetail trade={selected} onNoteSaved={onNoteSaved} /> : <EmptyBlock label="select a trade" />}

@@ -1,50 +1,17 @@
+import { fmtTs, fmtTsSec, fmtDur, fmtAge, fmtUsdSigned } from '../../lib/format'
 import type { IntentAction, VerdictStatus } from '../../../shared/strategy-protocol'
 
 // Formatting helpers shared by the strategy console. Timestamps print in UTC
 // (`2026-09-23 08:05 UTC`) like the rest of the app's routine stamps.
 
-export function fmtTs(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
-}
-
-export function fmtTsSec(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
-}
-
-/** A duration in seconds as fmtAge's words without `AGO`: `42S`, `3M`, `5H`, `2D`. */
-export function fmtDur(sec: number): string {
-  const s = Math.max(0, Math.floor(sec))
-  if (s < 60) return `${s}S`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}M`
-  const h = Math.floor(m / 60)
-  if (h < 48) return `${h}H`
-  return `${Math.floor(h / 24)}D`
-}
-
-export function fmtAge(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const ms = Date.now() - new Date(iso).getTime()
-  if (Number.isNaN(ms)) return iso
-  return `${fmtDur(ms / 1000)} AGO`
-}
+export { fmtTs, fmtTsSec, fmtDur, fmtAge }
 
 export function fmtProb(p: number | null | undefined): string {
   if (p == null || Number.isNaN(p)) return '—'
   return p.toFixed(2)
 }
 
-export function fmtUsdSigned(n: number | null | undefined): string {
-  if (n == null) return '—'
-  const sign = n < 0 ? '−' : n > 0 ? '+' : ''
-  return `${sign}$${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
-}
+export { fmtUsdSigned }
 
 export const ACTION_LABEL: Record<IntentAction, string> = {
   open_long: 'OPEN LONG',

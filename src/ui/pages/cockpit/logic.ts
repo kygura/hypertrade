@@ -1,4 +1,4 @@
-import { fmtDur } from '../../components/strategy/format'
+import { fmtDur, fmtSigned } from '../../lib/format'
 import {
   bucketBounds, PRE_DECISION_STATUSES, TERMINAL_STATUSES, type FeedRow, type LiqBucket, type LiqCell, type OpportunityStatus, type PlatformHealth,
 } from '../../../shared/platform'
@@ -57,7 +57,7 @@ export function edgeWord(row: Pick<FeedRow, 'netEdgeBps' | 'edgeBasis' | 'tradeT
 }
 
 /** `+38bp`, `−5.4%`: sign (typographic minus) + magnitude + unit. */
-export const fmtSigned = (n: number, unit: string, dp = 0) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(dp)}${unit}`
+export { fmtSigned }
 /** A fraction as a signed percent (0.021 → `+2.10%`). */
 export const fmtSignedPct = (frac: number, dp = 2) => fmtSigned(frac * 100, '%', dp)
 

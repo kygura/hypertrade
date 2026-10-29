@@ -89,9 +89,9 @@ export function MindshareGrid({
                 : undefined,
             }}
           >
-            <span className="text-[12px] uppercase text-text-primary line-clamp-2">{s.label}</span>
+            <span className="text-md uppercase text-text-primary line-clamp-2">{s.label}</span>
             <span className="flex items-end justify-between gap-1">
-              <span className="text-[10px] text-text-secondary tabular">
+              <span className="text-xs text-text-secondary tabular">
                 MS {s.mindshare_score.toFixed(2)}
                 {s.social_share_24h != null && (
                   <span title="Share of crypto-social mentions, trailing 24h (Elfa). Measured, unlike MS, which is the routine's judgment.">

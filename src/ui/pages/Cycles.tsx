@@ -49,7 +49,7 @@ export function Cycles() {
         {loading && (
           <div className="flex flex-col gap-2">
             <SkeletonRows />
-            <span className="text-[10px] text-text-secondary text-center pulse-label">loading {coin} history since {SINCE[coin]}…</span>
+            <span className="text-xs text-text-secondary text-center pulse-label">loading {coin} history since {SINCE[coin]}…</span>
           </div>
         )}
         {!loading && offline && <OfflineBlock onRetry={refetch} />}
@@ -72,7 +72,7 @@ export function Cycles() {
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)] flex flex-col gap-3 lg:grid lg:grid-cols-12">
       <Panel className="lg:col-span-12">
         <PanelHeader title={`NEXT ${shownCoin} BULL RUN · ESTIMATE`}>
-          <span className={`hidden md:inline text-[10px] text-text-secondary tabular ${loading ? 'pulse-label' : ''}`}>as of {fmtDay(body.asOf)}</span>
+          <span className={`hidden md:inline text-xs text-text-secondary tabular ${loading ? 'pulse-label' : ''}`}>as of {fmtDay(body.asOf)}</span>
           {coinSwitch}
           <Segmented label="Run start" options={KIND_OPTIONS} value={kind} onChange={setKind} />
         </PanelHeader>
@@ -115,7 +115,7 @@ export function Cycles() {
       <Panel className="lg:col-span-12">
         <PanelHeader title="HIGHER HIGHS ON LOWER HEAT" />
         <PanelBody className="p-0">
-          <p className="px-3 pt-2 pb-1 text-[11px] text-text-secondary">
+          <p className="px-3 pt-2 pb-1 text-sm text-text-secondary">
             All-time-high legs (split by 20% pullbacks) whose peak printed on at least 0.05 less heat than the leg before, within one cycle. In past
             cycles these came late in the run: price still rising while the stretch behind it faded. A reading of what happened, not a signal.
           </p>
@@ -127,11 +127,11 @@ export function Cycles() {
         <PanelHeader title="PAST BULL RUNS" />
         <PanelBody className="p-0">
           <EpisodesTable episodes={forecast.episodes} kind={kind} />
-          <p className="px-3 py-2 text-[11px] text-text-secondary border-t border-border-subtle">
+          <p className="px-3 py-2 text-sm text-text-secondary border-t border-border-subtle">
             {forecast.episodes.length} runs is a small sample and the spread between methods is the honest error bar.
             {shallower && ' This bear market has bottomed shallower than every past one so far; a lower low would move the bear-low anchor, and the estimate with it, later.'}{' '}
             Halving dates are BTC's{shownCoin !== 'BTC' && `, used as the market's clock for ${shownCoin}`}; the next one is a block-time estimate.
-            {body.sources.coinmetrics ? ' Coin Metrics days are daily reference closes, so they draw as flat bars.' : ''} Not financial advice. History: {sources}.
+            {body.sources.coinmetrics ? ' Coin Metrics days are daily reference closes, so they draw as flat bars.' : ''} History: {sources}.
           </p>
         </PanelBody>
       </Panel>

@@ -19,7 +19,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
         </div>
       )
     return (
-      <div role="alert" className="flex flex-col items-start gap-2 p-4 text-[12px]">
+      <div role="alert" className="flex flex-col items-start gap-2 p-4 text-md">
         <span className="text-text-primary">This page crashed: {error.message}</span>
         <Button tier="neutral" onClick={() => this.setState((s) => ({ error: null, attempt: s.attempt + 1 }))}>
           RETRY

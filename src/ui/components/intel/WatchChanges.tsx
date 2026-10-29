@@ -3,7 +3,7 @@ import type { Watch } from '../../../shared/intel'
 import { Button } from '../Button'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { Panel, PanelBody, PanelHeader } from '../Panel'
-import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
+import { AsyncBody, ErrorBlock } from '../state'
 import { fmtTs } from '../strategy/format'
 import { intel, useIntel } from '../../lib/intel'
 import { errorMessage } from '../../lib/poll'
@@ -75,7 +75,7 @@ export function WatchChanges({ watch, onChecked, onDeleted }: { watch: Watch; on
           </Button>
         </div>
         {checkError && <ErrorBlock message={checkError} />}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-text-secondary">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-secondary">
           <span>{KIND_LABEL[watch.kind]}</span>
           {watch.kind === 'url' && /^https:\/\//i.test(watch.target) ? (
             <a href={watch.target} target="_blank" rel="noopener noreferrer" className="text-text-primary break-all hover:underline">
@@ -90,7 +90,7 @@ export function WatchChanges({ watch, onChecked, onDeleted }: { watch: Watch; on
           )}
           {watch.asset && <span className="src-tag">{watch.asset}</span>}
         </div>
-        <div className="text-[10px] tabular text-text-secondary">
+        <div className="text-xs tabular text-text-secondary">
           {watch.checkedAt ? (
             <>
               checked {fmtTs(watch.checkedAt)} · <ClaimAge ts={watch.checkedAt} thresholdHours={2} />
@@ -101,17 +101,15 @@ export function WatchChanges({ watch, onChecked, onDeleted }: { watch: Watch; on
         </div>
         {watch.error && <ErrorBlock message={watch.error} />}
         <div>
-          {changes.loading && !changes.data ? (
-            <SkeletonRows rows={3} />
-          ) : changes.offline && !changes.data ? (
-            <OfflineBlock message={changes.offline} onRetry={changes.refetch} />
-          ) : changes.error && !changes.data ? (
-            <ErrorBlock message={changes.error} onRetry={changes.refetch} />
-          ) : sorted.length === 0 ? (
-            <EmptyBlock label={`no changes since ${fmtTs(watch.createdAt)}`} />
-          ) : (
-            sorted.map((c) => <ChangeEntry key={c.id} change={c} />)
-          )}
+          <AsyncBody
+            {...changes}
+            staleError={false}
+            empty={{ label: `no changes since ${fmtTs(watch.createdAt)}` }}
+            isEmpty={() => sorted.length === 0}
+            onRetry={changes.refetch}
+          >
+            {() => sorted.map((c) => <ChangeEntry key={c.id} change={c} />)}
+          </AsyncBody>
         </div>
       </PanelBody>
       {confirmDelete && (

@@ -1,11 +1,9 @@
-import { useLocation, useNavigate } from 'react-router'
-import { Segmented, type SegmentOption } from '../Segmented'
+import { SectionTabs, type SectionTab } from '../SectionTabs'
 import { useLabData } from './LabData'
 
-// LabTabs — docs/design/README.md §10.9. One Segmented (md) under the shell, workflow
-// order SEARCH · RUNS · CATALOGUE · PULSE, path-based so each tab is a
-// bookmarkable page. Sticky under the 40px top bar; the row is 52px tall
-// (the lg search form sticks at 92px under it).
+// LabTabs — the RESEARCH family row (docs/design/README.md §10.9): workflow order
+// SEARCH · RUNS · CATALOGUE · PULSE · BRANCHES, a SectionTabs wrapper. Sticky under
+// the top bar; the row is --subnav-h tall (the lg search form sticks under both).
 
 export type LabTab = 'search' | 'runs' | 'catalogue' | 'pulse'
 
@@ -18,38 +16,28 @@ export function labTabOf(pathname: string): LabTab {
 }
 
 export function LabTabs() {
-  const { pathname } = useLocation()
-  const navigate = useNavigate()
   const { catalogue, pulse } = useLabData()
   const count = catalogue.data?.length
   const firing = pulse.data?.assets.some((a) => a.rules.some((r) => r.firing)) ?? false
+  const inLab = (tab: LabTab) => (p: string) => !p.startsWith('/branches') && labTabOf(p) === tab
 
-  const options: SegmentOption<LabTab>[] = [
-    { value: 'search', label: 'SEARCH', short: 'SRCH' },
-    { value: 'runs', label: 'RUNS', short: 'RUNS' },
-    { value: 'catalogue', label: count != null ? `CATALOGUE · ${count}` : 'CATALOGUE', short: 'CTLG' },
+  const tabs: SectionTab[] = [
+    { to: '/lab/search', label: 'SEARCH', short: 'SRCH', match: inLab('search') },
+    { to: '/lab/runs', label: 'RUNS', short: 'RUNS', match: inLab('runs') },
+    { to: '/lab/catalogue', label: count != null ? `CATALOGUE · ${count}` : 'CATALOGUE', short: 'CTLG', match: inLab('catalogue') },
     {
-      value: 'pulse',
+      to: '/lab/pulse',
       label: (
-        <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden="true" className={`inline-block w-1.5 h-1.5 ${firing ? 'bg-green' : 'bg-text-secondary/40'}`} />
+        <>
           PULSE
           {firing && <span className="sr-only"> · rule firing</span>}
-        </span>
+        </>
       ),
+      dot: firing,
       title: firing ? 'a catalogued rule is firing' : 'no catalogued rule is firing',
+      match: inLab('pulse'),
     },
+    { to: '/branches', label: 'BRANCHES', short: 'BRNCH', match: (p) => p === '/branches' || p.startsWith('/branches/') },
   ]
-
-  return (
-    <div className="sticky top-10 z-30 h-[52px] flex items-center bg-body">
-      <Segmented
-        label="lab sections"
-        size="md"
-        options={options}
-        value={labTabOf(pathname)}
-        onChange={(t) => navigate(`/lab/${t}`)}
-      />
-    </div>
-  )
+  return <SectionTabs label="research sections" tabs={tabs} />
 }

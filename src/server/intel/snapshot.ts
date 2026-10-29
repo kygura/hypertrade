@@ -5,7 +5,8 @@ import type { AssetCtx } from "../../shared/types.js";
 import type { IntelStore, StopRow } from "./store.js";
 
 // Snapshot rows (docs/SPEC.md § Intel I0.3). Written inside POST /api/cron/collect
-// from the same metaAndAssetCtxs fetch: held ∪ watched ∪ top-20 by OI. Book
+// from the same metaAndAssetCtxs fetch: held ∪ watched ∪ top-20 by OI ∪ the
+// routine's sector basket tokens (narratives.ts reads them as baskets). Book
 // depth and spread come from l2Book, fetched only for held ∪ watched (≤ 25
 // coins, under the shared HL weight guard). Raw ticks never reach the LLM.
 // The same collect records the watched HL account's stop triggers (taken
@@ -86,11 +87,11 @@ export function snapshotRow(c: AssetCtx, ts: Date, book?: BookStats | null): Sna
 }
 
 /**
- * Which coins get a row (held ∪ watched ∪ top-20 by notional OI) and which
- * get a book (held ∪ watched, at most MAX_BOOKS). Only coins listed in
- * `ctxs` (and not delisted) count.
+ * Which coins get a row (held ∪ watched ∪ top-20 by notional OI ∪ `extra`)
+ * and which get a book (held ∪ watched, at most MAX_BOOKS). Only coins listed
+ * in `ctxs` (and not delisted) count.
  */
-export function selectSnapshotAssets(ctxs: AssetCtx[], focus: string[]): { rows: string[]; books: string[] } {
+export function selectSnapshotAssets(ctxs: AssetCtx[], focus: string[], extra: string[] = []): { rows: string[]; books: string[] } {
   const listed = new Set(ctxs.filter((c) => !c.isDelisted).map((c) => c.name));
   const books = [...new Set(focus)].filter((a) => listed.has(a)).slice(0, MAX_BOOKS);
   const top = ctxs
@@ -98,7 +99,7 @@ export function selectSnapshotAssets(ctxs: AssetCtx[], focus: string[]): { rows:
     .sort((a, b) => b.openInterest * b.markPx - a.openInterest * a.markPx)
     .slice(0, TOP_OI)
     .map((c) => c.name);
-  return { rows: [...new Set([...focus.filter((a) => listed.has(a)), ...top])], books };
+  return { rows: [...new Set([...focus, ...top, ...extra].filter((a) => listed.has(a)))], books };
 }
 
 /** A reduce-only stop trigger on a watched-HL position (readHlAccount's frontendOpenOrders), without its timestamp. */
@@ -136,6 +137,8 @@ export interface SnapshotDeps {
   /** `stops` (watched-HL stop triggers) are recorded at the snapshot's ts for the journal's R (I0.15). */
   focus(): Promise<{ held: string[]; watched: string[]; stops?: HlStop[]; errors: string[] }>;
   l2Book(coin: string): Promise<BookStats | null>;
+  /** Extra coins that get a row but no book (the sector basket tokens). */
+  extra?: string[];
   recordRun(collector: string, startedAt: Date, ok: boolean, error?: string | null): Promise<void>;
   /** Epoch ms after which no further book is started (rows are still written). */
   deadline?: number;
@@ -161,7 +164,7 @@ export async function collectIntelSnapshots(deps: SnapshotDeps, ctxs: AssetCtx[]
   try {
     const focus = await deps.focus();
     errors.push(...focus.errors);
-    const { rows, books } = selectSnapshotAssets(ctxs, [...focus.held, ...focus.watched]);
+    const { rows, books } = selectSnapshotAssets(ctxs, [...focus.held, ...focus.watched], deps.extra);
     const stats = new Map<string, BookStats>();
     for (let i = 0; i < books.length; i += BOOK_CONCURRENCY) {
       if (deps.deadline != null && Date.now() + hlWeightWaitMs() >= deps.deadline) {

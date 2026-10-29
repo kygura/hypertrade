@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { ANTHROPIC_SCOUT_MODEL, deskProviderFactory, estimateCost, MAX_SPAWNS_PER_RUN, runDesk } from "./agents.js";
+import { CLAUDE_PRICES } from "../llm/prices.js";
+import { LLM_PRICES, usageCost } from "../intel/llm.js";
 import { DEFAULT_MODEL } from "../llm/provider.js";
 import { makeService, ScriptedProvider, type ScriptStep } from "./testkit.js";
 import type { DeskEvent } from "./types.js";
@@ -278,4 +280,14 @@ describe("deskProviderFactory", () => {
 test("estimateCost prices known models and gives up on unknown ones", () => {
   expect(estimateCost(new Map([["claude-opus-5-5", { input_tokens: 1_000_000, output_tokens: 100_000 }]]))).toBe(6);
   expect(estimateCost(new Map([["mystery", { input_tokens: 1, output_tokens: 1 }]]))).toBeNull();
+});
+
+test("desk and intel share one Claude price table", () => {
+  for (const [model, [i, o]] of Object.entries(CLAUDE_PRICES)) {
+    expect(estimateCost(new Map([[model, { input_tokens: 1_000_000, output_tokens: 1_000_000 }]]))).toBe(i + o);
+    expect(LLM_PRICES[model]).toEqual(CLAUDE_PRICES[model]);
+  }
+  // unknown-model rules differ: the desk gives up, intel prices at the top row
+  expect(estimateCost(new Map([["kimi-k3", { input_tokens: 1, output_tokens: 1 }]]))).toBeNull();
+  expect(usageCost({ model: "mystery", input_tokens: 1_000_000, output_tokens: 0 })).toBe(10);
 });

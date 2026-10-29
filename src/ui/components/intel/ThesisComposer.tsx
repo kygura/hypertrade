@@ -39,15 +39,15 @@ export function ThesisComposer({ onCreated }: { onCreated: (t: Thesis) => void }
         placeholder={PLACEHOLDER}
         onChange={(e) => setText(e.target.value)}
         disabled={action.busy}
-        className="w-full resize-y text-[13px]"
+        className="w-full resize-y text-base"
       />
-      <span className="text-[10px] tabular text-text-secondary self-end">
+      <span className="text-xs tabular text-text-secondary self-end">
         {text.length}/{THESIS_MAX}
       </span>
       <Button tier="neutral" className="h-[var(--control-lg)] w-full" onClick={() => void submit()} disabled={action.busy || !text.trim()}>
         <span className={action.busy ? 'pulse-label' : undefined}>{action.busy ? 'EXTRACTING…' : 'STRESS-TEST'}</span>
       </Button>
-      {action.busy && <p className="text-[10px] text-text-secondary">the model extracts claims, code checks each one — up to ~30 s</p>}
+      {action.busy && <p className="text-xs text-text-secondary">the model extracts claims, code checks each one — up to ~30 s</p>}
       {action.error && <ErrorBlock message={action.error} onRetry={() => void submit()} />}
     </div>
   )

@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { Badge } from '../Badge'
 import { SrcTag, type Source } from '../SrcTag'
-import { dsrCell, isStaleDate, sharpeCell, verdictBadge, verdictOf, type Direction, type PerfStats } from '../../lib/lab'
+import { dsrCell, isStaleDate, sharpeCell, stabWord, verdictBadge, verdictOf, type Direction, type PerfStats } from '../../lib/lab'
 
 // Small pieces every /lab surface repeats (docs/design/README.md §10.9).
 
@@ -22,11 +22,11 @@ export function DataTo({ date }: { date: string }) {
   )
 }
 
-/** Honesty rule 3: disclaimer + slippage + data age on every result surface. */
+/** Honesty rule 3: slippage + data age on every result surface. */
 export function LabFooter({ dataTo, slippageBps = 10, className = '' }: { dataTo?: string | null; slippageBps?: number; className?: string }) {
   return (
     <p className={`text-xs text-text-secondary ${className}`}>
-      historical research, not advice · net of {slippageBps} bps slippage
+      historical research · net of {slippageBps} bps slippage
       {dataTo ? (
         <>
           {' · '}
@@ -48,6 +48,17 @@ export function StatCell({ label, children, title }: { label: string; children: 
       <span className="text-xs text-text-secondary uppercase">{label}</span>
       <span className="tabular text-sm text-text-primary flex flex-wrap items-center gap-1">{children}</span>
     </div>
+  )
+}
+
+/** `0.62 STABLE` (word toned by stability); an em dash when there is no sensitivity run. */
+export function StabValue({ stability }: { stability: number | null | undefined }) {
+  if (stability == null) return <>—</>
+  const stab = stabWord(stability)
+  return (
+    <>
+      {stability.toFixed(2)} <span className={stab.tone}>{stab.word}</span>
+    </>
   )
 }
 

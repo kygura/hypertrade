@@ -1,5 +1,6 @@
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { Button, Panel } from '../components'
+import { useQueryPatch } from '../lib/hooks'
 import { MarketChart } from '../components/charts/MarketChart'
 import { FundingPanel, PerpHeader, usePerpStats } from '../components/market/PerpPanels'
 import { isTimeframe, type Timeframe } from '../../shared/timeframes'
@@ -17,24 +18,25 @@ export function MarketDrill() {
   // the server resolves it against the live universe.
   const { coin = '' } = useParams<{ coin: string }>()
   const navigate = useNavigate()
-  const [params, setParams] = useSearchParams()
+  const [params] = useSearchParams()
+  const patch = useQueryPatch()
   const tfParam = params.get('tf')
   const tf: Timeframe = isTimeframe(tfParam) ? tfParam : DEFAULT_TF
   const stats = usePerpStats(coin)
   const name = stats.data?.coin ?? coin
 
-  const setTf = (next: Timeframe) => {
-    const p = new URLSearchParams(params)
-    if (next === DEFAULT_TF) p.delete('tf')
-    else p.set('tf', next)
-    setParams(p, { replace: true })
-  }
+  const setTf = (next: Timeframe) => patch({ tf: next === DEFAULT_TF ? null : next })
 
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)] flex flex-col gap-3">
-      <Button tier="ghost" onClick={() => navigate('/markets')} className="self-start">
-        ← MARKETS
-      </Button>
+      <div className="flex items-center justify-between gap-2">
+        <Button tier="ghost" onClick={() => navigate('/markets')}>
+          ← MARKETS
+        </Button>
+        <Button tier="ghost" onClick={() => navigate(`/asset/${encodeURIComponent(name)}`)}>
+          INTEL →
+        </Button>
+      </div>
 
       <Panel>
         <PerpHeader coin={name} stats={stats} />

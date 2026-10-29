@@ -98,7 +98,7 @@ export function ConfirmDialog({
 
   return (
     <DialogShell title={title} onClose={onCancel} returnFocus={returnFocus}>
-      <p className="text-[12px] text-text-muted">{body}</p>
+      <p className="text-md text-text-muted">{body}</p>
       {typedWord && (
         <label className="flex flex-col gap-1">
           <span className="label">TYPE {typedWord} TO CONFIRM</span>

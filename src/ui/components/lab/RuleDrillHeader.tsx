@@ -10,7 +10,6 @@ import {
   holdoutGap,
   sharpeCell,
   sharpeOf,
-  stabWord,
   verdictBadge,
   verdictOf,
   wireText,
@@ -19,7 +18,7 @@ import {
   type RuleEvaluation,
   type Sensitivity,
 } from '../../lib/lab'
-import { DirectionWord, DsrValue, SharpeValue, VerdictBadge } from './common'
+import { DirectionWord, DsrValue, SharpeValue, StabValue, VerdictBadge } from './common'
 import type { AtSearch } from './WindowStatsTable'
 
 // RuleDrillHeader — docs/design/README.md §10.9. The rule at lg; walk-forward Sharpe is
@@ -58,7 +57,6 @@ export function RuleDrillHeader({
   const verdict = verdictOf(ev)
   // No walk-forward → HIT and MAX DD print `—`, never the in-sample numbers in its place.
   const s = ev.walkForward
-  const stab = sensitivity ? stabWord(sensitivity.stability) : null
   const stalePrefix = atSearch?.label ?? 'AT SEARCH'
   return (
     <div className="flex flex-col gap-2 p-3">
@@ -107,13 +105,7 @@ export function RuleDrillHeader({
         </span>
         <span className="flex items-baseline gap-1.5 text-sm">
           <span className="text-xs text-text-secondary">STAB</span>
-          {stab && sensitivity ? (
-            <>
-              {sensitivity.stability.toFixed(2)} <span className={stab.tone}>{stab.word}</span>
-            </>
-          ) : (
-            '—'
-          )}
+          <StabValue stability={sensitivity?.stability} />
         </span>
       </div>
 

@@ -58,11 +58,11 @@ export function DslEditor({ value, onChange, error }: { value: string; onChange:
         autoComplete="off"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full resize-y font-mono text-[12px] leading-snug"
+        className="w-full resize-y font-mono text-md leading-snug"
         aria-invalid={error ? true : undefined}
         aria-describedby={`${id}-validity`}
       />
-      <p id={`${id}-validity`} className={`text-[11px] break-words ${error ? 'text-red-text' : 'text-text-secondary'}`}>
+      <p id={`${id}-validity`} className={`text-sm break-words ${error ? 'text-red-text' : 'text-text-secondary'}`}>
         {error ? `✗ ${error}` : value.trim() ? '✓ valid JSON' : ''}
       </p>
     </div>

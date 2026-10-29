@@ -15,10 +15,13 @@ import { collectLab, LAB_SYNC_COIN, type LabCollectResult, type LabProgress } fr
 import { syncHead } from "../market/candleSync.js";
 import { syncFunding } from "../market/fundingSync.js";
 import { backfillCoin } from "../sim/backfill.js";
-import { STABLES } from "../../shared/schemas.js";
+import sectorsLatest from "../../../data/sectors/latest.json" with { type: "json" };
+import { SectorsDataSchema, STABLES } from "../../shared/schemas.js";
 import type { AssetCtx } from "../../shared/types.js";
 import { runIntelWatch } from "../intel/docwatch.js";
 import { flowAlerts } from "../intel/flowEvents.js";
+import { basketCoins } from "../intel/narratives.js";
+import { narrativeAutoContrast, narrativeStageAlerts } from "../intel/narrativeWatch.js";
 import { refreshGraph } from "../intel/graph.js";
 import { AUTO_RESEARCH_MARGIN_MS, autoResearch, RESEARCH_DEADLINE_MS, type AutoResearchDeps, type AutoResearchRun } from "../intel/research.js";
 import { runIntelIngest } from "../intel/runIngest.js";
@@ -194,11 +197,17 @@ const collectWriter = (): BatchWriter => {
   };
 };
 
+/** The routine's sector tokens (narrative baskets); none when the committed file fails its schema. */
+function sectorBasketCoins(): string[] {
+  const parsed = SectorsDataSchema.safeParse(sectorsLatest);
+  return parsed.success ? basketCoins(parsed.data) : [];
+}
+
 /** Intel snapshot rows from the collect's own metaAndAssetCtxs, into the collect's batch. Never throws (failures land in collector_runs). */
 function runIntelSnapshots(ctxs: AssetCtx[], ts: Date, collectDeadline: number, sink: ReturnType<typeof createBatchSink>): Promise<SnapshotResult> {
   const focus = () => capped(intelFocus(), COLLECT_READ_MS, { held: [], watched: [], stops: [], errors: [`focus: no answer from the database in ${COLLECT_READ_MS / 1000}s`] });
   return collectIntelSnapshots(
-    { store: sink.store, focus, l2Book: (coin) => fetchL2Book(coin), recordRun: sink.db.recordCollectorRun, deadline: Math.min(Date.now() + SNAPSHOT_BOOK_BUDGET_MS, collectDeadline) },
+    { store: sink.store, focus, l2Book: (coin) => fetchL2Book(coin), extra: sectorBasketCoins(), recordRun: sink.db.recordCollectorRun, deadline: Math.min(Date.now() + SNAPSHOT_BOOK_BUDGET_MS, collectDeadline) },
     ctxs,
     ts,
   );
@@ -522,9 +531,30 @@ const defaultIntelCronDeps = (): IntelCronDeps => {
         await db.recordCollectorRun("intel:flow:detect", flowStart, !flows.errors.length, flows.errors.join("; ").slice(0, 500) || null).catch((e) =>
           console.error("[intel:flow] collector run not recorded:", e),
         );
-        // Automatic research (SPEC S0.3) is the last stage: it needs this run's flow alerts and more than its own deadline of budget. Never fatal.
+        // Narrative stage alerts (SPEC N3.2) right after the flow detectors; code only. Never fatal.
+        const stageStart = new Date();
+        const narratives = await narrativeStageAlerts(d.ingest, stageStart).then(
+          (r) => ({ alerts: r.alerts.length, pushed: r.alerts.filter((a) => a.route === "push").length, committed: r.committed, errors: r.errors }),
+          (e) => ({ alerts: 0, pushed: 0, committed: 0, errors: [e instanceof Error ? e.message : String(e)] }),
+        );
+        await db.recordCollectorRun("intel:narratives", stageStart, !narratives.errors.length, narratives.errors.join("; ").slice(0, 500) || null).catch((e) =>
+          console.error("[intel:narratives] collector run not recorded:", e),
+        );
+        // Automatic research (SPEC S0.3) needs this run's flow alerts and more than its own deadline of budget. Never fatal.
         const research = await researchStage(d.ingest, { left, signal: o.signal });
-        return { ok: true, complete: true, result: { ...result, flows, research } };
+        // Automatic contrast (SPEC N3.3) is the last stage. Never fatal.
+        const contrastStart = new Date();
+        const contrast = await narrativeAutoContrast(d.ingest, { left, signal: o.signal }).catch((e) => ({
+          ran: 0,
+          statuses: { done: 0, failed: 0 },
+          stopped: "none" as const,
+          errors: [e instanceof Error ? e.message : String(e)],
+        }));
+        const contrastError = [...contrast.errors, ...(contrast.statuses.failed ? [`${contrast.statuses.failed} failed`] : [])].join("; ").slice(0, 500);
+        await db.recordCollectorRun("intel:narratives:contrast", contrastStart, !contrastError, contrastError || null).catch((e) =>
+          console.error("[intel:narratives:contrast] collector run not recorded:", e),
+        );
+        return { ok: true, complete: true, result: { ...result, flows, narratives, research, contrast } };
       },
       brief: async (o) => {
         const r = await runIntelBrief({ ...d, notifier: d.notifier, appUrl: d.appUrl }, o);

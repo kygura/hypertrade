@@ -42,6 +42,7 @@ export function kindWord(a: Pick<Alert, 'kind' | 'window'>): string | null {
   if (a.kind === 'catalyst') return a.window ? `CATALYST T−${a.window.toUpperCase()}` : 'CATALYST'
   if (a.kind === 'docwatch') return 'WATCH CHANGE'
   if (a.kind === 'terminal') return 'TERMINAL'
+  if (a.kind === 'narrative') return 'NARRATIVE'
   return null
 }
 
@@ -55,7 +56,7 @@ export function pricedInText(p: Alert['pricedIn']): string | null {
 /** The §3.4 amber-square row; `reason` is the server's verbatim string (e.g. `LLM cap reached ($1.37 / $2.00)`). */
 export function NoNarrationRow({ reason }: { reason?: string }) {
   return (
-    <p className="flex items-center gap-2 text-[11px] text-text-muted">
+    <p className="flex items-center gap-2 text-sm text-text-muted">
       <span aria-hidden="true" className="inline-block w-1.5 h-1.5 bg-amber flex-shrink-0" />
       {reason ? `no narration — ${reason}` : 'no narration'}
     </p>
@@ -96,11 +97,11 @@ export function AlertItem({
 
   return (
     <article aria-label={`Alert: ${alert.asset}, materiality ${mat}`} className="flex flex-col gap-1.5 px-3 py-2.5 border-b border-border-subtle last:border-b-0">
-      <div className="flex flex-wrap items-center gap-2 text-[10px]">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className={`tabular ${amber ? 'text-amber' : 'text-text-primary'}`}>{mat}</span>
         {alert.route === 'push' ? <Badge tone="amber">PUSHED</Badge> : <Badge tone="gray">BATCHED</Badge>}
         <ClaimAge ts={alert.createdAt} />
-        {kind && <span className="label text-[10px]">{kind}</span>}
+        {kind && <span className="label text-xs">{kind}</span>}
         <span className="ml-auto flex gap-1.5">
           <Button
             tier="ghost"
@@ -124,11 +125,11 @@ export function AlertItem({
       </div>
       <div className="flex flex-col gap-0.5">
         {alert.trace?.error ? <NoNarrationRow reason={alert.trace.error} /> : <ClaimLine claim={alert.line} />}
-        {priced && <span className="pl-[calc(4ch+0.5rem)] text-[11px] text-text-muted tabular">{priced}</span>}
+        {priced && <span className="pl-[calc(4ch+0.5rem)] text-sm text-text-muted tabular">{priced}</span>}
       </div>
       {alert.path.length > 0 && <ExposurePathChips path={alert.path} weight={alert.pathWeight} />}
       {alert.sources.length > 0 && (
-        <span className="flex flex-wrap items-center gap-1 text-[10px] text-text-secondary">
+        <span className="flex flex-wrap items-center gap-1 text-xs text-text-secondary">
           {alert.sources.map((s, i) => (
             <span key={i} className="inline-flex items-center gap-1">
               {i > 0 && <span aria-hidden="true">·</span>}

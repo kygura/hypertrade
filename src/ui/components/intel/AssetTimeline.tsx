@@ -114,7 +114,7 @@ function TipBox({ active, payload, lines }: { active?: boolean; payload?: { payl
   const r = payload?.[0]?.payload
   if (!active || !r) return null
   return (
-    <div className="bg-elevated border border-border px-2 py-1 text-[11px] tabular text-text-primary">
+    <div className="bg-elevated border border-border px-2 py-1 text-sm tabular text-text-primary">
       <div className="text-text-secondary">{fmtMdHm(new Date(r.t).toISOString())} UTC</div>
       {lines(r).map(([k, v]) => (
         <div key={k}>
@@ -179,7 +179,7 @@ export function AssetTimeline({
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex flex-wrap items-center gap-3 text-[10px] uppercase text-text-secondary">
+      <div className="flex flex-wrap items-center gap-3 text-xs uppercase text-text-secondary">
         {LEGEND.filter((l) => flowOk || l.pane !== 'liqs').map((l) => (
           <span key={l.pane} className="inline-flex items-center gap-1">
             <span className="inline-block w-2 h-2" style={{ background: l.color }} />
@@ -271,7 +271,7 @@ export function AssetTimeline({
           </ComposedChart>
         </PaneBox>
       ) : (
-        <p className="text-[10px] text-text-secondary px-1">{flowNote}</p>
+        <p className="text-xs text-text-secondary px-1">{flowNote}</p>
       )}
     </div>
   )

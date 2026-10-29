@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { clearSessionCookie, login, setSessionCookie } from "../auth.js";
+import { clearSessionCookie, hasSession, login, setSessionCookie } from "../auth.js";
 
 const loginBody = z.object({ password: z.string().min(1) });
 
@@ -24,5 +24,6 @@ export const authRoutes = new Hono()
     clearSessionCookie(c);
     return c.json({ ok: true });
   })
-  // Session probe for the frontend route guard; requireAuth already protects it.
-  .get("/me", (c) => c.json({ ok: true }));
+  // Session probe for the frontend route guard. requireAuth protects it, except in
+  // PUBLIC_MODE, where a visitor gets through as a guest and the UI offers a login.
+  .get("/me", (c) => c.json({ ok: true, guest: !hasSession(c) }));

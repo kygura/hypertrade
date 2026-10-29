@@ -15,11 +15,14 @@
     "signals:collect": "bun run scripts/signals.ts collect",
     "signals:notify": "bun run scripts/signals.ts notify",
     "setups:export": "bun run scripts/setups-export.ts",
+    "review:postmortem": "bun run scripts/review.ts postmortem",
+    "review:journal": "bun run scripts/review.ts journal",
     "build": "bun run typecheck && vite build",
     "test": "bun test ./src",
     "db:migrate": "bun run db/migrate.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
-    "check:api": "sh scripts/check-api-esm.sh"
+    "check:api": "sh scripts/check-api-esm.sh",
+    "check:type-scale": "sh scripts/check-type-scale.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

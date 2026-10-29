@@ -158,8 +158,10 @@
 
 /* Top bar: 54px base-colored strip, Geist Mono uppercase nav, active = white
    text only (no underline — Hyperdash reserves the orange rule for tabs). */
+:root[data-theme='hyperdash'] {
+  --topbar-h: 54px;
+}
 :root[data-theme='hyperdash'] .app-topbar {
-  height: 54px;
   padding-left: 12px;
   padding-right: 12px;
   border-bottom-color: var(--color-border-subtle);
@@ -304,24 +306,6 @@
   background: rgba(255, 255, 255, 0.04); /* badge-neutral-subtle */
 }
 
-/* Sub-tabs (EngineTabs) = hd-tabs-nav-trigger: 12px mono caps, tertiary →
-   primary, 2px orange rule under the active tab. */
-:root[data-theme='hyperdash'] .subtabs {
-  gap: 16px;
-  border-bottom-color: var(--color-border-subtle);
-}
-:root[data-theme='hyperdash'] .subtab {
-  font-size: 12px;
-  padding-left: 0;
-  padding-right: 0;
-  height: 40px;
-  transition:
-    color 200ms ease-in-out,
-    border-color 200ms ease-in-out;
-}
-:root[data-theme='hyperdash'] .subtab:hover {
-  color: var(--color-text-muted);
-}
 :root[data-theme='hyperdash'] .tab-active {
   border-bottom-width: 2px;
   border-bottom-color: var(--color-accent);

@@ -82,7 +82,7 @@ export function ProjectionReadout({ projection }: { projection: MonteCarloResult
   const p90 = projection.p90.at(-1)?.value
   if (p10 == null || p50 == null || p90 == null) return null
   return (
-    <div className="text-[11px] text-info text-right tabular">
+    <div className="text-sm text-info text-right tabular">
       P90 {fmtUsdCompact(p90)} / P50 {fmtUsdCompact(p50)} / P10 {fmtUsdCompact(p10)}
     </div>
   )
@@ -95,7 +95,7 @@ export function ProjectionAssumptions({ scenario }: { scenario: NonNullable<Bran
     (a) => `${a.coin} ${a.annualReturnPct >= 0 ? '+' : ''}${a.annualReturnPct}%/${a.annualVolPct}% VOL`,
   )
   return (
-    <div className="text-[10px] text-text-secondary">
+    <div className="text-xs text-text-secondary">
       PROJECTION {scenario.horizonDays}D · {scenario.paths} PATHS · {parts.join(' · ')} · GBM
     </div>
   )

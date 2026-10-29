@@ -71,7 +71,7 @@ export function ResearchAsk({
             className="w-full min-w-0 resize-none"
           />
           {q.length > COUNT_FROM && (
-            <span id={`${id}-count`} className="text-[10px] text-text-secondary tabular self-end">
+            <span id={`${id}-count`} className="text-xs text-text-secondary tabular self-end">
               {q.length} / {MAX}
             </span>
           )}

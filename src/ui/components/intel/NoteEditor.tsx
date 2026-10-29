@@ -85,7 +85,7 @@ export function NoteEditor({
         aria-describedby={`${id}-count`}
       />
       <div className="flex items-center justify-between gap-2">
-        <span id={`${id}-count`} className="text-[10px] tabular text-text-secondary">
+        <span id={`${id}-count`} className="text-xs tabular text-text-secondary">
           {draft.length}/{NOTE_MAX}
         </span>
         <Button tier="neutral" onClick={() => void onSave()} disabled={action.busy || (!dirty && !action.error)}>

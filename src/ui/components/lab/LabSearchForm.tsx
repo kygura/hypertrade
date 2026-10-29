@@ -190,7 +190,7 @@ export function LabSearchForm({
         {store.busy && <BusyLine startedAt={store.busy.startedAt} trials={store.busy.trials} features={store.busy.features} onStop={onStop} />}
         {store.error && !store.error.offline && <ErrorBlock message={store.error.message} />}
         {store.error?.offline && <OfflineBlock onRetry={canRun ? onRun : undefined} />}
-        <p className="text-xs text-text-secondary">historical research, not advice</p>
+        <p className="text-xs text-text-secondary">historical research</p>
       </div>
     </form>
   )
@@ -358,7 +358,7 @@ function AdvancedDisclosure({
 /** Mobile: the collapsed form after a run lands — summary + EDIT. */
 export function SearchSummaryBar({ form, onEdit }: { form: SearchForm; onEdit: () => void }) {
   return (
-    <div className="lg:hidden sticky top-[92px] z-20 h-10 flex items-center justify-between gap-2 px-3 bg-panel-alt border border-border">
+    <div className="lg:hidden sticky top-[calc(var(--topbar-h)+var(--subnav-h))] z-20 h-10 flex items-center justify-between gap-2 px-3 bg-panel-alt border border-border">
       <span className="text-xs tabular truncate">{configSummary(form)}</span>
       <Button tier="ghost" onClick={onEdit}>
         EDIT

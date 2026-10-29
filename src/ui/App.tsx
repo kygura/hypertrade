@@ -1,10 +1,8 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router'
 import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { api } from './lib/api'
 import { Login } from './pages/Login'
-import { Overview } from './pages/Overview'
 import { Markets } from './pages/Markets'
 import { Branches } from './pages/Branches'
 import { BranchDetail } from './pages/BranchDetail'
@@ -19,6 +17,11 @@ import { Analyst } from './pages/Analyst'
 import { Desk } from './pages/Desk'
 import { SkeletonRows } from './components/state'
 import { TerminalTabs } from './components/intel/TerminalTabs'
+import { MarketTabs } from './components/market/MarketTabs'
+import { MetricsStrip } from './components/market/MetricsStrip'
+import { LabTabs } from './components/lab/LabTabs'
+import { LabDataProvider } from './components/lab/LabData'
+import { PageContainer } from './components/PageContainer'
 
 // The drill-in carries the canvas chart library; load it with the route.
 const MarketDrill = lazy(() => import('./pages/MarketDrill').then((m) => ({ default: m.MarketDrill })))
@@ -29,8 +32,8 @@ const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
 const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
 const LAB_TAB_PATHS = ['/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
 // Terminal family (docs/design/terminal.md §1.1, C1): `/` is the Cockpit, `/terminal`
-// the Terminal; each sub-tab is its own route, loaded with it. `/overview` is
-// the old glance under TerminalTabs.
+// the Terminal; each sub-tab is its own route, loaded with it. `/overview`
+// redirects to `/markets`.
 const Cockpit = lazy(() => import('./pages/cockpit/Cockpit').then((m) => ({ default: m.Cockpit })))
 const Terminal = lazy(() => import('./pages/terminal/Terminal').then((m) => ({ default: m.Terminal })))
 const Journal = lazy(() => import('./pages/terminal/Journal').then((m) => ({ default: m.Journal })))
@@ -52,18 +55,54 @@ const TERMINAL_PAGES = [
 ]
 
 // Router — docs/SPEC.md route map. All routes except /login render inside
-// AppShell. Auth guard: a session probe on shell mount plus the api.ts
+// AppShell. Auth guard: AppShell's /auth/me probe on mount plus the api.ts
 // 401 -> /login redirect on every later call.
 
 function Shell({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    api.get('/auth/me').catch(() => {}) // 401 redirect handled in api.ts
-  }, [])
   const { pathname } = useLocation()
   return (
     <AppShell>
       <ErrorBoundary key={pathname}>{children}</ErrorBoundary>
     </AppShell>
+  )
+}
+
+// TRADE family page that does not render its own tab row (Desk).
+function TradeLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Shell>
+      <PageContainer>
+        <TerminalTabs />
+      </PageContainer>
+      {children}
+    </Shell>
+  )
+}
+
+// MARKET family page: MarketTabs + the MetricsStrip above the page.
+function MarketLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Shell>
+      <PageContainer>
+        <MarketTabs />
+        <MetricsStrip />
+      </PageContainer>
+      {children}
+    </Shell>
+  )
+}
+
+// RESEARCH family page outside /lab (Branches): the Lab tab row above it.
+function ResearchLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Shell>
+      <LabDataProvider>
+        <PageContainer>
+          <LabTabs />
+        </PageContainer>
+      </LabDataProvider>
+      {children}
+    </Shell>
   )
 }
 
@@ -85,65 +124,55 @@ export default function App() {
             }
           />
         ))}
-        <Route
-          path="/overview"
-          element={
-            <Shell>
-              <div className="max-w-[1440px] mx-auto px-3 md:px-[var(--gutter)]">
-                <TerminalTabs />
-              </div>
-              <Overview />
-            </Shell>
-          }
-        />
+        <Route path="/overview" element={<Navigate to="/markets" replace />} />
         <Route
           path="/branches"
           element={
-            <Shell>
+            <ResearchLayout>
               <Branches />
-            </Shell>
+            </ResearchLayout>
           }
         />
         <Route
           path="/branches/:id"
           element={
-            <Shell>
+            <ResearchLayout>
               <BranchDetail />
-            </Shell>
+            </ResearchLayout>
           }
         />
         <Route
           path="/sectors"
           element={
-            <Shell>
+            <MarketLayout>
               <Sectors />
-            </Shell>
+            </MarketLayout>
           }
         />
         <Route
           path="/state"
           element={
-            <Shell>
+            <MarketLayout>
               <State />
-            </Shell>
+            </MarketLayout>
           }
         />
         <Route
           path="/markets"
           element={
-            <Shell>
+            <MarketLayout>
               <Markets />
-            </Shell>
+            </MarketLayout>
           }
         />
         <Route
           path="/markets/:coin"
           element={
-            <Shell>
+            <MarketLayout>
               <Suspense fallback={<SkeletonRows />}>
                 <MarketDrill />
               </Suspense>
-            </Shell>
+            </MarketLayout>
           }
         />
         {['/cycles', '/cycles/:coin'].map((path) => (
@@ -151,11 +180,11 @@ export default function App() {
             key={path}
             path={path}
             element={
-              <Shell>
+              <MarketLayout>
                 <Suspense fallback={<SkeletonRows />}>
                   <Cycles />
                 </Suspense>
-              </Shell>
+              </MarketLayout>
             }
           />
         ))}
@@ -210,9 +239,9 @@ export default function App() {
         <Route
           path="/desk"
           element={
-            <Shell>
+            <TradeLayout>
               <Desk />
-            </Shell>
+            </TradeLayout>
           }
         />
         <Route path="/lab" element={<Navigate to="/lab/search" replace />} />

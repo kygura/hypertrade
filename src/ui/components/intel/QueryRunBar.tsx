@@ -32,7 +32,7 @@ export function QueryRunBar({
         <Button tier="neutral" className="h-[var(--control-lg)] px-6" onClick={onRun} disabled={!canRun(validation, running)}>
           <span className={running ? 'pulse-label' : undefined}>{running ? 'RUNNING…' : 'RUN'}</span>
         </Button>
-        <span className="text-[10px] text-text-secondary">read-only · 5 s timeout · ≤ 500 rows · ≤ 90 days</span>
+        <span className="text-xs text-text-secondary">read-only · 5 s timeout · ≤ 500 rows · ≤ 90 days</span>
       </div>
       {offline ? <OfflineBlock onRetry={onRun} /> : error && <ErrorBlock message={error} onRetry={canRun(validation, running) ? onRun : undefined} />}
     </div>

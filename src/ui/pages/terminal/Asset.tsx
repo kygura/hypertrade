@@ -11,21 +11,22 @@ import { EventList } from '../../components/intel/EventList'
 import { ExposureGraph } from '../../components/intel/ExposureGraph'
 import { firingChips, flagWord, FLOW_NO_SOURCE, flowSourceText } from '../../components/intel/flow'
 import { readFlowWindow } from '../../components/intel/FlowPanel'
-import { fmtLeverage, fmtStopDist, newestTs, useNow } from '../../components/intel/format'
+import { fmtLeverage, fmtStopDist, newestTs } from '../../components/intel/format'
+import { useNow } from '../../lib/hooks'
 import { stopDistPct } from '../../components/intel/PositionsTable'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { Panel, PanelBody, PanelHeader } from '../../components/Panel'
 import { Segmented, type SegmentOption } from '../../components/Segmented'
 import { SrcTag } from '../../components/SrcTag'
-import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows, StaleBanner } from '../../components/state'
+import { AsyncBody, EmptyBlock, SkeletonRows, StaleBanner } from '../../components/state'
 import { ApiError } from '../../lib/api'
 import { intel, INTEL_POLL_MS, useIntel } from '../../lib/intel'
 
-// `/asset/:coin` — AssetPage (DESIGN-terminal §15.4). A drill-in of `/` under
+// `/asset/:coin` — AssetPage (docs/design/terminal.md §15.4). A drill-in of `/terminal` under
 // TerminalTabs (TERMINAL active). Owns `?days=1|7|30` (default 7) and
 // `?metric=` (highlights a pane until any click). Polls the asset on mount,
 // on days change and every 5 min; reads positions (held lines, stop) and the
-// heatmap (materiality, flags, flow source status) like `/` does.
+// heatmap (materiality, flags, flow source status) like `/terminal` does.
 // Mobile order: header → TIMELINE → EVENTS → EXPOSURE.
 
 type Days = 1 | 7 | 30
@@ -76,12 +77,12 @@ function AssetHeader({
       <div className="flex flex-col gap-1.5 px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <Button tier="ghost" onClick={() => navigate('/terminal')}>
-            ← TERMINAL
+            ← CHANGES
           </Button>
           <span className="text-lg text-text-primary">{coin}</span>
-          {(held || row) && <span className={`text-[9px] uppercase tracking-wider ${held ? 'text-text-primary' : 'text-text-secondary'}`}>{held ? 'HELD' : 'WATCH'}</span>}
+          {(held || row) && <span className={`text-2xs uppercase tracking-wider ${held ? 'text-text-primary' : 'text-text-secondary'}`}>{held ? 'HELD' : 'WATCH'}</span>}
           {positions.map((p) => (
-            <span key={p.id} className="inline-flex items-center gap-1.5 text-[11px] tabular">
+            <span key={p.id} className="inline-flex items-center gap-1.5 text-sm tabular">
               <span className={p.side === 'long' ? 'text-green' : 'text-red-text'}>
                 {p.side === 'long' ? 'LONG' : 'SHORT'} {fmtLeverage(p.leverage)}
               </span>
@@ -95,7 +96,7 @@ function AssetHeader({
             <Segmented label="asset window" size="sm" options={DAYS} value={days} onChange={onDays} />
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] tabular">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm tabular">
           {mark != null && <span className="text-text-primary">MARK {fmtPrice(mark)}</span>}
           {held &&
             (stops.length > 0 ? (
@@ -127,7 +128,7 @@ function AssetHeader({
               </span>
             )}
             <Button tier="ghost" onClick={() => navigate(`/markets/${encodeURIComponent(coin)}`)}>
-              MARKETS →
+              CHART →
             </Button>
           </span>
         </div>
@@ -174,8 +175,6 @@ export function Asset() {
       },
       { replace: true },
     )
-  const failed = (onRetry: () => void) =>
-    asset.offline && !asset.data ? <OfflineBlock message={asset.offline} onRetry={onRetry} /> : asset.error && !asset.data ? <ErrorBlock message={asset.error} onRetry={onRetry} /> : null
 
   return (
     <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col" onClickCapture={() => setHighlight(null)}>
@@ -193,7 +192,7 @@ export function Asset() {
         {asset.data === 'missing' ? (
           <div className="lg:col-span-12">
             <Panel>
-              <EmptyBlock label={`no data for ${coin}`} action={{ label: '← TERMINAL', onClick: () => navigate('/terminal') }} />
+              <EmptyBlock label={`no data for ${coin}`} action={{ label: '← CHANGES', onClick: () => navigate('/terminal') }} />
             </Panel>
           </div>
         ) : (
@@ -203,26 +202,37 @@ export function Asset() {
                 <PanelHeader title="TIMELINE" />
                 {snapTs && <StaleBanner generatedAt={snapTs} thresholdHours={2} noun="snapshots" />}
                 <PanelBody className="p-2">
-                  {failed(asset.refetch) ??
-                    (!d ? (
-                      <SkeletonRows rows={5} />
-                    ) : d.snapshots.length === 0 ? (
-                      <EmptyBlock label={`no snapshots yet — the collector adds ${coin} once it is held, watched or top-20 by OI`} />
-                    ) : (
-                      <AssetTimeline rows={rows} events={events} flowOk={flowOk} flowNote={flowNote} highlight={highlight} hot={hot} />
-                    ))}
+                  <AsyncBody
+                    loading={asset.loading}
+                    data={d}
+                    error={asset.error}
+                    offline={asset.offline}
+                    rows={5}
+                    staleError={false}
+                    empty={{ label: `no snapshots yet — the collector adds ${coin} once it is held, watched or top-20 by OI` }}
+                    isEmpty={(x) => x.snapshots.length === 0}
+                    onRetry={asset.refetch}
+                  >
+                    {() => <AssetTimeline rows={rows} events={events} flowOk={flowOk} flowNote={flowNote} highlight={highlight} hot={hot} />}
+                  </AsyncBody>
                 </PanelBody>
               </Panel>
               <Panel>
                 <PanelHeader title={`EVENTS · ${days}D`} />
                 <PanelBody>
-                  {!d ? (
-                    asset.error || asset.offline ? null : <SkeletonRows rows={2} />
-                  ) : events.length === 0 && upcoming.length === 0 ? (
-                    <EmptyBlock label={`no events in ${DAYS_WORD[days]}`} />
-                  ) : (
-                    <EventList events={events} upcoming={upcoming} hot={hot} onHover={setHot} now={now} />
-                  )}
+                  <AsyncBody
+                    loading={asset.loading}
+                    data={d}
+                    error={asset.error}
+                    offline={asset.offline}
+                    onRetry={asset.refetch}
+                    staleError={false}
+                    rows={2}
+                    empty={{ label: `no events in ${DAYS_WORD[days]}` }}
+                    isEmpty={() => events.length === 0 && upcoming.length === 0}
+                  >
+                    {() => <EventList events={events} upcoming={upcoming} hot={hot} onHover={setHot} now={now} />}
+                  </AsyncBody>
                 </PanelBody>
               </Panel>
             </div>
@@ -236,7 +246,9 @@ export function Asset() {
                   )}
                 </PanelHeader>
                 <PanelBody className="px-3 pb-3">
-                  {failed(asset.refetch) ?? (!d ? <SkeletonRows rows={2} /> : <ExposureGraph asset={coin} edges={d.graph.edges} paths={d.graph.paths} onChanged={asset.refetch} />)}
+                  <AsyncBody loading={asset.loading} data={d} error={asset.error} offline={asset.offline} rows={2} staleError={false} onRetry={asset.refetch}>
+                    {(x) => <ExposureGraph asset={coin} edges={x.graph.edges} paths={x.graph.paths} onChanged={asset.refetch} />}
+                  </AsyncBody>
                 </PanelBody>
               </Panel>
             </div>

@@ -32,10 +32,10 @@ export function positionColumns(onEdit: (p: ExposurePosition) => void): Column<E
       render: (p) => (
         <span className="flex flex-col gap-0.5 py-1">
           <span className="inline-flex items-center gap-1.5">
-            <span className="text-[12px] text-text-primary">{p.asset}</span>
+            <span className="text-md text-text-primary">{p.asset}</span>
             <SrcTag source={p.source} />
           </span>
-          <span className={`text-[9px] uppercase tracking-wider ${p.side === 'long' ? 'text-green' : 'text-red-text'}`}>
+          <span className={`text-2xs uppercase tracking-wider ${p.side === 'long' ? 'text-green' : 'text-red-text'}`}>
             {p.side === 'long' ? 'LONG' : 'SHORT'} {fmtLeverage(p.leverage)}
           </span>
         </span>
@@ -85,7 +85,7 @@ export function positionColumns(onEdit: (p: ExposurePosition) => void): Column<E
     { key: 'entry', label: 'ENTRY', priority: 3, align: 'right', render: (p) => fmtPrice(p.entryPx) },
     { key: 'mark', label: 'MARK', priority: 3, align: 'right', render: (p) => fmtPrice(p.markPx) },
     { key: 'stop', label: 'STOP', priority: 4, align: 'right', render: (p) => (p.stopPx == null ? '—' : fmtPrice(p.stopPx)) },
-    { key: 'venue', label: 'VENUE', priority: 4, render: (p) => <span className="text-[10px] text-text-muted">{p.venue}</span> },
+    { key: 'venue', label: 'VENUE', priority: 4, render: (p) => <span className="text-xs text-text-muted">{p.venue}</span> },
   ]
 }
 

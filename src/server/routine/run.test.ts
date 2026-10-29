@@ -7,7 +7,7 @@ import type { Candle } from "../../shared/types.js";
 import type { HlClient } from "./collect.js";
 import { StubProvider } from "./llm.test.js";
 import { registerDate, runDate, runRoutine, ScanRecordSchema, splitMessage, type RunDeps } from "./run.js";
-import { DISCLAIMER, LedgerSchema, MarketStateDataSchema, SectorsDataSchema, type Setup } from "./schema.js";
+import { LedgerSchema, MarketStateDataSchema, SectorsDataSchema, type Setup } from "./schema.js";
 
 const NOW = new Date("2026-10-18T10:00:00Z");
 const H = 3_600_000;
@@ -342,7 +342,7 @@ describe("runRoutine end to end", () => {
     const ms = await readFile(join(root, "data/marketstate/latest.json"), "utf8");
     expect(await readFile(join(root, `data/marketstate/${date}.json`), "utf8")).toBe(ms);
     const msData = MarketStateDataSchema.parse(JSON.parse(ms));
-    expect(msData.thesis.disclaimer).toBe(DISCLAIMER);
+    expect(msData.thesis).not.toHaveProperty("disclaimer");
     expect(msData.generated_at).toBe(NOW.toISOString());
     const sec = SectorsDataSchema.parse(await read("data/sectors/latest.json"));
     expect(sec.sectors[0]!.tokens).toEqual(["BTC", "ETH"]);

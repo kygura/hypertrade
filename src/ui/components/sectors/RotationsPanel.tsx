@@ -19,19 +19,13 @@ export function RotationsPanel({
       {rotations.map((r, i) => (
         <div key={i} className="p-2 flex flex-col gap-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] text-text-primary uppercase">
+            <span className="text-sm text-text-primary uppercase">
               {sectorLabel(r.from)} <span className="text-text-secondary">→</span> {sectorLabel(r.to)}
             </span>
-            {r.confidence < 0.5 ? (
-              <Badge tone="gray">CONF {r.confidence.toFixed(2)}</Badge>
-            ) : (
-              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] tabular border border-transparent text-text-primary bg-elevated font-mono">
-                CONF {r.confidence.toFixed(2)}
-              </span>
-            )}
+            <Badge tone={r.confidence < 0.5 ? 'gray' : 'neutral'}>CONF {r.confidence.toFixed(2)}</Badge>
           </div>
-          <span className="text-[10px] text-text-secondary">{r.trigger}</span>
-          <span className="hidden md:block text-[10px] text-text-muted line-clamp-2">{r.note}</span>
+          <span className="text-xs text-text-secondary">{r.trigger}</span>
+          <span className="hidden md:block text-xs text-text-muted line-clamp-2">{r.note}</span>
         </div>
       ))}
     </div>

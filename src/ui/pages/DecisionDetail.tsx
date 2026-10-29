@@ -56,7 +56,7 @@ export function DecisionDetail() {
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)]">
       <EngineTabs />
-      <div className="flex items-center gap-2 mb-3 text-[10px] uppercase tracking-wider min-w-0">
+      <div className="flex items-center gap-2 mb-3 text-xs uppercase tracking-wider min-w-0">
         <Link to="/decisions" className="text-text-secondary hover:text-text-primary flex-shrink-0">
           ← DECISIONS
         </Link>
@@ -94,7 +94,7 @@ export function DecisionDetail() {
               <span className="panel-title">DECISION</span>
               <Link
                 to={`/decisions?strategy=${encodeURIComponent(data.strategy_id)}`}
-                className="text-[10px] uppercase tracking-wider text-text-secondary hover:text-text-primary"
+                className="text-xs uppercase tracking-wider text-text-secondary hover:text-text-primary"
               >
                 ALL {data.strategy_id} →
               </Link>

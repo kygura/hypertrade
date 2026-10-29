@@ -13,7 +13,7 @@ export function ClaimAge({ ts, thresholdHours, prefix }: { ts: string; threshold
   const ageH = (Date.now() - new Date(ts).getTime()) / 3_600_000
   const over = thresholdHours != null && Number.isFinite(ageH) && ageH > thresholdHours
   return (
-    <span className={`text-[10px] tabular whitespace-nowrap ${over ? 'text-amber' : 'text-text-secondary'}`} title={fmtTs(ts)}>
+    <span className={`text-xs tabular whitespace-nowrap ${over ? 'text-amber' : 'text-text-secondary'}`} title={fmtTs(ts)}>
       {prefix ? `${prefix} ` : ''}
       {claimAgeText(ts)}
     </span>

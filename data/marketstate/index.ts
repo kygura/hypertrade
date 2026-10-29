@@ -1,6 +1,6 @@
 // Static history index. Vercel's Node function bundler only includes files
 // reachable via static imports (no directory scan), so this file is the
-// mechanism for "list available history dates" — see ROUTINE.md §4.6
+// mechanism for "list available history dates" — see ROUTINE.md §2a
 // for the exact append instructions the routine follows each run.
 import d20260830 from "./2026-08-30.json" with { type: "json" };
 import d20261008 from "./2026-10-08.json" with { type: "json" };
@@ -17,6 +17,8 @@ import d20261021 from "./2026-10-21.json" with { type: "json" };
 import d20261022 from "./2026-10-22.json" with { type: "json" };
 import d20261023 from "./2026-10-23.json" with { type: "json" };
 import d20261027 from "./2026-10-27.json" with { type: "json" };
+import d20261028 from "./2026-10-28.json" with { type: "json" };
+import d20261029 from "./2026-10-29.json" with { type: "json" };
 
 export const MARKETSTATE_HISTORY: Array<{ date: string; data: unknown }> = [
   { date: "2026-08-30", data: d20260830 },
@@ -34,4 +36,6 @@ export const MARKETSTATE_HISTORY: Array<{ date: string; data: unknown }> = [
   { date: "2026-10-22", data: d20261022 },
   { date: "2026-10-23", data: d20261023 },
   { date: "2026-10-27", data: d20261027 },
+  { date: "2026-10-28", data: d20261028 },
+  { date: "2026-10-29", data: d20261029 },
 ];

@@ -17,6 +17,17 @@ describe("db/migrate.ts on PGlite", () => {
     expect(rows.map((r) => r.name)).toEqual(FILES);
   });
 
+  test("every public table has row level security enabled", async () => {
+    // Supabase serves public through PostgREST: a table without RLS is open to the anon key.
+    const db = pgliteDb(newPglite());
+    await migrate(db, quiet);
+    const rows = await db.query<{ relname: string }>(
+      `select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity order by 1`,
+    );
+    expect(rows.map((r) => r.relname)).toEqual([]);
+  });
+
   test("an existing database (001–010 applied by hand, no schema_migrations) re-applies them cleanly", async () => {
     const db = pgliteDb(newPglite());
     for (const f of FILES.filter((f) => f <= "010_research.sql")) await db.exec(readFileSync(new URL(f, DIR), "utf8"));

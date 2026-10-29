@@ -48,7 +48,8 @@ const REGIME_NAME = /[<>]|_flip$|^oi_up_price_down$/;
 /** The source class an alert represents; terminal alerts are none. */
 export function alertSource(a: Pick<Alert, "kind" | "eventType">): SignalSource | null {
   if (a.kind === "flow") return REGIME_NAME.test(a.eventType ?? "") ? "regime" : "flow";
-  return a.kind === "terminal" ? null : "news";
+  // Narrative alerts name a basket, not an asset: they add no confluence to any coin.
+  return a.kind === "terminal" || a.kind === "narrative" ? null : "news";
 }
 
 /** Sources seen per asset inside the confluence window: alerts since then, plus the last brief's snapshot z moves. Read before alerts are routed. */

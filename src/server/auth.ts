@@ -140,6 +140,28 @@ function labBearerValid(c: Context): boolean {
   return ok;
 }
 
+/** Proxies to services with their own tokens; guests never reach them, even on GET. */
+const GUEST_DENIED = /^\/(engine|mcp)(\/|$)/;
+
+/**
+ * PUBLIC_MODE=1 (or "true") lets visitors read the app without logging in:
+ * GET/HEAD on any path but the proxies above. Every write still needs the
+ * session cookie, so orders, positions, briefs and LLM runs stay owner-only.
+ * Read at call time, so flipping the env var and restarting is the whole toggle.
+ */
+export function publicMode(): boolean {
+  return /^(1|true)$/i.test(process.env.PUBLIC_MODE ?? "");
+}
+
+function guestReadable(c: Context, path: string): boolean {
+  return publicMode() && (c.req.method === "GET" || c.req.method === "HEAD") && !GUEST_DENIED.test(path);
+}
+
+/** True when the request carries a valid session cookie. */
+export function hasSession(c: Context): boolean {
+  return verifySession(getCookie(c, COOKIE_NAME));
+}
+
 /**
  * Single auth gate for the whole API. Mounted once, before any route, so route
  * modules added later are protected by default without touching this file.
@@ -151,6 +173,7 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
   if (path.startsWith("/cron/") || path === "/desk/tick") return requireCronToken(c, next);
   // Telegram's webhook carries its own secret header, checked by the route.
   if (path === "/desk/telegram") return next();
+  if (guestReadable(c, path)) return next();
 
   // Lab REST and MCP: session cookie or a LAB_API_TOKEN bearer, any method.
   if (LAB_PATH.test(path)) {

@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button, ConfirmDialog, EmptyBlock, ErrorBlock, Segmented, SkeletonRows } from '../components'
+import { AsyncBody, Badge, Button, ConfirmDialog, DataTable, ErrorBlock, Segmented, SkeletonRows, type Column } from '../components'
 import { engine, errorMessage, useEngine } from '../lib/engine'
 import type { GovernorMode, GovernorSettings, VenueStatus } from '../../shared/strategy-protocol'
+import { GovernorLimitFields, governorLimitErrors } from '../components/strategy/GovernorLimits'
 import { EngineTabs } from '../components/strategy/EngineTabs'
 import { EngineOffline, OfflineStrip } from '../components/strategy/EngineOffline'
 import { fmtUsdSigned } from '../components/strategy/format'
 
 // /governor — global mode, limits, and the kill switch. Mode chips + three
 // numeric limits save through PUT /governor (Level 1, verbatim ErrorBlock).
-// The kill switch is the one typed-word confirmation in this product: it
-// disables every strategy and rejects every open proposal, and the core
-// offers no un-kill route, so docs/design/README.md §7's Level 2 dialog gains a typed
-// word (KILL) here and nowhere else. Venues render beneath: status,
+// The engine kill switch is a Level 3 typed-word confirmation (the desk kill is
+// the other, KillSwitchDialog): it disables every strategy and rejects every
+// open proposal, and the core offers no un-kill route, so docs/design/README.md
+// §7's Level 2 dialog gains a typed word (KILL). Venues render beneath: status,
 // capabilities, open positions — the surface the kill switch acts on.
 
 const MODES: { value: GovernorMode; label: string; title: string }[] = [
@@ -36,16 +37,33 @@ function toForm(g: GovernorSettings): Form {
   }
 }
 
-function validate(f: Form): Record<string, string> {
-  const e: Record<string, string> = {}
-  const mc = Number(f.min_confidence)
-  if (f.min_confidence.trim() === '' || Number.isNaN(mc) || mc < 0 || mc > 1) e.min_confidence = 'must be between 0 and 1'
-  const mn = Number(f.max_notional_usd)
-  if (f.max_notional_usd.trim() === '' || Number.isNaN(mn) || mn < 0) e.max_notional_usd = 'must be ≥ 0'
-  const mo = Number(f.max_open_intents)
-  if (f.max_open_intents.trim() === '' || Number.isNaN(mo) || mo < 0 || !Number.isInteger(mo)) e.max_open_intents = 'must be a whole number ≥ 0'
-  return e
-}
+const POSITION_COLUMNS: Column<VenueStatus['positions'][number]>[] = [
+  { key: 'market', label: 'MARKET', priority: 1, render: (p) => <span className="text-text-primary">{p.market}</span> },
+  {
+    key: 'size',
+    label: 'SIZE',
+    priority: 1,
+    align: 'right',
+    render: (p) => (
+      <span className={p.size_usd < 0 ? 'text-red-text' : 'text-green'}>
+        {fmtUsdSigned(p.size_usd)} {p.size_usd < 0 ? 'SHORT' : 'LONG'}
+      </span>
+    ),
+  },
+  { key: 'entry', label: 'ENTRY', priority: 3, align: 'right', render: (p) => <span className="text-text-muted">{p.entry ? p.entry : '—'}</span> },
+  { key: 'mark', label: 'MARK', priority: 3, align: 'right', render: (p) => <span className="text-text-muted">{p.mark ?? '—'}</span> },
+  {
+    key: 'upnl',
+    label: 'UPNL',
+    priority: 1,
+    align: 'right',
+    render: (p) => (
+      <span className={p.upnl_usd == null ? 'text-text-secondary' : p.upnl_usd < 0 ? 'text-red-text' : p.upnl_usd > 0 ? 'text-green' : 'text-text-muted'}>
+        {fmtUsdSigned(p.upnl_usd)}
+      </span>
+    ),
+  },
+]
 
 function venueDot(status: string): 'green' | 'amber' | 'red' | 'gray' {
   const s = status.toLowerCase()
@@ -76,75 +94,51 @@ function VenuesPanel() {
       {offline && data && <OfflineStrip reason={offline} fetchedAt={fetchedAt} />}
       <div className="panel-header">
         <span className="panel-title">VENUES</span>
-        {data && <span className="text-[10px] text-text-secondary tabular">{data.length}</span>}
+        {data && <span className="text-xs text-text-secondary tabular">{data.length}</span>}
       </div>
       <div className="panel-body">
-        {loading && !data && <SkeletonRows rows={2} />}
-        {!loading && offline && !data && <EngineOffline reason={offline} onRetry={refetch} />}
-        {!loading && !offline && error && !data && <ErrorBlock message={error} onRetry={refetch} />}
-        {data && data.length === 0 && <EmptyBlock label="no venues registered" />}
-        {data && data.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border-subtle">
-            {data.map((v: VenueStatus) => (
-              <div key={v.id} className="p-3 flex flex-col gap-2 min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-text-primary text-[13px]">{v.id}</span>
-                  <Badge tone={venueDot(v.status)}>{v.status}</Badge>
-                  <span className="text-[10px] text-text-secondary">
-                    {v.kind}
-                    {v.chain && v.chain !== 'none' ? ` · ${v.chain}` : ''}
-                  </span>
-                </div>
-                {venueMeta(v) && <span className="text-[10px] text-text-secondary tabular break-all">{venueMeta(v)}</span>}
-                {v.error && <span className="text-[11px] text-red-text break-words" role="alert">{v.error}</span>}
-                <div className="flex flex-wrap gap-1">
-                  {v.capabilities.length === 0 && <span className="text-[10px] text-text-secondary">no capabilities</span>}
-                  {v.capabilities.map((c) => (
-                    <span key={c} className="src-tag">
-                      {c}
+        <AsyncBody
+          loading={loading}
+          data={data}
+          error={error}
+          offline={data ? null : offline}
+          rows={2}
+          empty={{ label: 'no venues registered' }}
+          renderOffline={(reason) => <EngineOffline reason={reason ?? ''} onRetry={refetch} />}
+          onRetry={refetch}
+        >
+          {(rows) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border-subtle">
+              {rows.map((v: VenueStatus) => (
+                <div key={v.id} className="p-3 flex flex-col gap-2 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-text-primary text-base">{v.id}</span>
+                    <Badge tone={venueDot(v.status)}>{v.status}</Badge>
+                    <span className="text-xs text-text-secondary">
+                      {v.kind}
+                      {v.chain && v.chain !== 'none' ? ` · ${v.chain}` : ''}
                     </span>
-                  ))}
-                </div>
-                {v.positions.length === 0 ? (
-                  <span className="text-[10px] uppercase tracking-wider text-text-secondary">no open positions</span>
-                ) : (
-                  <div className="table-scroll">
-                    <table className="w-full text-[11px] tabular border-collapse">
-                      <thead>
-                        <tr className="border-b border-border">
-                          <th className="px-2 py-1 label text-left">MARKET</th>
-                          <th className="px-2 py-1 label text-right">SIZE</th>
-                          <th className="px-2 py-1 label text-right hidden md:table-cell">ENTRY</th>
-                          <th className="px-2 py-1 label text-right hidden md:table-cell">MARK</th>
-                          <th className="px-2 py-1 label text-right">UPNL</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {v.positions.map((p) => (
-                          <tr key={p.market} className="border-b border-border-subtle" style={{ height: 'var(--row-h)' }}>
-                            <td className="px-2 text-text-primary">{p.market}</td>
-                            <td className={`px-2 text-right ${p.size_usd < 0 ? 'text-red-text' : 'text-green'}`}>
-                              {fmtUsdSigned(p.size_usd)} {p.size_usd < 0 ? 'SHORT' : 'LONG'}
-                            </td>
-                            <td className="px-2 text-right text-text-muted hidden md:table-cell">{p.entry ? p.entry : '—'}</td>
-                            <td className="px-2 text-right text-text-muted hidden md:table-cell">{p.mark ?? '—'}</td>
-                            <td
-                              className={`px-2 text-right ${
-                                p.upnl_usd == null ? 'text-text-secondary' : p.upnl_usd < 0 ? 'text-red-text' : p.upnl_usd > 0 ? 'text-green' : 'text-text-muted'
-                              }`}
-                            >
-                              {fmtUsdSigned(p.upnl_usd)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+                  {venueMeta(v) && <span className="text-xs text-text-secondary tabular break-all">{venueMeta(v)}</span>}
+                  {v.error && <span className="text-sm text-red-text break-words" role="alert">{v.error}</span>}
+                  <div className="flex flex-wrap gap-1">
+                    {v.capabilities.length === 0 && <span className="text-xs text-text-secondary">no capabilities</span>}
+                    {v.capabilities.map((c) => (
+                      <span key={c} className="src-tag">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                  {v.positions.length === 0 ? (
+                    <span className="text-xs uppercase tracking-wider text-text-secondary">no open positions</span>
+                  ) : (
+                    <DataTable columns={POSITION_COLUMNS} rows={v.positions} rowKey={(p) => p.market} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </AsyncBody>
       </div>
     </div>
   )
@@ -174,7 +168,7 @@ export function Governor() {
     setKillError(null)
   }, [killBusy])
 
-  const errors = form ? validate(form) : {}
+  const errors = form ? governorLimitErrors(form, { allowBlank: false }) : {}
   const valid = Object.keys(errors).length === 0
 
   async function save() {
@@ -224,7 +218,7 @@ export function Governor() {
         <div className="lg:col-span-5 panel">
           {offline && data && <OfflineStrip reason={offline} fetchedAt={fetchedAt} />}
           {killed && (
-            <div role="status" className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-red-text bg-red-bg border-b border-border-subtle">
+            <div role="status" className="px-3 py-1.5 text-xs uppercase tracking-wider text-red-text bg-red-bg border-b border-border-subtle">
               killed — every strategy disabled, open proposals rejected. re-enable from the core.
             </div>
           )}
@@ -256,41 +250,18 @@ export function Governor() {
                     }}
                     className="self-start"
                   />
-                  <span className="text-[10px] text-text-secondary">{MODES.find((m) => m.value === form.mode)?.title}</span>
+                  <span className="text-xs text-text-secondary">{MODES.find((m) => m.value === form.mode)?.title}</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {(
-                    [
-                      ['min_confidence', 'MIN CONFIDENCE', '0', '1', '0.01'],
-                      ['max_notional_usd', 'MAX NOTIONAL (USD)', '0', undefined, '1'],
-                      ['max_open_intents', 'MAX OPEN INTENTS', '0', undefined, '1'],
-                    ] as const
-                  ).map(([key, label, min, max, step]) => (
-                    <label key={key} className="flex flex-col gap-1">
-                      <span className="label">{label}</span>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min={min}
-                        max={max}
-                        step={step}
-                        value={form[key]}
-                        aria-invalid={!!errors[key]}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          setForm((f) => (f ? { ...f, [key]: v } : f))
-                          setDirty(true)
-                        }}
-                        className="w-full"
-                      />
-                      {errors[key] && (
-                        <span role="alert" className="text-[10px] text-red-text">
-                          {errors[key]}
-                        </span>
-                      )}
-                    </label>
-                  ))}
+                  <GovernorLimitFields
+                    form={form}
+                    errors={errors}
+                    onChange={(key, v) => {
+                      setForm((f) => (f ? { ...f, [key]: v } : f))
+                      setDirty(true)
+                    }}
+                  />
                 </div>
 
                 {saveError && <ErrorBlock message={saveError} />}
@@ -304,7 +275,7 @@ export function Governor() {
                   <Button tier="danger" onClick={() => setKillOpen(true)} disabled={killed} style={{ height: 'var(--control-lg)' }}>
                     {killed ? 'KILLED' : 'KILL SWITCH'}
                   </Button>
-                  <span className="text-[10px] text-text-secondary">
+                  <span className="text-xs text-text-secondary">
                     disables every strategy and rejects open proposals — there is no un-kill from here
                   </span>
                 </div>

@@ -37,7 +37,7 @@ export function EquityChart({
 
   return (
     <div>
-      <div className="flex items-center gap-4 text-[10px] text-text-secondary mb-1.5">
+      <div className="flex items-center gap-4 text-xs text-text-secondary mb-1.5">
         {LEGEND.map((l) => (
           <span key={l.label} className="flex items-center gap-1">
             <span style={{ color: l.color }}>{l.glyph}</span> {l.label}

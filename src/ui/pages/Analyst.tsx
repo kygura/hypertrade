@@ -260,7 +260,7 @@ function Phase({ t }: { t: TurnState }) {
   if (!t.streaming) return null
   const running = t.trace.some((x) => !x.result)
   const label = running ? 'RUNNING TOOLS' : t.answer ? 'WRITING' : t.reasoning ? 'THINKING' : 'WAITING'
-  return <span className="text-[10px] text-text-secondary pulse-label shrink-0">{label}…</span>
+  return <span className="text-xs text-text-secondary pulse-label shrink-0">{label}…</span>
 }
 
 function Reasoning({ t }: { t: TurnState }) {
@@ -268,10 +268,10 @@ function Reasoning({ t }: { t: TurnState }) {
   const live = t.streaming && !t.answer
   return (
     <details className="border-l-2 border-border pl-2" open={live || undefined}>
-      <summary className="cursor-pointer select-none text-[10px] uppercase tracking-wider text-text-secondary">
+      <summary className="cursor-pointer select-none text-xs uppercase tracking-wider text-text-secondary">
         Reasoning · {t.reasoning.length.toLocaleString()} chars
       </summary>
-      <div className="mt-1 max-h-[240px] overflow-y-auto text-[12px] leading-relaxed text-text-secondary whitespace-pre-wrap break-words">
+      <div className="mt-1 max-h-[240px] overflow-y-auto text-md leading-relaxed text-text-secondary whitespace-pre-wrap break-words">
         {t.reasoning}
       </div>
     </details>
@@ -284,14 +284,14 @@ function Timeline({ trace }: { trace: TraceItem[] }) {
   return (
     <details className="group">
       <summary className="cursor-pointer select-none list-none flex flex-wrap items-center gap-1">
-        <span className="text-[10px] uppercase tracking-wider text-text-secondary mr-1">
+        <span className="text-xs uppercase tracking-wider text-text-secondary mr-1">
           Tools · {trace.length}
           {failed > 0 ? ` · ${failed} failed` : ''}
         </span>
         {trace.map((t) => (
           <span
             key={t.id}
-            className={`inline-flex items-center gap-1 h-[18px] px-1.5 border text-[10px] ${
+            className={`inline-flex items-center gap-1 h-[18px] px-1.5 border text-xs ${
               !t.result ? 'border-border text-text-secondary pulse-label' : t.result.ok ? 'border-border-subtle text-text-muted' : 'border-red text-red-text'
             }`}
           >
@@ -302,7 +302,7 @@ function Timeline({ trace }: { trace: TraceItem[] }) {
       </summary>
       <ul className="mt-1 border border-border-subtle divide-y divide-border-subtle">
         {trace.map((t) => (
-          <li key={t.id} className="px-2 py-1 text-[11px] flex flex-col gap-0.5 min-w-0">
+          <li key={t.id} className="px-2 py-1 text-sm flex flex-col gap-0.5 min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-text-primary">{t.name}</span>
               {t.result ? <Badge tone={t.result.ok ? 'green' : 'red'}>{t.result.ok ? 'ok' : 'error'}</Badge> : <span className="text-text-secondary pulse-label">running…</span>}
@@ -321,7 +321,7 @@ function Sources({ items }: { items: AnalystCitation[] }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="label">SOURCES</span>
-      <ol className="list-decimal pl-5 text-[11px] space-y-0.5">
+      <ol className="list-decimal pl-5 text-sm space-y-0.5">
         {items.map((c) => {
           let host = ''
           try {
@@ -369,12 +369,12 @@ function Turn({
   return (
     <article className="flex flex-col gap-2">
       <div className="flex justify-end">
-        <div className="max-w-[88%] md:max-w-[75%] bg-elevated border border-border px-3 py-2 text-[13px] text-text-primary whitespace-pre-wrap break-words">
+        <div className="max-w-[88%] md:max-w-[75%] bg-elevated border border-border px-3 py-2 text-base text-text-primary whitespace-pre-wrap break-words">
           {t.question}
         </div>
       </div>
       <div className="flex flex-col gap-2 min-w-0">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-text-secondary">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
           <StatusDot status={t.error && !t.answer ? 'down' : t.streaming ? 'degraded' : 'ok'} />
           {who && (
             <span className="uppercase tracking-wider">
@@ -397,7 +397,7 @@ function Turn({
         {t.error && <ErrorBlock message={t.error} />}
         <Sources items={t.citations} />
         {!t.streaming && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-text-secondary tabular border-t border-border-subtle pt-1.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary tabular border-t border-border-subtle pt-1.5">
             {t.done && (
               <>
                 <span>
@@ -462,7 +462,7 @@ function Composer({ draft, setDraft, busy, onAsk, onStop, disabled, mode }: { dr
           rows={1}
           maxLength={4000}
           placeholder={mode === 'sim' ? SIM_PLACEHOLDER : ASK_PLACEHOLDER}
-          className="flex-1 min-w-0 bg-input border border-border px-2 py-1.5 text-[13px] text-text-primary resize-none focus:outline-none focus:border-text-secondary disabled:opacity-50"
+          className="flex-1 min-w-0 bg-input border border-border px-2 py-1.5 text-base text-text-primary resize-none focus:outline-none focus:border-text-secondary disabled:opacity-50"
         />
         {busy ? (
           <Button tier="ghost" type="button" onClick={onStop}>
@@ -474,7 +474,7 @@ function Composer({ draft, setDraft, busy, onAsk, onStop, disabled, mode }: { dr
           </Button>
         )}
       </div>
-      <div className="flex justify-between text-[10px] text-text-secondary">
+      <div className="flex justify-between text-xs text-text-secondary">
         <span>Enter to send · Shift+Enter for a new line</span>
         {draft.length > 3000 && <span className="tabular">{draft.length}/4000</span>}
       </div>
@@ -487,11 +487,11 @@ function EmptyThread({ onAsk, disabled, mode }: { onAsk: (q: string) => void; di
   return (
     <div className="flex flex-col gap-3 py-6 md:py-10">
       <div className="flex flex-col gap-1">
-        <span className="text-[16px] text-text-primary">{sim ? 'Simulate a path' : 'Ask the analyst'}</span>
-        <span className="text-[11px] text-text-secondary max-w-[560px]">
+        <span className="text-lg text-text-primary">{sim ? 'Simulate a path' : 'Ask the analyst'}</span>
+        <span className="text-sm text-text-secondary max-w-[560px]">
           {sim
-            ? 'Describe a what-if in plain words — sizes, leverage, shorts, DCA, a start date. It becomes one to four branches, backtested on daily candles against HODL BTC and USDC, with every assumption it made listed on the card. Historical simulation, not advice.'
-            : "It reads the briefing and its history, the sector map, collected metrics, the live Hyperliquid universe and the engine's decisions, then answers with its sources. Read-only, and not financial advice."}
+            ? 'Describe a what-if in plain words — sizes, leverage, shorts, DCA, a start date. It becomes one to four branches, backtested on daily candles against HODL BTC and USDC, with every assumption it made listed on the card. Historical simulation.'
+            : "It reads the briefing and its history, the sector map, collected metrics, the live Hyperliquid universe and the engine's decisions, then answers with its sources. Read-only."}
         </span>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -503,8 +503,8 @@ function EmptyThread({ onAsk, disabled, mode }: { onAsk: (q: string) => void; di
             onClick={() => onAsk(q)}
             className="text-left border border-border bg-elevated hover:bg-hover px-3 py-2 flex flex-col gap-0.5 disabled:opacity-50"
           >
-            <span className="text-[10px] uppercase tracking-wider text-text-secondary">{g}</span>
-            <span className="text-[12px] text-text-primary">{q}</span>
+            <span className="text-xs uppercase tracking-wider text-text-secondary">{g}</span>
+            <span className="text-md text-text-primary">{q}</span>
           </button>
         ))}
       </div>
@@ -530,7 +530,7 @@ function Rail({
   mode: AnalystMode
 }) {
   return (
-    <aside className="flex flex-col gap-3 lg:sticky lg:top-3">
+    <aside className="flex flex-col gap-3 lg:sticky lg:top-[calc(var(--topbar-h)+12px)]">
       <div className="panel">
         <div className="panel-header">
           <span className="panel-title">PROMPTS</span>
@@ -538,9 +538,9 @@ function Rail({
         <div className="panel-body p-2 flex flex-col gap-2">
           {(mode === 'sim' ? SIM_PROMPTS : PROMPTS).map((g) => (
             <div key={g.group} className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wider text-text-secondary">{g.group}</span>
+              <span className="text-xs uppercase tracking-wider text-text-secondary">{g.group}</span>
               {g.items.map((q) => (
-                <button key={q} type="button" disabled={busy} onClick={() => onAsk(q)} className="text-left text-[11px] text-text-muted hover:text-text-primary disabled:text-text-disabled">
+                <button key={q} type="button" disabled={busy} onClick={() => onAsk(q)} className="text-left text-sm text-text-muted hover:text-text-primary disabled:text-text-disabled">
                   {q}
                 </button>
               ))}
@@ -553,7 +553,7 @@ function Rail({
         <div className="panel-header">
           <span className="panel-title">PROVIDERS</span>
           {catalog && (
-            <span className="text-[10px] text-text-secondary tabular">
+            <span className="text-xs text-text-secondary tabular">
               {catalog.providers.filter((p) => p.available).length}/{catalog.providers.length} ready
             </span>
           )}
@@ -574,11 +574,11 @@ function Rail({
                     <StatusDot status={p.available ? 'ok' : 'down'} />
                   </span>
                   <span className="flex-1 min-w-0 flex flex-col">
-                    <span className={`text-[11px] ${p.available ? 'text-text-primary' : 'text-text-secondary'}`}>
+                    <span className={`text-sm ${p.available ? 'text-text-primary' : 'text-text-secondary'}`}>
                       {p.label}
                       {p.webSearch && <span className="src-tag ml-1.5">web</span>}
                     </span>
-                    <span className="text-[10px] text-text-secondary break-words">{p.available ? p.blurb : p.reason}</span>
+                    <span className="text-xs text-text-secondary break-words">{p.available ? p.blurb : p.reason}</span>
                   </span>
                 </button>
               </li>
@@ -592,7 +592,7 @@ function Rail({
           <summary className="panel-header cursor-pointer select-none">
             <span className="panel-title">TOOLS · {status.tools.filter((t) => t.available).length}</span>
           </summary>
-          <ul className="px-2 py-1.5 flex flex-col gap-0.5 text-[11px]">
+          <ul className="px-2 py-1.5 flex flex-col gap-0.5 text-sm">
             {status.tools.map((t) => (
               <li key={t.name} className={t.available ? 'text-text-muted' : 'text-text-disabled'}>
                 {t.name}
@@ -603,10 +603,10 @@ function Rail({
         </details>
       )}
 
-      <p className="text-[10px] text-text-secondary px-1">
+      <p className="text-xs text-text-secondary px-1">
         {mode === 'sim'
-          ? "Historical simulation on daily candles. Perp legs ignore funding, fees and slippage and liquidate at 100% margin loss on the day's low or high. Saving creates a branch; nothing is traded. Not financial advice."
-          : 'Read-only market intelligence. It cannot trade or change strategies; Jev and the operator do that on the engine pages. Not financial advice.'}
+          ? "Historical simulation on daily candles. Perp legs ignore funding, fees and slippage and liquidate at 100% margin loss on the day's low or high. Saving creates a branch; nothing is traded."
+          : 'Read-only market intelligence. It cannot trade or change strategies; Jev and the operator do that on the engine pages.'}
       </p>
     </aside>
   )
@@ -776,7 +776,7 @@ export function Analyst() {
           </span>
           <div className="flex flex-col items-start gap-2 w-full md:w-auto md:flex-row md:items-center">
             {catalogError ? (
-              <button type="button" onClick={loadCatalog} className="text-[10px] uppercase tracking-wider text-red-text underline underline-offset-2">
+              <button type="button" onClick={loadCatalog} className="text-xs uppercase tracking-wider text-red-text underline underline-offset-2">
                 model list unreachable — retry
               </button>
             ) : (

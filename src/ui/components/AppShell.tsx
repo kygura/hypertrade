@@ -5,37 +5,36 @@ import { StatusDot, type DotStatus } from './Badge'
 import { api, useApi } from '../lib/api'
 import { isEnginePath } from './strategy/EngineTabs'
 import { isTerminalPath } from './intel/TerminalTabs'
+import { isMarketPath } from './market/MarketTabs'
 import { ThemeSwitcher } from './ThemeSwitcher'
 
 // AppShell — docs/design/README.md §5. TopBar (>=768) / TopStrip + bottom tab bar
-// (<768) via CSS breakpoints only, no JS matchMedia. Freshness cluster reads
+// (<768) via CSS breakpoints only, no JS matchMedia. NAV is 5 cells, under the
+// 9-cell ceiling (docs/CONSOLIDATION.md); every cell shows in the tab bar. Freshness cluster reads
 // the most recent hl.total_oi_usd observation as a representative collector
 // heartbeat: green <30min, amber 30min-2h, red >2h or fetch failed.
 
-const NAV = [
-  // Intel Terminal family (docs/design/terminal.md §1.2): one entry; /journal,
-  // /theses, /query, /order, /watch and /overview switch inside via TerminalTabs.
-  { to: '/', label: 'COCKPIT', tab: 'CKPT', glyph: '◉' },
-  { to: '/branches', label: 'BRANCHES', tab: 'BRNCH', glyph: '⑂' },
-  { to: '/sectors', label: 'SECTORS', tab: 'SECTR', glyph: '▦' },
-  { to: '/state', label: 'STATE', tab: 'STATE', glyph: '☰' },
-  { to: '/markets', label: 'MARKETS', tab: 'MKTS', glyph: '≋' },
-  // BTC cycle phases and the next-bull-run estimate (ported from hl-cycles).
-  { to: '/cycles', label: 'CYCLES', tab: 'CYCLE', glyph: '◠' },
-  // Strategy console: one shell entry so the mobile tab bar stays compact;
-  // /strategies, /decisions and /governor switch inside via EngineTabs.
+export const NAV = [
+  // TRADE family (docs/CONSOLIDATION.md): Intel -> Act. /terminal, /watch, /journal,
+  // /theses, /query, / (feed), /order and /desk switch inside via TerminalTabs.
+  { to: '/', label: 'TRADE', tab: 'TRADE', glyph: '◉' },
+  // MARKET family: /markets, /sectors, /state, /cycles (and their drills) switch
+  // inside via MarketTabs; /overview redirects to /markets.
+  { to: '/markets', label: 'MARKET', tab: 'MKT', glyph: '≋' },
+  // RESEARCH family: heuristic research (docs/design/README.md §10.9) and the
+  // Branches simulator; /lab/* and /branches/* switch inside via LabTabs.
+  { to: '/lab', label: 'RESEARCH', tab: 'RSRCH', glyph: '⚗' },
+  // Read-only LLM analyst (docs/SPEC.md "Analyst").
+  { to: '/analyst', label: 'ASK', tab: 'ASK', glyph: '?' },
+  // Strategy console: /strategies, /decisions and /governor switch inside via EngineTabs.
   { to: '/strategies', label: 'ENGINE', tab: 'ENGIN', glyph: '⚙' },
-  // Read-only LLM analyst (docs/SPEC.md "Analyst"); a seventh cell on mobile.
-  { to: '/analyst', label: 'ANALYST', tab: 'ASK', glyph: '?' },
-  // Agentic portfolio desk (docs/SPEC.md "Desk"): agent team, governor, paper book.
-  { to: '/desk', label: 'DESK', tab: 'DESK', glyph: '◎' },
-  // Heuristic research (docs/design/README.md §10.9); the last cell.
-  { to: '/lab', label: 'LAB', tab: 'LAB', glyph: '⚗' },
 ]
 
-function isActive(pathname: string, to: string): boolean {
+export function isActive(pathname: string, to: string): boolean {
   if (to === '/') return isTerminalPath(pathname)
   if (to === '/strategies') return isEnginePath(pathname)
+  if (to === '/markets') return isMarketPath(pathname)
+  if (to === '/lab') return pathname === '/lab' || pathname.startsWith('/lab/') || pathname === '/branches' || pathname.startsWith('/branches/')
   return pathname === to || pathname.startsWith(`${to}/`)
 }
 
@@ -54,6 +53,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const freshness = useFreshness()
+  // Route-guard probe: a 401 redirects to /login (api.ts). In PUBLIC_MODE the
+  // server lets visitors through as guests, so offer LOGIN instead of LOGOUT.
+  const me = useApi<{ ok: boolean; guest?: boolean }>('/auth/me')
 
   const logout = async () => {
     await api.post('/auth/logout').catch(() => {})
@@ -62,8 +64,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-dvh flex flex-col">
-      <header className="app-topbar sticky top-0 z-40 h-10 flex items-center justify-between px-3 border-b border-border bg-topbar">
-        <Link to="/" className="app-wordmark flex items-center gap-1.5 text-[11px] uppercase font-semibold tracking-wider font-display">
+      <header className="app-topbar sticky top-0 z-40 h-[var(--topbar-h)] flex items-center justify-between px-3 border-b border-border bg-topbar">
+        <Link to="/" className="app-wordmark flex items-center gap-1.5 text-sm uppercase font-semibold tracking-wider font-display">
           HYPERTRADE
           <span className="app-wordmark-dot inline-block w-1.5 h-1.5 bg-accent" />
         </Link>
@@ -74,7 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               key={item.to}
               to={item.to}
               aria-current={isActive(pathname, item.to) ? 'page' : undefined}
-              className={`app-nav-link text-[10px] font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)] font-[number:var(--control-weight)] pb-1 ${
+              className={`app-nav-link text-xs font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)] font-[number:var(--control-weight)] pb-1 ${
                 isActive(pathname, item.to) ? 'tab-active' : 'text-text-secondary hover:text-text-primary'
               }`}
             >
@@ -87,11 +89,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ThemeSwitcher />
           <span className="hidden md:flex items-center gap-1.5" title="last collector run (hl.total_oi_usd)">
             <StatusDot status={freshness.status} />
-            <span className="text-[10px] text-text-secondary tabular">{freshness.label}</span>
+            <span className="text-xs text-text-secondary tabular">{freshness.label}</span>
           </span>
-          <Button tier="ghost" onClick={logout}>
-            LOGOUT
-          </Button>
+          {me.data?.guest ? (
+            <Button tier="ghost" onClick={() => navigate('/login')}>
+              LOGIN
+            </Button>
+          ) : (
+            <Button tier="ghost" onClick={logout}>
+              LOGOUT
+            </Button>
+          )}
         </div>
       </header>
 
@@ -113,8 +121,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 active ? 'border-accent text-text-primary' : 'border-transparent text-text-secondary'
               }`}
             >
-              <span className="text-[12px] leading-none">{item.glyph}</span>
-              <span className="text-[9px] font-control [text-transform:var(--control-case)] tracking-[min(var(--control-tracking),0.02em)] font-[number:var(--control-weight)]">{item.tab}</span>
+              <span className="text-md leading-none">{item.glyph}</span>
+              <span className="text-2xs font-control [text-transform:var(--control-case)] tracking-[min(var(--control-tracking),0.02em)] font-[number:var(--control-weight)]">{item.tab}</span>
             </Link>
           )
         })}

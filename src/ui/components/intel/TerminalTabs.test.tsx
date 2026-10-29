@@ -15,13 +15,13 @@ describe("terminalTabOf / isTerminalPath", () => {
     expect(terminalTabOf("/theses")).toBe("theses");
     expect(terminalTabOf("/query")).toBe("query");
     expect(terminalTabOf("/order")).toBe("order");
+    expect(terminalTabOf("/desk")).toBe("desk");
     expect(terminalTabOf("/watch")).toBe("watch");
-    expect(terminalTabOf("/overview")).toBe("overview");
     expect(terminalTabOf("/journal/")).toBe("journal");
   });
 
   test("routes outside the family are not terminal paths", () => {
-    for (const p of ["/lab/search", "/markets", "/markets/HYPE", "/desk", "/journalx", "/orders", "/strategies", "/login"]) {
+    for (const p of ["/lab/search", "/overview", "/markets", "/markets/HYPE", "/deskx", "/journalx", "/orders", "/strategies", "/login"]) {
       expect(terminalTabOf(p)).toBeNull();
       expect(isTerminalPath(p)).toBe(false);
     }
@@ -29,7 +29,7 @@ describe("terminalTabOf / isTerminalPath", () => {
   });
 
   test("short labels stay within 4 chars (DESIGN-terminal §1.3 mobile fit)", () => {
-    expect(TERMINAL_TABS.map((t) => t.short)).toEqual(["CKPT", "TERM", "JRNL", "THES", "QRY", "ORDR", "WTCH", "OVW"]);
+    expect(TERMINAL_TABS.map((t) => t.short)).toEqual(["CHNG", "WTCH", "JRNL", "THES", "QRY", "FEED", "ORDR", "DESK"]);
     for (const t of TERMINAL_TABS) expect(String(t.short).length).toBeLessThanOrEqual(4);
   });
 });
@@ -44,8 +44,8 @@ describe("TerminalTabs", () => {
 
   test("sticky radiogroup with eight segments, the current route checked", () => {
     const html = render("/theses");
-    expect(html).toContain('aria-label="terminal sections"');
-    expect(html).toContain("sticky top-10");
+    expect(html).toContain('aria-label="trade sections"');
+    expect(html).toContain("sticky top-[var(--topbar-h)]");
     const btns = html.match(/<button[^>]*>/g) ?? [];
     expect(btns).toHaveLength(8);
     const checked = btns.filter((b) => b.includes('aria-checked="true"'));
@@ -53,11 +53,14 @@ describe("TerminalTabs", () => {
     expect(checked[0]).toContain('title="test a thesis against the data"');
   });
 
-  test("`/` checks COCKPIT, `/terminal` TERMINAL, `/overview` OVERVIEW", () => {
-    const first = (render("/").match(/<button[^>]*>/g) ?? [])[0];
-    expect(first).toContain('aria-checked="true"');
-    expect((render("/terminal").match(/<button[^>]*>/g) ?? [])[1]).toContain('aria-checked="true"');
-    const last = (render("/overview").match(/<button[^>]*>/g) ?? [])[7];
-    expect(last).toContain('aria-checked="true"');
+  test("tabs run Intel then Act, each route checks its own tab", () => {
+    const labels = TERMINAL_TABS.map((t) => t.label);
+    expect(labels).toEqual(["CHANGES", "WATCH", "JOURNAL", "THESES", "QUERY", "FEED", "ORDER", "DESK"]);
+    const checkedIdx = (path: string) => (render(path).match(/<button[^>]*>/g) ?? []).findIndex((b) => b.includes('aria-checked="true"'));
+    expect(checkedIdx("/terminal")).toBe(0);
+    expect(checkedIdx("/asset/HYPE")).toBe(0);
+    expect(checkedIdx("/watch")).toBe(1);
+    expect(checkedIdx("/")).toBe(5);
+    expect(checkedIdx("/desk")).toBe(7);
   });
 });

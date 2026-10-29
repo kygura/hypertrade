@@ -5,7 +5,7 @@ import { intel, type IntelState } from '../../lib/intel'
 import { StatusDot } from '../Badge'
 import { Button } from '../Button'
 import { Panel, PanelBody, PanelHeader } from '../Panel'
-import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows, StaleBanner } from '../state'
+import { AsyncBody, EmptyBlock, ErrorBlock, SkeletonRows, StaleBanner } from '../state'
 import { ClaimAge } from './ClaimAge'
 import { isoOf, useInlineForm } from './format'
 import { PositionForm } from './PositionForm'
@@ -53,23 +53,15 @@ export function PositionsPanel({
   return (
     <Panel className="h-full">
       <PanelHeader title="POSITIONS">
-        {data && <span className="text-[10px] tabular text-text-primary">{fmtUsd(data.totalNotionalUsd, { compact: true })} TOTAL</span>}
+        {data && <span className="text-xs tabular text-text-primary">{fmtUsd(data.totalNotionalUsd, { compact: true })} TOTAL</span>}
         {fetchedIso && <ClaimAge ts={fetchedIso} thresholdHours={5 / 60} />}
       </PanelHeader>
       {fetchedIso && <StaleBanner generatedAt={fetchedIso} thresholdHours={0.5} noun="positions" />}
       <PanelBody>
-        {positions.offline && !data ? (
-          <OfflineBlock message={positions.offline} onRetry={positions.refetch} />
-        ) : positions.error && !data ? (
-          <ErrorBlock message={positions.error} onRetry={positions.refetch} />
-        ) : !data ? (
-          <SkeletonRows rows={3} />
-        ) : (
+        <AsyncBody {...positions} rows={3} onRetry={positions.refetch}>
+          {(data) => (
           <>
-            {(positions.error || positions.offline) && (
-              <ErrorBlock message={positions.error ?? positions.offline ?? ''} onRetry={positions.refetch} />
-            )}
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 px-3 py-2 text-[10px]">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 px-3 py-2 text-xs">
               {data.sources.map((s, i) => (
                 <Fragment key={s.source}>
                   {i > 0 && (
@@ -113,7 +105,8 @@ export function PositionsPanel({
               )
             )}
           </>
-        )}
+          )}
+        </AsyncBody>
         {watchlist.data ? (
           <WatchlistEditor
             items={watchlist.data.items}

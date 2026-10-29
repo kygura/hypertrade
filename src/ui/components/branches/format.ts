@@ -8,19 +8,11 @@
 // fmtUsd/fmtPct from shared/format.ts everywhere. Engine sim stats
 // (cagrPct, maxDrawdownPct, vsBtcPct, vsUsdcPct) are pre-scaled percents, so
 // call sites divide by 100 before passing them to shared's fmtPct.
+import { fmtUsdCompact, signClass } from '../../lib/format'
 import type { Allocation, BranchConfig } from '../../../shared/types'
 import type { EquityPoint } from './types'
 
-export function fmtUsdCompact(value: number): string {
-  const sign = value < 0 ? '-' : ''
-  return `${sign}$${new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Math.abs(value))}`
-}
-
-export function signClass(value: number): string {
-  if (value > 0) return 'text-green'
-  if (value < 0) return 'text-red-text'
-  return 'text-text-secondary'
-}
+export { fmtUsdCompact, signClass }
 
 // MAX DD: signed negative, red text only past -20% (docs/design/README.md §10.3).
 // Engine reports maxDrawdownPct as a positive magnitude.

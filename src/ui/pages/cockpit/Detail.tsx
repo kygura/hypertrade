@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link } from 'react-router'
 import { Badge, Button, DialogShell, EmptyBlock, ErrorBlock, MetricStat, OfflineBlock, Panel, SkeletonRows, StaleStrip } from '../../components'
 import { VenueBadge } from '../../components/intel/VenueBadge'
 import { fmtUsdCompact } from '../../components/branches/format'
@@ -30,6 +31,9 @@ function Section({ n, title, children }: { n: number; title: string; children: R
     </section>
   )
 }
+
+const COIN_LINK =
+  'btn inline-flex items-center h-[var(--control-md)] px-2.5 text-xs border border-border text-text-secondary hover:text-text-primary hover:bg-hover rounded-control font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)]'
 
 export const OpportunityDetail = forwardRef<
   HTMLHeadingElement,
@@ -76,26 +80,34 @@ export const OpportunityDetail = forwardRef<
     <Panel className="min-w-0 flex flex-col">
       {back}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-        <h2 ref={headingRef} tabIndex={-1} className="text-[13px] text-text-primary font-display tracking-wider outline-none focus-visible:outline">
+        <h2 ref={headingRef} tabIndex={-1} className="text-base text-text-primary font-display tracking-wider outline-none focus-visible:outline">
           {o.coin} · {o.direction.toUpperCase()} · {o.setupKind}
         </h2>
         <StatusPill status={o.status} />
-        <span className="text-[11px] tabular text-text-secondary">score {o.score.toFixed(2)}</span>
-        <span className="text-[10px] tabular text-text-secondary">{fmtAge(o.createdAt)}</span>
+        <span className="text-sm tabular text-text-secondary">score {o.score.toFixed(2)}</span>
+        <span className="text-xs tabular text-text-secondary">{fmtAge(o.createdAt)}</span>
         {!inFeed && <Badge tone="gray">NOT IN FEED</Badge>}
+        <span className="ml-auto inline-flex gap-2">
+          <Link to={`/markets/${encodeURIComponent(o.coin)}`} className={COIN_LINK}>
+            CHART →
+          </Link>
+          <Link to={`/asset/${encodeURIComponent(o.coin)}`} className={COIN_LINK}>
+            INTEL →
+          </Link>
+        </span>
       </div>
       {midAgeSec != null && midAgeSec > 30 && <StaleStrip>live price {Math.floor(midAgeSec)}s old — approve is blocked</StaleStrip>}
       {liqSlot && <div className="px-2 pb-2">{liqSlot}</div>}
       <div className="flex flex-col">
-        <div className="order-last lg:order-none sticky bottom-0 lg:bottom-auto lg:top-[92px] z-10 bg-[var(--color-panel)] border-t lg:border-t-0 lg:border-b border-border-subtle pb-[env(safe-area-inset-bottom)]">
+        <div className="order-last lg:order-none sticky bottom-0 lg:bottom-auto lg:top-[calc(var(--topbar-h)+var(--subnav-h))] z-10 bg-[var(--color-panel)] border-t lg:border-t-0 lg:border-b border-border-subtle pb-[env(safe-area-inset-bottom)]">
           {actionBar}
         </div>
         <Section n={1} title="WHY IT PASSED">
           {detail.signals.length === 0 ? (
-            <p className="text-[11px] text-text-secondary">no signals recorded</p>
+            <p className="text-sm text-text-secondary">no signals recorded</p>
           ) : (
             <div className="table-scroll">
-              <table className="dt w-full text-[11px] tabular">
+              <table className="dt w-full text-sm tabular">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="label text-left px-2 py-1">SIGNAL</th>
@@ -121,7 +133,7 @@ export const OpportunityDetail = forwardRef<
         <Section n={2} title="COST TO TRADE">
           {o.costs && o.grossEdgeBps != null ? (
             <>
-              <p className="text-[11px] tabular text-text-muted">
+              <p className="text-sm tabular text-text-muted">
                 gross {bp(o.grossEdgeBps)} − fees 2×{o.costs.feeBps}bp − slippage {o.costs.slippageBps.toFixed(0)}bp − funding {o.costs.fundingBps.toFixed(0)}bp = net{' '}
                 {o.netEdgeBps == null ? '—' : bp(o.netEdgeBps)}
               </p>
@@ -132,27 +144,27 @@ export const OpportunityDetail = forwardRef<
                 <MetricStat label="FUNDING" value={bp(o.costs.fundingBps)} />
                 <MetricStat label="NET" value={o.netEdgeBps == null ? '—' : bp(o.netEdgeBps)} />
               </div>
-              <p className="text-[11px] tabular text-text-secondary">{fmtUsdCompact(o.costs.absorbableUsd)} absorbable (10% of depth ±0.5%)</p>
+              <p className="text-sm tabular text-text-secondary">{fmtUsdCompact(o.costs.absorbableUsd)} absorbable (10% of depth ±0.5%)</p>
             </>
           ) : (
-            <p className="text-[11px] text-text-secondary">no cost breakdown yet</p>
+            <p className="text-sm text-text-secondary">no cost breakdown yet</p>
           )}
           <EdgeCell row={o} />
         </Section>
         <Section n={3} title="INVALIDATION & BEAR CASE">
           {o.invalidationPx != null && (
-            <p className="text-[11px] tabular">
+            <p className="text-sm tabular">
               {fmtPx(o.invalidationPx)}
               {px != null && <span className="text-text-secondary"> · {fmtSignedPct(o.invalidationPx / px - 1, 1)} from mark</span>}
             </p>
           )}
-          <p className="text-[11px] text-text-muted">{o.invalidation}</p>
+          <p className="text-sm text-text-muted">{o.invalidation}</p>
           {o.status === 'investigating' ? (
             <span className="label pulse-label">RESEARCHING…</span>
           ) : detail.bearCase ? (
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-text-secondary">model words</span>
-              <p className="text-[12px] text-text-primary whitespace-pre-line">{detail.bearCase}</p>
+              <span className="text-xs text-text-secondary">model words</span>
+              <p className="text-md text-text-primary whitespace-pre-line">{detail.bearCase}</p>
             </div>
           ) : (
             <EmptyBlock label="no research yet" action={isLive(o.status) ? { label: 'RESEARCH', onClick: onResearch } : undefined} />
@@ -175,14 +187,14 @@ function SimilarSetups({ stats, label, evidence }: { stats: Detail['stats']; lab
   const head = label && <span className="label">{label}</span>
   if (!stats || stats.ci95 == null)
     return (
-      <p className="flex flex-wrap gap-2 text-[11px] tabular text-text-secondary">
+      <p className="flex flex-wrap gap-2 text-sm tabular text-text-secondary">
         {head}
         <span>{evidence ?? `n ${stats?.n ?? 0} · ${stats?.clusters ?? 0} clusters`}</span>
       </p>
     )
   const [lo, hi] = stats.ci95
   return (
-    <div className="flex flex-wrap items-center gap-2 text-[11px] tabular">
+    <div className="flex flex-wrap items-center gap-2 text-sm tabular">
       {head}
       <span>
         n {stats.n} · hit {stats.hitRate == null ? '—' : `${Math.round(stats.hitRate * 100)}%`} · mean net {stats.meanNet == null ? '—' : fmtSignedPct(stats.meanNet)} · 95% CI {fmtSignedPct(lo)} to {fmtSignedPct(hi)}
@@ -196,11 +208,11 @@ function SimilarSetups({ stats, label, evidence }: { stats: Detail['stats']; lab
 type Verdict = NonNullable<Detail['risk']>['before']
 
 function PortfolioRisk({ risk }: { risk: Detail['risk'] }) {
-  if (!risk) return <p className="text-[11px] text-text-secondary">no governor preview</p>
+  if (!risk) return <p className="text-sm text-text-secondary">no governor preview</p>
   const col = (label: string, v: Verdict) => {
     const s = v.sizing
     return (
-      <div className="flex flex-col gap-1 text-[11px] tabular">
+      <div className="flex flex-col gap-1 text-sm tabular">
         <span className="label">{label}</span>
         <span>{v.approved ? 'PASSES' : 'BLOCKED'}</span>
         {s?.notionalUsd != null && <span className="text-text-secondary">notional {fmtUsd(s.notionalUsd)}</span>}
@@ -222,7 +234,7 @@ function PortfolioRisk({ risk }: { risk: Detail['risk'] }) {
             GOVERNOR BLOCKS
           </Badge>
           {risk.after.reasons.map((r) => (
-            <p key={r} className="text-[11px] text-red-text">
+            <p key={r} className="text-sm text-red-text">
               {r}
             </p>
           ))}
@@ -232,7 +244,7 @@ function PortfolioRisk({ risk }: { risk: Detail['risk'] }) {
         {col('BEFORE', risk.before)}
         {col('AFTER', risk.after)}
       </div>
-      <p className="text-[10px] text-text-secondary">margin use is not in the governor preview this phase</p>
+      <p className="text-xs text-text-secondary">margin use is not in the governor preview this phase</p>
     </div>
   )
 }
@@ -304,7 +316,7 @@ export function ActionBar({
         </span>
       </div>
       {hint && (
-        <p className="text-[10px] text-amber" role="status">
+        <p className="text-xs text-amber" role="status">
           {hint}
         </p>
       )}
@@ -334,7 +346,7 @@ export function SnoozeMenu({ onSnooze, onClose }: { onSnooze: (minutes: number) 
           ref={i === 0 ? first : undefined}
           type="button"
           role="menuitem"
-          className="flex justify-between gap-3 px-3 py-1.5 min-h-[var(--tap-min)] text-[11px] text-left hover:bg-hover focus-visible:bg-hover"
+          className="flex justify-between gap-3 px-3 py-1.5 min-h-[var(--tap-min)] text-sm text-left hover:bg-hover focus-visible:bg-hover"
           onClick={() => onSnooze(s.minutes)}
         >
           <span>{s.label}</span>
@@ -383,10 +395,10 @@ export function TicketDialog({
       }
       onClose={onCancel}
     >
-      <p className="text-[12px] text-text-muted">
+      <p className="text-md text-text-muted">
         {o.coin} · {o.direction.toUpperCase()} · {o.setupKind}
       </p>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[11px] tabular">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm tabular">
         {rows.map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="label">{k}</dt>

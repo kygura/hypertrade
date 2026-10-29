@@ -88,7 +88,7 @@ export function SectorDrillPanel({ sector, onClose }: { sector: EnrichedSector; 
     <div className="flex flex-col gap-3 p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] uppercase text-text-primary">{sector.label}</span>
+          <span className="text-base uppercase text-text-primary">{sector.label}</span>
           <MomentumBadge momentum={sector.momentum} />
         </div>
         <Button tier="ghost" onClick={onClose}>
@@ -96,7 +96,7 @@ export function SectorDrillPanel({ sector, onClose }: { sector: EnrichedSector; 
         </Button>
       </div>
 
-      <p className="text-[13px] text-text-muted">{sector.rationale}</p>
+      <p className="text-base text-text-muted">{sector.rationale}</p>
 
       <div className="flex flex-wrap gap-1.5">
         {sector.sources.map((s) => (
@@ -113,7 +113,7 @@ export function SectorDrillPanel({ sector, onClose }: { sector: EnrichedSector; 
           {sector.social_share_24h != null && (
             <>
               <SrcTag source="elfa" />
-              <span className="text-[11px] text-text-muted tabular">
+              <span className="text-sm text-text-muted tabular">
                 {fmtPct(sector.social_share_24h, { decimals: 1 })} of crypto-social mentions, 24h
               </span>
             </>
@@ -130,7 +130,7 @@ export function SectorDrillPanel({ sector, onClose }: { sector: EnrichedSector; 
         {unmatched.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
             {unmatched.map((t) => (
-              <span key={t} className="text-[11px] tabular px-1.5 py-0.5 border border-border-subtle text-text-secondary">
+              <span key={t} className="text-sm tabular px-1.5 py-0.5 border border-border-subtle text-text-secondary">
                 {t}
               </span>
             ))}

@@ -183,8 +183,10 @@
 }
 
 /* ── Top bar: borderless, translucent over the screen, 48px ─────────── */
+:root[data-theme='tradexyz'] {
+  --topbar-h: 48px;
+}
 :root[data-theme='tradexyz'] .app-topbar {
-  height: 48px;
   border-bottom-color: transparent;
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
@@ -272,26 +274,6 @@
 :root[data-theme='tradexyz'] .app-tab[aria-current='page'] {
   background: #1e252e;
   color: var(--color-text-primary);
-}
-
-/* Sub-tabs (engine console): the app's content tabs — Inter 14px, slate-400
-   → white, active carries a 2px WHITE rule (gold is reserved for nav). */
-:root[data-theme='tradexyz'] .subtab {
-  display: inline-block; /* was inline-flex; ::first-letter needs a block box */
-  line-height: var(--control-md);
-  font-family: var(--font-sans);
-  font-size: 14px;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: lowercase;
-  padding-left: 4px;
-  padding-right: 4px;
-}
-:root[data-theme='tradexyz'] .subtab::first-letter {
-  text-transform: uppercase;
-}
-:root[data-theme='tradexyz'] .subtab.tab-active {
-  border-bottom-color: var(--color-text-primary);
 }
 
 /* ── Panels: rounded-lg slate-950 cards with slate-800 hairline ───────── */

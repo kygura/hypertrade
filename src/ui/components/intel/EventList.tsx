@@ -63,8 +63,8 @@ export function EventList({
   return (
     <ul className="flex flex-col" onKeyDown={(e) => e.key === 'Escape' && setOpen(null)}>
       {upcoming.map((c) => (
-        <li key={c.eventId} className="flex items-start gap-3 px-3 py-1.5 border-b border-border-subtle text-[12px]">
-          <span className="w-[11ch] flex-shrink-0 text-[10px] tabular text-text-primary" title={fmtTs(c.scheduledAt)}>
+        <li key={c.eventId} className="flex items-start gap-3 px-3 py-1.5 border-b border-border-subtle text-md">
+          <span className="w-[11ch] flex-shrink-0 text-xs tabular text-text-primary" title={fmtTs(c.scheduledAt)}>
             {fmtCountdown(c.scheduledAt, now)}
           </span>
           <span className="flex flex-wrap items-center gap-2 min-w-0">
@@ -85,9 +85,9 @@ export function EventList({
             onMouseLeave={() => onHover(null)}
             onFocus={() => onHover(k)}
             onBlur={() => onHover(null)}
-            className={`flex items-start gap-3 px-3 py-1.5 border-b border-border-subtle last:border-b-0 text-[12px] ${hot === k ? 'bg-hover' : ''}`}
+            className={`flex items-start gap-3 px-3 py-1.5 border-b border-border-subtle last:border-b-0 text-md ${hot === k ? 'bg-hover' : ''}`}
           >
-            <span className="w-[11ch] flex-shrink-0 text-[10px] tabular text-text-secondary pt-0.5" title={fmtTs(e.ts)}>
+            <span className="w-[11ch] flex-shrink-0 text-xs tabular text-text-secondary pt-0.5" title={fmtTs(e.ts)}>
               {fmtMdHm(e.ts)}
             </span>
             <div className="min-w-0 flex-1">

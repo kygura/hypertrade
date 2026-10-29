@@ -23,7 +23,8 @@ import { useCandlePages } from '../../lib/candles'
 import { useHlReconnect, useHlSubscription, type WsCandle } from '../../lib/hlWs'
 import { useTheme } from '../../themes/registry'
 import { Segmented } from '../Segmented'
-import { EmptyBlock, ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
+import { AsyncBody, SkeletonRows } from '../state'
+import { alpha, css } from './theme'
 
 // MarketChart — docs/design/README.md §9.4. TradingView lightweight-charts (canvas), the
 // one chart that isn't Recharts: it has to hold tens of thousands of bars,
@@ -52,25 +53,6 @@ const SRC_LABEL: Record<string, string> = { hl: 'HL', binance: 'BINANCE', bitsta
 const PREFETCH_BARS = 150
 /** Bars in view on first load. */
 const INITIAL_VIEW = 180
-
-function css(name: string, fallback: string): string {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  return v || fallback
-}
-
-/** Scales a hex or rgb(a) color's opacity by `a` (theme tokens may already carry alpha). */
-function alpha(color: string, a: number): string {
-  if (color.startsWith('#') && color.length === 7) {
-    const n = parseInt(color.slice(1), 16)
-    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
-  }
-  const m = /rgba?\(([^)]+)\)/.exec(color)
-  if (m) {
-    const [r, g, b, a0] = m[1]!.split(',').map((x) => x.trim())
-    return `rgba(${r},${g},${b},${(a0 == null ? 1 : Number(a0)) * a})`
-  }
-  return color
-}
 
 function loadPrefs(): Record<Overlay, boolean> {
   try {
@@ -424,18 +406,22 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
         </div>
       </div>
 
-      {data.offline && !hasBars ? (
-        <OfflineBlock onRetry={data.reload} />
-      ) : data.error && !hasBars ? (
-        <ErrorBlock message={data.error} onRetry={data.reload} />
-      ) : data.loading && !hasBars ? (
-        <div className="flex flex-col gap-2">
-          <SkeletonRows />
-          <span className="text-[10px] text-text-secondary text-center pulse-label">backfilling candles…</span>
-        </div>
-      ) : !hasBars ? (
-        <EmptyBlock label={data.syncError ? `no candle data — ${data.syncError}` : 'no candle data'} />
-      ) : (
+      <AsyncBody
+        loading={data.loading}
+        data={hasBars ? data : null}
+        error={data.error}
+        offline={!!data.offline}
+        staleError={false}
+        skeleton={
+          <div className="flex flex-col gap-2">
+            <SkeletonRows />
+            <span className="text-xs text-text-secondary text-center pulse-label">backfilling candles…</span>
+          </div>
+        }
+        empty={{ label: data.syncError ? `no candle data — ${data.syncError}` : 'no candle data' }}
+        onRetry={data.reload}
+      >
+        {() => (
         <>
           {legendBar && <Legend coin={coin} tf={tf} {...legendBar} overlays={overlays} />}
           <div className="relative">
@@ -447,12 +433,13 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
               aria-label={`${coin} ${tf} price chart with ${OVERLAYS.filter((o) => overlays[o.id]).map((o) => o.title).join(', ')}`}
             />
             {data.loadingOlder && (
-              <span className="absolute left-2 top-1 text-[10px] text-text-secondary pulse-label">loading history…</span>
+              <span className="absolute left-2 top-1 text-xs text-text-secondary pulse-label">loading history…</span>
             )}
           </div>
           <Footnote spans={spans} hasMore={data.hasMore} funding={data.funding} oi={data.oi} syncError={data.syncError} overlays={overlays} />
         </>
-      )}
+        )}
+      </AsyncBody>
     </div>
   )
 }
@@ -485,7 +472,7 @@ function Legend({
     </span>
   )
   return (
-    <div className="px-2 pt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] tabular">
+    <div className="px-2 pt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs tabular">
       <span className="text-text-secondary whitespace-nowrap">
         {coin}-PERP · {TF_LABEL[tf]} · {fmtBarTime(bar.t, tf)} UTC
       </span>
@@ -532,7 +519,7 @@ function Footnote({
     parts.push(oi?.from != null ? `OI snapshots from ${date(oi.from)} (every 15m)` : 'no OI snapshots in view — collected every 15m for tracked coins')
   }
   return (
-    <div className="px-2 py-1.5 border-t border-border text-[10px] text-text-secondary flex flex-wrap gap-x-3 gap-y-0.5">
+    <div className="px-2 py-1.5 border-t border-border text-xs text-text-secondary flex flex-wrap gap-x-3 gap-y-0.5">
       {parts.map((p) => (
         <span key={p}>{p}</span>
       ))}

@@ -14,9 +14,12 @@ import { deskProviderFactory, runDesk } from "../src/server/desk/agents.js";
 import { telegramApi } from "../src/server/desk/notify.js";
 import { handleTelegramUpdate, type TelegramUpdate } from "../src/server/desk/telegram.js";
 import { tick } from "../src/server/desk/watch.js";
+import { wireAgentReadTools } from "../src/server/routes/agentData.js";
 import { defaultDeskService } from "../src/server/routes/desk.js";
 import { telegramIntel } from "../src/server/routes/intel/index.js";
 
+// The desk agents' intel read tools need their deps registered in this process too.
+wireAgentReadTools();
 const service = defaultDeskService();
 const makeProvider = deskProviderFactory();
 const tickMs = Math.max(30, Number(process.env.DESK_WORKER_TICK_SEC ?? 60) || 60) * 1000;
