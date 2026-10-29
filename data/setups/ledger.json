@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-29T15:16:46.215Z",
+  "updated_at": "2026-10-29T18:57:01.029Z",
   "open": [
     {
       "id": "ZEC-long-20261027-1",
@@ -35,7 +35,7 @@
       "r_result": null,
       "triggered_at": "2026-10-28T00:00:00.000Z",
       "created_at": "2026-10-27T22:56:27.487Z",
-      "updated_at": "2026-10-29T15:16:46.215Z",
+      "updated_at": "2026-10-29T18:57:01.029Z",
       "expires_at": "2026-10-30T22:56:27.487Z"
     },
     {
@@ -72,7 +72,7 @@
       "r_result": null,
       "triggered_at": "2026-10-28T06:00:00.000Z",
       "created_at": "2026-10-28T06:58:59.847Z",
-      "updated_at": "2026-10-29T15:16:46.215Z",
+      "updated_at": "2026-10-29T18:57:01.029Z",
       "expires_at": "2026-10-31T06:58:59.847Z"
     },
     {
@@ -109,47 +109,49 @@
       "r_result": null,
       "triggered_at": "2026-10-28T22:00:00.000Z",
       "created_at": "2026-10-28T22:56:47.968Z",
-      "updated_at": "2026-10-29T15:16:46.215Z",
+      "updated_at": "2026-10-29T18:57:01.029Z",
       "expires_at": "2026-11-04T22:56:47.968Z"
     },
     {
-      "id": "kPEPE-short-20261029-1",
+      "id": "XPL-short-20261029-1",
       "setup_id": "failed_breakout",
       "levels_source": "menu",
-      "asset": "kPEPE",
+      "asset": "XPL",
       "direction": "short",
       "horizon": "swing",
-      "timeframe": "1d",
-      "thesis": "kPEPE swept the 1d range high (1d volume ratio 3.32) and closed back inside at range position 0.87, 2 ATR over the 1d SMA20 with funding at the 10.95 floor (99th percentile of its week) and OI 24h +7.21% on new_longs flow; fresh longs near the high may be trapped, base case a fade toward the 1d SMA20 (low-confidence). The other side sees ret7d +10.87, 14.46 vs BTC, and funding that is not HL-local (-1.46 vs CEX).",
+      "timeframe": "4h",
+      "thesis": "XPL swept the 4h range high (4h sweep high, volRatio 1.0) inside a 1d downtrend with mark 0.49 ATR under the 1d SMA20; OI is up 9.97 over 24h (new_shorts) at a neutral funding of 10.95, so the base case is a rejection of the swept high toward the 1d low. The other side sees the 1w sweep low at 1w rangePos 0.11, so risk skews toward a squeeze if the shorts are pressed (low-confidence).",
       "regime_alignment": "with",
-      "trigger": "1d close back under the 1d range high after the sweep",
+      "trigger": "4h close back under the swept 4h high20 after the sweep",
       "entry": {
-        "low": 0.005027,
-        "high": 0.005109
+        "low": 0.076476,
+        "high": 0.078003
       },
-      "invalidation": 0.0053934,
-      "invalidation_reason": "a 1d close 0.75 ATR above the swept high means the breakout was accepted",
+      "invalidation": 0.079791,
+      "invalidation_reason": "acceptance above the swept 4h high means the breakout is being bought, not rejected",
       "targets": [
-        0.0042714,
-        0.0041298
+        0.0706,
+        0.067034
       ],
-      "rr": 2.45,
+      "rr": 2.6,
       "conviction": "low",
       "evidence": [
-        "kPEPE.tf.1d.sweep",
-        "kPEPE.tf.1d.rangePos",
-        "kPEPE.pos.oiChg24hPct",
-        "kPEPE.pos.fundingAnnPct",
-        "kPEPE.tf.1d.vsSma20Atr"
+        "XPL.tf.4h.sweep",
+        "XPL.tf.1d.trend",
+        "XPL.pos.oiChg24hPct",
+        "XPL.pos.flow24h",
+        "XPL.tf.1w.rangePos"
       ],
-      "status": "triggered",
-      "status_note": "entry zone traded (2026-10-29 07:00 UTC)",
+      "status": "watching",
+      "status_note": null,
       "r_result": null,
-      "triggered_at": "2026-10-29T07:00:00.000Z",
-      "created_at": "2026-10-29T07:02:48.838Z",
-      "updated_at": "2026-10-29T15:16:46.215Z",
-      "expires_at": "2026-11-05T07:02:48.838Z"
-    },
+      "triggered_at": null,
+      "created_at": "2026-10-29T18:57:01.029Z",
+      "updated_at": "2026-10-29T18:57:01.029Z",
+      "expires_at": "2026-11-01T18:57:01.029Z"
+    }
+  ],
+  "closed": [
     {
       "id": "HYPE-short-20261029-1",
       "setup_id": null,
@@ -181,16 +183,52 @@
         "HYPE.pos.premiumBps",
         "HYPE.tf.1w.rangePos"
       ],
-      "status": "watching",
-      "status_note": null,
-      "r_result": null,
-      "triggered_at": null,
+      "status": "cancelled",
+      "status_note": "the thesis rested on paid carry and premium; HYPE funding is now 10.95 (it was 138.76) and premium -2.21 bps, so the crowding premise broke before price did",
+      "r_result": -0.02,
+      "triggered_at": "2026-10-29T15:00:00.000Z",
       "created_at": "2026-10-29T15:16:46.215Z",
-      "updated_at": "2026-10-29T15:16:46.215Z",
+      "updated_at": "2026-10-29T18:57:01.029Z",
       "expires_at": "2026-11-01T15:16:46.215Z"
-    }
-  ],
-  "closed": [
+    },
+    {
+      "id": "kPEPE-short-20261029-1",
+      "setup_id": "failed_breakout",
+      "levels_source": "menu",
+      "asset": "kPEPE",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "1d",
+      "thesis": "kPEPE swept the 1d range high (1d volume ratio 3.32) and closed back inside at range position 0.87, 2 ATR over the 1d SMA20 with funding at the 10.95 floor (99th percentile of its week) and OI 24h +7.21% on new_longs flow; fresh longs near the high may be trapped, base case a fade toward the 1d SMA20 (low-confidence). The other side sees ret7d +10.87, 14.46 vs BTC, and funding that is not HL-local (-1.46 vs CEX).",
+      "regime_alignment": "with",
+      "trigger": "1d close back under the 1d range high after the sweep",
+      "entry": {
+        "low": 0.005027,
+        "high": 0.005109
+      },
+      "invalidation": 0.0053934,
+      "invalidation_reason": "a 1d close 0.75 ATR above the swept high means the breakout was accepted",
+      "targets": [
+        0.0042714,
+        0.0041298
+      ],
+      "rr": 2.45,
+      "conviction": "low",
+      "evidence": [
+        "kPEPE.tf.1d.sweep",
+        "kPEPE.tf.1d.rangePos",
+        "kPEPE.pos.oiChg24hPct",
+        "kPEPE.pos.fundingAnnPct",
+        "kPEPE.tf.1d.vsSma20Atr"
+      ],
+      "status": "invalidated",
+      "status_note": "stopped at 0.0053934 (2026-10-29 15:00 UTC)",
+      "r_result": -1,
+      "triggered_at": "2026-10-29T07:00:00.000Z",
+      "created_at": "2026-10-29T07:02:48.838Z",
+      "updated_at": "2026-10-29T15:59:59.999Z",
+      "expires_at": "2026-11-05T07:02:48.838Z"
+    },
     {
       "id": "XMR-long-20261029-1",
       "setup_id": "htf_pullback",
@@ -377,9 +415,9 @@
     }
   ],
   "stats": {
-    "closed_90d": 5,
-    "triggered_90d": 5,
+    "closed_90d": 7,
+    "triggered_90d": 7,
     "hit_rate": 0,
-    "avg_r": 0.03
+    "avg_r": -0.12
   }
 }

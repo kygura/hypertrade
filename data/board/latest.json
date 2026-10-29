@@ -1,46 +1,47 @@
 {
-  "generated_at": "2026-10-29T15:16:46.215Z",
-  "read": "The board is quiet and range-bound with BTC 1d rangePos 0.41, and the one large imbalance is HYPE, up 20.16 over 7d with HL funding at 138.76 annualised after a 4h volume ratio of 6.14; we lean toward a fade.",
+  "generated_at": "2026-10-29T18:57:01.029Z",
+  "read": "The board is range-bound with BTC 1d rangePos 0.3 and OI unwinding (oiChg24hPct -5.01); the largest imbalance is XMR, where HL funding is 97.12 against 30 on CEX, and funding on HYPE has reset to 10.95 after the vertical move.",
   "watchlist": [
-    {
-      "asset": "HYPE",
-      "kind": "crowded_longs",
-      "skew": "down",
-      "timeframe": "4h",
-      "note": "4h breakout up with volRatio 6.14, mark 6.62 ATR over the 4h SMA20, funding 138.76 annualised at the 100th percentile of its week, premium 12.13 bps; 1w trend up, so a fade is counter-trend and risks a squeeze toward the 1w 12-bar high.",
-      "arms": "a 4h close back under 4h.high20 with a level in the menu at least 2R away",
-      "evidence": [
-        "HYPE.tf.4h.breakout",
-        "HYPE.tf.4h.volRatio",
-        "HYPE.pos.fundingAnnPct",
-        "HYPE.pos.premiumBps"
-      ]
-    },
     {
       "asset": "XMR",
       "kind": "venue_divergence",
       "skew": "down",
       "timeframe": "1d",
-      "note": "HL funding 97.55 vs CEX 16.26 (81.29 points over), 1w sweep high on volRatio 2.41; 1d rangePos only 0.6 so the tripwire does not arm, and the same crowding cancelled two earlier XMR longs.",
+      "note": "HL funding 97.12 vs CEX 30 (67.12 points over), OI 24h +7.86 with flow oi_build_flat, 1w sweep high on volRatio 2.41; 1d rangePos is only 0.59 so the funding_fade tripwire misses, and the same HL-local crowding cancelled two earlier XMR longs.",
       "arms": "1d range position 0.8 or higher while funding stays above 30, with a level at least 2R away",
       "evidence": [
         "XMR.pos.fundingVsCexAnnPct",
+        "XMR.pos.oiChg24hPct",
         "XMR.tf.1w.sweep",
         "XMR.tf.1d.rangePos"
       ]
     },
     {
       "asset": "LIT",
-      "kind": "venue_divergence",
+      "kind": "trend_exhaustion",
       "skew": "down",
       "timeframe": "4h",
-      "note": "Funding 37.6 vs CEX 10.95 (26.65 points over), premium 12.24 bps, 4h rangePos 0.97 inside a 4h and 1d downtrend after a 7d return of -13.87; a rejection of the 4h high could mean the local crowding unwinds (low-confidence).",
-      "arms": "a 4h close back under the 4h SMA20 with funding vs CEX still above 10 points and a level in the menu at least 2R away",
+      "note": "4h breakout up on volRatio 8.01 with ret24h +10.1 and OI 24h +6.98 (new_longs), inside a 1d downtrend with 7d return -10.42; funding has reset to 10.95 so the local crowding that was here earlier is gone, and the bounce may fade (low-confidence).",
+      "arms": "a 4h close back under the 4h high20 with a level in the menu at least 2R away",
       "evidence": [
-        "LIT.pos.fundingVsCexAnnPct",
-        "LIT.pos.premiumBps",
-        "LIT.tf.4h.rangePos",
+        "LIT.tf.4h.breakout",
+        "LIT.tf.4h.volRatio",
+        "LIT.pos.oiChg24hPct",
         "LIT.tf.1d.trend"
+      ]
+    },
+    {
+      "asset": "kPEPE",
+      "kind": "trend_exhaustion",
+      "skew": "down",
+      "timeframe": "1d",
+      "note": "ret7d +19.69 and 1w rangePos 0.98 with a 1d sweep high on volRatio 3.32, but OI is falling (24h -5.29, flow short_covering): the move is covering rather than fresh demand, so it may stall near the 1w range high (low-confidence).",
+      "arms": "a 1d close back under the 1d high20 with a level in the menu at least 2R away",
+      "evidence": [
+        "kPEPE.tf.1d.sweep",
+        "kPEPE.tf.1w.rangePos",
+        "kPEPE.pos.oiChg24hPct",
+        "kPEPE.pos.ret7dPct"
       ]
     },
     {
@@ -48,61 +49,97 @@
       "kind": "absorption",
       "skew": "up",
       "timeframe": "1d",
-      "note": "1d sweep low at rangePos 0.07, ret7d -21.22, 1d ATR ratio 0.59 (compression), funding 10.95 vs CEX 2.34; L1 says wait for the reclaim close, the last WLD long was stopped.",
+      "note": "1d sweep low at rangePos 0.01 after ret7d -21.22, 1d atrRatio 0.59 (compression), funding -1.03 with premium -7.87 bps; shorts are paying, which could fuel a squeeze, but no reclaim close yet and the last WLD long was stopped (L1).",
       "arms": "a 1d close back above the 1d range low after the sweep, with funding at or under 10.95",
       "evidence": [
         "WLD.tf.1d.sweep",
         "WLD.tf.1d.rangePos",
-        "WLD.pos.ret7dPct"
+        "WLD.pos.ret7dPct",
+        "WLD.pos.premiumBps"
       ]
     },
     {
-      "asset": "ADA",
-      "kind": "long_liquidation",
-      "skew": "up",
-      "timeframe": "1d",
-      "note": "1d rangePos 0.09, 2 ATR-ish stretch at -1.61 ATR under the 1d SMA20, 1d trend down, funding 7d -8.49 while 24h is -0.94; shorts have paid, so a bounce may be fuel for a squeeze (low-confidence).",
-      "arms": "a 1d close back above the 1d range low after a sweep with funding at or under 10.95",
-      "evidence": [
-        "ADA.tf.1d.rangePos",
-        "ADA.tf.1d.vsSma20Atr",
-        "ADA.pos.funding7dAnnPct"
-      ]
-    },
-    {
-      "asset": "VVV",
-      "kind": "venue_divergence",
+      "asset": "HYPE",
+      "kind": "crowded_longs",
       "skew": "down",
       "timeframe": "4h",
-      "note": "Funding 31.13 vs CEX 10.95 (20.18 points over) with premium 5.78 bps after a stop-out; 4h trend down, 7d return -9.89, volRatio 0.15 so the bounce is thin.",
-      "arms": "a 4h close back under the 4h SMA20 after a bounce, with a level in the menu at least 2R away",
+      "note": "Still +18.95 over 24h with OI 24h +8.22 and 4h vsSma20Atr 5.57, but funding is now 10.95 and premium -2.21 bps, so the paid-carry crowding is gone; a vertical move with 1w rangePos 0.93 could retrace, though risk skews toward continuation (low-confidence).",
+      "arms": "a 4h close back under the 4h high20 with funding back above 30",
       "evidence": [
-        "VVV.pos.fundingVsCexAnnPct",
-        "VVV.tf.4h.volRatio",
-        "VVV.pos.premiumBps"
+        "HYPE.tf.4h.vsSma20Atr",
+        "HYPE.pos.fundingAnnPct",
+        "HYPE.pos.premiumBps",
+        "HYPE.tf.1w.rangePos"
+      ]
+    },
+    {
+      "asset": "PURR",
+      "kind": "other",
+      "skew": "either",
+      "timeframe": "4h",
+      "note": "ret24h +26.42 and 4h volRatio 17.39 on OI of only 14874600 with no OI history (oiChg24hPct null); too thin and unmeasured to size a plan, so we only watch for the reaction.",
+      "arms": "OI change over 24h measured, and a 4h close back inside the prior 4h range with a level in the menu at least 2R away",
+      "evidence": [
+        "PURR.pos.ret24hPct",
+        "PURR.tf.4h.volRatio",
+        "PURR.pos.oiUsd"
       ]
     }
   ],
   "hits": [
     {
+      "asset": "WLD",
+      "setup_id": "failed_breakout",
+      "direction": "long"
+    },
+    {
+      "asset": "XPL",
+      "setup_id": "failed_breakout",
+      "direction": "short"
+    },
+    {
       "asset": "DOGE",
       "setup_id": "htf_pullback",
       "direction": "short"
+    },
+    {
+      "asset": "CASHCAT",
+      "setup_id": "failed_breakout",
+      "direction": "short"
     }
   ],
-  "near": [],
+  "near": [
+    {
+      "asset": "XMR",
+      "setup_id": "funding_fade",
+      "direction": "short",
+      "gap": 0.21
+    }
+  ],
   "new_setups": [
-    "HYPE-short-20261029-1"
+    "XPL-short-20261029-1"
   ],
   "rejected": [],
   "passes": [
     {
+      "asset": "WLD",
+      "template": "failed_breakout",
+      "direction": "long",
+      "reason": "L1: no reclaim close yet and the previous WLD long was stopped; waiting for the 1d close back above the range low"
+    },
+    {
+      "asset": "CASHCAT",
+      "template": "failed_breakout",
+      "direction": "short",
+      "reason": "OI flat (24h 0.09) and only 16 weekly bars, so no usable 1w structure; one new slot goes to XPL"
+    },
+    {
       "asset": "DOGE",
       "template": "htf_pullback",
       "direction": "short",
-      "reason": "already open as DOGE-short-20261028-1 and triggered; one open per market and direction"
+      "reason": "already open as DOGE-short-20261028-1"
     }
   ],
   "unanswered": [],
-  "brief": "Delta: HYPE spiked, with 4h ret 19.04 and funding 138.76 annualised, the only large imbalance; we propose a low-conviction counter-trend fade with invalidation above the weekly high. DOGE tripwire is already open. XMR (81.29 points over CEX), LIT and VVV carry HL-local crowding but lack a clean level. Open: ZEC, DOGE, AAVE, kPEPE all triggered; AAVE and kPEPE follow L1 reasoning. Wrong if HYPE holds above the 1w 12-bar high. Gap: hl-cycles stale 9 h; OI changes are null."
+  "brief": "HYPE crowding is gone: funding fell back to 10.95 and premium to -2.21 bps while price stayed +18.95 over 24h, so the HYPE short is cancelled on premise. XMR remains the largest imbalance (funding 97.12, 67.12 points over CEX, 1d rangePos 0.59), still short of the tripwire. One new plan: XPL short on a 4h sweep high in a 1d downtrend with OI +9.97 over 24h; low conviction, and it risks a squeeze off the 1w low. WLD long passed under L1 until a reclaim close. Gap: hl-cycles is stale (12.7 h), so the regime read is mild_risk_off from old data."
 }
