@@ -1,70 +1,73 @@
 {
-  "generated_at": "2026-10-29T02:56:06.927Z",
-  "read": "The board is broadly sold on 1d structure under a mild risk-off BTC regime, with most perps at the 10.95 neutral funding floor; the largest imbalances are negative-funding shorts pressing on LIT and WLD and a stretched kPEPE bounce.",
+  "generated_at": "2026-10-29T07:02:48.838Z",
+  "read": "The board leans weak: BTC, ETH and SOL sit near 1d range lows in 1d downtrends while funding stays at the 10.95 neutral floor, and the largest imbalance is XMR funding at 86.1 annualised, 56.76 points over CEX. We lean toward chop with risk skewing down until the 1d lows hold.",
   "watchlist": [
+    {
+      "asset": "XMR",
+      "kind": "crowded_longs",
+      "skew": "down",
+      "timeframe": "1d",
+      "note": "Funding 86.1 annualised vs CEX +56.76 with OI 24h +4.3% on new_shorts flow; 1d range position 0.53 is short of the 0.8 funding_fade gate, and the 1w trend is up (counter-trend, low-confidence).",
+      "arms": "1d range position 0.8 or higher while funding stays above 30, with a level at least 2R away",
+      "evidence": [
+        "XMR.pos.fundingAnnPct",
+        "XMR.pos.fundingVsCexAnnPct",
+        "XMR.tf.1d.rangePos",
+        "XMR.pos.oiChg24hPct"
+      ]
+    },
+    {
+      "asset": "CHIP",
+      "kind": "long_liquidation",
+      "skew": "up",
+      "timeframe": "4h",
+      "note": "OI 24h -17.84% and ret24h -13.08% with funding back at 10.95; 24h move in 1d ATR -0.96 is short of the -1.5 washout gate and 1d volume ratio 1.26 is above average.",
+      "arms": "24h move reaches -1.5 1d ATR with OI flushed, then a 4h close back above the 4h SMA20",
+      "evidence": [
+        "CHIP.pos.oiChg24hPct",
+        "CHIP.pos.ret24hPct",
+        "CHIP.tf.1d.vsSma20Atr",
+        "CHIP.tf.4h.vsSma20Atr"
+      ]
+    },
     {
       "asset": "LIT",
       "kind": "shorts_pressing",
       "skew": "up",
       "timeframe": "4h",
-      "note": "LIT is -25.33% over 7d with funding at -34.39 annualised, 13.83 points over CEX, so shorts pay to hold a fall that has run to 1d rangePos -0.01; base case is squeeze fuel, but the 4h trend is still down.",
+      "note": "Funding -1.31 annualised, 4h breakdown on volume ratio 3.73, 7d return vs BTC -20.14 inside a 1w uptrend; OI 24h -2.72% so shorts are not adding.",
       "arms": "a 4h close back above the 4h SMA20 with a level in the menu at least 2R away",
       "evidence": [
         "LIT.pos.fundingAnnPct",
+        "LIT.tf.4h.volRatio",
         "LIT.rs.vsBtc7dPct",
-        "LIT.tf.1d.rangePos"
+        "LIT.pos.oiChg24hPct"
       ]
     },
     {
-      "asset": "WLD",
-      "kind": "shorts_pressing",
-      "skew": "up",
-      "timeframe": "4h",
-      "note": "WLD is -28.88% over 7d, funding -10.22 annualised, the 1d low swept and rangePos -0.01; the last long was stopped, so we lean cautious, low-confidence.",
-      "arms": "a 4h close back above the 1d range low with funding still negative",
-      "evidence": [
-        "WLD.pos.fundingAnnPct",
-        "WLD.tf.1d.sweep",
-        "WLD.rs.vsBtc7dPct"
-      ]
-    },
-    {
-      "asset": "kPEPE",
-      "kind": "crowded_longs",
-      "skew": "down",
-      "timeframe": "4h",
-      "note": "kPEPE is +9.2% over 24h and +13.26 vs BTC over 7d, 2.77 ATR over the 4h SMA20 with both 4h and 1d showing a high sweep and OI -3.54% over 4h; funding is at the neutral floor, so this is a stretched bounce rather than a paid-for crowd.",
-      "arms": "a 4h close back under the 4h range high after the sweep, with a level in the menu at least 2R away",
-      "evidence": [
-        "kPEPE.tf.4h.sweep",
-        "kPEPE.tf.4h.vsSma20Atr",
-        "kPEPE.pos.oiChg4hPct"
-      ]
-    },
-    {
-      "asset": "VVV",
-      "kind": "venue_divergence",
-      "skew": "up",
-      "timeframe": "4h",
-      "note": "VVV is -12.66% over 24h with the 4h low swept and 4h vsSma20Atr -2.46, HL funding 10.92 points over CEX; a reclaim of the low could mean the flush is done, risk skews to continuation until then.",
-      "arms": "a 4h close back above the swept 4h low",
-      "evidence": [
-        "VVV.tf.4h.sweep",
-        "VVV.pos.fundingVsCexAnnPct",
-        "VVV.pos.ret24hPct"
-      ]
-    },
-    {
-      "asset": "CHIP",
+      "asset": "CASHCAT",
       "kind": "venue_divergence",
       "skew": "down",
       "timeframe": "1d",
-      "note": "CHIP is -12.07% over 24h with HL funding 22.41 points over CEX and OI -3.55% over 4h; the premium is HL-local and unwinding, base case is more chop.",
-      "arms": "a 4h close back under the 4h SMA20 after a bounce",
+      "note": "HL funding is 47.32 points over Binance/Bybit while the 1d trend is down and price fell 6.91% over 24h; the crowding looks HL-local, no level yet in reach.",
+      "arms": "a 4h close back under the 4h SMA20 after a bounce, with a level in the menu at least 2R away",
       "evidence": [
-        "CHIP.pos.fundingVsCexAnnPct",
-        "CHIP.pos.oiChg4hPct",
-        "CHIP.pos.ret24hPct"
+        "CASHCAT.pos.fundingVsCexAnnPct",
+        "CASHCAT.tf.1d.trend",
+        "CASHCAT.pos.ret24hPct"
+      ]
+    },
+    {
+      "asset": "NEAR",
+      "kind": "relative_weakness",
+      "skew": "either",
+      "timeframe": "1d",
+      "note": "1d range position 0.06 with ret24h -7.77% and 7d return vs BTC -11.74 inside a 1w uptrend; funding 15.65 points over CEX, low volume ratio 0.42 on the 1d bar.",
+      "arms": "a 1d close back above the 1d range low after a sweep with funding at or under 10.95",
+      "evidence": [
+        "NEAR.tf.1d.rangePos",
+        "NEAR.rs.vsBtc7dPct",
+        "NEAR.pos.fundingVsCexAnnPct"
       ]
     },
     {
@@ -72,19 +75,24 @@
       "kind": "relative_strength",
       "skew": "up",
       "timeframe": "1d",
-      "note": "BNB is +5.23 vs BTC over 7d with the 4h in an uptrend, but funding is 16.71 points over CEX, so the strength is partly HL-local.",
+      "note": "7d return vs BTC +5, OI 24h +4.26% on oi_build_flat, 4h trend up; funding is 8.28 points over CEX.",
       "arms": "a 1d close above the 1d SMA20 with funding vs CEX under 10 points",
       "evidence": [
         "BNB.rs.vsBtc7dPct",
-        "BNB.pos.fundingVsCexAnnPct",
-        "BNB.tf.4h.trend"
+        "BNB.pos.oiChg24hPct",
+        "BNB.pos.fundingVsCexAnnPct"
       ]
     }
   ],
   "hits": [
     {
-      "asset": "XMR",
-      "setup_id": "htf_pullback",
+      "asset": "kPEPE",
+      "setup_id": "failed_breakout",
+      "direction": "short"
+    },
+    {
+      "asset": "AAVE",
+      "setup_id": "failed_breakout",
       "direction": "long"
     }
   ],
@@ -93,14 +101,39 @@
       "asset": "DOGE",
       "setup_id": "htf_pullback",
       "direction": "short",
-      "gap": 0.2
+      "gap": 0.15
+    },
+    {
+      "asset": "XMR",
+      "setup_id": "funding_fade",
+      "direction": "short",
+      "gap": 0.27
+    },
+    {
+      "asset": "CHIP",
+      "setup_id": "post_liquidation_reclaim",
+      "direction": "long",
+      "gap": 0.36
+    },
+    {
+      "asset": "kPEPE",
+      "setup_id": "funding_fade",
+      "direction": "short",
+      "gap": 0.64
     }
   ],
   "new_setups": [
-    "XMR-long-20261029-1"
+    "kPEPE-short-20261029-1"
   ],
   "rejected": [],
-  "passes": [],
+  "passes": [
+    {
+      "asset": "AAVE",
+      "template": "failed_breakout",
+      "direction": "long",
+      "reason": "already open as AAVE-long-20261028-1; one open per market and direction"
+    }
+  ],
   "unanswered": [],
-  "brief": "Delta: 24h bounce has faded, BTC 79871 is back near the 1d range low (rangePos 0.12) and most 1d structures are down. XMR is the one tripwire hit: funding reset to 14.04 and a new low-conviction long is proposed off the 1d SMA20. ENA short cancelled, its HL-local funding premium is gone. LIT and WLD carry negative funding after 7d falls of -25.33% and -28.88%; base case is squeeze fuel only once a 4h reclaim shows. Four setups already open (ZEC, DOGE, AAVE, ENA until cancel). Wrong if BTC loses 1d.low20 and the weakness spreads to the uptrend names. Gap: hl-cycles is stale, 21.6 h."
+  "brief": "Delta: XMR funding jumped to 86.1 annualised (56.76 over CEX) so the open XMR long's reset premise broke; cancelled. kPEPE swept the 1d high on 3.32x volume with OI +7.21% and funding at the floor: one low-confidence short proposed at the sweep, target the 1d SMA20. AAVE failed_breakout already open. Majors BTC, ETH, SOL sit near 1d range lows (range positions 0.13, 0.10, 0.08) in 1d downtrends; risk skews down while HL-cycles reads mild risk-off, and a daily close below the True Market Mean would confirm. Wrong if kPEPE closes a 1d bar above the swept high by 0.75 ATR. No data gaps."
 }
