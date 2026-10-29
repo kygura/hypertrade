@@ -1,116 +1,111 @@
 {
-  "generated_at": "2026-10-28T07:05:00Z",
-  "headline": "BTC $80,856 on HL (+1.52% 24h) is back inside the $79.5K True Market Mean to $81.7K ETF cost basis band, with hl-cycles still mild risk-off, total HL OI $11.55B (z30 2.17) and funding at the 10.95 neutral reading on most of the board; FOMC decides at 18:00 UTC today.",
-  "tldr": "Regime: hl-cycles mild risk-off since Oct 26 (Compass 42.6 Neutral, Momentum +4 vs +19 a week ago). Change: a broad bounce, BTC +1.52%, ETH +2.07%, SOL +2.45%, HYPE +4.86%, ZEC +7.21% over 24h, while 7d returns stay negative for BTC (-2.24%), ETH (-3.76%) and SOL (-3.63%). Positioning is not crowded: funding is neutral on BTC, SOL, HYPE; total HL OI z30 2.17 says leverage is building into the event. Disagreement: Fear & Greed 51 (74 a month ago) and Restrictive Macro (28) against VIX 17.52 and DVOL 37.36. Next catalyst: FOMC today 18:00 UTC. Not financial advice. Market intelligence only.",
+  "generated_at": "2026-10-29T02:58:00Z",
+  "headline": "BTC $79,871 on HL (-1.26% 24h) has slipped under the $81.7K ETF cost basis to 1d rangePos 0.12, a hair above the $79.5K True Market Mean, with ETH 1d rangePos 0.08 and total board funding still at the 10.95 neutral reading; the Oct 28 FOMC outcome is unverified.",
+  "tldr": "Regime: hl-cycles mild risk-off since Oct 26 (Compass 42.6, data 21.6 h stale). Change: yesterday's bounce reversed, BTC -1.26%, ETH -1.86%, SOL -1.41%, HYPE -3.51% over 24h; 7d returns are BTC -4.96%, ETH -6.76%, SOL -6.57%. Positioning is not crowded: BTC funding 10.95 (neutral), ETH -5.7, HYPE -9.75; negative-funding shorts press LIT (-34.39) and WLD (-10.22) after 7d falls of -25.33% and -28.88%. Disagreement: Fear & Greed 51 and VIX 16.91 against stablecoins -1.11% 7d and Restrictive Macro (28). Next catalyst: NFP Nov 6. Not financial advice. Market intelligence only.",
   "domains": [
     {
       "domain": "macro",
-      "summary": "10Y 5.00% and 2Y 4.68% (Oct 26), 2s10s +29bp (Oct 27), little changed from Oct 23. Brent $115.22 (FRED, Oct 20, stale). A live search this run found hold odds of roughly 82-87% for today's meeting in sources dated mid-October (not same-day), with later-meeting hike risk priced; current pricing is unverified. We lean hawkish while the 10Y sits at 5%; stablecoins -0.68% 7d and -1.67% 30d read as tightening liquidity. A dovish hold or a 10Y under 4.9% would soften the read.",
+      "summary": "10Y 4.99% and 2Y 4.70% (Oct 27), 2s10s +38bp (Oct 28), little changed. Brent $123.1 (FRED, Oct 27). A live search this run found pre-meeting sources only (hold priced near 80-83%); the Oct 28 FOMC outcome and its reaction are unverified. We lean hawkish while the 10Y sits near 5%; stablecoins -1.11% 7d and -1.97% 30d read as tightening liquidity. A 10Y under 4.9% would soften the read.",
       "signals": [
         {
-          "label": "US 10Y yield (Oct 26)",
-          "value": "5.00%",
+          "label": "US 10Y yield (Oct 27)",
+          "value": "4.99%",
           "direction": "flat"
         },
         {
-          "label": "US 2Y yield (Oct 26)",
-          "value": "4.68%",
+          "label": "US 2Y yield (Oct 27)",
+          "value": "4.70%",
           "direction": "flat"
         },
         {
-          "label": "2s10s (Oct 27)",
-          "value": "+29bp",
-          "direction": "down"
+          "label": "2s10s (Oct 28)",
+          "value": "+38bp",
+          "direction": "up"
         },
         {
-          "label": "Brent (Oct 20)",
-          "value": "$115.22",
-          "direction": "down"
+          "label": "Brent (Oct 27)",
+          "value": "$123.1",
+          "direction": "up"
         },
         {
           "label": "Stablecoins 7d",
-          "value": "-0.68%",
+          "value": "-1.11%",
           "direction": "down"
         }
       ]
     },
     {
       "domain": "equities",
-      "summary": "Oct 27 Yahoo: SPY 769.66 (+0.56% vs Oct 26), QQQ 721.25 (+1.27%), NVDA 217.94; a third day of recovery from the Oct 23 low (SPY 759.97). VIX 17.52. A VIX close above 25 or SPY under 759.97 would change the read.",
+      "summary": "Oct 28 Yahoo: SPY 772.31 (+0.34% vs Oct 27), QQQ 725.61 (+0.60%), a fourth day of recovery from the Oct 23 low (SPY 759.97). VIX 16.91. A VIX close above 25 or SPY under 759.97 would change the read.",
       "signals": [
         {
           "label": "SPY",
-          "value": "769.66",
+          "value": "772.31",
           "direction": "up"
         },
         {
           "label": "QQQ",
-          "value": "721.25",
+          "value": "725.61",
           "direction": "up"
         },
         {
           "label": "VIX",
-          "value": "17.52",
+          "value": "16.91",
           "direction": "down"
         }
       ]
     },
     {
       "domain": "crypto",
-      "summary": "HL marks: BTC $80,856 (+1.52% 24h), ETH $2,352.1 (+2.07%), SOL $101.98 (+2.45%), HYPE $81.157 (+4.86%). Funding is 10.95% annualised (neutral) on BTC, SOL, HYPE and most of the board; WLD is the exception at -10.16%. Breadth is up on 24h but 1d structure is still weak: ETH and SOL are 1d trend down at rangePos 0.17 and 0.15. Total HL OI $11.55B (z30 2.17), HYPE OI z30 2.39, SOL OI z30 2.07. Fear & Greed 51, DVOL 37.36. The bounce is on rising OI without crowding, so risk skews to a sharp reaction either way around FOMC.",
+      "summary": "HL marks: BTC $79,871 (-1.26% 24h), ETH $2,305.9 (-1.86%), SOL $99.908 (-1.41%), HYPE $78.348 (-3.51%). Funding is 10.95% annualised (neutral) on BTC and most of the board; negative on ETH (-5.7), HYPE (-9.75), WLD (-10.22) and LIT (-34.39). 1d structure is weak: BTC rangePos 0.12, ETH 0.08, SOL 0.07, all in 1d downtrends. Fear & Greed 51, DVOL 37.41, stablecoins $300.3B (7d -1.11%). Crypto is selling off while equities recover, so risk skews to relative weakness continuing until the 1d lows hold.",
       "signals": [
         {
           "label": "BTC (HL)",
-          "value": "$80,856",
-          "direction": "up"
+          "value": "$79,871",
+          "direction": "down"
         },
         {
           "label": "ETH (HL)",
-          "value": "$2,352.1",
-          "direction": "up"
+          "value": "$2,305.9",
+          "direction": "down"
         },
         {
-          "label": "HL total OI",
-          "value": "$11.55B",
-          "direction": "up"
+          "label": "SOL (HL)",
+          "value": "$99.908",
+          "direction": "down"
+        },
+        {
+          "label": "HYPE (HL)",
+          "value": "$78.348",
+          "direction": "down"
         },
         {
           "label": "Fear & Greed",
           "value": "51",
           "direction": "flat"
-        },
-        {
-          "label": "DVOL",
-          "value": "37.36",
-          "direction": "down"
         }
       ]
     },
     {
       "domain": "tech",
-      "summary": "Yahoo: NVDA 217.94 on Oct 27 (+0.9% vs Oct 26), QQQ 721.25, the highest close in the last five sessions. Only NVDA, SPY, QQQ were pulled, so semis dispersion is not read. QQQ under 704.40 would reopen the drawdown read.",
+      "summary": "Yahoo: NVDA 215.38 on Oct 28 (-1.17% vs Oct 27), QQQ 725.61, the highest close since Oct 15. Only NVDA, SPY, QQQ were pulled, so semis dispersion is not read. QQQ under 704.40 would reopen the drawdown read.",
       "signals": [
         {
           "label": "NVDA",
-          "value": "217.94",
-          "direction": "up"
+          "value": "215.38",
+          "direction": "down"
         },
         {
           "label": "QQQ",
-          "value": "721.25",
+          "value": "725.61",
           "direction": "up"
         }
       ]
     },
     {
       "domain": "geopolitics",
-      "summary": "Scheduled: FOMC decision today 18:00 UTC, NFP Nov 6, CPI Nov 10. The live search returned no item dated this week; nothing fresher than the standing oil-and-inflation input from earlier runs is verified.",
+      "summary": "Scheduled: NFP Nov 6, CPI Nov 10, FOMC Dec 9. The live search returned only pre-meeting items; nothing dated after the Oct 28 decision is verified, and Brent at $123.1 (FRED) remains the standing oil-and-inflation input.",
       "signals": [
-        {
-          "label": "FOMC decision",
-          "value": "Oct 28",
-          "direction": "flat"
-        },
         {
           "label": "NFP",
           "value": "Nov 6",
@@ -120,20 +115,25 @@
           "label": "CPI",
           "value": "Nov 10",
           "direction": "flat"
+        },
+        {
+          "label": "FOMC",
+          "value": "Dec 9",
+          "direction": "flat"
         }
       ]
     }
   ],
   "thesis": {
-    "observe": "BTC $80,856, ETH $2,352.1, SOL $101.98, HYPE $81.157 on HL. Funding 10.95% annualised (neutral) on most of the board; BTC 1d rangePos 0.26, ETH 0.17, SOL 0.15. Fear & Greed 51, DVOL 37.36, stablecoins $301.5B (7d -0.68%), SPY 769.66, QQQ 721.25, VIX 17.52, 10Y 5.00%. hl-cycles: mild risk-off since Oct 26, Compass 42.6; ETF cost basis $81.7K lost, True Market Mean $79.5K holding, STH cost basis $74.9K holding.",
-    "infer": "Price recovered into the band between the True Market Mean and the ETF cost basis without crowding in funding, while HL OI rose to z30 2.17; we read it as positioning built ahead of FOMC rather than forced covering. Consensus is pricing a calm regime (VIX 17.52); we read the risk as a hawkish surprise meeting a 5% 10Y and thin liquidity.",
-    "forecast": "Base case (we lean here, low-confidence): BTC holds between $79.5K and $81.7K through FOMC; a daily close above $81.7K with realized cap growing would confirm recovery per hl-cycles. Tail case (low-confidence): a daily close below $79.5K, the stated invalidation, puts the STH cost basis ($74.9K) in play, more likely on a hawkish surprise. Second tail case (low-confidence): a dovish hold lifts weak-structure alts off their 1d lows; risk skews to a sharp two-way move given OI near its 30d high.",
-    "disclaimer": "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything."
+    "observe": "BTC $79,871, ETH $2,305.9, SOL $99.908, HYPE $78.348 on HL. Funding 10.95% annualised (neutral) on BTC and most of the board; BTC 1d rangePos 0.12, ETH 0.08, SOL 0.07. Fear & Greed 51, DVOL 37.41, stablecoins $300.3B (7d -1.11%), SPY 772.31, QQQ 725.61, VIX 16.91, 10Y 4.99%. hl-cycles: mild risk-off since Oct 26, Compass 42.6 (stale 21.6 h); ETF cost basis $81.7K lost, True Market Mean $79.5K holding.",
+    "infer": "Price gave back yesterday's bounce without crowding in funding, so we read it as weak demand rather than forced liquidation; the True Market Mean ($79.5K) sits about 0.5% under the mark. Consensus is pricing calm (VIX 16.91); we read the risk as crypto trading its own weak liquidity while equities recover.",
+    "forecast": "Base case (we lean here, low-confidence): BTC chops between $79.2K (1d low20) and $81.7K until NFP. Tail case (low-confidence): a daily close below $79,468 (True Market Mean) puts the STH cost basis ($74.9K) in play. Second tail case (low-confidence): a reclaim of the $81.7K ETF cost basis squeezes the negative-funding names (LIT, WLD); risk skews to continuation while 1d structure is down.",
+    "disclaimer": "Not financial advice. Market intelligence only \u2014 a reasoned read of public data, not a recommendation to buy or sell anything."
   },
   "risks": [
     "Daily BTC close below $79,468 (True Market Mean, hl-cycles invalidation)",
     "Daily BTC close above $81,711 (ETF cost basis) would soften the downside read",
-    "VIX closing above 25 around the Oct 28 FOMC",
-    "Stablecoin supply 7d change below -1%"
+    "VIX closing above 25 before the Nov 6 NFP",
+    "Stablecoin supply 7d change below -2%"
   ]
 }

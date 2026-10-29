@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-28T07:05:00Z",
+  "generated_at": "2026-10-29T02:58:00Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 majors",
       "mindshare_score": 0.6,
-      "momentum": -0.05,
-      "rationale": "BTC +1.52%, ETH +2.07%, SOL +2.45%, XRP +2.32% over 24h; BTC OI $3.49B, ETH OI $2.63B on HL, SOL OI z30 2.07. Funding at neutral on BTC, SOL, XRP and 7.67% on ETH; 1d structure of ETH and SOL still trend down at rangePos 0.17 and 0.15. Social share not reported.",
+      "momentum": -0.2,
+      "rationale": "BTC -1.26%, ETH -1.86%, SOL -1.41%, XRP -2.81% over 24h; all four in 1d downtrends at rangePos 0.12, 0.08, 0.07 and 0.23. Funding neutral on BTC and XRP, -5.7 on ETH. Social share not reported.",
       "tokens": [
         "BTC",
         "ETH",
@@ -22,8 +22,8 @@
       "id": "perp-dex-defi",
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.5,
-      "momentum": 0.1,
-      "rationale": "HYPE +4.86% (OI $1.69B, z30 2.39), AAVE +2.76%, UNI +1.53%, ENA -1.0%. HYPE leads; AAVE is 7d -13.02% after a 1d low sweep, so the sector is bouncing off weak structure with ENA diverging on a 21.56-point HL premium to CEX.",
+      "momentum": -0.3,
+      "rationale": "HYPE -3.51%, AAVE -3.04%, UNI -1.52%, ENA -6.21% over 24h; AAVE is -16.21% over 7d at 1d rangePos 0.01 and ENA's HL premium to CEX flipped to -3.25 points, so the sector is selling off with no funding crowd left.",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -40,8 +40,8 @@
       "id": "privacy",
       "label": "Privacy",
       "mindshare_score": 0.4,
-      "momentum": 0.3,
-      "rationale": "ZEC +7.21% 24h (OI $700M, +5.89 vs BTC over 7d), XMR +2.83% with a 1w high sweep and +8.56 vs BTC over 7d. Still the strongest big-OI group on relative strength.",
+      "momentum": 0.1,
+      "rationale": "ZEC -5.04% 24h (-0.47 vs BTC over 7d), XMR -2.46% (+0.29 vs BTC over 7d); XMR funding vs CEX is -15.09 points and it is the board's one tripwire hit. Still the most resilient big-OI group on 7d relative strength.",
       "tokens": [
         "ZEC",
         "XMR"
@@ -54,8 +54,8 @@
       "id": "memecoins",
       "label": "Memecoins",
       "mindshare_score": 0.28,
-      "momentum": 0.1,
-      "rationale": "kPEPE +10.27%, PONS +20.64% (thin OI), PUMP +4.25%, DOGE +3.41% 24h; PUMP is still -8.8% over 7d. Thin-OI names move most; DOGE is a tripwire hit (1d and 1w trend down).",
+      "momentum": -0.1,
+      "rationale": "kPEPE +9.2% 24h with 4h and 1d high sweeps (2.77 ATR over the 4h SMA20), DOGE -1.48%, PUMP -2.41% (-17.02% over 7d), CASHCAT -7.48%; kPEPE is the lone outlier while the rest of the group sells.",
       "tokens": [
         "WIF",
         "DOGE",
@@ -69,8 +69,8 @@
       "id": "ai-agents",
       "label": "AI agents",
       "mindshare_score": 0.22,
-      "momentum": 0.05,
-      "rationale": "GRASS +7.48% (+19.11 vs BTC over 7d), TAO +3.6%; WLD flat at +0.04% after -26.5% over 7d with funding at -10.16%. Dispersion is wide, with new strength in GRASS and exhaustion-type weakness in WLD.",
+      "momentum": -0.2,
+      "rationale": "TAO -3.45%, WLD -5.39% (-28.88% over 7d, funding -10.22 annualised); the group is weak and WLD's shorts are paying to hold, so squeeze fuel exists only after a reclaim.",
       "tokens": [
         "FET",
         "TAO",
@@ -87,8 +87,8 @@
       "from": "perp-dex-defi",
       "to": "privacy",
       "confidence": 0.2,
-      "trigger": "ZEC OI stays above $600M while ZEC 7d return stays above HYPE 7d return (+0.09%)",
-      "note": "Low-confidence; ZEC OI is $700M and ZEC 7d is +3.65% against HYPE +0.09%, so the trigger is met on both legs, but the gap narrowed from last week and one week of price is a thin basis."
+      "trigger": "XMR holds above the 1d SMA20 while AAVE stays under 1d rangePos 0.1",
+      "note": "Low-confidence; privacy names hold 7d relative strength (ZEC -0.47, XMR +0.29 vs BTC) while AAVE is -11.25 vs BTC, but one day of price is a thin basis."
     }
   ]
 }
