@@ -1,70 +1,19 @@
 {
-  "generated_at": "2026-10-30T06:59:39.920Z",
-  "read": "The board stays in a broad 1d breakdown (BTC 1d rangePos 0.1, ETH, SOL, XRP, LINK, UNI all with a 1d breakout down) while HYPE (ret24h 19.29, funding 66.1) is the one strong outlier; the largest HL-local imbalance is kPEPE (funding 74.55, 63.6 over CEX).",
+  "generated_at": "2026-10-30T10:56:54.531Z",
+  "read": "The board leans risk-off: BTC, ETH and SOL sit in 1d breakdowns while HYPE runs against it. The largest imbalances are shared shorts in BNB (funding -30.82, CEX -38.49) and the HL-local premium in TRX.",
   "watchlist": [
-    {
-      "asset": "HYPE",
-      "kind": "crowded_longs",
-      "skew": "down",
-      "timeframe": "4h",
-      "note": "1d breakout up with volRatio 6.64, funding 66.1, premium 16.7 bps and OI 24h +7.66 (new_longs); funding has flipped within a run before, so the carry premise is low-confidence.",
-      "arms": "a 4h close back under the 4h high20 with funding staying above 30 and a level in the menu at least 2R away",
-      "evidence": [
-        "HYPE.pos.fundingAnnPct",
-        "HYPE.pos.premiumBps",
-        "HYPE.tf.1d.volRatio"
-      ]
-    },
     {
       "asset": "BNB",
       "kind": "crowded_shorts",
       "skew": "up",
       "timeframe": "1d",
-      "note": "Funding -34.98 matches CEX at -35.84, OI 24h +57.25 on new_shorts with 1d volRatio 50.69; negative_funding_build is 0.31 short on the 24h move (-1.31 ATR vs -1), so the lean is real but shared with CEX (low-confidence).",
-      "arms": "24h move in 1d ATR at -1 or better with funding still under -10 and a level in the menu at least 2R away",
+      "note": "Funding -30.82 (7d percentile 8) with CEX at -38.49, so the crowding is shared, not HL-local. ret24h -6.05 on a 1d breakdown with volRatio 50.69; the last BNB long was stopped, so we lean toward waiting for a reclaim.",
+      "arms": "a 1d close back above the 1d low20 with funding still under -10 and a level in the menu at least 2R away",
       "evidence": [
         "BNB.pos.fundingAnnPct",
-        "BNB.pos.oiChg24hPct",
-        "BNB.pos.flow24h"
-      ]
-    },
-    {
-      "asset": "ETH",
-      "kind": "shorts_pressing",
-      "skew": "up",
-      "timeframe": "1d",
-      "note": "Funding -16.82 (5th percentile of the week), long_liquidation with OI 24h -4.03 and a 1d breakout down at rangePos 0.07; risk skews to a squeeze if price stops falling.",
-      "arms": "a 1d close back above the 1d low20 with funding under -10 and a level in the menu at least 2R away",
-      "evidence": [
-        "ETH.pos.fundingAnnPct",
-        "ETH.tf.1d.rangePos",
-        "ETH.pos.flow24h"
-      ]
-    },
-    {
-      "asset": "CRV",
-      "kind": "long_liquidation",
-      "skew": "up",
-      "timeframe": "4h",
-      "note": "ret24h -14.5 and OI 24h -18.29 with funding 10.95 reset: a washout tripwire hit, but the 1d close sits at rangePos -0.2 and the 4h is 4.33 ATR under its SMA20, so no level is within reach yet (low-confidence).",
-      "arms": "a 4h close back above the 4h low20 with funding still under 10.95 and a level in the menu at least 2R away",
-      "evidence": [
-        "CRV.pos.oiChg24hPct",
-        "CRV.pos.ret24hPct",
-        "CRV.tf.4h.vsSma20Atr"
-      ]
-    },
-    {
-      "asset": "XMR",
-      "kind": "venue_divergence",
-      "skew": "either",
-      "timeframe": "1d",
-      "note": "The divergence flipped: HL funding 10.95 sits 36.69 under CEX 47.64 after a 24h funding of 96.43, OI 24h +11.04 on new_longs near the 1w high; the crowding now looks to be on CEX (low-confidence).",
-      "arms": "HL funding back above CEX by 20 points or 1d rangePos at 0.8 or higher, with a level at least 2R away",
-      "evidence": [
-        "XMR.pos.fundingVsCexAnnPct",
-        "XMR.pos.funding24hAnnPct",
-        "XMR.tf.1w.rangePos"
+        "BNB.pos.cexFundingAnnPct",
+        "BNB.tf.1d.volRatio",
+        "BNB.pos.ret24hPct"
       ]
     },
     {
@@ -72,260 +21,78 @@
       "kind": "crowded_shorts",
       "skew": "up",
       "timeframe": "4h",
-      "note": "Funding -183.73 with premium -36.16 bps and a 1d breakout up at volRatio 20.2, but OI is only 17688469 USD, so the squeeze fuel may be small (low-confidence).",
+      "note": "Funding -492.77 against CEX -24.46 and premium -48.87 bps on thin OI (19373366 USD, oiChg4h +8.54). Looks like a local dislocation; low-confidence read, risk skews to a snap-back.",
       "arms": "OI above 30000000 USD with funding staying under -10 and a level in the menu at least 2R away",
       "evidence": [
         "TRX.pos.fundingAnnPct",
         "TRX.pos.premiumBps",
-        "TRX.tf.1d.volRatio"
+        "TRX.pos.oiUsd",
+        "TRX.pos.oiChg4hPct"
+      ]
+    },
+    {
+      "asset": "CRV",
+      "kind": "long_liquidation",
+      "skew": "up",
+      "timeframe": "4h",
+      "note": "ret24h -12.37 and ret7d -21.41, 4h vsSma20Atr -3.08, with oiChg4h +7.27 and HL funding 10.95 against CEX -24.96. Extended; a bounce is the base case but price has not reclaimed anything.",
+      "arms": "a 4h close back above the 4h low20 with funding still under 10.95 and a level in the menu at least 2R away",
+      "evidence": [
+        "CRV.pos.ret24hPct",
+        "CRV.tf.4h.vsSma20Atr",
+        "CRV.pos.oiChg4hPct",
+        "CRV.pos.fundingVsCexAnnPct"
+      ]
+    },
+    {
+      "asset": "NEAR",
+      "kind": "venue_divergence",
+      "skew": "up",
+      "timeframe": "1d",
+      "note": "HL funding 10.95 vs CEX -43.52 (gap 54.47), 1d rangePos 0.17 after a down breakout, ret4h +4.8 with ret7d -11.3. The CEX side is the crowded short; we lean toward a squeeze if 1d reclaims the range.",
+      "arms": "a 1d close back above the 1d low20 with CEX funding still negative and a level in the menu at least 2R away",
+      "evidence": [
+        "NEAR.pos.fundingVsCexAnnPct",
+        "NEAR.pos.cexFundingAnnPct",
+        "NEAR.tf.1d.rangePos",
+        "NEAR.pos.ret7dPct"
+      ]
+    },
+    {
+      "asset": "HYPE",
+      "kind": "crowded_longs",
+      "skew": "down",
+      "timeframe": "4h",
+      "note": "ret24h +17.78, 1d breakout up with volRatio 6.64 and 4h vsSma20Atr 2.78, but funding is back at 10.95 after funding24h 55.49, so the crowding premise has reset. Extended; the fade is not armed.",
+      "arms": "a 4h close back under the 4h high20 with funding back above 30 and a level in the menu at least 2R away",
+      "evidence": [
+        "HYPE.pos.ret24hPct",
+        "HYPE.pos.funding24hAnnPct",
+        "HYPE.pos.fundingAnnPct",
+        "HYPE.tf.4h.vsSma20Atr"
       ]
     }
   ],
   "hits": [
     {
-      "asset": "ZEC",
-      "setup_id": "failed_breakout",
-      "direction": "long"
-    },
-    {
-      "asset": "ZEC",
-      "setup_id": "failed_breakout",
-      "direction": "short"
-    },
-    {
-      "asset": "kPEPE",
-      "setup_id": "failed_breakout",
-      "direction": "short"
-    },
-    {
       "asset": "XMR",
       "setup_id": "htf_pullback",
-      "direction": "long"
-    },
-    {
-      "asset": "UNI",
-      "setup_id": "range_breakout",
-      "direction": "short"
-    },
-    {
-      "asset": "LIT",
-      "setup_id": "range_breakout",
-      "direction": "short"
-    },
-    {
-      "asset": "LIT",
-      "setup_id": "failed_breakout",
-      "direction": "long"
-    },
-    {
-      "asset": "WLD",
-      "setup_id": "range_breakout",
-      "direction": "short"
-    },
-    {
-      "asset": "WLD",
-      "setup_id": "failed_breakout",
-      "direction": "long"
-    },
-    {
-      "asset": "AAVE",
-      "setup_id": "range_breakout",
-      "direction": "short"
-    },
-    {
-      "asset": "AAVE",
-      "setup_id": "failed_breakout",
-      "direction": "long"
-    },
-    {
-      "asset": "LINK",
-      "setup_id": "range_breakout",
-      "direction": "short"
-    },
-    {
-      "asset": "LINK",
-      "setup_id": "failed_breakout",
-      "direction": "long"
-    },
-    {
-      "asset": "ZRO",
-      "setup_id": "range_breakout",
-      "direction": "short"
-    },
-    {
-      "asset": "ZRO",
-      "setup_id": "failed_breakout",
-      "direction": "long"
-    },
-    {
-      "asset": "XPL",
-      "setup_id": "failed_breakout",
-      "direction": "long"
-    },
-    {
-      "asset": "CRV",
-      "setup_id": "post_liquidation_reclaim",
-      "direction": "long"
-    },
-    {
-      "asset": "PONS",
-      "setup_id": "failed_breakout",
       "direction": "long"
     }
   ],
   "near": [
     {
-      "asset": "kPEPE",
-      "setup_id": "funding_fade",
-      "direction": "short",
-      "gap": 0.17
-    },
-    {
-      "asset": "BNB",
-      "setup_id": "negative_funding_build",
-      "direction": "long",
-      "gap": 0.31
-    },
-    {
       "asset": "DOGE",
       "setup_id": "htf_pullback",
       "direction": "short",
-      "gap": 0.43
-    },
-    {
-      "asset": "ENA",
-      "setup_id": "failed_breakout",
-      "direction": "long",
-      "gap": 0.55
-    },
-    {
-      "asset": "TAO",
-      "setup_id": "post_liquidation_reclaim",
-      "direction": "long",
-      "gap": 0.62
-    },
-    {
-      "asset": "XRP",
-      "setup_id": "post_liquidation_reclaim",
-      "direction": "long",
-      "gap": 0.71
-    },
-    {
-      "asset": "PUMP",
-      "setup_id": "post_liquidation_reclaim",
-      "direction": "long",
-      "gap": 0.89
-    },
-    {
-      "asset": "BTC",
-      "setup_id": "range_breakout",
-      "direction": "short",
-      "gap": 1
+      "gap": 0.59
     }
   ],
   "new_setups": [
-    "kPEPE-short-20261030-1",
-    "UNI-short-20261030-1"
+    "XMR-long-20261030-1"
   ],
   "rejected": [],
-  "passes": [
-    {
-      "asset": "ZEC",
-      "template": "failed_breakout",
-      "direction": "long",
-      "reason": "funding at the neutral 10.95 floor, no imbalance beyond the sweep; L1 says wait for a reclaim close"
-    },
-    {
-      "asset": "ZEC",
-      "template": "failed_breakout",
-      "direction": "short",
-      "reason": "funding at neutral 10.95 and 1w trend up; no crowding to fade"
-    },
-    {
-      "asset": "XMR",
-      "template": "htf_pullback",
-      "direction": "long",
-      "reason": "two XMR longs were cancelled on funding premises (L2); funding 24h 96.43 vs now 10.95 makes the read unstable"
-    },
-    {
-      "asset": "LIT",
-      "template": "range_breakout",
-      "direction": "short",
-      "reason": "same breakdown cluster as the open AAVE short; correlated exposure, 4h ret 9.43 bounce already large"
-    },
-    {
-      "asset": "LIT",
-      "template": "failed_breakout",
-      "direction": "long",
-      "reason": "L1: long into a swept low before a reclaim close"
-    },
-    {
-      "asset": "WLD",
-      "template": "range_breakout",
-      "direction": "short",
-      "reason": "1d volRatio 1.33 barely above 1.3 and ret7d -28.27 already stretched"
-    },
-    {
-      "asset": "WLD",
-      "template": "failed_breakout",
-      "direction": "long",
-      "reason": "L1: long into a swept low before a reclaim close"
-    },
-    {
-      "asset": "AAVE",
-      "template": "range_breakout",
-      "direction": "short",
-      "reason": "already open (AAVE-short-20261030-1)"
-    },
-    {
-      "asset": "AAVE",
-      "template": "failed_breakout",
-      "direction": "long",
-      "reason": "opposes the open AAVE short and L1 (previous AAVE long stopped)"
-    },
-    {
-      "asset": "LINK",
-      "template": "range_breakout",
-      "direction": "short",
-      "reason": "correlated with the AAVE and UNI breakdown cluster; capped at 2 new per run"
-    },
-    {
-      "asset": "LINK",
-      "template": "failed_breakout",
-      "direction": "long",
-      "reason": "L1: long into a swept low before a reclaim close"
-    },
-    {
-      "asset": "ZRO",
-      "template": "range_breakout",
-      "direction": "short",
-      "reason": "already open and being cancelled on a broken premise"
-    },
-    {
-      "asset": "ZRO",
-      "template": "failed_breakout",
-      "direction": "long",
-      "reason": "L1, and the open ZRO short is being cancelled; no clean reclaim close"
-    },
-    {
-      "asset": "XPL",
-      "template": "failed_breakout",
-      "direction": "long",
-      "reason": "OI 24h +30.97 on new_longs with a 1d downtrend; L1 reclaim close not seen"
-    },
-    {
-      "asset": "CRV",
-      "template": "post_liquidation_reclaim",
-      "direction": "long",
-      "reason": "1d rangePos -0.2 and 4h 4.33 ATR under SMA20: no level within 2R"
-    },
-    {
-      "asset": "PONS",
-      "template": "failed_breakout",
-      "direction": "long",
-      "reason": "L1, 1d history is only 60 bars and no 1w frame"
-    }
-  ],
+  "passes": [],
   "unanswered": [],
-  "brief": "Delta: ZRO's HL-local crowding is gone (funding 10.95 = CEX, premium 1.6 bps), so the triggered short is cancelled per L2 while ret4h is +10.97. The 1d breakdown persists (BTC rangePos 0.1, fear and greed 30); HYPE is the outlier (ret24h 19.29, funding 66.1). New plans: kPEPE short (HL-only funding 74.55, 63.6 over CEX) and UNI short (1d volRatio 7.01, OI 24h +8.74), both low conviction. The base case is continuation lower; a 1d close back above the broken lows would prove the cluster wrong."
+  "brief": "Delta: ZRO short was cancelled last run when HL funding fell back to CEX (L2). BTC, ETH, SOL and BNB all print 1d breakdowns while HYPE (ret24h +17.78) runs against the board; its funding has reset to 10.95, so the fade stays unarmed. New: XMR htf_pullback long, the only tripwire hit, low conviction. BNB funding -30.82 is shared with CEX, which we read as squeeze fuel only after a reclaim. kPEPE short stays triggered with HL-local funding 40.58 vs CEX 5.65. Gap: hl-cycles is stale; OI 24h changes are null. Wrong if XMR loses the 1d SMA50."
 }
