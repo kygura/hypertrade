@@ -1,30 +1,18 @@
 {
-  "generated_at": "2026-10-30T18:56:28.946Z",
-  "read": "The board leans risk-off: BTC, ETH, SOL and most alts sit in 1d breakdowns, and the largest local imbalance is XPL with funding 48.39 and OI 24h +34.8%. Base case, five open setups leave no room for new ones.",
+  "generated_at": "2026-10-30T22:58:11.809Z",
+  "read": "The board leans risk-off: BTC, ETH, SOL and XRP all have a 1d breakdown on volume, with long liquidation flow. Five setups are open, so the slots are full; the largest local imbalance is kPEPE funding 25.92 against CEX -9.03.",
   "watchlist": [
     {
-      "asset": "XPL",
-      "kind": "crowded_longs",
-      "skew": "down",
-      "timeframe": "1d",
-      "note": "Funding 48.39 ann % with OI 24h +34.8% and a 4h sweep of the high; 1d rangePos 0.44 keeps funding_fade 0.36 short of its trigger. We lean toward a fade if price loses the 4h range.",
-      "arms": "1d rangePos at or above 0.8 with funding staying above 30 and a level in the menu at least 2R away",
-      "evidence": [
-        "XPL.pos.fundingAnnPct",
-        "XPL.tf.1d.rangePos",
-        "XPL.tf.4h.sweep"
-      ]
-    },
-    {
-      "asset": "CRV",
+      "asset": "BTC",
       "kind": "long_liquidation",
       "skew": "up",
-      "timeframe": "4h",
-      "note": "OI 24h -14.84% with price 2.02 1d ATR down and funding at 10.95; 4h vsSma20Atr -2.9. Washout reads as a reclaim candidate, low-confidence until a close back above the 4h low20.",
-      "arms": "a 4h close back above the 4h low20 with funding still at or under 10.95 and a level in the menu at least 2R away",
+      "timeframe": "1d",
+      "note": "1d breakdown (breakout down, volRatio 2.14), ret24h -4.78, OI 24h -4.4, funding 10.95. Washout leans but OI flush is short of the -8 threshold.",
+      "arms": "OI 24h at or below -8% with funding at or under 10.95 and a level in the menu at least 2R away",
       "evidence": [
-        "CRV.pos.oiChg24hPct",
-        "CRV.tf.4h.vsSma20Atr"
+        "BTC.pos.oiChg24hPct",
+        "BTC.tf.1d.breakout",
+        "BTC.pos.fundingAnnPct"
       ]
     },
     {
@@ -32,36 +20,38 @@
       "kind": "long_liquidation",
       "skew": "up",
       "timeframe": "1d",
-      "note": "Reclaim tripwire hit: OI 24h -8.29% with funding -9.35 after a 1d breakdown on volRatio 2.74. Risk skews to a bounce if funding stays reset, but the 1d trend is down.",
+      "note": "OI 24h -10.13 with HL funding 9.04 against CEX -16.91, ret24h -4.26; the 24h move is -1.08 1d ATR, short of the -1.5 trigger. Risk skews to a bounce if it holds.",
       "arms": "a 4h close back above the 1d low20 with funding still under 10.95 and a level in the menu at least 2R away",
       "evidence": [
-        "ETH.pos.fundingAnnPct",
         "ETH.pos.oiChg24hPct",
-        "ETH.tf.1d.volRatio"
+        "ETH.pos.fundingVsCexAnnPct",
+        "ETH.tf.1d.breakout"
       ]
     },
     {
-      "asset": "PUMP",
-      "kind": "shorts_pressing",
-      "skew": "up",
+      "asset": "HYPE",
+      "kind": "crowded_longs",
+      "skew": "down",
       "timeframe": "1d",
-      "note": "Funding -12.17 ann % with OI 24h -10.52%; the 24h move is -1.11 ATR against the -1.5 washout threshold (gap 0.26). 1d rangePos 0.05.",
-      "arms": "24h move at or below -1.5 1d ATR with OI 24h at or below -8% and a level in the menu at least 2R away",
+      "note": "1d breakout up on volRatio 6.64 but funding 32.23 (7d percentile 92) is over the 30 cap; ret4h -3.29, premium 9.98 bps. We lean toward a failed breakout if funding stays paid.",
+      "arms": "a 1d close back under the 1d high20 with funding staying above 30 and a level in the menu at least 2R away",
       "evidence": [
-        "PUMP.pos.fundingAnnPct",
-        "PUMP.tf.1d.rangePos"
+        "HYPE.pos.fundingAnnPct",
+        "HYPE.tf.1d.volRatio",
+        "HYPE.pos.premiumBps"
       ]
     },
     {
-      "asset": "BTC",
-      "kind": "long_liquidation",
-      "skew": "up",
+      "asset": "XPL",
+      "kind": "crowded_longs",
+      "skew": "down",
       "timeframe": "1d",
-      "note": "24h move -2.57 1d ATR (met) but OI 24h -4.88% against -8 (not met); 1d breakout down with volRatio 2.14, mark below the STH cost basis only if a daily close confirms.",
-      "arms": "OI 24h at or below -8% with funding at or under 10.95 and a level in the menu at least 2R away",
+      "note": "Funding 54.47 with OI 24h +24.77, but 1d rangePos 0.6 is short of 0.8.",
+      "arms": "1d rangePos at or above 0.8 with funding staying above 30 and a level in the menu at least 2R away",
       "evidence": [
-        "BTC.tf.1d.vsSma20Atr",
-        "BTC.pos.oiChg24hPct"
+        "XPL.pos.fundingAnnPct",
+        "XPL.pos.oiChg24hPct",
+        "XPL.tf.1d.rangePos"
       ]
     },
     {
@@ -69,52 +59,60 @@
       "kind": "other",
       "skew": "down",
       "timeframe": "1d",
-      "note": "1d breakout down with volRatio 1.28 against 1.3 needed (gap 0.02) and funding 2.56 ann %; 1d rangePos 0.1.",
+      "note": "1d breakdown with OI 24h +4.92 on new_shorts, volRatio 1.28 against the 1.3 threshold.",
       "arms": "1d volume ratio at or above 1.3 on the breakdown with OI 24h staying positive and a level in the menu at least 2R away",
       "evidence": [
         "NEAR.tf.1d.volRatio",
-        "NEAR.tf.1d.rangePos"
+        "NEAR.pos.oiChg24hPct",
+        "NEAR.pos.flow24h"
+      ]
+    },
+    {
+      "asset": "CRV",
+      "kind": "long_liquidation",
+      "skew": "up",
+      "timeframe": "4h",
+      "note": "OI 24h -15.07 with funding 10.95; the 24h move of -1.42 1d ATR is just short of -1.5.",
+      "arms": "a 4h close back above the 4h low20 with funding still at or under 10.95 and a level in the menu at least 2R away",
+      "evidence": [
+        "CRV.pos.oiChg24hPct",
+        "CRV.pos.fundingAnnPct"
       ]
     }
   ],
   "hits": [
     {
-      "asset": "ETH",
+      "asset": "ZEC",
+      "setup_id": "failed_breakout",
+      "direction": "short"
+    },
+    {
+      "asset": "BNB",
       "setup_id": "post_liquidation_reclaim",
       "direction": "long"
     },
     {
-      "asset": "BNB",
+      "asset": "WLD",
       "setup_id": "range_breakout",
       "direction": "short"
     },
     {
-      "asset": "kPEPE",
-      "setup_id": "failed_breakout",
-      "direction": "short"
-    },
-    {
-      "asset": "ENA",
-      "setup_id": "failed_breakout",
-      "direction": "long"
-    },
-    {
-      "asset": "XMR",
-      "setup_id": "failed_breakout",
-      "direction": "long"
-    },
-    {
-      "asset": "XMR",
-      "setup_id": "htf_pullback",
-      "direction": "long"
-    },
-    {
-      "asset": "UNI",
+      "asset": "LIT",
       "setup_id": "range_breakout",
       "direction": "short"
     },
     {
-      "asset": "AAVE",
+      "asset": "TRX",
+      "setup_id": "range_breakout",
+      "direction": "long"
+    },
+    {
+      "asset": "ZRO",
+      "setup_id": "range_breakout",
+      "direction": "short"
+    },
+    {
+      "asset": "SUI",
       "setup_id": "range_breakout",
       "direction": "short"
     },
@@ -124,29 +122,14 @@
       "direction": "short"
     },
     {
-      "asset": "XPL",
-      "setup_id": "failed_breakout",
-      "direction": "short"
-    },
-    {
-      "asset": "ZRO",
+      "asset": "AAVE",
       "setup_id": "range_breakout",
       "direction": "short"
-    },
-    {
-      "asset": "CRV",
-      "setup_id": "post_liquidation_reclaim",
-      "direction": "long"
     },
     {
       "asset": "ONDO",
       "setup_id": "range_breakout",
       "direction": "short"
-    },
-    {
-      "asset": "TAO",
-      "setup_id": "post_liquidation_reclaim",
-      "direction": "long"
     }
   ],
   "near": [
@@ -157,136 +140,112 @@
       "gap": 0.02
     },
     {
-      "asset": "XRP",
+      "asset": "CRV",
       "setup_id": "post_liquidation_reclaim",
       "direction": "long",
-      "gap": 0.11
+      "gap": 0.05
     },
     {
-      "asset": "ZEC",
-      "setup_id": "failed_breakout",
+      "asset": "HYPE",
+      "setup_id": "range_breakout",
+      "direction": "long",
+      "gap": 0.07
+    },
+    {
+      "asset": "ARB",
+      "setup_id": "range_breakout",
       "direction": "short",
-      "gap": 0.16
-    },
-    {
-      "asset": "PUMP",
-      "setup_id": "post_liquidation_reclaim",
-      "direction": "long",
-      "gap": 0.26
+      "gap": 0.15
     },
     {
       "asset": "XPL",
       "setup_id": "funding_fade",
       "direction": "short",
-      "gap": 0.36
+      "gap": 0.2
     },
     {
-      "asset": "BTC",
+      "asset": "ETH",
       "setup_id": "post_liquidation_reclaim",
       "direction": "long",
-      "gap": 0.39
-    },
-    {
-      "asset": "SOL",
-      "setup_id": "post_liquidation_reclaim",
-      "direction": "long",
-      "gap": 0.47
+      "gap": 0.28
     },
     {
       "asset": "DOGE",
       "setup_id": "failed_breakout",
       "direction": "long",
-      "gap": 0.53
+      "gap": 0.37
+    },
+    {
+      "asset": "BTC",
+      "setup_id": "post_liquidation_reclaim",
+      "direction": "long",
+      "gap": 0.45
     }
   ],
   "new_setups": [],
   "rejected": [],
   "passes": [
     {
-      "asset": "ETH",
-      "template": "post_liquidation_reclaim",
-      "direction": "long",
-      "reason": "no open slot (5 of 5) and the 1d trend is still down"
+      "asset": "ZEC",
+      "template": "failed_breakout",
+      "direction": "short",
+      "reason": "open slots 5 of 5; funding only at the 10.95 neutral level, so the sweep has no crowding behind it"
     },
     {
       "asset": "BNB",
-      "template": "range_breakout",
-      "direction": "short",
-      "reason": "no open slot; BNB-long was stopped today and 1d volRatio 50.69 reads as a one-off spike"
-    },
-    {
-      "asset": "kPEPE",
-      "template": "failed_breakout",
-      "direction": "short",
-      "reason": "already open as kPEPE-short"
-    },
-    {
-      "asset": "ENA",
-      "template": "failed_breakout",
+      "template": "post_liquidation_reclaim",
       "direction": "long",
-      "reason": "no open slot; L2 says funding premises broke fast on ENA"
+      "reason": "slots full; OI 24h -27.44 flush, but a prior BNB long was stopped, wait for a free slot"
     },
     {
-      "asset": "XMR",
-      "template": "failed_breakout",
+      "asset": "WLD",
+      "template": "range_breakout",
+      "direction": "short",
+      "reason": "slots full; volRatio 1.33 barely clears the threshold"
+    },
+    {
+      "asset": "LIT",
+      "template": "range_breakout",
+      "direction": "short",
+      "reason": "slots full; same breakdown cluster as AAVE, LINK and UNI already open"
+    },
+    {
+      "asset": "TRX",
+      "template": "range_breakout",
       "direction": "long",
-      "reason": "no open slot; XMR longs were cancelled on funding premise (L2)"
-    },
-    {
-      "asset": "XMR",
-      "template": "htf_pullback",
-      "direction": "long",
-      "reason": "no open slot and XMR-long closed recently at a loss on the same premise (L2)"
-    },
-    {
-      "asset": "UNI",
-      "template": "range_breakout",
-      "direction": "short",
-      "reason": "already open as UNI-short"
-    },
-    {
-      "asset": "AAVE",
-      "template": "range_breakout",
-      "direction": "short",
-      "reason": "already open as AAVE-short"
-    },
-    {
-      "asset": "LINK",
-      "template": "range_breakout",
-      "direction": "short",
-      "reason": "already open as LINK-short"
-    },
-    {
-      "asset": "XPL",
-      "template": "failed_breakout",
-      "direction": "short",
-      "reason": "no open slot; funding_fade is the cleaner read and 1d rangePos 0.44 keeps it on the watchlist"
+      "reason": "slots full; volRatio 20.2 is a single-bar spike against a risk-off board"
     },
     {
       "asset": "ZRO",
       "template": "range_breakout",
       "direction": "short",
-      "reason": "ZRO-short was cancelled this day on a broken crowding premise (L2)"
+      "reason": "slots full; the last ZRO short was cancelled this run window when its crowding premise broke (L2)"
     },
     {
-      "asset": "CRV",
-      "template": "post_liquidation_reclaim",
-      "direction": "long",
-      "reason": "no open slot; waits for a 4h reclaim close (L1)"
+      "asset": "SUI",
+      "template": "range_breakout",
+      "direction": "short",
+      "reason": "slots full; volRatio 1.56 is modest"
+    },
+    {
+      "asset": "LINK",
+      "template": "range_breakout",
+      "direction": "short",
+      "reason": "already open (LINK-short-20261030-1)"
+    },
+    {
+      "asset": "AAVE",
+      "template": "range_breakout",
+      "direction": "short",
+      "reason": "already open (AAVE-short-20261030-1)"
     },
     {
       "asset": "ONDO",
       "template": "range_breakout",
       "direction": "short",
-      "reason": "no open slot (5 of 5) and the book is already short-heavy"
-    },
-    {
-      "asset": "TAO",
-      "template": "post_liquidation_reclaim",
-      "direction": "long",
-      "reason": "no open slot; OI 24h -8.17% only just past the -8 threshold"
+      "reason": "slots full; the breakdown cluster is already four open shorts deep"
     }
   ],
   "unanswered": [],
-  "brief": "No new setups: five of five slots are open (AAVE, kPEPE, UNI, XMR, LINK paths). Fourteen tripwire hits, mostly 1d breakdown shorts and reclaim longs, all passed on slots. Largest imbalance is XPL, funding 48.39 ann % with OI 24h +34.8%; we lean toward a fade only once 1d rangePos reaches 0.8. hl-cycles is stale (13.4 h), regime mild risk-off. Risk skews to a bounce on reclaim names (CRV, ETH) if funding stays reset; a 4h reclaim close would prove the read, a fresh low would break it."
+  "brief": "No new setups: 5 of 5 slots are open (AAVE, kPEPE, UNI, XMR, LINK), all triggered. The board is a broad 1d breakdown (BTC, ETH, SOL, XRP) with long liquidation flow; ten tripwires hit, nine of them range_breakout or reclaim ideas that cannot be written up while the slots are full. Watchlist is led by BTC and ETH washouts, which we lean toward a bounce if OI flushes further. HYPE funding is back at 32.23, above the 30 cap, the L2 funding-premise risk to watch. The hl-cycles feed is stale (17.4 h), a data gap."
 }
