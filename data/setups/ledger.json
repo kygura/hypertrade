@@ -1,6 +1,81 @@
 {
-  "updated_at": "2026-10-29T22:56:24.930Z",
+  "updated_at": "2026-10-30T02:58:10.585Z",
   "open": [
+    {
+      "id": "AAVE-short-20261030-1",
+      "setup_id": "range_breakout",
+      "levels_source": "menu",
+      "asset": "AAVE",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "1d breakdown inside a downtrend: 1d rangePos 0.05, volRatio 5.73, OI 24h +12.1 on new_shorts with funding 0.34 (not crowded short), ret7d -17.28. A retest of the broken 1d low20 is the entry; the other side sees a 1d washout and funding already at 0.34 that may squeeze a bounce, but the structure is still down.",
+      "regime_alignment": "with",
+      "trigger": "4h rejection candle closing back under the 1d low20 after a retest from below",
+      "entry": {
+        "low": 128.46,
+        "high": 129.45
+      },
+      "invalidation": 132.87,
+      "invalidation_reason": "a 4h reclaim of the SMA20 would put price back inside the prior range and break the breakdown read",
+      "targets": [
+        118.29,
+        107.77
+      ],
+      "rr": 2.72,
+      "conviction": "low",
+      "evidence": [
+        "AAVE.tf.1d.breakout",
+        "AAVE.tf.1d.volRatio",
+        "AAVE.pos.oiChg24hPct",
+        "AAVE.pos.fundingAnnPct"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-30T02:58:10.585Z",
+      "updated_at": "2026-10-30T02:58:10.585Z",
+      "expires_at": "2026-11-02T02:58:10.585Z"
+    },
+    {
+      "id": "ZRO-short-20261030-1",
+      "setup_id": "range_breakout",
+      "levels_source": "menu",
+      "asset": "ZRO",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "1d breakdown (volRatio 1.9) with HL funding 19.21 over CEX 10.95, premium 16.92 bps and OI 24h +3.55 while ret24h is -12.32: longs still paying a premium into a break. The other side sees ret7d -16.67 already stretched and a mean-reversion bounce.",
+      "regime_alignment": "with",
+      "trigger": "4h rejection under the broken 4h low20 after a retest from below",
+      "entry": {
+        "low": 1.5561,
+        "high": 1.6
+      },
+      "invalidation": 1.7316,
+      "invalidation_reason": "a 4h close 1.5 ATR back above the broken low would negate the breakdown",
+      "targets": [
+        1.2344
+      ],
+      "rr": 2.24,
+      "conviction": "low",
+      "evidence": [
+        "ZRO.tf.1d.breakout",
+        "ZRO.pos.premiumBps",
+        "ZRO.pos.oiChg24hPct",
+        "ZRO.pos.fundingVsCexAnnPct"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-30T02:58:10.585Z",
+      "updated_at": "2026-10-30T02:58:10.585Z",
+      "expires_at": "2026-11-02T02:58:10.585Z"
+    }
+  ],
+  "closed": [
     {
       "id": "XMR-short-20261029-1",
       "setup_id": null,
@@ -31,12 +106,12 @@
         "XMR.tf.4h.rangePos",
         "XMR.levels.4h.high20"
       ],
-      "status": "watching",
-      "status_note": null,
-      "r_result": null,
-      "triggered_at": null,
+      "status": "invalidated",
+      "status_note": "stopped at 632.62 (2026-10-30 01:00 UTC)",
+      "r_result": -1,
+      "triggered_at": "2026-10-29T22:00:00.000Z",
       "created_at": "2026-10-29T22:56:24.930Z",
-      "updated_at": "2026-10-29T22:56:24.930Z",
+      "updated_at": "2026-10-30T01:59:59.999Z",
       "expires_at": "2026-11-01T22:56:24.930Z"
     },
     {
@@ -69,16 +144,14 @@
         "BNB.levels.1d.low20",
         "BNB.tf.4h.rangePos"
       ],
-      "status": "watching",
-      "status_note": null,
-      "r_result": null,
-      "triggered_at": null,
+      "status": "invalidated",
+      "status_note": "stopped at 693.96 (2026-10-30 00:00 UTC)",
+      "r_result": -1,
+      "triggered_at": "2026-10-29T22:00:00.000Z",
       "created_at": "2026-10-29T22:56:24.930Z",
-      "updated_at": "2026-10-29T22:56:24.930Z",
+      "updated_at": "2026-10-30T00:59:59.999Z",
       "expires_at": "2026-11-01T22:56:24.930Z"
-    }
-  ],
-  "closed": [
+    },
     {
       "id": "ZEC-long-20261027-1",
       "setup_id": null,
@@ -491,9 +564,9 @@
     }
   ],
   "stats": {
-    "closed_90d": 11,
-    "triggered_90d": 11,
-    "hit_rate": 0.18,
-    "avg_r": 0.17
+    "closed_90d": 13,
+    "triggered_90d": 13,
+    "hit_rate": 0.15,
+    "avg_r": -0.01
   }
 }
