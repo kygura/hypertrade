@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-30T06:59:39.920Z",
+  "updated_at": "2026-10-30T10:56:54.531Z",
   "open": [
     {
       "id": "AAVE-short-20261030-1",
@@ -35,7 +35,7 @@
       "r_result": null,
       "triggered_at": null,
       "created_at": "2026-10-30T02:58:10.585Z",
-      "updated_at": "2026-10-30T06:59:39.920Z",
+      "updated_at": "2026-10-30T10:56:54.531Z",
       "expires_at": "2026-11-02T02:58:10.585Z"
     },
     {
@@ -66,12 +66,12 @@
         "kPEPE.pos.oiChg24hPct",
         "kPEPE.tf.1d.sweep"
       ],
-      "status": "watching",
-      "status_note": null,
+      "status": "triggered",
+      "status_note": "entry zone traded (2026-10-30 10:00 UTC)",
       "r_result": null,
-      "triggered_at": null,
+      "triggered_at": "2026-10-30T10:00:00.000Z",
       "created_at": "2026-10-30T06:59:39.920Z",
-      "updated_at": "2026-10-30T06:59:39.920Z",
+      "updated_at": "2026-10-30T10:56:54.531Z",
       "expires_at": "2026-11-06T06:59:39.920Z"
     },
     {
@@ -102,13 +102,51 @@
         "UNI.pos.oiChg24hPct",
         "UNI.pos.flow24h"
       ],
+      "status": "triggered",
+      "status_note": "entry zone traded (2026-10-30 06:00 UTC)",
+      "r_result": null,
+      "triggered_at": "2026-10-30T06:00:00.000Z",
+      "created_at": "2026-10-30T06:59:39.920Z",
+      "updated_at": "2026-10-30T10:56:54.531Z",
+      "expires_at": "2026-11-06T06:59:39.920Z"
+    },
+    {
+      "id": "XMR-long-20261030-1",
+      "setup_id": "htf_pullback",
+      "levels_source": "menu",
+      "asset": "XMR",
+      "direction": "long",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "Tripwire hit: 1w and 1d trends up, mark 0.35 ATR from the 1d SMA20 with funding at 10.95, so the pullback is not a funding trade (L2 does not apply). HL funding sits 13.29 under CEX, so longs are not crowded locally. The other side sees ret7d -2.62 and a 4h range rangePos 0.13; XMR longs stopped earlier this week, so low conviction.",
+      "regime_alignment": "with",
+      "trigger": "4h close back above the 1d SMA20 after a dip into the zone",
+      "entry": {
+        "low": 580.16,
+        "high": 594.09
+      },
+      "invalidation": 558.35,
+      "invalidation_reason": "losing the 1d SMA50 would break the 1d uptrend that the pullback read relies on",
+      "targets": [
+        659.63,
+        702.22
+      ],
+      "rr": 2.52,
+      "conviction": "low",
+      "evidence": [
+        "XMR.tf.1w.trend",
+        "XMR.tf.1d.trend",
+        "XMR.tf.1d.vsSma20Atr",
+        "XMR.pos.fundingAnnPct",
+        "XMR.pos.fundingVsCexAnnPct"
+      ],
       "status": "watching",
       "status_note": null,
       "r_result": null,
       "triggered_at": null,
-      "created_at": "2026-10-30T06:59:39.920Z",
-      "updated_at": "2026-10-30T06:59:39.920Z",
-      "expires_at": "2026-11-06T06:59:39.920Z"
+      "created_at": "2026-10-30T10:56:54.531Z",
+      "updated_at": "2026-10-30T10:56:54.531Z",
+      "expires_at": "2026-11-02T10:56:54.531Z"
     }
   ],
   "closed": [
