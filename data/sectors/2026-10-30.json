@@ -1,0 +1,92 @@
+{
+  "generated_at": "2026-10-30T02:58:00Z",
+  "sectors": [
+    {
+      "id": "l1-majors",
+      "label": "L1 majors",
+      "mindshare_score": 0.6,
+      "momentum": -0.5,
+      "rationale": "BTC -4.89%, ETH -6.33%, SOL -7.07%, XRP -8.13% over 24h; all four broke their 1d lows (rangePos -0.07, -0.05, 0.02, -0.02) with long_liquidation flow on ETH, SOL and XRP. ETH and XRP funding is negative (-36.24, -15.8). Social share not reported.",
+      "tokens": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
+      ]
+    },
+    {
+      "id": "perp-dex-defi",
+      "label": "Perp DEX & DeFi",
+      "mindshare_score": 0.5,
+      "momentum": 0.0,
+      "rationale": "Split: HYPE +13.07% 24h (funding 164.96, OI +7.06%, 18.0 points ahead of BTC) while AAVE -9.5%, UNI -8.57% and ENA -13.49% broke lower; the group's strength is one name.",
+      "tokens": [
+        "HYPE",
+        "AAVE",
+        "UNI",
+        "ENA"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
+      ]
+    },
+    {
+      "id": "privacy",
+      "label": "Privacy",
+      "mindshare_score": 0.4,
+      "momentum": 0.3,
+      "rationale": "XMR +1.64% and ZEC -3.63% over 24h; XMR is +6.35 vs BTC over 7d but funding 225.19 sits 98.4 points over CEX, so the strength is crowded on HL. Still the most resilient large-OI group.",
+      "tokens": [
+        "ZEC",
+        "XMR"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    },
+    {
+      "id": "memecoins",
+      "label": "Memecoins",
+      "mindshare_score": 0.28,
+      "momentum": -0.4,
+      "rationale": "DOGE -6.14%, PUMP -13.55% (OI -12.29%), kPEPE -6.36% (OI +36.39% on new_shorts), FARTCOIN -14.32%; DOGE funding 0.09 and the group is broadly in 1d downtrends.",
+      "tokens": [
+        "DOGE",
+        "PUMP",
+        "FARTCOIN"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "label": "AI agents",
+      "mindshare_score": 0.22,
+      "momentum": -0.4,
+      "rationale": "TAO -9.76% and WLD -13.49% over 24h (WLD -30.64% over 7d), both at 1d rangePos near 0 with long_liquidation flow and neutral funding 10.95.",
+      "tokens": [
+        "FET",
+        "TAO",
+        "WLD"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    }
+  ],
+  "rotations": [
+    {
+      "from": "l1-majors",
+      "to": "privacy",
+      "confidence": 0.2,
+      "trigger": "XMR holds above its 1d SMA20 while BTC stays under its 1d low20",
+      "note": "Low-confidence; XMR is +6.35 vs BTC over 7d while the majors are broken, but its 225.19 funding is crowded."
+    }
+  ]
+}

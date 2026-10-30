@@ -1,44 +1,44 @@
 {
-  "generated_at": "2026-10-29T22:56:24.930Z",
-  "read": "The board is in a broad flush: BTC ret24h -3.27 and most majors 1d rangePos below zero, with shorts piling in on the small caps (BNB OI +114.81 on funding -132.27) and HL-local longs crowded only in XMR (funding 193.62, 140.26 over CEX).",
+  "generated_at": "2026-10-30T02:58:10.585Z",
+  "read": "The board is in a broad 1d breakdown: BTC ret24h -4.89 with rangePos -0.07 and ETH, SOL, XRP also under their 1d lows; the largest imbalances are HL-local longs in XMR (funding 225.19, 98.4 over CEX) and HYPE (164.96).",
   "watchlist": [
     {
-      "asset": "kPEPE",
-      "kind": "shorts_pressing",
-      "skew": "up",
+      "asset": "HYPE",
+      "kind": "crowded_longs",
+      "skew": "down",
       "timeframe": "4h",
-      "note": "Funding -326.93 against CEX 9.41, OI 24h +55.91 and ret24h -10.71 (new_shorts): shorts pressing into the 4h low20, fuel for a squeeze if price stops falling, though our own kPEPE short was stopped today.",
-      "arms": "a 4h close back above the 4h sma20 with funding still under -10 and a level in the menu at least 2R away",
+      "note": "Funding 164.96 with premium 13.03 bps, OI 24h +7.06 and ret24h +13.07 (new_longs) after a 1d breakout; funding flipped to 10.95 within one run yesterday, so the carry premise is unreliable (low-confidence).",
+      "arms": "a 4h close back under the 4h high20 with funding staying above 30 and a level in the menu at least 2R away",
       "evidence": [
-        "kPEPE.pos.fundingAnnPct",
-        "kPEPE.pos.oiChg24hPct",
-        "kPEPE.pos.flow24h"
+        "HYPE.pos.fundingAnnPct",
+        "HYPE.pos.premiumBps",
+        "HYPE.tf.1d.breakout"
       ]
     },
     {
-      "asset": "ENA",
-      "kind": "shorts_pressing",
-      "skew": "up",
+      "asset": "XMR",
+      "kind": "venue_divergence",
+      "skew": "down",
       "timeframe": "1d",
-      "note": "Funding -47.53 vs CEX -24.24, OI 24h +7.25, ret24h -16.52 with 1d rangePos 0: shorts pressing at the 1d low20, a reclaim may squeeze them (low-confidence).",
-      "arms": "a 1d close back above the 1d low20 with funding under -10 and a level in the menu at least 2R away",
+      "note": "Funding 225.19, 98.4 over CEX, OI 24h +14.38 (new_longs) with 1w sweep of the high; funding_fade is 0.16 short of its trigger because 1d rangePos is 0.64 against 0.8 (low-confidence).",
+      "arms": "1d range position 0.8 or higher while funding stays above 30 and a level in the menu at least 2R away",
       "evidence": [
-        "ENA.pos.fundingAnnPct",
-        "ENA.pos.oiChg24hPct",
-        "ENA.tf.1d.rangePos"
+        "XMR.pos.fundingAnnPct",
+        "XMR.pos.fundingVsCexAnnPct",
+        "XMR.tf.1d.rangePos"
       ]
     },
     {
-      "asset": "AAVE",
-      "kind": "shorts_pressing",
+      "asset": "CRV",
+      "kind": "long_liquidation",
       "skew": "up",
       "timeframe": "4h",
-      "note": "Funding -29.38 (27.51 under CEX), OI 24h +9, ret24h -11.87 with 4h rangePos -0.74: fresh shorts into weakness, risk skews to a bounce if the 4h low holds.",
-      "arms": "a 4h close back inside the prior 4h range with funding under -10 and a level in the menu at least 2R away",
+      "note": "ret24h -19.42, OI 24h -16.48 and funding -13.68 at 1d rangePos -0.24: a washout tripwire hit, but L1 says to wait for a reclaim close; risk skews to continuation until then.",
+      "arms": "a 4h close back above the 4h low20 with funding still under 10.95 and a level in the menu at least 2R away",
       "evidence": [
-        "AAVE.pos.fundingAnnPct",
-        "AAVE.pos.oiChg24hPct",
-        "AAVE.tf.4h.rangePos"
+        "CRV.pos.oiChg24hPct",
+        "CRV.pos.fundingAnnPct",
+        "CRV.tf.4h.rangePos"
       ]
     },
     {
@@ -46,7 +46,7 @@
       "kind": "shorts_pressing",
       "skew": "up",
       "timeframe": "1d",
-      "note": "Funding -29.31 (25.96 under CEX) with premium -8.35 bps and OI 24h -1.55 at 1d rangePos -0.03: shorts paying but OI is not building, so this may be a slow grind (low-confidence).",
+      "note": "Funding -36.24 (24.4 under CEX, 7d percentile 2) with premium -14.93 bps, but OI 24h is -4.46 and flow is long_liquidation, so shorts are paying while longs leave; a squeeze needs a reclaim (low-confidence).",
       "arms": "a 1d close back above the 1d low20 with funding under -10 and a level in the menu at least 2R away",
       "evidence": [
         "ETH.pos.fundingAnnPct",
@@ -55,124 +55,167 @@
       ]
     },
     {
+      "asset": "kPEPE",
+      "kind": "venue_divergence",
+      "skew": "down",
+      "timeframe": "4h",
+      "note": "Funding 54.84, 43.89 over CEX, OI 24h +36.39 on new_shorts and ret4h -10.32; our kPEPE short was stopped yesterday after a 4h sweep, so we want the high to fail again first (low-confidence).",
+      "arms": "a 4h sweep of the range high with funding above 30 and a level in the menu at least 2R away",
+      "evidence": [
+        "kPEPE.pos.fundingAnnPct",
+        "kPEPE.pos.fundingVsCexAnnPct",
+        "kPEPE.pos.oiChg24hPct"
+      ]
+    },
+    {
       "asset": "XPL",
       "kind": "venue_divergence",
       "skew": "down",
       "timeframe": "1d",
-      "note": "Funding 73.71, 62.76 over CEX, OI 24h +21.61 (new_shorts) while ret24h is -6.46: HL-local carry that may unwind, but 1d rangePos is only 0.13.",
+      "note": "Funding 75.34, 64.39 over CEX, OI 24h +32.06 and OI/volume 2.1 after yesterday's short hit target; 1d rangePos is 0.38, so the carry may unwind (low-confidence).",
       "arms": "1d range position 0.8 or higher while funding stays above 30, with a level at least 2R away",
       "evidence": [
         "XPL.pos.fundingAnnPct",
         "XPL.pos.fundingVsCexAnnPct",
         "XPL.tf.1d.rangePos"
       ]
-    },
-    {
-      "asset": "HYPE",
-      "kind": "crowded_longs",
-      "skew": "down",
-      "timeframe": "4h",
-      "note": "Funding 120.06 with premium 11.9 bps and OI 24h +6.55 (new_longs) after ret24h +11.9, but funding flipped back to 10.95 earlier today and cancelled our short, so the crowding is unreliable (low-confidence).",
-      "arms": "a 4h close back under the 4h high20 with funding staying above 30 and a level in the menu at least 2R away",
-      "evidence": [
-        "HYPE.pos.fundingAnnPct",
-        "HYPE.pos.premiumBps",
-        "HYPE.tf.4h.sweep"
-      ]
     }
   ],
   "hits": [
     {
-      "asset": "HYPE",
+      "asset": "BNB",
+      "setup_id": "range_breakout",
+      "direction": "short"
+    },
+    {
+      "asset": "kPEPE",
       "setup_id": "failed_breakout",
       "direction": "short"
     },
     {
-      "asset": "LIT",
+      "asset": "XMR",
       "setup_id": "failed_breakout",
       "direction": "short"
     },
     {
       "asset": "UNI",
-      "setup_id": "failed_breakout",
+      "setup_id": "range_breakout",
+      "direction": "short"
+    },
+    {
+      "asset": "AAVE",
+      "setup_id": "range_breakout",
+      "direction": "short"
+    },
+    {
+      "asset": "ZRO",
+      "setup_id": "range_breakout",
+      "direction": "short"
+    },
+    {
+      "asset": "CRV",
+      "setup_id": "post_liquidation_reclaim",
+      "direction": "long"
+    },
+    {
+      "asset": "ONDO",
+      "setup_id": "range_breakout",
       "direction": "short"
     }
   ],
   "near": [
     {
-      "asset": "ARB",
+      "asset": "TAO",
       "setup_id": "post_liquidation_reclaim",
       "direction": "long",
-      "gap": 0.04
+      "gap": 0.01
+    },
+    {
+      "asset": "LINK",
+      "setup_id": "range_breakout",
+      "direction": "short",
+      "gap": 0.06
+    },
+    {
+      "asset": "ZEC",
+      "setup_id": "failed_breakout",
+      "direction": "short",
+      "gap": 0.08
+    },
+    {
+      "asset": "XRP",
+      "setup_id": "post_liquidation_reclaim",
+      "direction": "long",
+      "gap": 0.11
     },
     {
       "asset": "XMR",
       "setup_id": "funding_fade",
       "direction": "short",
-      "gap": 0.12
+      "gap": 0.16
+    },
+    {
+      "asset": "PUMP",
+      "setup_id": "post_liquidation_reclaim",
+      "direction": "long",
+      "gap": 0.25
     },
     {
       "asset": "kPEPE",
-      "setup_id": "negative_funding_build",
-      "direction": "long",
-      "gap": 0.42
-    },
-    {
-      "asset": "LINK",
-      "setup_id": "post_liquidation_reclaim",
-      "direction": "long",
-      "gap": 0.46
+      "setup_id": "funding_fade",
+      "direction": "short",
+      "gap": 0.31
     },
     {
       "asset": "XPL",
       "setup_id": "funding_fade",
       "direction": "short",
-      "gap": 0.67
-    },
-    {
-      "asset": "BTC",
-      "setup_id": "failed_breakout",
-      "direction": "short",
-      "gap": 0.71
-    },
-    {
-      "asset": "ENA",
-      "setup_id": "negative_funding_build",
-      "direction": "long",
-      "gap": 0.8
-    },
-    {
-      "asset": "DOGE",
-      "setup_id": "htf_pullback",
-      "direction": "short",
-      "gap": 0.81
+      "gap": 0.42
     }
   ],
   "new_setups": [
-    "XMR-short-20261029-1",
-    "BNB-long-20261029-1"
+    "AAVE-short-20261030-1",
+    "ZRO-short-20261030-1"
   ],
   "rejected": [],
   "passes": [
     {
-      "asset": "HYPE",
-      "template": "failed_breakout",
+      "asset": "BNB",
+      "template": "range_breakout",
       "direction": "short",
-      "reason": "funding already collapsed to 10.95 and cancelled our HYPE short earlier today; crowding premise flips between runs, so it stays on the watchlist"
+      "reason": "OI is only 75.7M after a 71.02 jump, first target barely 2R, and gate allows 2 new; correlated with the AAVE/ZRO shorts"
     },
     {
-      "asset": "LIT",
+      "asset": "kPEPE",
       "template": "failed_breakout",
       "direction": "short",
-      "reason": "funding sits at the neutral 10.95 with no HL-local crowding and mark is already at the 4h low, so no level within reach for 2R"
+      "reason": "our kPEPE short was stopped yesterday; the 1d sweep is old and 4h rangePos is 0.32, so no fresh failed-high trigger; watching"
+    },
+    {
+      "asset": "XMR",
+      "template": "failed_breakout",
+      "direction": "short",
+      "reason": "funding 225.19 killed two XMR longs yet the 4h sweep is shallow at rangePos 0.33 and no level sits 2R away; watching for funding_fade"
     },
     {
       "asset": "UNI",
-      "template": "failed_breakout",
+      "template": "range_breakout",
       "direction": "short",
-      "reason": "mark is already well below the 4h low20 after a -11.05 move, leaving no entry at the failed-breakout level; chasing a flush"
+      "reason": "first level target (1d.pdl) is about 1R from the retest zone, under the 2R gate; no clean level"
+    },
+    {
+      "asset": "CRV",
+      "template": "post_liquidation_reclaim",
+      "direction": "long",
+      "reason": "L1: longs bought before a reclaim close were stopped; ret24h -19.42 and no reclaim bar yet, so wait for the close"
+    },
+    {
+      "asset": "ONDO",
+      "template": "range_breakout",
+      "direction": "short",
+      "reason": "1d rangePos 0 at the low with 1d sma200 0.37199 only 1.4% below the mark; no room to a 2R target"
     }
   ],
   "unanswered": [],
-  "brief": "Delta since the last run: the board flushed hard, with BTC 24h -3.27 and many alts at -10 to -19, long liquidation almost everywhere and funding resetting to the neutral 10.95. HYPE funding is back at 120.06 after resetting earlier. Two imbalances stand out: XMR HL-local crowded longs (funding 193.62, 140.26 over CEX), proposed as a counter-trend short; and BNB shorts pressing (funding -132.27, OI +114.81), proposed as a long that waits for a reclaim close. Either could fail: XMR on a breakout of the 4h range, BNB on a break under the 1d low. hl-cycles is stale (16.6 h)."
+  "brief": "Delta: the flush deepened into a 1d breakdown. BTC closed the daily bar at 77947, under the True Market Mean (79625) that hl-cycles named as its invalidation; ETH, SOL, XRP and most alts broke their 1d lows with long_liquidation flow. HYPE is the outlier (ret24h +13.07, funding 164.96). Two low-conviction shorts proposed on retests of broken lows (AAVE, ZRO). Seven yesterday setups closed: DOGE and XPL shorts hit target; ZEC, AAVE, kPEPE longs/shorts stopped. L1/L2 applied: no longs before a reclaim close. What proves it wrong: a 1d BTC close back above 79625 (base case is continuation, low-confidence). Gaps: hl-cycles stale 20.7 h; Oct 28 FOMC and Oct 29 PCE outcomes unverified."
 }

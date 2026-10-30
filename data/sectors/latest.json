@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-29T02:58:00Z",
+  "generated_at": "2026-10-30T02:58:00Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 majors",
       "mindshare_score": 0.6,
-      "momentum": -0.2,
-      "rationale": "BTC -1.26%, ETH -1.86%, SOL -1.41%, XRP -2.81% over 24h; all four in 1d downtrends at rangePos 0.12, 0.08, 0.07 and 0.23. Funding neutral on BTC and XRP, -5.7 on ETH. Social share not reported.",
+      "momentum": -0.5,
+      "rationale": "BTC -4.89%, ETH -6.33%, SOL -7.07%, XRP -8.13% over 24h; all four broke their 1d lows (rangePos -0.07, -0.05, 0.02, -0.02) with long_liquidation flow on ETH, SOL and XRP. ETH and XRP funding is negative (-36.24, -15.8). Social share not reported.",
       "tokens": [
         "BTC",
         "ETH",
@@ -22,14 +22,13 @@
       "id": "perp-dex-defi",
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.5,
-      "momentum": -0.3,
-      "rationale": "HYPE -3.51%, AAVE -3.04%, UNI -1.52%, ENA -6.21% over 24h; AAVE is -16.21% over 7d at 1d rangePos 0.01 and ENA's HL premium to CEX flipped to -3.25 points, so the sector is selling off with no funding crowd left.",
+      "momentum": 0.0,
+      "rationale": "Split: HYPE +13.07% 24h (funding 164.96, OI +7.06%, 18.0 points ahead of BTC) while AAVE -9.5%, UNI -8.57% and ENA -13.49% broke lower; the group's strength is one name.",
       "tokens": [
         "HYPE",
         "AAVE",
         "UNI",
-        "ENA",
-        "PENDLE"
+        "ENA"
       ],
       "sources": [
         "hyperliquid metaAndAssetCtxs",
@@ -40,8 +39,8 @@
       "id": "privacy",
       "label": "Privacy",
       "mindshare_score": 0.4,
-      "momentum": 0.1,
-      "rationale": "ZEC -5.04% 24h (-0.47 vs BTC over 7d), XMR -2.46% (+0.29 vs BTC over 7d); XMR funding vs CEX is -15.09 points and it is the board's one tripwire hit. Still the most resilient big-OI group on 7d relative strength.",
+      "momentum": 0.3,
+      "rationale": "XMR +1.64% and ZEC -3.63% over 24h; XMR is +6.35 vs BTC over 7d but funding 225.19 sits 98.4 points over CEX, so the strength is crowded on HL. Still the most resilient large-OI group.",
       "tokens": [
         "ZEC",
         "XMR"
@@ -54,12 +53,12 @@
       "id": "memecoins",
       "label": "Memecoins",
       "mindshare_score": 0.28,
-      "momentum": -0.1,
-      "rationale": "kPEPE +9.2% 24h with 4h and 1d high sweeps (2.77 ATR over the 4h SMA20), DOGE -1.48%, PUMP -2.41% (-17.02% over 7d), CASHCAT -7.48%; kPEPE is the lone outlier while the rest of the group sells.",
+      "momentum": -0.4,
+      "rationale": "DOGE -6.14%, PUMP -13.55% (OI -12.29%), kPEPE -6.36% (OI +36.39% on new_shorts), FARTCOIN -14.32%; DOGE funding 0.09 and the group is broadly in 1d downtrends.",
       "tokens": [
-        "WIF",
         "DOGE",
-        "PUMP"
+        "PUMP",
+        "FARTCOIN"
       ],
       "sources": [
         "hyperliquid metaAndAssetCtxs"
@@ -69,26 +68,25 @@
       "id": "ai-agents",
       "label": "AI agents",
       "mindshare_score": 0.22,
-      "momentum": -0.2,
-      "rationale": "TAO -3.45%, WLD -5.39% (-28.88% over 7d, funding -10.22 annualised); the group is weak and WLD's shorts are paying to hold, so squeeze fuel exists only after a reclaim.",
+      "momentum": -0.4,
+      "rationale": "TAO -9.76% and WLD -13.49% over 24h (WLD -30.64% over 7d), both at 1d rangePos near 0 with long_liquidation flow and neutral funding 10.95.",
       "tokens": [
         "FET",
         "TAO",
-        "VIRTUAL"
+        "WLD"
       ],
       "sources": [
-        "hyperliquid metaAndAssetCtxs",
-        "yahoo SMH"
+        "hyperliquid metaAndAssetCtxs"
       ]
     }
   ],
   "rotations": [
     {
-      "from": "perp-dex-defi",
+      "from": "l1-majors",
       "to": "privacy",
       "confidence": 0.2,
-      "trigger": "XMR holds above the 1d SMA20 while AAVE stays under 1d rangePos 0.1",
-      "note": "Low-confidence; privacy names hold 7d relative strength (ZEC -0.47, XMR +0.29 vs BTC) while AAVE is -11.25 vs BTC, but one day of price is a thin basis."
+      "trigger": "XMR holds above its 1d SMA20 while BTC stays under its 1d low20",
+      "note": "Low-confidence; XMR is +6.35 vs BTC over 7d while the majors are broken, but its 225.19 funding is crowded."
     }
   ]
 }
