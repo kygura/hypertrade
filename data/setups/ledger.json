@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-30T02:58:10.585Z",
+  "updated_at": "2026-10-30T06:59:39.920Z",
   "open": [
     {
       "id": "AAVE-short-20261030-1",
@@ -35,9 +35,83 @@
       "r_result": null,
       "triggered_at": null,
       "created_at": "2026-10-30T02:58:10.585Z",
-      "updated_at": "2026-10-30T02:58:10.585Z",
+      "updated_at": "2026-10-30T06:59:39.920Z",
       "expires_at": "2026-11-02T02:58:10.585Z"
     },
+    {
+      "id": "kPEPE-short-20261030-1",
+      "setup_id": "failed_breakout",
+      "levels_source": "menu",
+      "asset": "kPEPE",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "1d",
+      "thesis": "HL-local crowding: funding 74.55 vs CEX 10.95, premium 16.06 bps, OI 24h +33.99 on oi_build_flat after a 1d sweep of the range high. The other side sees ret7d +10.68 and a 1w trend still up, so risk skews to a squeeze through the high; the last kPEPE short was stopped, so low conviction.",
+      "regime_alignment": "with",
+      "trigger": "1d close back under the 1d high20 after the sweep, or a 4h rejection inside the zone",
+      "entry": {
+        "low": 0.0050657,
+        "high": 0.005244
+      },
+      "invalidation": 0.00571,
+      "invalidation_reason": "acceptance above the 4h high20 would turn the sweep into a real breakout and end the venue-crowding fade",
+      "targets": [
+        0.0040446
+      ],
+      "rr": 2,
+      "conviction": "low",
+      "evidence": [
+        "kPEPE.pos.fundingAnnPct",
+        "kPEPE.pos.fundingVsCexAnnPct",
+        "kPEPE.pos.oiChg24hPct",
+        "kPEPE.tf.1d.sweep"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-30T06:59:39.920Z",
+      "updated_at": "2026-10-30T06:59:39.920Z",
+      "expires_at": "2026-11-06T06:59:39.920Z"
+    },
+    {
+      "id": "UNI-short-20261030-1",
+      "setup_id": "range_breakout",
+      "levels_source": "menu",
+      "asset": "UNI",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "1d",
+      "thesis": "1d breakdown inside a down trend: volRatio 7.01, OI 24h +8.74 on new_shorts, funding 10.95 (not crowded short), and the mark has bounced back toward the broken 1d low20 (ret4h 5.58). The other side sees ret7d -4.8 and a 1w trend still up, so a bounce may extend.",
+      "regime_alignment": "counter",
+      "trigger": "1d or 4h rejection closing back under the broken 1d low20 after a retest from below",
+      "entry": {
+        "low": 6.5149,
+        "high": 6.7674
+      },
+      "invalidation": 7.2049,
+      "invalidation_reason": "a reclaim of the 1d SMA20 would put price back inside the prior range and break the breakdown read",
+      "targets": [
+        5.5136
+      ],
+      "rr": 2,
+      "conviction": "low",
+      "evidence": [
+        "UNI.tf.1d.breakout",
+        "UNI.tf.1d.volRatio",
+        "UNI.pos.oiChg24hPct",
+        "UNI.pos.flow24h"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-30T06:59:39.920Z",
+      "updated_at": "2026-10-30T06:59:39.920Z",
+      "expires_at": "2026-11-06T06:59:39.920Z"
+    }
+  ],
+  "closed": [
     {
       "id": "ZRO-short-20261030-1",
       "setup_id": "range_breakout",
@@ -66,16 +140,14 @@
         "ZRO.pos.oiChg24hPct",
         "ZRO.pos.fundingVsCexAnnPct"
       ],
-      "status": "watching",
-      "status_note": null,
-      "r_result": null,
-      "triggered_at": null,
+      "status": "cancelled",
+      "status_note": "the thesis rested on HL funding 19.21 over CEX and premium 16.92 bps; funding is now 10.95 equal to CEX and premium 1.6 bps, so the crowding premise broke (L2) while ret4h is +10.97 toward the stop",
+      "r_result": -0.73,
+      "triggered_at": "2026-10-30T03:00:00.000Z",
       "created_at": "2026-10-30T02:58:10.585Z",
-      "updated_at": "2026-10-30T02:58:10.585Z",
+      "updated_at": "2026-10-30T06:59:39.920Z",
       "expires_at": "2026-11-02T02:58:10.585Z"
-    }
-  ],
-  "closed": [
+    },
     {
       "id": "XMR-short-20261029-1",
       "setup_id": null,
@@ -564,9 +636,9 @@
     }
   ],
   "stats": {
-    "closed_90d": 13,
-    "triggered_90d": 13,
-    "hit_rate": 0.15,
-    "avg_r": -0.01
+    "closed_90d": 14,
+    "triggered_90d": 14,
+    "hit_rate": 0.14,
+    "avg_r": -0.06
   }
 }
