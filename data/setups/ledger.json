@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-31T14:56:12.298Z",
+  "updated_at": "2026-10-31T18:55:30.327Z",
   "open": [
     {
       "id": "LINK-short-20261030-1",
@@ -36,7 +36,7 @@
       "r_result": null,
       "triggered_at": "2026-10-30T14:00:00.000Z",
       "created_at": "2026-10-30T14:56:28.171Z",
-      "updated_at": "2026-10-31T14:56:12.298Z",
+      "updated_at": "2026-10-31T18:55:30.327Z",
       "expires_at": "2026-11-06T14:56:28.171Z"
     },
     {
@@ -74,7 +74,7 @@
       "r_result": null,
       "triggered_at": "2026-10-31T02:00:00.000Z",
       "created_at": "2026-10-31T02:57:02.728Z",
-      "updated_at": "2026-10-31T14:56:12.298Z",
+      "updated_at": "2026-10-31T18:55:30.327Z",
       "expires_at": "2026-11-07T02:57:02.728Z"
     },
     {
@@ -112,7 +112,7 @@
       "r_result": null,
       "triggered_at": null,
       "created_at": "2026-10-31T06:56:13.419Z",
-      "updated_at": "2026-10-31T14:56:12.298Z",
+      "updated_at": "2026-10-31T18:55:30.327Z",
       "expires_at": "2026-11-07T06:56:13.419Z"
     },
     {
@@ -150,7 +150,7 @@
       "r_result": null,
       "triggered_at": null,
       "created_at": "2026-10-31T10:56:39.814Z",
-      "updated_at": "2026-10-31T14:56:12.298Z",
+      "updated_at": "2026-10-31T18:55:30.327Z",
       "expires_at": "2026-11-07T10:56:39.814Z"
     },
     {
@@ -182,12 +182,12 @@
         "SOL.pos.fundingAnnPct",
         "SOL.pos.oiChg24hPct"
       ],
-      "status": "watching",
-      "status_note": null,
+      "status": "triggered",
+      "status_note": "entry zone traded (2026-10-31 14:00 UTC)",
       "r_result": null,
-      "triggered_at": null,
+      "triggered_at": "2026-10-31T14:00:00.000Z",
       "created_at": "2026-10-31T14:56:12.298Z",
-      "updated_at": "2026-10-31T14:56:12.298Z",
+      "updated_at": "2026-10-31T18:55:30.327Z",
       "expires_at": "2026-11-07T14:56:12.298Z"
     }
   ],
