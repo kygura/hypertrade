@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-31T06:56:13.419Z",
+  "updated_at": "2026-10-31T10:56:39.814Z",
   "open": [
     {
       "id": "LINK-short-20261030-1",
@@ -36,7 +36,7 @@
       "r_result": null,
       "triggered_at": "2026-10-30T14:00:00.000Z",
       "created_at": "2026-10-30T14:56:28.171Z",
-      "updated_at": "2026-10-31T06:56:13.419Z",
+      "updated_at": "2026-10-31T10:56:39.814Z",
       "expires_at": "2026-11-06T14:56:28.171Z"
     },
     {
@@ -74,46 +74,8 @@
       "r_result": null,
       "triggered_at": "2026-10-31T02:00:00.000Z",
       "created_at": "2026-10-31T02:57:02.728Z",
-      "updated_at": "2026-10-31T06:56:13.419Z",
+      "updated_at": "2026-10-31T10:56:39.814Z",
       "expires_at": "2026-11-07T02:57:02.728Z"
-    },
-    {
-      "id": "XPL-short-20261031-1",
-      "setup_id": "failed_breakout",
-      "levels_source": "menu",
-      "asset": "XPL",
-      "direction": "short",
-      "horizon": "swing",
-      "timeframe": "4h",
-      "thesis": "4h sweep of the range high with 4h rangePos 1, funding 72.16 and 61.21 over CEX, premium 10.87 bps and OI 24h +8.82 on new_longs after ret24h +12.74: HL-local crowding into a swept high. The other side sees 1d volRatio 2.36 and ret7d +7.77, so risk skews to a squeeze if funding persists without a rejection; L2 says re-check funding each run.",
-      "regime_alignment": "with",
-      "trigger": "4h close back under the swept 4h high20, or a 4h rejection candle inside the zone",
-      "entry": {
-        "low": 0.081963,
-        "high": 0.082031
-      },
-      "invalidation": 0.0866,
-      "invalidation_reason": "acceptance above the prior week high would turn the sweep into a real breakout and end the venue-crowding fade",
-      "targets": [
-        0.070105,
-        0.067499
-      ],
-      "rr": 2.58,
-      "conviction": "low",
-      "evidence": [
-        "XPL.pos.fundingAnnPct",
-        "XPL.pos.fundingVsCexAnnPct",
-        "XPL.pos.oiChg24hPct",
-        "XPL.tf.4h.sweep",
-        "XPL.pos.premiumBps"
-      ],
-      "status": "triggered",
-      "status_note": "entry zone traded (2026-10-31 02:00 UTC)",
-      "r_result": null,
-      "triggered_at": "2026-10-31T02:00:00.000Z",
-      "created_at": "2026-10-31T02:57:02.728Z",
-      "updated_at": "2026-10-31T06:56:13.419Z",
-      "expires_at": "2026-11-03T02:57:02.728Z"
     },
     {
       "id": "CRV-short-20261031-1",
@@ -150,11 +112,87 @@
       "r_result": null,
       "triggered_at": null,
       "created_at": "2026-10-31T06:56:13.419Z",
-      "updated_at": "2026-10-31T06:56:13.419Z",
+      "updated_at": "2026-10-31T10:56:39.814Z",
       "expires_at": "2026-11-07T06:56:13.419Z"
+    },
+    {
+      "id": "DOGE-short-20261031-1",
+      "setup_id": "htf_pullback",
+      "levels_source": "menu",
+      "asset": "DOGE",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "1d",
+      "thesis": "1w, 1d and 4h trends are all down, the mark sits 1.39 ATR under the 1d sma20 and funding is 2.4 against CEX -4.31, so no crowded side to squeeze and shorts are not paying. A pullback into the 1d sma20 is the entry. The other side sees a 1d sweep of the low with volRatio 1.52 that may keep bouncing, so risk skews to the entry never filling.",
+      "regime_alignment": "with",
+      "trigger": "1d or 4h rejection back under the 1d sma20 after a pullback into it",
+      "entry": {
+        "low": 0.079084,
+        "high": 0.079954
+      },
+      "invalidation": 0.083434,
+      "invalidation_reason": "acceptance a full 1d ATR above the 1d sma20 would end the pullback-in-a-downtrend read",
+      "targets": [
+        0.0678,
+        0.063859
+      ],
+      "rr": 2.99,
+      "conviction": "low",
+      "evidence": [
+        "DOGE.tf.1w.trend",
+        "DOGE.tf.1d.trend",
+        "DOGE.tf.1d.vsSma20Atr",
+        "DOGE.pos.fundingAnnPct",
+        "DOGE.pos.fundingVsCexAnnPct"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-31T10:56:39.814Z",
+      "updated_at": "2026-10-31T10:56:39.814Z",
+      "expires_at": "2026-11-07T10:56:39.814Z"
     }
   ],
   "closed": [
+    {
+      "id": "XPL-short-20261031-1",
+      "setup_id": "failed_breakout",
+      "levels_source": "menu",
+      "asset": "XPL",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "4h",
+      "thesis": "4h sweep of the range high with 4h rangePos 1, funding 72.16 and 61.21 over CEX, premium 10.87 bps and OI 24h +8.82 on new_longs after ret24h +12.74: HL-local crowding into a swept high. The other side sees 1d volRatio 2.36 and ret7d +7.77, so risk skews to a squeeze if funding persists without a rejection; L2 says re-check funding each run.",
+      "regime_alignment": "with",
+      "trigger": "4h close back under the swept 4h high20, or a 4h rejection candle inside the zone",
+      "entry": {
+        "low": 0.081963,
+        "high": 0.082031
+      },
+      "invalidation": 0.0866,
+      "invalidation_reason": "acceptance above the prior week high would turn the sweep into a real breakout and end the venue-crowding fade",
+      "targets": [
+        0.070105,
+        0.067499
+      ],
+      "rr": 2.58,
+      "conviction": "low",
+      "evidence": [
+        "XPL.pos.fundingAnnPct",
+        "XPL.pos.fundingVsCexAnnPct",
+        "XPL.pos.oiChg24hPct",
+        "XPL.tf.4h.sweep",
+        "XPL.pos.premiumBps"
+      ],
+      "status": "cancelled",
+      "status_note": "the thesis rested on HL funding 72.16 and 61.21 over CEX with premium 10.87 bps; funding is now 29.69, 18.74 over CEX and premium 3.51 bps, so the crowding premise mostly reset before price reached the stop (L2)",
+      "r_result": 0.47,
+      "triggered_at": "2026-10-31T02:00:00.000Z",
+      "created_at": "2026-10-31T02:57:02.728Z",
+      "updated_at": "2026-10-31T10:56:39.814Z",
+      "expires_at": "2026-11-03T02:57:02.728Z"
+    },
     {
       "id": "AAVE-short-20261030-1",
       "setup_id": "range_breakout",
@@ -826,9 +864,9 @@
     }
   ],
   "stats": {
-    "closed_90d": 18,
-    "triggered_90d": 18,
+    "closed_90d": 19,
+    "triggered_90d": 19,
     "hit_rate": 0.11,
-    "avg_r": -0.12
+    "avg_r": -0.09
   }
 }
