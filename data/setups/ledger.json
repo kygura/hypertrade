@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-31T10:56:39.814Z",
+  "updated_at": "2026-10-31T14:56:12.298Z",
   "open": [
     {
       "id": "LINK-short-20261030-1",
@@ -36,7 +36,7 @@
       "r_result": null,
       "triggered_at": "2026-10-30T14:00:00.000Z",
       "created_at": "2026-10-30T14:56:28.171Z",
-      "updated_at": "2026-10-31T10:56:39.814Z",
+      "updated_at": "2026-10-31T14:56:12.298Z",
       "expires_at": "2026-11-06T14:56:28.171Z"
     },
     {
@@ -74,7 +74,7 @@
       "r_result": null,
       "triggered_at": "2026-10-31T02:00:00.000Z",
       "created_at": "2026-10-31T02:57:02.728Z",
-      "updated_at": "2026-10-31T10:56:39.814Z",
+      "updated_at": "2026-10-31T14:56:12.298Z",
       "expires_at": "2026-11-07T02:57:02.728Z"
     },
     {
@@ -112,7 +112,7 @@
       "r_result": null,
       "triggered_at": null,
       "created_at": "2026-10-31T06:56:13.419Z",
-      "updated_at": "2026-10-31T10:56:39.814Z",
+      "updated_at": "2026-10-31T14:56:12.298Z",
       "expires_at": "2026-11-07T06:56:13.419Z"
     },
     {
@@ -150,8 +150,45 @@
       "r_result": null,
       "triggered_at": null,
       "created_at": "2026-10-31T10:56:39.814Z",
-      "updated_at": "2026-10-31T10:56:39.814Z",
+      "updated_at": "2026-10-31T14:56:12.298Z",
       "expires_at": "2026-11-07T10:56:39.814Z"
+    },
+    {
+      "id": "SOL-long-20261031-1",
+      "setup_id": "failed_breakout",
+      "levels_source": "menu",
+      "asset": "SOL",
+      "direction": "long",
+      "horizon": "swing",
+      "timeframe": "1d",
+      "thesis": "1d sweep of the range low on volRatio 1.64 with OI 24h +1.03 and funding 10.95 (neutral, 3.38 over CEX); price is 5.58% down over 7d inside a 1w range, so a reclaim base case is a bounce to the 1d sma20. The other side sees a 1d down trend with the mark 1.87 ATR under the sma20 that may keep selling.",
+      "regime_alignment": "with",
+      "trigger": "4h close back above the 1d low20 after the sweep, holding the zone",
+      "entry": {
+        "low": 94.809,
+        "high": 95.803
+      },
+      "invalidation": 91.194,
+      "invalidation_reason": "a 1d close under the swept low extension means the sweep was a breakdown, not a failed breakout",
+      "targets": [
+        103.52,
+        109.28
+      ],
+      "rr": 2,
+      "conviction": "low",
+      "evidence": [
+        "SOL.tf.1d.sweep",
+        "SOL.tf.1d.volRatio",
+        "SOL.pos.fundingAnnPct",
+        "SOL.pos.oiChg24hPct"
+      ],
+      "status": "watching",
+      "status_note": null,
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-31T14:56:12.298Z",
+      "updated_at": "2026-10-31T14:56:12.298Z",
+      "expires_at": "2026-11-07T14:56:12.298Z"
     }
   ],
   "closed": [
