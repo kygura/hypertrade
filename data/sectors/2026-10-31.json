@@ -1,0 +1,92 @@
+{
+  "generated_at": "2026-10-31T03:05:00Z",
+  "sectors": [
+    {
+      "id": "l1-majors",
+      "label": "L1 majors",
+      "mindshare_score": 0.6,
+      "momentum": -0.3,
+      "rationale": "BTC -0.68%, ETH -0.32%, SOL +1.31%, XRP +1.58% over 24h; BTC has a 1d breakdown (volRatio 2.2) while ETH, SOL and XRP show a 1d sweep of the low. HL funding is neutral (BTC 10.95, ETH 10.95, SOL 1.14). Social share not reported.",
+      "tokens": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
+      ]
+    },
+    {
+      "id": "perp-dex-defi",
+      "label": "Perp DEX & DeFi",
+      "mindshare_score": 0.5,
+      "momentum": 0.1,
+      "rationale": "HYPE -1.44% 24h with funding 85.59 and premium 12.07 bps; AAVE +9.78%, UNI +8.88%, ENA +9.93% bounced on short_covering/price_only flow after last week's breakdowns.",
+      "tokens": [
+        "HYPE",
+        "AAVE",
+        "UNI",
+        "ENA"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
+      ]
+    },
+    {
+      "id": "privacy",
+      "label": "Privacy",
+      "mindshare_score": 0.4,
+      "momentum": 0.0,
+      "rationale": "XMR -2.11% with funding 166.24, 110.08 over CEX, premium 28.54 bps on new_shorts; ZEC +4.31% on short_covering at neutral funding 10.95. The strength is crowded on HL.",
+      "tokens": [
+        "ZEC",
+        "XMR"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    },
+    {
+      "id": "memecoins",
+      "label": "Memecoins",
+      "mindshare_score": 0.28,
+      "momentum": -0.1,
+      "rationale": "kPEPE +8.82% 24h (volRatio 4.88, funding reset to 10.95), PUMP +4.66%, DOGE +0.88%; the bounce came on price_only flow and DOGE remains in a 1d downtrend.",
+      "tokens": [
+        "DOGE",
+        "PUMP",
+        "FARTCOIN"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "label": "AI agents",
+      "mindshare_score": 0.22,
+      "momentum": -0.2,
+      "rationale": "NEAR +7.21%, WLD +5.31% over 24h but WLD is -16.56% over 7d with OI +8.93 on new_longs; TAO and NEAR show a 1d sweep of the low at neutral funding 10.95.",
+      "tokens": [
+        "FET",
+        "TAO",
+        "WLD"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    }
+  ],
+  "rotations": [
+    {
+      "from": "l1-majors",
+      "to": "perp-dex-defi",
+      "confidence": 0.2,
+      "trigger": "BTC holds under its 1d low20 while AAVE and UNI hold their bounce",
+      "note": "Low-confidence; the DeFi names bounced 8.88% to 9.78% over 24h while BTC was -0.68%, but the flow is short_covering."
+    }
+  ]
+}

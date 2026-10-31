@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-10-30T02:58:00Z",
+  "generated_at": "2026-10-31T03:05:00Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 majors",
       "mindshare_score": 0.6,
-      "momentum": -0.5,
-      "rationale": "BTC -4.89%, ETH -6.33%, SOL -7.07%, XRP -8.13% over 24h; all four broke their 1d lows (rangePos -0.07, -0.05, 0.02, -0.02) with long_liquidation flow on ETH, SOL and XRP. ETH and XRP funding is negative (-36.24, -15.8). Social share not reported.",
+      "momentum": -0.3,
+      "rationale": "BTC -0.68%, ETH -0.32%, SOL +1.31%, XRP +1.58% over 24h; BTC has a 1d breakdown (volRatio 2.2) while ETH, SOL and XRP show a 1d sweep of the low. HL funding is neutral (BTC 10.95, ETH 10.95, SOL 1.14). Social share not reported.",
       "tokens": [
         "BTC",
         "ETH",
@@ -22,8 +22,8 @@
       "id": "perp-dex-defi",
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.5,
-      "momentum": 0.0,
-      "rationale": "Split: HYPE +13.07% 24h (funding 164.96, OI +7.06%, 18.0 points ahead of BTC) while AAVE -9.5%, UNI -8.57% and ENA -13.49% broke lower; the group's strength is one name.",
+      "momentum": 0.1,
+      "rationale": "HYPE -1.44% 24h with funding 85.59 and premium 12.07 bps; AAVE +9.78%, UNI +8.88%, ENA +9.93% bounced on short_covering/price_only flow after last week's breakdowns.",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -39,8 +39,8 @@
       "id": "privacy",
       "label": "Privacy",
       "mindshare_score": 0.4,
-      "momentum": 0.3,
-      "rationale": "XMR +1.64% and ZEC -3.63% over 24h; XMR is +6.35 vs BTC over 7d but funding 225.19 sits 98.4 points over CEX, so the strength is crowded on HL. Still the most resilient large-OI group.",
+      "momentum": 0.0,
+      "rationale": "XMR -2.11% with funding 166.24, 110.08 over CEX, premium 28.54 bps on new_shorts; ZEC +4.31% on short_covering at neutral funding 10.95. The strength is crowded on HL.",
       "tokens": [
         "ZEC",
         "XMR"
@@ -53,8 +53,8 @@
       "id": "memecoins",
       "label": "Memecoins",
       "mindshare_score": 0.28,
-      "momentum": -0.4,
-      "rationale": "DOGE -6.14%, PUMP -13.55% (OI -12.29%), kPEPE -6.36% (OI +36.39% on new_shorts), FARTCOIN -14.32%; DOGE funding 0.09 and the group is broadly in 1d downtrends.",
+      "momentum": -0.1,
+      "rationale": "kPEPE +8.82% 24h (volRatio 4.88, funding reset to 10.95), PUMP +4.66%, DOGE +0.88%; the bounce came on price_only flow and DOGE remains in a 1d downtrend.",
       "tokens": [
         "DOGE",
         "PUMP",
@@ -68,8 +68,8 @@
       "id": "ai-agents",
       "label": "AI agents",
       "mindshare_score": 0.22,
-      "momentum": -0.4,
-      "rationale": "TAO -9.76% and WLD -13.49% over 24h (WLD -30.64% over 7d), both at 1d rangePos near 0 with long_liquidation flow and neutral funding 10.95.",
+      "momentum": -0.2,
+      "rationale": "NEAR +7.21%, WLD +5.31% over 24h but WLD is -16.56% over 7d with OI +8.93 on new_longs; TAO and NEAR show a 1d sweep of the low at neutral funding 10.95.",
       "tokens": [
         "FET",
         "TAO",
@@ -83,10 +83,10 @@
   "rotations": [
     {
       "from": "l1-majors",
-      "to": "privacy",
+      "to": "perp-dex-defi",
       "confidence": 0.2,
-      "trigger": "XMR holds above its 1d SMA20 while BTC stays under its 1d low20",
-      "note": "Low-confidence; XMR is +6.35 vs BTC over 7d while the majors are broken, but its 225.19 funding is crowded."
+      "trigger": "BTC holds under its 1d low20 while AAVE and UNI hold their bounce",
+      "note": "Low-confidence; the DeFi names bounced 8.88% to 9.78% over 24h while BTC was -0.68%, but the flow is short_covering."
     }
   ]
 }
