@@ -1,0 +1,139 @@
+{
+  "generated_at": "2026-11-01T03:05:00Z",
+  "headline": "BTC trades $77,688 on HL (+0.45% 24h) near the bottom of its 1d range (rangePos 0.17), while its OI fell 5.39% over 24h (oi_unwind_flat) and Fear & Greed rose to 34 from 30.",
+  "tldr": "Regime: hl-cycles mild risk-off since Oct 26 (Compass 42.1, 20.9 h stale). Change: BTC OI -5.39% 24h at flat price and funding 10.95 (neutral); Fear & Greed 34 (Fear), stablecoins $298.5B (7d -1.37%). Positioning is local to HL: XMR funding 114 (65.4 over CEX), PONS 80.5, ZRO 44, UNI 37.66. DVOL 39.84. Equity inputs are still the Oct 30 closes (QQQ 690.49, VIX 19.42). Next catalyst: NFP Nov 6. Not financial advice. Market intelligence only.",
+  "domains": [
+    {
+      "domain": "macro",
+      "summary": "10Y 4.98% and 2Y 4.61% (Oct 29), 2s10s +38bp (Oct 30), Brent $123.1 (Oct 27, FRED). A live search this run returned no item dated Oct 30-Nov 1, so Fed and oil headlines are unverified. Stablecoins $298.5B (7d -1.37%, 30d -2.66%) read as tight liquidity.",
+      "signals": [
+        {
+          "label": "US 10Y (Oct 29)",
+          "value": "4.98%",
+          "direction": "down"
+        },
+        {
+          "label": "US 2Y (Oct 29)",
+          "value": "4.61%",
+          "direction": "down"
+        },
+        {
+          "label": "2s10s (Oct 30)",
+          "value": "+38bp",
+          "direction": "flat"
+        },
+        {
+          "label": "Brent (Oct 27)",
+          "value": "$123.1",
+          "direction": "down"
+        },
+        {
+          "label": "Stablecoins 7d",
+          "value": "-1.37%",
+          "direction": "down"
+        }
+      ]
+    },
+    {
+      "domain": "equities",
+      "summary": "Latest Yahoo closes are Oct 30: SPY 755.72, QQQ 690.49, NVDA 204.64, VIX 19.42. No newer print is available over the weekend. A QQQ reclaim of 704.4 would soften the read.",
+      "signals": [
+        {
+          "label": "SPY",
+          "value": "755.72",
+          "direction": "down"
+        },
+        {
+          "label": "QQQ",
+          "value": "690.49",
+          "direction": "down"
+        },
+        {
+          "label": "VIX",
+          "value": "19.42",
+          "direction": "up"
+        }
+      ]
+    },
+    {
+      "domain": "crypto",
+      "summary": "HL marks: BTC $77,688 (+0.35% 24h), ETH $2,264.5 (+0.9%), SOL $95.3334 (-1.44%), HYPE $88.111 (-1.69%). BTC OI -5.39% 24h (oi_unwind_flat), ETH OI -1.64%; no majors breakout flag on the last bar. Funding is neutral almost everywhere; crowded on HL: XMR 114, PONS 80.5, ZRO 44, UNI 37.66, XPL 35.39. DVOL 39.84, Fear & Greed 34. Risk skews to chop while BTC stays under its 1d sma20.",
+      "signals": [
+        {
+          "label": "BTC (HL)",
+          "value": "$77,688",
+          "direction": "up"
+        },
+        {
+          "label": "ETH (HL)",
+          "value": "$2,264.5",
+          "direction": "up"
+        },
+        {
+          "label": "SOL (HL)",
+          "value": "$95.3334",
+          "direction": "down"
+        },
+        {
+          "label": "HYPE (HL)",
+          "value": "$88.111",
+          "direction": "down"
+        },
+        {
+          "label": "Fear & Greed",
+          "value": "34",
+          "direction": "up"
+        }
+      ]
+    },
+    {
+      "domain": "tech",
+      "summary": "Yahoo Oct 30 (latest available): NVDA 204.64, QQQ 690.49, the lowest closes in the 10-day window. Only NVDA, SPY, QQQ were pulled, so semis dispersion is not read.",
+      "signals": [
+        {
+          "label": "NVDA",
+          "value": "204.64",
+          "direction": "down"
+        },
+        {
+          "label": "QQQ",
+          "value": "690.49",
+          "direction": "down"
+        }
+      ]
+    },
+    {
+      "domain": "geopolitics",
+      "summary": "Scheduled: NFP Nov 6, CPI Nov 10, FOMC Dec 9. A live search this run found nothing dated Oct 30-Nov 1; Brent at $123.1 (FRED, Oct 27) remains the standing oil-and-inflation input and no new geopolitical event is verified.",
+      "signals": [
+        {
+          "label": "NFP",
+          "value": "Nov 6",
+          "direction": "flat"
+        },
+        {
+          "label": "CPI",
+          "value": "Nov 10",
+          "direction": "flat"
+        },
+        {
+          "label": "FOMC",
+          "value": "Dec 9",
+          "direction": "flat"
+        }
+      ]
+    }
+  ],
+  "thesis": {
+    "observe": "BTC $77,688, ETH $2,264.5, SOL $95.3334, HYPE $88.111 on HL. BTC funding 10.95 (neutral), BTC OI -5.39% 24h; XMR 114, PONS 80.5, ZRO 44. QQQ 690.49, SPY 755.72, VIX 19.42 (Oct 30), 10Y 4.98%. DVOL 39.84, Fear & Greed 34, stablecoins $298.5B (7d -1.37%). hl-cycles: mild risk-off since Oct 26, Compass 42.1 (stale 20.9 h).",
+    "infer": "BTC bounced 0.45% on falling OI (oi_unwind_flat), so we read it as de-risking rather than fresh demand; alt strength (LIT +12.35%, MORPHO +12.8%, ZRO +7%) sits on thin OI and short_covering. Consensus is pricing calm in equities (VIX 19.42); we read BTC as range-trading under a broken 1d level.",
+    "forecast": "Base case (we lean here, low-confidence): BTC chops between its 1d low ($76,264) and the 4h sma20 ($78,670). Tail case (low-confidence): a daily close below the STH cost basis near $75.8K extends the move toward the 1d sma200 ($73,153). Second tail case (low-confidence): a daily close above the True Market Mean ($78.4K) with realized cap growing flips the read; risk skews to chop into NFP.",
+    "disclaimer": "Not financial advice. Market intelligence only — a reasoned read of public data, not a recommendation to buy or sell anything."
+  },
+  "risks": [
+    "Daily BTC close below $75,819 (STH cost basis) would end the stretch above it",
+    "Daily BTC close above $78,359 (True Market Mean) would soften the downside read",
+    "VIX closing above 25 before the Nov 6 NFP",
+    "QQQ closing under 690.49 (Oct 30 close)"
+  ]
+}

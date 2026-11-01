@@ -1,0 +1,92 @@
+{
+  "generated_at": "2026-11-01T03:05:00Z",
+  "sectors": [
+    {
+      "id": "l1-majors",
+      "label": "L1 majors",
+      "mindshare_score": 0.6,
+      "momentum": -0.3,
+      "rationale": "BTC +0.35%, ETH +0.9%, SOL -1.44%, XRP -0.69% over 24h; BTC OI -5.39% (oi_unwind_flat) and 1d trends are down on BTC, ETH, SOL, XRP. HL funding is neutral (BTC 10.95, ETH 10.95, SOL 6.57). Social share not reported.",
+      "tokens": [
+        "BTC",
+        "ETH",
+        "SOL",
+        "XRP"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
+      ]
+    },
+    {
+      "id": "perp-dex-defi",
+      "label": "Perp DEX & DeFi",
+      "mindshare_score": 0.5,
+      "momentum": 0.1,
+      "rationale": "HYPE -1.69% 24h with funding 21.44 (from 38.22 24h avg) and premium 5.51 bps; AAVE +4.23%, UNI +1.22% with UNI funding 37.66 (42.48 over CEX); ENA -3.22% on price_only flow.",
+      "tokens": [
+        "HYPE",
+        "AAVE",
+        "UNI",
+        "ENA"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs",
+        "app metrics z30"
+      ]
+    },
+    {
+      "id": "privacy",
+      "label": "Privacy",
+      "mindshare_score": 0.4,
+      "momentum": 0.0,
+      "rationale": "XMR +2.98% with funding 114 (65.4 over CEX), premium 24.3 bps on price_only flow; ZEC -2.77% on long_liquidation (OI 24h -8.71) at neutral funding 10.95.",
+      "tokens": [
+        "ZEC",
+        "XMR"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    },
+    {
+      "id": "memecoins",
+      "label": "Memecoins",
+      "mindshare_score": 0.28,
+      "momentum": -0.1,
+      "rationale": "kPEPE +1.07% 24h (ret7d +10.91%, funding 10.95 reset), PUMP +1.79%, DOGE -0.56%; DOGE remains in a 1d downtrend.",
+      "tokens": [
+        "DOGE",
+        "PUMP",
+        "FARTCOIN"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "label": "AI agents",
+      "mindshare_score": 0.22,
+      "momentum": -0.2,
+      "rationale": "NEAR +2.33%, WLD -1.13% over 24h; WLD is -15.18% over 7d on long_liquidation, TAO -0.4% with 1d trend down at neutral funding 10.95.",
+      "tokens": [
+        "FET",
+        "TAO",
+        "WLD"
+      ],
+      "sources": [
+        "hyperliquid metaAndAssetCtxs"
+      ]
+    }
+  ],
+  "rotations": [
+    {
+      "from": "l1-majors",
+      "to": "perp-dex-defi",
+      "confidence": 0.15,
+      "trigger": "BTC holds under its 1d sma20 while AAVE holds its bounce",
+      "note": "Low-confidence; AAVE +4.23% over 24h against BTC +0.35%, but flow is price_only."
+    }
+  ]
+}
