@@ -7,7 +7,7 @@ import { collectCoinalyze, flowCoins, maxFlowCoins, type FlowCollectResult } fro
 import { collectCryptoContext } from "../collectors/cryptoContext.js";
 import { batchSize, CollectBatchSchema, createBatchSink, emptyBatch, flushBatch, mergeBatches, type BatchWriter } from "../collectors/batch.js";
 import { collectElfa, defaultElfaDeps } from "../collectors/elfa.js";
-import { collectFred } from "../collectors/fred.js";
+import { collectFred, defaultFredDeps } from "../collectors/fred.js";
 import type { CollectorResult } from "../collectors/types.js";
 import { collectHyperliquid } from "../collectors/hyperliquid.js";
 import * as db from "../db.js";
@@ -643,7 +643,8 @@ export const cronRoutes = new Hono()
     const [hyperliquid, cryptoContext, fred, elfa] = await Promise.all([
       settle("hyperliquid", capped(oiCoins(), COLLECT_READ_MS, []).then((extra) => collectHyperliquid(fetch, sink.db, extra, onCtxs))),
       settle("cryptoContext", collectCryptoContext(fetch, sink.db)),
-      settle("fred", collectFred(fetch, sink.db)),
+      // A timed-out read means "fetched a day ago": the short window, never a skip or a full backfill.
+      settle("fred", collectFred(fetch, { ...defaultFredDeps, ...sink.db, lastFetch: () => capped(defaultFredDeps.lastFetch(), COLLECT_READ_MS, new Date(Date.now() - 86_400_000)) })),
       // Throttle check unreadable: treat Elfa as just fetched, so a slow database never spends a credit.
       settle("elfa", collectElfa(fetch, { ...defaultElfaDeps, ...sink.db, lastFetch: () => capped(defaultElfaDeps.lastFetch(), COLLECT_READ_MS, new Date()) })),
     ]);

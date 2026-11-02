@@ -180,8 +180,8 @@ export const READ_TOOLS: DeskTool[] = [
         }),
       );
       const have = rows.filter((x) => x.latest != null).length;
-      if (!have) return fail("no FRED series collected yet (FRED_API_KEY unset or the collector has not run)");
-      return ok({ series: rows, note: "yields/spreads in percent; liquidity components in USD millions as FRED publishes them" }, `${have}/${rows.length} macro series`);
+      if (!have) return fail("no FRED series collected yet (the collector has not run)");
+      return ok({ series: rows, note: "yields/spreads in percent; WALCL and WTREGEN in USD millions, RRPONTSYD and net_liquidity in USD billions, as FRED publishes them" }, `${have}/${rows.length} macro series`);
     },
   ),
   tool(
