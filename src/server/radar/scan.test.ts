@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { RADAR_STATE_DAYS, type RadarState } from "../../shared/radar.js";
 import type { AssetCtx } from "../../shared/types.js";
-import { digest, formatDigest, nextState, seedDays, toMarkets, type RadarMarket } from "./scan.js";
+import { digest, formatDigest, moveSince, nextState, seedDays, showMarkets, toMarkets, type RadarMarket } from "./scan.js";
 
 const ctx = (name: string, o: Partial<AssetCtx> = {}): AssetCtx => ({
   name,
@@ -77,13 +77,14 @@ describe("digest", () => {
     const state: RadarState = {
       days: [
         day("2026-10-25", { BTC: [100, 9e9, 9e9], HYPE: [40, 3e8, 1e9], MEGA: [2, 5e6, 4e6] }),
-        day("2026-11-01", { BTC: [100, 9e9, 9e9], HYPE: [44, 3e8, 1e9], MEGA: [2, 5e6, 4e6] }),
+        day("2026-11-01", { BTC: [100, 9e9, 9e9], HYPE: [44, 3e8, 1e9], MEGA: [2, 5e6, 4e6], BUILD: [1, 5e6, 5e6] }),
       ],
     };
     const markets = [
       mk("BTC", { mark: 100, vol24h: 9e9, oiUsd: 9e9 }),
       mk("HYPE", { mark: 50, vol24h: 4e8, oiUsd: 1.5e9 }),
       mk("MEGA", { mark: 1, vol24h: 6e6, oiUsd: 2e6 }),
+      mk("BUILD", { mark: 0.7, vol24h: 6e6, oiUsd: 4.9e6 }),
       mk("xyz:NEWCO", { dex: "xyz", vol24h: 2e7 }),
     ];
     const d = digest(markets, state, "2026-11-02");
@@ -92,7 +93,8 @@ describe("digest", () => {
     expect(d.rankEntrants!.map((m) => m.key)).toEqual(["xyz:NEWCO"]);
     expect(d.up7d!.map((m) => [m.key, Math.round(m.chgPct)])).toEqual([["HYPE", 25]]);
     expect(d.down7d!.map((m) => [m.key, Math.round(m.chgPct)])).toEqual([["MEGA", -50]]);
-    expect(d.oiMoves!.map((m) => [m.key, Math.round(m.oiChgPct)])).toEqual([["HYPE", 50], ["MEGA", -50]]);
+    // In contracts: HYPE 22.7M -> 30M (+32%); MEGA's price halved with contracts flat (no move); BUILD -30% price, +40% contracts.
+    expect(d.oiMoves!.map((m) => [m.key, Math.round(m.oiChgPct)])).toEqual([["BUILD", 40], ["HYPE", 32]]);
   });
 
   test("7d base must be 7-9 days old; a 3-day-old snapshot is not a week", () => {
@@ -148,7 +150,8 @@ describe("seedDays", () => {
 
   test("backfills missing dates from candles, keeps real days, flags seeds", () => {
     const real = day("2026-10-31", { BTC: [100, 1e9, 1e9] });
-    const s = seedDays({ days: [real] }, new Map([["HYPE", [candle("2026-10-24", 40, 1e6), candle("2026-10-31", 45, 1e6), candle("2026-11-01", 44, 2e6)]]]), "2026-11-02");
+    // Day D pairs with the candle that closed at D 00:00 UTC, i.e. the candle opened on D-1.
+    const s = seedDays({ days: [real] }, new Map([["HYPE", [candle("2026-10-23", 40, 1e6), candle("2026-10-30", 45, 1e6), candle("2026-10-31", 44, 2e6)]]]), "2026-11-02");
     expect(s.days.map((d) => [d.date, d.seeded ?? false])).toEqual([["2026-10-24", true], ["2026-10-31", false], ["2026-11-01", true]]);
     expect(s.days[2]!.marks.HYPE).toEqual([44, 88_000_000, 0]);
     expect(s.days[1]).toEqual(real);
@@ -162,5 +165,42 @@ describe("seedDays", () => {
     expect(d.rankEntrants).toBeNull();
     expect(d.oiMoves).toBeNull();
     expect(d.history).toEqual({ days: 2, seeded: 2, prevDate: null, weekDate: "2026-10-25" });
+  });
+});
+
+describe("dex failures", () => {
+  test("a dex missing from today's scan does not promote others into the top 30", () => {
+    const main = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`M${i}`, [1, 1e8 - i * 1e6, 1e6] as [number, number, number]]));
+    const xyz = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`xyz:E${i}`, [1, 5e8, 1e6] as [number, number, number]]));
+    const state: RadarState = { days: [{ ...day("2026-11-01", { ...main, ...xyz }), dexes: ["main", "xyz"] }] };
+    const today = Object.entries(main).map(([k, v]) => mk(k, { vol24h: v[1], oiUsd: 1e6 }));
+    expect(digest(today, state, "2026-11-02").rankEntrants).toEqual([]);
+  });
+
+  test("nextState carries a failed dex forward from the last real snapshot", () => {
+    const state: RadarState = { days: [{ ...day("2026-11-01", { BTC: [100, 1, 1], "xyz:A": [5, 1, 1] }), dexes: ["main", "xyz"] }] };
+    const next = nextState(state, [mk("BTC")], "2026-11-02", "t", ["xyz"]);
+    expect(next.days.at(-1)!.marks["xyz:A"]).toEqual([5, 1, 1]);
+    expect(next.days.at(-1)!.dexes).toEqual(["main", "xyz"]);
+  });
+});
+
+describe("moveSince and show", () => {
+  const state: RadarState = { days: [day("2026-10-29", { BTC: [100, 1, 1], HYPE: [80, 1, 1] }), day("2026-10-31", { BTC: [110, 1, 1], HYPE: [90, 1, 1] })] };
+
+  test("move from the first snapshot on or after the date, absolute and vs BTC", () => {
+    const m = moveSince(state, mk("HYPE", { mark: 88 }), 100, "2026-10-30")!;
+    expect(m.fromDate).toBe("2026-10-31");
+    expect(m.pct).toBeCloseTo(-2.22, 1);
+    expect(m.vsBtcPct).toBeCloseTo(7.56, 1);
+    expect(moveSince(state, mk("HYPE"), 100, "2026-11-05")).toBeNull();
+  });
+
+  test("show prints the line, daily marks and the since move; unknown markets say so", () => {
+    const out = showMarkets([mk("BTC", { mark: 100 }), mk("HYPE", { mark: 88 })], state, ["HYPE", "NOPE"], "2026-10-29");
+    expect(out[0]).toStartWith("HYPE [main] mark 88");
+    expect(out[1]).toBe("  daily marks: 10-29 80 · 10-31 90");
+    expect(out[2]).toBe("  since 2026-10-29: +10.0% (+10.0% vs BTC)");
+    expect(out[3]).toBe("NOPE: not a live market in this scan");
   });
 });

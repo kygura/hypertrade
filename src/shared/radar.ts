@@ -16,6 +16,8 @@ export const RadarDaySchema = z.object({
   /** Backfilled from daily candles (close, UTC-day notional, OI unknown = 0) for liquid markets only: it serves
    * the 7-day and volume reads, never new-listing, rank or OI diffs. */
   seeded: z.boolean().optional(),
+  /** Dexes this snapshot covers ("main", "xyz", ...). A dex that failed is carried forward, so it stays listed. */
+  dexes: z.array(z.string()).optional(),
 });
 export type RadarDay = z.infer<typeof RadarDaySchema>;
 
@@ -24,21 +26,29 @@ export type RadarState = z.infer<typeof RadarStateSchema>;
 
 export const RADAR_MAX_CALLS = 3;
 
-/** What the session writes to /tmp/run/calls.json. Prices are never typed by the model: `land` stamps them. */
+const isRealDate = (d: string) => new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+const realDate = isoDate.refine(isRealDate, { message: "not a calendar date" });
+
+/**
+ * What the session writes to /tmp/run/calls.json. Only ride and fade calls are landed; a watch stays in the
+ * notes. Prices are never typed by the model except the kill level, which code checks against the scan.
+ */
 export const RadarCallInputSchema = z
   .object({
     /** Market key exactly as the digest prints it: "HYPE", "xyz:SKHX". */
     market: z.string().min(1),
-    stance: z.enum(["ride", "fade", "watch"]),
+    /** Ride = with the move, fade = against it; the direction says which way that is. */
+    stance: z.enum(["ride", "fade"]),
+    direction: z.enum(["long", "short"]),
     kind: z.enum(["catalyst", "rotation", "listing", "structure"]),
-    thesis: z.string().min(10).max(500),
-    /** The dated source for the cause; null means none was found, which caps the call at "watch". */
-    cause_url: z.string().url().nullable(),
-    cause_date: isoDate.nullable(),
-    kill_if: z.string().min(5).max(240),
-  })
-  .refine((c) => (c.cause_url == null) === (c.cause_date == null), { message: "cause_url and cause_date go together" })
-  .refine((c) => c.cause_url != null || c.stance === "watch", { message: "a ride or fade needs a dated cause" });
+    thesis: z.string().min(10).max(400),
+    /** The dated source: publication date for news, or the event date for a scheduled event. */
+    cause_url: z.string().url().refine((u) => /^https?:\/\//.test(u), { message: "http(s) url only" }),
+    cause_date: realDate,
+    /** The mark that ends the call: below it for a long, above it for a short. */
+    kill_price: z.number().positive(),
+    kill_if: z.string().min(5).max(200),
+  });
 export type RadarCallInput = z.infer<typeof RadarCallInputSchema>;
 
 export const RadarCallsInputSchema = z.object({ calls: z.array(RadarCallInputSchema).max(RADAR_MAX_CALLS) });
@@ -50,16 +60,20 @@ export const RadarCallSchema = z.object({
   date: isoDate,
   at: z.string(),
   market: z.string(),
-  stance: z.enum(["ride", "fade", "watch"]),
+  stance: z.enum(["ride", "fade"]),
+  direction: z.enum(["long", "short"]),
   kind: z.enum(["catalyst", "rotation", "listing", "structure"]),
   thesis: z.string(),
-  cause_url: z.string().nullable(),
-  cause_date: isoDate.nullable(),
+  cause_url: z.string(),
+  cause_date: isoDate,
+  kill_price: z.number(),
   kill_if: z.string(),
   mark: z.number(),
   btc: z.number(),
-  /** Move relative to BTC after N days, in %, sign-adjusted so a correct fade is positive. Filled by `grade`. */
+  /** Move relative to BTC after N days, in %, signed by direction so a correct short is positive. Filled by `grade`. */
   rel: z.record(z.string(), z.number()).default({}),
+  /** Date a scan first saw the mark through kill_price; reported once. */
+  killed_at: isoDate.nullable().default(null),
 });
 export type RadarCall = z.infer<typeof RadarCallSchema>;
 

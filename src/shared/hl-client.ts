@@ -258,8 +258,12 @@ export async function fetchPredictedFundings(fetchFn: typeof fetch = fetch): Pro
   return out;
 }
 
-/** Coins currently at their open-interest cap (new positions can only reduce). */
-export async function fetchPerpsAtOpenInterestCap(fetchFn: typeof fetch = fetch): Promise<string[]> {
-  const raw = await post<unknown>({ type: "perpsAtOpenInterestCap" }, fetchFn);
-  return z.array(z.string()).parse(raw);
+/**
+ * Coins currently at their open-interest cap (new positions can only reduce). `dex` reads a HIP-3 dex; its
+ * names come back as HL prints them there, normalised to the "dex:COIN" key. HL answers null for an unknown dex.
+ */
+export async function fetchPerpsAtOpenInterestCap(fetchFn: typeof fetch = fetch, dex?: string): Promise<string[]> {
+  const raw = await post<unknown>(dex ? { type: "perpsAtOpenInterestCap", dex } : { type: "perpsAtOpenInterestCap" }, fetchFn);
+  const names = z.array(z.string()).nullable().parse(raw) ?? [];
+  return dex ? names.map((n) => (n.includes(":") ? n : `${dex}:${n}`)) : names;
 }

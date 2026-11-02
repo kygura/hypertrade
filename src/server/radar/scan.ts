@@ -27,6 +27,9 @@ export interface DexBook {
   ctxs: AssetCtx[];
 }
 
+/** "main" for a main-dex key ("BTC"), the dex prefix for a HIP-3 key ("xyz:SKHX" → "xyz"). */
+export const dexOf = (key: string) => (key.includes(":") ? key.slice(0, key.indexOf(":")) : "main");
+
 export interface RadarMarket {
   /** As HL names it: "BTC" on the main dex, "xyz:SKHX" on a HIP-3 dex. */
   key: string;
@@ -49,7 +52,8 @@ export interface Digest {
   date: string;
   btc: number | null;
   history: { days: number; seeded: number; prevDate: string | null; weekDate: string | null };
-  dexes: { dex: string; markets: number; vol24h: number; oiUsd: number; volSharePct: number }[];
+  /** Median funding over markets with OI >= the floor: the dex's normal, to judge crowding against. */
+  dexes: { dex: string; markets: number; vol24h: number; oiUsd: number; volSharePct: number; medianFundingApr: number | null }[];
   up24h: Mover[];
   down24h: Mover[];
   up7d: Mover[] | null;
@@ -133,9 +137,10 @@ export function digest(markets: RadarMarket[], state: RadarState | null, today: 
   const oiMoves = prev
     ? markets
         .flatMap((m) => {
-          const then = prev.marks[m.key]?.[2];
-          if (!then || Math.max(m.oiUsd, then) < RADAR.minOiUsd) return [];
-          const oiChgPct = (m.oiUsd / then - 1) * 100;
+          // Contracts, not USD: a price move alone must not read as positioning.
+          const [thenMark, , thenOiUsd] = prev.marks[m.key] ?? [0, 0, 0];
+          if (!thenMark || !thenOiUsd || Math.max(m.oiUsd, thenOiUsd) < RADAR.minOiUsd) return [];
+          const oiChgPct = (m.oiUsd / m.mark / (thenOiUsd / thenMark) - 1) * 100;
           return Math.abs(oiChgPct) >= RADAR.oiChgPctAbs ? [{ ...m, oiChgPct }] : [];
         })
         .sort((a, b) => Math.abs(b.oiChgPct) - Math.abs(a.oiChgPct))
@@ -147,7 +152,9 @@ export function digest(markets: RadarMarket[], state: RadarState | null, today: 
 
   let rankEntrants: RadarMarket[] | null = null;
   if (prev) {
-    const before = topVolKeys(Object.entries(prev.marks).map(([k, v]) => [k, v[1]]), RADAR.rankTop);
+    // Rank over the dexes this scan reached, so a dex that failed today cannot promote others into the top.
+    const scanned = new Set(markets.map((m) => m.dex));
+    const before = topVolKeys(Object.entries(prev.marks).filter(([k]) => scanned.has(dexOf(k))).map(([k, v]) => [k, v[1]]), RADAR.rankTop);
     const now = topVolKeys(markets.map((m) => [m.key, m.vol24h]), RADAR.rankTop);
     rankEntrants = markets.filter((m) => now.has(m.key) && !before.has(m.key)).sort((a, b) => b.vol24h - a.vol24h);
   }
@@ -161,13 +168,17 @@ export function digest(markets: RadarMarket[], state: RadarState | null, today: 
     dexTotals.set(m.dex, t);
   }
   const totalVol = [...dexTotals.values()].reduce((s, t) => s + t.vol24h, 0);
+  const dexFunding = (dex: string) => {
+    const xs = markets.filter((m) => m.dex === dex && m.oiUsd >= RADAR.minOiUsd).map((m) => m.fundingApr);
+    return xs.length ? median(xs) : null;
+  };
 
   return {
     date: today,
     btc: markets.find((m) => m.key === "BTC")?.mark ?? null,
     history: { days: past.length, seeded: past.length - real.length, prevDate: prev?.date ?? null, weekDate: week?.date ?? null },
     dexes: [...dexTotals.entries()]
-      .map(([dex, t]) => ({ dex, ...t, volSharePct: totalVol > 0 ? (t.vol24h / totalVol) * 100 : 0 }))
+      .map(([dex, t]) => ({ dex, ...t, volSharePct: totalVol > 0 ? (t.vol24h / totalVol) * 100 : 0, medianFundingApr: dexFunding(dex) }))
       .sort((a, b) => b.vol24h - a.vol24h),
     up24h: byChg(movers24, 1),
     down24h: byChg(movers24, -1),
@@ -192,12 +203,45 @@ export function digest(markets: RadarMarket[], state: RadarState | null, today: 
 /** 5 significant figures: enough to diff prices and sizes, small enough to commit daily. */
 const sig = (x: number) => (x === 0 || !Number.isFinite(x) ? 0 : Number(x.toPrecision(5)));
 
-/** This run's snapshot replaces any earlier one from the same date; the oldest days roll off. */
-export function nextState(state: RadarState | null, markets: RadarMarket[], today: string, at: string): RadarState {
+/**
+ * This run's snapshot replaces any earlier one from the same date; the oldest days roll off. A dex in `failed`
+ * keeps its markets from the last real snapshot, so tomorrow's diffs do not see it vanish and reappear.
+ */
+export function nextState(state: RadarState | null, markets: RadarMarket[], today: string, at: string, failed: readonly string[] = []): RadarState {
   const marks: RadarDay["marks"] = {};
   for (const m of markets) marks[m.key] = [sig(m.mark), sig(m.vol24h), sig(m.oiUsd)];
-  const days = [...(state?.days ?? []).filter((d) => d.date !== today), { date: today, at, marks }].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const lastReal = [...(state?.days ?? [])].filter((d) => !d.seeded && d.date < today).sort((a, b) => (a.date < b.date ? -1 : 1)).at(-1);
+  if (lastReal && failed.length) for (const [k, v] of Object.entries(lastReal.marks)) if (failed.includes(dexOf(k)) && !marks[k]) marks[k] = v;
+  const dexes = [...new Set([...markets.map((m) => m.dex), ...failed])].sort();
+  const days = [...(state?.days ?? []).filter((d) => d.date !== today), { date: today, at, marks, dexes }].sort((a, b) => (a.date < b.date ? -1 : 1));
   return { days: days.slice(-RADAR_STATE_DAYS) };
+}
+
+/** Change from the first snapshot on or after `date` to the scan's mark, absolute and relative to BTC. */
+export function moveSince(state: RadarState, m: RadarMarket, btcNow: number, date: string): { fromDate: string; pct: number; vsBtcPct: number } | null {
+  const day = [...state.days].sort((a, b) => (a.date < b.date ? -1 : 1)).find((d) => d.date >= date && d.marks[m.key]?.[0] && d.marks["BTC"]?.[0]);
+  if (!day) return null;
+  const then = day.marks[m.key]![0];
+  const btcThen = day.marks["BTC"]![0];
+  return { fromDate: day.date, pct: (m.mark / then - 1) * 100, vsBtcPct: ((m.mark / then) / (btcNow / btcThen) - 1) * 100 };
+}
+
+/** `bun run radar show`: each market's full line, its recent daily marks, and the move since a date. */
+export function showMarkets(markets: RadarMarket[], state: RadarState, keys: string[], since?: string): string[] {
+  const byKey = new Map(markets.map((m) => [m.key, m]));
+  const btc = byKey.get("BTC")?.mark;
+  const days = [...state.days].sort((a, b) => (a.date < b.date ? -1 : 1));
+  return keys.flatMap((k) => {
+    const m = byKey.get(k);
+    if (!m) return [`${k}: not a live market in this scan`];
+    const hist = days.flatMap((d) => (d.marks[k] ? [`${d.date.slice(5)} ${px(d.marks[k]![0])}`] : []));
+    const out = [line(m), `  daily marks: ${hist.length ? hist.join(" · ") : "none in memory"}`];
+    if (since && btc != null) {
+      const mv = moveSince(state, m, btc, since);
+      out.push(mv ? `  since ${mv.fromDate}: ${pct(mv.pct)} (${pct(mv.vsBtcPct)} vs BTC)` : `  since ${since}: no snapshot that old in memory`);
+    }
+    return out;
+  });
 }
 
 /**
@@ -211,11 +255,13 @@ export function seedDays(state: RadarState | null, candles: Map<string, Candle[]
     const date = new Date(Date.parse(`${today}T00:00:00Z`) - i * DAY_MS).toISOString().slice(0, 10);
     if (have.has(date)) continue;
     const marks: RadarDay["marks"] = {};
+    // A snapshot dated D is taken during D, so it pairs with the candle that closed at D 00:00 UTC (day D-1).
+    const prior = new Date(Date.parse(`${date}T00:00:00Z`) - DAY_MS).toISOString().slice(0, 10);
     for (const [key, rows] of candles) {
-      const c = rows.find((r) => new Date(r.t).toISOString().slice(0, 10) === date);
+      const c = rows.find((r) => new Date(r.t).toISOString().slice(0, 10) === prior);
       if (c && c.c > 0) marks[key] = [sig(c.c), sig(c.v * c.c), 0];
     }
-    if (Object.keys(marks).length) added.push({ date, at: `${date}T23:59:59Z`, marks, seeded: true });
+    if (Object.keys(marks).length) added.push({ date, at: `${date}T00:00:00Z`, marks, seeded: true });
   }
   const all = [...(state?.days ?? []), ...added].sort((a, b) => (a.date < b.date ? -1 : 1));
   return { days: all.slice(-RADAR_STATE_DAYS) };
@@ -226,10 +272,11 @@ export function seedDays(state: RadarState | null, candles: Map<string, Candle[]
 const usd = (x: number) => (x >= 1e9 ? `$${(x / 1e9).toFixed(2)}B` : x >= 1e6 ? `$${(x / 1e6).toFixed(1)}M` : `$${Math.round(x / 1e3)}k`);
 const pct = (x: number | null) => (x == null ? "n/a" : `${x >= 0 ? "+" : ""}${x.toFixed(1)}%`);
 const px = (x: number) => String(sig(x));
-const line = (m: RadarMarket) =>
+export const line = (m: RadarMarket) =>
   `${m.key} [${m.dex}] mark ${px(m.mark)} · 24h ${pct(m.chg24hPct)} · vol ${usd(m.vol24h)} · OI ${usd(m.oiUsd)} · fund ${m.fundingApr.toFixed(0)}% APR · prem ${m.premiumBps.toFixed(0)}bps${m.atCap ? " · AT OI CAP" : ""}`;
 
-export function formatDigest(d: Digest, gaps: string[] = []): string {
+/** `names` maps a dex code to its full name ("xyz" → "XYZ"), so the session can search for the deployer. */
+export function formatDigest(d: Digest, gaps: string[] = [], names: Record<string, string> = {}): string {
   const out: string[] = [];
   const section = (title: string, rows: string[] | null, cold?: string) => {
     out.push(`\n## ${title}`);
@@ -238,7 +285,13 @@ export function formatDigest(d: Digest, gaps: string[] = []): string {
   };
   out.push(`# radar ${d.date} · BTC ${d.btc == null ? "n/a" : px(d.btc)} · history ${d.history.days}d${d.history.seeded ? ` (${d.history.seeded} seeded from candles)` : ""} (prev ${d.history.prevDate ?? "none"}, 7d base ${d.history.weekDate ?? "none"})`);
   if (gaps.length) out.push(`gaps: ${gaps.join("; ")}`);
-  section("dexes", d.dexes.map((x) => `${x.dex}: ${x.markets} markets · vol ${usd(x.vol24h)} (${x.volSharePct.toFixed(1)}%) · OI ${usd(x.oiUsd)}`));
+  section(
+    "dexes",
+    d.dexes.map(
+      (x) =>
+        `${x.dex}${names[x.dex] && names[x.dex] !== x.dex ? ` (${names[x.dex]})` : ""}: ${x.markets} markets · vol ${usd(x.vol24h)} (${x.volSharePct.toFixed(1)}%) · OI ${usd(x.oiUsd)} · median fund ${x.medianFundingApr == null ? "n/a" : `${x.medianFundingApr.toFixed(0)}% APR`}`,
+    ),
+  );
   section("up 24h (vol >= $1M)", d.up24h.map(line));
   section("down 24h", d.down24h.map(line));
   section("up 7d", d.up7d && d.up7d.map((m) => `${pct(m.chgPct)} 7d · ${line(m)}`), "no snapshot 7-9 days old yet");
