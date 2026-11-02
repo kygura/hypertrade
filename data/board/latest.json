@@ -1,19 +1,33 @@
 {
-  "generated_at": "2026-11-02T06:57:15.763Z",
-  "read": "The board leans risk-off and quiet: BTC sits low in its 1d range (rangePos 0.22) at neutral funding 10.95, and the only HL-local crowding is HYPE funding 18.99 with fundingZ 8.04. We lean toward chop, base case.",
+  "generated_at": "2026-11-02T10:57:02.573Z",
+  "read": "The board leans risk-off and quiet: BTC sits at 1d rangePos 0.2 on neutral funding 10.95 and most perps are in 1d down trends; the largest imbalance is local shorts paying on AAVE (funding -27.59, 38.54 under CEX) and NEAR (funding -21.68, 32.63 under CEX). Base case is chop with a bounce risk skewing up where shorts pay.",
   "watchlist": [
     {
-      "asset": "HYPE",
-      "kind": "other",
-      "skew": "down",
+      "asset": "AAVE",
+      "kind": "crowded_shorts",
+      "skew": "up",
       "timeframe": "4h",
-      "note": "4h rangePos 0 with mark 86.227 under the 4h low20 86.236, ret24h -1.53 on new_shorts flow with OI 24h +2.15, but 1w trend is up and ret7d +14.65. Leans, not armed.",
-      "arms": "a slot frees and a 4h close holds under the 4h low20 with a level in the menu at least 2R away",
+      "note": "Funding -27.59 at 2nd percentile, 38.54 under CEX, OI 4h +9.95 and 24h +4.56 on new_shorts with ret24h -4.85. HL-local short crowding; risk skews to a squeeze if price stops falling, but no level sits 2R away yet.",
+      "arms": "a slot frees and a 4h close back above the 4h sma20 with a level in the menu at least 2R away",
       "evidence": [
-        "HYPE.tf.4h.rangePos",
-        "HYPE.pos.flow24h",
-        "HYPE.pos.oiChg24hPct",
-        "HYPE.tf.1w.trend"
+        "AAVE.pos.fundingAnnPct",
+        "AAVE.pos.fundingVsCexAnnPct",
+        "AAVE.pos.oiChg4hPct",
+        "AAVE.pos.flow24h"
+      ]
+    },
+    {
+      "asset": "NEAR",
+      "kind": "long_liquidation",
+      "skew": "up",
+      "timeframe": "1d",
+      "note": "Funding -21.68 (32.63 under CEX) after OI 24h -9.22 on long_liquidation and ret24h -5.59, 1d rangePos 0.1. Post-liquidation reclaim near-miss: the 24h move in ATR is short of -1.5.",
+      "arms": "a slot frees and a 4h close back above the 4h sma20 with a level in the menu at least 2R away",
+      "evidence": [
+        "NEAR.pos.fundingAnnPct",
+        "NEAR.pos.oiChg24hPct",
+        "NEAR.pos.flow24h",
+        "NEAR.tf.1d.rangePos"
       ]
     },
     {
@@ -21,7 +35,7 @@
       "kind": "other",
       "skew": "up",
       "timeframe": "1d",
-      "note": "htf_pullback long tripwire hit: 1w and 1d trend up, 1d vsSma20Atr 0.44, funding 10.95 vs CEX 16.42 (not HL-local crowding). Pass only because slots are 5 of 5.",
+      "note": "htf_pullback long hit: 1w and 1d trend up, 1d vsSma20Atr 0.46, funding 10.95 equal to CEX (no HL-local crowding, L2 check passes). Held only by the 5 of 5 cap.",
       "arms": "a slot frees with 1d vsSma20Atr at or under 0.75 and funding under 25",
       "evidence": [
         "XMR.tf.1d.vsSma20Atr",
@@ -30,44 +44,30 @@
       ]
     },
     {
+      "asset": "HYPE",
+      "kind": "other",
+      "skew": "down",
+      "timeframe": "4h",
+      "note": "4h breakout down, rangePos 0.04 and vsSma20Atr -2.01, new_shorts with OI 24h +3.19, but 1w trend up and ret7d +12.06. Leans, not armed.",
+      "arms": "a slot frees and a 4h close holds under the 4h low20 with a level in the menu at least 2R away",
+      "evidence": [
+        "HYPE.tf.4h.breakout",
+        "HYPE.pos.flow24h",
+        "HYPE.pos.oiChg24hPct",
+        "HYPE.tf.1w.trend"
+      ]
+    },
+    {
       "asset": "XPL",
       "kind": "long_liquidation",
       "skew": "up",
       "timeframe": "4h",
-      "note": "post_liquidation_reclaim near-miss: 24h move in 1d ATR -1.65 and funding 10.95 pass, OI 24h -7.2 vs -8 needed; 1w sweep of the low.",
+      "note": "OI 24h -8.22 on long_liquidation with ret24h -6.93 and 4h rangePos 0.11; funding 10.95 is neutral so the flush looks reset. Near-miss only on the ATR-scaled 24h move.",
       "arms": "a slot frees and a 4h close back above the 4h sma20 with a level in the menu at least 2R away",
       "evidence": [
         "XPL.pos.oiChg24hPct",
-        "XPL.pos.fundingAnnPct",
-        "XPL.tf.4h.sma20",
-        "XPL.tf.1w.sweep"
-      ]
-    },
-    {
-      "asset": "NEAR",
-      "kind": "long_liquidation",
-      "skew": "up",
-      "timeframe": "1d",
-      "note": "ret24h -6.76 on long_liquidation, OI 24h -4.31, funding -1.45 at 3rd percentile (fundingZ -12.4) and 1d rangePos 0.1. Shorts pay, a squeeze risk skews up if price stops falling.",
-      "arms": "a slot frees and a 4h close back above the 4h sma20 with a level in the menu at least 2R away",
-      "evidence": [
-        "NEAR.pos.flow24h",
-        "NEAR.pos.fundingAnnPct",
-        "NEAR.xs.fundingZ",
-        "NEAR.tf.1d.rangePos"
-      ]
-    },
-    {
-      "asset": "ZEC",
-      "kind": "crowded_longs",
-      "skew": "down",
-      "timeframe": "1d",
-      "note": "OI 24h +13.44 on new_longs with funding 14.58, 3.63 over CEX; 1d rangePos 0.63 vs the 0.8 the funding_fade template needs. Leans, not armed.",
-      "arms": "a slot frees and 1d rangePos reaches 0.8 with funding at or above 30",
-      "evidence": [
-        "ZEC.pos.oiChg24hPct",
-        "ZEC.pos.fundingAnnPct",
-        "ZEC.tf.1d.rangePos"
+        "XPL.pos.flow24h",
+        "XPL.tf.4h.rangePos"
       ]
     }
   ],
@@ -76,20 +76,37 @@
       "asset": "XMR",
       "setup_id": "htf_pullback",
       "direction": "long"
+    },
+    {
+      "asset": "AAVE",
+      "setup_id": "negative_funding_build",
+      "direction": "long"
     }
   ],
   "near": [
     {
-      "asset": "XPL",
-      "setup_id": "post_liquidation_reclaim",
-      "direction": "long",
-      "gap": 0.1
-    },
-    {
       "asset": "DOGE",
       "setup_id": "htf_pullback",
       "direction": "short",
-      "gap": 0.43
+      "gap": 0.45
+    },
+    {
+      "asset": "XPL",
+      "setup_id": "post_liquidation_reclaim",
+      "direction": "long",
+      "gap": 0.52
+    },
+    {
+      "asset": "NEAR",
+      "setup_id": "post_liquidation_reclaim",
+      "direction": "long",
+      "gap": 0.61
+    },
+    {
+      "asset": "BNB",
+      "setup_id": "post_liquidation_reclaim",
+      "direction": "long",
+      "gap": 0.99
     }
   ],
   "new_setups": [],
@@ -99,9 +116,15 @@
       "asset": "XMR",
       "template": "htf_pullback",
       "direction": "long",
-      "reason": "all 5 open slots are taken (5 of 5), so no new setup can be written; kept on the watchlist"
+      "reason": "5 of 5 slots open and no cancel frees one a gate would accept; funding 10.95 equals CEX so the L2 premise holds, kept on the watchlist."
+    },
+    {
+      "asset": "AAVE",
+      "template": "negative_funding_build",
+      "direction": "long",
+      "reason": "5 of 5 slots open; a level at least 2R away is also missing, and the last AAVE short was stopped (L2: re-check the funding premise each run)."
     }
   ],
   "unanswered": [],
-  "brief": "Delta since the 11-02 02:55 run: BTC 1d rangePos 0.22, OI 24h -1.25, funding 10.95; no fresh imbalance. Five setups stay open (BTC, LINK and SOL triggered; CRV and DOGE watching), so no new plan fits. XMR htf_pullback long is the one tripwire hit, held back by slots. NEAR shows shorts paying (funding -1.45, fundingZ -12.4) into a 6.76% drop. Regime reads strong risk-off since 2026-10-31; NFP on 2026-11-06 is the next catalyst. We lean toward chop, base case; a daily close above 78390 would be the first sign of a turn."
+  "brief": "Delta: tripwires XMR htf_pullback long and AAVE negative_funding_build long hit, both passed on the 5 of 5 slot cap. CRV short cancelled: its no-crowded-short premise flipped to funding -15.5 (16.98 under CEX). Largest imbalance is HL-local shorts paying on AAVE and NEAR; base case is a bounce risk there, not a trade without a free slot. BTC 1d rangePos 0.2 with the Vector regime strong_risk_off; NFP on 2026-11-06 is the next catalyst. Gap: hl-cycles stale (5.2 h)."
 }
