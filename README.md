@@ -162,6 +162,8 @@ The runbook is `ROUTINE.md`. The scheduled task fires twice a day: the first run
 | `APP_URL`, `LAB_API_TOKEN` (optional) | Worker origin and the read bearer, for the novelty read (`GET /api/platform/novelty`). The session needs no `DATABASE_URL`: it has no route to Postgres. |
 | `NTFY_TOPIC` (`NTFY_SERVER`, `NTFY_TOKEN` optional) | The push channel. No Telegram setup is needed. |
 
+When the cloud run does not happen (a spent claude.ai session limit rejects it, and cloud sessions cannot use an API key), `.github/workflows/radar-fallback.yml` runs the same runbook with Claude Code on the Anthropic API, about 1h40 after each slot. It calls no model when radar notes landed in the last 8 h or a cloud radar PR is open, and it lands `data/radar/` itself after typecheck and tests. GitHub repository secrets: `ANTHROPIC_API_KEY` (required; a dedicated Console workspace key with a monthly spend limit), `EXA_API_KEY` (optional), `NTFY_TOPIC` (`NTFY_SERVER`, `NTFY_TOKEN` optional), `LAB_API_TOKEN` (optional).
+
 ## Chart history
 
 `/markets/:coin` charts every Hyperliquid perp at `1m 5m 15m 1H 4H 1D 1W 1M`

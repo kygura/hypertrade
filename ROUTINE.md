@@ -39,6 +39,23 @@ Run §0.1–§0.3 first, then the first matching row:
 **Catch-up:** §1 without `--save`, §2a plus one precedent search (4 at
 most), §3–§5.
 
+**Fallback runner.** With `RADAR_RUNNER=actions` you are the GitHub
+Actions fallback (`.github/workflows/radar-fallback.yml`, Anthropic API
+key), started because the cloud routine did not run. Everything else in
+this file holds, with these changes:
+- The workflow already did §0.1 (`RUN_DATE` is set, `/tmp/run` exists),
+  §0.2 and §0.4, and checked dispatch rows 2 and 3. Read
+  `/tmp/run/memory.txt` (the last notes; its first line is the last notes
+  commit) in place of §0.3's commands, and `/tmp/run/novelty.txt`, if it
+  exists, in place of §1's curl.
+- Bash runs only `bun run radar …`. Run `bun run radar --save` (catch-up:
+  `bun run radar`) and read its output; no redirects, no `cat`. Read files
+  with Read. Searches: Exa first, then WebSearch. There is no WebFetch.
+- §4: write the notes, then stop. No commit, push or PR: the workflow lands
+  `data/radar/` after typecheck and tests.
+- §5: put your one line, if any, at the top of `/tmp/run/push.txt`. The
+  workflow sends it.
+
 ## 0. Preflight
 
 1. **Environment** (cloud environment secrets): `NTFY_TOPIC` (optional
