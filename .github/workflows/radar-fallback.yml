@@ -7,9 +7,10 @@ name: Radar fallback
 # 17:41 Atlantic/Canary, the scheduled task's cron: keep SLOTS in step with it;
 # GitHub cron is UTC, so ~2h40 in summer time).
 #
-# No model call when radar notes landed since the latest slot, or a cloud radar
-# PR opened in the last 30 min. A cloud radar PR open longer is reported as
-# `landing stuck` (red run plus push), not run around. Claude researches and
+# No model call when radar notes landed since the latest slot (the cloud ran,
+# and reports a stuck landing itself) or a cloud radar PR opened in the last
+# 30 min. A cloud radar PR open longer is reported as `landing stuck` (red run
+# plus push), not run around. Claude researches and
 # writes only today's notes, /tmp/run/calls.json and /tmp/run/push.txt; Bash
 # runs only the radar commands; the API key reaches Claude Code through
 # apiKeyHelper, never its environment. This workflow then lands data/radar/ with
@@ -64,15 +65,6 @@ jobs:
           HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
         run: |
           skip() { echo "::notice::$1; no fallback run"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0; }
-          # Fails the step (red) if the API call fails: never run blind beside a cloud run.
-          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --base master --state open --json number,title,headRefName,createdAt \
-            --jq '[.[] | select((.headRefName | startswith("claude-code/")) and (.title | startswith("feat(routine): radar")))]')
-          stuck=$(jq -r '[.[] | select(now - (.createdAt | fromdateiso8601) >= 1800) | "#\(.number)"] | join(" ")' <<<"$prs")
-          if [ -n "$stuck" ]; then
-            echo "stuck=$stuck" >> "$GITHUB_OUTPUT"
-            skip "radar landing stuck: $stuck open over 30 min"
-          fi
-          if [ "$(jq length <<<"$prs")" != "0" ]; then skip "a cloud radar PR is open (routine-land lands it)"; fi
           # The latest slot that has started, in epoch seconds.
           now=$(date +%s); slot=0
           for day in today yesterday; do
@@ -86,6 +78,15 @@ jobs:
             skip "radar notes landed $(git log -1 --format=%cI -- data/radar/notes/), after this slot: the cloud routine ran"
           fi
           [ "$HAS_KEY" = "true" ] || skip "ANTHROPIC_API_KEY is not set"
+          # Fails the step (red) if the API call fails: never run blind beside a cloud run.
+          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --base master --state open --json number,title,headRefName,createdAt \
+            --jq '[.[] | select((.headRefName | startswith("claude-code/")) and (.title | startswith("feat(routine): radar")))]')
+          stuck=$(jq -r '[.[] | select(now - (.createdAt | fromdateiso8601) >= 1800) | "#\(.number)"] | join(" ")' <<<"$prs")
+          if [ -n "$stuck" ]; then
+            echo "stuck=$stuck" >> "$GITHUB_OUTPUT"
+            skip "radar landing stuck: $stuck open over 30 min"
+          fi
+          if [ "$(jq length <<<"$prs")" != "0" ]; then skip "a cloud radar PR is open (routine-land lands it)"; fi
           echo "run=true" >> "$GITHUB_OUTPUT"
 
       - uses: oven-sh/setup-bun@v2
@@ -125,16 +126,16 @@ jobs:
           url="https://mcp.exa.ai/mcp"
           [ -z "$EXA_API_KEY" ] || url="$url?exaApiKey=$EXA_API_KEY"
           jq -n --arg url "$url" '{mcpServers: {Exa: {type: "http", url: $url}}}' > "$RUNNER_TEMP/mcp.json"
-          # Only what the runbook needs; deny wins over allow, dontAsk denies the rest.
-          jq -n --arg helper "cat $key" --arg notes "Edit(./data/radar/notes/$RUN_DATE.md)" --arg notesW "Write(./data/radar/notes/$RUN_DATE.md)" '{
+          # Only what the runbook needs. --tools limits the built-ins; deny wins over allow; dontAsk
+          # denies any listed tool use not allowed here.
+          # Path rules must be Edit(...): they cover the Write tool too, and Write(path) rules are never matched.
+          jq -n --arg helper "cat $key" --arg notes "Edit(./data/radar/notes/$RUN_DATE.md)" '{
             apiKeyHelper: $helper,
             permissions: {
               allow: [
                 "Bash(bun run radar)", "Bash(bun run radar --save)", "Bash(bun run radar score)",
                 "Bash(bun run radar show:*)", "Bash(bun run radar land /tmp/run/calls.json)",
-                "Read", "Glob", "Grep",
-                $notes, $notesW,
-                "Write(//tmp/run/calls.json)", "Edit(//tmp/run/push.txt)", "Write(//tmp/run/push.txt)",
+                "Read", $notes, "Edit(//tmp/run/calls.json)", "Edit(//tmp/run/push.txt)",
                 "WebSearch", "mcp__Exa__web_search_exa", "mcp__Exa__web_fetch_exa"
               ],
               deny: [
@@ -149,6 +150,7 @@ jobs:
       - name: Radar (Claude, API key)
         id: claude
         if: steps.gate.outputs.run == 'true'
+        timeout-minutes: 30
         run: |
           rc=0
           claude -p "Read ROUTINE.md and follow it. RADAR_RUNNER=actions, RUN_DATE=$RUN_DATE, started $RUN_START UTC: follow its Fallback runner section." \
@@ -156,6 +158,7 @@ jobs:
             --max-turns 80 \
             --max-budget-usd "$RADAR_MAX_USD" \
             --permission-mode dontAsk \
+            --tools Bash,Read,Edit,Write,WebSearch,ToolSearch \
             --settings "$RUNNER_TEMP/settings.json" \
             --strict-mcp-config --mcp-config "$RUNNER_TEMP/mcp.json" \
             --output-format json > "$RUNNER_TEMP/claude.json" || rc=$?
@@ -210,15 +213,18 @@ jobs:
           STUCK: ${{ steps.gate.outputs.stuck }}
           CLAUDE_OK: ${{ steps.claude.outputs.ok }}
           LAND: ${{ steps.land.outcome }}
+          COMMIT: ${{ steps.land.outputs.commit }}
           MASTER: ${{ steps.master.outcome }}
         run: |
           head=()
           [ -z "$STUCK" ] || head+=("radar landing stuck: $STUCK")
           if [ -z "$STUCK" ]; then
             [ "$CLAUDE_OK" = "true" ] || head+=("radar fallback run incomplete: $RUN_URL")
-            if [ "$LAND" = "failure" ] || [ "$MASTER" = "failure" ]; then head+=("radar landing failed: $RUN_URL"); fi
+            if [ "$LAND" != "success" ] || { [ "$COMMIT" = "true" ] && [ "$MASTER" != "success" ]; }; then
+              head+=("radar landing failed: $RUN_URL")
+            fi
           fi
-          body=$( { [ ${#head[@]} -eq 0 ] || printf '%s\n' "${head[@]}"; cat /tmp/run/push.txt 2>/dev/null; } )
+          body=$( { [ ${#head[@]} -eq 0 ] || printf '%s\n' "${head[@]}"; cat /tmp/run/push.txt 2>/dev/null || true; } )
           [ -n "$body" ] || exit 0
           if [ -z "$NTFY_TOPIC" ]; then echo "::warning::NTFY_TOPIC is not set; push not sent"; exit 0; fi
           bun run signals:notify "hypertrade radar ${RUN_DATE:-} (API fallback)" "$body"
