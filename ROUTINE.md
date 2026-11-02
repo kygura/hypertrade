@@ -30,7 +30,7 @@ Run §0.1–§0.3 first, then the first matching row:
 | Condition | Run |
 |---|---|
 | prompt is `run ROUTINE.md: check <MARKET> [idea]` | §6 only |
-| the newest commit touching `data/radar/notes/` on master is under 8 h old | stop: final message `skipped: last radar run <time>`, nothing else |
+| the newest commit touching `data/radar/notes/` on master is under 5 h old | stop: final message `skipped: last radar run <time>`, nothing else |
 | a radar PR has been open over 30 min (§0.4) | catch-up |
 | no `data/radar/notes/$RUN_DATE.md`, or its first line says `partial` | full |
 | otherwise | catch-up |
@@ -43,14 +43,20 @@ most), §3–§5.
 Actions fallback (`.github/workflows/radar-fallback.yml`, Anthropic API
 key), started because the cloud routine did not run. Everything else in
 this file holds, with these changes:
-- The workflow already did §0.1 (`RUN_DATE` is set, `/tmp/run` exists),
-  §0.2 and §0.4, and checked dispatch rows 2 and 3. Read
+- The prompt gives `RUN_DATE` and the start time (for the §4 header). The
+  workflow already did §0.1 (`/tmp/run` exists), §0.2 and §0.4, and runs
+  only when no notes landed since this slot and no cloud radar PR is open
+  (it reports a stuck one itself), so rows 2 and 3 are settled. Read
   `/tmp/run/memory.txt` (the last notes; its first line is the last notes
   commit) in place of §0.3's commands, and `/tmp/run/novelty.txt`, if it
   exists, in place of §1's curl.
-- Bash runs only `bun run radar …`. Run `bun run radar --save` (catch-up:
-  `bun run radar`) and read its output; no redirects, no `cat`. Read files
-  with Read. Searches: Exa first, then WebSearch. There is no WebFetch.
+- Bash runs only `bun run radar`, `bun run radar --save`, `bun run radar
+  score`, `bun run radar show …` and `bun run radar land
+  /tmp/run/calls.json`, exactly as written: no redirects, pipes or `cat`.
+  Read files with Read. Searches: Exa first, then WebSearch. There is no
+  WebFetch.
+- You can write only `data/radar/notes/$RUN_DATE.md`,
+  `/tmp/run/calls.json` and `/tmp/run/push.txt`.
 - §4: write the notes, then stop. No commit, push or PR: the workflow lands
   `data/radar/` after typecheck and tests.
 - §5: put your one line, if any, at the top of `/tmp/run/push.txt`. The
