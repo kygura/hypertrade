@@ -2,7 +2,7 @@
 
 A personal market terminal and signal platform for crypto perps. It tracks assets, simulates allocation branches against historical data, monitors sector dynamics, and runs an always-on worker that scans Hyperliquid and surfaces ranked setups.
 
-Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade routine (a scheduled Claude session that commits research to `data/*.json`: every 4 h it scans the top-30 Hyperliquid perps on their 4h/1d/1w bars, names where positioning is imbalanced and writes conditional setups through a code gate; market state, sectors and the Lab snapshot once a day, Lab search weekly; one ntfy push only when something is new; see `ROUTINE.md`).
+Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade radar (a scheduled Claude session, twice a day: code scans every live perp on the main and HIP-3 dexes, the session researches what the tape has not priced yet and lands at most 3 dated calls that code prices and grades in `data/radar/`; one ntfy push only when a call lands; see `ROUTINE.md`).
 
 ## Status
 
@@ -155,13 +155,12 @@ Cost: Hobby plan is about $5/mo plus usage. At 0.5 vCPU and 512 MB, usage is abo
 
 ## Routine (scheduled Claude session)
 
-The runbook is `ROUTINE.md`. One 4 h trigger dispatches by clock: the board scan every run; market state, sectors and post-mortems of closed setups daily; a journal of your HL fills against the ledger on Sundays; a review of templates, conviction and Lab rules on Mondays; one tune PR to `src/server/routine/` a month, which a human merges. Lessons accumulate in `data/playbook.md`, which every run reads. The board run collects the board (`bun run routine --collect-only`: top-30 perps by volume plus majors and `PLATFORM_MY_MARKETS`, with 4h/1d/1w structure, funding vs its own week and vs Binance/Bybit, OI change from the committed `data/board/history.json`, and a level menu), reads it, and writes setups that code resolves, gates and grades (`data/setups/ledger.json`). `bun run signals:collect` adds an optional snapshot of the platform's intraday signals. One ntfy push through the desk notifier only when something is new. Secrets in the cloud environment:
+The runbook is `ROUTINE.md`. The scheduled task fires twice a day: the first run of the day is a full run, the second a catch-up. `bun run radar --save` scans every live perp on every Hyperliquid dex (main and HIP-3) and prints a digest against the committed daily memory in `data/radar/state.json`: movers over 24 h and 7 d, volume spikes, OI moves, funding and premium extremes, OI-cap hits, new markets and volume-rank entrants. The session then searches for catalysts (Exa, then web search; 8 searches on a full run, 3 on a catch-up), maps each to the perp that carries it, checks a precedent and crowding, and writes at most 3 calls (ride, fade or watch, each with a dated source and a kill condition). `bun run radar land` stamps prices and `bun run radar score` grades every call against BTC at +3 and +7 days (`data/radar/calls.json`). The 4 h setup board (`bun run routine`, `data/setups`, `data/board`) is retired and frozen. Secrets in the cloud environment:
 
 | Variable | Purpose |
 | --- | --- |
-| `APP_URL`, `LAB_API_TOKEN` | Worker origin and the read bearer (GETs under `/api/platform`, `/api/intel`, and `/api/lab/trials` for authored ideas; `LAB_URL=$APP_URL` for the Lab CLI). The session needs no `DATABASE_URL`: it has no route to Postgres. |
+| `APP_URL`, `LAB_API_TOKEN` (optional) | Worker origin and the read bearer, for the novelty read (`GET /api/platform/novelty`). The session needs no `DATABASE_URL`: it has no route to Postgres. |
 | `NTFY_TOPIC` (`NTFY_SERVER`, `NTFY_TOKEN` optional) | The push channel. No Telegram setup is needed. |
-| `DESK_WATCH_ADDRESS` (optional) | Your Hyperliquid account, read-only, for the Sunday journal. |
 
 ## Chart history
 

@@ -82,7 +82,7 @@ Root has only: this file, `README.md` (setup, env, API overview), and `ROUTINE.m
 | `docs/LAB.md` | Lab research engine contract: rules, validation, tools, MCP. |
 | `docs/TASKS.md` | Open items, completed-phase summary, pointers to deleted task files in git history. |
 | `docs/fallback-routine.md`, `docs/research/` | Provider-agnostic fallback routine; research notes. |
-| `ROUTINE.md` | Runbook for the scheduled routines, dispatched by clock from one 4 h trigger: board scan, daily market state and post-mortems, weekly journal and review, monthly tune PR, on-demand check. They share `data/playbook.md`. |
+| `ROUTINE.md` | Runbook for the scheduled radar routine (twice a day): `bun run radar` scans every HL dex, the session researches catalysts and lands at most 3 calls that code prices and grades (`data/radar/`). On-demand check. |
 | `tui/` | Separate terminal client with its own `SPEC.md`, `DESIGN.md`, `TASKS.md`. |
 
 **The runbook is for the scheduled cloud routine only.** Scheduled sessions open it

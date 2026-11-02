@@ -20,7 +20,20 @@ object; 6 shell cells today against a ceiling of 9, target 5):
   platform read tools. Type-scale codemod and `check:type-scale` done. Deferred: the
   `runToolLoop` extraction (see `docs/CONSOLIDATION.md`).
 
-Routine redesign (2026-10-23, `docs/fallback-routine.md`): the 4 h routine is a board scan of the
+Radar routine (2026-11-02): the 4 h setup board is retired (24 setups, all low conviction, −1.77R; it
+never saw news, sectors or HIP-3). `ROUTINE.md` is now a twice-daily radar: `bun run radar` scans every
+dex, the session researches catalysts and lands at most 3 graded calls in `data/radar/`.
+
+- [ ] After 2 weeks of radar notes: delete the board pipeline (`tripwires.ts`, `gate.ts`, `scan.ts`,
+  `htf.ts`, the scan prompts, `review.ts` and their scripts). Keep `routine/ledger.ts` (used by
+  `src/server/setups/store.ts`), `routine/llm.ts` (used by `platform/universe.ts`, `lab/service.ts`) and
+  `runDate` (used by `scripts/radar.ts`).
+- [ ] After 4 weeks: read `bun run radar score`. If rides and fades do not beat a plain 7d-momentum pick,
+  tighten §3 of the runbook or cut the session to the catalyst sweep only.
+- [ ] Collect Data: alarm on consecutive spilled runs instead of spill age (`routes/cron.ts` SPILL_ALARM_MS);
+  GitHub runs the */15 schedule every 3–7 h, so wall-clock age fires on a scheduler gap.
+
+Routine redesign (2026-10-23, `docs/fallback-routine.md`, superseded by the radar above): the 4 h routine is a board scan of the
 top-30 perps on 4h/1d/1w with tripwires (the commonplace setups as thresholds), a level menu, and the
 model as the interpretation layer that names imbalances and writes setups by level key; code resolves
 prices, R, alignment and expiry, then gates. MarketState/Sectors daily, Lab search weekly. It ships the
