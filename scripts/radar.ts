@@ -13,6 +13,7 @@ import { fetchCandles, fetchPerpDexs, fetchPerpMetaAndCtxs, fetchPerpsAtOpenInte
 import { RadarCallsFileSchema, RadarCallsInputSchema, RadarStateSchema, type RadarCallsFile, type RadarState } from "../src/shared/radar.js";
 import type { AssetCtx, Candle } from "../src/shared/types.js";
 import { checkKills, gradeCalls, landCalls, scorecard } from "../src/server/radar/calls.js";
+import { collectMacro, macroLines } from "../src/server/radar/macro.js";
 import { digest, formatDigest, nextState, RADAR, seedDays, showMarkets, toMarkets, type DexBook, type RadarMarket } from "../src/server/radar/scan.js";
 import { runDate } from "../src/server/routine/run.js";
 
@@ -109,6 +110,14 @@ async function fetchBooks(): Promise<Books> {
 async function scan() {
   const now = new Date();
   const today = runDate(now);
+  // Keyless macro sources, started first so they overlap the dex fetches. Print-only: nothing macro is saved, and
+  // a failure here is a gap line, never an exit code.
+  const macroP = collectMacro(fetch, now)
+    .then((m) => macroLines(m, now))
+    .catch((e) => {
+      console.error(`macro: ${msg(e)}`);
+      return ["macro gaps: the macro block failed (see stderr)"];
+    });
   const { books, names, failed, gaps } = await fetchBooks();
   const cap = new Set<string>();
   for (const b of books) {
@@ -120,7 +129,7 @@ async function scan() {
   }
   const markets = toMarkets(books, cap);
   const state = await readState();
-  console.log(formatDigest(digest(markets, state, today), gaps, names));
+  console.log(formatDigest(digest(markets, state, today), gaps, names, await macroP));
   await writeJson(SCAN, { at: now.toISOString(), date: today, markets } satisfies SavedScan);
   if (argv.includes("--save")) await writeJson(STATE, nextState(state, markets, today, now.toISOString(), failed));
 }

@@ -275,8 +275,11 @@ const px = (x: number) => String(sig(x));
 export const line = (m: RadarMarket) =>
   `${m.key} [${m.dex}] mark ${px(m.mark)} · 24h ${pct(m.chg24hPct)} · vol ${usd(m.vol24h)} · OI ${usd(m.oiUsd)} · fund ${m.fundingApr.toFixed(0)}% APR · prem ${m.premiumBps.toFixed(0)}bps${m.atCap ? " · AT OI CAP" : ""}`;
 
-/** `names` maps a dex code to its full name ("xyz" → "XYZ"), so the session can search for the deployer. */
-export function formatDigest(d: Digest, gaps: string[] = [], names: Record<string, string> = {}): string {
+/**
+ * `names` maps a dex code to its full name ("xyz" → "XYZ"), so the session can search for the deployer. `macro`
+ * is radar/macro.ts macroLines(), printed ahead of the dexes.
+ */
+export function formatDigest(d: Digest, gaps: string[] = [], names: Record<string, string> = {}, macro: string[] = []): string {
   const out: string[] = [];
   const section = (title: string, rows: string[] | null, cold?: string) => {
     out.push(`\n## ${title}`);
@@ -285,6 +288,7 @@ export function formatDigest(d: Digest, gaps: string[] = [], names: Record<strin
   };
   out.push(`# radar ${d.date} · BTC ${d.btc == null ? "n/a" : px(d.btc)} · history ${d.history.days}d${d.history.seeded ? ` (${d.history.seeded} seeded from candles)` : ""} (prev ${d.history.prevDate ?? "none"}, 7d base ${d.history.weekDate ?? "none"})`);
   if (gaps.length) out.push(`gaps: ${gaps.join("; ")}`);
+  if (macro.length) section("macro (keyless · Δ over each series' own history · [as-of] dates the items before it)", macro);
   section(
     "dexes",
     d.dexes.map(

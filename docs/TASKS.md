@@ -29,7 +29,14 @@ dex, the session researches catalysts and lands at most 3 graded calls in `data/
   `src/server/setups/store.ts`), `routine/llm.ts` (used by `platform/universe.ts`, `lab/service.ts`) and
   `runDate` (used by `scripts/radar.ts`).
 - [ ] After 4 weeks: read `bun run radar score`. If rides and fades do not beat a plain 7d-momentum pick,
-  tighten §3 of the runbook or cut the session to the catalyst sweep only.
+  tighten §3 of the runbook or cut the session to the catalyst sweep only. Review the macro bar (§3
+  condition 5, `MACRO` in `src/server/radar/macro.ts`): compare calls landed with >= 3 risk-off tells or an
+  FOMC/CPI/NFP inside their window against the rest.
+- [ ] Macro in the app: `collectors/fred.ts` uses the keyed FRED API and stores nothing without
+  `FRED_API_KEY` (every `fred.*` series, the desk `macro_dashboard`, Lab `ht:fred.*` and thesis `fred.*`
+  thresholds read empty). Swap its fetch for the keyless `fetchFred` in `radar/macro.ts`, with
+  `deriveMetrics` on `netLiquidityB`. Also: `desk/tools.ts` says the liquidity parts are USD millions (RRP is
+  billions); `cryptoContext.ts` computes the Deribit window at module load.
 - [ ] Collect Data: alarm on consecutive spilled runs instead of spill age (`routes/cron.ts` SPILL_ALARM_MS);
   GitHub runs the */15 schedule every 3–7 h, so wall-clock age fires on a scheduler gap.
 

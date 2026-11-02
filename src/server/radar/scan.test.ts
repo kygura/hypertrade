@@ -126,6 +126,15 @@ describe("digest", () => {
     expect(d.premium.map((m) => m.key)).toEqual(["xyz:GAP"]);
   });
 
+  test("the macro block prints after the header and gaps, before the dexes; none without lines", () => {
+    const d = digest([mk("BTC")], null, "2026-11-02");
+    const text = formatDigest(d, ["dex xyz: 429"], {}, ["policy    Fed funds 3.75-4.00", "macro gaps: none"]);
+    expect(text.indexOf("gaps: dex xyz")).toBeLessThan(text.indexOf("\n## macro"));
+    expect(text.indexOf("\n## macro")).toBeLessThan(text.indexOf("\n## dexes"));
+    expect(text).toContain("macro gaps: none\n\n## dexes");
+    expect(formatDigest(d)).not.toContain("## macro");
+  });
+
   test("dex volume shares add up", () => {
     const d = digest([mk("BTC", { vol24h: 3e9 }), mk("xyz:A", { dex: "xyz", vol24h: 1e9 })], null, "2026-11-02");
     expect(d.dexes.map((x) => [x.dex, x.volSharePct])).toEqual([["main", 75], ["xyz", 25]]);

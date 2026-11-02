@@ -44,7 +44,8 @@ most), §3–§5.
 1. **Environment** (cloud environment secrets): `NTFY_TOPIC` (optional
    `NTFY_SERVER`, `NTFY_TOKEN`), `LAB_API_TOKEN` (optional, for the novelty
    read). A missing secret skips what needs it and is named as a gap in the
-   final message. Never print a secret.
+   final message. Never print a secret. The macro block is keyless; no new
+   secret.
    ```bash
    export APP_URL="${APP_URL:-https://hypertrade-ten.vercel.app}"
    RUN_DATE=$(TZ=Atlantic/Canary date +%F)   # once, at start
@@ -73,10 +74,23 @@ bun run radar score
 ```
 
 The digest covers every live perp on every dex:
+- a `## macro` block: Fed target range and last move; EFFR, IORB, SOFR
+  (SOFR-IORB is the funding gauge); Polymarket odds for the next FOMC; 2Y,
+  10Y, real 10Y, breakeven, 2s10s plus a same-day 10Y; Fed net liquidity
+  (balance sheet - TGA - reverse repo) with 1w/4w/13w change, a daily-TGA
+  nowcast and reserves; DXY; HY spread, VIX, MOVE; stablecoin supply; ECB
+  and BoJ balance sheets and US M2; last CPI and NFP prints and FOMC/CPI/NFP
+  dates in the next 14 days; a `tells` line counting risk-off conditions;
 - each dex's full name, volume share and median funding;
 - top movers over 24h and 7d, volume spikes, OI moves (in contracts);
 - funding extremes, HIP-3 premium against the oracle, OI-cap hits;
 - markets new since memory, and entrants to the top 30 by volume.
+
+Every macro value carries its as-of date (FRED daily lag 1-4 days, weekly
+5-10, monthly ~2 months; 10Y live, DXY, VIX, MOVE and the odds are
+same-day). A failed source is listed under `macro gaps:` and never stops the
+run. Macro numbers are printed by code and can be quoted like any digest
+number.
 
 `score` grades past calls and prints `KILLED` for any call from the last 7
 days whose kill level the mark has crossed (once, into
@@ -118,12 +132,17 @@ the notes, or the last 72 h if there is none. One search each:
 **b. Calendar** (full run, 2 searches): (1) unlocks, TGEs, airdrops,
 mainnet and upgrade dates, governance votes and ETF deadlines in the next 14
 days for tokens with an HL perp; (2) earnings dates in the next 7 days for
-the ten largest xyz equity perps by volume.
+the ten largest xyz equity perps by volume. FOMC, CPI and NFP dates come
+from the macro block; do not spend a search on them.
 
 **c. Explain the tape** (full run, the rest of the budget): the biggest
-digest items you cannot explain from 2a–2b. Research only markets with 24h
-volume of at least $20M, or ones a cause from 2a–2b already touches. One
-search per item: `<ticker> <project or company> news`.
+digest items you cannot explain from 2a–2b. First check whether the macro
+block already explains the move: BTC and majors moving together on a
+CPI/NFP/FOMC day, or while 10Y live, DXY or HY moved sharply, is macro beta.
+Read the item's move vs BTC with `show --since`; only the part that outran
+BTC needs a token cause. Research only markets with 24h volume of at least
+$20M, or ones a cause from 2a–2b already touches. One search per item:
+`<ticker> <project or company> news`.
 
 For each candidate, map it before judging:
 - **First order:** the perp that names it, on the main dex or HIP-3 (xyz
@@ -140,7 +159,7 @@ For each candidate, map it before judging:
 
 ## 3. Judge
 
-A ride or fade lands only when all four hold:
+A ride or fade lands only when all five hold:
 
 1. **Cause:** published no more than 72 h ago, or a dated event in the next
    14 days, from a primary source or two independent outlets. One
@@ -156,8 +175,19 @@ A ride or fade lands only when all four hold:
    helps (shorts paying into good news).
 4. **Kill level:** a price from the `show` daily marks (the pre-news range,
    the last swing) below the mark for a long, above it for a short.
+5. **Macro:** (a) a macro print or Fed decision is never a cause on its own;
+   it goes under Watching. (b) Event window: if FOMC, CPI or NFP falls
+   before the precedent's peak day, name it in the notes, and room must be
+   at least 3× risk instead of 2×. (c) Regime: the tells line counts only
+   the tells it could read (`risk-off 3/4` when one is n/a). With 3 or more
+   on, a long needs room ≥ 3× risk; at `0/5` (all five read, none on) a
+   short needs the same. No tells or calendar line (the macro block
+   failed): skip the part it feeds and name it under Gaps; a macro gap
+   never fails condition 5. Thresholds live in `MACRO` in
+   `src/server/radar/macro.ts` and change only in a dev PR with the
+   scorecard as evidence.
 
-Missing any of the four: it goes under **Watching** in the notes, never into
+Missing any of the five: it goes under **Watching** in the notes, never into
 a call. Structure alone (extreme funding, a premium gap, an OI cap) is never
 a cause. Stance: ride goes with the move since the cause, fade goes against
 it (the move outran the cause, or sell-the-news). Direction is the side you
@@ -196,6 +226,8 @@ when fewer than 3 searches returned anything usable. Catch-up: append
   precedent, room vs risk, crowding read, kill level.
 - **Watching:** items weighed and not called, one line each with the reason
   and what would change it. This is the next run's memory.
+- **Macro:** the digest's tells line as printed, plus any FOMC/CPI/NFP
+  inside a call's window.
 - **Precedents:** event, date, what the token did, source. Carried forward.
 - **Searches:** the queries run. **Gaps.**
 
@@ -237,8 +269,9 @@ no push.
 
 ## Hard rules
 
-- Prices, moves, funding, risk and scores come from `bun run radar`. A
-  source's own numbers only with the source cited on the same line.
+- Prices, moves, funding, risk, scores and macro levels come from
+  `bun run radar`. A source's own numbers only with the source cited on the
+  same line.
 - Writes only under `data/radar/`. `state.json` and `calls.json` change only
   through `bun run radar`. Never read `state.json` into context.
 - At most 10 searches on a full run and 4 on a catch-up, page fetches
@@ -258,6 +291,9 @@ no push.
   `src/server/radar/calls.ts`: land, grade (move vs BTC at +3 and +7 days,
   signed by direction), kill checks and the scorecard. Contracts:
   `src/shared/radar.ts`.
+- `src/server/radar/macro.ts`: the macro block's keyless sources (FRED
+  fredgraph CSV, Treasury DTS, Yahoo, Polymarket, DefiLlama), its parsers
+  and the tell thresholds (`MACRO`).
 - `data/radar/state.json`: 10 daily snapshots of every market (full runs).
   `data/radar/calls.json`: every call, its graded move and kill date.
   `data/radar/notes/`: one file a day.
