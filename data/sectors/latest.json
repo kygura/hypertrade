@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-11-01T03:05:00Z",
+  "generated_at": "2026-11-02T07:00:00Z",
   "sectors": [
     {
       "id": "l1-majors",
       "label": "L1 majors",
       "mindshare_score": 0.6,
       "momentum": -0.3,
-      "rationale": "BTC +0.35%, ETH +0.9%, SOL -1.44%, XRP -0.69% over 24h; BTC OI -5.39% (oi_unwind_flat) and 1d trends are down on BTC, ETH, SOL, XRP. HL funding is neutral (BTC 10.95, ETH 10.95, SOL 6.57). Social share not reported.",
+      "rationale": "BTC +0.18%, ETH +0.64%, SOL -1.3%, XRP -0.34% over 24h; BTC OI -1.25% (quiet) and 1d trends are down on BTC, ETH, SOL, XRP. HL funding is neutral (BTC 10.95, ETH 10.95, SOL 10.95). Social share not reported.",
       "tokens": [
         "BTC",
         "ETH",
@@ -23,7 +23,7 @@
       "label": "Perp DEX & DeFi",
       "mindshare_score": 0.5,
       "momentum": 0.1,
-      "rationale": "HYPE -1.69% 24h with funding 21.44 (from 38.22 24h avg) and premium 5.51 bps; AAVE +4.23%, UNI +1.22% with UNI funding 37.66 (42.48 over CEX); ENA -3.22% on price_only flow.",
+      "rationale": "HYPE -1.96% 24h with funding 18.99 and premium 9.38 bps on new_shorts flow; AAVE -3.22% on long_liquidation, UNI +1.08% on price_only, ENA -5.21% on long_liquidation.",
       "tokens": [
         "HYPE",
         "AAVE",
@@ -40,7 +40,7 @@
       "label": "Privacy",
       "mindshare_score": 0.4,
       "momentum": 0.0,
-      "rationale": "XMR +2.98% with funding 114 (65.4 over CEX), premium 24.3 bps on price_only flow; ZEC -2.77% on long_liquidation (OI 24h -8.71) at neutral funding 10.95.",
+      "rationale": "XMR +0.45% with funding 10.95 on quiet flow; ZEC +1.95% with OI 24h +13.44 on new_longs and funding 14.58 (3.63 over CEX).",
       "tokens": [
         "ZEC",
         "XMR"
@@ -54,7 +54,7 @@
       "label": "Memecoins",
       "mindshare_score": 0.28,
       "momentum": -0.1,
-      "rationale": "kPEPE +1.07% 24h (ret7d +10.91%, funding 10.95 reset), PUMP +1.79%, DOGE -0.56%; DOGE remains in a 1d downtrend.",
+      "rationale": "kPEPE -3.63% 24h on long_liquidation (ret7d +13.04), PUMP -3.06% on price_only, DOGE -0.58%; DOGE remains in a 1d downtrend.",
       "tokens": [
         "DOGE",
         "PUMP",
@@ -69,7 +69,7 @@
       "label": "AI agents",
       "mindshare_score": 0.22,
       "momentum": -0.2,
-      "rationale": "NEAR +2.33%, WLD -1.13% over 24h; WLD is -15.18% over 7d on long_liquidation, TAO -0.4% with 1d trend down at neutral funding 10.95.",
+      "rationale": "NEAR -6.76% 24h on long_liquidation with funding -1.45; other tokens in this sector are off the board this run.",
       "tokens": [
         "FET",
         "TAO",
@@ -86,7 +86,7 @@
       "to": "perp-dex-defi",
       "confidence": 0.15,
       "trigger": "BTC holds under its 1d sma20 while AAVE holds its bounce",
-      "note": "Low-confidence; AAVE +4.23% over 24h against BTC +0.35%, but flow is price_only."
+      "note": "Low-confidence; AAVE -3.22% over 24h against BTC +0.18% weakens the bounce, flow is long_liquidation."
     }
   ]
 }
