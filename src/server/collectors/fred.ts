@@ -1,10 +1,13 @@
 // FRED (Federal Reserve Economic Data) collector, ported from marketstate/src/fred.ts.
 // Series naming per docs/SPEC.md: fred.<SERIES_ID>, plus derived fred.net_liquidity
-// and fred.spread_2s10s. Degrades to skipped:no-key when FRED_API_KEY unset —
-// keep that exact pattern (marketstate's fetcher, and downstream consumers,
-// expect a skip to be distinguishable from a real failure).
-import { z } from "zod";
-import { ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db.js";
+// and fred.spread_2s10s. Keyless: it reads FRED's public fredgraph CSV through
+// radar/macro.ts fetchFred (the keyed API answered 400 without FRED_API_KEY, which
+// prod never had, so every fred.* series stayed empty). The CSV carries history, so
+// the first run backfills FRED_HISTORY_DAYS and later runs re-read a short window,
+// at most once per FRED_MIN_INTERVAL_HOURS (FRED publishes once a day).
+import { lastCollectorFetch, ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db.js";
+import { mapLimit } from "../lab/util.js";
+import { errDetail, fetchFred, type Point } from "../radar/macro.js";
 import type { CollectorResult } from "./types.js";
 
 export const FRED_SERIES = [
@@ -26,21 +29,16 @@ export type FredSeriesId = (typeof FRED_SERIES)[number];
 export type FredMetric = { value: number; date: string };
 
 const COLLECTOR = "fred";
-const SKIPPED_NO_KEY = "skipped:no-key";
+const SKIPPED_THROTTLED = "skipped:throttled";
 
-// FRED marks a missing observation with the literal string "." — everything
-// else is a numeric string.
-const FredResponseSchema = z.object({
-  observations: z.array(z.object({ date: z.string(), value: z.string() })),
-});
-
-/** Pure transform: raw /series/observations payload -> latest non-"." point. Exported for fixture tests. */
-export function parseFredObservations(json: unknown): FredMetric | null {
-  const parsed = FredResponseSchema.parse(json);
-  const latestValid = parsed.observations.find((o) => o.value !== ".");
-  if (!latestValid) return null;
-  return { value: Number(latestValid.value), date: latestValid.date };
-}
+/** First run, or a gap longer than FRED_BACKFILL_AFTER_DAYS: enough for the desk's 3-month change and a year of Lab history. */
+export const FRED_HISTORY_DAYS = 400;
+/** Later runs: a short window that also picks up FRED's revisions and anything a missed run skipped. */
+export const FRED_RECENT_DAYS = 14;
+export const FRED_BACKFILL_AFTER_DAYS = 7;
+export const FRED_MIN_INTERVAL_HOURS = 6;
+const FRED_CONCURRENCY = 6;
+const DAY_MS = 86_400_000;
 
 /**
  * Derived metrics. Unit normalization (marketstate/src/fred.ts):
@@ -59,65 +57,79 @@ export function deriveMetrics(metrics: Partial<Record<FredSeriesId, FredMetric>>
   return derived;
 }
 
-const OBS_LIMIT = 5;
-
-async function fetchSeries(seriesId: FredSeriesId, apiKey: string, fetchFn: typeof fetch): Promise<FredMetric | null> {
-  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=${OBS_LIMIT}`;
-  const res = await fetchFn(url, { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`FRED ${seriesId} HTTP ${res.status}`);
-  return parseFredObservations(await res.json());
+/**
+ * deriveMetrics on every date the inputs share: net liquidity on each WALCL Wednesday (WTREGEN on that date,
+ * RRP on or before it), the 2s10s spread on each date with both yields. One formula, history included.
+ */
+export function deriveHistory(points: Partial<Record<FredSeriesId, Point[]>>): Record<string, Point[]> {
+  const onOrBefore = (xs: Point[] | undefined, date: string) => {
+    let hit: Point | undefined;
+    for (const p of xs ?? []) if (p.date <= date && (!hit || p.date > hit.date)) hit = p;
+    return hit;
+  };
+  const net: Point[] = [];
+  for (const w of points.WALCL ?? []) {
+    const tga = (points.WTREGEN ?? []).find((p) => p.date === w.date);
+    const rrp = onOrBefore(points.RRPONTSYD, w.date);
+    const d = tga && rrp ? deriveMetrics({ WALCL: w, WTREGEN: tga, RRPONTSYD: rrp }).net_liquidity : undefined;
+    if (d) net.push(d);
+  }
+  const dgs2 = new Map((points.DGS2 ?? []).map((p) => [p.date, p]));
+  const spread: Point[] = [];
+  for (const p10 of points.DGS10 ?? []) {
+    const p2 = dgs2.get(p10.date);
+    const d = p2 ? deriveMetrics({ DGS2: p2, DGS10: p10 }).spread_2s10s : undefined;
+    if (d) spread.push(d);
+  }
+  return { net_liquidity: net, spread_2s10s: spread };
 }
 
-/** db.ts calls, injectable so tests never need a live DATABASE_URL. */
-export type FredDbDeps = { ensureSeries: typeof ensureSeries; upsertObservations: typeof upsertObservations; recordCollectorRun: typeof recordCollectorRun };
-const defaultDeps: FredDbDeps = { ensureSeries, upsertObservations, recordCollectorRun };
+/** db.ts calls, injectable so tests never need a live DATABASE_URL. `lastFetch` is the latest real (non-skipped) run. */
+export type FredDbDeps = {
+  ensureSeries: typeof ensureSeries;
+  upsertObservations: typeof upsertObservations;
+  recordCollectorRun: typeof recordCollectorRun;
+  lastFetch: () => Promise<Date | null>;
+  now: () => number;
+};
+export const defaultFredDeps: FredDbDeps = { ensureSeries, upsertObservations, recordCollectorRun, lastFetch: () => lastCollectorFetch(COLLECTOR), now: () => Date.now() };
 
-export async function collectFred(fetchFn: typeof fetch = fetch, deps: FredDbDeps = defaultDeps): Promise<CollectorResult> {
-  const startedAt = new Date();
-  const apiKey = process.env.FRED_API_KEY;
-  if (!apiKey) {
-    await deps.recordCollectorRun(COLLECTOR, startedAt, true, SKIPPED_NO_KEY);
-    return { ok: true, error: SKIPPED_NO_KEY, written: 0 };
-  }
+export async function collectFred(fetchFn: typeof fetch = fetch, deps: FredDbDeps = defaultFredDeps): Promise<CollectorResult> {
+  const now = new Date(deps.now());
+  // Not recorded: a throttled skip on every collect would bury the real runs.
+  const last = await deps.lastFetch();
+  const since = last ? now.getTime() - last.getTime() : Infinity;
+  if (since < FRED_MIN_INTERVAL_HOURS * 3_600_000) return { ok: true, error: SKIPPED_THROTTLED, written: 0 };
+  const days = since > FRED_BACKFILL_AFTER_DAYS * DAY_MS ? FRED_HISTORY_DAYS : FRED_RECENT_DAYS;
 
-  // Per-series catch: one bad/rate-limited series must not discard the other
-  // eleven (docs/SPEC.md: never fail the whole run over one tool).
+  // Per-series catch: one bad series must not discard the other eleven
+  // (docs/SPEC.md: never fail the whole run over one tool).
   let firstError: string | undefined;
-  const entries = await Promise.all(
-    FRED_SERIES.map(async (id) => {
-      try {
-        return [id, await fetchSeries(id, apiKey, fetchFn)] as const;
-      } catch (err) {
-        firstError ??= err instanceof Error ? err.message : String(err);
-        return [id, null] as const;
-      }
-    }),
-  );
+  const entries = await mapLimit([...FRED_SERIES], FRED_CONCURRENCY, async (id) => {
+    try {
+      return [id, await fetchFred(fetchFn, id, now, days)] as const;
+    } catch (err) {
+      firstError ??= `FRED ${id}: ${errDetail(err)}`;
+      return [id, null] as const;
+    }
+  });
 
-  const metrics: Partial<Record<FredSeriesId, FredMetric>> = {};
-  for (const [id, value] of entries) if (value) metrics[id] = value;
+  const points: Partial<Record<FredSeriesId, Point[]>> = {};
+  for (const [id, pts] of entries) if (pts?.length) points[id] = pts;
 
-  if (Object.keys(metrics).length === 0) {
+  if (Object.keys(points).length === 0) {
     const error = firstError ?? "all series failed";
-    await deps.recordCollectorRun(COLLECTOR, startedAt, false, error);
+    await deps.recordCollectorRun(COLLECTOR, now, false, error);
     return { ok: false, error, written: 0 };
   }
 
-  const all: Record<string, FredMetric> = { ...metrics, ...deriveMetrics(metrics) };
-
-  const seriesDefs: SeriesDef[] = Object.keys(all).map((id) => ({
-    id: `fred.${id}`,
-    source: COLLECTOR,
-    description: `FRED series ${id}`,
-  }));
-  const observations: Observation[] = Object.entries(all).map(([id, m]) => ({
-    seriesId: `fred.${id}`,
-    ts: new Date(m.date),
-    value: m.value,
-  }));
+  const all: Record<string, Point[]> = { ...points, ...deriveHistory(points) };
+  const ids = Object.keys(all).filter((id) => all[id]!.length);
+  const seriesDefs: SeriesDef[] = ids.map((id) => ({ id: `fred.${id}`, source: COLLECTOR, description: `FRED series ${id}` }));
+  const observations: Observation[] = ids.flatMap((id) => all[id]!.map((p) => ({ seriesId: `fred.${id}`, ts: new Date(p.date), value: p.value })));
 
   await deps.ensureSeries(seriesDefs);
   const written = await deps.upsertObservations(observations);
-  await deps.recordCollectorRun(COLLECTOR, startedAt, true, firstError ?? null);
+  await deps.recordCollectorRun(COLLECTOR, now, true, firstError ?? null);
   return { ok: true, error: firstError, written };
 }

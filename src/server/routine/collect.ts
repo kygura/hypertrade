@@ -2,7 +2,10 @@ import { z } from "zod";
 import { fetchCandles, fetchFundingPage, fetchPerpMetaAndCtxs, fetchPredictedFundings, type FundingPoint } from "../../shared/hl-client.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
 import { calendarEvents } from "../intel/calendar.js";
+import { errDetail, errStatus, FetchError, fetchFred, fetchJson as fetchJsonWithin, fetchYahoo, type Point } from "../radar/macro.js";
 import { boardUniverse, buildBoard, type Board, type BoardHistory, type BoardInput } from "./board.js";
+
+export { parseFredCsv } from "../radar/macro.js";
 
 // Collect stage of the fallback routine (docs/fallback-routine.md, pipeline
 // step 2). Every number the model sees is fetched here. Every fetch has a
@@ -37,11 +40,6 @@ export interface HlAsset {
   fundingHourly: number;
   fundingAnnPct: number;
   volUsd24h: number;
-}
-
-export interface Point {
-  date: string;
-  value: number;
 }
 
 export interface HlCyclesRead {
@@ -99,47 +97,11 @@ export interface HlClient {
 
 export const defaultHlClient = (): HlClient => ({ metaAndCtxs: fetchPerpMetaAndCtxs, candles: fetchCandles, funding: fetchFundingPage, predicted: fetchPredictedFundings });
 
-class FetchError extends Error {
-  constructor(
-    readonly status: number | string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-const errStatus = (e: unknown): number | string => (e instanceof FetchError ? e.status : e instanceof Error && e.name === "TimeoutError" ? "timeout" : "error");
-/**
- * A gap's detail is a short reason we wrote, never response text: it reaches the prompt, so an upstream body
- * (or a zod message quoting a received value) must not. Transport errors keep the runtime's own message.
- */
-const errDetail = (e: unknown): string => {
-  if (e instanceof FetchError) return e.message;
-  if (e instanceof z.ZodError) return `unexpected response shape at ${[...new Set(e.issues.map((i) => i.path.join(".") || "(root)"))].slice(0, 5).join(", ")}`;
-  if (e instanceof Error && e.name === "TimeoutError") return "timed out";
-  return (e instanceof Error ? e.message : String(e)).replace(/[^\w .:/()-]/g, "").slice(0, 120);
-};
-const finite = (x: unknown): number | null => {
-  const n = typeof x === "string" ? Number(x) : x;
-  return typeof n === "number" && Number.isFinite(n) ? n : null;
-};
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const r = (x: number, dp = 2) => Math.round(x * 10 ** dp) / 10 ** dp;
 
-async function fetchText(f: typeof fetch, url: string, init: RequestInit = {}): Promise<string> {
-  const res = await f(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
-  const text = await res.text();
-  if (!res.ok) throw new FetchError(res.status, `HTTP ${res.status}`);
-  return text;
-}
-async function fetchJson(f: typeof fetch, url: string, init: RequestInit = {}): Promise<unknown> {
-  const text = await fetchText(f, url, init);
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new FetchError("bad-json", "response is not JSON");
-  }
-}
+// Transport, FRED and Yahoo helpers live in radar/macro.ts; the routine's sources keep the longer timeout.
+const fetchJson = (f: typeof fetch, url: string, init: RequestInit = {}) => fetchJsonWithin(f, url, init, TIMEOUT_MS);
 
 /** Runs one source; a throw becomes a gap and a null result. */
 async function source<T>(gaps: Gap[], name: string, fn: () => Promise<T>): Promise<T | null> {
@@ -171,57 +133,11 @@ export function summariseHl(ctxs: AssetCtx[]): HlAsset[] {
   return [...majors, ...top];
 }
 
-/** FRED fredgraph CSV → points; "." (no print) rows are skipped. */
-export function parseFredCsv(csv: string): Point[] {
-  const out: Point[] = [];
-  for (const line of csv.trim().split(/\r?\n/).slice(1)) {
-    const [date, raw] = line.split(",");
-    const value = finite(raw);
-    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date) && value !== null) out.push({ date, value });
-  }
-  return out;
-}
-
-async function fred(f: typeof fetch, id: string, now: Date): Promise<Point[]> {
-  const url = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${id}&cosd=${day(now.getTime() - 45 * DAY)}`;
-  let csv: string;
-  try {
-    csv = await fetchText(f, url);
-  } catch (e) {
-    if (e instanceof FetchError) throw e; // an HTTP answer: no transport retry
-    // Transport error (FRED's HTTP/2 edge resets streams): one retry on a fresh, non-reused connection.
-    csv = await fetchText(f, url, { headers: { connection: "close" } });
-  }
-  const points = parseFredCsv(csv);
-  if (!points.length) throw new FetchError("empty", "no observations in the window");
-  return points.slice(-30);
-}
-
-const YahooChart = z.object({
-  chart: z.object({
-    result: z
-      .array(
-        z.object({
-          meta: z.object({ regularMarketPrice: z.number().nullable().optional() }).passthrough(),
-          timestamp: z.array(z.number()).optional(),
-          indicators: z.object({ quote: z.array(z.object({ close: z.array(z.number().nullable()).optional() }).passthrough()) }),
-        }),
-      )
-      .min(1),
-  }),
-});
+const fred = async (f: typeof fetch, id: string, now: Date): Promise<Point[]> => (await fetchFred(f, id, now, 45, TIMEOUT_MS)).slice(-30);
 
 async function yahoo(f: typeof fetch, sym: string): Promise<{ price: number | null; closes: Point[] }> {
-  const raw = await fetchJson(f, `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1mo&interval=1d`, { headers: { "user-agent": "Mozilla/5.0" } });
-  const res = YahooChart.parse(raw).chart.result[0]!;
-  const ts = res.timestamp ?? [];
-  const closes = res.indicators.quote[0]?.close ?? [];
-  const points: Point[] = [];
-  ts.forEach((t, i) => {
-    const c = closes[i];
-    if (typeof c === "number" && Number.isFinite(c)) points.push({ date: day(t * 1000), value: r(c) });
-  });
-  return { price: finite(res.meta.regularMarketPrice), closes: points };
+  const q = await fetchYahoo(f, sym, "1mo", TIMEOUT_MS);
+  return { price: q.price, closes: q.closes.map((p) => ({ date: p.date, value: r(p.value) })) };
 }
 
 const FngResponse = z.object({ data: z.array(z.object({ value: z.string(), value_classification: z.string().regex(/^[A-Za-z ]{1,24}$/), timestamp: z.string() })).min(1) });
