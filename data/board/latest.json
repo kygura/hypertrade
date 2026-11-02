@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-11-02T02:55:48.227Z",
-  "read": "The board leans quiet: BTC sits low in its 1d range (rangePos 0.25) at neutral funding 10.95, and the only crowding is local to HL, with ZEC funding 30.95 (20 over CEX) on OI +9.68. We lean toward chop, base case.",
+  "generated_at": "2026-11-02T06:57:15.763Z",
+  "read": "The board leans risk-off and quiet: BTC sits low in its 1d range (rangePos 0.22) at neutral funding 10.95, and the only HL-local crowding is HYPE funding 18.99 with fundingZ 8.04. We lean toward chop, base case.",
   "watchlist": [
     {
-      "asset": "ZEC",
-      "kind": "crowded_longs",
+      "asset": "HYPE",
+      "kind": "other",
       "skew": "down",
-      "timeframe": "1d",
-      "note": "funding 30.95 vs CEX 10.95 (20 over), OI 24h +9.68 on oi_build_flat, but 1d rangePos 0.59 vs the 0.8 the funding_fade template needs. Leans, not armed.",
-      "arms": "a slot frees and 1d rangePos reaches 0.8 with funding still at or above 30",
+      "timeframe": "4h",
+      "note": "4h rangePos 0 with mark 86.227 under the 4h low20 86.236, ret24h -1.53 on new_shorts flow with OI 24h +2.15, but 1w trend is up and ret7d +14.65. Leans, not armed.",
+      "arms": "a slot frees and a 4h close holds under the 4h low20 with a level in the menu at least 2R away",
       "evidence": [
-        "ZEC.pos.fundingAnnPct",
-        "ZEC.pos.fundingVsCexAnnPct",
-        "ZEC.pos.oiChg24hPct",
-        "ZEC.tf.1d.rangePos"
+        "HYPE.tf.4h.rangePos",
+        "HYPE.pos.flow24h",
+        "HYPE.pos.oiChg24hPct",
+        "HYPE.tf.1w.trend"
       ]
     },
     {
@@ -21,7 +21,7 @@
       "kind": "other",
       "skew": "up",
       "timeframe": "1d",
-      "note": "htf_pullback long tripwire hit: 1w and 1d trend up, 1d vsSma20Atr 0.27, funding 20.67 vs CEX 21 (not HL-local). Pass only because open slots are 5 of 5.",
+      "note": "htf_pullback long tripwire hit: 1w and 1d trend up, 1d vsSma20Atr 0.44, funding 10.95 vs CEX 16.42 (not HL-local crowding). Pass only because slots are 5 of 5.",
       "arms": "a slot frees with 1d vsSma20Atr at or under 0.75 and funding under 25",
       "evidence": [
         "XMR.tf.1d.vsSma20Atr",
@@ -34,24 +34,40 @@
       "kind": "long_liquidation",
       "skew": "up",
       "timeframe": "4h",
-      "note": "post_liquidation_reclaim near-miss: OI 24h -26.74 and funding 10.95 pass, 24h move in 1d ATR -1.32 vs -1.5 needed.",
+      "note": "post_liquidation_reclaim near-miss: 24h move in 1d ATR -1.65 and funding 10.95 pass, OI 24h -7.2 vs -8 needed; 1w sweep of the low.",
       "arms": "a slot frees and a 4h close back above the 4h sma20 with a level in the menu at least 2R away",
       "evidence": [
         "XPL.pos.oiChg24hPct",
         "XPL.pos.fundingAnnPct",
-        "XPL.tf.4h.sma20"
+        "XPL.tf.4h.sma20",
+        "XPL.tf.1w.sweep"
       ]
     },
     {
-      "asset": "DOGE",
-      "kind": "other",
+      "asset": "NEAR",
+      "kind": "long_liquidation",
+      "skew": "up",
+      "timeframe": "1d",
+      "note": "ret24h -6.76 on long_liquidation, OI 24h -4.31, funding -1.45 at 3rd percentile (fundingZ -12.4) and 1d rangePos 0.1. Shorts pay, a squeeze risk skews up if price stops falling.",
+      "arms": "a slot frees and a 4h close back above the 4h sma20 with a level in the menu at least 2R away",
+      "evidence": [
+        "NEAR.pos.flow24h",
+        "NEAR.pos.fundingAnnPct",
+        "NEAR.xs.fundingZ",
+        "NEAR.tf.1d.rangePos"
+      ]
+    },
+    {
+      "asset": "ZEC",
+      "kind": "crowded_longs",
       "skew": "down",
       "timeframe": "1d",
-      "note": "htf_pullback short near-miss: 1w and 1d trend down, 1d vsSma20Atr 1.11 vs 0.75 allowed; an open DOGE short is still watching.",
-      "arms": "1d vsSma20Atr returns to 0.75 or less with a 2R level in the menu",
+      "note": "OI 24h +13.44 on new_longs with funding 14.58, 3.63 over CEX; 1d rangePos 0.63 vs the 0.8 the funding_fade template needs. Leans, not armed.",
+      "arms": "a slot frees and 1d rangePos reaches 0.8 with funding at or above 30",
       "evidence": [
-        "DOGE.tf.1d.vsSma20Atr",
-        "DOGE.tf.1d.trend"
+        "ZEC.pos.oiChg24hPct",
+        "ZEC.pos.fundingAnnPct",
+        "ZEC.tf.1d.rangePos"
       ]
     }
   ],
@@ -67,19 +83,13 @@
       "asset": "XPL",
       "setup_id": "post_liquidation_reclaim",
       "direction": "long",
-      "gap": 0.12
-    },
-    {
-      "asset": "ZEC",
-      "setup_id": "funding_fade",
-      "direction": "short",
-      "gap": 0.21
+      "gap": 0.1
     },
     {
       "asset": "DOGE",
       "setup_id": "htf_pullback",
       "direction": "short",
-      "gap": 0.36
+      "gap": 0.43
     }
   ],
   "new_setups": [],
@@ -93,5 +103,5 @@
     }
   ],
   "unanswered": [],
-  "brief": "Quiet delta-first run (daily mode, tune-day Monday): open setups are 5 of 5 (LINK, BTC, SOL triggered; CRV, DOGE watching), so nothing new is proposed. One tripwire hit, XMR htf_pullback long, is passed for lack of a slot. ZEC is the only market where HL crowding leans (funding 30.95, 20 over CEX, OI 24h +9.68). hl-cycles reads strong_risk_off since 2026-10-31 but is stale (21.2 h), a data gap. Risk skews to chop unless BTC reclaims its 1d sma20; a daily close below 76264 would extend the down trend. Next catalyst: NFP 2026-11-06."
+  "brief": "Delta since the 11-02 02:55 run: BTC 1d rangePos 0.22, OI 24h -1.25, funding 10.95; no fresh imbalance. Five setups stay open (BTC, LINK and SOL triggered; CRV and DOGE watching), so no new plan fits. XMR htf_pullback long is the one tripwire hit, held back by slots. NEAR shows shorts paying (funding -1.45, fundingZ -12.4) into a 6.76% drop. Regime reads strong risk-off since 2026-10-31; NFP on 2026-11-06 is the next catalyst. We lean toward chop, base case; a daily close above 78390 would be the first sign of a turn."
 }

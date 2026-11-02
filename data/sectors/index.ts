@@ -22,6 +22,7 @@ import d20261029 from "./2026-10-29.json" with { type: "json" };
 import d20261030 from "./2026-10-30.json" with { type: "json" };
 import d20261031 from "./2026-10-31.json" with { type: "json" };
 import d20261101 from "./2026-11-01.json" with { type: "json" };
+import d20261102 from "./2026-11-02.json" with { type: "json" };
 
 export const SECTORS_HISTORY: Array<{ date: string; data: unknown }> = [
   { date: "2026-08-30", data: d20260830 },
@@ -44,4 +45,5 @@ export const SECTORS_HISTORY: Array<{ date: string; data: unknown }> = [
   { date: "2026-10-30", data: d20261030 },
   { date: "2026-10-31", data: d20261031 },
   { date: "2026-11-01", data: d20261101 },
+  { date: "2026-11-02", data: d20261102 },
 ];
