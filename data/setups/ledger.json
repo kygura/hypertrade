@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-31T18:55:30.327Z",
+  "updated_at": "2026-11-02T10:57:02.573Z",
   "open": [
     {
       "id": "LINK-short-20261030-1",
@@ -36,7 +36,7 @@
       "r_result": null,
       "triggered_at": "2026-10-30T14:00:00.000Z",
       "created_at": "2026-10-30T14:56:28.171Z",
-      "updated_at": "2026-10-31T18:55:30.327Z",
+      "updated_at": "2026-11-02T10:57:02.573Z",
       "expires_at": "2026-11-06T14:56:28.171Z"
     },
     {
@@ -74,46 +74,8 @@
       "r_result": null,
       "triggered_at": "2026-10-31T02:00:00.000Z",
       "created_at": "2026-10-31T02:57:02.728Z",
-      "updated_at": "2026-10-31T18:55:30.327Z",
+      "updated_at": "2026-11-02T10:57:02.573Z",
       "expires_at": "2026-11-07T02:57:02.728Z"
-    },
-    {
-      "id": "CRV-short-20261031-1",
-      "setup_id": "range_breakout",
-      "levels_source": "menu",
-      "asset": "CRV",
-      "direction": "short",
-      "horizon": "swing",
-      "timeframe": "1d",
-      "thesis": "1d breakout down with volRatio 4.06, OI 24h +4.02 on new_longs flow into a falling price (ret7d -19.62), vsSma20Atr -2.33 and funding 10.95, so no crowded short to squeeze. A retest of the broken 1d low20 is the entry. The other side sees 1d sma200 close below the mark and a 1w range, so risk skews to a bounce if the retest is accepted; low-confidence.",
-      "regime_alignment": "with",
-      "trigger": "4h close back under the broken 1d low20 after a retest from below",
-      "entry": {
-        "low": 0.29647,
-        "high": 0.29912
-      },
-      "invalidation": 0.30887,
-      "invalidation_reason": "acceptance above the prior day high puts price back inside the broken 1d range and ends the breakdown read",
-      "targets": [
-        0.26822,
-        0.1989
-      ],
-      "rr": 2.67,
-      "conviction": "low",
-      "evidence": [
-        "CRV.tf.1d.breakout",
-        "CRV.tf.1d.volRatio",
-        "CRV.pos.oiChg24hPct",
-        "CRV.pos.fundingAnnPct",
-        "CRV.tf.1d.vsSma20Atr"
-      ],
-      "status": "watching",
-      "status_note": null,
-      "r_result": null,
-      "triggered_at": null,
-      "created_at": "2026-10-31T06:56:13.419Z",
-      "updated_at": "2026-10-31T18:55:30.327Z",
-      "expires_at": "2026-11-07T06:56:13.419Z"
     },
     {
       "id": "DOGE-short-20261031-1",
@@ -150,7 +112,7 @@
       "r_result": null,
       "triggered_at": null,
       "created_at": "2026-10-31T10:56:39.814Z",
-      "updated_at": "2026-10-31T18:55:30.327Z",
+      "updated_at": "2026-11-02T10:57:02.573Z",
       "expires_at": "2026-11-07T10:56:39.814Z"
     },
     {
@@ -187,11 +149,49 @@
       "r_result": null,
       "triggered_at": "2026-10-31T14:00:00.000Z",
       "created_at": "2026-10-31T14:56:12.298Z",
-      "updated_at": "2026-10-31T18:55:30.327Z",
+      "updated_at": "2026-11-02T10:57:02.573Z",
       "expires_at": "2026-11-07T14:56:12.298Z"
     }
   ],
   "closed": [
+    {
+      "id": "CRV-short-20261031-1",
+      "setup_id": "range_breakout",
+      "levels_source": "menu",
+      "asset": "CRV",
+      "direction": "short",
+      "horizon": "swing",
+      "timeframe": "1d",
+      "thesis": "1d breakout down with volRatio 4.06, OI 24h +4.02 on new_longs flow into a falling price (ret7d -19.62), vsSma20Atr -2.33 and funding 10.95, so no crowded short to squeeze. A retest of the broken 1d low20 is the entry. The other side sees 1d sma200 close below the mark and a 1w range, so risk skews to a bounce if the retest is accepted; low-confidence.",
+      "regime_alignment": "with",
+      "trigger": "4h close back under the broken 1d low20 after a retest from below",
+      "entry": {
+        "low": 0.29647,
+        "high": 0.29912
+      },
+      "invalidation": 0.30887,
+      "invalidation_reason": "acceptance above the prior day high puts price back inside the broken 1d range and ends the breakdown read",
+      "targets": [
+        0.26822,
+        0.1989
+      ],
+      "rr": 2.67,
+      "conviction": "low",
+      "evidence": [
+        "CRV.tf.1d.breakout",
+        "CRV.tf.1d.volRatio",
+        "CRV.pos.oiChg24hPct",
+        "CRV.pos.fundingAnnPct",
+        "CRV.tf.1d.vsSma20Atr"
+      ],
+      "status": "cancelled",
+      "status_note": "The thesis rested on funding 10.95 with no crowded short; funding is now -15.5, 16.98 under CEX, so shorts pay and squeeze fuel exists while the mark sits under the unfilled entry zone (L2).",
+      "r_result": null,
+      "triggered_at": null,
+      "created_at": "2026-10-31T06:56:13.419Z",
+      "updated_at": "2026-11-02T10:57:02.573Z",
+      "expires_at": "2026-11-07T06:56:13.419Z"
+    },
     {
       "id": "XPL-short-20261031-1",
       "setup_id": "failed_breakout",
@@ -901,7 +901,7 @@
     }
   ],
   "stats": {
-    "closed_90d": 19,
+    "closed_90d": 20,
     "triggered_90d": 19,
     "hit_rate": 0.11,
     "avg_r": -0.09
