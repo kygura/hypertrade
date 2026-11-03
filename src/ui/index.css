@@ -3,7 +3,6 @@
 /* Theme overrides — see src/ui/themes/README.md. Each file scopes itself to
    :root[data-theme='<id>'] and only redefines tokens declared below. */
 @import './themes/hyperdash.css';
-@import './themes/tradexyz.css';
 
 @font-face {
   font-family: 'Geist Mono';

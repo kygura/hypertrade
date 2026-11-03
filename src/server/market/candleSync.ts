@@ -16,19 +16,12 @@
 import { fetchCandles as fetchHlCandles } from "../../shared/hl-client.js";
 import { TF_MS, type Timeframe } from "../../shared/timeframes.js";
 import * as db from "../db.js";
+import { monthStart, nextBarT, type Bar } from "../../shared/overlay.js";
 import { EXTERNAL_SOURCES, type ExternalSource, type ExtBar } from "./sources.js";
 
 const DAY = 86_400_000;
 
-export interface Bar {
-  t: number;
-  o: number;
-  h: number;
-  l: number;
-  c: number;
-  v: number;
-  src: string;
-}
+export type { Bar };
 
 export type LayerState = db.ExtLayerState;
 export type SyncState = db.SyncState;
@@ -81,16 +74,7 @@ export const defaultDeps: SyncDeps = {
 
 // ─── pure helpers ───
 
-/** Start of the UTC calendar month containing t, shifted by `add` months. */
-export function monthStart(t: number, add = 0): number {
-  const d = new Date(t);
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + add, 1);
-}
-
-/** Open time of the bar after the one opening at t. */
-export function nextBarT(t: number, tf: Timeframe): number {
-  return tf === "1M" ? monthStart(t, 1) : t + TF_MS[tf];
-}
+export { monthStart, nextBarT };
 
 /** True when `next` is more than one bar after `prev` (a hole in the series). */
 export function isGap(prev: number, next: number, tf: Timeframe): boolean {

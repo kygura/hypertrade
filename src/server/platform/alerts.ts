@@ -31,7 +31,8 @@ export function createAlerts(deps: {
   const now = deps.now ?? Date.now;
   const startedAt = now();
   const pushScore = deps.pushScore ?? envNum("PLATFORM_PUSH_SCORE", 3);
-  const link = deps.appUrl ? `\n\n${deps.appUrl.replace(/\/+$/, "")}/` : "";
+  // The setups feed (the Cockpit) lives at /feed; / is the MARKET landing.
+  const link = deps.appUrl ? `\n\n${deps.appUrl.replace(/\/+$/, "")}/feed` : "";
   const pushed = new Set<string>();
   const novelSent = new Set<string>();
   let silent = false;

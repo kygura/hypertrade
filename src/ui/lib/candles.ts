@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { fetchCandles, fetchFundingPage, HL_FUNDING_PAGE, type FundingPoint } from '../../shared/hl-client'
 import type { ChartBar, CandlesResponse } from '../../shared/market'
-import type { Timeframe } from '../../shared/timeframes'
+import { joinOverlays } from '../../shared/overlay'
+import { TF_MS, type Timeframe } from '../../shared/timeframes'
 import { api, ApiError, NetworkError } from './api'
 
 // Paged chart data for one (coin, timeframe). The first page is the latest
 // bars; `loadOlder` fetches the page before the oldest bar held (the server
 // backfills it on demand), `refreshHead` re-reads the newest bars after a
 // websocket drop, `applyLive` folds a streamed candle into the last bar.
+// When /api/candles fails (no database, no API), the latest page comes
+// straight from Hyperliquid instead: `source: 'hl'`, no older pages, no OI.
 
 const PAGE = 1500
 const HEAD_REFRESH = 300
@@ -23,6 +27,8 @@ export interface CandlePages {
   syncError: string | null
   funding: CandlesResponse['funding'] | null
   oi: CandlesResponse['oi'] | null
+  /** Where the bars came from: our candle store, or Hyperliquid directly. */
+  source: 'api' | 'hl'
 }
 
 const EMPTY: CandlePages = {
@@ -36,6 +42,7 @@ const EMPTY: CandlePages = {
   syncError: null,
   funding: null,
   oi: null,
+  source: 'api',
 }
 
 /** Upserts `incoming` into `bars` by open time; both ascending. */
@@ -49,6 +56,71 @@ export function mergeBars(bars: ChartBar[], incoming: ChartBar[]): ChartBar[] {
 const path = (coin: string, tf: Timeframe, limit: number, before?: number) =>
   `/candles/${encodeURIComponent(coin)}?tf=${tf}&limit=${limit}${before != null ? `&before=${before}` : ''}`
 
+const HOUR = 3_600_000
+/** fundingHistory pages fetched per fallback load: 2000 hourly settlements, about 83 days. */
+const HL_FUNDING_PAGES = 4
+
+export interface HlLoadDeps {
+  fetch?: typeof fetch
+  now?: () => number
+}
+
+/**
+ * The latest page straight from Hyperliquid: up to PAGE candles, funding and
+ * premium joined on for the most recent HL_FUNDING_PAGES pages of history.
+ * HL keeps no OI history, so `oi` stays empty.
+ */
+export async function loadFromHl(coin: string, tf: Timeframe, deps: HlLoadDeps = {}): Promise<CandlesResponse> {
+  const fetchFn = deps.fetch ?? fetch
+  const now = (deps.now ?? Date.now)()
+  const candles = await fetchCandles(coin, tf, now - PAGE * TF_MS[tf], now, fetchFn)
+  const bars = candles.slice(-PAGE).map((c) => ({ t: c.t, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v, src: 'hl' }))
+  const funding: FundingPoint[] = []
+  if (bars.length > 0) {
+    let cursor = Math.max(bars[0]!.t, now - HL_FUNDING_PAGES * HL_FUNDING_PAGE * HOUR)
+    for (let i = 0; i < HL_FUNDING_PAGES && cursor < now; i++) {
+      const page = await fetchFundingPage(coin, cursor, now, fetchFn)
+      funding.push(...page)
+      if (page.length < HL_FUNDING_PAGE) break
+      cursor = page[page.length - 1]!.t + 1
+    }
+  }
+  return {
+    coin,
+    tf,
+    bars: joinOverlays(bars, tf, funding, []),
+    hasMore: false,
+    error: null,
+    funding: { from: funding[0]?.t ?? null, complete: false },
+    oi: { from: null },
+  }
+}
+
+/**
+ * First page: /api/candles, or Hyperliquid when that fails for any reason but
+ * a 401 (the login redirect is already in flight). If HL fails too, the API
+ * error is the one thrown, so offline still reads as offline.
+ */
+export async function loadLatestPage(
+  coin: string,
+  tf: Timeframe,
+  deps: { get?: (path: string) => Promise<CandlesResponse>; hl?: HlLoadDeps } = {},
+): Promise<{ resp: CandlesResponse; source: CandlePages['source'] }> {
+  const get = deps.get ?? ((p: string) => api.get<CandlesResponse>(p))
+  try {
+    return { resp: await get(path(coin, tf, PAGE)), source: 'api' }
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) throw err
+    console.warn(`candles: /api failed for ${coin} ${tf}, loading from Hyperliquid`, err)
+    try {
+      return { resp: await loadFromHl(coin, tf, deps.hl), source: 'hl' }
+    } catch (hlErr) {
+      console.warn(`candles: Hyperliquid fallback failed for ${coin} ${tf}`, hlErr)
+      throw err
+    }
+  }
+}
+
 export function useCandlePages(coin: string, tf: Timeframe) {
   const [state, setState] = useState<CandlePages>(EMPTY)
   const key = `${coin}|${tf}`
@@ -59,12 +131,12 @@ export function useCandlePages(coin: string, tf: Timeframe) {
   const loadLatest = useCallback(() => {
     const k = key
     setState((s) => ({ ...EMPTY, generation: s.generation }))
-    api
-      .get<CandlesResponse>(path(coin, tf, PAGE))
-      .then((r) => {
+    loadLatestPage(coin, tf)
+      .then(({ resp: r, source }) => {
         if (keyRef.current !== k) return
         setState((s) => ({
           ...EMPTY,
+          source,
           bars: r.bars,
           generation: s.generation + 1,
           loading: false,
@@ -120,14 +192,14 @@ export function useCandlePages(coin: string, tf: Timeframe) {
 
   const refreshHead = useCallback(() => {
     const k = key
-    api
-      .get<CandlesResponse>(path(coin, tf, HEAD_REFRESH))
+    const head = state.source === 'hl' ? loadFromHl(coin, tf) : api.get<CandlesResponse>(path(coin, tf, HEAD_REFRESH))
+    head
       .then((r) => {
         if (keyRef.current !== k) return
         setState((s) => ({ ...s, bars: mergeBars(s.bars, r.bars) }))
       })
       .catch(() => {})
-  }, [coin, tf, key])
+  }, [coin, tf, key, state.source])
 
   /** Folds a streamed candle in; returns true when it opened a new bar. */
   const applyLive = useCallback((bar: Pick<ChartBar, 't' | 'o' | 'h' | 'l' | 'c' | 'v'>) => {

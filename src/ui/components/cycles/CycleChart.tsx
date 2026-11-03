@@ -19,7 +19,6 @@ import {
 import { fmtPct } from '../../../shared/format'
 import type { CoolingHigh, CycleForecast } from '../../../shared/cycleForecast'
 import { CYCLE_PHASES, DAY_MS, weekStart, type CycleBar, type CycleCoin, type CyclePhase } from '../../../shared/cycles'
-import { useTheme } from '../../themes/registry'
 import { Segmented } from '../Segmented'
 import { alpha, blend, css, fmtDay, fmtMonth, fmtUsdPx, PHASE_LABEL, PHASE_VAR } from './format'
 
@@ -88,7 +87,6 @@ export function CycleChart({
   tf: '1d' | '1w'
   onTfChange: (tf: '1d' | '1w') => void
 }) {
-  const [theme] = useTheme()
   const [range, setRange] = useState<Range>('all')
   const [showProj, setShowProj] = useState(true)
   const [showCool, setShowCool] = useState(true)
@@ -103,7 +101,7 @@ export function CycleChart({
   const last = bars[bars.length - 1]
   const projEnd = Math.max(forecast.top?.max ?? 0, forecast.onset?.max ?? 0, nextHalving) + 60 * DAY_MS
 
-  // ── chart lifecycle: rebuilt on theme change so canvas colours follow tokens ──
+  // ── chart lifecycle: built once on mount; canvas colours read from tokens ──
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -153,7 +151,7 @@ export function CycleChart({
       chartRef.current = null
       seriesRef.current = null
     }
-  }, [theme])
+  }, [])
 
   // ── data ──
   useEffect(() => {

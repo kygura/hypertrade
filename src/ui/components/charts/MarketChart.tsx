@@ -21,7 +21,6 @@ import { fundingApr, type ChartBar } from '../../../shared/market'
 import { TIMEFRAMES, type Timeframe } from '../../../shared/timeframes'
 import { useCandlePages } from '../../lib/candles'
 import { useHlReconnect, useHlSubscription, type WsCandle } from '../../lib/hlWs'
-import { useTheme } from '../../themes/registry'
 import { Segmented } from '../Segmented'
 import { AsyncBody, SkeletonRows } from '../state'
 import { alpha, css } from './theme'
@@ -45,7 +44,8 @@ const OVERLAYS: { id: Overlay; label: string; title: string }[] = [
   { id: 'oi', label: 'OI', title: 'Open interest, USD (15-minute snapshots)' },
   { id: 'premium', label: 'PREM', title: 'Mark vs oracle premium, basis points' },
 ]
-const DEFAULT_OVERLAYS: Record<Overlay, boolean> = { vol: true, funding: true, oi: true, premium: false }
+const DEFAULT_OVERLAYS: Record<Overlay, boolean> = { vol: true, funding: true, oi: true, premium: true }
+const NO_OI_TITLE = 'Hyperliquid publishes no OI history; we only have it for coins we have been snapshotting'
 const PREFS_KEY = 'hypertrade.chart.overlays'
 
 const SRC_LABEL: Record<string, string> = { hl: 'HL', binance: 'BINANCE', bitstamp: 'BITSTAMP' }
@@ -129,8 +129,7 @@ interface Series {
 
 export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timeframe; onTfChange: (tf: Timeframe) => void }) {
   const data = useCandlePages(coin, tf)
-  const [theme] = useTheme()
-  const [overlays, setOverlays] = useState(loadPrefs)
+  const [prefs, setPrefs] = useState(loadPrefs)
   const [logScale, setLogScale] = useState(false)
   const [hover, setHover] = useState<number | null>(null)
 
@@ -139,7 +138,7 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
   const seriesRef = useRef<Series | null>(null)
   const [chartVersion, setChartVersion] = useState(0)
   const pushed = useRef<{ version: number; generation: number; first: number; last: number; len: number } | null>(null)
-  /** Last visible time range, so a rebuild (theme, pane toggle) keeps the view. */
+  /** Last visible time range, so a rebuild (pane toggle) keeps the view. */
   const view = useRef<{ generation: number; range: { from: Time; to: Time } } | null>(null)
 
   // Latest values for imperative callbacks.
@@ -151,11 +150,14 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
   hasMoreRef.current = data.hasMore
 
   const hasBars = data.bars.length > 0
+  // No bar carries OI (e.g. bars straight from HL): the OI pane would be empty, so it stays off.
+  const hasOi = useMemo(() => data.bars.some((b) => b.oi != null), [data.bars])
+  const overlays = useMemo(() => ({ ...prefs, oi: prefs.oi && hasOi }), [prefs, hasOi])
   const overlayKey = OVERLAYS.map((o) => (overlays[o.id] ? o.id : '')).join(',')
   const lastPrice = data.bars[data.bars.length - 1]?.c ?? 0
   const precision = precisionFor(lastPrice)
 
-  // ── chart lifecycle: rebuilt when the theme or the pane set changes ──
+  // ── chart lifecycle: rebuilt when the pane set changes ──
   useEffect(() => {
     const el = containerRef.current
     if (!el || !hasBars) return
@@ -284,7 +286,7 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
       seriesRef.current = null
     }
     // tf is read for axis formatting; a tf change also swaps the data generation.
-  }, [theme, overlayKey, hasBars, tf]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [overlayKey, hasBars, tf]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     chartRef.current?.priceScale('right').applyOptions({ mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal })
@@ -367,8 +369,8 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
   const spans = useMemo(() => sourceSpans(data.bars), [data.bars])
 
   const toggle = (id: Overlay) => {
-    const next = { ...overlays, [id]: !overlays[id] }
-    setOverlays(next)
+    const next = { ...prefs, [id]: !prefs[id] }
+    setPrefs(next)
     savePrefs(next)
   }
 
@@ -385,7 +387,8 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
                 type="button"
                 role="checkbox"
                 aria-checked={overlays[o.id]}
-                title={o.title}
+                disabled={o.id === 'oi' && !hasOi}
+                title={o.id === 'oi' && !hasOi ? NO_OI_TITLE : o.title}
                 onClick={() => toggle(o.id)}
                 className="seg-item"
               >
@@ -436,7 +439,7 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
               <span className="absolute left-2 top-1 text-xs text-text-secondary pulse-label">loading history…</span>
             )}
           </div>
-          <Footnote spans={spans} hasMore={data.hasMore} funding={data.funding} oi={data.oi} syncError={data.syncError} overlays={overlays} />
+          <Footnote source={data.source} spans={spans} hasMore={data.hasMore} funding={data.funding} oi={data.oi} syncError={data.syncError} overlays={overlays} />
         </>
         )}
       </AsyncBody>
@@ -491,6 +494,7 @@ function Legend({
 }
 
 function Footnote({
+  source,
   spans,
   hasMore,
   funding,
@@ -498,6 +502,7 @@ function Footnote({
   syncError,
   overlays,
 }: {
+  source: 'api' | 'hl'
   spans: { src: string; from: number }[]
   hasMore: boolean
   funding: { from: number | null; complete: boolean } | null
@@ -507,12 +512,15 @@ function Footnote({
 }) {
   const date = (ms: number) => new Date(ms).toISOString().slice(0, 10)
   const parts: string[] = []
-  parts.push(spans.map((s) => `${SRC_LABEL[s.src] ?? s.src} ${date(s.from)}`).join(' → ') + (hasMore ? ' · scroll left for more' : ' · full history'))
+  if (source === 'hl') parts.push('live from Hyperliquid · last ≤1500 bars')
+  else parts.push(spans.map((s) => `${SRC_LABEL[s.src] ?? s.src} ${date(s.from)}`).join(' → ') + (hasMore ? ' · scroll left for more' : ' · full history'))
   if (overlays.funding || overlays.premium) {
     parts.push(
       funding?.from != null
-        ? `funding since ${date(funding.from)}${funding.complete ? ' (listing)' : ', older syncing'}`
-        : 'funding syncing',
+        ? `funding since ${date(funding.from)}${funding.complete ? ' (listing)' : source === 'hl' ? '' : ', older syncing'}`
+        : source === 'hl'
+          ? 'no funding in view'
+          : 'funding syncing',
     )
   }
   if (overlays.oi) {

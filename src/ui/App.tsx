@@ -1,9 +1,9 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router'
 import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Login } from './pages/Login'
-import { Markets } from './pages/Markets'
+import { Market } from './pages/Market'
 import { Branches } from './pages/Branches'
 import { BranchDetail } from './pages/BranchDetail'
 import { Sectors } from './pages/Sectors'
@@ -31,9 +31,10 @@ const Cycles = lazy(() => import('./pages/Cycles').then((m) => ({ default: m.Cyc
 const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
 const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
 const LAB_TAB_PATHS = ['/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
-// Terminal family (docs/design/terminal.md §1.1, C1): `/` is the Cockpit, `/terminal`
-// the Terminal; each sub-tab is its own route, loaded with it. `/overview`
-// redirects to `/markets`.
+// Terminal family (docs/design/terminal.md §1.1, C1), parked out of the nav but
+// reachable by URL: `/feed` is the Cockpit, `/terminal` the Terminal; each sub-tab
+// is its own route, loaded with it. `/` is the MARKET landing; `/overview` and
+// `/markets` redirect to it.
 const Cockpit = lazy(() => import('./pages/cockpit/Cockpit').then((m) => ({ default: m.Cockpit })))
 const Terminal = lazy(() => import('./pages/terminal/Terminal').then((m) => ({ default: m.Terminal })))
 const Journal = lazy(() => import('./pages/terminal/Journal').then((m) => ({ default: m.Journal })))
@@ -41,18 +42,21 @@ const Theses = lazy(() => import('./pages/terminal/Theses').then((m) => ({ defau
 const Query = lazy(() => import('./pages/terminal/Query').then((m) => ({ default: m.Query })))
 const Order = lazy(() => import('./pages/terminal/Order').then((m) => ({ default: m.Order })))
 const Watch = lazy(() => import('./pages/terminal/Watch').then((m) => ({ default: m.Watch })))
-// `/asset/:coin` is a drill-in of `/terminal` (DESIGN-terminal §15.4), under TerminalTabs.
-const Asset = lazy(() => import('./pages/terminal/Asset').then((m) => ({ default: m.Asset })))
 const TERMINAL_PAGES = [
-  { path: '/', Page: Cockpit },
+  { path: '/feed', Page: Cockpit },
   { path: '/terminal', Page: Terminal },
   { path: '/journal', Page: Journal },
   { path: '/theses', Page: Theses },
   { path: '/query', Page: Query },
   { path: '/order', Page: Order },
   { path: '/watch', Page: Watch },
-  { path: '/asset/:coin', Page: Asset },
 ]
+
+/** `/asset/:coin` (the old Terminal drill-in) now lands on the coin page. */
+function AssetRedirect() {
+  const { coin = '' } = useParams<{ coin: string }>()
+  return <Navigate to={`/markets/${encodeURIComponent(coin)}`} replace />
+}
 
 // Router — docs/SPEC.md route map. All routes except /login render inside
 // AppShell. Auth guard: AppShell's /auth/me probe on mount plus the api.ts
@@ -124,7 +128,17 @@ export default function App() {
             }
           />
         ))}
-        <Route path="/overview" element={<Navigate to="/markets" replace />} />
+        <Route
+          path="/"
+          element={
+            <Shell>
+              <Market />
+            </Shell>
+          }
+        />
+        <Route path="/overview" element={<Navigate to="/" replace />} />
+        <Route path="/markets" element={<Navigate to="/" replace />} />
+        <Route path="/asset/:coin" element={<AssetRedirect />} />
         <Route
           path="/branches"
           element={
@@ -158,21 +172,13 @@ export default function App() {
           }
         />
         <Route
-          path="/markets"
-          element={
-            <MarketLayout>
-              <Markets />
-            </MarketLayout>
-          }
-        />
-        <Route
           path="/markets/:coin"
           element={
-            <MarketLayout>
+            <Shell>
               <Suspense fallback={<SkeletonRows />}>
                 <MarketDrill />
               </Suspense>
-            </MarketLayout>
+            </Shell>
           }
         />
         {['/cycles', '/cycles/:coin'].map((path) => (

@@ -2,7 +2,7 @@ import { SectionTabs, type SectionTab } from '../SectionTabs'
 import { useLabData } from './LabData'
 
 // LabTabs — the RESEARCH family row (docs/design/README.md §10.9): workflow order
-// SEARCH · RUNS · CATALOGUE · PULSE · BRANCHES, a SectionTabs wrapper. Sticky under
+// SEARCH · RUNS · CATALOGUE · PULSE, a SectionTabs wrapper (BRANCHES is parked, /branches by URL). Sticky under
 // the top bar; the row is --subnav-h tall (the lg search form sticks under both).
 
 export type LabTab = 'search' | 'runs' | 'catalogue' | 'pulse'
@@ -37,7 +37,6 @@ export function LabTabs() {
       title: firing ? 'a catalogued rule is firing' : 'no catalogued rule is firing',
       match: inLab('pulse'),
     },
-    { to: '/branches', label: 'BRANCHES', short: 'BRNCH', match: (p) => p === '/branches' || p.startsWith('/branches/') },
   ]
   return <SectionTabs label="research sections" tabs={tabs} />
 }

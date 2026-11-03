@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Segmented } from "./Segmented";
-import { DEFAULT_THEME, THEMES } from "../themes/registry";
 
 // Render-check (react-dom/server, no jsdom), same approach as
 // ModelSelector.test.tsx: markup and ARIA only; SSR can't dispatch events.
@@ -61,13 +60,5 @@ describe("Segmented", () => {
     );
     expect(html).toContain('<span class="md:hidden">HD</span>');
     expect(html).toContain('<span class="hidden md:inline">HYPERDASH</span>');
-  });
-});
-
-describe("theme registry", () => {
-  test("Hyperdash is the default and listed first", () => {
-    expect(DEFAULT_THEME).toBe("hyperdash");
-    expect(THEMES[0]?.id).toBe("hyperdash");
-    expect(THEMES.map((t) => t.id).sort()).toEqual(["hyperdash", "hyperion", "tradexyz"]);
   });
 });
