@@ -141,7 +141,14 @@ jobs:
   # without collecting. No curl --retry (it also retries timeouts and 5xx,
   # and a timed-out run keeps going on Vercel): one retry, and only when the
   # connection never opened (curl exit 6/7).
+  # After collect, never beside it: started together, both requests land on
+  # one Vercel instance and share its 3-connection pool, and every query there
+  # stalls for the 30 s query timeout (21 of 52 such runs over 10 days, none of
+  # 12 runs without lab), so collect spills and goes red. !cancelled(): a
+  # failed collect still runs lab.
   lab:
+    needs: collect
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Collect Lab history

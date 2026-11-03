@@ -1,0 +1,234 @@
+name: Radar fallback
+
+# Runs the radar (ROUTINE.md) on the Anthropic API when the scheduled cloud
+# routine did not. A cloud run is rejected outright once the claude.ai session
+# limit is spent, and cloud sessions cannot authenticate with an API key, so
+# this is the API-billed path. Each slot is ~1h40 after the routine's (07:41 and
+# 17:41 Atlantic/Canary, the scheduled task's cron: keep SLOTS in step with it;
+# GitHub cron is UTC, so ~2h40 in summer time).
+#
+# No model call when radar notes landed since the latest slot (the cloud ran,
+# and reports a stuck landing itself) or a cloud radar PR opened in the last
+# 30 min. A cloud radar PR open longer is reported as `landing stuck` (red run
+# plus push), not run around. Claude researches and
+# writes only today's notes, /tmp/run/calls.json and /tmp/run/push.txt; Bash
+# runs only the radar commands; the API key reaches Claude Code through
+# apiKeyHelper, never its environment. This workflow then lands data/radar/ with
+# routine-land's gate (radar files only, typecheck, tests) by pushing to master
+# itself (a PR opened with GITHUB_TOKEN would not trigger routine-land), and
+# sends the push.
+#
+# Repository secrets: ANTHROPIC_API_KEY (required; unset, the run is a green
+# no-op; use a dedicated Console workspace key with a monthly spend limit),
+# EXA_API_KEY (optional; keyless Exa is rate-limited), NTFY_TOPIC (optional
+# NTFY_SERVER, NTFY_TOKEN), LAB_API_TOKEN and APP_URL (optional novelty read).
+
+on:
+  schedule:
+    - cron: "23 9,19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: radar-fallback
+  cancel-in-progress: false
+
+env:
+  CLAUDE_CODE_VERSION: "2.1.316"
+  RADAR_MODEL: claude-sonnet-5-5
+  # Hard cap per run (claude --max-budget-usd).
+  RADAR_MAX_USD: "5"
+  # The cloud routine's slots, Atlantic/Canary.
+  SLOTS: "17:41 07:41"
+
+jobs:
+  radar:
+    # Only master: a dispatch from another branch would land that branch on master.
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          # Claude runs in this checkout: no token in .git/config. Only the push step authenticates.
+          persist-credentials: false
+
+      - name: Did the cloud routine run?
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: |
+          skip() { echo "::notice::$1; no fallback run"; echo "run=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          # The latest slot that has started, in epoch seconds.
+          now=$(date +%s); slot=0
+          for day in today yesterday; do
+            for t in $SLOTS; do
+              s=$(TZ=Atlantic/Canary date -d "$day $t" +%s)
+              if [ "$s" -le "$now" ] && [ "$s" -gt "$slot" ]; then slot=$s; fi
+            done
+          done
+          last=$(git log -1 --format=%ct -- data/radar/notes/)
+          if [ -n "$last" ] && [ "$last" -ge "$slot" ]; then
+            skip "radar notes landed $(git log -1 --format=%cI -- data/radar/notes/), after this slot: the cloud routine ran"
+          fi
+          [ "$HAS_KEY" = "true" ] || skip "ANTHROPIC_API_KEY is not set"
+          # Fails the step (red) if the API call fails: never run blind beside a cloud run.
+          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --base master --state open --json number,title,headRefName,createdAt \
+            --jq '[.[] | select((.headRefName | startswith("claude-code/")) and (.title | startswith("feat(routine): radar")))]')
+          stuck=$(jq -r '[.[] | select(now - (.createdAt | fromdateiso8601) >= 1800) | "#\(.number)"] | join(" ")' <<<"$prs")
+          if [ -n "$stuck" ]; then
+            echo "stuck=$stuck" >> "$GITHUB_OUTPUT"
+            skip "radar landing stuck: $stuck open over 30 min"
+          fi
+          if [ "$(jq length <<<"$prs")" != "0" ]; then skip "a cloud radar PR is open (routine-land lands it)"; fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.gate.outputs.run == 'true' || steps.gate.outputs.stuck != ''
+
+      - name: Prepare the run
+        if: steps.gate.outputs.run == 'true' || steps.gate.outputs.stuck != ''
+        env:
+          RUN: ${{ steps.gate.outputs.run }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          APP_URL: ${{ secrets.APP_URL }}
+          LAB_API_TOKEN: ${{ secrets.LAB_API_TOKEN }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+        run: |
+          bun install --frozen-lockfile
+          RUN_DATE=$(TZ=Atlantic/Canary date +%F)
+          echo "RUN_DATE=$RUN_DATE" >> "$GITHUB_ENV"
+          [ "$RUN" = "true" ] || exit 0
+          npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+          echo "RUN_START=$(date -u +%H:%M)" >> "$GITHUB_ENV"
+          mkdir -p /tmp/run && rm -f /tmp/run/push.txt /tmp/run/calls.json
+          # ROUTINE.md §0.3, done here so Claude needs no shell beyond the radar commands.
+          {
+            echo "last radar notes commit: $(git log -1 --format=%cI -- data/radar/notes/)"
+            ls -1r data/radar/notes/*.md 2>/dev/null | head -5 | xargs -r cat | head -c 6000
+          } > /tmp/run/memory.txt
+          if [ -n "$LAB_API_TOKEN" ]; then
+            curl -sf --max-time 20 -H "Authorization: Bearer $LAB_API_TOKEN" \
+              "${APP_URL:-https://hypertrade-ten.vercel.app}/api/platform/novelty?days=3" | head -c 3000 > /tmp/run/novelty.txt || true
+            [ -s /tmp/run/novelty.txt ] || rm -f /tmp/run/novelty.txt
+          fi
+          # Secrets live in files outside the checkout that Claude's Read is denied; the key
+          # file is removed when Claude exits.
+          umask 077
+          key="$RUNNER_TEMP/anthropic.key"
+          printf '%s' "$ANTHROPIC_API_KEY" > "$key"
+          url="https://mcp.exa.ai/mcp"
+          [ -z "$EXA_API_KEY" ] || url="$url?exaApiKey=$EXA_API_KEY"
+          jq -n --arg url "$url" '{mcpServers: {Exa: {type: "http", url: $url}}}' > "$RUNNER_TEMP/mcp.json"
+          # Only what the runbook needs. --tools limits the built-ins; deny wins over allow; dontAsk
+          # denies any listed tool use not allowed here.
+          # Path rules must be Edit(...): they cover the Write tool too, and Write(path) rules are never matched.
+          jq -n --arg helper "cat $key" --arg notes "Edit(./data/radar/notes/$RUN_DATE.md)" '{
+            apiKeyHelper: $helper,
+            permissions: {
+              allow: [
+                "Bash(bun run radar)", "Bash(bun run radar --save)", "Bash(bun run radar score)",
+                "Bash(bun run radar show:*)", "Bash(bun run radar land /tmp/run/calls.json)",
+                "Read", $notes, "Edit(//tmp/run/calls.json)", "Edit(//tmp/run/push.txt)",
+                "WebSearch", "mcp__Exa__web_search_exa", "mcp__Exa__web_fetch_exa"
+              ],
+              deny: [
+                "Read(//proc/**)", "Read(//sys/**)", "Read(//home/runner/work/_temp/**)",
+                "Read(//home/runner/.claude/**)", "Read(//home/runner/.claude.json)",
+                "Read(./.git/**)", "Read(./.env*)",
+                "WebFetch", "Task", "Agent"
+              ]
+            }
+          }' > "$RUNNER_TEMP/settings.json"
+
+      - name: Radar (Claude, API key)
+        id: claude
+        if: steps.gate.outputs.run == 'true'
+        timeout-minutes: 30
+        run: |
+          rc=0
+          claude -p "Read ROUTINE.md and follow it. RADAR_RUNNER=actions, RUN_DATE=$RUN_DATE, started $RUN_START UTC: follow its Fallback runner section." \
+            --model "$RADAR_MODEL" \
+            --max-turns 80 \
+            --max-budget-usd "$RADAR_MAX_USD" \
+            --permission-mode dontAsk \
+            --tools Bash,Read,Edit,Write,WebSearch,ToolSearch \
+            --settings "$RUNNER_TEMP/settings.json" \
+            --strict-mcp-config --mcp-config "$RUNNER_TEMP/mcp.json" \
+            --output-format json > "$RUNNER_TEMP/claude.json" || rc=$?
+          rm -f "$RUNNER_TEMP/anthropic.key"
+          jq -r '"turns \(.num_turns) · cost $\(.total_cost_usd) · \(.subtype)\n\n\(.result // "")"' "$RUNNER_TEMP/claude.json" | tee -a "$GITHUB_STEP_SUMMARY" || true
+          err=$(jq -r '.is_error' "$RUNNER_TEMP/claude.json" 2>/dev/null || echo true)
+          if [ "$rc" = 0 ] && [ "$err" = false ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::claude exited $rc (is_error: $err); landing what code wrote"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Lands even after a failed Claude run: calls.json and the push lines were written by code
+      # and must not part ways.
+      - name: Check and commit data/radar/
+        id: land
+        if: steps.gate.outputs.run == 'true' && !cancelled()
+        run: |
+          git config core.hooksPath /dev/null
+          changed=$( { git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u)
+          if [ -z "$changed" ]; then echo "::notice::nothing to land"; exit 0; fi
+          bad=$(printf '%s\n' "$changed" | grep -vE '^data/radar/(notes/[0-9]{4}-[0-9]{2}-[0-9]{2}\.md|state\.json|calls\.json)$' || true)
+          if [ -n "$bad" ]; then echo "::error::unexpected files changed; not landing:"; echo "$bad"; exit 1; fi
+          bun run typecheck
+          bun test ./src
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- data/radar/
+          git commit -q -m "feat(routine): radar $RUN_DATE"
+          echo "commit=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push to master
+        id: master
+        if: steps.land.outputs.commit == 'true' && !cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # master can move during the run; a conflict under data/radar/ means a second radar run landed: stop red.
+          git pull -q --rebase origin master
+          if [ "$(git rev-list --count origin/master..HEAD)" != 1 ]; then echo "::error::more than the radar commit would land"; exit 1; fi
+          git push -q origin HEAD:master
+
+      - name: Send the push
+        if: always() && (steps.gate.outputs.run == 'true' || steps.gate.outputs.stuck != '')
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_SERVER: ${{ secrets.NTFY_SERVER }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STUCK: ${{ steps.gate.outputs.stuck }}
+          CLAUDE_OK: ${{ steps.claude.outputs.ok }}
+          LAND: ${{ steps.land.outcome }}
+          COMMIT: ${{ steps.land.outputs.commit }}
+          MASTER: ${{ steps.master.outcome }}
+        run: |
+          head=()
+          [ -z "$STUCK" ] || head+=("radar landing stuck: $STUCK")
+          if [ -z "$STUCK" ]; then
+            [ "$CLAUDE_OK" = "true" ] || head+=("radar fallback run incomplete: $RUN_URL")
+            if [ "$LAND" != "success" ] || { [ "$COMMIT" = "true" ] && [ "$MASTER" != "success" ]; }; then
+              head+=("radar landing failed: $RUN_URL")
+            fi
+          fi
+          body=$( { [ ${#head[@]} -eq 0 ] || printf '%s\n' "${head[@]}"; cat /tmp/run/push.txt 2>/dev/null || true; } )
+          [ -n "$body" ] || exit 0
+          if [ -z "$NTFY_TOPIC" ]; then echo "::warning::NTFY_TOPIC is not set; push not sent"; exit 0; fi
+          bun run signals:notify "hypertrade radar ${RUN_DATE:-} (API fallback)" "$body"
+
+      - name: Fail on a stuck landing or an incomplete run
+        if: always() && (steps.gate.outputs.stuck != '' || (steps.gate.outputs.run == 'true' && steps.claude.outputs.ok != 'true'))
+        run: exit 1
