@@ -1,5 +1,11 @@
 # Consolidation — one front, fewer cells, one way to do each thing
 
+> **Superseded (2026-11) by the live-market rethink.** The nav is now two cells, MARKET
+> (`/`, the live market read) and RESEARCH (`/lab`); the cells and tabs this file
+> settles are parked, not deleted (routes still work by URL). `docs/SPEC.md` § Product
+> and "UI views", `docs/design/README.md` §5 and `docs/TASKS.md` "Parked" hold the current
+> state. The rest of this file is the historical record.
+
 Status: Done: all four PRs shipped, including the type-scale codemod and its grep check
 (`bun run check:type-scale`; the scale classes set font-size only). Deferred, not done:
 the optional `runToolLoop` extraction (the analyst and desk loops stay separate), and a

@@ -1,34 +1,19 @@
-# Themes
+# Theme
 
-HYPERTRADE ships three looks. The token defaults in `../index.css` are
-Hyperion (docs/design/README.md); every other look is a **theme**: one CSS file scoped to
-`:root[data-theme='<id>']` that only redefines tokens from the contract
-below. No component forks, no per-theme JSX.
+HYPERTRADE has one look: Hyperdash. The token defaults in `../index.css`
+are Hyperion (docs/design/README.md) and stay as the base; `hyperdash.css`
+redefines tokens from the contract below under `:root[data-theme='hyperdash']`
+and styles the structural hooks. `index.html` ships
+`data-theme="hyperdash"` on `<html>` and loads its web font (Host Grotesk,
+Google Fonts). There is no theme picker and no runtime theme state; charts
+read token values once on mount.
 
-| id | file | design system |
-|---|---|---|
-| `hyperdash` (default) | `hyperdash.css` | `design-systems/hyperdash/` |
-| `tradexyz` | `tradexyz.css` | `design-systems/tradexyz/` |
-| `hyperion` | `../index.css` (the unscoped defaults) | `docs/design/README.md` |
-
-`registry.ts` lists themes (`DEFAULT_THEME` picks the default), applies
-`data-theme` on `<html>`, lazy-loads each theme's web fonts, and persists an
-explicit choice in `localStorage` (`hypertrade.theme`); a visitor who never
-chose follows the default. `index.html` sets the default `data-theme` and
-applies a stored choice with an inline script before first paint, so keep
-its key and default in sync with `registry.ts`. `ThemeSwitcher` (a
-`Segmented` toggle in the top bar) switches it.
-
-## Adding a theme
-
-1. Create `<id>.css` with a `:root[data-theme='<id>'] { … }` block.
-2. `@import` it in `../index.css` next to the others.
-3. Add a `ThemeDef` to `THEMES` in `registry.ts` (label, short label,
-   scheme, font URLs).
+Change the look by editing tokens in `hyperdash.css`, not by forking
+components.
 
 ## Token contract
 
-Everything a theme may override. Defaults live in `../index.css` and
+Everything `hyperdash.css` may override. Defaults live in `../index.css` and
 reproduce Hyperion exactly.
 
 **Color (`@theme`, so each is also a Tailwind utility, e.g. `bg-panel`):**
@@ -63,20 +48,20 @@ Label/control casing: `--label-case`, `--label-tracking`, `--label-weight`,
 (utilities `rounded-panel/-control/-badge`), `--shadow-panel`.
 
 **Density** (`:root`): `--gutter`, `--panel-pad`, `--cell-x`, `--cell-y`,
-`--row-h`, `--control-sm/md/lg`, `--tap-min`. A theme that changes these
+`--row-h`, `--control-sm/md/lg`, `--tap-min`. If `hyperdash.css` changes these, it
 must also restate the `@media (pointer: coarse)` touch values, since its
 selector outranks the default touch block.
 
 **Segmented control** (`:root`): `--seg-track`, `--seg-border`,
 `--seg-divider`, `--seg-pad`, `--seg-gap`, `--seg-radius`, `--seg-active`,
 `--seg-active-text`, `--seg-active-shadow`. Hyperion's defaults are a
-hairline box of divided cells; a theme gets a padded well with a lifted pill
+hairline box of divided cells; Hyperdash gets a padded well with a lifted pill
 by setting track/pad/radius and clearing border and divider.
 
 ## Structural hooks
 
-For looks that tokens alone can't express, a theme may style these classes
-under its own selector (`:root[data-theme='<id>'] .btn--neutral { … }`):
+For looks that tokens alone can't express, `hyperdash.css` styles these
+classes under its selector (`:root[data-theme='hyperdash'] .btn--neutral { … }`):
 
 `.panel` `.panel-header` `.panel-title` `.panel-body` · `.btn` `.btn--ghost`
 `.btn--neutral` `.btn--danger` · `.badge` `.badge--{green,red,amber,info,gray}` · `.status-dot` `.status-dot--{ok,degraded,down,unknown}`
@@ -85,7 +70,7 @@ under its own selector (`:root[data-theme='<id>'] .btn--neutral { … }`):
 `.app-topbar` `.app-wordmark` `.app-wordmark-dot` `.app-nav` `.app-nav-link`
 (`[aria-current=page]` when active) `.app-tabbar` `.app-tab`
 · `.tab-active` · `.label` · `.src-tag` · `.seg` `.seg--{sm,md}`
-`.seg-item` (`[aria-checked=true]`, `[data-tone=green|red]`) · `.theme-switcher`.
+`.seg-item` (`[aria-checked=true]`, `[data-tone=green|red]`).
 
 Keep the Hyperion rules that are about meaning, not looks: color is never the
 only signal, projections never use green/red, text contrast ≥ 4.5:1 for body

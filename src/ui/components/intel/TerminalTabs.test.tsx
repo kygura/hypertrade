@@ -8,7 +8,7 @@ import { TerminalTabs, TERMINAL_TABS, isTerminalPath, terminalTabOf } from "./Te
 
 describe("terminalTabOf / isTerminalPath", () => {
   test("every family route maps to its tab", () => {
-    expect(terminalTabOf("/")).toBe("cockpit");
+    expect(terminalTabOf("/feed")).toBe("cockpit");
     expect(terminalTabOf("/terminal")).toBe("terminal");
     expect(terminalTabOf("/asset/HYPE")).toBe("terminal");
     expect(terminalTabOf("/journal")).toBe("journal");
@@ -21,7 +21,7 @@ describe("terminalTabOf / isTerminalPath", () => {
   });
 
   test("routes outside the family are not terminal paths", () => {
-    for (const p of ["/lab/search", "/overview", "/markets", "/markets/HYPE", "/deskx", "/journalx", "/orders", "/strategies", "/login"]) {
+    for (const p of ["/", "/lab/search", "/overview", "/markets", "/markets/HYPE", "/deskx", "/journalx", "/orders", "/strategies", "/login"]) {
       expect(terminalTabOf(p)).toBeNull();
       expect(isTerminalPath(p)).toBe(false);
     }
@@ -60,7 +60,7 @@ describe("TerminalTabs", () => {
     expect(checkedIdx("/terminal")).toBe(0);
     expect(checkedIdx("/asset/HYPE")).toBe(0);
     expect(checkedIdx("/watch")).toBe(1);
-    expect(checkedIdx("/")).toBe(5);
+    expect(checkedIdx("/feed")).toBe(5);
     expect(checkedIdx("/desk")).toBe(7);
   });
 });

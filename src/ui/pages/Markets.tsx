@@ -5,17 +5,47 @@ import { AsyncBody, StaleBanner } from '../components/state'
 import { useApi } from '../lib/api'
 import type { MarketRow, MarketsResponse } from '../../server/routes/hl'
 import { fmtPrice, fmtPct, classForPnl, fmtUsd } from '../../shared/format'
-import { ASSET_CLASSES, tickerOf, type AssetClass } from '../../shared/assetClass'
+import { ASSET_CLASSES, assetClass, dexOf, tickerOf, type AssetClass } from '../../shared/assetClass'
+import { fundingApr } from '../../shared/market'
+import { SIGNAL } from '../../shared/signals'
+import type { AssetCtx } from '../../shared/types'
+import { useLiveUniverse } from '../lib/hlLive'
 
-// Markets — docs/design/README.md §10.7. HL universe table, live-ish (poll every 15s),
-// tick flash on price change, funding crowded-trade flag, filter + sort. Covers
-// the main dex and every HIP-3 builder dex (GET /hl/markets?scope=all), split by
-// asset class.
+// ALL PERPS — docs/design/README.md §10.7. HL universe table on the landing page,
+// live-ish (poll every 15s), tick flash on price change, funding crowded-trade
+// flag, filter + sort. Covers the main dex and every HIP-3 builder dex
+// (GET /hl/markets?scope=all), split by asset class. When that route is
+// unreachable, the main dex is filled from the browser's live HL poll.
 
 const POLL_MS = 15_000
 const STALE_MIN = 5
 
-const FUNDING_CROWDED = 0.001 // |funding| >= 0.1%/8h
+/** Crowded funding: |APR| at or past the signal threshold (50%). `hourly` is HL's hourly funding fraction. */
+export function fundingCrowded(hourly: number): boolean {
+  return Math.abs(fundingApr(hourly) * 100) >= SIGNAL.fundingAprAbs
+}
+
+/** Live main-dex contexts as table rows (the /hl/markets mapping), largest OI first. */
+export function rowsFromCtxs(ctxs: AssetCtx[]): MarketRow[] {
+  return ctxs
+    .filter((c) => !c.isDelisted)
+    .map((c) => ({
+      coin: c.name,
+      markPx: c.markPx,
+      oraclePx: c.oraclePx,
+      premium: c.premium,
+      funding: c.funding,
+      openInterestUsd: c.openInterest * c.markPx,
+      dayNtlVlm: c.dayNtlVlm,
+      dayChangePct: c.dayChange,
+      dex: dexOf(c.name),
+      assetClass: assetClass(c.name),
+      maxLeverage: c.maxLeverage ?? null,
+    }))
+    .sort((a, b) => b.openInterestUsd - a.openInterestUsd)
+}
+
+const head = (label: string, title: string) => <span title={title}>{label}</span>
 
 type ClassFilter = 'all' | AssetClass
 const CLASS_LABEL: Record<AssetClass, string> = {
@@ -27,9 +57,23 @@ const CLASS_LABEL: Record<AssetClass, string> = {
   rates: 'RATES',
 }
 
-export function Markets() {
+export function MarketsTable() {
   const navigate = useNavigate()
-  const { data, loading, error, offline, refetch } = useApi<MarketsResponse>('/hl/markets?scope=all')
+  const api = useApi<MarketsResponse>('/hl/markets?scope=all')
+  const { refetch } = api
+  const live = useLiveUniverse()
+  // The route is down (no API) but the browser reaches HL: show the main dex from the live poll.
+  // `down` survives the 15s refetch (which clears error while in flight) so the table does not flicker.
+  const down = useRef(false)
+  if (api.data != null) down.current = false
+  else if (api.error != null || api.offline) down.current = true
+  const fromLive = api.data == null && down.current && live.ctxs.length > 0
+  const data: MarketsResponse | null = fromLive
+    ? { fetchedAt: new Date(live.updatedAt ?? Date.now()).toISOString(), markets: rowsFromCtxs(live.ctxs) }
+    : api.data
+  const loading = fromLive ? false : api.loading || (down.current && live.loading)
+  const error = fromLive ? null : api.error
+  const offline = fromLive ? false : api.offline
   const markets = data?.markets ?? null
   const [filter, setFilter] = useState('')
   const [cls, setCls] = useState<ClassFilter>('all')
@@ -78,17 +122,17 @@ export function Markets() {
   ]
 
   const columns: Column<MarketRow>[] = [
-    { key: 'coin', label: 'COIN', priority: 1, sortValue: (r) => tickerOf(r.coin), render: (r) => tickerOf(r.coin) },
+    { key: 'coin', label: head('COIN', 'Perp name; HIP-3 builder-dex coins carry their dex prefix'), priority: 1, sortValue: (r) => tickerOf(r.coin), render: (r) => tickerOf(r.coin) },
     {
       key: 'dex',
-      label: 'DEX',
+      label: head('DEX', 'HL = the main Hyperliquid dex; otherwise the HIP-3 builder dex'),
       priority: 3,
       sortValue: (r) => r.dex,
       render: (r) => <span className="text-text-secondary">{r.dex ? r.dex.toUpperCase() : 'HL'}</span>,
     },
     {
       key: 'price',
-      label: 'PRICE',
+      label: head('PRICE', 'Mark price'),
       priority: 1,
       align: 'right',
       sortValue: (r) => r.markPx,
@@ -100,7 +144,7 @@ export function Markets() {
     },
     {
       key: 'chg',
-      label: '24H%',
+      label: head('24H%', 'Mark price change since the same time yesterday'),
       priority: 2,
       align: 'right',
       sortValue: (r) => r.dayChangePct,
@@ -112,7 +156,7 @@ export function Markets() {
     },
     {
       key: 'oi',
-      label: 'OI',
+      label: head('OI', 'Open interest in USD: open positions times mark price'),
       priority: 3,
       align: 'right',
       sortValue: (r) => r.openInterestUsd,
@@ -120,19 +164,27 @@ export function Markets() {
     },
     {
       key: 'funding',
-      label: 'FUNDING',
+      label: head('FUNDING', `Funding annualised (hourly rate × 8760). Positive = longs pay shorts. Amber at |APR| ≥ ${SIGNAL.fundingAprAbs}%`),
       priority: 4,
       align: 'right',
       sortValue: (r) => r.funding,
       render: (r) => (
-        <span className={Math.abs(r.funding) >= FUNDING_CROWDED ? 'text-amber' : classForPnl(r.funding)}>
-          {fmtPct(r.funding, { decimals: 4, sign: true })}
+        <span className={fundingCrowded(r.funding) ? 'text-amber' : classForPnl(r.funding)} title={`${fmtPct(r.funding, { decimals: 4, sign: true })} per hour`}>
+          {fmtPct(fundingApr(r.funding), { decimals: 1, sign: true })}
         </span>
       ),
     },
     {
+      key: 'prem',
+      label: head('PREM', 'Premium in basis points: perp mark vs oracle (spot index). Positive = perp above spot'),
+      priority: 4,
+      align: 'right',
+      sortValue: (r) => r.premium,
+      render: (r) => <span className={Math.abs(r.premium * 1e4) >= SIGNAL.premiumBpsAbs ? 'text-amber' : 'text-text-secondary'}>{`${r.premium > 0 ? '+' : ''}${(r.premium * 1e4).toFixed(1)}`}</span>,
+    },
+    {
       key: 'vol',
-      label: 'VOLUME',
+      label: head('VOLUME', '24h traded notional in USD'),
       priority: 4,
       align: 'right',
       sortValue: (r) => r.dayNtlVlm,
@@ -140,7 +192,7 @@ export function Markets() {
     },
     {
       key: 'lev',
-      label: 'MAX LEV',
+      label: head('MAX LEV', 'Maximum leverage Hyperliquid allows on this perp'),
       priority: 4,
       align: 'right',
       sortValue: (r) => r.maxLeverage ?? 0,
@@ -149,51 +201,57 @@ export function Markets() {
   ]
 
   return (
-    <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)]">
-      <Panel>
-        <PanelHeader title="MARKETS">
-          <SrcTag source="hl" />
-          <span className="text-xs text-text-secondary tabular">{markets ? `${filtered.length} PERPS` : ''}</span>
-          <input
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="FILTER"
-            className="!h-[var(--control-sm)] !py-0 !px-2 !text-xs w-24 md:w-40 uppercase placeholder:text-text-secondary"
-          />
-        </PanelHeader>
-        <div className="px-3 pt-2 overflow-x-auto">
-          <Segmented options={classOptions} value={cls} onChange={setCls} label="Asset class" />
-        </div>
-        <PanelBody>
-          {data?.failedDexes && data.failedDexes.length > 0 && (
-            <p className="text-2xs text-amber mb-2">
-              {data.failedDexes.map((d) => d.toUpperCase()).join(', ')} unavailable: snapshot failed upstream
-            </p>
+    <Panel>
+      <PanelHeader title="ALL PERPS">
+        <SrcTag source="hl" />
+        <span className="text-xs text-text-secondary tabular">{markets ? `${filtered.length} PERPS` : ''}</span>
+        <input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="FILTER"
+          className="!h-[var(--control-sm)] !py-0 !px-2 !text-xs w-24 md:w-40 uppercase placeholder:text-text-secondary"
+        />
+      </PanelHeader>
+      <div className="px-3 pt-2 overflow-x-auto">
+        <Segmented options={classOptions} value={cls} onChange={setCls} label="Asset class" />
+      </div>
+      <PanelBody>
+        <p className="px-3 text-xs text-text-secondary mb-2">
+          {fromLive
+            ? 'Every live Hyperliquid main-dex perp (builder dexes need the API). Click a row for its chart.'
+            : 'Every live Hyperliquid perp, main dex and builder dexes. Click a row for its chart; hover a header for its definition.'}
+        </p>
+        {data?.failedDexes && data.failedDexes.length > 0 && (
+          <p className="text-2xs text-amber mb-2">
+            {data.failedDexes.map((d) => d.toUpperCase()).join(', ')} unavailable: snapshot failed upstream
+          </p>
+        )}
+        {data && <StaleBanner generatedAt={data.fetchedAt} thresholdHours={STALE_MIN / 60} noun="snapshot" />}
+        <AsyncBody
+          loading={loading}
+          data={data}
+          error={error}
+          offline={offline}
+          rows={5}
+          empty={{ label: filter ? 'no coins match' : 'no markets yet' }}
+          isEmpty={() => filtered.length === 0}
+          onRetry={refetch}
+        >
+          {() => (
+            // Bounded so ~180 rows do not push the page to 8000px; the table scrolls inside its panel.
+            <div className="max-h-[640px] overflow-y-auto">
+            <DataTable
+              columns={columns}
+              rows={filtered}
+              rowKey={(r) => r.coin}
+              onRowClick={(r) => navigate(`/markets/${encodeURIComponent(r.coin)}`)}
+              sortable
+              defaultSort={{ key: 'oi', dir: 'desc' }}
+            />
+            </div>
           )}
-          {data && <StaleBanner generatedAt={data.fetchedAt} thresholdHours={STALE_MIN / 60} noun="snapshot" />}
-          <AsyncBody
-            loading={loading}
-            data={data}
-            error={error}
-            offline={offline}
-            rows={5}
-            empty={{ label: filter ? 'no coins match' : 'no markets yet' }}
-            isEmpty={() => filtered.length === 0}
-            onRetry={refetch}
-          >
-            {() => (
-              <DataTable
-                columns={columns}
-                rows={filtered}
-                rowKey={(r) => r.coin}
-                onRowClick={(r) => navigate(`/markets/${encodeURIComponent(r.coin)}`)}
-                sortable
-                defaultSort={{ key: 'oi', dir: 'desc' }}
-              />
-            )}
-          </AsyncBody>
-        </PanelBody>
-      </Panel>
-    </div>
+        </AsyncBody>
+      </PanelBody>
+    </Panel>
   )
 }

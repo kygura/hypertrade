@@ -36,17 +36,16 @@ bun run build     # typecheck + vite build
 
 ## Screens
 
-Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is the contract). The top bar has five cells, under the nine-cell ceiling in `docs/design/README.md` §5.2; each family switches through one `SectionTabs` row.
+Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is the contract). The top bar has two cells, under the nine-cell ceiling in `docs/design/README.md` §5.2.
 
 | Cell | Routes |
 |---|---|
-| TRADE | `TerminalTabs`, intel to act: `/terminal` (CHANGES), `/watch`, `/journal`, `/theses`, `/query`, then `/` (FEED, the Cockpit landing: ranked opportunities, liquidation map, approve/reject, desk kill switch), `/order`, `/desk`. `/asset/:coin` is the per-coin page under CHANGES. |
-| MARKET | `MarketTabs`, with the metrics strip under it: `/markets` (and `/markets/:coin`, chart; links to `/asset/:coin`), `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`. |
-| RESEARCH | `LabTabs`: `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id`, and `/branches`, `/branches/:id` |
-| ASK | `/analyst` (ASK and SIMULATE) |
-| ENGINE | `EngineTabs`: `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` |
+| MARKET | `/`, the live market read from Hyperliquid's public API (no database needed), and `/markets/:coin`, the coin page. `/markets` redirects to `/`, `/asset/:coin` to `/markets/:coin`. |
+| RESEARCH | `LabTabs`: `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id` |
 
-Themes: `hyperdash` (default), `tradexyz` and `hyperion`, switched from the top bar (`src/ui/themes/README.md`).
+Parked (route works by URL, no nav cell; docs/TASKS.md "Parked"): the Cockpit at `/feed`, the TRADE family (`/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/order`, `/desk`), `/sectors`, `/state`, `/cycles`, `/branches`, `/analyst`, and the ENGINE console (`/strategies`, `/decisions`, `/governor`).
+
+One look, Hyperdash; there is no theme switcher (`src/ui/themes/README.md`).
 
 Confirmations: a plain click for reversible actions; a dialog for anything that places, approves or cancels an order (Desk and Cockpit APPROVE, `/order` place, engine decision approve); a typed word for the kill switches (desk and engine).
 

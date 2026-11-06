@@ -3,8 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { MarketDrill } from "./MarketDrill";
 
-describe("MarketDrill coin cross-links", () => {
-  test("offers INTEL → for the same coin", () => {
+describe("MarketDrill", () => {
+  test("back goes to the MARKET landing; no INTEL cross-link", () => {
     const html = renderToStaticMarkup(
       <MemoryRouter initialEntries={["/markets/kPEPE"]}>
         <Routes>
@@ -12,7 +12,7 @@ describe("MarketDrill coin cross-links", () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(html).toContain("INTEL →");
-    expect(html).toContain("← MARKETS");
+    expect(html).toContain("← MARKET");
+    expect(html).not.toContain("INTEL →");
   });
 });
