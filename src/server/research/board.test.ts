@@ -3,9 +3,9 @@ import type { NoveltyEntry, Opportunity } from "../../shared/platform.js";
 import type { RadarCall } from "../../shared/radar.js";
 import { BoardResponseSchema, STUDY_DEFAULTS } from "../../shared/research.js";
 import type { CatalogueEntry, MarketPulse, Rule } from "../lab/types.js";
-import { buildBoard, SourceUnavailable, type BoardDeps } from "./board.js";
+import { boardStudy, buildBoard, SourceUnavailable, type BoardDeps } from "./board.js";
 import { noveltyRule } from "./signals.js";
-import { createStudyCache, studySummary } from "./study.js";
+import { createStudyCache, studyKey, studySummary } from "./study.js";
 import { fakeStudy } from "./testkit.js";
 
 const NOW = Date.parse("2026-11-09T12:00:00Z");
@@ -34,20 +34,26 @@ const deps = (over: Partial<BoardDeps> = {}): BoardDeps => ({
   cache: createStudyCache(() => NOW),
   ...over,
 });
+const ok = (count: number, dropped = 0) => ({ state: "ok" as const, count, dropped });
 
 describe("buildBoard", () => {
-  test("all sources: signals newest first, counts, pulse summary, cached evidence attached by rule and coin", async () => {
+  test("all sources: signals newest first, counts, pulse summary, cached evidence attached by rule and scope", async () => {
     const d = deps();
     const evidence = studySummary(fakeStudy(), "2026-11-09T06:00:00.000Z");
-    d.cache.set({ rule, coin: "BTC", ...STUDY_DEFAULTS }, { summary: evidence, study: fakeStudy() });
+    d.cache.set(studyKey({ rule, coin: "BTC", ...STUDY_DEFAULTS }, NOW), { summary: evidence, study: fakeStudy() });
+    // novelty is studied over the default universe: no coin in its key
+    d.cache.set(studyKey({ rule: noveltyRule(nov)!, ...STUDY_DEFAULTS }, NOW), { summary: { ...evidence, events: 999 }, study: fakeStudy() });
     const b = BoardResponseSchema.parse(await buildBoard(d));
     expect(b.asOf).toBe("2026-11-09T12:00:00.000Z");
     expect(b.signals.map((s) => s.id)).toEqual([`rule:BTC:r1`, `opportunity:SOL:${opp.id}`, "novelty:ETH:2026-11-08", "radar:HYPE:c"]);
-    expect(b.sources).toEqual({ novelty: { state: "ok", count: 1 }, rule: { state: "ok", count: 1 }, opportunity: { state: "ok", count: 1 }, radar: { state: "ok", count: 1 } });
+    expect(b.sources).toEqual({ novelty: ok(1), rule: ok(1), opportunity: ok(1), radar: ok(1) });
     expect(b.pulse).toEqual({ assets: 2, firing: 1 });
     expect(b.signals[0]!.evidence).toEqual(evidence);
-    expect(b.signals.find((s) => s.source === "novelty")!.rule).toEqual(noveltyRule(nov));
-    expect(b.signals.find((s) => s.source === "novelty")!.evidence).toBeNull();
+    const n = b.signals.find((s) => s.source === "novelty")!;
+    expect(n).toMatchObject({ rule: noveltyRule(nov), scope: "universe", tested: "short", direction: null });
+    expect(n.evidence?.events).toBe(999);
+    expect(boardStudy(n)).toEqual({ rule: noveltyRule(nov)!, ...STUDY_DEFAULTS });
+    expect(boardStudy(b.signals[0]!)).toEqual({ rule, coin: "BTC", ...STUDY_DEFAULTS });
   });
 
   test("novelty reads the last 3 closed bars", async () => {
@@ -56,19 +62,34 @@ describe("buildBoard", () => {
     expect(since).toBe("2026-11-06");
   });
 
-  test("one source throwing, one unavailable here, one too slow: each listed with its reason, the board still returns", async () => {
+  test("a malformed catalogue rule or an unparseable date drops that item only, counted", async () => {
+    const badRule = { id: "r3", name: "stale", rule: { asset: "BTC", direction: "sideways", horizonDays: 5, conditions: [] } } as unknown as CatalogueEntry;
+    const p: MarketPulse = { ...pulse, assets: [...pulse.assets, { asset: "BTC", longActive: 1, longTotal: 1, shortActive: 0, shortTotal: 0, lean: 1, rules: [{ id: "r3", name: "stale", direction: "long", firing: true, text: "" }] }] };
     const b = BoardResponseSchema.parse(
       await buildBoard(deps({
-        pulse: async () => { throw new Error("catalogue store down"); },
-        novelty: async () => { throw new SourceUnavailable("needs DATABASE_URL"); },
+        pulse: async () => ({ pulse: p, catalogue: [...catalogue, badRule] }),
+        novelty: async () => [nov, { ...nov, coin: "SOL", detectedAt: "not a date" }],
+      })),
+    );
+    expect(b.sources.rule).toEqual(ok(1, 1));
+    expect(b.sources.novelty).toEqual(ok(1, 1));
+    expect(b.signals.map((s) => s.id)).toContain("rule:BTC:r1");
+    expect(b.signals.map((s) => s.id)).not.toContain("novelty:SOL:2026-11-08");
+  });
+
+  test("one source throwing, one unavailable here, one too slow: fixed reasons, the board still returns", async () => {
+    const b = BoardResponseSchema.parse(
+      await buildBoard(deps({
+        pulse: async () => { throw new Error("connect ECONNREFUSED /var/secret/socket"); },
+        novelty: async () => { throw new SourceUnavailable("needs a database (DATABASE_URL unset)"); },
         radarCalls: () => new Promise(() => {}),
         timeoutMs: 20,
       })),
     );
-    expect(b.sources.rule).toEqual({ state: "unavailable", reason: "catalogue store down", count: 0 });
-    expect(b.sources.novelty).toEqual({ state: "unavailable", reason: "needs DATABASE_URL", count: 0 });
-    expect(b.sources.radar).toEqual({ state: "unavailable", reason: "no answer within 0.02 s", count: 0 });
-    expect(b.sources.opportunity).toEqual({ state: "ok", count: 1 });
+    expect(b.sources.rule).toEqual({ state: "unavailable", reason: "source failed (see server log)", count: 0, dropped: 0 });
+    expect(b.sources.novelty).toEqual({ state: "unavailable", reason: "needs a database (DATABASE_URL unset)", count: 0, dropped: 0 });
+    expect(b.sources.radar).toEqual({ state: "unavailable", reason: "timed out", count: 0, dropped: 0 });
+    expect(b.sources.opportunity).toEqual(ok(1));
     expect(b.signals.map((s) => s.source)).toEqual(["opportunity"]);
     expect(b.pulse).toBeNull();
   });

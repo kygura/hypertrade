@@ -16,11 +16,12 @@ import { invalid } from "./intel/http.js";
 // /api/research and /api/radar (docs/RESEARCH.md B2). Inputs and outputs zod-parsed against src/shared/research.ts.
 // GET /research/board   → BoardResponse: every source loads on its own; a failing one is `unavailable` with a reason.
 // POST /research/study  { rule, coin?, stopAtr?, targetAtr? } → StudyResponse. Runs the lab_event_study tool, so it
-//                       is a trial exactly as a direct call; cached in process by rule hash, scope and UTC day.
+//                       is a trial exactly as a direct call; cached in process by rule hash, scope and UTC day. Runs
+//                       only on request: nothing in the process studies on its own (machine runs would inflate N).
 //                       400 { error, field? } bad input · 502 upstream data · 500 otherwise.
 // GET /radar            → RadarResponse from data/radar/ (state `unavailable` + reason when the files are absent).
-// Auth (auth.ts): GETs are read paths (cookie, or the LAB_API_TOKEN bearer on GET); the study POST takes the same
-// cookie-or-bearer as the Lab tool POSTs.
+// Auth (auth.ts): GETs are read paths (cookie, or the LAB_API_TOKEN bearer on GET); /radar is not guest-readable in
+// PUBLIC_MODE (LLM-written theses). The study POST takes the same cookie-or-bearer as the Lab tool POSTs.
 
 export interface ResearchRouteDeps {
   board: () => Omit<BoardDeps, "cache">;
@@ -83,32 +84,36 @@ export function defaultBoardDeps(env: Record<string, string | undefined> = proce
       if (pulseMemo && Date.now() - pulseMemo.at < PULSE_TTL_MS) return pulseMemo.value;
       const service = getLabService();
       const value = Promise.all([service.marketPulse({}, { deadlineMs: labDeadlineMs(env, SERVER_DEADLINE_MS) }), service.deps.store.listCatalogue()]).then(([pulse, catalogue]) => ({ pulse, catalogue }));
-      pulseMemo = { at: Date.now(), value };
-      value.catch(() => (pulseMemo = null));
+      const memo = { at: Date.now(), value };
+      pulseMemo = memo;
+      // A late failure clears only its own memo, never a newer one.
+      value.catch(() => {
+        if (pulseMemo === memo) pulseMemo = null;
+      });
       return value;
     },
     novelty: async (sinceBar) => {
       // The novelty loop runs only with a database (its daily inputs live in Postgres).
-      if (!databaseUrl()) throw new SourceUnavailable("needs DATABASE_URL: the novelty loop reads its daily history from Postgres");
+      if (!databaseUrl()) throw new SourceUnavailable("needs a database (DATABASE_URL unset)");
       const ctx = platformContext();
-      if (!ctx) throw new SourceUnavailable("platform offline");
+      if (!ctx) throw new SourceUnavailable("platform offline (no worker loop and no database)");
       return ctx.store.listNovelty(sinceBar);
     },
     opportunities: async (limit) => {
       const ctx = platformContext();
-      if (!ctx) throw new SourceUnavailable("platform offline: no scanner loop in this process and no DATABASE_URL");
+      if (!ctx) throw new SourceUnavailable("platform offline (no worker loop and no database)");
       return ctx.store.listOpportunities({ statuses: [...PRE_DECISION_STATUSES], limit });
     },
     radarCalls: async () => {
       const r = await readRadar(RADAR_DIR);
-      if (r.state === "unavailable") throw new SourceUnavailable(r.reason ?? "radar unavailable");
+      if (r.state === "unavailable") throw new SourceUnavailable(r.reason ?? "radar files unreadable");
       return r.calls;
     },
   };
 }
 
 let shared: { cache: ResearchRouteDeps["cache"]; runStudy: StudyRunner } | null = null;
-/** One study cache and runner per process: the routes and the precompute loop share them. */
+/** One study cache and runner per process. */
 export function researchRuntime() {
   if (!shared) {
     const cache = createStudyCache();

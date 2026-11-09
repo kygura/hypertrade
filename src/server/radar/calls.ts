@@ -1,4 +1,5 @@
 import { RADAR_HORIZONS, type RadarCall, type RadarCallInput, type RadarCallsFile, type RadarState } from "../../shared/radar.js";
+import type { RadarScoreRow } from "../../shared/research.js";
 import { line, moveSince, type RadarMarket } from "./scan.js";
 
 // The radar's call ledger (ROUTINE.md §3): the session proposes, code stamps prices, rejects what it cannot
@@ -118,15 +119,7 @@ export function checkKills(file: RadarCallsFile, markets: RadarMarket[], today: 
   return { file: { calls }, killed };
 }
 
-export interface ScoreRow {
-  stance: "ride" | "fade";
-  horizonDays: number;
-  n: number;
-  /** Mean move vs BTC, %. */
-  meanPct: number;
-  /** Calls that went the called way. */
-  hits: number;
-}
+export type ScoreRow = RadarScoreRow;
 
 /** Per stance and horizon with graded calls: count, mean move vs BTC, how many went the called way. */
 export function scorecardRows(file: RadarCallsFile): ScoreRow[] {

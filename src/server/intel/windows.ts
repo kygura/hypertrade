@@ -1,7 +1,7 @@
 import { FixedWindowSchema, HEATMAP_METRICS, type FixedWindow, type FlowFlag, type FlowRow, type HeatmapMetric, type SnapshotRow } from "../../shared/intel.js";
 import { metricValue } from "./diff.js";
 import type { Point } from "./normalize.js";
-import { MAD_SCALE, median, robustSigma } from "../../shared/signalMath.js";
+import { MAD_SCALE, median, robustSigma, zRobust } from "../../shared/signalMath.js";
 
 // Fixed windows, regime flips and threshold crossings (docs/SPEC.md § Flow F0.2,
 // F0.3). Pure. Runs alongside the I0.4 last-review baseline, not instead of it.
@@ -188,8 +188,7 @@ export function robustLevelZ(metric: HeatmapMetric, points: Point[] | undefined,
   if (v == null) return null;
   const xs = points.filter((p) => p.t <= now && p.t >= now - LOOKBACK["1h"].days * DAY_MS).map((p) => p.v);
   if (xs.length < LOOKBACK["1h"].min) return null;
-  const m = median(xs);
-  return (v - m) / robustSigma(xs, Math.max(METRIC_RULES[metric].floor, 0.25 * Math.abs(m)));
+  return zRobust(v, xs, Math.max(METRIC_RULES[metric].floor, 0.25 * Math.abs(median(xs))));
 }
 
 // ---------------------------------------------------------------- flips and crossings

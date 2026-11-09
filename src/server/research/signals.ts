@@ -14,21 +14,19 @@ const fixed = (x: number, d: number) => `${x >= 0 ? "+" : ""}${x.toFixed(d)}`;
 /** Float noise off a multiple of the step (0.15000000000000002), and -0 → 0. */
 const clean = (x: number) => Math.round(x * 1e6) / 1e6 + 0;
 
-/** Every catalogue rule that fires on the latest data (Market Pulse), with the rule from its catalogue entry. */
-export function ruleSignals(pulse: MarketPulse, catalogue: CatalogueEntry[]): Unstudied[] {
+/** Catalogue entries of every rule that fires on the latest data (Market Pulse). */
+export function firingEntries(pulse: MarketPulse, catalogue: CatalogueEntry[]): CatalogueEntry[] {
   const byId = new Map(catalogue.map((e) => [e.id, e]));
-  const at = Date.parse(pulse.asOf);
-  return pulse.assets.flatMap((a) =>
-    a.rules.flatMap((r): Unstudied[] => {
-      const e = byId.get(r.id);
-      if (!r.firing || !e) return [];
-      return [{
-        id: `rule:${e.rule.asset}:${e.id}`, source: "rule", coin: e.rule.asset, direction: e.rule.direction,
-        headline: `catalogue rule "${e.name}" in zone · ${e.rule.direction} ${e.rule.horizonDays}d`, at,
-        rule: e.rule, ruleText: ruleText(e.rule), href: `/lab/rules/${e.id}`,
-      }];
-    }),
-  );
+  return pulse.assets.flatMap((a) => a.rules.flatMap((r) => (r.firing && byId.has(r.id) ? [byId.get(r.id)!] : [])));
+}
+
+/** A catalogue rule firing now (at = the pulse's asOf): it carries its own rule, studied on its own asset. */
+export function ruleSignal(e: CatalogueEntry, at: number): Unstudied {
+  return {
+    id: `rule:${e.rule.asset}:${e.id}`, source: "rule", coin: e.rule.asset, direction: e.rule.direction,
+    headline: `catalogue rule "${e.name}" in zone · ${e.rule.direction} ${e.rule.horizonDays}d`, at,
+    rule: e.rule, tested: e.rule.direction, scope: "coin", ruleText: ruleText(e.rule), href: `/lab/rules/${e.id}`,
+  };
 }
 
 /** Lab z(n) of a value whose novelty z (against the n−1.. previous values, current excluded) is z: the Lab window includes the current value. */
@@ -95,13 +93,19 @@ export function noveltyRule(e: Pick<NoveltyEntry, "coin" | "features">): Rule | 
   return r.success ? r.data : null;
 }
 
+/**
+ * A novelty item: no side of its own (direction null). Its rule is studied as a fade of the extreme, one tested side
+ * (one trial), stated as a hypothesis in `tested` and `ruleText`, never as a call. Studied over the Lab's default
+ * universe: the rule reads ht:* metrics only, and one coin rarely has the 30 event-weeks a verdict needs.
+ */
 export function noveltySignal(e: NoveltyEntry): Unstudied {
   const rule = noveltyRule(e);
   const facts = e.features.map((f) => NOVELTY_TABLE[f.id]?.label(f.value) ?? `${f.id} ${f.value}`);
   return {
     id: `novelty:${e.coin}:${e.barDate}`, source: "novelty", coin: e.coin, direction: null,
     headline: `${e.kind === "new_extreme" ? "new extreme" : "joint extreme"} ${e.barDate}: ${facts.join(", ")}`,
-    at: Date.parse(e.detectedAt), rule, ruleText: rule && ruleText(rule), href: null,
+    at: Date.parse(e.detectedAt), rule, tested: rule?.direction ?? null, scope: rule ? "universe" : "coin",
+    ruleText: rule && `tested as fade: ${rule.direction} when ${ruleText(rule)}`, href: null,
   };
 }
 
@@ -111,6 +115,7 @@ export function opportunitySignal(o: Opportunity): Unstudied {
   return {
     id: `opportunity:${o.coin}:${o.id}`, source: "opportunity", coin: o.coin, direction: o.direction,
     headline: `${o.setupKind} · ${o.status} · score ${o.score.toFixed(2)} · tier ${o.liquidityTier}${edge}`,
+    tested: null, scope: "coin",
     at: Date.parse(o.createdAt), rule: null, ruleText: null, href: `/feed?id=${o.id}`,
   };
 }
@@ -121,6 +126,6 @@ export function radarSignal(c: RadarCall): Unstudied {
   return {
     id: `radar:${c.market}:${c.id}`, source: "radar", coin: c.market, direction: c.direction,
     headline: [`${c.stance} ${c.direction} · ${c.kind}`, `mark ${c.mark}`, `kill ${c.kill_price}`, ...graded].join(" · "),
-    at: Date.parse(c.at), rule: null, ruleText: null, href: null,
+    at: Date.parse(c.at), rule: null, tested: null, scope: "coin", ruleText: null, href: null,
   };
 }

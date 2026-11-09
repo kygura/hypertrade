@@ -38,9 +38,6 @@ import { defaultDeskService } from "../src/server/routes/desk";
 import { PgIntelStore } from "../src/server/intel/store";
 import { usageCost } from "../src/server/intel/llm";
 import { createReconcileLoop } from "../src/server/platform/reconcile";
-import { buildBoard } from "../src/server/research/board";
-import { createResearchLoop } from "../src/server/research/loop";
-import { defaultBoardDeps, researchRuntime } from "../src/server/routes/research";
 import { createScanner } from "../src/server/platform/scanner";
 import { setHealthExtras, parseWorkerLoops, startLoops, type LoopDef, type Loops } from "../src/server/platform/runtime";
 import { MemoryPlatformStore } from "../src/server/platform/store-memory";
@@ -138,8 +135,6 @@ async function boot() {
     alerts.def,
     // Daily inputs live in Postgres (candles, funding, observations): no database, no novelty loop.
     ...(dbUrl ? [createNoveltyLoop({ store, notify: alerts.novel, nearMiss: scanner.nearMiss }).def] : []),
-    // Event studies for the research board's rule-bearing signals: at most 3 a beat, each study once per UTC day.
-    createResearchLoop({ ...researchRuntime(), signals: async () => (await buildBoard({ ...defaultBoardDeps(), cache: researchRuntime().cache })).signals }).def,
   ];
   const selected = parseWorkerLoops(process.env.WORKER_LOOPS);
   const wants = (n: string) => selected === "all" || selected.has(n);

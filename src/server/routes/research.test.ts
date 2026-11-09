@@ -10,7 +10,7 @@ import { memoryStore } from "../lab/store.js";
 import { labTools } from "../lab/tools.js";
 import { DAY_MS, type LabProvider, type Rule } from "../lab/types.js";
 import { ToolInputError, UpstreamError } from "../mcp/types.js";
-import { SourceUnavailable } from "../research/board.js";
+import { boardStudy, SourceUnavailable } from "../research/board.js";
 import { readRadar } from "../research/radar.js";
 import { createStudyCache, createStudyRunner, studyKey, type RunEventStudy } from "../research/study.js";
 import { fakeStudy } from "../research/testkit.js";
@@ -32,7 +32,7 @@ function app(eventStudy: RunEventStudy, deadline = 50_000) {
       now: () => NOW,
       pulse: async () => { throw new Error("lab store down"); },
       novelty: async () => [nov],
-      opportunities: async () => { throw new SourceUnavailable("platform offline"); },
+      opportunities: async () => { throw new SourceUnavailable("platform offline (no worker loop and no database)"); },
       radarCalls: async () => [],
     }),
   });
@@ -44,19 +44,19 @@ describe("/research routes", () => {
     const calls: unknown[] = [];
     const a = app(async (args, ctx) => (calls.push({ args, ctx }), fakeStudy()));
     const before = BoardResponseSchema.parse(await (await a.request("/research/board")).json());
-    expect(before.sources).toMatchObject({ rule: { state: "unavailable", reason: "lab store down" }, opportunity: { state: "unavailable", reason: "platform offline" }, novelty: { state: "ok", count: 1 }, radar: { state: "ok", count: 0 } });
+    expect(before.sources).toMatchObject({ rule: { state: "unavailable", reason: "source failed (see server log)" }, opportunity: { state: "unavailable", reason: "platform offline (no worker loop and no database)" }, novelty: { state: "ok", count: 1 }, radar: { state: "ok", count: 0 } });
     const s = before.signals[0]!;
-    expect(s.evidence).toBeNull();
+    expect(s).toMatchObject({ source: "novelty", scope: "universe", evidence: null });
 
-    const res = await a.request("/research/study", post({ rule: s.rule, coin: s.coin }));
+    const res = await a.request("/research/study", post(boardStudy(s)));
     expect(res.status).toBe(200);
     const body = StudyResponseSchema.parse(await res.json());
-    expect(body).toMatchObject({ cached: false, studyId: studyKey({ rule: s.rule!, coin: "ETH", stopAtr: 1.5, targetAtr: 3 }, NOW), summary: { verdict: "clear", events: 120 } });
-    expect(calls).toEqual([{ args: { rule: s.rule, stopAtr: 1.5, targetAtr: 3, coins: ["ETH"] }, ctx: { source: "ui", deadlineMs: 50_000 } }]);
+    expect(body).toMatchObject({ cached: false, studyId: studyKey({ rule: s.rule!, stopAtr: 1.5, targetAtr: 3 }, NOW), summary: { verdict: "clear", events: 120 } });
+    expect(calls).toEqual([{ args: { rule: s.rule, stopAtr: 1.5, targetAtr: 3 }, ctx: { source: "ui", deadlineMs: 50_000 } }]);
 
     const after = BoardResponseSchema.parse(await (await a.request("/research/board")).json());
     expect(after.signals[0]!.evidence).toEqual(body.summary);
-    expect((await (await a.request("/research/study", post({ rule: s.rule, coin: s.coin }))).json()).cached).toBe(true);
+    expect((await (await a.request("/research/study", post(boardStudy(s)))).json()).cached).toBe(true);
     expect(calls).toHaveLength(1);
   });
 
@@ -124,6 +124,7 @@ describe("/radar route", () => {
     expect(res.status).toBe(200);
     const r = RadarResponseSchema.parse(await res.json());
     expect(r).toMatchObject({ state: "unavailable", latestNote: null, calls: [], scorecard: [] });
-    expect(r.reason).toContain("/nonexistent/data/radar");
+    expect(r.reason).toBe("radar files not deployed");
+    expect(JSON.stringify(r)).not.toContain("nonexistent");
   });
 });

@@ -339,6 +339,13 @@ describe("PUBLIC_MODE guest access", () => {
       expect((await req("/branches", "HEAD")).status).toBe(200);
     }));
 
+  test("guests read the research board but not the radar (LLM-written theses)", () =>
+    withPublic("true", async () => {
+      expect((await req("/research/board")).status).toBe(200);
+      expect((await req("/radar")).status).toBe(401);
+      expect((await req("/research/study", "POST")).status).toBe(401);
+    }));
+
   test("guests cannot write anywhere", () =>
     withPublic("1", async () => {
       for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {

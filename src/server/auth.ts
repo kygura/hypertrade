@@ -140,8 +140,8 @@ function labBearerValid(c: Context): boolean {
   return ok;
 }
 
-/** Proxies to services with their own tokens; guests never reach them, even on GET. */
-const GUEST_DENIED = /^\/(engine|mcp)(\/|$)/;
+/** Proxies to services with their own tokens, and the radar (LLM-written theses and notes): guests never reach them, even on GET. */
+const GUEST_DENIED = /^\/(engine|mcp|radar)(\/|$)/;
 
 /**
  * PUBLIC_MODE=1 (or "true") lets visitors read the app without logging in:
