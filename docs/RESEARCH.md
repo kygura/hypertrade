@@ -98,9 +98,10 @@ The UI disables APPROVE from that, and also when the server-side mid is stale.
 
 ### B4. Dead code and gates
 
-Remove `src/server/lab/engine/calibrate.ts` (test-only) and `scripts/desk-worker.ts`
-(superseded by server loops) with their references. CI runs `check:type-scale`. The board
-pipeline deletion stays on its date in `docs/TASKS.md`.
+CI runs `check:type-scale`. The board pipeline deletion stays on its date in
+`docs/TASKS.md`. `lab/engine/calibrate.ts` and `scripts/desk-worker.ts` were audited as
+dead and are not: the first calibrates the save-bar cut-off (`docs/LAB.md`), the second
+builds the desk service for `scripts/server.ts`. Both stay.
 
 Not changed here, recorded in `docs/TASKS.md`: scanner funding windows (24 h in code,
 7 d/14 d in SPEC P0.9), the desk regime classifier used on a 1 h return, the five
