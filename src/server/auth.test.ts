@@ -19,7 +19,7 @@ testApp.all("/engine/status", (c) => c.json({ proxied: true }));
 for (const p of ["/lab", "/lab/tools", "/mcp", "/mcp/x", "/labx", "/mcpfoo", "/labx/tools"]) {
   testApp.all(p, (c) => c.json({ reached: p }));
 }
-for (const p of ["/metrics/summary", "/sectors", "/marketstate", "/metricsx", "/sectorsfoo", "/marketstatex", "/intel", "/intel/positions", "/intelx/positions"]) {
+for (const p of ["/metrics/summary", "/sectors", "/marketstate", "/metricsx", "/sectorsfoo", "/marketstatex", "/intel", "/intel/positions", "/intelx/positions", "/research/board", "/research/study", "/research/studyx", "/radar"]) {
   testApp.all(p, (c) => c.json({ reached: p }));
 }
 
@@ -263,6 +263,17 @@ describe("lab bearer (LAB_API_TOKEN)", () => {
       // the cookie still works on any method there
       const cookie = (await postLogin("correct-horse")).headers.get("set-cookie")!.split(";")[0];
       expect((await req("/metrics/summary", { cookie }, "POST")).status).toBe(200);
+    }));
+
+  test("research: the bearer reads GET /research/* and /radar, and runs POST /research/study like a Lab tool", () =>
+    withTokens("tok-one", async () => {
+      for (const path of ["/research/board", "/radar"]) {
+        expect((await req(path, bearer("tok-one"))).status).toBe(200);
+        expect((await req(path, bearer("tok-one"), "POST")).status).toBe(401);
+      }
+      expect((await req("/research/study", bearer("tok-one"), "POST")).status).toBe(200);
+      expect((await req("/research/study", bearer("wrong"), "POST")).status).toBe(401);
+      expect((await req("/research/studyx", bearer("tok-one"), "POST")).status).toBe(401);
     }));
 
   test("empty entries never match an empty or blank bearer", () =>

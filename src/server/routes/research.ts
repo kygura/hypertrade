@@ -1,0 +1,123 @@
+import { Hono } from "hono";
+import { resolve } from "node:path";
+import { PRE_DECISION_STATUSES } from "../../shared/platform.js";
+import { BoardResponseSchema, RadarResponseSchema, StudyRequestSchema, StudyResponseSchema, type RadarResponse } from "../../shared/research.js";
+import { databaseUrl } from "../db.js";
+import { getLabService, labTools } from "../lab/tools.js";
+import { labDeadlineMs, SERVER_DEADLINE_MS } from "../mcp/lab.js";
+import { ToolInputError, UpstreamError, type ToolDef } from "../mcp/types.js";
+import { dbPlatformContext, getPlatformContext, type PlatformContext } from "../platform/context.js";
+import { PgPlatformStore } from "../platform/store-pg.js";
+import { buildBoard, SourceUnavailable, type BoardDeps } from "../research/board.js";
+import { readRadar } from "../research/radar.js";
+import { createStudyCache, createStudyRunner, type RunEventStudy, type StudyRunner } from "../research/study.js";
+import { invalid } from "./intel/http.js";
+
+// /api/research and /api/radar (docs/RESEARCH.md B2). Inputs and outputs zod-parsed against src/shared/research.ts.
+// GET /research/board   → BoardResponse: every source loads on its own; a failing one is `unavailable` with a reason.
+// POST /research/study  { rule, coin?, stopAtr?, targetAtr? } → StudyResponse. Runs the lab_event_study tool, so it
+//                       is a trial exactly as a direct call; cached in process by rule hash, scope and UTC day.
+//                       400 { error, field? } bad input · 502 upstream data · 500 otherwise.
+// GET /radar            → RadarResponse from data/radar/ (state `unavailable` + reason when the files are absent).
+// Auth (auth.ts): GETs are read paths (cookie, or the LAB_API_TOKEN bearer on GET); the study POST takes the same
+// cookie-or-bearer as the Lab tool POSTs.
+
+export interface ResearchRouteDeps {
+  board: () => Omit<BoardDeps, "cache">;
+  runStudy: StudyRunner;
+  cache: BoardDeps["cache"];
+  /** Deadline for a study run on request (the Lab route's). */
+  deadlineMs: () => number | undefined;
+}
+
+export function researchRoutes(deps: ResearchRouteDeps) {
+  return new Hono()
+    .get("/board", async (c) => c.json(BoardResponseSchema.parse(await buildBoard({ ...deps.board(), cache: deps.cache }))))
+    .post("/study", async (c) => {
+      let raw: unknown;
+      try {
+        raw = await c.req.json();
+      } catch {
+        return c.json({ error: "body must be JSON" }, 400);
+      }
+      const q = StudyRequestSchema.safeParse(raw);
+      if (!q.success) return invalid(c, q.error, "study");
+      try {
+        return c.json(StudyResponseSchema.parse(await deps.runStudy(q.data, { source: "ui", deadlineMs: deps.deadlineMs() })));
+      } catch (err) {
+        if (err instanceof ToolInputError) return c.json({ error: err.message, ...(err.field !== undefined && { field: err.field }) }, 400);
+        if (err instanceof UpstreamError) return c.json({ error: err.message }, 502);
+        console.error("[research] study", err);
+        return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+      }
+    });
+}
+
+export function radarRoutes(read: () => Promise<RadarResponse> = () => readRadar(RADAR_DIR)) {
+  return new Hono().get("/", async (c) => c.json(RadarResponseSchema.parse(await read())));
+}
+
+export const RADAR_DIR = resolve(process.cwd(), "data/radar");
+
+// ---------------------------------------------------------------- process defaults
+
+/** lab_event_study through the registered tool: its own argument parse and defaults, and its trial. */
+export const toolEventStudy = (tools: () => ToolDef[] = labTools): RunEventStudy => (args, ctx) => {
+  const tool = tools().find((t) => t.name === "lab_event_study");
+  if (!tool) throw new Error("lab_event_study is not registered");
+  return tool.run(args, ctx);
+};
+
+/** Market Pulse loads every catalogue asset's data: kept this long between board loads. */
+const PULSE_TTL_MS = 5 * 60_000;
+let pulseMemo: { at: number; value: ReturnType<BoardDeps["pulse"]> } | null = null;
+let dbCtx: PlatformContext | null = null;
+
+/** The worker's context on the always-on server, else Postgres-only reads; null with neither. */
+const platformContext = () => getPlatformContext() ?? (databaseUrl() ? (dbCtx ??= dbPlatformContext(new PgPlatformStore())) : null);
+
+export function defaultBoardDeps(env: Record<string, string | undefined> = process.env): Omit<BoardDeps, "cache"> {
+  return {
+    now: Date.now,
+    pulse: () => {
+      if (pulseMemo && Date.now() - pulseMemo.at < PULSE_TTL_MS) return pulseMemo.value;
+      const service = getLabService();
+      const value = Promise.all([service.marketPulse({}, { deadlineMs: labDeadlineMs(env, SERVER_DEADLINE_MS) }), service.deps.store.listCatalogue()]).then(([pulse, catalogue]) => ({ pulse, catalogue }));
+      pulseMemo = { at: Date.now(), value };
+      value.catch(() => (pulseMemo = null));
+      return value;
+    },
+    novelty: async (sinceBar) => {
+      // The novelty loop runs only with a database (its daily inputs live in Postgres).
+      if (!databaseUrl()) throw new SourceUnavailable("needs DATABASE_URL: the novelty loop reads its daily history from Postgres");
+      const ctx = platformContext();
+      if (!ctx) throw new SourceUnavailable("platform offline");
+      return ctx.store.listNovelty(sinceBar);
+    },
+    opportunities: async (limit) => {
+      const ctx = platformContext();
+      if (!ctx) throw new SourceUnavailable("platform offline: no scanner loop in this process and no DATABASE_URL");
+      return ctx.store.listOpportunities({ statuses: [...PRE_DECISION_STATUSES], limit });
+    },
+    radarCalls: async () => {
+      const r = await readRadar(RADAR_DIR);
+      if (r.state === "unavailable") throw new SourceUnavailable(r.reason ?? "radar unavailable");
+      return r.calls;
+    },
+  };
+}
+
+let shared: { cache: ResearchRouteDeps["cache"]; runStudy: StudyRunner } | null = null;
+/** One study cache and runner per process: the routes and the precompute loop share them. */
+export function researchRuntime() {
+  if (!shared) {
+    const cache = createStudyCache();
+    shared = { cache, runStudy: createStudyRunner({ cache, eventStudy: toolEventStudy(), now: Date.now }) };
+  }
+  return shared;
+}
+
+export function defaultResearchDeps(env: Record<string, string | undefined> = process.env): ResearchRouteDeps {
+  const { cache, runStudy } = researchRuntime();
+  return { board: () => defaultBoardDeps(env), cache, runStudy, deadlineMs: () => labDeadlineMs(env, SERVER_DEADLINE_MS) };
+}

@@ -118,15 +118,30 @@ export function checkKills(file: RadarCallsFile, markets: RadarMarket[], today: 
   return { file: { calls }, killed };
 }
 
-/** One line per stance and horizon with graded calls: count, mean move vs BTC, share that went the called way. */
-export function scorecard(file: RadarCallsFile): string[] {
-  const out: string[] = [];
+export interface ScoreRow {
+  stance: "ride" | "fade";
+  horizonDays: number;
+  n: number;
+  /** Mean move vs BTC, %. */
+  meanPct: number;
+  /** Calls that went the called way. */
+  hits: number;
+}
+
+/** Per stance and horizon with graded calls: count, mean move vs BTC, how many went the called way. */
+export function scorecardRows(file: RadarCallsFile): ScoreRow[] {
+  const out: ScoreRow[] = [];
   for (const stance of ["ride", "fade"] as const)
     for (const h of RADAR_HORIZONS) {
       const xs = file.calls.filter((c) => c.stance === stance).map((c) => c.rel[String(h)]).filter((x): x is number => x != null);
       if (!xs.length) continue;
-      const mean = xs.reduce((s, x) => s + x, 0) / xs.length;
-      out.push(`${stance} +${h}d vs BTC: n=${xs.length} · mean ${signed(mean)} · ${xs.filter((x) => x > 0).length}/${xs.length} went the called way`);
+      out.push({ stance, horizonDays: h, n: xs.length, meanPct: xs.reduce((s, x) => s + x, 0) / xs.length, hits: xs.filter((x) => x > 0).length });
     }
+  return out;
+}
+
+/** One line per scorecardRows row. */
+export function scorecard(file: RadarCallsFile): string[] {
+  const out = scorecardRows(file).map((r) => `${r.stance} +${r.horizonDays}d vs BTC: n=${r.n} · mean ${signed(r.meanPct)} · ${r.hits}/${r.n} went the called way`);
   return out.length ? out : ["no graded calls yet"];
 }

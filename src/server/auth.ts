@@ -111,16 +111,16 @@ export const requireCronToken: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
-/** `/lab`, `/lab/...`, `/mcp`, `/mcp/...` — not `/labx` or `/mcpfoo`. All methods: the lab's own tools are called over POST. */
-const LAB_PATH = /^\/(lab|mcp)(\/|$)/;
+/** `/lab`, `/lab/...`, `/mcp`, `/mcp/...` — not `/labx` or `/mcpfoo` — and `/research/study` (a lab_event_study run). All methods: the lab's own tools are called over POST. */
+const LAB_PATH = /^\/(lab|mcp)(\/|$)|^\/research\/study$/;
 
 /**
- * `/metrics`, `/sectors`, `/marketstate`, `/intel`, `/platform` and their subpaths — not
+ * `/metrics`, `/sectors`, `/marketstate`, `/intel`, `/platform`, `/research`, `/radar` and their subpaths — not
  * `/metricsx`. The bearer only opens them on GET, so the routine can read;
  * every write under these paths (Intel's positions, orders, watches…) still
  * needs the session cookie.
  */
-const READ_PATH = /^\/(metrics|sectors|marketstate|intel|platform)(\/|$)/;
+const READ_PATH = /^\/(metrics|sectors|marketstate|intel|platform|research|radar)(\/|$)/;
 
 /**
  * Bearer token for the lab surfaces and the read-only paths above (docs/LAB.md
