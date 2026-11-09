@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router'
 import { AgeStamp, AsyncBody, Panel, PanelHeader, StaleBanner } from '../components'
 import { LabWarnings } from '../components/LabWarnings'
-import { useLabData } from '../components/lab/LabData'
+import { useLabData, usePulse } from '../components/lab/LabData'
 import { PulseBoard } from '../components/lab/PulseBoard'
 import { LabFooter } from '../components/lab/common'
 
@@ -10,7 +10,8 @@ import { LabFooter } from '../components/lab/common'
 
 export function LabPulse() {
   const navigate = useNavigate()
-  const { pulse, catalogue, metrics } = useLabData()
+  const { catalogue, metrics } = useLabData()
+  const pulse = usePulse()
   const p = pulse.data
 
   return (

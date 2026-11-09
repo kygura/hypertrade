@@ -22,6 +22,8 @@ import type {
   VerdictLevel,
 } from '../../server/lab/types'
 import type { RunSummary, StoredRun } from '../../server/lab/store'
+import type { EventStudyResult } from '../../server/lab/engine/eventStudy'
+import type { IdeaNumber } from '../../server/lab/service'
 
 // Typed client for the lab tool registry (docs/LAB.md "Tool contract") plus the
 // pure formatting/filter logic behind docs/design/README.md §10.9. Wire shapes are the
@@ -51,6 +53,20 @@ export type {
 }
 
 export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flags: Array<'decayed' | 'overlap'> }
+
+/** lab_event_study result as the service returns it (eventList cut to the most recent 200 of eventListTotal). */
+export type StudyResult = EventStudyResult & { eventListTotal: number; warnings: string[]; idea: IdeaNumber }
+
+/** lab_event_study args; without `coins` the server picks the universe from top / mine (default: top 20 by day volume). */
+export interface StudyArgs {
+  rule: Rule
+  coins?: string[]
+  top?: number
+  mine?: boolean
+  stopAtr: number
+  targetAtr: number
+  slippageBps?: number
+}
 
 // ------------------------------------------------------------------ transport
 
@@ -106,6 +122,7 @@ export const lab = {
   remove: (id: string) => labCall<{ removed: boolean }>('lab_catalogue_remove', { id }),
   health: () => labCall<CatalogueHealth>('lab_catalogue_health'),
   pulse: () => labCall<MarketPulse>('lab_market_pulse'),
+  eventStudy: (args: StudyArgs, signal?: AbortSignal) => labCall<StudyResult>('lab_event_study', args, signal),
 }
 
 export function errorText(err: unknown): string {
@@ -121,8 +138,11 @@ export interface LabState<T> {
   setData: (d: T) => void
 }
 
-/** One-shot loader for a lab call; `fetcher` null skips. Refetches keep the old data (no skeleton flash). */
-export function useLab<T>(fetcher: (() => Promise<T>) | null, deps: unknown[]): LabState<T> {
+/**
+ * One-shot loader for a lab call; `fetcher` null skips. Refetches keep the old data (no skeleton flash).
+ * The fetcher gets a signal that aborts on refetch, on a deps change and on unmount (navigation).
+ */
+export function useLab<T>(fetcher: ((signal: AbortSignal) => Promise<T>) | null, deps: unknown[]): LabState<T> {
   const [state, setState] = useState<{ data: T | null; loading: boolean; error: string | null; offline: boolean }>({
     data: null,
     loading: fetcher != null,
@@ -132,16 +152,19 @@ export function useLab<T>(fetcher: (() => Promise<T>) | null, deps: unknown[]): 
   const ref = useRef(fetcher)
   ref.current = fetcher
   const seq = useRef(0)
+  const ctrl = useRef<AbortController | null>(null)
 
   const refetch = useCallback(() => {
     const f = ref.current
     if (!f) return
     const n = ++seq.current
+    ctrl.current?.abort()
+    const ac = (ctrl.current = new AbortController())
     setState((s) => ({ ...s, loading: true, error: null, offline: false }))
-    f().then(
+    f(ac.signal).then(
       (data) => n === seq.current && setState({ data, loading: false, error: null, offline: false }),
       (err: unknown) => {
-        if (n !== seq.current) return
+        if (n !== seq.current || isAbort(err)) return
         if (err instanceof ApiError && err.status === 401) return
         setState((s) => ({
           data: s.data,
@@ -156,6 +179,7 @@ export function useLab<T>(fetcher: (() => Promise<T>) | null, deps: unknown[]): 
 
   useEffect(() => {
     refetch()
+    return () => ctrl.current?.abort()
   }, [refetch])
 
   const setData = useCallback((data: T) => setState({ data, loading: false, error: null, offline: false }), [])
@@ -491,10 +515,16 @@ export interface SearchForm {
   seed: string
 }
 
+/**
+ * Metrics the form starts with so RUN works without picking: Hyperliquid's own
+ * daily series, which load live from HL with no database behind the server.
+ */
+export const DEFAULT_METRIC_PRESET: readonly string[] = ['ht:price', 'ht:funding', 'ht:volume', 'ht:premium']
+
 export const DEFAULT_FORM: SearchForm = {
   asset: 'BTC',
   direction: 'long',
-  metrics: [],
+  metrics: [...DEFAULT_METRIC_PRESET],
   horizonDays: 14,
   objective: 'sharpe',
   trials: 40,
