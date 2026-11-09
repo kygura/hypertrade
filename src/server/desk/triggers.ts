@@ -1,4 +1,5 @@
 import { fmtPx } from "../../shared/format.js";
+import { fundingAprPct } from "../../shared/signalMath.js";
 import type { AssetCtx } from "../../shared/types.js";
 import { marketBreadth } from "./analytics.js";
 import type { AccountState, AlertLevel } from "./types.js";
@@ -58,7 +59,7 @@ export function evaluateTriggers(i: TriggerInput): Trigger[] {
     }
     const ctx = byName.get(coin);
     if (ctx) {
-      const apr = ctx.funding * 24 * 365 * 100;
+      const apr = fundingAprPct(ctx.funding);
       if (apr >= 50 || apr <= -30) {
         out.push({
           key: `funding:${coin}:${Math.sign(apr)}`,

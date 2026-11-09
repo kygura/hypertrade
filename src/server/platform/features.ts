@@ -1,8 +1,9 @@
 import type { FeatureVector, LiquidityTier } from "../../shared/platform.js";
+import { fundingAprPct, median, robustSigma } from "../../shared/signalMath.js";
 import { classifyRegime } from "../desk/analytics.js";
 import type { Point } from "../intel/normalize.js";
-import { fin, median } from "../intel/util.js";
-import { robustLevelZ, robustSigma, spanResult, valueAt } from "../intel/windows.js";
+import { fin } from "../intel/util.js";
+import { robustLevelZ, spanResult, valueAt } from "../intel/windows.js";
 import { depthWithin, midOf, type Book } from "./costs.js";
 
 // Per-asset feature set (docs/SPEC.md § Platform P0.9). Pure: history in, numbers out.
@@ -80,7 +81,7 @@ export function computeFeatures(history: RingPoint[], now: number, extras: Featu
   const rv24h = rv(marks, now - DAY, 240);
   const sigma1h = rv24h == null ? null : rv24h * Math.sqrt(60);
 
-  const fundingApr = last ? last.funding * 24 * 365 * 100 : null;
+  const fundingApr = last ? fundingAprPct(last.funding) : null;
   const regime = ret1h.delta == null ? null : classifyRegime(ret1h.delta, oi1h.delta, fundingZ24h, fundingApr);
 
   const liq = fin(extras.liqNearUsd);
