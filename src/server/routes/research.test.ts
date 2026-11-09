@@ -20,7 +20,9 @@ const NOW = Date.parse("2026-11-09T12:00:00Z");
 const rule: Rule = { asset: "ETH", direction: "short", horizonDays: 7, conditions: [{ feature: "ht:funding|z|90", op: ">=", threshold: 2 }] };
 const post = (body: unknown) => ({ method: "POST", headers: { "content-type": "application/json" }, body: typeof body === "string" ? body : JSON.stringify(body) });
 
-function app(eventStudy: RunEventStudy, deadline = 50_000) {
+const radarCall = { id: "2026-11-08-1-HYPE", date: "2026-11-08", at: "2026-11-08T08:00:00Z", market: "HYPE", stance: "ride", direction: "long", kind: "catalyst", thesis: "a dated unlock next week", cause_url: "https://x.example/a", cause_date: "2026-11-07", kill_price: 30, kill_if: "close below 30", mark: 33, btc: 90000, rel: {}, killed_at: null } as const;
+
+function app(eventStudy: RunEventStudy, deadline = 50_000, guest = false) {
   const cache = createStudyCache(() => NOW);
   const nov = { id: "2026-11-08:ETH", detectedAt: "2026-11-09T00:10:00.000Z", barDate: "2026-11-08", coin: "ETH", kind: "new_extreme", families: ["funding"], nearSetups: [], marketWide: false, pushed: true, notified: [],
     features: [{ id: "funding_z90", value: 2.6, histMin: -2, histMax: 2.5, p1: -1.8, p99: 2.2, bars: 400, pctRank: 100 }] } as NoveltyEntry;
@@ -28,23 +30,32 @@ function app(eventStudy: RunEventStudy, deadline = 50_000) {
     cache,
     runStudy: createStudyRunner({ cache, eventStudy, now: () => NOW }),
     deadlineMs: () => deadline,
+    isGuest: () => guest,
     board: () => ({
       now: () => NOW,
       pulse: async () => { throw new Error("lab store down"); },
       novelty: async () => [nov],
       opportunities: async () => { throw new SourceUnavailable("platform offline (no worker loop and no database)"); },
-      radarCalls: async () => [],
+      radarCalls: async () => [radarCall],
     }),
   });
   return new Hono().route("/research", routes);
 }
 
 describe("/research routes", () => {
+  test("GET /board as a guest: the radar is `sign in required` and contributes no signals", async () => {
+    const user = BoardResponseSchema.parse(await (await app(async () => fakeStudy()).request("/research/board")).json());
+    expect(user.sources.radar).toMatchObject({ state: "ok", count: 1 });
+    const guest = BoardResponseSchema.parse(await (await app(async () => fakeStudy(), 50_000, true).request("/research/board")).json());
+    expect(guest.sources.radar).toEqual({ state: "unavailable", reason: "sign in required", count: 0, dropped: 0 });
+    expect(guest.signals.some((s) => s.source === "radar")).toBe(false);
+  });
+
   test("GET /board: parsed shape; failing sources listed; a study run via POST shows up as evidence", async () => {
     const calls: unknown[] = [];
     const a = app(async (args, ctx) => (calls.push({ args, ctx }), fakeStudy()));
     const before = BoardResponseSchema.parse(await (await a.request("/research/board")).json());
-    expect(before.sources).toMatchObject({ rule: { state: "unavailable", reason: "source failed (see server log)" }, opportunity: { state: "unavailable", reason: "platform offline (no worker loop and no database)" }, novelty: { state: "ok", count: 1 }, radar: { state: "ok", count: 0 } });
+    expect(before.sources).toMatchObject({ rule: { state: "unavailable", reason: "source failed (see server log)" }, opportunity: { state: "unavailable", reason: "platform offline (no worker loop and no database)" }, novelty: { state: "ok", count: 1 }, radar: { state: "ok", count: 1 } });
     const s = before.signals[0]!;
     expect(s).toMatchObject({ source: "novelty", scope: "universe", evidence: null });
 

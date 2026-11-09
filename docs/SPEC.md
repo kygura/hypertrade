@@ -413,7 +413,7 @@ Source: the same "Flow + Scout" brief, § 4.3 and § 3.4. The operator asked (20
 
 ## Platform — always-on scanner and cockpit (phase 8)
 
-Phase 1 of the Trading Intelligence Platform spec (2026-10-15). Code scans the whole Hyperliquid perp universe every minute, ranks opportunities, maps real liquidation levels from crawled trader positions, and records every idea and its outcome in an append-only ledger. The operator lands on a cockpit that shows what to act on now. Paper and testnet only.
+Phase 1 of the Trading Intelligence Platform spec (2026-10-15). Code scans the whole Hyperliquid perp universe every minute, ranks opportunities, maps real liquidation levels from crawled trader positions, and records every idea and its outcome in an append-only ledger. The cockpit (`/feed`, the TRADE tab FEED; the app lands on the Research board `/`) shows what to act on now. Paper and testnet only.
 
 ### P0. Decisions (pinned)
 
@@ -535,7 +535,7 @@ Gate amendments (2026-10-16):
   - `GET /api/platform/opportunities` returns ranked rows from live HL data;
   - `GET /api/platform/liqmap?coin=BTC` returns buckets with a coverage figure above 0.
 - `docker build .` succeeds and the container answers `/api/health`.
-- `/` renders the cockpit with every panel's states, including offline with no DB, and `/terminal` still renders the old Terminal.
+- `/feed` renders the cockpit with every panel's states, including offline with no DB, and `/terminal` still renders the old Terminal.
 - README gains a "Railway" section: service setup, the env var list below, the pooler URL, `MIGRATE_ON_BOOT`, the `APP_URL` change for GitHub Actions, and `DESK_ENABLED=false`.
 
 ### P5. Out of scope (phase 8)

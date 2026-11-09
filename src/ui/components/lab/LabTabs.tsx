@@ -26,7 +26,8 @@ export function isResearchPath(p: string): boolean {
 export function LabTabs({ pulseFiring }: { pulseFiring?: boolean } = {}) {
   const data = useLabDataOptional()
   const count = data?.catalogue.data?.length
-  const firing = data?.pulse.data ? data.pulse.data.assets.some((a) => a.rules.some((r) => r.firing)) : (pulseFiring ?? false)
+  // Unknown until a pulse is loaded (here or on the board): no dot, a neutral title, never "not firing".
+  const firing: boolean | undefined = data?.pulse.data ? data.pulse.data.assets.some((a) => a.rules.some((r) => r.firing)) : pulseFiring
   const inLab = (tab: LabTab) => (p: string) => p.startsWith('/lab') && labTabOf(p) === tab
 
   const tabs: SectionTab[] = [
@@ -44,7 +45,7 @@ export function LabTabs({ pulseFiring }: { pulseFiring?: boolean } = {}) {
         </>
       ),
       dot: firing,
-      title: firing ? 'a catalogued rule is firing' : 'no catalogued rule is firing',
+      title: firing === undefined ? 'pulse not loaded' : firing ? 'a catalogued rule is firing' : 'no catalogued rule is firing',
       match: inLab('pulse'),
     },
     { to: '/branches', label: 'BRANCHES', short: 'BRNCH', match: (p) => p === '/branches' || p.startsWith('/branches/') },

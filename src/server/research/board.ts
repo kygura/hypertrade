@@ -45,6 +45,14 @@ export interface BoardDeps {
   timeoutMs?: number;
 }
 
+/**
+ * The board as a guest sees it (PUBLIC_MODE without a session): /radar is not guest-readable, so the radar source
+ * is `unavailable` ("sign in required") and contributes no calls, instead of leaking them through the board.
+ */
+export function boardDepsFor<D extends Pick<BoardDeps, "radarCalls">>(deps: D, guest: boolean): D {
+  return guest ? { ...deps, radarCalls: async () => { throw new SourceUnavailable("sign in required"); } } : deps;
+}
+
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<never>((_, rej) => (timer = setTimeout(() => rej(new TimedOut()), ms)));

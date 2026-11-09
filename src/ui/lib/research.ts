@@ -1,7 +1,7 @@
-import { boardStudy, BoardResponseSchema, RadarResponseSchema, StudyResponseSchema, type ResearchSignal, type ResearchSource, type StudyResponse } from '../../shared/research'
+import { boardStudy, BoardResponseSchema, RadarResponseSchema, StudyResponseSchema, type ResearchSignal, type StudySummary, type ResearchSource, type StudyRequest, type StudyResponse } from '../../shared/research'
 import type { RadarCall } from '../../shared/radar'
-import { api, parseWith } from './api'
-import { studyHref } from './study'
+import { ApiError, api, parseWith } from './api'
+import { DEFAULT_TOP, studyHref } from './study'
 
 // Research board client (docs/RESEARCH.md "Board"): the three routes parsed with the shared
 // zod schemas, plus the board's pure helpers (grouping, the `/` redirect rule, links), tested
@@ -27,8 +27,10 @@ export const research = {
   study: async (s: BoardSignal): Promise<StudyResponse> => {
     const body = boardStudy(s)
     if (!body) throw new Error('this signal has no Lab rule to study')
-    return study(await api.post('/research/study', body))
+    return research.run(body)
   },
+  /** POST /api/research/study with a canonical body (`studyRoute` in lib/study.ts, or `boardStudy`). */
+  run: async (body: StudyRequest): Promise<StudyResponse> => study(await api.post('/research/study', body)),
 }
 
 /** Keyboard on the board: j/k move, Enter open, s study in place; null while typing, in a dialog or with a modifier. */
@@ -87,3 +89,55 @@ export function rootRedirect(search: string): string | null {
 export function recentCalls(calls: readonly RadarCall[], n = 6): RadarCall[] {
   return [...calls].sort((a, b) => b.date.localeCompare(a.date) || b.at.localeCompare(a.at)).slice(0, n)
 }
+
+// ─── auth and the evidence cell (pure, tested) ───
+
+/** Who is looking, from the /auth/me probe. A failed probe is an error with a retry, never an endless load. */
+export type Auth = { state: 'loading' } | { state: 'guest' } | { state: 'user' } | { state: 'error'; message: string }
+
+export function authOf(me: { data: { guest?: boolean } | null; error: string | null; offline: boolean }): Auth {
+  if (me.data) return { state: me.data.guest === true ? 'guest' : 'user' }
+  if (me.error) return { state: 'error', message: me.error }
+  if (me.offline) return { state: 'error', message: 'api unreachable' }
+  return { state: 'loading' }
+}
+
+/** A study run in place from a row. */
+export type RowStudy = { state: 'running' } | { state: 'error'; message: string } | { state: 'sign-in' } | { state: 'done'; summary: StudySummary }
+
+/** Key of a row's local study: the signal and the UTC day, so yesterday's run never shows as today's evidence. */
+export const rowStudyKey = (id: string, now: number) => `${id}|${new Date(now).toISOString().slice(0, 10)}`
+
+/** What a failed study run leaves in the cell: a 401 means sign in (the redirect is in flight), else the error verbatim. */
+export function studyFailed(err: unknown): RowStudy {
+  if (err instanceof ApiError && err.status === 401) return { state: 'sign-in' }
+  return { state: 'error', message: err instanceof Error && err.message ? err.message : 'request failed' }
+}
+
+export type CellState =
+  | { kind: 'evidence'; summary: StudySummary }
+  | { kind: 'no-twin' }
+  | { kind: 'running' }
+  | { kind: 'sign-in' }
+  | { kind: 'auth-loading' }
+  | { kind: 'auth-error'; message: string }
+  | { kind: 'idle'; error: string | null }
+
+/**
+ * The evidence cell of a row: idle → running → evidence | error (idle with the message, STUDY retries) | sign-in.
+ * Cached evidence wins; no rule is `no Lab twin`; a guest never gets a STUDY button (the POST needs a session),
+ * and nothing runs until /auth/me has answered.
+ */
+export function cellState(s: Pick<ResearchSignal, 'rule' | 'evidence'>, local: RowStudy | undefined, auth: Auth): CellState {
+  const ev = s.evidence ?? (local?.state === 'done' ? local.summary : null)
+  if (ev) return { kind: 'evidence', summary: ev }
+  if (!s.rule) return { kind: 'no-twin' }
+  if (local?.state === 'running') return { kind: 'running' }
+  if (auth.state === 'guest' || local?.state === 'sign-in') return { kind: 'sign-in' }
+  if (auth.state === 'loading') return { kind: 'auth-loading' }
+  if (auth.state === 'error') return { kind: 'auth-error', message: auth.message }
+  return { kind: 'idle', error: local?.state === 'error' ? local.message : null }
+}
+
+/** What was studied: the signal's own coin, or the Lab's default universe (a universe study is not the coin's history). */
+export const scopeLabel = (scope: ResearchSignal['scope']) => (scope === 'coin' ? 'this coin' : `top-${DEFAULT_TOP} universe`)

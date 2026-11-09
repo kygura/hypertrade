@@ -27,9 +27,13 @@ describe("LabTabs", () => {
     expect(checked(render("/lab/pulse"))).toBe(5);
     expect(checked(render("/branches/b1"))).toBe(6);
   });
-  test("outside a provider the pulse dot follows pulseFiring", () => {
+  test("outside a provider the pulse dot follows pulseFiring; unknown is no dot and a neutral title", () => {
     expect(render("/", true)).toContain("bg-green");
     expect(render("/", false)).not.toContain("bg-green");
+    expect(render("/", false)).toContain('title="no catalogued rule is firing"');
+    const unknown = render("/");
+    expect(unknown).toContain('title="pulse not loaded"');
+    expect(unknown).not.toContain("inline-block w-1.5 h-1.5");
   });
   test("isResearchPath", () => {
     for (const p of ["/", "/lab", "/lab/study", "/branches", "/branches/x"]) expect(isResearchPath(p)).toBe(true);

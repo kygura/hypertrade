@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { resolve } from "node:path";
 import { PRE_DECISION_STATUSES } from "../../shared/platform.js";
 import { BoardResponseSchema, RadarResponseSchema, StudyRequestSchema, StudyResponseSchema, type RadarResponse } from "../../shared/research.js";
@@ -8,7 +8,8 @@ import { labDeadlineMs, SERVER_DEADLINE_MS } from "../mcp/lab.js";
 import { ToolInputError, UpstreamError, type ToolDef } from "../mcp/types.js";
 import { dbPlatformContext, getPlatformContext, type PlatformContext } from "../platform/context.js";
 import { PgPlatformStore } from "../platform/store-pg.js";
-import { buildBoard, SourceUnavailable, type BoardDeps } from "../research/board.js";
+import { boardDepsFor, buildBoard, SourceUnavailable, type BoardDeps } from "../research/board.js";
+import { isGuest } from "../auth.js";
 import { readRadar } from "../research/radar.js";
 import { createStudyCache, createStudyRunner, type RunEventStudy, type StudyRunner } from "../research/study.js";
 import { invalid } from "./intel/http.js";
@@ -29,11 +30,15 @@ export interface ResearchRouteDeps {
   cache: BoardDeps["cache"];
   /** Deadline for a study run on request (the Lab route's). */
   deadlineMs: () => number | undefined;
+  /** A PUBLIC_MODE guest (no session, no bearer): the board leaves the radar out. Default: auth.ts isGuest. */
+  isGuest?: (c: Context) => boolean;
 }
 
 export function researchRoutes(deps: ResearchRouteDeps) {
   return new Hono()
-    .get("/board", async (c) => c.json(BoardResponseSchema.parse(await buildBoard({ ...deps.board(), cache: deps.cache }))))
+    .get("/board", async (c) =>
+      c.json(BoardResponseSchema.parse(await buildBoard({ ...boardDepsFor(deps.board(), (deps.isGuest ?? isGuest)(c)), cache: deps.cache }))),
+    )
     .post("/study", async (c) => {
       let raw: unknown;
       try {

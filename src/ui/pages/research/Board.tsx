@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router'
-import { AsyncBody, Badge, Button, DialogShell, EmptyBlock, Panel, PanelHeader, PageContainer } from '../../components'
+import { AsyncBody, Badge, Button, DialogShell, EmptyBlock, ErrorBlock, Panel, PanelHeader, PageContainer } from '../../components'
 import { LabTabs } from '../../components/lab/LabTabs'
 import { StudyVerdictBadge } from '../../components/lab/StudyVerdictBadge'
-import { ApiError, REDIRECT_KEY, useApi } from '../../lib/api'
+import { rememberReturnPath, useApi } from '../../lib/api'
 import { fmtAge } from '../../lib/format'
 import { useNow, useQueryPatch } from '../../lib/hooks'
-import { errorMessage, usePoll, type PollState } from '../../lib/poll'
+import { usePoll, type PollState } from '../../lib/poll'
 import {
-  BOARD_POLL_MS, boardKey, flatSignals, recentCalls, research, rootRedirect, signalBlocks, signalStudyHref, SOURCE_LABEL, type BoardSignal,
+  authOf, BOARD_POLL_MS, boardKey, cellState, flatSignals, recentCalls, research, rootRedirect, rowStudyKey, scopeLabel, signalBlocks, signalStudyHref, SOURCE_LABEL,
+  studyFailed, type Auth, type BoardSignal, type RowStudy,
 } from '../../lib/research'
 import { fmtR } from '../../lib/study'
 import { RESEARCH_SOURCES, type BoardResponse, type RadarResponse, type StudySummary } from '../../../shared/research'
@@ -19,8 +20,6 @@ import { RESEARCH_SOURCES, type BoardResponse, type RadarResponse, type StudySum
 // pollers, `?coin=`, the per-row study runs and the keyboard; BoardView is presentational.
 // Nothing here trades and nothing nags: facts with their n, never a verdict of the signal itself.
 
-/** A study run in place from a row. */
-export type RowStudy = { state: 'running' } | { state: 'error'; message: string } | { state: 'done'; summary: StudySummary }
 
 export function Board() {
   const { search } = useLocation()
@@ -37,23 +36,24 @@ function BoardPage() {
   const now = useNow(30_000)
   const coin = params.get('coin')
 
+  // The shell's own /auth/me probe is local to AppShell; this one fails to an error with a retry, never a hang.
   const me = useApi<{ ok: boolean; guest?: boolean }>('/auth/me')
-  // Unknown until /auth/me answers: a guest never fires the POST (a 401 would bounce to /login).
-  const guest = me.data ? me.data.guest === true : null
+  const auth = authOf(me)
   const board = usePoll(research.board, [], { intervalMs: BOARD_POLL_MS })
   // The radar needs a session: a guest sees the sign-in affordance instead of a fetch.
-  const radar = usePoll(research.radar, [], { enabled: guest === false })
+  const radar = usePoll(research.radar, [], { enabled: auth.state === 'user' })
 
+  // Local runs, keyed by signal and UTC day (rowStudyKey): a run from yesterday never reads as today's.
   const [studies, setStudies] = useState<Record<string, RowStudy>>({})
   const runStudy = useCallback(async (s: BoardSignal) => {
     if (!s.rule) return
-    setStudies((m) => ({ ...m, [s.id]: { state: 'running' } }))
+    const key = rowStudyKey(s.id, Date.now())
+    setStudies((m) => ({ ...m, [key]: { state: 'running' } }))
     try {
       const r = await research.study(s)
-      setStudies((m) => ({ ...m, [s.id]: { state: 'done', summary: r.summary } }))
+      setStudies((m) => ({ ...m, [key]: { state: 'done', summary: r.summary } }))
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) return // redirect in flight
-      setStudies((m) => ({ ...m, [s.id]: { state: 'error', message: errorMessage(e) } }))
+      setStudies((m) => ({ ...m, [key]: studyFailed(e) }))
     }
   }, [])
 
@@ -63,11 +63,7 @@ function BoardPage() {
   const selectedId = selected && order.some((s) => s.id === selected) ? selected : (order[0]?.id ?? null)
 
   const signIn = useCallback(() => {
-    try {
-      sessionStorage.setItem(REDIRECT_KEY, `${location.pathname}${location.search}`)
-    } catch {
-      /* storage blocked: Login falls back to `/` */
-    }
+    rememberReturnPath(location)
     navigate('/login')
   }, [location, navigate])
 
@@ -93,7 +89,7 @@ function BoardPage() {
       if (href) (e.preventDefault(), navigate(href))
       return
     }
-    if (a === 'study' && cur.rule && !cur.evidence && studies[cur.id]?.state !== 'running' && studies[cur.id]?.state !== 'done' && guest === false) {
+    if (a === 'study' && cellState(cur, studies[rowStudyKey(cur.id, Date.now())], auth).kind === 'idle') {
       e.preventDefault()
       void runStudy(cur)
     }
@@ -108,7 +104,8 @@ function BoardPage() {
     <BoardView
       board={board}
       radar={radar}
-      guest={guest}
+      auth={auth}
+      onAuthRetry={me.refetch}
       coin={coin}
       now={now}
       studies={studies}
@@ -127,8 +124,8 @@ type Poll<T> = Pick<PollState<T>, 'data' | 'loading' | 'error' | 'offline' | 're
 export interface BoardViewProps {
   board: Poll<BoardResponse>
   radar: Poll<RadarResponse>
-  /** null while /auth/me is unanswered. */
-  guest: boolean | null
+  auth: Auth
+  onAuthRetry: () => void
   coin: string | null
   now: number
   studies: Record<string, RowStudy>
@@ -161,7 +158,7 @@ export function BoardView(p: BoardViewProps) {
         </section>
         <aside aria-label="pulse and radar" className="lg:col-span-4 min-w-0 flex flex-col gap-3">
           <PulsePanel board={p.board} />
-          <RadarPanel radar={p.radar} guest={p.guest} onSignIn={p.onSignIn} />
+          <RadarPanel radar={p.radar} auth={p.auth} onAuthRetry={p.onAuthRetry} onSignIn={p.onSignIn} />
         </aside>
       </div>
     </PageContainer>
@@ -178,7 +175,7 @@ function HeaderLine({ board, coin, onClearCoin }: { board: BoardResponse | null;
           const st = board.sources[src]
           const off = st.state === 'unavailable'
           return (
-            <span key={src} title={off ? (st.reason ?? 'unavailable') : `${st.count} signal${st.count === 1 ? '' : 's'} now`} className="inline-flex">
+            <span key={src} title={chipTitle(st)} className="inline-flex">
               <Badge tone={off ? 'amber' : 'gray'}>
                 {SOURCE_LABEL[src]} {off ? 'unavailable' : st.count}
               </Badge>
@@ -192,6 +189,12 @@ function HeaderLine({ board, coin, onClearCoin }: { board: BoardResponse | null;
       )}
     </div>
   )
+}
+
+/** Source chip title: the reason when unavailable, else the count; items dropped as invalid are named, never hidden. */
+export function chipTitle(st: BoardResponse['sources'][keyof BoardResponse['sources']]): string {
+  const base = st.state === 'unavailable' ? (st.reason ?? 'unavailable') : `${st.count} signal${st.count === 1 ? '' : 's'} now`
+  return st.dropped > 0 ? `${base} · ${st.dropped} item${st.dropped === 1 ? '' : 's'} dropped as invalid (server log)` : base
 }
 
 /** Empty board copy: which sources are on, and that nothing is firing (not an error). */
@@ -239,6 +242,8 @@ function SignalRow(p: BoardViewProps & { s: BoardSignal }) {
       aria-current={selected ? 'true' : undefined}
       onClick={(e) => {
         p.onSelect(s.id)
+        // A click that ends a text selection selects text, it does not navigate.
+        if (globalThis.getSelection?.()?.toString()) return
         if (href && !(e.target as HTMLElement).closest('a,button')) p.onOpen(href)
       }}
       className={`flex flex-wrap items-start gap-x-3 gap-y-1 px-3 py-2 min-w-0 ${href ? 'cursor-pointer' : ''} ${selected ? 'bg-hover' : 'hover:bg-hover'}`}
@@ -256,7 +261,8 @@ function SignalRow(p: BoardViewProps & { s: BoardSignal }) {
           {s.direction && <span className={`text-xs ${s.direction === 'long' ? 'text-green' : 'text-red-text'}`}>{s.direction.toUpperCase()}</span>}
           <span className="text-xs tabular text-text-secondary">{fmtAge(new Date(s.at).toISOString(), p.now)}</span>
         </div>
-        <p className="text-sm text-text-primary break-words">{s.headline}</p>
+        <p className="text-sm text-text-secondary break-words">{s.headline}</p>
+        {s.ruleText && <p className="text-xs text-text-secondary break-words font-mono">{s.ruleText}</p>}
         <div className="flex flex-wrap gap-x-3">
           {s.href && (
             <Link to={s.href} className={LINK}>
@@ -268,66 +274,77 @@ function SignalRow(p: BoardViewProps & { s: BoardSignal }) {
           </Link>
         </div>
       </div>
-      <div className="basis-full sm:basis-auto sm:w-[17rem] min-w-0">
+      <div className="basis-full sm:basis-auto sm:w-[19rem] min-w-0">
         <EvidenceCell {...p} />
       </div>
     </li>
   )
 }
 
-/** `tested short · 41 events · 38 weeks · +0.21R (≤ +0.35R)`; the tested side is a fact about the study, not advice. */
-export function evidenceText(e: StudySummary, tested: 'long' | 'short' | null | undefined): string {
-  return `${tested ? `tested ${tested} · ` : ''}${e.events} events · ${e.weeks} weeks · ${fmtR(e.expectancy)} (≤ ${fmtR(e.upper95)})`
+/** `tested short · this coin · 41 events · 38 weeks · +0.21R (≤ +0.35R)`: what was studied, then its facts. The tested side is a fact about the study, not advice. */
+export function evidenceText(e: StudySummary, s: Pick<BoardSignal, 'tested' | 'scope'>): string {
+  return `${s.tested ? `tested ${s.tested} · ` : ''}${scopeLabel(s.scope)} · ${e.events} events · ${e.weeks} weeks · ${fmtR(e.expectancy)} (≤ ${fmtR(e.upper95)})`
 }
 
 function EvidenceCell(p: BoardViewProps & { s: BoardSignal }) {
   const { s } = p
-  const local = p.studies[s.id]
-  const ev = s.evidence ?? (local?.state === 'done' ? local.summary : null)
-  if (ev) {
-    return (
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5" title="expectancy per trade, weekly-clustered (one-sided 95% upper bound)">
-        <StudyVerdictBadge verdict={ev.verdict} />
-        <span className="text-xs tabular text-text-primary">{evidenceText(ev, s.tested)}</span>
-      </div>
-    )
-  }
-  if (!s.rule) {
-    return (
-      <span className="text-xs text-text-secondary" title={NO_TWIN[s.source] ?? 'this signal maps to no Lab rule'}>
-        no Lab twin
-      </span>
-    )
-  }
-  if (local?.state === 'running') {
-    return (
-      <span role="status" className="text-xs text-text-secondary pulse-label">
-        STUDYING… (a trial, up to ~50 s)
-      </span>
-    )
-  }
-  if (p.guest) {
-    return (
-      <Button tier="ghost" onClick={p.onSignIn} title="running a study needs a signed-in session">
-        LOGIN TO STUDY
-      </Button>
-    )
-  }
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="flex flex-wrap items-center gap-2">
-        <Button tier="ghost" onClick={() => p.onStudy(s)} disabled={p.guest == null} title="run the event study of this rule now; it counts as a trial">
-          {local?.state === 'error' ? 'RETRY STUDY' : 'STUDY'}
-        </Button>
-        {!local && <span className="text-xs text-text-secondary">not studied today</span>}
-      </span>
-      {local?.state === 'error' && (
-        <span role="alert" className="text-xs text-red-text break-words">
-          {local.message}
+  const c = cellState(s, p.studies[rowStudyKey(s.id, p.now)], p.auth)
+  switch (c.kind) {
+    case 'evidence':
+      return (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5" title="expectancy per trade, weekly-clustered (one-sided 95% upper bound)">
+          <StudyVerdictBadge verdict={c.summary.verdict} />
+          <span className="text-sm tabular text-text-primary">{evidenceText(c.summary, s)}</span>
+        </div>
+      )
+    case 'no-twin':
+      return (
+        <span className="text-sm text-text-secondary" title={NO_TWIN[s.source] ?? 'this signal maps to no Lab rule'}>
+          no Lab twin
         </span>
-      )}
-    </div>
-  )
+      )
+    case 'running':
+      return (
+        <span role="status" className="text-sm text-text-secondary pulse-label">
+          STUDYING {scopeLabel(s.scope)}… (a trial, up to ~50 s)
+        </span>
+      )
+    case 'sign-in':
+      return (
+        <Button tier="ghost" onClick={p.onSignIn} title="running a study needs a signed-in session">
+          LOGIN TO STUDY
+        </Button>
+      )
+    case 'auth-loading':
+      return <span className="text-sm text-text-secondary">checking session…</span>
+    case 'auth-error':
+      return (
+        <span className="flex flex-wrap items-center gap-2">
+          <span role="alert" className="text-xs text-red-text break-words">
+            session check failed: {c.message}
+          </span>
+          <Button tier="ghost" onClick={p.onAuthRetry}>
+            RETRY
+          </Button>
+        </span>
+      )
+    case 'idle':
+      return (
+        <div className="flex flex-col gap-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <Button tier="ghost" onClick={() => p.onStudy(s)} title={`run the event study of this rule on ${scopeLabel(s.scope)} now; it counts as a trial`}>
+              {c.error ? 'RETRY STUDY' : 'STUDY'}
+            </Button>
+            {!c.error && <span className="text-xs text-text-secondary">not studied today · {scopeLabel(s.scope)}</span>}
+          </span>
+          {c.error && (
+            <span role="alert" className="text-xs text-red-text break-words">
+              {c.error}
+            </span>
+          )}
+        </div>
+      )
+  }
 }
 
 function PulsePanel({ board }: { board: Poll<BoardResponse> }) {
@@ -339,7 +356,7 @@ function PulsePanel({ board }: { board: Poll<BoardResponse> }) {
           open →
         </Link>
       </PanelHeader>
-      <AsyncBody loading={board.loading} data={b} error={null} offline={null} rows={1}>
+      <AsyncBody loading={board.loading} data={b} error={board.error} offline={board.offline} onRetry={board.refetch} rows={1}>
         {(d) =>
           d.pulse ? (
             <p className="px-3 py-2 text-sm tabular text-text-primary">
@@ -358,12 +375,14 @@ function PulsePanel({ board }: { board: Poll<BoardResponse> }) {
 
 type Note = NonNullable<RadarResponse['latestNote']>
 
-function RadarPanel({ radar, guest, onSignIn }: { radar: Poll<RadarResponse>; guest: boolean | null; onSignIn: () => void }) {
+function RadarPanel({ radar, auth, onAuthRetry, onSignIn }: { radar: Poll<RadarResponse>; auth: Auth; onAuthRetry: () => void; onSignIn: () => void }) {
   const [open, setOpen] = useState(false)
   return (
     <Panel>
       <PanelHeader title="RADAR" />
-      {guest ? (
+      {auth.state === 'error' ? (
+        <ErrorBlock message={`session check failed: ${auth.message}`} onRetry={onAuthRetry} />
+      ) : auth.state === 'guest' ? (
         <div className="flex flex-wrap items-center gap-2 px-3 py-2">
           <span className="text-sm text-text-secondary">the radar needs a signed-in session</span>
           <Button tier="ghost" onClick={onSignIn}>
@@ -371,7 +390,7 @@ function RadarPanel({ radar, guest, onSignIn }: { radar: Poll<RadarResponse>; gu
           </Button>
         </div>
       ) : (
-        <AsyncBody loading={radar.loading || guest == null} data={radar.data} error={radar.error} offline={radar.offline} onRetry={radar.refetch} rows={3}>
+        <AsyncBody loading={radar.loading || auth.state === 'loading'} data={radar.data} error={radar.error} offline={radar.offline} onRetry={radar.refetch} rows={3}>
           {(r) =>
             r.state === 'unavailable' ? (
               <p className="px-3 py-2 text-sm text-text-secondary">radar unavailable{r.reason ? ` — ${r.reason}` : ''}</p>

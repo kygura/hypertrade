@@ -82,7 +82,8 @@ Routes (all zod-parsed in and out):
 - `GET /api/research/board` → `{ asOf, signals: ResearchSignal[], sources: Record<source,
   {state: 'ok'|'unavailable', reason?: one of a fixed set, count, dropped}>,
   pulse: {assets, firing} | null }`. Each source is loaded independently; one failing
-  source never empties the board.
+  source never empties the board. For a PUBLIC_MODE guest the radar source is
+  `unavailable` ("sign in required") and contributes no signals, as `/api/radar` does.
 - `POST /api/research/study` `{ rule, coin?, stopAtr, targetAtr }` →
   `{ studyId, cached, summary: StudySummary, study }`. The board sends `boardStudy(signal)`
   (`src/shared/research.ts`: `coin` only for `coin` scope, the default 1.5 / 3 ATR exits),
@@ -141,9 +142,10 @@ One question per region, top to bottom on mobile, two columns from `lg`:
 - **Signals (main column)**: a dense list, newest first, grouped by coin when a coin has
   more than one signal. Each row: coin, source badge, direction, headline facts, age, and
   the **evidence cell**. The evidence cell is the hierarchy anchor of the screen:
-  - cached study (someone ran it today): verdict badge + `tested <side> · n events ·
-    weeks · expectancy (≤ upper95)`; the tested side is a fact about the study, never
-    advice;
+  - cached study (someone ran it today): verdict badge + `tested <side> · <this coin |
+    top-20 universe> · n events · weeks · expectancy (≤ upper95)`; the tested side is a
+    fact about the study, never advice, and a universe study never reads as the coin's
+    own history. The row also shows the rule text;
   - rule but no study yet: a `STUDY` button that runs it in place (row shows progress,
     then the result; failure shows the error in the cell, row stays). It runs a trial,
     and says so in its title. A guest (PUBLIC_MODE) gets `LOGIN TO STUDY` instead of a
@@ -168,7 +170,11 @@ insufficient = muted. Verdict is always text plus colour, never colour alone.
 
 Input: `?rule=` (URL-encoded JSON, zod-parsed; a bad value shows an error block and the
 empty form) and optional `?coin=`; universe control (this coin · top N · my markets).
-Without a rule: a short empty state linking to SEARCH and CATALOGUE.
+Without a rule: a short empty state linking to SEARCH and CATALOGUE. The board's canonical
+studies (this coin, or the default top-20 universe, default exits) run through
+`POST /api/research/study` (`studyRoute`, `src/ui/lib/study.ts`), so opening a row with
+evidence reuses the cached study instead of logging a new trial, and a run here shows on the
+board. Other universes (another top N, my markets) call `lab_event_study` directly.
 
 Output, in this order: rule text; verdict with the screen line (events, weeks,
 expectancy, upper95); train vs holdout; the condition funnel; per-coin table (`DataTable`);

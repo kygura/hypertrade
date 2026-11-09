@@ -1,4 +1,5 @@
 import { RuleSchema } from '../../server/lab/types'
+import { STUDY_DEFAULTS, StudyRequestSchema, type StudyRequest } from '../../shared/research'
 import { fmtSigned, type Rule, type StudyArgs, type StudyResult } from './lab'
 
 // /lab/study helpers (docs/RESEARCH.md "Study"): the `?rule=` link contract,
@@ -42,16 +43,23 @@ export type StudyUniverse = { kind: 'coin' } | { kind: 'top'; n: number } | { ki
 
 /** The tool's own default universe (top 20 by day volume; also its cap without a database). */
 export const DEFAULT_TOP = 20
-/** Stop / target in ATR(14) when the rule has no levels of its own (the tool's documented example values). */
-export const STUDY_STOP_ATR = 1.5
-export const STUDY_TARGET_ATR = 3
-
 /** Universe control → lab_event_study args. `coin`: the study's coin (`?coin=`, else the rule's asset). */
 export function studyArgs(rule: Rule, coin: string, u: StudyUniverse): StudyArgs {
-  const base = { rule, stopAtr: STUDY_STOP_ATR, targetAtr: STUDY_TARGET_ATR }
+  const base = { rule, ...STUDY_DEFAULTS }
   if (u.kind === 'coin') return { ...base, coins: [coin] }
   if (u.kind === 'mine') return { ...base, mine: true }
   return { ...base, top: u.n }
+}
+
+/**
+ * Which endpoint runs the study. The board's canonical studies (this coin, or the default top-20 universe, with the
+ * default exits) go through POST /api/research/study: one cache with the board, one trial per rule, scope and UTC
+ * day, and a run here shows on the board. Any other universe (another top N, my markets) calls the Lab tool.
+ */
+export function studyRoute(rule: Rule, coin: string, u: StudyUniverse): { kind: 'board'; body: StudyRequest } | { kind: 'lab'; args: StudyArgs } {
+  const body = u.kind === 'coin' ? { rule, coin, ...STUDY_DEFAULTS } : u.kind === 'top' && u.n === DEFAULT_TOP ? { rule, ...STUDY_DEFAULTS } : null
+  const ok = body ? StudyRequestSchema.safeParse(body) : null
+  return ok?.success ? { kind: 'board', body: ok.data } : { kind: 'lab', args: studyArgs(rule, coin, u) }
 }
 
 export type EventVerdict = StudyResult['verdict']

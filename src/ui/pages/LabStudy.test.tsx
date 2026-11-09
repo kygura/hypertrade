@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import type { Rule, StudyResult } from "../lib/lab";
-import { parseRuleParam, ruleDrillHref, studyArgs, studyHref } from "../lib/study";
+import { parseRuleParam, ruleDrillHref, studyArgs, studyHref, studyRoute } from "../lib/study";
+import { boardStudy } from "../../shared/research";
 import { StudyView, type StudyViewProps } from "./LabStudy";
 
 // Render-checks (react-dom/server, no jsdom), the cockpit render.test.tsx approach:
@@ -84,6 +85,14 @@ describe("?rule= param", () => {
     expect(studyArgs(rule, "SOL", { kind: "top", n: 10 })).toMatchObject({ top: 10 });
     expect(studyArgs(rule, "SOL", { kind: "mine" })).toMatchObject({ mine: true });
     expect(studyArgs(rule, "SOL", { kind: "mine" })).not.toHaveProperty("coins");
+  });
+  test("canonical studies go through the board's cache, with the exact body the board keys evidence on", () => {
+    expect(studyRoute(rule, "SOL", { kind: "coin" })).toEqual({ kind: "board", body: boardStudy({ rule, coin: "SOL", scope: "coin" })! });
+    expect(studyRoute(rule, "SOL", { kind: "top", n: 20 })).toEqual({ kind: "board", body: boardStudy({ rule, coin: "SOL", scope: "universe" })! });
+    expect(studyRoute(rule, "SOL", { kind: "top", n: 10 })).toEqual({ kind: "lab", args: studyArgs(rule, "SOL", { kind: "top", n: 10 }) });
+    expect(studyRoute(rule, "SOL", { kind: "mine" })).toEqual({ kind: "lab", args: studyArgs(rule, "SOL", { kind: "mine" }) });
+    // A coin the study route does not accept (HIP-3 `dex:SYM`) stays on the Lab tool.
+    expect(studyRoute(rule, "xyz:SKHX", { kind: "coin" }).kind).toBe("lab");
   });
 });
 

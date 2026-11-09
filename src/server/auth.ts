@@ -157,6 +157,11 @@ function guestReadable(c: Context, path: string): boolean {
   return publicMode() && (c.req.method === "GET" || c.req.method === "HEAD") && !GUEST_DENIED.test(path);
 }
 
+/** A PUBLIC_MODE visitor: no session cookie and no read bearer. */
+export function isGuest(c: Context): boolean {
+  return publicMode() && !hasSession(c) && !labBearerValid(c);
+}
+
 /** True when the request carries a valid session cookie. */
 export function hasSession(c: Context): boolean {
   return verifySession(getCookie(c, COOKIE_NAME));

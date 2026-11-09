@@ -3,8 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import type { BoardResponse, RadarResponse, StudySummary } from "../../../shared/research";
 import type { Rule } from "../../lib/lab";
-import type { BoardSignal } from "../../lib/research";
-import { BoardView, emptyLabel, evidenceText, type BoardViewProps, type RowStudy } from "./Board";
+import { rowStudyKey, type Auth, type BoardSignal, type RowStudy } from "../../lib/research";
+import { BoardView, chipTitle, emptyLabel, evidenceText, type BoardViewProps } from "./Board";
 
 // Render-checks (react-dom/server, no jsdom), the cockpit render.test.tsx approach: the §6 ladder per region,
 // each evidence-cell variant, source chips, pulse null and the radar states.
@@ -33,7 +33,8 @@ const render = (over: Partial<BoardViewProps> = {}) =>
       <BoardView
         board={poll(boardData([]))}
         radar={poll(radarOk)}
-        guest={false}
+        auth={{ state: "user" }}
+        onAuthRetry={noop}
         coin={null}
         now={NOW}
         studies={{}}
@@ -67,6 +68,13 @@ describe("board states", () => {
     expect(html).not.toContain('role="alert"');
     expect(emptyLabel(b, "doge")).toBe("no signal on DOGE now");
   });
+  test("chip title names dropped items", () => {
+    expect(chipTitle({ state: "ok", count: 2, dropped: 1 })).toBe("2 signals now · 1 item dropped as invalid (server log)");
+    expect(chipTitle({ state: "unavailable", reason: "sign in required", count: 0, dropped: 0 })).toBe("sign in required");
+  });
+  test("pulse panel shows the board error ladder, not a blank", () => {
+    expect(render({ board: poll<BoardResponse>(null, { offline: "api unreachable" }) })).toContain("api unreachable");
+  });
   test("source unavailable chip: `unavailable` with the reason as title; ok chip shows the count", () => {
     const b = boardData([sig("n1")], { sources: { novelty: ok(1), rule: ok(0), opportunity: { state: "unavailable", reason: "timed out", count: 0, dropped: 0 }, radar: ok(0) } });
     const html = render({ board: poll(b) });
@@ -77,14 +85,15 @@ describe("board states", () => {
 });
 
 describe("evidence cell", () => {
-  const rows = (studies: Record<string, RowStudy> = {}, guest: boolean | null = false) =>
+  const rows = (local: Record<string, RowStudy> = {}, auth: Auth = { state: "user" }) =>
     render({
-      guest,
-      studies,
+      auth,
+      studies: Object.fromEntries(Object.entries(local).map(([id, v]) => [rowStudyKey(id, NOW), v])),
       board: poll(
         boardData([
           sig("cached", { coin: "BTC", source: "rule", rule, evidence: summary, tested: "short", at: NOW - 1000 }),
-          sig("fresh", { coin: "SOL", rule, at: NOW - 2000 }),
+          sig("fresh", { coin: "SOL", rule, ruleText: "funding z(30) < −1 → long 5d", at: NOW - 2000 }),
+          sig("wide", { coin: "ETH", rule, scope: "universe", tested: "short", evidence: { ...summary, verdict: "insufficient" }, at: NOW - 2500 }),
           sig("twin", { coin: "HYPE", source: "opportunity", direction: "short", href: "/feed?id=x", at: NOW - 3000 }),
         ]),
       ),
@@ -93,12 +102,14 @@ describe("evidence cell", () => {
     const html = rows();
     expect(html).toContain("CLEAR");
     expect(html).toContain("text-green");
-    expect(html).toContain("tested short · 41 events · 38 weeks · +0.21R (≤ +0.35R)");
-    expect(evidenceText(summary, null)).toBe("41 events · 38 weeks · +0.21R (≤ +0.35R)");
+    expect(html).toContain("tested short · this coin · 41 events · 38 weeks · +0.21R (≤ +0.35R)");
+    expect(html).toContain("tested short · top-20 universe · 41 events");
+    expect(html).toContain("funding z(30) &lt; −1 → long 5d");
+    expect(evidenceText(summary, { tested: null, scope: "coin" })).toBe("this coin · 41 events · 38 weeks · +0.21R (≤ +0.35R)");
   });
   test("rule without evidence: STUDY button; running, error and result in the cell", () => {
     expect(rows()).toContain(">STUDY</button>");
-    expect(rows({ fresh: { state: "running" } })).toContain("STUDYING…");
+    expect(rows({ fresh: { state: "running" } })).toContain("STUDYING this coin…");
     const err = rows({ fresh: { state: "error", message: "upstream 502" } });
     expect(err).toContain("upstream 502");
     expect(err).toContain("RETRY STUDY");
@@ -112,7 +123,7 @@ describe("evidence cell", () => {
     expect(html).toContain('href="/asset/HYPE"');
   });
   test("guest: the sign-in affordance instead of a POST", () => {
-    const html = rows({}, true);
+    const html = rows({}, { state: "guest" });
     expect(html).toContain("LOGIN TO STUDY");
     expect(html).not.toContain(">STUDY</button>");
   });
@@ -138,6 +149,9 @@ describe("side column", () => {
   });
   test("radar unavailable and guest", () => {
     expect(render({ radar: poll<RadarResponse>({ state: "unavailable", reason: "radar files not deployed", latestNote: null, calls: [], scorecard: [] }) })).toContain("radar unavailable — radar files not deployed");
-    expect(render({ guest: true, radar: poll<RadarResponse>(null) })).toContain("the radar needs a signed-in session");
+    expect(render({ auth: { state: "guest" }, radar: poll<RadarResponse>(null) })).toContain("the radar needs a signed-in session");
+    const failed = render({ auth: { state: "error", message: "api unreachable" }, radar: poll<RadarResponse>(null) });
+    expect(failed).toContain("session check failed: api unreachable");
+    expect(failed).toContain("RETRY");
   });
 });

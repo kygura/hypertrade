@@ -6,7 +6,8 @@ import { useLabData } from '../components/lab/LabData'
 import { SaveToCatalogueForm } from '../components/lab/SaveToCatalogueForm'
 import { DataTo, DirectionWord } from '../components/lab/common'
 import { defaultRuleName, fmtSigned, lab, signTone, useLab, wireText, type CatalogueEntry, type LabState, type MetricDef, type Rule, type StudyResult } from '../lib/lab'
-import { DEFAULT_TOP, fmtR, parseRuleParam, ruleDrillHref, screenLine, studyArgs, studyVerdict, type StudyUniverse } from '../lib/study'
+import { DEFAULT_TOP, fmtR, parseRuleParam, ruleDrillHref, screenLine, studyRoute, studyVerdict, type StudyUniverse } from '../lib/study'
+import { research } from '../lib/research'
 import { StudyVerdictBadge } from '../components/lab/StudyVerdictBadge'
 
 // /lab/study — the event study of one rule (docs/RESEARCH.md "Study"): the
@@ -21,7 +22,6 @@ type Screen = StudyResult['screen']
 type CoinRow = StudyResult['coins'][number]
 type EventRow = StudyResult['eventList'][number]
 
-export { screenLine }
 
 export function LabStudy() {
   const [params] = useSearchParams()
@@ -37,9 +37,13 @@ function StudyPage({ raw, coinParam }: { raw: string | null; coinParam: string |
   const rule = parsed.rule
   const coin = coinParam || rule?.asset || ''
   const [universe, setUniverse] = useState<StudyUniverse>(() => (coinParam ? { kind: 'coin' } : { kind: 'top', n: DEFAULT_TOP }))
-  const args = rule ? studyArgs(rule, coin, universe) : null
-  const key = args ? JSON.stringify(args) : null
-  const study = useLab(args ? (signal) => lab.eventStudy(args, signal) : null, [key])
+  // The board's canonical studies share its cache and trial (studyRoute); other universes call the Lab tool.
+  const route = rule ? studyRoute(rule, coin, universe) : null
+  const key = route ? JSON.stringify(route) : null
+  const study = useLab(
+    route ? (signal) => (route.kind === 'board' ? research.run(route.body).then((r) => r.study as unknown as StudyResult) : lab.eventStudy(route.args, signal)) : null,
+    [key],
+  )
 
   return (
     <StudyView

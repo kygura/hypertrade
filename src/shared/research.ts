@@ -72,6 +72,7 @@ export const UNAVAILABLE_REASONS = [
   "no radar data yet",
   "timed out",
   "source failed (see server log)",
+  "sign in required",
 ] as const;
 export const UnavailableReasonSchema = z.enum(UNAVAILABLE_REASONS);
 export type UnavailableReason = z.infer<typeof UnavailableReasonSchema>;
