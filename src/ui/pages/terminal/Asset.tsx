@@ -13,6 +13,7 @@ import { firingChips, flagWord, FLOW_NO_SOURCE, flowSourceText } from '../../com
 import { readFlowWindow } from '../../components/intel/FlowPanel'
 import { fmtLeverage, fmtStopDist, newestTs } from '../../components/intel/format'
 import { useNow } from '../../lib/hooks'
+import { boardHref } from '../../lib/research'
 import { stopDistPct } from '../../components/intel/PositionsTable'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { Panel, PanelBody, PanelHeader } from '../../components/Panel'
@@ -129,6 +130,9 @@ function AssetHeader({
             )}
             <Button tier="ghost" onClick={() => navigate(`/markets/${encodeURIComponent(coin)}`)}>
               CHART →
+            </Button>
+            <Button tier="ghost" onClick={() => navigate(boardHref(coin))} title={`research board filtered to ${coin}`}>
+              EVIDENCE →
             </Button>
           </span>
         </div>

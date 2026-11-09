@@ -6,7 +6,8 @@ import { useLabData } from '../components/lab/LabData'
 import { SaveToCatalogueForm } from '../components/lab/SaveToCatalogueForm'
 import { DataTo, DirectionWord } from '../components/lab/common'
 import { defaultRuleName, fmtSigned, lab, signTone, useLab, wireText, type CatalogueEntry, type LabState, type MetricDef, type Rule, type StudyResult } from '../lib/lab'
-import { DEFAULT_TOP, parseRuleParam, ruleDrillHref, studyArgs, studyVerdict, type StudyUniverse } from '../lib/study'
+import { DEFAULT_TOP, fmtR, parseRuleParam, ruleDrillHref, screenLine, studyArgs, studyVerdict, type StudyUniverse } from '../lib/study'
+import { StudyVerdictBadge } from '../components/lab/StudyVerdictBadge'
 
 // /lab/study — the event study of one rule (docs/RESEARCH.md "Study"): the
 // rule replayed as discrete trades across a universe of coins by
@@ -20,11 +21,7 @@ type Screen = StudyResult['screen']
 type CoinRow = StudyResult['coins'][number]
 type EventRow = StudyResult['eventList'][number]
 
-const fmtR = (x: number | null) => (x == null ? '—' : `${fmtSigned(x)}R`)
-
-export function screenLine(s: Screen): string {
-  return `${s.events} events · ${s.weeks} weeks · expectancy ${fmtR(s.expectancy)} · upper95 ${fmtR(s.upper95)}`
-}
+export { screenLine }
 
 export function LabStudy() {
   const [params] = useSearchParams()
@@ -281,7 +278,7 @@ export function StudyResultView({ result: d }: { result: StudyResult }) {
         <LabWarnings warnings={d.warnings} />
         <div className="flex flex-col gap-1 p-3">
           <p className="flex flex-wrap items-center gap-2">
-            <Badge tone={v.tone}>{v.label}</Badge>
+            <StudyVerdictBadge verdict={d.verdict} />
             <span className="text-sm text-text-secondary">{v.text}</span>
           </p>
           <p className="tabular text-base text-text-primary">{screenLine(d.screen)}</p>

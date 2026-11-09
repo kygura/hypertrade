@@ -31,6 +31,11 @@ export function useLabData(): LabData {
   return v
 }
 
+/** The provider's data, or null outside one (the research board renders LabTabs without the Lab loads). */
+export function useLabDataOptional(): LabData | null {
+  return useContext(Ctx)
+}
+
 /** The pulse for a page that shows it: starts the provider's load on mount; reads as loading until the first result. */
 export function usePulse(): LabState<MarketPulse> {
   const { pulse, wantPulse } = useLabData()

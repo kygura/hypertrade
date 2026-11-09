@@ -1,5 +1,5 @@
 import { RuleSchema } from '../../server/lab/types'
-import type { Rule, StudyArgs, StudyResult } from './lab'
+import { fmtSigned, type Rule, type StudyArgs, type StudyResult } from './lab'
 
 // /lab/study helpers (docs/RESEARCH.md "Study"): the `?rule=` link contract,
 // the universe control → lab_event_study args, and the verdict words. Pure,
@@ -64,4 +64,12 @@ const VERDICT: Record<EventVerdict, { label: string; tone: 'green' | 'red' | 'gr
 
 export function studyVerdict(v: EventVerdict): { label: string; tone: 'green' | 'red' | 'gray'; text: string } {
   return VERDICT[v]
+}
+
+/** A signed R multiple: `+0.12R`, `—` for null. */
+export const fmtR = (x: number | null) => (x == null ? '—' : `${fmtSigned(x)}R`)
+
+/** The screen line of a study (the /lab/study VERDICT panel). */
+export function screenLine(s: { events: number; weeks: number; expectancy: number | null; upper95: number | null }): string {
+  return `${s.events} events · ${s.weeks} weeks · expectancy ${fmtR(s.expectancy)} · upper95 ${fmtR(s.upper95)}`
 }

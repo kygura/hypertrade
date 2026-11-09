@@ -6,6 +6,7 @@ import { fmtUsdCompact } from '../../components/branches/format'
 import { fmtAge } from '../../components/strategy/format'
 import { fmtPx, fmtUsd } from '../../lib/desk'
 import type { OpportunityDetail as Detail, LedgerStats, OpportunityStatus } from '../../../shared/platform'
+import { boardHref } from '../../lib/research'
 import { fmtSigned, fmtSignedPct, isLive, STALE_MID_SEC, STATUS_WORD } from './logic'
 import { EdgeCell, StatusPill } from './Feed'
 import { KeyHint } from './Header'
@@ -93,6 +94,9 @@ export const OpportunityDetail = forwardRef<
           </Link>
           <Link to={`/asset/${encodeURIComponent(o.coin)}`} className={COIN_LINK}>
             INTEL →
+          </Link>
+          <Link to={boardHref(o.coin)} className={COIN_LINK} title={`research board filtered to ${o.coin}`}>
+            EVIDENCE →
           </Link>
         </span>
       </div>
