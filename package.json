@@ -10,7 +10,6 @@
     "desk:worker": "bun run scripts/desk-worker.ts",
     "lab": "bun run scripts/lab-cli.ts",
     "lab:mcp": "bun run scripts/lab-mcp.ts",
-    "tui": "bun run --cwd tui start",
     "routine": "bun run scripts/routine.ts",
     "radar": "bun run scripts/radar.ts",
     "signals:collect": "bun run scripts/signals.ts collect",

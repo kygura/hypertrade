@@ -8,7 +8,6 @@ Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, La
 
 - **Live in the repo (master):** the platform backend in `src/server/platform/` (scanner, crawler, liquidation map, outcomes, alerts loops) on one Bun process, the cockpit UI, `/api/platform/*`, and the routine pipeline (`bun run routine`: board scan, tripwires, setups ledger, daily brief; Opus 5.5 by default, Kimi as fallback).
 - **Hosting:** free tier first. Vercel serves the UI and API, a GitHub Actions hourly tick (`.github/workflows/platform-tick.yml`, `bun run platform:tick`) runs the platform worker loops against Postgres, and the Claude routine commits research. The always-on Railway worker below is the upgrade path for when live mids (order approval) or sub-hourly scans become a hard requirement. History in `docs/TASKS.md`.
-- **Terminal client:** `tui/` is a separate Ink package (`bun run tui`) with its own `README.md`, `SPEC.md`, `DESIGN.md` and `TASKS.md`.
 
 ## Setup
 

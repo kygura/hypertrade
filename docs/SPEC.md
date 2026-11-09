@@ -44,7 +44,7 @@ app/
   .github/workflows/collect.yml
   ROUTINE.md              # contract for the cloud routine (what to read, what to write, how to push)
   vercel.json             # rewrites: /api/* -> function; daily cron fallback
-  scripts/server.ts       # always-on entry (Bun.serve + worker loops); tui/ is a separate package
+  scripts/server.ts       # always-on entry (Bun.serve + worker loops)
   docs/SPEC.md docs/design/README.md docs/TASKS.md docs/CONSOLIDATION.md README.md .env.example
 ```
 
@@ -600,7 +600,7 @@ Operator ask (2026-10-27): find short- and long-timeframe narratives and positio
 ## What is explicitly OUT of scope
 
 - The ENGINE pages only proxy operator actions to the Hyperion core, which owns its own governor and venues.
-- LLM calls anywhere except the Analyst (incl. its SIMULATE mode), the Desk and Intel (§ Intel). Multi-user/accounts. Telegram delivery outside the Desk notifier and Intel alerts. The terminal client in `tui/` (Ink, `bun run tui`) is a separate package with its own `tui/SPEC.md`.
+- LLM calls anywhere except the Analyst (incl. its SIMULATE mode), the Desk and Intel (§ Intel). Multi-user/accounts. Telegram delivery outside the Desk notifier and Intel alerts.
 - Paths v1: the Desk/paper bridge, per-position open/close dates, funding and fee modelling, Monte Carlo for levered or short branches.
 
 ## Glossary — five kinds of "rule"

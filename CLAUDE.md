@@ -8,7 +8,7 @@ engine.
 
 Bun everywhere (no npm/yarn). Single package: Vite + React 19 + Tailwind 4 front, Hono
 back, zod schemas in `src/shared/`, Postgres (postgres.js) with in-memory store
-twins. The Ink terminal client in `tui/` is a separate package (`bun run tui`).
+twins.
 
 ```bash
 bun install
@@ -83,7 +83,6 @@ Root has only: this file, `README.md` (setup, env, API overview), and `ROUTINE.m
 | `docs/TASKS.md` | Open items, completed-phase summary, pointers to deleted task files in git history. |
 | `docs/fallback-routine.md`, `docs/research/` | Provider-agnostic fallback routine; research notes. |
 | `ROUTINE.md` | Runbook for the scheduled radar routine (twice a day): `bun run radar` scans every HL dex, the session researches catalysts and lands at most 3 calls that code prices and grades (`data/radar/`). On-demand check. |
-| `tui/` | Separate terminal client with its own `SPEC.md`, `DESIGN.md`, `TASKS.md`. |
 
 **The runbook is for the scheduled cloud routine only.** Scheduled sessions open it
 by path, so keep its name and root location. For ordinary development work, do not
