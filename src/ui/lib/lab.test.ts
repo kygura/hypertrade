@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { MIN_DEFLATED_SHARPE as ENGINE_MIN_DEFLATED_SHARPE } from "../../server/lab/engine/verdict";
+import { getMetric } from "../../server/lab/providers/registry";
 import {
   advancedDiffers,
   buildSearchArgs,
@@ -7,6 +8,7 @@ import {
   configSummary,
   DEFAULT_FILTERS,
   DEFAULT_FORM,
+  DEFAULT_METRIC_PRESET,
   defaultRuleName,
   drillEvaluateArgs,
   drillTrialsN,
@@ -218,8 +220,17 @@ describe("search form → args", () => {
     expect(parseWindows("1,2,3,4,5,6,7").error).toBe("windows: at most 6");
     expect(parseWindows("").error).not.toBeNull();
   });
+  test("default metric preset: non-empty, real ht metrics with a live HL fallback, RUN-ready", () => {
+    expect(DEFAULT_METRIC_PRESET.length).toBeGreaterThan(0);
+    for (const id of DEFAULT_METRIC_PRESET) {
+      expect(id.startsWith("ht:")).toBe(true);
+      expect(getMetric(id)).toBeDefined();
+    }
+    expect(DEFAULT_FORM.metrics).toEqual([...DEFAULT_METRIC_PRESET]);
+    expect(validateForm(DEFAULT_FORM)).toEqual({});
+  });
   test("validation", () => {
-    expect(validateForm(DEFAULT_FORM).metrics).toBe("pick at least one metric");
+    expect(validateForm({ ...DEFAULT_FORM, metrics: [] }).metrics).toBe("pick at least one metric");
     const ok = { ...DEFAULT_FORM, metrics: ["cm:CapMVRVCur"] };
     expect(validateForm(ok)).toEqual({});
     expect(validateForm({ ...ok, folds: "7" }).folds).toBe("folds: 7 is above 6");

@@ -30,7 +30,7 @@ const Cycles = lazy(() => import('./pages/Cycles').then((m) => ({ default: m.Cyc
 // Lab (docs/design/README.md §10.9): research view, loaded with its routes.
 const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
 const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
-const LAB_TAB_PATHS = ['/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
+const LAB_TAB_PATHS = ['/lab/study', '/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
 // Terminal family (docs/design/terminal.md §1.1, C1): `/` is the Cockpit, `/terminal`
 // the Terminal; each sub-tab is its own route, loaded with it. `/overview`
 // redirects to `/markets`.

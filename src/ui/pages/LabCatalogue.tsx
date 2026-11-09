@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { AsyncBody, Panel, PanelHeader, StaleBanner } from '../components'
 import { CatalogueHealthStrip } from '../components/lab/CatalogueHealthStrip'
 import { CatalogueTable } from '../components/lab/CatalogueTable'
-import { firingIds, useLabData } from '../components/lab/LabData'
+import { firingIds, useLabData, usePulse } from '../components/lab/LabData'
 import { RemoveRuleDialog } from '../components/lab/RemoveRuleDialog'
 import { LabFooter } from '../components/lab/common'
 import { dateIso, lab, useLab, type CatalogueListEntry } from '../lib/lab'
@@ -14,7 +14,8 @@ import { dateIso, lab, useLab, type CatalogueListEntry } from '../lib/lab'
 
 export function LabCatalogue() {
   const navigate = useNavigate()
-  const { catalogue, pulse, metrics } = useLabData()
+  const { catalogue, metrics } = useLabData()
+  const pulse = usePulse()
   const health = useLab(() => lab.health(), [])
   const [removing, setRemoving] = useState<CatalogueListEntry | null>(null)
   const entries = catalogue.data ?? []

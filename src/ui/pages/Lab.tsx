@@ -6,9 +6,10 @@ import { LabSearch } from './LabSearch'
 import { LabRuns } from './LabRuns'
 import { LabCatalogue } from './LabCatalogue'
 import { LabPulse } from './LabPulse'
+import { LabStudy } from './LabStudy'
 
 // /lab — heuristic research (docs/design/README.md §10.9, docs/LAB.md). One shell entry; the
-// four tabs are paths (/lab/search, /lab/runs[/:runId], /lab/catalogue,
+// tabs are paths (/lab/study, /lab/search, /lab/runs[/:runId], /lab/catalogue,
 // /lab/pulse) under one sticky Segmented. The rule drill (/lab/rules/:id) is
 // its own full-view route (LabRule.tsx). Nothing here trades.
 
@@ -19,6 +20,7 @@ export function Lab() {
     <LabDataProvider>
       <PageContainer className="pb-3 md:pb-[var(--gutter)] flex flex-col">
         <LabTabs />
+        {tab === 'study' && <LabStudy />}
         {tab === 'search' && <LabSearch />}
         {tab === 'runs' && <LabRuns />}
         {tab === 'catalogue' && <LabCatalogue />}
