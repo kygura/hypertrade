@@ -43,6 +43,8 @@ jobs:
             echo "land=true" >> "$GITHUB_OUTPUT"
           fi
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
         if: steps.scope.outputs.land == 'true'
       - if: steps.scope.outputs.land == 'true'
         run: bun install --frozen-lockfile
