@@ -207,6 +207,17 @@ describe("approve", () => {
     expect((await store.getOpportunity(o.id))?.status).toBe("ready");
   });
 
+  test("detail exposes the same gate the route answers with: canApprove and approveBlockedReason", async () => {
+    const o = await seed();
+    const detail = async () => OpportunityDetailSchema.parse(await (await req(`/opportunities/${o.id}`)).json());
+    expect(await detail()).toMatchObject({ canApprove: true, approveBlockedReason: null });
+    midAge = 31;
+    const d = await detail();
+    expect(d).toMatchObject({ canApprove: false, approveBlockedReason: "ETH mid is 31 s old (limit 30 s)" });
+    const res = await post(`/opportunities/${o.id}/approve`);
+    expect(await res.json()).toEqual({ error: "stale_feed", message: d.approveBlockedReason });
+  });
+
   test("happy path: decision entry with seen, ready → approved → open", async () => {
     const o = await seed();
     const res = await post(`/opportunities/${o.id}/approve`);

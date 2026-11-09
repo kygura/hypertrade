@@ -335,6 +335,10 @@ export const OpportunityDetailSchema = z.object({
   risk: z.object({ before: RiskVerdictSchema, after: RiskVerdictSchema }).nullable(),
   /** Pre-filled ticket. sizeUsd comes from the governor preview only; null without one. */
   ticket: z.object({ side: SideSchema, entryPx: Pos.nullable(), stopPx: Pos.nullable(), targetPx: Pos.nullable(), sizeUsd: Pos.nullable(), sizeSource: z.literal("governor") }),
+  /** The server's freshness gate (P0.15, context.ts approveBlock) now: false = approve would answer 409 stale_feed. Status and governor are separate. */
+  canApprove: z.boolean(),
+  /** Why approval is blocked by that gate (the 409 message), null when it is not. */
+  approveBlockedReason: z.string().nullable(),
 });
 export type OpportunityDetail = z.infer<typeof OpportunityDetailSchema>;
 

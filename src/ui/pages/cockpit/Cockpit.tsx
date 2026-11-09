@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Navigate, useNavigate, useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { Button } from '../../components'
 import { KillSwitchDialog } from '../../components/KillSwitchDialog'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
@@ -11,13 +11,13 @@ import { useMedia, useNow, useQueryPatch } from '../../lib/hooks'
 import { usePoll } from '../../lib/poll'
 import { useDeskKill } from '../../lib/useDeskKill'
 import type { OpportunityDetail as DetailT } from '../../../shared/platform'
-import { filterFeed, isLive, keyAction, stepSelection, STATUS_WORD, type StatusFilter, type TierFilter } from './logic'
+import { approveBlockedReason, filterFeed, isLive, keyAction, stepSelection, STATUS_WORD, type StatusFilter, type TierFilter } from './logic'
 import { ActionBar, canApprove, canReject, OpportunityDetail, RejectDialog, TicketDialog } from './Detail'
 import { OpportunityFeed, WarmingLine } from './Feed'
 import { CockpitHeader, HealthStrip, KeysHelp } from './Header'
 import { LiqBoard, LiqMapPanel, type HistWindow } from './LiqMap'
 
-// Cockpit — DESIGN-terminal § Cockpit (phase 8), route `/`. Container: owns
+// Cockpit — DESIGN-terminal § Cockpit (phase 8), route `/feed` (the TRADE tab FEED). Container: owns
 // the pollers (C8), `?id/status/tier/liqh/liq`, the page keyboard handler (C3)
 // and action state (C5). Everything it renders is presentational except
 // LiqMapPanel, which polls its own two endpoints.
@@ -31,9 +31,6 @@ const LG = '(min-width: 1024px)'
 const DEFAULT_COIN = 'BTC'
 
 export function Cockpit() {
-  const [params] = useSearchParams()
-  // Old Telegram links (§1.5 now applies to /terminal).
-  if (params.get('review') === '1') return <Navigate to="/terminal?review=1" replace />
   return <CockpitPage />
 }
 
@@ -146,16 +143,7 @@ function CockpitPage() {
     }
   }
 
-  // No governor preview (risk or size null) keeps APPROVE disabled, like a block.
-  const blockedReason = !d
-    ? null
-    : !d.risk
-      ? 'governor preview unavailable'
-      : !d.risk.after.approved
-        ? (d.risk.after.reasons[0] ?? 'governor blocks')
-        : d.ticket.sizeUsd == null
-          ? 'size unavailable'
-          : null
+  const blockedReason = approveBlockedReason(d, midAgeSec)
   const venue: 'paper' | 'testnet' | null = desk.data ? (desk.data.live ? 'testnet' : 'paper') : null
   const killOn = desk.data?.killSwitch.on ?? false
   const kill = useDeskKill(killOn, desk.refetch)

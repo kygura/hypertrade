@@ -6,7 +6,7 @@ import { fmtUsdCompact } from '../../components/branches/format'
 import { fmtAge } from '../../components/strategy/format'
 import { fmtPx, fmtUsd } from '../../lib/desk'
 import type { OpportunityDetail as Detail, LedgerStats, OpportunityStatus } from '../../../shared/platform'
-import { fmtSigned, fmtSignedPct, isLive, STATUS_WORD } from './logic'
+import { fmtSigned, fmtSignedPct, isLive, STALE_MID_SEC, STATUS_WORD } from './logic'
 import { EdgeCell, StatusPill } from './Feed'
 import { KeyHint } from './Header'
 
@@ -96,7 +96,7 @@ export const OpportunityDetail = forwardRef<
           </Link>
         </span>
       </div>
-      {midAgeSec != null && midAgeSec > 30 && <StaleStrip>live price {Math.floor(midAgeSec)}s old — approve is blocked</StaleStrip>}
+      {midAgeSec != null && midAgeSec > STALE_MID_SEC && <StaleStrip>live price {Math.floor(midAgeSec)}s old — approve is blocked</StaleStrip>}
       {liqSlot && <div className="px-2 pb-2">{liqSlot}</div>}
       <div className="flex flex-col">
         <div className="order-last lg:order-none sticky bottom-0 lg:bottom-auto lg:top-[calc(var(--topbar-h)+var(--subnav-h))] z-10 bg-[var(--color-panel)] border-t lg:border-t-0 lg:border-b border-border-subtle pb-[env(safe-area-inset-bottom)]">
@@ -315,6 +315,7 @@ export function ActionBar({
           <VenueBadge venue={venue} />
         </span>
       </div>
+      {blockedReason != null && canApprove(status) && !hint && <p className="text-xs text-amber">approve blocked: {blockedReason}</p>}
       {hint && (
         <p className="text-xs text-amber" role="status">
           {hint}
