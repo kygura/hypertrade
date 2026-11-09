@@ -4,7 +4,7 @@ import type { RadarCall } from "../../shared/radar.js";
 import { ResearchSignalSchema } from "../../shared/research.js";
 import { transformSeries } from "../lab/engine/features.js";
 import type { CatalogueEntry, MarketPulse, Rule } from "../lab/types.js";
-import { NOVELTY_TABLE, noveltyCondition, noveltyRule, noveltySignal, opportunitySignal, radarSignal, ruleSignals, zIncludingCurrent } from "./signals.js";
+import { NOVELTY_TABLE, noveltyCondition, noveltyRule, noveltySignal, opportunitySignal, radarSignal, firingEntries, ruleSignal, zIncludingCurrent } from "./signals.js";
 
 const feat = (id: string, value: number): NoveltyFeature => ({ id, value, histMin: -1, histMax: 1, p1: -0.9, p99: 0.9, bars: 400, pctRank: 99.9 });
 const entry = (features: NoveltyFeature[], over: Partial<NoveltyEntry> = {}): NoveltyEntry => ({
@@ -68,12 +68,18 @@ describe("novelty → Lab rule (fixed table)", () => {
     expect(noveltyRule(entry([feat("ret(7)", 0.2)], { coin: "xyz:ABC" }))).toBeNull();
   });
 
+  test("scope and tested side: universe + fade side with a rule; coin + null without one", () => {
+    expect(noveltySignal(entry([feat("ret(7)", -0.2)]))).toMatchObject({ direction: null, tested: "long", scope: "universe" });
+    expect(noveltySignal(entry([feat("ret(7)", -0.2)])).ruleText).toStartWith("tested as fade: long when ");
+    expect(noveltySignal(entry([feat("vol_x", 4)]))).toMatchObject({ direction: null, rule: null, tested: null, scope: "coin", ruleText: null });
+  });
+
   test("signal: facts headline, direction null, id by coin and bar", () => {
     const s = valid(noveltySignal(entry([feat("funding_z90", 2.4), feat("ret(7)", -0.123), feat("rv5to60", 3.21)])));
     expect(s).toMatchObject({
       id: "novelty:ETH:2026-11-08", source: "novelty", coin: "ETH", direction: null, at: Date.parse("2026-11-09T00:10:00.000Z"), href: null,
       headline: "new extreme 2026-11-08: funding z90 +2.4, 7d ret -12%, rv5to60 3.21",
-      ruleText: "ht:funding z(90) ≥ 2 AND ht:price roc(7) < -0.1",
+      ruleText: "tested as fade: short when ht:funding z(90) ≥ 2 AND ht:price roc(7) < -0.1", tested: "short", scope: "universe",
     });
     expect(s.rule?.direction).toBe("short");
   });
@@ -91,9 +97,10 @@ describe("other sources", () => {
         { id: "gone", name: "gone", direction: "long", firing: true, text: "" },
       ] }],
     };
-    const out = ruleSignals(pulse, [cat("a", rule), cat("b", rule)]).map(valid);
+    const firing = firingEntries(pulse, [cat("a", rule), cat("b", rule)]);
+    const out = firing.map((e) => valid(ruleSignal(e, Date.parse(pulse.asOf))));
     expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({ id: "rule:BTC:a", source: "rule", coin: "BTC", direction: "long", rule, href: "/lab/rules/a", at: Date.parse(pulse.asOf) });
+    expect(out[0]).toMatchObject({ id: "rule:BTC:a", source: "rule", coin: "BTC", direction: "long", rule, tested: "long", scope: "coin", href: "/lab/rules/a", at: Date.parse(pulse.asOf) });
     expect(out[0]!.ruleText).toBe("ht:funding z(30) < -1");
   });
 
@@ -101,11 +108,11 @@ describe("other sources", () => {
     const o = { id: "11111111-1111-4111-8111-111111111111", coin: "SOL", direction: "short", setupKind: "funding_squeeze", status: "ready", score: 2.345, liquidityTier: 1,
       netEdgeBps: 12.4, edgeBasis: "ledger", createdAt: "2026-11-09T10:00:00.000Z" } as Opportunity;
     expect(valid(opportunitySignal(o))).toMatchObject({
-      id: `opportunity:SOL:${o.id}`, direction: "short", rule: null, ruleText: null, href: `/feed?id=${o.id}`,
+      id: `opportunity:SOL:${o.id}`, direction: "short", rule: null, tested: null, scope: "coin", ruleText: null, href: `/feed?id=${o.id}`,
       headline: "funding_squeeze · ready · score 2.35 · tier 1 · net edge +12 bps (ledger)",
     });
     const c = { id: "2026-11-08-1-HYPE", date: "2026-11-08", at: "2026-11-08T13:00:00.000Z", market: "HYPE", stance: "ride", direction: "long", kind: "catalyst",
       thesis: "x", cause_url: "https://a.b", cause_date: "2026-11-08", kill_price: 30, kill_if: "below 30", mark: 33, btc: 100000, rel: { "3": 2.14 }, killed_at: null } as RadarCall;
-    expect(valid(radarSignal(c))).toMatchObject({ id: "radar:HYPE:2026-11-08-1-HYPE", coin: "HYPE", direction: "long", rule: null, href: null, headline: "ride long · catalyst · mark 33 · kill 30 · +3d +2.1% vs BTC" });
+    expect(valid(radarSignal(c))).toMatchObject({ id: "radar:HYPE:2026-11-08-1-HYPE", coin: "HYPE", direction: "long", rule: null, tested: null, scope: "coin", href: null, headline: "ride long · catalyst · mark 33 · kill 30 · +3d +2.1% vs BTC" });
   });
 });

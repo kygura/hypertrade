@@ -18,7 +18,7 @@ export const StudySummarySchema = z.object({
   verdict: z.enum(["clear", "rejected", "insufficient"]),
   events: Count,
   weeks: Count,
-  /** Mean of weekly mean R; null with no events. */
+  /** Mean of weekly mean R, signed for the tested side; null with no events. */
   expectancy: Num.nullable(),
   /** One-sided 95% upper bound of the weekly mean R; null under two weeks. */
   upper95: Num.nullable(),
@@ -35,6 +35,7 @@ export const ResearchSignalSchema = z.object({
   id: z.string().min(1),
   source: z.enum(RESEARCH_SOURCES),
   coin: z.string().min(1),
+  /** The source's own side, when it has one. Novelty has none: its rule's side is in `tested`. */
   direction: z.enum(["long", "short"]).nullable(),
   /** Facts only, e.g. "funding z90 +2.4, 7d ret -12%". */
   headline: z.string(),
@@ -42,18 +43,46 @@ export const ResearchSignalSchema = z.object({
   at: z.number().int(),
   /** The condition as a Lab rule, when one maps; null = no Lab twin (intraday setups, radar calls). */
   rule: RuleSchema.nullable(),
+  /**
+   * The side the rule is studied as: a hypothesis, not a call. Expectancy in `evidence` is signed for this side (a
+   * negative expectancy means the tested side lost, not that the other side won). null without a rule.
+   */
+  tested: z.enum(["long", "short"]).nullable(),
+  /**
+   * What a study of this rule covers: `coin` = this market only (catalogue rules are per asset); `universe` = the Lab's
+   * default top-20 (novelty rules read ht:* metrics only, and one coin rarely has the 30 event-weeks a verdict needs).
+   * POST /research/study sends `coin` only for `coin` scope. Null-rule signals: `coin`.
+   */
+  scope: z.enum(["coin", "universe"]),
+  /** Novelty rules start "tested as fade: …". */
   ruleText: z.string().nullable(),
   /** Drill-in for the source's own object (UI path). */
   href: z.string().nullable(),
-  /** Cached study of `rule` on `coin` for today (UTC), when present. */
+  /** Cached study of `rule` in `scope` for today (UTC), when present. */
   evidence: StudySummarySchema.nullable(),
 });
 export type ResearchSignal = z.infer<typeof ResearchSignalSchema>;
 
+/** Fixed reasons a source or the radar is unavailable; the underlying error is logged server-side only. */
+export const UNAVAILABLE_REASONS = [
+  "needs a database (DATABASE_URL unset)",
+  "platform offline (no worker loop and no database)",
+  "radar files not deployed",
+  "radar files unreadable",
+  "no radar data yet",
+  "timed out",
+  "source failed (see server log)",
+] as const;
+export const UnavailableReasonSchema = z.enum(UNAVAILABLE_REASONS);
+export type UnavailableReason = z.infer<typeof UnavailableReasonSchema>;
+
 export const SourceStatusSchema = z.object({
   state: z.enum(["ok", "unavailable"]),
-  reason: z.string().optional(),
+  reason: UnavailableReasonSchema.optional(),
+  /** Signals shown. */
   count: Count,
+  /** Items the source returned that did not map to a valid signal (dropped and logged). */
+  dropped: Count,
 });
 export type SourceStatus = z.infer<typeof SourceStatusSchema>;
 
@@ -70,7 +99,10 @@ export type BoardResponse = z.infer<typeof BoardResponseSchema>;
 /** Defaults of a board study (the lab_event_study examples): stop 1.5 ATR, target 3 ATR. */
 export const STUDY_DEFAULTS = { stopAtr: 1.5, targetAtr: 3 } as const;
 
-/** POST /api/research/study. `coin` scopes the study to that market; without it, the Lab's default universe (top 20). */
+/**
+ * POST /api/research/study. `coin` scopes the study to that market; without it, the Lab's default universe (top 20).
+ * stopAtr/targetAtr are rounded to 0.1 before the run and the cache key.
+ */
 export const StudyRequestSchema = z
   .object({
     rule: RuleSchema,
@@ -95,7 +127,7 @@ export const EventStudyResultSchema = z
   .passthrough();
 
 export const StudyResponseSchema = z.object({
-  /** Cache key: rule hash, scope and UTC day. Same id = same study, not re-run (and not re-counted as a trial). */
+  /** Cache key: rule hash, coin or universe, exits (to 0.1 ATR) and the UTC day the run started. Same id = same study, not re-run (and not re-counted as a trial). */
   studyId: z.string(),
   cached: z.boolean(),
   summary: StudySummarySchema,
@@ -114,14 +146,20 @@ export const RadarScoreRowSchema = z.object({
   /** Calls that went the called way. */
   hits: Count,
 });
+export type RadarScoreRow = z.infer<typeof RadarScoreRowSchema>;
 
-/** GET /api/radar. */
+export const RADAR_MAX_CALLS_SHOWN = 50;
+export const RADAR_NOTE_MAX_CHARS = 20_000;
+
+/** GET /api/radar (not guest-readable: theses and notes are LLM-written). */
 export const RadarResponseSchema = z.object({
   state: z.enum(["ok", "unavailable"]),
-  reason: z.string().optional(),
-  latestNote: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), markdown: z.string() }).nullable(),
-  /** As in data/radar/calls.json, graded against state.json. */
-  calls: z.array(RadarCallSchema),
+  reason: UnavailableReasonSchema.optional(),
+  /** `markdown` is cut at RADAR_NOTE_MAX_CHARS; `truncated` says whether it was. */
+  latestNote: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), markdown: z.string().max(RADAR_NOTE_MAX_CHARS), truncated: z.boolean() }).nullable(),
+  /** The last RADAR_MAX_CALLS_SHOWN calls of data/radar/calls.json in file order, graded against state.json. */
+  calls: z.array(RadarCallSchema).max(RADAR_MAX_CALLS_SHOWN),
+  /** Over every call in the file, not only those shown. */
   scorecard: z.array(RadarScoreRowSchema),
 });
 export type RadarResponse = z.infer<typeof RadarResponseSchema>;

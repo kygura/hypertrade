@@ -1,7 +1,6 @@
 // Dependency-free signal math shared by Intel, Desk, Platform, Radar, Routine and the Lab engine.
 // Each variant below is the exact arithmetic its call sites used before; names say which one it is.
 
-export const HOURS_PER_YEAR = 24 * 365;
 /** Scales a MAD to a normal-consistent sigma. */
 export const MAD_SCALE = 1.4826;
 

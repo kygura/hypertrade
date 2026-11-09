@@ -1,13 +1,17 @@
 import type { NoveltyEntry, Opportunity } from "../../shared/platform.js";
 import type { RadarCall } from "../../shared/radar.js";
-import { STUDY_DEFAULTS, type BoardResponse, type ResearchSignal, type ResearchSource, type SourceStatus } from "../../shared/research.js";
+import {
+  ResearchSignalSchema, STUDY_DEFAULTS,
+  type BoardResponse, type ResearchSignal, type ResearchSource, type SourceStatus, type UnavailableReason,
+} from "../../shared/research.js";
 import type { CatalogueEntry, MarketPulse } from "../lab/types.js";
-import { noveltySignal, opportunitySignal, radarSignal, ruleSignals } from "./signals.js";
-import type { StudyCache } from "./study.js";
+import { firingEntries, noveltySignal, opportunitySignal, radarSignal, ruleSignal } from "./signals.js";
+import { studyKey, type StudyCache } from "./study.js";
 
 // Research board (docs/RESEARCH.md B2): each source loads on its own, under its own timeout; a source that throws,
-// times out or is not available here (no worker loop, no database) is listed `unavailable` with the reason and the
-// board still answers with the rest.
+// times out or is not available here (no worker loop, no database) is listed `unavailable` with a fixed reason (the
+// error itself goes to the server log) and the board still answers with the rest. Inside a source each item is mapped
+// and validated on its own: a bad item is dropped and counted, never a failed board.
 
 const DAY = 86_400_000;
 /** Novelty bars shown: the detector's retry window (closed days). */
@@ -17,8 +21,15 @@ export const RADAR_DAYS = 7;
 export const OPPORTUNITY_LIMIT = 50;
 export const SOURCE_TIMEOUT_MS = 20_000;
 
-/** Thrown by a loader for a source that cannot exist here: its message is the reason shown. */
-export class SourceUnavailable extends Error {}
+/** Thrown by a loader for a source that cannot exist here, with the fixed reason shown. */
+export class SourceUnavailable extends Error {
+  readonly reason: UnavailableReason;
+  constructor(reason: UnavailableReason) {
+    super(reason);
+    this.reason = reason;
+  }
+}
+class TimedOut extends Error {}
 
 export interface BoardDeps {
   now: () => number;
@@ -34,17 +45,41 @@ export interface BoardDeps {
   timeoutMs?: number;
 }
 
-const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<never>((_, rej) => (timer = setTimeout(() => rej(new Error(`no answer within ${ms / 1000} s`)), ms)));
+  const late = new Promise<never>((_, rej) => (timer = setTimeout(() => rej(new TimedOut()), ms)));
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
-/** Today's cached study of the signal's rule on its coin with the board's default exits, if any. */
-export const evidenceFor = (cache: StudyCache, s: Pick<ResearchSignal, "rule" | "coin">) =>
-  s.rule ? (cache.get({ rule: s.rule, coin: s.coin, ...STUDY_DEFAULTS })?.summary ?? null) : null;
+/** The study a board row opens: its rule, on its coin only for `coin` scope, with the board's default exits. */
+export const boardStudy = (s: Pick<ResearchSignal, "rule" | "coin" | "scope">) =>
+  s.rule ? { rule: s.rule, ...(s.scope === "coin" ? { coin: s.coin } : {}), ...STUDY_DEFAULTS } : null;
+
+/** Today's cached study of the signal's rule in its scope, if any. */
+export const evidenceFor = (cache: StudyCache, s: Pick<ResearchSignal, "rule" | "coin" | "scope">, now: number) => {
+  const q = boardStudy(s);
+  return q ? (cache.get(studyKey(q, now))?.summary ?? null) : null;
+};
+
+/** Maps and validates each item on its own; an item that throws or fails the schema is dropped (and logged). */
+function mapEach<T>(source: ResearchSource, items: T[], map: (t: T) => Omit<ResearchSignal, "evidence">): { signals: ResearchSignal[]; dropped: number } {
+  const signals: ResearchSignal[] = [];
+  let dropped = 0;
+  for (const item of items) {
+    try {
+      const r = ResearchSignalSchema.safeParse({ ...map(item), evidence: null });
+      if (r.success) signals.push(r.data);
+      else {
+        dropped++;
+        console.error(`[research] ${source}: dropped an item: ${r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+      }
+    } catch (e) {
+      dropped++;
+      console.error(`[research] ${source}: dropped an item:`, e);
+    }
+  }
+  return { signals, dropped };
+}
 
 export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
   const now = deps.now();
@@ -53,15 +88,16 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
   let pulse: BoardResponse["pulse"] = null;
   let rulePulse: BoardResponse["pulse"] = null;
 
-  const loaders: Record<ResearchSource, () => Promise<Omit<ResearchSignal, "evidence">[]>> = {
+  const loaders: Record<ResearchSource, () => Promise<{ signals: ResearchSignal[]; dropped: number }>> = {
     rule: async () => {
       const r = await deps.pulse();
       rulePulse = { assets: r.pulse.assets.length, firing: r.pulse.assets.reduce((n, a) => n + a.rules.filter((x) => x.firing).length, 0) };
-      return ruleSignals(r.pulse, r.catalogue);
+      const at = Date.parse(r.pulse.asOf);
+      return mapEach("rule", firingEntries(r.pulse, r.catalogue), (e) => ruleSignal(e, at));
     },
-    novelty: async () => (await deps.novelty(bar(now - NOVELTY_DAYS * DAY))).map(noveltySignal),
-    opportunity: async () => (await deps.opportunities(OPPORTUNITY_LIMIT)).map(opportunitySignal),
-    radar: async () => (await deps.radarCalls()).filter((c) => !c.killed_at && c.date >= bar(now - RADAR_DAYS * DAY)).map(radarSignal),
+    novelty: async () => mapEach("novelty", await deps.novelty(bar(now - NOVELTY_DAYS * DAY)), noveltySignal),
+    opportunity: async () => mapEach("opportunity", await deps.opportunities(OPPORTUNITY_LIMIT), opportunitySignal),
+    radar: async () => mapEach("radar", (await deps.radarCalls()).filter((c) => !c.killed_at && c.date >= bar(now - RADAR_DAYS * DAY)), radarSignal),
   };
 
   const sources = {} as Record<ResearchSource, SourceStatus>;
@@ -70,12 +106,13 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
     (Object.keys(loaders) as ResearchSource[]).map(async (source) => {
       try {
         const got = await withTimeout(loaders[source](), ms);
-        sources[source] = { state: "ok", count: got.length };
+        sources[source] = { state: "ok", count: got.signals.length, dropped: got.dropped };
         if (source === "rule") pulse = rulePulse; // only from a load that made it in time
-        for (const s of got) signals.push({ ...s, evidence: evidenceFor(deps.cache, s) });
+        for (const s of got.signals) signals.push({ ...s, evidence: evidenceFor(deps.cache, s, now) });
       } catch (e) {
-        if (!(e instanceof SourceUnavailable)) console.error(`[research] ${source}:`, e);
-        sources[source] = { state: "unavailable", reason: msg(e), count: 0 };
+        const reason: UnavailableReason = e instanceof SourceUnavailable ? e.reason : e instanceof TimedOut ? "timed out" : "source failed (see server log)";
+        if (!(e instanceof SourceUnavailable)) console.error(`[research] ${source}:`, e instanceof TimedOut ? `no answer within ${ms} ms` : e);
+        sources[source] = { state: "unavailable", reason, count: 0, dropped: 0 };
       }
     }),
   );
