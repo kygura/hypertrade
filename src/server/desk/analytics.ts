@@ -1,5 +1,6 @@
 import type { FundingPoint } from "../../shared/hl-client.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
+import { atr, mean, sdPopulation as stdev, zPopulation } from "../../shared/signalMath.js";
 
 // Flow diagnostics: the deterministic half of "is this move a trap or real
 // flow?". The agents interpret; these numbers are what they interpret. All
@@ -60,30 +61,10 @@ export interface RallyDiagnostics {
 const HOUR = 3_600_000;
 const APR = 24 * 365;
 
-export function mean(xs: number[]): number {
-  return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN;
-}
-
-/** Average true range over the last `period` bars; null until there are period + 1. */
-export function atr(bars: Array<{ h: number; l: number; c: number }>, period = 14): number | null {
-  if (bars.length <= period) return null;
-  const trs = bars.slice(1).map((b, i) => Math.max(b.h - b.l, Math.abs(b.h - bars[i]!.c), Math.abs(b.l - bars[i]!.c)));
-  return mean(trs.slice(-period));
-}
-
-export function stdev(xs: number[]): number {
-  if (xs.length < 2) return NaN;
-  const m = mean(xs);
-  return Math.sqrt(xs.reduce((a, x) => a + (x - m) ** 2, 0) / xs.length);
-}
+export { atr, mean, stdev };
 
 /** z of `x` against `base`; null when the base is too thin or flat. */
-export function zScore(x: number, base: number[]): number | null {
-  if (base.length < 24) return null;
-  const s = stdev(base);
-  if (!Number.isFinite(s) || s === 0) return null;
-  return (x - mean(base)) / s;
-}
+export const zScore = (x: number, base: number[]): number | null => zPopulation(x, base, 24);
 
 const round = (x: number, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));

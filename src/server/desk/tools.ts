@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ToolSpec } from "../llm/provider.js";
 import { runTool as runAnalystTool, TOOL_SPECS as ANALYST_SPECS, type ToolDeps, defaultToolDeps } from "../llm/tools.js";
+import { fundingAprPct } from "../../shared/signalMath.js";
 import { atr, marketBreadth, mean, rallyDiagnostics, stdev } from "./analytics.js";
 import { trimForModel } from "./data.js";
 import { DeskService } from "./service.js";
@@ -249,7 +250,7 @@ export const READ_TOOLS: DeskTool[] = [
       const now = ctx.service.now().getTime();
       const pts = await ctx.service.data.funding(market.coin, now - days * DAY, now);
       if (!pts.length) return fail(`no funding history for ${market.coin}`);
-      const apr = (x: number) => r(x * 24 * 365 * 100);
+      const apr = (x: number) => r(fundingAprPct(x));
       const rates = pts.map((p) => p.rate);
       const byDay = new Map<string, number[]>();
       for (const p of pts) {

@@ -1,7 +1,7 @@
 import { FixedWindowSchema, HEATMAP_METRICS, type FixedWindow, type FlowFlag, type FlowRow, type HeatmapMetric, type SnapshotRow } from "../../shared/intel.js";
 import { metricValue } from "./diff.js";
 import type { Point } from "./normalize.js";
-import { median } from "./util.js";
+import { MAD_SCALE, median, robustSigma } from "../../shared/signalMath.js";
 
 // Fixed windows, regime flips and threshold crossings (docs/SPEC.md § Flow F0.2,
 // F0.3). Pure. Runs alongside the I0.4 last-review baseline, not instead of it.
@@ -31,7 +31,7 @@ export const LOOKBACK: Record<FixedWindow, { days: number; min: number }> = {
   "24h": { days: 90, min: 30 },
 };
 /** Robust σ = MAD × this (σ of a normal distribution). */
-export const MAD_SCALE = 1.4826;
+export { MAD_SCALE };
 
 /** σ floor for sum metrics, in log(1 + USD): sparse history (MAD 0) cannot make a small total look extreme. */
 const SUM_FLOOR = 0.5;
@@ -120,10 +120,7 @@ export function valueAt(points: Point[], t: number): number | null {
   return best && Math.abs(best.t - t) <= ENDPOINT_TOLERANCE_MS ? best.v : null;
 }
 
-export function robustSigma(xs: number[], floor: number): number {
-  const m = median(xs);
-  return Math.max(floor, median(xs.map((x) => Math.abs(x - m))) * MAD_SCALE);
-}
+export { robustSigma };
 
 /** Δ over (end − ms, end]: `stat` is what z is taken on, `delta` what is shown. */
 function windowStat(metric: HeatmapMetric, points: Point[], prefix: number[], end: number, ms: number): { stat: number; delta: number } | null {

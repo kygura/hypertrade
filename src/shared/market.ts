@@ -1,5 +1,6 @@
 // Wire types for the chart API (GET /api/candles/:coin) and the perp stats
 // API (GET /api/perp/:coin), shared by server and UI.
+import { fundingAprFrac } from "./signalMath.js";
 import type { PredictedFunding } from "./hl-client.js";
 import type { Timeframe } from "./timeframes.js";
 
@@ -63,4 +64,4 @@ export interface PerpStats {
 }
 
 /** Hourly funding rate -> annualized (HL settles hourly). */
-export const fundingApr = (hourly: number) => hourly * 24 * 365;
+export const fundingApr = fundingAprFrac;

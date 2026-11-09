@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { fetchCandles, fetchFundingPage, fetchPerpMetaAndCtxs, fetchPredictedFundings, type FundingPoint } from "../../shared/hl-client.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
+import { fundingAprPct } from "../../shared/signalMath.js";
 import { calendarEvents } from "../intel/calendar.js";
 import { errDetail, errStatus, FetchError, fetchFred, fetchJson as fetchJsonWithin, fetchYahoo, type Point } from "../radar/macro.js";
 import { boardUniverse, buildBoard, type Board, type BoardHistory, type BoardInput } from "./board.js";
@@ -125,7 +126,7 @@ export function summariseHl(ctxs: AssetCtx[]): HlAsset[] {
     chg24hPct: r(c.dayChange * 100),
     oiUsd: Math.round(c.openInterest * c.markPx),
     fundingHourly: c.funding,
-    fundingAnnPct: r(c.funding * 24 * 365 * 100),
+    fundingAnnPct: r(fundingAprPct(c.funding)),
     volUsd24h: Math.round(c.dayNtlVlm),
   }));
   const majors = rows.filter((a) => (MAJORS as readonly string[]).includes(a.name));

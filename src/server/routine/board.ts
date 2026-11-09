@@ -1,8 +1,7 @@
 import { z } from "zod";
 import type { FundingPoint } from "../../shared/hl-client.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
-import { median } from "../intel/util.js";
-import { robustSigma } from "../intel/windows.js";
+import { atr as meanTrueRange, median, robustSigma } from "../../shared/signalMath.js";
 import { sma } from "./htf.js";
 
 // The board (docs/fallback-routine.md § Board): the top-N Hyperliquid perps,
@@ -164,17 +163,6 @@ export function weeklyFromDaily(daily: Candle[]): Candle[] {
     else weeks.set(start, { ...w, h: Math.max(w.h, c.h), l: Math.min(w.l, c.l), c: c.c, v: w.v + c.v });
   }
   return [...weeks.values()];
-}
-
-function meanTrueRange(bars: Candle[], n: number): number | null {
-  if (bars.length < n + 1) return null;
-  let sum = 0;
-  for (let i = bars.length - n; i < bars.length; i++) {
-    const c = bars[i]!;
-    const prev = bars[i - 1]!.c;
-    sum += Math.max(c.h - c.l, Math.abs(c.h - prev), Math.abs(c.l - prev));
-  }
-  return sum / n;
 }
 
 /** One timeframe's structure from its candles; only bars closed before `now` count. Null with fewer than window + 2 bars. */
