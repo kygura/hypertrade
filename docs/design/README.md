@@ -527,32 +527,38 @@ to right (`NAV` in `AppShell.tsx`):
 
 | # | Desktop | Mobile | Glyph | Link | Active on |
 |---|---|---|---|---|---|
-| 1 | TRADE | TRADE | `◉` | `/` | the TRADE family (`isTerminalPath`): `/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/`, `/order`, `/desk`, `/asset/:coin` |
-| 2 | MARKET | MKT | `≋` | `/markets` | the MARKET family (`isMarketPath`): `/markets`, `/sectors`, `/state`, `/cycles` and their `/:coin` drills |
-| 3 | RESEARCH | RSRCH | `⚗` | `/lab` | `/lab/*` (including `/lab/rules/:id`) and `/branches`, `/branches/:id` |
+| 1 | RESEARCH | RSRCH | `⚗` | `/` | the RESEARCH family (`isResearchPath`): the board `/`, `/lab/*` (including `/lab/rules/:id`) and `/branches`, `/branches/:id` |
+| 2 | TRADE | TRADE | `◉` | `/feed` | the TRADE family (`isTerminalPath`): `/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/feed`, `/order`, `/desk`, `/asset/:coin` |
+| 3 | MARKET | MKT | `≋` | `/markets` | the MARKET family (`isMarketPath`): `/markets`, `/sectors`, `/state`, `/cycles` and their `/:coin` drills |
 | 4 | ASK | ASK | `?` | `/analyst` | `/analyst` |
 | 5 | ENGINE | ENGIN | `⚙` | `/strategies` | the strategy console (`isEnginePath`): `/strategies`, `/decisions`, `/governor` and their `/:id` drills |
 
 Four cells group several routes behind an in-view sub-nav, all `SectionTabs`
 wrappers: TRADE (`TerminalTabs`, brief below), MARKET (`MarketTabs`: PERPS ·
 SECTORS · STATE · CYCLES, with the `MetricsStrip` under the tabs on every
-MARKET route, §10.2), RESEARCH (`LabTabs`, §10.9) and ENGINE (`EngineTabs`,
+MARKET route, §10.2), RESEARCH (`LabTabs`: BOARD · STUDY · SEARCH · RUNS ·
+CATALOGUE · PULSE · BRANCHES, §10.9; the board brief is docs/RESEARCH.md
+"Board") and ENGINE (`EngineTabs`,
 §10.12). There is no Overview page: `/overview` redirects to `/markets`.
-After login the landing is `/`. `/login` renders outside the shell entirely.
+After login the landing is `/`, the Research board. `/?review=1` redirects to
+`/terminal?review=1`, and an old Cockpit query on `/` (`id`, `status`, `tier`,
+`liqh`, `liq`) redirects to `/feed` with the query intact (`rootRedirect`,
+`src/ui/lib/research.ts`). `/login` renders outside the shell entirely.
 Unknown paths redirect to `/`.
 
 **TRADE family brief.** The job: what changed for my book, and what should I
 place, approve or kill now. One tab row, ordered as a funnel from intel to act:
 `CHANGES · WATCH · JOURNAL · THESES · QUERY · FEED · ORDER · DESK`
-(`/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/`, `/order`,
+(`/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/feed`, `/order`,
 `/desk`; mobile short labels `CHNG · WTCH · JRNL · THES · QRY · FEED · ORDR ·
 DESK`). `SectionTabs` has no group separator, so the order alone carries the
-split. The `/` landing is still the Cockpit: FEED is its tab, not a cell. The
+split. The Cockpit lives at `/feed`: FEED is its tab, not a cell. The
 Cockpit feed items (opportunities, with a status machine and cost vs edge) and
 the Terminal change items (a materiality-ranked diff, no status machine) stay
 two separate lists; the family shares only the tab bar, the coin drill
 (`/asset/:coin` under the CHANGES tab, with `CHART →` to `/markets/:coin`; the
-Cockpit detail links to both) and the action path (Level 2 dialogs and the
+Cockpit detail links to both, and to the board filtered by coin as
+EVIDENCE) and the action path (Level 2 dialogs and the
 shared kill switch, §7). `/asset/:coin` back links read `← CHANGES`. Tab
 detail: docs/design/terminal.md §1.
 
@@ -564,7 +570,7 @@ Its three views switch through `EngineTabs`, a `SectionTabs` over
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ HYPERTRADE ▪ │ TRADE MARKET RESEARCH ASK ENGINE │ theme ● DATA 12:41 │ LOGOUT │
+│ HYPERTRADE ▪ │ RESEARCH TRADE MARKET ASK ENGINE │ theme ● DATA 12:41 │ LOGOUT │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -830,7 +836,8 @@ Route map (`src/ui/App.tsx`). Every route renders inside the shell except
 | Route | View | Brief |
 |---|---|---|
 | `/login` | password gate | §10.1 |
-| `/` | TRADE · FEED (the Cockpit): ranked opportunity feed, liquidation map, detail | docs/design/terminal.md "Cockpit" |
+| `/` | RESEARCH · BOARD, the landing: live signals with their evidence cell, PULSE, RADAR; `?coin=` filters (old Cockpit queries redirect to `/feed`) | docs/RESEARCH.md "Board" |
+| `/feed` | TRADE · FEED (the Cockpit): ranked opportunity feed, liquidation map, detail | docs/design/terminal.md "Cockpit" |
 | `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch` | TRADE tabs (`/terminal` is CHANGES) (`/?review=1` redirects to `/terminal?review=1`) | docs/design/terminal.md §1, §3–§8 |
 | `/asset/:coin` | asset page, a drill-in of CHANGES | docs/design/terminal.md §15.4 |
 | `/overview` | redirects to `/markets` | — |
@@ -842,7 +849,7 @@ Route map (`src/ui/App.tsx`). Every route renders inside the shell except
 | `/analyst` | ASK: read-only analyst and Paths chat (SIMULATE) | §10.8; docs/design/chat.md |
 | `/desk` | TRADE · DESK: agentic portfolio desk | §10.11 |
 | `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` | ENGINE console | §10.12 |
-| `/lab` → `/lab/search`; `/lab/{search,runs,catalogue,pulse}`, `/lab/runs/:runId`, `/lab/rules/:id` | RESEARCH: heuristic research | §10.9 |
+| `/lab` → `/lab/search`; `/lab/{study,search,runs,catalogue,pulse}`, `/lab/runs/:runId`, `/lab/rules/:id` | RESEARCH: heuristic research | §10.9 |
 
 Every view gets: purpose, mobile layout, desktop layout, components with
 data fields, states, interactions.
@@ -1274,7 +1281,9 @@ bookmarkable page and the browser back button steps between them:
 
 | Path | Tab | Content |
 |---|---|---|
+| `/` | BOARD | the Research board, the app landing (docs/RESEARCH.md "Board") |
 | `/lab` | — | redirects to `/lab/search` |
+| `/lab/study` | STUDY | the event study of one rule (`?rule=`, `?coin=`; docs/RESEARCH.md "Study") |
 | `/lab/search` | SEARCH | form + results of the current/last run in this browser; after a reload with no last run, the newest stored run (`lab_list_runs` limit 1 → `lab_get_run`) |
 | `/lab/runs` | RUNS | recent runs list |
 | `/lab/runs/:runId` | SEARCH | the Search tab with that run's config in the form and its results below; header stamp `RUN 7f3a · 2026-10-08 09:12 UTC` |
@@ -1284,14 +1293,18 @@ bookmarkable page and the browser back button steps between them:
 | `/lab/rules/:id` | (drill) | rule detail; `?run=<runId>` when the rule is not catalogued; `?from=catalogue\|results\|pulse` sets the back link |
 
 **LabTabs**: a `SectionTabs` (`size: 'md'` Segmented) directly under the
-shell: `SEARCH · RUNS · CATALOGUE · PULSE · BRANCHES`, in workflow order
-(search → its history → what you kept → what it says today → portfolio
-simulation). It is the RESEARCH cell's sub-nav. Default `SEARCH`: the page
-exists to run searches; the glanceable Pulse is one tap away. Mobile: `short` labels `SRCH · RUNS · CTLG · PULSE · BRNCH`; the tab
+shell: `BOARD · STUDY · SEARCH · RUNS · CATALOGUE · PULSE · BRANCHES`, in
+workflow order (what fires now → its history as an event study → search →
+its history → what you kept → what it says today → portfolio simulation).
+It is the RESEARCH cell's sub-nav; the cell lands on BOARD (`/`), and `/lab`
+lands on SEARCH. Mobile: `short` labels `BRD · STDY · SRCH · RUNS · CTLG ·
+PULSE · BRNCH`; the tab
 row is `position: sticky; top: var(--topbar-h)`, `--subnav-h` tall, under the
 top strip. The catalogue segment carries a count suffix
 (`CATALOGUE · 7`) at md+; the Pulse segment carries a 6px dot, green if any
-rule fires, gray otherwise (number + word remain inside the tab).
+rule fires, gray otherwise (number + word remain inside the tab). On the
+board there is no Lab data provider: no count, and the dot reads the board's
+own pulse counts, so the landing starts no catalogue or pulse load.
 
 Rule detail is a **full view route** (the markets-drill pattern, §10.7),
 not the sectors inline panel: it is tall (chart, drawdown, two tables, a
@@ -1933,6 +1946,12 @@ Intel (docs/design/terminal.md §14, under `src/ui/components/intel/`; pages und
 `AdjustDisclosure`); `PreviewCard`; `OrderResult`; `WatchesTable`;
 `WatchForm`; `WatchChanges` (+ `ChangeEntry`).
 
+Research board (docs/RESEARCH.md "Board", `src/ui/pages/research/Board.tsx`):
+`Board` (container: `rootRedirect`, pollers, `?coin=`, keyboard); `BoardView`;
+`SignalRow`; `EvidenceCell`; `PulsePanel`; `RadarPanel` (+ `NoteDialog` on
+`DialogShell`, the note as preformatted text); `StudyVerdictBadge`
+(`components/lab/`, shared with `/lab/study`); pure helpers in `lib/research.ts`.
+
 Cockpit (docs/design/terminal.md "Cockpit", under `src/ui/pages/cockpit/`):
 `Cockpit` (container); `CockpitHeader`; `HealthStrip`; `KeysHelp`;
 `OpportunityFeed` (+ `FeedFilters`, `StatusPill`, `EdgeCell`, `WarmingLine`);
@@ -1990,7 +2009,8 @@ Non-negotiable, verified before done:
 | Theses `/theses` (composer, list, detail) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |
 | Query `/query` (DSL/SQL, result) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 |
 | Order `/order` (composer, preview, banner venue) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §7.4 / §10 |
-| Cockpit `/` (feed, liquidation map, detail, health) | per DESIGN-terminal C7 | per DESIGN-terminal C7 | per DESIGN-terminal C7 | per DESIGN-terminal C7 |
+| Research board `/` (signals, pulse, radar) | SkeletonRows per region | EmptyBlock (`no condition firing · sources on: …`; `no signal on X now` with SHOW ALL) | ErrorBlock / OfflineBlock per region; a STUDY failure is a verbatim line in its evidence cell; a source down is an amber `unavailable` chip (title = reason) | — |
+| Cockpit `/feed` (feed, liquidation map, detail, health) | per DESIGN-terminal C7 | per DESIGN-terminal C7 | per DESIGN-terminal C7 | per DESIGN-terminal C7 |
 | Sectors narratives | SkeletonRows | EmptyBlock per row set | ErrorBlock / OfflineBlock | AgeStamp `sectorsAsOf` > 24h |
 | Cycles | SkeletonRows + `loading <COIN> history since <year>…` | in-run / not-enough-history sentence in the estimate | ErrorBlock / OfflineBlock | — |
 | Desk (§10.11) | SkeletonRows per panel | EmptyBlock (`no proposals yet`, `no alerts yet`, `no runs yet`) | page-level OfflineBlock / ErrorBlock; verbatim line in a panel | red venue note; amber live-testnet line |

@@ -51,14 +51,16 @@ walks one surface instead of choosing between Cockpit, Terminal and Desk.
 
 | Cell | Job | Tabs / routes |
 |---|---|---|
-| TRADE | Know what changed for my book, then act on it | Intel: CHANGES `/terminal`, WATCH `/watch`, JOURNAL `/journal`, THESES `/theses`, QUERY `/query` → Act: FEED `/` (landing), ORDER `/order`, DESK `/desk`. Drill: `/asset/:coin` |
+| RESEARCH | What is firing now, and what happened before when it fired (the landing, docs/RESEARCH.md) | BOARD `/` (landing), STUDY `/lab/study`, SEARCH `/lab/search`, RUNS `/lab/runs`, CATALOGUE `/lab/catalogue`, PULSE `/lab/pulse`, BRANCHES `/branches`. Drills: `/lab/rules/:id`, `/branches/:id` |
+| TRADE | Know what changed for my book, then act on it | Intel: CHANGES `/terminal`, WATCH `/watch`, JOURNAL `/journal`, THESES `/theses`, QUERY `/query` → Act: FEED `/feed`, ORDER `/order`, DESK `/desk`. Drill: `/asset/:coin` |
 | MARKET | What is the market doing | PERPS `/markets`, SECTORS `/sectors`, STATE `/state`, CYCLES `/cycles`. Drills: `/markets/:coin`, `/cycles/:coin`. Header: the MetricsStrip from Overview |
-| RESEARCH | What would have worked | LAB `/lab/*`, BRANCHES `/branches`. Drills: `/lab/rules/:id`, `/branches/:id` |
 | ASK | Free-form question to the analyst | `/analyst` (ASK and SIMULATE) |
 | ENGINE | External Hyperion console | `/strategies`, `/decisions`, `/governor` and drills |
 
-Route URLs do not change, except `/overview`, which redirects to `/markets`. `/` stays
-the landing (the Cockpit feed). `/?review=1` keeps redirecting to `/terminal?review=1`.
+Route URLs do not change, except `/overview`, which redirects to `/markets`, and the
+Cockpit feed, which moved from `/` to `/feed`: `/` is the Research board, and an old
+`/?id=…` (any Cockpit param) redirects to `/feed` with the query intact.
+`/?review=1` keeps redirecting to `/terminal?review=1`.
 Telegram deep links (`/order`, `/desk`, `/asset/:coin`) keep working.
 
 Not merged, on purpose: Desk ASK stays inside DESK (it proposes trades, persists runs,

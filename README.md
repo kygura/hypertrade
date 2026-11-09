@@ -2,7 +2,7 @@
 
 A personal market terminal and signal platform for crypto perps. It tracks assets, simulates allocation branches against historical data, monitors sector dynamics, and runs an always-on worker that scans Hyperliquid and surfaces ranked setups.
 
-Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade radar (a scheduled Claude session, twice a day: code scans every live perp on the main and HIP-3 dexes, the session researches what the tape has not priced yet and lands at most 3 dated calls that code prices and grades in `data/radar/`; one ntfy push only when a call lands; see `ROUTINE.md`).
+Surfaces: the Research board (`/`, the landing: live signals with their event-study evidence, docs/RESEARCH.md), the platform cockpit (`/feed`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade radar (a scheduled Claude session, twice a day: code scans every live perp on the main and HIP-3 dexes, the session researches what the tape has not priced yet and lands at most 3 dated calls that code prices and grades in `data/radar/`; one ntfy push only when a call lands; see `ROUTINE.md`).
 
 ## Status
 
@@ -40,9 +40,9 @@ Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is
 
 | Cell | Routes |
 |---|---|
-| TRADE | `TerminalTabs`, intel to act: `/terminal` (CHANGES), `/watch`, `/journal`, `/theses`, `/query`, then `/` (FEED, the Cockpit landing: ranked opportunities, liquidation map, approve/reject, desk kill switch), `/order`, `/desk`. `/asset/:coin` is the per-coin page under CHANGES. |
+| RESEARCH | `LabTabs`: `/` (BOARD, the landing: live signals with their evidence, `?coin=` filter), `/lab/study`, `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id`, and `/branches`, `/branches/:id` |
+| TRADE | `TerminalTabs`, intel to act: `/terminal` (CHANGES), `/watch`, `/journal`, `/theses`, `/query`, then `/feed` (FEED, the Cockpit: ranked opportunities, liquidation map, approve/reject, desk kill switch; an old `/?id=…` redirects here), `/order`, `/desk`. `/asset/:coin` is the per-coin page under CHANGES. |
 | MARKET | `MarketTabs`, with the metrics strip under it: `/markets` (and `/markets/:coin`, chart; links to `/asset/:coin`), `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`. |
-| RESEARCH | `LabTabs`: `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id`, and `/branches`, `/branches/:id` |
 | ASK | `/analyst` (ASK and SIMULATE) |
 | ENGINE | `EngineTabs`: `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` |
 
@@ -367,12 +367,12 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 
 `/terminal` shows what changed since your last look, measured
 against your positions and watchlist: a ranked diff, the alerts and catalysts
-that touch those assets, and a short brief. `/` is the Cockpit (phase 8) and
+that touch those assets, and a short brief. `/feed` is the Cockpit (phase 8), `/` the Research board, and
 there is no Overview (`/overview` redirects to `/markets`). Design: `docs/design/terminal.md`. Spec: docs/SPEC.md
 § Intel. Code: `src/server/intel/*`, `src/server/routes/intel/*`,
 `src/ui/pages/terminal/*`.
 
-**Routes.** These share one sub-tab strip (`TerminalTabs`) with the Cockpit at `/`:
+**Routes.** These share one sub-tab strip (`TerminalTabs`) with the Cockpit at `/feed`:
 
 | route | what it does |
 |---|---|

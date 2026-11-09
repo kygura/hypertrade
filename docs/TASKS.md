@@ -20,6 +20,18 @@ object; 6 shell cells today against a ceiling of 9, target 5):
   platform read tools. Type-scale codemod and `check:type-scale` done. Deferred: the
   `runToolLoop` extraction (see `docs/CONSOLIDATION.md`).
 
+Research terminal follow-ups (docs/RESEARCH.md; each changes live scanner output, applied migrations
+or study semantics, so each needs its own change):
+
+- [ ] Scanner funding windows: 24 h in code vs 7 d / 14 d in SPEC P0.9; decide with an event study.
+- [ ] The desk regime classifier is applied to a 1 h return in `platform/features.ts`; check what it was
+  built for and fix the input or the classifier.
+- [ ] Five separate "my coins" lists (watchlist, positions, desk, Lab `mine`, radar); one source.
+- [ ] Duplicate migration number 022 in `db/migrations/`; add the next number for any fix, never edit an
+  applied one.
+- [ ] Event study stop/target fixed at 1.5 / 3 ATR (`STUDY_DEFAULTS`, `lib/study.ts`) with no UI control.
+- [ ] `/lab/study` cannot tell whether the rule is already catalogued (SAVE offers it again).
+
 Radar routine (2026-11-02): the 4 h setup board is retired (24 setups, all low conviction, −1.77R; it
 never saw news, sectors or HIP-3). `ROUTINE.md` is now a twice-daily radar: `bun run radar` scans every
 dex, the session researches catalysts and lands at most 3 graded calls in `data/radar/`.
