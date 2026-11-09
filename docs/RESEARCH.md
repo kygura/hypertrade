@@ -1,0 +1,172 @@
+# Research terminal — contract
+
+Status: in progress (2026-11-09). This file is the contract for the research-terminal
+refactor. `docs/SPEC.md` wins on data and API shape for everything not named here;
+`docs/design/README.md` wins on tokens, states and primitives.
+
+## Goal
+
+Hypertrade is a **research terminal** for Hyperliquid perps. Its one job: when something
+is happening on a market now, show what happened historically when the same condition
+fired, with honest statistics, in one click. The trading surface (feed, order, desk) stays
+and stays thin; it is no longer the landing.
+
+Every live signal is shown as a fact with its evidence (n, clusters, interval, verdict),
+never as a verdict of its own. Nothing nags.
+
+## What changes
+
+1. The landing `/` is the **Research board**: live signals, each with a Lab rule and its
+   event-study evidence. The old Cockpit feed moves to `/feed` (TRADE family, tab FEED).
+2. The Lab gains an **event study view** (`/lab/study`) that any signal can open prefilled.
+   Until now `lab_event_study` had no UI.
+3. Live signals from four sources are normalised into one shape with a Lab rule attached
+   where one exists.
+4. Signal arithmetic that was copied across subsystems lives in one shared module.
+5. The radar's notes, calls and scorecard become readable in the app.
+6. The Cockpit stops offering an APPROVE that cannot succeed.
+
+## Runtime
+
+Built for the always-on server (`bun start`, `WORKER_LOOPS=all`). On Vercel (tick mode)
+the board still renders: sources that need a loop or Postgres report `unavailable` with a
+reason, studies run on demand inside the 50 s tool deadline, and approve is disabled with
+the reason shown before the dialog opens.
+
+## Backend
+
+### B1. `src/shared/signalMath.ts`
+
+Dependency-free. Holds the one implementation of: `atr` (simple mean of true range),
+`fundingAprPct(hourly)` and `fundingAprFrac(hourly)`, `median`, `mad`, `quantile`, and the
+z-score variants as **named** functions (`zSample`, `zSampleExcludingLast`, `zPopulation`,
+`zRobust`). Call sites move to it. **No numeric behaviour changes**: each call site keeps
+the variant it uses today, and every existing test stays green without edits to expected
+values. A table-driven test pins each function.
+
+The z variants are not merged. They answer different questions on different windows; the
+module makes the choice visible at the call site instead of hiding it in a local helper.
+
+### B2. Signals and studies — `src/shared/research.ts`, `src/server/research/`
+
+`ResearchSignal` (zod):
+
+```
+id          stable string: `${source}:${coin}:${key}`
+source      'novelty' | 'rule' | 'opportunity' | 'radar'
+coin        string
+direction   'long' | 'short' | null
+headline    string, facts only (e.g. "funding z90 +2.4, 7d ret -12%")
+at          ms epoch
+rule        Lab Rule | null     the condition as a Lab rule, when one maps
+ruleText    string | null
+href        string | null       drill-in for the source's own object
+evidence    StudySummary | null cached study, when present
+```
+
+`StudySummary`: `{ verdict: 'clear'|'rejected'|'insufficient', events, weeks, expectancy,
+upper95, holdoutExpectancy|null, idea: {n, of}|null, asOf }` — a projection of the
+`lab_event_study` result, no new statistics.
+
+Mapping (pure, tested): a catalogue rule firing now carries its own rule; a novelty item
+maps through a fixed table (`funding_z90` → `ht:funding|z|90`, 7 d return →
+`ht:price|roc|7`, volume multiple → `ht:volume|ma_ratio|20`) using the item's observed
+value sign and a rounded threshold; platform opportunities and radar calls carry
+`rule: null` (intraday setups have no Lab twin; that is stated in the UI, not hidden).
+
+Routes (all zod-parsed in and out):
+
+- `GET /api/research/board` → `{ asOf, signals: ResearchSignal[], sources: Record<source,
+  {state: 'ok'|'unavailable', reason?: string, count: number}>, pulse: {assets, firing} }`.
+  Each source is loaded independently; one failing source never empties the board.
+- `POST /api/research/study` `{ rule, coin }` → `StudySummary` plus the full study id.
+  Runs `lab_event_study` through the existing Lab service and counts as a trial exactly
+  as a direct tool call does. Results are cached in process by rule hash and UTC day.
+- `GET /api/radar` → `{ state, latestNote: {date, markdown}|null, calls, scorecard }` read
+  from `data/radar/` with the existing schemas. If the files are absent (Vercel bundle),
+  `state: 'unavailable'` with the reason.
+
+On the always-on server a bounded loop pre-computes studies for current rule-bearing
+signals (at most 3 per cycle, never the same rule twice in a UTC day) so the board opens
+with evidence already attached.
+
+### B3. Approve honesty
+
+`GET /api/health` (or the platform status it already returns) exposes `canApprove:
+boolean` and `approveBlockedReason: string | null` derived from the server's own mid age.
+The UI disables APPROVE from that, and also when the server-side mid is stale.
+
+### B4. Dead code and gates
+
+Remove `src/server/lab/engine/calibrate.ts` (test-only) and `scripts/desk-worker.ts`
+(superseded by server loops) with their references. CI runs `check:type-scale`. The board
+pipeline deletion stays on its date in `docs/TASKS.md`.
+
+Not changed here, recorded in `docs/TASKS.md`: scanner funding windows (24 h in code,
+7 d/14 d in SPEC P0.9), the desk regime classifier used on a 1 h return, the five
+"my coins" lists, the duplicate migration number 022. Each alters live scanner output or
+applied migrations and needs its own event-study-backed change.
+
+## UI — design brief
+
+Tokens, themes, primitives and state ladders are unchanged (`docs/design/README.md` §2,
+§6, §11). Only layout and information architecture change.
+
+### Nav
+
+Five cells, RESEARCH first: **RESEARCH** (landing) · TRADE · MARKET · ASK · ENGINE.
+RESEARCH tabs, in workflow order: BOARD `/` · STUDY `/lab/study` · SEARCH · RUNS ·
+CATALOGUE · PULSE · BRANCHES. TRADE tabs keep their order with FEED at `/feed`.
+`/?review=1` keeps redirecting to `/terminal?review=1`; any old `/?…` opportunity query
+redirects to `/feed` with the query intact.
+
+### Board (`/`)
+
+One question per region, top to bottom on mobile, two columns from `lg`:
+
+- **Header line**: `asOf`, one chip per source with its count or `unavailable` (title =
+  reason). No KILL button here.
+- **Signals (main column)**: a dense list, newest first, grouped by coin when a coin has
+  more than one signal. Each row: coin, source badge, direction, headline facts, age, and
+  the **evidence cell**. The evidence cell is the hierarchy anchor of the screen:
+  - cached study: verdict badge + `n events · weeks · expectancy (upper95)`;
+  - rule but no study yet: a `STUDY` button that runs it in place (row shows progress,
+    then the result; failure shows the error in the cell, row stays);
+  - no rule: muted `no Lab twin` with a title explaining why.
+  Row click or Enter opens `/lab/study?rule=…&coin=…`. Secondary links on the row: source
+  drill (`href`), `/asset/:coin`. Keyboard: j/k move, Enter open, s study in place.
+- **Side column**: PULSE summary (assets with rules firing, link to `/lab/pulse`), then
+  RADAR (latest note date, calls with stance and kill price, scorecard n/mean/hit per
+  horizon, link to the full note in a dialog).
+- States: `AsyncBody` ladder per region. Empty board copy states which sources are on and
+  that no condition is firing; it is not an error.
+
+Verdict colours reuse existing semantic tokens: clear = positive, rejected = negative,
+insufficient = muted. Verdict is always text plus colour, never colour alone.
+
+### Study (`/lab/study`)
+
+Input: `?rule=` (URL-encoded JSON, zod-parsed; a bad value shows an error block and the
+empty form) and optional `?coin=`; universe control (this coin · top N · my markets).
+Without a rule: a short empty state linking to SEARCH and CATALOGUE.
+
+Output, in this order: rule text; verdict with the screen line (events, weeks,
+expectancy, upper95); train vs holdout; the condition funnel; per-coin table (`DataTable`);
+event list (first 200 of `eventListTotal`); survivorship note; `idea n of N`.
+Actions: OPEN RULE (rule drill with equity and sensitivity), SAVE (existing catalogue
+form; the save-bar verdict still applies).
+
+### Other surfaces
+
+- `/lab/rules/:id` gets a STUDY link.
+- Lab search form ships with a default metric preset so RUN works without picking metrics.
+- The Lab data provider stops loading the pulse on every Lab route; PULSE and the tab dot
+  load it lazily.
+- Cockpit detail and `/asset/:coin` link to the board filtered by coin (`/?coin=X`).
+
+## Done
+
+`bun run typecheck`, `bun test ./src`, `bun run check:api`, `bun run check:type-scale`,
+`bun run build` green. `GET /api/research/board` and `GET /api/radar` answer on a server
+with no `DATABASE_URL`. The board renders at 320 px and 1440 px with no horizontal scroll,
+and a rule-bearing signal opens a prefilled study.
