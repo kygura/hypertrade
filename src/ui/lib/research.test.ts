@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { RadarCall } from "../../shared/radar";
 import type { Rule } from "./lab";
-import { boardHref, boardKey, flatSignals, recentCalls, rootRedirect, signalBlocks, signalStudyHref, studyCoin, type BoardSignal } from "./research";
+import { boardStudy, STUDY_DEFAULTS } from "../../shared/research";
+import { boardHref, boardKey, flatSignals, recentCalls, rootRedirect, signalBlocks, signalStudyHref, type BoardSignal } from "./research";
 
 const rule: Rule = { asset: "BTC", direction: "long", horizonDays: 5, conditions: [{ feature: "ht:funding|z|30", op: "<", threshold: -1 }] };
 const sig = (id: string, coin: string, at: number, over: Partial<BoardSignal> = {}): BoardSignal => ({
-  id, source: "rule", coin, direction: null, headline: "", at, rule: null, ruleText: null, href: null, evidence: null, ...over,
+  id, source: "rule", coin, direction: null, tested: null, scope: "coin", headline: "", at, rule: null, ruleText: null, href: null, evidence: null, ...over,
 });
 
 describe("signalBlocks", () => {
@@ -43,8 +44,8 @@ describe("rootRedirect: old `/` queries", () => {
 
 describe("links and scope", () => {
   test("study on the coin unless the scope is the universe; no rule, no link", () => {
-    expect(studyCoin(sig("a", "ETH", 1))).toBe("ETH");
-    expect(studyCoin(sig("a", "ETH", 1, { scope: "universe" }))).toBeUndefined();
+    expect(boardStudy(sig("a", "ETH", 1, { rule }))).toEqual({ rule, coin: "ETH", ...STUDY_DEFAULTS });
+    expect(boardStudy(sig("a", "ETH", 1, { rule, scope: "universe" }))).toEqual({ rule, ...STUDY_DEFAULTS });
     expect(signalStudyHref(sig("a", "ETH", 1, { rule }))).toBe(`/lab/study?rule=${encodeURIComponent(JSON.stringify(rule))}&coin=ETH`);
     expect(signalStudyHref(sig("a", "ETH", 1, { rule, scope: "universe" }))).toBe(`/lab/study?rule=${encodeURIComponent(JSON.stringify(rule))}`);
     expect(signalStudyHref(sig("a", "ETH", 1))).toBeNull();

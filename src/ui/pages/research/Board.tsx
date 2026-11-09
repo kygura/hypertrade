@@ -8,7 +8,7 @@ import { fmtAge } from '../../lib/format'
 import { useNow, useQueryPatch } from '../../lib/hooks'
 import { errorMessage, usePoll, type PollState } from '../../lib/poll'
 import {
-  BOARD_POLL_MS, boardKey, flatSignals, recentCalls, research, rootRedirect, signalBlocks, signalStudyHref, SOURCE_LABEL, studyCoin, type BoardSignal,
+  BOARD_POLL_MS, boardKey, flatSignals, recentCalls, research, rootRedirect, signalBlocks, signalStudyHref, SOURCE_LABEL, type BoardSignal,
 } from '../../lib/research'
 import { fmtR } from '../../lib/study'
 import { RESEARCH_SOURCES, type BoardResponse, type RadarResponse, type StudySummary } from '../../../shared/research'
@@ -49,7 +49,7 @@ function BoardPage() {
     if (!s.rule) return
     setStudies((m) => ({ ...m, [s.id]: { state: 'running' } }))
     try {
-      const r = await research.study(s.rule, studyCoin(s))
+      const r = await research.study(s)
       setStudies((m) => ({ ...m, [s.id]: { state: 'done', summary: r.summary } }))
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return // redirect in flight
@@ -356,7 +356,7 @@ function PulsePanel({ board }: { board: Poll<BoardResponse> }) {
   )
 }
 
-type Note = NonNullable<RadarResponse['latestNote']> & { truncated?: boolean }
+type Note = NonNullable<RadarResponse['latestNote']>
 
 function RadarPanel({ radar, guest, onSignIn }: { radar: Poll<RadarResponse>; guest: boolean | null; onSignIn: () => void }) {
   const [open, setOpen] = useState(false)

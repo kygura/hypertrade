@@ -100,6 +100,13 @@ export type BoardResponse = z.infer<typeof BoardResponseSchema>;
 export const STUDY_DEFAULTS = { stopAtr: 1.5, targetAtr: 3 } as const;
 
 /**
+ * The study a board row opens, as the POST /research/study body: its rule, on its coin only for `coin` scope,
+ * with the board's default exits. The board looks up cached evidence under this exact body, so the UI sends it.
+ */
+export const boardStudy = (s: Pick<ResearchSignal, "rule" | "coin" | "scope">) =>
+  s.rule ? { rule: s.rule, ...(s.scope === "coin" ? { coin: s.coin } : {}), ...STUDY_DEFAULTS } : null;
+
+/**
  * POST /api/research/study. `coin` scopes the study to that market; without it, the Lab's default universe (top 20).
  * stopAtr/targetAtr are rounded to 0.1 before the run and the cache key.
  */

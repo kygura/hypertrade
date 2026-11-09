@@ -1,6 +1,6 @@
 # Research terminal — contract
 
-Status: in progress (2026-11-09). This file is the contract for the research-terminal
+Status: done (2026-11-09). This file is the contract for the research-terminal
 refactor. `docs/SPEC.md` wins on data and API shape for everything not named here;
 `docs/design/README.md` wins on tokens, states and primitives.
 
@@ -61,6 +61,9 @@ at          ms epoch
 rule        Lab Rule | null     the condition as a Lab rule, when one maps
 ruleText    string | null
 href        string | null       drill-in for the source's own object
+tested      'long' | 'short' | null   the side the rule tests (novelty: its fade side;
+                                      a fact about the study, never a recommendation)
+scope       'coin' | 'universe'   the study runs on this coin, or on the Lab's top-N
 evidence    StudySummary | null cached study, when present
 ```
 
@@ -77,24 +80,32 @@ value sign and a rounded threshold; platform opportunities and radar calls carry
 Routes (all zod-parsed in and out):
 
 - `GET /api/research/board` → `{ asOf, signals: ResearchSignal[], sources: Record<source,
-  {state: 'ok'|'unavailable', reason?: string, count: number}>, pulse: {assets, firing} }`.
-  Each source is loaded independently; one failing source never empties the board.
-- `POST /api/research/study` `{ rule, coin }` → `StudySummary` plus the full study id.
-  Runs `lab_event_study` through the existing Lab service and counts as a trial exactly
-  as a direct tool call does. Results are cached in process by rule hash and UTC day.
-- `GET /api/radar` → `{ state, latestNote: {date, markdown}|null, calls, scorecard }` read
-  from `data/radar/` with the existing schemas. If the files are absent (Vercel bundle),
-  `state: 'unavailable'` with the reason.
+  {state: 'ok'|'unavailable', reason?: one of a fixed set, count, dropped}>,
+  pulse: {assets, firing} | null }`. Each source is loaded independently; one failing
+  source never empties the board.
+- `POST /api/research/study` `{ rule, coin?, stopAtr, targetAtr }` →
+  `{ studyId, cached, summary: StudySummary, study }`. The board sends `boardStudy(signal)`
+  (`src/shared/research.ts`: `coin` only for `coin` scope, the default 1.5 / 3 ATR exits),
+  the same body the board looks its evidence up under. Runs `lab_event_study` through the
+  existing Lab tool and counts as a trial exactly as a direct tool call does. Results are
+  cached in process by rule, scope and UTC day.
+- `GET /api/radar` → `{ state, latestNote: {date, markdown, truncated}|null, calls,
+  scorecard }` read from `data/radar/` with the existing schemas (at most 50 calls). Needs a
+  signed-in session (not guest-readable in PUBLIC_MODE). If the files are absent (Vercel
+  bundle), `state: 'unavailable'` with the reason.
 
-On the always-on server a bounded loop pre-computes studies for current rule-bearing
-signals (at most 3 per cycle, never the same rule twice in a UTC day) so the board opens
-with evidence already attached.
+Studies run on request only: evidence is on the board once someone ran that study today
+(in-process cache), and every run counts as a trial. Nothing pre-computes them.
 
 ### B3. Approve honesty
 
-`GET /api/health` (or the platform status it already returns) exposes `canApprove:
-boolean` and `approveBlockedReason: string | null` derived from the server's own mid age.
-The UI disables APPROVE from that, and also when the server-side mid is stale.
+`GET /api/platform/opportunities/:id` (the detail the Cockpit already polls) exposes
+`canApprove: boolean` and `approveBlockedReason: string | null`: the P0.15 freshness gate
+(the server's own mid age and scan age) evaluated now by `approveBlock` in
+`src/server/platform/context.ts`, the same function that makes approve answer 409
+`stale_feed`, so the two cannot drift. The Cockpit disables APPROVE from that, with the
+reason shown before any dialog opens, and also while the browser's own live price is
+stale (the StaleStrip).
 
 ### B4. Dead code and gates
 
@@ -130,15 +141,23 @@ One question per region, top to bottom on mobile, two columns from `lg`:
 - **Signals (main column)**: a dense list, newest first, grouped by coin when a coin has
   more than one signal. Each row: coin, source badge, direction, headline facts, age, and
   the **evidence cell**. The evidence cell is the hierarchy anchor of the screen:
-  - cached study: verdict badge + `n events · weeks · expectancy (upper95)`;
+  - cached study (someone ran it today): verdict badge + `tested <side> · n events ·
+    weeks · expectancy (≤ upper95)`; the tested side is a fact about the study, never
+    advice;
   - rule but no study yet: a `STUDY` button that runs it in place (row shows progress,
-    then the result; failure shows the error in the cell, row stays);
+    then the result; failure shows the error in the cell, row stays). It runs a trial,
+    and says so in its title. A guest (PUBLIC_MODE) gets `LOGIN TO STUDY` instead of a
+    POST that would bounce off a 401;
   - no rule: muted `no Lab twin` with a title explaining why.
-  Row click or Enter opens `/lab/study?rule=…&coin=…`. Secondary links on the row: source
+  Row click or Enter opens `/lab/study?rule=…&coin=…` (`coin` only for `coin` scope; a
+  `universe` signal opens the study's default top-N universe). `?coin=X` filters the list. Secondary links on the row: source
   drill (`href`), `/asset/:coin`. Keyboard: j/k move, Enter open, s study in place.
 - **Side column**: PULSE summary (assets with rules firing, link to `/lab/pulse`), then
   RADAR (latest note date, calls with stance and kill price, scorecard n/mean/hit per
-  horizon, link to the full note in a dialog).
+  horizon, link to the full note in a dialog as preformatted text). The radar needs a
+  session: a guest sees the sign-in affordance. The board renders the Lab tab row without
+  the Lab data provider, so the landing starts no catalogue or pulse load; the PULSE dot
+  reads the board's own counts.
 - States: `AsyncBody` ladder per region. Empty board copy states which sources are on and
   that no condition is firing; it is not an error.
 

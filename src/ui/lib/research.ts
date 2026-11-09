@@ -1,4 +1,4 @@
-import { BoardResponseSchema, RadarResponseSchema, StudyResponseSchema, type ResearchSignal, type ResearchSource, type StudyResponse } from '../../shared/research'
+import { boardStudy, BoardResponseSchema, RadarResponseSchema, StudyResponseSchema, type ResearchSignal, type ResearchSource, type StudyResponse } from '../../shared/research'
 import type { RadarCall } from '../../shared/radar'
 import { api, parseWith } from './api'
 import { studyHref } from './study'
@@ -11,23 +11,24 @@ const board = parseWith(BoardResponseSchema, 'research board')
 const radar = parseWith(RadarResponseSchema, 'radar')
 const study = parseWith(StudyResponseSchema, 'research study')
 
-/**
- * A board signal with the scope fields the backend adds (`scope`: the study runs on this coin or on the
- * Lab's top-N universe; `tested`: the side the rule tests). Optional until that contract lands.
- */
-export type BoardSignal = ResearchSignal & { scope?: 'coin' | 'universe'; tested?: 'long' | 'short' | null }
+/** A board signal (`scope`: the study runs on this coin or on the Lab's top-N universe; `tested`: the side the rule tests). */
+export type BoardSignal = ResearchSignal
 
-/** The study a signal runs: on its coin unless its scope is the universe. */
-export const studyCoin = (s: BoardSignal): string | undefined => (s.scope === 'universe' ? undefined : s.coin)
-
-/** Row click / Enter: the prefilled /lab/study (this coin, or the default top-N universe), null without a rule. */
-export const signalStudyHref = (s: BoardSignal): string | null => (s.rule ? studyHref(s.rule, studyCoin(s)) : null)
+/** Row click / Enter: the prefilled /lab/study (this coin, or the default top-N universe for `universe` scope), null without a rule. */
+export const signalStudyHref = (s: BoardSignal): string | null => (s.rule ? studyHref(s.rule, s.scope === 'coin' ? s.coin : null) : null)
 
 export const research = {
   board: async () => board(await api.get('/research/board')),
   radar: async () => radar(await api.get('/radar')),
-  /** Runs (or returns today's cached) event study of `rule` on `coin`; a trial like a direct lab_event_study call. */
-  study: async (rule: NonNullable<ResearchSignal['rule']>, coin?: string): Promise<StudyResponse> => study(await api.post('/research/study', coin ? { rule, coin } : { rule })),
+  /**
+   * Runs (or returns today's cached) event study of a signal's rule in its scope; a trial like a direct
+   * lab_event_study call. The body is `boardStudy(signal)`, the one the board keys its cached evidence on.
+   */
+  study: async (s: BoardSignal): Promise<StudyResponse> => {
+    const body = boardStudy(s)
+    if (!body) throw new Error('this signal has no Lab rule to study')
+    return study(await api.post('/research/study', body))
+  },
 }
 
 /** Keyboard on the board: j/k move, Enter open, s study in place; null while typing, in a dialog or with a modifier. */

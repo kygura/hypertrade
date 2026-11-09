@@ -1,7 +1,7 @@
 import type { NoveltyEntry, Opportunity } from "../../shared/platform.js";
 import type { RadarCall } from "../../shared/radar.js";
 import {
-  ResearchSignalSchema, STUDY_DEFAULTS,
+  boardStudy, ResearchSignalSchema,
   type BoardResponse, type ResearchSignal, type ResearchSource, type SourceStatus, type UnavailableReason,
 } from "../../shared/research.js";
 import type { CatalogueEntry, MarketPulse } from "../lab/types.js";
@@ -51,9 +51,8 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
-/** The study a board row opens: its rule, on its coin only for `coin` scope, with the board's default exits. */
-export const boardStudy = (s: Pick<ResearchSignal, "rule" | "coin" | "scope">) =>
-  s.rule ? { rule: s.rule, ...(s.scope === "coin" ? { coin: s.coin } : {}), ...STUDY_DEFAULTS } : null;
+/** Defined in the shared contract so the UI POSTs exactly the body the board's cache is keyed on. */
+export { boardStudy };
 
 /** Today's cached study of the signal's rule in its scope, if any. */
 export const evidenceFor = (cache: StudyCache, s: Pick<ResearchSignal, "rule" | "coin" | "scope">, now: number) => {
