@@ -72,6 +72,8 @@ export interface OutcomeRow {
   opportunityId: string;
   setupKind: string;
   regime: string;
+  /** Score version the opportunity was scored under; the regime label's meaning follows it. */
+  scoreVersion: string;
   liquidityTier: LiquidityTier;
   horizon: string;
   /** Opportunity creation time (ms): the cluster bucket for stats. */

@@ -1,6 +1,7 @@
 import type { FeatureVector } from "../../shared/platform.js";
 import { materiality, type SignalSource } from "../intel/diff.js";
 import { round } from "../intel/util.js";
+import { ACTIVE_Z } from "./features.js";
 
 // Opportunity score (docs/SPEC.md § Platform P0.10, P0.12). Pure and deterministic:
 // the same stored feature vector reproduces the same number (the replay guarantee).
@@ -12,12 +13,11 @@ import { round } from "../intel/util.js";
 //             (price/OI z), flow (funding or volume z), regime (quadrant is not "range")
 // The setup does not change the number (kind, direction and levels are ticket data).
 // Bump SCORE_VERSION whenever any of this changes; the ledger stores it beside the score.
-// v2: the regime quadrant is classified with thresholds scaled to the 1 h window
-// (platform/features.ts), so the "regime" class fires where v1 almost always read "range".
+// v2: the regime quadrant is volatility-relative (platform/features.ts): a 1 h move is non-flat at
+// ACTIVE_Z × sigma1h, OI moves at |oiChg1hZ| ≥ ACTIVE_Z. v1 applied the desk's fixed 1.5 % / 3 % to a
+// 1 h change, so "regime" almost never fired; v2 fires on roughly a third of random-walk hours.
 
 export const SCORE_VERSION = "score-v2";
-/** |z| at which a feature counts as an active signal for confluence. */
-const ACTIVE_Z = 1;
 /** The z-features: the single definition (surprise = the largest |z| among them). fundingZ24h is a 24 h-ring z. */
 export const Z_KEYS = ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "volRatio1hZ"] as const;
 const SNAPSHOT_KEYS = ["ret15mZ", "priceAccelZ", "oiChg1hZ"];
