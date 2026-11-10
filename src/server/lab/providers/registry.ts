@@ -1,6 +1,6 @@
 import { databaseUrl, seriesCoverage, seriesRange } from "../../db.js";
 import { UpstreamError } from "../../mcp/types.js";
-import { parseDay } from "../engine/util.js";
+import { isoDate, parseDay } from "../engine/util.js";
 import { DAY_MS, type DailySeries, type FetchOptions, type LabDataset, type LabProvider, type MetricCategory, type MetricDef } from "../types.js";
 import { bcProvider } from "./bc.js";
 import { cmProvider } from "./cm.js";
@@ -168,8 +168,12 @@ export interface LoadConfig {
   deadline?: boolean;
 }
 
-/** Fetches price + metrics and aligns them to the price calendar. Per-metric failures become warnings. */
-export async function loadDataset(cfg: LoadConfig, deps: RegistryDeps = {}): Promise<{ dataset: LabDataset; warnings: string[] }> {
+/**
+ * Fetches price + metrics and aligns them to the price calendar. Per-metric failures become warnings. `lastRaw`:
+ * metric id → the last calendar-range day (YYYY-MM-DD, lag-shifted) with a raw value, i.e. before the forward fill, so
+ * a caller can tell a value observed on the last bar from one carried forward to it. Studies do not read it.
+ */
+export async function loadDataset(cfg: LoadConfig, deps: RegistryDeps = {}): Promise<{ dataset: LabDataset; warnings: string[]; lastRaw: Record<string, string> }> {
   const providers = deps.providers ?? PROVIDERS;
   const defs = [...new Set(cfg.metrics)].map((id) => resolve(id, providers).def); // throws on unknown ids up front
   const priceId = cfg.price ?? DEFAULT_PRICE;
@@ -209,6 +213,7 @@ export async function loadDataset(cfg: LoadConfig, deps: RegistryDeps = {}): Pro
 
   const metrics: Record<string, number[]> = {};
   const stationary: Record<string, boolean> = {};
+  const lastRaw: Record<string, string> = {};
   const results = await mapLimit(defs, CONCURRENCY, async (def) => {
     try {
       return { def, s: await fetchMetric(def.id, cfg.asset, fromMs, toMs, deps, opts) };
@@ -225,7 +230,13 @@ export async function loadDataset(cfg: LoadConfig, deps: RegistryDeps = {}): Pro
       continue;
     }
     metrics[r.def.id] = aligned;
+    const shift = r.def.lagDays * DAY_MS;
+    let last = -Infinity;
+    r.s.t.forEach((d, j) => {
+      if (d + shift <= t.at(-1)! && Number.isFinite(r.s.v[j])) last = Math.max(last, d + shift);
+    });
+    if (last > -Infinity) lastRaw[r.def.id] = isoDate(last);
     if (r.def.stationary !== undefined) stationary[r.def.id] = r.def.stationary;
   }
-  return { dataset: { asset: cfg.asset, t, price: pv, metrics, stationary }, warnings };
+  return { dataset: { asset: cfg.asset, t, price: pv, metrics, stationary }, warnings, lastRaw };
 }

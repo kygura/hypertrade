@@ -51,7 +51,10 @@ export interface DefinitionScan {
   bar: string;
   /** Coins scanned (their data loaded and current). */
   coins: number;
-  /** Coins dropped: data failed, came too late, or does not reach `bar`. */
+  /**
+   * Dropped items: a coin whose data failed, came too late or whose price does not reach `bar` (one each), plus each
+   * coin × definition left unevaluated because a metric its conditions read has no raw value on `bar`.
+   */
   dropped: number;
   hits: DefinitionHit[];
 }
@@ -70,19 +73,34 @@ export interface DefinitionScannerDeps {
 /** Days of history a live scan loads: the longest window (90) plus the regime's 50-day mean and warm-up. */
 export const SCAN_LOOKBACK_DAYS = 200;
 export const SCAN_DEADLINE_MS = 120_000;
+/** A scan that dropped anything is kept this long, not for the whole UTC day: data may still be arriving. */
+export const SCAN_RETRY_MS = 15 * 60_000;
 const SCAN_CONCURRENCY = 4;
 
 /**
- * Scans every definition over `coins()`, at most once per closed daily bar: the scan of a UTC day is shared by every
- * caller (in flight or done) until the day turns; a scan that fails as a whole (no coin list) is forgotten so the
- * next call retries. A coin whose data fails, arrives after the deadline or does not reach the closed bar is dropped
- * and counted, never fatal.
+ * Definitions whose every metric has a raw (not forward-filled) value on `bar`, and the number left out. The registry
+ * forward-fills funding and OI for up to 3 days, so without this a rule could read a carried-forward value and still
+ * be labelled `bar`. A loader that reports no `lastRaw` leaves every definition out (fail closed). Not detectable
+ * here: a partial day of funding. The daily funding value is the sum of the day's stored hourly settlements, and the
+ * loader returns only that sum, so a day whose last settlements are not yet stored looks complete.
+ */
+export function evaluableDefinitions(defs: readonly SignalDefinition[], lastRaw: Record<string, string> | undefined, bar: string) {
+  const ok = defs.filter((d) => definitionMetrics([d]).every((m) => (lastRaw?.[m] ?? "") >= bar));
+  return { ok, left: defs.length - ok.length };
+}
+
+/**
+ * Scans every definition over `coins()`, at most once per closed daily bar: a complete scan of a UTC day is shared by
+ * every caller (in flight or done) until the day turns; one that dropped anything is kept only SCAN_RETRY_MS (the
+ * first scan after midnight may run before stored data reaches the bar); a scan that fails as a whole (no coin list)
+ * is forgotten so the next call retries. A coin whose data fails, arrives after the deadline or does not reach the
+ * closed bar is dropped and counted, never fatal; so is a coin × definition whose metrics have no raw value on it.
  */
 export function createDefinitionScanner(deps: DefinitionScannerDeps) {
   const defs = deps.definitions ?? DEFINITIONS;
   const metrics = definitionMetrics(defs);
   const deadlineMs = deps.deadlineMs ?? SCAN_DEADLINE_MS;
-  let memo: { day: string; p: Promise<DefinitionScan> } | null = null;
+  let memo: { day: string; p: Promise<DefinitionScan>; until?: number } | null = null;
 
   async function run(started: number): Promise<DefinitionScan> {
     const bar = isoDate(Math.floor(started / DAY_MS) * DAY_MS - DAY_MS);
@@ -99,7 +117,7 @@ export function createDefinitionScanner(deps: DefinitionScannerDeps) {
         const r = await Promise.race([deps.loadDataset({ asset: coin, metrics, price: "ht:price", from, deadline: true }), late]);
         if (!r) throw new Error("not loaded before the deadline");
         if (isoDate(r.dataset.t.at(-1) ?? 0) !== bar) throw new Error(`data ends before ${bar}`);
-        return r.dataset;
+        return r;
       } catch (err) {
         dropped++;
         console.warn(`[signals] ${coin} dropped from the definition scan: ${msg(err)}`);
@@ -110,10 +128,14 @@ export function createDefinitionScanner(deps: DefinitionScannerDeps) {
     });
     const hits: DefinitionHit[] = [];
     let scanned = 0;
-    for (const d of loaded) {
-      if (!d) continue;
+    for (const r of loaded) {
+      if (!r) continue;
+      const d = r.dataset;
       try {
-        hits.push(...scanDataset(d, defs));
+        const { ok, left } = evaluableDefinitions(defs, r.lastRaw, bar);
+        if (left) console.warn(`[signals] ${d.asset}: ${left} definition(s) dropped, a metric has no raw value on ${bar}`);
+        hits.push(...scanDataset(d, ok));
+        dropped += left;
         scanned++;
       } catch (err) {
         dropped++;
@@ -127,13 +149,18 @@ export function createDefinitionScanner(deps: DefinitionScannerDeps) {
     scan(): Promise<DefinitionScan> {
       const now = deps.now();
       const day = isoDate(now);
-      if (memo?.day === day) return memo.p;
-      const m = { day, p: run(now) };
+      if (memo?.day === day && !(memo.until !== undefined && now >= memo.until)) return memo.p;
+      const m: NonNullable<typeof memo> = { day, p: run(now) };
       memo = m;
-      // A failed scan clears only its own memo, never a newer one.
-      m.p.catch(() => {
-        if (memo === m) memo = null;
-      });
+      // An incomplete scan expires SCAN_RETRY_MS after it started; a failed one clears only its own memo, never a newer one.
+      m.p.then(
+        (r) => {
+          if (r.dropped > 0) m.until = now + SCAN_RETRY_MS;
+        },
+        () => {
+          if (memo === m) memo = null;
+        },
+      );
       return m.p;
     },
   };

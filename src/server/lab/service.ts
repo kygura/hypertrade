@@ -49,7 +49,8 @@ import { mapLimit, msg } from "./util.js";
 // orchestration layer over the providers (data), the engine (all math) and
 // the store (persistence). Transports call it through tools.ts.
 
-export type LoadDatasetFn = (cfg: LoadConfig) => Promise<{ dataset: LabDataset; warnings: string[] }>;
+/** `lastRaw` (registry loadDataset): metric id → last day with a raw, not forward-filled, value; optional for fakes. */
+export type LoadDatasetFn = (cfg: LoadConfig) => Promise<{ dataset: LabDataset; warnings: string[]; lastRaw?: Record<string, string> }>;
 
 export interface LabServiceDeps {
   store: LabStore;

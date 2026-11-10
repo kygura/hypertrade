@@ -5,7 +5,7 @@ import { isoDate } from "../lab/engine/util.js";
 import type { LoadDatasetFn } from "../lab/service.js";
 import { DAY_MS, type LabDataset } from "../lab/types.js";
 import { DEFINITIONS, definitionRule } from "./definitions.js";
-import { createDefinitionScanner, inZoneNow, scanDataset } from "./scan.js";
+import { createDefinitionScanner, definitionMetrics, inZoneNow, SCAN_RETRY_MS, scanDataset } from "./scan.js";
 
 const T0 = Date.UTC(2024, 0, 1);
 
@@ -97,6 +97,8 @@ describe("definition scanner (service)", () => {
     const last = Math.floor(now / DAY_MS) * DAY_MS - DAY_MS;
     return { ...d, t: d.t.map((_, i) => last - (d.t.length - 1 - i) * DAY_MS) };
   };
+  /** A load result whose every metric has a raw value on the dataset's last bar (as the registry reports it). */
+  const loaded = (dataset: LabDataset) => ({ dataset, warnings: [], lastRaw: Object.fromEntries(Object.keys(dataset.metrics).map((m) => [m, isoDate(dataset.t.at(-1)!)])) });
 
   test("once per closed bar, shared in flight; failed, stale and late coins dropped and counted; hits are scanDataset's", async () => {
     let now = NOW;
@@ -105,8 +107,8 @@ describe("definition scanner (service)", () => {
       loads.push(cfg.asset);
       if (cfg.asset === "BAD") throw new Error("HL down");
       if (cfg.asset === "SLOW") return new Promise(() => {});
-      if (cfg.asset === "OLD") return { dataset: current("OLD", now - 3 * DAY_MS), warnings: [] };
-      return { dataset: current(cfg.asset, now), warnings: [] };
+      if (cfg.asset === "OLD") return loaded(current("OLD", now - 3 * DAY_MS));
+      return loaded(current(cfg.asset, now));
     };
     const scanner = createDefinitionScanner({ loadDataset: load, coins: async () => ["AAA", "BAD", "OLD", "SLOW", "aaa"], now: () => now, deadlineMs: 50 });
     const [a, b] = await Promise.all([scanner.scan(), scanner.scan()]);
@@ -114,18 +116,57 @@ describe("definition scanner (service)", () => {
     expect(loads.sort()).toEqual(["AAA", "BAD", "OLD", "SLOW"]); // case-insensitive dedupe, one load each
     expect(a).toMatchObject({ bar: isoDate(Math.floor(NOW / DAY_MS) * DAY_MS - DAY_MS), coins: 1, dropped: 3 });
     expect(a.hits).toEqual(scanDataset(current("AAA", NOW)));
-    now += 3_600_000;
-    expect(await scanner.scan()).toBe(a); // same UTC day: no reload
+    now += SCAN_RETRY_MS - 60_000;
+    expect(await scanner.scan()).toBe(a); // within the retry window: no reload
     expect(loads).toHaveLength(4);
     now += DAY_MS;
     await scanner.scan(); // the next closed bar
     expect(loads).toHaveLength(8);
   });
 
+  test("a scan that dropped coins is kept 15 minutes, not the day; a complete one is kept until the day turns", async () => {
+    // The first board load after 00:00 UTC runs before stored candles reach yesterday: every coin drops.
+    let now = Date.UTC(2026, 10, 10, 0, 5);
+    let synced = false;
+    let loads = 0;
+    const scanner = createDefinitionScanner({
+      loadDataset: async (cfg) => (loads++, loaded(current(cfg.asset, synced ? now : now - DAY_MS))),
+      coins: async () => ["AAA", "BBB"],
+      now: () => now,
+    });
+    const early = await scanner.scan();
+    expect(early).toMatchObject({ coins: 0, dropped: 2, hits: [] });
+    synced = true;
+    now += SCAN_RETRY_MS - 60_000;
+    expect(await scanner.scan()).toBe(early);
+    now += 60_000;
+    const full = await scanner.scan();
+    expect(full).toMatchObject({ coins: 2, dropped: 0 });
+    expect(loads).toBe(4);
+    now += 20 * 3_600_000; // same UTC day, hours later
+    expect(await scanner.scan()).toBe(full);
+    expect(loads).toBe(4);
+  });
+
+  test("a coin × definition is evaluated only when every metric it reads has a raw value on the bar", async () => {
+    // Funding stopped two days ago: the registry forward-fills it onto the bar, lastRaw says where raw data ends.
+    const d = current("AAA", NOW);
+    const bar = isoDate(d.t.at(-1)!);
+    const lastRaw = { ...loaded(d).lastRaw, "ht:funding": isoDate(d.t.at(-3)!) };
+    const scan = await createDefinitionScanner({ loadDataset: async () => ({ dataset: d, warnings: [], lastRaw }), coins: async () => ["AAA"], now: () => NOW }).scan();
+    const fundingDefs = DEFINITIONS.filter((x) => definitionMetrics([x]).includes("ht:funding"));
+    expect(fundingDefs.length).toBe(2);
+    expect(scan).toMatchObject({ bar, coins: 1, dropped: fundingDefs.length });
+    expect(scan.hits).toEqual(scanDataset(d, DEFINITIONS.filter((x) => !fundingDefs.includes(x))));
+    // A loader that reports no lastRaw evaluates nothing (fail closed).
+    const blind = await createDefinitionScanner({ loadDataset: async () => ({ dataset: d, warnings: [] }), coins: async () => ["AAA"], now: () => NOW }).scan();
+    expect(blind).toMatchObject({ coins: 1, dropped: DEFINITIONS.length, hits: [] });
+  });
+
   test("a scan with no coin list fails as a whole and is retried on the next call", async () => {
     let fail = true;
     const scanner = createDefinitionScanner({
-      loadDataset: async (cfg) => ({ dataset: current(cfg.asset, NOW), warnings: [] }),
+      loadDataset: async (cfg) => loaded(current(cfg.asset, NOW)),
       coins: async () => {
         if (fail) throw new Error("meta down");
         return ["AAA"];

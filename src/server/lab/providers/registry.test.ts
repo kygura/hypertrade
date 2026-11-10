@@ -110,7 +110,7 @@ describe("registry", () => {
 describe("loadDataset", () => {
   test("aligns metrics to the price calendar with lag, ffill limit and failure warnings", async () => {
     const { deps } = setup();
-    const { dataset, warnings } = await loadDataset(
+    const { dataset, warnings, lastRaw } = await loadDataset(
       { asset: "BTC", metrics: ["ht:funding", "cm:CapMVRVCur", "fng:value", "cm:HashRate"], from: "2024-01-01", to: "2024-01-10" },
       deps,
     );
@@ -123,6 +123,9 @@ describe("loadDataset", () => {
     expect(dataset.metrics["fng:value"]).toEqual([50, 50, 50, 50, NaN, 60, 60, 60, 60, NaN]);
     expect("cm:HashRate" in dataset.metrics).toBe(false);
     expect(warnings).toEqual(["cm:HashRate: cm HashRate ETH: HTTP 403; dropped"]);
+    // The last raw (lag-shifted, not forward-filled) day per kept metric: CapMVRVCur's Jan 5-7 and fng's Jan 2-4,
+    // 7-9 are fills, not observations.
+    expect(lastRaw).toEqual({ "ht:funding": "2024-01-10", "cm:CapMVRVCur": "2024-01-04", "fng:value": "2024-01-06" });
   });
 
   test("unknown metric id throws before any fetch", async () => {
