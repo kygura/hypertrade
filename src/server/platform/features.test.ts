@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { classifyRegime } from "../desk/analytics.js";
 import { computeFeatures, liquidityTiers, type RingPoint } from "./features.js";
 import { DEFAULT_THRESHOLDS, setupsFor } from "./setups.js";
 
@@ -83,6 +84,31 @@ describe("computeFeatures", () => {
   test("junk points (NaN, zero mark, future) are ignored", () => {
     const h = [...ring(24 * 60), { ts: NOW, mark: NaN, oiUsd: NaN, funding: NaN, dayNtlVlm: NaN }, { ts: NOW + MIN, mark: 1, oiUsd: 1, funding: 0, dayNtlVlm: 1 }];
     noNaN(computeFeatures(h, NOW).features);
+  });
+});
+
+describe("platform regime (1 h change, thresholds scaled from the desk's 72 h)", () => {
+  /** 2 h of 1-min points; `px` / `oi` give the multiplier at minute i (0..119, NOW at 119). */
+  const path = (px: (i: number) => number, oi: (i: number) => number): RingPoint[] =>
+    Array.from({ length: 120 }, (_, i) => ({ ts: NOW - (119 - i) * MIN, mark: 100 * px(i), oiUsd: 1e8 * oi(i), funding: 1e-5, dayNtlVlm: 5e8 }));
+  const lastHour = (i: number) => Math.max(0, i - 59) / 60;
+  // `unscaled` is what the same 1 h inputs read on the desk's 72 h thresholds (the old platform behaviour).
+  test.each([
+    ["trending: +0.6 % with OI +1 % in the last hour", path((i) => 1 + 0.006 * lastHour(i), (i) => 1 + 0.01 * lastHour(i)), "new_longs", "range"],
+    ["flat: ±0.05 % zig-zag, flat OI", path((i) => (i % 2 ? 0.9995 : 1.0005), () => 1), "range", "range"],
+    ["reversing: +2 % then −0.6 % with OI −1 % in the last hour", path((i) => (i < 60 ? 1 + 0.02 * (i / 59) : 1.02 * (1 - 0.006 * lastHour(i))), (i) => 1 - 0.01 * lastHour(i)), "long_liquidation", "range"],
+  ] as const)("%s", (_, h, regime, unscaled) => {
+    const fv = computeFeatures([...h], NOW);
+    expect(fv.inputs.regime).toBe(regime);
+    expect(classifyRegime(fv.inputs.ret1hPct as number, fv.inputs.oiChg1hPct as number, fv.features.fundingZ24h ?? null, fv.inputs.fundingApr as number)).toBe(unscaled);
+  });
+
+  test("desk default window keeps the unscaled 1.5 % / 3 % thresholds", () => {
+    expect(classifyRegime(1.4, 0, null, null)).toBe("range");
+    expect(classifyRegime(1.6, 0, null, null)).toBe("spot_led_rally");
+    expect(classifyRegime(1.6, 3, null, null)).toBe("new_longs");
+    expect(classifyRegime(0.2, 0.4, null, null, 1)).toBe("new_longs");
+    expect(classifyRegime(0.17, 0.4, null, null, 1)).toBe("range");
   });
 });
 

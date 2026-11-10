@@ -79,9 +79,19 @@ function valueAt(series: Array<{ t: number; v: number }>, t: number): number | n
   return out;
 }
 
-export function classifyRegime(priceChangePct: number, oiChangePct: number | null, fundingZ: number | null, fundingApr: number | null): FlowRegime {
-  const FLAT = 1.5;
-  const OI_MOVE = 3;
+/** Window (hours) the FLAT / OI_MOVE thresholds of classifyRegime are set for: the flow_diagnostics default window (desk/tools.ts). */
+export const REGIME_WINDOW_HOURS = 72;
+
+/**
+ * Flow regime from the price and OI change (%) over `windowHours`. FLAT (1.5 %) and OI_MOVE (3 %) hold at
+ * REGIME_WINDOW_HOURS and scale by sqrt(windowHours / REGIME_WINDOW_HOURS), so a 1 h caller gets ~0.18 % / ~0.35 %.
+ * Funding thresholds are levels and do not scale. flow_diagnostics omits `windowHours`: its 6–336 h windows
+ * have always used the unscaled thresholds.
+ */
+export function classifyRegime(priceChangePct: number, oiChangePct: number | null, fundingZ: number | null, fundingApr: number | null, windowHours = REGIME_WINDOW_HOURS): FlowRegime {
+  const scale = Math.sqrt(windowHours / REGIME_WINDOW_HOURS);
+  const FLAT = 1.5 * scale;
+  const OI_MOVE = 3 * scale;
   if (Math.abs(priceChangePct) < FLAT) return "range";
   const up = priceChangePct > 0;
   const hotLong = (fundingZ ?? 0) >= 1.5 || (fundingApr ?? 0) >= 30;
