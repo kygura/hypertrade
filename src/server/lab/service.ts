@@ -507,8 +507,10 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
           const load = deps.loadDataset({ asset: coin, metrics, price: "ht:price", ...underDeadline(ctx) });
-          const late = new Promise<null>((r) => (timer = setTimeout(() => r(null), left)));
-          const r = await (Number.isFinite(left) ? Promise.race([load, late]) : load);
+          // No timer without a deadline: setTimeout(Infinity) is clamped to 1 ms and warns.
+          const r = await (Number.isFinite(left)
+            ? Promise.race([load, new Promise<null>((res) => (timer = setTimeout(() => res(null), left)))])
+            : load);
           if (!r) return fail(LATE);
           for (const w of r.warnings) warned.set(w, [...(warned.get(w) ?? []), coin]);
           return r.dataset;
