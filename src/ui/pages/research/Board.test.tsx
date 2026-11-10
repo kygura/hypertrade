@@ -169,13 +169,15 @@ describe("evidence kinds", () => {
     expect(html).toMatch(/title="[^"]*daily-bar definition[^"]*does not test the intraday setup itself[^"]*counts as a trial"/);
     expect(html).toContain("not studied today · tested short · top-20 universe");
     expect(html).not.toContain(">STUDY</button>");
+    // The daily definition's rule text under the setup's headline is labelled, never read as the setup's own condition.
+    expect(html).toMatch(/<p class="text-xs text-text-secondary[^"]*"><span[^>]*>daily version: <\/span>funding z\(90\) ≥ 2 → short 7d<\/p>/);
   });
   test("setup: the cached daily study shows under the ledger line, prefixed `daily version:`; a local run does too", () => {
     const cached = board([opp({ dailyStudy: summary })]);
     expect(cached).toContain("daily version:");
     expect(cached).toContain("CLEAR");
     expect(cached).toContain("tested short · top-20 universe · 41 events · 38 weeks · +0.21R (≤ +0.35R)");
-    expect(cached.indexOf("live record")).toBeLessThan(cached.indexOf("daily version:"));
+    expect(cached.indexOf("live record")).toBeLessThan(cached.lastIndexOf("daily version:")); // the first is the rule-text label
     expect(cached).not.toContain("STUDY DAILY VERSION");
     const ran = render({ board: poll(boardData([opp()])), studies: { [rowStudyKey("opp", NOW)]: { state: "done", summary: { ...summary, verdict: "rejected" } } } });
     expect(ran).toContain("daily version:");

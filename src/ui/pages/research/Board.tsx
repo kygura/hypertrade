@@ -258,7 +258,12 @@ function SignalRow(p: BoardViewProps & { s: BoardSignal }) {
           <span className="text-xs tabular text-text-secondary">{fmtAge(new Date(s.at).toISOString(), p.now)}</span>
         </div>
         <p className="text-sm text-text-secondary break-words">{s.headline}</p>
-        {s.ruleText && <p className="text-xs text-text-secondary break-words font-mono">{s.ruleText}</p>}
+        {s.ruleText && (
+          <p className="text-xs text-text-secondary break-words font-mono">
+            {s.source === 'opportunity' && <span className="text-xs text-text-secondary font-sans">daily version: </span>}
+            {s.ruleText}
+          </p>
+        )}
         <div className="flex flex-wrap gap-x-3">
           {s.href && (
             <Link to={s.href} className={LINK}>
