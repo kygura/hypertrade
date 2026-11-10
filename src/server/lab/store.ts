@@ -46,8 +46,8 @@ export interface StoredStudy {
   summary: unknown;
   study: unknown;
 }
-/** Stored studies older than this are pruned on the next put. Lookups only want today's, so a few days is plenty. */
-export const STUDY_KEEP_DAYS = 7;
+/** Stored studies older than this are pruned on the next put: lookups only ever want today's (UTC), so 2 days covers the day turn. */
+export const STUDY_KEEP_DAYS = 2;
 const DAY_MS = 86_400_000;
 
 export interface LabStore {

@@ -380,6 +380,16 @@ function storesStudies(name: string, make: () => Promise<LabStore>) {
       expect([...(await s.getStudies(["old", "edge", "new"])).keys()].sort()).toEqual(["edge", "new"]);
     });
 
+    test(`prune boundary: a row exactly ${STUDY_KEEP_DAYS} days old stays, a millisecond older goes`, async () => {
+      const s = await make();
+      await s.putStudy("a", v(1), T);
+      await s.putStudy("b", v(2), new Date(T.getTime() + 1));
+      await s.putStudy("now", v(3), days(STUDY_KEEP_DAYS)); // a is exactly N days old here
+      expect([...(await s.getStudies(["a", "b"])).keys()].sort()).toEqual(["a", "b"]);
+      await s.putStudy("now", v(3), new Date(days(STUDY_KEEP_DAYS).getTime() + 1)); // a: N days + 1 ms; b: exactly N
+      expect([...(await s.getStudies(["a", "b"])).keys()]).toEqual(["b"]);
+    });
+
     test("returned values are copies", async () => {
       const s = await make();
       await s.putStudy("c", v(1), T);

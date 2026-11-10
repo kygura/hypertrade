@@ -123,13 +123,14 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
       }
     }),
   );
-  // Evidence: one store read for every signal's study not already in memory (never one per signal); a slow or failed
-  // read leaves the board with what memory has.
+  // Evidence: one store read for every signal's study not already in memory (never one per signal), bounded by the
+  // cache's short store timeout (STUDY_STORE_TIMEOUT_MS), so a stalled store adds at most that to the build; a slow
+  // or failed read leaves the board with what memory has.
   const keys = signals.flatMap((s) => {
     const q = boardStudy(s);
     return q ? [studyKey(q, now)] : [];
   });
-  await withTimeout(deps.cache.load(keys), ms).catch(() => console.error(`[research] study store: no answer within ${ms} ms; evidence from memory only`));
+  await deps.cache.load(keys);
   for (const s of signals) s.evidence = evidenceFor(deps.cache, s, now);
   signals.sort((a, b) => b.at - a.at || a.id.localeCompare(b.id));
   return { asOf: new Date(now).toISOString(), signals, sources: { novelty: sources.novelty, rule: sources.rule, opportunity: sources.opportunity, radar: sources.radar }, pulse };

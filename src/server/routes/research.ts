@@ -11,7 +11,7 @@ import { PgPlatformStore } from "../platform/store-pg.js";
 import { boardDepsFor, buildBoard, SourceUnavailable, type BoardDeps } from "../research/board.js";
 import { isGuest } from "../auth.js";
 import { readRadar } from "../research/radar.js";
-import { createStudyCache, createStudyRunner, STUDY_CACHE_MAX, type RunEventStudy, type StudyRunner } from "../research/study.js";
+import { bounded, createStudyCache, createStudyRunner, STUDY_CACHE_MAX, STUDY_STORE_TIMEOUT_MS, type RunEventStudy, type StudyRunner } from "../research/study.js";
 import { ruleId } from "../lab/engine/rules.js";
 import type { LabStore } from "../lab/store.js";
 import type { Rule } from "../lab/types.js";
@@ -34,6 +34,8 @@ export interface ResearchRouteDeps {
   cache: BoardDeps["cache"];
   /** The rule's catalogue id if it is in the catalogue now, else null (the Lab store's id: ruleId, as on save). */
   catalogueId: (rule: Rule) => Promise<string | null>;
+  /** Longest the catalogue lookup may take before the answer says null. Default STUDY_STORE_TIMEOUT_MS. */
+  storeTimeoutMs?: number;
   /** Deadline for a study run on request (the Lab route's). */
   deadlineMs: () => number | undefined;
   /** A PUBLIC_MODE guest (no session, no bearer): the board leaves the radar out. Default: auth.ts isGuest. */
@@ -57,7 +59,7 @@ export function researchRoutes(deps: ResearchRouteDeps) {
       try {
         const run = await deps.runStudy(q.data, { source: "ui", deadlineMs: deps.deadlineMs() });
         // Live, never from the cache: the rule may have been saved (or removed) since the study ran.
-        const catalogueId = await deps.catalogueId(q.data.rule).catch((err) => (console.error("[research] catalogue lookup", err), null));
+        const catalogueId = await bounded(Promise.resolve().then(() => deps.catalogueId(q.data.rule)), null, deps.storeTimeoutMs ?? STUDY_STORE_TIMEOUT_MS, "catalogue lookup");
         return c.json(StudyResponseSchema.parse({ ...run, study: { ...run.study, catalogueId }, catalogueId }));
       } catch (err) {
         if (err instanceof ToolInputError) return c.json({ error: err.message, ...(err.field !== undefined && { field: err.field }) }, 400);

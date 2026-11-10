@@ -48,12 +48,24 @@ export const STUDY_CACHE_MAX = 200;
 export type StudyStore = Pick<LabStore, "getStudies" | "putStudy">;
 const StoredEntrySchema = z.object({ summary: StudySummarySchema, study: EventStudyResultSchema });
 
+/** Longest a study or the board waits on a store read (study rows, catalogue lookup) before going on without it. */
+export const STUDY_STORE_TIMEOUT_MS = 3_000;
+
+/** `p`, or `fallback` once `ms` pass or `p` rejects (logged as `what`). Never rejects; a late answer is dropped. */
+export function bounded<T>(p: Promise<T>, fallback: T, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<T>((res) => (timer = setTimeout(() => (console.error(`[research] ${what}: no answer within ${ms} ms; going on without it`), res(fallback)), ms)));
+  const settled = p.catch((err) => (console.error(`[research] ${what} failed; going on without it:`, err), fallback));
+  return Promise.race([settled, late]).finally(() => clearTimeout(timer));
+}
+
 /**
  * Keyed by studyKey. Entries of an earlier UTC day are dropped once the day turns; past `max`, the oldest goes.
- * With a store, the map is a read-through front: `load` fills it from the store (one read for many keys), `set`
- * writes through, so a restart keeps today's studies. A store failure is logged and the cache acts in memory only.
+ * With a store, the map is a read-through front: `load` fills it from the store (one read for many keys, bounded
+ * by `storeTimeoutMs`), `set` writes through in the background, so a restart keeps today's studies. A slow or
+ * failing store is logged and the cache acts in memory only.
  */
-export function createStudyCache(now: () => number = Date.now, max = STUDY_CACHE_MAX, store: StudyStore | null = null) {
+export function createStudyCache(now: () => number = Date.now, max = STUDY_CACHE_MAX, store: StudyStore | null = null, storeTimeoutMs = STUDY_STORE_TIMEOUT_MS) {
   const map = new Map<string, StudyCacheEntry>();
   const prune = () => {
     const day = utcDay(now());
@@ -70,31 +82,29 @@ export function createStudyCache(now: () => number = Date.now, max = STUDY_CACHE
       prune();
       return map.get(key);
     },
-    /** Reads the keys not in memory from the store, in one call; a bad row or a store failure reads as a miss. Never rejects. */
+    /**
+     * Reads the keys not in memory from the store, in one call, waiting at most `storeTimeoutMs`; a bad row, a store
+     * failure or no answer in time reads as a miss. Never rejects.
+     */
     async load(keys: readonly string[]): Promise<void> {
       prune();
       const day = `:${utcDay(now())}`;
       const missing = [...new Set(keys)].filter((k) => k.endsWith(day) && !map.has(k));
       if (!store || !missing.length) return;
-      try {
-        for (const [k, v] of await store.getStudies(missing)) {
-          const e = StoredEntrySchema.safeParse(v);
-          if (!e.success) console.error(`[research] stored study ${k} does not parse; ignored`);
-          else if (!map.has(k)) remember(k, e.data);
-        }
-      } catch (err) {
-        console.error("[research] study store read failed; in-memory only:", err);
+      const rows = await bounded(Promise.resolve().then(() => store.getStudies(missing)), new Map(), storeTimeoutMs, "study store read");
+      for (const [k, v] of rows) {
+        const e = StoredEntrySchema.safeParse(v);
+        if (!e.success) console.error(`[research] stored study ${k} does not parse; ignored`);
+        else if (!map.has(k)) remember(k, e.data);
       }
     },
-    /** Remembers the entry, then writes it to the store (a failure is logged; the entry stays in memory). Never rejects. */
-    async set(key: string, e: StudyCacheEntry): Promise<void> {
+    /** Remembers the entry; the store write runs in the background (not awaited; a failure is logged, the entry stays in memory). */
+    set(key: string, e: StudyCacheEntry): void {
       remember(key, e);
       if (!store) return;
-      try {
-        await store.putStudy(key, e, new Date(now()));
-      } catch (err) {
-        console.error("[research] study store write failed; in-memory only:", err);
-      }
+      Promise.resolve()
+        .then(() => store.putStudy(key, e, new Date(now())))
+        .catch((err) => console.error("[research] study store write failed; in-memory only:", err));
     },
     size: () => (prune(), map.size),
   };
@@ -128,14 +138,15 @@ export function createStudyRunner(deps: StudyRunnerDeps) {
     const running = inflight.get(key);
     if (running) return running;
     const p = (async () => {
-      // Today's study may be in the store from before a restart: then it is not run (nor counted) again.
+      // Today's study may be in the store from before a restart: then it is not run (nor counted) again. The read is
+      // bounded (a stalled store is a miss), and the write below is not awaited, so the caller always gets an answer.
       await deps.cache.load([key]);
       const stored = deps.cache.get(key);
       if (stored) return { studyId: key, cached: true, ...stored };
       const args = { rule: q.rule, stopAtr: q.stopAtr, targetAtr: q.targetAtr, ...(q.coin ? { coins: [q.coin] } : {}) };
       const study = EventStudyResultSchema.parse(await deps.eventStudy(args, ctx));
       const entry = { summary: studySummary(study, new Date(deps.now()).toISOString()), study };
-      await deps.cache.set(key, entry);
+      deps.cache.set(key, entry);
       return { studyId: key, cached: false, ...entry };
     })().finally(() => inflight.delete(key));
     inflight.set(key, p);

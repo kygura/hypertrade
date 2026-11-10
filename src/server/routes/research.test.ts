@@ -32,6 +32,7 @@ function app(eventStudy: RunEventStudy, deadline = 50_000, guest = false, catalo
     deadlineMs: () => deadline,
     isGuest: () => guest,
     catalogueId,
+    storeTimeoutMs: 30,
     board: () => ({
       now: () => NOW,
       pulse: async () => { throw new Error("lab store down"); },
@@ -146,6 +147,12 @@ describe("/research routes", () => {
     // A failing lookup answers null; the study still answers.
     const down = app(toolEventStudy(tools), 50_000, false, async () => { throw new Error("db down"); });
     expect((await (await down.request("/research/study", post({ rule: planted, coin: "SYN" }))).json()).catalogueId).toBeNull();
+    // A lookup that never settles answers null after the short store timeout (30 ms here).
+    const stalled = app(toolEventStudy(tools), 50_000, false, () => new Promise(() => {}));
+    const t0 = performance.now();
+    const res = await stalled.request("/research/study", post({ rule: planted, coin: "SYN" }));
+    expect([res.status, (await res.json()).catalogueId]).toEqual([200, null]);
+    expect(performance.now() - t0).toBeLessThan(5_000);
   });
 });
 

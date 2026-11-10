@@ -65,6 +65,7 @@ describe("study cache over the Lab store", () => {
     const run1 = createStudyRunner({ cache: createStudyCache(() => T, 200, store), eventStudy: before.eventStudy, now: () => T });
     const first = await run1(q, { source: "ui" });
     expect([first.cached, before.runs()]).toEqual([false, 1]);
+    await Bun.sleep(0); // the write-through runs in the background
 
     const after = counting(); // the process restarted: empty memory, same store
     const cache2 = createStudyCache(() => T, 200, store);
@@ -88,6 +89,28 @@ describe("study cache over the Lab store", () => {
     expect((await run(q, { source: "ui" })).cached).toBe(true);
     expect(c.runs()).toBe(1);
     await cache.load(["x:2026-11-09"]); // never rejects
+  });
+
+  test("a store read that never settles is a miss after the short timeout: every ask answers, the study runs once", async () => {
+    const stalled: StudyStore = { getStudies: () => new Promise(() => {}), putStudy: async () => {} };
+    const c = counting();
+    const run = createStudyRunner({ cache: createStudyCache(() => T, 200, stalled, 20), eventStudy: c.eventStudy, now: () => T });
+    const [a, b] = await Promise.all([run(q, { source: "ui" }), run(q, { source: "ui" })]);
+    expect([a.cached, b.cached]).toEqual([false, false]); // the second shared the first's run
+    expect((await run(q, { source: "ui" })).cached).toBe(true);
+    expect(c.runs()).toBe(1);
+  });
+
+  test("a store write that never settles does not hold the answer (the write is in the background)", async () => {
+    let writes = 0;
+    const stalled: StudyStore = { getStudies: async () => new Map(), putStudy: () => (writes++, new Promise(() => {})) };
+    const c = counting();
+    const run = createStudyRunner({ cache: createStudyCache(() => T, 200, stalled), eventStudy: c.eventStudy, now: () => T });
+    expect((await run(q, { source: "ui" })).cached).toBe(false);
+    await Bun.sleep(0);
+    expect(writes).toBe(1);
+    expect((await run(q, { source: "ui" })).cached).toBe(true);
+    expect(c.runs()).toBe(1);
   });
 
   test("load: one store read for the keys not in memory and of today; a row that does not parse is a miss", async () => {

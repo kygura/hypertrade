@@ -73,8 +73,12 @@ describe("buildBoard", () => {
 
     const failing = createStudyCache(() => NOW, 200, { getStudies: async () => { throw new Error("db down"); }, putStudy: async () => {} });
     expect(BoardResponseSchema.parse(await buildBoard(deps({ cache: failing }))).signals).toHaveLength(4);
-    const hanging = createStudyCache(() => NOW, 200, { getStudies: () => new Promise(() => {}), putStudy: async () => {} });
-    const slow = await buildBoard(deps({ cache: hanging, timeoutMs: 20 }));
+    // A stalled store adds at most the short store timeout to the build, not another source deadline.
+    const hanging = createStudyCache(() => NOW, 200, { getStudies: () => new Promise(() => {}), putStudy: async () => {} }, 30);
+    const t0 = performance.now();
+    const slow = await buildBoard(deps({ cache: hanging, timeoutMs: 1_000 }));
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(slow.signals).toHaveLength(4);
     expect(slow.signals.every((s) => s.evidence === null)).toBe(true);
   });
 

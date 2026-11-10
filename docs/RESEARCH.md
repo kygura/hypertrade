@@ -91,9 +91,12 @@ Routes (all zod-parsed in and out):
   existing Lab tool and counts as a trial exactly as a direct tool call does. Results are
   cached by rule, scope, exits (to 0.1 ATR) and UTC day: an in-process map (200 entries) in
   front of the Lab store's `research_studies` rows (memory, Postgres or the JSON file, pruned
-  after 7 days), so a restart keeps today's evidence and does not log a second trial. A store
-  failure falls back to the in-process map. `catalogueId` is the rule's catalogue id when it is
-  saved (looked up on every answer, never cached), else null; `lab_event_study` returns it too.
+  after 2 days: only today's are ever read), so a restart keeps today's evidence and does not
+  log a second trial. Store reads wait at most 3 s (`STUDY_STORE_TIMEOUT_MS`), then count as a
+  miss; the write runs in the background after the answer. A slow or failing store falls back
+  to the in-process map and never holds a study. `catalogueId` is the rule's catalogue id when
+  it is saved (looked up on every answer, never cached, null after the same 3 s), else null;
+  `lab_event_study` returns it too.
 - `GET /api/radar` → `{ state, latestNote: {date, markdown, truncated}|null, calls,
   scorecard }` read from `data/radar/` with the existing schemas (at most 50 calls). Needs a
   signed-in session (not guest-readable in PUBLIC_MODE). If the files are absent (Vercel
@@ -101,7 +104,8 @@ Routes (all zod-parsed in and out):
 
 Studies run on request only: evidence is on the board once someone ran that study today
 (cached, and kept across restarts in the Lab store), and every run counts as a trial. The
-board reads the store once per build for all its signals, never once per signal. Nothing
+board reads the store once per build for all its signals, never once per signal, after the
+sources and bounded by the same 3 s, so a stalled store adds at most that to a build. Nothing
 pre-computes them.
 
 ### B3. Approve honesty
