@@ -76,7 +76,8 @@ Mapping (pure, tested): a catalogue rule firing now carries its own rule; a nove
 maps through a fixed table (`funding_z90` → `ht:funding|z|90`, 7 d return →
 `ht:price|roc|7`, volume multiple → `ht:volume|ma_ratio|20`) using the item's observed
 value sign and a rounded threshold; platform opportunities and radar calls carry
-`rule: null` (intraday setups have no Lab twin; that is stated in the UI, not hidden).
+`rule: null` (superseded by Signals v2 S3 below: an opportunity now carries the daily definition of its setup kind,
+a radar call its scorecard row).
 
 Routes (all zod-parsed in and out):
 
@@ -215,7 +216,7 @@ and a rule-bearing signal opens a prefilled study.
 
 ## Signals v2 — one definition, two evaluators
 
-Status: in progress (2026-11-10). Phases 1–2 of the candidate pipeline
+Status: S1–S3 shipped (2026-11-10), S4 (UI) open. Phases 1–2 of the candidate pipeline
 (`docs/research/candidates-redesign.md` § B.3, B.4), cut to what the Lab can replay today.
 
 Problem: four engines each defined "signal" their own way (scanner setups, novelty, Lab rules,
@@ -237,6 +238,21 @@ features exist: `funding_fade` (short), `negative_funding_build` (long), `washou
 needs two entries), `range_breakout`. A definition whose predicate the Lab cannot express is
 left out and listed in `docs/TASKS.md`, not approximated silently.
 
+Shipped (thresholds are starting points; each rule's comment in the file names what B.4 asked that it drops):
+
+| id | side, hold | rule | dropped from B.4 |
+|---|---|---|---|
+| `funding_fade` | short 7d | `ht:funding z(90) ≥ 2 AND ht:oi pctile(30) ≥ 0.95` | `\|ret_3d\| < 1 ATR` (third condition, ATR-scaled) |
+| `negative_funding_build` | long 7d | `ht:funding z(90) < −1.5 AND ht:oi roc(7) ≥ 0.1` | `ret_7d ≥ −1 ATR` |
+| `washout_reclaim` | long 7d, stop 2-bar low | `ht:price roc(3) < −0.08 AND ht:oi roc(3) < −0.1` | the 4 h reclaim trigger, funding < 0, liquidation z (no metric); a 1-day return needs roc(1), below the minimum window |
+| `trend_pullback_long` / `_short` | long / short 10d | `ht:price ma_ratio(20)` in [−0.02, 0.02) `AND trend ∈ {up}` / `{down}` | distance in %, not ATR; funding-not-crowded |
+| `range_breakout` | long 7d | `ht:price pctile(20) ≥ 1 AND ht:volume ma_ratio(20) ≥ 0.5` | breakout on closes, not highs (no rolling-max feature) |
+
+Nothing was left out. `ht:oi` is collector snapshots (stored history only), so the three OI definitions are in zone
+only where OI is collected. Stop/target levels are left to the study's exits except the washout's structural stop.
+A definition's `rule` carries `asset: UNIVERSE_ASSET` (`"UNIVERSE"`, `src/shared/research.ts`), not a ticker: it is
+studied over the universe without a `coin`, so every coin in zone shares one study, one cache key and one trial.
+
 `intradayKinds` names the platform setup kinds (`src/server/platform/setups.ts`) that share the
 thesis: `crowded_long → funding_fade`, `negative_funding_squeeze → negative_funding_build`,
 `deleveraging_washout → washout_reclaim`, `vol_expansion_breakout → range_breakout`. A test
@@ -245,15 +261,25 @@ asserts every platform setup kind is named by exactly one definition.
 ### S2. Live evaluation — `src/server/signals/scan.ts`
 
 Pure core: `(definition, LabDataset) → in zone on the last bar?`, built on the Lab engine's
-own feature and zone code (`buildFeatures`, `zoneConditions`, `conditionSignal`), no second
-predicate. **Parity test** (CLAUDE.md "a second evaluation path needs a parity test"): over a
-fixture dataset, the days the scan calls in zone and flat are exactly the event study's entry
-days for the same rule.
+own feature and zone code (`inZoneNow` calls `ruleFiresAt`: `makeCtx` → `zoneConditions` →
+`conditionSignal`, the path `replayCoin` reads through `inZoneDays`), no second
+predicate. A dataset without one of the definition's metrics is not evaluable (null), not out of zone. **Parity
+test** (`scan.test.ts`): on a fixture coin, for every definition, the event study's entry days are exactly the days k
+with `ATR_WINDOW ≤ k < n − horizon` on which the scan of the data truncated at k says in zone and the replay is flat
+(k ≥ previous entry + horizon).
 
 Service: evaluates every definition over the Lab's default universe (top 20) plus the UI
 watchlist, on the datasets the Lab service already loads and caches; refreshed at most once per
 closed daily bar; a coin whose data fails is dropped and counted, never fatal. Evaluating a
 definition live is **not** a trial (no study runs).
+
+Concrete: `createDefinitionScanner` loads 200 days per coin (`SCAN_LOOKBACK_DAYS`: the 90-day window plus the
+regime's 50-day mean) through the Lab service's `loadDataset` (registry cache), memoises one scan per UTC day (callers
+in flight share it; a scan that fails as a whole is forgotten), and drops a coin that fails, is not loaded within
+120 s (`SCAN_DEADLINE_MS`) or whose data does not reach yesterday's bar; dropped coins are added to the source's
+`dropped`. The board bounds the wait with its source timeout like every source. Watchlist = `watchedAssets`
+(intel_watchlist, else DESK_WATCHLIST). Without `DATABASE_URL` the source is `unavailable` ("needs a database"):
+every coin's funding would be fetched live at about a coin a minute (Runtime above), and OI is stored-only.
 
 ### S3. Board
 
@@ -274,6 +300,23 @@ definition live is **not** a trial (no study runs).
   never as a test of the intraday setup itself. Radar calls stay rule-less: an LLM thesis about
   a dated catalyst is graded forward by the scorecard, not replayed.
 - Novelty is unchanged (its rule is built from the observed extreme).
+
+Shape as built (`src/shared/research.ts`):
+
+- `evidence: { kind: 'study', …StudySummary } | { kind: 'ledger', setupKind, horizon: '24h', n, clusters, meanNet,
+  ci95, hitRate } | { kind: 'scorecard', stance, horizonDays: 7, n, meanPct, hitRate } | null`. The study cache keeps
+  plain `StudySummary` rows (no `kind`); the board adds `kind` when it attaches one, so rows stored before this change
+  load unchanged. Ledger: `groupStats` over outcomes with `scoreVersion = SCORE_VERSION`, overall row at 24h; an empty
+  ledger is `n 0` with null numbers, an unreadable one leaves `evidence` null. Scorecard: the call's stance at the
+  7-day row (the longest graded horizon); null before any call is graded there.
+- `dailyStudy: StudySummary | null`: opportunity only, today's cached study of its `rule` (the daily definition,
+  universe scope). Study evidence never replaces the ledger evidence.
+- `definitionId: string | null`: the definition in zone, or an opportunity's daily definition. An opportunity gets
+  the definition only when the definition's side matches (a short `vol_expansion_breakout` has none: `range_breakout`
+  is long-only), else `rule: null`.
+- `GET /api/research/definitions` → `{ definitions: [{ id, name, thesis, rule, ruleText, intradayKinds }] }`, zod-parsed,
+  read like the board (guest-readable in PUBLIC_MODE). Each `rule` is a valid `POST /research/study` body without
+  `coin` (universe scope).
 
 ### S4. UI
 

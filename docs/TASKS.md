@@ -73,9 +73,17 @@ setups, candidate universe = top 30 by 24 h notional plus "my markets".
   `src/server/setups/store.ts`), `bun run setups:export` to `data/setups/ledger.json`,
   gate expiry cap 10 days.
 - [ ] Phase 1: daily/4 h feature frame from stored tables, with parity against novelty
-  `funding_z90` and Lab `ht:funding`.
+  `funding_z90` and Lab `ht:funding`. Partly shipped by Signals v2 (docs/RESEARCH.md S2,
+  2026-11-10): the daily frame is the Lab's own features (`ht:*` through the Lab dataset
+  loader), so `ht:funding` parity holds by construction. Not shipped: the 4 h frame, ATR-scaled
+  returns, liquidation and sector features, and the novelty `funding_z90` parity test.
 - [ ] Phase 2: catalogue definitions as data plus level builder, each with a Lab rule
-  twin; scanner hits equal event-study entries.
+  twin; scanner hits equal event-study entries. Partly shipped by Signals v2 (S1–S3): six
+  definitions as Lab rules (`src/server/signals/definitions.ts`), the live scan with the
+  replay parity test, the board's `definition` source. Not shipped: the level builder, 4 h
+  triggers and entry zones, `sector_continuation` (needs sector features the Lab lacks), and
+  the B.4 conditions the two-condition Rule drops (listed in docs/RESEARCH.md S1). The UI (S4)
+  is open.
 - [ ] Phase 3: `bun run candidates` and `candidates:advance`, budget gate, one LLM
   narration call, routine writes through the setups store.
 - [ ] Phase 4: workflows, ROUTINE.md as a thin wrapper, narrative job split out,
