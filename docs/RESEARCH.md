@@ -212,3 +212,78 @@ rule drill (`/lab/rules/study?rule=…`), matching its evaluation id against the
 `bun run build` green. `GET /api/research/board` and `GET /api/radar` answer on a server
 with no `DATABASE_URL`. The board renders at 320 px and 1440 px with no horizontal scroll,
 and a rule-bearing signal opens a prefilled study.
+
+## Signals v2 — one definition, two evaluators
+
+Status: in progress (2026-11-10). Phases 1–2 of the candidate pipeline
+(`docs/research/candidates-redesign.md` § B.3, B.4), cut to what the Lab can replay today.
+
+Problem: four engines each defined "signal" their own way (scanner setups, novelty, Lab rules,
+radar calls), and only Lab rules could be replayed. Rows on the board said `no Lab twin`.
+
+Rule: **a signal is a Lab `Rule` written as data.** The same rule object is evaluated live (is
+it in zone on the latest daily bar?) and historically (`lab_event_study`), through the same
+engine functions. Nothing else is called a signal definition.
+
+### S1. Definitions — `src/server/signals/definitions.ts`
+
+A code-shipped list of `SignalDefinition`: `{ id, name, thesis (one line, facts), rule:
+Omit<Rule, 'asset'>, intradayKinds: string[] }`. Each `rule` parses with the Lab `RuleSchema`
+once an asset is filled in, uses only `ht:*` metrics every perp has (`price`, `volume`,
+`funding`, `oi`, plus the regime condition and `stop`/`target`/`invalidation` levels), and its
+thresholds are starting points for the event study, not claims. v1 set, from § B.4 where the
+features exist: `funding_fade` (short), `negative_funding_build` (long), `washout_reclaim`
+(long), `trend_pullback` (long in an up-trend; short twin in a down-trend if the Rule shape
+needs two entries), `range_breakout`. A definition whose predicate the Lab cannot express is
+left out and listed in `docs/TASKS.md`, not approximated silently.
+
+`intradayKinds` names the platform setup kinds (`src/server/platform/setups.ts`) that share the
+thesis: `crowded_long → funding_fade`, `negative_funding_squeeze → negative_funding_build`,
+`deleveraging_washout → washout_reclaim`, `vol_expansion_breakout → range_breakout`. A test
+asserts every platform setup kind is named by exactly one definition.
+
+### S2. Live evaluation — `src/server/signals/scan.ts`
+
+Pure core: `(definition, LabDataset) → in zone on the last bar?`, built on the Lab engine's
+own feature and zone code (`buildFeatures`, `zoneConditions`, `conditionSignal`), no second
+predicate. **Parity test** (CLAUDE.md "a second evaluation path needs a parity test"): over a
+fixture dataset, the days the scan calls in zone and flat are exactly the event study's entry
+days for the same rule.
+
+Service: evaluates every definition over the Lab's default universe (top 20) plus the UI
+watchlist, on the datasets the Lab service already loads and caches; refreshed at most once per
+closed daily bar; a coin whose data fails is dropped and counted, never fatal. Evaluating a
+definition live is **not** a trial (no study runs).
+
+### S3. Board
+
+- New source `definition`. A firing definition is a `ResearchSignal` with its rule, `scope:
+  'universe'` (the definition is studied over the universe; one coin rarely has 30
+  event-weeks), `tested` = the rule's side, headline = the observed feature values as facts.
+- `evidence` becomes a discriminated union on `kind`:
+  - `study` — the existing `StudySummary` (replay of the rule).
+  - `ledger` — for `opportunity`: realised outcomes of that setup kind from the platform
+    ledger (`groupStats`, current score version): `n`, `clusters`, mean and interval, horizon.
+    Null fields stay null under 5 clusters, as the ledger already does.
+  - `scorecard` — for `radar`: the radar scorecard row for the call's horizon (`n`, mean
+    relative return, hit rate).
+  Every source therefore shows what backs it; `no Lab twin` is deleted from the UI and docs.
+- An `opportunity` signal also carries `definitionId` (its daily definition, from
+  `intradayKinds`) and that definition's `rule` with `scope: 'universe'`, so the row offers the
+  study of the **daily version** of the same thesis. The UI labels it as the daily version,
+  never as a test of the intraday setup itself. Radar calls stay rule-less: an LLM thesis about
+  a dated catalyst is graded forward by the scorecard, not replayed.
+- Novelty is unchanged (its rule is built from the observed extreme).
+
+### S4. UI
+
+Evidence cell renders by `kind`: study as today; ledger `live record · n · clusters · mean R
+[lo, hi] · 24h`; scorecard `graded forward · n calls · mean vs BTC · hit %`. Source chip and
+filter for `definition`. Opportunity rows: ledger evidence plus `STUDY DAILY VERSION`.
+`/lab/study` gets a DEFINITIONS picker (the shipped definitions, prefilled, universe scope) so
+its empty state is no longer a dead end.
+
+### Not in this change
+
+The intraday scanner's predicates stay as they are (no stored intraday history to replay them
+from); 4 h triggers, entry zones and the level builder of § B.4; phases 3–5.
