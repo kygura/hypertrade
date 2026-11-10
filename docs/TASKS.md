@@ -66,6 +66,45 @@ setups, candidate universe = top 30 by 24 h notional plus "my markets".
 - [ ] Phase 5: weekly review job: event-study refresh, demotion to watch-only, edge
   facts on candidates.
 
+## Parked
+
+Live-market rethink (2026-11, `docs/SPEC.md` § Product): the default nav shows only
+pages that render from Hyperliquid's public API on a cold deploy with an empty database.
+These pages keep their routes and files; they are out of the nav until the condition is
+met.
+
+| Page / cell | Route(s) | Why hidden | Bring back when |
+|---|---|---|---|
+| Cockpit (FEED), liqmap, health strip | `/feed` | needs the scanner, crawler and liqmap loops (`scripts/server.ts`), which never run on Vercel; `platform-tick` has no crawler | an always-on worker (Railway) runs the loops and the feed has real rows; signals render as `explain()` sentences, never score, tier or CALC |
+| TRADE row: CHANGES, WATCH, JOURNAL, THESES, QUERY | `/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/asset/:coin` (redirects to `/markets/:coin`) | needs Intel ingest crons, an LLM budget and stored positions and watchlist | Intel runs on a schedule with a provider set and the pages show non-empty data; JOURNAL folds into BOOK |
+| ORDER, DESK | `/order`, `/desk` | needs the desk worker, an LLM provider and a paper or watched book | the desk worker runs always-on with a book; `DESK_ENABLED` back on |
+| ENGINE | `/strategies`, `/decisions`, `/governor` | returns 503 without `ENGINE_URL` | an engine is configured and reachable |
+| ASK | `/analyst` | needs an LLM provider; empty without one | returns as an "explain this" drawer on the coin page |
+| BRANCHES | `/branches`, `/branches/:id` | needs stored candles and backfill in Postgres | the DB is backfilled and someone asks for it back |
+| SECTORS, STATE (with `MarketTabs`, `MetricsStrip`) | `/sectors`, `/state` | need routine-written sector maps and briefings plus collector history | the routine and collectors run on a schedule and the data is fresh |
+| CYCLES | `/cycles`, `/cycles/eth` | not a live read; `/api/cycles` works without a DB | returns as a tab on the BTC and ETH coin pages |
+| Top-bar DATA dot | — | reports collector freshness, which is red on a cold deploy | a collector runs on a schedule; ops telemetry goes to an unlisted `/status` page |
+| BOOK cell | `/book` (not built) | PR 2 | read-only positions and fills for a pasted address via `hlInfo` `clearinghouseState` and `userFills` |
+
+Pages still parked after 2 to 4 weeks with no request to bring them back are deleted
+(ENGINE UI, Branches, the terminal pages, Desk, `FlowHeatmap`, `AssetTimeline`).
+Server routes stay mounted.
+
+## Later
+
+- [ ] OI history for all coins: drop `TOP_N=20` in `src/server/collectors/hyperliquid.ts`
+  so every coin gets an `hl.oi.<COIN>` snapshot; add a read-only `/api/oi/grid`. Unlocks
+  an OI x time heatmap, an OI change column, a regime caption on the coin page and a
+  price change vs OI change quadrant.
+- [ ] Funding grid API: stateless `/api/funding/grid` (top 30 coins x 14 days,
+  `s-maxage=900`) so viewers share one HL fetch for the funding heatmap.
+- [ ] Depth card: wrap `l2Book` in `hl-client`, add an `l2Book` WS type, move `walkBook`
+  and `depthWithin` to shared; show "a $50k buy moves price N bp".
+- [ ] BOOK cell (PR 2): pasted address, `clearinghouseState` and `userFills` with zod
+  wrappers in `hl-client.ts`; absorbs Journal.
+- [ ] Mini charts on signal cards (PR 2): 72h of 1h candles, or a 7d funding line with
+  "highest in 7 days" via `percentileRank`.
+
 ## Completed
 
 **Phase 9, signal evidence (`docs/FEATURES.md` §§ 1–7), PS1–PS7 and PS-B1..B5.** Lab rule

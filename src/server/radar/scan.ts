@@ -1,4 +1,5 @@
 import { RADAR_STATE_DAYS, type RadarDay, type RadarState } from "../../shared/radar.js";
+import { SIGNAL } from "../../shared/signals.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
 
 // The radar scan (ROUTINE.md §1): every live perp on every Hyperliquid dex (main plus HIP-3), diffed against the
@@ -7,12 +8,12 @@ import type { AssetCtx, Candle } from "../../shared/types.js";
 
 export const RADAR = {
   /** Floor for movers, spikes and premium: below it a print is noise. */
-  minVolUsd: 1_000_000,
+  minVolUsd: SIGNAL.minVolUsd,
   /** Floor for funding and OI reads. */
-  minOiUsd: 1_000_000,
+  minOiUsd: SIGNAL.minOiUsd,
   topN: 8,
-  fundingAprAbs: 50,
-  premiumBpsAbs: 50,
+  fundingAprAbs: SIGNAL.fundingAprAbs,
+  premiumBpsAbs: SIGNAL.premiumBpsAbs,
   volSpikeX: 3,
   oiChgPctAbs: 25,
   rankTop: 30,

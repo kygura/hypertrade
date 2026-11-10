@@ -10,17 +10,14 @@ HYPERTRADE iterates on the Hyperion Terminal design language
 tabular data, one motion rhythm (220ms), no spinners, a single named state
 vocabulary. It is NOT a new language.
 
-**Default look.** The default theme is **Hyperdash** (`DEFAULT_THEME` in
-`src/ui/themes/registry.ts`; `index.html` also ships `data-theme="hyperdash"`
-so first paint matches). Every look is a theme (§15): Hyperdash and
-Trade[XYZ] are CSS files that override tokens under
-`:root[data-theme='<id>']`, and **Hyperion** is the third, selectable theme
-with no file — it is the unscoped token defaults in `src/ui/index.css`.
-The token listing in §2 is therefore the Hyperion look (Geist Mono
-everywhere, zero radius, 13px base, `#ed3602` accent); under the default
-theme the same tokens read as below. The choice persists per browser
-(`localStorage['hypertrade.theme']`; a visitor who never chose follows the
-default) and is switched from the top bar.
+**The look.** There is one look, **Hyperdash** (§15): `index.html` ships
+`data-theme="hyperdash"` and `src/ui/themes/hyperdash.css` overrides tokens
+under `:root[data-theme='hyperdash']`. The unscoped token defaults in
+`src/ui/index.css` are the Hyperion values it overrides. The token listing
+in §2 is therefore the Hyperion base (Geist Mono everywhere, zero radius,
+13px base, `#ed3602` accent); as rendered, the same tokens read as the
+Hyperdash column below. The Trade[XYZ] column is historical: that theme and
+the theme switcher were removed.
 
 | Token | Hyperion (defaults) | Hyperdash (default theme) | Trade[XYZ] |
 |---|---|---|---|
@@ -513,58 +510,62 @@ not a different product.
 ## 5. App shell and navigation
 
 **Principle: one cell per operator job, one home per object.** A top-level
-cell exists only for a job no other cell answers. A new feature becomes a tab
-inside the cell whose job it serves. A drill-in (`/x/:id`) keeps its family's
-tabs and a back link, or is a full view with a back link, and every coin page
-links to every other coin page for the same coin (`/markets/:coin` ↔
-`/asset/:coin`, and the Cockpit detail links to both). An action has one
-implementation, and its confirmation weight follows the action, not the page
-(§7). The ceiling is nine cells; the shell has five.
+cell exists only for a job no other cell answers, and only once its page
+renders real data on a cold deploy with an empty database (docs/SPEC.md
+§ Product). A new feature becomes a panel or tab inside the cell whose job it
+serves. A drill-in (`/x/:id`) keeps its family's tabs and a back link, or is a
+full view with a back link. An action has one implementation, and its
+confirmation weight follows the action, not the page (§7). The ceiling is nine
+cells; the shell has two.
 
-**Current state: five cells, under the ceiling.** Each family keeps one
-sub-nav, `SectionTabs` (§11), and one `PageContainer` gutter. The cells, left
-to right (`NAV` in `AppShell.tsx`):
+**Current state: two cells.** The cells, left to right (`NAV` in
+`AppShell.tsx`):
 
 | # | Desktop | Mobile | Glyph | Link | Active on |
 |---|---|---|---|---|---|
-| 1 | TRADE | TRADE | `◉` | `/` | the TRADE family (`isTerminalPath`): `/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/`, `/order`, `/desk`, `/asset/:coin` |
-| 2 | MARKET | MKT | `≋` | `/markets` | the MARKET family (`isMarketPath`): `/markets`, `/sectors`, `/state`, `/cycles` and their `/:coin` drills |
-| 3 | RESEARCH | RSRCH | `⚗` | `/lab` | `/lab/*` (including `/lab/rules/:id`) and `/branches`, `/branches/:id` |
-| 4 | ASK | ASK | `?` | `/analyst` | `/analyst` |
-| 5 | ENGINE | ENGIN | `⚙` | `/strategies` | the strategy console (`isEnginePath`): `/strategies`, `/decisions`, `/governor` and their `/:id` drills |
+| 1 | MARKET | MKT | `≋` | `/` | `/` and `/markets/:coin` |
+| 2 | RESEARCH | RSRCH | `⚗` | `/lab` | `/lab/*` (including `/lab/rules/:id`) |
 
-Four cells group several routes behind an in-view sub-nav, all `SectionTabs`
-wrappers: TRADE (`TerminalTabs`, brief below), MARKET (`MarketTabs`: PERPS ·
-SECTORS · STATE · CYCLES, with the `MetricsStrip` under the tabs on every
-MARKET route, §10.2), RESEARCH (`LabTabs`, §10.9) and ENGINE (`EngineTabs`,
-§10.12). There is no Overview page: `/overview` redirects to `/markets`.
-After login the landing is `/`. `/login` renders outside the shell entirely.
-Unknown paths redirect to `/`.
+RESEARCH switches through `LabTabs` (SEARCH · RUNS · CATALOGUE · PULSE,
+§10.9). MARKET has no tab row: `/` is one page and `/markets/:coin` is its
+drill-in with a `← MARKETS` back link to `/`. `/markets` redirects to `/`,
+`/asset/:coin` to `/markets/:coin`, `/overview` to `/markets`. After login
+the landing is `/`. `/login` renders outside the shell entirely. Unknown paths
+redirect to `/`.
 
-**TRADE family brief.** The job: what changed for my book, and what should I
-place, approve or kill now. One tab row, ordered as a funnel from intel to act:
-`CHANGES · WATCH · JOURNAL · THESES · QUERY · FEED · ORDER · DESK`
-(`/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/`, `/order`,
-`/desk`; mobile short labels `CHNG · WTCH · JRNL · THES · QRY · FEED · ORDR ·
-DESK`). `SectionTabs` has no group separator, so the order alone carries the
-split. The `/` landing is still the Cockpit: FEED is its tab, not a cell. The
-Cockpit feed items (opportunities, with a status machine and cost vs edge) and
-the Terminal change items (a materiality-ranked diff, no status machine) stay
-two separate lists; the family shares only the tab bar, the coin drill
-(`/asset/:coin` under the CHANGES tab, with `CHART →` to `/markets/:coin`; the
-Cockpit detail links to both) and the action path (Level 2 dialogs and the
-shared kill switch, §7). `/asset/:coin` back links read `← CHANGES`. Tab
-detail: docs/design/terminal.md §1.
+**Parked routes.** The Cockpit (now `/feed`), the TRADE family (`/terminal`,
+`/watch`, `/journal`, `/theses`, `/query`, `/order`, `/desk`), ENGINE,
+ASK (`/analyst`), BRANCHES, and SECTORS, STATE and CYCLES (with `MarketTabs`
+and `MetricsStrip`) keep their routes and files but have no cell or tab.
+`TerminalTabs` still links the TRADE family, with FEED at `/feed`. Each comes
+back when the loop or state it needs exists (docs/TASKS.md "Parked"); the
+briefs for those pages below stay as their contract.
 
-**ENGINE brief.** The job: operate the external Hyperion strategy engine.
-Its three views switch through `EngineTabs`, a `SectionTabs` over
-`STRATEGIES · DECISIONS · GOVERNOR`; drills render it too (§10.12).
+**MARKET brief.** The job: what is Hyperliquid doing, where is leverage
+crowded, what is unusual right now. Every panel renders in the browser from
+HL's public info API and WS, polled live, with no server state; the header
+reads `LIVE · Hyperliquid · updated Ns ago`. Each panel carries one caption
+line in `text-secondary`. Lists use the universe floor (not delisted, OI ≥ $1M,
+24h volume ≥ $1M). The panels, top to bottom:
+
+| Panel | Shows | Caption |
+|---|---|---|
+| READ | three plain sentences (breadth, BTC vs alts, OI-weighted funding) and three chips (ADVANCING, BTC LEAD, FUNDING TILT; formula in each `title`) | Top 50 Hyperliquid perps by open interest, live. |
+| SIGNALS | up to 6 cards, one per coin: a sentence, 2–3 evidence cells, a muted why line, a "rule" disclosure; click opens `/markets/:coin`. Empty: "Nothing unusual right now: no perp is beyond these thresholds." with the thresholds listed | — |
+| OI MAP | treemap of the top 40 by OI in USD, colour = 24h change (diverging, ±10% cap); a ranked bar list below 640px | Where the money is now: tile size = open positions in USD, colour = 24h price change. Hyperliquid publishes no OI history, so this is a snapshot, not a trend. |
+| FUNDING HEATMAP | top 20 by OI × hourly settlements over 72h, colour = funding APR (±100% clip); scrolls inside its panel | Each cell is one hourly funding payment, annualised. Warm = longs pay shorts, cool = shorts pay longs. A band that persists for days is a crowded trade, not a signal by itself. |
+| FUNDING / BASIS | 5 hottest and 5 coldest by APR with a vs CEX column; 5 largest premiums in bp | Funding is what one side pays the other every hour. Large positive = longs crowded; large negative = shorts crowded. / Premium = perp mark vs oracle (spot index). Above spot: leveraged buyers are leading. |
+| MOVERS / AT CAP | top and bottom 5 by 24h change, volume as a multiple of the top-50 median; perps at their OI cap | AT OI CAP: new positions can't open, only close. |
+| ALL PERPS | the universe table (`MarketsTable`): funding as APR, PREM bp, a title on every header | — |
+
+The landing never shows score, z keys, tier, CALC, the health strip, coverage,
+scan age, desk state or LLM output.
 
 ### 5.1 Desktop / mid (≥768px): TopBar, `--topbar-h`, sticky
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ HYPERTRADE ▪ │ TRADE MARKET RESEARCH ASK ENGINE │ theme ● DATA 12:41 │ LOGOUT │
+│ HYPERTRADE ▪ │ MARKET RESEARCH │ LOGOUT │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -572,34 +573,26 @@ Left → right:
 
 1. **Wordmark** `HYPERTRADE` 11px uppercase bold + a 6×6px accent square
    (`--color-accent`). Click → `/`.
-2. **Routes**: the five cells above as 10px control-case links, 12px gap.
-   Active route gets the theme's active treatment (Hyperion: `text-primary` +
-   2px accent bottom border, `.tab-active`; Hyperdash: white text, the orange
-   rule is reserved for tabs) and `aria-current="page"`.
-3. **ThemeSwitcher**: a `Segmented` toggle (`HYPERDASH · TRADE[XYZ] ·
-   HYPERION`, short codes `HD · XYZ · HYP` below `xl:`).
-4. **Data-freshness cluster** (md+ only): a StatusDot + `DATA 12:41` in 10px
-   `text-secondary` — the time of the newest `hl.total_oi_usd` observation
-   from `GET /api/metrics/summary?ids=hl.total_oi_usd`, used as the collector
-   heartbeat. Dot: green if < 30min old, amber 30min–2h, red > 2h or fetch
-   failed (`DATA —`). Tooltip (`title`): `last collector run
-   (hl.total_oi_usd)`. This is the shell-level staleness signal from
-   principle 3.
-5. **LOGOUT** ghost button → `POST /api/auth/logout`, redirect `/login`.
+2. **Routes**: the two cells above as 10px control-case links, 12px gap.
+   Active route: white text (the orange rule is reserved for tabs) and
+   `aria-current="page"`.
+3. **LOGOUT** ghost button → `POST /api/auth/logout`, redirect `/login`
+   (LOGIN for a guest in `PUBLIC_MODE`).
+
+There is no theme switcher and no DATA freshness dot: the landing states its
+own freshness in its header.
 
 Sticky (`position: sticky; top: 0; z-index: 40`), height
-`var(--topbar-h)` (40px Hyperion, 54px Hyperdash, 48px Trade[XYZ]),
-`bg-topbar`, 1px bottom border.
+`var(--topbar-h)` (54px), `bg-topbar`, 1px bottom border.
 
 ### 5.2 Mobile (<768px): bottom tab bar + slim top strip
 
-Top strip (`--topbar-h`, sticky): wordmark left, ThemeSwitcher + LOGOUT
-right (the freshness cluster is desktop-only). Route links move to a
-**bottom tab bar**, one cell per NAV entry:
+Top strip (`--topbar-h`, sticky): wordmark left, LOGOUT right. Route links
+move to a **bottom tab bar**, one cell per NAV entry:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ TRADE MKT RSRCH ASK ENGIN                                         │  56px + safe-area
+│ MKT RSRCH                                                         │  56px + safe-area
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -607,27 +600,24 @@ right (the freshness cluster is desktop-only). Route links move to a
   height `calc(56px + env(safe-area-inset-bottom))` with the inset as
   padding-bottom.
 - Equal cells (`flex: 1`), each a flex column: a 12px glyph over a 9px
-  control-case label. Glyphs are text characters, no icon library: `◉`
-  Trade, `≋` Market, `⚗` Research, `?` Ask, `⚙` Engine.
+  control-case label. Glyphs are text characters, no icon library: `≋`
+  Market, `⚗` Research.
 - Active cell: `text-primary` + a 2px accent top border on the cell (the
   underline idiom, flipped to the touchable edge). Inactive: `text-secondary`.
-- Labels: `TRADE / MKT / RSRCH / ASK / ENGIN` — 5 chars max,
-  `letter-spacing` ≤ 0.02em on the tab bar only (the theme's control tracking
-  would push a 5-char label past the cell).
+- Labels: `MKT / RSRCH` — 5 chars max, `letter-spacing` ≤ 0.02em on the tab
+  bar only.
 - Whole cell is the target (≥56px tall — over `--tap-min`).
 
 No hamburger, no drawer. A drawer would hide the map of the product behind
 a tap.
 
-**Nine cells is the ceiling; the shell has five.** The ceiling is
-arithmetic. At 320px five cells are 64px wide, and a 5-char label at 9px Geist
-Mono is ≈27px, so labels fit without abbreviating further. Cells are 56px
-tall: above WCAG 2.5.8's 24×24 and the iOS tab-bar norm, but below the 44px
-`--tap-min` horizontally at higher cell counts, which is why the count stays
-low: neighbouring cells are separated by the full cell boundary (a mis-tap
-lands on a route, never on an action). A new destination may not add a cell:
-it becomes a tab in the cell whose job it serves (the way CYCLES joined
-MARKET, BRANCHES joined RESEARCH and DESK joined TRADE), or replaces one.
+**Nine cells is the ceiling; the shell has two.** The ceiling is
+arithmetic. At 320px nine cells are ≈35px wide and a 5-char label at 9px is
+≈27px, so labels fit without abbreviating further. Cells are 56px tall: above
+WCAG 2.5.8's 24×24 and the iOS tab-bar norm, but below the 44px `--tap-min`
+horizontally at higher cell counts, which is why the count stays low. A new
+destination may not add a cell unless it meets the principle above; otherwise
+it becomes a panel or tab in the cell whose job it serves, or replaces one.
 Rejected: a scrolling tab bar (hidden cells defeat the map, §4.3's argument)
 and 4-char labels (no legibility gain; they would rename settled labels).
 
@@ -1857,8 +1847,7 @@ Ported components keep their Hyperion source semantics (files:
 
 | Component | Props | Spec |
 |---|---|---|
-| `AppShell` | `children` | TopBar ≥768 / TopStrip + BottomTabBar <768 (§5); ThemeSwitcher; freshness cluster (md+) |
-| `ThemeSwitcher` | none | §15; `Segmented` toggle over `THEMES`, persists per browser |
+| `AppShell` | `children` | TopBar ≥768 / TopStrip + BottomTabBar <768 (§5) |
 | `StaleBanner` | `generatedAt: string`, `thresholdHours: number`, `noun: string` | §6; renders nothing under threshold |
 | `AgeStamp` | `generatedAt: string`, `thresholdHours: number` | §6; xs, gray→amber; `title` = full timestamp |
 | `SrcTag` | `source: 'hl'\|'cg'\|'fred'\|'routine'\|'ht'\|'cm'\|'fng'\|'llama'\|'manual'\|'desk'\|'snap'` | §2 `.src-tag`; `hl` gets jade; the four lab providers (§10.9) and the Intel sources `manual`/`desk`/`snap` (DESIGN-terminal §1.6) render gray like `cg` |
@@ -2020,27 +2009,22 @@ Every cell above is one of the §6 named patterns — no bespoke states.
 
 ---
 
-## 15. Themes
+## 15. Look
 
-Hyperdash is the default look (`DEFAULT_THEME` in
-`src/ui/themes/registry.ts`); Hyperion, as specified above, stays the
-reference for meaning (state vocabulary, confirmation levels, motion,
-responsive contract) and remains selectable. Every look is a theme that
-overrides tokens only, never behavior; Hyperion is the unscoped token
-defaults in `src/ui/index.css` and has no theme file. The top bar's
-segmented toggle switches between them. The
-token contract, the structural hook classes a theme may style, and the steps
-to add one live in `src/ui/themes/README.md`.
-
-| Theme | Source design system |
-|---|---|
-| Hyperdash (default) | `design-systems/hyperdash/DESIGN.md` |
-| Trade[XYZ] | `design-systems/tradexyz/DESIGN.md` |
-| Hyperion | this document |
+There is one look: Hyperdash (`data-theme="hyperdash"` on `<html>`, tokens
+in `src/ui/themes/hyperdash.css`, source design system
+`design-systems/hyperdash/DESIGN.md`; fonts BDO Grotesk / Host Grotesk for
+text and numbers, Geist Mono for controls). There is no theme switcher and no
+per-browser choice. Hyperion, as specified above, stays the reference for
+meaning (state vocabulary, confirmation levels, motion, responsive contract)
+and its values are the unscoped token defaults in `src/ui/index.css` that
+Hyperdash overrides. Hyperdash overrides tokens only, never behavior. The
+token contract and the structural hook classes it styles live in
+`src/ui/themes/README.md`.
 
 One-of-N choices (timeframes, modes, enums, on/off) use the `Segmented`
 component, never ad-hoc button rows.
 
-Under any theme the binding rules still hold: color is never the only
-signal (§2.1), projections never wear green/red (§1.6), and every
-API-backed surface keeps its §6 states.
+The binding rules still hold: color is never the only signal (§2.1),
+projections never wear green/red (§1.6), and every API-backed surface keeps
+its §6 states.

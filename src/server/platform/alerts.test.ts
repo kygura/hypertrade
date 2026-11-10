@@ -26,7 +26,7 @@ describe("ready push", () => {
     pub(opp({ id: "b" }));
     await Bun.sleep(0);
     expect(sent).toHaveLength(2);
-    expect(sent[0]!.body).toEndWith("https://app.example.com/");
+    expect(sent[0]!.body).toEndWith("https://app.example.com/feed");
     expect(sent[0]!.body).not.toContain("terminal");
   });
 });

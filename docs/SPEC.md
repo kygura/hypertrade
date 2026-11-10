@@ -2,6 +2,12 @@
 
 A single deployable web application merging three prior projects (`../hyperion`, `../marketwatch`, `../marketstate`) into one personal tool, usable on laptop and mobile, deployed on Vercel.
 
+## Product
+
+> **Amendment, 2026-11 (live-market rethink).** This aim governs the default nav; the pillars below describe the wider codebase, much of which is now parked (docs/TASKS.md "Parked").
+
+Hypertrade is a live market read of Hyperliquid perps for a discretionary trader running a small book. In under ten seconds it shows what the market is doing, where leverage is crowded and what is unusual right now, with every number in plain words. Every screen in the default nav renders from Hyperliquid's public API on a cold deploy with an empty database. Anything that needs an always-on worker or stored history stays out of the nav until that data exists, and is never shown as an empty "—" panel.
+
 ## Product pillars
 
 1. **Assets & Branches** — track a portfolio of crypto assets and simulate alternate allocation strategies ("branches"). A branch is a named, editable allocation strategy (e.g. "60/40 ETH-stables, rebalance monthly") evaluated against real historical price data and projectable forward under speculative scenarios.
@@ -14,7 +20,7 @@ A single deployable web application merging three prior projects (`../hyperion`,
 > **Amendment, 2026-10-16 (phase 8).** Hosting, Backend and Scheduling below describe the Vercel deployment, which still works (`api/index.ts`, `vercel.json`; `.github/workflows/platform-tick.yml` runs the platform loops once an hour against Postgres). The upgrade path is one always-on Bun service on Railway that serves `dist/` and `/api/*` from one origin with the worker loops in the same process (§ Platform P0.1–P0.3; README "Railway"). Cron-shaped jobs stay on GitHub Actions and target whichever origin `APP_URL` names. Auth, Frontend, Database, LLM and Package manager are the same on both.
 
 - **Hosting**: Vercel. Git-connected; pushes to the repo redeploy the app. Routine outputs are committed files, so a routine run = fresh deploy with fresh data.
-- **Frontend**: React 19 + Vite + TypeScript + Tailwind CSS v4 (CSS-native `@theme`, no tailwind.config). Recharts for charts (lightweight-charts for the markets drill-in chart). React Router. Looks are themes (`src/ui/themes/`): `hyperdash` is the default, `tradexyz` and `hyperion` (the unscoped token defaults in `index.css`: Geist Mono via the `geist` package, self-hosted) are switchable from the top bar and the choice persists per browser; docs/design/README.md and `src/ui/themes/README.md` hold the contract.
+- **Frontend**: React 19 + Vite + TypeScript + Tailwind CSS v4 (CSS-native `@theme`, no tailwind.config). Recharts for charts (lightweight-charts for the markets drill-in chart). React Router. One look, Hyperdash (`data-theme="hyperdash"` on `<html>`, tokens in `index.css` and `src/ui/themes/`); there is no theme switcher. docs/design/README.md holds the contract.
 - **Backend**: Hono on Vercel Functions — one catch-all function at `api/index.ts` serving `/api/*`. Runtime: Node (Vercel default), code written to also run under `bun dev` locally.
 - **Database**: Supabase Postgres (hosted; serverless has no disk). Accessed from API routes via `postgres` (postgres.js) with `DATABASE_URL`. No Supabase client SDK needed — plain SQL through a thin data layer.
 - **Scheduling**: Vercel cron cannot run sub-daily on Hobby, so collection is an authenticated endpoint `POST /api/cron/collect` (header `x-cron-token: $CRON_TOKEN`) triggered by a GitHub Actions workflow on `schedule` (every 15 min) living in this repo (`.github/workflows/collect.yml`). A daily Vercel cron entry hits the same endpoint as fallback.
@@ -119,15 +125,17 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 ## UI views (design pass produces docs/design/README.md; implementation follows it)
 
 - `/login` — password gate
-- `/` **Cockpit** (TRADE · FEED) — the landing (§ Platform P3): ranked opportunity feed, liquidation map, detail with APPROVE/REJECT, system-health strip, desk kill switch. `/?review=1` redirects to `/terminal?review=1`.
-- `/terminal` **Terminal** (TRADE · CHANGES, § Intel) — what changed since the last look against the operator's positions and watchlist, news mapped to positions, catalysts, exposure, flow heatmap, research. `/asset/:coin` is its per-coin drill-in. Sibling routes `/watch`, `/journal`, `/theses`, `/query`, `/order` and `/desk` share one sticky sub-tab strip with `/` and `/terminal` (`TerminalTabs`, a `SectionTabs`; order is Intel to Act: CHANGES, WATCH, JOURNAL, THESES, QUERY, FEED, ORDER, DESK); the shell's TRADE cell is active on all of them. Cockpit feed items and Terminal change items stay separate lists (different status machines); the family shares the tab bar, the coin drill and the action path.
-- `/overview` — no page: redirects to `/markets`. The key metrics strip (`MetricsStrip`: total OI, funding skew, fear/greed, BTC dominance, stablecoin cap) lives in the MARKET header, under `MarketTabs`, on every MARKET route.
-- **MARKET** family (`MarketTabs`: PERPS, SECTORS, STATE, CYCLES) — `/markets`, `/sectors`, `/state`, `/cycles` and their drills, one shell cell.
-- **RESEARCH** family (`LabTabs`: SEARCH, RUNS, CATALOGUE, PULSE, BRANCHES) — `/lab/*` and `/branches`, one shell cell.
+- `/` **MARKET** — the landing: the live market read, rendered in the browser from Hyperliquid's public info API and WS with no server state (READ, SIGNALS, OI MAP, FUNDING HEATMAP, FUNDING and BASIS boards, MOVERS and AT CAP, ALL PERPS; docs/design/README.md §5). If the direct HL call fails it falls back to `GET /api/hl/markets`.
+- `/markets/:coin` — the coin page (drill-in, no nav cell): perp header with a read line, the coin's signals, the multi-timeframe chart (`/api/candles/:coin`, falling back to HL candles and funding in the browser) and cross-venue funding. `/markets` redirects to `/`; `/asset/:coin` redirects to `/markets/:coin`.
+- `/feed` **Cockpit** (parked, reachable by URL; § Platform P3): ranked opportunity feed, liquidation map, detail with APPROVE/REJECT, system-health strip, desk kill switch. It needs the always-on scanner, crawler and liqmap loops.
+- `/terminal` **Terminal** (parked, reachable by URL; TRADE · CHANGES, § Intel) — what changed since the last look against the operator's positions and watchlist, news mapped to positions, catalysts, exposure, flow heatmap, research. `/asset/:coin` is its per-coin drill-in. Sibling routes `/watch`, `/journal`, `/theses`, `/query`, `/order` and `/desk` share one sticky sub-tab strip with `/` and `/terminal` (`TerminalTabs`, a `SectionTabs`; order is Intel to Act: CHANGES, WATCH, JOURNAL, THESES, QUERY, FEED, ORDER, DESK); the shell's TRADE cell is active on all of them. Cockpit feed items and Terminal change items stay separate lists (different status machines); the family shares the tab bar, the coin drill and the action path.
+- `/overview` — no page: redirects to `/markets` (and on to `/`). The key metrics strip (`MetricsStrip`: total OI, funding skew, fear/greed, BTC dominance, stablecoin cap) is parked with `MarketTabs`.
+- **MARKET** cell — `/` and `/markets/:coin`. `/sectors`, `/state` and `/cycles` (with `MarketTabs` and `MetricsStrip`) are parked: routes kept, out of the nav.
+- **RESEARCH** cell (`LabTabs`: SEARCH, RUNS, CATALOGUE, PULSE) — `/lab/*`. `/branches` is parked: route kept, out of the tab row.
 - `/branches` — list + create; `/branches/:id` — back link `← BRANCHES`; editor (allocation table, rebalance, scenario) + equity curve vs benchmarks + drawdown + forward projection fan chart
 - `/sectors` — mindshare treemap/grid of routine-defined sectors sized by mindshare, colored by momentum; rotations list; per-sector drill-in with token-level OI/funding. One selection drives both the narratives panel and the sector drill-in
 - `/state` — full MarketState briefing (domains, thesis with Observe/Infer/Forecast, risks) + history browser + trigger button
-- `/markets` — Hyperliquid universe table (price, 24h, OI, funding) with drill-in `/markets/:coin`: links to `/asset/:coin` (INTEL), live perp context, multi-timeframe chart (1m–1M, stitched deep history, funding/OI/premium panes), cross-venue funding
+- ALL PERPS (the former `/markets` table, now a panel on `/`) — Hyperliquid universe table (price, 24h, OI, funding APR, premium bp) with drill-in `/markets/:coin`: live perp context, multi-timeframe chart (1m–1M, stitched deep history when stored, funding/OI/premium panes), cross-venue funding
 - `/cycles`, `/cycles/eth` — **CYCLES**: the BTC and ETH cycle view ported from hl-cycles (daily/weekly log chart over HTF phase bands — accumulation, expansion, euphoria, distribution, markdown, capitulation — with SMA200, halvings and past bull-run onsets) plus a next-bull-run estimate: four timing methods (run-to-run rhythm, halving offset, bear-market low, previous top) projected from past run starts — dated by breakout (start of the final doubling into euphoria: Oct 2016, Oct 2020, Oct 2023; default) or by euphoria onset (toggle) — pooled into a central month, core and full window drawn past the last bar; cycle analogs indexed to each top; "higher highs on lower heat" (all-time-high legs, split by 20% pullbacks, that peaked on at least 0.05 less heat than the leg before within one cycle) as chart markers and a table; past runs table. `GET /api/cycles?coin=BTC|ETH&tf=1d|1w` (`src/server/routes/cycles.ts`, model in `src/shared/cycles.ts` + `cycleForecast.ts`) runs on stored 1d candles, topped up from Bitstamp when storage doesn't reach far enough back and from Coin Metrics' daily reference price (close only) below the oldest venue bar (ETH before Aug 2017). ETH is read on BTC's halving clock.
 - `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` — the **ENGINE** console: companion to the Hyperion operator terminal for the Jev-driven strategy runtime (configure, dry-run, approve/reject proposals, governor and kill switch, venues). The engine kill switch is a separate one-way typed-word action on `/governor`.
 - `/desk` — **DESK** (TRADE · DESK): agentic portfolio desk (§ Desk). Header strip (venue, equity, day PnL, model, approval mode, kill switch: typed-word dialog shared with the Cockpit via `useDeskKill` / `KillSwitchDialog`), ask panel with agent lanes per run (PM + specialists, tool chips, reports) and the streamed answer, runs history with replay, proposals queue (approve opens a confirm dialog; reject is a plain click; governor verdict, sizing), book (paper + watched HL account, close), alerts feed.
@@ -135,11 +143,11 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 
 - `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id` — **LAB** (§ Lab); `/lab` redirects to `/lab/search`. Any unknown path redirects to `/`.
 
-Nav: five shell cells (TRADE, MARKET, RESEARCH, ASK, ENGINE), under the nine-cell ceiling in docs/design/README.md §5.2. Each family switches through a `SectionTabs` row; docs/design/README.md §5 holds the rule for adding a cell.
+Nav: two shell cells, MARKET (`/`) and RESEARCH (`/lab`), under the nine-cell ceiling in docs/design/README.md §5.2. TRADE, ASK and ENGINE are parked: their routes still resolve by URL, but they have no cell until the loop or state they need exists (docs/TASKS.md "Parked"). docs/design/README.md §5 holds the rule for adding a cell.
 
 Confirmation levels: (1) plain click for reversible or read-only actions; (2) a confirm dialog (`ConfirmDialog`; the Cockpit's `TicketDialog` on the shared `DialogShell`) for anything that places, approves or cancels an order (Desk APPROVE, Cockpit APPROVE, `/order` place, engine decision approve); (3) a typed word for kill switches only (desk KILL, engine KILL). Resuming entries is Level 2.
 
-Design language: dark-only, zero radius, dense terminal aesthetic, driven by tokens (the Hyperion defaults, overridden per theme; default theme `hyperdash`), and it MUST work on mobile — docs/design/README.md is the contract.
+Design language: dark-only, zero radius, dense terminal aesthetic, driven by tokens (one look, Hyperdash), and it MUST work on mobile — docs/design/README.md is the contract.
 
 ## Desk (phase 3)
 
@@ -494,6 +502,8 @@ src/ui/pages/cockpit/*            # landing cockpit (see docs/design/terminal.md
 - `GET /health`: the existing `/api/health`, extended with each loop's last beat, WS state and last message age, scan age, crawler polls per minute and address count. It stays public and answers even when loops are down.
 
 ### P3. UI delta
+
+> **Amendment, 2026-11 (live-market rethink).** The cockpit moved from `/` to `/feed` and left the nav; `/` is the live MARKET read (§ UI views). The rest of this section describes the parked cockpit.
 
 The cockpit is `/` and the Terminal is `/terminal`; both sit in the TRADE `TerminalTabs` family (as FEED and CHANGES) with the sibling routes, which keep their URLs. The cockpit layout, states and interactions follow `docs/design/terminal.md` § Cockpit, written in the design pass of this phase:
 - a ranked feed (the spec's row fields);
