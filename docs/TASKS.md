@@ -23,12 +23,11 @@ object; 6 shell cells today against a ceiling of 9, target 5):
 Research terminal follow-ups (docs/RESEARCH.md; each changes live scanner output, applied migrations
 or study semantics, so each needs its own change):
 
-- [ ] Scanner funding windows: 24 h in code vs 7 d / 14 d in SPEC P0.9; decide with an event study.
-- [ ] The desk regime classifier is applied to a 1 h return in `platform/features.ts`; check what it was
-  built for and fix the input or the classifier.
-- [ ] Five separate "my coins" lists (watchlist, positions, desk, Lab `mine`, radar); one source.
-- [ ] Duplicate migration number 022 in `db/migrations/`; add the next number for any fix, never edit an
-  applied one.
+- [ ] Scanner funding windows: SPEC P0.9 now describes the 24 h ring the code uses. A 7 d / 14 d funding
+  feature needs the stored `funding` table loaded into the scanner tick; decide with an event study.
+- [ ] Monitoring watchlist vs operator's markets: `intel_watchlist` / `DESK_WATCHLIST` (4 coins by default)
+  and `myMarkets` (`PLATFORM_MY_MARKETS`, 7) stay separate lists, and the desk watch loop reads
+  `DESK_WATCHLIST` only, not the UI-edited `intel_watchlist`. Merging changes live alerts; decide first.
 - [ ] Event study stop/target fixed at 1.5 / 3 ATR (`STUDY_DEFAULTS`, `lib/study.ts`) with no UI control.
 - [ ] `/lab/study` cannot tell whether the rule is already catalogued (SAVE offers it again).
 
