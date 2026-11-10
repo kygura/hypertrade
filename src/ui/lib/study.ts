@@ -1,27 +1,77 @@
 import { RuleSchema } from '../../server/lab/types'
-import { STUDY_DEFAULTS, StudyRequestSchema, type StudyRequest } from '../../shared/research'
+import { STUDY_DEFAULTS, STUDY_EXIT_MAX, StudyRequestSchema, type StudyRequest } from '../../shared/research'
 import { fmtSigned, type Rule, type StudyArgs, type StudyResult } from './lab'
 
 // /lab/study helpers (docs/RESEARCH.md "Study"): the `?rule=` link contract,
 // the universe control → lab_event_study args, and the verdict words. Pure,
 // so the board and the rule drill can link here without the page.
 
+/** Stop and target of a study, in ATR. */
+export type StudyExits = { stopAtr: number; targetAtr: number }
+
+const tenth = (x: number) => Math.round(x * 10) / 10
+
+/** One exit as typed or read from the URL → its value to 0.1 ATR (as the server keys it), or null unless in (0, max]. */
+export function exitValue(raw: string | null | undefined, max: number): number | null {
+  if (raw == null || raw.trim() === '') return null
+  const n = tenth(Number(raw))
+  return Number.isFinite(n) && n > 0 && n <= max ? n : null
+}
+
+/** `?stop=&target=` → the study's exits; a missing or bad value is that exit's default. */
+export function parseExitParams(stop: string | null | undefined, target: string | null | undefined): StudyExits {
+  return {
+    stopAtr: exitValue(stop, STUDY_EXIT_MAX.stopAtr) ?? STUDY_DEFAULTS.stopAtr,
+    targetAtr: exitValue(target, STUDY_EXIT_MAX.targetAtr) ?? STUDY_DEFAULTS.targetAtr,
+  }
+}
+
+/** The `stop`/`target` query pairs of these exits: each omitted at its default. */
+export function exitParams(e: StudyExits): [string, string][] {
+  return [
+    ...(e.stopAtr !== STUDY_DEFAULTS.stopAtr ? [['stop', String(e.stopAtr)] as [string, string]] : []),
+    ...(e.targetAtr !== STUDY_DEFAULTS.targetAtr ? [['target', String(e.targetAtr)] as [string, string]] : []),
+  ]
+}
+
+/**
+ * The exits form: the typed draft against the exits the shown study ran with. Typing never runs a study (each run
+ * is a trial): `canRun` once the draft is valid and differs, and only RUN (which puts it in the URL) runs it.
+ */
+export function exitsForm(draft: { stop: string; target: string }, applied: StudyExits): { exits: StudyExits | null; dirty: boolean; canRun: boolean; error: string | null } {
+  const stopAtr = exitValue(draft.stop, STUDY_EXIT_MAX.stopAtr)
+  const targetAtr = exitValue(draft.target, STUDY_EXIT_MAX.targetAtr)
+  const exits = stopAtr != null && targetAtr != null ? { stopAtr, targetAtr } : null
+  const dirty = !exits || exits.stopAtr !== applied.stopAtr || exits.targetAtr !== applied.targetAtr
+  const error = stopAtr == null ? `STOP: 0.1–${STUDY_EXIT_MAX.stopAtr} ATR` : targetAtr == null ? `TARGET: 0.1–${STUDY_EXIT_MAX.targetAtr} ATR` : null
+  return { exits, dirty, canRun: exits != null && dirty, error }
+}
+
 /**
  * Link to the event study of a rule: `/lab/study?rule=<encodeURIComponent(JSON)>`
- * plus `&coin=<encodeURIComponent(coin)>` when a coin is given.
+ * plus `&coin=<encodeURIComponent(coin)>` when a coin is given, and `&stop=&target=`
+ * for exits other than the defaults.
  */
-export function studyHref(rule: Rule, coin?: string | null): string {
+export function studyHref(rule: Rule, coin?: string | null, exits: StudyExits = STUDY_DEFAULTS): string {
   const q = `rule=${encodeURIComponent(JSON.stringify(rule))}`
-  return `/lab/study?${q}${coin ? `&coin=${encodeURIComponent(coin)}` : ''}`
+  const ex = exitParams(exits).map(([k, v]) => `&${k}=${v}`).join('')
+  return `/lab/study?${q}${coin ? `&coin=${encodeURIComponent(coin)}` : ''}${ex}`
 }
 
 /** Path id of an ad-hoc (unsaved, run-less) rule in the drill: /lab/rules/study?rule=… resolves from `?rule=`. */
 export const ADHOC_RULE_ID = 'study'
 
 /** OPEN RULE from the study: the rule drill for an ad-hoc rule, with a back link to this study. */
-export function ruleDrillHref(rule: Rule, coin?: string | null): string {
-  return `/lab/rules/${ADHOC_RULE_ID}${studyHref(rule, coin).slice('/lab/study'.length)}&from=study`
+export function ruleDrillHref(rule: Rule, coin?: string | null, exits?: StudyExits): string {
+  return `/lab/rules/${ADHOC_RULE_ID}${studyHref(rule, coin, exits).slice('/lab/study'.length)}&from=study`
 }
+
+/**
+ * An ad-hoc rule's catalogue id, if saved: the evaluation's `id` is the server's rule hash, which is the catalogue's
+ * key (lab_catalogue_save), so a match in the catalogue list means it is already there.
+ */
+export const catalogueIdIn = (id: string | null | undefined, catalogue: readonly { id: string }[] | null | undefined): string | null =>
+  id && catalogue?.some((e) => e.id === id) ? id : null
 
 /** `?rule=` value (already URL-decoded) → a validated Rule; missing → neither; bad JSON or shape → the error to show. */
 export function parseRuleParam(raw: string | null | undefined): { rule: Rule | null; error: string | null } {
@@ -44,22 +94,24 @@ export type StudyUniverse = { kind: 'coin' } | { kind: 'top'; n: number } | { ki
 /** The tool's own default universe (top 20 by day volume; also its cap without a database). */
 export const DEFAULT_TOP = 20
 /** Universe control → lab_event_study args. `coin`: the study's coin (`?coin=`, else the rule's asset). */
-export function studyArgs(rule: Rule, coin: string, u: StudyUniverse): StudyArgs {
-  const base = { rule, ...STUDY_DEFAULTS }
+export function studyArgs(rule: Rule, coin: string, u: StudyUniverse, exits: StudyExits = STUDY_DEFAULTS): StudyArgs {
+  const base = { rule, stopAtr: exits.stopAtr, targetAtr: exits.targetAtr }
   if (u.kind === 'coin') return { ...base, coins: [coin] }
   if (u.kind === 'mine') return { ...base, mine: true }
   return { ...base, top: u.n }
 }
 
 /**
- * Which endpoint runs the study. The board's canonical studies (this coin, or the default top-20 universe, with the
- * default exits) go through POST /api/research/study: one cache with the board, one trial per rule, scope and UTC
- * day, and a run here shows on the board. Any other universe (another top N, my markets) calls the Lab tool.
+ * Which endpoint runs the study. The board's canonical universes (this coin, or the default top 20) go through
+ * POST /api/research/study, with any exits (the route keys its cache by them): one cache with the board, one trial
+ * per rule, scope, exits and UTC day, and a default-exit run here shows on the board. Any other universe (another
+ * top N, my markets) calls the Lab tool.
  */
-export function studyRoute(rule: Rule, coin: string, u: StudyUniverse): { kind: 'board'; body: StudyRequest } | { kind: 'lab'; args: StudyArgs } {
-  const body = u.kind === 'coin' ? { rule, coin, ...STUDY_DEFAULTS } : u.kind === 'top' && u.n === DEFAULT_TOP ? { rule, ...STUDY_DEFAULTS } : null
+export function studyRoute(rule: Rule, coin: string, u: StudyUniverse, exits: StudyExits = STUDY_DEFAULTS): { kind: 'board'; body: StudyRequest } | { kind: 'lab'; args: StudyArgs } {
+  const ex = { stopAtr: exits.stopAtr, targetAtr: exits.targetAtr }
+  const body = u.kind === 'coin' ? { rule, coin, ...ex } : u.kind === 'top' && u.n === DEFAULT_TOP ? { rule, ...ex } : null
   const ok = body ? StudyRequestSchema.safeParse(body) : null
-  return ok?.success ? { kind: 'board', body: ok.data } : { kind: 'lab', args: studyArgs(rule, coin, u) }
+  return ok?.success ? { kind: 'board', body: ok.data } : { kind: 'lab', args: studyArgs(rule, coin, u, exits) }
 }
 
 export type EventVerdict = StudyResult['verdict']

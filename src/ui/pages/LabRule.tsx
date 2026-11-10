@@ -9,6 +9,7 @@ import { WindowStatsTable } from '../components/lab/WindowStatsTable'
 import { SensitivityGrid } from '../components/lab/SensitivityGrid'
 import { LatestValuesRow } from '../components/lab/LatestValuesRow'
 import { SaveToCatalogueForm } from '../components/lab/SaveToCatalogueForm'
+import { InCatalogueLink } from '../components/lab/InCatalogueLink'
 import { RemoveRuleDialog } from '../components/lab/RemoveRuleDialog'
 import { DataTo, LabFooter, StabValue } from '../components/lab/common'
 import {
@@ -28,7 +29,7 @@ import {
   type LabState,
 } from '../lib/lab'
 import type { AtSearch } from '../components/lab/WindowStatsTable'
-import { parseRuleParam, studyHref } from '../lib/study'
+import { catalogueIdIn, parseExitParams, parseRuleParam, studyHref } from '../lib/study'
 
 // /lab/rules/:id — rule drill (docs/design/README.md §10.9). Full-view route like the
 // markets drill: linkable from MCP/CLI output, back-button friendly.
@@ -60,7 +61,7 @@ export function LabRule() {
   const ruleParam = params.get('rule')
   const adhoc = useMemo(() => parseRuleParam(ruleParam).rule, [ruleParam])
   const from = params.get('from') ?? ''
-  const back = from === 'study' && adhoc ? { label: '← STUDY', to: studyHref(adhoc, params.get('coin')) } : (BACK[from] ?? BACK.results!)
+  const back = from === 'study' && adhoc ? { label: '← STUDY', to: studyHref(adhoc, params.get('coin'), parseExitParams(params.get('stop'), params.get('target'))) } : (BACK[from] ?? BACK.results!)
   const navigate = useNavigate()
   const location = useLocation()
   const focusSave = (location.state as { focusSave?: boolean } | null)?.focusSave === true
@@ -112,6 +113,8 @@ export function LabRule() {
   const dsrN: DsrN = current ? freshDsrN(trialsN ?? null) : baseDsrN
   const atSearch: AtSearch | null = base ? { label: runRule ? 'AT SEARCH' : 'AT SAVE', ev: base, dsrN: baseDsrN } : null
   const metricDefs = metrics.data ?? []
+  // An ad-hoc rule (/lab/rules/study?rule=…) that is already saved: link to its entry instead of offering SAVE again.
+  const adhocCatalogueId = !base && adhoc && !savedEntry ? catalogueIdIn(fresh?.id, catalogue.data) : null
   const defaultName = useMemo(() => (rule ? defaultRuleName(rule, metricDefs) : ''), [ruleKey, metrics.data]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Arriving from a card's SAVE: the save form is pre-focused.
@@ -255,6 +258,10 @@ export function LabRule() {
               <PanelHeader title="SAVE TO CATALOGUE" />
               {catalogue.loading && !catalogue.data ? (
                 <SkeletonRows rows={2} />
+              ) : adhocCatalogueId ? (
+                <div className="p-3">
+                  <InCatalogueLink id={adhocCatalogueId} />
+                </div>
               ) : (
                 <SaveToCatalogueForm
                   ref={nameRef}

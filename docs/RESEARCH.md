@@ -176,17 +176,22 @@ insufficient = muted. Verdict is always text plus colour, never colour alone.
 
 Input: `?rule=` (URL-encoded JSON, zod-parsed; a bad value shows an error block and the
 empty form) and optional `?coin=`; universe control (this coin · top N · my markets).
-Without a rule: a short empty state linking to SEARCH and CATALOGUE. The board's canonical
-studies (this coin, or the default top-20 universe, default exits) run through
-`POST /api/research/study` (`studyRoute`, `src/ui/lib/study.ts`), so opening a row with
-evidence reuses the cached study instead of logging a new trial, and a run here shows on the
-board. Other universes (another top N, my markets) call `lab_event_study` directly.
+Without a rule: a short empty state linking to SEARCH and CATALOGUE. Exits: STOP and TARGET in
+ATR (step 0.1, the route's bounds), in the URL as `?stop=&target=` (omitted at the 1.5 / 3
+defaults) so a study link reproduces it. Editing them never runs a study: RUN does (each run is
+a trial); a first load with a rule runs as before. The board keeps the defaults. The canonical
+universes (this coin, or the default top 20) run through `POST /api/research/study`
+(`studyRoute`, `src/ui/lib/study.ts`) with any exits, so opening a row with evidence reuses the
+cached study instead of logging a new trial, and a default-exit run here shows on the board.
+Other universes (another top N, my markets) call `lab_event_study` directly.
 
 Output, in this order: rule text; verdict with the screen line (events, weeks,
 expectancy, upper95); train vs holdout; the condition funnel; per-coin table (`DataTable`);
 event list (first 200 of `eventListTotal`); survivorship note; `idea n of N`.
 Actions: OPEN RULE (rule drill with equity and sensitivity), SAVE (existing catalogue
-form; the save-bar verdict still applies).
+form; the save-bar verdict still applies). A rule already in the catalogue (the study's
+`catalogueId`) shows `IN CATALOGUE →` to `/lab/rules/:id` instead of SAVE; so does the ad-hoc
+rule drill (`/lab/rules/study?rule=…`), matching its evaluation id against the catalogue.
 
 ### Other surfaces
 
