@@ -300,8 +300,11 @@ specialist, 3 proposals, 3 alerts, 240 s.
 
 **Watching.** `tick()` (`watch.ts`) settles paper stops, checks the day-loss
 limit, and evaluates triggers: 1h/4h moves, funding extremes, 4h OI surges,
-positions near their stop or without one, breadth shocks. Each alerts once
-per 3h; a trigger (or the scheduled review, `DESK_REVIEW_HOURS`) wakes the
+positions near their stop or without one, breadth shocks. The coins it watches
+are held positions plus the WATCH-page watchlist (`intel_watchlist`), re-read
+every tick; `DESK_WATCHLIST` applies only while that list is empty. A coin new
+to the list is recorded on its first tick and evaluated from the next. Each
+alerts once per 3h; a trigger (or the scheduled review, `DESK_REVIEW_HOURS`) wakes the
 team for a cycle, capped by `DESK_MAX_CYCLES_PER_DAY` and
 `DESK_CYCLE_COOLDOWN_MIN`. It runs from `collect.yml`'s `desk` job every 15
 minutes (set the repo variable `DESK_ENABLED=true`), or every minute from
@@ -390,8 +393,9 @@ Telegram deep links to `/terminal?review=1` open the Terminal and log a review; 
 rows live in `intel_positions` and are edited from the Terminal. `hl` is the
 account at `DESK_WATCH_ADDRESS`, read-only. `desk` is the Desk's paper or
 testnet book. A source that fails is listed in `sources` with its error and
-contributes nothing; the page still loads. The watchlist is `intel_watchlist`,
-falling back to `DESK_WATCHLIST` when it is empty.
+contributes nothing; the page still loads. The watchlist is `intel_watchlist`
+(edited on the WATCH page), falling back to `DESK_WATCHLIST` when it is empty.
+It is the one monitoring list: the brief and the desk watch tick both read it.
 
 **Snapshot store.** `intel_snapshots` holds one row per asset per tick: price,
 24 h volume, funding, open interest, premium, basis, and book depth and spread.

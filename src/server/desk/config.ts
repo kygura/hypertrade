@@ -51,7 +51,7 @@ export interface DeskConfig {
   paperSlippage: number;
   /** Hyperliquid account to watch read-only (positions, equity); never signs. */
   watchAddress?: string;
-  /** Coins the watch tick always checks, beyond held positions. */
+  /** DESK_WATCHLIST: the monitoring fallback when the UI watchlist (intel_watchlist) is empty; DeskService.watchlist() resolves the list in force. */
   watchlist: string[];
   /** Scout model/provider overrides; default: the analyst's server default. */
   scoutModel?: string;
@@ -111,7 +111,8 @@ export function loadDeskConfig(env: Env = process.env): DeskConfig {
     paperStartingEquity: num(env, "DESK_PAPER_EQUITY", 10_000, 100, 1e9),
     paperSlippage: 0.0005,
     watchAddress: address && /^0x[0-9a-fA-F]{40}$/.test(address) ? address.toLowerCase() : undefined,
-    // Monitoring watchlist (desk move/OI pings, Intel fallback), kept narrow because each coin can alert; not myMarkets (platform/universe.ts).
+    // Fallback monitoring list: the WATCH page (intel_watchlist) is canonical for desk pings and the Intel brief, and this
+    // applies only while it is empty (intel/positions.ts watchedAssets). Kept narrow because each coin can alert; not myMarkets.
     watchlist: list(env.DESK_WATCHLIST, ["BTC", "ETH", "SOL", "HYPE"]),
     scoutModel: env.DESK_SCOUT_MODEL?.trim() || undefined,
     scoutProvider: env.DESK_SCOUT_PROVIDER?.trim() || undefined,

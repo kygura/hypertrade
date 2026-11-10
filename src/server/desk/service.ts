@@ -84,6 +84,13 @@ export interface DeskDeps {
   now?: () => Date;
   /** Overrides the venue the config selects (tests). */
   broker?: Broker;
+  /**
+   * The monitoring watchlist, resolved on every call (production: intel/positions.ts watchedAssets over
+   * intel_watchlist, so WATCH-page edits apply on the next tick). Absent → config.watchlist, the same
+   * env/default list the resolver returns for an empty table; only tests and services built without an
+   * Intel store take that path.
+   */
+  watchlist?: () => Promise<string[]>;
 }
 
 export class DeskService {
@@ -93,6 +100,7 @@ export class DeskService {
   readonly notifier: Notifier;
   readonly broker: Broker;
   private readonly clock: () => Date;
+  private readonly watchlistSource: () => Promise<string[]>;
   /** Serializes operator submits in this process (the store's takeState guards across processes). */
   private operatorLock: Promise<unknown> = Promise.resolve();
 
@@ -102,6 +110,7 @@ export class DeskService {
     this.data = d.data;
     this.notifier = d.notifier;
     this.clock = d.now ?? (() => new Date());
+    this.watchlistSource = d.watchlist ?? (async () => this.config.watchlist);
     this.broker =
       d.broker ??
       (d.config.venue === "hl-testnet" && d.config.hl
@@ -144,6 +153,11 @@ export class DeskService {
 
   async setReviewEveryHours(hours: number, by: string): Promise<void> {
     await this.store.setState(REVIEW_HOURS_KEY, { hours, by, at: this.now().toISOString() });
+  }
+
+  /** Coins the watch tick checks beyond held positions: the UI watchlist, else DESK_WATCHLIST, else the default. */
+  watchlist(): Promise<string[]> {
+    return this.watchlistSource();
   }
 
   async marks(): Promise<{ ctxs: AssetCtx[]; marks: Map<string, number> }> {

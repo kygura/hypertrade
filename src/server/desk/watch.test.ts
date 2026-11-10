@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { changeOver, evaluateTriggers, tick, WATCH_KEY, type WatchState } from "./watch.js";
+import { MemoryIntelStore } from "../intel/store.js";
+import { watchedAssets } from "../intel/positions.js";
 import { ctx, makeService, ScriptedProvider } from "./testkit.js";
 
 const HOUR = 3_600_000;
@@ -59,6 +61,35 @@ describe("tick", () => {
     await store.setState(WATCH_KEY, { ...(await store.getState<WatchState>(WATCH_KEY)), marks: { BTC: [[NOW + 3 * HOUR, 100_000]] }, lastCycleAt: new Date(NOW - 5 * HOUR).toISOString() });
     const third = await tick(service, { makeProvider: () => provider });
     expect(third.cycle).toEqual({ skipped: "daily cycle cap reached (1)" });
+  });
+
+  test("follows the UI watchlist each tick; a newly added coin needs a baseline tick before it can alert", async () => {
+    const clock = { now: new Date(NOW) };
+    const intel = new MemoryIntelStore();
+    const env = { DESK_WATCHLIST: "BTC", DESK_REVIEW_HOURS: "0" };
+    const crowded = ctx("ETH", 4000, { funding: 0.0001 }); // 87.6% APR: a funding trigger whenever ETH is evaluated
+    const { service, store } = makeService({ now: () => clock.now, env, ctxs: [ctx("BTC", 100_000), crowded], watchlist: () => watchedAssets(intel, env) });
+    const marked = async () => Object.keys((await store.getState<WatchState>(WATCH_KEY))?.marks ?? {}).sort();
+    const step = async () => {
+      clock.now = new Date(clock.now.getTime() + 15 * 60_000);
+      return tick(service, { runCycle: false });
+    };
+
+    // Empty table: DESK_WATCHLIST.
+    expect((await step()).triggers).toEqual([]);
+    expect(await marked()).toEqual(["BTC"]);
+
+    // Added on the WATCH page: watched on the next tick, but its first observation has no baseline.
+    await intel.putWatchlist([{ asset: "ETH", tags: [] }]);
+    expect((await step()).triggers).toEqual([]);
+    expect(await marked()).toEqual(["ETH"]);
+    expect((await step()).triggers.map((x) => x.key)).toEqual(["funding:ETH:1"]);
+
+    // Removed: no longer watched or evaluated.
+    await intel.putWatchlist([{ asset: "BTC", tags: [] }]);
+    clock.now = new Date(clock.now.getTime() + 4 * HOUR); // past the funding cooldown
+    expect((await step()).triggers).toEqual([]);
+    expect(await marked()).toEqual(["BTC"]);
   });
 
   test("a scheduled-review override fires a cycle at the overridden interval, not the env default", async () => {

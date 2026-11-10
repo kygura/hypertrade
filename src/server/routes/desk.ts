@@ -12,6 +12,8 @@ import { handleTelegramUpdate, type TelegramIntel, type TelegramUpdate } from ".
 import { SPECIALISTS } from "../desk/prompts.js";
 import { tick } from "../desk/watch.js";
 import { ExitProposalSchema } from "../desk/types.js";
+import { watchedAssets } from "../intel/positions.js";
+import { PgIntelStore } from "../intel/store.js";
 import { hasWebSearch } from "../llm/tools.js";
 
 // /desk — the agentic portfolio desk (docs/SPEC.md "Desk"). Session-cookie
@@ -54,7 +56,11 @@ export interface DeskRouteOptions {
 
 let shared: DeskService | null = null;
 export function defaultDeskService(): DeskService {
-  shared ??= new DeskService({ config: loadDeskConfig(), store: new PgStore(), data: liveMarketData, notifier: createNotifier() });
+  if (!shared) {
+    // Monitoring reads the WATCH-page list (intel_watchlist) each tick; DESK_WATCHLIST is its fallback.
+    const intel = new PgIntelStore();
+    shared = new DeskService({ config: loadDeskConfig(), store: new PgStore(), data: liveMarketData, notifier: createNotifier(), watchlist: () => watchedAssets(intel) });
+  }
   return shared;
 }
 
@@ -110,7 +116,7 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
       const pm = makeProvider("pm");
       const specialist = makeProvider("specialist");
       try {
-        const [kill, approval, review] = await Promise.all([s.killSwitch(), s.approval(), s.reviewEveryHours()]);
+        const [kill, approval, review, watchlist] = await Promise.all([s.killSwitch(), s.approval(), s.reviewEveryHours(), s.watchlist()]);
         return c.json({
           configured: !!pm,
           model: pm ? { provider: pm.id, label: pm.label ?? pm.id, pm: pm.model, scouts: specialist?.model ?? pm.model, scoutProvider: specialist?.id ?? pm.id, webSearch: hasWebSearch(pm) } : null,
@@ -121,7 +127,7 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
           approval,
           killSwitch: kill,
           limits: s.config.limits,
-          watchlist: s.config.watchlist,
+          watchlist,
           watchAddress: s.config.watchAddress ?? null,
           cyclesConnected: !!s.config.cyclesUrl,
           channels: s.notifier.channels,

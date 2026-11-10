@@ -25,9 +25,6 @@ or study semantics, so each needs its own change):
 
 - [ ] Scanner funding windows: SPEC P0.9 now describes the 24 h ring the code uses. A 7 d / 14 d funding
   feature needs the stored `funding` table loaded into the scanner tick; decide with an event study.
-- [ ] Monitoring watchlist vs operator's markets: `intel_watchlist` / `DESK_WATCHLIST` (4 coins by default)
-  and `myMarkets` (`PLATFORM_MY_MARKETS`, 7) stay separate lists, and the desk watch loop reads
-  `DESK_WATCHLIST` only, not the UI-edited `intel_watchlist`. Merging changes live alerts; decide first.
 
 Radar routine (2026-11-02): the 4 h setup board is retired (24 setups, all low conviction, −1.77R; it
 never saw news, sectors or HIP-3). `ROUTINE.md` is now a twice-daily radar: `bun run radar` scans every

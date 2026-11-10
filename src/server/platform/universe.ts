@@ -11,7 +11,8 @@ export const DEFAULT_MY_MARKETS = "BTC,ETH,HYPE,SOL,XPL,LIT,ZEC";
  * The operator's markets ("my markets"): the single resolver for every research universe that means the
  * coins the operator trades (`mine` in Lab and novelty, the routine board, `bun run signals`).
  * Precedence: PLATFORM_MY_MARKETS when non-blank, else DEFAULT_MY_MARKETS; upper-cased, blanks dropped.
- * Not the watchlist (intel_watchlist, else DESK_WATCHLIST: see intel/positions.ts watchedAssets).
+ * Not the monitoring watchlist: the WATCH page (intel_watchlist) is canonical for monitoring (desk pings, Intel
+ * brief), with DESK_WATCHLIST as its fallback (intel/positions.ts watchedAssets). The two lists are separate on purpose.
  */
 export const myMarkets = (env: string | undefined = process.env.PLATFORM_MY_MARKETS): string[] =>
   (env?.trim() || DEFAULT_MY_MARKETS).split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);

@@ -83,13 +83,13 @@ export class RecordingNotifier implements Notifier {
   }
 }
 
-export function makeService(opts: { ctxs?: AssetCtx[]; env?: Record<string, string>; now?: () => Date; config?: Partial<DeskConfig> } = {}) {
+export function makeService(opts: { ctxs?: AssetCtx[]; env?: Record<string, string>; now?: () => Date; config?: Partial<DeskConfig>; watchlist?: () => Promise<string[]> } = {}) {
   const now = opts.now ?? (() => new Date("2026-10-05T12:00:00Z"));
   const store = new MemoryStore(now);
   const data = new FakeData(opts.ctxs ?? [ctx("BTC", 100_000), ctx("ETH", 4_000), ctx("SOL", 200)]);
   const notifier = new RecordingNotifier();
   const config = { ...loadDeskConfig(opts.env ?? {}), ...opts.config };
-  const service = new DeskService({ config, store, data, notifier, now });
+  const service = new DeskService({ config, store, data, notifier, now, watchlist: opts.watchlist });
   return { service, store, data, notifier, config };
 }
 

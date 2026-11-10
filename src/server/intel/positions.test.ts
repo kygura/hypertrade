@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AccountState } from "../desk/types.js";
-import { loadExposure, watchedAssets } from "./positions.js";
+import { loadExposure, monitoringWatchlist, watchedAssets } from "./positions.js";
 import { MemoryIntelStore } from "./store.js";
 
 const acct = (venue: string, over: Partial<AccountState> = {}): AccountState => ({
@@ -76,5 +76,40 @@ describe("watchedAssets", () => {
     expect(await watchedAssets(store, {})).toEqual(["BTC", "ETH", "SOL", "HYPE"]);
     await store.putWatchlist([{ asset: "kPEPE", tags: ["meme"] }]);
     expect(await watchedAssets(store, { DESK_WATCHLIST: "BTC" })).toEqual(["kPEPE"]);
+  });
+});
+
+describe("monitoringWatchlist precedence", () => {
+  const ui = [{ asset: "kPEPE", tags: ["meme"] }];
+  const cases: Array<[string, Parameters<typeof monitoringWatchlist>[0], Record<string, string | undefined>, string[], boolean]> = [
+    ["table rows present, env set", ui, { DESK_WATCHLIST: "BTC" }, ["kPEPE"], false],
+    ["table rows present, env unset", ui, {}, ["kPEPE"], false],
+    ["empty table, env set", [], { DESK_WATCHLIST: "btc, hype" }, ["BTC", "HYPE"], true],
+    ["empty table, all unset", [], {}, ["BTC", "ETH", "SOL", "HYPE"], true],
+    ["store threw, env set", null, { DESK_WATCHLIST: "doge" }, ["DOGE"], true],
+    ["store threw, all unset", null, {}, ["BTC", "ETH", "SOL", "HYPE"], true],
+  ];
+  for (const [name, rows, env, assets, fallback] of cases) {
+    test(name, () => {
+      const r = monitoringWatchlist(rows, env);
+      expect(r.items.map((i) => i.asset)).toEqual(assets);
+      expect(r.fallback).toBe(fallback);
+    });
+  }
+
+  test("watchedAssets: a store failure falls back and logs once until a read succeeds", async () => {
+    const lines: string[] = [];
+    const log = (l: string) => lines.push(l);
+    let down = true;
+    const store = { getWatchlist: async () => (down ? Promise.reject(new Error("db down")) : [{ asset: "kPEPE", tags: [] }]) };
+    expect(await watchedAssets(store, { DESK_WATCHLIST: "BTC" }, log)).toEqual(["BTC"]);
+    expect(await watchedAssets(store, { DESK_WATCHLIST: "BTC" }, log)).toEqual(["BTC"]);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("db down");
+    down = false;
+    expect(await watchedAssets(store, { DESK_WATCHLIST: "BTC" }, log)).toEqual(["kPEPE"]);
+    down = true;
+    await watchedAssets(store, {}, log);
+    expect(lines).toHaveLength(2);
   });
 });
