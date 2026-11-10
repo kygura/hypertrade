@@ -1,14 +1,22 @@
-import type { NoveltyEntry, Opportunity } from "../../shared/platform.js";
-import type { RadarCall } from "../../shared/radar.js";
-import type { ResearchSignal } from "../../shared/research.js";
-import { ruleText } from "../lab/engine/rules.js";
+import type { LedgerStats, NoveltyEntry, Opportunity } from "../../shared/platform.js";
+import { RADAR_HORIZONS, type RadarCall } from "../../shared/radar.js";
+import type { LedgerEvidence, RadarScoreRow, ResearchSignal, ScorecardEvidence } from "../../shared/research.js";
+import { parseFeatureId } from "../lab/engine/features.js";
+import { fmtNum, ruleText } from "../lab/engine/rules.js";
 import { RuleSchema, type CatalogueEntry, type Condition, type MarketPulse, type Rule } from "../lab/types.js";
+import { SCORE_VERSION } from "../platform/score.js";
+import { groupStats } from "../platform/stats.js";
+import type { OutcomeRow } from "../platform/store.js";
+import { definitionForKind, definitionRule } from "../signals/definitions.js";
+import type { DefinitionHit } from "../signals/scan.js";
 
-// Live signals → ResearchSignal (docs/RESEARCH.md B2). Pure. A catalogue rule firing now carries its own rule;
-// a novelty item maps through NOVELTY_TABLE; platform opportunities and radar calls have no Lab twin (rule null).
-// `evidence` is attached later by the board from the study cache.
+// Live signals → ResearchSignal (docs/RESEARCH.md B2, Signals v2 S3). Pure. A catalogue rule firing now carries its
+// own rule; a novelty item maps through NOVELTY_TABLE; a signal definition in zone carries its own rule (universe
+// scope); an opportunity carries its ledger record as evidence and the daily definition of its setup kind as its
+// rule; a radar call carries its scorecard row and no rule (graded forward, not replayed). Study evidence (and an
+// opportunity's `dailyStudy`) is attached later by the board from the study cache.
 
-type Unstudied = Omit<ResearchSignal, "evidence">;
+type Unstudied = Omit<ResearchSignal, "dailyStudy">;
 
 const fixed = (x: number, d: number) => `${x >= 0 ? "+" : ""}${x.toFixed(d)}`;
 /** Float noise off a multiple of the step (0.15000000000000002), and -0 → 0. */
@@ -26,6 +34,7 @@ export function ruleSignal(e: CatalogueEntry, at: number): Unstudied {
     id: `rule:${e.rule.asset}:${e.id}`, source: "rule", coin: e.rule.asset, direction: e.rule.direction,
     headline: `catalogue rule "${e.name}" in zone · ${e.rule.direction} ${e.rule.horizonDays}d`, at,
     rule: e.rule, tested: e.rule.direction, scope: "coin", ruleText: ruleText(e.rule), href: `/lab/rules/${e.id}`,
+    evidence: null, definitionId: null,
   };
 }
 
@@ -106,26 +115,86 @@ export function noveltySignal(e: NoveltyEntry): Unstudied {
     headline: `${e.kind === "new_extreme" ? "new extreme" : "joint extreme"} ${e.barDate}: ${facts.join(", ")}`,
     at: Date.parse(e.detectedAt), rule, tested: rule?.direction ?? null, scope: rule ? "universe" : "coin",
     ruleText: rule && `tested as fade: ${rule.direction} when ${ruleText(rule)}`, href: null,
+    evidence: null, definitionId: null,
   };
 }
 
-/** Intraday scanner setups: no Lab twin. */
-export function opportunitySignal(o: Opportunity): Unstudied {
+/** "funding z(90) 2.41": a condition's feature and its value on the bar. */
+function featureFact(feature: string, value: number | null): string {
+  const s = parseFeatureId(feature);
+  const name = `${s.metric.replace(/^ht:/, "")}${s.transform === "raw" ? "" : ` ${s.transform}(${s.window})`}`;
+  return `${name} ${value == null ? "n/a" : fmtNum(value)}`;
+}
+
+/**
+ * A signal definition in zone on the latest closed bar (scan.ts). Studied over the Lab's default universe under one
+ * placeholder asset (UNIVERSE_ASSET), so every coin in zone shares one study. Headline: the observed values as facts.
+ * at = the bar's close.
+ */
+export function definitionSignal(h: DefinitionHit): Unstudied {
+  const d = h.definition;
+  const rule = definitionRule(d);
+  const facts = d.rule.conditions.map((c) => featureFact(c.feature, h.values[c.feature] ?? null));
+  if (d.rule.regime) facts.push(`trend ${d.rule.regime.trend.join("/")}`);
+  return {
+    id: `definition:${h.coin}:${d.id}`, source: "definition", coin: h.coin, direction: rule.direction,
+    headline: `${d.name} in zone ${h.date}: ${[...new Set(facts)].join(", ")}`,
+    at: Date.parse(`${h.date}T00:00:00Z`) + 86_400_000,
+    rule, tested: rule.direction, scope: "universe", ruleText: ruleText(rule), href: null,
+    evidence: null, definitionId: d.id,
+  };
+}
+
+/** Ledger stats by setup kind and horizon over the outcomes scored under the current SCORE_VERSION. */
+export const currentLedgerStats = (rows: readonly OutcomeRow[]): LedgerStats[] => groupStats(rows.filter((r) => r.scoreVersion === SCORE_VERSION));
+
+/** Ledger horizon an opportunity's evidence reads (the platform's evidence line reads the same). */
+export const LEDGER_HORIZON = "24h";
+
+/** An opportunity's setup kind in the ledger (groupStats rows, current score version); an empty record when the kind has none. */
+export function ledgerEvidence(setupKind: string, stats: readonly LedgerStats[]): LedgerEvidence {
+  const g = stats.find((s) => s.setupKind === setupKind && s.horizon === LEDGER_HORIZON && s.regime == null && s.tier == null);
+  return {
+    kind: "ledger", setupKind, horizon: LEDGER_HORIZON,
+    n: g?.n ?? 0, clusters: g?.clusters ?? 0, meanNet: g?.meanNet ?? null, ci95: g?.ci95 ?? null, hitRate: g?.hitRate ?? null,
+  };
+}
+
+/**
+ * An intraday scanner setup: its ledger record as evidence (null when the ledger could not be read), and the daily
+ * definition of its setup kind as the rule, studied over the universe: the daily version of the thesis, not a test
+ * of the intraday setup. No rule when no definition names the kind on the opportunity's side.
+ */
+export function opportunitySignal(o: Opportunity, ledger: readonly LedgerStats[] | null = null): Unstudied {
   const edge = o.netEdgeBps == null ? "" : ` · net edge ${fixed(o.netEdgeBps, 0)} bps (${o.edgeBasis})`;
+  const def = definitionForKind(o.setupKind);
+  const daily = def && def.rule.direction === o.direction ? def : undefined;
+  const rule = daily ? definitionRule(daily) : null;
   return {
     id: `opportunity:${o.coin}:${o.id}`, source: "opportunity", coin: o.coin, direction: o.direction,
     headline: `${o.setupKind} · ${o.status} · score ${o.score.toFixed(2)} · tier ${o.liquidityTier}${edge}`,
-    tested: null, scope: "coin",
-    at: Date.parse(o.createdAt), rule: null, ruleText: null, href: `/feed?id=${o.id}`,
+    tested: rule?.direction ?? null, scope: rule ? "universe" : "coin",
+    at: Date.parse(o.createdAt), rule, ruleText: rule && ruleText(rule), href: `/feed?id=${o.id}`,
+    evidence: ledger ? ledgerEvidence(o.setupKind, ledger) : null, definitionId: daily?.id ?? null,
   };
 }
 
-/** A landed radar call: a dated catalyst thesis, no Lab twin. The headline carries the code-stamped numbers only. */
-export function radarSignal(c: RadarCall): Unstudied {
+/** Scorecard horizon a radar call's evidence reads: the longest graded one (the kill-watch window). */
+export const SCORECARD_HORIZON_DAYS = Math.max(...RADAR_HORIZONS);
+
+/** The call's stance in the radar scorecard at SCORECARD_HORIZON_DAYS; null without a row (no graded call yet). */
+export function scorecardEvidence(c: Pick<RadarCall, "stance">, rows: readonly RadarScoreRow[]): ScorecardEvidence | null {
+  const r = rows.find((x) => x.stance === c.stance && x.horizonDays === SCORECARD_HORIZON_DAYS);
+  return r ? { kind: "scorecard", stance: r.stance, horizonDays: r.horizonDays, n: r.n, meanPct: r.meanPct, hitRate: r.hits / r.n } : null;
+}
+
+/** A landed radar call: a dated catalyst thesis, graded forward by the scorecard, not replayed (rule null). The headline carries the code-stamped numbers only. */
+export function radarSignal(c: RadarCall, scorecard: readonly RadarScoreRow[] = []): Unstudied {
   const graded = Object.entries(c.rel).map(([h, x]) => `+${h}d ${fixed(x, 1)}% vs BTC`);
   return {
     id: `radar:${c.market}:${c.id}`, source: "radar", coin: c.market, direction: c.direction,
     headline: [`${c.stance} ${c.direction} · ${c.kind}`, `mark ${c.mark}`, `kill ${c.kill_price}`, ...graded].join(" · "),
     at: Date.parse(c.at), rule: null, tested: null, scope: "coin", ruleText: null, href: null,
+    evidence: scorecardEvidence(c, scorecard), definitionId: null,
   };
 }

@@ -4,14 +4,16 @@ import type { RadarCall } from "../../shared/radar.js";
 import { ResearchSignalSchema } from "../../shared/research.js";
 import { transformSeries } from "../lab/engine/features.js";
 import type { CatalogueEntry, MarketPulse, Rule } from "../lab/types.js";
-import { NOVELTY_TABLE, noveltyCondition, noveltyRule, noveltySignal, opportunitySignal, radarSignal, firingEntries, ruleSignal, zIncludingCurrent } from "./signals.js";
+import { SCORE_VERSION } from "../platform/score.js";
+import type { OutcomeRow } from "../platform/store.js";
+import { currentLedgerStats, ledgerEvidence, NOVELTY_TABLE, noveltyCondition, noveltyRule, noveltySignal, opportunitySignal, radarSignal, firingEntries, ruleSignal, zIncludingCurrent } from "./signals.js";
 
 const feat = (id: string, value: number): NoveltyFeature => ({ id, value, histMin: -1, histMax: 1, p1: -0.9, p99: 0.9, bars: 400, pctRank: 99.9 });
 const entry = (features: NoveltyFeature[], over: Partial<NoveltyEntry> = {}): NoveltyEntry => ({
   id: "2026-11-08:ETH", detectedAt: "2026-11-09T00:10:00.000Z", barDate: "2026-11-08", coin: "ETH", kind: "new_extreme", families: ["funding"],
   features, nearSetups: [], marketWide: false, pushed: true, notified: [], ...over,
 });
-const valid = (s: unknown) => ResearchSignalSchema.extend({ evidence: ResearchSignalSchema.shape.evidence.optional() }).parse(s);
+const valid = (s: unknown) => ResearchSignalSchema.extend({ dailyStudy: ResearchSignalSchema.shape.dailyStudy.optional() }).parse(s);
 
 describe("novelty → Lab rule (fixed table)", () => {
   test("table rows: each feature → its Lab feature, side from the sign, threshold rounded toward zero", () => {
@@ -104,7 +106,7 @@ describe("other sources", () => {
     expect(out[0]!.ruleText).toBe("ht:funding z(30) < -1");
   });
 
-  test("opportunity and radar calls have no Lab twin", () => {
+  test("an opportunity without a daily definition and a radar call carry no rule", () => {
     const o = { id: "11111111-1111-4111-8111-111111111111", coin: "SOL", direction: "short", setupKind: "funding_squeeze", status: "ready", score: 2.345, liquidityTier: 1,
       netEdgeBps: 12.4, edgeBasis: "ledger", createdAt: "2026-11-09T10:00:00.000Z" } as Opportunity;
     expect(valid(opportunitySignal(o))).toMatchObject({
@@ -114,5 +116,17 @@ describe("other sources", () => {
     const c = { id: "2026-11-08-1-HYPE", date: "2026-11-08", at: "2026-11-08T13:00:00.000Z", market: "HYPE", stance: "ride", direction: "long", kind: "catalyst",
       thesis: "x", cause_url: "https://a.b", cause_date: "2026-11-08", kill_price: 30, kill_if: "below 30", mark: 33, btc: 100000, rel: { "3": 2.14 }, killed_at: null } as RadarCall;
     expect(valid(radarSignal(c))).toMatchObject({ id: "radar:HYPE:2026-11-08-1-HYPE", coin: "HYPE", direction: "long", rule: null, tested: null, scope: "coin", href: null, headline: "ride long · catalyst · mark 33 · kill 30 · +3d +2.1% vs BTC" });
+  });
+
+  test("ledger stats count only outcomes scored under the current score version", () => {
+    const row = (scoreVersion: string, netReturn: number, day: number): OutcomeRow => ({
+      opportunityId: `o${day}${scoreVersion}`, setupKind: "crowded_long", regime: "trend", scoreVersion, liquidityTier: 1, horizon: "24h",
+      createdAtMs: Date.UTC(2026, 10, day), grossReturn: netReturn, netReturn, hasCosts: true,
+    });
+    const rows = [row(SCORE_VERSION, 0.01, 1), row(SCORE_VERSION, -0.02, 3), row("score-v1", 0.5, 5)];
+    const [g] = currentLedgerStats(rows);
+    expect(g).toMatchObject({ setupKind: "crowded_long", horizon: "24h", n: 2, clusters: 2, ci95: null });
+    expect(g!.meanNet).toBeCloseTo(-0.005, 10);
+    expect(ledgerEvidence("crowded_long", [g!])).toMatchObject({ kind: "ledger", n: 2, clusters: 2, ci95: null, hitRate: 0.5 });
   });
 });

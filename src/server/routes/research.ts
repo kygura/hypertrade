@@ -1,8 +1,11 @@
 import { Hono, type Context } from "hono";
 import { resolve } from "node:path";
 import { PRE_DECISION_STATUSES } from "../../shared/platform.js";
-import { BoardResponseSchema, RadarResponseSchema, StudyRequestSchema, StudyResponseSchema, type RadarResponse } from "../../shared/research.js";
+import { BoardResponseSchema, DefinitionsResponseSchema, RadarResponseSchema, StudyRequestSchema, StudyResponseSchema, type DefinitionsResponse, type RadarResponse } from "../../shared/research.js";
 import { databaseUrl } from "../db.js";
+import { monitoringWatchlist, watchedAssets } from "../intel/positions.js";
+import { PgIntelStore } from "../intel/store.js";
+import { STUDY_MAX_COINS } from "../lab/service.js";
 import { getLabService, labTools } from "../lab/tools.js";
 import { labDeadlineMs, SERVER_DEADLINE_MS } from "../mcp/lab.js";
 import { ToolInputError, UpstreamError, type ToolDef } from "../mcp/types.js";
@@ -11,14 +14,19 @@ import { PgPlatformStore } from "../platform/store-pg.js";
 import { boardDepsFor, buildBoard, SourceUnavailable, type BoardDeps } from "../research/board.js";
 import { isGuest } from "../auth.js";
 import { readRadar } from "../research/radar.js";
+import { currentLedgerStats } from "../research/signals.js";
+import { DEFINITIONS, definitionRule } from "../signals/definitions.js";
+import { createDefinitionScanner, type DefinitionScanner } from "../signals/scan.js";
 import { bounded, createStudyCache, createStudyRunner, STUDY_CACHE_MAX, STUDY_STORE_TIMEOUT_MS, type RunEventStudy, type StudyRunner } from "../research/study.js";
-import { ruleId } from "../lab/engine/rules.js";
+import { ruleId, ruleText } from "../lab/engine/rules.js";
 import type { LabStore } from "../lab/store.js";
 import type { Rule } from "../lab/types.js";
 import { invalid } from "./intel/http.js";
 
 // /api/research and /api/radar (docs/RESEARCH.md B2). Inputs and outputs zod-parsed against src/shared/research.ts.
 // GET /research/board   → BoardResponse: every source loads on its own; a failing one is `unavailable` with a reason.
+// GET /research/definitions → DefinitionsResponse: the shipped signal definitions (signals/definitions.ts), each rule
+//                       with asset UNIVERSE_ASSET, as POST /research/study takes it for a universe study (no `coin`).
 // POST /research/study  { rule, coin?, stopAtr?, targetAtr? } → StudyResponse. Runs the lab_event_study tool, so it
 //                       is a trial exactly as a direct call; cached by rule hash, scope, exits and UTC day (in process,
 //                       written through to the Lab store); `catalogueId` is looked up live on every answer. Runs
@@ -42,11 +50,20 @@ export interface ResearchRouteDeps {
   isGuest?: (c: Context) => boolean;
 }
 
+/** The shipped definitions as the UI reads them. */
+export const definitionsResponse = (): DefinitionsResponse => ({
+  definitions: DEFINITIONS.map((d) => {
+    const rule = definitionRule(d);
+    return { id: d.id, name: d.name, thesis: d.thesis, rule, ruleText: ruleText(rule), intradayKinds: d.intradayKinds };
+  }),
+});
+
 export function researchRoutes(deps: ResearchRouteDeps) {
   return new Hono()
     .get("/board", async (c) =>
       c.json(BoardResponseSchema.parse(await buildBoard({ ...boardDepsFor(deps.board(), (deps.isGuest ?? isGuest)(c)), cache: deps.cache }))),
     )
+    .get("/definitions", (c) => c.json(DefinitionsResponseSchema.parse(definitionsResponse())))
     .post("/study", async (c) => {
       let raw: unknown;
       try {
@@ -93,6 +110,23 @@ let dbCtx: PlatformContext | null = null;
 /** The worker's context on the always-on server, else Postgres-only reads; null with neither. */
 const platformContext = () => getPlatformContext() ?? (databaseUrl() ? (dbCtx ??= dbPlatformContext(new PgPlatformStore())) : null);
 
+let scanner: DefinitionScanner | null = null;
+/**
+ * One definition scanner per process, on the Lab service's dataset loader (and its cache): the Lab's default
+ * universe (top STUDY_MAX_COINS) plus the monitoring watchlist, scanned at most once per closed daily bar.
+ */
+function definitionScanner(env: Record<string, string | undefined>): DefinitionScanner {
+  return (scanner ??= createDefinitionScanner({
+    loadDataset: (cfg) => getLabService().deps.loadDataset(cfg),
+    coins: async () => {
+      const top = await getLabService().deps.perpUniverse!({ top: STUDY_MAX_COINS });
+      const watch = databaseUrl() ? await watchedAssets(new PgIntelStore(), env) : monitoringWatchlist(null, env).items.map((i) => i.asset);
+      return [...top, ...watch];
+    },
+    now: Date.now,
+  }));
+}
+
 export function defaultBoardDeps(env: Record<string, string | undefined> = process.env): Omit<BoardDeps, "cache"> {
   return {
     now: Date.now,
@@ -120,10 +154,21 @@ export function defaultBoardDeps(env: Record<string, string | undefined> = proce
       if (!ctx) throw new SourceUnavailable("platform offline (no worker loop and no database)");
       return ctx.store.listOpportunities({ statuses: [...PRE_DECISION_STATUSES], limit });
     },
-    radarCalls: async () => {
+    ledger: async () => {
+      const ctx = platformContext();
+      if (!ctx) throw new SourceUnavailable("platform offline (no worker loop and no database)");
+      return currentLedgerStats(await ctx.store.outcomeRows({}));
+    },
+    radar: async () => {
       const r = await readRadar(RADAR_DIR);
       if (r.state === "unavailable") throw new SourceUnavailable(r.reason ?? "radar files unreadable");
-      return r.calls;
+      return { calls: r.calls, scorecard: r.scorecard };
+    },
+    definitions: async () => {
+      // Without stored candles and funding every coin's history is fetched live from HL, about a coin a minute
+      // (docs/RESEARCH.md Runtime): a universe scan cannot finish, and the OI definitions need collected OI anyway.
+      if (!databaseUrl()) throw new SourceUnavailable("needs a database (DATABASE_URL unset)");
+      return definitionScanner(env).scan();
     },
   };
 }

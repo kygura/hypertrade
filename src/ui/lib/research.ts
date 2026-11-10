@@ -46,7 +46,7 @@ export const BOARD_POLL_MS = 30_000
 /** The board filtered to one coin (Cockpit detail, /asset/:coin: EVIDENCE). */
 export const boardHref = (coin: string) => `/?coin=${encodeURIComponent(coin)}`
 
-export const SOURCE_LABEL: Record<ResearchSource, string> = { novelty: 'NOVELTY', rule: 'RULE', opportunity: 'SETUP', radar: 'RADAR' }
+export const SOURCE_LABEL: Record<ResearchSource, string> = { novelty: 'NOVELTY', rule: 'RULE', opportunity: 'SETUP', radar: 'RADAR', definition: 'DEFINITION' }
 
 /** One block of the signal list: a coin with more than one signal is a group, else a lone row. */
 export interface SignalBlock {
@@ -129,7 +129,7 @@ export type CellState =
  * and nothing runs until /auth/me has answered.
  */
 export function cellState(s: Pick<ResearchSignal, 'rule' | 'evidence'>, local: RowStudy | undefined, auth: Auth): CellState {
-  const ev = s.evidence ?? (local?.state === 'done' ? local.summary : null)
+  const ev = (s.evidence?.kind === 'study' ? s.evidence : null) ?? (local?.state === 'done' ? local.summary : null)
   if (ev) return { kind: 'evidence', summary: ev }
   if (!s.rule) return { kind: 'no-twin' }
   if (local?.state === 'running') return { kind: 'running' }

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import { join } from "node:path";
 import type { NoveltyEntry } from "../../shared/platform.js";
-import { BoardResponseSchema, RadarResponseSchema, StudyResponseSchema } from "../../shared/research.js";
+import { BoardResponseSchema, DefinitionsResponseSchema, RadarResponseSchema, StudyRequestSchema, StudyResponseSchema, UNIVERSE_ASSET } from "../../shared/research.js";
 import { ruleId } from "../lab/engine/rules.js";
 import { synthetic } from "../lab/engine/testkit.js";
 import { createLabService } from "../lab/service.js";
@@ -38,7 +38,9 @@ function app(eventStudy: RunEventStudy, deadline = 50_000, guest = false, catalo
       pulse: async () => { throw new Error("lab store down"); },
       novelty: async () => [nov],
       opportunities: async () => { throw new SourceUnavailable("platform offline (no worker loop and no database)"); },
-      radarCalls: async () => [radarCall],
+      ledger: async () => [],
+      radar: async () => ({ calls: [radarCall], scorecard: [] }),
+      definitions: async () => { throw new SourceUnavailable("needs a database (DATABASE_URL unset)"); },
     }),
   });
   return new Hono().route("/research", routes);
@@ -68,9 +70,26 @@ describe("/research routes", () => {
     expect(calls).toEqual([{ args: { rule: s.rule, stopAtr: 1.5, targetAtr: 3 }, ctx: { source: "ui", deadlineMs: 50_000 } }]);
 
     const after = BoardResponseSchema.parse(await (await a.request("/research/board")).json());
-    expect(after.signals[0]!.evidence).toEqual(body.summary);
+    expect(after.signals[0]!.evidence).toEqual({ ...body.summary, kind: "study" });
     expect((await (await a.request("/research/study", post(boardStudy(s)))).json()).cached).toBe(true);
     expect(calls).toHaveLength(1);
+  });
+
+  test("GET /definitions: every shipped definition, its rule on the universe placeholder, accepted as a universe study body", async () => {
+    const res = await app(async () => fakeStudy(), 50_000, true).request("/research/definitions");
+    expect(res.status).toBe(200);
+    const { definitions } = DefinitionsResponseSchema.parse(await res.json());
+    expect(definitions.map((d) => d.id)).toContain("funding_fade");
+    for (const d of definitions) {
+      expect(d.rule.asset).toBe(UNIVERSE_ASSET);
+      expect(StudyRequestSchema.safeParse({ rule: d.rule }).success).toBe(true);
+    }
+  });
+
+  test("GET /board: the definition source stands on its own (unavailable here), the rest still answer", async () => {
+    const b = BoardResponseSchema.parse(await (await app(async () => fakeStudy()).request("/research/board")).json());
+    expect(b.sources.definition).toEqual({ state: "unavailable", reason: "needs a database (DATABASE_URL unset)", count: 0, dropped: 0 });
+    expect(b.sources.novelty).toMatchObject({ state: "ok", count: 1 });
   });
 
   test("POST /study: bad input is a 400 before any run; Lab errors map to 400/502/500", async () => {

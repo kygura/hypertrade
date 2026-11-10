@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { NoveltyEntry, Opportunity } from "../../shared/platform.js";
 import type { RadarCall } from "../../shared/radar.js";
-import { BoardResponseSchema, STUDY_DEFAULTS } from "../../shared/research.js";
+import { BoardResponseSchema, STUDY_DEFAULTS, studyEvidence, UNIVERSE_ASSET } from "../../shared/research.js";
 import { memoryStore } from "../lab/store.js";
 import type { CatalogueEntry, MarketPulse, Rule } from "../lab/types.js";
+import { DEFINITIONS, definitionRule } from "../signals/definitions.js";
 import { boardStudy, buildBoard, SourceUnavailable, type BoardDeps } from "./board.js";
 import { noveltyRule } from "./signals.js";
 import { createStudyCache, studyKey, studySummary } from "./study.js";
@@ -31,7 +32,9 @@ const deps = (over: Partial<BoardDeps> = {}): BoardDeps => ({
   pulse: async () => ({ pulse, catalogue }),
   novelty: async () => [nov],
   opportunities: async () => [opp],
-  radarCalls: async () => [call({}), call({ id: "old", date: "2026-10-30" }), call({ id: "dead", killed_at: "2026-11-09" })],
+  ledger: async () => [],
+  radar: async () => ({ calls: [call({}), call({ id: "old", date: "2026-10-30" }), call({ id: "dead", killed_at: "2026-11-09" })], scorecard: [] }),
+  definitions: async () => ({ bar: "2026-11-08", coins: 0, dropped: 0, hits: [] }),
   cache: createStudyCache(() => NOW),
   ...over,
 });
@@ -47,12 +50,12 @@ describe("buildBoard", () => {
     const b = BoardResponseSchema.parse(await buildBoard(d));
     expect(b.asOf).toBe("2026-11-09T12:00:00.000Z");
     expect(b.signals.map((s) => s.id)).toEqual([`rule:BTC:r1`, `opportunity:SOL:${opp.id}`, "novelty:ETH:2026-11-08", "radar:HYPE:c"]);
-    expect(b.sources).toEqual({ novelty: ok(1), rule: ok(1), opportunity: ok(1), radar: ok(1) });
+    expect(b.sources).toEqual({ novelty: ok(1), rule: ok(1), opportunity: ok(1), radar: ok(1), definition: ok(0) });
     expect(b.pulse).toEqual({ assets: 2, firing: 1 });
-    expect(b.signals[0]!.evidence).toEqual(evidence);
+    expect(b.signals[0]!.evidence).toEqual(studyEvidence(evidence));
     const n = b.signals.find((s) => s.source === "novelty")!;
-    expect(n).toMatchObject({ rule: noveltyRule(nov), scope: "universe", tested: "short", direction: null });
-    expect(n.evidence?.events).toBe(999);
+    expect(n).toMatchObject({ rule: noveltyRule(nov), scope: "universe", tested: "short", direction: null, dailyStudy: null, definitionId: null });
+    expect(n.evidence).toMatchObject({ kind: "study", events: 999 });
     expect(boardStudy(n)).toEqual({ rule: noveltyRule(nov)!, ...STUDY_DEFAULTS });
     expect(boardStudy(b.signals[0]!)).toEqual({ rule, coin: "BTC", ...STUDY_DEFAULTS });
   });
@@ -66,7 +69,7 @@ describe("buildBoard", () => {
     const b = await buildBoard(deps({ cache }));
     expect(reads).toHaveLength(1);
     expect(reads[0]!.sort()).toEqual([studyKey({ rule, coin: "BTC", ...STUDY_DEFAULTS }, NOW), studyKey({ rule: noveltyRule(nov)!, ...STUDY_DEFAULTS }, NOW)].sort());
-    expect(b.signals.find((s) => s.source === "rule")!.evidence).toEqual(evidence);
+    expect(b.signals.find((s) => s.source === "rule")!.evidence).toEqual(studyEvidence(evidence));
     expect(b.signals.find((s) => s.source === "novelty")!.evidence).toBeNull();
     await buildBoard(deps({ cache }));
     expect(reads.at(-1)).toEqual([studyKey({ rule: noveltyRule(nov)!, ...STUDY_DEFAULTS }, NOW)]); // the hit stays in memory
@@ -79,7 +82,7 @@ describe("buildBoard", () => {
     const slow = await buildBoard(deps({ cache: hanging, timeoutMs: 1_000 }));
     expect(performance.now() - t0).toBeLessThan(500);
     expect(slow.signals).toHaveLength(4);
-    expect(slow.signals.every((s) => s.evidence === null)).toBe(true);
+    expect(slow.signals.every((s) => s.evidence?.kind !== "study")).toBe(true);
   });
 
   test("novelty reads the last 3 closed bars", async () => {
@@ -108,7 +111,7 @@ describe("buildBoard", () => {
       await buildBoard(deps({
         pulse: async () => { throw new Error("connect ECONNREFUSED /var/secret/socket"); },
         novelty: async () => { throw new SourceUnavailable("needs a database (DATABASE_URL unset)"); },
-        radarCalls: () => new Promise(() => {}),
+        radar: () => new Promise(() => {}),
         timeoutMs: 20,
       })),
     );
@@ -116,7 +119,57 @@ describe("buildBoard", () => {
     expect(b.sources.novelty).toEqual({ state: "unavailable", reason: "needs a database (DATABASE_URL unset)", count: 0, dropped: 0 });
     expect(b.sources.radar).toEqual({ state: "unavailable", reason: "timed out", count: 0, dropped: 0 });
     expect(b.sources.opportunity).toEqual(ok(1));
+    expect(b.sources.definition).toEqual(ok(0));
     expect(b.signals.map((s) => s.source)).toEqual(["opportunity"]);
     expect(b.pulse).toBeNull();
+  });
+
+  test("definitions: a coin in zone is a universe-scoped signal with the definition's rule; scan drops count as dropped", async () => {
+    const def = DEFINITIONS.find((d) => d.id === "funding_fade")!;
+    const hit = { definition: def, coin: "ETH", date: "2026-11-08", values: { "ht:funding|z|90": 2.41, "ht:oi|pctile|30": 1 } };
+    const d = deps({ definitions: async () => ({ bar: "2026-11-08", coins: 21, dropped: 2, hits: [hit, { ...hit, coin: "SOL" }] }) });
+    const summary = studySummary(fakeStudy(), "2026-11-09T06:00:00.000Z");
+    d.cache.set(studyKey({ rule: definitionRule(def), ...STUDY_DEFAULTS }, NOW), { summary, study: fakeStudy() });
+    const b = BoardResponseSchema.parse(await buildBoard(d));
+    expect(b.sources.definition).toEqual(ok(2, 2));
+    const eth = b.signals.find((s) => s.id === "definition:ETH:funding_fade")!;
+    expect(eth).toMatchObject({ source: "definition", direction: "short", tested: "short", scope: "universe", definitionId: "funding_fade", dailyStudy: null, at: Date.parse("2026-11-09T00:00:00Z") });
+    expect(eth.rule).toEqual(definitionRule(def));
+    expect(eth.rule!.asset).toBe(UNIVERSE_ASSET);
+    expect(eth.headline).toBe("Funding fade in zone 2026-11-08: funding z(90) 2.41, oi pctile(30) 1");
+    expect(boardStudy(eth)).toEqual({ rule: definitionRule(def), ...STUDY_DEFAULTS });
+    // One universe study per definition: both coins read the same cached study.
+    expect(b.signals.filter((s) => s.source === "definition").map((s) => s.evidence)).toEqual([studyEvidence(summary), studyEvidence(summary)]);
+  });
+
+  test("opportunity: ledger evidence (current score version, 24h) and its daily definition; the daily study goes to dailyStudy, never over the ledger", async () => {
+    const crowded = { ...opp, setupKind: "crowded_long", direction: "short" } as Opportunity;
+    const wrongSide = { ...opp, id: "22222222-2222-4222-8222-222222222222", setupKind: "vol_expansion_breakout", direction: "short" } as Opportunity;
+    const stats = [{ setupKind: "crowded_long", horizon: "24h", regime: null, tier: null, n: 37, clusters: 11, hitRate: 0.54, meanNet: 0.0042, ci95: [-0.003, 0.011] as [number, number] }];
+    const d = deps({ opportunities: async () => [crowded, wrongSide], ledger: async () => stats });
+    const fade = definitionRule(DEFINITIONS.find((x) => x.id === "funding_fade")!);
+    const summary = studySummary(fakeStudy(), "2026-11-09T06:00:00.000Z");
+    d.cache.set(studyKey({ rule: fade, ...STUDY_DEFAULTS }, NOW), { summary, study: fakeStudy() });
+    const b = BoardResponseSchema.parse(await buildBoard(d));
+    const o = b.signals.find((s) => s.id === `opportunity:SOL:${opp.id}`)!;
+    expect(o).toMatchObject({ rule: fade, scope: "universe", tested: "short", definitionId: "funding_fade", dailyStudy: summary });
+    expect(o.evidence).toEqual({ kind: "ledger", setupKind: "crowded_long", horizon: "24h", n: 37, clusters: 11, meanNet: 0.0042, ci95: [-0.003, 0.011], hitRate: 0.54 });
+    // A short breakout has no daily definition on its side: no rule, an empty ledger record.
+    const w = b.signals.find((s) => s.id === `opportunity:SOL:${wrongSide.id}`)!;
+    expect(w).toMatchObject({ rule: null, definitionId: null, dailyStudy: null, scope: "coin", tested: null });
+    expect(w.evidence).toEqual({ kind: "ledger", setupKind: "vol_expansion_breakout", horizon: "24h", n: 0, clusters: 0, meanNet: null, ci95: null, hitRate: null });
+    // A failing ledger read leaves the evidence null; the source stays ok.
+    const down = BoardResponseSchema.parse(await buildBoard(deps({ opportunities: async () => [crowded], ledger: async () => { throw new Error("db down"); } })));
+    expect(down.sources.opportunity).toEqual(ok(1));
+    expect(down.signals.find((s) => s.source === "opportunity")!.evidence).toBeNull();
+  });
+
+  test("radar: the call's stance at the 7-day scorecard row as evidence; no rule", async () => {
+    const scorecard = [{ stance: "ride" as const, horizonDays: 3, n: 9, meanPct: 0.5, hits: 5 }, { stance: "ride" as const, horizonDays: 7, n: 8, meanPct: 1.25, hits: 6 }];
+    const b = BoardResponseSchema.parse(await buildBoard(deps({ radar: async () => ({ calls: [call({}), call({ id: "f", stance: "fade" })], scorecard }) })));
+    const ride = b.signals.find((s) => s.id === "radar:HYPE:c")!;
+    expect(ride).toMatchObject({ rule: null, dailyStudy: null, definitionId: null });
+    expect(ride.evidence).toEqual({ kind: "scorecard", stance: "ride", horizonDays: 7, n: 8, meanPct: 1.25, hitRate: 0.75 });
+    expect(b.signals.find((s) => s.id === "radar:HYPE:f")!.evidence).toBeNull();
   });
 });

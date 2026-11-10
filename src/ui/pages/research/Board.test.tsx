@@ -15,10 +15,10 @@ const rule: Rule = { asset: "BTC", direction: "long", horizonDays: 5, conditions
 const ok = (count: number) => ({ state: "ok" as const, count, dropped: 0 });
 const summary: StudySummary = { verdict: "clear", events: 41, weeks: 38, expectancy: 0.21, upper95: 0.35, holdoutExpectancy: 0.1, idea: { n: 3, of: 9 }, asOf: "2026-11-09T11:00:00Z" };
 const sig = (id: string, over: Partial<BoardSignal> = {}): BoardSignal => ({
-  id, source: "novelty", coin: "ETH", direction: null, tested: null, scope: "coin", headline: "funding z90 +2.4", at: NOW - 3_600_000, rule: null, ruleText: null, href: null, evidence: null, ...over,
+  id, source: "novelty", coin: "ETH", direction: null, tested: null, scope: "coin", headline: "funding z90 +2.4", at: NOW - 3_600_000, rule: null, ruleText: null, href: null, evidence: null, dailyStudy: null, definitionId: null, ...over,
 });
 const boardData = (signals: BoardSignal[], over: Partial<BoardResponse> = {}): BoardResponse => ({
-  asOf: "2026-11-09T12:00:00Z", signals, sources: { novelty: ok(signals.length), rule: ok(0), opportunity: ok(0), radar: ok(0) }, pulse: { assets: 12, firing: 2 }, ...over,
+  asOf: "2026-11-09T12:00:00Z", signals, sources: { novelty: ok(signals.length), rule: ok(0), opportunity: ok(0), radar: ok(0), definition: ok(0) }, pulse: { assets: 12, firing: 2 }, ...over,
 });
 const poll = <T,>(data: T | null, over: { loading?: boolean; error?: string | null; offline?: string | null } = {}) => ({ data, loading: false, error: null, offline: null, refetch: noop, ...over });
 const radarOk: RadarResponse = {
@@ -62,7 +62,7 @@ describe("board states", () => {
     expect(render({ board: poll<BoardResponse>(null, { error: "board exploded" }) })).toContain("board exploded");
   });
   test("empty with sources on: names them, not an error", () => {
-    const b = boardData([], { sources: { novelty: ok(0), rule: ok(0), opportunity: { state: "unavailable", reason: "platform offline (no worker loop and no database)", count: 0, dropped: 0 }, radar: ok(0) } });
+    const b = boardData([], { sources: { novelty: ok(0), rule: ok(0), opportunity: { state: "unavailable", reason: "platform offline (no worker loop and no database)", count: 0, dropped: 0 }, radar: ok(0), definition: { state: "unavailable", reason: "needs a database (DATABASE_URL unset)", count: 0, dropped: 0 } } });
     const html = render({ board: poll(b) });
     expect(html).toContain("no condition firing · sources on: novelty, rule, radar");
     expect(html).not.toContain('role="alert"');
@@ -76,7 +76,7 @@ describe("board states", () => {
     expect(render({ board: poll<BoardResponse>(null, { offline: "api unreachable" }) })).toContain("api unreachable");
   });
   test("source unavailable chip: `unavailable` with the reason as title; ok chip shows the count", () => {
-    const b = boardData([sig("n1")], { sources: { novelty: ok(1), rule: ok(0), opportunity: { state: "unavailable", reason: "timed out", count: 0, dropped: 0 }, radar: ok(0) } });
+    const b = boardData([sig("n1")], { sources: { novelty: ok(1), rule: ok(0), opportunity: { state: "unavailable", reason: "timed out", count: 0, dropped: 0 }, radar: ok(0), definition: ok(0) } });
     const html = render({ board: poll(b) });
     expect(html).toContain('title="timed out"');
     expect(html).toContain("SETUP unavailable");
@@ -91,9 +91,9 @@ describe("evidence cell", () => {
       studies: Object.fromEntries(Object.entries(local).map(([id, v]) => [rowStudyKey(id, NOW), v])),
       board: poll(
         boardData([
-          sig("cached", { coin: "BTC", source: "rule", rule, evidence: summary, tested: "short", at: NOW - 1000 }),
+          sig("cached", { coin: "BTC", source: "rule", rule, evidence: { ...summary, kind: "study" }, tested: "short", at: NOW - 1000 }),
           sig("fresh", { coin: "SOL", rule, ruleText: "funding z(30) < −1 → long 5d", at: NOW - 2000 }),
-          sig("wide", { coin: "ETH", rule, scope: "universe", tested: "short", evidence: { ...summary, verdict: "insufficient" }, at: NOW - 2500 }),
+          sig("wide", { coin: "ETH", rule, scope: "universe", tested: "short", evidence: { ...summary, kind: "study", verdict: "insufficient" }, at: NOW - 2500 }),
           sig("twin", { coin: "HYPE", source: "opportunity", direction: "short", href: "/feed?id=x", at: NOW - 3000 }),
         ]),
       ),
@@ -136,7 +136,7 @@ describe("side column", () => {
   test("pulse counts link /lab/pulse; pulse null says unavailable with the reason", () => {
     expect(render()).toContain("2 catalogued rules firing · 12 assets covered");
     expect(render()).toContain('href="/lab/pulse"');
-    const b = boardData([], { pulse: null, sources: { novelty: ok(0), rule: { state: "unavailable", reason: "source failed (see server log)", count: 0, dropped: 0 }, opportunity: ok(0), radar: ok(0) } });
+    const b = boardData([], { pulse: null, sources: { novelty: ok(0), rule: { state: "unavailable", reason: "source failed (see server log)", count: 0, dropped: 0 }, opportunity: ok(0), radar: ok(0), definition: ok(0) } });
     expect(render({ board: poll(b) })).toContain("pulse unavailable — source failed (see server log)");
   });
   test("radar: note date, calls with stance and kill, scorecard n/mean/hit", () => {

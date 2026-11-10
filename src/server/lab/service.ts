@@ -73,7 +73,7 @@ const DECAY_MIN_LIVE_DAYS = 30;
 const DECAY_HOLDOUT_SHARE = 0.25;
 const OVERLAP_JACCARD = 0.6;
 /** lab_event_study: default coins (top by day volume) and the cap without a DB; eventList keeps the most recent this many. */
-const STUDY_MAX_COINS = 20;
+export const STUDY_MAX_COINS = 20;
 const EVENT_LIST_MAX = 200;
 /** Kept back from a search deadline for the work after the last trial (refit, ranking, persisting). */
 export const SEARCH_FINISH_MS = 5_000;

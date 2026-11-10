@@ -2,11 +2,11 @@ import { z } from "zod";
 import { ASSET_PATTERN, RuleSchema } from "../server/lab/types.js";
 import { RadarCallSchema } from "./radar.js";
 
-// Research terminal contract (docs/RESEARCH.md B2): live signals from four sources in one shape, each with the
-// Lab rule it maps to and the cached event study for that rule. Server and UI both import this file. The Lab
-// Rule and the radar call are the Lab's and the radar's own schemas, not copies.
+// Research terminal contract (docs/RESEARCH.md B2, Signals v2): live signals from five sources in one shape, each with
+// the Lab rule it maps to and the evidence that backs it. Server and UI both import this file. The Lab Rule and the
+// radar call are the Lab's and the radar's own schemas, not copies.
 
-export const RESEARCH_SOURCES = ["novelty", "rule", "opportunity", "radar"] as const;
+export const RESEARCH_SOURCES = ["novelty", "rule", "opportunity", "radar", "definition"] as const;
 export type ResearchSource = (typeof RESEARCH_SOURCES)[number];
 
 const Iso = z.string().datetime({ offset: true });
@@ -30,6 +30,50 @@ export const StudySummarySchema = z.object({
 });
 export type StudySummary = z.infer<typeof StudySummarySchema>;
 
+/**
+ * `rule.asset` of a signal definition's rule (Signals v2): a definition is studied over the Lab's default universe
+ * (`scope: 'universe'`, no `coin` in the study body), so the asset only labels the rule. One fixed placeholder keeps
+ * one study (one trial, one cache key) per definition, whichever coin is in zone. Not a ticker.
+ */
+export const UNIVERSE_ASSET = "UNIVERSE";
+
+/**
+ * What backs a signal, by `kind` (Signals v2 S3):
+ * - `study`: today's cached event study of the signal's rule in its scope (rule, novelty, definition). The fields
+ *   are StudySummary's; the study cache stores plain StudySummary rows (no `kind`), the board adds it.
+ * - `ledger`: an opportunity's setup kind in the platform ledger, current score version, 24h horizon (groupStats):
+ *   n outcomes, clusters, mean net return (fraction) over cluster means, its 95% interval (null under 5 clusters) and
+ *   the share of outcomes > 0. An empty ledger is n 0 with null numbers.
+ * - `scorecard`: a radar call's stance in the radar scorecard at its longest graded horizon: n calls, mean move vs
+ *   BTC (%, signed by direction), share that went the called way.
+ */
+export const StudyEvidenceSchema = StudySummarySchema.extend({ kind: z.literal("study") });
+export const LedgerEvidenceSchema = z.object({
+  kind: z.literal("ledger"),
+  setupKind: z.string().min(1),
+  horizon: z.string().min(1),
+  n: Count,
+  clusters: Count,
+  meanNet: Num.nullable(),
+  ci95: z.tuple([Num, Num]).nullable(),
+  hitRate: Num.nullable(),
+});
+export const ScorecardEvidenceSchema = z.object({
+  kind: z.literal("scorecard"),
+  stance: z.enum(["ride", "fade"]),
+  horizonDays: z.number().int().positive(),
+  n: z.number().int().positive(),
+  meanPct: Num,
+  hitRate: Num,
+});
+export const EvidenceSchema = z.discriminatedUnion("kind", [StudyEvidenceSchema, LedgerEvidenceSchema, ScorecardEvidenceSchema]);
+export type Evidence = z.infer<typeof EvidenceSchema>;
+export type StudyEvidence = z.infer<typeof StudyEvidenceSchema>;
+export type LedgerEvidence = z.infer<typeof LedgerEvidenceSchema>;
+export type ScorecardEvidence = z.infer<typeof ScorecardEvidenceSchema>;
+/** A study summary as `study` evidence (rows stored without `kind` read as this). */
+export const studyEvidence = (s: StudySummary): StudyEvidence => ({ ...s, kind: "study" });
+
 export const ResearchSignalSchema = z.object({
   /** `${source}:${coin}:${key}`, stable across board loads. */
   id: z.string().min(1),
@@ -41,7 +85,11 @@ export const ResearchSignalSchema = z.object({
   headline: z.string(),
   /** ms epoch. */
   at: z.number().int(),
-  /** The condition as a Lab rule, when one maps; null = no Lab twin (intraday setups, radar calls). */
+  /**
+   * The condition as a Lab rule, when one maps: a catalogue rule, a novelty fade, a signal definition, or for an
+   * opportunity the daily definition of its setup kind (see `definitionId`). null for radar calls (graded forward by
+   * the scorecard, not replayed) and an opportunity whose kind has no daily definition on its side.
+   */
   rule: RuleSchema.nullable(),
   /**
    * The side the rule is studied as: a hypothesis, not a call. Expectancy in `evidence` is signed for this side (a
@@ -50,16 +98,27 @@ export const ResearchSignalSchema = z.object({
   tested: z.enum(["long", "short"]).nullable(),
   /**
    * What a study of this rule covers: `coin` = this market only (catalogue rules are per asset); `universe` = the Lab's
-   * default top-20 (novelty rules read ht:* metrics only, and one coin rarely has the 30 event-weeks a verdict needs).
-   * POST /research/study sends `coin` only for `coin` scope. Null-rule signals: `coin`.
+   * default top-20 (novelty and definition rules read ht:* metrics only, and one coin rarely has the 30 event-weeks a
+   * verdict needs). POST /research/study sends `coin` only for `coin` scope. Null-rule signals: `coin`.
    */
   scope: z.enum(["coin", "universe"]),
   /** Novelty rules start "tested as fade: …". */
   ruleText: z.string().nullable(),
   /** Drill-in for the source's own object (UI path). */
   href: z.string().nullable(),
-  /** Cached study of `rule` in `scope` for today (UTC), when present. */
-  evidence: StudySummarySchema.nullable(),
+  /**
+   * What backs the source: `study` (today's cached study of `rule`, rule/novelty/definition; null until one ran
+   * today), `ledger` (opportunity; null when the ledger could not be read), `scorecard` (radar; null without a row).
+   */
+  evidence: EvidenceSchema.nullable(),
+  /**
+   * Opportunity only: today's cached study of `rule`, the daily definition of its setup kind (universe scope). A study
+   * of the daily version of the thesis, never of the intraday setup itself; it never replaces the ledger `evidence`.
+   * null for every other source, and until that study ran today.
+   */
+  dailyStudy: StudySummarySchema.nullable(),
+  /** The signal definition behind the row: the definition in zone (`definition`), or the daily definition of an opportunity's setup kind. */
+  definitionId: z.string().nullable(),
 });
 export type ResearchSignal = z.infer<typeof ResearchSignalSchema>;
 
@@ -82,7 +141,7 @@ export const SourceStatusSchema = z.object({
   reason: UnavailableReasonSchema.optional(),
   /** Signals shown. */
   count: Count,
-  /** Items the source returned that did not map to a valid signal (dropped and logged). */
+  /** Items the source returned that did not map to a valid signal (dropped and logged); for `definition`, also coins the scan dropped (data failed or late). */
   dropped: Count,
 });
 export type SourceStatus = z.infer<typeof SourceStatusSchema>;
@@ -91,11 +150,27 @@ export type SourceStatus = z.infer<typeof SourceStatusSchema>;
 export const BoardResponseSchema = z.object({
   asOf: Iso,
   signals: z.array(ResearchSignalSchema),
-  sources: z.object({ novelty: SourceStatusSchema, rule: SourceStatusSchema, opportunity: SourceStatusSchema, radar: SourceStatusSchema }),
+  sources: z.object({ novelty: SourceStatusSchema, rule: SourceStatusSchema, opportunity: SourceStatusSchema, radar: SourceStatusSchema, definition: SourceStatusSchema }),
   /** Market Pulse summary: catalogue assets covered and rules firing now. null when the rule source is unavailable. */
   pulse: z.object({ assets: Count, firing: Count }).nullable(),
 });
 export type BoardResponse = z.infer<typeof BoardResponseSchema>;
+
+/** One shipped signal definition (Signals v2 S1), as GET /api/research/definitions lists it. */
+export const SignalDefinitionWireSchema = z.object({
+  id: z.string().regex(/^[a-z0-9_]+$/),
+  name: z.string().min(1),
+  /** One line, facts. */
+  thesis: z.string().min(1),
+  /** The definition's Lab rule with `asset` = UNIVERSE_ASSET: POST it to /research/study without `coin` (universe scope). */
+  rule: RuleSchema,
+  ruleText: z.string(),
+  /** Platform setup kinds that share the thesis intraday. */
+  intradayKinds: z.array(z.string()),
+});
+export type SignalDefinitionWire = z.infer<typeof SignalDefinitionWireSchema>;
+export const DefinitionsResponseSchema = z.object({ definitions: z.array(SignalDefinitionWireSchema) });
+export type DefinitionsResponse = z.infer<typeof DefinitionsResponseSchema>;
 
 /** Defaults of a board study (the lab_event_study examples): stop 1.5 ATR, target 3 ATR. */
 export const STUDY_DEFAULTS = { stopAtr: 1.5, targetAtr: 3 } as const;

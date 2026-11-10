@@ -1,17 +1,18 @@
-import type { NoveltyEntry, Opportunity } from "../../shared/platform.js";
+import type { LedgerStats, NoveltyEntry, Opportunity } from "../../shared/platform.js";
 import type { RadarCall } from "../../shared/radar.js";
 import {
-  boardStudy, ResearchSignalSchema,
-  type BoardResponse, type ResearchSignal, type ResearchSource, type SourceStatus, type UnavailableReason,
+  boardStudy, ResearchSignalSchema, studyEvidence,
+  type BoardResponse, type RadarScoreRow, type ResearchSignal, type ResearchSource, type SourceStatus, type UnavailableReason,
 } from "../../shared/research.js";
 import type { CatalogueEntry, MarketPulse } from "../lab/types.js";
-import { firingEntries, noveltySignal, opportunitySignal, radarSignal, ruleSignal } from "./signals.js";
+import type { DefinitionScan } from "../signals/scan.js";
+import { definitionSignal, firingEntries, noveltySignal, opportunitySignal, radarSignal, ruleSignal } from "./signals.js";
 import { studyKey, type StudyCache } from "./study.js";
 
-// Research board (docs/RESEARCH.md B2): each source loads on its own, under its own timeout; a source that throws,
-// times out or is not available here (no worker loop, no database) is listed `unavailable` with a fixed reason (the
-// error itself goes to the server log) and the board still answers with the rest. Inside a source each item is mapped
-// and validated on its own: a bad item is dropped and counted, never a failed board.
+// Research board (docs/RESEARCH.md B2, Signals v2 S3): each source loads on its own, under its own timeout; a source
+// that throws, times out or is not available here (no worker loop, no database) is listed `unavailable` with a fixed
+// reason (the error itself goes to the server log) and the board still answers with the rest. Inside a source each
+// item is mapped and validated on its own: a bad item is dropped and counted, never a failed board.
 
 const DAY = 86_400_000;
 /** Novelty bars shown: the detector's retry window (closed days). */
@@ -39,8 +40,12 @@ export interface BoardDeps {
   novelty: (sinceBar: string) => Promise<NoveltyEntry[]>;
   /** Pre-decision platform opportunities; throw SourceUnavailable without a platform context. */
   opportunities: (limit: number) => Promise<Opportunity[]>;
-  /** Landed radar calls; throw SourceUnavailable when data/radar is absent. */
-  radarCalls: () => Promise<RadarCall[]>;
+  /** Ledger stats by setup kind (groupStats over the current score version), read after the opportunities; a failure leaves their evidence null. */
+  ledger: () => Promise<LedgerStats[]>;
+  /** Landed radar calls and the scorecard over all of them; throw SourceUnavailable when data/radar is absent. */
+  radar: () => Promise<{ calls: RadarCall[]; scorecard: RadarScoreRow[] }>;
+  /** Signal definitions in zone on the latest closed bar (signals/scan.ts); throw SourceUnavailable where no scan can run. */
+  definitions: () => Promise<DefinitionScan>;
   cache: StudyCache;
   timeoutMs?: number;
 }
@@ -49,8 +54,8 @@ export interface BoardDeps {
  * The board as a guest sees it (PUBLIC_MODE without a session): /radar is not guest-readable, so the radar source
  * is `unavailable` ("sign in required") and contributes no calls, instead of leaking them through the board.
  */
-export function boardDepsFor<D extends Pick<BoardDeps, "radarCalls">>(deps: D, guest: boolean): D {
-  return guest ? { ...deps, radarCalls: async () => { throw new SourceUnavailable("sign in required"); } } : deps;
+export function boardDepsFor<D extends Pick<BoardDeps, "radar">>(deps: D, guest: boolean): D {
+  return guest ? { ...deps, radar: async () => { throw new SourceUnavailable("sign in required"); } } : deps;
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -68,13 +73,23 @@ export const evidenceFor = (cache: StudyCache, s: Pick<ResearchSignal, "rule" | 
   return q ? (cache.get(studyKey(q, now))?.summary ?? null) : null;
 };
 
+/**
+ * Attaches today's cached study of the signal's rule: as `study` evidence for the sources it backs (rule, novelty,
+ * definition), as `dailyStudy` for an opportunity, whose evidence stays its ledger record.
+ */
+export function attachStudy(cache: StudyCache, s: ResearchSignal, now: number): void {
+  const summary = evidenceFor(cache, s, now);
+  if (s.source === "opportunity") s.dailyStudy = summary;
+  else if (s.rule) s.evidence = summary && studyEvidence(summary);
+}
+
 /** Maps and validates each item on its own; an item that throws or fails the schema is dropped (and logged). */
-function mapEach<T>(source: ResearchSource, items: T[], map: (t: T) => Omit<ResearchSignal, "evidence">): { signals: ResearchSignal[]; dropped: number } {
+function mapEach<T>(source: ResearchSource, items: T[], map: (t: T) => Omit<ResearchSignal, "dailyStudy">): { signals: ResearchSignal[]; dropped: number } {
   const signals: ResearchSignal[] = [];
   let dropped = 0;
   for (const item of items) {
     try {
-      const r = ResearchSignalSchema.safeParse({ ...map(item), evidence: null });
+      const r = ResearchSignalSchema.safeParse({ ...map(item), dailyStudy: null });
       if (r.success) signals.push(r.data);
       else {
         dropped++;
@@ -103,8 +118,21 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
       return mapEach("rule", firingEntries(r.pulse, r.catalogue), (e) => ruleSignal(e, at));
     },
     novelty: async () => mapEach("novelty", await deps.novelty(bar(now - NOVELTY_DAYS * DAY)), noveltySignal),
-    opportunity: async () => mapEach("opportunity", await deps.opportunities(OPPORTUNITY_LIMIT), opportunitySignal),
-    radar: async () => mapEach("radar", (await deps.radarCalls()).filter((c) => !c.killed_at && c.date >= bar(now - RADAR_DAYS * DAY)), radarSignal),
+    opportunity: async () => {
+      const opps = await deps.opportunities(OPPORTUNITY_LIMIT);
+      const ledger = opps.length ? await deps.ledger().catch((e) => (console.error("[research] opportunity ledger:", e), null)) : [];
+      return mapEach("opportunity", opps, (o) => opportunitySignal(o, ledger));
+    },
+    radar: async () => {
+      const r = await deps.radar();
+      return mapEach("radar", r.calls.filter((c) => !c.killed_at && c.date >= bar(now - RADAR_DAYS * DAY)), (c) => radarSignal(c, r.scorecard));
+    },
+    // Coins the scan dropped (data failed or late) count as dropped items of the source.
+    definition: async () => {
+      const scan = await deps.definitions();
+      const got = mapEach("definition", scan.hits, definitionSignal);
+      return { signals: got.signals, dropped: got.dropped + scan.dropped };
+    },
   };
 
   const sources = {} as Record<ResearchSource, SourceStatus>;
@@ -131,7 +159,8 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
     return q ? [studyKey(q, now)] : [];
   });
   await deps.cache.load(keys);
-  for (const s of signals) s.evidence = evidenceFor(deps.cache, s, now);
+  for (const s of signals) attachStudy(deps.cache, s, now);
   signals.sort((a, b) => b.at - a.at || a.id.localeCompare(b.id));
-  return { asOf: new Date(now).toISOString(), signals, sources: { novelty: sources.novelty, rule: sources.rule, opportunity: sources.opportunity, radar: sources.radar }, pulse };
+  const { novelty, rule, opportunity, radar, definition } = sources;
+  return { asOf: new Date(now).toISOString(), signals, sources: { novelty, rule, opportunity, radar, definition }, pulse };
 }

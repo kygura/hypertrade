@@ -8,7 +8,7 @@ import { boardHref, boardKey, flatSignals, recentCalls, rootRedirect, signalBloc
 
 const rule: Rule = { asset: "BTC", direction: "long", horizonDays: 5, conditions: [{ feature: "ht:funding|z|30", op: "<", threshold: -1 }] };
 const sig = (id: string, coin: string, at: number, over: Partial<BoardSignal> = {}): BoardSignal => ({
-  id, source: "rule", coin, direction: null, tested: null, scope: "coin", headline: "", at, rule: null, ruleText: null, href: null, evidence: null, ...over,
+  id, source: "rule", coin, direction: null, tested: null, scope: "coin", headline: "", at, rule: null, ruleText: null, href: null, evidence: null, dailyStudy: null, definitionId: null, ...over,
 });
 
 describe("signalBlocks", () => {
@@ -89,7 +89,10 @@ describe("auth and the evidence cell", () => {
     expect(cellState(s, undefined, { state: "guest" })).toEqual({ kind: "sign-in" });
     expect(cellState(s, undefined, { state: "loading" })).toEqual({ kind: "auth-loading" });
     expect(cellState(s, undefined, { state: "error", message: "x" })).toEqual({ kind: "auth-error", message: "x" });
-    expect(cellState({ rule, evidence: ev }, undefined, { state: "guest" })).toEqual({ kind: "evidence", summary: ev });
+    const study = { ...ev, kind: "study" as const };
+    expect(cellState({ rule, evidence: study }, undefined, { state: "guest" })).toEqual({ kind: "evidence", summary: study });
+    // Ledger or scorecard evidence is not a study: a rule-bearing row still offers STUDY.
+    expect(cellState({ rule, evidence: { kind: "scorecard", stance: "ride", horizonDays: 7, n: 3, meanPct: 1, hitRate: 0.5 } }, undefined, user)).toEqual({ kind: "idle", error: null });
     expect(cellState({ rule: null, evidence: null }, undefined, user)).toEqual({ kind: "no-twin" });
   });
   test("studyFailed: 401 → sign-in, else the message verbatim", () => {
