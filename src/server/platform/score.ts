@@ -12,8 +12,10 @@ import { round } from "../intel/util.js";
 //             (price/OI z), flow (funding or volume z), regime (quadrant is not "range")
 // The setup does not change the number (kind, direction and levels are ticket data).
 // Bump SCORE_VERSION whenever any of this changes; the ledger stores it beside the score.
+// v2: the regime quadrant is classified with thresholds scaled to the 1 h window
+// (platform/features.ts), so the "regime" class fires where v1 almost always read "range".
 
-export const SCORE_VERSION = "score-v1";
+export const SCORE_VERSION = "score-v2";
 /** |z| at which a feature counts as an active signal for confluence. */
 const ACTIVE_Z = 1;
 /** The z-features: the single definition (surprise = the largest |z| among them). fundingZ24h is a 24 h-ring z. */
