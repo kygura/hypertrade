@@ -18,8 +18,6 @@ export interface SignalDefinition {
   intradayKinds: string[];
 }
 
-export const DefinitionRuleSchema = RuleSchema.omit({ asset: true });
-
 export const DEFINITIONS: SignalDefinition[] = [
   {
     id: "funding_fade",
@@ -73,13 +71,15 @@ export const DEFINITIONS: SignalDefinition[] = [
   },
   {
     id: "trend_pullback_long",
-    name: "Trend pullback (long)",
-    thesis: "Daily up-trend with the close within 2% of its 20-day mean: buy the pullback.",
+    name: "Trend at its 20-day mean (long)",
+    thesis: "Daily up-trend with the close within 2% of its 20-day mean, above or below it: long the trend at its mean.",
     rule: {
       direction: "long",
       horizonDays: 10,
       // |sma20_dist| ≤ 0.5 ATR as two bounds on the distance to the 20-day mean in percent (ma_ratio), not in ATR;
-      // the funding-not-crowded condition is left out (two conditions).
+      // the funding-not-crowded condition is left out (two conditions). The band is symmetric, so this tests "price
+      // at its mean in a trend", not a pullback from above: a close up to 2% above the mean is in zone too. The id
+      // keeps the B.4 name.
       conditions: [
         { feature: "ht:price|ma_ratio|20", op: ">=", threshold: -0.02 },
         { feature: "ht:price|ma_ratio|20", op: "<", threshold: 0.02 },
@@ -90,8 +90,8 @@ export const DEFINITIONS: SignalDefinition[] = [
   },
   {
     id: "trend_pullback_short",
-    name: "Trend pullback (short)",
-    thesis: "Daily down-trend with the close within 2% of its 20-day mean: sell the bounce.",
+    name: "Trend at its 20-day mean (short)",
+    thesis: "Daily down-trend with the close within 2% of its 20-day mean, above or below it: short the trend at its mean.",
     rule: {
       direction: "short",
       horizonDays: 10,
@@ -106,11 +106,13 @@ export const DEFINITIONS: SignalDefinition[] = [
   {
     id: "range_breakout",
     name: "Range breakout",
-    thesis: "Close above every close of the prior 19 days on volume 50% above its 20-day mean: long the breakout.",
+    thesis: "Close above every close of the prior 19 days on volume at least 1.54× the prior 19 days' mean: long the breakout.",
     rule: {
       direction: "long",
       horizonDays: 7,
       // breakout_20 reads closes, not highs (no rolling-max feature): pctile(20) is 1 only above all 19 prior closes.
+      // ma_ratio(20) ≥ 0.5 compares the day's volume with a 20-day mean that includes the day itself:
+      // v ≥ 1.5 · (v + 19·m19) / 20  ⇔  v ≥ (28.5 / 18.5) · m19 ≈ 1.54 × the prior 19-day mean.
       conditions: [
         { feature: "ht:price|pctile|20", op: ">=", threshold: 1 },
         { feature: "ht:volume|ma_ratio|20", op: ">=", threshold: 0.5 },

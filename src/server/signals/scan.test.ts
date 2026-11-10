@@ -5,7 +5,7 @@ import { isoDate } from "../lab/engine/util.js";
 import type { LoadDatasetFn } from "../lab/service.js";
 import { DAY_MS, type LabDataset } from "../lab/types.js";
 import { DEFINITIONS, definitionRule } from "./definitions.js";
-import { createDefinitionScanner, definitionMetrics, inZoneNow, SCAN_RETRY_MS, scanDataset } from "./scan.js";
+import { createDefinitionScanner, definitionMetrics, inZoneNow, SCAN_LOOKBACK_DAYS, SCAN_RETRY_MS, scanDataset } from "./scan.js";
 
 const T0 = Date.UTC(2024, 0, 1);
 
@@ -87,6 +87,27 @@ describe("parity (CLAUDE.md: a second evaluation path needs a parity test): live
     expect(inZoneNow(DEFINITIONS.find((x) => x.id === "funding_fade")!, noOi)).toBeNull();
     expect(inZoneNow(DEFINITIONS.find((x) => x.id === "range_breakout")!, noOi)).not.toBeNull();
   });
+});
+
+describe("the live scan's window: the last SCAN_LOOKBACK_DAYS bars answer as the full history does", () => {
+  // The scanner loads SCAN_LOOKBACK_DAYS of history, the event study the whole series; the parity test above cuts
+  // from bar 0, so it does not cover the window. Every definition, every last bar the window fits: same answer.
+  const d = fixture();
+  const win = (k: number): LabDataset => {
+    const lo = k + 1 - SCAN_LOOKBACK_DAYS;
+    return { ...d, t: d.t.slice(lo, k + 1), price: d.price.slice(lo, k + 1), metrics: Object.fromEntries(Object.entries(d.metrics).map(([id, v]) => [id, v.slice(lo, k + 1)])) };
+  };
+  for (const def of DEFINITIONS) {
+    test(def.id, () => {
+      let inZone = 0;
+      for (let k = SCAN_LOOKBACK_DAYS - 1; k < d.t.length; k++) {
+        const full = inZoneNow(def, cut(d, k))!;
+        expect(inZoneNow(def, win(k))).toEqual(full);
+        if (full.inZone) inZone++;
+      }
+      expect(inZone).toBeGreaterThan(0);
+    });
+  }
 });
 
 describe("definition scanner (service)", () => {

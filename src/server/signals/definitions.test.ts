@@ -4,13 +4,12 @@ import { parseFeatureId } from "../lab/engine/features.js";
 import { getMetric } from "../lab/providers/registry.js";
 import { RuleSchema } from "../lab/types.js";
 import { SETUPS } from "../platform/setups.js";
-import { DEFINITIONS, definitionForKind, definitionRule, DefinitionRuleSchema } from "./definitions.js";
+import { DEFINITIONS, definitionForKind, definitionRule } from "./definitions.js";
 
 describe("signal definitions", () => {
   test("every definition parses as a Lab rule once an asset is filled in, reads only ht:* asset metrics, and has a unique id", () => {
     expect(new Set(DEFINITIONS.map((d) => d.id)).size).toBe(DEFINITIONS.length);
     for (const d of DEFINITIONS) {
-      expect(DefinitionRuleSchema.safeParse(d.rule).success).toBe(true);
       expect(RuleSchema.safeParse({ ...d.rule, asset: "ETH" }).success).toBe(true);
       expect(definitionRule(d).asset).toBe(UNIVERSE_ASSET);
       for (const c of d.rule.conditions) {

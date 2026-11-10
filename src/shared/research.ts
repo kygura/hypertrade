@@ -168,7 +168,6 @@ export const SignalDefinitionWireSchema = z.object({
   /** Platform setup kinds that share the thesis intraday. */
   intradayKinds: z.array(z.string()),
 });
-export type SignalDefinitionWire = z.infer<typeof SignalDefinitionWireSchema>;
 export const DefinitionsResponseSchema = z.object({ definitions: z.array(SignalDefinitionWireSchema) });
 export type DefinitionsResponse = z.infer<typeof DefinitionsResponseSchema>;
 
