@@ -23,8 +23,19 @@ object; 6 shell cells today against a ceiling of 9, target 5):
 Research terminal follow-ups (docs/RESEARCH.md; each changes live scanner output, applied migrations
 or study semantics, so each needs its own change):
 
-- [ ] Scanner funding windows: SPEC P0.9 now describes the 24 h ring the code uses. A 7 d / 14 d funding
-  feature needs the stored `funding` table loaded into the scanner tick; decide with an event study.
+- [ ] Scanner funding windows. Event studies run 2026-11-10 (8 majors, 2025-06-29 to 2026-11-09, 3-day
+  hold, 1.5/3 ATR, net of fees and funding; six rules tested, so read each as one of six):
+  fading high funding is flat on every window (z7 >= 1.5: +0.04R, 63 events, 4 of 8 coins loaded;
+  z14 >= 2: 0.00R, 70 events; z30 >= 2: +0.09R, 55 events, 19 weeks, insufficient). Longs after low
+  funding: z7 < -1.5 +0.06R (267 events), z14 < -2 +0.02R (161), z30 < -2 +0.18R (138 events, 46 weeks,
+  holdout +0.18R on 37 events). Nothing here supports a 7 d / 14 d funding feature in the scanner, so
+  the stored `funding` table is not loaded into the tick. The 30-day low-funding long is the one
+  result worth re-testing on more coins before it is used; it is a daily condition (novelty / Lab
+  catalogue), not an intraday one.
+- [ ] Event studies without a database fetch about 500 days of hourly funding per coin from HL and the
+  weight guard allows about one coin a minute, so a multi-coin study cannot finish inside the 50 s
+  tool deadline. With `DATABASE_URL` the stored tables are used. Either cap no-database studies at
+  what fits, or fetch funding once per coin per day into the Lab store.
 
 Radar routine (2026-11-02): the 4 h setup board is retired (24 setups, all low conviction, −1.77R; it
 never saw news, sectors or HIP-3). `ROUTINE.md` is now a twice-daily radar: `bun run radar` scans every

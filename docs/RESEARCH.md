@@ -30,7 +30,8 @@ never as a verdict of its own. Nothing nags.
 
 Built for the always-on server (`bun start`, `WORKER_LOOPS=all`). On Vercel (tick mode)
 the board still renders: sources that need a loop or Postgres report `unavailable` with a
-reason, studies run on demand inside the 50 s tool deadline, and approve is disabled with
+reason, studies run on demand inside the 50 s tool deadline (without a database only a one- or
+two-coin study fits: funding history is rate-limited to about one coin a minute), and approve is disabled with
 the reason shown before the dialog opens.
 
 ## Backend
