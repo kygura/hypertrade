@@ -5,7 +5,8 @@ import type { Conversation, LLMProvider, StepResult } from "../llm/provider.js";
 import { newPglite, pgliteDb } from "../testing/pglite.js";
 import { MemoryPlatformStore } from "./store-memory.js";
 import { PgPlatformStore } from "./store-pg.js";
-import { ensureSectors, parseUniverseSpec, sectorAnswerSchema, selectUniverse } from "./universe.js";
+import { watchedAssets } from "../intel/positions.js";
+import { DEFAULT_MY_MARKETS, ensureSectors, myMarkets, parseUniverseSpec, sectorAnswerSchema, selectUniverse } from "./universe.js";
 
 const ctxs = [["BTC", 9], ["ETH", 8], ["SOL", 7], ["FET", 6], ["ZEC", 5], ["DOGE", 4], ["HYPE", 3]].map(([coin, dayNtlVlm]) => ({ coin: coin as string, dayNtlVlm: dayNtlVlm as number }));
 const tags = { FET: ["AI"], ZEC: ["Privacy"], HYPE: ["Perp DEX", "L1"], SOL: ["L1"], DOGE: ["Meme"] };
@@ -19,6 +20,36 @@ describe("selectUniverse", () => {
   test("mine alone is only mine", () => expect(names({ mine: ["ZEC", "XXX"] })).toEqual(["ZEC"]));
   test("mine unions with filters", () => expect(names({ top: 2, mine: ["HYPE"] })).toEqual(["BTC", "ETH", "HYPE"]));
   test("untagged coins never match a sector filter", () => expect(names({ sectors: ["AI"], tags: {} })).toEqual([]));
+});
+
+describe("myMarkets: the operator's markets", () => {
+  const def = DEFAULT_MY_MARKETS.split(",");
+  test.each([
+    ["unset", undefined, def],
+    ["empty", "", def],
+    ["blank", "   ", def],
+    ["set", "BTC,ETH", ["BTC", "ETH"]],
+    ["trimmed and upper-cased", " btc , kPEPE ,,", ["BTC", "KPEPE"]],
+    ["only commas: set, so empty (not the default)", ",,", []],
+  ] as const)("PLATFORM_MY_MARKETS %s", (_, env, want) => expect(myMarkets(env)).toEqual([...want]));
+
+  test("all unset: default list from process.env; DESK_WATCHLIST does not feed it", () => {
+    const keep = { p: process.env.PLATFORM_MY_MARKETS, d: process.env.DESK_WATCHLIST };
+    delete process.env.PLATFORM_MY_MARKETS;
+    process.env.DESK_WATCHLIST = "DOGE";
+    try {
+      expect(myMarkets()).toEqual(["BTC", "ETH", "HYPE", "SOL", "XPL", "LIT", "ZEC"]);
+    } finally {
+      if (keep.p === undefined) delete process.env.PLATFORM_MY_MARKETS; else process.env.PLATFORM_MY_MARKETS = keep.p;
+      if (keep.d === undefined) delete process.env.DESK_WATCHLIST; else process.env.DESK_WATCHLIST = keep.d;
+    }
+  });
+
+  test("the watchlist stays its own list: PLATFORM_MY_MARKETS does not feed it", async () => {
+    const store = { getWatchlist: async () => [] };
+    expect(await watchedAssets(store, { PLATFORM_MY_MARKETS: "ZEC" })).toEqual(["BTC", "ETH", "SOL", "HYPE"]);
+    expect(await watchedAssets(store, { DESK_WATCHLIST: "doge" })).toEqual(["DOGE"]);
+  });
 });
 
 test("parseUniverseSpec", () => {

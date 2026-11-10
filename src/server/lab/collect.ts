@@ -43,7 +43,7 @@ export interface LabJob {
   asset: string;
 }
 
-/** LAB_ASSETS (comma-separated tickers), default BTC,ETH. */
+/** LAB_ASSETS (comma-separated tickers), default BTC,ETH: assets the collector stores per-asset history for (Coin Metrics is rate-limited, so kept short), not the operator's markets (myMarkets). */
 export function labAssets(env: Record<string, string | undefined> = process.env): string[] {
   const list = (env.LAB_ASSETS ?? "")
     .split(",")

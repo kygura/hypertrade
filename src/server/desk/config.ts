@@ -111,6 +111,7 @@ export function loadDeskConfig(env: Env = process.env): DeskConfig {
     paperStartingEquity: num(env, "DESK_PAPER_EQUITY", 10_000, 100, 1e9),
     paperSlippage: 0.0005,
     watchAddress: address && /^0x[0-9a-fA-F]{40}$/.test(address) ? address.toLowerCase() : undefined,
+    // Monitoring watchlist (desk move/OI pings, Intel fallback), kept narrow because each coin can alert; not myMarkets (platform/universe.ts).
     watchlist: list(env.DESK_WATCHLIST, ["BTC", "ETH", "SOL", "HYPE"]),
     scoutModel: env.DESK_SCOUT_MODEL?.trim() || undefined,
     scoutProvider: env.DESK_SCOUT_PROVIDER?.trim() || undefined,

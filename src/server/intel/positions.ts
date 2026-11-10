@@ -105,7 +105,7 @@ export async function loadExposure(deps: ExposureDeps): Promise<PositionsRespons
   };
 }
 
-/** Watched assets: intel_watchlist, or DESK_WATCHLIST when it is empty. */
+/** Watched assets: intel_watchlist, or DESK_WATCHLIST when it is empty. The brief's monitoring list, not myMarkets (platform/universe.ts), which only widens research universes. */
 export async function watchedAssets(store: Pick<IntelStore, "getWatchlist">, env: Record<string, string | undefined> = process.env): Promise<string[]> {
   const items = await store.getWatchlist();
   return items.length ? items.map((i) => i.asset) : loadDeskConfig(env).watchlist;
