@@ -1,10 +1,13 @@
-import { EventStudyResultSchema, type StudyRequest, type StudyResponse, type StudySummary } from "../../shared/research.js";
+import { z } from "zod";
+import { EventStudyResultSchema, StudySummarySchema, type StudyRequest, type StudyResponse, type StudySummary } from "../../shared/research.js";
 import { ruleId } from "../lab/engine/rules.js";
+import type { LabStore } from "../lab/store.js";
 import type { ToolContext } from "../mcp/types.js";
 
 // Board studies (docs/RESEARCH.md B2): a lab_event_study run through the Lab tool (so it is a trial exactly as a
 // direct call is), projected to a StudySummary and cached in process by rule hash, scope and UTC day. Runs only on
-// a person's request; the cache and the in-flight sharing keep one request (or a double click) to one trial.
+// a person's request; the cache and the in-flight sharing keep one request (or a double click) to one trial. The
+// cache writes through to the Lab store (research_studies), so a restart neither loses today's evidence nor re-runs it.
 
 export type EventStudyOutput = StudyResponse["study"];
 
@@ -41,23 +44,57 @@ export interface StudyCacheEntry {
 
 export const STUDY_CACHE_MAX = 200;
 
-/** Keyed by studyKey. Entries of an earlier UTC day are dropped once the day turns; past `max`, the oldest goes. */
-export function createStudyCache(now: () => number = Date.now, max = STUDY_CACHE_MAX) {
+/** Where studies outlive the process: the Lab store's study rows (memory, Postgres or the JSON file). */
+export type StudyStore = Pick<LabStore, "getStudies" | "putStudy">;
+const StoredEntrySchema = z.object({ summary: StudySummarySchema, study: EventStudyResultSchema });
+
+/**
+ * Keyed by studyKey. Entries of an earlier UTC day are dropped once the day turns; past `max`, the oldest goes.
+ * With a store, the map is a read-through front: `load` fills it from the store (one read for many keys), `set`
+ * writes through, so a restart keeps today's studies. A store failure is logged and the cache acts in memory only.
+ */
+export function createStudyCache(now: () => number = Date.now, max = STUDY_CACHE_MAX, store: StudyStore | null = null) {
   const map = new Map<string, StudyCacheEntry>();
   const prune = () => {
     const day = utcDay(now());
     for (const k of map.keys()) if (!k.endsWith(`:${day}`)) map.delete(k);
+  };
+  const remember = (key: string, e: StudyCacheEntry) => {
+    prune();
+    map.delete(key);
+    map.set(key, e);
+    while (map.size > max) map.delete(map.keys().next().value!);
   };
   return {
     get(key: string): StudyCacheEntry | undefined {
       prune();
       return map.get(key);
     },
-    set(key: string, e: StudyCacheEntry) {
+    /** Reads the keys not in memory from the store, in one call; a bad row or a store failure reads as a miss. Never rejects. */
+    async load(keys: readonly string[]): Promise<void> {
       prune();
-      map.delete(key);
-      map.set(key, e);
-      while (map.size > max) map.delete(map.keys().next().value!);
+      const day = `:${utcDay(now())}`;
+      const missing = [...new Set(keys)].filter((k) => k.endsWith(day) && !map.has(k));
+      if (!store || !missing.length) return;
+      try {
+        for (const [k, v] of await store.getStudies(missing)) {
+          const e = StoredEntrySchema.safeParse(v);
+          if (!e.success) console.error(`[research] stored study ${k} does not parse; ignored`);
+          else if (!map.has(k)) remember(k, e.data);
+        }
+      } catch (err) {
+        console.error("[research] study store read failed; in-memory only:", err);
+      }
+    },
+    /** Remembers the entry, then writes it to the store (a failure is logged; the entry stays in memory). Never rejects. */
+    async set(key: string, e: StudyCacheEntry): Promise<void> {
+      remember(key, e);
+      if (!store) return;
+      try {
+        await store.putStudy(key, e, new Date(now()));
+      } catch (err) {
+        console.error("[research] study store write failed; in-memory only:", err);
+      }
     },
     size: () => (prune(), map.size),
   };
@@ -73,14 +110,17 @@ export interface StudyRunnerDeps {
   now: () => number;
 }
 
+/** A study as the runner returns it; the route adds the live `catalogueId`. */
+export type StudyRun = Omit<StudyResponse, "catalogueId">;
+
 /**
  * Cached study for today, else one lab_event_study run (concurrent asks for the same study share it, so it is one
  * trial). The key uses the UTC day the run started. Lab errors (ToolInputError, UpstreamError) propagate unchanged
  * and nothing is cached.
  */
 export function createStudyRunner(deps: StudyRunnerDeps) {
-  const inflight = new Map<string, Promise<StudyResponse>>();
-  return async function runStudy(request: StudyRequest, ctx: ToolContext): Promise<StudyResponse> {
+  const inflight = new Map<string, Promise<StudyRun>>();
+  return async function runStudy(request: StudyRequest, ctx: ToolContext): Promise<StudyRun> {
     const q = quantize(request);
     const key = studyKey(q, deps.now());
     const hit = deps.cache.get(key);
@@ -88,10 +128,14 @@ export function createStudyRunner(deps: StudyRunnerDeps) {
     const running = inflight.get(key);
     if (running) return running;
     const p = (async () => {
+      // Today's study may be in the store from before a restart: then it is not run (nor counted) again.
+      await deps.cache.load([key]);
+      const stored = deps.cache.get(key);
+      if (stored) return { studyId: key, cached: true, ...stored };
       const args = { rule: q.rule, stopAtr: q.stopAtr, targetAtr: q.targetAtr, ...(q.coin ? { coins: [q.coin] } : {}) };
       const study = EventStudyResultSchema.parse(await deps.eventStudy(args, ctx));
       const entry = { summary: studySummary(study, new Date(deps.now()).toISOString()), study };
-      deps.cache.set(key, entry);
+      await deps.cache.set(key, entry);
       return { studyId: key, cached: false, ...entry };
     })().finally(() => inflight.delete(key));
     inflight.set(key, p);

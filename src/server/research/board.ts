@@ -115,7 +115,7 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
         const got = await withTimeout(loaders[source](), ms);
         sources[source] = { state: "ok", count: got.signals.length, dropped: got.dropped };
         if (source === "rule") pulse = rulePulse; // only from a load that made it in time
-        for (const s of got.signals) signals.push({ ...s, evidence: evidenceFor(deps.cache, s, now) });
+        signals.push(...got.signals);
       } catch (e) {
         const reason: UnavailableReason = e instanceof SourceUnavailable ? e.reason : e instanceof TimedOut ? "timed out" : "source failed (see server log)";
         if (!(e instanceof SourceUnavailable)) console.error(`[research] ${source}:`, e instanceof TimedOut ? `no answer within ${ms} ms` : e);
@@ -123,6 +123,14 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
       }
     }),
   );
+  // Evidence: one store read for every signal's study not already in memory (never one per signal); a slow or failed
+  // read leaves the board with what memory has.
+  const keys = signals.flatMap((s) => {
+    const q = boardStudy(s);
+    return q ? [studyKey(q, now)] : [];
+  });
+  await withTimeout(deps.cache.load(keys), ms).catch(() => console.error(`[research] study store: no answer within ${ms} ms; evidence from memory only`));
+  for (const s of signals) s.evidence = evidenceFor(deps.cache, s, now);
   signals.sort((a, b) => b.at - a.at || a.id.localeCompare(b.id));
   return { asOf: new Date(now).toISOString(), signals, sources: { novelty: sources.novelty, rule: sources.rule, opportunity: sources.opportunity, radar: sources.radar }, pulse };
 }

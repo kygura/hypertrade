@@ -85,18 +85,24 @@ Routes (all zod-parsed in and out):
   source never empties the board. For a PUBLIC_MODE guest the radar source is
   `unavailable` ("sign in required") and contributes no signals, as `/api/radar` does.
 - `POST /api/research/study` `{ rule, coin?, stopAtr, targetAtr }` →
-  `{ studyId, cached, summary: StudySummary, study }`. The board sends `boardStudy(signal)`
+  `{ studyId, cached, summary: StudySummary, study, catalogueId }`. The board sends `boardStudy(signal)`
   (`src/shared/research.ts`: `coin` only for `coin` scope, the default 1.5 / 3 ATR exits),
   the same body the board looks its evidence up under. Runs `lab_event_study` through the
   existing Lab tool and counts as a trial exactly as a direct tool call does. Results are
-  cached in process by rule, scope and UTC day.
+  cached by rule, scope, exits (to 0.1 ATR) and UTC day: an in-process map (200 entries) in
+  front of the Lab store's `research_studies` rows (memory, Postgres or the JSON file, pruned
+  after 7 days), so a restart keeps today's evidence and does not log a second trial. A store
+  failure falls back to the in-process map. `catalogueId` is the rule's catalogue id when it is
+  saved (looked up on every answer, never cached), else null; `lab_event_study` returns it too.
 - `GET /api/radar` → `{ state, latestNote: {date, markdown, truncated}|null, calls,
   scorecard }` read from `data/radar/` with the existing schemas (at most 50 calls). Needs a
   signed-in session (not guest-readable in PUBLIC_MODE). If the files are absent (Vercel
   bundle), `state: 'unavailable'` with the reason.
 
 Studies run on request only: evidence is on the board once someone ran that study today
-(in-process cache), and every run counts as a trial. Nothing pre-computes them.
+(cached, and kept across restarts in the Lab store), and every run counts as a trial. The
+board reads the store once per build for all its signals, never once per signal. Nothing
+pre-computes them.
 
 ### B3. Approve honesty
 
@@ -170,17 +176,22 @@ insufficient = muted. Verdict is always text plus colour, never colour alone.
 
 Input: `?rule=` (URL-encoded JSON, zod-parsed; a bad value shows an error block and the
 empty form) and optional `?coin=`; universe control (this coin · top N · my markets).
-Without a rule: a short empty state linking to SEARCH and CATALOGUE. The board's canonical
-studies (this coin, or the default top-20 universe, default exits) run through
-`POST /api/research/study` (`studyRoute`, `src/ui/lib/study.ts`), so opening a row with
-evidence reuses the cached study instead of logging a new trial, and a run here shows on the
-board. Other universes (another top N, my markets) call `lab_event_study` directly.
+Without a rule: a short empty state linking to SEARCH and CATALOGUE. Exits: STOP and TARGET in
+ATR (step 0.1, the route's bounds), in the URL as `?stop=&target=` (omitted at the 1.5 / 3
+defaults) so a study link reproduces it. Editing them never runs a study: RUN does (each run is
+a trial); a first load with a rule runs as before. The board keeps the defaults. The canonical
+universes (this coin, or the default top 20) run through `POST /api/research/study`
+(`studyRoute`, `src/ui/lib/study.ts`) with any exits, so opening a row with evidence reuses the
+cached study instead of logging a new trial, and a default-exit run here shows on the board.
+Other universes (another top N, my markets) call `lab_event_study` directly.
 
 Output, in this order: rule text; verdict with the screen line (events, weeks,
 expectancy, upper95); train vs holdout; the condition funnel; per-coin table (`DataTable`);
 event list (first 200 of `eventListTotal`); survivorship note; `idea n of N`.
 Actions: OPEN RULE (rule drill with equity and sensitivity), SAVE (existing catalogue
-form; the save-bar verdict still applies).
+form; the save-bar verdict still applies). A rule already in the catalogue (the study's
+`catalogueId`) shows `IN CATALOGUE →` to `/lab/rules/:id` instead of SAVE; so does the ad-hoc
+rule drill (`/lab/rules/study?rule=…`), matching its evaluation id against the catalogue.
 
 ### Other surfaces
 

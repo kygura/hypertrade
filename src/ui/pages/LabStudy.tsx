@@ -6,9 +6,11 @@ import { useLabData } from '../components/lab/LabData'
 import { SaveToCatalogueForm } from '../components/lab/SaveToCatalogueForm'
 import { DataTo, DirectionWord } from '../components/lab/common'
 import { defaultRuleName, fmtSigned, lab, signTone, useLab, wireText, type CatalogueEntry, type LabState, type MetricDef, type Rule, type StudyResult } from '../lib/lab'
-import { DEFAULT_TOP, fmtR, parseRuleParam, ruleDrillHref, screenLine, studyRoute, studyVerdict, type StudyUniverse } from '../lib/study'
+import { DEFAULT_TOP, exitParams, exitsForm, exitValue, fmtR, parseExitParams, parseRuleParam, ruleDrillHref, screenLine, studyRoute, studyVerdict, type StudyExits, type StudyUniverse } from '../lib/study'
+import { STUDY_EXIT_MAX } from '../../shared/research'
 import { research } from '../lib/research'
 import { StudyVerdictBadge } from '../components/lab/StudyVerdictBadge'
+import { InCatalogueLink } from '../components/lab/InCatalogueLink'
 
 // /lab/study — the event study of one rule (docs/RESEARCH.md "Study"): the
 // rule replayed as discrete trades across a universe of coins by
@@ -33,15 +35,36 @@ export function LabStudy() {
 
 function StudyPage({ raw, coinParam }: { raw: string | null; coinParam: string | null }) {
   const { metrics, catalogue } = useLabData()
+  const [params, setParams] = useSearchParams()
   const parsed = useMemo(() => parseRuleParam(raw), [raw])
   const rule = parsed.rule
   const coin = coinParam || rule?.asset || ''
   const [universe, setUniverse] = useState<StudyUniverse>(() => (coinParam ? { kind: 'coin' } : { kind: 'top', n: DEFAULT_TOP }))
-  // The board's canonical studies share its cache and trial (studyRoute); other universes call the Lab tool.
-  const route = rule ? studyRoute(rule, coin, universe) : null
+  // Exits: the study runs with the URL's (`?stop=&target=`, defaults omitted) so a link reproduces it. Typing only
+  // edits the draft; RUN writes it to the URL, which runs it (each run is a trial).
+  const stopParam = params.get('stop')
+  const targetParam = params.get('target')
+  const applied = useMemo(() => parseExitParams(stopParam, targetParam), [stopParam, targetParam])
+  const [draft, setDraft] = useState(() => exitsDraft(applied))
+  useEffect(() => setDraft(exitsDraft(applied)), [applied])
+  const runExits = (e: StudyExits) =>
+    setParams((p) => {
+      const next = new URLSearchParams(p)
+      next.delete('stop')
+      next.delete('target')
+      for (const [k, v] of exitParams(e)) next.set(k, v)
+      return next
+    })
+  // The board's canonical universes share its cache and trial (studyRoute); other universes call the Lab tool.
+  const route = rule ? studyRoute(rule, coin, universe, applied) : null
   const key = route ? JSON.stringify(route) : null
   const study = useLab(
-    route ? (signal) => (route.kind === 'board' ? research.run(route.body).then((r) => r.study as unknown as StudyResult) : lab.eventStudy(route.args, signal)) : null,
+    route
+      ? (signal) =>
+          route.kind === 'board'
+            ? research.run(route.body).then((r) => ({ ...(r.study as unknown as StudyResult), catalogueId: r.catalogueId }))
+            : lab.eventStudy(route.args, signal)
+      : null,
     [key],
   )
 
@@ -53,6 +76,7 @@ function StudyPage({ raw, coinParam }: { raw: string | null; coinParam: string |
       coinParam={coinParam}
       universe={universe}
       onUniverse={setUniverse}
+      exits={{ applied, draft, onDraft: setDraft, onRun: runExits }}
       study={study}
       metrics={metrics.data ?? []}
       onSaved={() => catalogue.refetch()}
@@ -67,12 +91,13 @@ export interface StudyViewProps {
   coinParam?: string | null
   universe: StudyUniverse
   onUniverse: (u: StudyUniverse) => void
+  exits: ExitsProps
   study: Pick<LabState<StudyResult>, 'data' | 'loading' | 'error' | 'offline' | 'refetch'>
   metrics: readonly MetricDef[]
   onSaved?: (e: CatalogueEntry) => void
 }
 
-export function StudyView({ parsedError, rule, coin, coinParam = null, universe, onUniverse, study, metrics, onSaved }: StudyViewProps) {
+export function StudyView({ parsedError, rule, coin, coinParam = null, universe, onUniverse, exits, study, metrics, onSaved }: StudyViewProps) {
   const navigate = useNavigate()
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<CatalogueEntry | null>(null)
@@ -97,6 +122,8 @@ export function StudyView({ parsedError, rule, coin, coinParam = null, universe,
 
   const running = study.loading
   const r = study.data
+  // Already catalogued (the server's catalogueId, or saved here): a link to the entry instead of a second SAVE.
+  const inCatalogue = saved?.id ?? r?.catalogueId ?? null
 
   return (
     <div className="flex flex-col gap-3 min-w-0">
@@ -109,17 +136,22 @@ export function StudyView({ parsedError, rule, coin, coinParam = null, universe,
           <p className="text-xs text-text-secondary break-all">RAW {r?.text ?? wireText(rule)}</p>
           <div className="flex flex-wrap items-end gap-2">
             <UniverseControl coin={coin} universe={universe} onChange={onUniverse} />
+            <ExitsControl {...exits} />
             <div className="flex flex-wrap gap-2">
-              <Button tier="ghost" onClick={() => navigate(ruleDrillHref(rule, coinParam))} title="rule drill: equity, stats by window, sensitivity">
+              <Button tier="ghost" onClick={() => navigate(ruleDrillHref(rule, coinParam, exits.applied))} title="rule drill: equity, stats by window, sensitivity">
                 OPEN RULE
               </Button>
-              <Button tier="ghost" aria-expanded={saving} onClick={() => setSaving((s) => !s)}>
-                {saved ? 'SAVED ✓' : 'SAVE'}
-              </Button>
+              {inCatalogue ? (
+                <InCatalogueLink id={inCatalogue} />
+              ) : (
+                <Button tier="ghost" aria-expanded={saving} onClick={() => setSaving((s) => !s)}>
+                  SAVE
+                </Button>
+              )}
             </div>
           </div>
         </div>
-        {saving && (
+        {saving && !inCatalogue && (
           <div className="border-t border-border-subtle">
             <p className="px-3 pt-3 text-xs text-text-secondary">the save-bar verdict still applies: saving evaluates the rule; check it on OPEN RULE</p>
             <SaveToCatalogueForm
@@ -156,7 +188,7 @@ function UniverseControl({ coin, universe, onChange }: { coin: string; universe:
   const commit = () => valid && onChange({ kind: 'top', n })
   const topN = universe.kind === 'top' ? universe.n : valid ? n : DEFAULT_TOP
   return (
-    <div className="flex flex-col gap-1 min-w-0 mr-auto">
+    <div className="flex flex-col gap-1 min-w-0">
       <span className="label">UNIVERSE</span>
       <div className="flex flex-wrap items-center gap-2">
         <Segmented
@@ -188,6 +220,57 @@ function UniverseControl({ coin, universe, onChange }: { coin: string; universe:
         )}
       </div>
       {universe.kind === 'top' && !valid && <span className="text-sm text-red-text">N: 1–300</span>}
+    </div>
+  )
+}
+
+const exitsDraft = (e: StudyExits) => ({ stop: String(e.stopAtr), target: String(e.targetAtr) })
+
+export interface ExitsProps {
+  /** The exits the shown study runs with (the URL's). */
+  applied: StudyExits
+  draft: { stop: string; target: string }
+  onDraft: (d: { stop: string; target: string }) => void
+  /** Puts the exits in the URL, which runs the study. */
+  onRun: (e: StudyExits) => void
+}
+
+/** Stop and target in ATR. Editing never runs a study: RUN does, once the draft is valid and differs (exitsForm). */
+function ExitsControl({ applied, draft, onDraft, onRun }: ExitsProps) {
+  const f = exitsForm(draft, applied)
+  const run = () => f.canRun && f.exits && onRun(f.exits)
+  const field = (key: 'stop' | 'target', label: string, max: number) => (
+    <label className="flex items-center gap-1">
+      <span className="label">{label}</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        step={0.1}
+        min={0.1}
+        max={max}
+        value={draft[key]}
+        onChange={(e) => onDraft({ ...draft, [key]: e.target.value })}
+        onKeyDown={(e) => e.key === 'Enter' && run()}
+        aria-invalid={exitValue(draft[key], max) == null || undefined}
+        className="w-[7ch]"
+      />
+    </label>
+  )
+  return (
+    <div className="flex flex-col gap-1 min-w-0 mr-auto">
+      <span className="label">EXITS · ATR</span>
+      <div className="flex flex-wrap items-center gap-2">
+        {field('stop', 'STOP', STUDY_EXIT_MAX.stopAtr)}
+        {field('target', 'TARGET', STUDY_EXIT_MAX.targetAtr)}
+        <Button tier="neutral" disabled={!f.canRun} onClick={run} title="run the study with these exits: counts as a new trial">
+          RUN
+        </Button>
+      </div>
+      {f.error ? (
+        <span className="text-sm text-red-text">{f.error}</span>
+      ) : f.dirty ? (
+        <span className="text-xs text-text-secondary">edited · RUN to study with these exits (each run is a trial)</span>
+      ) : null}
     </div>
   )
 }

@@ -3,7 +3,8 @@ import { StudySummarySchema, type StudyRequest } from "../../shared/research.js"
 import { ruleId } from "../lab/engine/rules.js";
 import type { Rule } from "../lab/types.js";
 import { UpstreamError } from "../mcp/types.js";
-import { createStudyCache, createStudyRunner, quantize, studyKey, studySummary } from "./study.js";
+import { memoryStore } from "../lab/store.js";
+import { createStudyCache, createStudyRunner, quantize, studyKey, studySummary, type StudyStore } from "./study.js";
 import { fakeStudy } from "./testkit.js";
 
 const rule: Rule = { asset: "ETH", direction: "short", horizonDays: 7, conditions: [{ feature: "ht:funding|z|90", op: ">=", threshold: 2 }] };
@@ -48,6 +49,61 @@ describe("study cache", () => {
     expect(cache.size()).toBe(3);
     expect(cache.get("a:2026-11-09")).toBeUndefined();
     expect(cache.get("d:2026-11-09")).toBeDefined();
+  });
+});
+
+describe("study cache over the Lab store", () => {
+  const counting = () => {
+    let runs = 0;
+    const eventStudy = async () => (runs++, fakeStudy());
+    return { eventStudy, runs: () => runs };
+  };
+
+  test("restart: a new cache over the same store returns today's study without running it (no second trial)", async () => {
+    const store = memoryStore();
+    const before = counting();
+    const run1 = createStudyRunner({ cache: createStudyCache(() => T, 200, store), eventStudy: before.eventStudy, now: () => T });
+    const first = await run1(q, { source: "ui" });
+    expect([first.cached, before.runs()]).toEqual([false, 1]);
+
+    const after = counting(); // the process restarted: empty memory, same store
+    const cache2 = createStudyCache(() => T, 200, store);
+    const run2 = createStudyRunner({ cache: cache2, eventStudy: after.eventStudy, now: () => T });
+    const again = await run2(q, { source: "ui" });
+    expect(after.runs()).toBe(0);
+    expect(again).toEqual({ ...first, cached: true });
+    expect(cache2.get(first.studyId)).toBeDefined();
+    // Another day is another study.
+    const next = T + 86_400_000;
+    await createStudyRunner({ cache: createStudyCache(() => next, 200, store), eventStudy: after.eventStudy, now: () => next })(q, { source: "ui" });
+    expect(after.runs()).toBe(1);
+  });
+
+  test("a failing store degrades to in-memory: the study runs, is cached in process, and answers", async () => {
+    const down: StudyStore = { getStudies: async () => { throw new Error("db down"); }, putStudy: async () => { throw new Error("db down"); } };
+    const c = counting();
+    const cache = createStudyCache(() => T, 200, down);
+    const run = createStudyRunner({ cache, eventStudy: c.eventStudy, now: () => T });
+    expect((await run(q, { source: "ui" })).cached).toBe(false);
+    expect((await run(q, { source: "ui" })).cached).toBe(true);
+    expect(c.runs()).toBe(1);
+    await cache.load(["x:2026-11-09"]); // never rejects
+  });
+
+  test("load: one store read for the keys not in memory and of today; a row that does not parse is a miss", async () => {
+    const reads: string[][] = [];
+    const store = memoryStore();
+    await store.putStudy("good:2026-11-09", entry(), new Date(T));
+    await store.putStudy("bad:2026-11-09", { summary: { verdict: "maybe" }, study: {} }, new Date(T));
+    const spy: StudyStore = { getStudies: (k) => (reads.push(k), store.getStudies(k)), putStudy: (...a) => store.putStudy(...a) };
+    const cache = createStudyCache(() => T, 200, spy);
+    await cache.set("mem:2026-11-09", entry());
+    await cache.load(["good:2026-11-09", "bad:2026-11-09", "mem:2026-11-09", "old:2026-11-08", "good:2026-11-09"]);
+    expect(reads).toEqual([["good:2026-11-09", "bad:2026-11-09"]]);
+    expect(cache.get("good:2026-11-09")).toEqual(entry());
+    expect(cache.get("bad:2026-11-09")).toBeUndefined();
+    await cache.load(["mem:2026-11-09", "good:2026-11-09"]);
+    expect(reads).toHaveLength(1); // all in memory now: no read
   });
 });
 

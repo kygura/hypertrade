@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import type { Rule, StudyResult } from "../lib/lab";
-import { parseRuleParam, ruleDrillHref, studyArgs, studyHref, studyRoute } from "../lib/study";
+import { catalogueIdIn, exitsForm, parseExitParams, parseRuleParam, ruleDrillHref, studyArgs, studyHref, studyRoute } from "../lib/study";
 import { boardStudy } from "../../shared/research";
 import { StudyView, type StudyViewProps } from "./LabStudy";
 
@@ -36,6 +36,7 @@ const result = (verdict: StudyResult["verdict"], over: Partial<StudyResult> = {}
   survivorship: "Survivorship: the replay uses today's listed coins.",
   warnings: [],
   idea: { n: 7, of: 93 },
+  catalogueId: null,
   ...over,
 });
 
@@ -45,6 +46,7 @@ const props = (over: Partial<StudyViewProps> = {}): StudyViewProps => ({
   coin: "BTC",
   universe: { kind: "top", n: 20 },
   onUniverse: noop,
+  exits: { applied: { stopAtr: 1.5, targetAtr: 3 }, draft: { stop: "1.5", target: "3" }, onDraft: noop, onRun: noop },
   study: { data: null, loading: false, error: null, offline: false, refetch: noop },
   metrics: [],
   ...over,
@@ -93,6 +95,76 @@ describe("?rule= param", () => {
     expect(studyRoute(rule, "SOL", { kind: "mine" })).toEqual({ kind: "lab", args: studyArgs(rule, "SOL", { kind: "mine" }) });
     // A coin the study route does not accept (HIP-3 `dex:SYM`) stays on the Lab tool.
     expect(studyRoute(rule, "xyz:SKHX", { kind: "coin" }).kind).toBe("lab");
+  });
+});
+
+describe("stop/target", () => {
+  const defaults = { stopAtr: 1.5, targetAtr: 3 };
+  test("URL round trip: ?stop=&target= only off the defaults; bad or missing values read as the defaults", () => {
+    const href = studyHref(rule, "SOL", { stopAtr: 2, targetAtr: 4.5 });
+    const u = new URL(href, "http://x");
+    expect(parseExitParams(u.searchParams.get("stop"), u.searchParams.get("target"))).toEqual({ stopAtr: 2, targetAtr: 4.5 });
+    expect(parseRuleParam(u.searchParams.get("rule")).rule).toEqual(rule);
+    expect(studyHref(rule, "SOL", defaults)).toBe(studyHref(rule, "SOL"));
+    expect(new URL(studyHref(rule, null, { stopAtr: 1.5, targetAtr: 6 }), "http://x").searchParams.has("stop")).toBe(false);
+    expect(parseExitParams(null, null)).toEqual(defaults);
+    expect(parseExitParams("abc", "0")).toEqual(defaults);
+    expect(parseExitParams("21", "50.1")).toEqual(defaults); // past the route's bounds
+    expect(parseExitParams("1.04", "2.96")).toEqual({ stopAtr: 1, targetAtr: 3 }); // 0.1 ATR, as the server keys it
+    expect(new URL(ruleDrillHref(rule, "SOL", { stopAtr: 2, targetAtr: 3 }), "http://x").searchParams.get("stop")).toBe("2");
+  });
+
+  test("canonical universes go through the board route with any exits; others carry them to the Lab tool", () => {
+    const e = { stopAtr: 2, targetAtr: 5 };
+    expect(studyRoute(rule, "SOL", { kind: "coin" }, e)).toEqual({ kind: "board", body: { rule, coin: "SOL", ...e } });
+    expect(studyRoute(rule, "SOL", { kind: "top", n: 20 }, e)).toEqual({ kind: "board", body: { rule, ...e } });
+    expect(studyRoute(rule, "SOL", { kind: "top", n: 10 }, e)).toEqual({ kind: "lab", args: { rule, top: 10, ...e } });
+    expect(studyRoute(rule, "SOL", { kind: "mine" }, e)).toEqual({ kind: "lab", args: { rule, mine: true, ...e } });
+  });
+
+  test("RUN is required after an edit: the draft never changes what runs until RUN", () => {
+    const applied = { stopAtr: 1.5, targetAtr: 3 };
+    expect(exitsForm({ stop: "1.5", target: "3" }, applied)).toEqual({ exits: applied, dirty: false, canRun: false, error: null });
+    const edited = exitsForm({ stop: "2", target: "3" }, applied);
+    expect(edited).toEqual({ exits: { stopAtr: 2, targetAtr: 3 }, dirty: true, canRun: true, error: null });
+    // What runs is keyed on the applied exits only, so the edit alone starts no study.
+    expect(studyRoute(rule, "SOL", { kind: "coin" }, applied)).toEqual(studyRoute(rule, "SOL", { kind: "coin" }));
+    expect(exitsForm({ stop: "1.50", target: "3.0" }, applied).canRun).toBe(false); // same study once rounded
+    expect(exitsForm({ stop: "", target: "3" }, applied)).toMatchObject({ exits: null, canRun: false, error: "STOP: 0.1–20 ATR" });
+    expect(exitsForm({ stop: "2", target: "99" }, applied)).toMatchObject({ canRun: false, error: "TARGET: 0.1–50 ATR" });
+  });
+
+  test("render: labelled STOP / TARGET inputs (step 0.1, the route's bounds); RUN disabled until an edit", () => {
+    const clean = render(props());
+    expect(clean).toContain("STOP");
+    expect(clean).toContain("TARGET");
+    expect(clean).toMatch(/step="0.1" min="0.1" max="20"[^>]*value="1.5"/);
+    expect(clean).toMatch(/max="50"[^>]*value="3"/);
+    expect(clean).toMatch(/<button[^>]*disabled=""[^>]*>RUN</);
+    const dirty = render(props({ exits: { applied: { stopAtr: 1.5, targetAtr: 3 }, draft: { stop: "2", target: "3" }, onDraft: noop, onRun: noop } }));
+    expect(dirty).not.toMatch(/<button[^>]*disabled=""[^>]*>RUN</);
+    expect(dirty).toContain("RUN to study with these exits");
+  });
+});
+
+describe("already catalogued", () => {
+  const ok = (catalogueId: string | null) => props({ study: { data: result("clear", { catalogueId }), loading: false, error: null, offline: false, refetch: noop } });
+  test("catalogued: IN CATALOGUE → links to the entry; no SAVE", () => {
+    const html = render(ok("abc123"));
+    expect(html).toContain('href="/lab/rules/abc123"');
+    expect(html).toContain("IN CATALOGUE →");
+    expect(html).not.toContain(">SAVE<");
+  });
+  test("not catalogued: SAVE, no link", () => {
+    const html = render(ok(null));
+    expect(html).toContain(">SAVE<");
+    expect(html).not.toContain("IN CATALOGUE");
+  });
+  test("the ad-hoc drill: the evaluation id (the rule hash) found in the catalogue list", () => {
+    expect(catalogueIdIn("h1", [{ id: "h0" }, { id: "h1" }])).toBe("h1");
+    expect(catalogueIdIn("h2", [{ id: "h1" }])).toBeNull();
+    expect(catalogueIdIn(undefined, [{ id: "h1" }])).toBeNull();
+    expect(catalogueIdIn("h1", null)).toBeNull();
   });
 });
 

@@ -474,7 +474,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     },
 
     /** Reject-only event-study screen of a rule across coins (docs/FEATURES.md § 2), recorded as a trial; informational, gates nothing. */
-    async eventStudy(input: EventStudyInput, ctx?: CallBudget): Promise<EventStudyResult & { eventListTotal: number; warnings: string[]; idea: IdeaNumber }> {
+    async eventStudy(input: EventStudyInput, ctx?: CallBudget): Promise<EventStudyResult & { eventListTotal: number; warnings: string[]; idea: IdeaNumber; catalogueId: string | null }> {
       const rule = parseInput(RuleSchema, input.rule, "rule");
       if (rule.price && rule.price !== "ht:price") throw new ToolInputError("the event study trades ht:price: stops and targets need its candles' open/high/low", "rule.price");
       const metrics = [...new Set([...ruleMetrics(rule), ...STUDY_METRICS])];
@@ -529,7 +529,8 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       const eventListTotal = result.eventList.length;
       result.eventList = result.eventList.slice(-EVENT_LIST_MAX);
       const t = await deps.store.appendTrial({ ruleId: ruleId(rule), intent: "lab_event_study", verdict: result.verdict, rule });
-      return { ...result, eventListTotal, warnings, idea: { n: t.n, of: (await deps.store.listTrials()).length } };
+      const catalogueId = (await deps.store.getCatalogueEntry(t.ruleId))?.id ?? null; // the catalogue key is the rule hash, as on save
+      return { ...result, eventListTotal, warnings, idea: { n: t.n, of: (await deps.store.listTrials()).length }, catalogueId };
     },
 
     async catalogueSave(input: SaveInput, ctx?: CallBudget): Promise<CatalogueEntry> {

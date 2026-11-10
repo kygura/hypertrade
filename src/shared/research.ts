@@ -99,6 +99,8 @@ export type BoardResponse = z.infer<typeof BoardResponseSchema>;
 
 /** Defaults of a board study (the lab_event_study examples): stop 1.5 ATR, target 3 ATR. */
 export const STUDY_DEFAULTS = { stopAtr: 1.5, targetAtr: 3 } as const;
+/** Largest exits a study takes, in ATR (lab_event_study's own bounds). */
+export const STUDY_EXIT_MAX = { stopAtr: 20, targetAtr: 50 } as const;
 
 /**
  * The study a board row opens, as the POST /research/study body: its rule, on its coin only for `coin` scope,
@@ -115,8 +117,8 @@ export const StudyRequestSchema = z
   .object({
     rule: RuleSchema,
     coin: z.string().regex(ASSET_PATTERN, "expected a ticker of 1–20 letters or digits, e.g. BTC").optional(),
-    stopAtr: z.number().positive().max(20).default(STUDY_DEFAULTS.stopAtr),
-    targetAtr: z.number().positive().max(50).default(STUDY_DEFAULTS.targetAtr),
+    stopAtr: z.number().positive().max(STUDY_EXIT_MAX.stopAtr).default(STUDY_DEFAULTS.stopAtr),
+    targetAtr: z.number().positive().max(STUDY_EXIT_MAX.targetAtr).default(STUDY_DEFAULTS.targetAtr),
   })
   .strict();
 export type StudyRequest = z.output<typeof StudyRequestSchema>;
@@ -141,6 +143,8 @@ export const StudyResponseSchema = z.object({
   summary: StudySummarySchema,
   /** The full lab_event_study result (funnel, per-coin table, event list...). */
   study: EventStudyResultSchema,
+  /** The rule's catalogue id when the rule is in the catalogue now (looked up per request, never cached); else null. */
+  catalogueId: z.string().nullable(),
 });
 export type StudyResponse = z.infer<typeof StudyResponseSchema>;
 
