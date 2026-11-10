@@ -37,6 +37,18 @@ or study semantics, so each needs its own change):
   tool deadline. With `DATABASE_URL` the stored tables are used. Either cap no-database studies at
   what fits, or fetch funding once per coin per day into the Lab store.
 
+Signals v2 follow-ups (docs/RESEARCH.md "Signals v2"):
+
+- [ ] Short breakouts have no daily definition: `range_breakout` is long-only, so a short
+  `vol_expansion_breakout` opportunity carries no rule.
+- [ ] The live definition scan needs a database (`DATABASE_URL`); without one the `definition` source is
+  `unavailable`.
+- [ ] Firing rates of the funding and OI definitions (`funding_fade`, `negative_funding_build`,
+  `washout_reclaim`) are unmeasured: there is no public OI history, only what the collector stored.
+  `trend_pullback_long` / `_short` and `range_breakout` measured at 5.3 % / 6.8 % / 3.8 % of coin-days on HL
+  daily candles.
+- [ ] A partial day of funding is not detected by the scan (the loader returns the daily sum only).
+
 Radar routine (2026-11-02): the 4 h setup board is retired (24 setups, all low conviction, −1.77R; it
 never saw news, sectors or HIP-3). `ROUTINE.md` is now a twice-daily radar: `bun run radar` scans every
 dex, the session researches catalysts and lands at most 3 graded calls in `data/radar/`.
@@ -83,7 +95,7 @@ setups, candidate universe = top 30 by 24 h notional plus "my markets".
   replay parity test, the board's `definition` source. Not shipped: the level builder, 4 h
   triggers and entry zones, `sector_continuation` (needs sector features the Lab lacks), and
   the B.4 conditions the two-condition Rule drops (listed in docs/RESEARCH.md S1). The UI (S4)
-  is open.
+  shipped 2026-11-10.
 - [ ] Phase 3: `bun run candidates` and `candidates:advance`, budget gate, one LLM
   narration call, routine writes through the setups store.
 - [ ] Phase 4: workflows, ROUTINE.md as a thin wrapper, narrative job split out,

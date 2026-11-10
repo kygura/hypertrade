@@ -76,8 +76,9 @@ Mapping (pure, tested): a catalogue rule firing now carries its own rule; a nove
 maps through a fixed table (`funding_z90` → `ht:funding|z|90`, 7 d return →
 `ht:price|roc|7`, volume multiple → `ht:volume|ma_ratio|20`) using the item's observed
 value sign and a rounded threshold; platform opportunities and radar calls carry
-`rule: null` (superseded by Signals v2 S3 below: an opportunity now carries the daily definition of its setup kind,
-a radar call its scorecard row).
+`rule: null` (superseded by Signals v2 S3 below: an opportunity now carries the daily definition of its setup kind
+when one matches its side, with its ledger record as evidence; a radar call stays rule-less and carries its
+scorecard row).
 
 Routes (all zod-parsed in and out):
 
@@ -162,7 +163,10 @@ One question per region, top to bottom on mobile, two columns from `lg`:
     then the result; failure shows the error in the cell, row stays). It runs a trial,
     and says so in its title. A guest (PUBLIC_MODE) gets `LOGIN TO STUDY` instead of a
     POST that would bounce off a 401;
-  - no rule: muted `no Lab twin` with a title explaining why.
+  - no rule: what backs the row instead (Signals v2 S3/S4): an opportunity's ledger record
+    (`live record · n · clusters · mean net % [lo, hi] · 24h`), a radar call's scorecard row
+    (`graded forward · n calls · mean vs BTC · hit %`), or, with neither yet, a muted factual
+    line (`no record yet`, `no graded calls yet`).
   Row click or Enter opens `/lab/study?rule=…&coin=…` (`coin` only for `coin` scope; a
   `universe` signal opens the study's default top-N universe). `?coin=X` filters the list. Secondary links on the row: source
   drill (`href`), `/asset/:coin`. Keyboard: j/k move, Enter open, s study in place.
@@ -216,7 +220,7 @@ and a rule-bearing signal opens a prefilled study.
 
 ## Signals v2 — one definition, two evaluators
 
-Status: S1–S3 shipped (2026-11-10), S4 (UI) open. Phases 1–2 of the candidate pipeline
+Status: done (2026-11-10): S1–S4 shipped, review fixes applied. Phases 1–2 of the candidate pipeline
 (`docs/research/candidates-redesign.md` § B.3, B.4), cut to what the Lab can replay today.
 
 Problem: four engines each defined "signal" their own way (scanner setups, novelty, Lab rules,
@@ -245,8 +249,8 @@ Shipped (thresholds are starting points; each rule's comment in the file names w
 | `funding_fade` | short 7d | `ht:funding z(90) ≥ 2 AND ht:oi pctile(30) ≥ 0.95` | `\|ret_3d\| < 1 ATR` (third condition, ATR-scaled) |
 | `negative_funding_build` | long 7d | `ht:funding z(90) < −1.5 AND ht:oi roc(7) ≥ 0.1` | `ret_7d ≥ −1 ATR` |
 | `washout_reclaim` | long 7d, stop 2-bar low | `ht:price roc(3) < −0.08 AND ht:oi roc(3) < −0.1` | the 4 h reclaim trigger, funding < 0, liquidation z (no metric); a 1-day return needs roc(1), below the minimum window |
-| `trend_pullback_long` / `_short` | long / short 10d | `ht:price ma_ratio(20)` in [−0.02, 0.02) `AND trend ∈ {up}` / `{down}` | distance in %, not ATR; funding-not-crowded |
-| `range_breakout` | long 7d | `ht:price pctile(20) ≥ 1 AND ht:volume ma_ratio(20) ≥ 0.5` | breakout on closes, not highs (no rolling-max feature) |
+| `trend_pullback_long` / `_short` ("Trend at its 20-day mean") | long / short 10d | `ht:price ma_ratio(20)` in [−0.02, 0.02) `AND trend ∈ {up}` / `{down}`: price at its 20-day mean in a trend, above it included, so not strictly a pullback (the id keeps the B.4 name) | distance in %, not ATR; funding-not-crowded |
+| `range_breakout` | long 7d | `ht:price pctile(20) ≥ 1 AND ht:volume ma_ratio(20) ≥ 0.5`; the 20-day mean includes the day, so volume ≥ about 1.54× the prior 19-day mean | breakout on closes, not highs (no rolling-max feature) |
 
 Nothing was left out. `ht:oi` is collector snapshots (stored history only), so the three OI definitions are in zone
 only where OI is collected. Stop/target levels are left to the study's exits except the washout's structural stop.
@@ -269,15 +273,21 @@ with `ATR_WINDOW ≤ k < n − horizon` on which the scan of the data truncated 
 (k ≥ previous entry + horizon).
 
 Service: evaluates every definition over the Lab's default universe (top 20) plus the UI
-watchlist, on the datasets the Lab service already loads and caches; refreshed at most once per
+watchlist. It shares the Lab service's dataset loader (and the registry's per-metric fetch cache) but
+loads its own 200-day window, so it does not share study cache entries; refreshed at most once per
 closed daily bar; a coin whose data fails is dropped and counted, never fatal. Evaluating a
 definition live is **not** a trial (no study runs).
 
 Concrete: `createDefinitionScanner` loads 200 days per coin (`SCAN_LOOKBACK_DAYS`: the 90-day window plus the
-regime's 50-day mean) through the Lab service's `loadDataset` (registry cache), memoises one scan per UTC day (callers
-in flight share it; a scan that fails as a whole is forgotten), and drops a coin that fails, is not loaded within
-120 s (`SCAN_DEADLINE_MS`) or whose data does not reach yesterday's bar; dropped coins are added to the source's
-`dropped`. The board bounds the wait with its source timeout like every source. Watchlist = `watchedAssets`
+regime's 50-day mean) through the Lab service's `loadDataset` (registry cache), memoises one complete scan per UTC
+day (callers in flight share it; a scan that dropped anything is kept only 15 min, `SCAN_RETRY_MS`, so a scan run
+before stored data reaches the bar is retried; a scan that fails as a whole is forgotten), and drops a coin that
+fails, is not loaded within 120 s (`SCAN_DEADLINE_MS`) or whose price does not reach yesterday's bar. A definition is
+evaluated on a coin only when every metric its conditions read has a raw, not forward-filled, value on the bar (the
+loader's `lastRaw`; the registry forward-fills funding and OI up to 3 days); otherwise that coin × definition is
+dropped. A partial day of funding (the day's hourly settlements not all stored yet) is not detected: the loader
+returns only the daily sum. Dropped coins and coin × definitions are added to the source's `dropped`. A test checks
+that the 200-bar window answers as the full history does for every definition on the fixture. The board bounds the wait with its source timeout like every source. Watchlist = `watchedAssets`
 (intel_watchlist, else DESK_WATCHLIST). Without `DATABASE_URL` the source is `unavailable` ("needs a database"):
 every coin's funding would be fetched live at about a coin a minute (Runtime above), and OI is stored-only.
 
@@ -289,7 +299,8 @@ every coin's funding would be fetched live at about a coin a minute (Runtime abo
 - `evidence` becomes a discriminated union on `kind`:
   - `study` — the existing `StudySummary` (replay of the rule).
   - `ledger` — for `opportunity`: realised outcomes of that setup kind from the platform
-    ledger (`groupStats`, current score version): `n`, `clusters`, mean and interval, horizon.
+    ledger (`setupLedgerStats`, platform/stats.ts: the 24 h group over current-score-version outcomes, the
+    record the alert line and the opportunity detail quote too): `n`, `clusters`, mean and interval, horizon.
     Null fields stay null under 5 clusters, as the ledger already does.
   - `scorecard` — for `radar`: the radar scorecard row for the call's horizon (`n`, mean
     relative return, hit rate).
@@ -306,8 +317,9 @@ Shape as built (`src/shared/research.ts`):
 - `evidence: { kind: 'study', …StudySummary } | { kind: 'ledger', setupKind, horizon: '24h', n, clusters, meanNet,
   ci95, hitRate } | { kind: 'scorecard', stance, horizonDays: 7, n, meanPct, hitRate } | null`. The study cache keeps
   plain `StudySummary` rows (no `kind`); the board adds `kind` when it attaches one, so rows stored before this change
-  load unchanged. Ledger: `groupStats` over outcomes with `scoreVersion = SCORE_VERSION`, overall row at 24h; an empty
-  ledger is `n 0` with null numbers, an unreadable one leaves `evidence` null. Scorecard: the call's stance at the
+  load unchanged. Ledger: `setupLedgerStats` per setup kind on the board (one filtered read per kind, bounded by
+  `STUDY_STORE_TIMEOUT_MS`); an empty ledger is `n 0` with null numbers, an unreadable or slow one leaves `evidence`
+  null. Scorecard: the call's stance at the
   7-day row (the longest graded horizon); null before any call is graded there.
 - `dailyStudy: StudySummary | null`: opportunity only, today's cached study of its `rule` (the daily definition,
   universe scope). Study evidence never replaces the ledger evidence.
@@ -320,9 +332,10 @@ Shape as built (`src/shared/research.ts`):
 
 ### S4. UI
 
-Evidence cell renders by `kind`: study as today; ledger `live record · n · clusters · mean R
-[lo, hi] · 24h`; scorecard `graded forward · n calls · mean vs BTC · hit %`. Source chip and
-filter for `definition`. Opportunity rows: ledger evidence plus `STUDY DAILY VERSION`.
+Evidence cell renders by `kind`: study as today; ledger `live record · n · clusters · mean
+net return in % [lo, hi] · 24h` (per outcome; interval over cluster means); scorecard `graded forward · n calls · mean vs BTC · hit %`. Source chip and
+filter for `definition`. Opportunity rows: ledger evidence plus `STUDY DAILY VERSION`; the daily rule text
+under the headline is prefixed `daily version: `.
 `/lab/study` gets a DEFINITIONS picker (the shipped definitions, prefilled, universe scope) so
 its empty state is no longer a dead end.
 
