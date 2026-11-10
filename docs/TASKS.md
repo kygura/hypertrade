@@ -28,8 +28,6 @@ or study semantics, so each needs its own change):
 - [ ] Monitoring watchlist vs operator's markets: `intel_watchlist` / `DESK_WATCHLIST` (4 coins by default)
   and `myMarkets` (`PLATFORM_MY_MARKETS`, 7) stay separate lists, and the desk watch loop reads
   `DESK_WATCHLIST` only, not the UI-edited `intel_watchlist`. Merging changes live alerts; decide first.
-- [ ] Event study stop/target fixed at 1.5 / 3 ATR (`STUDY_DEFAULTS`, `lib/study.ts`) with no UI control.
-- [ ] `/lab/study` cannot tell whether the rule is already catalogued (SAVE offers it again).
 
 Radar routine (2026-11-02): the 4 h setup board is retired (24 setups, all low conviction, −1.77R; it
 never saw news, sectors or HIP-3). `ROUTINE.md` is now a twice-daily radar: `bun run radar` scans every
