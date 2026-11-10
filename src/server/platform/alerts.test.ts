@@ -32,7 +32,7 @@ describe("ready push", () => {
 });
 
 describe("ready push evidence line", () => {
-  const out = (i: number, net: number, h = "24h"): OutcomeRow => ({ opportunityId: `o${i}`, setupKind: "k", regime: "trend", liquidityTier: 1, horizon: h, createdAtMs: i * 2 * 86_400_000, grossReturn: net, netReturn: net, hasCosts: true });
+  const out = (i: number, net: number, h = "24h"): OutcomeRow => ({ opportunityId: `o${i}`, setupKind: "k", regime: "trend", scoreVersion: "v", liquidityTier: 1, horizon: h, createdAtMs: i * 2 * 86_400_000, grossReturn: net, netReturn: net, hasCosts: true });
   test("seeded ledger: n, clusters, mean and interval at 24h", async () => {
     const { sent, bus } = setup(undefined, undefined, [0.01, 0.02, 0.03, 0.04, 0.05].map((x, i) => out(i, x)));
     bus.publish("opportunity", { opportunity: opp(), change: "status" });

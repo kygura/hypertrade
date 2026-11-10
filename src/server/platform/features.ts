@@ -23,6 +23,8 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 const LOOKBACK = { days: 1, min: 12 };
+/** |z| at which a signal counts as active: score confluence (score.ts) and the regime's non-flat cut (1 σ). */
+export const ACTIVE_Z = 1;
 const series = (ring: RingPoint[], f: (p: RingPoint) => number): Point[] => ring.map((p) => ({ t: p.ts, v: f(p) })).filter((p) => Number.isFinite(p.v));
 
 /**
@@ -82,8 +84,12 @@ export function computeFeatures(history: RingPoint[], now: number, extras: Featu
   const sigma1h = rv24h == null ? null : rv24h * Math.sqrt(60);
 
   const fundingApr = last ? fundingAprPct(last.funding) : null;
-  // The ring (24 h) cannot hold the classifier's 72 h window, so classify the 1 h change on thresholds scaled to 1 h.
-  const regime = ret1h.delta == null ? null : classifyRegime(ret1h.delta, oi1h.delta, fundingZ24h, fundingApr, 1);
+  // The desk's fixed 1.5 % / 3 % are multi-hour cuts; on 1 h the cuts are the coin's own dispersion: price is
+  // non-flat at ACTIVE_Z × sigma1h, OI moves at |oiChg1hZ| ≥ ACTIVE_Z (the OI leg runs in z units). No sigma: range.
+  const regime =
+    ret1h.delta == null ? null
+    : !(sigma1h != null && sigma1h > 0) ? "range"
+    : classifyRegime(ret1h.delta, oi1h.z, fundingZ24h, fundingApr, { flatPct: ACTIVE_Z * sigma1h * 100, oiMovePct: ACTIVE_Z });
 
   const liq = fin(extras.liqNearUsd);
   const b = extras.book ?? null;
@@ -117,7 +123,7 @@ export function computeFeatures(history: RingPoint[], now: number, extras: Featu
       sigma1h: fin(sigma1h),
       liqNearUsd: liq,
       points: ring.length,
-      /** classifyRegime on the 1 h price and OI change, thresholds scaled to 1 h. null without 1 h of history. */
+      /** classifyRegime on the 1 h change, non-flat at 1 σ (sigma1h), OI leg on oiChg1hZ. null without 1 h of history, "range" without sigma1h. */
       regime,
     },
   };

@@ -1,5 +1,6 @@
 import type { LedgerStats } from "../../shared/platform.js";
 import { horizonMs } from "./outcomes.js";
+import { SCORE_VERSION } from "./score.js";
 import type { OutcomeRow } from "./store.js";
 
 const DAY_MS = 86_400_000;
@@ -9,11 +10,12 @@ const T95 = [2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.16
 const tCrit = (df: number) => (df > 30 ? 1.96 : T95[df - 4]);
 
 /** Groups by setupKind + horizon, plus regime and/or tier when asked. Rows with non-finite netReturn, or with no cost breakdown (hasCosts false), are skipped.
+ * By regime, only rows scored under the current SCORE_VERSION count: the regime label changed meaning between versions (score.ts).
  * Outcomes of one signal-time bucket floor(createdAtMs / max(1 day, horizon)) are one cluster (correlated, not independent): meanNet and the t-interval run over cluster means, interval null below 5 clusters. n and hitRate stay per outcome. */
 export function groupStats(rows: OutcomeRow[], by: { regime?: boolean; tier?: boolean } = {}): LedgerStats[] {
   const groups = new Map<string, { key: Pick<LedgerStats, "setupKind" | "horizon" | "regime" | "tier">; xs: number[]; cl: Map<number, number[]> }>();
   for (const r of rows) {
-    if (!Number.isFinite(r.netReturn) || r.hasCosts === false) continue;
+    if (!Number.isFinite(r.netReturn) || r.hasCosts === false || (by.regime && r.scoreVersion !== SCORE_VERSION)) continue;
     const key = { setupKind: r.setupKind, horizon: r.horizon, regime: by.regime ? r.regime : null, tier: by.tier ? r.liquidityTier : null };
     const k = JSON.stringify(key);
     const g = groups.get(k) ?? { key, xs: [], cl: new Map<number, number[]>() };

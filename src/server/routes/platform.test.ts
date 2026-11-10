@@ -9,6 +9,7 @@ import { requireAuth, signSession } from "../auth.js";
 import { makeService } from "../desk/testkit.js";
 import { dbPlatformContext, type PlatformContext } from "../platform/context.js";
 import { reconcileOnce } from "../platform/reconcile.js";
+import { SCORE_VERSION } from "../platform/score.js";
 import { setHealthExtras } from "../platform/runtime.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
 import { createPlatformRoutes, defaultPlatformDeps, deskRisk, type PlatformDeps, type RiskGate } from "./platform.js";
@@ -434,7 +435,7 @@ describe("liqmap and ledger", () => {
   });
 
   test("ledger stats and entries parse; unknown opportunity 404", async () => {
-    const o = await seed();
+    const o = await seed("ready", { scoreVersion: SCORE_VERSION }); // grouping by regime counts current-version rows only
     await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: { horizon: "1h", entryBasis: "mark", entryPx: 4000, horizonPx: 4040, grossReturn: 0.01, netReturn: 0.009 } });
     const s = LedgerStatsResponseSchema.parse(await (await req("/ledger/stats?setupKind=breakout")).json());
     expect(s.stats).toMatchObject([{ setupKind: "breakout", horizon: "1h", n: 1, regime: null }]);
