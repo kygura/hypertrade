@@ -2,7 +2,7 @@ import type { Notifier } from "../desk/notify.js";
 import type { NoveltyEntry } from "../../shared/platform.js";
 import type { Bus } from "./bus.js";
 import { novelText } from "./novelty.js";
-import { evidenceLine, groupStats } from "./stats.js";
+import { evidenceLine, setupLedgerStats } from "./stats.js";
 import type { PlatformStore } from "./store.js";
 import type { LoopDef } from "./runtime.js";
 import { envNum } from "./scanner.js";
@@ -71,7 +71,7 @@ export function createAlerts(deps: {
         pushed.add(o.id);
         const edge = o.netEdgeBps == null ? "edge n/a" : `net edge ${o.netEdgeBps.toFixed(0)} bps (${o.edgeBasis})`;
         const rows = await deps.store?.outcomeRows({ setupKind: o.setupKind }).catch(() => null);
-        const line = rows ? `\n${evidenceLine(groupStats(rows).find((g) => g.horizon === "24h") ?? null, o.edgeBasis)}` : "";
+        const line = rows ? `\n${evidenceLine(setupLedgerStats(o.setupKind, rows), o.edgeBasis)}` : "";
         void send("info", `Ready: ${o.direction} ${o.coin}`, `${o.setupKind}, score ${o.score.toFixed(2)}, ${edge}${line}`, `/feed?id=${encodeURIComponent(o.id)}`);
       });
     },

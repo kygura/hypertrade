@@ -10,11 +10,11 @@ import { getLabService, labTools } from "../lab/tools.js";
 import { labDeadlineMs, SERVER_DEADLINE_MS } from "../mcp/lab.js";
 import { ToolInputError, UpstreamError, type ToolDef } from "../mcp/types.js";
 import { dbPlatformContext, getPlatformContext, type PlatformContext } from "../platform/context.js";
+import { setupLedgerStats } from "../platform/stats.js";
 import { PgPlatformStore } from "../platform/store-pg.js";
 import { boardDepsFor, buildBoard, SourceUnavailable, type BoardDeps } from "../research/board.js";
 import { isGuest } from "../auth.js";
 import { readRadar } from "../research/radar.js";
-import { currentLedgerStats } from "../research/signals.js";
 import { DEFINITIONS, definitionRule } from "../signals/definitions.js";
 import { createDefinitionScanner, type DefinitionScanner } from "../signals/scan.js";
 import { bounded, createStudyCache, createStudyRunner, STUDY_CACHE_MAX, STUDY_STORE_TIMEOUT_MS, type RunEventStudy, type StudyRunner } from "../research/study.js";
@@ -154,10 +154,12 @@ export function defaultBoardDeps(env: Record<string, string | undefined> = proce
       if (!ctx) throw new SourceUnavailable("platform offline (no worker loop and no database)");
       return ctx.store.listOpportunities({ statuses: [...PRE_DECISION_STATUSES], limit });
     },
-    ledger: async () => {
+    ledger: async (kinds) => {
       const ctx = platformContext();
       if (!ctx) throw new SourceUnavailable("platform offline (no worker loop and no database)");
-      return currentLedgerStats(await ctx.store.outcomeRows({}));
+      // Only the kinds on the board, one filtered read each (the store's setupKind filter), not every outcome row.
+      const stats = await Promise.all(kinds.map(async (k) => setupLedgerStats(k, await ctx.store.outcomeRows({ setupKind: k }))));
+      return stats.filter((s) => s !== null);
     },
     radar: async () => {
       const r = await readRadar(RADAR_DIR);

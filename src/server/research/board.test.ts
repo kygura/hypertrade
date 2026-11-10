@@ -146,7 +146,8 @@ describe("buildBoard", () => {
     const crowded = { ...opp, setupKind: "crowded_long", direction: "short" } as Opportunity;
     const wrongSide = { ...opp, id: "22222222-2222-4222-8222-222222222222", setupKind: "vol_expansion_breakout", direction: "short" } as Opportunity;
     const stats = [{ setupKind: "crowded_long", horizon: "24h", regime: null, tier: null, n: 37, clusters: 11, hitRate: 0.54, meanNet: 0.0042, ci95: [-0.003, 0.011] as [number, number] }];
-    const d = deps({ opportunities: async () => [crowded, wrongSide], ledger: async () => stats });
+    const asked: string[][] = [];
+    const d = deps({ opportunities: async () => [crowded, wrongSide, { ...crowded, id: "33333333-3333-4333-8333-333333333333" }], ledger: async (kinds) => (asked.push(kinds), stats) });
     const fade = definitionRule(DEFINITIONS.find((x) => x.id === "funding_fade")!);
     const summary = studySummary(fakeStudy(), "2026-11-09T06:00:00.000Z");
     d.cache.set(studyKey({ rule: fade, ...STUDY_DEFAULTS }, NOW), { summary, study: fakeStudy() });
@@ -154,6 +155,7 @@ describe("buildBoard", () => {
     const o = b.signals.find((s) => s.id === `opportunity:SOL:${opp.id}`)!;
     expect(o).toMatchObject({ rule: fade, scope: "universe", tested: "short", definitionId: "funding_fade", dailyStudy: summary });
     expect(o.evidence).toEqual({ kind: "ledger", setupKind: "crowded_long", horizon: "24h", n: 37, clusters: 11, meanNet: 0.0042, ci95: [-0.003, 0.011], hitRate: 0.54 });
+    expect(asked).toEqual([["crowded_long", "vol_expansion_breakout"]]); // one read, the kinds on the board only
     // A short breakout has no daily definition on its side: no rule, an empty ledger record.
     const w = b.signals.find((s) => s.id === `opportunity:SOL:${wrongSide.id}`)!;
     expect(w).toMatchObject({ rule: null, definitionId: null, dailyStudy: null, scope: "coin", tested: null });
@@ -162,6 +164,19 @@ describe("buildBoard", () => {
     const down = BoardResponseSchema.parse(await buildBoard(deps({ opportunities: async () => [crowded], ledger: async () => { throw new Error("db down"); } })));
     expect(down.sources.opportunity).toEqual(ok(1));
     expect(down.signals.find((s) => s.source === "opportunity")!.evidence).toBeNull();
+  });
+
+  test("a ledger read that does not answer in time leaves opportunity evidence null; the source answers ok", async () => {
+    const crowded = { ...opp, setupKind: "crowded_long", direction: "short" } as Opportunity;
+    const err = console.error;
+    console.error = () => {};
+    try {
+      const b = BoardResponseSchema.parse(await buildBoard(deps({ opportunities: async () => [crowded], ledger: () => new Promise(() => {}), ledgerTimeoutMs: 20, timeoutMs: 2_000 })));
+      expect(b.sources.opportunity).toEqual(ok(1));
+      expect(b.signals.find((s) => s.source === "opportunity")!).toMatchObject({ evidence: null, definitionId: "funding_fade" });
+    } finally {
+      console.error = err;
+    }
   });
 
   test("radar: the call's stance at the 7-day scorecard row as evidence; no rule", async () => {

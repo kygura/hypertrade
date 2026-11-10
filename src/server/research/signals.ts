@@ -4,9 +4,7 @@ import type { LedgerEvidence, RadarScoreRow, ResearchSignal, ScorecardEvidence }
 import { parseFeatureId } from "../lab/engine/features.js";
 import { fmtNum, ruleText } from "../lab/engine/rules.js";
 import { RuleSchema, type CatalogueEntry, type Condition, type MarketPulse, type Rule } from "../lab/types.js";
-import { SCORE_VERSION } from "../platform/score.js";
-import { groupStats } from "../platform/stats.js";
-import type { OutcomeRow } from "../platform/store.js";
+import { LEDGER_HORIZON } from "../platform/stats.js";
 import { definitionForKind, definitionRule } from "../signals/definitions.js";
 import type { DefinitionHit } from "../signals/scan.js";
 
@@ -145,13 +143,7 @@ export function definitionSignal(h: DefinitionHit): Unstudied {
   };
 }
 
-/** Ledger stats by setup kind and horizon over the outcomes scored under the current SCORE_VERSION. */
-export const currentLedgerStats = (rows: readonly OutcomeRow[]): LedgerStats[] => groupStats(rows.filter((r) => r.scoreVersion === SCORE_VERSION));
-
-/** Ledger horizon an opportunity's evidence reads (the platform's evidence line reads the same). */
-export const LEDGER_HORIZON = "24h";
-
-/** An opportunity's setup kind in the ledger (groupStats rows, current score version); an empty record when the kind has none. */
+/** An opportunity's setup kind in the ledger (setupLedgerStats records, platform/stats.ts); an empty record when the kind has none. */
 export function ledgerEvidence(setupKind: string, stats: readonly LedgerStats[]): LedgerEvidence {
   const g = stats.find((s) => s.setupKind === setupKind && s.horizon === LEDGER_HORIZON && s.regime == null && s.tier == null);
   return {

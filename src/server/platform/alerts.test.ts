@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Opportunity } from "../../shared/platform.js";
 import { createAlerts } from "./alerts.js";
 import { Bus } from "./bus.js";
+import { SCORE_VERSION } from "./score.js";
 import type { OutcomeRow } from "./store.js";
 
 const opp = (over: Partial<Opportunity> = {}) => ({ id: "a", coin: "SOL", direction: "long", setupKind: "k", status: "ready", score: 5, netEdgeBps: 40, edgeBasis: "unvalidated", ...over }) as Opportunity;
@@ -32,9 +33,9 @@ describe("ready push", () => {
 });
 
 describe("ready push evidence line", () => {
-  const out = (i: number, net: number, h = "24h"): OutcomeRow => ({ opportunityId: `o${i}`, setupKind: "k", regime: "trend", scoreVersion: "v", liquidityTier: 1, horizon: h, createdAtMs: i * 2 * 86_400_000, grossReturn: net, netReturn: net, hasCosts: true });
-  test("seeded ledger: n, clusters, mean and interval at 24h", async () => {
-    const { sent, bus } = setup(undefined, undefined, [0.01, 0.02, 0.03, 0.04, 0.05].map((x, i) => out(i, x)));
+  const out = (i: number, net: number, h = "24h", v = SCORE_VERSION): OutcomeRow => ({ opportunityId: `o${i}`, setupKind: "k", regime: "trend", scoreVersion: v, liquidityTier: 1, horizon: h, createdAtMs: i * 2 * 86_400_000, grossReturn: net, netReturn: net, hasCosts: true });
+  test("seeded ledger: n, clusters, mean and interval at 24h over the current score version (setupLedgerStats)", async () => {
+    const { sent, bus } = setup(undefined, undefined, [...[0.01, 0.02, 0.03, 0.04, 0.05].map((x, i) => out(i, x)), out(9, 0.5, "24h", "score-v0"), out(10, 0.5, "1h")]);
     bus.publish("opportunity", { opportunity: opp(), change: "status" });
     await Bun.sleep(0);
     expect(sent[0]!.body).toContain("\nledger 24h: n 5 \u00b7 5 clusters \u00b7 +3.00% (+1.0\u2026+5.0) \u00b7 edge unvalidated");

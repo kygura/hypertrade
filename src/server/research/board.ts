@@ -7,7 +7,7 @@ import {
 import type { CatalogueEntry, MarketPulse } from "../lab/types.js";
 import type { DefinitionScan } from "../signals/scan.js";
 import { definitionSignal, firingEntries, noveltySignal, opportunitySignal, radarSignal, ruleSignal } from "./signals.js";
-import { studyKey, type StudyCache } from "./study.js";
+import { bounded, STUDY_STORE_TIMEOUT_MS, studyKey, type StudyCache } from "./study.js";
 
 // Research board (docs/RESEARCH.md B2, Signals v2 S3): each source loads on its own, under its own timeout; a source
 // that throws, times out or is not available here (no worker loop, no database) is listed `unavailable` with a fixed
@@ -40,14 +40,19 @@ export interface BoardDeps {
   novelty: (sinceBar: string) => Promise<NoveltyEntry[]>;
   /** Pre-decision platform opportunities; throw SourceUnavailable without a platform context. */
   opportunities: (limit: number) => Promise<Opportunity[]>;
-  /** Ledger stats by setup kind (groupStats over the current score version), read after the opportunities; a failure leaves their evidence null. */
-  ledger: () => Promise<LedgerStats[]>;
+  /**
+   * The ledger record (platform/stats.ts setupLedgerStats) of each setup kind asked, read after the opportunities for
+   * the kinds on the board; a failure or no answer within `ledgerTimeoutMs` leaves their evidence null.
+   */
+  ledger: (setupKinds: string[]) => Promise<LedgerStats[]>;
   /** Landed radar calls and the scorecard over all of them; throw SourceUnavailable when data/radar is absent. */
   radar: () => Promise<{ calls: RadarCall[]; scorecard: RadarScoreRow[] }>;
   /** Signal definitions in zone on the latest closed bar (signals/scan.ts); throw SourceUnavailable where no scan can run. */
   definitions: () => Promise<DefinitionScan>;
   cache: StudyCache;
   timeoutMs?: number;
+  /** Longest the ledger read may take before opportunities go out with `evidence: null`. Default STUDY_STORE_TIMEOUT_MS. */
+  ledgerTimeoutMs?: number;
 }
 
 /**
@@ -120,7 +125,8 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
     novelty: async () => mapEach("novelty", await deps.novelty(bar(now - NOVELTY_DAYS * DAY)), noveltySignal),
     opportunity: async () => {
       const opps = await deps.opportunities(OPPORTUNITY_LIMIT);
-      const ledger = opps.length ? await deps.ledger().catch((e) => (console.error("[research] opportunity ledger:", e), null)) : [];
+      const kinds = [...new Set(opps.map((o) => o.setupKind))];
+      const ledger = opps.length ? await bounded(Promise.resolve().then(() => deps.ledger(kinds)), null, deps.ledgerTimeoutMs ?? STUDY_STORE_TIMEOUT_MS, "opportunity ledger") : [];
       return mapEach("opportunity", opps, (o) => opportunitySignal(o, ledger));
     },
     radar: async () => {

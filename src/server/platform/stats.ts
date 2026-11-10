@@ -39,6 +39,17 @@ export function groupStats(rows: OutcomeRow[], by: { regime?: boolean; tier?: bo
   });
 }
 
+/** The ledger horizon a setup's record is quoted at (alert line, opportunity detail, research board). */
+export const LEDGER_HORIZON = "24h";
+
+/**
+ * A setup kind's ledger record: the LEDGER_HORIZON group of groupStats over its outcomes scored under the current
+ * SCORE_VERSION; null when it has none. One definition for every place that quotes it, so a setup shows one n.
+ */
+export function setupLedgerStats(setupKind: string, rows: readonly OutcomeRow[]): LedgerStats | null {
+  return groupStats(rows.filter((r) => r.setupKind === setupKind && r.scoreVersion === SCORE_VERSION)).find((g) => g.horizon === LEDGER_HORIZON) ?? null;
+}
+
 const pct = (x: number, d: number) => `${x < 0 ? "\u2212" : "+"}${Math.abs(x * 100).toFixed(d)}`;
 
 /** Facts-only evidence line (FEATURES 5): `ledger 24h: n 37 \u00b7 11 clusters \u00b7 +0.42% (\u22120.3\u2026+1.1) \u00b7 edge unvalidated`. Null stats = empty ledger; the interval is omitted below 5 clusters. */

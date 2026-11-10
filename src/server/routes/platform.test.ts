@@ -105,15 +105,21 @@ describe("feed and detail", () => {
   });
 
   test("detail: signals, costs, stats, risk before/after and a governor-sized ticket", async () => {
-    const o = await seed();
-    await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: { horizon: "1h", entryBasis: "mark", entryPx: 4000, horizonPx: 4040, grossReturn: 0.01, netReturn: 0.009 } });
+    // stats and the evidence line are one record: the 24h group over current-score-version outcomes (setupLedgerStats),
+    // not the largest group at any horizon. The 1h outcome and the old-version opportunity's outcome are left out.
+    const o = await seed("ready", { scoreVersion: SCORE_VERSION });
+    const old = await seed("ready", { coin: "BTC", scoreVersion: "v1" });
+    const outcome = (h: string, net: number) => ({ horizon: h, entryBasis: "mark" as const, entryPx: 4000, horizonPx: 4040, grossReturn: net, netReturn: net });
+    await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: outcome("1h", 0.009) });
+    await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: outcome("24h", 0.02) });
+    await store.appendLedger({ opportunityId: old.id, kind: "outcome", payload: outcome("24h", 0.5) });
     const d = OpportunityDetailSchema.parse(await (await req(`/opportunities/${o.id}`)).json());
-    expect(d.evidence).toBe("ledger 24h: n 0 · 0 clusters · edge unvalidated");
+    expect(d.evidence).toBe("ledger 24h: n 1 · 1 clusters · +2.00% · edge unvalidated");
     // z-features carry their raw input as value (none for priceAccelZ); plain features carry themselves.
     expect(d.signals).toEqual([{ name: "ret15mZ", value: 0.012, z: 2.1 }, { name: "priceAccelZ", value: null, z: 1.2 }, { name: "fundingPctile14d", value: 0.9, z: null }]);
     expect(d.opportunity.costs?.absorbableUsd).toBe(50_000);
     expect(d.opportunity.invalidation).toBe("15m close below 3800");
-    expect(d.stats).toMatchObject({ setupKind: "breakout", n: 1 });
+    expect(d.stats).toMatchObject({ setupKind: "breakout", horizon: "24h", n: 1, meanNet: 0.02 });
     expect(d.risk?.after.approved).toBe(true);
     expect(d.ticket).toEqual({ side: "long", entryPx: 4000, stopPx: 3800, targetPx: 4400, sizeUsd: 1000, sizeSource: "governor" });
     expect(d.bearCase).toBeNull();

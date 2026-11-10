@@ -15,7 +15,7 @@ import { approveBlockOf, dbPlatformContext, getPlatformContext, placedBy, placin
 import { Z_KEYS } from "../platform/score.js";
 import { databaseUrl } from "../db.js";
 import { PgPlatformStore } from "../platform/store-pg.js";
-import { evidenceLine, groupStats } from "../platform/stats.js";
+import { evidenceLine, groupStats, setupLedgerStats } from "../platform/stats.js";
 import { defaultDeskService } from "./desk.js";
 import { defaultIntelDeps } from "./intel/index.js";
 import { body, failure, invalid } from "./intel/http.js";
@@ -176,8 +176,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         const raw = RAW_OF[name as (typeof Z_KEYS)[number]];
         return { name, value: raw ? num(fv.inputs[raw]) : null, z: value };
       });
-      const groups = groupStats(await store.outcomeRows({ setupKind: opp.setupKind }));
-      const stats = [...groups].sort((a, b) => b.n - a.n)[0] ?? null;
+      const stats = setupLedgerStats(opp.setupKind, await store.outcomeRows({ setupKind: opp.setupKind }));
       const ticket = ticketOf(opp);
       let risk: { before: RiskVerdict; after: RiskVerdict } | null = null;
       if (ticket) risk = await deps.risk.assess(ticket).catch((err) => (console.error("[platform] risk preview failed", err), null));
@@ -190,7 +189,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         signals,
         bearCase: research && (research.status === "found" || research.status === "no_cause") ? research.explanation : null,
         stats,
-        evidence: evidenceLine(groups.find((g) => g.horizon === "24h") ?? null, opp.edgeBasis),
+        evidence: evidenceLine(stats, opp.edgeBasis),
         risk,
         ticket: { side: opp.direction, entryPx: opp.entryPx, stopPx: opp.stopPx, targetPx: opp.targetPx, sizeUsd: size?.notionalUsd && size.notionalUsd > 0 ? size.notionalUsd : null, sizeSource: "governor" as const },
         canApprove: approveBlockedReason == null,
