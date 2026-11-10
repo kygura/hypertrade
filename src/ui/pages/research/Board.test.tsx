@@ -94,7 +94,7 @@ describe("evidence cell", () => {
           sig("cached", { coin: "BTC", source: "rule", rule, evidence: { ...summary, kind: "study" }, tested: "short", at: NOW - 1000 }),
           sig("fresh", { coin: "SOL", rule, ruleText: "funding z(30) < −1 → long 5d", at: NOW - 2000 }),
           sig("wide", { coin: "ETH", rule, scope: "universe", tested: "short", evidence: { ...summary, kind: "study", verdict: "insufficient" }, at: NOW - 2500 }),
-          sig("twin", { coin: "HYPE", source: "opportunity", direction: "short", href: "/feed?id=x", at: NOW - 3000 }),
+          sig("bare", { coin: "HYPE", source: "opportunity", direction: "short", href: "/feed?id=x", at: NOW - 3000 }),
         ]),
       ),
     });
