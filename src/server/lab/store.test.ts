@@ -10,6 +10,7 @@ import {
   localLabFile,
   memoryStore,
   pgStore,
+  STUDY_KEEP_DAYS,
   summarize,
   toCatalogueEntry,
   toRunSummary,
@@ -18,6 +19,8 @@ import {
   type LabStore,
   type NewRun,
 } from "./store.js";
+import { migrate } from "../../../db/migrate.js";
+import { newPglite, pgliteDb, pgliteSql } from "../testing/pglite.js";
 import type { PerfStats, RuleEvaluation, SearchConfig, SearchResult } from "./types.js";
 import { SearchConfigSchema } from "./types.js";
 
@@ -342,6 +345,79 @@ describe("pg row mapping", () => {
     expect(await s.getCatalogueEntry("bad id")).toBeNull();
     expect(await s.archiveCatalogueEntry("bad id")).toBe(false);
     await expect(s.saveCatalogueEntry({ ...entry("ok"), id: "bad id" })).rejects.toThrow(/rule id/);
+  });
+});
+
+// Study cache rows (research/study.ts): the same suite over all three twins; pg runs on PGlite with every migration.
+function storesStudies(name: string, make: () => Promise<LabStore>) {
+  const T = new Date("2026-11-09T12:00:00Z");
+  const days = (n: number) => new Date(T.getTime() + n * 86_400_000);
+  const v = (x: number) => ({ summary: { verdict: "clear", events: x }, study: { screen: { events: x }, eventList: [{ r: -1.5 }] } });
+  describe(`${name}: studies`, () => {
+    test("put then get by key, in one read; unknown keys absent; empty list reads nothing", async () => {
+      const s = await make();
+      expect(await s.getStudies([])).toEqual(new Map());
+      await s.putStudy("r1:ETH:1.5:3:2026-11-09", v(1), T);
+      await s.putStudy("r1:*:2:4:2026-11-09", v(2), T);
+      const got = await s.getStudies(["r1:ETH:1.5:3:2026-11-09", "r1:*:2:4:2026-11-09", "nope"]);
+      expect([...got.keys()].sort()).toEqual(["r1:*:2:4:2026-11-09", "r1:ETH:1.5:3:2026-11-09"]);
+      expect(got.get("r1:ETH:1.5:3:2026-11-09")).toEqual(v(1));
+      expect(got.has("nope")).toBe(false);
+    });
+
+    test("a second put of a key replaces it", async () => {
+      const s = await make();
+      await s.putStudy("k:2026-11-09", v(1), T);
+      await s.putStudy("k:2026-11-09", v(9), T);
+      expect((await s.getStudies(["k:2026-11-09"])).get("k:2026-11-09")).toEqual(v(9));
+    });
+
+    test(`a put prunes studies older than ${STUDY_KEEP_DAYS} days`, async () => {
+      const s = await make();
+      await s.putStudy("old", v(1), T);
+      await s.putStudy("edge", v(2), days(1));
+      await s.putStudy("new", v(3), days(STUDY_KEEP_DAYS + 0.5));
+      expect([...(await s.getStudies(["old", "edge", "new"])).keys()].sort()).toEqual(["edge", "new"]);
+    });
+
+    test("returned values are copies", async () => {
+      const s = await make();
+      await s.putStudy("c", v(1), T);
+      (await s.getStudies(["c"])).get("c")!.summary = "MUTATED";
+      expect((await s.getStudies(["c"])).get("c")).toEqual(v(1));
+    });
+  });
+}
+
+storesStudies("memoryStore", async () => memoryStore(ticking()));
+storesStudies("fileStore", async () => fileStore(join(await tmp(), "lab.json"), ticking()));
+let pglite: Promise<ReturnType<typeof newPglite>> | null = null;
+storesStudies("pgStore (PGlite)", async () => {
+  // One migrated database for the suite (migrations take seconds); each test starts from an empty table.
+  pglite ??= (async () => {
+    const pg = newPglite();
+    await migrate(pgliteDb(pg), () => {});
+    return pg;
+  })();
+  const pg = await pglite;
+  await pg.exec("delete from research_studies");
+  const q = pgliteSql(pg);
+  return pgStore(() => q);
+});
+
+describe("fileStore studies persistence", () => {
+  test("survive a reopen; a file written before studies existed still loads, and keeps its other fields on the next write", async () => {
+    const path = join(await tmp(), "lab.json");
+    await fileStore(path).putStudy("k", { summary: { a: 1 }, study: { b: 2 } }, new Date());
+    expect((await fileStore(path).getStudies(["k"])).get("k")).toEqual({ summary: { a: 1 }, study: { b: 2 } });
+
+    const old = join(await tmp(), "old.json");
+    await writeFile(old, JSON.stringify({ version: 1, runs: [], rules: [], trials: [{ n: 1, at: "2026-01-01T00:00:00Z", ruleId: "r", intent: null, verdict: null }] }));
+    const s = fileStore(old);
+    expect(await s.getStudies(["k"])).toEqual(new Map());
+    await s.putStudy("k", { summary: 1, study: 2 }, new Date());
+    expect((await fileStore(old).listTrials()).map((t) => t.n)).toEqual([1]);
+    expect(JSON.parse(await readFile(old, "utf8")).studies).toHaveLength(1);
   });
 });
 

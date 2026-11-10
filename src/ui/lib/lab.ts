@@ -55,7 +55,7 @@ export type {
 export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flags: Array<'decayed' | 'overlap'> }
 
 /** lab_event_study result as the service returns it (eventList cut to the most recent 200 of eventListTotal). */
-export type StudyResult = EventStudyResult & { eventListTotal: number; warnings: string[]; idea: IdeaNumber }
+export type StudyResult = EventStudyResult & { eventListTotal: number; warnings: string[]; idea: IdeaNumber; catalogueId: string | null }
 
 /** lab_event_study args; without `coins` the server picks the universe from top / mine (default: top 20 by day volume). */
 export interface StudyArgs {

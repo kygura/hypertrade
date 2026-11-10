@@ -141,6 +141,8 @@ export const StudyResponseSchema = z.object({
   summary: StudySummarySchema,
   /** The full lab_event_study result (funnel, per-coin table, event list...). */
   study: EventStudyResultSchema,
+  /** The rule's catalogue id when the rule is in the catalogue now (looked up per request, never cached); else null. */
+  catalogueId: z.string().nullable(),
 });
 export type StudyResponse = z.infer<typeof StudyResponseSchema>;
 

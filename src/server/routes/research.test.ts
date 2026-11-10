@@ -14,7 +14,7 @@ import { boardStudy, SourceUnavailable } from "../research/board.js";
 import { readRadar } from "../research/radar.js";
 import { createStudyCache, createStudyRunner, studyKey, type RunEventStudy } from "../research/study.js";
 import { fakeStudy } from "../research/testkit.js";
-import { radarRoutes, researchRoutes, toolEventStudy } from "./research.js";
+import { catalogueIdOf, radarRoutes, researchRoutes, toolEventStudy } from "./research.js";
 
 const NOW = Date.parse("2026-11-09T12:00:00Z");
 const rule: Rule = { asset: "ETH", direction: "short", horizonDays: 7, conditions: [{ feature: "ht:funding|z|90", op: ">=", threshold: 2 }] };
@@ -22,7 +22,7 @@ const post = (body: unknown) => ({ method: "POST", headers: { "content-type": "a
 
 const radarCall = { id: "2026-11-08-1-HYPE", date: "2026-11-08", at: "2026-11-08T08:00:00Z", market: "HYPE", stance: "ride", direction: "long", kind: "catalyst", thesis: "a dated unlock next week", cause_url: "https://x.example/a", cause_date: "2026-11-07", kill_price: 30, kill_if: "close below 30", mark: 33, btc: 90000, rel: {}, killed_at: null } as const;
 
-function app(eventStudy: RunEventStudy, deadline = 50_000, guest = false) {
+function app(eventStudy: RunEventStudy, deadline = 50_000, guest = false, catalogueId: (r: Rule) => Promise<string | null> = async () => null) {
   const cache = createStudyCache(() => NOW);
   const nov = { id: "2026-11-08:ETH", detectedAt: "2026-11-09T00:10:00.000Z", barDate: "2026-11-08", coin: "ETH", kind: "new_extreme", families: ["funding"], nearSetups: [], marketWide: false, pushed: true, notified: [],
     features: [{ id: "funding_z90", value: 2.6, histMin: -2, histMax: 2.5, p1: -1.8, p99: 2.2, bars: 400, pctRank: 100 }] } as NoveltyEntry;
@@ -31,6 +31,7 @@ function app(eventStudy: RunEventStudy, deadline = 50_000, guest = false) {
     runStudy: createStudyRunner({ cache, eventStudy, now: () => NOW }),
     deadlineMs: () => deadline,
     isGuest: () => guest,
+    catalogueId,
     board: () => ({
       now: () => NOW,
       pulse: async () => { throw new Error("lab store down"); },
@@ -115,6 +116,36 @@ describe("/research routes", () => {
     ]);
     expect(body.summary.idea).toEqual({ n: 2, of: 2 });
     expect(body.study.screen).toEqual(direct.screen as never);
+  });
+
+  test("catalogueId: null until the rule is saved, then its catalogue id, live on a cached study and on the direct tool", async () => {
+    const base = synthetic({ seed: 2, drift: 0.01 });
+    const c = base.price;
+    const all: Record<string, number[]> = { ...base.metrics, "ht:open": c, "ht:high": c.map((x) => x * 1.01), "ht:low": c.map((x) => x * 0.99), "ht:funding": c.map(() => 0.0001) };
+    const syn: LabProvider = { id: "syn", name: "syn", notes: "", fetch: async () => ({ t: [], v: [] }),
+      metrics: () => ["a", "b"].map((k) => ({ id: `syn:${k}`, provider: "syn", key: k, name: k, category: "onchain" as const, scope: "asset" as const, description: k, lagDays: 0 })) };
+    const store = memoryStore(() => new Date(base.t[0]! + 2000 * DAY_MS));
+    const service = createLabService({
+      store, providers: [syn], now: () => NOW, hasDb: () => false, perpUniverse: async () => ["SYN"],
+      loadDataset: async (cfg) => ({ dataset: { ...base, asset: cfg.asset, metrics: Object.fromEntries(cfg.metrics.map((m) => [m, all[m]!])) }, warnings: [] }),
+    });
+    const planted: Rule = { asset: "SYN", direction: "long", horizonDays: 2, conditions: [{ feature: "syn:a|z|30", op: "<", threshold: -1 }] };
+    const tools = () => labTools(service);
+    const direct = () => tools().find((t) => t.name === "lab_event_study")!.run({ rule: planted, stopAtr: 1.5, targetAtr: 3, coins: ["SYN"] }, { source: "api" }) as Promise<{ catalogueId: string | null }>;
+    const a = app(toolEventStudy(tools), 50_000, false, catalogueIdOf(store));
+    const study = async () => StudyResponseSchema.parse(await (await a.request("/research/study", post({ rule: planted, coin: "SYN" }))).json());
+
+    const first = await study();
+    expect([first.cached, first.catalogueId, first.study.catalogueId]).toEqual([false, null, null]);
+    expect((await direct()).catalogueId).toBeNull();
+
+    const saved = await service.catalogueSave({ rule: planted, name: "planted" });
+    const again = await study();
+    expect([again.cached, again.catalogueId, again.study.catalogueId]).toEqual([true, saved.id, saved.id]);
+    expect((await direct()).catalogueId).toBe(saved.id);
+    // A failing lookup answers null; the study still answers.
+    const down = app(toolEventStudy(tools), 50_000, false, async () => { throw new Error("db down"); });
+    expect((await (await down.request("/research/study", post({ rule: planted, coin: "SYN" }))).json()).catalogueId).toBeNull();
   });
 });
 

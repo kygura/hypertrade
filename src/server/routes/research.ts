@@ -11,13 +11,17 @@ import { PgPlatformStore } from "../platform/store-pg.js";
 import { boardDepsFor, buildBoard, SourceUnavailable, type BoardDeps } from "../research/board.js";
 import { isGuest } from "../auth.js";
 import { readRadar } from "../research/radar.js";
-import { createStudyCache, createStudyRunner, type RunEventStudy, type StudyRunner } from "../research/study.js";
+import { createStudyCache, createStudyRunner, STUDY_CACHE_MAX, type RunEventStudy, type StudyRunner } from "../research/study.js";
+import { ruleId } from "../lab/engine/rules.js";
+import type { LabStore } from "../lab/store.js";
+import type { Rule } from "../lab/types.js";
 import { invalid } from "./intel/http.js";
 
 // /api/research and /api/radar (docs/RESEARCH.md B2). Inputs and outputs zod-parsed against src/shared/research.ts.
 // GET /research/board   → BoardResponse: every source loads on its own; a failing one is `unavailable` with a reason.
 // POST /research/study  { rule, coin?, stopAtr?, targetAtr? } → StudyResponse. Runs the lab_event_study tool, so it
-//                       is a trial exactly as a direct call; cached in process by rule hash, scope and UTC day. Runs
+//                       is a trial exactly as a direct call; cached by rule hash, scope, exits and UTC day (in process,
+//                       written through to the Lab store); `catalogueId` is looked up live on every answer. Runs
 //                       only on request: nothing in the process studies on its own (machine runs would inflate N).
 //                       400 { error, field? } bad input · 502 upstream data · 500 otherwise.
 // GET /radar            → RadarResponse from data/radar/ (state `unavailable` + reason when the files are absent).
@@ -28,6 +32,8 @@ export interface ResearchRouteDeps {
   board: () => Omit<BoardDeps, "cache">;
   runStudy: StudyRunner;
   cache: BoardDeps["cache"];
+  /** The rule's catalogue id if it is in the catalogue now, else null (the Lab store's id: ruleId, as on save). */
+  catalogueId: (rule: Rule) => Promise<string | null>;
   /** Deadline for a study run on request (the Lab route's). */
   deadlineMs: () => number | undefined;
   /** A PUBLIC_MODE guest (no session, no bearer): the board leaves the radar out. Default: auth.ts isGuest. */
@@ -49,7 +55,10 @@ export function researchRoutes(deps: ResearchRouteDeps) {
       const q = StudyRequestSchema.safeParse(raw);
       if (!q.success) return invalid(c, q.error, "study");
       try {
-        return c.json(StudyResponseSchema.parse(await deps.runStudy(q.data, { source: "ui", deadlineMs: deps.deadlineMs() })));
+        const run = await deps.runStudy(q.data, { source: "ui", deadlineMs: deps.deadlineMs() });
+        // Live, never from the cache: the rule may have been saved (or removed) since the study ran.
+        const catalogueId = await deps.catalogueId(q.data.rule).catch((err) => (console.error("[research] catalogue lookup", err), null));
+        return c.json(StudyResponseSchema.parse({ ...run, study: { ...run.study, catalogueId }, catalogueId }));
       } catch (err) {
         if (err instanceof ToolInputError) return c.json({ error: err.message, ...(err.field !== undefined && { field: err.field }) }, 400);
         if (err instanceof UpstreamError) return c.json({ error: err.message }, 502);
@@ -118,16 +127,26 @@ export function defaultBoardDeps(env: Record<string, string | undefined> = proce
 }
 
 let shared: { cache: ResearchRouteDeps["cache"]; runStudy: StudyRunner } | null = null;
-/** One study cache and runner per process. */
+/** One study cache and runner per process, the cache in front of the Lab store (so studies survive a restart). */
 export function researchRuntime() {
   if (!shared) {
-    const cache = createStudyCache();
+    const store = () => getLabService().deps.store; // resolved on first use, not at import
+    const cache = createStudyCache(Date.now, STUDY_CACHE_MAX, { getStudies: (k) => store().getStudies(k), putStudy: (k, v, at) => store().putStudy(k, v, at) });
     shared = { cache, runStudy: createStudyRunner({ cache, eventStudy: toolEventStudy(), now: Date.now }) };
   }
   return shared;
 }
 
+/** The catalogue id of a rule if saved: the Lab store's own key (ruleId, as lab_catalogue_save uses). */
+export const catalogueIdOf = (store: Pick<LabStore, "getCatalogueEntry">) => async (rule: Rule) => (await store.getCatalogueEntry(ruleId(rule)))?.id ?? null;
+
 export function defaultResearchDeps(env: Record<string, string | undefined> = process.env): ResearchRouteDeps {
   const { cache, runStudy } = researchRuntime();
-  return { board: () => defaultBoardDeps(env), cache, runStudy, deadlineMs: () => labDeadlineMs(env, SERVER_DEADLINE_MS) };
+  return {
+    board: () => defaultBoardDeps(env),
+    cache,
+    runStudy,
+    catalogueId: (rule) => catalogueIdOf(getLabService().deps.store)(rule), // resolved per call, not at import
+    deadlineMs: () => labDeadlineMs(env, SERVER_DEADLINE_MS),
+  };
 }

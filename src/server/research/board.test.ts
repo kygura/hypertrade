@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { NoveltyEntry, Opportunity } from "../../shared/platform.js";
 import type { RadarCall } from "../../shared/radar.js";
 import { BoardResponseSchema, STUDY_DEFAULTS } from "../../shared/research.js";
+import { memoryStore } from "../lab/store.js";
 import type { CatalogueEntry, MarketPulse, Rule } from "../lab/types.js";
 import { boardStudy, buildBoard, SourceUnavailable, type BoardDeps } from "./board.js";
 import { noveltyRule } from "./signals.js";
@@ -54,6 +55,27 @@ describe("buildBoard", () => {
     expect(n.evidence?.events).toBe(999);
     expect(boardStudy(n)).toEqual({ rule: noveltyRule(nov)!, ...STUDY_DEFAULTS });
     expect(boardStudy(b.signals[0]!)).toEqual({ rule, coin: "BTC", ...STUDY_DEFAULTS });
+  });
+
+  test("evidence reads through to the store in one read per build (not one per signal); a failing or slow store leaves memory only", async () => {
+    const store = memoryStore();
+    const evidence = studySummary(fakeStudy(), "2026-11-09T06:00:00.000Z");
+    await store.putStudy(studyKey({ rule, coin: "BTC", ...STUDY_DEFAULTS }, NOW), { summary: evidence, study: fakeStudy() }, new Date(NOW));
+    const reads: string[][] = [];
+    const cache = createStudyCache(() => NOW, 200, { getStudies: (k) => (reads.push(k), store.getStudies(k)), putStudy: (...a) => store.putStudy(...a) });
+    const b = await buildBoard(deps({ cache }));
+    expect(reads).toHaveLength(1);
+    expect(reads[0]!.sort()).toEqual([studyKey({ rule, coin: "BTC", ...STUDY_DEFAULTS }, NOW), studyKey({ rule: noveltyRule(nov)!, ...STUDY_DEFAULTS }, NOW)].sort());
+    expect(b.signals.find((s) => s.source === "rule")!.evidence).toEqual(evidence);
+    expect(b.signals.find((s) => s.source === "novelty")!.evidence).toBeNull();
+    await buildBoard(deps({ cache }));
+    expect(reads.at(-1)).toEqual([studyKey({ rule: noveltyRule(nov)!, ...STUDY_DEFAULTS }, NOW)]); // the hit stays in memory
+
+    const failing = createStudyCache(() => NOW, 200, { getStudies: async () => { throw new Error("db down"); }, putStudy: async () => {} });
+    expect(BoardResponseSchema.parse(await buildBoard(deps({ cache: failing }))).signals).toHaveLength(4);
+    const hanging = createStudyCache(() => NOW, 200, { getStudies: () => new Promise(() => {}), putStudy: async () => {} });
+    const slow = await buildBoard(deps({ cache: hanging, timeoutMs: 20 }));
+    expect(slow.signals.every((s) => s.evidence === null)).toBe(true);
   });
 
   test("novelty reads the last 3 closed bars", async () => {

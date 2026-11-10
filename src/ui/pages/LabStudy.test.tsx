@@ -36,6 +36,7 @@ const result = (verdict: StudyResult["verdict"], over: Partial<StudyResult> = {}
   survivorship: "Survivorship: the replay uses today's listed coins.",
   warnings: [],
   idea: { n: 7, of: 93 },
+  catalogueId: null,
   ...over,
 });
 

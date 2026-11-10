@@ -85,18 +85,24 @@ Routes (all zod-parsed in and out):
   source never empties the board. For a PUBLIC_MODE guest the radar source is
   `unavailable` ("sign in required") and contributes no signals, as `/api/radar` does.
 - `POST /api/research/study` `{ rule, coin?, stopAtr, targetAtr }` →
-  `{ studyId, cached, summary: StudySummary, study }`. The board sends `boardStudy(signal)`
+  `{ studyId, cached, summary: StudySummary, study, catalogueId }`. The board sends `boardStudy(signal)`
   (`src/shared/research.ts`: `coin` only for `coin` scope, the default 1.5 / 3 ATR exits),
   the same body the board looks its evidence up under. Runs `lab_event_study` through the
   existing Lab tool and counts as a trial exactly as a direct tool call does. Results are
-  cached in process by rule, scope and UTC day.
+  cached by rule, scope, exits (to 0.1 ATR) and UTC day: an in-process map (200 entries) in
+  front of the Lab store's `research_studies` rows (memory, Postgres or the JSON file, pruned
+  after 7 days), so a restart keeps today's evidence and does not log a second trial. A store
+  failure falls back to the in-process map. `catalogueId` is the rule's catalogue id when it is
+  saved (looked up on every answer, never cached), else null; `lab_event_study` returns it too.
 - `GET /api/radar` → `{ state, latestNote: {date, markdown, truncated}|null, calls,
   scorecard }` read from `data/radar/` with the existing schemas (at most 50 calls). Needs a
   signed-in session (not guest-readable in PUBLIC_MODE). If the files are absent (Vercel
   bundle), `state: 'unavailable'` with the reason.
 
 Studies run on request only: evidence is on the board once someone ran that study today
-(in-process cache), and every run counts as a trial. Nothing pre-computes them.
+(cached, and kept across restarts in the Lab store), and every run counts as a trial. The
+board reads the store once per build for all its signals, never once per signal. Nothing
+pre-computes them.
 
 ### B3. Approve honesty
 
