@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { AsyncBody, Badge, Button, DataTable, EmptyBlock, ErrorBlock, Panel, PanelHeader, RuleText, Segmented, SkeletonRows, type Column } from '../components'
 import { LabWarnings } from '../components/LabWarnings'
 import { useLabData } from '../components/lab/LabData'
 import { SaveToCatalogueForm } from '../components/lab/SaveToCatalogueForm'
 import { DataTo, DirectionWord } from '../components/lab/common'
 import { defaultRuleName, fmtSigned, lab, signTone, useLab, wireText, type CatalogueEntry, type LabState, type MetricDef, type Rule, type StudyResult } from '../lib/lab'
-import { DEFAULT_TOP, exitParams, exitsForm, exitValue, fmtR, parseExitParams, parseRuleParam, ruleDrillHref, screenLine, studyRoute, studyVerdict, type StudyExits, type StudyUniverse } from '../lib/study'
-import { STUDY_EXIT_MAX } from '../../shared/research'
+import { concreteRule, DEFAULT_TOP, exitParams, exitsForm, exitValue, fmtR, parseExitParams, parseRuleParam, realCoin, ruleDrillHref, screenLine, studyHref, studyRoute, studyVerdict, type StudyExits, type StudyUniverse } from '../lib/study'
+import { STUDY_EXIT_MAX, type DefinitionsResponse } from '../../shared/research'
 import { research } from '../lib/research'
 import { StudyVerdictBadge } from '../components/lab/StudyVerdictBadge'
 import { InCatalogueLink } from '../components/lab/InCatalogueLink'
@@ -15,7 +15,9 @@ import { InCatalogueLink } from '../components/lab/InCatalogueLink'
 // /lab/study — the event study of one rule (docs/RESEARCH.md "Study"): the
 // rule replayed as discrete trades across a universe of coins by
 // lab_event_study. Input is `?rule=` (URL-encoded JSON, zod-parsed) and an
-// optional `?coin=`; studyHref() in lib/study.ts builds the link. Output in
+// optional `?coin=`; studyHref() in lib/study.ts builds the link. A signal definition's rule has the placeholder
+// asset UNIVERSE_ASSET: it defaults to the top-N universe, "this coin" appears only with `?coin=`, and OPEN RULE /
+// SAVE need a real asset (concreteRule). The DEFINITIONS picker lists the shipped definitions. Output in
 // the brief's order: rule, verdict + screen line, train vs holdout, funnel,
 // per-coin table, events, survivorship, idea n of N. The run can take tens of
 // seconds; leaving the page aborts the wait (useLab's signal).
@@ -38,7 +40,7 @@ function StudyPage({ raw, coinParam }: { raw: string | null; coinParam: string |
   const [params, setParams] = useSearchParams()
   const parsed = useMemo(() => parseRuleParam(raw), [raw])
   const rule = parsed.rule
-  const coin = coinParam || rule?.asset || ''
+  const coin = realCoin(coinParam) || realCoin(rule?.asset)
   const [universe, setUniverse] = useState<StudyUniverse>(() => (coinParam ? { kind: 'coin' } : { kind: 'top', n: DEFAULT_TOP }))
   // Exits: the study runs with the URL's (`?stop=&target=`, defaults omitted) so a link reproduces it. Typing only
   // edits the draft; RUN writes it to the URL, which runs it (each run is a trial).
@@ -57,6 +59,10 @@ function StudyPage({ raw, coinParam }: { raw: string | null; coinParam: string |
     })
   // The board's canonical universes share its cache and trial (studyRoute); other universes call the Lab tool.
   const route = rule ? studyRoute(rule, coin, universe, applied) : null
+  // The shipped definitions: loaded for the empty state, or once the picker is opened over a loaded rule.
+  const [picker, setPicker] = useState(false)
+  const wantDefinitions = !rule || picker
+  const definitions = useLab(wantDefinitions ? () => research.definitions() : null, [wantDefinitions])
   const key = route ? JSON.stringify(route) : null
   const study = useLab(
     route
@@ -78,6 +84,9 @@ function StudyPage({ raw, coinParam }: { raw: string | null; coinParam: string |
       onUniverse={setUniverse}
       exits={{ applied, draft, onDraft: setDraft, onRun: runExits }}
       study={study}
+      definitions={definitions}
+      pickerOpen={picker}
+      onPicker={setPicker}
       metrics={metrics.data ?? []}
       onSaved={() => catalogue.refetch()}
     />
@@ -93,30 +102,37 @@ export interface StudyViewProps {
   onUniverse: (u: StudyUniverse) => void
   exits: ExitsProps
   study: Pick<LabState<StudyResult>, 'data' | 'loading' | 'error' | 'offline' | 'refetch'>
+  definitions: Pick<LabState<DefinitionsResponse>, 'data' | 'loading' | 'error' | 'offline' | 'refetch'>
+  /** The DEFINITIONS picker over a loaded rule (the empty state always shows it). */
+  pickerOpen: boolean
+  onPicker: (open: boolean) => void
   metrics: readonly MetricDef[]
   onSaved?: (e: CatalogueEntry) => void
 }
 
-export function StudyView({ parsedError, rule, coin, coinParam = null, universe, onUniverse, exits, study, metrics, onSaved }: StudyViewProps) {
+export function StudyView({ parsedError, rule, coin, coinParam = null, universe, onUniverse, exits, study, definitions, pickerOpen, onPicker, metrics, onSaved }: StudyViewProps) {
   const navigate = useNavigate()
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<CatalogueEntry | null>(null)
 
   if (!rule) {
     return (
-      <Panel>
-        <PanelHeader title="EVENT STUDY" />
-        {parsedError && <ErrorBlock message={parsedError} />}
-        <EmptyBlock label="no rule to study — open one from a search result or the catalogue" />
-        <div className="flex flex-wrap justify-center gap-2 px-3 pb-6">
-          <Button tier="ghost" onClick={() => navigate('/lab/search')}>
-            SEARCH
-          </Button>
-          <Button tier="ghost" onClick={() => navigate('/lab/catalogue')}>
-            CATALOGUE
-          </Button>
-        </div>
-      </Panel>
+      <div className="flex flex-col gap-3 min-w-0">
+        <Panel>
+          <PanelHeader title="EVENT STUDY" />
+          {parsedError && <ErrorBlock message={parsedError} />}
+          <EmptyBlock label="no rule to study — pick a definition below, or open a rule from a search result or the catalogue" />
+          <div className="flex flex-wrap justify-center gap-2 px-3 pb-6">
+            <Button tier="ghost" onClick={() => navigate('/lab/search')}>
+              SEARCH
+            </Button>
+            <Button tier="ghost" onClick={() => navigate('/lab/catalogue')}>
+              CATALOGUE
+            </Button>
+          </div>
+        </Panel>
+        <DefinitionsPicker definitions={definitions} />
+      </div>
     )
   }
 
@@ -124,6 +140,9 @@ export function StudyView({ parsedError, rule, coin, coinParam = null, universe,
   const r = study.data
   // Already catalogued (the server's catalogueId, or saved here): a link to the entry instead of a second SAVE.
   const inCatalogue = saved?.id ?? r?.catalogueId ?? null
+  // A definition's rule has a placeholder asset: OPEN RULE and SAVE need a real one (`?coin=`).
+  const real = concreteRule(rule, coinParam)
+  const needCoin = 'a universe definition has no coin of its own: add ?coin=<TICKER> to the link to open or save it for one coin'
 
   return (
     <div className="flex flex-col gap-3 min-w-0">
@@ -138,24 +157,28 @@ export function StudyView({ parsedError, rule, coin, coinParam = null, universe,
             <UniverseControl coin={coin} universe={universe} onChange={onUniverse} />
             <ExitsControl {...exits} />
             <div className="flex flex-wrap gap-2">
-              <Button tier="ghost" onClick={() => navigate(ruleDrillHref(rule, coinParam, exits.applied))} title="rule drill: equity, stats by window, sensitivity">
+              <Button tier="ghost" disabled={!real} onClick={() => real && navigate(ruleDrillHref(real, coinParam, exits.applied))} title={real ? 'rule drill: equity, stats by window, sensitivity' : needCoin}>
                 OPEN RULE
+              </Button>
+              <Button tier="ghost" aria-expanded={pickerOpen} onClick={() => onPicker(!pickerOpen)} title="the shipped signal definitions, prefilled over the top-N universe">
+                DEFINITIONS
               </Button>
               {inCatalogue ? (
                 <InCatalogueLink id={inCatalogue} />
               ) : (
-                <Button tier="ghost" aria-expanded={saving} onClick={() => setSaving((s) => !s)}>
+                <Button tier="ghost" disabled={!real} aria-expanded={saving} onClick={() => setSaving((s) => !s)} title={real ? undefined : needCoin}>
                   SAVE
                 </Button>
               )}
             </div>
           </div>
         </div>
-        {saving && !inCatalogue && (
+        {!real && <p className="px-3 pb-3 text-xs text-text-secondary">{needCoin}</p>}
+        {saving && real && !inCatalogue && (
           <div className="border-t border-border-subtle">
             <p className="px-3 pt-3 text-xs text-text-secondary">the save-bar verdict still applies: saving evaluates the rule; check it on OPEN RULE</p>
             <SaveToCatalogueForm
-              rule={rule}
+              rule={real}
               runId={null}
               defaultName={defaultRuleName(rule, metrics)}
               entry={saved}
@@ -168,6 +191,8 @@ export function StudyView({ parsedError, rule, coin, coinParam = null, universe,
         )}
       </Panel>
 
+      {pickerOpen && <DefinitionsPicker definitions={definitions} />}
+
       {running && <RunningLine />}
 
       <AsyncBody {...study} onRetry={study.refetch} skeleton={<StudySkeleton />}>
@@ -178,6 +203,30 @@ export function StudyView({ parsedError, rule, coin, coinParam = null, universe,
         )}
       </AsyncBody>
     </div>
+  )
+}
+
+/** The shipped signal definitions (GET /api/research/definitions): picking one opens its prefilled study over the default universe. */
+function DefinitionsPicker({ definitions }: { definitions: StudyViewProps['definitions'] }) {
+  return (
+    <Panel>
+      <PanelHeader title="DEFINITIONS" />
+      <AsyncBody {...definitions} onRetry={definitions.refetch} rows={3} isEmpty={(d) => d.definitions.length === 0} empty={{ label: 'no definitions shipped' }}>
+        {(d) => (
+          <ul className="flex flex-col">
+            {d.definitions.map((x) => (
+              <li key={x.id} className="border-b border-border-subtle last:border-b-0">
+                <Link to={studyHref(x.rule)} title="open the event study of this definition over the top-20 universe; it runs on load (a trial)" className="flex flex-col gap-0.5 px-3 py-2 min-w-0 hover:bg-hover">
+                  <span className="text-sm font-semibold text-text-primary">{x.name}</span>
+                  <span className="text-xs text-text-secondary break-words">{x.thesis}</span>
+                  <span className="text-xs text-text-secondary break-words font-mono">{x.ruleText}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </AsyncBody>
+    </Panel>
   )
 }
 
@@ -196,7 +245,8 @@ function UniverseControl({ coin, universe, onChange }: { coin: string; universe:
           value={universe.kind}
           onChange={(k) => onChange(k === 'top' ? { kind: 'top', n: topN } : { kind: k })}
           options={[
-            { value: 'coin', label: `THIS COIN · ${coin}`, short: coin, title: `${coin} only` },
+            // No real coin (a definition without `?coin=`): the option is not offered, never a coin called UNIVERSE.
+            ...(coin ? [{ value: 'coin' as const, label: `THIS COIN · ${coin}`, short: coin, title: `${coin} only` }] : []),
             { value: 'top', label: `TOP ${topN}`, short: `TOP ${topN}`, title: 'the N listed HL perps with the most day volume' },
             { value: 'mine', label: 'MY MARKETS', short: 'MINE', title: 'my markets (PLATFORM_MY_MARKETS)' },
           ]}

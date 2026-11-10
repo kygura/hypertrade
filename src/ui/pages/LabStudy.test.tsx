@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import type { Rule, StudyResult } from "../lib/lab";
-import { catalogueIdIn, exitsForm, parseExitParams, parseRuleParam, ruleDrillHref, studyArgs, studyHref, studyRoute } from "../lib/study";
-import { boardStudy } from "../../shared/research";
+import { catalogueIdIn, concreteRule, exitsForm, parseExitParams, parseRuleParam, realCoin, ruleDrillHref, studyArgs, studyHref, studyRoute } from "../lib/study";
+import { boardStudy, UNIVERSE_ASSET, type DefinitionsResponse } from "../../shared/research";
 import { StudyView, type StudyViewProps } from "./LabStudy";
 
 // Render-checks (react-dom/server, no jsdom), the cockpit render.test.tsx approach:
@@ -48,6 +48,9 @@ const props = (over: Partial<StudyViewProps> = {}): StudyViewProps => ({
   onUniverse: noop,
   exits: { applied: { stopAtr: 1.5, targetAtr: 3 }, draft: { stop: "1.5", target: "3" }, onDraft: noop, onRun: noop },
   study: { data: null, loading: false, error: null, offline: false, refetch: noop },
+  definitions: { data: null, loading: false, error: null, offline: false, refetch: noop },
+  pickerOpen: false,
+  onPicker: noop,
   metrics: [],
   ...over,
 });
@@ -211,4 +214,88 @@ describe("StudyView states", () => {
       expect([...order].sort((a, b) => a - b)).toEqual(order);
     });
   }
+});
+
+// Signals v2: a definition's rule has the placeholder asset UNIVERSE_ASSET. It is a universe study, never a coin.
+describe("placeholder asset", () => {
+  const defRule: Rule = { ...rule, asset: UNIVERSE_ASSET, direction: "short", horizonDays: 7 };
+  const done = { data: result("clear"), loading: false, error: null, offline: false, refetch: noop };
+
+  test("realCoin / concreteRule: the placeholder is no coin; it takes `?coin=` when that is a ticker", () => {
+    expect(realCoin(UNIVERSE_ASSET)).toBe("");
+    expect(realCoin(null)).toBe("");
+    expect(realCoin("SOL")).toBe("SOL");
+    expect(concreteRule(rule, null)).toBe(rule);
+    expect(concreteRule(defRule, null)).toBeNull();
+    expect(concreteRule(defRule, UNIVERSE_ASSET)).toBeNull();
+    expect(concreteRule(defRule, "xyz:SKHX")).toBeNull();
+    expect(concreteRule(defRule, "SOL")).toEqual({ ...defRule, asset: "SOL" });
+  });
+  test("studyHref never writes ?coin=UNIVERSE; studyRoute never sends it", () => {
+    expect(studyHref(defRule, UNIVERSE_ASSET)).toBe(studyHref(defRule));
+    expect(studyHref(defRule)).not.toContain("coin=");
+    // "this coin" with no real coin is the default universe, and the body carries no coin.
+    expect(studyRoute(defRule, UNIVERSE_ASSET, { kind: "coin" })).toEqual({ kind: "board", body: boardStudy({ rule: defRule, coin: "X", scope: "universe" })! });
+    expect(studyRoute(defRule, "", { kind: "coin" })).toEqual(studyRoute(defRule, "", { kind: "top", n: 20 }));
+    expect(studyRoute(defRule, "SOL", { kind: "coin" })).toEqual({ kind: "board", body: { rule: defRule, coin: "SOL", stopAtr: 1.5, targetAtr: 3 } });
+  });
+  test("render without ?coin=: no THIS COIN option, no UNIVERSE as a coin; OPEN RULE and SAVE disabled with the reason", () => {
+    const html = render(props({ rule: defRule, coin: "", study: done }));
+    expect(html).not.toContain("THIS COIN");
+    expect(html).not.toContain("/asset/UNIVERSE");
+    expect(html).toContain("TOP 20");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>OPEN RULE</);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>SAVE</);
+    expect(html).toContain("a universe definition has no coin of its own");
+    expect(html).not.toMatch(/COIN · UNIVERSE|coin=UNIVERSE/);
+  });
+  test("render with ?coin=: THIS COIN is offered for that coin and OPEN RULE and SAVE are enabled", () => {
+    const html = render(props({ rule: defRule, coin: "SOL", coinParam: "SOL", universe: { kind: "coin" }, study: done }));
+    expect(html).toContain("THIS COIN · SOL");
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>OPEN RULE</);
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>SAVE</);
+    expect(html).not.toContain("a universe definition has no coin of its own");
+    expect(new URL(ruleDrillHref(concreteRule(defRule, "SOL")!, "SOL"), "http://x").searchParams.get("rule")).toContain('"asset":"SOL"');
+  });
+  test("an ordinary rule keeps THIS COIN for its own asset", () => {
+    expect(render(props())).toContain("THIS COIN · BTC");
+  });
+});
+
+describe("DEFINITIONS picker", () => {
+  const defs: DefinitionsResponse = {
+    definitions: [
+      { id: "funding_fade", name: "Funding fade", thesis: "crowded longs pay funding and mean-revert", rule: { ...rule, asset: UNIVERSE_ASSET, direction: "short", horizonDays: 7 }, ruleText: "funding z(90) ≥ 2 → short 7d", intradayKinds: ["crowded_long"] },
+      { id: "range_breakout", name: "Range breakout", thesis: "a 20-day high on volume", rule: { ...rule, asset: UNIVERSE_ASSET, horizonDays: 7 }, ruleText: "price pctile(20) ≥ 1 → long 7d", intradayKinds: [] },
+    ],
+  };
+  const state = (over: Partial<StudyViewProps["definitions"]> = {}) => ({ data: null, loading: false, error: null, offline: false, refetch: noop, ...over });
+
+  test("empty state lists each definition: name, thesis, rule text; each links its prefilled universe study", () => {
+    const html = render(props({ rule: null, definitions: state({ data: defs }) }));
+    expect(html).toContain("DEFINITIONS");
+    expect(html).toContain("Funding fade");
+    expect(html).toContain("crowded longs pay funding and mean-revert");
+    expect(html).toContain("funding z(90) ≥ 2 → short 7d");
+    expect(html).toContain("Range breakout");
+    const href = studyHref(defs.definitions[0]!.rule).replace(/&/g, "&amp;");
+    expect(html).toContain(`href="${href}"`);
+    expect(html).not.toContain("coin=");
+    expect(html).not.toContain("no rule to study — open");
+  });
+  test("ladder: loading skeleton, error with RETRY, empty list", () => {
+    expect(render(props({ rule: null, definitions: state({ loading: true }) }))).toContain("pulse-label");
+    const err = render(props({ rule: null, definitions: state({ error: "definitions exploded" }) }));
+    expect(err).toContain("definitions exploded");
+    expect(err).toContain("RETRY");
+    expect(render(props({ rule: null, definitions: state({ data: { definitions: [] } }) }))).toContain("no definitions shipped");
+  });
+  test("with a rule loaded: a DEFINITIONS control opens the picker; closed, the list is not rendered", () => {
+    const closed = render(props({ definitions: state({ data: defs }) }));
+    expect(closed).toMatch(/<button[^>]*aria-expanded="false"[^>]*>DEFINITIONS</);
+    expect(closed).not.toContain("Funding fade");
+    const open = render(props({ pickerOpen: true, definitions: state({ data: defs }) }));
+    expect(open).toMatch(/<button[^>]*aria-expanded="true"[^>]*>DEFINITIONS</);
+    expect(open).toContain("Funding fade");
+  });
 });

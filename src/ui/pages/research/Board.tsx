@@ -8,15 +8,16 @@ import { fmtAge } from '../../lib/format'
 import { useNow, useQueryPatch } from '../../lib/hooks'
 import { usePoll, type PollState } from '../../lib/poll'
 import {
-  authOf, BOARD_POLL_MS, boardKey, cellState, flatSignals, recentCalls, research, rootRedirect, rowStudyKey, scopeLabel, signalBlocks, signalStudyHref, SOURCE_LABEL,
-  studyFailed, type Auth, type BoardSignal, type RowStudy,
+  authOf, BOARD_POLL_MS, boardKey, cellState, dailyState, flatSignals, ledgerText, noEvidenceText, recentCalls, research, rootRedirect, rowStudyKey, runState, scopeLabel, scorecardText, signalBlocks,
+  signalStudyHref, SOURCE_LABEL, studyFailed, testedLabel, type Auth, type BoardSignal, type CellState, type RowStudy,
 } from '../../lib/research'
 import { fmtR } from '../../lib/study'
 import { RESEARCH_SOURCES, type BoardResponse, type RadarResponse, type StudySummary } from '../../../shared/research'
 
-// Research board — the landing `/` (docs/RESEARCH.md "Board"). Live signals from four sources,
-// each with its evidence cell: the cached event study of its Lab rule, a STUDY button that runs it
-// in place, or `no Lab twin`. Side column: PULSE summary and the RADAR. Container (Board) owns the
+// Research board — the landing `/` (docs/RESEARCH.md "Board"). Live signals from five sources,
+// each with its evidence cell by kind: the cached event study of its Lab rule (or a STUDY button that runs it
+// in place), a setup's live ledger record (plus STUDY DAILY VERSION), a radar call's graded-forward scorecard.
+// Side column: PULSE summary and the RADAR. Container (Board) owns the
 // pollers, `?coin=`, the per-row study runs and the keyboard; BoardView is presentational.
 // Nothing here trades and nothing nags: facts with their n, never a verdict of the signal itself.
 
@@ -89,7 +90,7 @@ function BoardPage() {
       if (href) (e.preventDefault(), navigate(href))
       return
     }
-    if (a === 'study' && cellState(cur, studies[rowStudyKey(cur.id, Date.now())], auth).kind === 'idle') {
+    if (a === 'study' && runState(cur, studies[rowStudyKey(cur.id, Date.now())], auth).kind === 'idle') {
       e.preventDefault()
       void runStudy(cur)
     }
@@ -227,11 +228,6 @@ function SignalList(p: BoardViewProps & { data: BoardResponse }) {
   )
 }
 
-const NO_TWIN: Record<string, string> = {
-  opportunity: 'intraday scanner setups have no Lab twin: the Lab replays daily rules, so there is no history to test this against',
-  radar: 'radar calls are catalyst theses written by the routine, not a condition the Lab can replay',
-}
-
 function SignalRow(p: BoardViewProps & { s: BoardSignal }) {
   const { s } = p
   const href = signalStudyHref(s)
@@ -251,7 +247,7 @@ function SignalRow(p: BoardViewProps & { s: BoardSignal }) {
       <div className="flex-1 min-w-[12rem] flex flex-col gap-0.5">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
           {href ? (
-            <Link to={href} className="text-sm font-semibold text-text-primary hover:underline" title="open the event study">
+            <Link to={href} className="text-sm font-semibold text-text-primary hover:underline" title={s.source === 'opportunity' ? 'open the event study of the daily version of this thesis' : 'open the event study'}>
               {s.coin}
             </Link>
           ) : (
@@ -283,24 +279,53 @@ function SignalRow(p: BoardViewProps & { s: BoardSignal }) {
 
 /** `tested short · this coin · 41 events · 38 weeks · +0.21R (≤ +0.35R)`: what was studied, then its facts. The tested side is a fact about the study, not advice. */
 export function evidenceText(e: StudySummary, s: Pick<BoardSignal, 'tested' | 'scope'>): string {
-  return `${s.tested ? `tested ${s.tested} · ` : ''}${scopeLabel(s.scope)} · ${e.events} events · ${e.weeks} weeks · ${fmtR(e.expectancy)} (≤ ${fmtR(e.upper95)})`
+  return `${testedLabel(s)} · ${e.events} events · ${e.weeks} weeks · ${fmtR(e.expectancy)} (≤ ${fmtR(e.upper95)})`
 }
 
 function EvidenceCell(p: BoardViewProps & { s: BoardSignal }) {
   const { s } = p
-  const c = cellState(s, p.studies[rowStudyKey(s.id, p.now)], p.auth)
+  const local = p.studies[rowStudyKey(s.id, p.now)]
+  const daily = dailyState(s, local, p.auth)
+  return (
+    <div className="flex flex-col gap-1.5 min-w-0">
+      <CellBody {...p} c={cellState(s, local, p.auth)} />
+      {daily && <CellBody {...p} c={daily} daily />}
+    </div>
+  )
+}
+
+/** One state of the cell. `daily`: an opportunity's daily-version study, which never reads as a test of the intraday setup itself. */
+function CellBody(p: BoardViewProps & { s: BoardSignal; c: CellState; daily?: boolean }) {
+  const { s, c, daily } = p
   switch (c.kind) {
     case 'evidence':
       return (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5" title="expectancy per trade, weekly-clustered (one-sided 95% upper bound)">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5" title={daily ? 'event study of the daily-bar definition of this thesis, not of the intraday setup itself · expectancy per trade, weekly-clustered (one-sided 95% upper bound)' : 'expectancy per trade, weekly-clustered (one-sided 95% upper bound)'}>
+          {daily && <span className="text-xs text-text-secondary">daily version:</span>}
           <StudyVerdictBadge verdict={c.summary.verdict} />
           <span className="text-sm tabular text-text-primary">{evidenceText(c.summary, s)}</span>
         </div>
       )
-    case 'no-twin':
+    case 'ledger':
+      return c.evidence.n === 0 ? (
+        <span className="text-sm text-text-secondary" title="no outcome of this setup kind has been graded in the platform ledger yet">
+          {ledgerText(c.evidence)}
+        </span>
+      ) : (
+        <span className="text-sm tabular text-text-primary" title="realised outcomes of this setup kind in the platform ledger (current score version): mean net return per outcome over cluster means, 95% interval from 5 clusters">
+          {ledgerText(c.evidence)}
+        </span>
+      )
+    case 'scorecard':
       return (
-        <span className="text-sm text-text-secondary" title={NO_TWIN[s.source] ?? 'this signal maps to no Lab rule'}>
-          no Lab twin
+        <span className="text-sm tabular text-text-primary" title="the radar scorecard for this stance at its longest graded horizon: move vs BTC signed by the called direction; hit = went the called way">
+          {scorecardText(c.evidence)}
+        </span>
+      )
+    case 'none':
+      return (
+        <span className="text-sm text-text-secondary" title={c.source === 'radar' ? 'no radar call of this stance has been graded forward yet' : 'nothing recorded for this signal yet'}>
+          {noEvidenceText(c.source)}
         </span>
       )
     case 'running':
@@ -332,10 +357,18 @@ function EvidenceCell(p: BoardViewProps & { s: BoardSignal }) {
       return (
         <div className="flex flex-col gap-1">
           <span className="flex flex-wrap items-center gap-2">
-            <Button tier="ghost" onClick={() => p.onStudy(s)} title={`run the event study of this rule on ${scopeLabel(s.scope)} now; it counts as a trial`}>
-              {c.error ? 'RETRY STUDY' : 'STUDY'}
+            <Button
+              tier="ghost"
+              onClick={() => p.onStudy(s)}
+              title={
+                daily
+                  ? `run the event study of the daily-bar definition of this thesis on ${scopeLabel(s.scope)}: it does not test the intraday setup itself; it counts as a trial`
+                  : `run the event study of this rule on ${scopeLabel(s.scope)} now; it counts as a trial`
+              }
+            >
+              {c.error ? (daily ? 'RETRY DAILY STUDY' : 'RETRY STUDY') : daily ? 'STUDY DAILY VERSION' : 'STUDY'}
             </Button>
-            {!c.error && <span className="text-xs text-text-secondary">not studied today · {scopeLabel(s.scope)}</span>}
+            {!c.error && <span className="text-xs text-text-secondary">not studied today · {testedLabel(s)}</span>}
           </span>
           {c.error && (
             <span role="alert" className="text-xs text-red-text break-words">

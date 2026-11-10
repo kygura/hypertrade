@@ -1,6 +1,10 @@
-import { boardStudy, BoardResponseSchema, RadarResponseSchema, StudyResponseSchema, type ResearchSignal, type StudySummary, type ResearchSource, type StudyRequest, type StudyResponse } from '../../shared/research'
+import {
+  boardStudy, BoardResponseSchema, DefinitionsResponseSchema, RadarResponseSchema, StudyResponseSchema, type LedgerEvidence, type ResearchSignal, type ScorecardEvidence, type StudySummary,
+  type ResearchSource, type StudyRequest, type StudyResponse,
+} from '../../shared/research'
 import type { RadarCall } from '../../shared/radar'
 import { ApiError, api, parseWith } from './api'
+import { fmtSigned } from './lab'
 import { DEFAULT_TOP, studyHref } from './study'
 
 // Research board client (docs/RESEARCH.md "Board"): the three routes parsed with the shared
@@ -10,6 +14,7 @@ import { DEFAULT_TOP, studyHref } from './study'
 const board = parseWith(BoardResponseSchema, 'research board')
 const radar = parseWith(RadarResponseSchema, 'radar')
 const study = parseWith(StudyResponseSchema, 'research study')
+const definitions = parseWith(DefinitionsResponseSchema, 'research definitions')
 
 /** A board signal (`scope`: the study runs on this coin or on the Lab's top-N universe; `tested`: the side the rule tests). */
 export type BoardSignal = ResearchSignal
@@ -20,6 +25,8 @@ export const signalStudyHref = (s: BoardSignal): string | null => (s.rule ? stud
 export const research = {
   board: async () => board(await api.get('/research/board')),
   radar: async () => radar(await api.get('/radar')),
+  /** The shipped signal definitions (the /lab/study DEFINITIONS picker). */
+  definitions: async () => definitions(await api.get('/research/definitions')),
   /**
    * Runs (or returns today's cached) event study of a signal's rule in its scope; a trial like a direct
    * lab_event_study call. The body is `boardStudy(signal)`, the one the board keys its cached evidence on.
@@ -116,22 +123,43 @@ export function studyFailed(err: unknown): RowStudy {
 
 export type CellState =
   | { kind: 'evidence'; summary: StudySummary }
-  | { kind: 'no-twin' }
+  | { kind: 'ledger'; evidence: LedgerEvidence }
+  | { kind: 'scorecard'; evidence: ScorecardEvidence }
+  | { kind: 'none'; source: ResearchSource }
   | { kind: 'running' }
   | { kind: 'sign-in' }
   | { kind: 'auth-loading' }
   | { kind: 'auth-error'; message: string }
   | { kind: 'idle'; error: string | null }
 
+type CellSignal = Pick<ResearchSignal, 'rule' | 'evidence' | 'source'>
+
 /**
- * The evidence cell of a row: idle → running → evidence | error (idle with the message, STUDY retries) | sign-in.
- * Cached evidence wins; no rule is `no Lab twin`; a guest never gets a STUDY button (the POST needs a session),
- * and nothing runs until /auth/me has answered.
+ * The evidence cell of a row. A setup shows its ledger record and a radar call its scorecard row, never a study
+ * (their rule, when one maps, is the daily version: `dailyState`). Otherwise: idle → running → evidence | error (idle
+ * with the message, STUDY retries) | sign-in. Cached evidence wins; a guest never gets a STUDY button (the POST needs a
+ * session), and nothing runs until /auth/me has answered. No evidence and nothing to run is `none`.
  */
-export function cellState(s: Pick<ResearchSignal, 'rule' | 'evidence'>, local: RowStudy | undefined, auth: Auth): CellState {
-  const ev = (s.evidence?.kind === 'study' ? s.evidence : null) ?? (local?.state === 'done' ? local.summary : null)
+export function cellState(s: CellSignal, local: RowStudy | undefined, auth: Auth): CellState {
+  if (s.evidence?.kind === 'ledger') return { kind: 'ledger', evidence: s.evidence }
+  if (s.evidence?.kind === 'scorecard') return { kind: 'scorecard', evidence: s.evidence }
+  if (s.source === 'opportunity' || s.source === 'radar') return { kind: 'none', source: s.source }
+  return studyCell(s, s.evidence?.kind === 'study' ? s.evidence : null, local, auth)
+}
+
+/** An opportunity's daily-version study (its `rule` is the daily definition, universe scope): the same ladder as a row's own study; null for other rows. */
+export function dailyState(s: CellSignal & Pick<ResearchSignal, 'dailyStudy'>, local: RowStudy | undefined, auth: Auth): CellState | null {
+  if (s.source !== 'opportunity' || !s.rule) return null
+  return studyCell(s, s.dailyStudy, local, auth)
+}
+
+/** What a row's STUDY control is in now: the daily version for a setup, the row's own study otherwise (the `s` key reads it). */
+export const runState = (s: CellSignal & Pick<ResearchSignal, 'dailyStudy'>, local: RowStudy | undefined, auth: Auth): CellState => dailyState(s, local, auth) ?? cellState(s, local, auth)
+
+function studyCell(s: Pick<CellSignal, 'rule' | 'source'>, cached: StudySummary | null, local: RowStudy | undefined, auth: Auth): CellState {
+  const ev = cached ?? (local?.state === 'done' ? local.summary : null)
   if (ev) return { kind: 'evidence', summary: ev }
-  if (!s.rule) return { kind: 'no-twin' }
+  if (!s.rule) return { kind: 'none', source: s.source }
   if (local?.state === 'running') return { kind: 'running' }
   if (auth.state === 'guest' || local?.state === 'sign-in') return { kind: 'sign-in' }
   if (auth.state === 'loading') return { kind: 'auth-loading' }
@@ -141,3 +169,29 @@ export function cellState(s: Pick<ResearchSignal, 'rule' | 'evidence'>, local: R
 
 /** What was studied: the signal's own coin, or the Lab's default universe (a universe study is not the coin's history). */
 export const scopeLabel = (scope: ResearchSignal['scope']) => (scope === 'coin' ? 'this coin' : `top-${DEFAULT_TOP} universe`)
+
+/** `tested short · top-20 universe`: the side the rule tests (a fact about the study, not advice) and what it covers. */
+export const testedLabel = (s: Pick<ResearchSignal, 'tested' | 'scope'>) => `${s.tested ? `tested ${s.tested} · ` : ''}${scopeLabel(s.scope)}`
+
+/** Fraction → signed percent to two decimals: `+0.42%`. */
+const pctFrac = (x: number) => `${fmtSigned(x * 100, 2)}%`
+
+/**
+ * A setup's ledger record as a fact line: `live record · 14 outcomes · 6 clusters · mean +0.42% [−0.10%, +0.95%] · 24h`.
+ * `meanNet` is the mean net return per outcome over cluster means (a fraction, not R); the interval is null under 5
+ * clusters and then omitted. No outcomes: a plain statement. Never a verdict.
+ */
+export function ledgerText(e: LedgerEvidence): string {
+  if (e.n === 0) return 'no graded outcomes yet'
+  const mean = e.meanNet == null ? '' : ` · mean net ${pctFrac(e.meanNet)}${e.ci95 ? ` [${pctFrac(e.ci95[0])}, ${pctFrac(e.ci95[1])}]` : ''}`
+  return `live record · ${e.n} outcome${e.n === 1 ? '' : 's'} · ${e.clusters} cluster${e.clusters === 1 ? '' : 's'}${mean} · ${e.horizon}`
+}
+
+/** A radar call's scorecard row: `graded forward · 4 calls · mean vs BTC +2.1% · hit 75%` (% moves signed by the called direction). */
+export function scorecardText(e: ScorecardEvidence): string {
+  if (e.n === 0) return 'no graded calls yet'
+  return `graded forward · ${e.n} call${e.n === 1 ? '' : 's'} · mean vs BTC ${fmtSigned(e.meanPct, 1)}% · hit ${Math.round(e.hitRate * 100)}%`
+}
+
+/** The muted line when a row has no evidence and nothing to run: what is missing, as a fact. */
+export const noEvidenceText = (source: ResearchSource) => (source === 'radar' ? 'no graded calls yet' : 'no record yet')

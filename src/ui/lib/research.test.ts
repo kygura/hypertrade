@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { RadarCall } from "../../shared/radar";
 import type { Rule } from "./lab";
-import { boardStudy, STUDY_DEFAULTS } from "../../shared/research";
+import { boardStudy, STUDY_DEFAULTS, UNIVERSE_ASSET, type LedgerEvidence } from "../../shared/research";
 import { ApiError } from "./api";
-import { authOf, cellState, rowStudyKey, scopeLabel, studyFailed } from "./research";
+import { authOf, cellState, dailyState, ledgerText, noEvidenceText, rowStudyKey, runState, scopeLabel, scorecardText, studyFailed, testedLabel } from "./research";
 import { boardHref, boardKey, flatSignals, recentCalls, rootRedirect, signalBlocks, signalStudyHref, type BoardSignal } from "./research";
 
 const rule: Rule = { asset: "BTC", direction: "long", horizonDays: 5, conditions: [{ feature: "ht:funding|z|30", op: "<", threshold: -1 }] };
@@ -52,6 +52,10 @@ describe("links and scope", () => {
     expect(signalStudyHref(sig("a", "ETH", 1, { rule, scope: "universe" }))).toBe(`/lab/study?rule=${encodeURIComponent(JSON.stringify(rule))}`);
     expect(signalStudyHref(sig("a", "ETH", 1))).toBeNull();
     expect(boardHref("xyz:SKHX")).toBe("/?coin=xyz%3ASKHX");
+    // A definition's rule is studied over the universe: the link carries no coin, and never the placeholder.
+    const def = { ...rule, asset: UNIVERSE_ASSET };
+    expect(signalStudyHref(sig("d", "SOL", 1, { rule: def, scope: "universe" }))).toBe(`/lab/study?rule=${encodeURIComponent(JSON.stringify(def))}`);
+    expect(signalStudyHref(sig("d", "SOL", 1, { rule: def, scope: "coin" }))).toContain("&coin=SOL");
   });
 });
 
@@ -80,7 +84,7 @@ describe("auth and the evidence cell", () => {
     expect(authOf({ data: null, error: null, offline: false })).toEqual({ state: "loading" });
   });
   test("cellState: idle → running → evidence | error | sign-in; guests never get STUDY", () => {
-    const s = { rule, evidence: null };
+    const s = { rule, evidence: null, source: "rule" as const };
     expect(cellState(s, undefined, user)).toEqual({ kind: "idle", error: null });
     expect(cellState(s, { state: "running" }, user)).toEqual({ kind: "running" });
     expect(cellState(s, { state: "done", summary: ev }, user)).toEqual({ kind: "evidence", summary: ev });
@@ -90,10 +94,38 @@ describe("auth and the evidence cell", () => {
     expect(cellState(s, undefined, { state: "loading" })).toEqual({ kind: "auth-loading" });
     expect(cellState(s, undefined, { state: "error", message: "x" })).toEqual({ kind: "auth-error", message: "x" });
     const study = { ...ev, kind: "study" as const };
-    expect(cellState({ rule, evidence: study }, undefined, { state: "guest" })).toEqual({ kind: "evidence", summary: study });
-    // Ledger or scorecard evidence is not a study: a rule-bearing row still offers STUDY.
-    expect(cellState({ rule, evidence: { kind: "scorecard", stance: "ride", horizonDays: 7, n: 3, meanPct: 1, hitRate: 0.5 } }, undefined, user)).toEqual({ kind: "idle", error: null });
-    expect(cellState({ rule: null, evidence: null }, undefined, user)).toEqual({ kind: "no-twin" });
+    expect(cellState({ ...s, evidence: study }, undefined, { state: "guest" })).toEqual({ kind: "evidence", summary: study });
+    expect(cellState({ rule: null, evidence: null, source: "rule" }, undefined, user)).toEqual({ kind: "none", source: "rule" });
+  });
+  test("cellState by evidence kind: ledger and scorecard are shown as they are, never as a study; a setup or call is never offered a plain STUDY", () => {
+    const ledger: LedgerEvidence = { kind: "ledger", setupKind: "crowded_long", horizon: "24h", n: 3, clusters: 2, meanNet: null, ci95: null, hitRate: null };
+    const card = { kind: "scorecard" as const, stance: "ride" as const, horizonDays: 7, n: 3, meanPct: 1, hitRate: 0.5 };
+    expect(cellState({ rule, source: "opportunity", evidence: ledger }, undefined, user)).toEqual({ kind: "ledger", evidence: ledger });
+    expect(cellState({ rule: null, source: "radar", evidence: card }, undefined, user)).toEqual({ kind: "scorecard", evidence: card });
+    expect(cellState({ rule, source: "opportunity", evidence: null }, { state: "done", summary: ev }, user)).toEqual({ kind: "none", source: "opportunity" });
+    expect(cellState({ rule: null, source: "radar", evidence: null }, undefined, user)).toEqual({ kind: "none", source: "radar" });
+  });
+  test("dailyState: only a setup with a rule; its own study ladder, kept apart from the ledger evidence", () => {
+    const opp = { rule, source: "opportunity" as const, evidence: null, dailyStudy: null };
+    expect(dailyState({ ...opp, rule: null }, undefined, user)).toBeNull();
+    expect(dailyState({ ...opp, source: "rule" as never }, undefined, user)).toBeNull();
+    expect(dailyState(opp, undefined, user)).toEqual({ kind: "idle", error: null });
+    expect(dailyState(opp, undefined, { state: "guest" })).toEqual({ kind: "sign-in" });
+    expect(dailyState(opp, { state: "running" }, user)).toEqual({ kind: "running" });
+    expect(dailyState(opp, { state: "done", summary: ev }, user)).toEqual({ kind: "evidence", summary: ev });
+    expect(dailyState({ ...opp, dailyStudy: ev }, undefined, { state: "guest" })).toEqual({ kind: "evidence", summary: ev });
+    expect(runState(opp, undefined, user)).toEqual({ kind: "idle", error: null }); // `s` runs the daily version
+    expect(runState({ ...opp, rule: null }, undefined, user)).toEqual({ kind: "none", source: "opportunity" });
+  });
+  test("evidence lines: facts with units, null interval omitted, empty records muted wording", () => {
+    const l: LedgerEvidence = { kind: "ledger", setupKind: "k", horizon: "24h", n: 14, clusters: 6, meanNet: -0.0125, ci95: [-0.03, 0.004], hitRate: 0.4 };
+    expect(ledgerText(l)).toBe("live record · 14 outcomes · 6 clusters · mean net −1.25% [−3.00%, +0.40%] · 24h");
+    expect(ledgerText({ ...l, ci95: null, n: 1, clusters: 1 })).toBe("live record · 1 outcome · 1 cluster · mean net −1.25% · 24h");
+    expect(ledgerText({ ...l, meanNet: null, ci95: null, clusters: 3 })).toBe("live record · 14 outcomes · 3 clusters · 24h");
+    expect(ledgerText({ ...l, n: 0, clusters: 0, meanNet: null, ci95: null })).toBe("no graded outcomes yet");
+    expect(scorecardText({ kind: "scorecard", stance: "fade", horizonDays: 7, n: 1, meanPct: -3.04, hitRate: 0 })).toBe("graded forward · 1 call · mean vs BTC −3.0% · hit 0%");
+    expect([noEvidenceText("radar"), noEvidenceText("opportunity")]).toEqual(["no graded calls yet", "no record yet"]);
+    expect(testedLabel({ tested: "short", scope: "universe" })).toBe("tested short · top-20 universe");
   });
   test("studyFailed: 401 → sign-in, else the message verbatim", () => {
     expect(studyFailed(new ApiError("unauthorized", 401))).toEqual({ state: "sign-in" });

@@ -1,5 +1,5 @@
-import { RuleSchema } from '../../server/lab/types'
-import { STUDY_DEFAULTS, STUDY_EXIT_MAX, StudyRequestSchema, type StudyRequest } from '../../shared/research'
+import { ASSET_PATTERN, RuleSchema } from '../../server/lab/types'
+import { STUDY_DEFAULTS, STUDY_EXIT_MAX, StudyRequestSchema, UNIVERSE_ASSET, type StudyRequest } from '../../shared/research'
 import { fmtSigned, type Rule, type StudyArgs, type StudyResult } from './lab'
 
 // /lab/study helpers (docs/RESEARCH.md "Study"): the `?rule=` link contract,
@@ -55,7 +55,20 @@ export function exitsForm(draft: { stop: string; target: string }, applied: Stud
 export function studyHref(rule: Rule, coin?: string | null, exits: StudyExits = STUDY_DEFAULTS): string {
   const q = `rule=${encodeURIComponent(JSON.stringify(rule))}`
   const ex = exitParams(exits).map(([k, v]) => `&${k}=${v}`).join('')
-  return `/lab/study?${q}${coin ? `&coin=${encodeURIComponent(coin)}` : ''}${ex}`
+  return `/lab/study?${q}${coin && coin !== UNIVERSE_ASSET ? `&coin=${encodeURIComponent(coin)}` : ''}${ex}`
+}
+
+/** A real coin: the `?coin=` or the rule's own asset, never the definitions' UNIVERSE_ASSET placeholder; '' when there is none. */
+export const realCoin = (coin: string | null | undefined): string => (coin && coin !== UNIVERSE_ASSET ? coin : '')
+
+/**
+ * The rule with a real asset, for what needs one (OPEN RULE evaluates it, SAVE catalogues it): a definition's rule
+ * carries the UNIVERSE_ASSET placeholder, so it takes `coin` when that is a ticker; null when there is none.
+ */
+export function concreteRule(rule: Rule, coin?: string | null): Rule | null {
+  if (rule.asset !== UNIVERSE_ASSET) return rule
+  const c = realCoin(coin)
+  return ASSET_PATTERN.test(c) ? { ...rule, asset: c } : null
 }
 
 /** Path id of an ad-hoc (unsaved, run-less) rule in the drill: /lab/rules/study?rule=… resolves from `?rule=`. */
@@ -107,7 +120,10 @@ export function studyArgs(rule: Rule, coin: string, u: StudyUniverse, exits: Stu
  * per rule, scope, exits and UTC day, and a default-exit run here shows on the board. Any other universe (another
  * top N, my markets) calls the Lab tool.
  */
-export function studyRoute(rule: Rule, coin: string, u: StudyUniverse, exits: StudyExits = STUDY_DEFAULTS): { kind: 'board'; body: StudyRequest } | { kind: 'lab'; args: StudyArgs } {
+export function studyRoute(rule: Rule, coinIn: string, universe: StudyUniverse, exits: StudyExits = STUDY_DEFAULTS): { kind: 'board'; body: StudyRequest } | { kind: 'lab'; args: StudyArgs } {
+  // "This coin" with no real coin (a definition's placeholder asset) is the default universe, never a coin called UNIVERSE.
+  const coin = realCoin(coinIn)
+  const u: StudyUniverse = universe.kind === 'coin' && !coin ? { kind: 'top', n: DEFAULT_TOP } : universe
   const ex = { stopAtr: exits.stopAtr, targetAtr: exits.targetAtr }
   const body = u.kind === 'coin' ? { rule, coin, ...ex } : u.kind === 'top' && u.n === DEFAULT_TOP ? { rule, ...ex } : null
   const ok = body ? StudyRequestSchema.safeParse(body) : null

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
-import type { BoardResponse, RadarResponse, StudySummary } from "../../../shared/research";
+import { UNIVERSE_ASSET, type BoardResponse, type LedgerEvidence, type RadarResponse, type ScorecardEvidence, type StudySummary } from "../../../shared/research";
 import type { Rule } from "../../lib/lab";
 import { rowStudyKey, type Auth, type BoardSignal, type RowStudy } from "../../lib/research";
 import { BoardView, chipTitle, emptyLabel, evidenceText, type BoardViewProps } from "./Board";
@@ -115,12 +115,12 @@ describe("evidence cell", () => {
     expect(err).toContain("RETRY STUDY");
     expect(rows({ fresh: { state: "done", summary: { ...summary, verdict: "rejected" } } })).toContain("REJECTED");
   });
-  test("no rule: muted `no Lab twin` with the reason; source drill and asset links", () => {
+  test("no rule, no evidence: a muted factual line; source drill and asset links", () => {
     const html = rows();
-    expect(html).toContain("no Lab twin");
-    expect(html).toContain("intraday scanner setups have no Lab twin");
+    expect(html).toContain("no record yet");
     expect(html).toContain('href="/feed?id=x"');
     expect(html).toContain('href="/asset/HYPE"');
+    expect(html).not.toContain("twin");
   });
   test("guest: the sign-in affordance instead of a POST", () => {
     const html = rows({}, { state: "guest" });
@@ -131,6 +131,84 @@ describe("evidence cell", () => {
     expect(rows()).toContain(`href="/lab/study?rule=${encodeURIComponent(JSON.stringify(rule)).replace(/&/g, "&amp;")}&amp;coin=SOL"`);
   });
 });
+
+const ledger: LedgerEvidence = { kind: "ledger", setupKind: "crowded_long", horizon: "24h", n: 14, clusters: 6, meanNet: 0.0042, ci95: [-0.001, 0.0095], hitRate: 0.57 };
+const scorecard: ScorecardEvidence = { kind: "scorecard", stance: "ride", horizonDays: 7, n: 4, meanPct: 2.1, hitRate: 0.75 };
+const dailyRule: Rule = { asset: UNIVERSE_ASSET, direction: "short", horizonDays: 7, conditions: [{ feature: "ht:funding|z|90", op: ">=", threshold: 2 }] };
+
+describe("evidence kinds", () => {
+  const board = (signals: BoardSignal[], over: Partial<BoardViewProps> = {}) => render({ board: poll(boardData(signals)), ...over });
+  const opp = (over: Partial<BoardSignal> = {}) =>
+    sig("opp", { coin: "HYPE", source: "opportunity", direction: "short", href: "/feed?id=x", evidence: ledger, rule: dailyRule, ruleText: "funding z(90) ≥ 2 → short 7d", scope: "universe", tested: "short", definitionId: "funding_fade", ...over });
+
+  test("ledger: a fact line with n, clusters, mean and interval in %, no verdict badge or colour", () => {
+    const html = board([opp({ rule: null, ruleText: null, tested: null, definitionId: null })]);
+    expect(html).toContain("live record · 14 outcomes · 6 clusters · mean net +0.42% [−0.10%, +0.95%] · 24h");
+    expect(html).not.toMatch(/CLEAR|REJECTED|INSUFFICIENT/);
+    expect(html).not.toContain("STUDY DAILY VERSION");
+    expect(html).not.toContain(">STUDY</button>");
+    expect(ledgerLine(html)).not.toMatch(/text-green|text-red/);
+  });
+  test("ledger: null interval is omitted, n 0 is muted text", () => {
+    expect(board([opp({ rule: null, evidence: { ...ledger, ci95: null, clusters: 3 } })])).toContain("14 outcomes · 3 clusters · mean net +0.42% · 24h");
+    const empty = board([opp({ rule: null, evidence: { ...ledger, n: 0, clusters: 0, meanNet: null, ci95: null, hitRate: null } })]);
+    expect(empty).toMatch(/text-text-secondary[^>]*title="no outcome[^>]*>no graded outcomes yet</);
+    expect(empty).not.toContain("live record");
+  });
+  test("scorecard: graded forward, calls, mean vs BTC, hit %; null is a muted line", () => {
+    const html = board([sig("r1", { coin: "HYPE", source: "radar", direction: "long", evidence: scorecard })]);
+    expect(html).toContain("graded forward · 4 calls · mean vs BTC +2.1% · hit 75%");
+    expect(html).not.toContain(">STUDY</button>");
+    const none = board([sig("r2", { coin: "SOL", source: "radar" })]);
+    expect(none).toMatch(/text-text-secondary[^>]*>no graded calls yet</);
+  });
+  test("setup with a daily rule: ledger line plus STUDY DAILY VERSION whose title never claims to test the intraday setup", () => {
+    const html = board([opp()]);
+    expect(html).toContain("live record · 14 outcomes");
+    expect(html).toContain(">STUDY DAILY VERSION</button>");
+    expect(html).toMatch(/title="[^"]*daily-bar definition[^"]*does not test the intraday setup itself[^"]*counts as a trial"/);
+    expect(html).toContain("not studied today · tested short · top-20 universe");
+    expect(html).not.toContain(">STUDY</button>");
+  });
+  test("setup: the cached daily study shows under the ledger line, prefixed `daily version:`; a local run does too", () => {
+    const cached = board([opp({ dailyStudy: summary })]);
+    expect(cached).toContain("daily version:");
+    expect(cached).toContain("CLEAR");
+    expect(cached).toContain("tested short · top-20 universe · 41 events · 38 weeks · +0.21R (≤ +0.35R)");
+    expect(cached.indexOf("live record")).toBeLessThan(cached.indexOf("daily version:"));
+    expect(cached).not.toContain("STUDY DAILY VERSION");
+    const ran = render({ board: poll(boardData([opp()])), studies: { [rowStudyKey("opp", NOW)]: { state: "done", summary: { ...summary, verdict: "rejected" } } } });
+    expect(ran).toContain("daily version:");
+    expect(ran).toContain("REJECTED");
+    expect(render({ board: poll(boardData([opp()])), studies: { [rowStudyKey("opp", NOW)]: { state: "running" } } })).toContain("STUDYING top-20 universe…");
+    expect(render({ board: poll(boardData([opp()])), studies: { [rowStudyKey("opp", NOW)]: { state: "error", message: "upstream 502" } } })).toContain("RETRY DAILY STUDY");
+  });
+  test("setup daily version: a guest gets LOGIN TO STUDY", () => {
+    const html = board([opp()], { auth: { state: "guest" } });
+    expect(html).toContain("LOGIN TO STUDY");
+    expect(html).toContain("live record");
+  });
+  test("definition row: headline, rule text, tested side and universe, STUDY; the row links the universe study without a coin", () => {
+    const d = sig("def", { coin: "SOL", source: "definition", direction: null, headline: "funding z90 +2.4, OI p95", rule: dailyRule, ruleText: "funding z(90) ≥ 2 → short 7d", scope: "universe", tested: "short", definitionId: "funding_fade" });
+    const html = board([d]);
+    expect(html).toContain("DEFINITION");
+    expect(html).toContain("funding z90 +2.4, OI p95");
+    expect(html).toContain("funding z(90) ≥ 2 → short 7d");
+    expect(html).toContain("not studied today · tested short · top-20 universe");
+    expect(html).toContain(">STUDY</button>");
+    expect(html).toContain('href="/asset/SOL"');
+    expect(html).not.toContain("coin=");
+    expect(html).not.toContain('/asset/UNIVERSE');
+    expect(html).not.toContain(">UNIVERSE<");
+  });
+  test("the source chip for definition sits with the others", () => {
+    const b = boardData([], { sources: { novelty: ok(0), rule: ok(0), opportunity: ok(0), radar: ok(0), definition: ok(2) } });
+    expect(render({ board: poll(b) })).toContain("DEFINITION 2");
+  });
+});
+
+/** The ledger fact line's own span (its classes). */
+const ledgerLine = (html: string) => html.match(/<span[^>]*>live record[^<]*<\/span>/)?.[0] ?? "";
 
 describe("side column", () => {
   test("pulse counts link /lab/pulse; pulse null says unavailable with the reason", () => {
