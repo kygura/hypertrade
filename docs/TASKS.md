@@ -48,6 +48,17 @@ Signals v2 follow-ups (docs/RESEARCH.md "Signals v2"):
   `trend_pullback_long` / `_short` and `range_breakout` measured at 5.3 % / 6.8 % / 3.8 % of coin-days on HL
   daily candles.
 - [ ] A partial day of funding is not detected by the scan (the loader returns the daily sum only).
+- [ ] Intraday replay (RESEARCH.md S5, backend shipped 2026-11-11): the UI. Render
+  `GET /api/research/setups/replay` on `/lab/study` under the DEFINITIONS picker (states `pending`, `unavailable`
+  with reason, `ok`; not-evaluable rows with their reason, never as 0).
+- [ ] `crowded_long`, `negative_funding_squeeze` and `deleveraging_washout` read `oiChg1hZ` and stay unreplayable
+  until intraday OI is stored at a 15-min or finer cadence: HL serves no OI history, and production `scan_snapshots`
+  hold about 4 ticks a day (scanner run from a cron). An always-on scanner writes 288 a day; with
+  `PLATFORM_SCAN_RETENTION_DAYS` (30) the `snapshots` replay then covers them after a few weeks.
+- [ ] Production scanner cadence: the intraday setups cannot fire at about 4 ticks a day (the features need 96); the
+  board's `opportunity` source says so. Run the always-on server (`bun start`) or tick at least every 15 min.
+- [ ] The candle replay charges no slippage (no historical book) and reads funding up to an hour late; per-coin
+  slippage from the live cost model's typical `l2Book` walk would tighten the net numbers.
 
 Radar routine (2026-11-02): the 4 h setup board is retired (24 setups, all low conviction, −1.77R; it
 never saw news, sectors or HIP-3). `ROUTINE.md` is now a twice-daily radar: `bun run radar` scans every

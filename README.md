@@ -7,7 +7,7 @@ Surfaces: the Research board (`/`, the landing: live signals with their event-st
 ## Status
 
 - **Live in the repo (master):** the platform backend in `src/server/platform/` (scanner, crawler, liquidation map, outcomes, alerts loops) on one Bun process, the cockpit UI, `/api/platform/*`, and the routine pipeline (`bun run routine`: board scan, tripwires, setups ledger, daily brief; Opus 5.5 by default, Kimi as fallback).
-- **Hosting:** free tier first. Vercel serves the UI and API, a GitHub Actions hourly tick (`.github/workflows/platform-tick.yml`, `bun run platform:tick`) runs the platform worker loops against Postgres, and the Claude routine commits research. The always-on Railway worker below is the upgrade path for when live mids (order approval) or sub-hourly scans become a hard requirement. History in `docs/TASKS.md`.
+- **Hosting:** free tier first. Vercel serves the UI and API, a GitHub Actions hourly tick (`.github/workflows/platform-tick.yml`, `bun run platform:tick`) runs the platform worker loops against Postgres, and the Claude routine commits research. The always-on Railway worker below is the upgrade path for when live mids (order approval) or sub-hourly scans become a hard requirement. At an hourly tick the intraday setups cannot fire (their features need a ring point every 15 min); the research board's `opportunity` source says so. `bun run signals:replay` replays the setups over HL 15-min candles instead (docs/RESEARCH.md S5). History in `docs/TASKS.md`.
 - **Terminal client:** `tui/` is a separate Ink package (`bun run tui`) with its own `README.md`, `SPEC.md`, `DESIGN.md` and `TASKS.md`.
 
 ## Setup
@@ -114,7 +114,9 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `PLATFORM_LIQMAP_COINS` (30) | Coins in each 15-minute liquidation snapshot. |
    | `PLATFORM_CRAWL_WEIGHT_PER_MIN` (800) | Hyperliquid weight budget for the crawler. |
    | `PLATFORM_CRAWL_MAX_AGE_MIN` (30) | Max age of a poll for addresses with open positions. |
-   | `PLATFORM_RETENTION_DAYS` (14) | Pruning window for snapshot and history tables. The ledger is never pruned. |
+   | `PLATFORM_RETENTION_DAYS` (14) | Pruning window for liquidation snapshots and position history. The ledger is never pruned. |
+   | `PLATFORM_SCAN_RETENTION_DAYS` (30) | Pruning window for `scan_snapshots`, the only stored intraday OI (read by the `snapshots` setup replay). Never shorter than `PLATFORM_RETENTION_DAYS`. At the always-on cadence that is one row per coin every 5 minutes, about 288 × coins rows a day. |
+   | `PLATFORM_REPLAY_TOP` (20) | Coins in the candle setup replay (`/api/research/setups/replay`, `bun run signals:replay`), most liquid first. About 230 Hyperliquid weight per coin. |
    | `PLATFORM_OUTCOME_HORIZONS` (`1h,4h,24h,72h`) | Outcome horizons. |
    | `PLATFORM_EDGE_MIN_N` (30) | Resolved outcomes needed before edge leaves `unvalidated`. |
    | `PLATFORM_READY_TTL_MIN` (60) | Minutes before an undecided `ready` opportunity expires. |

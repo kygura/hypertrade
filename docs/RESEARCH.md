@@ -220,7 +220,7 @@ and a rule-bearing signal opens a prefilled study.
 
 ## Signals v2 — one definition, two evaluators
 
-Status: done (2026-11-10): S1–S4 shipped, review fixes applied. Phases 1–2 of the candidate pipeline
+Status: done (2026-11-10): S1–S4 shipped, review fixes applied; S5 (intraday replay) 2026-11-11, backend only. Phases 1–2 of the candidate pipeline
 (`docs/research/candidates-redesign.md` § B.3, B.4), cut to what the Lab can replay today.
 
 Problem: four engines each defined "signal" their own way (scanner setups, novelty, Lab rules,
@@ -339,7 +339,76 @@ under the headline is prefixed `daily version: `.
 `/lab/study` gets a DEFINITIONS picker (the shipped definitions, prefilled, universe scope) so
 its empty state is no longer a dead end.
 
+### S5. Intraday replay — `src/server/platform/replay.ts`, `replaySource.ts`
+
+The intraday setups (`platform/setups.ts`) are now replayed over history. The predicates are unchanged; the replay
+tests them as shipped. It is a replay of fixed predicates, not a Lab trial: nothing is searched or tuned, and it adds
+nothing to the trial count.
+
+What it tests: the setup predicate and the scanner's repeat handling. `evaluateTick` (setups.ts) is the one path from
+"24 h ring + tick inputs" to "setups that fire" (`computeFeatures` → `liquidityTiers` over the step's volumes →
+`setupsFor`); the live scanner tick and the replay both call it. At each grid step the replay builds each coin's ring
+from points with `ts ≤ step` only (no look-ahead), then applies the scanner's dedupe, ready TTL and cooldown as they
+play out when every candidate is costed and nobody decides: a fired key is created, goes `ready` the same tick, stays
+live (a re-fire only refreshes it) until the first step ≥ `PLATFORM_READY_TTL_MIN` (60) after creation, expires there,
+and is not created again until `PLATFORM_COOLDOWN_MIN` (240) has passed since the expiry.
+
+What it does not test: the score (it orders candidates and picks the costed top `PLATFORM_COST_TOP_N`; it never gates
+creation, so the replay ignores it), operator decisions, book-based costs, and any feature whose input the stream
+lacks. Such a feature is null, as the scanner treats an unknown feature (it fails every condition), and a setup that
+reads one is reported `evaluable: false` with the reason, never as 0 events.
+
+Grading: each entry is marked at the outcome loop's horizons (`PLATFORM_OUTCOME_HORIZONS`, default 1h, 4h, 24h, 72h)
+at the stream's mark at exactly entry + horizon (an entry with no point there is not graded at that horizon), with
+the ledger's own `netReturn` and costs: taker fee `DEFAULT_TAKER_FEE_BPS` (4.5 bps) each way, slippage 0 (no
+historical book: understated for thin coins), funding = the hourly rate at entry × horizon hours, signed for the side
+(the ledger's creation funding scaled to the horizon). Per kind × side × horizon the graded outcomes go through
+`groupStats`, so the numbers mean what the ledger's mean: n per outcome, clusters (signal-time buckets of
+max(1 day, horizon)), mean net over cluster means, 95% interval null under 5 clusters, hit rate; n 0 has null
+numbers. `entries` counts ideas created, graded or not.
+
+Sources:
+
+- `candles` (default, no database needed): the top `PLATFORM_REPLAY_TOP` (20) HL perps by 24 h volume now, the latest
+  5000 15-min candles each (about 52 days), one ring point per closed candle at its close: mark = close, 24 h volume =
+  trailing 24 h sum of volume × close, funding = the latest hourly settlement at or before the point (stored `funding`
+  rows when a database has 95% of the span, else HL `fundingHistory`). No OI, book or liquidation data, so
+  `crowded_long`, `negative_funding_squeeze` and `deleveraging_washout` (all read `oiChg1hZ`) are not evaluable; only
+  `vol_expansion_breakout` is. Known differences from the live scanner, listed in `assumptions`: funding lags the live
+  predicted rate by up to an hour; the 1 h realized vol rests on 4 returns, not 60; tiers rank the step's volume
+  against every other live coin's volume now (their history is not fetched); the universe is today's survivors.
+  Candles and funding are memoised in process (a later run fetches only new bars). About 230 HL weight per coin, so
+  20 coins take about 5 minutes under the weight guard.
+- `snapshots`: stored `scan_snapshots` (mark, OI, funding, 24 h volume), every setup evaluable, when dense enough. The
+  features need `FEATURE_MIN_TICKS_24H` = 96 ring points a day (one per 15 min: a 15-min change reads a point within
+  20 min of each window end, and the funding z needs 48 points). The check is the median count of distinct snapshot
+  timestamps per whole 24 h window; below 96 the answer is `unavailable` with the numbers, e.g. "too sparse: median 4
+  scanner ticks per 24 h over 13 day(s) of scan_snapshots; the features need 96 (one per 15 min)". A scanner run from
+  a cron a few times a day is that case. The always-on server persists one row per coin every 5 minutes (288 a day),
+  and `PLATFORM_SCAN_RETENTION_DAYS` (30) keeps them longer than the other history for this replay.
+
+Route: `GET /api/research/setups/replay?source=candles|snapshots` (default candles) →
+`{ state: 'ok'|'pending'|'unavailable', reason?, asOf, source, window: {from, to} | null, coins, grid: '15m',
+horizons, assumptions: string[], setups: [{ kind, side, horizon, evaluable, reason?, entries, n, clusters, meanNet,
+ci95, hitRate }] }`, zod-parsed (`SetupReplayResponseSchema`, `src/shared/research.ts`), read like the board
+(guest-readable in PUBLIC_MODE). Computed in the background, one run per source at a time, memoised 6 h (a stale
+result is served while the next runs); a request waits at most 2 s, then answers `pending` (ask again). A failed run
+answers `unavailable` ("replay failed (see server log)") and is retried after 15 min; `snapshots` without a worker or
+database is `unavailable` ("needs a database").
+
+CLI: `bun run signals:replay [--top N] [--source candles|snapshots]` runs once without a request timeout and prints
+the window, coins, the per-setup table, the not-evaluable list and the assumptions.
+
+Parity test (`replay.test.ts`): a fixture of six coins on a 15-min grid with OI, fed tick by tick through the real
+scanner `tick()` (injected `info` and clock, memory store; every candidate costed so ideas go ready and expire as the
+replay models) produces exactly the replay's entries (coin, kind, side, time, entry price), for three kinds, with and
+without the cooldown.
+
+The board's `opportunity` source now carries a `note` when the scanner stored fewer than 96 ticks in the last 24 h
+(`scanTickCount` over `scan_snapshots`): "scanner has 4 ticks stored in the last 24 h; setups need 96 (one per 15
+min; the always-on server scans every minute), so none can fire". 0 opportunities then means "could not fire".
+
 ### Not in this change
 
-The intraday scanner's predicates stay as they are (no stored intraday history to replay them
-from); 4 h triggers, entry zones and the level builder of § B.4; phases 3–5.
+The three OI setups stay unreplayable until intraday OI is stored at a 15-min or finer cadence (an always-on
+scanner writing `scan_snapshots`); 4 h triggers, entry zones and the level builder of § B.4; phases 3–5.
