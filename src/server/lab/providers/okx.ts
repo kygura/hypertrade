@@ -4,7 +4,9 @@ import { clip, dayStart, getJson, requestTimeout, toDaily, type CollectableProvi
 
 // OKX open interest (keyless): daily USD open interest of the coin's OKX USDT-margined perpetual swap, from
 // February 2024. It stands in for market positioning because Hyperliquid publishes no OI history (ht:oi is the
-// collector's own snapshots, a few weeks deep). It is OKX's book, not Hyperliquid's.
+// collector's own snapshots, a few weeks deep). It is OKX's book, not Hyperliquid's. Matched by ticker: a different
+// token under the same ticker on OKX would read that token's OI. Collectable (`history`): lab-collect stores it for
+// the definition scan's coins and the registry reads it stored with a live top-up; `fetch` is the live path.
 //
 // Day alignment (probed 2026-11-11): with period=1Dutc a bar is stamped 00:00 UTC of day D and holds the last
 // 5-minute snapshot of D (stamped 23:55), so the value of day D is known at D's close, as the day's close price is:
