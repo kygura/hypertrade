@@ -159,8 +159,7 @@ export function ledgerEvidence(setupKind: string, stats: readonly LedgerStats[])
  */
 export function opportunitySignal(o: Opportunity, ledger: readonly LedgerStats[] | null = null): Unstudied {
   const edge = o.netEdgeBps == null ? "" : ` · net edge ${fixed(o.netEdgeBps, 0)} bps (${o.edgeBasis})`;
-  const def = definitionForKind(o.setupKind);
-  const daily = def && def.rule.direction === o.direction ? def : undefined;
+  const daily = definitionForKind(o.setupKind, o.direction);
   const rule = daily ? definitionRule(daily) : null;
   return {
     id: `opportunity:${o.coin}:${o.id}`, source: "opportunity", coin: o.coin, direction: o.direction,

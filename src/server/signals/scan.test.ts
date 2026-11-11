@@ -12,7 +12,7 @@ const T0 = Date.UTC(2024, 0, 1);
 /**
  * A coin with every metric the definitions read, plus planted episodes so each definition is in zone somewhere:
  * 70-day trend blocks (regime), funding spikes with OI at a 30-day high, negative funding with OI building, two
- * 3-day washouts with OI flushing, and volume bursts.
+ * 3-day washouts with OI flushing and funding negative, and volume bursts.
  */
 function fixture(n = 420, seed = 11, asset = "FIX"): LabDataset {
   const rng = mulberry32(seed);
@@ -31,7 +31,7 @@ function fixture(n = 420, seed = 11, asset = "FIX"): LabDataset {
     o *= 1 + 0.01 * gauss(rng) + ([...hot].some((h) => i > h - 4 && i <= h) ? 0.05 : 0) + ([...cold].some((h) => i > h - 7 && i <= h) ? 0.03 : 0) + (washout.has(i) ? -0.06 : 0);
     c.push(px);
     oi.push(o);
-    f.push(0.0001 + 0.00002 * gauss(rng) + (hot.has(i) ? 0.0008 : 0) + (cold.has(i) ? -0.0006 : 0));
+    f.push(0.0001 + 0.00002 * gauss(rng) + (hot.has(i) ? 0.0008 : 0) + (cold.has(i) ? -0.0006 : 0) + (washout.has(i) ? -0.0003 : 0));
     vol.push(1e7 * Math.exp(0.3 * gauss(rng)) * (rng() < 0.15 ? 2.5 : 1));
   }
   const op = c.map((_, i) => c[Math.max(0, i - 1)]!);
@@ -45,10 +45,10 @@ function fixture(n = 420, seed = 11, asset = "FIX"): LabDataset {
       [LOW]: c.map((x, i) => Math.min(x, op[i]!) * 0.99),
       [FUNDING]: f,
       "ht:price": c,
-      "ht:oi": oi,
+      "okx:oi": oi,
       "ht:volume": vol,
     },
-    stationary: { "ht:price": false, "ht:oi": false, "ht:volume": false },
+    stationary: { "ht:price": false, "okx:oi": false, "ht:volume": false },
   };
 }
 
@@ -83,7 +83,7 @@ describe("parity (CLAUDE.md: a second evaluation path needs a parity test): live
   }
 
   test("a definition whose metric the dataset lacks is not evaluable (null), not out of zone", () => {
-    const noOi = { ...d, metrics: Object.fromEntries(Object.entries(d.metrics).filter(([k]) => k !== "ht:oi")) };
+    const noOi = { ...d, metrics: Object.fromEntries(Object.entries(d.metrics).filter(([k]) => k !== "okx:oi")) };
     expect(inZoneNow(DEFINITIONS.find((x) => x.id === "funding_fade")!, noOi)).toBeNull();
     expect(inZoneNow(DEFINITIONS.find((x) => x.id === "range_breakout")!, noOi)).not.toBeNull();
   });
@@ -176,7 +176,8 @@ describe("definition scanner (service)", () => {
     const lastRaw = { ...loaded(d).lastRaw, "ht:funding": isoDate(d.t.at(-3)!) };
     const scan = await createDefinitionScanner({ loadDataset: async () => ({ dataset: d, warnings: [], lastRaw }), coins: async () => ["AAA"], now: () => NOW }).scan();
     const fundingDefs = DEFINITIONS.filter((x) => definitionMetrics([x]).includes("ht:funding"));
-    expect(fundingDefs.length).toBe(2);
+    expect(fundingDefs.length).toBeGreaterThan(0);
+    expect(fundingDefs.length).toBeLessThan(DEFINITIONS.length);
     expect(scan).toMatchObject({ bar, coins: 1, dropped: fundingDefs.length });
     expect(scan.hits).toEqual(scanDataset(d, DEFINITIONS.filter((x) => !fundingDefs.includes(x))));
     // A loader that reports no lastRaw evaluates nothing (fail closed).

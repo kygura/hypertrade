@@ -126,7 +126,7 @@ describe("buildBoard", () => {
 
   test("definitions: a coin in zone is a universe-scoped signal with the definition's rule; scan drops count as dropped", async () => {
     const def = DEFINITIONS.find((d) => d.id === "funding_fade")!;
-    const hit = { definition: def, coin: "ETH", date: "2026-11-08", values: { "ht:funding|z|90": 2.41, "ht:oi|pctile|30": 1 } };
+    const hit = { definition: def, coin: "ETH", date: "2026-11-08", values: { "ht:funding|z|90": 2.41, "okx:oi|pctile|30": 1, "ht:price|vchg|3": 0.42 } };
     const d = deps({ definitions: async () => ({ bar: "2026-11-08", coins: 21, dropped: 2, hits: [hit, { ...hit, coin: "SOL" }] }) });
     const summary = studySummary(fakeStudy(), "2026-11-09T06:00:00.000Z");
     d.cache.set(studyKey({ rule: definitionRule(def), ...STUDY_DEFAULTS }, NOW), { summary, study: fakeStudy() });
@@ -136,7 +136,7 @@ describe("buildBoard", () => {
     expect(eth).toMatchObject({ source: "definition", direction: "short", tested: "short", scope: "universe", definitionId: "funding_fade", dailyStudy: null, at: Date.parse("2026-11-09T00:00:00Z") });
     expect(eth.rule).toEqual(definitionRule(def));
     expect(eth.rule!.asset).toBe(UNIVERSE_ASSET);
-    expect(eth.headline).toBe("Funding fade in zone 2026-11-08: funding z(90) 2.41, oi pctile(30) 1");
+    expect(eth.headline).toBe("Funding fade in zone 2026-11-08: funding z(90) 2.41, okx:oi pctile(30) 1, price vchg(3) 0.42");
     expect(boardStudy(eth)).toEqual({ rule: definitionRule(def), ...STUDY_DEFAULTS });
     // One universe study per definition: both coins read the same cached study.
     expect(b.signals.filter((s) => s.source === "definition").map((s) => s.evidence)).toEqual([studyEvidence(summary), studyEvidence(summary)]);
@@ -144,10 +144,12 @@ describe("buildBoard", () => {
 
   test("opportunity: ledger evidence (current score version, 24h) and its daily definition; the daily study goes to dailyStudy, never over the ledger", async () => {
     const crowded = { ...opp, setupKind: "crowded_long", direction: "short" } as Opportunity;
-    const wrongSide = { ...opp, id: "22222222-2222-4222-8222-222222222222", setupKind: "vol_expansion_breakout", direction: "short" } as Opportunity;
+    const breakdown = { ...opp, id: "22222222-2222-4222-8222-222222222222", setupKind: "vol_expansion_breakout", direction: "short" } as Opportunity;
+    const breakout = { ...breakdown, id: "44444444-4444-4444-8444-444444444444", direction: "long" } as Opportunity;
+    const unnamed = { ...opp, id: "55555555-5555-4555-8555-555555555555", setupKind: "crowded_long", direction: "long" } as Opportunity;
     const stats = [{ setupKind: "crowded_long", horizon: "24h", regime: null, tier: null, n: 37, clusters: 11, hitRate: 0.54, meanNet: 0.0042, ci95: [-0.003, 0.011] as [number, number] }];
     const asked: string[][] = [];
-    const d = deps({ opportunities: async () => [crowded, wrongSide, { ...crowded, id: "33333333-3333-4333-8333-333333333333" }], ledger: async (kinds) => (asked.push(kinds), stats) });
+    const d = deps({ opportunities: async () => [crowded, breakdown, breakout, unnamed, { ...crowded, id: "33333333-3333-4333-8333-333333333333" }], ledger: async (kinds) => (asked.push(kinds), stats) });
     const fade = definitionRule(DEFINITIONS.find((x) => x.id === "funding_fade")!);
     const summary = studySummary(fakeStudy(), "2026-11-09T06:00:00.000Z");
     d.cache.set(studyKey({ rule: fade, ...STUDY_DEFAULTS }, NOW), { summary, study: fakeStudy() });
@@ -156,14 +158,18 @@ describe("buildBoard", () => {
     expect(o).toMatchObject({ rule: fade, scope: "universe", tested: "short", definitionId: "funding_fade", dailyStudy: summary });
     expect(o.evidence).toEqual({ kind: "ledger", setupKind: "crowded_long", horizon: "24h", n: 37, clusters: 11, meanNet: 0.0042, ci95: [-0.003, 0.011], hitRate: 0.54 });
     expect(asked).toEqual([["crowded_long", "vol_expansion_breakout"]]); // one read, the kinds on the board only
-    // A short breakout has no daily definition on its side: no rule, an empty ledger record.
-    const w = b.signals.find((s) => s.id === `opportunity:SOL:${wrongSide.id}`)!;
-    expect(w).toMatchObject({ rule: null, definitionId: null, dailyStudy: null, scope: "coin", tested: null });
+    // The breakout kind goes either way: its short side is the daily range_breakdown, its long side range_breakout.
+    const down = (id: string) => definitionRule(DEFINITIONS.find((x) => x.id === id)!);
+    const w = b.signals.find((s) => s.id === `opportunity:SOL:${breakdown.id}`)!;
+    expect(w).toMatchObject({ rule: down("range_breakdown"), definitionId: "range_breakdown", scope: "universe", tested: "short" });
     expect(w.evidence).toEqual({ kind: "ledger", setupKind: "vol_expansion_breakout", horizon: "24h", n: 0, clusters: 0, meanNet: null, ci95: null, hitRate: null });
+    expect(b.signals.find((s) => s.id === `opportunity:SOL:${breakout.id}`)).toMatchObject({ definitionId: "range_breakout", tested: "long" });
+    // A kind on a side no definition names: no rule.
+    expect(b.signals.find((s) => s.id === `opportunity:SOL:${unnamed.id}`)).toMatchObject({ rule: null, definitionId: null, dailyStudy: null, scope: "coin", tested: null });
     // A failing ledger read leaves the evidence null; the source stays ok.
-    const down = BoardResponseSchema.parse(await buildBoard(deps({ opportunities: async () => [crowded], ledger: async () => { throw new Error("db down"); } })));
-    expect(down.sources.opportunity).toEqual(ok(1));
-    expect(down.signals.find((s) => s.source === "opportunity")!.evidence).toBeNull();
+    const failed = BoardResponseSchema.parse(await buildBoard(deps({ opportunities: async () => [crowded], ledger: async () => { throw new Error("db down"); } })));
+    expect(failed.sources.opportunity).toEqual(ok(1));
+    expect(failed.signals.find((s) => s.source === "opportunity")!.evidence).toBeNull();
   });
 
   test("a ledger read that does not answer in time leaves opportunity evidence null; the source answers ok", async () => {
