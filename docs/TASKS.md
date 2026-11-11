@@ -53,7 +53,10 @@ Signals v2 follow-ups (docs/RESEARCH.md "Signals v2"):
 - [ ] `okx:oi` is OKX's book, not Hyperliquid's. Replace it with `ht:oi` once the collector holds a year of daily
   OI for the universe (needs ≥ 30 event-weeks per definition), or compare the two over the overlap first.
 - [ ] Event-study results of the definitions (`bun run signals:study`) are not yet read into thresholds; they stay
-  starting points until a decision is made on the numbers.
+  starting points until a decision is made on the numbers. First run (2026-11-11, no database, 17 of the top 20
+  coins): without a database live funding stops at 500 days (`LIVE_FUNDING_PAGES`), so the period is 2025-06-30 →
+  2026-11-10 and the OI and funding definitions are `insufficient` (< 30 event-weeks; `funding_fade` 6 events).
+  Re-run with `DATABASE_URL` (funding from 2023, OKX OI from Feb 2024) before reading anything into them.
 - [x] Intraday replay (RESEARCH.md S5, backend shipped 2026-11-11): the UI (shipped). Render
   `GET /api/research/setups/replay` on `/lab/study` under the DEFINITIONS picker (states `pending`, `unavailable`
   with reason, `ok`; not-evaluable rows with their reason, never as 0).
