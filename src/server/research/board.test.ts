@@ -5,7 +5,7 @@ import { BoardResponseSchema, STUDY_DEFAULTS, studyEvidence, UNIVERSE_ASSET } fr
 import { memoryStore } from "../lab/store.js";
 import type { CatalogueEntry, MarketPulse, Rule } from "../lab/types.js";
 import { DEFINITIONS, definitionRule } from "../signals/definitions.js";
-import { boardStudy, buildBoard, SourceUnavailable, type BoardDeps } from "./board.js";
+import { boardStudy, buildBoard, scannerNote, SourceUnavailable, type BoardDeps } from "./board.js";
 import { noveltyRule } from "./signals.js";
 import { createStudyCache, studyKey, studySummary } from "./study.js";
 import { fakeStudy } from "./testkit.js";
@@ -186,5 +186,27 @@ describe("buildBoard", () => {
     expect(ride).toMatchObject({ rule: null, dailyStudy: null, definitionId: null });
     expect(ride.evidence).toEqual({ kind: "scorecard", stance: "ride", horizonDays: 7, n: 8, meanPct: 1.25, hitRate: 0.75 });
     expect(b.signals.find((s) => s.id === "radar:HYPE:f")!.evidence).toBeNull();
+  });
+});
+
+describe("scanner cadence note on the opportunity source", () => {
+  test("a scanner run from a cron (4 ticks a day): the source is ok with 0 signals and says why", async () => {
+    const b = BoardResponseSchema.parse(await buildBoard(deps({ opportunities: async () => [], scannerTicks24h: async () => 4 })));
+    expect(b.sources.opportunity).toEqual({
+      ...ok(0),
+      note: "scanner has 4 ticks stored in the last 24 h; setups need 96 (one per 15 min; the always-on server scans every minute), so none can fire",
+    });
+  });
+  test("no note at the always-on cadence (288 persisted ticks), when unknown, or when the read fails or stalls", async () => {
+    for (const scannerTicks24h of [async () => 288, async () => null, async () => Promise.reject(new Error("db")), () => new Promise<number>(() => {}), undefined]) {
+      const b = await buildBoard(deps({ scannerTicks24h, ledgerTimeoutMs: 20 }));
+      expect(b.sources.opportunity).toEqual(ok(1));
+    }
+  });
+  test("scannerNote: under 96 a day only", () => {
+    expect(scannerNote(95)).toContain("95 ticks");
+    expect(scannerNote(1)).toContain("1 tick stored");
+    expect(scannerNote(96)).toBeNull();
+    expect(scannerNote(null)).toBeNull();
   });
 });

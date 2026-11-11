@@ -15,6 +15,7 @@
     "radar": "bun run scripts/radar.ts",
     "signals:collect": "bun run scripts/signals.ts collect",
     "signals:notify": "bun run scripts/signals.ts notify",
+    "signals:replay": "bun run scripts/signals-replay.ts",
     "setups:export": "bun run scripts/setups-export.ts",
     "review:postmortem": "bun run scripts/review.ts postmortem",
     "review:journal": "bun run scripts/review.ts journal",

@@ -22,6 +22,9 @@ import { ruleId, ruleText } from "../lab/engine/rules.js";
 import type { LabStore } from "../lab/store.js";
 import type { Rule } from "../lab/types.js";
 import { invalid } from "./intel/http.js";
+import { z } from "zod";
+import { REPLAY_SOURCES, SetupReplayResponseSchema, type ReplaySource, type SetupReplayResponse } from "../../shared/research.js";
+import { replayAnswer } from "../platform/replaySource.js";
 
 // /api/research and /api/radar (docs/RESEARCH.md B2). Inputs and outputs zod-parsed against src/shared/research.ts.
 // GET /research/board   → BoardResponse: every source loads on its own; a failing one is `unavailable` with a reason.
@@ -32,6 +35,9 @@ import { invalid } from "./intel/http.js";
 //                       written through to the Lab store); `catalogueId` is looked up live on every answer. Runs
 //                       only on request: nothing in the process studies on its own (machine runs would inflate N).
 //                       400 { error, field? } bad input · 502 upstream data · 500 otherwise.
+// GET /research/setups/replay?source=candles|snapshots → SetupReplayResponse: the shipped intraday setup predicates
+//                       replayed (platform/replay.ts), run in the background and memoised; `pending` while the
+//                       first run is in flight, never a request blocked on it. Not a Lab trial. 400 bad source.
 // GET /radar            → RadarResponse from data/radar/ (state `unavailable` + reason when the files are absent).
 // Auth (auth.ts): GETs are read paths (cookie, or the LAB_API_TOKEN bearer on GET); /radar is not guest-readable in
 // PUBLIC_MODE (LLM-written theses). The study POST takes the same cookie-or-bearer as the Lab tool POSTs.
@@ -48,7 +54,11 @@ export interface ResearchRouteDeps {
   deadlineMs: () => number | undefined;
   /** A PUBLIC_MODE guest (no session, no bearer): the board leaves the radar out. Default: auth.ts isGuest. */
   isGuest?: (c: Context) => boolean;
+  /** The setup replay of a source as answered now (never waits on a run). Default: the process's replay service. */
+  replay?: (source: ReplaySource) => Promise<SetupReplayResponse>;
 }
+
+const ReplayQuerySchema = z.object({ source: z.enum(REPLAY_SOURCES).default("candles") });
 
 /** The shipped definitions as the UI reads them. */
 export const definitionsResponse = (): DefinitionsResponse => ({
@@ -64,6 +74,11 @@ export function researchRoutes(deps: ResearchRouteDeps) {
       c.json(BoardResponseSchema.parse(await buildBoard({ ...boardDepsFor(deps.board(), (deps.isGuest ?? isGuest)(c)), cache: deps.cache }))),
     )
     .get("/definitions", (c) => c.json(DefinitionsResponseSchema.parse(definitionsResponse())))
+    .get("/setups/replay", async (c) => {
+      const q = ReplayQuerySchema.safeParse({ source: c.req.query("source") });
+      if (!q.success) return invalid(c, q.error, "query");
+      return c.json(SetupReplayResponseSchema.parse(await (deps.replay ?? defaultReplay)(q.data.source)));
+    })
     .post("/study", async (c) => {
       let raw: unknown;
       try {
@@ -161,6 +176,10 @@ export function defaultBoardDeps(env: Record<string, string | undefined> = proce
       const stats = await Promise.all(kinds.map(async (k) => setupLedgerStats(k, await ctx.store.outcomeRows({ setupKind: k }))));
       return stats.filter((s) => s !== null);
     },
+    scannerTicks24h: async () => {
+      const ctx = platformContext();
+      return ctx ? ctx.store.scanTickCount(new Date(Date.now() - 86_400_000).toISOString()) : null;
+    },
     radar: async () => {
       const r = await readRadar(RADAR_DIR);
       if (r.state === "unavailable") throw new SourceUnavailable(r.reason ?? "radar files unreadable");
@@ -174,6 +193,9 @@ export function defaultBoardDeps(env: Record<string, string | undefined> = proce
     },
   };
 }
+
+/** The process's setup replay: snapshots read the platform store (worker or Postgres), candles need neither. */
+const defaultReplay = (source: ReplaySource) => replayAnswer(source, () => platformContext()?.store ?? null);
 
 let shared: { cache: ResearchRouteDeps["cache"]; runStudy: StudyRunner } | null = null;
 /** One study cache and runner per process, the cache in front of the Lab store (so studies survive a restart). */

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { classifyRegime } from "../desk/analytics.js";
-import { computeFeatures, liquidityTiers, type RingPoint } from "./features.js";
+import { computeFeatures, FEATURE_MIN_TICKS_24H, liquidityTiers, type RingPoint } from "./features.js";
 import { DEFAULT_THRESHOLDS, setupsFor } from "./setups.js";
 
 const MIN = 60_000;
@@ -25,6 +25,17 @@ describe("computeFeatures", () => {
       noNaN(fv.features);
       for (const k of ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "fundingPctile24h", "volRatio1hZ", "rvExpansion"]) expect(fv.features[k]).toBeNull();
     }
+  });
+
+  test("FEATURE_MIN_TICKS_24H: a 15-min ring (96 a day) computes the price, volume and funding features; 6-hourly ticks compute no z feature", () => {
+    const every = (k: number) => ring(24 * 60).filter((_, i) => (24 * 60 - 1 - i) % k === 0);
+    const q = every(15);
+    expect(q.length).toBe(FEATURE_MIN_TICKS_24H);
+    const fv = computeFeatures(q, NOW);
+    for (const k of ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "fundingPctile24h", "volRatio1hZ", "rvExpansion"]) expect(fv.features[k]).not.toBeNull();
+    const sparse = computeFeatures(every(6 * 60), NOW);
+    // rvExpansion is gap-normalized, so one 6-hour return still gives a number; every setup also reads a z feature.
+    for (const k of ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "fundingPctile24h", "volRatio1hZ"]) expect(sparse.features[k]).toBeNull();
   });
 
   test("full day: z features exist and a quiet series reads near zero", () => {

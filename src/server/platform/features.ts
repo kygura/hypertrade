@@ -23,6 +23,12 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 const LOOKBACK = { days: 1, min: 12 };
+/**
+ * Ring points per 24 h the features need: one per 15 min. A 15-min change reads a point within 20 min of each window
+ * end (intel/windows.ts valueAt), and fundingZ24h / fundingPctile24h need 48 points in 24 h. A sparser ring leaves
+ * them null and no setup can fire. The replay's density check and the board's scanner note use this.
+ */
+export const FEATURE_MIN_TICKS_24H = 96;
 /** |z| at which a signal counts as active: score confluence (score.ts) and the regime's non-flat cut (1 σ). */
 export const ACTIVE_Z = 1;
 const series = (ring: RingPoint[], f: (p: RingPoint) => number): Point[] => ring.map((p) => ({ t: p.ts, v: f(p) })).filter((p) => Number.isFinite(p.v));
