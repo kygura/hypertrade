@@ -149,6 +149,20 @@ describe("firing and zones", () => {
     expect(g.latest.values["syn:b|raw|0"]).toBeNull();
   });
 
+  test("a four-condition rule: funnel has one step per condition, survivors shrink to the in-zone days, firing agrees", () => {
+    const four: Rule = {
+      ...planted,
+      conditions: [...planted.conditions, { feature: "syn:c|vchg|7", op: ">=", threshold: -1 }, { feature: "syn:d|raw|0", op: "<", threshold: 1 }],
+    };
+    const f = funnel(four, data);
+    expect(f.steps).toHaveLength(4);
+    for (let k = 1; k < 4; k++) expect(f.steps[k]!.survivors).toBeLessThanOrEqual(f.steps[k - 1]!.survivors);
+    const zone = inZoneDays(four, data);
+    expect(f.steps[3]!.survivors).toBe(zone.filter(Boolean).length);
+    expect(f.steps[3]!.survivors).toBeGreaterThan(0);
+    for (const k of [200, 400, 599]) expect(ruleFiresAt(four, slice(data, k + 1)).firing).toBe(zone[k]!);
+  });
+
   test("live performance after a save time", () => {
     const savedAt = new Date(data.t[500]! + 3_600_000).toISOString();
     const live = livePerf(planted, data, { slippageBps: 10, from: savedAt })!;

@@ -136,6 +136,26 @@ function behaves(name: string, make: () => Promise<LabStore>) {
       expect(await s.getCatalogueEntry("nope")).toBeNull();
     });
 
+    test("a rule of four conditions (an authored definition) round-trips in the catalogue and the trial log", async () => {
+      const s = await make();
+      const rule = {
+        asset: "BTC",
+        direction: "short" as const,
+        horizonDays: 7,
+        conditions: [
+          { feature: "ht:funding|z|90", op: ">=" as const, threshold: 2 },
+          { feature: "okx:oi|pctile|30", op: ">=" as const, threshold: 0.95 },
+          { feature: "ht:price|vchg|3", op: ">=" as const, threshold: -1 },
+          { feature: "ht:price|vchg|3", op: "<" as const, threshold: 1 },
+        ],
+      };
+      const e = entry("four");
+      await s.saveCatalogueEntry({ ...e, rule, saved: { ...e.saved, rule } });
+      expect((await s.getCatalogueEntry("four"))!.rule).toEqual(rule);
+      await s.appendTrial({ ruleId: "four", intent: null, verdict: "clear", rule });
+      expect((await s.listTrials()).at(-1)!.rule).toEqual(rule);
+    });
+
     test("re-saving keeps savedAt and evaluation, updates name/note", async () => {
       const s = await make();
       const first = await s.saveCatalogueEntry(entry("k"));

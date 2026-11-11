@@ -28,6 +28,8 @@ describe("runSearch", () => {
       // The matcher also accepts a's pctile(30) as the planted z(30) < −1
       // zone; justified only while the two forms' in-zone days overlap.
       expect(pctileOverlap(data, 0.3)).toBeGreaterThanOrEqual(SAME_ZONE_JACCARD);
+      // The trees stay at depth 2: a searched rule holds at most two conditions (authored rules up to four).
+      expect(res.rules.every((r) => r.rule.conditions.length <= 2)).toBe(true);
       const hit = res.rules.slice(0, 3).find((r) => isPlanted(r, data));
       expect(hit, `seed ${seed}: ${res.rules.slice(0, 3).map((r) => r.text).join(" | ")}`).toBeDefined();
       expect(hit!.holdout!.sharpe).toBeGreaterThan(0);

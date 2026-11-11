@@ -286,6 +286,7 @@ const TRANSFORM_PREFIX: Record<Transform, string> = {
   roc: 'roc',
   vol: 'vol',
   pctile: 'pct',
+  vchg: 'vchg',
 }
 
 export const LAB_TRANSFORMS = ['raw', 'z', 'rsi', 'ma_ratio', 'roc', 'vol', 'pctile'] as const satisfies readonly Transform[]
@@ -299,6 +300,7 @@ export const TRANSFORM_LABEL: Record<Transform, string> = {
   roc: 'roc',
   vol: 'vol',
   pctile: 'pctile',
+  vchg: 'vchg',
 }
 
 export interface ParsedFeature {

@@ -7,7 +7,7 @@ import type { PromptDef, ToolDef, ToolInputSchema } from "../mcp/types.js";
 import { SECTORS, SectorSchema } from "../../shared/platform.js";
 import { createLabService, parseInput, type LabService } from "./service.js";
 import { MIN_DEFLATED_SHARPE, MIN_STABILITY, MIN_WALK_FORWARD_SHARPE } from "./engine/verdict.js";
-import { ASSET_PATTERN, DaySchema, RULE_EXTRAS_JSON, RuleSchema, SearchConfigSchema, TRANSFORMS, VERDICT_LEVELS } from "./types.js";
+import { ASSET_PATTERN, DaySchema, MAX_CONDITIONS, RULE_EXTRAS_JSON, RuleSchema, SearchConfigSchema, TRANSFORMS, VERDICT_LEVELS } from "./types.js";
 
 export type { PromptDef, ToolContext, ToolDef, ToolSource } from "../mcp/types.js";
 export { ToolInputError } from "../mcp/types.js";
@@ -106,7 +106,7 @@ const ruleSchema = {
     conditions: {
       type: "array",
       minItems: 1,
-      maxItems: 2,
+      maxItems: MAX_CONDITIONS,
       items: {
         type: "object",
         properties: {
@@ -142,7 +142,7 @@ const searchSchema = obj(
       type: "array",
       items: { type: "string", enum: [...TRANSFORMS] },
       minItems: 1,
-      description: "Feature transforms. Default all: raw, z (rolling z-score), rsi, ma_ratio (value/SMA − 1), roc (rate of change), vol (rolling stdev of log changes), pctile (rolling percentile 0–1).",
+      description: "Feature transforms. Default all but vchg: raw, z (rolling z-score), rsi, ma_ratio (value/SMA − 1), roc (rate of change), vol (rolling stdev of log changes), pctile (rolling percentile 0–1). vchg (the window's log change over the 30-day daily log-change stdev × √window: the move in units of the coin's own volatility) only when listed.",
     },
     windows: windowsSchema("Rolling windows in days for every transform except raw. Default [7, 30, 90]."),
     horizonDays: { type: "integer", minimum: 1, maximum: 180, description: "Forward-return horizon that defines a good day. Default 14." },
