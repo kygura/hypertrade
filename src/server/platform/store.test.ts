@@ -348,6 +348,10 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(out["moves.24h"]).toEqual(run("24h", 3, ["BTC", "ETH", "SOL"]));
   expect((out["moves.4h"] as MovesResponse).rows.map((r) => r.coin)).toEqual(["BTC"]);
   expect(await s.latestMovesRun("72h")).toBeNull();
+  // The run's age without its rows (what the queue header states).
+  put("moves.at.24h", await s.movesRunAt("24h"));
+  expect(out["moves.at.24h"]).toEqual({ asOf: t(3), computedAt: run("24h", 3, []).computedAt });
+  expect(await s.movesRunAt("72h")).toBeNull();
 
   expect(await s.loadTriageScan()).toBeNull();
   await s.saveTriageScan({ day: "2026-10-16", at: t(2), state: "pending", reason: "first run", watched: 0, overBudget: 0 });

@@ -215,6 +215,8 @@ export interface PlatformStore {
   saveMovesRun(run: MovesResponse): Promise<void>;
   /** The window's stored run; null before the first one. */
   latestMovesRun(window: MoveWindow): Promise<MovesResponse | null>;
+  /** When the window's stored run was computed and what hour it runs to, without its rows; null before the first one. */
+  movesRunAt(window: MoveWindow): Promise<{ asOf: string; computedAt: string } | null>;
   /** The latest triage pass (026, one row, replaced each pass). */
   saveTriageScan(scan: TriageScan): Promise<void>;
   /** The row saveTriageScan wrote; null before the first pass. */

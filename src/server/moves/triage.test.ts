@@ -72,4 +72,11 @@ describe("autoInvestigate", () => {
     const dismissed = plan.upserts.map((i) => (i.coin === "B" ? { ...i, dismissedAt: iso(T0) } : i));
     expect(autoInvestigate({ items: dismissed, candidates: plan.candidates, recordsToday: [], room: 5 })).toEqual(["A"]);
   });
+
+  test("unknown news (no feed ingested) still surfaces, reads `news unknown`, and is not auto-investigated", () => {
+    const u = planTriage({ rows: [z("U", 4, { newsHours: null, residualNewsPct: null }), z("A", 2.6)], existing: [], day, now, budget: 8 });
+    expect(u.upserts.map((i) => i.coin)).toEqual(["U", "A"]);
+    expect(u.candidates.find((c) => c.coin === "U")).toMatchObject({ byResidual: true, noNews: false, newsUnknown: true, reason: "residual +8.0% · z +4.0 · 24h · news unknown" });
+    expect(autoInvestigate({ items: u.upserts, candidates: u.candidates, recordsToday: [], room: 5 })).toEqual(["A"]);
+  });
 });

@@ -167,4 +167,16 @@ describe("GET /api/queue from the stored triage pass (serverless)", () => {
     const x = setup({ store: () => old, scan: () => old.loadTriageScan() });
     expect(QueueResponseSchema.parse(await (await x.req("/")).json()).freshness).toEqual({ movesRun: { at: iso(T0 - 3 * 3_600_000), stale: true }, triage: { at: iso(T0 - 40 * 60_000), stale: true } });
   });
+
+  test("freshness: a stored run's age is stated without reading its rows (a slow body read never reads as no run)", async () => {
+    const { store, req } = setup({ scan: () => store.loadTriageScan() });
+    const ok = { state: "ok" as const, reason: null };
+    await store.saveMovesRun({
+      state: "ok", reason: null, asOf: iso(T0 - 3_600_000), computedAt: iso(T0 - 60_000), window: "24h", progress: null,
+      universe: { coins: 0, dropped: [] }, sectorsAsOf: null, factors: [], layers: { beta: ok, flow: ok, attention: ok, liq: ok, agents: ok }, rows: [],
+    });
+    // The full run (every row's jsonb) does not answer within the source timeout, as on a cold serverless pool.
+    store.latestMovesRun = () => new Promise(() => {});
+    expect(QueueResponseSchema.parse(await (await req("/")).json()).freshness.movesRun).toEqual({ at: iso(T0 - 60_000), stale: false });
+  });
 });

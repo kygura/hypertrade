@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { MoveDetail, MovesResponse } from "../../shared/moves.js";
+import type { MoveDetail, MoveRow, MovesResponse } from "../../shared/moves.js";
 import { MovesResponseSchema } from "../../shared/moves.js";
 import { SectorsDataSchema } from "../../shared/schemas.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
@@ -120,10 +120,11 @@ function agentSetup(o: { provider?: boolean; clock?: number; budget?: number } =
   const provider = new EmitProvider(() => out);
   const now = () => new Date(o.clock ?? T0);
   const coinCalls: string[] = [];
+  let ids = 0;
   const deps: MovesAgentJobDeps = {
     store,
     coin: async (coin): Promise<MoveDetail> => (coinCalls.push(coin), detail(coin, { mark: ROWS.find((r) => r.coin === coin)!.mark })),
-    agent: { llm: o.provider === false ? null : llmDeps(provider, undefined, now), now, dailyCap: 6, inflight: new Set() },
+    agent: { llm: o.provider === false ? null : llmDeps(provider, undefined, now), now, dailyCap: 6, inflight: new Set(), newId: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}` },
     budget: o.budget ?? 8,
     mark: async (c) => (c === "BTC" ? 60000 : 10),
     candles: async () => [],
@@ -138,7 +139,10 @@ describe("runMovesAgentJob", () => {
     await store.saveMovesRun(run());
     await store.insertAgentRecord(record({ id: "dn", createdAt: iso(T0 - 25 * H), direction: null, falsifier: null }));
     const r = await runMovesAgentJob(deps);
-    expect(r).toMatchObject({ surfaced: 3, graded: 1, investigated: "SOL", investigation: null, error: null, scan: { state: "ok", watched: 4, overBudget: 0 } });
+    expect(r).toMatchObject({ surfaced: 3, graded: 1, investigated: "SOL", error: null, scan: { state: "ok", watched: 4, overBudget: 0 } });
+    // The response states the stored record (facts only), not null.
+    const [sol] = await store.listAgentRecords({ coin: "SOL", limit: 1 });
+    expect(r.investigation).toBe(`record ${sol!.id} · ${sol!.status}`);
     expect((await store.listTriage("2026-11-11")).map((i) => i.coin)).toEqual(["SOL", "PEPE", "WIF"]);
     expect(coinCalls).toEqual(["SOL"]); // WIF also qualifies: one per invocation
     expect(provider.prompts).toHaveLength(1);
@@ -168,6 +172,16 @@ describe("runMovesAgentJob", () => {
     expect(r).toMatchObject({ surfaced: 0, investigated: null, investigation: "no fresh moves run to triage", scan: { state: "unavailable" } });
     expect(r.scan.reason).toBe("latest moves run is 3.0 h old (as of 2026-11-11T11:00:00.000Z); runs are expected hourly");
     expect(await stale.store.listTriage("2026-11-11")).toEqual([]);
+  });
+
+  test("unknown news (no feed ingested): the residual surfaces as `news unknown` and nothing is auto-investigated", async () => {
+    const { store, deps, coinCalls } = agentSetup();
+    const unknown = (r: MoveRow) => (r.attribution ? { ...r, attribution: { ...r.attribution, newsHours: null, residualNewsPct: null } } : r);
+    await store.saveMovesRun(run(ROWS.map(unknown)));
+    const r = await runMovesAgentJob(deps);
+    expect(r).toMatchObject({ surfaced: 3, investigated: null, investigation: "no surfaced no-news residual without a record (news unknown for 3 residual candidates: no auto-investigation without a news feed)" });
+    expect((await store.listTriage("2026-11-11")).map((i) => i.reason)).toEqual(["residual +6.2% · z +4.0 · 24h · news unknown", "residual +6.2% · z +3.5 · 24h · news unknown", "residual +6.2% · z +3.0 · 24h · news unknown"]);
+    expect(coinCalls).toEqual([]);
   });
 
   test("no investigation starts without time for its own deadline", async () => {

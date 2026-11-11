@@ -75,9 +75,10 @@ export function queueRoutes(d: QueueRouteDeps) {
         store && !hide ? load<AgentRecord>("records", () => store.listAgentRecords({ since, limit: 1000 }), ms) : none<AgentRecord>(NO_STORE),
         store ? load<QueueDismissal>("dismissals", () => store.listQueueDismissals(day), ms) : none<QueueDismissal>(NO_STORE),
         store ? bounded(store.agentRunsSince(since), 0, ms, "queue agent runs") : Promise.resolve(0),
-        off ? null : bounded(Promise.resolve(d.scan()).catch(() => null), null, ms, "queue triage scan"),
-        // The 24h run is the one the triage pass reads.
-        off || !store ? null : bounded(store.latestMovesRun("24h").catch(() => null), null, ms, "queue moves run"),
+        off ? null : bounded(Promise.resolve(d.scan()), null, ms, "queue triage scan"),
+        // The 24h run is the one the triage pass reads. Its age only: two columns, not the run's rows (a ~100 KB jsonb
+        // body whose late or failed read was swallowed into "no run"). A failure or timeout is logged by bounded.
+        off || !store ? null : bounded(store.movesRunAt("24h"), null, ms, "queue moves run"),
       ]);
       const merged = mergeQueue({
         day, now, cap: d.cap, guest: hide, triage, opportunities, radar,

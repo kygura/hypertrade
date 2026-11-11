@@ -190,6 +190,12 @@ export class PgPlatformStore implements PlatformStore {
     return r ? (r.body as MovesResponse) : null;
   }
 
+  async movesRunAt(window: MoveWindow) {
+    // The columns only: the body (every row of the run) is not read to state its age.
+    const [r] = await this.db.query<any>(`select as_of, computed_at from moves_runs where win = $1`, [window]);
+    return r ? { asOf: iso(r.as_of), computedAt: iso(r.computed_at) } : null;
+  }
+
   async saveTriageScan(scan: TriageScan) {
     const row = { ...scan, at: iso(scan.at) };
     await this.db.query(

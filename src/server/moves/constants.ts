@@ -29,6 +29,11 @@ export const FLOW_Z = -2;
 /** An hour is a news hour when an event was first seen in [t − before, t + after). */
 export const NEWS_BEFORE_MS = 2 * HOUR_MS;
 export const NEWS_AFTER_MS = HOUR_MS;
+/**
+ * The news layer is known only while the feed is being ingested: some feed event (not flow, not manual) was first
+ * seen within this horizon. An empty or silent intel_events table is no evidence of "no news".
+ */
+export const NEWS_FEED_FRESH_MS = 24 * HOUR_MS;
 
 // ---------------------------------------------------------------- positioning (starting thresholds)
 /** Prior hourly funding values a funding z reads, and the least it needs. */
