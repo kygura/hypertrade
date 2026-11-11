@@ -12,6 +12,7 @@ import { createNoveltyLoop } from "../src/server/platform/noveltyLoop";
 import { createOutcomesLoop } from "../src/server/platform/outcomesLoop";
 import { createScanner } from "../src/server/platform/scanner";
 import { PgPlatformStore } from "../src/server/platform/store-pg";
+import { retentionDays as retentionDays_, scanRetentionDays } from "../src/server/platform/store";
 
 const LEASE_MS = 15 * 60_000;
 
@@ -38,7 +39,7 @@ async function main() {
         return r ? Number(r.px) : null;
       },
     });
-    const retentionDays = Number(process.env.PLATFORM_RETENTION_DAYS ?? 14) || 14;
+    const [retentionDays, scanDays] = [retentionDays_(), scanRetentionDays()];
     // Each stage runs even if an earlier one failed; any failure still fails the run.
     const failed: string[] = [];
     // --skip=novelty,... (the routine skips novelty: daily bars, ~14 min, the hourly job runs it).
@@ -47,7 +48,7 @@ async function main() {
       ["scanner", scanner.tick],
       ["novelty", novelty.tick],
       ["outcomes", outcomes.tick],
-      ["prune", async () => void (await store.pruneHistory(new Date(Date.now() - retentionDays * 86_400_000).toISOString()))],
+      ["prune", async () => void (await store.pruneHistory(new Date(Date.now() - retentionDays * 86_400_000).toISOString(), new Date(Date.now() - scanDays * 86_400_000).toISOString()))],
     ] as const) {
       if (skip.has(name)) {
         console.log(`[tick] ${name} skipped`);
