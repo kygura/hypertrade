@@ -2,7 +2,7 @@
 
 A personal market terminal and signal platform for crypto perps. It tracks assets, simulates allocation branches against historical data, monitors sector dynamics, and runs an always-on worker that scans Hyperliquid and surfaces ranked setups.
 
-Surfaces: the Research board (`/`, the landing: live signals with their event-study evidence, docs/RESEARCH.md), the platform cockpit (`/feed`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade radar (a scheduled Claude session, twice a day: code scans every live perp on the main and HIP-3 dexes, the session researches what the tape has not priced yet and lands at most 3 dated calls that code prices and grades in `data/radar/`; one ntfy push only when a call lands; see `ROUTINE.md`).
+Surfaces: MOVES (`/moves`, the landing: what moved and why), the Research board (`/board`: live signals with their event-study evidence, docs/RESEARCH.md), the platform cockpit (`/feed`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade radar (a scheduled Claude session, twice a day: code scans every live perp on the main and HIP-3 dexes, the session researches what the tape has not priced yet and lands at most 3 dated calls that code prices and grades in `data/radar/`; one ntfy push only when a call lands; see `ROUTINE.md`).
 
 ## Status
 
@@ -36,15 +36,15 @@ bun run build     # typecheck + vite build
 
 ## Screens
 
-Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is the contract). The top bar has five cells, under the nine-cell ceiling in `docs/design/README.md` §5.2; each family switches through one `SectionTabs` row.
+Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is the contract). The top bar has three cells, one per job (docs/RESEARCH.md "Nav"); each family switches through one `SectionTabs` row. Routes marked hidden are off the nav since 2026-11-11 and still open by URL (docs/TASKS.md).
 
 | Cell | Routes |
 |---|---|
-| RESEARCH | `LabTabs`: `/` (BOARD, the landing: live signals with their evidence, `?coin=` filter), `/lab/study`, `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id`, and `/branches`, `/branches/:id` |
-| TRADE | `TerminalTabs`, intel to act: `/terminal` (CHANGES), `/watch`, `/journal`, `/theses`, `/query`, then `/feed` (FEED, the Cockpit: ranked opportunities, liquidation map, approve/reject, desk kill switch; an old `/?id=…` redirects here), `/order`, `/desk`. `/asset/:coin` is the per-coin page under CHANGES. |
-| MARKET | `MarketTabs`, with the metrics strip under it: `/moves` (MOVES, first: why each coin moved), `/markets` (and `/markets/:coin`, chart; links to `/asset/:coin`), `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`. |
-| ASK | `/analyst` (ASK and SIMULATE) |
-| ENGINE | `EngineTabs`: `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` |
+| MOVES | `MarketTabs`, with the metrics strip under it: `/moves` (MOVES, the landing: why each coin moved), `/markets` (MARKETS; and `/markets/:coin`, chart; links to `/asset/:coin`). Hidden: `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`; `/` redirects to `/moves`. |
+| RESEARCH | `LabTabs`: `/board` (BOARD: live signals with their evidence, `?coin=` filter; an old `/?coin=…` redirects here), `/lab/study`, `/lab/catalogue` (RULES), `/lab/rules/:id`, and `/branches`, `/branches/:id`. Hidden: `/lab/search` and `/lab/runs`, `/lab/runs/:runId` (linked from the RULES page), `/lab/pulse`. |
+| TRADE | `TerminalTabs`: `/desk`, `/order`, `/journal`. Hidden: `/feed` (the Cockpit: ranked opportunities, liquidation map, approve/reject, desk kill switch; an old `/?id=…` redirects here), `/terminal` (CHANGES), `/watch`, `/theses`, `/query`, `/asset/:coin`. |
+
+Not a cell: the top bar's `ASK` button opens `/analyst` (ASK and SIMULATE). Hidden, no entry point: the ENGINE console (`EngineTabs`: `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor`).
 
 Themes: `hyperdash` (default), `tradexyz` and `hyperion`, switched from the top bar (`src/ui/themes/README.md`).
 
@@ -383,7 +383,7 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 
 `/terminal` shows what changed since your last look, measured
 against your positions and watchlist: a ranked diff, the alerts and catalysts
-that touch those assets, and a short brief. `/feed` is the Cockpit (phase 8), `/` the Research board, and
+that touch those assets, and a short brief. `/feed` is the Cockpit (phase 8), `/board` the Research board, and
 there is no Overview (`/overview` redirects to `/markets`). Design: `docs/design/terminal.md`. Spec: docs/SPEC.md
 § Intel. Code: `src/server/intel/*`, `src/server/routes/intel/*`,
 `src/ui/pages/terminal/*`.

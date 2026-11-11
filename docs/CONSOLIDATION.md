@@ -45,6 +45,9 @@ engine governor; flow flags, scanner setups, tripwires, desk triggers and Lab ru
 
 ## Target nav (5 cells)
 
+Superseded on 2026-11-11 by the three-cell nav (MOVES, RESEARCH, TRADE) in docs/RESEARCH.md "Nav"; the
+table below is the earlier state. The routes it lists all still work.
+
 The trading front is one cell. Its tabs read left to right as a funnel from **intel**
 (what changed, what I know) to **act** (what to place, approve or kill), so the operator
 walks one surface instead of choosing between Cockpit, Terminal and Desk.

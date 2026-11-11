@@ -20,7 +20,7 @@ export function Login() {
     setError(null)
     try {
       await api.post('/auth/login', { password })
-      navigate(consumeRedirectTarget('/'), { replace: true })
+      navigate(consumeRedirectTarget(), { replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'request failed')
       inputRef.current?.focus()

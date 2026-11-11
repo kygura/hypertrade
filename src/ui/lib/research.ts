@@ -55,7 +55,7 @@ export function boardKey(e: { key: string; ctrlKey?: boolean; metaKey?: boolean;
 export const BOARD_POLL_MS = 30_000
 
 /** The board filtered to one coin (Cockpit detail, /asset/:coin: EVIDENCE). */
-export const boardHref = (coin: string) => `/?coin=${encodeURIComponent(coin)}`
+export const boardHref = (coin: string) => `/board?coin=${encodeURIComponent(coin)}`
 
 export const SOURCE_LABEL: Record<ResearchSource, string> = { novelty: 'NOVELTY', rule: 'RULE', opportunity: 'SETUP', radar: 'RADAR', definition: 'DEFINITION' }
 
@@ -87,13 +87,15 @@ export const FEED_PARAMS = ['id', 'status', 'tier', 'liqh', 'liq'] as const
 
 /**
  * Where a visit to `/` with this query belongs. `?review=1` (old Telegram links) → `/terminal?review=1`;
- * any Cockpit feed param → `/feed` with the query intact; otherwise null (the board, which reads only `?coin=`).
+ * any Cockpit feed param → `/feed` with the query intact; an old board link (`?coin=` alone) → `/board` with the
+ * query intact; otherwise the landing, `/moves`. The board moved from `/` to `/board` on 2026-11-11.
  */
-export function rootRedirect(search: string): string | null {
+export function rootRedirect(search: string): string {
   const q = new URLSearchParams(search)
   if (q.get('review') === '1') return '/terminal?review=1'
   if (FEED_PARAMS.some((k) => q.has(k))) return `/feed?${q}`
-  return null
+  if (q.has('coin')) return `/board?${q}`
+  return '/moves'
 }
 
 /** Radar calls for the side column: newest first, at most `n`. */

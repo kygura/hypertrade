@@ -29,7 +29,7 @@ const radarOk: RadarResponse = {
 
 const render = (over: Partial<BoardViewProps> = {}) =>
   renderToStaticMarkup(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={["/board"]}>
       <BoardView
         board={poll(boardData([]))}
         radar={poll(radarOk)}

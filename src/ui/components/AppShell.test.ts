@@ -5,41 +5,36 @@ import { MARKET_TABS } from "./market/MarketTabs";
 const activeCells = (p: string) => NAV.filter((n) => isActive(p, n.to)).map((n) => n.label);
 
 describe("AppShell NAV", () => {
-  test("five cells in order", () => {
-    expect(NAV.map((n) => n.label)).toEqual(["RESEARCH", "TRADE", "MARKET", "ASK", "ENGINE"]);
+  test("three cells in order, short labels fit the mobile bar", () => {
+    expect(NAV.map((n) => n.label)).toEqual(["MOVES", "RESEARCH", "TRADE"]);
+    expect(NAV.map((n) => n.to)).toEqual(["/moves", "/board", "/desk"]);
+    for (const n of NAV) expect(n.tab.length).toBeLessThanOrEqual(5);
   });
 
-  test("MARKET is active for its five tabs and their drills", () => {
+  test("MOVES is the landing cell: active for its tabs, the hidden market pages and their drills", () => {
     for (const p of ["/moves", "/markets", "/markets/HYPE", "/sectors", "/state", "/cycles", "/cycles/eth"]) {
-      expect(activeCells(p)).toEqual(["MARKET"]);
+      expect(activeCells(p)).toEqual(["MOVES"]);
     }
   });
 
-  test("MARKET cell links to /moves", () => {
-    expect(NAV.find((n) => n.label === "MARKET")!.to).toBe("/moves");
-  });
-
-  test("RESEARCH is the landing: active for the board /, /lab/* and /branches/*", () => {
-    expect(NAV[0]!.to).toBe("/");
-    for (const p of ["/", "/lab", "/lab/search", "/lab/runs/abc", "/lab/rules/r1", "/branches", "/branches/b1"]) {
+  test("RESEARCH is active for the board /board, /lab/* and /branches/*", () => {
+    for (const p of ["/board", "/lab", "/lab/search", "/lab/runs/abc", "/lab/rules/r1", "/lab/catalogue", "/branches", "/branches/b1"]) {
       expect(activeCells(p)).toEqual(["RESEARCH"]);
     }
   });
 
-  test("other families stay on their own cell", () => {
-    for (const p of ["/feed", "/terminal", "/watch", "/journal", "/theses", "/query", "/order", "/desk", "/asset/HYPE"]) {
+  test("TRADE is active for its tabs and the hidden trade pages; ASK and ENGINE are no cell", () => {
+    for (const p of ["/desk", "/order", "/journal", "/feed", "/terminal", "/watch", "/theses", "/query", "/asset/HYPE"]) {
       expect(activeCells(p)).toEqual(["TRADE"]);
     }
-    expect(activeCells("/strategies/x")).toEqual(["ENGINE"]);
-    expect(activeCells("/analyst")).toEqual(["ASK"]);
-    expect(activeCells("/overview")).toEqual([]);
-    expect(activeCells("/labx")).toEqual([]);
+    for (const p of ["/", "/analyst", "/strategies/x", "/decisions", "/governor", "/overview", "/labx"]) expect(activeCells(p)).toEqual([]);
   });
 });
 
 describe("MarketTabs", () => {
-  test("MOVES is the first tab", () => {
-    expect(MARKET_TABS.map((t) => t.label)).toEqual(["MOVES", "PERPS", "SECTORS", "STATE", "CYCLES"]);
+  test("MOVES then MARKETS on the row; SECTORS, STATE and CYCLES are hidden", () => {
+    expect(MARKET_TABS.filter((t) => !t.hidden).map((t) => t.label)).toEqual(["MOVES", "MARKETS"]);
+    expect(MARKET_TABS.filter((t) => t.hidden).map((t) => t.label)).toEqual(["SECTORS", "STATE", "CYCLES"]);
     expect(MARKET_TABS[0]!.to).toBe("/moves");
   });
 });

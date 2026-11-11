@@ -42,15 +42,39 @@ describe("SectionTabs", () => {
   });
 });
 
+describe("hidden tabs", () => {
+  const some: SectionTab[] = [{ to: "/a", label: "A" }, { to: "/b", label: "B" }, { to: "/h", label: "H", hidden: true }];
+  const el = <SectionTabs label="demo sections" tabs={some} />;
+  test("a hidden tab is off the row, and an unknown path still falls back to the first tab", () => {
+    for (const p of ["/a", "/b", "/nowhere"]) {
+      const btns = buttons(render(p, el));
+      expect(btns).toHaveLength(2);
+      expect(btns.filter((b) => b.includes('aria-checked="true"'))).toHaveLength(1);
+    }
+    expect(buttons(render("/b", el))[1]).toContain('aria-checked="true"');
+  });
+  test("on its own page a hidden tab joins the row as the one checked segment", () => {
+    const html = render("/h/1", el);
+    const btns = buttons(html);
+    expect(btns).toHaveLength(3);
+    expect(btns.map((b) => b.includes('aria-checked="true"'))).toEqual([false, false, true]);
+    expect(html).toContain(">H<");
+  });
+});
+
 describe("MarketTabs", () => {
-  test("MOVES PERPS SECTORS STATE CYCLES; drills keep their tab", () => {
-    const html = render("/cycles/eth", <MarketTabs />);
+  test("MOVES MARKETS; drills keep their tab; a hidden page shows its own tab checked", () => {
+    const html = render("/markets/HYPE", <MarketTabs />);
     expect(html).toContain('aria-label="market sections"');
     const btns = buttons(html);
-    expect(btns).toHaveLength(5);
-    expect(btns[4]).toContain('aria-checked="true"');
-    expect(buttons(render("/markets/HYPE", <MarketTabs />))[1]).toContain('aria-checked="true"');
+    expect(btns).toHaveLength(2);
+    expect(btns[1]).toContain('aria-checked="true"');
     expect(buttons(render("/moves", <MarketTabs />))[0]).toContain('aria-checked="true"');
+    for (const p of ["/sectors", "/state", "/cycles/eth"]) {
+      const hidden = buttons(render(p, <MarketTabs />));
+      expect(hidden).toHaveLength(3);
+      expect(hidden.map((b) => b.includes('aria-checked="true"'))).toEqual([false, false, true]);
+    }
     expect(isMarketPath("/moves")).toBe(true);
     expect(isMarketPath("/sectors")).toBe(true);
     expect(isMarketPath("/marketsx")).toBe(false);

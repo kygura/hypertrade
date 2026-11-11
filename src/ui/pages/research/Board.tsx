@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 import { AsyncBody, Badge, Button, DialogShell, EmptyBlock, ErrorBlock, Panel, PanelHeader, PageContainer } from '../../components'
 import { LabTabs } from '../../components/lab/LabTabs'
 import { StudyVerdictBadge } from '../../components/lab/StudyVerdictBadge'
@@ -8,13 +8,13 @@ import { fmtAge } from '../../lib/format'
 import { useNow, useQueryPatch } from '../../lib/hooks'
 import { usePoll, type PollState } from '../../lib/poll'
 import {
-  authOf, BOARD_POLL_MS, boardKey, cellState, dailyState, flatSignals, ledgerText, noEvidenceText, recentCalls, research, rootRedirect, rowStudyKey, runState, scopeLabel, scorecardText, signalBlocks,
+  authOf, BOARD_POLL_MS, boardKey, cellState, dailyState, flatSignals, ledgerText, noEvidenceText, recentCalls, research, rowStudyKey, runState, scopeLabel, scorecardText, signalBlocks,
   signalStudyHref, SOURCE_LABEL, studyFailed, testedLabel, type Auth, type BoardSignal, type CellState, type RowStudy,
 } from '../../lib/research'
 import { fmtR } from '../../lib/study'
 import { RESEARCH_SOURCES, type BoardResponse, type RadarResponse, type StudySummary } from '../../../shared/research'
 
-// Research board — the landing `/` (docs/RESEARCH.md "Board"). Live signals from five sources,
+// Research board — `/board` (docs/RESEARCH.md "Board"). Live signals from five sources,
 // each with its evidence cell by kind: the cached event study of its Lab rule (or a STUDY button that runs it
 // in place), a setup's live ledger record (plus STUDY DAILY VERSION), a radar call's graded-forward scorecard.
 // Side column: PULSE summary and the RADAR. Container (Board) owns the
@@ -23,13 +23,6 @@ import { RESEARCH_SOURCES, type BoardResponse, type RadarResponse, type StudySum
 
 
 export function Board() {
-  const { search } = useLocation()
-  const to = rootRedirect(search)
-  if (to) return <Navigate to={to} replace />
-  return <BoardPage />
-}
-
-function BoardPage() {
   const [params] = useSearchParams()
   const patch = useQueryPatch()
   const navigate = useNavigate()

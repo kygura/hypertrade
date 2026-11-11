@@ -1,23 +1,22 @@
 import type { SegmentOption } from '../Segmented'
 import { SectionTabs } from '../SectionTabs'
 
-// TerminalTabs — the TRADE tab row (docs/CONSOLIDATION.md "Target nav"). A
-// SectionTabs wrapper: sticky under the top bar, path-based. Order is a funnel
-// from intel (CHANGES, WATCH, JOURNAL, THESES, QUERY) to act (FEED, ORDER, DESK);
-// SectionTabs has no group separator, so the order alone carries it. No count
-// suffixes (a fetch per route). Mobile: eight ≤ 4-char short labels.
+// TerminalTabs — the TRADE tab row (docs/RESEARCH.md "Nav"): DESK, ORDER, JOURNAL. A
+// SectionTabs wrapper: sticky under the top bar, path-based. FEED, CHANGES, WATCH, THESES and
+// QUERY are hidden from the row (docs/TASKS.md 2026-11-11): their routes still work and each
+// shows its own tab only while it is open. No count suffixes (a fetch per route).
 
 export type TerminalTab = 'terminal' | 'watch' | 'journal' | 'theses' | 'query' | 'cockpit' | 'order' | 'desk'
 
-export const TERMINAL_TABS: readonly (SegmentOption<TerminalTab> & { path: string; title: string })[] = [
-  { value: 'terminal', path: '/terminal', label: 'CHANGES', short: 'CHNG', title: 'what changed since I last looked' },
-  { value: 'watch', path: '/watch', label: 'WATCH', short: 'WTCH', title: 'watch docs, contracts and wallets' },
-  { value: 'journal', path: '/journal', label: 'JOURNAL', short: 'JRNL', title: 'what my trades say' },
-  { value: 'theses', path: '/theses', label: 'THESES', short: 'THES', title: 'test a thesis against the data' },
-  { value: 'query', path: '/query', label: 'QUERY', short: 'QRY', title: 'ask the snapshot store' },
-  { value: 'cockpit', path: '/feed', label: 'FEED', short: 'FEED', title: 'what to act on now' },
-  { value: 'order', path: '/order', label: 'ORDER', short: 'ORDR', title: 'preview and place a Desk order' },
+export const TERMINAL_TABS: readonly (SegmentOption<TerminalTab> & { path: string; title: string; hidden?: boolean })[] = [
   { value: 'desk', path: '/desk', label: 'DESK', short: 'DESK', title: 'agent team, governor and paper book' },
+  { value: 'order', path: '/order', label: 'ORDER', short: 'ORDR', title: 'preview and place a Desk order' },
+  { value: 'journal', path: '/journal', label: 'JOURNAL', short: 'JRNL', title: 'what my trades say' },
+  { value: 'cockpit', path: '/feed', label: 'FEED', short: 'FEED', title: 'what to act on now', hidden: true },
+  { value: 'terminal', path: '/terminal', label: 'CHANGES', short: 'CHNG', title: 'what changed since I last looked', hidden: true },
+  { value: 'watch', path: '/watch', label: 'WATCH', short: 'WTCH', title: 'watch docs, contracts and wallets', hidden: true },
+  { value: 'theses', path: '/theses', label: 'THESES', short: 'THES', title: 'test a thesis against the data', hidden: true },
+  { value: 'query', path: '/query', label: 'QUERY', short: 'QRY', title: 'ask the snapshot store', hidden: true },
 ]
 
 /** The TRADE-family tab a path belongs to, or null outside the family. */
@@ -44,6 +43,7 @@ export function TerminalTabs() {
         label: t.label,
         short: t.short,
         title: t.title,
+        hidden: t.hidden,
         match: (p) => terminalTabOf(p) === t.value,
       }))}
     />

@@ -29,7 +29,7 @@ describe("terminalTabOf / isTerminalPath", () => {
   });
 
   test("short labels stay within 4 chars (DESIGN-terminal §1.3 mobile fit)", () => {
-    expect(TERMINAL_TABS.map((t) => t.short)).toEqual(["CHNG", "WTCH", "JRNL", "THES", "QRY", "FEED", "ORDR", "DESK"]);
+    expect(TERMINAL_TABS.map((t) => t.short)).toEqual(["DESK", "ORDR", "JRNL", "FEED", "CHNG", "WTCH", "THES", "QRY"]);
     for (const t of TERMINAL_TABS) expect(String(t.short).length).toBeLessThanOrEqual(4);
   });
 });
@@ -42,25 +42,35 @@ describe("TerminalTabs", () => {
       </MemoryRouter>,
     );
 
-  test("sticky radiogroup with eight segments, the current route checked", () => {
-    const html = render("/theses");
+  const btnsOf = (path: string) => render(path).match(/<button[^>]*>/g) ?? [];
+  const checkedIdx = (path: string) => btnsOf(path).findIndex((b) => b.includes('aria-checked="true"'));
+
+  test("sticky radiogroup with three segments, the current route checked", () => {
+    const html = render("/journal");
     expect(html).toContain('aria-label="trade sections"');
     expect(html).toContain("sticky top-[var(--topbar-h)]");
     const btns = html.match(/<button[^>]*>/g) ?? [];
-    expect(btns).toHaveLength(8);
+    expect(btns).toHaveLength(3);
     const checked = btns.filter((b) => b.includes('aria-checked="true"'));
     expect(checked).toHaveLength(1);
-    expect(checked[0]).toContain('title="test a thesis against the data"');
+    expect(checked[0]).toContain('title="what my trades say"');
   });
 
-  test("tabs run Intel then Act, each route checks its own tab", () => {
-    const labels = TERMINAL_TABS.map((t) => t.label);
-    expect(labels).toEqual(["CHANGES", "WATCH", "JOURNAL", "THESES", "QUERY", "FEED", "ORDER", "DESK"]);
-    const checkedIdx = (path: string) => (render(path).match(/<button[^>]*>/g) ?? []).findIndex((b) => b.includes('aria-checked="true"'));
-    expect(checkedIdx("/terminal")).toBe(0);
-    expect(checkedIdx("/asset/HYPE")).toBe(0);
-    expect(checkedIdx("/watch")).toBe(1);
-    expect(checkedIdx("/feed")).toBe(5);
-    expect(checkedIdx("/desk")).toBe(7);
+  test("DESK, ORDER, JOURNAL on the row; the rest are hidden", () => {
+    expect(TERMINAL_TABS.filter((t) => !t.hidden).map((t) => t.label)).toEqual(["DESK", "ORDER", "JOURNAL"]);
+    expect(TERMINAL_TABS.filter((t) => t.hidden).map((t) => t.label)).toEqual(["FEED", "CHANGES", "WATCH", "THESES", "QUERY"]);
+    expect(checkedIdx("/desk")).toBe(0);
+    expect(checkedIdx("/order")).toBe(1);
+    expect(checkedIdx("/journal")).toBe(2);
+  });
+
+  test("a hidden page opened by URL shows its own tab as the one checked segment", () => {
+    for (const [path, title] of [["/feed", "what to act on now"], ["/terminal", "what changed since I last looked"], ["/asset/HYPE", "what changed since I last looked"], ["/watch", "watch docs, contracts and wallets"], ["/theses", "test a thesis against the data"], ["/query", "ask the snapshot store"]] as const) {
+      const btns = btnsOf(path);
+      expect(btns).toHaveLength(4);
+      expect(btns.filter((b) => b.includes('aria-checked="true"'))).toHaveLength(1);
+      expect(btns[3]).toContain('aria-checked="true"');
+      expect(btns[3]).toContain(`title="${title}"`);
+    }
   });
 });

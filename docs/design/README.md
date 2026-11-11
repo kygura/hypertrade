@@ -520,35 +520,43 @@ tabs and a back link, or is a full view with a back link, and every coin page
 links to every other coin page for the same coin (`/markets/:coin` ↔
 `/asset/:coin`, and the Cockpit detail links to both). An action has one
 implementation, and its confirmation weight follows the action, not the page
-(§7). The ceiling is nine cells; the shell has five.
+(§7). The ceiling is nine cells; the shell has three.
 
-**Current state: five cells, under the ceiling.** Each family keeps one
-sub-nav, `SectionTabs` (§11), and one `PageContainer` gutter. The cells, left
-to right (`NAV` in `AppShell.tsx`):
+**Current state: three cells, one per job** (2026-11-11; the nav contract is
+docs/RESEARCH.md "Nav"). Each family keeps one sub-nav, `SectionTabs` (§11),
+and one `PageContainer` gutter. The cells, left to right (`NAV` in
+`AppShell.tsx`):
 
 | # | Desktop | Mobile | Glyph | Link | Active on |
 |---|---|---|---|---|---|
-| 1 | RESEARCH | RSRCH | `⚗` | `/` | the RESEARCH family (`isResearchPath`): the board `/`, `/lab/*` (including `/lab/rules/:id`) and `/branches`, `/branches/:id` |
-| 2 | TRADE | TRADE | `◉` | `/feed` | the TRADE family (`isTerminalPath`): `/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/feed`, `/order`, `/desk`, `/asset/:coin` |
-| 3 | MARKET | MKT | `≋` | `/moves` | the MARKET family (`isMarketPath`): `/moves`, `/markets`, `/sectors`, `/state`, `/cycles` and their `/:coin` drills |
-| 4 | ASK | ASK | `?` | `/analyst` | `/analyst` |
-| 5 | ENGINE | ENGIN | `⚙` | `/strategies` | the strategy console (`isEnginePath`): `/strategies`, `/decisions`, `/governor` and their `/:id` drills |
+| 1 | MOVES | MOVES | `≋` | `/moves` | the MOVES family (`isMarketPath`): `/moves`, `/markets` and its `/:coin` drill; also the hidden `/sectors`, `/state`, `/cycles` |
+| 2 | RESEARCH | RSRCH | `⚗` | `/board` | the RESEARCH family (`isResearchPath`): the board `/board`, `/lab/*` (including `/lab/rules/:id`) and `/branches`, `/branches/:id` |
+| 3 | TRADE | TRADE | `◉` | `/desk` | the TRADE family (`isTerminalPath`): `/desk`, `/order`, `/journal`; also the hidden `/feed`, `/terminal`, `/watch`, `/theses`, `/query`, `/asset/:coin` |
 
-Four cells group several routes behind an in-view sub-nav, all `SectionTabs`
-wrappers: TRADE (`TerminalTabs`, brief below), MARKET (`MarketTabs`: MOVES · PERPS ·
-SECTORS · STATE · CYCLES, with the `MetricsStrip` under the tabs on every
-MARKET route, §10.2), RESEARCH (`LabTabs`: BOARD · STUDY · SEARCH · RUNS ·
-CATALOGUE · PULSE · BRANCHES, §10.9; the board brief is docs/RESEARCH.md
-"Board") and ENGINE (`EngineTabs`,
-§10.12). There is no Overview page: `/overview` redirects to `/markets`.
-After login the landing is `/`, the Research board. `/?review=1` redirects to
-`/terminal?review=1`, and an old Cockpit query on `/` (`id`, `status`, `tier`,
-`liqh`, `liq`) redirects to `/feed` with the query intact (`rootRedirect`,
-`src/ui/lib/research.ts`). `/login` renders outside the shell entirely.
-Unknown paths redirect to `/`.
+Each cell groups its routes behind an in-view sub-nav, all `SectionTabs`
+wrappers: MOVES (`MarketTabs`: MOVES · MARKETS, with the `MetricsStrip` under
+the tabs, §10.2), RESEARCH (`LabTabs`: BOARD · STUDY · RULES · BRANCHES,
+§10.9; the board brief is docs/RESEARCH.md "Board") and TRADE (`TerminalTabs`:
+DESK · ORDER · JOURNAL). ASK is not a cell: a ghost `ASK` button in the top
+bar opens `/analyst` (§10.8), which also hosts SIMULATE. The ENGINE console
+(`EngineTabs`, §10.12) has no entry point.
 
-**TRADE family brief.** The job: what changed for my book, and what should I
-place, approve or kill now. One tab row, ordered as a funnel from intel to act:
+Screens hidden from nav on 2026-11-11 (docs/TASKS.md) keep their routes:
+SECTORS, STATE, CYCLES; SEARCH, RUNS, PULSE; FEED, CHANGES, WATCH, THESES,
+QUERY. They are `hidden` tabs: off the row, except that a hidden page opened
+by URL shows its own tab, checked. The briefs below still describe them.
+
+There is no Overview page: `/overview` redirects to `/markets`.
+After login the landing is `/moves`. `/` is no page (`rootRedirect`,
+`src/ui/lib/research.ts`): it redirects to `/moves`; `/?review=1` redirects to
+`/terminal?review=1`, an old Cockpit query on `/` (`id`, `status`, `tier`,
+`liqh`, `liq`) to `/feed` with the query intact, and an old board link
+`/?coin=…` to `/board?coin=…`. `/login` renders outside the shell entirely.
+Unknown paths redirect to `/moves`.
+
+**TRADE family brief.** The job: what did I do and was I right. The row is
+`DESK · ORDER · JOURNAL`; the rest of this brief describes the full family,
+whose other tabs are hidden (above). Its order was a funnel from intel to act:
 `CHANGES · WATCH · JOURNAL · THESES · QUERY · FEED · ORDER · DESK`
 (`/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/feed`, `/order`,
 `/desk`; mobile short labels `CHNG · WTCH · JRNL · THES · QRY · FEED · ORDR ·
@@ -571,28 +579,29 @@ Its three views switch through `EngineTabs`, a `SectionTabs` over
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ HYPERTRADE ▪ │ RESEARCH TRADE MARKET ASK ENGINE │ theme ● DATA 12:41 │ LOGOUT │
+│ HYPERTRADE ▪ │ MOVES RESEARCH TRADE │ ASK │ theme ● DATA 12:41 │ LOGOUT │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Left → right:
 
 1. **Wordmark** `HYPERTRADE` 11px uppercase bold + a 6×6px accent square
-   (`--color-accent`). Click → `/`.
-2. **Routes**: the five cells above as 10px control-case links, 12px gap.
+   (`--color-accent`). Click → `/moves`.
+2. **Routes**: the three cells above as 10px control-case links, 12px gap.
    Active route gets the theme's active treatment (Hyperion: `text-primary` +
    2px accent bottom border, `.tab-active`; Hyperdash: white text, the orange
    rule is reserved for tabs) and `aria-current="page"`.
-3. **ThemeSwitcher**: a `Segmented` toggle (`HYPERDASH · TRADE[XYZ] ·
+3. **ASK**: a ghost button → `/analyst` (all breakpoints).
+4. **ThemeSwitcher**: a `Segmented` toggle (`HYPERDASH · TRADE[XYZ] ·
    HYPERION`, short codes `HD · XYZ · HYP` below `xl:`).
-4. **Data-freshness cluster** (md+ only): a StatusDot + `DATA 12:41` in 10px
+5. **Data-freshness cluster** (md+ only): a StatusDot + `DATA 12:41` in 10px
    `text-secondary` — the time of the newest `hl.total_oi_usd` observation
    from `GET /api/metrics/summary?ids=hl.total_oi_usd`, used as the collector
    heartbeat. Dot: green if < 30min old, amber 30min–2h, red > 2h or fetch
    failed (`DATA —`). Tooltip (`title`): `last collector run
    (hl.total_oi_usd)`. This is the shell-level staleness signal from
    principle 3.
-5. **LOGOUT** ghost button → `POST /api/auth/logout`, redirect `/login`.
+6. **LOGOUT** ghost button → `POST /api/auth/logout`, redirect `/login`.
 
 Sticky (`position: sticky; top: 0; z-index: 40`), height
 `var(--topbar-h)` (40px Hyperion, 54px Hyperdash, 48px Trade[XYZ]),
@@ -600,13 +609,13 @@ Sticky (`position: sticky; top: 0; z-index: 40`), height
 
 ### 5.2 Mobile (<768px): bottom tab bar + slim top strip
 
-Top strip (`--topbar-h`, sticky): wordmark left, ThemeSwitcher + LOGOUT
+Top strip (`--topbar-h`, sticky): wordmark left, ASK + ThemeSwitcher + LOGOUT
 right (the freshness cluster is desktop-only). Route links move to a
 **bottom tab bar**, one cell per NAV entry:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ TRADE MKT RSRCH ASK ENGIN                                         │  56px + safe-area
+│ MOVES RSRCH TRADE                                                 │  56px + safe-area
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -614,11 +623,11 @@ right (the freshness cluster is desktop-only). Route links move to a
   height `calc(56px + env(safe-area-inset-bottom))` with the inset as
   padding-bottom.
 - Equal cells (`flex: 1`), each a flex column: a 12px glyph over a 9px
-  control-case label. Glyphs are text characters, no icon library: `◉`
-  Trade, `≋` Market, `⚗` Research, `?` Ask, `⚙` Engine.
+  control-case label. Glyphs are text characters, no icon library: `≋`
+  Moves, `⚗` Research, `◉` Trade.
 - Active cell: `text-primary` + a 2px accent top border on the cell (the
   underline idiom, flipped to the touchable edge). Inactive: `text-secondary`.
-- Labels: `TRADE / MKT / RSRCH / ASK / ENGIN` — 5 chars max,
+- Labels: `MOVES / RSRCH / TRADE` — 5 chars max,
   `letter-spacing` ≤ 0.02em on the tab bar only (the theme's control tracking
   would push a 5-char label past the cell).
 - Whole cell is the target (≥56px tall — over `--tap-min`).
@@ -626,8 +635,8 @@ right (the freshness cluster is desktop-only). Route links move to a
 No hamburger, no drawer. A drawer would hide the map of the product behind
 a tap.
 
-**Nine cells is the ceiling; the shell has five.** The ceiling is
-arithmetic. At 320px five cells are 64px wide, and a 5-char label at 9px Geist
+**Nine cells is the ceiling; the shell has three.** The ceiling is
+arithmetic. At 320px five cells would be 64px wide (three are 106px), and a 5-char label at 9px Geist
 Mono is ≈27px, so labels fit without abbreviating further. Cells are 56px
 tall: above WCAG 2.5.8's 24×24 and the iOS tab-bar norm, but below the 44px
 `--tap-min` horizontally at higher cell counts, which is why the count stays
@@ -837,13 +846,14 @@ Route map (`src/ui/App.tsx`). Every route renders inside the shell except
 | Route | View | Brief |
 |---|---|---|
 | `/login` | password gate | §10.1 |
-| `/` | RESEARCH · BOARD, the landing: live signals with their evidence cell, PULSE, RADAR; `?coin=` filters (old Cockpit queries redirect to `/feed`) | docs/RESEARCH.md "Board" |
+| `/` | no page: redirects to the landing `/moves` (old Cockpit queries to `/feed`, `/?coin=` to `/board`) | docs/RESEARCH.md "Nav" |
+| `/board` | RESEARCH · BOARD: live signals with their evidence cell, PULSE, RADAR; `?coin=` filters | docs/RESEARCH.md "Board" |
 | `/feed` | TRADE · FEED (the Cockpit): ranked opportunity feed, liquidation map, detail | docs/design/terminal.md "Cockpit" |
 | `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch` | TRADE tabs (`/terminal` is CHANGES) (`/?review=1` redirects to `/terminal?review=1`) | docs/design/terminal.md §1, §3–§8 |
 | `/asset/:coin` | asset page, a drill-in of CHANGES | docs/design/terminal.md §15.4 |
 | `/overview` | redirects to `/markets` | — |
-| `/moves` | MARKET · MOVES, the first MARKET tab: why each coin moved (attribution), the triage queue, agent records; `?window=`, `?coin=`, `?sector=` | §10.13 |
-| `/markets`, `/markets/:coin` | MARKET · PERPS: HL universe; candle drill-in | §10.7 |
+| `/moves` | MOVES · MOVES, the landing: why each coin moved (attribution), the triage queue, agent records; `?window=`, `?coin=`, `?sector=` | §10.13 |
+| `/markets`, `/markets/:coin` | MOVES · MARKETS: HL universe; candle drill-in | §10.7 |
 | `/sectors` | MARKET · SECTORS: narratives, mindshare map, rotations, drill-in (one selection drives both panels) | §10.5 |
 | `/state` | MARKET · STATE: MarketState briefing | §10.6 |
 | `/cycles`, `/cycles/:coin` | MARKET · CYCLES: BTC / ETH cycle phases and next-bull-run estimate | §10.10 |
@@ -1248,7 +1258,7 @@ States: SkeletonRows while the status probe runs; OfflineBlock
 `ANALYST NOT CONFIGURED` (naming the provider key vars) on 503; OfflineBlock
 `ANALYST UNREACHABLE` on 502 or no network; a per-turn verbatim ErrorBlock
 for timeouts, refusals and provider errors. No spinners: pulse labels only.
-Mobile: the fourth tab-bar cell (`ASK`, glyph `?`); single column with the
+Mobile: reached from the top strip's `ASK` button; single column with the
 rail below the thread, and the composer sticks above the tab bar.
 
 ### 10.9 `/lab` — heuristic research
@@ -1286,30 +1296,30 @@ bookmarkable page and the browser back button steps between them:
 
 | Path | Tab | Content |
 |---|---|---|
-| `/` | BOARD | the Research board, the app landing (docs/RESEARCH.md "Board") |
+| `/board` | BOARD | the Research board (docs/RESEARCH.md "Board") |
 | `/lab` | — | redirects to `/lab/search` |
 | `/lab/study` | STUDY | the event study of one rule (`?rule=`, `?coin=`; docs/RESEARCH.md "Study") |
-| `/lab/search` | SEARCH | form + results of the current/last run in this browser; after a reload with no last run, the newest stored run (`lab_list_runs` limit 1 → `lab_get_run`) |
-| `/lab/runs` | RUNS | recent runs list |
-| `/lab/runs/:runId` | SEARCH | the Search tab with that run's config in the form and its results below; header stamp `RUN 7f3a · 2026-10-08 09:12 UTC` |
-| `/lab/catalogue` | CATALOGUE | saved rules, health, live stats |
-| `/lab/pulse` | PULSE | Market Pulse board |
+| `/lab/search` | SEARCH (hidden) | form + results of the current/last run in this browser; after a reload with no last run, the newest stored run (`lab_list_runs` limit 1 → `lab_get_run`) |
+| `/lab/runs` | RUNS (hidden) | recent runs list |
+| `/lab/runs/:runId` | SEARCH (hidden) | the Search tab with that run's config in the form and its results below; header stamp `RUN 7f3a · 2026-10-08 09:12 UTC` |
+| `/lab/catalogue` | RULES | the catalogue: saved rules, health, live stats; one quiet line links to SEARCH and RUNS |
+| `/lab/pulse` | PULSE (hidden) | Market Pulse board |
 | `/branches`, `/branches/:id` | BRANCHES | the Branches simulator (§10.3, §10.4), under the same tab row |
 | `/lab/rules/:id` | (drill) | rule detail; `?run=<runId>` when the rule is not catalogued; `?from=catalogue\|results\|pulse` sets the back link |
 
 **LabTabs**: a `SectionTabs` (`size: 'md'` Segmented) directly under the
-shell: `BOARD · STUDY · SEARCH · RUNS · CATALOGUE · PULSE · BRANCHES`, in
-workflow order (what fires now → its history as an event study → search →
-its history → what you kept → what it says today → portfolio simulation).
-It is the RESEARCH cell's sub-nav; the cell lands on BOARD (`/`), and `/lab`
-lands on SEARCH. Mobile: `short` labels `BRD · STDY · SRCH · RUNS · CTLG ·
-PULSE · BRNCH`; the tab
+shell: `BOARD · STUDY · RULES · BRANCHES`, in
+workflow order (what fires now → its history as an event study → what you
+kept → portfolio simulation). SEARCH, RUNS and PULSE are hidden tabs (§5):
+each shows in its workflow position only while its own page is open.
+It is the RESEARCH cell's sub-nav; the cell lands on BOARD (`/board`), and `/lab`
+lands on SEARCH. Mobile: `short` labels `BRD · STDY · RULE · BRNCH`; the tab
 row is `position: sticky; top: var(--topbar-h)`, `--subnav-h` tall, under the
 top strip. The catalogue segment carries a count suffix
-(`CATALOGUE · 7`) at md+; the Pulse segment carries a 6px dot, green if any
+(`RULES · 7`) at md+; the Pulse segment (on `/lab/pulse` only) carries a 6px dot, green if any
 rule fires, gray otherwise (number + word remain inside the tab). On the
 board there is no Lab data provider: no count, and the dot reads the board's
-own pulse counts, so the landing starts no catalogue or pulse load.
+own pulse counts, so the board starts no catalogue or pulse load.
 
 Rule detail is a **full view route** (the markets-drill pattern, §10.7),
 not the sectors inline panel: it is tall (chart, drawdown, two tables, a
@@ -1861,7 +1871,7 @@ explained after the fact (BTC and ETH beta, sector, residual) and show the
 positioning around it, with a short ranked triage queue of the coins worth a
 look today. Code computes every number; an agent may propose a cause, which
 renders as a hypothesis beside the numbers. Nothing here places, approves or
-sizes an order. Spec: docs/SPEC.md ("Moves"). It is not the landing and not
+sizes an order. Spec: docs/SPEC.md ("Moves"). It is the landing (2026-11-11) and not
 `/feed`: the Cockpit's items are opportunities with a status machine, these
 are informational facts (the two-lists rule, §5).
 

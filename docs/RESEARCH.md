@@ -16,8 +16,8 @@ never as a verdict of its own. Nothing nags.
 
 ## What changes
 
-1. The landing `/` is the **Research board**: live signals, each with a Lab rule and its
-   event-study evidence. The old Cockpit feed moves to `/feed` (TRADE family, tab FEED).
+1. The **Research board** (`/board` since 2026-11-11; it was the landing `/`, which is now `/moves`, see
+   "Nav"): live signals, each with a Lab rule and its event-study evidence. The old Cockpit feed moves to `/feed` (TRADE family, tab FEED).
 2. The Lab gains an **event study view** (`/lab/study`) that any signal can open prefilled.
    Until now `lab_event_study` had no UI.
 3. Live signals from four sources are normalised into one shape with a Lab rule attached
@@ -144,13 +144,28 @@ Tokens, themes, primitives and state ladders are unchanged (`docs/design/README.
 
 ### Nav
 
-Five cells, RESEARCH first: **RESEARCH** (landing) · TRADE · MARKET · ASK · ENGINE.
-RESEARCH tabs, in workflow order: BOARD `/` · STUDY `/lab/study` · SEARCH · RUNS ·
-CATALOGUE · PULSE · BRANCHES. TRADE tabs keep their order with FEED at `/feed`.
-`/?review=1` keeps redirecting to `/terminal?review=1`; any old `/?…` opportunity query
-redirects to `/feed` with the query intact.
+Three cells, one per job (2026-11-11; `NAV` in `src/ui/components/AppShell.tsx`):
 
-### Board (`/`)
+| Cell | Job | Link | Tabs |
+|---|---|---|---|
+| **MOVES** (landing) | what moved and why | `/moves` | MOVES `/moves` · MARKETS `/markets` |
+| **RESEARCH** | is there an edge | `/board` | BOARD `/board` · STUDY `/lab/study` · RULES `/lab/catalogue` (the catalogue, with its count) · BRANCHES `/branches` |
+| **TRADE** | what did I do and was I right | `/desk` | DESK `/desk` · ORDER `/order` · JOURNAL `/journal` |
+
+ASK is not a cell: one `ASK` button in the top bar opens `/analyst`, which also hosts the portfolio simulation
+(SIMULATE) that saves into BRANCHES. ENGINE (`/strategies`, `/decisions`, `/governor`) has no entry point.
+
+Landing: `/` is no page. `rootRedirect` (`src/ui/lib/research.ts`) sends it to `/moves`; `/?review=1` keeps
+redirecting to `/terminal?review=1`, any old `/?…` opportunity query redirects to `/feed` with the query intact,
+and an old board link `/?coin=…` redirects to `/board?coin=…`. The post-login default and unknown paths go to
+`/moves`.
+
+Hidden from nav, not deleted (docs/TASKS.md 2026-11-11): every route still works by URL. SEARCH, RUNS, PULSE,
+FEED, CHANGES, WATCH, THESES, QUERY, SECTORS, STATE and CYCLES are `hidden` tabs: off the row, except that a
+hidden page opened by URL shows its own tab, checked, so the row never points at a page that is not open. SEARCH
+and RUNS stay reachable from one line of links on the RULES page (they are how a rule gets into the catalogue).
+
+### Board (`/board`)
 
 One question per region, top to bottom on mobile, two columns from `lg`:
 

@@ -5,6 +5,22 @@ lists live in git history (see History).
 
 ## Open
 
+Narrowing to three jobs, phase 1 (2026-11-11): nav and landing only, nothing deleted. The shell has three
+cells: MOVES (what moved and why, the landing `/moves`), RESEARCH (is there an edge), TRADE (what did I do and
+was I right); the contract is docs/RESEARCH.md "Nav". Every route below still works by URL.
+
+- [ ] 2026-11-18: delete the screens hidden from nav, with their server code, if none was missed for a week:
+  - TRADE: FEED (`/feed`), CHANGES (`/terminal`, `/asset/:coin`), WATCH (`/watch`), THESES (`/theses`),
+    QUERY (`/query`).
+  - MOVES: STATE (`/state`), SECTORS (`/sectors`), CYCLES (`/cycles`).
+  - ENGINE: strategies, decisions, governor (`/strategies`, `/decisions`, `/governor`); no entry point.
+  - Lab SEARCH, RUNS and PULSE (`/lab/search`, `/lab/runs`, `/lab/pulse`) are folded behind RULES: off the
+    tab row, SEARCH and RUNS linked from the RULES page.
+  - Kept, explicitly: BRANCHES and the portfolio simulation (`/analyst` SIMULATE, the top bar's ASK button).
+  - Before deleting: kept screens still link to hidden ones (the board to `/lab/pulse`, `/feed?id=` and
+    `/asset/:coin`; MOVES to `/sectors`, `/asset/:coin` and `/feed`; Desk and the MARKETS drill to
+    `/asset/:coin`), and Telegram/alert links target `/feed`, `/terminal?review=1` and `/sectors`.
+
 UI consolidation, per `docs/CONSOLIDATION.md` (one cell per operator job, one home per
 object; 6 shell cells today against a ceiling of 9, target 5):
 
@@ -22,8 +38,8 @@ object; 6 shell cells today against a ceiling of 9, target 5):
 
 MOVES (`/moves`, first MARKET tab; attribution, positioning, triage, agent records), deferred past v1:
 
-- [ ] Make MOVES the landing: a one-line change to `rootRedirect` (`src/ui/lib/research.ts`) and the Login
-  default; decide after a week of use.
+- [x] Make MOVES the landing (2026-11-11): `rootRedirect` (`src/ui/lib/research.ts`) and the Login default;
+  the board moved to `/board`.
 - [ ] Approve or any order action on MOVES (links only in v1).
 - [ ] HIP-3 dexes and non-crypto coins (main-dex crypto only); agents watching HIP-3.
 - [ ] Microstructure as an attributed layer (spread and depth stay in the Cockpit cost model).

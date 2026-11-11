@@ -4,38 +4,30 @@ import { Button } from './Button'
 import { StatusDot, type DotStatus } from './Badge'
 import { api, useApi } from '../lib/api'
 import { isDbUnavailable } from '../lib/dbUnavailable'
-import { isEnginePath } from './strategy/EngineTabs'
 import { isTerminalPath } from './intel/TerminalTabs'
 import { isMarketPath } from './market/MarketTabs'
 import { isResearchPath } from './lab/LabTabs'
 import { ThemeSwitcher } from './ThemeSwitcher'
 
 // AppShell — docs/design/README.md §5. TopBar (>=768) / TopStrip + bottom tab bar
-// (<768) via CSS breakpoints only, no JS matchMedia. NAV is 5 cells, under the
-// 9-cell ceiling (docs/CONSOLIDATION.md); every cell shows in the tab bar. Freshness cluster reads
+// (<768) via CSS breakpoints only, no JS matchMedia. NAV is 3 cells, one per job
+// (docs/RESEARCH.md "Nav"); every cell shows in the tab bar. ASK is a header button, ENGINE has no entry. Freshness cluster reads
 // the most recent hl.total_oi_usd observation as a representative collector
 // heartbeat: green <30min, amber 30min-2h, red >2h or fetch failed.
 
 export const NAV = [
-  // RESEARCH family, the landing (docs/RESEARCH.md): the board `/`, the Lab (/lab/*) and the
+  // MOVES family, the landing: what moved and why. /moves and /markets switch inside via MarketTabs.
+  { to: '/moves', label: 'MOVES', tab: 'MOVES', glyph: '≋' },
+  // RESEARCH family: is there an edge. The board `/board`, the Lab (/lab/*) and the
   // Branches simulator (/branches/*) switch inside via LabTabs.
-  { to: '/', label: 'RESEARCH', tab: 'RSRCH', glyph: '⚗' },
-  // TRADE family (docs/CONSOLIDATION.md): Intel -> Act. /terminal, /watch, /journal,
-  // /theses, /query, /feed, /order and /desk switch inside via TerminalTabs.
-  { to: '/feed', label: 'TRADE', tab: 'TRADE', glyph: '◉' },
-  // MARKET family: /moves, /markets, /sectors, /state, /cycles (and their drills) switch
-  // inside via MarketTabs; /overview redirects to /markets.
-  { to: '/moves', label: 'MARKET', tab: 'MKT', glyph: '≋' },
-  // Read-only LLM analyst (docs/SPEC.md "Analyst").
-  { to: '/analyst', label: 'ASK', tab: 'ASK', glyph: '?' },
-  // Strategy console: /strategies, /decisions and /governor switch inside via EngineTabs.
-  { to: '/strategies', label: 'ENGINE', tab: 'ENGIN', glyph: '⚙' },
+  { to: '/board', label: 'RESEARCH', tab: 'RSRCH', glyph: '⚗' },
+  // TRADE family: what did I do and was I right. /desk, /order and /journal switch inside via TerminalTabs.
+  { to: '/desk', label: 'TRADE', tab: 'TRADE', glyph: '◉' },
 ]
 
 export function isActive(pathname: string, to: string): boolean {
-  if (to === '/') return isResearchPath(pathname)
-  if (to === '/feed') return isTerminalPath(pathname)
-  if (to === '/strategies') return isEnginePath(pathname)
+  if (to === '/board') return isResearchPath(pathname)
+  if (to === '/desk') return isTerminalPath(pathname)
   if (to === '/moves') return isMarketPath(pathname)
   return pathname === to || pathname.startsWith(`${to}/`)
 }
@@ -78,7 +70,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh flex flex-col">
       <header className="app-topbar sticky top-0 z-40 h-[var(--topbar-h)] flex items-center justify-between px-3 border-b border-border bg-topbar">
-        <Link to="/" className="app-wordmark flex items-center gap-1.5 text-sm uppercase font-semibold tracking-wider font-display">
+        <Link to="/moves" className="app-wordmark flex items-center gap-1.5 text-sm uppercase font-semibold tracking-wider font-display">
           HYPERTRADE
           <span className="app-wordmark-dot inline-block w-1.5 h-1.5 bg-accent" />
         </Link>
@@ -99,6 +91,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="flex items-center gap-3">
+          {/* The analyst (and its SIMULATE mode, which saves into BRANCHES): a button, not a cell. */}
+          <Button tier="ghost" aria-current={pathname === '/analyst' ? 'page' : undefined} onClick={() => navigate('/analyst')} title="ask the analyst, or simulate a portfolio">
+            ASK
+          </Button>
           <ThemeSwitcher />
           <span className="hidden md:flex items-center gap-1.5" title={freshness.title ?? 'last collector run (hl.total_oi_usd)'}>
             <StatusDot status={freshness.status} />
