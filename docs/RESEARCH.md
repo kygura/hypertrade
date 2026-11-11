@@ -98,7 +98,10 @@ Routes (all zod-parsed in and out):
   after 2 days: only today's are ever read), so a restart keeps today's evidence and does not
   log a second trial. Store reads wait at most 3 s (`STUDY_STORE_TIMEOUT_MS`), then count as a
   miss; the write runs in the background after the answer. A slow or failing store falls back
-  to the in-process map and never holds a study. `catalogueId` is the rule's catalogue id when
+  to the in-process map and never holds a study. A study the deadline cut short (a coin's reason
+  "not loaded before the deadline") is answered but neither cached nor stored: it is not the day's
+  study, so the next ask runs it again, and that run is a trial too (the Lab records one per
+  `lab_event_study` call; with OI collected these cuts are rare). `catalogueId` is the rule's catalogue id when
   it is saved (looked up on every answer, never cached, null after the same 3 s), else null;
   `lab_event_study` returns it too.
 - `GET /api/radar` → `{ state, latestNote: {date, markdown, truncated}|null, calls,
@@ -247,8 +250,8 @@ engine functions. Nothing else is called a signal definition.
 
 A code-shipped list of `SignalDefinition`: `{ id, name, thesis (one line, facts), rule:
 Omit<Rule, 'asset'>, intradayKinds: string[] }`. Each `rule` parses with the Lab `RuleSchema`
-once an asset is filled in, uses only `ht:*` metrics every perp has (`price`, `volume`,
-`funding`, `oi`, plus the regime condition and `stop`/`target`/`invalidation` levels), and its
+once an asset is filled in, reads `ht:price`, `ht:volume` and `ht:funding` (every perp has them) and, for OI,
+`okx:oi` (below: Hyperliquid has no OI history), plus the regime condition and `stop`/`target`/`invalidation` levels, and its
 thresholds are starting points for the event study, not claims. v1 set, from § B.4 where the
 features exist: `funding_fade` (short), `negative_funding_build` (long), `washout_reclaim`
 (long), `trend_pullback` (long in an up-trend; short twin in a down-trend if the Rule shape
@@ -272,7 +275,10 @@ w-day sigma is not ATR(14), so "1 ATR" in B.4 and "1 sigma" here are different c
 OI is `okx:oi`, the coin's OKX USDT-swap open interest, standing in for market positioning: Hyperliquid publishes no
 OI history and `ht:oi` (collector snapshots) covers about six weeks for about 20 coins, too short for the study's 30
 event-weeks. `ht:oi` can replace it once the collector has enough history. A coin OKX does not list has no OI
-definitions. Stop/target levels are left to the study's exits except the washout's structural stop.
+definitions. `okx:oi` is matched by ticker (docs/LAB.md): a different token trading under the same ticker on OKX would
+read that token's OI. With a database `okx:oi` is collected daily (`lab-collect`, `lab.okx.oi.<coin>` for the scan's
+coins: the Lab's default universe plus the watchlist), so the scan and universe studies read it stored and top up only a
+stale tail live; without one it is fetched live. Stop/target levels are left to the study's exits except the washout's structural stop.
 A definition's `rule` carries `asset: UNIVERSE_ASSET` (`"UNIVERSE"`, `src/shared/research.ts`), not a ticker: it is
 studied over the universe without a `coin`, so every coin in zone shares one study, one cache key and one trial.
 
@@ -302,13 +308,17 @@ Concrete: `createDefinitionScanner` loads per coin 200 days of price (`SCAN_LOOK
 and its persistence) and of each condition metric only what its features read on the bar (`metricLookbackDays`:
 `featureLookback` + 7 days for the registry's forward fill; about 100 days for funding z(90), 37 for OKX OI), through
 the Lab service's `loadDataset` (registry cache), memoises one complete scan per UTC day (callers in flight share it;
-a scan that dropped anything a later scan may evaluate is kept only 15 min, `SCAN_RETRY_MS`, so a scan run before
-data reaches the bar is retried; a scan that fails as a whole is forgotten), and drops a coin that fails, is not
+a scan that dropped anything a later scan may evaluate is kept only 15 min after it finished, `SCAN_RETRY_MS`, so a
+scan run before data reaches the bar is retried; drops a retry cannot change keep the scan for the day; a scan that
+fails as a whole is forgotten; scans never overlap: one still running at 00:00 UTC finishes before the new day's
+starts), drops for the day a coin Hyperliquid does not list (its universe, read once a scan: HL answers an unknown coin
+with a 500, which would read as an outage), and drops a coin that fails, is not
 loaded within the deadline (120 s, `SCAN_DEADLINE_MS`, with a database; 45 min without) or whose price does not reach
 yesterday's bar. A definition is evaluated on a coin only when every metric its conditions read has a raw, not
 forward-filled, value on the bar (the loader's `lastRaw`; the registry forward-fills up to 3 days); otherwise that
 coin × definition is dropped with the metric's last complete day as the reason. A metric that loaded but has nothing
-for the coin (`noData`, e.g. a coin OKX does not list) drops its definitions without a retry. Funding: the daily value
+for the coin (`noData`: OKX answered 51001, it does not list the coin) drops its definitions without a retry; an OKX
+outage (a non-200, or a code-0 answer with no rows) is a failed fetch, retried. Funding: the daily value
 is the sum of the day's hourly settlements; the ht provider leaves out a last day without its 23:00 UTC settlement, so
 a day still settling (or not yet stored) never reaches a rule as a sum: lastRaw ends the day before and the scan
 drops and retries that coin × definition. History and event studies read every earlier day as before. Each drop
@@ -316,8 +326,14 @@ drops and retries that coin × definition. History and event studies read every 
 checks that the window (200 days of price, each metric from its own lookback) answers as the full history does for
 every definition on the fixture. Watchlist = `watchedAssets` (intel_watchlist, else DESK_WATCHLIST).
 
-With `DATABASE_URL` the board awaits the day's scan and bounds the wait with its source timeout, as every source.
-Without it the data is fetched live (price and volume: one Hyperliquid candle request a coin; funding: Hyperliquid's
+With `DATABASE_URL` the board awaits the day's scan and bounds the wait with its source timeout, as every source. The
+scan then reads stored history only (candles with the candle sync's short backfill, funding, collected `okx:oi`), so it
+runs inline on Vercel too; a test runs it from stored-data deps with no live request. Until the collectors have stored
+the bar (the collect workflow every 15 min, `okx:oi` refetched as soon as its stored series lacks yesterday; Vercel
+Cron's daily 06:00 / 06:30 UTC runs are the fallback) the stored series end the day before it: those coin ×
+definitions are dropped and retried, not read stale. Without a database on a serverless runtime (`VERCEL` set) the
+source is `unavailable` ("needs a database or the always-on server; or run `bun run signals:scan`") and no scan is
+started: a live scan outlasts the function, so every poll would start another. Without it the data is fetched live (price and volume: one Hyperliquid candle request a coin; funding: Hyperliquid's
 hourly settlements under the weight guard, about five pages a coin on the first scan; OI: OKX, requests 450 ms apart),
 which takes minutes, so the scan runs in the background (`boardDefinitionScan`, `src/server/signals/runtime.ts`): the
 board never waits for it, reports `unavailable` "first scan in progress" until the first finishes, then serves the last
@@ -397,7 +413,10 @@ lacks. Such a feature is null, as the scanner treats an unknown feature (it fail
 reads one is reported `evaluable: false` with the reason, never as 0 events.
 
 Grading: each entry is marked at the outcome loop's horizons (`PLATFORM_OUTCOME_HORIZONS`, default 1h, 4h, 24h, 72h)
-at the stream's mark at exactly entry + horizon (an entry with no point there is not graded at that horizon), with
+at the stream's mark at the first point in [entry + horizon, entry + horizon + tolerance] (an entry with no point there
+is not graded at that horizon). Candles sit on the 15-min grid: tolerance 0, the exit is exactly at the horizon.
+Snapshots carry the scanner's wall clock (ms-jittered, so no point sits exactly at entry + horizon): tolerance one
+persist step plus a minute (6 min). The exit is never before the horizon; the tolerance is the only look-ahead past it. Exits use
 the ledger's own `netReturn` and costs: taker fee `DEFAULT_TAKER_FEE_BPS` (4.5 bps) each way, slippage 0 (no
 historical book: understated for thin coins), funding = the hourly rate at entry × horizon hours, signed for the side
 (the ledger's creation funding scaled to the horizon). Per kind × side × horizon the graded outcomes go through
@@ -416,8 +435,13 @@ Sources:
   predicted rate by up to an hour; the 1 h realized vol rests on 4 returns, not 60; tiers rank the step's volume
   against every other live coin's volume now (their history is not fetched); the universe is today's survivors.
   Candles and funding are memoised in process (a later run fetches only new bars). About 230 HL weight per coin, so
-  20 coins take about 5 minutes under the weight guard.
-- `snapshots`: stored `scan_snapshots` (mark, OI, funding, 24 h volume), every setup evaluable, when dense enough. The
+  20 coins take about 5 minutes under the weight guard; the replay's own requests stay under 600 of the guard's
+  1000 per minute (`REPLAY_HL_BUDGET`), so the live scanner in the same process keeps a share. A run that loaded no
+  coin, or fewer than half of them, fails (and is retried after 15 min) instead of answering zero entries.
+- `snapshots`: stored `scan_snapshots` (mark, OI, funding, 24 h volume), every setup evaluable, when dense enough;
+  the top `PLATFORM_REPLAY_TOP` coins by their latest stored 24 h volume, over at most 14 days
+  (`SNAPSHOT_REPLAY_MAX_DAYS`), so the read stays bounded whatever the retention keeps (the other stored coins rank in
+  the tiers). The replay's ring has a point per 5 min where the live ring has one per minute (stated in `assumptions`). The
   features need `FEATURE_MIN_TICKS_24H` = 96 ring points a day (one per 15 min: a 15-min change reads a point within
   20 min of each window end, and the funding z needs 48 points). The check is the median count of distinct snapshot
   timestamps per whole 24 h window; below 96 the answer is `unavailable` with the numbers, e.g. "too sparse: median 4
@@ -429,10 +453,13 @@ Route: `GET /api/research/setups/replay?source=candles|snapshots` (default candl
 `{ state: 'ok'|'pending'|'unavailable', reason?, asOf, source, window: {from, to} | null, coins, grid: '15m',
 horizons, assumptions: string[], setups: [{ kind, side, horizon, evaluable, reason?, entries, n, clusters, meanNet,
 ci95, hitRate }] }`, zod-parsed (`SetupReplayResponseSchema`, `src/shared/research.ts`), read like the board
-(guest-readable in PUBLIC_MODE). Computed in the background, one run per source at a time, memoised 6 h (a stale
-result is served while the next runs); a request waits at most 2 s, then answers `pending` (ask again). A failed run
-answers `unavailable` ("replay failed (see server log)") and is retried after 15 min; `snapshots` without a worker or
-database is `unavailable` ("needs a database").
+(`candles` guest-readable in PUBLIC_MODE; `snapshots` needs a signed-in reader, a guest gets `unavailable` "sign in
+required"). Computed in the background, one run per source at a time, memoised 6 h (a stale result is served while the
+next runs); a request waits at most 2 s, then answers `pending` (ask again). The replay loop hands the event loop back
+every 20 ms of work, so the process keeps serving while it runs. A failed run answers `unavailable` ("replay failed
+(see server log)") and is retried after 15 min; `snapshots` without a worker or database is `unavailable` ("needs a
+database"). On a serverless runtime (`VERCEL` set) both sources answer `unavailable` ("needs the always-on server; or
+run `bun run signals:replay`") and nothing is started: a 4–5 min run outlasts the function.
 
 CLI: `bun run signals:replay [--top N] [--source candles|snapshots]` runs once without a request timeout and prints
 the window, coins, the per-setup table, the not-evaluable list and the assumptions.
@@ -440,11 +467,16 @@ the window, coins, the per-setup table, the not-evaluable list and the assumptio
 Parity test (`replay.test.ts`): a fixture of six coins on a 15-min grid with OI, fed tick by tick through the real
 scanner `tick()` (injected `info` and clock, memory store; every candidate costed so ideas go ready and expire as the
 replay models) produces exactly the replay's entries (coin, kind, side, time, entry price), for three kinds, with and
-without the cooldown.
+without the cooldown. The replay's assumption that every candidate is costed is not how live always runs: a candidate
+beyond `PLATFORM_COST_TOP_N` by score, or with no book, gets no costs, stays `new`, never expires and blocks its key
+from firing again, so live can fire fewer re-entries than the replay counts. A second test runs the scanner with no
+candidate costed and shows that divergence; `assumptions` says it in words.
 
 The board's `opportunity` source now carries a `note` when the scanner stored fewer than 96 ticks in the last 24 h
-(`scanTickCount` over `scan_snapshots`): "scanner has 4 ticks stored in the last 24 h; setups need 96 (one per 15
-min; the always-on server scans every minute), so none can fire". 0 opportunities then means "could not fire".
+(`scanTickCount` over `scan_snapshots`), with the count and the need: "scanner has 95 ticks stored in the last 24 h; the
+setup features need one per 15 min (96 a day; the always-on server scans every minute)". Only under half the need (the
+24 h funding features need 48 points) does it add ": too few for any setup to fire"; one missed run near the need
+claims nothing.
 
 ### Not in this change
 
