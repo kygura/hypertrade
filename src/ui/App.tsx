@@ -27,6 +27,8 @@ import { PageContainer } from './components/PageContainer'
 const MarketDrill = lazy(() => import('./pages/MarketDrill').then((m) => ({ default: m.MarketDrill })))
 // Cycles (ported from hl-cycles): canvas + Recharts charts, loaded with the route.
 const Cycles = lazy(() => import('./pages/Cycles').then((m) => ({ default: m.Cycles })))
+// BTC Vector regime screen (ported from hl-cycles): canvas chart, loaded with the route.
+const Vector = lazy(() => import('./pages/Vector').then((m) => ({ default: m.Vector })))
 // Lab (docs/design/README.md §10.9): research view, loaded with its routes.
 const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
 const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
@@ -192,6 +194,16 @@ export default function App() {
             }
           />
         ))}
+        <Route
+          path="/vector"
+          element={
+            <MarketLayout>
+              <Suspense fallback={<SkeletonRows />}>
+                <Vector />
+              </Suspense>
+            </MarketLayout>
+          }
+        />
         <Route
           path="/strategies"
           element={

@@ -43,12 +43,14 @@ describe("SectionTabs", () => {
 });
 
 describe("MarketTabs", () => {
-  test("PERPS SECTORS STATE CYCLES; drills keep their tab", () => {
+  test("PERPS SECTORS STATE CYCLES VECTOR; drills keep their tab", () => {
     const html = render("/cycles/eth", <MarketTabs />);
     expect(html).toContain('aria-label="market sections"');
     const btns = buttons(html);
-    expect(btns).toHaveLength(4);
+    expect(btns).toHaveLength(5);
     expect(btns[3]).toContain('aria-checked="true"');
+    expect(buttons(render("/vector", <MarketTabs />))[4]).toContain('aria-checked="true"');
+    expect(isMarketPath("/vector")).toBe(true);
     expect(buttons(render("/markets/HYPE", <MarketTabs />))[0]).toContain('aria-checked="true"');
     expect(isMarketPath("/sectors")).toBe(true);
     expect(isMarketPath("/marketsx")).toBe(false);

@@ -22,7 +22,7 @@ export const NAV = [
   // TRADE family (docs/CONSOLIDATION.md): Intel -> Act. /terminal, /watch, /journal,
   // /theses, /query, /feed, /order and /desk switch inside via TerminalTabs.
   { to: '/feed', label: 'TRADE', tab: 'TRADE', glyph: '◉' },
-  // MARKET family: /markets, /sectors, /state, /cycles (and their drills) switch
+  // MARKET family: /markets, /sectors, /state, /cycles, /vector (and their drills) switch
   // inside via MarketTabs; /overview redirects to /markets.
   { to: '/markets', label: 'MARKET', tab: 'MKT', glyph: '≋' },
   // Read-only LLM analyst (docs/SPEC.md "Analyst").

@@ -8,8 +8,8 @@ describe("AppShell NAV", () => {
     expect(NAV.map((n) => n.label)).toEqual(["RESEARCH", "TRADE", "MARKET", "ASK", "ENGINE"]);
   });
 
-  test("MARKET is active for its four tabs and their drills", () => {
-    for (const p of ["/markets", "/markets/HYPE", "/sectors", "/state", "/cycles", "/cycles/eth"]) {
+  test("MARKET is active for its five tabs and their drills", () => {
+    for (const p of ["/markets", "/markets/HYPE", "/sectors", "/state", "/cycles", "/cycles/eth", "/vector"]) {
       expect(activeCells(p)).toEqual(["MARKET"]);
     }
   });
