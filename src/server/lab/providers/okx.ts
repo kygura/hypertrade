@@ -71,6 +71,7 @@ const METRICS: LabMetricDef[] = [
       "USD open interest of the coin's OKX USDT perpetual swap, end of each UTC day (the day's last 5-minute snapshot), since Feb 2024. OKX's market, standing in for positioning: Hyperliquid has no public OI history. kPEPE-style coins map to the token's swap; unmappable coins have none.",
     lagDays: 0,
     stationary: false,
+    dailyClose: true,
   },
 ];
 
