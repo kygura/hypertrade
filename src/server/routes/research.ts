@@ -3,9 +3,6 @@ import { resolve } from "node:path";
 import { PRE_DECISION_STATUSES } from "../../shared/platform.js";
 import { BoardResponseSchema, DefinitionsResponseSchema, RadarResponseSchema, StudyRequestSchema, StudyResponseSchema, type DefinitionsResponse, type RadarResponse } from "../../shared/research.js";
 import { databaseUrl } from "../db.js";
-import { monitoringWatchlist, watchedAssets } from "../intel/positions.js";
-import { PgIntelStore } from "../intel/store.js";
-import { STUDY_MAX_COINS } from "../lab/service.js";
 import { getLabService, labTools } from "../lab/tools.js";
 import { labDeadlineMs, SERVER_DEADLINE_MS } from "../mcp/lab.js";
 import { ToolInputError, UpstreamError, type ToolDef } from "../mcp/types.js";
@@ -16,7 +13,8 @@ import { boardDepsFor, buildBoard, SourceUnavailable, type BoardDeps } from "../
 import { isGuest } from "../auth.js";
 import { readRadar } from "../research/radar.js";
 import { DEFINITIONS, definitionRule } from "../signals/definitions.js";
-import { createDefinitionScanner, type DefinitionScanner } from "../signals/scan.js";
+import { boardDefinitionScan, processDefinitionScanner } from "../signals/runtime.js";
+import type { DefinitionScanner } from "../signals/scan.js";
 import { bounded, createStudyCache, createStudyRunner, STUDY_CACHE_MAX, STUDY_STORE_TIMEOUT_MS, type RunEventStudy, type StudyRunner } from "../research/study.js";
 import { ruleId, ruleText } from "../lab/engine/rules.js";
 import type { LabStore } from "../lab/store.js";
@@ -111,21 +109,8 @@ let dbCtx: PlatformContext | null = null;
 const platformContext = () => getPlatformContext() ?? (databaseUrl() ? (dbCtx ??= dbPlatformContext(new PgPlatformStore())) : null);
 
 let scanner: DefinitionScanner | null = null;
-/**
- * One definition scanner per process, on the Lab service's dataset loader (and its cache): the Lab's default
- * universe (top STUDY_MAX_COINS) plus the monitoring watchlist, scanned at most once per closed daily bar.
- */
-function definitionScanner(env: Record<string, string | undefined>): DefinitionScanner {
-  return (scanner ??= createDefinitionScanner({
-    loadDataset: (cfg) => getLabService().deps.loadDataset(cfg),
-    coins: async () => {
-      const top = await getLabService().deps.perpUniverse!({ top: STUDY_MAX_COINS });
-      const watch = databaseUrl() ? await watchedAssets(new PgIntelStore(), env) : monitoringWatchlist(null, env).items.map((i) => i.asset);
-      return [...top, ...watch];
-    },
-    now: Date.now,
-  }));
-}
+/** One definition scanner per process (signals/runtime.ts), scanned at most once per closed daily bar. */
+const definitionScanner = (env: Record<string, string | undefined>): DefinitionScanner => (scanner ??= processDefinitionScanner(env));
 
 export function defaultBoardDeps(env: Record<string, string | undefined> = process.env): Omit<BoardDeps, "cache"> {
   return {
@@ -167,10 +152,11 @@ export function defaultBoardDeps(env: Record<string, string | undefined> = proce
       return { calls: r.calls, scorecard: r.scorecard };
     },
     definitions: async () => {
-      // Without stored candles and funding every coin's history is fetched live from HL, about a coin a minute
-      // (docs/RESEARCH.md Runtime): a universe scan cannot finish, and the OI definitions need collected OI anyway.
-      if (!databaseUrl()) throw new SourceUnavailable("needs a database (DATABASE_URL unset)");
-      return definitionScanner(env).scan();
+      // Without a database every coin is fetched live (Hyperliquid funding under its weight guard): the scan runs in
+      // the background and the board serves the last finished one, never waiting for it.
+      const scan = await boardDefinitionScan(definitionScanner(env), Boolean(databaseUrl()));
+      if (!scan) throw new SourceUnavailable("first scan in progress");
+      return scan;
     },
   };
 }

@@ -34,7 +34,7 @@ const deps = (over: Partial<BoardDeps> = {}): BoardDeps => ({
   opportunities: async () => [opp],
   ledger: async () => [],
   radar: async () => ({ calls: [call({}), call({ id: "old", date: "2026-10-30" }), call({ id: "dead", killed_at: "2026-11-09" })], scorecard: [] }),
-  definitions: async () => ({ bar: "2026-11-08", coins: 0, dropped: 0, hits: [] }),
+  definitions: async () => ({ bar: "2026-11-08", coins: 0, dropped: 0, drops: [], hits: [] }),
   cache: createStudyCache(() => NOW),
   ...over,
 });
@@ -127,7 +127,8 @@ describe("buildBoard", () => {
   test("definitions: a coin in zone is a universe-scoped signal with the definition's rule; scan drops count as dropped", async () => {
     const def = DEFINITIONS.find((d) => d.id === "funding_fade")!;
     const hit = { definition: def, coin: "ETH", date: "2026-11-08", values: { "ht:funding|z|90": 2.41, "okx:oi|pctile|30": 1, "ht:price|vchg|3": 0.42 } };
-    const d = deps({ definitions: async () => ({ bar: "2026-11-08", coins: 21, dropped: 2, hits: [hit, { ...hit, coin: "SOL" }] }) });
+    const drops = [{ coin: "BAD", definition: null, reason: "HL down", retry: true }, { coin: "kNEIRO", definition: "funding_fade", reason: "no okx:oi data for the coin", retry: false }];
+    const d = deps({ definitions: async () => ({ bar: "2026-11-08", coins: 21, dropped: 2, drops, hits: [hit, { ...hit, coin: "SOL" }] }) });
     const summary = studySummary(fakeStudy(), "2026-11-09T06:00:00.000Z");
     d.cache.set(studyKey({ rule: definitionRule(def), ...STUDY_DEFAULTS }, NOW), { summary, study: fakeStudy() });
     const b = BoardResponseSchema.parse(await buildBoard(d));

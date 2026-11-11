@@ -128,6 +128,31 @@ describe("loadDataset", () => {
     expect(lastRaw).toEqual({ "ht:funding": "2024-01-10", "cm:CapMVRVCur": "2024-01-04", "fng:value": "2024-01-06" });
   });
 
+  test("metricFrom starts a metric later than the calendar; noData lists metrics fetched without error but empty", async () => {
+    const asked: Record<string, number> = {};
+    const p: LabProvider = {
+      id: "x",
+      name: "x",
+      notes: "",
+      metrics: () => [def("x", "price", { category: "price" }), def("x", "a"), def("x", "empty"), def("x", "broken")],
+      async fetch(key, _asset, fromMs) {
+        asked[key] = fromMs;
+        if (key === "broken") throw new Error("HTTP 500");
+        if (key === "empty") return { t: [], v: [] };
+        return { t: days(10).filter((t) => t >= fromMs), v: days(10).filter((t) => t >= fromMs).map(() => 1) };
+      },
+    };
+    const r = await loadDataset(
+      { asset: "BTC", price: "x:price", metrics: ["x:a", "x:empty", "x:broken"], from: "2024-01-01", to: "2024-01-10", metricFrom: { "x:a": "2024-01-08", "x:empty": "2023-01-01" } },
+      { providers: [p], cache: new Map(), now: () => D0 + 20 * DAY, store: { hasDb: () => false, coverage: async () => null, range: async () => [] } },
+    );
+    expect(asked).toMatchObject({ price: D0, a: D0 + 7 * DAY, empty: D0, broken: D0 }); // never earlier than `from`
+    expect(r.dataset.t).toHaveLength(10);
+    expect(r.dataset.metrics["x:a"]!.map((v) => Number.isNaN(v))).toEqual([...Array(7).fill(true), false, false, false]);
+    expect(r.noData).toEqual(["x:empty"]);
+    expect(r.warnings.some((w) => w.startsWith("x:broken: HTTP 500"))).toBe(true);
+  });
+
   test("unknown metric id throws before any fetch", async () => {
     const { deps, calls } = setup();
     await expect(loadDataset({ asset: "BTC", metrics: ["ht:funding", "xx:y"] }, deps)).rejects.toThrow("unknown metric: xx:y");

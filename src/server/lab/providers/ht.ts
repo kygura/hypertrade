@@ -194,14 +194,14 @@ export function createHtProvider(deps: HtDeps = defaultHtDeps): LabProvider {
     return p;
   }
 
-  // One fetch per coin and range serves price/open/high/low/volume/range (a dataset load asks for several within seconds).
-  const recent = new Map<string, { key: string; at: number; p: Promise<Ohlcv[]> }>();
+  // One fetch per coin serves price/open/high/low/volume/range over its range or any range inside it (a dataset load
+  // asks for several within seconds, some over a shorter range: LoadConfig.metricFrom); the caller clips.
+  const recent = new Map<string, { fromMs: number; toMs: number; at: number; p: Promise<Ohlcv[]> }>();
   function candles(coin: string, fromMs: number, toMs: number, capMs: number): Promise<Ohlcv[]> {
-    const key = `${fromMs}|${toMs}`;
     const hit = recent.get(coin);
-    if (hit && hit.key === key && Date.now() - hit.at < CANDLE_REUSE_MS) return hit.p;
+    if (hit && hit.fromMs <= fromMs && hit.toMs === toMs && Date.now() - hit.at < CANDLE_REUSE_MS) return hit.p;
     const p = fetchCandlesOnce(coin, fromMs, toMs, capMs);
-    recent.set(coin, { key, at: Date.now(), p });
+    recent.set(coin, { fromMs, toMs, at: Date.now(), p });
     p.catch(() => recent.get(coin)?.p === p && recent.delete(coin));
     return p;
   }

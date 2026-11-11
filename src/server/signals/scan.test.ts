@@ -5,7 +5,7 @@ import { isoDate } from "../lab/engine/util.js";
 import type { LoadDatasetFn } from "../lab/service.js";
 import { DAY_MS, type LabDataset } from "../lab/types.js";
 import { DEFINITIONS, definitionRule } from "./definitions.js";
-import { createDefinitionScanner, definitionMetrics, inZoneNow, SCAN_LOOKBACK_DAYS, SCAN_RETRY_MS, scanDataset } from "./scan.js";
+import { createDefinitionScanner, definitionMetrics, inZoneNow, metricLookbackDays, SCAN_LOOKBACK_DAYS, SCAN_RETRY_MS, scanDataset } from "./scan.js";
 
 const T0 = Date.UTC(2024, 0, 1);
 
@@ -90,12 +90,20 @@ describe("parity (CLAUDE.md: a second evaluation path needs a parity test): live
 });
 
 describe("the live scan's window: the last SCAN_LOOKBACK_DAYS bars answer as the full history does", () => {
-  // The scanner loads SCAN_LOOKBACK_DAYS of history, the event study the whole series; the parity test above cuts
-  // from bar 0, so it does not cover the window. Every definition, every last bar the window fits: same answer.
+  // The scanner loads SCAN_LOOKBACK_DAYS of price and, of each condition metric, only metricLookbackDays (the most
+  // its features read, plus a fill margin: funding is the slow fetch); the event study loads the whole series. The
+  // parity test above cuts from bar 0, so it does not cover the window. Every definition, every last bar the window
+  // fits, each metric empty before its own lookback: same answer.
   const d = fixture();
+  const lookback = metricLookbackDays();
+  test("each metric's lookback fits in the price window", () => {
+    for (const days of Object.values(lookback)) expect(days).toBeLessThanOrEqual(SCAN_LOOKBACK_DAYS);
+    expect(lookback["ht:funding"]).toBeLessThan(SCAN_LOOKBACK_DAYS); // z(90): about 100 days, not 200
+  });
   const win = (k: number): LabDataset => {
     const lo = k + 1 - SCAN_LOOKBACK_DAYS;
-    return { ...d, t: d.t.slice(lo, k + 1), price: d.price.slice(lo, k + 1), metrics: Object.fromEntries(Object.entries(d.metrics).map(([id, v]) => [id, v.slice(lo, k + 1)])) };
+    const own = (id: string, v: number[]) => v.slice(lo, k + 1).map((x, i) => (lookback[id] !== undefined && i < SCAN_LOOKBACK_DAYS - lookback[id]! ? NaN : x));
+    return { ...d, t: d.t.slice(lo, k + 1), price: d.price.slice(lo, k + 1), metrics: Object.fromEntries(Object.entries(d.metrics).map(([id, v]) => [id, own(id, v)])) };
   };
   for (const def of DEFINITIONS) {
     test(def.id, () => {
@@ -179,10 +187,67 @@ describe("definition scanner (service)", () => {
     expect(fundingDefs.length).toBeGreaterThan(0);
     expect(fundingDefs.length).toBeLessThan(DEFINITIONS.length);
     expect(scan).toMatchObject({ bar, coins: 1, dropped: fundingDefs.length });
+    // A funding day that has not reached the bar (stopped, or still settling) is retried, with its last complete day.
+    expect(scan.drops.every((x) => x.retry && x.reason === `ht:funding last complete day ${isoDate(d.t.at(-3)!)}, not ${bar}`)).toBe(true);
     expect(scan.hits).toEqual(scanDataset(d, DEFINITIONS.filter((x) => !fundingDefs.includes(x))));
     // A loader that reports no lastRaw evaluates nothing (fail closed).
     const blind = await createDefinitionScanner({ loadDataset: async () => ({ dataset: d, warnings: [] }), coins: async () => ["AAA"], now: () => NOW }).scan();
     expect(blind).toMatchObject({ coins: 1, dropped: DEFINITIONS.length, hits: [] });
+  });
+
+  test("each metric is loaded from its own lookback; the price over SCAN_LOOKBACK_DAYS ending on the bar", async () => {
+    const cfgs: Parameters<LoadDatasetFn>[0][] = [];
+    await createDefinitionScanner({ loadDataset: async (cfg) => (cfgs.push(cfg), loaded(current(cfg.asset, NOW))), coins: async () => ["AAA"], now: () => NOW }).scan();
+    const bar = Math.floor(NOW / DAY_MS) * DAY_MS - DAY_MS;
+    expect(cfgs[0]!.from).toBe(isoDate(bar - (SCAN_LOOKBACK_DAYS - 1) * DAY_MS));
+    for (const [m, days] of Object.entries(metricLookbackDays())) expect(cfgs[0]!.metricFrom![m]).toBe(isoDate(bar - (days - 1) * DAY_MS));
+  });
+
+  test("a coin × definition reading a metric the coin has no data for is dropped for good; one still settling is retried", async () => {
+    let now = NOW;
+    let loads = 0;
+    const scanner = createDefinitionScanner({
+      loadDataset: async (cfg) => {
+        loads++;
+        const r = loaded(current(cfg.asset, now));
+        const { "okx:oi": _, ...lastRaw } = r.lastRaw;
+        return { ...r, lastRaw, noData: ["okx:oi"] }; // not listed on OKX
+      },
+      coins: async () => ["AAA"],
+      now: () => now,
+    });
+    const okxDefs = DEFINITIONS.filter((x) => definitionMetrics([x]).includes("okx:oi"));
+    const a = await scanner.scan();
+    expect(a.drops).toEqual(okxDefs.map((x) => ({ coin: "AAA", definition: x.id, reason: "no okx:oi data for the coin", retry: false })));
+    now += SCAN_RETRY_MS + 60_000;
+    expect(await scanner.scan()).toBe(a); // nothing a retry could change: kept for the day
+    expect(loads).toBe(1);
+  });
+
+  test("latest(): null until the first scan finishes, then the last finished scan while a newer one runs", async () => {
+    let now = NOW;
+    let release: () => void = () => {};
+    let gate = Promise.resolve();
+    const scanner = createDefinitionScanner({
+      loadDataset: async (cfg) => (await gate, loaded(current(cfg.asset, now))),
+      coins: async () => ["AAA"],
+      now: () => now,
+      deadlineMs: Infinity,
+    });
+    gate = new Promise((r) => (release = r));
+    const first = scanner.scan();
+    expect(scanner.latest()).toBeNull();
+    release();
+    const a = await first;
+    expect(scanner.latest()).toBe(a);
+    now += DAY_MS;
+    gate = new Promise((r) => (release = r));
+    const second = scanner.scan();
+    expect(scanner.latest()).toBe(a); // yesterday's scan keeps serving while today's runs
+    release();
+    const b = await second;
+    expect(b.bar > a.bar).toBe(true);
+    expect(scanner.latest()).toBe(b);
   });
 
   test("a scan with no coin list fails as a whole and is retried on the next call", async () => {
