@@ -12,6 +12,7 @@
     "lab:mcp": "bun run scripts/lab-mcp.ts",
     "tui": "bun run --cwd tui start",
     "routine": "bun run scripts/routine.ts",
+    "moves": "bun run scripts/moves.ts",
     "radar": "bun run scripts/radar.ts",
     "signals:collect": "bun run scripts/signals.ts collect",
     "signals:notify": "bun run scripts/signals.ts notify",

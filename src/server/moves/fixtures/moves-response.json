@@ -1,0 +1,1608 @@
+{
+ "state": "ok",
+ "reason": null,
+ "asOf": "2026-11-10T12:00:00.000Z",
+ "computedAt": "2026-11-10T12:05:00.000Z",
+ "window": "24h",
+ "progress": null,
+ "universe": {
+  "coins": 7,
+  "dropped": []
+ },
+ "sectorsAsOf": "2026-11-02T07:00:00Z",
+ "factors": [
+  {
+   "id": "BTC",
+   "label": "BTC",
+   "pct": -1.1755284067004905,
+   "n": 1
+  },
+  {
+   "id": "ETH",
+   "label": "ETH",
+   "pct": -2.8830286312517286,
+   "n": 1
+  },
+  {
+   "id": "ETHX",
+   "label": "ETH ex-BTC",
+   "pct": -1.5899473838811877,
+   "n": 1
+  },
+  {
+   "id": "sector:alt",
+   "label": "Alt basket",
+   "pct": 2.3938653134126606,
+   "n": 5
+  }
+ ],
+ "layers": {
+  "beta": {
+   "state": "ok",
+   "reason": null
+  },
+  "flow": {
+   "state": "ok",
+   "reason": null
+  },
+  "attention": {
+   "state": "ok",
+   "reason": null
+  },
+  "liq": {
+   "state": "ok",
+   "reason": null
+  },
+  "agents": {
+   "state": "unavailable",
+   "reason": "agent watch not attached"
+  }
+ },
+ "rows": [
+  {
+   "coin": "BTC",
+   "sector": {
+    "id": "l1-majors",
+    "label": "L1 majors"
+   },
+   "mark": 82482.75004967523,
+   "dayNtlVlm": 1000000000,
+   "attribution": {
+    "window": "24h",
+    "from": "2026-11-09T12:00:00.000Z",
+    "to": "2026-11-10T12:00:00.000Z",
+    "hours": 24,
+    "totalPct": -1.1755284067004905,
+    "btcPct": -1.1755284067004905,
+    "ethPct": 0,
+    "sectorPct": null,
+    "residualPct": 0,
+    "residualFlowPct": 0,
+    "residualNewsPct": 0,
+    "residualOtherPct": 0,
+    "flowHours": 0,
+    "newsHours": 0,
+    "residualZ": null,
+    "sigma1hPct": null,
+    "r2": null,
+    "estimation": {
+     "from": "2026-11-02T12:00:00.000Z",
+     "to": "2026-11-09T12:00:00.000Z",
+     "n": 168
+    },
+    "betas": [
+     {
+      "factor": "BTC",
+      "beta": 1,
+      "contributionPct": -1.1755284067004905,
+      "n": 168,
+      "reason": "BTC is the factor"
+     },
+     {
+      "factor": "ETH",
+      "beta": null,
+      "contributionPct": null,
+      "n": 0,
+      "reason": "BTC is the factor"
+     },
+     {
+      "factor": "SECTOR",
+      "beta": null,
+      "contributionPct": null,
+      "n": 0,
+      "reason": "BTC is the factor"
+     }
+    ]
+   },
+   "attributionReason": null,
+   "positioning": {
+    "fundingHourly": 0.00002,
+    "fundingAprPct": 17.520000000000003,
+    "fundingZ": 9.538350172601373,
+    "fundingN": 336,
+    "premiumBps": 2,
+    "oiUsd": 82482750049.67523,
+    "oiChg24hPct": 82556.44776841476,
+    "oiChg72hPct": 82658.59023654097,
+    "oiN": 338,
+    "oiToVolume": 82.48275004967523,
+    "checks": [
+     {
+      "key": "funding_z",
+      "side": "long",
+      "value": 9.538350172601373,
+      "threshold": 2,
+      "met": true
+     },
+     {
+      "key": "funding_apr",
+      "side": "long",
+      "value": 17.520000000000003,
+      "threshold": 25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "long",
+      "value": 82658.59023654097,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "long",
+      "value": 2,
+      "threshold": 5,
+      "met": false
+     },
+     {
+      "key": "funding_z",
+      "side": "short",
+      "value": 9.538350172601373,
+      "threshold": -2,
+      "met": false
+     },
+     {
+      "key": "funding_apr",
+      "side": "short",
+      "value": 17.520000000000003,
+      "threshold": -25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "short",
+      "value": 82658.59023654097,
+      "threshold": 10,
+      "met": true
+     },
+     {
+      "key": "premium",
+      "side": "short",
+      "value": 2,
+      "threshold": -5,
+      "met": false
+     }
+    ],
+    "longMet": 1,
+    "shortMet": 1,
+    "of": 4
+   },
+   "liq": {
+    "state": {
+     "state": "partial",
+     "reason": "the crawler holds no positions in BTC"
+    },
+    "nearestLong": null,
+    "nearestShort": null,
+    "sigma24hPct": 2.9026907474537507,
+    "longSigmas": null,
+    "shortSigmas": null,
+    "coverageRatio": 0
+   },
+   "attention": {
+    "state": {
+     "state": "ok",
+     "reason": null
+    },
+    "news24h": 0,
+    "news72h": 0,
+    "newsDailyMean7d": 0,
+    "newsRatio": 0,
+    "mentions24h": null,
+    "mentionsChg24hPct": null,
+    "mentionsAsOf": null,
+    "sectorId": "l1-majors",
+    "sectorStage": null
+   },
+   "setups": [
+    {
+     "kind": "enter",
+     "side": null,
+     "checks": [
+      {
+       "key": "attention_rising",
+       "label": "attention rising",
+       "value": "news 0 · ratio 0 · mentions —",
+       "threshold": "news24h ≥ 2 and ratio ≥ 2, or mentions Δ24h ≥ +50%",
+       "met": null
+      },
+      {
+       "key": "crowding_low",
+       "label": "crowding on the move's side",
+       "value": null,
+       "threshold": "≤ 1 of 4",
+       "met": null
+      },
+      {
+       "key": "residual_z",
+       "label": "residual z (24h)",
+       "value": null,
+       "threshold": "|z| ≥ 1.5",
+       "met": null
+      }
+     ],
+     "met": 0,
+     "of": 0,
+     "definitionId": null
+    },
+    {
+     "kind": "fade",
+     "side": null,
+     "checks": [
+      {
+       "key": "crowded",
+       "label": "crowding met",
+       "value": 1,
+       "threshold": "≥ 3 of 4 on one side",
+       "met": false
+      },
+      {
+       "key": "attention_saturated",
+       "label": "attention saturated",
+       "value": "news72h 0 · ratio 0 · stage —",
+       "threshold": "news72h ≥ 5 and ratio < 1, or sector stage crowded/fading",
+       "met": null
+      },
+      {
+       "key": "liq_near",
+       "label": "nearest crowded-side liquidation cluster",
+       "value": null,
+       "threshold": "≤ 1 σ24h, coverage ≥ 25%",
+       "met": null
+      }
+     ],
+     "met": 0,
+     "of": 1,
+     "definitionId": null
+    }
+   ],
+   "opportunityId": null
+  },
+  {
+   "coin": "ETH",
+   "sector": {
+    "id": "l1-majors",
+    "label": "L1 majors"
+   },
+   "mark": 2577.490268885783,
+   "dayNtlVlm": 990000000,
+   "attribution": {
+    "window": "24h",
+    "from": "2026-11-09T12:00:00.000Z",
+    "to": "2026-11-10T12:00:00.000Z",
+    "hours": 24,
+    "totalPct": -2.8830286312517286,
+    "btcPct": -1.2930812473705406,
+    "ethPct": 0,
+    "sectorPct": null,
+    "residualPct": -1.589947383881188,
+    "residualFlowPct": 0,
+    "residualNewsPct": 0,
+    "residualOtherPct": -1.589947383881188,
+    "flowHours": 0,
+    "newsHours": 0,
+    "residualZ": -0.8797023218275063,
+    "sigma1hPct": 0.3689278096075446,
+    "r2": 0.7738527823788597,
+    "estimation": {
+     "from": "2026-11-02T12:00:00.000Z",
+     "to": "2026-11-09T12:00:00.000Z",
+     "n": 168
+    },
+    "betas": [
+     {
+      "factor": "BTC",
+      "beta": 1.1000000000000008,
+      "contributionPct": -1.2930812473705406,
+      "n": 168,
+      "reason": null
+     },
+     {
+      "factor": "ETH",
+      "beta": null,
+      "contributionPct": null,
+      "n": 0,
+      "reason": "ETH is the factor: its move ex-BTC is the residual"
+     },
+     {
+      "factor": "SECTOR",
+      "beta": null,
+      "contributionPct": null,
+      "n": 0,
+      "reason": "majors carry no sector factor"
+     }
+    ]
+   },
+   "attributionReason": null,
+   "positioning": {
+    "fundingHourly": 0.00002,
+    "fundingAprPct": 17.520000000000003,
+    "fundingZ": 9.538350172601373,
+    "fundingN": 336,
+    "premiumBps": 2,
+    "oiUsd": 2577490268.8857827,
+    "oiChg24hPct": 2482.9181211277264,
+    "oiChg72hPct": 2486.1099547835715,
+    "oiN": 338,
+    "oiToVolume": 2.603525524127053,
+    "checks": [
+     {
+      "key": "funding_z",
+      "side": "long",
+      "value": 9.538350172601373,
+      "threshold": 2,
+      "met": true
+     },
+     {
+      "key": "funding_apr",
+      "side": "long",
+      "value": 17.520000000000003,
+      "threshold": 25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "long",
+      "value": 2486.1099547835715,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "long",
+      "value": 2,
+      "threshold": 5,
+      "met": false
+     },
+     {
+      "key": "funding_z",
+      "side": "short",
+      "value": 9.538350172601373,
+      "threshold": -2,
+      "met": false
+     },
+     {
+      "key": "funding_apr",
+      "side": "short",
+      "value": 17.520000000000003,
+      "threshold": -25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "short",
+      "value": 2486.1099547835715,
+      "threshold": 10,
+      "met": true
+     },
+     {
+      "key": "premium",
+      "side": "short",
+      "value": 2,
+      "threshold": -5,
+      "met": false
+     }
+    ],
+    "longMet": 1,
+    "shortMet": 1,
+    "of": 4
+   },
+   "liq": {
+    "state": {
+     "state": "partial",
+     "reason": "the crawler holds no positions in ETH"
+    },
+    "nearestLong": null,
+    "nearestShort": null,
+    "sigma24hPct": 4.047780325611105,
+    "longSigmas": null,
+    "shortSigmas": null,
+    "coverageRatio": 0
+   },
+   "attention": {
+    "state": {
+     "state": "ok",
+     "reason": null
+    },
+    "news24h": 0,
+    "news72h": 0,
+    "newsDailyMean7d": 0,
+    "newsRatio": 0,
+    "mentions24h": null,
+    "mentionsChg24hPct": null,
+    "mentionsAsOf": null,
+    "sectorId": "l1-majors",
+    "sectorStage": null
+   },
+   "setups": [
+    {
+     "kind": "enter",
+     "side": "short",
+     "checks": [
+      {
+       "key": "attention_rising",
+       "label": "attention rising",
+       "value": "news 0 · ratio 0 · mentions —",
+       "threshold": "news24h ≥ 2 and ratio ≥ 2, or mentions Δ24h ≥ +50%",
+       "met": null
+      },
+      {
+       "key": "crowding_low",
+       "label": "crowding on the short side",
+       "value": 1,
+       "threshold": "≤ 1 of 4",
+       "met": true
+      },
+      {
+       "key": "residual_z",
+       "label": "residual z (24h)",
+       "value": -0.88,
+       "threshold": "|z| ≥ 1.5",
+       "met": false
+      }
+     ],
+     "met": 1,
+     "of": 2,
+     "definitionId": null
+    },
+    {
+     "kind": "fade",
+     "side": null,
+     "checks": [
+      {
+       "key": "crowded",
+       "label": "crowding met",
+       "value": 1,
+       "threshold": "≥ 3 of 4 on one side",
+       "met": false
+      },
+      {
+       "key": "attention_saturated",
+       "label": "attention saturated",
+       "value": "news72h 0 · ratio 0 · stage —",
+       "threshold": "news72h ≥ 5 and ratio < 1, or sector stage crowded/fading",
+       "met": null
+      },
+      {
+       "key": "liq_near",
+       "label": "nearest crowded-side liquidation cluster",
+       "value": null,
+       "threshold": "≤ 1 σ24h, coverage ≥ 25%",
+       "met": null
+      }
+     ],
+     "met": 0,
+     "of": 1,
+     "definitionId": null
+    }
+   ],
+   "opportunityId": null
+  },
+  {
+   "coin": "COIN",
+   "sector": {
+    "id": "alt",
+    "label": "Alt basket"
+   },
+   "mark": 9.340368242040338,
+   "dayNtlVlm": 980000000,
+   "attribution": {
+    "window": "24h",
+    "from": "2026-11-09T12:00:00.000Z",
+    "to": "2026-11-10T12:00:00.000Z",
+    "hours": 24,
+    "totalPct": 5.625062535560961,
+    "btcPct": -1.5180210555525846,
+    "ethPct": -0.7911762340622372,
+    "sectorPct": 2.352294894410888,
+    "residualPct": 5.581964930764895,
+    "residualFlowPct": 5.158674689299452,
+    "residualNewsPct": 0.13145525597644497,
+    "residualOtherPct": 0.29183498548899794,
+    "flowHours": 1,
+    "newsHours": 2,
+    "residualZ": 14.215518909571042,
+    "sigma1hPct": 0.08015281239152347,
+    "r2": 0.9931644581830846,
+    "estimation": {
+     "from": "2026-11-02T12:00:00.000Z",
+     "to": "2026-11-09T12:00:00.000Z",
+     "n": 168
+    },
+    "betas": [
+     {
+      "factor": "BTC",
+      "beta": 1.2913520820933735,
+      "contributionPct": -1.5180210555525846,
+      "n": 168,
+      "reason": null
+     },
+     {
+      "factor": "ETH",
+      "beta": 0.4976115826744614,
+      "contributionPct": -0.7911762340622372,
+      "n": 168,
+      "reason": null
+     },
+     {
+      "factor": "SECTOR",
+      "beta": 0.791758547358003,
+      "contributionPct": 2.352294894410888,
+      "n": 168,
+      "reason": null
+     }
+    ]
+   },
+   "attributionReason": null,
+   "positioning": {
+    "fundingHourly": 0.00002,
+    "fundingAprPct": 17.520000000000003,
+    "fundingZ": 9.538350172601373,
+    "fundingN": 336,
+    "premiumBps": 2,
+    "oiUsd": 9340368.242040338,
+    "oiChg24hPct": -90.63996218274724,
+    "oiChg72hPct": -90.62839554287557,
+    "oiN": 338,
+    "oiToVolume": 0.009530988002081978,
+    "checks": [
+     {
+      "key": "funding_z",
+      "side": "long",
+      "value": 9.538350172601373,
+      "threshold": 2,
+      "met": true
+     },
+     {
+      "key": "funding_apr",
+      "side": "long",
+      "value": 17.520000000000003,
+      "threshold": 25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "long",
+      "value": -90.62839554287557,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "long",
+      "value": 2,
+      "threshold": 5,
+      "met": false
+     },
+     {
+      "key": "funding_z",
+      "side": "short",
+      "value": 9.538350172601373,
+      "threshold": -2,
+      "met": false
+     },
+     {
+      "key": "funding_apr",
+      "side": "short",
+      "value": 17.520000000000003,
+      "threshold": -25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "short",
+      "value": -90.62839554287557,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "short",
+      "value": 2,
+      "threshold": -5,
+      "met": false
+     }
+    ],
+    "longMet": 1,
+    "shortMet": 0,
+    "of": 4
+   },
+   "liq": {
+    "state": {
+     "state": "ok",
+     "reason": null
+    },
+    "nearestLong": {
+     "priceLo": 9.045327582425179,
+     "priceHi": 9.06794090138124,
+     "distancePct": 2.916665955769512,
+     "notionalUsd": 2000000
+    },
+    "nearestShort": null,
+    "sigma24hPct": 5.351775677545893,
+    "longSigmas": 0.5449903231196298,
+    "shortSigmas": null,
+    "coverageRatio": 0.10706216008690864
+   },
+   "attention": {
+    "state": {
+     "state": "ok",
+     "reason": null
+    },
+    "news24h": 1,
+    "news72h": 1,
+    "newsDailyMean7d": 0,
+    "newsRatio": 2,
+    "mentions24h": 420,
+    "mentionsChg24hPct": 80,
+    "mentionsAsOf": "2026-11-10T11:00:00.000Z",
+    "sectorId": "alt",
+    "sectorStage": "emerging"
+   },
+   "setups": [
+    {
+     "kind": "enter",
+     "side": "long",
+     "checks": [
+      {
+       "key": "attention_rising",
+       "label": "attention rising",
+       "value": "news 1 · ratio 2 · mentions 80%",
+       "threshold": "news24h ≥ 2 and ratio ≥ 2, or mentions Δ24h ≥ +50%",
+       "met": true
+      },
+      {
+       "key": "crowding_low",
+       "label": "crowding on the long side",
+       "value": 1,
+       "threshold": "≤ 1 of 4",
+       "met": true
+      },
+      {
+       "key": "residual_z",
+       "label": "residual z (24h)",
+       "value": 14.22,
+       "threshold": "|z| ≥ 1.5",
+       "met": true
+      }
+     ],
+     "met": 3,
+     "of": 3,
+     "definitionId": null
+    },
+    {
+     "kind": "fade",
+     "side": null,
+     "checks": [
+      {
+       "key": "crowded",
+       "label": "crowding met",
+       "value": 1,
+       "threshold": "≥ 3 of 4 on one side",
+       "met": false
+      },
+      {
+       "key": "attention_saturated",
+       "label": "attention saturated",
+       "value": "news72h 1 · ratio 2 · stage emerging",
+       "threshold": "news72h ≥ 5 and ratio < 1, or sector stage crowded/fading",
+       "met": false
+      },
+      {
+       "key": "liq_near",
+       "label": "nearest crowded-side liquidation cluster",
+       "value": null,
+       "threshold": "≤ 1 σ24h, coverage ≥ 25%",
+       "met": null
+      }
+     ],
+     "met": 0,
+     "of": 2,
+     "definitionId": null
+    }
+   ],
+   "opportunityId": null
+  },
+  {
+   "coin": "P1",
+   "sector": {
+    "id": "alt",
+    "label": "Alt basket"
+   },
+   "mark": 4.9089117479330895,
+   "dayNtlVlm": 970000000,
+   "attribution": {
+    "window": "24h",
+    "from": "2026-11-09T12:00:00.000Z",
+    "to": "2026-11-10T12:00:00.000Z",
+    "hours": 24,
+    "totalPct": 1.495469111136292,
+    "btcPct": -1.456903993538187,
+    "ethPct": 0.014008802624516438,
+    "sectorPct": 4.27173419542704,
+    "residualPct": -1.333369893377078,
+    "residualFlowPct": 0,
+    "residualNewsPct": 0,
+    "residualOtherPct": -1.333369893377078,
+    "flowHours": 0,
+    "newsHours": 0,
+    "residualZ": -1.2361053791596688,
+    "sigma1hPct": 0.22018591161589865,
+    "r2": 0.9599501535451075,
+    "estimation": {
+     "from": "2026-11-02T12:00:00.000Z",
+     "to": "2026-11-09T12:00:00.000Z",
+     "n": 168
+    },
+    "betas": [
+     {
+      "factor": "BTC",
+      "beta": 1.2393609420528338,
+      "contributionPct": -1.456903993538187,
+      "n": 168,
+      "reason": null
+     },
+     {
+      "factor": "ETH",
+      "beta": -0.008810859256436421,
+      "contributionPct": 0.014008802624516438,
+      "n": 168,
+      "reason": null
+     },
+     {
+      "factor": "SECTOR",
+      "beta": 1.0122715368436284,
+      "contributionPct": 4.27173419542704,
+      "n": 168,
+      "reason": null
+     }
+    ]
+   },
+   "attributionReason": null,
+   "positioning": {
+    "fundingHourly": 0.00002,
+    "fundingAprPct": 17.520000000000003,
+    "fundingZ": 9.538350172601373,
+    "fundingN": 336,
+    "premiumBps": 2,
+    "oiUsd": 4908911.74793309,
+    "oiChg24hPct": -95.080750735779,
+    "oiChg72hPct": -95.07467178761779,
+    "oiN": 338,
+    "oiToVolume": 0.005060733760755763,
+    "checks": [
+     {
+      "key": "funding_z",
+      "side": "long",
+      "value": 9.538350172601373,
+      "threshold": 2,
+      "met": true
+     },
+     {
+      "key": "funding_apr",
+      "side": "long",
+      "value": 17.520000000000003,
+      "threshold": 25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "long",
+      "value": -95.07467178761779,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "long",
+      "value": 2,
+      "threshold": 5,
+      "met": false
+     },
+     {
+      "key": "funding_z",
+      "side": "short",
+      "value": 9.538350172601373,
+      "threshold": -2,
+      "met": false
+     },
+     {
+      "key": "funding_apr",
+      "side": "short",
+      "value": 17.520000000000003,
+      "threshold": -25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "short",
+      "value": -95.07467178761779,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "short",
+      "value": 2,
+      "threshold": -5,
+      "met": false
+     }
+    ],
+    "longMet": 1,
+    "shortMet": 0,
+    "of": 4
+   },
+   "liq": {
+    "state": {
+     "state": "partial",
+     "reason": "the crawler holds no positions in P1"
+    },
+    "nearestLong": null,
+    "nearestShort": null,
+    "sigma24hPct": 5.579881640697546,
+    "longSigmas": null,
+    "shortSigmas": null,
+    "coverageRatio": 0
+   },
+   "attention": {
+    "state": {
+     "state": "ok",
+     "reason": null
+    },
+    "news24h": 0,
+    "news72h": 0,
+    "newsDailyMean7d": 0,
+    "newsRatio": 0,
+    "mentions24h": null,
+    "mentionsChg24hPct": null,
+    "mentionsAsOf": null,
+    "sectorId": "alt",
+    "sectorStage": "emerging"
+   },
+   "setups": [
+    {
+     "kind": "enter",
+     "side": "short",
+     "checks": [
+      {
+       "key": "attention_rising",
+       "label": "attention rising",
+       "value": "news 0 · ratio 0 · mentions —",
+       "threshold": "news24h ≥ 2 and ratio ≥ 2, or mentions Δ24h ≥ +50%",
+       "met": null
+      },
+      {
+       "key": "crowding_low",
+       "label": "crowding on the short side",
+       "value": 0,
+       "threshold": "≤ 1 of 4",
+       "met": true
+      },
+      {
+       "key": "residual_z",
+       "label": "residual z (24h)",
+       "value": -1.24,
+       "threshold": "|z| ≥ 1.5",
+       "met": false
+      }
+     ],
+     "met": 1,
+     "of": 2,
+     "definitionId": null
+    },
+    {
+     "kind": "fade",
+     "side": null,
+     "checks": [
+      {
+       "key": "crowded",
+       "label": "crowding met",
+       "value": 1,
+       "threshold": "≥ 3 of 4 on one side",
+       "met": false
+      },
+      {
+       "key": "attention_saturated",
+       "label": "attention saturated",
+       "value": "news72h 0 · ratio 0 · stage emerging",
+       "threshold": "news72h ≥ 5 and ratio < 1, or sector stage crowded/fading",
+       "met": false
+      },
+      {
+       "key": "liq_near",
+       "label": "nearest crowded-side liquidation cluster",
+       "value": null,
+       "threshold": "≤ 1 σ24h, coverage ≥ 25%",
+       "met": null
+      }
+     ],
+     "met": 0,
+     "of": 2,
+     "definitionId": null
+    }
+   ],
+   "opportunityId": null
+  },
+  {
+   "coin": "P2",
+   "sector": {
+    "id": "alt",
+    "label": "Alt basket"
+   },
+   "mark": 4.57579060238674,
+   "dayNtlVlm": 960000000,
+   "attribution": {
+    "window": "24h",
+    "from": "2026-11-09T12:00:00.000Z",
+    "to": "2026-11-10T12:00:00.000Z",
+    "hours": 24,
+    "totalPct": 1.3562684659061237,
+    "btcPct": -1.4218461601244843,
+    "ethPct": 0.028116895800316122,
+    "sectorPct": 4.516782864686189,
+    "residualPct": -1.7667851344558971,
+    "residualFlowPct": 0,
+    "residualNewsPct": 0,
+    "residualOtherPct": -1.7667851344558971,
+    "flowHours": 0,
+    "newsHours": 0,
+    "residualZ": -1.6084851939743303,
+    "sigma1hPct": 0.2242131334067155,
+    "r2": 0.9522940735930409,
+    "estimation": {
+     "from": "2026-11-02T12:00:00.000Z",
+     "to": "2026-11-09T12:00:00.000Z",
+     "n": 168
+    },
+    "betas": [
+     {
+      "factor": "BTC",
+      "beta": 1.2095378997393742,
+      "contributionPct": -1.4218461601244843,
+      "n": 168,
+      "reason": null
+     },
+     {
+      "factor": "ETH",
+      "beta": -0.01768416746702683,
+      "contributionPct": 0.028116895800316122,
+      "n": 168,
+      "reason": null
+     },
+     {
+      "factor": "SECTOR",
+      "beta": 1.0585282189149505,
+      "contributionPct": 4.516782864686189,
+      "n": 168,
+      "reason": null
+     }
+    ]
+   },
+   "attributionReason": null,
+   "positioning": {
+    "fundingHourly": 0.00002,
+    "fundingAprPct": 17.520000000000003,
+    "fundingZ": 9.538350172601373,
+    "fundingN": 336,
+    "premiumBps": 2,
+    "oiUsd": 4575790.60238674,
+    "oiChg24hPct": -95.4145733902228,
+    "oiChg72hPct": -95.40890696244881,
+    "oiN": 338,
+    "oiToVolume": 0.004766448544152854,
+    "checks": [
+     {
+      "key": "funding_z",
+      "side": "long",
+      "value": 9.538350172601373,
+      "threshold": 2,
+      "met": true
+     },
+     {
+      "key": "funding_apr",
+      "side": "long",
+      "value": 17.520000000000003,
+      "threshold": 25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "long",
+      "value": -95.40890696244881,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "long",
+      "value": 2,
+      "threshold": 5,
+      "met": false
+     },
+     {
+      "key": "funding_z",
+      "side": "short",
+      "value": 9.538350172601373,
+      "threshold": -2,
+      "met": false
+     },
+     {
+      "key": "funding_apr",
+      "side": "short",
+      "value": 17.520000000000003,
+      "threshold": -25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "short",
+      "value": -95.40890696244881,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "short",
+      "value": 2,
+      "threshold": -5,
+      "met": false
+     }
+    ],
+    "longMet": 1,
+    "shortMet": 0,
+    "of": 4
+   },
+   "liq": {
+    "state": {
+     "state": "partial",
+     "reason": "the crawler holds no positions in P2"
+    },
+    "nearestLong": null,
+    "nearestShort": null,
+    "sigma24hPct": 5.5253233234372034,
+    "longSigmas": null,
+    "shortSigmas": null,
+    "coverageRatio": 0
+   },
+   "attention": {
+    "state": {
+     "state": "ok",
+     "reason": null
+    },
+    "news24h": 0,
+    "news72h": 0,
+    "newsDailyMean7d": 0,
+    "newsRatio": 0,
+    "mentions24h": null,
+    "mentionsChg24hPct": null,
+    "mentionsAsOf": null,
+    "sectorId": "alt",
+    "sectorStage": "emerging"
+   },
+   "setups": [
+    {
+     "kind": "enter",
+     "side": "short",
+     "checks": [
+      {
+       "key": "attention_rising",
+       "label": "attention rising",
+       "value": "news 0 · ratio 0 · mentions —",
+       "threshold": "news24h ≥ 2 and ratio ≥ 2, or mentions Δ24h ≥ +50%",
+       "met": null
+      },
+      {
+       "key": "crowding_low",
+       "label": "crowding on the short side",
+       "value": 0,
+       "threshold": "≤ 1 of 4",
+       "met": true
+      },
+      {
+       "key": "residual_z",
+       "label": "residual z (24h)",
+       "value": -1.61,
+       "threshold": "|z| ≥ 1.5",
+       "met": true
+      }
+     ],
+     "met": 2,
+     "of": 2,
+     "definitionId": null
+    },
+    {
+     "kind": "fade",
+     "side": null,
+     "checks": [
+      {
+       "key": "crowded",
+       "label": "crowding met",
+       "value": 1,
+       "threshold": "≥ 3 of 4 on one side",
+       "met": false
+      },
+      {
+       "key": "attention_saturated",
+       "label": "attention saturated",
+       "value": "news72h 0 · ratio 0 · stage emerging",
+       "threshold": "news72h ≥ 5 and ratio < 1, or sector stage crowded/fading",
+       "met": false
+      },
+      {
+       "key": "liq_near",
+       "label": "nearest crowded-side liquidation cluster",
+       "value": null,
+       "threshold": "≤ 1 σ24h, coverage ≥ 25%",
+       "met": null
+      }
+     ],
+     "met": 0,
+     "of": 2,
+     "definitionId": null
+    }
+   ],
+   "opportunityId": null
+  },
+  {
+   "coin": "P3",
+   "sector": {
+    "id": "alt",
+    "label": "Alt basket"
+   },
+   "mark": 4.5285491080862235,
+   "dayNtlVlm": 950000000,
+   "attribution": {
+    "window": "24h",
+    "from": "2026-11-09T12:00:00.000Z",
+    "to": "2026-11-10T12:00:00.000Z",
+    "hours": 24,
+    "totalPct": 1.0053876128680914,
+    "btcPct": -1.4619033981755862,
+    "ethPct": 0.010137763549328509,
+    "sectorPct": 4.601007530454437,
+    "residualPct": -2.143854282960088,
+    "residualFlowPct": 0,
+    "residualNewsPct": 0,
+    "residualOtherPct": -2.143854282960088,
+    "flowHours": 0,
+    "newsHours": 0,
+    "residualZ": -2.177537335375786,
+    "sigma1hPct": 0.20096666812627711,
+    "r2": 0.9713810479088946,
+    "estimation": {
+     "from": "2026-11-02T12:00:00.000Z",
+     "to": "2026-11-09T12:00:00.000Z",
+     "n": 168
+    },
+    "betas": [
+     {
+      "factor": "BTC",
+      "beta": 1.243613841947811,
+      "contributionPct": -1.4619033981755862,
+      "n": 168,
+      "reason": null
+     },
+     {
+      "factor": "ETH",
+      "beta": -0.0063761629171535375,
+      "contributionPct": 0.010137763549328509,
+      "n": 168,
+      "reason": null
+     },
+     {
+      "factor": "SECTOR",
+      "beta": 1.0600785042556675,
+      "contributionPct": 4.601007530454437,
+      "n": 168,
+      "reason": null
+     }
+    ]
+   },
+   "attributionReason": null,
+   "positioning": {
+    "fundingHourly": 0.00002,
+    "fundingAprPct": 17.520000000000003,
+    "fundingZ": 9.538350172601373,
+    "fundingN": 336,
+    "premiumBps": 2,
+    "oiUsd": 4528549.108086224,
+    "oiChg24hPct": -95.46191436883711,
+    "oiChg72hPct": -95.4563064425416,
+    "oiN": 338,
+    "oiToVolume": 0.004766893797985498,
+    "checks": [
+     {
+      "key": "funding_z",
+      "side": "long",
+      "value": 9.538350172601373,
+      "threshold": 2,
+      "met": true
+     },
+     {
+      "key": "funding_apr",
+      "side": "long",
+      "value": 17.520000000000003,
+      "threshold": 25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "long",
+      "value": -95.4563064425416,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "long",
+      "value": 2,
+      "threshold": 5,
+      "met": false
+     },
+     {
+      "key": "funding_z",
+      "side": "short",
+      "value": 9.538350172601373,
+      "threshold": -2,
+      "met": false
+     },
+     {
+      "key": "funding_apr",
+      "side": "short",
+      "value": 17.520000000000003,
+      "threshold": -25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "short",
+      "value": -95.4563064425416,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "short",
+      "value": 2,
+      "threshold": -5,
+      "met": false
+     }
+    ],
+    "longMet": 1,
+    "shortMet": 0,
+    "of": 4
+   },
+   "liq": {
+    "state": {
+     "state": "partial",
+     "reason": "the crawler holds no positions in P3"
+    },
+    "nearestLong": null,
+    "nearestShort": null,
+    "sigma24hPct": 5.731496341522754,
+    "longSigmas": null,
+    "shortSigmas": null,
+    "coverageRatio": 0
+   },
+   "attention": {
+    "state": {
+     "state": "ok",
+     "reason": null
+    },
+    "news24h": 0,
+    "news72h": 0,
+    "newsDailyMean7d": 0,
+    "newsRatio": 0,
+    "mentions24h": null,
+    "mentionsChg24hPct": null,
+    "mentionsAsOf": null,
+    "sectorId": "alt",
+    "sectorStage": "emerging"
+   },
+   "setups": [
+    {
+     "kind": "enter",
+     "side": "short",
+     "checks": [
+      {
+       "key": "attention_rising",
+       "label": "attention rising",
+       "value": "news 0 · ratio 0 · mentions —",
+       "threshold": "news24h ≥ 2 and ratio ≥ 2, or mentions Δ24h ≥ +50%",
+       "met": null
+      },
+      {
+       "key": "crowding_low",
+       "label": "crowding on the short side",
+       "value": 0,
+       "threshold": "≤ 1 of 4",
+       "met": true
+      },
+      {
+       "key": "residual_z",
+       "label": "residual z (24h)",
+       "value": -2.18,
+       "threshold": "|z| ≥ 1.5",
+       "met": true
+      }
+     ],
+     "met": 2,
+     "of": 2,
+     "definitionId": null
+    },
+    {
+     "kind": "fade",
+     "side": null,
+     "checks": [
+      {
+       "key": "crowded",
+       "label": "crowding met",
+       "value": 1,
+       "threshold": "≥ 3 of 4 on one side",
+       "met": false
+      },
+      {
+       "key": "attention_saturated",
+       "label": "attention saturated",
+       "value": "news72h 0 · ratio 0 · stage emerging",
+       "threshold": "news72h ≥ 5 and ratio < 1, or sector stage crowded/fading",
+       "met": false
+      },
+      {
+       "key": "liq_near",
+       "label": "nearest crowded-side liquidation cluster",
+       "value": null,
+       "threshold": "≤ 1 σ24h, coverage ≥ 25%",
+       "met": null
+      }
+     ],
+     "met": 0,
+     "of": 2,
+     "definitionId": null
+    }
+   ],
+   "opportunityId": null
+  },
+  {
+   "coin": "P4",
+   "sector": {
+    "id": "alt",
+    "label": "Alt basket"
+   },
+   "mark": 4.810076527318,
+   "dayNtlVlm": 940000000,
+   "attribution": {
+    "window": "24h",
+    "from": "2026-11-09T12:00:00.000Z",
+    "to": "2026-11-10T12:00:00.000Z",
+    "hours": 24,
+    "totalPct": 2.4871388415918383,
+    "btcPct": -1.3787294622098827,
+    "ethPct": 0.12748336040756172,
+    "sectorPct": 4.0724690029523645,
+    "residualPct": -0.3340840595582053,
+    "residualFlowPct": 0,
+    "residualNewsPct": 0,
+    "residualOtherPct": -0.3340840595582053,
+    "flowHours": 0,
+    "newsHours": 0,
+    "residualZ": -0.2855078875757494,
+    "sigma1hPct": 0.23885372720163237,
+    "r2": 0.9546929196417971,
+    "estimation": {
+     "from": "2026-11-02T12:00:00.000Z",
+     "to": "2026-11-09T12:00:00.000Z",
+     "n": 168
+    },
+    "betas": [
+     {
+      "factor": "BTC",
+      "beta": 1.1728593323233618,
+      "contributionPct": -1.3787294622098827,
+      "n": 168,
+      "reason": null
+     },
+     {
+      "factor": "ETH",
+      "beta": -0.0801808674299427,
+      "contributionPct": 0.12748336040756172,
+      "n": 168,
+      "reason": null
+     },
+     {
+      "factor": "SECTOR",
+      "beta": 1.0130661595381638,
+      "contributionPct": 4.0724690029523645,
+      "n": 168,
+      "reason": null
+     }
+    ]
+   },
+   "attributionReason": null,
+   "positioning": {
+    "fundingHourly": 0.00002,
+    "fundingAprPct": 17.520000000000003,
+    "fundingZ": 9.538350172601373,
+    "fundingN": 336,
+    "premiumBps": 2,
+    "oiUsd": 4810076.527318001,
+    "oiChg24hPct": -95.17979409024441,
+    "oiChg72hPct": -95.17383753462423,
+    "oiN": 338,
+    "oiToVolume": 0.005117102688636171,
+    "checks": [
+     {
+      "key": "funding_z",
+      "side": "long",
+      "value": 9.538350172601373,
+      "threshold": 2,
+      "met": true
+     },
+     {
+      "key": "funding_apr",
+      "side": "long",
+      "value": 17.520000000000003,
+      "threshold": 25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "long",
+      "value": -95.17383753462423,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "long",
+      "value": 2,
+      "threshold": 5,
+      "met": false
+     },
+     {
+      "key": "funding_z",
+      "side": "short",
+      "value": 9.538350172601373,
+      "threshold": -2,
+      "met": false
+     },
+     {
+      "key": "funding_apr",
+      "side": "short",
+      "value": 17.520000000000003,
+      "threshold": -25,
+      "met": false
+     },
+     {
+      "key": "oi_build",
+      "side": "short",
+      "value": -95.17383753462423,
+      "threshold": 10,
+      "met": false
+     },
+     {
+      "key": "premium",
+      "side": "short",
+      "value": 2,
+      "threshold": -5,
+      "met": false
+     }
+    ],
+    "longMet": 1,
+    "shortMet": 0,
+    "of": 4
+   },
+   "liq": {
+    "state": {
+     "state": "partial",
+     "reason": "the crawler holds no positions in P4"
+    },
+    "nearestLong": null,
+    "nearestShort": null,
+    "sigma24hPct": 5.9267784738887554,
+    "longSigmas": null,
+    "shortSigmas": null,
+    "coverageRatio": 0
+   },
+   "attention": {
+    "state": {
+     "state": "ok",
+     "reason": null
+    },
+    "news24h": 0,
+    "news72h": 0,
+    "newsDailyMean7d": 0,
+    "newsRatio": 0,
+    "mentions24h": null,
+    "mentionsChg24hPct": null,
+    "mentionsAsOf": null,
+    "sectorId": "alt",
+    "sectorStage": "emerging"
+   },
+   "setups": [
+    {
+     "kind": "enter",
+     "side": "short",
+     "checks": [
+      {
+       "key": "attention_rising",
+       "label": "attention rising",
+       "value": "news 0 · ratio 0 · mentions —",
+       "threshold": "news24h ≥ 2 and ratio ≥ 2, or mentions Δ24h ≥ +50%",
+       "met": null
+      },
+      {
+       "key": "crowding_low",
+       "label": "crowding on the short side",
+       "value": 0,
+       "threshold": "≤ 1 of 4",
+       "met": true
+      },
+      {
+       "key": "residual_z",
+       "label": "residual z (24h)",
+       "value": -0.29,
+       "threshold": "|z| ≥ 1.5",
+       "met": false
+      }
+     ],
+     "met": 1,
+     "of": 2,
+     "definitionId": null
+    },
+    {
+     "kind": "fade",
+     "side": null,
+     "checks": [
+      {
+       "key": "crowded",
+       "label": "crowding met",
+       "value": 1,
+       "threshold": "≥ 3 of 4 on one side",
+       "met": false
+      },
+      {
+       "key": "attention_saturated",
+       "label": "attention saturated",
+       "value": "news72h 0 · ratio 0 · stage emerging",
+       "threshold": "news72h ≥ 5 and ratio < 1, or sector stage crowded/fading",
+       "met": false
+      },
+      {
+       "key": "liq_near",
+       "label": "nearest crowded-side liquidation cluster",
+       "value": null,
+       "threshold": "≤ 1 σ24h, coverage ≥ 25%",
+       "met": null
+      }
+     ],
+     "met": 0,
+     "of": 2,
+     "definitionId": null
+    }
+   ],
+   "opportunityId": null
+  }
+ ]
+}

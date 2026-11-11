@@ -20,6 +20,7 @@
 //   PLATFORM_READY_TTL_MIN, PLATFORM_COOLDOWN_MIN, PLATFORM_EDGE_MIN_N   opportunity lifecycle
 //   PLATFORM_RESEARCH_SCORE, PLATFORM_PUSH_SCORE   score thresholds (research feed / Telegram push)
 //   PLATFORM_COST_TOP_N               cost model top-N coins
+//   MOVES_TRIAGE_DAILY (8), MOVES_AGENT_DAILY (6)   moves-agent loop: triage items and agent investigations per UTC day
 // Desk loops also read DESK_WORKER_TICK_SEC and DESK_TELEGRAM_* (scripts/desk-worker.ts).
 import { existsSync, statSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
@@ -45,6 +46,11 @@ import { MemoryPlatformStore } from "../src/server/platform/store-memory";
 import { PgPlatformStore, pgDb } from "../src/server/platform/store-pg";
 import { retentionDays as retentionDays_, scanRetentionDays, type PlatformStore } from "../src/server/platform/store";
 import { createWsIngest, MID_MAX_AGE_MS } from "../src/server/platform/ws";
+import { createAgentLoop } from "../src/server/moves/agentLoop";
+import { liveMark, sharedAgentDeps } from "../src/server/moves/agentRoutes";
+import { getMovesService } from "../src/server/moves/service";
+import { triageBudget } from "../src/server/moves/triage";
+import { fetchCandles } from "../src/shared/hl-client";
 import type { PlatformHealth } from "../src/shared/platform";
 
 const DIST = resolve(import.meta.dir, "../dist");
@@ -123,6 +129,16 @@ async function boot() {
         }
       : undefined,
   });
+  // Agent watch (docs/SPEC.md § Moves): triage every 15 min, auto-investigate under MOVES_AGENT_DAILY, grade records.
+  // Shares the routes' agent deps (same in-flight set, LLM caps) and this process's store.
+  const movesAgent = createAgentLoop({
+    store,
+    moves: getMovesService(),
+    agent: sharedAgentDeps(),
+    budget: triageBudget(),
+    mark: async (coin) => scanner.latestMark(coin) ?? (await liveMark(coin)),
+    candles: (coin, s, e) => fetchCandles(coin, "1h", s, e),
+  });
   const alerts = createAlerts({ store, notifier: createNotifier(), wsAgeSec: () => ws.lastMessageAgeSec(), appUrl: (process.env.APP_URL ?? process.env.DESK_APP_URL)?.trim() });
 
   const defs: LoopDef[] = [
@@ -134,6 +150,7 @@ async function boot() {
     liqmap.def,
     outcomes.def,
     alerts.def,
+    movesAgent.def,
     // Daily inputs live in Postgres (candles, funding, observations): no database, no novelty loop.
     ...(dbUrl ? [createNoveltyLoop({ store, notify: alerts.novel, nearMiss: scanner.nearMiss }).def] : []),
   ];

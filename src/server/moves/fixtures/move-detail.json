@@ -1,0 +1,456 @@
+{
+ "coin": "COIN",
+ "sector": {
+  "id": "alt",
+  "label": "Alt basket"
+ },
+ "mark": 9.340368242040338,
+ "dayNtlVlm": 980000000,
+ "attribution": {
+  "window": "24h",
+  "from": "2026-11-09T12:00:00.000Z",
+  "to": "2026-11-10T12:00:00.000Z",
+  "hours": 24,
+  "totalPct": 5.625062535560961,
+  "btcPct": -1.5180210555525846,
+  "ethPct": -0.7911762340622372,
+  "sectorPct": 2.352294894410888,
+  "residualPct": 5.581964930764895,
+  "residualFlowPct": 5.158674689299452,
+  "residualNewsPct": 0.13145525597644497,
+  "residualOtherPct": 0.29183498548899794,
+  "flowHours": 1,
+  "newsHours": 2,
+  "residualZ": 14.215518909571042,
+  "sigma1hPct": 0.08015281239152347,
+  "r2": 0.9931644581830846,
+  "estimation": {
+   "from": "2026-11-02T12:00:00.000Z",
+   "to": "2026-11-09T12:00:00.000Z",
+   "n": 168
+  },
+  "betas": [
+   {
+    "factor": "BTC",
+    "beta": 1.2913520820933735,
+    "contributionPct": -1.5180210555525846,
+    "n": 168,
+    "reason": null
+   },
+   {
+    "factor": "ETH",
+    "beta": 0.4976115826744614,
+    "contributionPct": -0.7911762340622372,
+    "n": 168,
+    "reason": null
+   },
+   {
+    "factor": "SECTOR",
+    "beta": 0.791758547358003,
+    "contributionPct": 2.352294894410888,
+    "n": 168,
+    "reason": null
+   }
+  ]
+ },
+ "attributionReason": null,
+ "positioning": {
+  "fundingHourly": 0.00002,
+  "fundingAprPct": 17.520000000000003,
+  "fundingZ": 9.538350172601373,
+  "fundingN": 336,
+  "premiumBps": 2,
+  "oiUsd": 9340368.242040338,
+  "oiChg24hPct": -90.63996218274724,
+  "oiChg72hPct": -90.62839554287557,
+  "oiN": 338,
+  "oiToVolume": 0.009530988002081978,
+  "checks": [
+   {
+    "key": "funding_z",
+    "side": "long",
+    "value": 9.538350172601373,
+    "threshold": 2,
+    "met": true
+   },
+   {
+    "key": "funding_apr",
+    "side": "long",
+    "value": 17.520000000000003,
+    "threshold": 25,
+    "met": false
+   },
+   {
+    "key": "oi_build",
+    "side": "long",
+    "value": -90.62839554287557,
+    "threshold": 10,
+    "met": false
+   },
+   {
+    "key": "premium",
+    "side": "long",
+    "value": 2,
+    "threshold": 5,
+    "met": false
+   },
+   {
+    "key": "funding_z",
+    "side": "short",
+    "value": 9.538350172601373,
+    "threshold": -2,
+    "met": false
+   },
+   {
+    "key": "funding_apr",
+    "side": "short",
+    "value": 17.520000000000003,
+    "threshold": -25,
+    "met": false
+   },
+   {
+    "key": "oi_build",
+    "side": "short",
+    "value": -90.62839554287557,
+    "threshold": 10,
+    "met": false
+   },
+   {
+    "key": "premium",
+    "side": "short",
+    "value": 2,
+    "threshold": -5,
+    "met": false
+   }
+  ],
+  "longMet": 1,
+  "shortMet": 0,
+  "of": 4
+ },
+ "liq": {
+  "state": {
+   "state": "ok",
+   "reason": null
+  },
+  "nearestLong": {
+   "priceLo": 9.045327582425179,
+   "priceHi": 9.06794090138124,
+   "distancePct": 2.916665955769512,
+   "notionalUsd": 2000000
+  },
+  "nearestShort": null,
+  "sigma24hPct": 5.351775677545893,
+  "longSigmas": 0.5449903231196298,
+  "shortSigmas": null,
+  "coverageRatio": 0.10706216008690864
+ },
+ "attention": {
+  "state": {
+   "state": "ok",
+   "reason": null
+  },
+  "news24h": 1,
+  "news72h": 1,
+  "newsDailyMean7d": 0,
+  "newsRatio": 2,
+  "mentions24h": 420,
+  "mentionsChg24hPct": 80,
+  "mentionsAsOf": "2026-11-10T11:00:00.000Z",
+  "sectorId": "alt",
+  "sectorStage": "emerging"
+ },
+ "setups": [
+  {
+   "kind": "enter",
+   "side": "long",
+   "checks": [
+    {
+     "key": "attention_rising",
+     "label": "attention rising",
+     "value": "news 1 · ratio 2 · mentions 80%",
+     "threshold": "news24h ≥ 2 and ratio ≥ 2, or mentions Δ24h ≥ +50%",
+     "met": true
+    },
+    {
+     "key": "crowding_low",
+     "label": "crowding on the long side",
+     "value": 1,
+     "threshold": "≤ 1 of 4",
+     "met": true
+    },
+    {
+     "key": "residual_z",
+     "label": "residual z (24h)",
+     "value": 14.22,
+     "threshold": "|z| ≥ 1.5",
+     "met": true
+    }
+   ],
+   "met": 3,
+   "of": 3,
+   "definitionId": null
+  },
+  {
+   "kind": "fade",
+   "side": null,
+   "checks": [
+    {
+     "key": "crowded",
+     "label": "crowding met",
+     "value": 1,
+     "threshold": "≥ 3 of 4 on one side",
+     "met": false
+    },
+    {
+     "key": "attention_saturated",
+     "label": "attention saturated",
+     "value": "news72h 1 · ratio 2 · stage emerging",
+     "threshold": "news72h ≥ 5 and ratio < 1, or sector stage crowded/fading",
+     "met": false
+    },
+    {
+     "key": "liq_near",
+     "label": "nearest crowded-side liquidation cluster",
+     "value": null,
+     "threshold": "≤ 1 σ24h, coverage ≥ 25%",
+     "met": null
+    }
+   ],
+   "met": 0,
+   "of": 2,
+   "definitionId": null
+  }
+ ],
+ "opportunityId": null,
+ "state": "ok",
+ "reason": null,
+ "asOf": "2026-11-10T12:00:00.000Z",
+ "window": "24h",
+ "layers": {
+  "beta": {
+   "state": "ok",
+   "reason": null
+  },
+  "flow": {
+   "state": "ok",
+   "reason": null
+  },
+  "attention": {
+   "state": "ok",
+   "reason": null
+  },
+  "liq": {
+   "state": "ok",
+   "reason": null
+  },
+  "agents": {
+   "state": "unavailable",
+   "reason": "agent watch not attached"
+  }
+ },
+ "series": [
+  {
+   "t": 1794225600000,
+   "cumTotalPct": 0.4806409112507834,
+   "cumFittedPct": 0.34384307796581126,
+   "cumResidualPct": 0.13679783328497214,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794229200000,
+   "cumTotalPct": -0.20963819437388992,
+   "cumFittedPct": -0.35558635943601125,
+   "cumResidualPct": 0.14594816506212133,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794232800000,
+   "cumTotalPct": 0.5212612573976354,
+   "cumFittedPct": 0.3102264984759996,
+   "cumResidualPct": 0.2110347589216358,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794236400000,
+   "cumTotalPct": 2.792064085614469,
+   "cumFittedPct": 2.548558941493432,
+   "cumResidualPct": 0.2435051441210372,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794240000000,
+   "cumTotalPct": 2.6206783428640446,
+   "cumFittedPct": 2.4667114813352558,
+   "cumResidualPct": 0.1539668615287888,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794243600000,
+   "cumTotalPct": 0.6324992992631004,
+   "cumFittedPct": 0.45977413600548456,
+   "cumResidualPct": 0.1727251632576159,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794247200000,
+   "cumTotalPct": 1.4484532126905947,
+   "cumFittedPct": 1.1298584598487826,
+   "cumResidualPct": 0.31859475284181205,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794250800000,
+   "cumTotalPct": 0.9954674324983934,
+   "cumFittedPct": 0.7593682288195599,
+   "cumResidualPct": 0.23609920367883352,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794254400000,
+   "cumTotalPct": 0.01871457905959706,
+   "cumFittedPct": -0.24190636110650499,
+   "cumResidualPct": 0.26062094016610204,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794258000000,
+   "cumTotalPct": 1.1998822073680466,
+   "cumFittedPct": 0.951011523339801,
+   "cumResidualPct": 0.24887068402824564,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794261600000,
+   "cumTotalPct": -0.522073039544549,
+   "cumFittedPct": -0.7842604111002945,
+   "cumResidualPct": 0.26218737155574556,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794265200000,
+   "cumTotalPct": 1.7940880425391084,
+   "cumFittedPct": 1.3207616570880552,
+   "cumResidualPct": 0.4733263854510532,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794268800000,
+   "cumTotalPct": 2.264705837521059,
+   "cumFittedPct": 1.8173745042696527,
+   "cumResidualPct": 0.44733133325140617,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794272400000,
+   "cumTotalPct": 3.711056209603817,
+   "cumFittedPct": 3.073698500165717,
+   "cumResidualPct": 0.6373577094381,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794276000000,
+   "cumTotalPct": 5.462837969059795,
+   "cumFittedPct": 4.9229079335407775,
+   "cumResidualPct": 0.5399300355190171,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794279600000,
+   "cumTotalPct": 5.843670976197295,
+   "cumFittedPct": 5.338937011643775,
+   "cumResidualPct": 0.5047339645535196,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794283200000,
+   "cumTotalPct": 6.050793676079485,
+   "cumFittedPct": 5.553631576502308,
+   "cumResidualPct": 0.49716209957717705,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794286800000,
+   "cumTotalPct": 5.729436517846433,
+   "cumFittedPct": 5.350784459586574,
+   "cumResidualPct": 0.3786520582598589,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794290400000,
+   "cumTotalPct": 6.256967210347862,
+   "cumFittedPct": 5.835993279761982,
+   "cumResidualPct": 0.4209739305858804,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794294000000,
+   "cumTotalPct": 10.65958255820224,
+   "cumFittedPct": 5.079933938316908,
+   "cumResidualPct": 5.579648619885332,
+   "flowHour": true,
+   "newsHour": true
+  },
+  {
+   "t": 1794297600000,
+   "cumTotalPct": 10.710545836131278,
+   "cumFittedPct": 4.999359315341073,
+   "cumResidualPct": 5.711186520790204,
+   "flowHour": false,
+   "newsHour": true
+  },
+  {
+   "t": 1794301200000,
+   "cumTotalPct": 9.204934701142609,
+   "cumFittedPct": 3.4938308252808303,
+   "cumResidualPct": 5.711103875861778,
+   "flowHour": false,
+   "newsHour": true
+  },
+  {
+   "t": 1794304800000,
+   "cumTotalPct": 6.680796319297746,
+   "cumFittedPct": 0.9845810812202216,
+   "cumResidualPct": 5.696215238077524,
+   "flowHour": false,
+   "newsHour": false
+  },
+  {
+   "t": 1794308400000,
+   "cumTotalPct": 5.625062535560961,
+   "cumFittedPct": 0.043097604796065614,
+   "cumResidualPct": 5.5819649307648955,
+   "flowHour": false,
+   "newsHour": false
+  }
+ ],
+ "headlines": [
+  {
+   "title": "COIN listing announced",
+   "firstSeen": "2026-11-10T07:10:00.000Z",
+   "url": "https://news.example/coin-listing",
+   "assets": [
+    "COIN"
+   ]
+  }
+ ],
+ "record": null
+}

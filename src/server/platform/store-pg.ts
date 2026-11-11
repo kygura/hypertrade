@@ -1,8 +1,15 @@
 import type postgres from "postgres";
 import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
 import { LIVE_STATUSES, PRE_DECISION_STATUSES, TERMINAL_STATUSES } from "../../shared/platform.js";
+import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/agentRecords.js";
 import { sql } from "../db.js";
 import {
+  byNewest,
+  byScore,
+  parseAgentRecord,
+  parseTriageItem,
+  patchAgentRecord,
+  type AgentRecordPatch,
   checkTransition,
   dedupeKey,
   diffPositions,
@@ -91,6 +98,62 @@ async function insertEntries(db: Db, entries: NewLedgerEntry[], skipDuplicates =
 /** PlatformStore over Postgres (011_platform.sql). Every projection move and its ledger entry share a transaction. */
 export class PgPlatformStore implements PlatformStore {
   constructor(private readonly db: Db = pgDb()) {}
+
+  async insertAgentRecord(r: AgentRecord) {
+    const row = parseAgentRecord(r);
+    await this.db.query(`insert into agent_records (id, coin, status, created_at, model, body) values ($1, $2, $3, $4::timestamptz, $5, $6::text::jsonb)`, [
+      row.id, row.coin, row.status, iso(row.createdAt), row.model, J(row),
+    ]);
+    return row;
+  }
+
+  async updateAgentRecord(id: string, patch: AgentRecordPatch, ifStatus?: AgentRecordStatus) {
+    return this.db.tx(async (db) => {
+      const [r] = await db.query<any>(`select body from agent_records where id = $1 and ($2::text is null or status = $2) for update`, [id, ifStatus ?? null]);
+      if (!r) return null;
+      const next = patchAgentRecord(r.body as AgentRecord, patch);
+      await db.query(`update agent_records set status = $2, model = $3, body = $4::text::jsonb where id = $1`, [id, next.status, next.model, J(next)]);
+      return next;
+    });
+  }
+
+  async listAgentRecords({ coin, status, since, limit }: Parameters<PlatformStore["listAgentRecords"]>[0]) {
+    const rows = await this.db.query<any>(
+      `select body from agent_records where ($1::text is null or coin = $1) and ($2::text is null or status = $2) and ($3::timestamptz is null or created_at >= $3::timestamptz)
+       order by created_at desc, id collate "C" limit $4::int`,
+      [coin ?? null, status ?? null, since === undefined ? null : iso(since), limit],
+    );
+    return rows.map((r) => r.body as AgentRecord).sort(byNewest);
+  }
+
+  async agentRunsSince(since: string) {
+    const [r] = await this.db.query<{ n: number }>(`select count(*)::int as n from agent_records where created_at >= $1::timestamptz and status <> 'capped' and model is not null`, [iso(since)]);
+    return r!.n;
+  }
+
+  async upsertTriageItem(item: TriageItem) {
+    const row = parseTriageItem(item);
+    await this.db.query(
+      `insert into triage_items (id, day, coin, score, body) values ($1, $2, $3, $4::float8, $5::text::jsonb)
+       on conflict (day, coin) do update set id = excluded.id, score = excluded.score, body = excluded.body`,
+      [row.id, row.day, row.coin, row.score, J(row)],
+    );
+    return row;
+  }
+
+  async listTriage(day: string) {
+    const rows = await this.db.query<any>(`select body from triage_items where day = $1 order by score desc, coin collate "C"`, [day]);
+    return rows.map((r) => r.body as TriageItem).sort(byScore);
+  }
+
+  async dismissTriage(id: string, at: string) {
+    const [r] = await this.db.query<any>(
+      `update triage_items set body = case when body->'dismissedAt' = 'null'::jsonb then jsonb_set(body, '{dismissedAt}', to_jsonb($2::text)) else body end
+       where id = $1 returning body`,
+      [id, iso(at)],
+    );
+    return r ? (r.body as TriageItem) : null;
+  }
 
   async recordAddresses(rows: AddressSighting[]) {
     const clean = normalizeSightings(rows);

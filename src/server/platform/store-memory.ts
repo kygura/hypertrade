@@ -1,5 +1,13 @@
 import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
+import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/agentRecords.js";
 import {
+  byNewest,
+  byScore,
+  isAgentRun,
+  parseAgentRecord,
+  parseTriageItem,
+  patchAgentRecord,
+  type AgentRecordPatch,
   checkTransition,
   dedupeKey,
   diffPositions,
@@ -39,6 +47,55 @@ export class MemoryPlatformStore implements PlatformStore {
   opportunities = new Map<string, Opportunity>();
   /** Append-only: nothing in this class splices, sets or reassigns an element. */
   readonly ledger: LedgerEntry[] = [];
+  agentRecords = new Map<string, AgentRecord>();
+  triage = new Map<string, TriageItem>();
+
+  async insertAgentRecord(r: AgentRecord) {
+    const row = parseAgentRecord(r);
+    if (this.agentRecords.has(row.id)) throw new Error(`duplicate agent record ${row.id}`);
+    this.agentRecords.set(row.id, clone(row));
+    return clone(row);
+  }
+
+  async updateAgentRecord(id: string, patch: AgentRecordPatch, ifStatus?: AgentRecordStatus) {
+    const r = this.agentRecords.get(id);
+    if (!r || (ifStatus !== undefined && r.status !== ifStatus)) return null;
+    const next = patchAgentRecord(r, clone(patch));
+    this.agentRecords.set(id, next);
+    return clone(next);
+  }
+
+  async listAgentRecords({ coin, status, since, limit }: Parameters<PlatformStore["listAgentRecords"]>[0]) {
+    const lo = since === undefined ? -Infinity : Date.parse(since);
+    return [...this.agentRecords.values()]
+      .filter((r) => (coin === undefined || r.coin === coin) && (status === undefined || r.status === status) && Date.parse(r.createdAt) >= lo)
+      .sort(byNewest)
+      .slice(0, limit)
+      .map(clone);
+  }
+
+  async agentRunsSince(since: string) {
+    const lo = Date.parse(since);
+    return [...this.agentRecords.values()].filter((r) => Date.parse(r.createdAt) >= lo && isAgentRun(r)).length;
+  }
+
+  async upsertTriageItem(item: TriageItem) {
+    const row = parseTriageItem(item);
+    for (const [k, t] of this.triage) if (t.day === row.day && t.coin === row.coin) this.triage.delete(k);
+    this.triage.set(row.id, clone(row));
+    return clone(row);
+  }
+
+  async listTriage(day: string) {
+    return [...this.triage.values()].filter((t) => t.day === day).sort(byScore).map(clone);
+  }
+
+  async dismissTriage(id: string, at: string) {
+    const t = this.triage.get(id);
+    if (!t) return null;
+    t.dismissedAt ??= iso(at);
+    return clone(t);
+  }
 
   async recordAddresses(rows: AddressSighting[]): Promise<number> {
     const clean = normalizeSightings(rows);

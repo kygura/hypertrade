@@ -42,13 +42,22 @@ Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is
 |---|---|
 | RESEARCH | `LabTabs`: `/` (BOARD, the landing: live signals with their evidence, `?coin=` filter), `/lab/study`, `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id`, and `/branches`, `/branches/:id` |
 | TRADE | `TerminalTabs`, intel to act: `/terminal` (CHANGES), `/watch`, `/journal`, `/theses`, `/query`, then `/feed` (FEED, the Cockpit: ranked opportunities, liquidation map, approve/reject, desk kill switch; an old `/?id=…` redirects here), `/order`, `/desk`. `/asset/:coin` is the per-coin page under CHANGES. |
-| MARKET | `MarketTabs`, with the metrics strip under it: `/markets` (and `/markets/:coin`, chart; links to `/asset/:coin`), `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`. |
+| MARKET | `MarketTabs`, with the metrics strip under it: `/moves` (MOVES, first: why each coin moved), `/markets` (and `/markets/:coin`, chart; links to `/asset/:coin`), `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`. |
 | ASK | `/analyst` (ASK and SIMULATE) |
 | ENGINE | `EngineTabs`: `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` |
 
 Themes: `hyperdash` (default), `tradexyz` and `hyperion`, switched from the top bar (`src/ui/themes/README.md`).
 
 Confirmations: a plain click for reversible actions; a dialog for anything that places, approves or cancels an order (Desk and Cockpit APPROVE, `/order` place, engine decision approve); a typed word for the kill switches (desk and engine).
+
+## Moves (why each coin moved)
+
+`GET /api/moves?window=4h|24h|72h` splits each coin's move over the window into BTC beta, ETH-ex-BTC beta, sector-ex-majors beta and a residual (with its z, R², n and estimation window), beside positioning and crowding checks, liquidation proximity, attention facts and the ENTER/FADE condition checklists. `GET /api/moves/:coin?window=` is one coin with its cumulative series, headlines and latest agent record. `/api/moves/triage`, `/api/moves/records`, `/api/moves/records/stats` and `POST /api/moves/:coin/investigate` are the agent watch. Formulas, minimum-n rules and layer states: docs/SPEC.md § Moves.
+
+- Runs on live Hyperliquid data with no database. The table needs the always-on server (`bun start`): one background run per closed hour loads 1h candles under 400 of the weight guard's 1000 per minute, so the first answer is `pending` for about 2.5 minutes. On Vercel the table answers `unavailable`; the single-coin route still answers.
+- Layers degrade on their own and say why: OI-drop hours need the scanner's snapshots, news and Elfa need `DATABASE_URL`, liquidation proximity needs the crawler.
+- `bun run moves [--window 24h] [--top N]` prints the table once, with no server.
+- `MOVES_TRIAGE_DAILY` (8): triage items surfaced per UTC day. `MOVES_AGENT_DAILY` (6): agent investigations per UTC day.
 
 ## Deployment
 

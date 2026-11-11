@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import type { AgentRecord, TriageItem } from "../../shared/agentRecords.js";
 import type { LedgerPayload, NoveltyEntry } from "../../shared/platform.js";
 import { migrate } from "../../../db/migrate.js";
 import { newPglite, pgliteDb } from "../testing/pglite.js";
@@ -253,6 +254,56 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   await s.saveNearMisses(t(2), [nm("BTC")]);
   put("nearMiss", await s.latestNearMisses());
   expect(out["nearMiss"]).toEqual({ ts: t(2), items: [nm("BTC")] });
+
+  // agent watch (024): records with a compare-and-set patch, the daily run count, and the triage queue
+  const rec = (id: string, coin: string, h: number, over: Partial<AgentRecord> = {}): AgentRecord => ({
+    id, coin, createdAt: t(h), trigger: "triage",
+    inputs: { window: "24h", residualPct: 6.2, residualZ: 3.1, totalPct: 4.5, markAtCreate: 10, btcAtCreate: 60000, asOf: t(h) },
+    claim: "", assets: [coin], direction: null, horizonHours: 24, layer: "unexplained", falsifier: null, sources: [],
+    status: "open", grade: null, model: "m", promptVersion: "moves-agent-v1", dropped: 0, error: null, ...over,
+  });
+  await s.insertAgentRecord(rec("r1", "SOL", 1));
+  await s.insertAgentRecord(rec("r2", "ETH", 2, { status: "capped", model: null, error: "moves agent cap reached (6/6 today)" }));
+  await s.insertAgentRecord(rec("r3", "SOL", 3, { status: "failed", model: null, error: "no LLM provider configured" }));
+  await s.insertAgentRecord(rec("r4", "SOL", 3));
+  await expect(s.insertAgentRecord(rec("r1", "SOL", 1))).rejects.toThrow();
+  await expect(s.insertAgentRecord(rec("r5", "SOL", 1, { horizonHours: 5 as never }))).rejects.toThrow();
+  expect(await s.agentRunsSince(t(0))).toBe(2); // r1, r4: capped and no-provider rows are not runs
+  expect(await s.agentRunsSince(t(2))).toBe(1);
+  const done = { claim: "Unlock of 3% of supply hit the order book.", direction: "short" as const, layer: "forced_flow" as const, status: "open" as const,
+    falsifier: { level: 11, side: "above" as const, text: "above 11" }, sources: [{ url: "https://example.com/a", ts: null, title: "A", observed: true }] };
+  put("agent.patched", await s.updateAgentRecord("r1", done, "open"));
+  expect(out["agent.patched"]).toMatchObject({ id: "r1", claim: done.claim, falsifier: done.falsifier, inputs: { markAtCreate: 10 } });
+  const grade = { atHours: 24, px: 9.5, btcPx: 60000, relPct: 5.13, hit: true, falsifiedAt: null };
+  expect((await s.updateAgentRecord("r1", { status: "graded", grade }, "open"))!.status).toBe("graded");
+  expect(await s.updateAgentRecord("r1", { status: "falsified" }, "open")).toBeNull(); // compare-and-set: no longer open
+  expect(await s.updateAgentRecord("nope", { status: "failed" })).toBeNull();
+  await expect(s.updateAgentRecord("r4", { claim: "x".repeat(401) })).rejects.toThrow();
+  put("agent.all", await s.listAgentRecords({ limit: 10 }));
+  expect((out["agent.all"] as AgentRecord[]).map((r) => r.id)).toEqual(["r3", "r4", "r2", "r1"]);
+  expect((await s.listAgentRecords({ coin: "SOL", limit: 10 })).map((r) => r.id)).toEqual(["r3", "r4", "r1"]);
+  expect((await s.listAgentRecords({ status: "open", limit: 10 })).map((r) => r.id)).toEqual(["r4"]);
+  expect((await s.listAgentRecords({ since: t(2), limit: 2 })).map((r) => r.id)).toEqual(["r3", "r4"]);
+  expect((await s.listAgentRecords({ coin: "SOL", limit: 1 }))[0]).toMatchObject({ id: "r3", error: "no LLM provider configured" });
+
+  const item = (day: string, coin: string, score: number, over: Partial<TriageItem> = {}): TriageItem => ({
+    id: `${day}:${coin}`, day, coin, reason: `residual +6.2% · z ${score} · 24h`, score, residualZ: score * 2.5, surfacedAt: t(1), dismissedAt: null, recordId: null, ...over,
+  });
+  await s.upsertTriageItem(item("2026-10-16", "SOL", 1.2));
+  await s.upsertTriageItem(item("2026-10-16", "ETH", 1.2));
+  await s.upsertTriageItem(item("2026-10-16", "WIF", 1.5));
+  await s.upsertTriageItem(item("2026-10-17", "SOL", 2));
+  await s.upsertTriageItem(item("2026-10-16", "SOL", 1.6, { recordId: "r1", surfacedAt: t(2) })); // re-surfaced: replaces the day's item
+  await expect(s.upsertTriageItem(item("2026-10-16", "BAD", 1, { day: "16/10" }))).rejects.toThrow();
+  put("triage.day", await s.listTriage("2026-10-16"));
+  expect((out["triage.day"] as TriageItem[]).map((x) => [x.coin, x.score, x.recordId])).toEqual([["SOL", 1.6, "r1"], ["WIF", 1.5, null], ["ETH", 1.2, null]]);
+  expect((await s.dismissTriage("2026-10-16:WIF", t(3)))!.dismissedAt).toBe(t(3));
+  expect((await s.dismissTriage("2026-10-16:WIF", t(4)))!.dismissedAt).toBe(t(3)); // the first stamp stays
+  expect(await s.dismissTriage("2026-10-16:NOPE", t(4))).toBeNull();
+  put("triage.dismissed", await s.listTriage("2026-10-16"));
+  expect((out["triage.dismissed"] as TriageItem[]).length).toBe(3); // a dismissed item still counts against the day
+  expect((await s.listTriage("2026-10-17")).map((x) => x.coin)).toEqual(["SOL"]);
+  expect(await s.listTriage("2026-10-18")).toEqual([]);
   return out;
 }
 

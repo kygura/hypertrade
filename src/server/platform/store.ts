@@ -22,6 +22,7 @@ import {
   type PolledPosition,
   type Position,
 } from "../../shared/platform.js";
+import { AgentRecordSchema, TriageItemSchema, type AgentRecord, type AgentRecordStatus, type TriageItem } from "../../shared/agentRecords.js";
 
 // Platform persistence (db/migrations/011_platform.sql). Loops and routes run
 // against PlatformStore: MemoryPlatformStore (store-memory.ts) in tests,
@@ -179,7 +180,43 @@ export interface PlatformStore {
   saveSectors(tags: SectorTag[]): Promise<void>;
   /** Every cached tag, ascending by coin. */
   listSectors(): Promise<SectorTag[]>;
+
+  /** Agent watch (db/migrations/024): inserts a zod-parsed record; throws on a duplicate id. */
+  insertAgentRecord(r: AgentRecord): Promise<AgentRecord>;
+  /**
+   * Compare-and-set patch: applied only while the record is at `ifStatus` (any status when omitted). The result is
+   * zod-parsed before it is written (a bad patch throws). Null when the id is missing or the status moved on.
+   */
+  updateAgentRecord(id: string, patch: AgentRecordPatch, ifStatus?: AgentRecordStatus): Promise<AgentRecord | null>;
+  /** Newest first (createdAt desc, then id). `since` is inclusive. */
+  listAgentRecords(q: { coin?: string; status?: AgentRecordStatus; since?: string; limit: number }): Promise<AgentRecord[]>;
+  /** Records since `since` (inclusive) whose call reached a provider (model set, status not capped): the daily agent count. */
+  agentRunsSince(since: string): Promise<number>;
+  /** Upsert on (day, coin): a re-surfaced coin replaces its item for the day. Zod-parsed first. */
+  upsertTriageItem(item: TriageItem): Promise<TriageItem>;
+  /** The day's items, score desc then coin. */
+  listTriage(day: string): Promise<TriageItem[]>;
+  /** Stamps dismissedAt once (a second dismiss keeps the first stamp). Null when the id is missing. */
+  dismissTriage(id: string, at: string): Promise<TriageItem | null>;
 }
+
+/** Fields an agent record may change after insert: the call's result and, later, its grade. */
+export type AgentRecordPatch = Partial<Pick<AgentRecord, "claim" | "assets" | "direction" | "layer" | "falsifier" | "sources" | "status" | "grade" | "model" | "dropped" | "error">>;
+
+/** The record with `patch` applied, zod-parsed (identity and inputs never change). */
+export function patchAgentRecord(r: AgentRecord, patch: AgentRecordPatch): AgentRecord {
+  const { id, coin, createdAt, trigger, inputs, horizonHours, promptVersion } = r;
+  return AgentRecordSchema.parse({ ...r, ...patch, id, coin, createdAt, trigger, inputs, horizonHours, promptVersion });
+}
+
+export const parseAgentRecord = (r: AgentRecord): AgentRecord => AgentRecordSchema.parse(r);
+export const parseTriageItem = (t: TriageItem): TriageItem => TriageItemSchema.parse(t);
+/** A record counts as an agent run when its call reached a provider. */
+export const isAgentRun = (r: Pick<AgentRecord, "status" | "model">) => r.status !== "capped" && r.model !== null;
+const codeUnit = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
+/** Store order for agent records and triage items (code-unit ties, as `collate "C"` in SQL). */
+export const byNewest = (a: AgentRecord, b: AgentRecord) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || codeUnit(a.id, b.id);
+export const byScore = (a: TriageItem, b: TriageItem) => b.score - a.score || codeUnit(a.coin, b.coin);
 
 // ---------------------------------------------------------------- shared rules
 
