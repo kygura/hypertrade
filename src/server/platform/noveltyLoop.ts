@@ -82,6 +82,32 @@ const defaultUniverse = async () =>
     .filter((c) => !c.isDelisted && c.markPx > 0)
     .map((c) => ({ coin: c.name, dayNtlVlm: c.dayNtlVlm, oiUsd: c.openInterest * c.markPx }));
 
+export interface NoveltyRunOpts {
+  /** Epoch ms (on deps.now) after which no coin starts; the rest wait for the next call. Absent: the whole pass. */
+  deadline?: number;
+  /** Budget a coin needs left to start (ensureHistory and the funding sync are each capped at 20 s). */
+  reserveMs?: number;
+}
+
+/** What one call did. A pass is one newly closed day; `remaining` coins wait for the next call. */
+export interface NoveltyRunReport {
+  /** The pass: its newest closed bar. */
+  pass: string;
+  /** Coins the window's bars cover (the checked universe). */
+  universe: number;
+  /** Coins read this call (one that threw is not counted), and coins with a bar of the window still unevaluated after it. */
+  checked: number;
+  remaining: number;
+  /** True when every coin of the universe has every bar of the window evaluated (a bar not stored yet keeps it false). */
+  done: boolean;
+  /** Stopped by the deadline with coins left. */
+  stopped: boolean;
+  /** Journal entries admitted this call, pushed among them; pushes delivered from the retry queue. */
+  journalled: number;
+  pushed: number;
+  delivered: number;
+}
+
 export function createNoveltyLoop(deps: NoveltyLoopDeps) {
   const { store } = deps;
   const now = deps.now ?? Date.now;
@@ -91,19 +117,30 @@ export function createNoveltyLoop(deps: NoveltyLoopDeps) {
   const spec = process.env.PLATFORM_NOVELTY_UNIVERSE?.trim();
   const filter = deps.filter ?? (spec ? parseUniverseSpec(spec) : undefined);
   const tags = deps.tags ?? ((coins: string[]) => ensureSectors(coins, store));
-  /** Coins whose bar was evaluated (hit or not), per bar. A coin that threw or lacks the bar stays out and is retried next beat. Lost on restart: the window is re-checked once and admit() dedupes. */
-  const checked = new Map<string, Set<string>>();
 
-  /** Checks the missing (coin, bar) pairs and journals the hits, newest bar first for the push budget. */
-  async function detect(bars: string[], t: number) {
+  /**
+   * Checks the missing (coin, bar) pairs and journals the hits, newest bar first for the push budget. Progress (which
+   * coins each bar has evaluated, pushes spent, where to resume) is stored, not held in memory: the always-on loop and
+   * the bounded HTTP job (POST /api/cron/novelty) run this same code, and a restart or a fresh invocation resumes.
+   * A coin that threw or lacks the bar stays unchecked and is retried; the cursor rotates the start so such a coin
+   * cannot starve the rest of a bounded call.
+   */
+  async function detect(bars: string[], t: number, opts: NoveltyRunOpts, r: NoveltyRunReport) {
+    const held = await store.loadNoveltyProgress();
+    const same = held?.pass === bars[0];
+    const checked = new Map(bars.map((b) => [b, new Set(held?.checked[b] ?? [])]));
+    let pushed = same ? held!.pushed : 0;
+    let cursor = same ? held!.cursor : null;
     const all = await universe();
     const tiers = liquidityTiers(all);
     const mine = new Set(myMarkets());
     const u = filter
       ? selectUniverse(all, { ...filter, tags: filter.sectors?.length ? await tags(all.map((c) => c.coin)) : undefined })
       : all.filter((c) => tiers[c.coin]! <= maxTier || mine.has(c.coin));
-    const todo = new Map(bars.map((b) => [b, u.filter((c) => !checked.get(b)?.has(c.coin))]));
-    const coins = u.filter((c) => bars.some((b) => todo.get(b)!.includes(c)));
+    r.universe = u.length;
+    const missing = (coin: string) => bars.some((b) => !checked.get(b)!.has(coin));
+    const k = cursor ? u.findIndex((c) => c.coin === cursor) : -1;
+    const coins = (k >= 0 ? [...u.slice(k + 1), ...u.slice(0, k + 1)] : u).filter((c) => missing(c.coin));
     if (!coins.length) return;
     const byOi = [...u].sort((a, b) => b.oiUsd - a.oiUsd).map((x) => x.coin);
     // Setups that signalled on the coin in the 3 days to now: opportunities carry no near-miss data.
@@ -113,37 +150,57 @@ export function createNoveltyLoop(deps: NoveltyLoopDeps) {
     }
     const byBar = bars.map((bar) => ({ bar, cands: [] as Candidate[] }));
     for (const c of coins) {
+      if (opts.deadline != null && opts.deadline - now() < (opts.reserveMs ?? 0)) {
+        r.stopped = true;
+        break;
+      }
+      cursor = c.coin;
       try {
         const d = alignDaily(await inputs(c.coin, t), t);
         for (const b of byBar) {
-          if (checked.get(b.bar)?.has(c.coin)) continue;
+          if (checked.get(b.bar)!.has(c.coin)) continue;
           const i = d.t.indexOf(Date.parse(b.bar)); // a bar not stored yet is skipped, never faked, and retried
           if (i < 0) continue;
-          (checked.get(b.bar) ?? checked.set(b.bar, new Set()).get(b.bar)!).add(c.coin);
+          checked.get(b.bar)!.add(c.coin);
           const { hit } = novelty(d, i);
           if (hit) b.cands.push({ coin: c.coin, rank: byOi.indexOf(c.coin), hit, nearSetups: [...new Set([...(near.get(c.coin) ?? []), ...(deps.nearMiss?.(c.coin) ? [deps.nearMiss(c.coin)!.setupKind] : [])])] });
         }
+        r.checked++;
       } catch (err) {
         console.error(`[novelty] ${c.coin}:`, err instanceof Error ? err.message : err);
       }
     }
     const log = await store.listNovelty(barOf(t - 8 * DAY));
-    await store.saveNovelty(admitRun(byBar, log, NOVELTY.runBudget, new Date(t).toISOString()));
+    const admitted = admitRun(byBar, log, Math.max(0, NOVELTY.runBudget - pushed), new Date(t).toISOString());
+    // Journal first, then progress: a call killed in between re-checks its coins and admit() dedupes them.
+    await store.saveNovelty(admitted);
+    r.journalled = admitted.length;
+    r.pushed = admitted.filter((e) => e.pushed).length;
+    pushed += r.pushed;
+    r.remaining = u.filter((c) => missing(c.coin)).length;
+    await store.saveNoveltyProgress({ pass: bars[0]!, checked: Object.fromEntries([...checked].map(([b, s]) => [b, [...s].sort()])), pushed, cursor: r.remaining ? cursor : null, at: new Date(t).toISOString() });
   }
 
-  async function tick() {
+  /** One call: detection over the window (bounded by opts.deadline), then delivery retries and retention. */
+  async function run(opts: NoveltyRunOpts = {}): Promise<NoveltyRunReport> {
     const t = now();
     const newest = Date.parse(barOf(t - DAY)); // the newest closed UTC day
     const bars = Array.from({ length: NOVELTY.retryDays }, (_, k) => barOf(newest - k * DAY));
-    for (const k of checked.keys()) if (!bars.includes(k)) checked.delete(k);
-    await detect(bars, t);
+    const r: NoveltyRunReport = { pass: bars[0]!, universe: 0, checked: 0, remaining: 0, done: false, stopped: false, journalled: 0, pushed: 0, delivered: 0 };
+    await detect(bars, t, opts, r);
+    r.done = r.remaining === 0;
     // Deliver (and retry for 3 days) pushed entries no channel has taken.
     for (const e of pendingNovel(await store.listNovelty(barOf(t - 4 * DAY)), t)) {
       const channels = await deps.notify(e);
-      if (channels.length) await store.saveNovelty([{ ...e, notified: [...e.notified, { at: new Date(t).toISOString(), channels }] }]);
+      if (channels.length) {
+        await store.saveNovelty([{ ...e, notified: [...e.notified, { at: new Date(t).toISOString(), channels }] }]);
+        r.delivered++;
+      }
     }
     await store.pruneNovelty(barOf(t - 365 * DAY));
+    return r;
   }
 
-  return { tick, def: { name: "novelty", intervalSec: 3600, run: tick } satisfies LoopDef };
+  const tick = async () => void (await run());
+  return { tick, run, def: { name: "novelty", intervalSec: 3600, run: tick } satisfies LoopDef };
 }

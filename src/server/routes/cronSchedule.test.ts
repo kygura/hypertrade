@@ -11,6 +11,7 @@ process.env.CRON_TOKEN ??= "cron-schedule-test-token";
 
 const sql = readFileSync(fileURLToPath(new URL("../../../db/cron/schedule.sql", import.meta.url)), "utf8");
 const code = sql.replace(/--[^\n]*/g, "");
+const unschedule = readFileSync(fileURLToPath(new URL("../../../db/cron/unschedule.sql", import.meta.url)), "utf8").replace(/--[^\n]*/g, "");
 
 type Job = { name: string; expr: string; path?: string };
 
@@ -51,6 +52,24 @@ describe("db/cron/schedule.sql", () => {
   test("parses the job list", () => {
     expect(httpJobs.length).toBeGreaterThanOrEqual(10);
     expect(literalJobs.map((j) => j.name)).toContain("hypertrade-cleanup");
+  });
+
+  test("the novelty pass is scheduled, and unschedule.sql turns off every hypertrade-* job", () => {
+    expect(httpJobs.find((j) => j.name === "hypertrade-novelty")?.path).toBe("/api/cron/novelty");
+    expect(unschedule).toMatch(/cron\.unschedule\(jobname\) from cron\.job where jobname like 'hypertrade-%'/);
+  });
+
+  test("the cron token stays in Vault and the pg_net header", () => {
+    // The job command names only job and path (cron.job.command and job_run_details keep it).
+    expect(code).toMatch(/cron\.schedule\(j\.name, j\.expr, format\('select ops\.call_cron\(%L, %L\)', j\.name, j\.path\)\)/);
+    const helper = code.slice(code.indexOf("create or replace function ops.call_cron"), code.indexOf("create or replace function ops.cron_cleanup"));
+    const uses = [...helper.matchAll(/(?<![-\w])token\b/g)].map((m) => helper.slice(Math.max(0, m.index! - 40), m.index! + 10).replace(/\s+/g, " "));
+    expect(uses.length).toBe(4); // declared, read from Vault, checked non-empty, sent as the header
+    expect(uses.at(-1)).toContain("'x-cron-token', token");
+    expect(helper).not.toMatch(/raise[^;]*[,(|]\s*token\b/); // no error message formats the token
+    const view = code.slice(code.indexOf("create or replace view ops.cron_status"), code.indexOf("from cron.job j"));
+    expect(view).not.toMatch(/headers/);
+    expect(code).toMatch(/the cron token appears in/);
   });
 
   test("job names are unique and prefixed", () => {

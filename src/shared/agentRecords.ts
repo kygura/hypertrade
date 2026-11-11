@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AssetSchema } from "./intel.js";
+import { AssetSchema, HttpsUrlSchema } from "./intel.js";
 
 // Agent watch contract (docs/SPEC.md § Moves): the daily triage queue and the records an investigation agent
 // writes. Code computes every number in `inputs` and `grade`; the model proposes `claim`, `layer`, `direction`
@@ -64,7 +64,8 @@ export const AgentRecordSchema = z.object({
   id: z.string().min(1),
   coin: AssetSchema,
   createdAt: Iso,
-  trigger: z.enum(["triage", "manual"]),
+  /** `routine`: proposed by the owner's scheduled session over POST /api/moves/:coin/proposal; code did the rest. */
+  trigger: z.enum(["triage", "manual", "routine"]),
   /** Code-written snapshot of what the agent was shown. */
   inputs: z.object({
     window: MoveWindowSchema,
@@ -92,6 +93,31 @@ export const AgentRecordSchema = z.object({
   error: z.string().max(300).nullable().optional(),
 });
 export type AgentRecord = z.infer<typeof AgentRecordSchema>;
+
+/**
+ * POST /api/moves/:coin/proposal body: only what a model may propose. Code stamps the inputs, checks every number and
+ * the falsifier, marks sources unobserved and stores the record. `claim: ""` means no public cause was found (stored as
+ * `no_cause`, never graded). `horizonHours` picks the moves window the record is built on (4h, 24h or 72h).
+ */
+export const AgentProposalSchema = z
+  .object({
+    claim: z.string().max(400),
+    layer: AgentLayerSchema,
+    direction: z.enum(["long", "short"]).nullable(),
+    assets: z.array(AssetSchema).max(8).default([]),
+    horizonHours: z.union([z.literal(4), z.literal(24), z.literal(72)]).default(24),
+    falsifier: z.object({ level: Pos, side: z.enum(["below", "above"]), text: z.string().max(200) }).strict().nullable().default(null),
+    sources: z.array(z.object({ url: HttpsUrlSchema, title: z.string().max(300), ts: Iso.nullable().optional() }).strict()).max(8).default([]),
+  })
+  .strict()
+  .superRefine((p, ctx) => {
+    if (!p.falsifier) return;
+    const want = p.direction === "long" ? "below" : p.direction === "short" ? "above" : null;
+    if (want === null) ctx.addIssue({ code: "custom", path: ["falsifier"], message: "a falsifier needs a direction" });
+    else if (p.falsifier.side !== want) ctx.addIssue({ code: "custom", path: ["falsifier", "side"], message: `a ${p.direction} is falsified ${want} its level` });
+  });
+export type AgentProposal = z.infer<typeof AgentProposalSchema>;
+export type AgentProposalInput = z.input<typeof AgentProposalSchema>;
 
 export const TriageItemSchema = z.object({
   id: z.string().min(1),

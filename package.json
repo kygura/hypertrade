@@ -13,6 +13,8 @@
     "tui": "bun run --cwd tui start",
     "routine": "bun run scripts/routine.ts",
     "moves": "bun run scripts/moves.ts",
+    "moves:triage": "bun run scripts/moves-routine.ts triage",
+    "moves:propose": "bun run scripts/moves-routine.ts propose",
     "radar": "bun run scripts/radar.ts",
     "signals:collect": "bun run scripts/signals.ts collect",
     "signals:notify": "bun run scripts/signals.ts notify",

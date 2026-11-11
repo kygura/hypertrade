@@ -247,6 +247,13 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((out["novelty.all"] as NoveltyEntry[])[1]!.notified).toEqual([{ at: t(1), channels: ["telegram"] }]);
   expect((await s.listNovelty("2026-01-02")).length).toBe(2);
   expect(await s.pruneNovelty("2026-01-02")).toBe(1);
+
+  // novelty pass progress: one row, replaced each save
+  expect(await s.loadNoveltyProgress()).toBeNull();
+  await s.saveNoveltyProgress({ pass: "2026-01-02", checked: { "2026-01-02": ["BTC"] }, pushed: 0, cursor: "BTC", at: t(1) });
+  await s.saveNoveltyProgress({ pass: "2026-01-02", checked: { "2026-01-02": ["BTC", "ETH"], "2026-01-01": [] }, pushed: 1, cursor: null, at: t(2) });
+  put("novelty.progress", await s.loadNoveltyProgress());
+  expect(out["novelty.progress"]).toEqual({ pass: "2026-01-02", checked: { "2026-01-02": ["BTC", "ETH"], "2026-01-01": [] }, pushed: 1, cursor: null, at: t(2) });
   expect((await s.listNovelty("2026-01-01")).length).toBe(2);
 
   // near-miss row: empty before the first scan, then replaced wholesale

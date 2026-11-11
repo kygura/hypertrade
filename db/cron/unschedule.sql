@@ -3,6 +3,8 @@
 -- To turn off one job instead: select cron.unschedule('hypertrade-desk-tick');
 -- (re-running schedule.sql brings it back unless its switch there is off).
 
+-- Every job is named hypertrade-*: collect, backfill, platform-tick, moves, moves-agent, desk-tick, novelty, the intel
+-- jobs, lab-collect and cleanup (src/server/routes/cronSchedule.test.ts checks the prefix).
 select cron.unschedule(jobname) from cron.job where jobname like 'hypertrade-%';
 
 -- Optional, to remove the helper, the call log and the status view too. The Vault secrets and

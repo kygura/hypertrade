@@ -27,6 +27,7 @@ export function queueResponse(over: Partial<QueueResponse> = {}): QueueResponse 
     asOf: '2026-11-11T14:20:00.000Z', day: DAY, cap: 8, overCap: 0,
     sources: { moves: ok(2), opportunity: ok(1), radar: ok(0) },
     agentRuns: 2, agentCap: 6, agentBlockedReason: null, watched: 0,
+    freshness: { movesRun: { at: '2026-11-11T14:03:00.000Z', stale: false }, triage: { at: '2026-11-11T14:07:00.000Z', stale: false } },
     items: [],
     ...over,
   })

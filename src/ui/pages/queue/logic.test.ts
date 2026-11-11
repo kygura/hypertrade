@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { record } from '../moves/fixtures'
 import { item, NOW, queueResponse, setupPart } from './fixtures'
-import { agentLine, ageText, defaultSelection, directionOf, emptyLine, headerLine, partLabel, partsLabel, recordChip, sourceChips, sourceProblemLine, splitItems } from './logic'
+import { agentLine, ageText, defaultSelection, directionOf, emptyLine, headerLine, partLabel, partsLabel, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
 
 describe('queue logic', () => {
   test('headerLine: listed of cap, over cap only when some wait', () => {
@@ -18,6 +18,14 @@ describe('queue logic', () => {
     ])
     expect(sourceProblemLine(q)).toBe('RADAR off: sign in required')
     expect(sourceProblemLine(queueResponse())).toBeNull()
+  })
+
+  test('staleLine: only the stale inputs, aged to now; nothing when fresh or not stored', () => {
+    expect(staleLine(queueResponse(), NOW)).toBeNull()
+    expect(staleLine(queueResponse({ freshness: { movesRun: null, triage: null } }), NOW)).toBeNull()
+    const old = { movesRun: { at: '2026-11-11T11:10:00.000Z', stale: true }, triage: { at: '2026-11-11T13:40:00.000Z', stale: true } }
+    expect(staleLine(queueResponse({ freshness: old }), NOW)).toBe('moves run 3h old · triage 40m old')
+    expect(staleLine(queueResponse({ freshness: { ...old, movesRun: { at: '2026-11-11T14:03:00.000Z', stale: false } } }), NOW)).toBe('triage 40m old')
   })
 
   test('labels: MOVES/SETUP/RADAR, the parts joined, one side or mixed or a dash', () => {

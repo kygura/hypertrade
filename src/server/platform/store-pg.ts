@@ -31,6 +31,7 @@ import {
   type PositionChange,
   type ScanSnapshot,
   type TriageScan,
+  type NoveltyProgress,
 } from "./store.js";
 
 /**
@@ -328,6 +329,20 @@ export class PgPlatformStore implements PlatformStore {
 
   async pruneNovelty(beforeBar: string) {
     return (await this.db.query(`delete from platform_novelty where bar_date < $1 returning 1`, [beforeBar])).length;
+  }
+
+  async saveNoveltyProgress(p: NoveltyProgress) {
+    const row = { ...p, at: iso(p.at) };
+    await this.db.query(
+      `insert into sync_state (coin, series, synced_at, ext) values ('_platform', 'novelty-progress', $1::timestamptz, $2::text::jsonb)
+       on conflict (coin, series) do update set synced_at = excluded.synced_at, ext = excluded.ext`,
+      [row.at, J(row)],
+    );
+  }
+
+  async loadNoveltyProgress() {
+    const [r] = await this.db.query<any>(`select ext from sync_state where coin = '_platform' and series = 'novelty-progress'`);
+    return r ? (r.ext as NoveltyProgress) : null;
   }
 
   async saveNearMisses(ts: string, items: NearMiss[]) {

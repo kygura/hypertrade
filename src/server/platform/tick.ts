@@ -9,7 +9,7 @@ import { PgPlatformStore } from "./store-pg.js";
 
 // One platform tick without an always-on server: scanner -> novelty -> outcomes -> prune, in that order. Pure
 // orchestration: store, clock, HL info and logger are injected. Callers: scripts/platform-tick.ts (all four steps,
-// GitHub Actions and the routine) and POST /api/cron/platform-tick (routes/cronPlatform.ts: novelty excluded, deadline).
+// GitHub Actions and the routine) and POST /api/cron/platform-tick (routes/cronPlatform.ts: novelty excluded, deadline; POST /api/cron/novelty runs it).
 // Each tick builds a fresh scanner, so its ring comes from stored scan_snapshots (+ seedFrom) and one 5-min snapshot
 // row per live coin is written per tick: ticks every 15 min give the features their one point per 15 min.
 
@@ -160,9 +160,18 @@ export function pgTickDeps(): PlatformTickDeps {
       const [r] = await sql()`select px from desk_paper_fills where proposal_id = ${id} order by ts asc limit 1`;
       return r ? Number(r.px) : null;
     },
-    novelty: ({ store, nearMiss }) => {
-      const alerts = createAlerts({ store, notifier: createNotifier(), wsAgeSec: () => null });
-      return createNoveltyLoop({ store, notify: alerts.novel, nearMiss });
-    },
+    novelty: pgNovelty,
   };
+}
+
+/** sync_state lease row (coin '_platform', series 'novelty') of POST /api/cron/novelty: its own, so it never blocks the tick. */
+export const noveltyLease = {
+  acquire: (holder: string, ttlMs: number) => acquireLease("_platform", "novelty", holder, ttlMs),
+  release: (holder: string) => releaseLease("_platform", "novelty", holder),
+};
+
+/** The novelty pass over a store, pushing NOVEL alerts: the tick's novelty step and the HTTP job build the same one. */
+export function pgNovelty({ store, nearMiss }: { store: PlatformStore; nearMiss?: (coin: string) => { setupKind: string } | null }) {
+  const alerts = createAlerts({ store, notifier: createNotifier(), wsAgeSec: () => null });
+  return createNoveltyLoop({ store, notify: alerts.novel, nearMiss });
 }

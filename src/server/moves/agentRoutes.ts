@@ -1,12 +1,15 @@
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import {
+  AgentProposalSchema,
   AgentRecordSchema,
   AgentRecordsResponseSchema,
   AGENT_RECORD_STATUSES,
   AgentStatsResponseSchema,
+  MOVE_WINDOWS,
   MoveWindowSchema,
   TriageItemSchema,
+  WINDOW_HOURS,
   TriageResponseSchema,
   type AgentRecord,
   type TriageResponse,
@@ -22,7 +25,7 @@ import { PgPlatformStore } from "../platform/store-pg.js";
 import { getCtxs } from "../routes/hl.js";
 import { MemoryLlmCache } from "../routine/llm.js";
 import { invalid } from "../routes/intel/http.js";
-import { agentBlockedReason, investigate, NO_PROVIDER, NO_WEB_SEARCH, type AgentDeps } from "./agent.js";
+import { agentBlockedReason, investigate, NO_PROVIDER, NO_WEB_SEARCH, recordProposal, type AgentDeps } from "./agent.js";
 import { agentStats } from "./agentGrade.js";
 import { latestTriageScan, linkTriage, type TriageScan } from "./agentLoop.js";
 import { readTriageScan, triageNote } from "./stored.js";
@@ -37,6 +40,11 @@ export { agentBlockedReason };
 //   GET  /records/stats          → AgentStatsResponse: n, clusters, mean vs BTC and hit rate (null under 5 clusters)
 //   POST /triage/:id/dismiss     → { item }: hides it for the day; it still counts against the budget
 //   POST /:coin/investigate?window= → AgentRecord: one LLM run. 409 one in flight · 429 cap reached · 503 no provider
+//   POST /:coin/proposal         → AgentRecord: the owner's routine proposes (AgentProposalSchema), code builds, vets and
+//                                  stores the record (trigger "routine") and links today's triage item. The one write the
+//                                  LAB_API_TOKEN bearer reaches (auth.ts). 400 bad body · 404 no item today · 409 item
+//                                  dismissed, already has a record or a run in flight · 422 every claim sentence rejected
+//                                  · 429 cap reached (nothing stored) · 503 no store, moves data or BTC mark
 // Every route reads and writes the platform store, so they work on Vercel with a database: the triage pass is the one
 // stored by the moves-agent job or loop (stored.ts), its staleness stated in `reason`. Without a store the triage
 // answer is `unavailable` and the POSTs 503. Nothing here approves an opportunity or places an order.
@@ -146,6 +154,37 @@ export function moveAgentRoutes(deps: MoveAgentDeps): Hono {
       if (record.status === "capped") return c.json(body, 429);
       if (record.error === NO_PROVIDER || record.error === NO_WEB_SEARCH) return c.json(body, 503);
       return c.json(body);
+    })
+    .post("/:coin/proposal", async (c) => {
+      const coin = AssetSchema.safeParse(c.req.param("coin"));
+      if (!coin.success) return invalid(c, coin.error, "coin");
+      const parsed = AgentProposalSchema.safeParse(await c.req.json().catch(() => undefined));
+      if (!parsed.success) return invalid(c, parsed.error, "body");
+      const proposal = parsed.data;
+      const off = deps.unavailable();
+      const store = deps.store();
+      if (off || !store) return unavailable(c, off ?? NO_STORE);
+      const agent = deps.agent();
+      if (agent.inflight.has(coin.data)) return c.json({ error: `an investigation of ${coin.data} is in flight` }, 409);
+      agent.inflight.add(coin.data);
+      try {
+        const day = utcDay(deps.now());
+        const item = (await store.listTriage(day)).find((x) => x.coin === coin.data);
+        if (!item) return c.json({ error: `no triage item for ${coin.data} on ${day}` }, 404);
+        if (item.dismissedAt) return c.json({ error: `the ${coin.data} triage item was dismissed at ${item.dismissedAt}` }, 409);
+        if (item.recordId) return c.json({ error: `the ${coin.data} triage item already has record ${item.recordId}` }, 409);
+        const window = MOVE_WINDOWS.find((w) => WINDOW_HOURS[w] === proposal.horizonHours)!;
+        const detail = await deps.moves().coin(coin.data, window);
+        if (detail.state !== "ok" || !(detail.mark > 0)) return unavailable(c, detail.reason ?? `no moves data for ${coin.data}`);
+        const btc = await deps.mark("BTC");
+        if (btc == null || !(btc > 0)) return unavailable(c, "no BTC mark (the grading baseline)");
+        const res = await recordProposal({ ...agent, store }, { detail, btcMark: btc, proposal });
+        if (!res.ok) return c.json({ error: res.error }, res.status);
+        await linkTriage(store, day, coin.data, res.record.id);
+        return c.json(AgentRecordSchema.parse(res.record));
+      } finally {
+        agent.inflight.delete(coin.data);
+      }
     });
 }
 

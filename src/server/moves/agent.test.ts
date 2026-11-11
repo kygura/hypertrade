@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { AgentRecordSchema } from "../../shared/agentRecords.js";
+import { AgentProposalSchema, AgentRecordSchema, type AgentProposalInput, type AgentRecord } from "../../shared/agentRecords.js";
 import { EmitProvider, llmDeps } from "../intel/fixtures/emit-provider.js";
 import type { LlmDeps } from "../intel/llm.js";
 import type { Citation, Conversation, LLMProvider, StepResult } from "../llm/provider.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
 import { detail, iso, record, T0 } from "./agent.fixture.js";
-import { agentPayload, checkFalsifier, investigate, NO_PROVIDER, NO_WEB_SEARCH, type AgentDeps, type AgentOutput } from "./agent.js";
+import { agentPayload, checkFalsifier, investigate, NO_PROVIDER, NO_WEB_SEARCH, recordProposal, type AgentDeps, type AgentOutput } from "./agent.js";
 
 const URL_A = "https://news.example.com/sol-unlock";
 const URL_B = "https://blog.example.org/other";
@@ -171,9 +171,75 @@ describe("investigate", () => {
   });
 });
 
+describe("recordProposal (the routine's path)", () => {
+  const claim = "The 6.2% residual came with no news hour, which fits a supply unlock hitting the book.";
+  const text = "A trade below 9.5 means the unlock was absorbed.";
+  const proposal = (over: Partial<AgentProposalInput> = {}) =>
+    AgentProposalSchema.parse({
+      claim, layer: "forced_flow", direction: "long", assets: ["SOL", "JUP"], horizonHours: 24,
+      falsifier: { level: 9.5, side: "below", text },
+      sources: [{ url: URL_A, ts: "2026-11-10T09:00:00Z", title: "SOL unlock" }, { url: URL_B, title: "Other" }],
+      ...over,
+    });
+  const propose = (deps: AgentDeps, p = proposal(), d = detail()) => recordProposal(deps, { detail: d, btcMark: 60000, proposal: p });
+  const stored = async (deps: AgentDeps, p = proposal()) => {
+    const r = await propose(deps, p);
+    if (!r.ok) throw new Error(r.error);
+    return r.record;
+  };
+
+  test("parity: one proposal through investigate() and the routine gives the same record but trigger, model and observed", async () => {
+    const p = proposal();
+    const viaProvider = (await run(setup(new SearchProvider(() => out({ claim, assets: p.assets, falsifierLevel: 9.5, falsifierText: text, sources: [
+      { url: URL_A, ts: "2026-11-10T09:00:00Z", title: "SOL unlock" }, { url: URL_B, ts: null, title: "Other" },
+    ] }))).deps))!;
+    const viaRoutine = await stored(setup(null).deps, p);
+    const strip = (r: AgentRecord) => ({ ...r, trigger: null, model: null, sources: r.sources.map(({ observed: _, ...s }) => s) });
+    expect(strip(viaRoutine)).toEqual(strip(viaProvider));
+    expect(viaProvider).toMatchObject({ status: "open", trigger: "manual", model: "scripted-search", dropped: 0, falsifier: { level: 9.5, side: "below", text } });
+    expect(viaRoutine).toMatchObject({ status: "open", trigger: "routine", model: "routine", assets: ["SOL", "JUP"] });
+    expect(viaProvider.sources.map((s) => s.observed)).toEqual([true, false]);
+    expect(viaRoutine.sources.map((s) => s.observed)).toEqual([false, false]); // the server saw no provider citation
+    expect(AgentRecordSchema.parse(viaRoutine)).toEqual(viaRoutine);
+  });
+
+  test("code stamps the inputs; an unbacked number or advice is dropped; a source's own numbers are not evidence here", async () => {
+    const { store, deps } = setup(null);
+    const r = await stored(deps, proposal({ claim: `${claim} Open interest jumped 47%. Buy it.` }));
+    expect(r).toMatchObject({ claim, dropped: 2, inputs: { window: "24h", residualPct: 6.2, residualZ: 3.1, totalPct: 7.2, markAtCreate: 10, btcAtCreate: 60000, asOf: iso(T0) }, horizonHours: 24, promptVersion: "moves-agent-v1" });
+    expect(await store.listAgentRecords({ limit: 5 })).toEqual([r]);
+    expect(await store.agentRunsSince(iso(T0 - 1))).toBe(1); // a routine record counts against MOVES_AGENT_DAILY
+  });
+
+  test("no public cause is stored as no_cause, never graded; a falsifier outside the band is dropped", async () => {
+    expect(await stored(setup(null).deps, proposal({ claim: "", layer: "unexplained", direction: null, falsifier: null }))).toMatchObject({ status: "no_cause", claim: "", direction: null, falsifier: null, error: null });
+    expect(await stored(setup(null).deps, proposal({ falsifier: { level: 8, side: "below", text } }))).toMatchObject({ status: "open", falsifier: null });
+  });
+
+  test("fails closed and writes nothing at the cap (routine runs count) or when every claim sentence is rejected", async () => {
+    const { store, deps } = setup(null, { dailyCap: 1 });
+    await store.insertAgentRecord(record({ id: "earlier", trigger: "routine", model: "routine", createdAt: iso(T0 - 3_600_000) }));
+    expect(await propose(deps)).toEqual({ ok: false, status: 429, error: "moves agent cap reached (1/1 today)" });
+    const s2 = setup(null);
+    const r = await propose(s2.deps, proposal({ claim: "Open interest jumped 47%. Sell now." }));
+    expect(r).toMatchObject({ ok: false, status: 422 });
+    expect(await s2.store.listAgentRecords({ limit: 5 })).toEqual([]);
+    expect(await store.listAgentRecords({ limit: 5 })).toHaveLength(1);
+  });
+
+  test("the proposal schema takes only what a model may propose", () => {
+    for (const bad of [
+      { inputs: { markAtCreate: 1 } }, { status: "graded" }, { model: "x" }, { trigger: "manual" }, { grade: null },
+      { falsifier: { level: 11, side: "above", text } }, // a long is falsified below its level
+      { direction: null }, // a falsifier needs a direction
+      { horizonHours: 12 }, { sources: [{ url: "http://insecure.example.com", title: "x" }] }, { sources: [{ url: URL_A, title: "x", observed: true }] },
+    ]) expect(AgentProposalSchema.safeParse({ ...proposal(), ...bad }).success).toBe(false);
+  });
+});
+
 describe("the agent cannot reach approval, orders or the desk", () => {
   test("no agent-watch module imports approve, order, desk or platform route code", () => {
-    for (const f of ["agent.ts", "agentGrade.ts", "agentLoop.ts", "agentRoutes.ts", "jobs.ts", "stored.ts", "triage.ts"]) {
+    for (const f of ["agent.ts", "agentGrade.ts", "agentLoop.ts", "agentRoutes.ts", "jobs.ts", "stored.ts", "triage.ts", "routineCli.ts", "../../../scripts/moves-routine.ts"]) {
       const src = readFileSync(new URL(`./${f}`, import.meta.url), "utf8");
       const imports = [...src.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)].map((m) => m[1]!);
       expect(imports.length).toBeGreaterThan(0);
@@ -187,5 +253,8 @@ describe("the agent cannot reach approval, orders or the desk", () => {
     const spy = new Proxy(deps.store, { get: (t, k) => (typeof Reflect.get(t, k) === "function" && used.add(String(k)), Reflect.get(t, k)) });
     await run({ ...deps, store: spy });
     expect([...used].sort()).toEqual(["agentRunsSince", "insertAgentRecord", "updateAgentRecord"]);
+    used.clear();
+    await recordProposal({ ...deps, store: spy }, { detail: detail("WIF"), btcMark: 60000, proposal: AgentProposalSchema.parse({ claim: "", layer: "unexplained", direction: null }) });
+    expect([...used].sort()).toEqual(["agentRunsSince", "insertAgentRecord"]);
   });
 });

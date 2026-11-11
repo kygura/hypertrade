@@ -85,6 +85,10 @@ export const QueueSourceStatusSchema = z.object({
 });
 export type QueueSourceStatus = z.infer<typeof QueueSourceStatusSchema>;
 
+/** When a moves-pipeline input was produced, and whether it is past twice its job's interval. */
+export const QueueFreshnessSchema = z.object({ at: Iso, stale: z.boolean() });
+export type QueueFreshness = z.infer<typeof QueueFreshnessSchema>;
+
 export const QueueResponseSchema = z.object({
   asOf: Iso,
   day: Day,
@@ -99,6 +103,12 @@ export const QueueResponseSchema = z.object({
   agentBlockedReason: z.string().nullable(),
   /** Coins scanned in the latest moves run (what /api/moves/triage calls `watched`); 0 when moves is unavailable. */
   watched: Count,
+  /**
+   * How old the moves list is: the stored 24h moves run (computedAt; stale past 2 h, the job is hourly) and the latest
+   * triage pass (at; stale past 30 min, the job runs every 15 min). null when none is stored. The UI states only the
+   * stale ones, as one line in the queue header.
+   */
+  freshness: z.object({ movesRun: QueueFreshnessSchema.nullable(), triage: QueueFreshnessSchema.nullable() }),
   /** Listed items in display order: new, acted, dismissed; then by strength (score, agreeing sources, earlier firstAt, coin). */
   items: z.array(QueueItemSchema),
 });

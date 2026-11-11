@@ -111,6 +111,71 @@ describe("POST /:coin/investigate", () => {
   });
 });
 
+describe("POST /:coin/proposal (the routine)", () => {
+  const body = (over: Record<string, unknown> = {}) => ({
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      claim: "The 6.2% residual came with no news hour.", layer: "narrative", direction: "long", assets: ["SOL"], horizonHours: 24,
+      falsifier: { level: 9.5, side: "below", text: "A trade below 9.5 breaks it." },
+      sources: [{ url: "https://news.example.com/sol", title: "SOL news", ts: "2026-11-10T09:00:00Z" }],
+      ...over,
+    }),
+  });
+  const item = (coin: string, over: Record<string, unknown> = {}) => ({ id: `${day}:${coin}`, day, coin, reason: "x", score: 1, residualZ: 3, surfacedAt: iso(T0), dismissedAt: null, recordId: null, ...over });
+
+  test("code stamps, vets and stores the record (trigger routine, sources unobserved) and links the item; a second is 409", async () => {
+    const windows: string[] = [];
+    const { store, provider, req } = setup({ moves: () => ({ coin: async (c, w) => (windows.push(w), detail(c)) }) });
+    await store.upsertTriageItem(item("SOL"));
+    const res = await req("/SOL/proposal", body());
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r).toMatchObject({
+      coin: "SOL", trigger: "routine", model: "routine", status: "open", layer: "narrative", direction: "long", horizonHours: 24, dropped: 0,
+      inputs: { window: "24h", residualPct: 6.2, residualZ: 3.1, markAtCreate: 10, btcAtCreate: 60000 }, falsifier: { level: 9.5, side: "below" },
+      sources: [{ url: "https://news.example.com/sol", observed: false }],
+    });
+    expect((await store.listTriage(day))[0]!.recordId).toBe(r.id);
+    expect(provider!.prompts).toHaveLength(0); // no provider call
+    const again = await req("/SOL/proposal", body());
+    expect([again.status, (await again.json()).error]).toEqual([409, `the SOL triage item already has record ${r.id}`]);
+    expect(windows).toEqual(["24h"]);
+  });
+
+  test("no_cause is expressible; horizon 72 builds on the 72h window", async () => {
+    const windows: string[] = [];
+    const { store, req } = setup({ moves: () => ({ coin: async (c, w) => (windows.push(w), detail(c, { window: w })) }) });
+    await store.upsertTriageItem(item("SOL"));
+    await store.upsertTriageItem(item("WIF"));
+    const nc = await req("/SOL/proposal", body({ claim: "", layer: "unexplained", direction: null, falsifier: null, sources: [] }));
+    expect(await nc.json()).toMatchObject({ status: "no_cause", claim: "", direction: null, trigger: "routine" });
+    const h72 = await (await req("/WIF/proposal", body({ horizonHours: 72, falsifier: null }))).json();
+    expect([h72.horizonHours, h72.inputs.window, windows]).toEqual([72, "72h", ["24h", "72h"]]);
+  });
+
+  test("refusals: 404 no item today, 409 dismissed or in flight, 400 bad body, 422 rejected claim, 429 cap, 503 no store; nothing stored", async () => {
+    const s = setup({ cap: 1 });
+    expect([(await s.req("/SOL/proposal", body())).status]).toEqual([404]);
+    await s.store.upsertTriageItem(item("WIF", { dismissedAt: iso(T0) }));
+    expect((await s.req("/WIF/proposal", body())).status).toBe(409);
+    await s.store.upsertTriageItem(item("SOL"));
+    s.agent.inflight.add("SOL");
+    expect((await s.req("/SOL/proposal", body())).status).toBe(409);
+    s.agent.inflight.clear();
+    for (const bad of [{ status: "graded" }, { inputs: {} }, { falsifier: { level: 11, side: "above", text: "x" } }, { layer: "vibes" }]) expect((await s.req("/SOL/proposal", body(bad))).status).toBe(400);
+    expect((await s.req("/SOL/proposal", { method: "POST", body: "not json" })).status).toBe(400);
+    const rejected = await s.req("/SOL/proposal", body({ claim: "Open interest jumped 47%. Sell now." }));
+    expect([rejected.status, (await rejected.json()).error]).toEqual([422, expect.stringContaining("failed the number or advice check")]);
+    await s.store.insertAgentRecord(record({ id: "earlier", coin: "JUP", createdAt: iso(T0 - 3_600_000) }));
+    const capped = await s.req("/SOL/proposal", body());
+    expect([capped.status, (await capped.json()).error]).toEqual([429, "moves agent cap reached (1/1 today)"]);
+    expect((await s.store.listAgentRecords({ limit: 10 })).map((r) => r.id)).toEqual(["earlier"]);
+    expect((await s.store.listTriage(day)).every((i) => i.recordId === null)).toBe(true);
+    expect((await setup({ store: () => null }).req("/SOL/proposal", body())).status).toBe(503);
+  });
+});
+
 describe("records, stats and dismiss", () => {
   test("records filter by coin and status; stats carry n; dismiss stamps once", async () => {
     const { store, req } = setup();

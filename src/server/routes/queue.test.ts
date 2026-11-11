@@ -150,4 +150,21 @@ describe("GET /api/queue from the stored triage pass (serverless)", () => {
     const staleRun = QueueResponseSchema.parse(await (await req("/")).json());
     expect(staleRun.sources.moves.reason).toContain("latest moves run is 3.0 h old");
   });
+
+  test("freshness: the stored 24h run and the triage pass with their stale flags, null when not stored", async () => {
+    const { store, req } = setup({ scan: () => store.loadTriageScan() });
+    expect(QueueResponseSchema.parse(await (await req("/")).json()).freshness).toEqual({ movesRun: null, triage: null });
+    const run = (h: number) => ({
+      state: "ok" as const, reason: null, asOf: iso(T0 - h * 3_600_000), computedAt: iso(T0 - h * 3_600_000), window: "24h" as const, progress: null,
+      universe: { coins: 0, dropped: [] }, sectorsAsOf: null, factors: [], layers: Object.fromEntries(["beta", "flow", "attention", "liq", "agents"].map((k) => [k, { state: "ok", reason: null }])) as never, rows: [],
+    });
+    await store.saveMovesRun(run(1));
+    await store.saveTriageScan({ day, at: iso(T0 - 10 * 60_000), state: "ok", reason: null, watched: 38, overBudget: 0 });
+    expect(QueueResponseSchema.parse(await (await req("/")).json()).freshness).toEqual({ movesRun: { at: iso(T0 - 3_600_000), stale: false }, triage: { at: iso(T0 - 10 * 60_000), stale: false } });
+    const old = new MemoryPlatformStore();
+    await old.saveMovesRun(run(3));
+    await old.saveTriageScan({ day, at: iso(T0 - 40 * 60_000), state: "ok", reason: null, watched: 38, overBudget: 0 });
+    const x = setup({ store: () => old, scan: () => old.loadTriageScan() });
+    expect(QueueResponseSchema.parse(await (await x.req("/")).json()).freshness).toEqual({ movesRun: { at: iso(T0 - 3 * 3_600_000), stale: true }, triage: { at: iso(T0 - 40 * 60_000), stale: true } });
+  });
 });

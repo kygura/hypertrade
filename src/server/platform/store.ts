@@ -171,6 +171,10 @@ export interface PlatformStore {
   listNovelty(sinceBar: string): Promise<NoveltyEntry[]>;
   /** Retention: deletes entries with barDate < beforeBar. Returns rows deleted. */
   pruneNovelty(beforeBar: string): Promise<number>;
+  /** Novelty pass progress (one row in sync_state, coin '_platform', series 'novelty-progress'): lets a bounded job resume. */
+  saveNoveltyProgress(p: NoveltyProgress): Promise<void>;
+  /** The row saveNoveltyProgress wrote; null before the first pass. */
+  loadNoveltyProgress(): Promise<NoveltyProgress | null>;
 
   /** Near-misses of the latest completed scan (one row, replaced each call): lets a process without the scanner serve them. */
   saveNearMisses(ts: string, items: NearMiss[]): Promise<void>;
@@ -215,6 +219,19 @@ export interface PlatformStore {
   saveTriageScan(scan: TriageScan): Promise<void>;
   /** The row saveTriageScan wrote; null before the first pass. */
   loadTriageScan(): Promise<TriageScan | null>;
+}
+
+/** Where a novelty pass stands (noveltyLoop.ts): survives a stateless invocation, so the next one resumes. */
+export interface NoveltyProgress {
+  /** The pass: its newest closed bar (YYYY-MM-DD). A new day starts a new pass. */
+  pass: string;
+  /** Coins evaluated (hit or not) per bar of the window. */
+  checked: Record<string, string[]>;
+  /** Pushes admitted in this pass: NOVELTY.runBudget is per pass, however many invocations it takes. */
+  pushed: number;
+  /** The coin the last invocation reached; the next one starts after it. */
+  cursor: string | null;
+  at: string;
 }
 
 /** One triage pass of the moves agent (docs/SPEC.md § Moves M4): what the triage and queue routes report. */

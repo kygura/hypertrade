@@ -41,6 +41,17 @@ describe('QueueView', () => {
     expect(out).not.toContain('aria-label="selected coin"') // no pane on a phone
   })
 
+  test('a stale moves list is one quiet line in the header; a fresh one adds nothing', () => {
+    const fresh = html(props(feed(queueResponse())))
+    expect(fresh).not.toContain('data-stale')
+    expect(fresh).not.toContain(' old')
+    const q = queueResponse({ freshness: { movesRun: { at: '2026-11-11T11:10:00.000Z', stale: true }, triage: { at: '2026-11-11T13:40:00.000Z', stale: true } } })
+    const out = html(props(feed(q)))
+    expect(out.match(/data-stale/g)).toHaveLength(1)
+    expect(out).toMatch(/class="panel-header[^"]*">.*data-stale[^>]*>moves run 3h old · triage 40m old</)
+    expect(out).not.toContain('role="alert"')
+  })
+
   test('empty: one calm line with the watched count, no panels stacked before it', () => {
     const out = html(props(feed(queueResponse({ watched: 38 }))))
     expect(out).toContain('nothing crossed the bar today · 38 coins watched')

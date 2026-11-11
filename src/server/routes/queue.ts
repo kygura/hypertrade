@@ -6,7 +6,7 @@ import type { RadarCall } from "../../shared/radar.js";
 import { isGuest } from "../auth.js";
 import type { AgentDeps } from "../moves/agent.js";
 import { latestTriageScan, type TriageScan } from "../moves/agentLoop.js";
-import { readTriageScan, triageNote } from "../moves/stored.js";
+import { MOVES_STALE_MS, readTriageScan, TRIAGE_STALE_MS, triageNote } from "../moves/stored.js";
 import { agentBlockedReason, agentStore, sharedAgentDeps } from "../moves/agentRoutes.js";
 import { triageBudget, triageId, utcDay, utcDayStart } from "../moves/triage.js";
 import type { PlatformStore, QueueDismissal } from "../platform/store.js";
@@ -68,7 +68,7 @@ export function queueRoutes(d: QueueRouteDeps) {
       const store = d.store();
       const off = d.movesUnavailable();
       const none = <T>(reason: string): Promise<SourceInput<T>> => Promise.resolve({ unavailable: reason });
-      const [triage, opportunities, radar, records, dismissals, runs, scan] = await Promise.all([
+      const [triage, opportunities, radar, records, dismissals, runs, scan, run] = await Promise.all([
         off ? none<TriageItem>(off) : store ? load("triage", () => store.listTriage(day), ms) : none<TriageItem>(NO_STORE),
         store ? load("opportunities", () => d.opportunities(dayStart), ms) : none<Opportunity>(NO_STORE),
         hide ? none<RadarCall>("sign in required") : load("radar", () => d.radar(), ms),
@@ -76,6 +76,8 @@ export function queueRoutes(d: QueueRouteDeps) {
         store ? load<QueueDismissal>("dismissals", () => store.listQueueDismissals(day), ms) : none<QueueDismissal>(NO_STORE),
         store ? bounded(store.agentRunsSince(since), 0, ms, "queue agent runs") : Promise.resolve(0),
         off ? null : bounded(Promise.resolve(d.scan()).catch(() => null), null, ms, "queue triage scan"),
+        // The 24h run is the one the triage pass reads.
+        off || !store ? null : bounded(store.latestMovesRun("24h").catch(() => null), null, ms, "queue moves run"),
       ]);
       const merged = mergeQueue({
         day, now, cap: d.cap, guest: hide, triage, opportunities, radar,
@@ -85,7 +87,9 @@ export function queueRoutes(d: QueueRouteDeps) {
       const blocked = off ?? (store ? await agentBlockedReason(agent, runs) : NO_STORE);
       // The moves source states how fresh its triage pass is (none stored yet, stale, or the pass's own reason).
       const sources = merged.sources.moves.state === "ok" ? { ...merged.sources, moves: { ...merged.sources.moves, reason: triageNote(scan, now.getTime()) } } : merged.sources;
-      const body: QueueResponse = { ...merged, sources, agentRuns: runs, agentCap: agent.dailyCap, agentBlockedReason: blocked, watched: scan?.watched ?? 0 };
+      const fresh = (at: string | undefined, staleMs: number) => (at ? { at, stale: now.getTime() - Date.parse(at) > staleMs } : null);
+      const freshness = { movesRun: fresh(run?.computedAt, MOVES_STALE_MS), triage: fresh(scan?.at, TRIAGE_STALE_MS) };
+      const body: QueueResponse = { ...merged, sources, agentRuns: runs, agentCap: agent.dailyCap, agentBlockedReason: blocked, watched: scan?.watched ?? 0, freshness };
       return c.json(QueueResponseSchema.parse(body));
     })
     .post("/:id/dismiss", async (c) => {

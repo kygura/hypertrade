@@ -76,7 +76,7 @@ export interface MergeInput {
   dismissals: QueueDismissal[];
 }
 
-export type MergedQueue = Omit<QueueResponse, "agentRuns" | "agentCap" | "agentBlockedReason" | "watched">;
+export type MergedQueue = Omit<QueueResponse, "agentRuns" | "agentCap" | "agentBlockedReason" | "watched" | "freshness">;
 
 type Candidate = { coin: string; part: QueuePart; rank: number };
 
@@ -152,7 +152,7 @@ export function mergeQueue(q: MergeInput): MergedQueue {
   const slotted = [...items].sort(strength);
   const listed = slotted.slice(0, cap).sort((x, y) => STATE_ORDER[x.state] - STATE_ORDER[y.state] || strength(x, y));
 
-  return QueueResponseSchema.omit({ agentRuns: true, agentCap: true, agentBlockedReason: true, watched: true }).parse({
+  return QueueResponseSchema.omit({ agentRuns: true, agentCap: true, agentBlockedReason: true, watched: true, freshness: true }).parse({
     asOf: q.now.toISOString(),
     day: q.day,
     cap,

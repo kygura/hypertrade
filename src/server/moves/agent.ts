@@ -4,6 +4,7 @@ import {
   AgentSourceSchema,
   WINDOW_HOURS,
   type AgentFalsifier,
+  type AgentProposal,
   type AgentRecord,
   type AgentSource,
 } from "../../shared/agentRecords.js";
@@ -22,6 +23,8 @@ import { utcDayStart } from "./triage.js";
 // record with status failed/capped and no content. The record is written before the call returns.
 // Deliberately narrow: this module reads moves numbers and writes agent records. It has no path to approve an
 // opportunity, place an order or reach the desk (agent.test.ts checks its imports).
+// The owner's scheduled routine is the other path in (recordProposal): it researches and proposes over HTTPS, and the
+// same buildAgentRecord stamps and vets its record, with no provider call here.
 
 export const AGENT_PROMPT_VERSION = "moves-agent-v1";
 /** The falsifier level must sit this many σ24h from the mark, on the side that contradicts the direction. */
@@ -32,6 +35,9 @@ export const INFLIGHT_STALE_MS = RESEARCH_DEADLINE_MS + 5 * 60_000;
 export const NO_PROVIDER = "no LLM provider configured";
 export const NO_WEB_SEARCH = "provider has no web search";
 export const capReason = (runs: number, cap: number) => `moves agent cap reached (${runs}/${cap} today)`;
+export const REJECTED_CLAIM = "every claim sentence failed the number or advice check";
+/** `model` of a record the owner's scheduled routine proposed (trigger "routine"): no provider call was made here. */
+export const ROUTINE_MODEL = "routine";
 
 const OutputSchema = z.object({
   claim: z.string().max(400),
@@ -212,6 +218,58 @@ export async function agentBlockedReason(agent: Omit<AgentDeps, "store">, runs: 
 /** An open record whose call has not finished (written before the call, claim filled after). */
 export const isInFlight = (r: Pick<AgentRecord, "status" | "claim" | "grade" | "model">) => r.status === "open" && r.claim === "" && r.grade === null && r.model !== null;
 
+/** The headlines a claim is checked against (and the provider is shown, as untrusted text). */
+const agentHeadlines = (d: MoveDetail) => d.headlines.slice(0, 15).map((h) => h.title);
+
+export interface RecordBase {
+  id: string;
+  now: Date;
+  detail: MoveDetail;
+  /** BTC mark now: the record's grading baseline. */
+  btcMark: number;
+  trigger: AgentRecord["trigger"];
+  model: string | null;
+}
+
+/**
+ * The one record builder for both paths (investigate() and the routine's POST /:coin/proposal): code stamps the
+ * inputs (window, residual, z, total, marks, asOf) and the horizon; a proposal is vetted by vetOutput against the
+ * payload and headlines. Without a proposal: the empty open record written before a provider call. Pure.
+ */
+export function buildAgentRecord(b: RecordBase, proposal?: { out: AgentOutput; seen: Seen }): AgentRecord {
+  const d = b.detail;
+  const a = d.attribution;
+  const base: AgentRecord = {
+    id: b.id,
+    coin: d.coin,
+    createdAt: b.now.toISOString(),
+    trigger: b.trigger,
+    inputs: { window: d.window, residualPct: a?.residualPct ?? null, residualZ: a?.residualZ ?? null, totalPct: a?.totalPct ?? null, markAtCreate: d.mark, btcAtCreate: b.btcMark, asOf: d.asOf ?? b.now.toISOString() },
+    claim: "",
+    assets: [d.coin],
+    direction: null,
+    horizonHours: WINDOW_HOURS[d.window],
+    layer: "unexplained",
+    falsifier: null,
+    sources: [],
+    status: "open",
+    grade: null,
+    model: b.model,
+    promptVersion: AGENT_PROMPT_VERSION,
+    dropped: 0,
+    error: null,
+  };
+  if (!proposal) return base;
+  const { patch, rejectedClaim } = vetOutput(proposal.out, proposal.seen, [agentPayload(d, b.btcMark), agentHeadlines(d)], d);
+  return { ...base, ...patch, error: rejectedClaim ? REJECTED_CLAIM : null };
+}
+
+/** The content fields buildAgentRecord vets: what investigate() writes over its open record. */
+const contentFields = (r: AgentRecord) => {
+  const { claim, layer, direction, assets, falsifier, sources, status, dropped, error, model } = r;
+  return { claim, layer, direction, assets, falsifier, sources, status, dropped, error, model };
+};
+
 /**
  * Runs one investigation for `input.detail.coin` and returns the stored record, or null when one is already in
  * flight for the coin in this process. Never throws once the first record is written: failures are stored as
@@ -223,27 +281,8 @@ export async function investigate(deps: AgentDeps, input: InvestigateInput): Pro
   deps.inflight.add(d.coin);
   try {
     const now = deps.now();
-    const a = d.attribution;
-    const base: AgentRecord = {
-      id: deps.newId?.() ?? crypto.randomUUID(),
-      coin: d.coin,
-      createdAt: now.toISOString(),
-      trigger: input.trigger,
-      inputs: { window: d.window, residualPct: a?.residualPct ?? null, residualZ: a?.residualZ ?? null, totalPct: a?.totalPct ?? null, markAtCreate: d.mark, btcAtCreate: input.btcMark, asOf: d.asOf ?? now.toISOString() },
-      claim: "",
-      assets: [d.coin],
-      direction: null,
-      horizonHours: WINDOW_HOURS[d.window],
-      layer: "unexplained",
-      falsifier: null,
-      sources: [],
-      status: "open",
-      grade: null,
-      model: null,
-      promptVersion: AGENT_PROMPT_VERSION,
-      dropped: 0,
-      error: null,
-    };
+    const rb: RecordBase = { id: deps.newId?.() ?? crypto.randomUUID(), now, detail: d, btcMark: input.btcMark, trigger: input.trigger, model: null };
+    const base = buildAgentRecord(rb);
     // The moves cap first, counted from the store (and the calls in flight here), before any provider is touched.
     const runs = (await deps.store.agentRunsSince(utcDayStart(now).toISOString())) + deps.inflight.size - 1;
     if (runs >= deps.dailyCap) return await deps.store.insertAgentRecord({ ...base, status: "capped", error: capReason(runs, deps.dailyCap) });
@@ -257,7 +296,7 @@ export async function investigate(deps: AgentDeps, input: InvestigateInput): Pro
     try {
       const payload = agentPayload(d, input.btcMark);
       const seen: Seen = new Map();
-      const headlines = d.headlines.slice(0, 15).map((h) => h.title);
+      const headlines = agentHeadlines(d);
       const res = await completeStructured({
         tier: "strong",
         system: SYSTEM,
@@ -284,13 +323,48 @@ export async function investigate(deps: AgentDeps, input: InvestigateInput): Pro
         },
       });
       if (!res.ok) return await fail(res.error.startsWith("LLM cap reached") ? "capped" : "failed", res.error);
-      const { patch, rejectedClaim } = vetOutput(res.value, seen, [payload, headlines], d);
-      const error = rejectedClaim ? "every claim sentence failed the number or advice check" : null;
-      return (await deps.store.updateAgentRecord(open.id, { ...patch, error, model: res.trace.model ?? provider.model }, "open")) ?? { ...open, ...patch, error };
+      const fields = contentFields(buildAgentRecord({ ...rb, id: open.id, model: res.trace.model ?? provider.model }, { out: res.value, seen }));
+      return (await deps.store.updateAgentRecord(open.id, fields, "open")) ?? { ...open, ...fields };
     } catch (e) {
       return await fail("failed", e instanceof Error ? e.message : String(e));
     }
   } finally {
     deps.inflight.delete(d.coin);
   }
+}
+
+/** A routine proposal in the provider's output shape, so both paths go through the same vetting. Pure. */
+export function proposalOutput(p: AgentProposal): AgentOutput {
+  return {
+    claim: p.claim,
+    layer: p.layer,
+    direction: p.direction,
+    assets: p.assets,
+    falsifierLevel: p.falsifier?.level ?? null,
+    falsifierText: p.falsifier?.text ?? "",
+    sources: p.sources.map((s) => ({ url: s.url, ts: s.ts ?? null, title: s.title })),
+  };
+}
+
+export type ProposalResult = { ok: true; record: AgentRecord } | { ok: false; status: 422 | 429; error: string };
+
+/**
+ * Stores a record the owner's scheduled routine proposed (trigger "routine", model ROUTINE_MODEL): the session did
+ * the research over HTTPS, code does everything else exactly as for investigate() (buildAgentRecord). No provider saw
+ * a source here, so every source is `observed: false` and a claim's numbers must come from the payload or headlines.
+ * Fails closed and writes nothing at the moves cap (429) or when every claim sentence fails validation (422). The
+ * caller holds the coin's in-flight slot and has checked the triage item.
+ */
+export async function recordProposal(deps: AgentDeps, input: { detail: MoveDetail; btcMark: number; proposal: AgentProposal }): Promise<ProposalResult> {
+  const d = input.detail;
+  const now = deps.now();
+  const others = deps.inflight.size - (deps.inflight.has(d.coin) ? 1 : 0);
+  const runs = (await deps.store.agentRunsSince(utcDayStart(now).toISOString())) + others;
+  if (runs >= deps.dailyCap) return { ok: false, status: 429, error: capReason(runs, deps.dailyCap) };
+  const record = buildAgentRecord(
+    { id: deps.newId?.() ?? crypto.randomUUID(), now, detail: d, btcMark: input.btcMark, trigger: "routine", model: ROUTINE_MODEL },
+    { out: proposalOutput(input.proposal), seen: new Map() },
+  );
+  if (record.status === "failed") return { ok: false, status: 422, error: `${REJECTED_CLAIM} (numbers must come from the move's own facts); nothing stored` };
+  return { ok: true, record: await deps.store.insertAgentRecord(record) };
 }

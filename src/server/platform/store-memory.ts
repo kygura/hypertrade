@@ -33,6 +33,7 @@ import {
   type PositionChange,
   type ScanSnapshot,
   type TriageScan,
+  type NoveltyProgress,
 } from "./store.js";
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -57,6 +58,7 @@ export class MemoryPlatformStore implements PlatformStore {
   queueDismissals = new Map<string, QueueDismissal>();
   movesRuns = new Map<MoveWindow, MovesResponse>();
   triageScan: TriageScan | null = null;
+  noveltyProgress: NoveltyProgress | null = null;
 
   async saveMovesRun(run: MovesResponse) {
     const row = parseMovesRun(run);
@@ -222,6 +224,14 @@ export class MemoryPlatformStore implements PlatformStore {
     let n = 0;
     for (const [k, e] of this.novelty) if (e.barDate < beforeBar) (this.novelty.delete(k), n++);
     return n;
+  }
+
+  async saveNoveltyProgress(p: NoveltyProgress) {
+    this.noveltyProgress = clone({ ...p, at: iso(p.at) });
+  }
+
+  async loadNoveltyProgress() {
+    return clone(this.noveltyProgress);
   }
 
   async saveNearMisses(ts: string, items: NearMiss[]) {

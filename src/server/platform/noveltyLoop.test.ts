@@ -99,6 +99,78 @@ describe("novelty loop", () => {
   });
 });
 
+describe("bounded runs (POST /api/cron/novelty) and the always-on loop share one pass", () => {
+  const COINS = ["A", "B", "C", "D", "E", "F", "G"];
+  const universe = async () => COINS.map((coin, i) => ({ coin, dayNtlVlm: 10 - i, oiUsd: 10 - i }));
+  /** Every coin hits a new funding extreme on the newest bar except D (quiet). */
+  const inputsOf = (c: string) => raw(c === "D" ? 1e-4 : 0.05);
+  const journal = async (store: MemoryPlatformStore) => (await store.listNovelty("2026-02-01")).map((e) => `${e.id}:${e.pushed ? "pushed" : e.suppressed ?? "quiet"}`);
+
+  test("stateless calls under a deadline resume from stored progress, read each coin once and journal what one full pass does", async () => {
+    const whole = new MemoryPlatformStore();
+    const once = await createNoveltyLoop({ store: whole, now: () => NOW, maxTier: 3, universe, inputs: async (c) => inputsOf(c), notify: async () => ["telegram"] }).run();
+    expect(once).toMatchObject({ pass: "2026-02-09", universe: 7, checked: 7, remaining: 0, done: true, stopped: false, journalled: 6, pushed: 3, delivered: 3 });
+
+    const store = new MemoryPlatformStore();
+    let t = NOW;
+    const reads: string[] = [];
+    const reports = [];
+    for (let call = 0; call < 6; call++) {
+      // A fresh loop per call, as a serverless invocation gets: nothing survives but the store.
+      const loop = createNoveltyLoop({ store, now: () => t, maxTier: 3, universe, inputs: async (c) => ((t += 50_000), reads.push(c), inputsOf(c)), notify: async () => ["telegram"] });
+      reports.push(await loop.run({ deadline: t + 120_000, reserveMs: 45_000 }));
+    }
+    expect(reports.map((r) => [r.checked, r.remaining, r.done, r.stopped])).toEqual([
+      [2, 5, false, true], [2, 3, false, true], [2, 1, false, true], [1, 0, true, false], [0, 0, true, false], [0, 0, true, false],
+    ]);
+    expect(reads).toEqual(COINS);
+    expect(await journal(store)).toEqual(await journal(whole));
+    // The push budget is per pass, not per call: three pushes in all, the rest run_cap.
+    expect(reports.reduce((n, r) => n + r.pushed, 0)).toBe(3);
+    expect((await store.loadNoveltyProgress())!).toMatchObject({ pass: "2026-02-09", pushed: 3, cursor: null });
+  });
+
+  test("a coin that keeps failing does not starve the rest of a bounded call", async () => {
+    const store = new MemoryPlatformStore();
+    let t = NOW;
+    const reads: string[] = [];
+    const err = console.error;
+    console.error = () => {};
+    try {
+      for (let call = 0; call < 4; call++) {
+        const loop = createNoveltyLoop({
+          store, now: () => t, maxTier: 3, universe, notify: async () => [],
+          inputs: async (c) => {
+            t += 50_000;
+            reads.push(c);
+            if (c === "A") throw new Error("hl down");
+            return inputsOf(c);
+          },
+        });
+        await loop.run({ deadline: t + 120_000, reserveMs: 45_000 });
+      }
+    } finally {
+      console.error = err;
+    }
+    expect(new Set(reads)).toEqual(new Set(COINS));
+    expect((await store.loadNoveltyProgress())!.checked["2026-02-09"]).toEqual(["B", "C", "D", "E", "F", "G"]);
+  });
+
+  test("a new day starts a new pass with a fresh push budget; bars still in the window keep their checks", async () => {
+    const store = new MemoryPlatformStore();
+    const loop = (now: number) => createNoveltyLoop({ store, now: () => now, maxTier: 3, universe, inputs: async (c) => inputsOf(c), notify: async () => [] });
+    expect((await loop(NOW).run()).pushed).toBe(3);
+    const next = await loop(NOW + DAY).run();
+    // Only the new bar is evaluated (quiet in raw()); 02-09 and 02-08 keep their checks and journal nothing again.
+    expect(next).toMatchObject({ pass: "2026-02-10", checked: 7, remaining: 0, done: true, journalled: 0 });
+    const p = (await store.loadNoveltyProgress())!;
+    expect(p).toMatchObject({ pass: "2026-02-10", pushed: 0, cursor: null });
+    expect(Object.keys(p.checked)).toEqual(["2026-02-10", "2026-02-09", "2026-02-08"]);
+    expect(Object.values(p.checked).every((c) => c.join() === COINS.join())).toBe(true);
+    expect((await store.listNovelty("2026-02-01")).length).toBe(6);
+  });
+});
+
 describe("storedInputs()", () => {
   test("syncs from now-400d but reads the baseline from the start of the stored history", async () => {
     const calls: Record<string, unknown[]> = {};

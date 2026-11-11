@@ -17,6 +17,17 @@ export function headerLine(q: Pick<QueueResponse, 'items' | 'cap' | 'overCap'>):
   return `QUEUE · ${q.items.length} listed of ${q.cap}${over}`
 }
 
+/**
+ * `moves run 3h old · triage 40m old`: the stale moves-pipeline inputs (QueueResponse.freshness), aged to `now`; null
+ * when both are fresh or not stored. The one honesty signal a schedule-driven deployment needs on the home screen.
+ */
+export function staleLine(q: Pick<QueueResponse, 'freshness'>, now: number): string | null {
+  const parts = ([['moves run', q.freshness.movesRun], ['triage', q.freshness.triage]] as const)
+    .filter(([, f]) => f?.stale)
+    .map(([label, f]) => `${label} ${ageText(f!.at, now)} old`)
+  return parts.length ? parts.join(' · ') : null
+}
+
 export interface SourceChip {
   source: QueueSource
   label: string

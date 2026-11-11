@@ -2,10 +2,10 @@ import { AsyncBody, Badge, Button, PageContainer, Panel, PanelHeader, StatusDot 
 import type { QueueItem, QueueResponse } from '../../../shared/queue'
 import { CoinDecision } from '../coin/CoinDecision'
 import type { Feed } from '../moves/MovesView'
-import { agentLine, ageText, directionOf, emptyLine, headerLine, partsLabel, recordChip, sourceChips, sourceProblemLine, splitItems } from './logic'
+import { agentLine, ageText, directionOf, emptyLine, headerLine, partsLabel, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
 
 // QUEUE view (PLAN2 §2.1/§2.2). Presentational: Queue.tsx owns the poll, the URL selection, the keyboard and
-// DISMISS. The list is the page: a header line, the source chips (a source problem is one quiet line), the new
+// DISMISS. The list is the page: a header line (plus one quiet staleness line when the moves list is old), the source chips (a source problem is one quiet line), the new
 // items, then the collapsed dismissed / acted group. Desktop adds the coin's decision pane on the right. Nothing
 // here approves, investigates on its own or places an order.
 
@@ -29,12 +29,19 @@ export function QueueView(p: QueueViewProps) {
   const q = p.queue.data
   const item = q?.items.find((i) => i.coin === p.selected) ?? null
   const showPane = p.pane && p.selected != null
+  const stale = q ? staleLine(q, p.now) : null
   return (
     <PageContainer className="pb-3 md:pb-[var(--gutter)] min-w-0">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 min-w-0 items-start">
         <section aria-label="queue" className={`${showPane ? 'lg:col-span-4' : 'lg:col-span-12'} min-w-0`}>
           <Panel>
-            <PanelHeader title={q ? headerLine(q) : 'QUEUE'} />
+            <PanelHeader title={q ? headerLine(q) : 'QUEUE'}>
+              {stale && (
+                <span data-stale className="text-xs tabular text-text-secondary" title="the moves list is only as fresh as its last run">
+                  {stale}
+                </span>
+              )}
+            </PanelHeader>
             <AsyncBody loading={p.queue.loading} data={q} error={p.queue.error} offline={p.queue.offline} onRetry={p.queue.refetch} rows={4}>
               {(d) => <QueueList {...p} q={d} />}
             </AsyncBody>

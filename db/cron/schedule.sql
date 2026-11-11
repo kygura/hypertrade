@@ -22,6 +22,26 @@
 -- would read "timed out" after pg_net's default 5 s although the function keeps running
 -- (Vercel does not cancel a function when its caller disconnects unless supportsCancellation
 -- is set, and vercel.json does not set it).
+--
+-- Token exposure (checked 2026-11 against pg_net's sql/pg_net.sql and Supabase's troubleshooting notes "Database
+-- roles can read request headers queued by pg_net" and "Revoking access to pg_net objects has no effect"):
+--   * pg_net grants usage on schema net and all on its tables to PUBLIC. A queued request's headers, x-cron-token
+--     included, are in net.http_request_queue from net.http_post until the worker takes its batch (it deletes the
+--     rows as it reads them, src/core.c); with the batching above that can be a whole in-flight job, up to ~5 min.
+--     net._http_response keeps the response's headers and body, never the request's.
+--   * Nothing on net is revoked here, on purpose: Supabase installs pg_net as supabase_admin, so a revoke run as
+--     postgres removes nothing ("no privileges could be revoked"), and Supabase says removing the PUBLIC grants
+--     would break pg_net for postgres-owned pg_cron jobs and Database Webhooks.
+--   * Residual exposure, precisely: any session that can log in to the database can read the token while a call
+--     waits in the queue: postgres (which can read Vault anyway), the Supabase-internal login roles
+--     (supabase_admin, supabase_read_only_user, pgbouncer, authenticator) and any login role created later.
+--     anon and authenticated cannot log in; they reach SQL only through the Data API, which exposes `public` and
+--     `graphql_public` by default, not `net`. They could read the queue only if `net` were added to the exposed
+--     schemas or an exposed view or function read it, so never do either; the check at the end of this file fails
+--     if a view outside net/ops reads the net tables.
+--   * The token is never in cron.job.command, cron.job_run_details or ops.cron_calls: the job command names only the
+--     job and path, the helper reads the token from Vault and puts it only in the pg_net header, no error message
+--     carries it, and ops.cron_status selects no header column. The end-of-file check fails if that ever changes.
 
 begin;
 
@@ -116,7 +136,7 @@ as $$
   delete from ops.cron_calls where called_at < now() - interval '7 days';
 $$;
 
--- Monitoring: last run and last HTTP answer per job.
+-- Monitoring: last run and last HTTP answer per job. No header column of pg_net's tables is selected.
 --   select * from ops.cron_status;
 -- http_status null with pending = true: queued or in flight (the answer is visible once
 -- pg_net's batch commits). null with pending = false: the answer is older than pg_net.ttl.
@@ -157,6 +177,8 @@ revoke all on all functions in schema ops from public, anon, authenticated, serv
 --   desk_enabled: /api/desk/tick; collect.yml ran it only with DESK_ENABLED=true (set: it ran).
 -- Each 15-minute quarter: collect :00, backfill :02, platform tick :04, moves agent :07, desk :09,
 -- intel ingest :12. Hourly jobs take free minutes. No two HTTP jobs share a minute.
+-- novelty :10 and :40 sits in the gap before a collect, so even a call that runs to its hard stop (240 s) ends before
+-- :15 / :45; each call checks coins for ~200 s and stores where it got to, and a full daily pass takes several calls.
 do $$
 declare
   intel_enabled constant boolean := false;
@@ -173,6 +195,7 @@ begin
       ('hypertrade-moves',            '5 * * * *',           '/api/cron/moves',            'on'),
       ('hypertrade-moves-agent',      '7,22,37,52 * * * *',  '/api/cron/moves-agent',      'on'),
       ('hypertrade-desk-tick',        '9,24,39,54 * * * *',  '/api/desk/tick',             'desk'),
+      ('hypertrade-novelty',          '10,40 * * * *',       '/api/cron/novelty',          'on'),
       ('hypertrade-intel-ingest',     '12,27,42,57 * * * *', '/api/cron/intel/ingest',     'intel'),
       ('hypertrade-intel-brief',      '14 * * * *',          '/api/cron/intel/brief',      'intel'),
       ('hypertrade-lab-collect',      '26 * * * *',          '/api/cron/lab-collect',      'on'),
@@ -193,6 +216,38 @@ end
 $$;
 
 select cron.schedule('hypertrade-cleanup', '33 3 * * *', 'select ops.cron_cleanup()');
+
+-- The token must not leak outside Vault and the pg_net header (see the header of this file). Fails the transaction.
+do $$
+declare
+  token text := (select decrypted_secret from vault.decrypted_secrets where name = 'hypertrade_cron_token');
+  leak text;
+begin
+  if coalesce(token, '') <> '' then
+    select 'cron.job ' || jobname into leak from cron.job where strpos(command, token) > 0 limit 1;
+    if leak is null then
+      select 'cron.job_run_details ' || runid into leak from cron.job_run_details
+      where strpos(command, token) > 0 or strpos(coalesce(return_message, ''), token) > 0 limit 1;
+    end if;
+    if leak is null then
+      select 'ops.cron_calls ' || id into leak from ops.cron_calls where strpos(coalesce(body::text, ''), token) > 0 limit 1;
+    end if;
+    if leak is not null then
+      raise exception 'the cron token appears in %: rotate it (README "Scheduling") and remove the row', leak;
+    end if;
+  end if;
+  select format('%I.%I', v.relnamespace::regnamespace, v.relname) into leak
+  from pg_depend d
+  join pg_rewrite w on w.oid = d.objid
+  join pg_class v on v.oid = w.ev_class
+  where d.classid = 'pg_rewrite'::regclass and d.refobjid in ('net.http_request_queue'::regclass, 'net._http_response'::regclass)
+    and v.relnamespace not in ('net'::regnamespace, 'ops'::regnamespace)
+  limit 1;
+  if leak is not null then
+    raise exception 'view % reads pg_net''s tables outside ops: it could expose queued request headers', leak;
+  end if;
+end
+$$;
 
 commit;
 
