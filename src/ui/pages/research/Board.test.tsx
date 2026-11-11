@@ -29,7 +29,7 @@ const radarOk: RadarResponse = {
 
 const render = (over: Partial<BoardViewProps> = {}) =>
   renderToStaticMarkup(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={["/board"]}>
       <BoardView
         board={poll(boardData([]))}
         radar={poll(radarOk)}
@@ -137,7 +137,8 @@ describe("evidence cell", () => {
     const html = rows();
     expect(html).toContain("no record yet");
     expect(html).toContain('href="/feed?id=x"');
-    expect(html).toContain('href="/asset/HYPE"');
+    expect(html).toContain('href="/coin/HYPE"');
+    expect(html).not.toContain('/asset/');
     expect(html).not.toContain("twin");
   });
   test("guest: the sign-in affordance instead of a POST", () => {
@@ -216,9 +217,12 @@ describe("evidence kinds", () => {
     expect(html).toContain("funding z(90) ≥ 2 → short 7d");
     expect(html).toContain("not studied today · tested short · top-20 universe");
     expect(html).toContain(">STUDY</button>");
-    expect(html).toContain('href="/asset/SOL"');
-    expect(html).not.toContain("coin=");
-    expect(html).not.toContain('/asset/UNIVERSE');
+    expect(html).toContain('href="/coin/SOL"');
+    expect(html).toContain('href="/moves?coin=SOL"');
+    // The study link carries no coin scope (only the MOVES cross-link does).
+    expect(html.replace(/\/moves\?coin=[^"]*/g, "")).not.toContain("coin=");
+    expect(html).not.toContain('/coin/UNIVERSE');
+    expect(html).not.toContain('/asset/');
     expect(html).not.toContain(">UNIVERSE<");
   });
   test("the source chip for definition sits with the others", () => {
@@ -231,9 +235,11 @@ describe("evidence kinds", () => {
 const ledgerLine = (html: string) => html.match(/<span[^>]*>live record[^<]*<\/span>/)?.[0] ?? "";
 
 describe("side column", () => {
-  test("pulse counts link /lab/pulse; pulse null says unavailable with the reason", () => {
+  test("pulse counts link the RULES catalogue, never /lab/pulse; pulse null says unavailable with the reason", () => {
     expect(render()).toContain("2 catalogued rules firing · 12 assets covered");
-    expect(render()).toContain('href="/lab/pulse"');
+    expect(render()).toContain('href="/lab/catalogue"');
+    expect(render()).not.toContain("/lab/pulse");
+    expect(render()).not.toContain("/asset/");
     const b = boardData([], { pulse: null, sources: { novelty: ok(0), rule: { state: "unavailable", reason: "source failed (see server log)", count: 0, dropped: 0 }, opportunity: ok(0), radar: ok(0), definition: ok(0) } });
     expect(render({ board: poll(b) })).toContain("pulse unavailable — source failed (see server log)");
   });

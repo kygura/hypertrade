@@ -22,6 +22,8 @@ import {
   type PolledPosition,
   type Position,
 } from "../../shared/platform.js";
+import { AgentRecordSchema, TriageItemSchema, type AgentRecord, type AgentRecordStatus, type TriageItem } from "../../shared/agentRecords.js";
+import { MovesResponseSchema, type MovesResponse, type MoveWindow } from "../../shared/moves.js";
 
 // Platform persistence (db/migrations/011_platform.sql). Loops and routes run
 // against PlatformStore: MemoryPlatformStore (store-memory.ts) in tests,
@@ -169,6 +171,10 @@ export interface PlatformStore {
   listNovelty(sinceBar: string): Promise<NoveltyEntry[]>;
   /** Retention: deletes entries with barDate < beforeBar. Returns rows deleted. */
   pruneNovelty(beforeBar: string): Promise<number>;
+  /** Novelty pass progress (one row in sync_state, coin '_platform', series 'novelty-progress'): lets a bounded job resume. */
+  saveNoveltyProgress(p: NoveltyProgress): Promise<void>;
+  /** The row saveNoveltyProgress wrote; null before the first pass. */
+  loadNoveltyProgress(): Promise<NoveltyProgress | null>;
 
   /** Near-misses of the latest completed scan (one row, replaced each call): lets a process without the scanner serve them. */
   saveNearMisses(ts: string, items: NearMiss[]): Promise<void>;
@@ -179,7 +185,99 @@ export interface PlatformStore {
   saveSectors(tags: SectorTag[]): Promise<void>;
   /** Every cached tag, ascending by coin. */
   listSectors(): Promise<SectorTag[]>;
+
+  /** Agent watch (db/migrations/024): inserts a zod-parsed record; throws on a duplicate id. */
+  insertAgentRecord(r: AgentRecord): Promise<AgentRecord>;
+  /**
+   * Compare-and-set patch: applied only while the record is at `ifStatus` (any status when omitted). The result is
+   * zod-parsed before it is written (a bad patch throws). Null when the id is missing or the status moved on.
+   */
+  updateAgentRecord(id: string, patch: AgentRecordPatch, ifStatus?: AgentRecordStatus): Promise<AgentRecord | null>;
+  /** Newest first (createdAt desc, then id). `since` is inclusive. */
+  listAgentRecords(q: { coin?: string; status?: AgentRecordStatus; since?: string; limit: number }): Promise<AgentRecord[]>;
+  /** Records since `since` (inclusive) whose call reached a provider (model set, status not capped): the daily agent count. */
+  agentRunsSince(since: string): Promise<number>;
+  /** Upsert on (day, coin): a re-surfaced coin replaces its item for the day. Zod-parsed first. */
+  upsertTriageItem(item: TriageItem): Promise<TriageItem>;
+  /** The day's items, score desc then coin. */
+  listTriage(day: string): Promise<TriageItem[]>;
+  /** Stamps dismissedAt once (a second dismiss keeps the first stamp). Null when the id is missing. */
+  dismissTriage(id: string, at: string): Promise<TriageItem | null>;
+  /** Queue dismissal (025): upsert on (day, coin); a re-dismiss after re-entry moves dismissedAt. */
+  dismissQueue(day: string, coin: string, at: string): Promise<QueueDismissal>;
+  /** The day's queue dismissals, coin order (code units). */
+  listQueueDismissals(day: string): Promise<QueueDismissal[]>;
+
+  /**
+   * Moves runs (026): the latest `ok` run per window, zod-parsed first (a run that is not `ok` throws). A run whose
+   * computedAt is older than the stored one is ignored, so two writers never move it back.
+   */
+  saveMovesRun(run: MovesResponse): Promise<void>;
+  /** The window's stored run; null before the first one. */
+  latestMovesRun(window: MoveWindow): Promise<MovesResponse | null>;
+  /** The latest triage pass (026, one row, replaced each pass). */
+  saveTriageScan(scan: TriageScan): Promise<void>;
+  /** The row saveTriageScan wrote; null before the first pass. */
+  loadTriageScan(): Promise<TriageScan | null>;
 }
+
+/** Where a novelty pass stands (noveltyLoop.ts): survives a stateless invocation, so the next one resumes. */
+export interface NoveltyProgress {
+  /** The pass: its newest closed bar (YYYY-MM-DD). A new day starts a new pass. */
+  pass: string;
+  /** Coins evaluated (hit or not) per bar of the window. */
+  checked: Record<string, string[]>;
+  /** Pushes admitted in this pass: NOVELTY.runBudget is per pass, however many invocations it takes. */
+  pushed: number;
+  /** The coin the last invocation reached; the next one starts after it. */
+  cursor: string | null;
+  at: string;
+}
+
+/** One triage pass of the moves agent (docs/SPEC.md § Moves M4): what the triage and queue routes report. */
+export interface TriageScan {
+  day: string;
+  at: string;
+  state: "ok" | "pending" | "unavailable";
+  reason: string | null;
+  /** Coins in the moves universe the pass read. */
+  watched: number;
+  /** Candidates over the day's budget in the pass. */
+  overBudget: number;
+}
+
+/** The run as stored: zod-parsed, and only an `ok` run with an asOf. */
+export function parseMovesRun(run: MovesResponse): MovesResponse & { asOf: string } {
+  const r = MovesResponseSchema.parse(run);
+  if (r.state !== "ok" || r.asOf === null) throw new Error(`only an ok moves run is stored (got ${r.state})`);
+  return r as MovesResponse & { asOf: string };
+}
+
+/** One coin hidden from the queue for one UTC day (docs/SPEC.md § Queue). */
+export interface QueueDismissal {
+  day: string;
+  coin: string;
+  dismissedAt: string;
+}
+
+/** Fields an agent record may change after insert: the call's result and, later, its grade. */
+export type AgentRecordPatch = Partial<Pick<AgentRecord, "claim" | "assets" | "direction" | "layer" | "falsifier" | "sources" | "status" | "grade" | "model" | "dropped" | "error">>;
+
+/** The record with `patch` applied, zod-parsed (identity and inputs never change). */
+export function patchAgentRecord(r: AgentRecord, patch: AgentRecordPatch): AgentRecord {
+  const { id, coin, createdAt, trigger, inputs, horizonHours, promptVersion } = r;
+  return AgentRecordSchema.parse({ ...r, ...patch, id, coin, createdAt, trigger, inputs, horizonHours, promptVersion });
+}
+
+export const parseAgentRecord = (r: AgentRecord): AgentRecord => AgentRecordSchema.parse(r);
+export const parseTriageItem = (t: TriageItem): TriageItem => TriageItemSchema.parse(t);
+/** A record counts as an agent run when its call reached a provider. */
+export const isAgentRun = (r: Pick<AgentRecord, "status" | "model">) => r.status !== "capped" && r.model !== null;
+const codeUnit = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
+/** Store order for agent records and triage items (code-unit ties, as `collate "C"` in SQL). */
+export const byNewest = (a: AgentRecord, b: AgentRecord) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || codeUnit(a.id, b.id);
+export const byScore = (a: TriageItem, b: TriageItem) => b.score - a.score || codeUnit(a.coin, b.coin);
+export const byCoin = (a: { coin: string }, b: { coin: string }) => codeUnit(a.coin, b.coin);
 
 // ---------------------------------------------------------------- shared rules
 

@@ -57,13 +57,16 @@ export function OfflineBlock({
   title = 'API UNREACHABLE',
   message = 'check your connection and retry',
   onRetry,
+  compact = false,
 }: {
   title?: string
   message?: string
   onRetry?: () => void
+  /** Tight vertical padding, for a drawer or a strip rather than a page body. */
+  compact?: boolean
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-8 px-3 text-center">
+    <div className={`flex flex-col items-center justify-center gap-2 px-3 text-center ${compact ? 'py-3' : 'py-8'}`}>
       <StatusDot status="unknown" />
       <span className="state-title text-sm [text-transform:var(--label-case)] tracking-[var(--label-tracking)] font-[number:var(--label-weight)] text-text-secondary">{title}</span>
       <span className="text-xs text-text-secondary">{message}</span>

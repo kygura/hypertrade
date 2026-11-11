@@ -25,7 +25,10 @@ import { useAction } from '../../components/intel/useAction'
 import { CATALYSTS_ANCHOR, FLOW_ANCHOR, NEWS_ANCHOR, ReviewStrip } from '../../components/intel/ReviewStrip'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { WhatChangedPanel } from '../../components/intel/WhatChangedPanel'
+import { Panel } from '../../components'
+import { OfflineBlock } from '../../components/state'
 import { ApiError, NetworkError } from '../../lib/api'
+import { isDbUnavailable } from '../../lib/dbUnavailable'
 import { intel, INTEL_POLL_MS, reviewThrottle, useIntel, type ResearchAskInput } from '../../lib/intel'
 import { errorMessage } from '../../lib/poll'
 
@@ -214,6 +217,19 @@ export function Terminal() {
   const alertsCount = mergeAlerts(alerts.data, batched).length
   const superseded = reviewing && brief != null
   const detectorsCount = heatmap.data ? firingChips(heatmap.data.flags, new Map(heatmap.data.rows.map((r) => [r.asset, r.materiality]))).length : 0
+
+  // One shared cause (no database) is one page-level state with the reason; per-panel errors stay for real per-panel failures.
+  const dbReason = [briefError, positions.error, watchlist.error, catalysts.error, heatmap.error, alerts.error, research.error].find(isDbUnavailable)
+  if (dbReason) {
+    return (
+      <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col">
+        <TerminalTabs />
+        <Panel>
+          <OfflineBlock title="TERMINAL UNAVAILABLE" message={dbReason} />
+        </Panel>
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col" onClickCapture={() => setHighlightId(null)}>

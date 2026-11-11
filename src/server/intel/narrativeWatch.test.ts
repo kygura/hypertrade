@@ -164,11 +164,11 @@ describe("narrativeStageAlerts", () => {
       eventType: "stage_crowded",
       materiality: 1,
       route: "push",
-      line: { tag: "observed", text: "Privacy: emerging → crowded · 7d vs BTC +11.9 pp, OI 7d +18.2%, funding z 2.6", source: { label: "snapshot", url: "/sectors" }, ts: ISO },
+      line: { tag: "observed", text: "Privacy: emerging → crowded · 7d vs BTC +11.9 pp, OI 7d +18.2%, funding z 2.6", source: { label: "snapshot", url: "/moves?sector=privacy" }, ts: ISO },
     });
     expect(notifier.sent).toHaveLength(1);
     expect(notifier.sent[0]!.body).toContain("Privacy: emerging → crowded");
-    expect(notifier.sent[0]!.body).toContain("https://app.example.com/sectors");
+    expect(notifier.sent[0]!.body).toContain("https://app.example.com/moves?sector=privacy");
     expect((await store.getSetting<StageStates>(STAGES_SETTING))!.privacy).toEqual({ stage: "crowded", since: at(-2 * H), alertedAt: ISO, pending: null, left: { stage: "emerging", at: ISO } });
   });
 

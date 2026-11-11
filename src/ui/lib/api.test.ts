@@ -26,7 +26,7 @@ describe('login return path', () => {
     rememberReturnPath({ pathname: '/feed', search: '?id=abc&status=ready' })
     expect(sessionStorage.getItem(REDIRECT_KEY)).toBe('/feed?id=abc&status=ready')
     expect(consumeRedirectTarget()).toBe('/feed?id=abc&status=ready')
-    expect(consumeRedirectTarget()).toBe('/')
+    expect(consumeRedirectTarget()).toBe('/queue')
   })
   test('only same-origin app paths are returned to', () => {
     expect(safeReturnPath('/lab/study?rule=%7B%7D')).toBe('/lab/study?rule=%7B%7D')

@@ -111,7 +111,7 @@ describe("other sources", () => {
     const o = { id: "11111111-1111-4111-8111-111111111111", coin: "SOL", direction: "short", setupKind: "funding_squeeze", status: "ready", score: 2.345, liquidityTier: 1,
       netEdgeBps: 12.4, edgeBasis: "ledger", createdAt: "2026-11-09T10:00:00.000Z" } as Opportunity;
     expect(valid(opportunitySignal(o))).toMatchObject({
-      id: `opportunity:SOL:${o.id}`, direction: "short", rule: null, tested: null, scope: "coin", ruleText: null, href: `/feed?id=${o.id}`,
+      id: `opportunity:SOL:${o.id}`, direction: "short", rule: null, tested: null, scope: "coin", ruleText: null, href: "/coin/SOL",
       headline: "funding_squeeze · ready · score 2.35 · tier 1 · net edge +12 bps (ledger)",
     });
     const c = { id: "2026-11-08-1-HYPE", date: "2026-11-08", at: "2026-11-08T13:00:00.000Z", market: "HYPE", stance: "ride", direction: "long", kind: "catalyst",

@@ -1,4 +1,4 @@
-import { fetchCandles, fetchFundingPage, fetchPerpMetaAndCtxs, HL_FUNDING_PAGE, HL_MAX_CANDLES, hlWaitBelow, type FundingPoint } from "../../shared/hl-client.js";
+import { fetchCandles, fetchFundingPage, fetchPerpMetaAndCtxs, HL_FUNDING_PAGE, HL_MAX_CANDLES, createHlShare, type FundingPoint } from "../../shared/hl-client.js";
 import type { ReplaySource, SetupReplayResponse } from "../../shared/research.js";
 import type { Candle } from "../../shared/types.js";
 import { databaseUrl, getFunding } from "../db.js";
@@ -257,11 +257,16 @@ export function memoSeries<T extends { t: number }>(fetch: (coin: string, startM
   };
 }
 
+/** The replay's share of the HL guard, and the most one of its requests weighs (a full funding page, a full candle page). */
+const replayShare = createHlShare(REPLAY_HL_BUDGET);
+const REPLAY_FUNDING_WEIGHT = 20 + Math.ceil(HL_FUNDING_PAGE / 20);
+const REPLAY_CANDLE_WEIGHT = 20 + Math.ceil(HL_MAX_CANDLES / 60);
+
 /** fundingHistory pages forward from startMs (500 rows each). */
 async function liveFunding(coin: string, startMs: number, endMs: number): Promise<FundingPoint[]> {
   const out: FundingPoint[] = [];
   for (let cursor = startMs; cursor < endMs; ) {
-    await hlWaitBelow(REPLAY_HL_BUDGET);
+    await replayShare(REPLAY_FUNDING_WEIGHT);
     const rows = await fetchFundingPage(coin, cursor, endMs);
     out.push(...rows);
     if (rows.length < HL_FUNDING_PAGE) break;
@@ -271,7 +276,7 @@ async function liveFunding(coin: string, startMs: number, endMs: number): Promis
 }
 
 // The replay's own HL requests stay under REPLAY_HL_BUDGET, so the live scanner (same process, same guard) keeps a share.
-const candleMemo = memoSeries(async (coin, s, e) => (await hlWaitBelow(REPLAY_HL_BUDGET), fetchCandles(coin, "15m", s, e)));
+const candleMemo = memoSeries(async (coin, s, e) => (await replayShare(REPLAY_CANDLE_WEIGHT), fetchCandles(coin, "15m", s, e)));
 const fundingMemo = memoSeries(liveFunding);
 
 /**

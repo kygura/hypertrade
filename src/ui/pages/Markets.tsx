@@ -15,7 +15,10 @@ import { ASSET_CLASSES, tickerOf, type AssetClass } from '../../shared/assetClas
 const POLL_MS = 15_000
 const STALE_MIN = 5
 
-const FUNDING_CROWDED = 0.001 // |funding| >= 0.1%/8h
+// HL funding is an hourly fraction (settles hourly; see "Funding 1h" in PerpPanels and fundingApr
+// in shared/signalMath). Crowded = |funding| >= 0.1% per 8h, i.e. 0.0125% per hour (~110% APR).
+export const FUNDING_CROWDED = 0.001 / 8
+export const isFundingCrowded = (hourly: number): boolean => Math.abs(hourly) >= FUNDING_CROWDED
 
 type ClassFilter = 'all' | AssetClass
 const CLASS_LABEL: Record<AssetClass, string> = {
@@ -120,12 +123,12 @@ export function Markets() {
     },
     {
       key: 'funding',
-      label: 'FUNDING',
+      label: 'FUNDING 1H',
       priority: 4,
       align: 'right',
       sortValue: (r) => r.funding,
       render: (r) => (
-        <span className={Math.abs(r.funding) >= FUNDING_CROWDED ? 'text-amber' : classForPnl(r.funding)}>
+        <span className={isFundingCrowded(r.funding) ? 'text-amber' : classForPnl(r.funding)}>
           {fmtPct(r.funding, { decimals: 4, sign: true })}
         </span>
       ),

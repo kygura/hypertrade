@@ -1,8 +1,11 @@
 name: Collect Data
 
+# Manual fallback only. Scheduling moved to db/cron/schedule.sql (pg_cron + pg_net in the
+# project's Supabase Postgres POST the same endpoints); GitHub's schedule fired 2-5 times a
+# day instead of every 15 minutes. Run this from the Actions tab when the database-side
+# schedule is down.
+
 on:
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 concurrency:

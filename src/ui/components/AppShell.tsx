@@ -1,58 +1,72 @@
-import type { ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { Button } from './Button'
 import { StatusDot, type DotStatus } from './Badge'
 import { api, useApi } from '../lib/api'
-import { isEnginePath } from './strategy/EngineTabs'
+import { isDbUnavailable } from '../lib/dbUnavailable'
 import { isTerminalPath } from './intel/TerminalTabs'
 import { isMarketPath } from './market/MarketTabs'
 import { isResearchPath } from './lab/LabTabs'
 import { ThemeSwitcher } from './ThemeSwitcher'
+// The drawer pulls in the analyst thread and composer: its own chunk, fetched on the first open.
+const AskDrawer = lazy(() => import('./ask/AskDrawer').then((m) => ({ default: m.AskDrawer })))
 
 // AppShell — docs/design/README.md §5. TopBar (>=768) / TopStrip + bottom tab bar
-// (<768) via CSS breakpoints only, no JS matchMedia. NAV is 5 cells, under the
-// 9-cell ceiling (docs/CONSOLIDATION.md); every cell shows in the tab bar. Freshness cluster reads
+// (<768) via CSS breakpoints only, no JS matchMedia. NAV is 3 cells, one per job
+// (docs/RESEARCH.md "Nav"); every cell shows in the tab bar. ASK is a header button opening a drawer (also on the `ht:ask` window event), ENGINE has no entry. Freshness cluster reads
 // the most recent hl.total_oi_usd observation as a representative collector
 // heartbeat: green <30min, amber 30min-2h, red >2h or fetch failed.
 
 export const NAV = [
-  // RESEARCH family, the landing (docs/RESEARCH.md): the board `/`, the Lab (/lab/*) and the
+  // QUEUE family, the landing: what deserves a look today. /queue and /moves switch inside via MarketTabs.
+  { to: '/queue', label: 'QUEUE', tab: 'QUEUE', glyph: '≋' },
+  // RESEARCH family: is there an edge. The board `/board`, the Lab (/lab/*) and the
   // Branches simulator (/branches/*) switch inside via LabTabs.
-  { to: '/', label: 'RESEARCH', tab: 'RSRCH', glyph: '⚗' },
-  // TRADE family (docs/CONSOLIDATION.md): Intel -> Act. /terminal, /watch, /journal,
-  // /theses, /query, /feed, /order and /desk switch inside via TerminalTabs.
-  { to: '/feed', label: 'TRADE', tab: 'TRADE', glyph: '◉' },
-  // MARKET family: /markets, /sectors, /state, /cycles (and their drills) switch
-  // inside via MarketTabs; /overview redirects to /markets.
-  { to: '/markets', label: 'MARKET', tab: 'MKT', glyph: '≋' },
-  // Read-only LLM analyst (docs/SPEC.md "Analyst").
-  { to: '/analyst', label: 'ASK', tab: 'ASK', glyph: '?' },
-  // Strategy console: /strategies, /decisions and /governor switch inside via EngineTabs.
-  { to: '/strategies', label: 'ENGINE', tab: 'ENGIN', glyph: '⚙' },
+  { to: '/board', label: 'RESEARCH', tab: 'RSRCH', glyph: '⚗' },
+  // TRADE family: what did I do and was I right. /desk, /order and /journal switch inside via TerminalTabs.
+  { to: '/desk', label: 'TRADE', tab: 'TRADE', glyph: '◉' },
 ]
 
 export function isActive(pathname: string, to: string): boolean {
-  if (to === '/') return isResearchPath(pathname)
-  if (to === '/feed') return isTerminalPath(pathname)
-  if (to === '/strategies') return isEnginePath(pathname)
-  if (to === '/markets') return isMarketPath(pathname)
+  if (to === '/board') return isResearchPath(pathname)
+  if (to === '/desk') return isTerminalPath(pathname)
+  if (to === '/queue') return isMarketPath(pathname)
   return pathname === to || pathname.startsWith(`${to}/`)
 }
 
-function useFreshness(): { status: DotStatus; label: string } {
-  const { data, error } = useApi<{ ts: string | null }[]>('/metrics/summary?ids=hl.total_oi_usd')
-  if (error) return { status: 'down', label: 'DATA —' }
-  const ts = data?.[0]?.ts
+export interface Freshness {
+  status: DotStatus
+  label: string
+  /** Set when the dot is quiet because the server has no database (not a failure). */
+  title?: string
+}
+
+/** The DATA dot: red only for a real failure; the no-database 503 is a neutral dot with the reason. */
+export function freshnessOf(error: string | null, ts: string | null | undefined, now = Date.now()): Freshness {
+  if (error) return isDbUnavailable(error) ? { status: 'unknown', label: 'DATA —', title: error } : { status: 'down', label: 'DATA —' }
   if (!ts) return { status: 'unknown', label: 'DATA —' }
-  const ageMin = (Date.now() - new Date(ts).getTime()) / 60_000
+  const ageMin = (now - new Date(ts).getTime()) / 60_000
   const status: DotStatus = ageMin < 30 ? 'ok' : ageMin < 120 ? 'degraded' : 'down'
   const label = `DATA ${new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
   return { status, label }
 }
 
+function useFreshness(): Freshness {
+  const { data, error } = useApi<{ ts: string | null }[]>('/metrics/summary?ids=hl.total_oi_usd')
+  return freshnessOf(error, data?.[0]?.ts)
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const [ask, setAsk] = useState(false)
+  const [askMounted, setAskMounted] = useState(false)
+  if (ask && !askMounted) setAskMounted(true)
+  useEffect(() => {
+    const open = () => setAsk(true)
+    window.addEventListener('ht:ask', open)
+    return () => window.removeEventListener('ht:ask', open)
+  }, [])
   const freshness = useFreshness()
   // Route-guard probe: a 401 redirects to /login (api.ts). In PUBLIC_MODE the
   // server lets visitors through as guests, so offer LOGIN instead of LOGOUT.
@@ -66,7 +80,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh flex flex-col">
       <header className="app-topbar sticky top-0 z-40 h-[var(--topbar-h)] flex items-center justify-between px-3 border-b border-border bg-topbar">
-        <Link to="/" className="app-wordmark flex items-center gap-1.5 text-sm uppercase font-semibold tracking-wider font-display">
+        <Link to="/queue" className="app-wordmark flex items-center gap-1.5 text-sm uppercase font-semibold tracking-wider font-display">
           HYPERTRADE
           <span className="app-wordmark-dot inline-block w-1.5 h-1.5 bg-accent" />
         </Link>
@@ -87,8 +101,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="flex items-center gap-3">
+          {/* The analyst: a button that toggles a drawer, not a cell. */}
+          <Button tier="ghost" aria-expanded={ask} onClick={() => setAsk((v) => !v)} title="ask the analyst">
+            ASK
+          </Button>
           <ThemeSwitcher />
-          <span className="hidden md:flex items-center gap-1.5" title="last collector run (hl.total_oi_usd)">
+          <span className="hidden md:flex items-center gap-1.5" title={freshness.title ?? 'last collector run (hl.total_oi_usd)'}>
             <StatusDot status={freshness.status} />
             <span className="text-xs text-text-secondary tabular">{freshness.label}</span>
           </span>
@@ -105,6 +123,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <main className="flex-1 pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">{children}</main>
+      {askMounted && (
+        <Suspense fallback={null}>
+          <AskDrawer open={ask} onClose={() => setAsk(false)} />
+        </Suspense>
+      )}
 
       <nav
         aria-label="primary"

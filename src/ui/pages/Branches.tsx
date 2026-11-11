@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { AsyncBody, Button, DataTable, EmptyBlock, SkeletonRows, type Column } from '../components'
 import { api, useApi } from '../lib/api'
 import type { Branch } from '../components/branches/types'
@@ -96,6 +96,9 @@ export function Branches() {
       <div className="panel">
         <div className="panel-header">
           <span className="panel-title">BRANCHES</span>
+          <Link to="/analyst?mode=sim" className="text-xs uppercase tracking-wider text-text-secondary hover:text-text-primary ml-auto mr-3">
+            SIMULATE →
+          </Link>
           <Button tier="neutral" onClick={createBranch} disabled={creating}>
             <span className={creating ? 'pulse-label' : undefined}>{creating ? 'CREATING…' : 'NEW BRANCH'}</span>
           </Button>

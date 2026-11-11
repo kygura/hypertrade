@@ -10,6 +10,11 @@ function deps(over: Partial<CandlesDeps> = {}): CandlesDeps & { pages: unknown[]
   return {
     pages,
     resolveCoin: async (p) => (p.toLowerCase() === "kpepe" ? "kPEPE" : p.toUpperCase()),
+    now: () => T0 + 1000 * H,
+    hasDb: () => true,
+    livePage: async () => {
+      throw new Error("livePage must not be used with a database");
+    },
     touch: async () => {},
     readPage: async (coin, tf, opts) => {
       pages.push({ coin, tf, ...opts });
@@ -69,5 +74,62 @@ describe("GET /candles/:coin", () => {
     expect(body.bars).toHaveLength(3);
     expect(body.bars.every((b) => b.f === null)).toBe(true);
     expect(body.funding).toEqual({ from: null, complete: false });
+  });
+});
+
+describe("GET /candles/:coin without a database", () => {
+  const noDb = (over: Partial<CandlesDeps> = {}) => {
+    const calls: unknown[] = [];
+    const d = deps({
+      hasDb: () => false,
+      readPage: async () => {
+        throw new Error("db.sql() must not be reached");
+      },
+      touch: async () => {
+        throw new Error("db.sql() must not be reached");
+      },
+      livePage: async (coin, tf, before, limit) => {
+        calls.push({ coin, tf, before, limit });
+        return [0, 1, 2].map((i) => ({ t: T0 + i * H, o: 1, h: 2, l: 0.5, c: 1.5, v: 10, src: "hl" }));
+      },
+      ...over,
+    });
+    return { d, calls };
+  };
+
+  test("serves the page from Hyperliquid with empty overlays, and caches it briefly", async () => {
+    const { d, calls } = noDb();
+    const a = app(d);
+    const res = await a.request("/candles/kpepe?tf=1h&limit=500");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as CandlesResponse;
+    expect(calls).toEqual([{ coin: "kPEPE", tf: "1h", before: undefined, limit: 500 }]);
+    expect(body.bars.map((b) => b.t)).toEqual([T0, T0 + H, T0 + 2 * H]);
+    expect(body.bars.every((b) => b.f === null && b.p === null && b.oi === null)).toBe(true);
+    expect(body.funding).toEqual({ from: null, complete: false });
+    expect(body.oi).toEqual({ from: null });
+    expect(body.hasMore).toBe(false);
+    expect(body.error).toBeNull();
+    await a.request("/candles/kpepe?tf=1h&limit=500");
+    expect(calls.length).toBe(1);
+  });
+
+  test("a Hyperliquid failure answers 200 with a stated error and is not cached", async () => {
+    let n = 0;
+    const { d } = noDb({
+      livePage: async () => {
+        n++;
+        throw new Error("boom");
+      },
+    });
+    const a = app(d);
+    for (let i = 0; i < 2; i++) {
+      const res = await a.request("/candles/BTC");
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as CandlesResponse;
+      expect(body.bars).toEqual([]);
+      expect(body.error).toBe("Hyperliquid candles unavailable");
+    }
+    expect(n).toBe(2);
   });
 });

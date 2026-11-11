@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fetchPerpMetaAndCtxs, fetchCandles, fetchFundingPage, fetchPredictedFundings, weightWaitMs, responseWeight, hlRestUrl, hlWsUrl, envBaseUrl, HL_REST, HL_WS } from "./hl-client.js";
+import { fetchPerpMetaAndCtxs, fetchCandles, fetchFundingPage, fetchPredictedFundings, weightWaitMs, shareWaitMs, createHlShare, responseWeight, hlRestUrl, hlWsUrl, envBaseUrl, HL_REST, HL_WS } from "./hl-client.js";
 import fixture from "./fixtures/hyperliquid.json" with { type: "json" };
 
 function mockFetch(body: unknown, ok = true, status = 200): typeof fetch {
@@ -50,6 +50,21 @@ describe("weightWaitMs", () => {
   });
   test("ignores entries older than the window", () => {
     expect(weightWaitMs([{ t: 0, weight: 5000 }], 61_000, 1000)).toBe(0);
+  });
+});
+
+describe("a job's share of the guard", () => {
+  test("waits on its own calls only: 16 calls of 24 fill a 400 share, the 17th waits for the oldest to age out", () => {
+    const own = Array.from({ length: 16 }, (_, i) => ({ t: i * 1000, weight: 24 }));
+    expect(shareWaitMs(own.slice(0, 15), 20_000, 400, 24)).toBe(0);
+    expect(shareWaitMs(own, 20_000, 400, 24)).toBe(40_000);
+  });
+  test("books each call and does not wait while under its budget, whatever other callers use", async () => {
+    let now = 0;
+    const share = createHlShare(400, () => now);
+    for (let i = 0; i < 16; i++) await share(24);
+    now = 61_000;
+    await share(24);
   });
 });
 

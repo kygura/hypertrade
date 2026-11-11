@@ -4,6 +4,7 @@ import * as db from "../db.js";
 import { BranchConfigSchema } from "../../shared/schemas.js";
 import { NoPriceDataError } from "../sim/engine.js";
 import { runBranchConfig } from "../sim/run.js";
+import { failure } from "./intel/http.js";
 
 const createBody = z.object({ name: z.string().min(1), config: BranchConfigSchema });
 const updateBody = z.object({ name: z.string().min(1).optional(), config: BranchConfigSchema.optional() });
@@ -19,6 +20,7 @@ function invalidBody(error: z.ZodError) {
 }
 
 export const branchesRoutes = new Hono()
+  .onError((err, c) => failure(c, err, "branches", "branches error"))
   .get("/", async (c) => {
     return c.json(await db.listBranches());
   })

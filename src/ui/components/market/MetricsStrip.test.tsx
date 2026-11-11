@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { fngWord, pctChange, METRIC_DEFS, type MetricSummaryRow } from './MetricsStrip'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { fngWord, pctChange, MetricsUnavailable, METRIC_DEFS, type MetricSummaryRow } from './MetricsStrip'
 
 const row = (p: Partial<MetricSummaryRow>): MetricSummaryRow => ({ seriesId: 'x', ts: null, latest: null, previous: null, delta: null, z30: null, ...p })
 
@@ -19,5 +20,14 @@ describe('MetricsStrip helpers', () => {
     expect(skew.fmtValue(0.0123)).toBe('+0.0123')
     expect(skew.fmtDelta(row({ delta: -0.001 }))?.positive).toBe(false)
     expect(skew.fmtDelta(row({}))).toBeNull()
+  })
+})
+
+describe('MetricsUnavailable', () => {
+  test('one quiet text line with the reason, no card or title block', () => {
+    const html = renderToStaticMarkup(<MetricsUnavailable reason="DATABASE_URL is not set" />)
+    expect(html).toContain('metrics unavailable · DATABASE_URL is not set')
+    expect(html).not.toContain('panel')
+    expect(html).not.toContain('state-title')
   })
 })

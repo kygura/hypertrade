@@ -5,6 +5,40 @@ lists live in git history (see History).
 
 ## Open
 
+Narrowing to three jobs, phase 1 (2026-11-11): nav and landing only, nothing deleted. The shell has three
+cells: QUEUE (what deserves a look today, the landing `/queue`; MOVES is its second tab), RESEARCH (is there an
+edge), TRADE (what did I do and was I right); the contract is docs/RESEARCH.md "Nav". Every route below still works
+by URL.
+
+- [x] Stage 2 (2026-11-11): the attention queue as home. `GET /api/queue` merges moves triage, ready opportunities and
+  radar calls under `MOVES_TRIAGE_DAILY`; dismissals in migration 025; `/coin/:coin` is the decide page and
+  `/markets/:coin` redirects to it; ASK is a drawer that carries the coin and queue item. Contract: docs/SPEC.md
+  § Queue; screens: docs/design/README.md §10.14 to §10.16.
+- [ ] Approval still only exists on `/feed` (the coin page links to it as `OPPORTUNITY · APPROVE ON FEED`), so `/feed`
+  cannot be deleted on 11-18 until approve (the opportunity detail and `TicketDialog`) moves to the coin page.
+- [ ] Queue sources not yet in (docs/SPEC.md § Queue Q0), each with its blocker: board definitions, rules and novelty
+  (answer "is there an edge", heavy to load, no per-item state, dozens a day would fill the cap); Intel alerts (the
+  asset can be a narrative id: needs an asset-to-perp mapping and a rule for alerts Telegram already pushed);
+  Terminal changes (one brief, not per coin, an LLM run per open); Desk alerts (free text, no coin field).
+- [ ] Queue slots are strongest first (item score, then agreeing sources). Open: a separate `QUEUE_DAILY` so triage does
+  not use the whole `MOVES_TRIAGE_DAILY` budget, and cross-source score weights (an opportunity's own `score` is raw,
+  not normalised to its bar, so the queue still scores a ready setup and a radar call as 1).
+- [ ] `src/ui/pages/moves/Moves.tsx` still polls `/api/moves/triage` although `TriagePanel` is no longer rendered on
+  `/moves`; drop the poll (or the panel) in the cleanup.
+- [ ] Telegram review links (`intel/mapper.ts`, `intel/terminal.ts`) still open `/terminal?review=1`, a hidden screen;
+  retarget them before `/terminal` is deleted.
+
+- [ ] 2026-11-18: delete the screens hidden from nav, with their server code, if none was missed for a week:
+  - TRADE: FEED (`/feed`), CHANGES (`/terminal`, `/asset/:coin`), WATCH (`/watch`), THESES (`/theses`),
+    QUERY (`/query`).
+  - MOVES: MARKETS (`/markets`), STATE (`/state`), SECTORS (`/sectors`), CYCLES (`/cycles`).
+  - ENGINE: strategies, decisions, governor (`/strategies`, `/decisions`, `/governor`); no entry point.
+  - Lab SEARCH, RUNS and PULSE (`/lab/search`, `/lab/runs`, `/lab/pulse`) are folded behind RULES: off the
+    tab row, SEARCH and RUNS linked from the RULES page; `/lab/pulse` is unlinked.
+  - Kept, explicitly: BRANCHES and the portfolio simulation (`/analyst` SIMULATE, the top bar's ASK drawer).
+  - Before deleting: the coin page links to `/feed?id=` (approve) and queue opportunity parts drill to `/feed?id=`;
+    the queue's moves parts drill to `/moves?coin=`; Telegram links still target `/terminal?review=1`.
+
 UI consolidation, per `docs/CONSOLIDATION.md` (one cell per operator job, one home per
 object; 6 shell cells today against a ceiling of 9, target 5):
 
@@ -19,6 +53,30 @@ object; 6 shell cells today against a ceiling of 9, target 5):
   `SectionTabs`, `useApi`/`usePoll` fixed and `AsyncBody` ladders, agents get intel and
   platform read tools. Type-scale codemod and `check:type-scale` done. Deferred: the
   `runToolLoop` extraction (see `docs/CONSOLIDATION.md`).
+
+MOVES (`/moves`, first MARKET tab; attribution, positioning, triage, agent records), deferred past v1:
+
+- [x] Make MOVES the landing (2026-11-11): `rootRedirect` (`src/ui/lib/research.ts`) and the Login default;
+  the board moved to `/board`. Superseded the same day by stage 2: the landing is `/queue`.
+- [ ] Approve or any order action on MOVES (links only in v1).
+- [ ] HIP-3 dexes and non-crypto coins (main-dex crypto only); agents watching HIP-3.
+- [ ] Microstructure as an attributed layer (spread and depth stay in the Cockpit cost model).
+- [ ] OKX hourly OI as a fallback when no scanner runs; a liquidation-volume feed.
+- [ ] Intercept (alpha) reporting; per-window beta re-estimation for 4h windows (or 4h returns over 30 days).
+- [ ] Elfa trend history.
+- [ ] Multi-step agent tool loops (the analyst loop with moves read tools; an ASK read tool `moves_records`).
+- [ ] Telegram push of triage items (through `routeFor` / materiality, rare).
+- [ ] Graded agent records as a fourth evidence kind on the board; agents proposing Lab definitions from
+  repeated layers.
+- [ ] A replay or event study of the ENTER/FADE checklists: news is not a Lab metric, so ENTER stays untested.
+- [ ] Combined Hyperliquid weight budget: MOVES (400), the replay (600), the crawler (500) and the scanner add up to
+  more than the guard's 1000. Each job now counts only its own calls (`createHlShare`), so none is locked out, but
+  with all of them busy the guard makes them queue and the crawler, which yields first, polls less.
+- [ ] Without a database the OI history is boot-local, so the flow layer is `partial` for the first 48 h, and
+  agent records and triage are lost on restart.
+- [ ] Cross-link leftovers: Desk alerts carry free text and no coin field, so their coins stay plain text;
+  the three `fmtSigned` implementations (`components/intel/format.ts`, `lib/lab.ts`, `lib/format.ts`) differ in
+  signature (suffix vs unit argument, default decimals 1 / 2 / 0), so they were not unified.
 
 Research terminal follow-ups (docs/RESEARCH.md; each changes live scanner output, applied migrations
 or study semantics, so each needs its own change):
@@ -75,7 +133,7 @@ Signals v2 follow-ups (docs/RESEARCH.md "Signals v2"):
   the day and scans never overlap at 00:00 UTC; `okx:oi` is collected and read stored; a deadline-cut study is not
   cached; live funding's left extension is capped to the cold span.
 - [ ] Hyperliquid weight contention: the replay's own fetches stay under 600 of the guard's 1000 per minute
-  (`REPLAY_HL_BUDGET`, `hlWaitBelow`), but the no-database definition scan (and Lab studies) still share the full
+  (`REPLAY_HL_BUDGET`, `createHlShare`), but the no-database definition scan (and Lab studies) still share the full
   budget with the live scanner, so a cold scan can delay a scanner tick by up to a minute on the guard. A per-caller
   share for the scan needs a seam through the Lab loader (`HtDeps.liveFunding` / `liveCandles`) that only the scan
   uses; not done.

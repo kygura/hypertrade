@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import type { FlowQuadrant, NarrativeContrast, NarrativeHeadline, NarrativeLean, NarrativeRow, NarrativesResponse, NarrativeStage, NarrativeView } from '../../../shared/intel'
 import { fmtPct, fmtUsd, classForPnl } from '../../../shared/format'
 import { api } from '../../lib/api'
@@ -117,7 +118,14 @@ function NarrativeDetail({ row, onChanged }: { row: NarrativeRow; onChanged: () 
     <div className="flex flex-col gap-3 px-3 py-3 border-t border-border">
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-secondary">
         <span>
-          {row.tokens.join(' · ')}
+          {row.tokens.map((t, i) => (
+            <span key={t}>
+              {i > 0 && ' · '}
+              <Link to={`/markets/${encodeURIComponent(t)}`} className="hover:text-text-primary hover:underline" title={`open ${t}`}>
+                {t}
+              </Link>
+            </span>
+          ))}
           {row.missing.length > 0 && <span className="text-text-disabled"> (no data: {row.missing.join(', ')})</span>}
         </span>
         <span>7D {pct(row.htf.pricePct7d)} · 30D {pct(row.htf.pricePct30d)} · 30D VS BTC {pct(row.htf.relBtc30d)} · OI 30D {pct(row.htf.oiPct30d)}</span>

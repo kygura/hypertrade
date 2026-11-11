@@ -11,7 +11,7 @@ import { envNum } from "./scanner.js";
 //  - an opportunity reaches `ready` with score >= PLATFORM_PUSH_SCORE: once per opportunity
 //  - the WS feed goes silent for > 30 s (or never delivers a message in the first 60 s): once;
 //    recovery after 2 consecutive ok checks: once; "silent" alerts are at least 10 min apart
-// Links point at the cockpit `/feed` (a Ready push at its opportunity, `/feed?id=`). A failing channel never throws out of here.
+// Links point at the queue `/queue` (a Ready push at its coin page, `/coin/<coin>`). A failing channel never throws out of here.
 
 export const WS_SILENT_SEC = 30;
 const NEVER_CONNECTED_MS = 60_000;
@@ -38,7 +38,7 @@ export function createAlerts(deps: {
   let silent = false;
   let okStreak = 0;
   let lastSilentAt = -Infinity;
-  const send = (level: "info" | "warn" | "critical", title: string, body: string, path = "/feed") =>
+  const send = (level: "info" | "warn" | "critical", title: string, body: string, path = "/queue") =>
     deps.notifier.send({ level, title, body: body + linkTo(path) }).catch((err) => console.error("[alerts]", err instanceof Error ? err.message : err));
 
   /** One WS silence check. Fires on silence (cooldown-limited) and once on recovery. */
@@ -72,7 +72,7 @@ export function createAlerts(deps: {
         const edge = o.netEdgeBps == null ? "edge n/a" : `net edge ${o.netEdgeBps.toFixed(0)} bps (${o.edgeBasis})`;
         const rows = await deps.store?.outcomeRows({ setupKind: o.setupKind }).catch(() => null);
         const line = rows ? `\n${evidenceLine(setupLedgerStats(o.setupKind, rows), o.edgeBasis)}` : "";
-        void send("info", `Ready: ${o.direction} ${o.coin}`, `${o.setupKind}, score ${o.score.toFixed(2)}, ${edge}${line}`, `/feed?id=${encodeURIComponent(o.id)}`);
+        void send("info", `Ready: ${o.direction} ${o.coin}`, `${o.setupKind}, score ${o.score.toFixed(2)}, ${edge}${line}`, `/coin/${encodeURIComponent(o.coin)}`);
       });
     },
     /** NOVEL: push of one novelty entry (information only, no cockpit link). Once per entry id per process; a send no channel took is retried. Returns the channels that took it. */

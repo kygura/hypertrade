@@ -2,7 +2,8 @@ import { SectionTabs, type SectionTab } from '../SectionTabs'
 import { useLabDataOptional } from './LabData'
 
 // LabTabs — the RESEARCH family row (docs/design/README.md §10.9): workflow order
-// BOARD · STUDY · SEARCH · RUNS · CATALOGUE · PULSE · BRANCHES (docs/RESEARCH.md), a SectionTabs wrapper. Sticky under
+// BOARD · STUDY · RULES · BRANCHES (docs/RESEARCH.md), a SectionTabs wrapper. SEARCH, RUNS and PULSE are
+// hidden from the row (docs/TASKS.md 2026-11-11) and show only on their own pages. Sticky under
 // the top bar; the row is --subnav-h tall (the lg search form sticks under both). Inside the Lab it reads the
 // LabDataProvider (catalogue count, pulse dot); on the board there is no provider, so no Lab load starts and
 // the dot comes from the board's own pulse counts (`pulseFiring`).
@@ -18,9 +19,9 @@ export function labTabOf(pathname: string): LabTab {
   return 'search'
 }
 
-/** Every path of the RESEARCH family: the board `/`, /lab/* and /branches/*. */
+/** Every path of the RESEARCH family: the board `/board`, /lab/* and /branches/*. */
 export function isResearchPath(p: string): boolean {
-  return p === '/' || p === '/lab' || p.startsWith('/lab/') || p === '/branches' || p.startsWith('/branches/')
+  return p === '/board' || p === '/lab' || p.startsWith('/lab/') || p === '/branches' || p.startsWith('/branches/')
 }
 
 export function LabTabs({ pulseFiring }: { pulseFiring?: boolean } = {}) {
@@ -31,11 +32,11 @@ export function LabTabs({ pulseFiring }: { pulseFiring?: boolean } = {}) {
   const inLab = (tab: LabTab) => (p: string) => p.startsWith('/lab') && labTabOf(p) === tab
 
   const tabs: SectionTab[] = [
-    { to: '/', label: 'BOARD', short: 'BRD', title: 'live signals with their evidence', match: (p) => p === '/' },
+    { to: '/board', label: 'BOARD', short: 'BRD', title: 'live signals with their evidence', match: (p) => p === '/board' },
     { to: '/lab/study', label: 'STUDY', short: 'STDY', match: inLab('study') },
-    { to: '/lab/search', label: 'SEARCH', short: 'SRCH', match: inLab('search') },
-    { to: '/lab/runs', label: 'RUNS', short: 'RUNS', match: inLab('runs') },
-    { to: '/lab/catalogue', label: count != null ? `CATALOGUE · ${count}` : 'CATALOGUE', short: 'CTLG', match: inLab('catalogue') },
+    { to: '/lab/search', label: 'SEARCH', short: 'SRCH', match: inLab('search'), hidden: true },
+    { to: '/lab/runs', label: 'RUNS', short: 'RUNS', match: inLab('runs'), hidden: true },
+    { to: '/lab/catalogue', label: count != null ? `RULES · ${count}` : 'RULES', short: 'RULE', title: 'the rule catalogue', match: inLab('catalogue') },
     {
       to: '/lab/pulse',
       label: (
@@ -47,6 +48,7 @@ export function LabTabs({ pulseFiring }: { pulseFiring?: boolean } = {}) {
       dot: firing,
       title: firing === undefined ? 'pulse not loaded' : firing ? 'a catalogued rule is firing' : 'no catalogued rule is firing',
       match: inLab('pulse'),
+      hidden: true,
     },
     { to: '/branches', label: 'BRANCHES', short: 'BRNCH', match: (p) => p === '/branches' || p.startsWith('/branches/') },
   ]

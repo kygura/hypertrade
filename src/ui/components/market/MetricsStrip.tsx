@@ -1,6 +1,7 @@
 import { Panel, MetricStat } from '..'
 import { AsyncBody, StaleBanner } from '../state'
 import { useApi } from '../../lib/api'
+import { isDbUnavailable } from '../../lib/dbUnavailable'
 import { fmtUsd } from '../../../shared/format'
 
 // MetricsStrip — docs/design/README.md §10.2. Funding skew, fear/greed, BTC dominance and
@@ -69,13 +70,33 @@ export const METRIC_DEFS: {
   },
 ]
 
+/** No database: one quiet text line with the server's reason, never a card. */
+export function MetricsUnavailable({ reason }: { reason: string }) {
+  return (
+    <p className="px-3 py-1.5 text-xs text-text-secondary break-words" data-metrics-unavailable>
+      metrics unavailable{reason ? ` · ${reason}` : ''}
+    </p>
+  )
+}
+
 export function MetricsStrip() {
   const ids = METRIC_DEFS.map((d) => d.id).join(',')
   const { data, loading, error, offline, refetch } = useApi<MetricSummaryRow[]>(`/metrics/summary?ids=${ids}`)
 
+  // No database: a quiet unavailable state with the server's reason, not an error banner.
+  const dbDown = isDbUnavailable(error)
+  if (dbDown && data == null) return <MetricsUnavailable reason={error ?? ''} />
+
   return (
     <Panel>
-      <AsyncBody loading={loading} data={data} error={error} offline={offline} empty={{ label: 'no metrics yet' }} onRetry={refetch}>
+      <AsyncBody
+        loading={loading}
+        data={data}
+        error={error}
+        offline={offline}
+        empty={{ label: 'no metrics yet' }}
+        onRetry={refetch}
+      >
         {(rows) => {
           const bySeriesId = new Map(rows.map((d) => [d.seriesId, d]))
           const newestTs = rows.reduce<string | null>((acc, d) => (d.ts && (!acc || d.ts > acc) ? d.ts : acc), null)

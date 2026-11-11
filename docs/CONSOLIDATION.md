@@ -45,6 +45,9 @@ engine governor; flow flags, scanner setups, tripwires, desk triggers and Lab ru
 
 ## Target nav (5 cells)
 
+Superseded on 2026-11-11 by the three-cell nav (MOVES, RESEARCH, TRADE) in docs/RESEARCH.md "Nav"; the
+table below is the earlier state. The routes it lists all still work.
+
 The trading front is one cell. Its tabs read left to right as a funnel from **intel**
 (what changed, what I know) to **act** (what to place, approve or kill), so the operator
 walks one surface instead of choosing between Cockpit, Terminal and Desk.
@@ -53,7 +56,7 @@ walks one surface instead of choosing between Cockpit, Terminal and Desk.
 |---|---|---|
 | RESEARCH | What is firing now, and what happened before when it fired (the landing, docs/RESEARCH.md) | BOARD `/` (landing), STUDY `/lab/study`, SEARCH `/lab/search`, RUNS `/lab/runs`, CATALOGUE `/lab/catalogue`, PULSE `/lab/pulse`, BRANCHES `/branches`. Drills: `/lab/rules/:id`, `/branches/:id` |
 | TRADE | Know what changed for my book, then act on it | Intel: CHANGES `/terminal`, WATCH `/watch`, JOURNAL `/journal`, THESES `/theses`, QUERY `/query` → Act: FEED `/feed`, ORDER `/order`, DESK `/desk`. Drill: `/asset/:coin` |
-| MARKET | What is the market doing | PERPS `/markets`, SECTORS `/sectors`, STATE `/state`, CYCLES `/cycles`. Drills: `/markets/:coin`, `/cycles/:coin`. Header: the MetricsStrip from Overview |
+| MARKET | What is the market doing | MOVES `/moves` (first; why each coin moved), PERPS `/markets`, SECTORS `/sectors`, STATE `/state`, CYCLES `/cycles`. Drills: `/markets/:coin`, `/cycles/:coin`. Header: the MetricsStrip from Overview |
 | ASK | Free-form question to the analyst | `/analyst` (ASK and SIMULATE) |
 | ENGINE | External Hyperion console | `/strategies`, `/decisions`, `/governor` and drills |
 

@@ -3,6 +3,7 @@ import { Button, Panel } from '../components'
 import { useQueryPatch } from '../lib/hooks'
 import { MarketChart } from '../components/charts/MarketChart'
 import { FundingPanel, PerpHeader, usePerpStats } from '../components/market/PerpPanels'
+import { boardHref } from '../lib/research'
 import { isTimeframe, type Timeframe } from '../../shared/timeframes'
 
 // Markets drill-in — docs/design/README.md §10.7. Full view (not an overlay), route
@@ -33,9 +34,17 @@ export function MarketDrill() {
         <Button tier="ghost" onClick={() => navigate('/markets')}>
           ← MARKETS
         </Button>
-        <Button tier="ghost" onClick={() => navigate(`/asset/${encodeURIComponent(name)}`)}>
-          INTEL →
-        </Button>
+        <span className="inline-flex items-center gap-2">
+          <Button tier="ghost" onClick={() => navigate(`/moves?coin=${encodeURIComponent(name)}`)} title={`why ${name} moved`}>
+            MOVES →
+          </Button>
+          <Button tier="ghost" onClick={() => navigate(boardHref(name))} title={`research board filtered to ${name}`}>
+            EVIDENCE →
+          </Button>
+          <Button tier="ghost" onClick={() => navigate(`/asset/${encodeURIComponent(name)}`)}>
+            INTEL →
+          </Button>
+        </span>
       </div>
 
       <Panel>
