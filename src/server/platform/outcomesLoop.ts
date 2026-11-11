@@ -21,6 +21,9 @@ const MAX_LATE_PER_TICK = 10;
 const MAX_EMPTY = 3;
 class NoCandles extends Error {}
 
+/** PLATFORM_OUTCOME_HORIZONS default. */
+export const DEFAULT_OUTCOME_HORIZONS = "1h,4h,24h,72h";
+
 let skippedN = 0;
 /** Horizons too old for HL's candle history, never marked. Counted once per process; health shows it as outcomesSkipped. */
 export const skipped = () => skippedN;
@@ -42,7 +45,7 @@ export interface OutcomesDeps {
 export function createOutcomesLoop(deps: OutcomesDeps) {
   const { store } = deps;
   const now = deps.now ?? Date.now;
-  const horizons = deps.horizons ?? parseHorizons(process.env.PLATFORM_OUTCOME_HORIZONS?.trim() || "1h,4h,24h,72h");
+  const horizons = deps.horizons ?? parseHorizons(process.env.PLATFORM_OUTCOME_HORIZONS?.trim() || DEFAULT_OUTCOME_HORIZONS);
   const maxMs = Math.max(...horizons.map(horizonMs));
   const candles = deps.candles ?? ((coin: string, s: number, e: number) => fetchCandles(coin, "1m", s, e));
   /** Horizons already marked, per opportunity; loaded from the ledger the first time one comes due. */

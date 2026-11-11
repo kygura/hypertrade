@@ -6,6 +6,7 @@ import {
 } from "../../shared/research.js";
 import type { CatalogueEntry, MarketPulse } from "../lab/types.js";
 import type { DefinitionScan } from "../signals/scan.js";
+import { FEATURE_MIN_TICKS_24H } from "../platform/features.js";
 import { definitionSignal, firingEntries, noveltySignal, opportunitySignal, radarSignal, ruleSignal } from "./signals.js";
 import { bounded, STUDY_STORE_TIMEOUT_MS, studyKey, type StudyCache } from "./study.js";
 
@@ -45,6 +46,11 @@ export interface BoardDeps {
    * the kinds on the board; a failure or no answer within `ledgerTimeoutMs` leaves their evidence null.
    */
   ledger: (setupKinds: string[]) => Promise<LedgerStats[]>;
+  /**
+   * Scanner ticks persisted in the last 24 h (distinct scan_snapshots timestamps); null when unknown. Read with the
+   * opportunities under `ledgerTimeoutMs`; under FEATURE_MIN_TICKS_24H the source carries a note (scannerNote).
+   */
+  scannerTicks24h?: () => Promise<number | null>;
   /** Landed radar calls and the scorecard over all of them; throw SourceUnavailable when data/radar is absent. */
   radar: () => Promise<{ calls: RadarCall[]; scorecard: RadarScoreRow[] }>;
   /** Signal definitions in zone on the latest closed bar (signals/scan.ts); throw SourceUnavailable where no scan can run. */
@@ -88,8 +94,18 @@ export function attachStudy(cache: StudyCache, s: ResearchSignal, now: number): 
   else if (s.rule) s.evidence = summary && studyEvidence(summary);
 }
 
+/**
+ * The opportunity source's note when the scanner cannot compute its features: the z features need a ring point
+ * every 15 min (FEATURE_MIN_TICKS_24H a day), which only the always-on server's 1-minute scan gives; a scanner run
+ * from a cron leaves them null and no setup can fire. null when the cadence is enough or unknown.
+ */
+export function scannerNote(ticks24h: number | null): string | null {
+  if (ticks24h == null || ticks24h >= FEATURE_MIN_TICKS_24H) return null;
+  return `scanner has ${ticks24h} tick${ticks24h === 1 ? "" : "s"} stored in the last 24 h; setups need ${FEATURE_MIN_TICKS_24H} (one per 15 min; the always-on server scans every minute), so none can fire`;
+}
+
 /** Maps and validates each item on its own; an item that throws or fails the schema is dropped (and logged). */
-function mapEach<T>(source: ResearchSource, items: T[], map: (t: T) => Omit<ResearchSignal, "dailyStudy">): { signals: ResearchSignal[]; dropped: number } {
+function mapEach<T>(source: ResearchSource, items: T[], map: (t: T) => Omit<ResearchSignal, "dailyStudy">): { signals: ResearchSignal[]; dropped: number; note?: string } {
   const signals: ResearchSignal[] = [];
   let dropped = 0;
   for (const item of items) {
@@ -115,7 +131,7 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
   let pulse: BoardResponse["pulse"] = null;
   let rulePulse: BoardResponse["pulse"] = null;
 
-  const loaders: Record<ResearchSource, () => Promise<{ signals: ResearchSignal[]; dropped: number }>> = {
+  const loaders: Record<ResearchSource, () => Promise<{ signals: ResearchSignal[]; dropped: number; note?: string }>> = {
     rule: async () => {
       const r = await deps.pulse();
       rulePulse = { assets: r.pulse.assets.length, firing: r.pulse.assets.reduce((n, a) => n + a.rules.filter((x) => x.firing).length, 0) };
@@ -126,8 +142,13 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
     opportunity: async () => {
       const opps = await deps.opportunities(OPPORTUNITY_LIMIT);
       const kinds = [...new Set(opps.map((o) => o.setupKind))];
-      const ledger = opps.length ? await bounded(Promise.resolve().then(() => deps.ledger(kinds)), null, deps.ledgerTimeoutMs ?? STUDY_STORE_TIMEOUT_MS, "opportunity ledger") : [];
-      return mapEach("opportunity", opps, (o) => opportunitySignal(o, ledger));
+      const storeMs = deps.ledgerTimeoutMs ?? STUDY_STORE_TIMEOUT_MS;
+      const [ledger, ticks] = await Promise.all([
+        opps.length ? bounded(Promise.resolve().then(() => deps.ledger(kinds)), null, storeMs, "opportunity ledger") : [],
+        deps.scannerTicks24h ? bounded(Promise.resolve().then(() => deps.scannerTicks24h!()), null, storeMs, "scanner ticks") : null,
+      ]);
+      const note = scannerNote(ticks);
+      return { ...mapEach("opportunity", opps, (o) => opportunitySignal(o, ledger)), ...(note && { note }) };
     },
     radar: async () => {
       const r = await deps.radar();
@@ -147,7 +168,7 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
     (Object.keys(loaders) as ResearchSource[]).map(async (source) => {
       try {
         const got = await withTimeout(loaders[source](), ms);
-        sources[source] = { state: "ok", count: got.signals.length, dropped: got.dropped };
+        sources[source] = { state: "ok", count: got.signals.length, dropped: got.dropped, ...(got.note && { note: got.note }) };
         if (source === "rule") pulse = rulePulse; // only from a load that made it in time
         signals.push(...got.signals);
       } catch (e) {

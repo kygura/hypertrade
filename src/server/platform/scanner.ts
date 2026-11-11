@@ -4,8 +4,8 @@ import { fin } from "../intel/util.js";
 import type { JsonValue, LedgerStats, NearMiss, Opportunity } from "../../shared/platform.js";
 import { bus as defaultBus, type Bus } from "./bus.js";
 import { ABSORB_SHARE, bookFromL2, costs as costsFor, depthWithin, midOf, netEdge, type Book } from "./costs.js";
-import { computeFeatures, liquidityTiers, type RingPoint } from "./features.js";
-import { nearMiss, setupsFor } from "./setups.js";
+import type { RingPoint } from "./features.js";
+import { evaluateTick, nearMiss } from "./setups.js";
 import { nextAutoStatus, shouldExpire } from "./opportunity.js";
 import { SCORE_VERSION, scoreOpportunity } from "./score.js";
 import { groupStats } from "./stats.js";
@@ -31,6 +31,10 @@ export const REF_SIZE_USD = 10_000;
 /** Holding time funding is charged over. ponytail: fixed 4 h (the middle outcome horizon); per-setup holds when the ledger says they differ. */
 export const HOLD_HOURS = 4;
 const LIQ_NEAR = 0.02;
+/** PLATFORM_READY_TTL_MIN default: an undecided `ready` idea expires after this (P0.11). */
+export const DEFAULT_READY_TTL_MIN = 60;
+/** PLATFORM_COOLDOWN_MIN default: a key whose idea ended is not recreated for this long. */
+export const DEFAULT_COOLDOWN_MIN = 240;
 const DAY_MS = 24 * 60 * MIN;
 
 /** Maps NaN/±Infinity/undefined to null, recursively: the ledger rejects non-finite numbers. */
@@ -78,10 +82,10 @@ export function createScanner(deps: ScannerDeps) {
   const bus = deps.bus ?? defaultBus;
   const topN = deps.costTopN ?? envNum("PLATFORM_COST_TOP_N", 25);
   const edgeMinN = deps.edgeMinN ?? envNum("PLATFORM_EDGE_MIN_N", 30);
-  const ttlMin = deps.readyTtlMin ?? envNum("PLATFORM_READY_TTL_MIN", 60);
+  const ttlMin = deps.readyTtlMin ?? envNum("PLATFORM_READY_TTL_MIN", DEFAULT_READY_TTL_MIN);
   const researchScore = deps.researchScore ?? envNum("PLATFORM_RESEARCH_SCORE", 4);
   const intervalSec = envNum("PLATFORM_SCAN_INTERVAL_SEC", 60);
-  const cooldownMs = (deps.cooldownMin ?? envNum("PLATFORM_COOLDOWN_MIN", 240)) * MIN;
+  const cooldownMs = (deps.cooldownMin ?? envNum("PLATFORM_COOLDOWN_MIN", DEFAULT_COOLDOWN_MIN)) * MIN;
   const spec = process.env.PLATFORM_SCAN_UNIVERSE?.trim();
   const filter = deps.filter ?? (spec ? parseUniverseSpec(spec) : undefined);
   const tags = deps.tags ?? ((coins: string[]) => ensureSectors(coins, store));
@@ -154,16 +158,18 @@ export function createScanner(deps: ScannerDeps) {
     }
 
     const vols = live.map((c) => ({ coin: c.name, dayNtlVlm: c.dayNtlVlm }));
-    const tiers = liquidityTiers(vols);
     const macro = macroTags(new Date(t));
     const scanned = filter && new Set(selectUniverse(vols, { ...filter, tags: filter.sectors?.length ? await tags(vols.map((c) => c.coin)) : undefined }).map((c) => c.coin));
     const nears = new Map<string, NearMiss>();
-    const cands = live.filter((c) => !scanned || scanned.has(c.name)).flatMap((c) => {
-      const fv = computeFeatures(ring.get(c.name) ?? [], t, { liqNearUsd: liqNear.get(c.name) ?? null });
-      const tier = tiers[c.name]!;
-      const nm = nearMiss(c.name, fv, tier);
-      if (nm) nears.set(c.name, nm);
-      return setupsFor(fv, tier).map((setup) => ({ ctx: c, fv, tier, setup, score: scoreOpportunity(fv) }));
+    const byName = new Map(live.map((c) => [c.name, c]));
+    // The predicate path the replay shares (setups.ts evaluateTick); score, costs, dedupe and status stay here.
+    const cands = evaluateTick({
+      t, vols, coins: live.filter((c) => !scanned || scanned.has(c.name)).map((c) => c.name),
+      ring: (coin) => ring.get(coin) ?? [], liqNear: (coin) => liqNear.get(coin) ?? null,
+    }).flatMap(({ coin, fv, tier, setups }) => {
+      const nm = nearMiss(coin, fv, tier);
+      if (nm) nears.set(coin, nm);
+      return setups.map((setup) => ({ ctx: byName.get(coin)!, fv, tier, setup, score: scoreOpportunity(fv) }));
     }).sort((a, b) => b.score - a.score);
 
     const books = new Map<string, Book | null>();

@@ -11,7 +11,8 @@
 //   DB_POOL_MAX                       postgres.js pool size (1; use ~5 here)
 //   APP_URL / DESK_APP_URL            link in Telegram alerts
 //   INTEL_LLM_DAILY_USD               not read here; health LLM spend comes from the same intel accounting
-//   PLATFORM_RETENTION_DAYS (14)      prune horizon for scan history
+//   PLATFORM_RETENTION_DAYS (14)      prune horizon for liqmap snapshots and position changes
+//   PLATFORM_SCAN_RETENTION_DAYS (30) prune horizon for scan_snapshots (the stored intraday OI the replay reads)
 //   PLATFORM_SCAN_INTERVAL_SEC        scanner cadence
 //   PLATFORM_CRAWL_WEIGHT_PER_MIN (500), PLATFORM_CRAWL_MAX_AGE_MIN   crawler budget / freshness
 //   PLATFORM_LIQMAP_COINS             liquidation-map coins
@@ -42,7 +43,7 @@ import { createScanner } from "../src/server/platform/scanner";
 import { setHealthExtras, parseWorkerLoops, startLoops, type LoopDef, type Loops } from "../src/server/platform/runtime";
 import { MemoryPlatformStore } from "../src/server/platform/store-memory";
 import { PgPlatformStore, pgDb } from "../src/server/platform/store-pg";
-import type { PlatformStore } from "../src/server/platform/store";
+import { retentionDays as retentionDays_, scanRetentionDays, type PlatformStore } from "../src/server/platform/store";
 import { createWsIngest, MID_MAX_AGE_MS } from "../src/server/platform/ws";
 import type { PlatformHealth } from "../src/shared/platform";
 
@@ -100,7 +101,7 @@ async function boot() {
 
   const addresses = createAddressBuffer(store);
   const ws = createWsIngest({ onAddresses: (a, t) => addresses.add(a, t) });
-  const retentionDays = Number(process.env.PLATFORM_RETENTION_DAYS ?? 14) || 14;
+  const [retentionDays, scanDays] = [retentionDays_(), scanRetentionDays()];
 
   // Cold start: intel_snapshots (15-min rows from /cron/collect) fills the ring until scan_snapshots has 24 h of its own.
   const seedFrom = dbUrl
@@ -127,7 +128,7 @@ async function boot() {
   const defs: LoopDef[] = [
     // ws.tick opens/maintains the socket and refreshes the universe hourly; throws if the feed goes silent.
     { name: "ws", intervalSec: 30, run: () => ws.tick() },
-    { name: "prune", intervalSec: 3600, run: async () => void (await store.pruneHistory(new Date(Date.now() - retentionDays * 86_400_000).toISOString())) },
+    { name: "prune", intervalSec: 3600, run: async () => void (await store.pruneHistory(new Date(Date.now() - retentionDays * 86_400_000).toISOString(), new Date(Date.now() - scanDays * 86_400_000).toISOString())) },
     scanner.def,
     crawler.def,
     liqmap.def,

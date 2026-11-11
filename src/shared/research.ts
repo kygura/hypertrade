@@ -144,6 +144,11 @@ export const SourceStatusSchema = z.object({
   count: Count,
   /** Items the source returned that did not map to a valid signal (dropped and logged); for `definition`, also coins the scan dropped (data failed or late). */
   dropped: Count,
+  /**
+   * A plain fact that qualifies an `ok` source, e.g. for `opportunity` when the scanner ticks too rarely for its
+   * features: 0 signals then means "could not fire", not "nothing fired". Absent when there is nothing to say.
+   */
+  note: z.string().optional(),
 });
 export type SourceStatus = z.infer<typeof SourceStatusSchema>;
 
@@ -250,3 +255,54 @@ export const RadarResponseSchema = z.object({
   scorecard: z.array(RadarScoreRowSchema),
 });
 export type RadarResponse = z.infer<typeof RadarResponseSchema>;
+
+// ---------------------------------------------------------------- intraday setup replay
+
+/** Where a setup replay's ring points come from: HL 15-min candles + hourly funding, or stored scan_snapshots. */
+export const REPLAY_SOURCES = ["candles", "snapshots"] as const;
+export type ReplaySource = (typeof REPLAY_SOURCES)[number];
+
+/**
+ * One platform setup kind × side × horizon in a replay. `entries` = ideas the shipped predicate would have created
+ * (scanner dedupe, ready TTL, cooldown); n, clusters, meanNet (fraction, over cluster means), ci95 (null under 5
+ * clusters) and hitRate are groupStats over the entries graded at `horizon`, as the ledger computes them; n 0 has
+ * null numbers. `evaluable: false` = the setup reads a feature the stream cannot build (`reason` says which); it
+ * could not fire, which is not the same as firing 0 times.
+ */
+export const SetupReplayRowSchema = z.object({
+  kind: z.string().min(1),
+  side: z.enum(["long", "short"]),
+  horizon: z.string().regex(/^\d+[mhd]$/),
+  evaluable: z.boolean(),
+  reason: z.string().optional(),
+  entries: Count,
+  n: Count,
+  clusters: Count,
+  meanNet: Num.nullable(),
+  ci95: z.tuple([Num, Num]).nullable(),
+  hitRate: Num.nullable(),
+});
+export type SetupReplayRow = z.infer<typeof SetupReplayRowSchema>;
+
+/**
+ * GET /api/research/setups/replay?source=candles|snapshots. A replay of the shipped, fixed setup predicates (not a
+ * Lab trial), computed in the background and memoised. `pending` while the first run of the source is in flight
+ * (ask again); `unavailable` with a fact `reason` (no database, history too sparse, the run failed); `ok` with the
+ * numbers. Outside `ok`: window null and empty lists.
+ */
+export const SetupReplayResponseSchema = z.object({
+  state: z.enum(["ok", "pending", "unavailable"]),
+  reason: z.string().optional(),
+  /** When the replay ran (`ok`), else when this answer was made. */
+  asOf: Iso,
+  source: z.enum(REPLAY_SOURCES),
+  window: z.object({ from: Iso, to: Iso }).nullable(),
+  coins: z.array(z.string()),
+  /** Step of the replay grid, e.g. "15m". */
+  grid: z.string(),
+  horizons: z.array(z.string()),
+  /** Short facts: what the replay tests and what it assumes (costs, funding, tiers, universe). */
+  assumptions: z.array(z.string()),
+  setups: z.array(SetupReplayRowSchema),
+});
+export type SetupReplayResponse = z.infer<typeof SetupReplayResponseSchema>;

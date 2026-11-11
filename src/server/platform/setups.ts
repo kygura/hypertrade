@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Side } from "../../shared/intel.js";
 import type { FeatureVector, LiquidityTier, NearMiss } from "../../shared/platform.js";
 import { fin } from "../intel/util.js";
+import { computeFeatures, liquidityTiers, type RingPoint } from "./features.js";
 
 // Platform setups as data (TASKS PS-B1, docs/FEATURES.md § 1): each setup is a
 // SetupSchema over the scanner's feature vector, compiled once into the
@@ -205,3 +206,27 @@ export function compile(schemas: SetupSchema[]): (fv: FeatureVector, tier: Liqui
 
 /** The scanner's setup predicate. */
 export const setupsFor = compile(SETUPS);
+
+/** One evaluated coin of a tick: its feature vector, liquidity tier and the setups that fire. */
+export type TickCoin = { coin: string; fv: FeatureVector; tier: LiquidityTier; setups: Setup[] };
+
+/**
+ * Ring + tick inputs -> the setups that fire, per evaluated coin. The one path the live scanner tick and the
+ * replay (replay.ts) share: liquidity tiers over `vols` (every live coin's 24 h volume at `t`), features on each
+ * coin's ring up to `t`, then setupsFor. `coins` are the coins evaluated (the scan universe), a subset of `vols`.
+ * Score, costs, dedupe and status are the caller's.
+ */
+export function evaluateTick(o: {
+  t: number;
+  vols: Array<{ coin: string; dayNtlVlm: number }>;
+  coins: string[];
+  ring: (coin: string) => RingPoint[];
+  liqNear?: (coin: string) => number | null;
+}): TickCoin[] {
+  const tiers = liquidityTiers(o.vols);
+  return o.coins.map((coin) => {
+    const fv = computeFeatures(o.ring(coin), o.t, { liqNearUsd: o.liqNear?.(coin) ?? null });
+    const tier = tiers[coin]!;
+    return { coin, fv, tier, setups: setupsFor(fv, tier) };
+  });
+}

@@ -236,13 +236,18 @@ export class PgPlatformStore implements PlatformStore {
     return (await this.db.query<any>(`select coin, sectors, tagged_at from market_sectors order by coin`)).map((r): SectorTag => ({ coin: r.coin, sectors: r.sectors, taggedAt: iso(r.tagged_at) }));
   }
 
-  async pruneHistory(before: string) {
+  async scanTickCount(since: string) {
+    const [r] = await this.db.query<{ n: number }>(`select count(distinct ts)::int as n from scan_snapshots where ts >= $1::timestamptz`, [iso(since)]);
+    return r!.n;
+  }
+
+  async pruneHistory(before: string, scansBefore = before) {
     const [r] = await this.db.query<{ n: number }>(
       `with a as (delete from liqmap_snapshots where ts < $1::timestamptz returning 1),
-            b as (delete from scan_snapshots where ts < $1::timestamptz returning 1),
+            b as (delete from scan_snapshots where ts < $2::timestamptz returning 1),
             c as (delete from hl_position_changes where ts < $1::timestamptz returning 1)
        select ((select count(*) from a) + (select count(*) from b) + (select count(*) from c))::int as n`,
-      [iso(before)],
+      [iso(before), iso(scansBefore)],
     );
     return r!.n;
   }

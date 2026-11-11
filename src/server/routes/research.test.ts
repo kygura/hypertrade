@@ -15,6 +15,7 @@ import { readRadar } from "../research/radar.js";
 import { createStudyCache, createStudyRunner, studyKey, type RunEventStudy } from "../research/study.js";
 import { fakeStudy } from "../research/testkit.js";
 import { catalogueIdOf, radarRoutes, researchRoutes, toolEventStudy } from "./research.js";
+import { SetupReplayResponseSchema, type ReplaySource, type SetupReplayResponse } from "../../shared/research.js";
 
 const NOW = Date.parse("2026-11-09T12:00:00Z");
 const rule: Rule = { asset: "ETH", direction: "short", horizonDays: 7, conditions: [{ feature: "ht:funding|z|90", op: ">=", threshold: 2 }] };
@@ -194,5 +195,31 @@ describe("/radar route", () => {
     expect(r).toMatchObject({ state: "unavailable", latestNote: null, calls: [], scorecard: [] });
     expect(r.reason).toBe("radar files not deployed");
     expect(JSON.stringify(r)).not.toContain("nonexistent");
+  });
+});
+
+describe("/research/setups/replay route", () => {
+  const replayApp = (replay?: (s: ReplaySource) => Promise<SetupReplayResponse>) =>
+    new Hono().route("/research", researchRoutes({
+      cache: createStudyCache(() => NOW), runStudy: async () => { throw new Error("unused"); }, deadlineMs: () => 1, catalogueId: async () => null,
+      board: () => { throw new Error("unused"); }, ...(replay && { replay }),
+    }));
+  const pending = (source: ReplaySource): SetupReplayResponse => ({ state: "pending", asOf: new Date(NOW).toISOString(), source, window: null, coins: [], grid: "15m", horizons: ["24h"], assumptions: [], setups: [] });
+
+  test("source defaults to candles; snapshots on request; anything else is 400", async () => {
+    const asked: ReplaySource[] = [];
+    const a = replayApp(async (s) => (asked.push(s), pending(s)));
+    expect(SetupReplayResponseSchema.parse(await (await a.request("/research/setups/replay")).json()).state).toBe("pending");
+    await a.request("/research/setups/replay?source=snapshots");
+    expect(asked).toEqual(["candles", "snapshots"]);
+    const bad = await a.request("/research/setups/replay?source=ticks");
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).field).toBe("source");
+  });
+
+  test("default service: snapshots without a database or worker answer unavailable at once (no run)", async () => {
+    if (process.env.DATABASE_URL) return;
+    const r = SetupReplayResponseSchema.parse(await (await replayApp().request("/research/setups/replay?source=snapshots")).json());
+    expect(r).toMatchObject({ state: "unavailable", reason: "needs a database (DATABASE_URL unset)", source: "snapshots", setups: [] });
   });
 });
