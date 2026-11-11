@@ -578,8 +578,8 @@ function AttributionChart({ d }: { d: MoveDetail }) {
             <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(t: number) => tickTime(t, d.window)} tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }} stroke="var(--color-border)" />
             <YAxis tickFormatter={(v: number) => `${v.toFixed(1)}%`} tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }} stroke="var(--color-border)" width={44} />
             <ReferenceLine y={0} stroke="var(--color-border)" strokeDasharray="3 3" />
-            <Line type="monotone" dataKey="actual" name="actual" dot={false} stroke="var(--color-text-primary)" strokeWidth={1.5} isAnimationActive={false} />
-            <Line type="monotone" dataKey="fitted" name="beta-fitted" dot={false} stroke="var(--color-text-secondary)" strokeDasharray="4 3" strokeWidth={1.5} isAnimationActive={false} />
+            <Line type="linear" dataKey="actual" name="actual" dot={false} stroke="var(--color-text-primary)" strokeWidth={1.5} isAnimationActive={false} />
+            <Line type="linear" dataKey="fitted" name="beta-fitted" dot={false} stroke="var(--color-text-secondary)" strokeDasharray="4 3" strokeWidth={1.5} isAnimationActive={false} />
             {marks.map((m) => (
               <ReferenceDot key={`${m.kind}-${m.t}`} x={m.t} y={m.y} r={3} fill={m.kind === 'flow' ? 'var(--color-amber)' : 'var(--color-info)'} stroke="none" ifOverflow="visible" />
             ))}
