@@ -30,6 +30,8 @@ const CoinPage = lazy(() => import('./pages/coin/CoinPage').then((m) => ({ defau
 const Analyst = lazy(() => import('./pages/Analyst').then((m) => ({ default: m.Analyst })))
 // Cycles (ported from hl-cycles): canvas + Recharts charts, loaded with the route.
 const Cycles = lazy(() => import('./pages/Cycles').then((m) => ({ default: m.Cycles })))
+// BTC Vector regime screen (ported from hl-cycles): canvas chart, loaded with the route.
+const Vector = lazy(() => import('./pages/Vector').then((m) => ({ default: m.Vector })))
 // Lab (docs/design/README.md §10.9): research view, loaded with its routes.
 const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
 const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
@@ -148,6 +150,7 @@ export default function App() {
           />
         ))}
         <Route path="/overview" element={<Navigate to="/markets" replace />} />
+        <Route path="/vector" element={<Navigate to="/htf" replace />} />
         <Route
           path="/branches"
           element={
@@ -232,6 +235,16 @@ export default function App() {
             }
           />
         ))}
+        <Route
+          path="/htf"
+          element={
+            <MarketLayout>
+              <Suspense fallback={<SkeletonRows />}>
+                <Vector />
+              </Suspense>
+            </MarketLayout>
+          }
+        />
         <Route
           path="/strategies"
           element={

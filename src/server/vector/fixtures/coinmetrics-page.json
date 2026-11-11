@@ -1,0 +1,57 @@
+{
+  "data": [
+    {
+      "asset": "btc",
+      "time": "2026-09-28T00:00:00.000000000Z",
+      "AdrActCnt": "696094",
+      "CapMVRVCur": "1.558861667543222889",
+      "CapMrktCurUSD": "1677912673041.560846490217328638",
+      "FeeTotNtv": "3.42260182",
+      "FlowInExNtv": "28047.13379977",
+      "FlowInExNtv-status": "flash",
+      "FlowInExNtv-status-time": "2026-09-29T01:35:58.927072000Z",
+      "HashRate": "1088899333.04069654514490962965276738775",
+      "SplyCur": "20090729.25186638",
+      "SplyExNtv": "2683692.0886119",
+      "SplyExNtv-status": "flash",
+      "SplyExNtv-status-time": "2026-09-29T01:31:12.335897000Z",
+      "TxCnt": "776834"
+    },
+    {
+      "asset": "btc",
+      "time": "2026-09-29T00:00:00.000000000Z",
+      "AdrActCnt": "680492",
+      "CapMVRVCur": "1.561016184202416182",
+      "CapMrktCurUSD": "1681126454579.74805854264103133",
+      "FeeTotNtv": "3.11369575",
+      "FlowInExNtv": "28302.36254991",
+      "FlowInExNtv-status": "flash",
+      "FlowInExNtv-status-time": "2026-09-30T03:23:07.732332000Z",
+      "HashRate": "1049302999.87762345744748019611598261225",
+      "SplyCur": "20091226.12684215",
+      "SplyExNtv": "2686232.36691574",
+      "SplyExNtv-status": "flash",
+      "SplyExNtv-status-time": "2026-09-30T03:23:06.870202000Z",
+      "TxCnt": "742152"
+    },
+    {
+      "asset": "btc",
+      "time": "2026-09-30T00:00:00.000000000Z",
+      "AdrActCnt": "719874",
+      "CapMVRVCur": "1.55898418366023022",
+      "CapMrktCurUSD": "1679254955567.01583147477202788",
+      "FeeTotNtv": "3.89170766",
+      "FlowInExNtv": "20094.33904693",
+      "FlowInExNtv-status": "flash",
+      "FlowInExNtv-status-time": "2026-10-01T02:43:34.473271000Z",
+      "HashRate": "930513981.38216123508123631690660761225",
+      "SplyCur": "20091666.7516642",
+      "SplyExNtv": "2681920.49781129",
+      "SplyExNtv-status": "flash",
+      "SplyExNtv-status-time": "2026-10-01T02:38:20.838640000Z",
+      "TxCnt": "596962"
+    }
+  ],
+  "next_page_token": "0.MjAyNi0wOS0yOFQwMDowMDowMFo,MjAyNi0wOS0yOFQwMDowMDowMFo",
+  "next_page_url": "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&frequency=1d&metrics=CapMrktCurUSD,CapMVRVCur,SplyCur,AdrActCnt,TxCnt,FeeTotNtv,HashRate,SplyExNtv,FlowInExNtv&page_size=3&start_time=2026-09-20&next_page_token=0.MjAyNi0wOS0yOFQwMDowMDowMFo,MjAyNi0wOS0yOFQwMDowMDowMFo"
+}

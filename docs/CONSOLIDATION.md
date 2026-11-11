@@ -56,7 +56,7 @@ walks one surface instead of choosing between Cockpit, Terminal and Desk.
 |---|---|---|
 | RESEARCH | What is firing now, and what happened before when it fired (the landing, docs/RESEARCH.md) | BOARD `/` (landing), STUDY `/lab/study`, SEARCH `/lab/search`, RUNS `/lab/runs`, CATALOGUE `/lab/catalogue`, PULSE `/lab/pulse`, BRANCHES `/branches`. Drills: `/lab/rules/:id`, `/branches/:id` |
 | TRADE | Know what changed for my book, then act on it | Intel: CHANGES `/terminal`, WATCH `/watch`, JOURNAL `/journal`, THESES `/theses`, QUERY `/query` → Act: FEED `/feed`, ORDER `/order`, DESK `/desk`. Drill: `/asset/:coin` |
-| MARKET | What is the market doing | MOVES `/moves` (first; why each coin moved), PERPS `/markets`, SECTORS `/sectors`, STATE `/state`, CYCLES `/cycles`. Drills: `/markets/:coin`, `/cycles/:coin`. Header: the MetricsStrip from Overview |
+| MARKET | What is the market doing | MOVES `/moves` (first; why each coin moved), PERPS `/markets`, SECTORS `/sectors`, STATE `/state`, CYCLES `/cycles`, HTF `/htf` (the BTC Vector regime view). Drills: `/markets/:coin`, `/cycles/:coin`. Header: the MetricsStrip from Overview |
 | ASK | Free-form question to the analyst | `/analyst` (ASK and SIMULATE) |
 | ENGINE | External Hyperion console | `/strategies`, `/decisions`, `/governor` and drills |
 

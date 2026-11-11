@@ -90,6 +90,15 @@
   --color-cyc-1: #3987e5;
   --color-cyc-2: #d95926;
   --color-cyc-3: #199e70;
+  /* BTC Vector regime (/vector, ported from hl-cycles DESIGN §14.3): risk-off
+     reds, risk-on blues, strength is lightness. Deliberately not green/red: a
+     regime is a reading, not PnL. All four pass 4.5:1 as text on the dark
+     panels. The compass band ramp (low → high) reuses them with a grey middle. */
+  --color-regime-strong-off: #f66a6a;
+  --color-regime-mild-off: #f0a894;
+  --color-regime-mild-on: #a9b7f7;
+  --color-regime-strong-on: #7484f5;
+  --color-band-mid: #9aa3ad;
 
   /* ── Type scale (Hyperion §2.4, closed set, unchanged) ───────── */
   --text-2xs: 9px;

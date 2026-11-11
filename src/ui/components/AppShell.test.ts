@@ -12,7 +12,7 @@ describe("AppShell NAV", () => {
   });
 
   test("QUEUE is the landing cell: active for its tabs, the coin page, the hidden market pages and their drills", () => {
-    for (const p of ["/queue", "/coin/SOL", "/moves", "/markets", "/markets/HYPE", "/sectors", "/state", "/cycles", "/cycles/eth"]) {
+    for (const p of ["/queue", "/coin/SOL", "/moves", "/markets", "/markets/HYPE", "/sectors", "/state", "/cycles", "/cycles/eth", "/htf"]) {
       expect(activeCells(p)).toEqual(["QUEUE"]);
     }
   });
@@ -32,8 +32,8 @@ describe("AppShell NAV", () => {
 });
 
 describe("MarketTabs", () => {
-  test("QUEUE then MOVES on the row; MARKETS, SECTORS, STATE and CYCLES are hidden", () => {
-    expect(MARKET_TABS.filter((t) => !t.hidden).map((t) => t.label)).toEqual(["QUEUE", "MOVES"]);
+  test("QUEUE, MOVES, HTF on the row; MARKETS, SECTORS, STATE and CYCLES are hidden", () => {
+    expect(MARKET_TABS.filter((t) => !t.hidden).map((t) => t.label)).toEqual(["QUEUE", "MOVES", "HTF"]);
     expect(MARKET_TABS.filter((t) => t.hidden).map((t) => t.label)).toEqual(["MARKETS", "SECTORS", "STATE", "CYCLES"]);
     expect(MARKET_TABS[0]!.to).toBe("/queue");
   });
