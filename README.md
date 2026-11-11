@@ -118,6 +118,8 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `PLATFORM_SCAN_RETENTION_DAYS` (30) | Pruning window for `scan_snapshots`, the only stored intraday OI (read by the `snapshots` setup replay). Never shorter than `PLATFORM_RETENTION_DAYS`. At the always-on cadence that is one row per coin every 5 minutes, about 288 × coins rows a day. |
    | `PLATFORM_REPLAY_TOP` (20) | Coins in the setup replay (`/api/research/setups/replay`, `bun run signals:replay`), most liquid first: candles (about 230 Hyperliquid weight per coin, kept under 600 of the guard's 1000 per minute) and snapshots (at most 14 days of `scan_snapshots`). The replay runs on the always-on server or the CLI only: on Vercel the route answers `unavailable`. `source=snapshots` needs a signed-in reader. |
    | `PLATFORM_OUTCOME_HORIZONS` (`1h,4h,24h,72h`) | Outcome horizons. |
+   | `HL_API_URL` (`https://api.hyperliquid.xyz`) | Hyperliquid API base, server side: `/info` serves prices, funding, candles and live OI. Point it at a proxy, a node or the testnet API. `HL_WS_URL` overrides the websocket (default: the same base, `wss`, `/ws`). The browser keeps the public endpoint. |
+   | `OKX_API_URL` (`https://www.okx.com`) | OKX API base. OKX serves one thing: daily open-interest history (`okx:oi`), which Hyperliquid does not publish. Everything else stays on Hyperliquid. |
    | `PLATFORM_EDGE_MIN_N` (30) | Resolved outcomes needed before edge leaves `unvalidated`. |
    | `PLATFORM_READY_TTL_MIN` (60) | Minutes before an undecided `ready` opportunity expires. |
    | `PLATFORM_RESEARCH_SCORE` (4) | Score at which a new opportunity moves to `investigating` and runs the research stage, when the research budget allows. |

@@ -1,4 +1,4 @@
-import { HL_WS } from './hl-client.js'
+import { hlWsUrl } from './hl-client.js'
 
 // Hyperliquid public websocket client, isomorphic (global WebSocket: browser
 // and Bun). One connection; subscriptions are ref-counted so any number of
@@ -163,7 +163,7 @@ export class HlSocket {
 
   private ensureOpen() {
     if (this.ws || this.retryTimer || this.stopped || typeof WebSocket === 'undefined') return
-    const url = this.opts.url ?? HL_WS
+    const url = this.opts.url ?? hlWsUrl()
     const ws = this.opts.create ? this.opts.create(url) : new WebSocket(url)
     this.ws = ws
     this.setState('connecting')

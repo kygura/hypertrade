@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { envBaseUrl } from "../../../shared/hl-client.js";
 import { DAY_MS, type DailySeries } from "../types.js";
 import { clip, dayStart, getJson, requestTimeout, toDaily, type CollectableProvider, type HistorySeries, type LabMetricDef } from "./series.js";
 
@@ -13,7 +14,10 @@ import { clip, dayStart, getJson, requestTimeout, toDaily, type CollectableProvi
 // lagDays 0. The bar of the current UTC day is still moving (it holds the latest snapshot) and is never returned.
 // period=1D bars are stamped 16:00 UTC (the UTC+8 day) and are not used.
 
-export const OKX_OI_URL = "https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-history";
+export const OKX_API = "https://www.okx.com";
+const OKX_OI_PATH = "/api/v5/rubik/stat/contracts/open-interest-history";
+/** The OI endpoint: `OKX_API_URL` (a base, e.g. a proxy or a regional host) + the path, else okx.com. */
+export const okxOiUrl = (env?: Record<string, string | undefined>): string => `${envBaseUrl("OKX_API_URL", env) ?? OKX_API}${OKX_OI_PATH}`;
 /** The earliest 1Dutc bar OKX serves (BTC-USDT-SWAP, probed 2026-11-11). */
 export const OKX_OI_EPOCH = Date.UTC(2024, 1, 1);
 /** Bars per page; pages run newest first and `end` (exclusive) pages back. */
@@ -57,7 +61,7 @@ export function parseOiPage(json: unknown): Array<{ t: number; v: number }> | nu
 }
 
 export function oiUrl(inst: string, endMs: number): string {
-  return `${OKX_OI_URL}?${new URLSearchParams({ instId: inst, period: "1Dutc", limit: String(OKX_PAGE), end: String(endMs) })}`;
+  return `${okxOiUrl()}?${new URLSearchParams({ instId: inst, period: "1Dutc", limit: String(OKX_PAGE), end: String(endMs) })}`;
 }
 
 const METRICS: LabMetricDef[] = [

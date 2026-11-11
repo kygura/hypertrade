@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fetchPerpMetaAndCtxs, fetchCandles, fetchFundingPage, fetchPredictedFundings, weightWaitMs, responseWeight } from "./hl-client.js";
+import { fetchPerpMetaAndCtxs, fetchCandles, fetchFundingPage, fetchPredictedFundings, weightWaitMs, responseWeight, hlRestUrl, hlWsUrl, envBaseUrl, HL_REST, HL_WS } from "./hl-client.js";
 import fixture from "./fixtures/hyperliquid.json" with { type: "json" };
 
 function mockFetch(body: unknown, ok = true, status = 200): typeof fetch {
@@ -92,5 +92,39 @@ describe("responseWeight", () => {
     for (const t of ["l2Book", "allMids", "clearinghouseState"]) expect(responseWeight(t, {})).toBe(2);
     expect(responseWeight("metaAndAssetCtxs", [])).toBe(20);
     expect(responseWeight("candleSnapshot", new Array(120))).toBe(22);
+  });
+});
+
+describe("configurable endpoints", () => {
+  test("default to the public Hyperliquid API", () => {
+    expect(hlRestUrl({})).toBe(HL_REST);
+    expect(hlWsUrl({})).toBe(HL_WS);
+  });
+  test("HL_API_URL is a base: /info and /ws hang off it, trailing slashes dropped", () => {
+    const env = { HL_API_URL: "https://api.hyperliquid-testnet.xyz/" };
+    expect(hlRestUrl(env)).toBe("https://api.hyperliquid-testnet.xyz/info");
+    expect(hlWsUrl(env)).toBe("wss://api.hyperliquid-testnet.xyz/ws");
+    expect(hlWsUrl({ ...env, HL_WS_URL: "wss://ws.example.com/hl" })).toBe("wss://ws.example.com/hl");
+  });
+  test("a blank or malformed value falls back to the default", () => {
+    expect(hlRestUrl({ HL_API_URL: "  " })).toBe(HL_REST);
+    expect(hlRestUrl({ HL_API_URL: "not a url" })).toBe(HL_REST);
+    expect(envBaseUrl("X", { X: "file:///etc/passwd" })).toBeNull();
+  });
+  test("requests go to the configured endpoint", async () => {
+    const prev = process.env.HL_API_URL;
+    process.env.HL_API_URL = "https://hl.example.com";
+    const urls: string[] = [];
+    const fetchFn = (async (u: string) => {
+      urls.push(String(u));
+      return new Response(JSON.stringify(fixture), { status: 200 });
+    }) as unknown as typeof fetch;
+    try {
+      await fetchPerpMetaAndCtxs(fetchFn);
+    } finally {
+      if (prev === undefined) delete process.env.HL_API_URL;
+      else process.env.HL_API_URL = prev;
+    }
+    expect(urls).toEqual(["https://hl.example.com/info"]);
   });
 });

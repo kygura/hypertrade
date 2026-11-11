@@ -13,6 +13,32 @@ import type { AssetCtx, Candle, HlRawPerpMeta } from "./types.js";
 export const HL_REST = "https://api.hyperliquid.xyz/info";
 export const HL_WS = "wss://api.hyperliquid.xyz/ws";
 
+/** A base URL from the server's env (`process` is absent in the browser, which keeps the default). Pure. */
+export function envBaseUrl(name: string, env: Record<string, string | undefined> | undefined = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env): string | null {
+  const raw = env?.[name]?.trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    return /^(https?|wss?):$/.test(u.protocol) ? raw.replace(/\/+$/, "") : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Hyperliquid info endpoint: `HL_API_URL` (a base such as a proxy or the testnet API) + `/info`, else the public API. */
+export function hlRestUrl(env?: Record<string, string | undefined>): string {
+  const base = envBaseUrl("HL_API_URL", env);
+  return base ? `${base}/info` : HL_REST;
+}
+
+/** Hyperliquid websocket: `HL_WS_URL` as given, else `HL_API_URL` with the ws scheme + `/ws`, else the public one. */
+export function hlWsUrl(env?: Record<string, string | undefined>): string {
+  const ws = envBaseUrl("HL_WS_URL", env);
+  if (ws) return ws;
+  const base = envBaseUrl("HL_API_URL", env);
+  return base ? `${base.replace(/^http/, "ws")}/ws` : HL_WS;
+}
+
 const FETCH_TIMEOUT_MS = 20_000;
 const RETRY_DELAY_MS = 500;
 
@@ -70,7 +96,7 @@ async function post<T>(body: { type: string } & Record<string, unknown>, fetchFn
   }
   let r: Response;
   try {
-    r = await fetchFn(HL_REST, {
+    r = await fetchFn(hlRestUrl(), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
