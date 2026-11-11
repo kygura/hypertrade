@@ -1,5 +1,5 @@
 import {
-  boardStudy, BoardResponseSchema, DefinitionsResponseSchema, RadarResponseSchema, StudyResponseSchema, type LedgerEvidence, type ResearchSignal, type ScorecardEvidence, type StudySummary,
+  boardStudy, BoardResponseSchema, DefinitionsResponseSchema, RadarResponseSchema, SetupReplayResponseSchema, StudyResponseSchema, type DefinitionsResponse, type LedgerEvidence, type SetupReplayResponse, type SetupReplayRow, type ResearchSignal, type ScorecardEvidence, type StudySummary,
   type ResearchSource, type StudyRequest, type StudyResponse,
 } from '../../shared/research'
 import type { RadarCall } from '../../shared/radar'
@@ -15,6 +15,7 @@ const board = parseWith(BoardResponseSchema, 'research board')
 const radar = parseWith(RadarResponseSchema, 'radar')
 const study = parseWith(StudyResponseSchema, 'research study')
 const definitions = parseWith(DefinitionsResponseSchema, 'research definitions')
+const replay = parseWith(SetupReplayResponseSchema, 'setup replay')
 
 /** A board signal (`scope`: the study runs on this coin or on the Lab's top-N universe; `tested`: the side the rule tests). */
 export type BoardSignal = ResearchSignal
@@ -27,6 +28,8 @@ export const research = {
   radar: async () => radar(await api.get('/radar')),
   /** The shipped signal definitions (the /lab/study DEFINITIONS picker). */
   definitions: async () => definitions(await api.get('/research/definitions')),
+  /** Intraday setup replay (RESEARCH.md S5): `pending` while the first run is in flight, polled by the caller. */
+  replay: async () => replay(await api.get('/research/setups/replay?source=candles')),
   /**
    * Runs (or returns today's cached) event study of a signal's rule in its scope; a trial like a direct
    * lab_event_study call. The body is `boardStudy(signal)`, the one the board keys its cached evidence on.
@@ -195,3 +198,34 @@ export function scorecardText(e: ScorecardEvidence): string {
 
 /** The muted line when a row has no evidence and nothing to run: what is missing, as a fact. */
 export const noEvidenceText = (source: ResearchSource) => (source === 'radar' ? 'no graded calls yet' : 'no record yet')
+
+// ─── intraday setup replay (RESEARCH.md S5; a replay of the shipped predicates, not a trial) ───
+
+/** A pending replay (first run, 4–5 min) is asked again this often. */
+export const REPLAY_POLL_MS = 25_000
+/** The replay's 95% interval is null under this many clusters (docs/RESEARCH.md S5). */
+export const REPLAY_MIN_CLUSTERS = 5
+
+/** 24h when the replay grades it, else the longest horizon it has. */
+export const defaultReplayHorizon = (horizons: readonly string[]): string => (horizons.includes('24h') ? '24h' : (horizons[horizons.length - 1] ?? ''))
+
+/** The rows of one horizon, in the server's order (kind × side). */
+export const replayRowsAt = (r: Pick<SetupReplayResponse, 'setups'>, horizon: string): SetupReplayRow[] => r.setups.filter((x) => x.horizon === horizon)
+
+/** `vol_expansion_breakout` → `vol expansion breakout`. */
+export const kindLabel = (kind: string) => kind.replace(/_/g, ' ')
+
+/** The daily definition that shares a platform setup kind's thesis on this side (`intradayKinds` + the rule's direction), if any. */
+export const definitionForKind = (defs: DefinitionsResponse | null, kind: string, side: 'long' | 'short') =>
+  defs?.definitions.find((d) => d.rule.direction === side && d.intradayKinds.includes(kind)) ?? null
+
+/** A replay row's numbers as facts: each null number says why, from the data (never a 0). */
+export function replayFacts(r: SetupReplayRow): { mean: string; interval: string; hit: string; note: string | null } {
+  if (r.n === 0) return { mean: '—', interval: '—', hit: '—', note: r.entries === 0 ? 'no entries in the window' : `${r.entries} entries, none graded at ${r.horizon}` }
+  return {
+    mean: r.meanNet == null ? '—' : pctFrac(r.meanNet),
+    interval: r.ci95 ? `[${pctFrac(r.ci95[0])}, ${pctFrac(r.ci95[1])}]` : '—',
+    hit: r.hitRate == null ? '—' : `${Math.round(r.hitRate * 100)}%`,
+    note: r.ci95 ? null : `interval needs ${REPLAY_MIN_CLUSTERS}+ clusters (has ${r.clusters})`,
+  }
+}

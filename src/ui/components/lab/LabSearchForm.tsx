@@ -10,6 +10,7 @@ import {
   effortHint,
   LAB_TRANSFORMS,
   readLocal,
+  TRANSFORM_HINT,
   TRANSFORM_LABEL,
   writeLocal,
   type FormErrors,
@@ -287,7 +288,7 @@ function AdvancedDisclosure({
                   <label
                     key={t}
                     className={`inline-flex items-center gap-1 h-[var(--control-sm)] px-1.5 border text-xs ${on ? 'border-border bg-elevated text-text-primary' : 'border-border-subtle text-text-secondary'} ${last || busy ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                    title={last ? 'at least one transform' : undefined}
+                    title={last ? 'at least one transform' : TRANSFORM_HINT[t]}
                   >
                     <input
                       type="checkbox"

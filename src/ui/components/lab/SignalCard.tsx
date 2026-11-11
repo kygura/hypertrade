@@ -23,6 +23,9 @@ import { DirectionWord, DsrValue, ProviderTag, SharpeValue, StabValue, StatCell,
 // ignore the stats window; HIT, MAX DD and TR/YR follow it. The server's
 // verdict Badge leads the meta line.
 
+/** SINGLE / PAIR, then the count (an authored rule holds up to four conditions). */
+const kindWord = (n: number) => (n === 1 ? 'SINGLE' : n === 2 ? 'PAIR' : `${n} CONDITIONS`)
+
 export function SignalCard({
   rank,
   ev,
@@ -47,7 +50,6 @@ export function SignalCard({
 }) {
   const s = statsFor(ev, window)
   const gap = holdoutGap(sharpeOf(ev.walkForward), sharpeOf(ev.holdout))
-  const pair = ev.rule.conditions.length > 1
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     if (e.target !== e.currentTarget) return
@@ -91,7 +93,7 @@ export function SignalCard({
         <span>·</span>
         <span>{ev.rule.horizonDays}D</span>
         <span>·</span>
-        <span>{pair ? 'PAIR' : 'SINGLE'}</span>
+        <span>{kindWord(ev.rule.conditions.length)}</span>
         <span>·</span>
         {ruleProviders(ev.rule).map((p) => (
           <ProviderTag key={p} provider={p} />

@@ -179,9 +179,21 @@ function HeaderLine({ board, coin, onClearCoin }: { board: BoardResponse | null;
             <span key={src} title={chipTitle(st)} className="inline-flex">
               <Badge tone={off ? 'amber' : 'gray'}>
                 {SOURCE_LABEL[src]} {off ? 'unavailable' : st.count}
+                {st.note && <span aria-hidden="true"> *</span>}
               </Badge>
             </span>
           )
+        })}
+      {/* A source's note qualifies its count (e.g. why the scanner is silent): visible text, so it is not hover-only on a phone. */}
+      {board &&
+        RESEARCH_SOURCES.map((src) => {
+          const note = board.sources[src].note
+          return note ? (
+            <p key={src} className="basis-full text-xs text-text-secondary break-words">
+              <span aria-hidden="true">* </span>
+              {SOURCE_LABEL[src]}: {note}
+            </p>
+          ) : null
         })}
       {coin && (
         <Button tier="ghost" onClick={onClearCoin} aria-label={`clear the ${coin} filter`}>
@@ -192,10 +204,11 @@ function HeaderLine({ board, coin, onClearCoin }: { board: BoardResponse | null;
   )
 }
 
-/** Source chip title: the reason when unavailable, else the count; items dropped as invalid are named, never hidden. */
+/** Source chip title: the reason when unavailable, else the count, then its note; items dropped as invalid are named, never hidden. */
 export function chipTitle(st: BoardResponse['sources'][keyof BoardResponse['sources']]): string {
   const base = st.state === 'unavailable' ? (st.reason ?? 'unavailable') : `${st.count} signal${st.count === 1 ? '' : 's'} now`
-  return st.dropped > 0 ? `${base} · ${st.dropped} item${st.dropped === 1 ? '' : 's'} dropped as invalid (server log)` : base
+  const dropped = st.dropped > 0 ? `${base} · ${st.dropped} item${st.dropped === 1 ? '' : 's'} dropped as invalid (server log)` : base
+  return st.note ? `${dropped} · ${st.note}` : dropped
 }
 
 /** Empty board copy: which sources are on, and that nothing is firing (not an error). */

@@ -1,4 +1,4 @@
-import { fmtFeature, fmtPctSigned, fmtSigned, parseFeature, SENS_BG, sensitivityTone, type MetricDef, type Rule, type Sensitivity } from '../../lib/lab'
+import { fmtPctSigned, fmtSigned, parseFeature, ruleTextPlain, SENS_BG, sensitivityTone, type MetricDef, type Rule, type Sensitivity } from '../../lib/lab'
 
 // SensitivityGrid — docs/design/README.md §10.9. Per condition, a THRESHOLD row
 // (q−0.10 · q−0.05 · BASE · q+0.05 · q+0.10) and a WINDOW row (one cell per
@@ -44,7 +44,7 @@ export function SensitivityGrid({ rule, sensitivity, metrics }: { rule: Rule; se
         const windows = [...new Set([...pts.filter((p) => p.kind === 'window').map((p) => p.shift), ...(baseWindow > 0 ? [baseWindow] : [])])].sort((a, b) => a - b)
         return (
           <table key={i} className="w-full table-fixed border-separate border-spacing-0.5">
-            <caption className="text-left text-xs text-text-primary pb-1 tabular">{fmtFeature(c.feature, metrics)}</caption>
+            <caption className="text-left text-xs text-text-primary pb-1 tabular">{ruleTextPlain({ conditions: [c] }, metrics)}</caption>
             <thead className="sr-only">
               <tr>
                 <th scope="col">sweep</th>

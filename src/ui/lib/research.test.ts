@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { RadarCall } from "../../shared/radar";
 import type { Rule } from "./lab";
-import { boardStudy, STUDY_DEFAULTS, UNIVERSE_ASSET, type LedgerEvidence } from "../../shared/research";
+import { boardStudy, STUDY_DEFAULTS, UNIVERSE_ASSET, type LedgerEvidence, type SetupReplayRow } from "../../shared/research";
 import { ApiError } from "./api";
 import { authOf, cellState, dailyState, ledgerText, noEvidenceText, rowStudyKey, runState, scopeLabel, scorecardText, studyFailed, testedLabel } from "./research";
+import { defaultReplayHorizon, definitionForKind, kindLabel, replayFacts, replayRowsAt } from "./research";
 import { boardHref, boardKey, flatSignals, recentCalls, rootRedirect, signalBlocks, signalStudyHref, type BoardSignal } from "./research";
 
 const rule: Rule = { asset: "BTC", direction: "long", horizonDays: 5, conditions: [{ feature: "ht:funding|z|30", op: "<", threshold: -1 }] };
@@ -135,5 +136,31 @@ describe("auth and the evidence cell", () => {
     expect(rowStudyKey("a", Date.parse("2026-11-09T23:59:00Z"))).toBe("a|2026-11-09");
     expect(rowStudyKey("a", Date.parse("2026-11-10T00:01:00Z"))).toBe("a|2026-11-10");
     expect([scopeLabel("coin"), scopeLabel("universe")]).toEqual(["this coin", "top-20 universe"]);
+  });
+});
+
+describe("replay helpers", () => {
+  const row = (over: Partial<SetupReplayRow> = {}): SetupReplayRow => ({ kind: "vol_expansion_breakout", side: "long", horizon: "24h", evaluable: true, entries: 10, n: 8, clusters: 6, meanNet: 0.01, ci95: [-0.002, 0.02], hitRate: 0.5, ...over });
+  test("default horizon is 24h, else the longest the replay has", () => {
+    expect(defaultReplayHorizon(["1h", "4h", "24h", "72h"])).toBe("24h");
+    expect(defaultReplayHorizon(["1h", "4h"])).toBe("4h");
+    expect(defaultReplayHorizon([])).toBe("");
+  });
+  test("rows of one horizon; kind label", () => {
+    expect(replayRowsAt({ setups: [row(), row({ horizon: "1h" })] }, "1h")).toHaveLength(1);
+    expect(kindLabel("negative_funding_squeeze")).toBe("negative funding squeeze");
+  });
+  test("facts: signed percents with the interval; null numbers are dashes with the reason, never 0", () => {
+    expect(replayFacts(row())).toEqual({ mean: "+1.00%", interval: "[−0.20%, +2.00%]", hit: "50%", note: null });
+    expect(replayFacts(row({ ci95: null, clusters: 2 }))).toMatchObject({ interval: "—", note: "interval needs 5+ clusters (has 2)" });
+    expect(replayFacts(row({ n: 0, clusters: 0, meanNet: null, ci95: null, hitRate: null }))).toEqual({ mean: "—", interval: "—", hit: "—", note: "10 entries, none graded at 24h" });
+    expect(replayFacts(row({ entries: 0, n: 0, meanNet: null, ci95: null, hitRate: null })).note).toBe("no entries in the window");
+  });
+  test("definition for a kind is chosen by side", () => {
+    const d = (id: string, direction: "long" | "short") => ({ id, name: id, thesis: "t", rule: { ...rule, direction }, ruleText: "", intradayKinds: ["vol_expansion_breakout"] });
+    const defs = { definitions: [d("range_breakout", "long"), d("range_breakdown", "short")] };
+    expect(definitionForKind(defs, "vol_expansion_breakout", "short")?.id).toBe("range_breakdown");
+    expect(definitionForKind(defs, "crowded_long", "short")).toBeNull();
+    expect(definitionForKind(null, "vol_expansion_breakout", "long")).toBeNull();
   });
 });

@@ -171,6 +171,8 @@ One question per region, top to bottom on mobile, two columns from `lg`:
   Row click or Enter opens `/lab/study?rule=…&coin=…` (`coin` only for `coin` scope; a
   `universe` signal opens the study's default top-N universe). `?coin=X` filters the list. Secondary links on the row: source
   drill (`href`), `/asset/:coin`. Keyboard: j/k move, Enter open, s study in place.
+- **Source note**: an `ok` source's `note` (e.g. why the scanner is silent) is a visible line under the chips
+  (`SETUP: …`, with a `*` on the chip and the note in its title), never hover-only.
 - **Side column**: PULSE summary (assets with rules firing, link to `/lab/pulse`), then
   RADAR (latest note date, calls with stance and kill price, scorecard n/mean/hit per
   horizon, link to the full note in a dialog as preformatted text). The radar needs a
@@ -195,6 +197,13 @@ universes (this coin, or the default top 20) run through `POST /api/research/stu
 (`studyRoute`, `src/ui/lib/study.ts`) with any exits, so opening a row with evidence reuses the
 cached study instead of logging a new trial, and a default-exit run here shows on the board.
 Other universes (another top N, my markets) call `lab_event_study` directly.
+
+Under the DEFINITIONS picker (and below the study when a rule is open) sits **INTRADAY SETUPS · REPLAY**
+(`GET /api/research/setups/replay?source=candles`, loaded only on this page, polled every 25 s while `pending`):
+rows kind × side at a horizon toggle (default 24h) with entries, n, clusters, mean net with its interval and hit
+rate; an unevaluable row is dimmed with its reason, a null number is an em dash with why; a link to the daily
+definition on the same side; a footnote with window, coins, grid and (collapsible) assumptions. Facts only, labelled
+as a replay of fixed predicates, not a trial.
 
 Output, in this order: rule text; verdict with the screen line (events, weeks,
 expectancy, upper95); train vs holdout; the condition funnel; per-coin table (`DataTable`);

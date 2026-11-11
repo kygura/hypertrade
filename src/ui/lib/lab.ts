@@ -289,7 +289,10 @@ const TRANSFORM_PREFIX: Record<Transform, string> = {
   vchg: 'vchg',
 }
 
-export const LAB_TRANSFORMS = ['raw', 'z', 'rsi', 'ma_ratio', 'roc', 'vol', 'pctile'] as const satisfies readonly Transform[]
+/** The search's default transforms (the server's own default list: `vchg` is for authored rules, offered but off). */
+export const DEFAULT_TRANSFORMS = ['raw', 'z', 'rsi', 'ma_ratio', 'roc', 'vol', 'pctile'] as const satisfies readonly Transform[]
+/** Every transform the TRANSFORMS picker offers. */
+export const LAB_TRANSFORMS = [...DEFAULT_TRANSFORMS, 'vchg'] as const satisfies readonly Transform[]
 
 /** Short chip labels for the TRANSFORMS checkboxes. */
 export const TRANSFORM_LABEL: Record<Transform, string> = {
@@ -301,6 +304,11 @@ export const TRANSFORM_LABEL: Record<Transform, string> = {
   vol: 'vol',
   pctile: 'pctile',
   vchg: 'vchg',
+}
+
+/** Tooltips for the transforms that need one; vchg is off by default (the server's own default list leaves it out). */
+export const TRANSFORM_HINT: Partial<Record<Transform, string>> = {
+  vchg: 'volatility-scaled change: the window\'s log change in units of the coin\'s own daily volatility (off by default)',
 }
 
 export interface ParsedFeature {
@@ -530,7 +538,7 @@ export const DEFAULT_FORM: SearchForm = {
   horizonDays: 14,
   objective: 'sharpe',
   trials: 40,
-  transforms: [...LAB_TRANSFORMS],
+  transforms: [...DEFAULT_TRANSFORMS],
   windows: '7, 30, 90',
   labelQuantile: '0.3',
   folds: '3',

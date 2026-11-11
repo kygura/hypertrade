@@ -3,7 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import type { Rule, StudyResult } from "../lib/lab";
 import { catalogueIdIn, concreteRule, exitsForm, parseExitParams, parseRuleParam, realCoin, ruleDrillHref, studyArgs, studyHref, studyRoute } from "../lib/study";
-import { boardStudy, UNIVERSE_ASSET, type DefinitionsResponse } from "../../shared/research";
+import { boardStudy, UNIVERSE_ASSET, type DefinitionsResponse, type SetupReplayResponse } from "../../shared/research";
+import { SetupReplayView, type SetupReplayViewProps } from "../components/lab/SetupReplay";
 import { StudyView, type StudyViewProps } from "./LabStudy";
 
 // Render-checks (react-dom/server, no jsdom), the cockpit render.test.tsx approach:
@@ -297,5 +298,84 @@ describe("DEFINITIONS picker", () => {
     const open = render(props({ pickerOpen: true, definitions: state({ data: defs }) }));
     expect(open).toMatch(/<button[^>]*aria-expanded="true"[^>]*>DEFINITIONS</);
     expect(open).toContain("Funding fade");
+  });
+});
+
+describe("INTRADAY SETUPS · REPLAY", () => {
+  const poll = (data: SetupReplayResponse | null, over: Partial<SetupReplayViewProps["replay"]> = {}): SetupReplayViewProps["replay"] => ({ data, loading: false, error: null, offline: false, refetch: noop, ...over });
+  const base: SetupReplayResponse = {
+    state: "ok", asOf: "2026-11-11T10:00:00Z", source: "candles", window: { from: "2026-09-20T00:00:00Z", to: "2026-11-11T09:45:00Z" }, coins: ["BTC", "ETH", "SOL"], grid: "15m", horizons: ["1h", "24h"], assumptions: ["slippage 0: understated for thin coins"],
+    setups: [
+      { kind: "vol_expansion_breakout", side: "long", horizon: "24h", evaluable: true, entries: 31, n: 29, clusters: 12, meanNet: 0.0042, ci95: [-0.001, 0.0095], hitRate: 0.55 },
+      { kind: "vol_expansion_breakout", side: "short", horizon: "24h", evaluable: true, entries: 9, n: 8, clusters: 3, meanNet: -0.0021, ci95: null, hitRate: 0.375 },
+      { kind: "crowded_long", side: "short", horizon: "24h", evaluable: false, reason: "reads oiChg1hZ: no open-interest stream", entries: 0, n: 0, clusters: 0, meanNet: null, ci95: null, hitRate: null },
+      { kind: "vol_expansion_breakout", side: "long", horizon: "1h", evaluable: true, entries: 31, n: 0, clusters: 0, meanNet: null, ci95: null, hitRate: null },
+    ],
+  };
+  const defs: DefinitionsResponse = { definitions: [{ id: "range_breakout", name: "Range breakout", thesis: "t", rule: { ...rule, asset: UNIVERSE_ASSET, direction: "long" }, ruleText: "x", intradayKinds: ["vol_expansion_breakout"] }] };
+  const view = (replay: SetupReplayViewProps["replay"], horizon: string | null = null, d: DefinitionsResponse | null = defs) =>
+    renderToStaticMarkup(<MemoryRouter><SetupReplayView replay={replay} definitions={d} horizon={horizon} onHorizon={noop} /></MemoryRouter>);
+
+  test("ok: default 24h rows with n, clusters, mean net and its interval, hit; the not-a-trial label; footnote", () => {
+    const html = view(poll(base));
+    expect(html).toContain("INTRADAY SETUPS · REPLAY");
+    expect(html).toContain("not a trial");
+    expect(html).toContain("vol expansion breakout");
+    expect(html).toContain("+0.42%");
+    expect(html).toContain("[−0.10%, +0.95%]");
+    expect(html).toContain("55%");
+    expect(html).toContain("2026-09-20 → 2026-11-11");
+    expect(html).toContain("3 coins");
+    expect(html).toContain("15m grid");
+    expect(html).toContain("slippage 0: understated for thin coins");
+    expect(html).toContain('aria-checked="true"');
+  });
+  test("under the cluster minimum: the interval is an em dash with its reason, the mean stays", () => {
+    const html = view(poll(base));
+    expect(html).toContain("interval needs 5+ clusters (has 3)");
+    expect(html).toContain("−0.21%");
+  });
+  test("a not-evaluable row is dimmed with its reason and shows no numbers or zeros", () => {
+    const html = view(poll(base));
+    const li = html.split("<li").find((x) => x.includes("crowded long"))!;
+    expect(li).toContain("opacity-60");
+    expect(li).toContain("not evaluable");
+    expect(li).toContain("reads oiChg1hZ: no open-interest stream");
+    expect(li).not.toContain("ENTRIES");
+    expect(li).not.toContain(">0<");
+  });
+  test("n 0 at the horizon: em dashes and why, never 0%", () => {
+    const html = view(poll(base), "1h");
+    expect(html).toContain("31 entries, none graded at 1h");
+    expect(html).not.toContain("0.00%");
+    expect(html).not.toContain("HIT </span>0%");
+  });
+  test("a horizon the response lacks falls back to the default", () => {
+    expect(view(poll(base), "72h")).toContain("+0.42%");
+  });
+  test("links a kind to its daily definition on the same side only", () => {
+    const html = view(poll(base));
+    expect(html.match(/daily: Range breakout/g)).toHaveLength(1);
+    expect(html).toContain("/lab/study?rule=");
+    expect(view(poll(base), null, null)).not.toContain("daily: ");
+  });
+  test("pending: says so, with the cadence, no rows", () => {
+    const html = view(poll({ ...base, state: "pending", window: null, coins: [], setups: [], horizons: [], assumptions: [] }));
+    expect(html).toContain("REPLAY RUNNING");
+    expect(html).toContain("4–5 minutes");
+    expect(html).not.toContain("not evaluable");
+  });
+  test("unavailable: the server's reason", () => {
+    const html = view(poll({ ...base, state: "unavailable", reason: "history too sparse for the snapshots source", window: null, coins: [], setups: [], horizons: [], assumptions: [] }));
+    expect(html).toContain("unavailable");
+    expect(html).toContain("history too sparse for the snapshots source");
+  });
+  test("first load is a skeleton, a failure the server string with retry", () => {
+    expect(view(poll(null, { loading: true }))).toContain("pulse-label");
+    expect(view(poll(null, { error: "replay exploded" }))).toContain("replay exploded");
+  });
+  test("the study page mounts the block under the picker, with and without a rule", () => {
+    expect(render(props({ rule: null }))).toContain("INTRADAY SETUPS · REPLAY");
+    expect(render(props())).toContain("INTRADAY SETUPS · REPLAY");
   });
 });

@@ -47,7 +47,7 @@ export function CatalogueTable({
             <span className="text-sm text-text-primary truncate min-w-0">{e.name}</span>
             <VerdictBadge ev={e.saved} />
           </span>
-          <RuleText rule={e.rule} metrics={metrics} size="xs" className="text-text-secondary truncate" />
+          <RuleText rule={e.rule} metrics={metrics} size="xs" className="text-text-secondary block line-clamp-3 break-words" />
         </div>
       ),
     },

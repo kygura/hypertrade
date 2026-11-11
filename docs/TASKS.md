@@ -54,7 +54,7 @@ Signals v2 follow-ups (docs/RESEARCH.md "Signals v2"):
   OI for the universe (needs ≥ 30 event-weeks per definition), or compare the two over the overlap first.
 - [ ] Event-study results of the definitions (`bun run signals:study`) are not yet read into thresholds; they stay
   starting points until a decision is made on the numbers.
-- [ ] Intraday replay (RESEARCH.md S5, backend shipped 2026-11-11): the UI. Render
+- [x] Intraday replay (RESEARCH.md S5, backend shipped 2026-11-11): the UI (shipped). Render
   `GET /api/research/setups/replay` on `/lab/study` under the DEFINITIONS picker (states `pending`, `unavailable`
   with reason, `ok`; not-evaluable rows with their reason, never as 0).
 - [ ] `crowded_long`, `negative_funding_squeeze` and `deleveraging_washout` read `oiChg1hZ` and stay unreplayable

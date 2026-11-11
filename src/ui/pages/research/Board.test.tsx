@@ -84,6 +84,23 @@ describe("board states", () => {
   });
 });
 
+describe("source note", () => {
+  const note = "scanner ticks about 4 times a day: the intraday features need 96, so 0 signals means could not fire";
+  const withNote = () => boardData([sig("n1")], { sources: { novelty: ok(1), rule: ok(0), opportunity: { state: "ok", count: 0, dropped: 0, note }, radar: ok(0), definition: ok(0) } });
+  test("visible text under the chips (not hover-only) and a marker on the chip, naming its source", () => {
+    const html = render({ board: poll(withNote()) });
+    expect(html).toContain(`SETUP: ${note}`);
+    expect(html).toContain("SETUP 0");
+    expect(html).toContain(`title="0 signals now · ${note}"`);
+  });
+  test("no note, no line; the other chips carry no marker", () => {
+    const html = render({ board: poll(boardData([sig("n1")])) });
+    expect(html).not.toContain("SETUP:");
+    expect(html).not.toContain("scanner ticks");
+    expect(chipTitle({ state: "ok", count: 1, dropped: 0, note: "n" })).toBe("1 signal now · n");
+  });
+});
+
 describe("evidence cell", () => {
   const rows = (local: Record<string, RowStudy> = {}, auth: Auth = { state: "user" }) =>
     render({

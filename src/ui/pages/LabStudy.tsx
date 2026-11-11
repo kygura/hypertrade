@@ -11,13 +11,15 @@ import { STUDY_EXIT_MAX, type DefinitionsResponse } from '../../shared/research'
 import { research } from '../lib/research'
 import { StudyVerdictBadge } from '../components/lab/StudyVerdictBadge'
 import { InCatalogueLink } from '../components/lab/InCatalogueLink'
+import { SetupReplay } from '../components/lab/SetupReplay'
 
 // /lab/study — the event study of one rule (docs/RESEARCH.md "Study"): the
 // rule replayed as discrete trades across a universe of coins by
 // lab_event_study. Input is `?rule=` (URL-encoded JSON, zod-parsed) and an
 // optional `?coin=`; studyHref() in lib/study.ts builds the link. A signal definition's rule has the placeholder
 // asset UNIVERSE_ASSET: it defaults to the top-N universe, "this coin" appears only with `?coin=`, and OPEN RULE /
-// SAVE need a real asset (concreteRule). The DEFINITIONS picker lists the shipped definitions. Output in
+// SAVE need a real asset (concreteRule). The DEFINITIONS picker lists the shipped definitions; INTRADAY SETUPS ·
+// REPLAY (SetupReplay) sits under it, loads only here and never blocks the study. Output in
 // the brief's order: rule, verdict + screen line, train vs holdout, funnel,
 // per-coin table, events, survivorship, idea n of N. The run can take tens of
 // seconds; leaving the page aborts the wait (useLab's signal).
@@ -59,10 +61,9 @@ function StudyPage({ raw, coinParam }: { raw: string | null; coinParam: string |
     })
   // The board's canonical universes share its cache and trial (studyRoute); other universes call the Lab tool.
   const route = rule ? studyRoute(rule, coin, universe, applied) : null
-  // The shipped definitions: loaded for the empty state, or once the picker is opened over a loaded rule.
+  // The shipped definitions: the picker, and the intraday replay's links to the daily definition of a setup kind.
   const [picker, setPicker] = useState(false)
-  const wantDefinitions = !rule || picker
-  const definitions = useLab(wantDefinitions ? () => research.definitions() : null, [wantDefinitions])
+  const definitions = useLab(() => research.definitions(), [])
   const key = route ? JSON.stringify(route) : null
   const study = useLab(
     route
@@ -132,6 +133,7 @@ export function StudyView({ parsedError, rule, coin, coinParam = null, universe,
           </div>
         </Panel>
         <DefinitionsPicker definitions={definitions} />
+        <SetupReplay definitions={definitions} />
       </div>
     )
   }
@@ -202,6 +204,8 @@ export function StudyView({ parsedError, rule, coin, coinParam = null, universe,
           </div>
         )}
       </AsyncBody>
+
+      <SetupReplay definitions={definitions} />
     </div>
   )
 }
