@@ -16,6 +16,23 @@ const ENSURE_DEADLINE_MS = 4_000;
 const ENSURE_TTL_MS = 10 * 60_000;
 const LIVE_FUNDING_PAGES = 24;
 const CANDLE_REUSE_MS = 60_000; // × 500 hourly rows ≈ 500 days
+/** Coins whose live funding settlements the process keeps (about 12 000 rows each at 500 days). */
+export const LIVE_FUNDING_CACHE_COINS = 60;
+/** The day's last hourly settlement: a day of funding is complete once it is in. */
+const LAST_SETTLEMENT_MS = 23 * HOUR_MS;
+
+/**
+ * Drops the last day of hourly funding rows when its 23:00 UTC settlement is not in. Settlements are stored and
+ * fetched in time order (the collector and the live fetch both page forward), so a series that ends inside a day
+ * ends on a partial day, whose sum would read as a full day's funding. Earlier days are kept as they are (a gap in
+ * stored history is not a partial day), so history and event studies read the same values as before.
+ */
+export function dropPartialLastDay(rows: readonly FundingPoint[]): FundingPoint[] {
+  if (!rows.length) return [];
+  const last = rows.reduce((m, r) => Math.max(m, r.t), -Infinity);
+  const day = Math.floor(last / DAY_MS) * DAY_MS;
+  return last >= day + LAST_SETTLEMENT_MS ? [...rows] : rows.filter((r) => r.t < day);
+}
 
 export interface Ohlcv {
   t: number;
@@ -39,6 +56,8 @@ export interface HtDeps {
   series(id: string, fromMs: number, toMs: number): Promise<Array<{ t: number; v: number }>>;
   liveCandles(coin: string, fromMs: number, toMs: number): Promise<Ohlcv[]>;
   liveFunding(coin: string, fromMs: number, toMs: number): Promise<FundingPoint[]>;
+  /** Clock for the live funding cache; default Date.now. */
+  now?: () => number;
 }
 
 const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T | void> =>
@@ -201,7 +220,40 @@ export function createHtProvider(deps: HtDeps = defaultHtDeps): LabProvider {
       const stored = await deps.funding(coin, fromMs, toMs).catch(() => []);
       if (stored.length) return stored;
     }
-    return deps.liveFunding(coin, fromMs, toMs);
+    return liveFunding(coin, fromMs, toMs);
+  }
+
+  // Live funding kept in process (no database: the weight guard allows about 2 000 settlements a minute), so a later
+  // load asks Hyperliquid only for what it has not fetched yet: the earlier part of a longer range, and the
+  // settlements after the last one held (none until the next hour has settled). Per coin, one fetch at a time;
+  // the least recently used coin goes past LIVE_FUNDING_CACHE_COINS.
+  const held = new Map<string, { from: number; rows: FundingPoint[] }>();
+  const locks = new Map<string, Promise<unknown>>();
+  const merge = (a: FundingPoint[], b: FundingPoint[]): FundingPoint[] => {
+    const m = new Map<number, FundingPoint>();
+    for (const r of a) m.set(r.t, r);
+    for (const r of b) m.set(r.t, r);
+    return [...m.values()].sort((x, y) => x.t - y.t);
+  };
+  function liveFunding(coin: string, fromMs: number, toMs: number): Promise<FundingPoint[]> {
+    const run = (locks.get(coin) ?? Promise.resolve()).then(async () => {
+      let e = held.get(coin);
+      if (!e) e = { from: fromMs, rows: await deps.liveFunding(coin, fromMs, toMs) };
+      else {
+        if (fromMs < e.from) e = { from: fromMs, rows: merge(await deps.liveFunding(coin, fromMs, e.from - 1), e.rows) };
+        const last = e.rows.at(-1)?.t ?? e.from - 1;
+        const settled = Math.floor((deps.now ?? Date.now)() / HOUR_MS) * HOUR_MS; // the latest settlement that can exist
+        if (toMs > last && settled > last) e = { from: e.from, rows: merge(e.rows, await deps.liveFunding(coin, last + 1, toMs)) };
+      }
+      held.delete(coin);
+      held.set(coin, e);
+      if (held.size > LIVE_FUNDING_CACHE_COINS) held.delete(held.keys().next().value!);
+      return e.rows.filter((r) => r.t >= fromMs && r.t <= toMs);
+    });
+    const tail = run.catch(() => {});
+    locks.set(coin, tail);
+    void tail.then(() => locks.get(coin) === tail && locks.delete(coin));
+    return run;
   }
 
   async function stored(id: string, fromMs: number, toMs: number, agg: Agg): Promise<DailySeries> {
@@ -230,7 +282,8 @@ export function createHtProvider(deps: HtDeps = defaultHtDeps): LabProvider {
           "last",
         );
       } else if (key === "funding" || key === "premium") {
-        const rows = await funding(coin, fromMs, toMs + DAY_MS - 1);
+        // A day still settling is left out: its sum is not the day's funding yet (lastRaw then ends the day before).
+        const rows = dropPartialLastDay(await funding(coin, fromMs, toMs + DAY_MS - 1));
         out = toDaily(
           rows.map((r) => ({ t: r.t, v: key === "funding" ? r.rate : r.premium })),
           key === "funding" ? "sum" : "mean",

@@ -12,7 +12,7 @@ import { bcUrl, createBcProvider, parseBlockchainChart } from "./bc.js";
 import { createDeribitProvider, dvolUrls, parseDvolHistory } from "./deribit.js";
 import { cmAsset, createCmProvider, parseCmPage } from "./cm.js";
 import { createFngProvider, parseFngHistory } from "./fng.js";
-import { createHtProvider, htCoin, type HtDeps } from "./ht.js";
+import { createHtProvider, dropPartialLastDay, htCoin, type HtDeps } from "./ht.js";
 import { createLlamaProvider, parseChainTvl, parseStablecoinChart } from "./llama.js";
 import { createOkxProvider, OKX_OI_EPOCH, OKX_PACE_MS, OKX_PAGE, okxInstrument, parseOiPage } from "./okx.js";
 import { loadDataset } from "./registry.js";
@@ -135,10 +135,11 @@ describe("ht", () => {
         { t: D0, o: 100, h: 110, l: 90, c: 100, v: 2 },
         { t: D0 + DAY, o: 100, h: 105, l: 95, c: 102, v: 3 },
       ],
+      // Ends on D0 + 1's 23:00 settlement: that day is complete (dropPartialLastDay).
       funding: async () => [
         { t: D0, rate: 0.0001, premium: 0.001 },
         { t: D0 + H, rate: 0.0002, premium: 0.003 },
-        { t: D0 + DAY, rate: -0.0001, premium: -0.001 },
+        { t: D0 + DAY + 23 * H, rate: -0.0001, premium: -0.001 },
       ],
       series: async (id) => {
         calls.push(`series:${id}`);
@@ -154,7 +155,7 @@ describe("ht", () => {
       },
       liveFunding: async () => {
         calls.push("liveFunding");
-        return [{ t: D0, rate: 0.5, premium: 0 }];
+        return [{ t: D0 + 23 * H, rate: 0.5, premium: 0 }];
       },
       ...over,
     };
@@ -192,6 +193,53 @@ describe("ht", () => {
     expect(f.t).toEqual([D0, D0 + DAY]);
     expect(f.v[0]).toBeCloseTo(0.0003, 12);
     expect((await p.fetch("premium", "BTC", ...R)).v).toEqual([0.002, -0.001]);
+  });
+
+  test("a last day without its 23:00 settlement is left out (partial); earlier days and gaps are kept", () => {
+    const row = (t: number) => ({ t, rate: 0.0001, premium: 0 });
+    const day1 = Array.from({ length: 24 }, (_, h) => row(D0 + h * H));
+    expect(dropPartialLastDay([...day1, row(D0 + DAY), row(D0 + DAY + 5 * H)])).toEqual(day1);
+    expect(dropPartialLastDay([...day1, row(D0 + DAY + 23 * H)])).toHaveLength(25); // a gap inside the day is not partial
+    expect(dropPartialLastDay(day1.slice(0, 23))).toEqual([]);
+    expect(dropPartialLastDay([])).toEqual([]);
+  });
+
+  test("funding: the partial last day is not summed, so lastRaw ends the day before and the scan can drop it", async () => {
+    const rows = [...Array.from({ length: 24 }, (_, h) => ({ t: D0 + h * H, rate: 0.0001, premium: 0 })), { t: D0 + DAY, rate: 0.01, premium: 0 }];
+    const p = createHtProvider(deps({ funding: async () => rows }));
+    const f = await p.fetch("funding", "BTC", ...R);
+    expect(f.t).toEqual([D0]);
+    expect(f.v[0]).toBeCloseTo(0.0024, 12);
+  });
+
+  test("no DB: live funding is kept per coin; a later load fetches only the older part and the settlements after the last held", async () => {
+    let now = D0 + 3 * DAY + 30 * 60_000; // 00:30 on day 3
+    const asked: Array<[number, number]> = [];
+    const hourly = (from: number, to: number) => {
+      const out = [];
+      for (let t = Math.ceil(from / H) * H; t <= Math.min(to, Math.floor(now / H) * H); t += H) out.push({ t, rate: 0.0001, premium: 0 });
+      return out;
+    };
+    const p = createHtProvider(deps({ hasDb: () => false, now: () => now, liveFunding: async (_c, from, to) => (asked.push([from, to]), hourly(from, to)) }));
+    const a = await p.fetch("funding", "BTC", D0 + DAY, D0 + 3 * DAY);
+    expect(a.t).toEqual([D0 + DAY, D0 + 2 * DAY]); // day 3 has only its 00:00 settlement: partial
+    expect(asked).toEqual([[D0 + DAY, D0 + 4 * DAY - 1]]);
+    // Same hour: nothing new can have settled, nothing is fetched.
+    await p.fetch("funding", "BTC", D0 + DAY, D0 + 3 * DAY);
+    expect(asked).toHaveLength(1);
+    // A day later, over a longer range: the older day, then the settlements after the last held.
+    now += DAY;
+    const b = await p.fetch("funding", "BTC", D0, D0 + 4 * DAY);
+    expect(asked.slice(1)).toEqual([
+      [D0, D0 + DAY - 1],
+      [D0 + 3 * DAY + 1, D0 + 5 * DAY - 1],
+    ]);
+    expect(b.t).toEqual([D0, D0 + DAY, D0 + 2 * DAY, D0 + 3 * DAY]);
+    expect(b.v.every((v) => Math.abs(v - 0.0024) < 1e-12)).toBe(true); // every complete day sums 24 settlements, none twice
+    // Concurrent loads of one coin share the fetch order: no duplicate request.
+    now += H;
+    await Promise.all([p.fetch("funding", "BTC", D0, D0 + 4 * DAY), p.fetch("premium", "BTC", D0, D0 + 4 * DAY)]);
+    expect(asked).toHaveLength(4);
   });
 
   test("observation metrics take the last value per day from the right series", async () => {
