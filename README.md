@@ -194,6 +194,20 @@ recently charted coins. Retention: 1m bars 30 days, 5m bars 120 days.
 Requires `db/migrations/002_chart_history.sql` (adds `candles.src`,
 `sync_state`, `funding`, and drops the old CoinGecko 4-day rows).
 
+## BTC Vector
+
+`GET /api/vector` (`src/server/routes/vector.ts`, model in `src/shared/vectorModel.ts` and
+`vectorCompass.ts`, ported from hl-cycles) reads daily data only: BTC closes (the `/api/cycles`
+history), Coin Metrics community, bitcoin-data.com (BGeometrics: STH/LTH cost basis, True Market
+Mean, STH-SOPR, NUPL, supply in profit, ETF flows), FRED fredgraph CSV (dollar, 2Y/10Y, Fed funds,
+10Y-2Y, S&P 500), DefiLlama stablecoins, Deribit DVOL and a daily 25-delta skew snapshot, Fear &
+Greed, Hyperliquid funding for BTC and eleven alts, and OKX open interest. Each source refreshes at
+most every 6 hours and fails on its own (`sources[name].lastError`; its inputs read null). bitcoin-data's
+keyless quota is 10 requests an hour and 15 a day, so it is fetched at most once per UTC day (7
+requests) and kept in Postgres (`vector.bgeometrics.*` observations) when `DATABASE_URL` is set;
+`BGEOMETRICS_TOKEN` is optional. Deribit has no skew history: one snapshot a day accumulates
+(`vector.deribit-skew.*`), so the skew input stays null until a year of snapshots exists.
+
 ## Social attention (optional)
 
 Set `ELFA_API_KEY` and the collect cron adds Elfa's trending-tokens feed:

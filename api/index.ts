@@ -23,6 +23,7 @@ import { perpRoutes } from "../src/server/routes/perp.js";
 import { defaultResearchDeps, radarRoutes, researchRoutes } from "../src/server/routes/research.js";
 import { routinesRoutes } from "../src/server/routes/routines.js";
 import { sectorsRoutes } from "../src/server/routes/sectors.js";
+import { vectorRoutes } from "../src/server/routes/vector.js";
 
 // Vercel still exits the process on an unhandled rejection; this only adds
 // the failing SQL (postgres errors carry it on `query`) to the log.
@@ -64,6 +65,7 @@ app.route("/branches", branchesRoutes);
 app.route("/candles", candlesRoutes);
 app.route("/cron", cronRoutes);
 app.route("/cycles", cyclesRoutes);
+app.route("/vector", vectorRoutes);
 // Intel is injected here: routes/desk.ts importing intel/index.ts would cycle (intel/index → desk).
 app.route("/desk", createDeskRoutes({ intel: () => telegramIntel() }));
 app.route("/engine", engineRoutes);
