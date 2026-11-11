@@ -293,7 +293,7 @@ describe('detail states', () => {
   test('no record: reason line and an INVESTIGATE button that is off with the agent layer reason', () => {
     const d = detail({ record: null, layers: { ...movesResponse().layers, agents: { state: 'unavailable', reason: 'no LLM provider configured' } } })
     const d2 = block(view({ data: d }), 'd2')
-    expect(d2).toContain('no record — residual below the bar')
+    expect(d2).toContain('no agent record for this coin yet')
     expect(d2).toContain('INVESTIGATE')
     expect(d2).toContain('disabled=""')
     expect(d2).toContain('no LLM provider configured')

@@ -64,13 +64,29 @@ export function hlWeightWaitMs(now: number = Date.now()): number {
   return weightWaitMs(weightLog, now);
 }
 
+/** ms a job must wait before a call of `weight` fits its own trailing-60s `budget`, given the job's own log. Pure. */
+export function shareWaitMs(own: WeightLogEntry[], now: number, budget: number, weight: number): number {
+  return weightWaitMs(own, now, budget - weight + 20);
+}
+
 /**
- * Waits until one more base-weight call fits a lower trailing-60s budget than the guard's own, so a background job
- * (the setup replay's history fetches) takes at most that share and leaves the rest to the live scanner. Call it
- * before each request; the request itself still goes through the full guard.
+ * A background job's own share of the guard. The returned wait(weight) sleeps until this job's own requests of the
+ * trailing 60 s plus one of `weight` fit `budget`, then books it. It counts only the job's own calls: measured
+ * against the guard's whole log, a job with a budget below what the crawler and scanner already use never ran.
+ * Call it before each request; the request itself still goes through the full guard.
  */
-export async function hlWaitBelow(budget: number): Promise<void> {
-  for (let wait = weightWaitMs(weightLog, Date.now(), budget); wait > 0; wait = weightWaitMs(weightLog, Date.now(), budget)) await sleep(wait);
+export function createHlShare(budget: number, clock: () => number = Date.now): (weight: number) => Promise<void> {
+  const own: WeightLogEntry[] = [];
+  return async (weight) => {
+    for (;;) {
+      const now = clock();
+      while (own.length && own[0]!.t <= now - WEIGHT_WINDOW_MS) own.shift();
+      const wait = shareWaitMs(own, now, budget, weight);
+      if (wait <= 0) break;
+      await sleep(wait);
+    }
+    own.push({ t: clock(), weight });
+  };
 }
 
 function logWeight(weight: number) {

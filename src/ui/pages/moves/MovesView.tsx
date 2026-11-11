@@ -623,7 +623,7 @@ export function RecordBlock({ d, stats, busy, onInvestigate, error, blocked }: {
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <p className="text-sm text-text-secondary">no record — residual below the bar</p>
+          <p className="text-sm text-text-secondary">no agent record for this coin yet</p>
           <Button tier="ghost" className="min-h-[var(--tap-min)]" disabled={gate.disabled} title={gate.title} onClick={() => onInvestigate(d.coin)}>
             INVESTIGATE
           </Button>

@@ -1,6 +1,6 @@
 import { SECTORS_HISTORY } from "../../../data/sectors/index.js";
 import sectorsLatest from "../../../data/sectors/latest.json" with { type: "json" };
-import { fetchCandles, fetchFundingPage, hlWaitBelow, type FundingPoint } from "../../shared/hl-client.js";
+import { fetchCandles, fetchFundingPage, createHlShare, HL_FUNDING_PAGE, type FundingPoint } from "../../shared/hl-client.js";
 import type { IntelEvent, NarrativeStage } from "../../shared/intel.js";
 import { WINDOW_HOURS, type FactorMove, type LayerState, type MoveDetail, type MoveRow, type MoveSeriesPoint, type MovesResponse, type MoveWindow } from "../../shared/moves.js";
 import { PRE_DECISION_STATUSES, type Position } from "../../shared/platform.js";
@@ -413,9 +413,10 @@ function emptyRow(coin: string, live: AssetCtx, sectors: SectorsData, now: numbe
 
 // ---------------------------------------------------------------- process defaults
 
-// The moves fetches stay under MOVES_HL_BUDGET of the guard's trailing-60s weight; the memo keeps one series per coin.
-const candleMemo = memoSeries(async (coin: string, s: number, e: number) => (await hlWaitBelow(MOVES_HL_BUDGET), fetchCandles(coin, "1h", s, e)), MOVES_TOP + 8);
-const fundingMemo = memoSeries(async (coin: string, s: number, e: number) => (await hlWaitBelow(MOVES_HL_BUDGET), fetchFundingPage(coin, s, e)), MOVES_TOP + 8);
+// The moves fetches' own trailing-60s weight stays under MOVES_HL_BUDGET (createHlShare); the memo keeps one series per coin.
+const movesShare = createHlShare(MOVES_HL_BUDGET);
+const candleMemo = memoSeries(async (coin: string, s: number, e: number) => (await movesShare(20 + Math.ceil(CANDLE_BARS / 60)), fetchCandles(coin, "1h", s, e)), MOVES_TOP + 8);
+const fundingMemo = memoSeries(async (coin: string, s: number, e: number) => (await movesShare(20 + Math.ceil(HL_FUNDING_PAGE / 20)), fetchFundingPage(coin, s, e)), MOVES_TOP + 8);
 
 const STAGES_TTL_MS = HOUR_MS;
 let stagesCache: { at: number; value: Promise<Map<string, NarrativeStage>> } | null = null;

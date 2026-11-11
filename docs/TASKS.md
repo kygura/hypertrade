@@ -35,8 +35,9 @@ MOVES (`/moves`, first MARKET tab; attribution, positioning, triage, agent recor
 - [ ] Graded agent records as a fourth evidence kind on the board; agents proposing Lab definitions from
   repeated layers.
 - [ ] A replay or event study of the ENTER/FADE checklists: news is not a Lab metric, so ENTER stays untested.
-- [ ] Combined Hyperliquid weight budget: MOVES (400), the replay (600) and the scanner can starve each other;
-  make `hlWaitBelow` budgets additive in `hl-client.ts`.
+- [ ] Combined Hyperliquid weight budget: MOVES (400), the replay (600), the crawler (500) and the scanner add up to
+  more than the guard's 1000. Each job now counts only its own calls (`createHlShare`), so none is locked out, but
+  with all of them busy the guard makes them queue and the crawler, which yields first, polls less.
 - [ ] Without a database the OI history is boot-local, so the flow layer is `partial` for the first 48 h, and
   agent records and triage are lost on restart.
 - [ ] Cross-link leftovers: Desk alerts carry free text and no coin field, so their coins stay plain text;
@@ -98,7 +99,7 @@ Signals v2 follow-ups (docs/RESEARCH.md "Signals v2"):
   the day and scans never overlap at 00:00 UTC; `okx:oi` is collected and read stored; a deadline-cut study is not
   cached; live funding's left extension is capped to the cold span.
 - [ ] Hyperliquid weight contention: the replay's own fetches stay under 600 of the guard's 1000 per minute
-  (`REPLAY_HL_BUDGET`, `hlWaitBelow`), but the no-database definition scan (and Lab studies) still share the full
+  (`REPLAY_HL_BUDGET`, `createHlShare`), but the no-database definition scan (and Lab studies) still share the full
   budget with the live scanner, so a cold scan can delay a scanner tick by up to a minute on the guard. A per-caller
   share for the scan needs a seam through the Lab loader (`HtDeps.liveFunding` / `liveCandles`) that only the scan
   uses; not done.

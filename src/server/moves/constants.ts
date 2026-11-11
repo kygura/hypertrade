@@ -67,7 +67,7 @@ export const MOVES_TOP_VOLUME = 30;
 export const MOVES_TOP = 40;
 /** Hourly candles held per coin: 10 days. */
 export const CANDLE_BARS = 240;
-/** Trailing-60s HL weight the moves fetches stay under (of the guard's 1000; the scanner and the replay keep theirs). */
+/** Trailing-60s HL weight of the moves fetches' own requests (their share of the guard's 1000). */
 export const MOVES_HL_BUDGET = 400;
 /** A run that loaded fewer than this share of its coins failed and is retried. */
 export const MOVES_MIN_LOADED_SHARE = 0.5;

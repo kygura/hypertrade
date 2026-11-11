@@ -7,7 +7,7 @@ import { dueAt, gradeRecord, type Bar } from "./agentGrade.js";
 import type { MovesService } from "./service.js";
 import { autoInvestigate, planTriage, triageId, utcDay, utcDayStart } from "./triage.js";
 
-// The `moves-agent` loop (plan §5 E), registered by scripts/server.ts on the always-on server only. Every 15 min:
+// The `moves-agent` loop (plan §5 E), registered by scripts/server.ts on the always-on server only. Every minute (the scan reads the cached hourly run; at most one investigation a tick):
 // 1. triage: read the 24h moves (A's service, cached hourly), surface new candidates under the day's budget;
 // 2. auto-investigate: at most one coin per tick whose residual crossed |z| ≥ 2.5 with no news hour, under the cap;
 // 3. grade: open records against closed hourly bars (falsifier) and, at the horizon, the mark vs BTC.
@@ -134,7 +134,7 @@ export function createAgentLoop(deps: AgentLoopDeps) {
     if (scanError) throw scanError;
   }
 
-  return { tick, scan, grade, def: { name: "moves-agent", intervalSec: 900, run: tick } satisfies LoopDef };
+  return { tick, scan, grade, def: { name: "moves-agent", intervalSec: 60, run: tick } satisfies LoopDef };
 }
 
 /** Close of the last full hour bar ending at or before `at`. */
