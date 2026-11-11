@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { seriesRange, summaryFor } from "../db.js";
+import { failure } from "./intel/http.js";
 
 const summaryQuery = z.object({ ids: z.string().min(1) });
 
@@ -11,6 +12,7 @@ const seriesQuery = z.object({
 });
 
 export const metricsRoutes = new Hono()
+  .onError((err, c) => failure(c, err, "metrics", "metrics error"))
   .get("/summary", async (c) => {
     const parsed = summaryQuery.safeParse(c.req.query());
     if (!parsed.success) return c.json({ error: "invalid query" }, 400);

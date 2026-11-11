@@ -1,6 +1,7 @@
 import { Panel, MetricStat } from '..'
 import { AsyncBody, StaleBanner } from '../state'
 import { useApi } from '../../lib/api'
+import { isDbUnavailable } from '../../lib/dbUnavailable'
 import { fmtUsd } from '../../../shared/format'
 
 // MetricsStrip — docs/design/README.md §10.2. Funding skew, fear/greed, BTC dominance and
@@ -73,9 +74,20 @@ export function MetricsStrip() {
   const ids = METRIC_DEFS.map((d) => d.id).join(',')
   const { data, loading, error, offline, refetch } = useApi<MetricSummaryRow[]>(`/metrics/summary?ids=${ids}`)
 
+  // No database: a quiet unavailable state with the server's reason, not an error banner.
+  const dbDown = isDbUnavailable(error)
+
   return (
     <Panel>
-      <AsyncBody loading={loading} data={data} error={error} offline={offline} empty={{ label: 'no metrics yet' }} onRetry={refetch}>
+      <AsyncBody
+        loading={loading}
+        data={data}
+        error={dbDown ? null : error}
+        offline={dbDown ? error : offline}
+        offlineTitle={dbDown ? 'METRICS UNAVAILABLE' : undefined}
+        empty={{ label: 'no metrics yet' }}
+        onRetry={dbDown ? undefined : refetch}
+      >
         {(rows) => {
           const bySeriesId = new Map(rows.map((d) => [d.seriesId, d]))
           const newestTs = rows.reduce<string | null>((acc, d) => (d.ts && (!acc || d.ts > acc) ? d.ts : acc), null)

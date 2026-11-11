@@ -47,3 +47,14 @@ describe("POST /branches/:id/run", () => {
     expect((await res.json()).error).toBe("stored config is invalid");
   });
 });
+
+describe("GET /branches without a database", () => {
+  afterEach(() => spyOn(db, "listBranches").mockRestore());
+
+  test("answers 503 with the stated reason, not a bare 500", async () => {
+    spyOn(db, "listBranches").mockRejectedValue(new Error("DATABASE_URL is not set — database queries are unavailable"));
+    const res = await new Hono().route("/branches", branchesRoutes).request("/branches");
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "DATABASE_URL is not set — database queries are unavailable" });
+  });
+});
