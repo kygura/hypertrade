@@ -38,11 +38,11 @@ describe("rootRedirect: old `/` queries", () => {
     expect(rootRedirect("?status=ready&tier=2")).toBe("/feed?status=ready&tier=2");
     expect(rootRedirect("?liq=ETH&liqh=6&coin=ETH")).toBe("/feed?liq=ETH&liqh=6&coin=ETH");
   });
-  test("an old board link (?coin=) goes to /board with the query; no legacy query lands on /moves", () => {
+  test("an old board link (?coin=) goes to /board with the query; no legacy query lands on /queue", () => {
     expect(rootRedirect("?coin=ETH")).toBe("/board?coin=ETH");
     expect(rootRedirect("?coin=xyz%3ASKHX")).toBe("/board?coin=xyz%3ASKHX");
-    expect(rootRedirect("")).toBe("/moves");
-    expect(rootRedirect("?review=0")).toBe("/moves");
+    expect(rootRedirect("")).toBe("/queue");
+    expect(rootRedirect("?review=0")).toBe("/queue");
   });
 });
 

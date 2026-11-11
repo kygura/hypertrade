@@ -99,7 +99,7 @@ export const api = {
     request<T>(path, { method: 'DELETE', body: body != null ? JSON.stringify(body) : undefined }),
 }
 
-export function consumeRedirectTarget(fallback = '/moves'): string {
+export function consumeRedirectTarget(fallback = '/queue'): string {
   const target = sessionStorage.getItem(REDIRECT_KEY)
   sessionStorage.removeItem(REDIRECT_KEY)
   return safeReturnPath(target) ?? fallback

@@ -88,14 +88,14 @@ export const FEED_PARAMS = ['id', 'status', 'tier', 'liqh', 'liq'] as const
 /**
  * Where a visit to `/` with this query belongs. `?review=1` (old Telegram links) → `/terminal?review=1`;
  * any Cockpit feed param → `/feed` with the query intact; an old board link (`?coin=` alone) → `/board` with the
- * query intact; otherwise the landing, `/moves`. The board moved from `/` to `/board` on 2026-11-11.
+ * query intact; otherwise the landing, `/queue`. The board moved from `/` to `/board` on 2026-11-11.
  */
 export function rootRedirect(search: string): string {
   const q = new URLSearchParams(search)
   if (q.get('review') === '1') return '/terminal?review=1'
   if (FEED_PARAMS.some((k) => q.has(k))) return `/feed?${q}`
   if (q.has('coin')) return `/board?${q}`
-  return '/moves'
+  return '/queue'
 }
 
 /** Radar calls for the side column: newest first, at most `n`. */

@@ -63,18 +63,24 @@ describe("hidden tabs", () => {
 });
 
 describe("MarketTabs", () => {
-  test("MOVES MARKETS; drills keep their tab; a hidden page shows its own tab checked", () => {
+  test("QUEUE MOVES; the coin page keeps QUEUE; a hidden page shows its own tab checked", () => {
     const html = render("/markets/HYPE", <MarketTabs />);
     expect(html).toContain('aria-label="market sections"');
     const btns = buttons(html);
-    expect(btns).toHaveLength(2);
-    expect(btns[1]).toContain('aria-checked="true"');
-    expect(buttons(render("/moves", <MarketTabs />))[0]).toContain('aria-checked="true"');
+    expect(btns).toHaveLength(3);
+    expect(btns.map((b) => b.includes('aria-checked="true"'))).toEqual([false, false, true]);
+    expect(buttons(render("/queue", <MarketTabs />))[0]).toContain('aria-checked="true"');
+    const coin = buttons(render("/coin/SOL", <MarketTabs />));
+    expect(coin).toHaveLength(2);
+    expect(coin[0]).toContain('aria-checked="true"');
+    expect(buttons(render("/moves", <MarketTabs />))[1]).toContain('aria-checked="true"');
     for (const p of ["/sectors", "/state", "/cycles/eth"]) {
       const hidden = buttons(render(p, <MarketTabs />));
       expect(hidden).toHaveLength(3);
       expect(hidden.map((b) => b.includes('aria-checked="true"'))).toEqual([false, false, true]);
     }
+    expect(isMarketPath("/queue")).toBe(true);
+    expect(isMarketPath("/coin/SOL")).toBe(true);
     expect(isMarketPath("/moves")).toBe(true);
     expect(isMarketPath("/sectors")).toBe(true);
     expect(isMarketPath("/marketsx")).toBe(false);

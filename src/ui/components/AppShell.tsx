@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { Button } from './Button'
 import { StatusDot, type DotStatus } from './Badge'
@@ -8,16 +8,17 @@ import { isTerminalPath } from './intel/TerminalTabs'
 import { isMarketPath } from './market/MarketTabs'
 import { isResearchPath } from './lab/LabTabs'
 import { ThemeSwitcher } from './ThemeSwitcher'
+import { AskDrawer } from './ask/AskDrawer'
 
 // AppShell — docs/design/README.md §5. TopBar (>=768) / TopStrip + bottom tab bar
 // (<768) via CSS breakpoints only, no JS matchMedia. NAV is 3 cells, one per job
-// (docs/RESEARCH.md "Nav"); every cell shows in the tab bar. ASK is a header button, ENGINE has no entry. Freshness cluster reads
+// (docs/RESEARCH.md "Nav"); every cell shows in the tab bar. ASK is a header button opening a drawer (also on the `ht:ask` window event), ENGINE has no entry. Freshness cluster reads
 // the most recent hl.total_oi_usd observation as a representative collector
 // heartbeat: green <30min, amber 30min-2h, red >2h or fetch failed.
 
 export const NAV = [
-  // MOVES family, the landing: what moved and why. /moves and /markets switch inside via MarketTabs.
-  { to: '/moves', label: 'MOVES', tab: 'MOVES', glyph: '≋' },
+  // QUEUE family, the landing: what deserves a look today. /queue and /moves switch inside via MarketTabs.
+  { to: '/queue', label: 'QUEUE', tab: 'QUEUE', glyph: '≋' },
   // RESEARCH family: is there an edge. The board `/board`, the Lab (/lab/*) and the
   // Branches simulator (/branches/*) switch inside via LabTabs.
   { to: '/board', label: 'RESEARCH', tab: 'RSRCH', glyph: '⚗' },
@@ -28,7 +29,7 @@ export const NAV = [
 export function isActive(pathname: string, to: string): boolean {
   if (to === '/board') return isResearchPath(pathname)
   if (to === '/desk') return isTerminalPath(pathname)
-  if (to === '/moves') return isMarketPath(pathname)
+  if (to === '/queue') return isMarketPath(pathname)
   return pathname === to || pathname.startsWith(`${to}/`)
 }
 
@@ -57,6 +58,12 @@ function useFreshness(): Freshness {
 export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const [ask, setAsk] = useState(false)
+  useEffect(() => {
+    const open = () => setAsk(true)
+    window.addEventListener('ht:ask', open)
+    return () => window.removeEventListener('ht:ask', open)
+  }, [])
   const freshness = useFreshness()
   // Route-guard probe: a 401 redirects to /login (api.ts). In PUBLIC_MODE the
   // server lets visitors through as guests, so offer LOGIN instead of LOGOUT.
@@ -70,7 +77,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh flex flex-col">
       <header className="app-topbar sticky top-0 z-40 h-[var(--topbar-h)] flex items-center justify-between px-3 border-b border-border bg-topbar">
-        <Link to="/moves" className="app-wordmark flex items-center gap-1.5 text-sm uppercase font-semibold tracking-wider font-display">
+        <Link to="/queue" className="app-wordmark flex items-center gap-1.5 text-sm uppercase font-semibold tracking-wider font-display">
           HYPERTRADE
           <span className="app-wordmark-dot inline-block w-1.5 h-1.5 bg-accent" />
         </Link>
@@ -91,8 +98,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="flex items-center gap-3">
-          {/* The analyst (and its SIMULATE mode, which saves into BRANCHES): a button, not a cell. */}
-          <Button tier="ghost" aria-current={pathname === '/analyst' ? 'page' : undefined} onClick={() => navigate('/analyst')} title="ask the analyst, or simulate a portfolio">
+          {/* The analyst: a button that toggles a drawer, not a cell. */}
+          <Button tier="ghost" aria-expanded={ask} onClick={() => setAsk((v) => !v)} title="ask the analyst">
             ASK
           </Button>
           <ThemeSwitcher />
@@ -113,6 +120,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <main className="flex-1 pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">{children}</main>
+      <AskDrawer open={ask} onClose={() => setAsk(false)} />
 
       <nav
         aria-label="primary"

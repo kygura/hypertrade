@@ -6,14 +6,14 @@ const activeCells = (p: string) => NAV.filter((n) => isActive(p, n.to)).map((n) 
 
 describe("AppShell NAV", () => {
   test("three cells in order, short labels fit the mobile bar", () => {
-    expect(NAV.map((n) => n.label)).toEqual(["MOVES", "RESEARCH", "TRADE"]);
-    expect(NAV.map((n) => n.to)).toEqual(["/moves", "/board", "/desk"]);
+    expect(NAV.map((n) => n.label)).toEqual(["QUEUE", "RESEARCH", "TRADE"]);
+    expect(NAV.map((n) => n.to)).toEqual(["/queue", "/board", "/desk"]);
     for (const n of NAV) expect(n.tab.length).toBeLessThanOrEqual(5);
   });
 
-  test("MOVES is the landing cell: active for its tabs, the hidden market pages and their drills", () => {
-    for (const p of ["/moves", "/markets", "/markets/HYPE", "/sectors", "/state", "/cycles", "/cycles/eth"]) {
-      expect(activeCells(p)).toEqual(["MOVES"]);
+  test("QUEUE is the landing cell: active for its tabs, the coin page, the hidden market pages and their drills", () => {
+    for (const p of ["/queue", "/coin/SOL", "/moves", "/markets", "/markets/HYPE", "/sectors", "/state", "/cycles", "/cycles/eth"]) {
+      expect(activeCells(p)).toEqual(["QUEUE"]);
     }
   });
 
@@ -32,10 +32,10 @@ describe("AppShell NAV", () => {
 });
 
 describe("MarketTabs", () => {
-  test("MOVES then MARKETS on the row; SECTORS, STATE and CYCLES are hidden", () => {
-    expect(MARKET_TABS.filter((t) => !t.hidden).map((t) => t.label)).toEqual(["MOVES", "MARKETS"]);
-    expect(MARKET_TABS.filter((t) => t.hidden).map((t) => t.label)).toEqual(["SECTORS", "STATE", "CYCLES"]);
-    expect(MARKET_TABS[0]!.to).toBe("/moves");
+  test("QUEUE then MOVES on the row; MARKETS, SECTORS, STATE and CYCLES are hidden", () => {
+    expect(MARKET_TABS.filter((t) => !t.hidden).map((t) => t.label)).toEqual(["QUEUE", "MOVES"]);
+    expect(MARKET_TABS.filter((t) => t.hidden).map((t) => t.label)).toEqual(["MARKETS", "SECTORS", "STATE", "CYCLES"]);
+    expect(MARKET_TABS[0]!.to).toBe("/queue");
   });
 });
 
