@@ -75,7 +75,7 @@ Root has only: this file, `README.md` (setup, env, API overview), and `ROUTINE.m
 
 | Path | Purpose |
 |---|---|
-| `docs/RESEARCH.md` | Research terminal contract: the board `/`, signals and studies, `/lab/study`, nav, approve honesty. |
+| `docs/RESEARCH.md` | Research terminal contract: the board `/board` (`/` lands on the queue), signals and studies, `/lab/study`, nav, approve honesty. |
 | `docs/SPEC.md` | Product contract: pillars, routes, Intel/Flow/Scout/Platform sections. Wins on data and API shape. |
 | `docs/design/README.md` | Visual language, tokens, states, per-view briefs. Wins on visuals. |
 | `docs/design/terminal.md`, `docs/design/chat.md` | Binding briefs for the Intel Terminal/Cockpit and the Paths chat; extend the main design doc. |

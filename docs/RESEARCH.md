@@ -4,6 +4,12 @@ Status: done (2026-11-09). This file is the contract for the research-terminal
 refactor. `docs/SPEC.md` wins on data and API shape for everything not named here;
 `docs/design/README.md` wins on tokens, states and primitives.
 
+## Purpose
+
+Hypertrade spends one trader's attention well. Agents watch the whole market, the trader sees a short queue of what deserves a look, and everything that makes a claim gets graded afterwards.
+
+A screen belongs only if it (1) puts something in the queue, (2) helps decide on a queue item, or (3) grades a decision. It is not a data terminal, a query tool, or a host for an external strategy engine. Branches and portfolio simulation are kept as part of deciding. The research board below is the "is there an edge" part of that job (docs/SPEC.md § Queue for the list itself).
+
 ## Goal
 
 Hypertrade is a **research terminal** for Hyperliquid perps. Its one job: when something
@@ -16,7 +22,7 @@ never as a verdict of its own. Nothing nags.
 
 ## What changes
 
-1. The **Research board** (`/board` since 2026-11-11; it was the landing `/`, which is now `/moves`, see
+1. The **Research board** (`/board` since 2026-11-11; it was the landing `/`, which now lands on the queue `/queue`, see
    "Nav"): live signals, each with a Lab rule and its event-study evidence. The old Cockpit feed moves to `/feed` (TRADE family, tab FEED).
 2. The Lab gains an **event study view** (`/lab/study`) that any signal can open prefilled.
    Until now `lab_event_study` had no UI.
@@ -148,22 +154,25 @@ Three cells, one per job (2026-11-11; `NAV` in `src/ui/components/AppShell.tsx`)
 
 | Cell | Job | Link | Tabs |
 |---|---|---|---|
-| **MOVES** (landing) | what moved and why | `/moves` | MOVES `/moves` · MARKETS `/markets` |
+| **QUEUE** (landing) | what deserves a look today | `/queue` | QUEUE `/queue` · MOVES `/moves` |
 | **RESEARCH** | is there an edge | `/board` | BOARD `/board` · STUDY `/lab/study` · RULES `/lab/catalogue` (the catalogue, with its count) · BRANCHES `/branches` |
 | **TRADE** | what did I do and was I right | `/desk` | DESK `/desk` · ORDER `/order` · JOURNAL `/journal` |
 
-ASK is not a cell: one `ASK` button in the top bar opens `/analyst`, which also hosts the portfolio simulation
-(SIMULATE) that saves into BRANCHES. ENGINE (`/strategies`, `/decisions`, `/governor`) has no entry point.
+ASK is not a cell: one `ASK` button in the top bar (or the `ht:ask` window event, sent by the coin page's ASK action) opens a drawer over the current screen. The drawer carries the coin in view and, when that coin is in today's queue, the item's facts; it shares the `/analyst` ASK thread, is read-only, and its "open full page" link goes to `/analyst`. The portfolio simulation (SIMULATE, which saves into BRANCHES) is reached from BRANCHES and from the coin page's SIMULATE action, not from the drawer. ENGINE (`/strategies`, `/decisions`, `/governor`) has no entry point.
 
-Landing: `/` is no page. `rootRedirect` (`src/ui/lib/research.ts`) sends it to `/moves`; `/?review=1` keeps
+The coin page `/coin/:coin` is the decide page for one coin and lives in the QUEUE cell (its tab stays QUEUE). Every kept screen that names a coin links there: the Board's signal rows (the "asset" link) and an opportunity row's source drill, MOVES' outbound links, the Desk, and Ready pushes. `/markets/:coin` redirects to `/coin/:coin?chart=price`.
+
+Landing: `/` is no page. `rootRedirect` (`src/ui/lib/research.ts`) sends it to `/queue`; `/?review=1` keeps
 redirecting to `/terminal?review=1`, any old `/?…` opportunity query redirects to `/feed` with the query intact,
 and an old board link `/?coin=…` redirects to `/board?coin=…`. The post-login default and unknown paths go to
-`/moves`.
+`/queue`.
 
-Hidden from nav, not deleted (docs/TASKS.md 2026-11-11): every route still works by URL. SEARCH, RUNS, PULSE,
+Hidden from nav, not deleted (docs/TASKS.md 2026-11-11): every route still works by URL. MARKETS, SEARCH, RUNS, PULSE,
 FEED, CHANGES, WATCH, THESES, QUERY, SECTORS, STATE and CYCLES are `hidden` tabs: off the row, except that a
 hidden page opened by URL shows its own tab, checked, so the row never points at a page that is not open. SEARCH
 and RUNS stay reachable from one line of links on the RULES page (they are how a rule gets into the catalogue).
+`/lab/pulse` is unlinked (the board's PULSE summary links to RULES) and `/feed` is linked only from the coin
+page's `OPPORTUNITY · APPROVE ON FEED`.
 
 ### Board (`/board`)
 

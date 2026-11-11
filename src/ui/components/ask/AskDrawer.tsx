@@ -69,11 +69,12 @@ export function AskDrawerView(p: AskDrawerViewProps) {
             </span>
           )}
           <span className="flex-1" />
-          <ModelSelector catalog={p.catalog} value={p.choice} onChange={p.onPick} />
+          {/* Offline (e.g. no provider): the block below says it once; the selector would repeat it. */}
+          {!p.offline && <ModelSelector catalog={p.catalog} value={p.choice} onChange={p.onPick} />}
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-3 flex flex-col gap-5">
           {p.loading && !p.offline && <SkeletonRows rows={3} />}
-          {p.offline && <OfflineBlock title={p.offline.title} message={p.offline.message} onRetry={p.onRetry} />}
+          {p.offline && <OfflineBlock compact title={p.offline.title} message={p.offline.message} onRetry={p.onRetry} />}
           {!p.offline && !p.loading && p.turns.length === 0 && (
             <span className="text-sm text-text-secondary">
               {p.coin ? `Ask about ${p.coin} or anything on the tape. ` : 'Ask about the tape, sectors, or the engine\'s decisions. '}

@@ -14,7 +14,6 @@ import { StrategyDetail } from './pages/StrategyDetail'
 import { Decisions } from './pages/Decisions'
 import { DecisionDetail } from './pages/DecisionDetail'
 import { Governor } from './pages/Governor'
-import { Analyst } from './pages/Analyst'
 import { Desk } from './pages/Desk'
 import { SkeletonRows } from './components/state'
 import { TerminalTabs } from './components/intel/TerminalTabs'
@@ -27,6 +26,8 @@ import { PageContainer } from './components/PageContainer'
 // QUEUE (home) and the coin page: loaded with their routes.
 const Queue = lazy(() => import('./pages/queue/Queue').then((m) => ({ default: m.Queue })))
 const CoinPage = lazy(() => import('./pages/coin/CoinPage').then((m) => ({ default: m.CoinPage })))
+// The analyst page (also the ASK drawer's parts): its own chunk, loaded with /analyst or the first ASK open.
+const Analyst = lazy(() => import('./pages/Analyst').then((m) => ({ default: m.Analyst })))
 // Cycles (ported from hl-cycles): canvas + Recharts charts, loaded with the route.
 const Cycles = lazy(() => import('./pages/Cycles').then((m) => ({ default: m.Cycles })))
 // Lab (docs/design/README.md §10.9): research view, loaded with its routes.
@@ -100,12 +101,13 @@ function TradeLayout({ children }: { children: React.ReactNode }) {
 }
 
 // MARKET family page: MarketTabs + the MetricsStrip above the page.
-function MarketLayout({ children }: { children: React.ReactNode }) {
+// `metrics={false}`: QUEUE and the coin page carry nothing above the content (the strip is terminal furniture).
+export function MarketLayout({ children, metrics = true }: { children: React.ReactNode; metrics?: boolean }) {
   return (
     <Shell>
       <PageContainer>
         <MarketTabs />
-        <MetricsStrip />
+        {metrics && <MetricsStrip />}
       </PageContainer>
       {children}
     </Shell>
@@ -200,7 +202,7 @@ export default function App() {
         <Route
           path="/queue"
           element={
-            <MarketLayout>
+            <MarketLayout metrics={false}>
               <Suspense fallback={<SkeletonRows />}>
                 <Queue />
               </Suspense>
@@ -210,7 +212,7 @@ export default function App() {
         <Route
           path="/coin/:coin"
           element={
-            <MarketLayout>
+            <MarketLayout metrics={false}>
               <Suspense fallback={<SkeletonRows />}>
                 <CoinPage />
               </Suspense>
@@ -274,7 +276,9 @@ export default function App() {
           path="/analyst"
           element={
             <Shell>
-              <Analyst />
+              <Suspense fallback={<SkeletonRows />}>
+                <Analyst />
+              </Suspense>
             </Shell>
           }
         />

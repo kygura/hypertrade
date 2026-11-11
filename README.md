@@ -2,7 +2,7 @@
 
 A personal market terminal and signal platform for crypto perps. It tracks assets, simulates allocation branches against historical data, monitors sector dynamics, and runs an always-on worker that scans Hyperliquid and surfaces ranked setups.
 
-Surfaces: MOVES (`/moves`, the landing: what moved and why), the Research board (`/board`: live signals with their event-study evidence, docs/RESEARCH.md), the platform cockpit (`/feed`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade radar (a scheduled Claude session, twice a day: code scans every live perp on the main and HIP-3 dexes, the session researches what the tape has not priced yet and lands at most 3 dated calls that code prices and grades in `data/radar/`; one ntfy push only when a call lands; see `ROUTINE.md`).
+Surfaces: the attention queue (`/queue`, the landing: what deserves a look today; `/coin/:coin`, where to decide on one coin), MOVES (`/moves`: what moved and why), the Research board (`/board`: live signals with their event-study evidence, docs/RESEARCH.md), the platform cockpit (`/feed`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade radar (a scheduled Claude session, twice a day: code scans every live perp on the main and HIP-3 dexes, the session researches what the tape has not priced yet and lands at most 3 dated calls that code prices and grades in `data/radar/`; one ntfy push only when a call lands; see `ROUTINE.md`).
 
 ## Status
 
@@ -40,11 +40,11 @@ Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is
 
 | Cell | Routes |
 |---|---|
-| MOVES | `MarketTabs`, with the metrics strip under it: `/moves` (MOVES, the landing: why each coin moved), `/markets` (MARKETS; and `/markets/:coin`, chart; links to `/asset/:coin`). Hidden: `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`; `/` redirects to `/moves`. |
+| QUEUE | `MarketTabs` (QUEUE · MOVES): `/queue` (QUEUE, the landing: one short list merged from moves triage, ready opportunities and radar calls), `/coin/:coin` (the decide page for one coin), `/moves` (MOVES, with the metrics strip under the tabs: why each coin moved). Hidden: `/markets`, `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/markets/:coin` redirects to `/coin/:coin?chart=price`; `/overview` redirects to `/markets`; `/` redirects to `/queue`. |
 | RESEARCH | `LabTabs`: `/board` (BOARD: live signals with their evidence, `?coin=` filter; an old `/?coin=…` redirects here), `/lab/study`, `/lab/catalogue` (RULES), `/lab/rules/:id`, and `/branches`, `/branches/:id`. Hidden: `/lab/search` and `/lab/runs`, `/lab/runs/:runId` (linked from the RULES page), `/lab/pulse`. |
 | TRADE | `TerminalTabs`: `/desk`, `/order`, `/journal`. Hidden: `/feed` (the Cockpit: ranked opportunities, liquidation map, approve/reject, desk kill switch; an old `/?id=…` redirects here), `/terminal` (CHANGES), `/watch`, `/theses`, `/query`, `/asset/:coin`. |
 
-Not a cell: the top bar's `ASK` button opens `/analyst` (ASK and SIMULATE). Hidden, no entry point: the ENGINE console (`EngineTabs`: `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor`).
+Not a cell: the top bar's `ASK` button opens a drawer over the current screen (it carries the coin in view; its full page is `/analyst`, ASK and SIMULATE, with SIMULATE reached from BRANCHES). Hidden, no entry point: the ENGINE console (`EngineTabs`: `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor`).
 
 Themes: `hyperdash` (default), `tradexyz` and `hyperion`, switched from the top bar (`src/ui/themes/README.md`).
 
@@ -52,12 +52,12 @@ Confirmations: a plain click for reversible actions; a dialog for anything that 
 
 ## Moves (why each coin moved)
 
-`GET /api/moves?window=4h|24h|72h` splits each coin's move over the window into BTC beta, ETH-ex-BTC beta, sector-ex-majors beta and a residual (with its z, R², n and estimation window), beside positioning and crowding checks, liquidation proximity, attention facts and the ENTER/FADE condition checklists. `GET /api/moves/:coin?window=` is one coin with its cumulative series, headlines and latest agent record. `/api/moves/triage`, `/api/moves/records`, `/api/moves/records/stats` and `POST /api/moves/:coin/investigate` are the agent watch. Formulas, minimum-n rules and layer states: docs/SPEC.md § Moves.
+`GET /api/queue` is the attention queue (docs/SPEC.md § Queue): today's one-item-per-coin list merged from moves triage, ready opportunities and radar calls, listed up to `MOVES_TRIAGE_DAILY` (first come, first listed); `POST /api/queue/:id/dismiss` hides a coin for the UTC day (migration `025_queue_dismissals.sql`). The queue sends no alerts. `GET /api/moves?window=4h|24h|72h` splits each coin's move over the window into BTC beta, ETH-ex-BTC beta, sector-ex-majors beta and a residual (with its z, R², n and estimation window), beside positioning and crowding checks, liquidation proximity, attention facts and the ENTER/FADE condition checklists. `GET /api/moves/:coin?window=` is one coin with its cumulative series, headlines and latest agent record. `/api/moves/triage`, `/api/moves/records`, `/api/moves/records/stats` and `POST /api/moves/:coin/investigate` are the agent watch. Formulas, minimum-n rules and layer states: docs/SPEC.md § Moves.
 
 - Runs on live Hyperliquid data with no database. The table needs the always-on server (`bun start`): one background run per closed hour loads 1h candles under 400 of the weight guard's 1000 per minute, so the first answer is `pending` for about 2.5 minutes. On Vercel the table answers `unavailable`; the single-coin route still answers.
 - Layers degrade on their own and say why: OI-drop hours need the scanner's snapshots, news and Elfa need `DATABASE_URL`, liquidation proximity needs the crawler.
 - `bun run moves [--window 24h] [--top N]` prints the table once, with no server.
-- `MOVES_TRIAGE_DAILY` (8): triage items surfaced per UTC day. `MOVES_AGENT_DAILY` (6): agent investigations per UTC day.
+- `MOVES_TRIAGE_DAILY` (8): triage items surfaced per UTC day, and the cap of the queue across all its sources. `MOVES_AGENT_DAILY` (6): agent investigations per UTC day.
 
 ## Deployment
 
@@ -179,7 +179,7 @@ When the cloud run does not happen (a spent claude.ai session limit rejects it, 
 
 ## Chart history
 
-`/markets/:coin` charts every Hyperliquid perp at `1m 5m 15m 1H 4H 1D 1W 1M`
+The coin page's PRICE view (`/coin/:coin?chart=price`; `/markets/:coin` redirects there) charts every Hyperliquid perp at `1m 5m 15m 1H 4H 1D 1W 1M`
 with funding, open interest and premium panes. History is stitched from
 layers, newest first (`src/server/market/candleSync.ts`):
 
@@ -393,7 +393,7 @@ there is no Overview (`/overview` redirects to `/markets`). Design: `docs/design
 | route | what it does |
 |---|---|
 | `/terminal` | Terminal: brief, alerts, catalysts, exposure, flow heatmap, research. A UI open logs a review. |
-| `/asset/:coin` | One coin: snapshot and flow series with event markers, exposure graph, research. Linked from Terminal rows, the Cockpit detail and `/markets/:coin`. |
+| `/asset/:coin` | One coin: snapshot and flow series with event markers, exposure graph, research. Linked from Terminal rows and the Cockpit detail. |
 | `/journal` | Round trips from the watched address and the Desk paper book, with session, hold time, R, MAE/MFE, per-tag stats and a weekly report. |
 | `/theses` | Paste a thesis. The LLM extracts claims; code checks each against a fixed catalogue. |
 | `/query` | Natural language to a screener DSL over the snapshot store. The DSL is editable; the SQL is shown read-only. |

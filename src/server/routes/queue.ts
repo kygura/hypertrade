@@ -5,6 +5,7 @@ import { parseQueueItemId, QueueDismissResponseSchema, QueueResponseSchema, type
 import type { RadarCall } from "../../shared/radar.js";
 import { isGuest } from "../auth.js";
 import type { AgentDeps } from "../moves/agent.js";
+import { latestTriageScan, type TriageScan } from "../moves/agentLoop.js";
 import { agentBlockedReason, agentStore, sharedAgentDeps } from "../moves/agentRoutes.js";
 import { triageBudget, triageId, utcDay, utcDayStart } from "../moves/triage.js";
 import { isServerless, needsAlwaysOn } from "../platform/runtime.js";
@@ -34,6 +35,8 @@ export interface QueueRouteDeps {
   opportunities(dayStart: Date): Promise<Opportunity[]>;
   /** Landed radar calls; throws with the reason when the files are unavailable. */
   radar(): Promise<RadarCall[]>;
+  /** The moves loop's latest scan (its `watched` count, as /api/moves/triage reads it). */
+  scan(): TriageScan | null;
   /** The agent's deps less the store (daily cap, LLM wiring). */
   agent(): Omit<AgentDeps, "store">;
   isGuest?: (c: Context) => boolean;
@@ -79,7 +82,7 @@ export function queueRoutes(d: QueueRouteDeps) {
         dismissals: "ok" in dismissals ? dismissals.ok : [],
       });
       const blocked = off ?? (store ? await agentBlockedReason(agent, runs) : NO_STORE);
-      const body: QueueResponse = { ...merged, agentRuns: runs, agentCap: agent.dailyCap, agentBlockedReason: blocked };
+      const body: QueueResponse = { ...merged, agentRuns: runs, agentCap: agent.dailyCap, agentBlockedReason: blocked, watched: off ? 0 : (d.scan()?.watched ?? 0) };
       return c.json(QueueResponseSchema.parse(body));
     })
     .post("/:id/dismiss", async (c) => {
@@ -119,5 +122,6 @@ export const defaultQueueDeps = (): QueueRouteDeps => ({
     if (r.state === "unavailable") throw new Error(r.reason ?? "radar files unreadable");
     return r.calls;
   },
+  scan: latestTriageScan,
   agent: sharedAgentDeps,
 });

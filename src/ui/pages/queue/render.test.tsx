@@ -14,7 +14,7 @@ import { QueueView, type QueueViewProps } from './QueueView'
 const noop = () => {}
 const feed = (data: QueueResponse | null, over: Partial<Feed<QueueResponse>> = {}): Feed<QueueResponse> => ({ data, loading: false, error: null, offline: null, refetch: noop, ...over })
 const props = (q: Feed<QueueResponse>, over: Partial<QueueViewProps> = {}): QueueViewProps => ({
-  queue: q, watched: null, selected: null, onRow: noop, onDismiss: noop, pending: [], error: null, handledOpen: false, onHandled: noop, pane: false, now: NOW, ...over,
+  queue: q, selected: null, onRow: noop, onDismiss: noop, pending: [], error: null, handledOpen: false, onHandled: noop, pane: false, now: NOW, ...over,
 })
 const html = (p: QueueViewProps) => renderToStaticMarkup(<MemoryRouter>{<QueueView {...p} />}</MemoryRouter>)
 
@@ -42,10 +42,16 @@ describe('QueueView', () => {
   })
 
   test('empty: one calm line with the watched count, no panels stacked before it', () => {
-    const out = html(props(feed(queueResponse()), { watched: 38 }))
+    const out = html(props(feed(queueResponse({ watched: 38 }))))
     expect(out).toContain('nothing crossed the bar today · 38 coins watched')
     expect(out).not.toContain('DISMISS')
     expect(out).not.toContain('dismissed / acted')
+  })
+
+  test('empty with no scan (watched 0): the bare line, no count', () => {
+    const out = html(props(feed(queueResponse({ watched: 0 }))))
+    expect(out).toContain('nothing crossed the bar today')
+    expect(out).not.toContain('coins watched')
   })
 
   test('an unavailable source is a chip with its reason and one quiet line, not a card', () => {

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { ApiError } from '../../lib/api'
 import { useMedia, useNow, useQueryPatch } from '../../lib/hooks'
-import { moves } from '../../lib/moves'
 import { usePoll } from '../../lib/poll'
 import { queue, QUEUE_POLL_MS } from '../../lib/queue'
 import { stepSelection } from '../cockpit/logic'
@@ -27,10 +26,6 @@ export function Queue() {
 
   const feed = usePoll(queue.get, [], { intervalMs: QUEUE_POLL_MS })
   const items = feed.data?.items ?? []
-  // The empty line names how many coins are watched; read only while the queue is empty.
-  const empty = feed.data != null && items.length === 0
-  const triage = usePoll(moves.triage, [], { intervalMs: QUEUE_POLL_MS, enabled: empty })
-  const watched = empty && triage.data?.state === 'ok' ? triage.data.watched : null
 
   const param = params.get('coin')
   // Phone: no default selection (a tap opens the coin page); an explicit ?coin= still highlights its row.
@@ -109,7 +104,6 @@ export function Queue() {
   return (
     <QueueView
       queue={feed}
-      watched={watched}
       selected={selected}
       onRow={onRow}
       onDismiss={dismiss}

@@ -97,6 +97,8 @@ export const QueueResponseSchema = z.object({
   agentRuns: Count,
   agentCap: Count,
   agentBlockedReason: z.string().nullable(),
+  /** Coins scanned in the latest moves run (what /api/moves/triage calls `watched`); 0 when moves is unavailable. */
+  watched: Count,
   /** Listed items in display order: new, acted, dismissed; then more sources, higher score, newer. */
   items: z.array(QueueItemSchema),
 });

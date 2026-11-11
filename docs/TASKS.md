@@ -6,20 +6,38 @@ lists live in git history (see History).
 ## Open
 
 Narrowing to three jobs, phase 1 (2026-11-11): nav and landing only, nothing deleted. The shell has three
-cells: MOVES (what moved and why, the landing `/moves`), RESEARCH (is there an edge), TRADE (what did I do and
-was I right); the contract is docs/RESEARCH.md "Nav". Every route below still works by URL.
+cells: QUEUE (what deserves a look today, the landing `/queue`; MOVES is its second tab), RESEARCH (is there an
+edge), TRADE (what did I do and was I right); the contract is docs/RESEARCH.md "Nav". Every route below still works
+by URL.
+
+- [x] Stage 2 (2026-11-11): the attention queue as home. `GET /api/queue` merges moves triage, ready opportunities and
+  radar calls under `MOVES_TRIAGE_DAILY`; dismissals in migration 025; `/coin/:coin` is the decide page and
+  `/markets/:coin` redirects to it; ASK is a drawer that carries the coin and queue item. Contract: docs/SPEC.md
+  § Queue; screens: docs/design/README.md §10.14 to §10.16.
+- [ ] Approval still only exists on `/feed` (the coin page links to it as `OPPORTUNITY · APPROVE ON FEED`), so `/feed`
+  cannot be deleted on 11-18 until approve (the opportunity detail and `TicketDialog`) moves to the coin page.
+- [ ] Queue sources not yet in (docs/SPEC.md § Queue Q0), each with its blocker: board definitions, rules and novelty
+  (answer "is there an edge", heavy to load, no per-item state, dozens a day would fill the cap); Intel alerts (the
+  asset can be a narrative id: needs an asset-to-perp mapping and a rule for alerts Telegram already pushed);
+  Terminal changes (one brief, not per coin, an LLM run per open); Desk alerts (free text, no coin field).
+- [ ] The cap is first come, first listed, so a strong late item waits as `over cap`. The owner may want rank-based
+  slots (they flicker) or a separate `QUEUE_DAILY` so triage does not use the whole `MOVES_TRIAGE_DAILY` budget before
+  opportunities and radar calls arrive.
+- [ ] `src/ui/pages/moves/Moves.tsx` still polls `/api/moves/triage` although `TriagePanel` is no longer rendered on
+  `/moves`; drop the poll (or the panel) in the cleanup.
+- [ ] Telegram review links (`intel/mapper.ts`, `intel/terminal.ts`) still open `/terminal?review=1`, a hidden screen;
+  retarget them before `/terminal` is deleted.
 
 - [ ] 2026-11-18: delete the screens hidden from nav, with their server code, if none was missed for a week:
   - TRADE: FEED (`/feed`), CHANGES (`/terminal`, `/asset/:coin`), WATCH (`/watch`), THESES (`/theses`),
     QUERY (`/query`).
-  - MOVES: STATE (`/state`), SECTORS (`/sectors`), CYCLES (`/cycles`).
+  - MOVES: MARKETS (`/markets`), STATE (`/state`), SECTORS (`/sectors`), CYCLES (`/cycles`).
   - ENGINE: strategies, decisions, governor (`/strategies`, `/decisions`, `/governor`); no entry point.
   - Lab SEARCH, RUNS and PULSE (`/lab/search`, `/lab/runs`, `/lab/pulse`) are folded behind RULES: off the
-    tab row, SEARCH and RUNS linked from the RULES page.
-  - Kept, explicitly: BRANCHES and the portfolio simulation (`/analyst` SIMULATE, the top bar's ASK button).
-  - Before deleting: kept screens still link to hidden ones (the board to `/lab/pulse`, `/feed?id=` and
-    `/asset/:coin`; MOVES to `/sectors`, `/asset/:coin` and `/feed`; Desk and the MARKETS drill to
-    `/asset/:coin`), and Telegram/alert links target `/feed`, `/terminal?review=1` and `/sectors`.
+    tab row, SEARCH and RUNS linked from the RULES page; `/lab/pulse` is unlinked.
+  - Kept, explicitly: BRANCHES and the portfolio simulation (`/analyst` SIMULATE, the top bar's ASK drawer).
+  - Before deleting: the coin page links to `/feed?id=` (approve) and queue opportunity parts drill to `/feed?id=`;
+    the queue's moves parts drill to `/moves?coin=`; Telegram links still target `/terminal?review=1`.
 
 UI consolidation, per `docs/CONSOLIDATION.md` (one cell per operator job, one home per
 object; 6 shell cells today against a ceiling of 9, target 5):
@@ -39,7 +57,7 @@ object; 6 shell cells today against a ceiling of 9, target 5):
 MOVES (`/moves`, first MARKET tab; attribution, positioning, triage, agent records), deferred past v1:
 
 - [x] Make MOVES the landing (2026-11-11): `rootRedirect` (`src/ui/lib/research.ts`) and the Login default;
-  the board moved to `/board`.
+  the board moved to `/board`. Superseded the same day by stage 2: the landing is `/queue`.
 - [ ] Approve or any order action on MOVES (links only in v1).
 - [ ] HIP-3 dexes and non-crypto coins (main-dex crypto only); agents watching HIP-3.
 - [ ] Microstructure as an attributed layer (spread and depth stay in the Cockpit cost model).

@@ -26,6 +26,7 @@ function setup(o: Partial<QueueRouteDeps> & { guest?: boolean; noStore?: boolean
     movesUnavailable: () => null,
     opportunities: async () => [],
     radar: async () => [],
+    scan: () => ({ day, at: iso(T0), state: "ok", reason: null, watched: 31, overBudget: 0 }),
     agent: () => agent,
     isGuest: () => o.guest ?? false,
     timeoutMs: 50,
@@ -47,7 +48,7 @@ describe("GET /api/queue", () => {
     const res = await req("/");
     expect(res.status).toBe(200);
     const body = QueueResponseSchema.parse(await res.json());
-    expect(body).toMatchObject({ day, cap: 8, overCap: 0, agentCap: 6, agentBlockedReason: null });
+    expect(body).toMatchObject({ day, cap: 8, overCap: 0, agentCap: 6, agentBlockedReason: null, watched: 31 });
     expect(body.items.map((i) => [i.coin, i.record?.id ?? null])).toEqual([["SOL", "r1"]]);
     expect(body.sources.radar).toEqual({ state: "ok", reason: null, count: 0 });
   });
@@ -64,6 +65,12 @@ describe("GET /api/queue", () => {
     expect(body.sources.opportunity.state).toBe("unavailable");
     expect(body.items.map((i) => i.coin)).toEqual(["HYPE"]);
     expect(body.agentBlockedReason).toBe(reason);
+    expect(body.watched).toBe(0);
+  });
+
+  test("watched is the moves scan's count, 0 before the first scan", async () => {
+    const body = QueueResponseSchema.parse(await (await setup({ scan: () => null }).req("/")).json());
+    expect(body.watched).toBe(0);
   });
 
   test("no store: 200 with every store-backed source unavailable", async () => {

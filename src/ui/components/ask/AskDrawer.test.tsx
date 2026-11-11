@@ -66,4 +66,28 @@ describe('AskDrawer', () => {
     expect(html).toContain('ANALYST NOT CONFIGURED')
     expect(html).toMatch(/<textarea[^>]*disabled/)
   })
+
+  test('no provider is said once: the status block, no selector badge or env-var hints beside it', () => {
+    const offline = offlineFrom(new ApiError('not configured', 503))
+    const catalog = { default: { provider: 'anthropic', model: 'm' }, providers: [{ id: 'anthropic', label: 'Anthropic', available: false, reason: 'set ANTHROPIC_API_KEY', models: [] }] } as unknown as AskDrawerViewProps['catalog']
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AskDrawerView {...view({ offline, ready: false, catalog })} />
+      </MemoryRouter>,
+    )
+    expect(html).not.toContain('NO PROVIDER')
+    expect(html).not.toContain('Analyst model selector')
+    expect(html.match(/ANALYST NOT CONFIGURED/g)).toHaveLength(1)
+  })
+
+  test('a catalog with no provider (status ok): the badge wraps its reasons onto their own row', () => {
+    const catalog = { default: { provider: 'anthropic', model: 'm' }, providers: [{ id: 'anthropic', label: 'Anthropic', available: false, reason: 'set ANTHROPIC_API_KEY', models: [] }] } as unknown as AskDrawerViewProps['catalog']
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AskDrawerView {...view({ catalog })} />
+      </MemoryRouter>,
+    )
+    expect(html).toContain('NO PROVIDER')
+    expect(html).toMatch(/class="w-full min-w-0 break-words[^"]*"[^>]*>set ANTHROPIC_API_KEY/)
+  })
 })

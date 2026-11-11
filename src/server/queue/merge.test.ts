@@ -124,7 +124,7 @@ describe("mergeQueue", () => {
       radar: { ok: [call("SOL", 2), call("HYPE", 5, { kill_price: 0.000123456789, stance: "fade", direction: "short" })] },
       records: [record("r1", "SOL", 4)], dismissals: [{ day: DAY, coin: "HYPE", dismissedAt: t(6) }],
     }));
-    const full = QueueResponseSchema.parse({ ...q, agentRuns: 0, agentCap: 6, agentBlockedReason: null });
+    const full = QueueResponseSchema.parse({ ...q, agentRuns: 0, agentCap: 6, agentBlockedReason: null, watched: 0 });
     expect(full.items).toHaveLength(3);
     const reasons = full.items.flatMap((i) => [i.reason, ...i.parts.map((p) => p.reason)]);
     for (const r of reasons) expect(r).not.toContain("Unlock");

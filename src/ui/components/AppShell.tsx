@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { Button } from './Button'
 import { StatusDot, type DotStatus } from './Badge'
@@ -8,7 +8,8 @@ import { isTerminalPath } from './intel/TerminalTabs'
 import { isMarketPath } from './market/MarketTabs'
 import { isResearchPath } from './lab/LabTabs'
 import { ThemeSwitcher } from './ThemeSwitcher'
-import { AskDrawer } from './ask/AskDrawer'
+// The drawer pulls in the analyst thread and composer: its own chunk, fetched on the first open.
+const AskDrawer = lazy(() => import('./ask/AskDrawer').then((m) => ({ default: m.AskDrawer })))
 
 // AppShell — docs/design/README.md §5. TopBar (>=768) / TopStrip + bottom tab bar
 // (<768) via CSS breakpoints only, no JS matchMedia. NAV is 3 cells, one per job
@@ -59,6 +60,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const [ask, setAsk] = useState(false)
+  const [askMounted, setAskMounted] = useState(false)
+  if (ask && !askMounted) setAskMounted(true)
   useEffect(() => {
     const open = () => setAsk(true)
     window.addEventListener('ht:ask', open)
@@ -120,7 +123,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       <main className="flex-1 pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">{children}</main>
-      <AskDrawer open={ask} onClose={() => setAsk(false)} />
+      {askMounted && (
+        <Suspense fallback={null}>
+          <AskDrawer open={ask} onClose={() => setAsk(false)} />
+        </Suspense>
+      )}
 
       <nav
         aria-label="primary"

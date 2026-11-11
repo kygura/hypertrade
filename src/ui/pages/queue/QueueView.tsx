@@ -11,8 +11,6 @@ import { agentLine, ageText, directionOf, emptyLine, headerLine, partsLabel, rec
 
 export interface QueueViewProps {
   queue: Feed<QueueResponse>
-  /** Coins the moves scan watches (for the empty line); null when unknown. */
-  watched: number | null
   selected: string | null
   /** Row click: desktop selects (pane), phone opens the coin page. */
   onRow: (coin: string) => void
@@ -69,7 +67,7 @@ export function QueueList(p: QueueViewProps & { q: QueueResponse }) {
       </div>
       {problem && <p className="px-3 py-1 text-xs text-text-secondary break-words">{problem}</p>}
       {open.length === 0 && handled.length === 0 ? (
-        <p className="px-3 py-3 text-sm text-text-secondary">{emptyLine(p.watched)}</p>
+        <p className="px-3 py-3 text-sm text-text-secondary">{emptyLine(p.q.watched)}</p>
       ) : (
         <>
           {open.length === 0 && <p className="px-3 py-3 text-sm text-text-secondary">nothing new · every item today is handled</p>}
