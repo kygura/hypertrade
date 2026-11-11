@@ -1,5 +1,5 @@
 // Cron collector for Lab history: every collectable provider metric (cm per
-// LAB_ASSETS, fng, llama, bc, deribit) into observations as
+// LAB_ASSETS, fng, llama, bc, deribit, okx:oi per definition-scan coin) into observations as
 // lab.<provider>.<key>[.<asset>], which the registry then reads before going
 // live. First sync of a series pulls its full history; after that a tail
 // from the last sync minus a week, at most once per 20 h. Only completed UTC
@@ -32,7 +32,7 @@ const CONCURRENCY = 3;
  * Providers whose requests go one at a time with a pause between: Coin
  * Metrics' community tier allows ~10 requests per 6 s.
  */
-const SERIAL_GAP_MS: Record<string, number> = { cm: 700 };
+const SERIAL_GAP_MS: Record<string, number> = { cm: 700, okx: 0 }; // okx paces its own requests (OKX_PACE_MS): a lane keeps it from holding the shared pool
 export const DEFAULT_LAB_ASSETS = ["BTC", "ETH"];
 
 export interface LabJob {
@@ -52,13 +52,31 @@ export function labAssets(env: Record<string, string | undefined> = process.env)
   return list.length ? [...new Set(list)] : DEFAULT_LAB_ASSETS;
 }
 
-/** Every series to collect: global metrics once, asset metrics per asset. */
-export function labJobs(providers: LabProvider[] = PROVIDERS, assets: string[] = labAssets()): LabJob[] {
+/**
+ * Every series to collect: global metrics once, asset metrics per asset; a provider in `assetsFor` (by id) uses its
+ * own list instead of `assets` (okx:oi is collected for the definition scan's coins, not LAB_ASSETS).
+ */
+export function labJobs(providers: LabProvider[] = PROVIDERS, assets: string[] = labAssets(), assetsFor: Record<string, string[]> = {}): LabJob[] {
   return providers.filter(isCollectable).flatMap((provider) =>
     provider.metrics().flatMap((def) =>
-      (def.scope === "global" ? [""] : assets).map((asset) => ({ id: labSeriesId(def, asset), provider, def, asset })),
+      (def.scope === "global" ? [""] : (assetsFor[provider.id] ?? assets)).map((asset) => ({ id: labSeriesId(def, asset), provider, def, asset })),
     ),
   );
+}
+
+/**
+ * Coins okx:oi is collected for: the definition scan's coins (the Lab's default universe, which is also a universe
+ * study's, plus the monitoring watchlist), so the scan and universe studies read stored OI. LAB_ASSETS if that list
+ * cannot be had (Hyperliquid down).
+ */
+export async function oiAssets(scanCoins: () => Promise<string[]> = async () => (await import("../signals/runtime.js")).definitionScanCoins()): Promise<string[]> {
+  try {
+    const coins = await scanCoins();
+    return coins.filter((c, i) => coins.findIndex((x) => x.toUpperCase() === c.toUpperCase()) === i);
+  } catch (err) {
+    console.error(`[lab-collect] okx:oi coin list unavailable (${msg(err)}); LAB_ASSETS only`);
+    return labAssets();
+  }
 }
 
 export type LabCollectDeps = Pick<typeof db, "getSyncState" | "saveSyncState" | "ensureSeries" | "upsertObservations" | "recordCollectorRun">;
@@ -93,7 +111,7 @@ export async function collectLab(deps: LabCollectDeps = db, opts: LabCollectOpti
   const now = opts.now ?? Date.now;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const startedAt = new Date(now());
-  const jobs = opts.jobs ?? labJobs();
+  const jobs = opts.jobs ?? labJobs(PROVIDERS, labAssets(), { okx: await oiAssets() });
   const progress = opts.progress ?? { sources: {}, written: 0 };
   const { sources } = progress;
   const errors: string[] = [];
@@ -165,7 +183,7 @@ export async function collectLab(deps: LabCollectDeps = db, opts: LabCollectOpti
   const lanes = new Map<string, LabJob[]>();
   const pooled: LabJob[] = [];
   for (const j of jobs) {
-    if (!SERIAL_GAP_MS[j.provider.id]) pooled.push(j);
+    if (SERIAL_GAP_MS[j.provider.id] === undefined) pooled.push(j);
     else if (lanes.has(j.provider.id)) lanes.get(j.provider.id)!.push(j);
     else lanes.set(j.provider.id, [j]);
   }

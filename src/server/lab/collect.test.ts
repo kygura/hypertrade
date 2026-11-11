@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Observation, SyncState } from "../db.js";
-import { collectLab, labAssets, labJobs, LAB_SYNC_COIN, OVERLAP_MS, REFRESH_MS, RETRY_MS, type LabCollectDeps, type LabJob } from "./collect.js";
+import { collectLab, labAssets, labJobs, LAB_SYNC_COIN, oiAssets, OVERLAP_MS, REFRESH_MS, RETRY_MS, type LabCollectDeps, type LabJob } from "./collect.js";
 import { HttpError } from "./providers/series.js";
 import type { DailySeries, LabProvider, MetricDef } from "./types.js";
 
@@ -70,11 +70,17 @@ describe("labJobs", () => {
     expect(ids).toEqual(["lab.cm.CapMVRVCur.btc", "lab.cm.CapMVRVCur.eth", "lab.cm.TxCnt.btc", "lab.cm.TxCnt.eth", "lab.bc.hash_rate", "lab.deribit.btc_dvol"]);
   });
 
-  test("the real catalogue: cm × assets, fng, llama ×2, bc ×4, deribit ×2; own namespace", () => {
-    const ids = labJobs(undefined, ["BTC", "ETH"]).map((j) => j.id);
-    expect(ids).toHaveLength(12 * 2 + 1 + 2 + 4 + 2);
-    for (const id of ["lab.cm.CapMVRVCur.eth", "lab.fng.value", "lab.llama.stablecoin_cap", "lab.bc.hash_rate", "lab.deribit.eth_dvol"]) expect(ids).toContain(id);
+  test("the real catalogue: cm × assets, fng, llama ×2, bc ×4, deribit ×2, okx:oi × its own coins; own namespace", () => {
+    const ids = labJobs(undefined, ["BTC", "ETH"], { okx: ["BTC", "HYPE", "kPEPE"] }).map((j) => j.id);
+    expect(ids).toHaveLength(12 * 2 + 1 + 2 + 4 + 2 + 3);
+    for (const id of ["lab.cm.CapMVRVCur.eth", "lab.fng.value", "lab.llama.stablecoin_cap", "lab.bc.hash_rate", "lab.deribit.eth_dvol", "lab.okx.oi.hype", "lab.okx.oi.kpepe"]) expect(ids).toContain(id);
+    expect(ids).not.toContain("lab.okx.oi.eth"); // okx takes its own list, not LAB_ASSETS
     expect(ids.every((id) => id.startsWith("lab."))).toBe(true);
+  });
+
+  test("okx:oi coins: the definition scan's (deduped by case), LAB_ASSETS when that list fails", async () => {
+    expect(await oiAssets(async () => ["BTC", "HYPE", "btc", "kPEPE"])).toEqual(["BTC", "HYPE", "kPEPE"]);
+    expect(await oiAssets(async () => { throw new Error("HL down"); })).toEqual(labAssets());
   });
 
   test("LAB_ASSETS", () => {

@@ -2,7 +2,7 @@ import { ruleFiresAt } from "../lab/engine/evaluate.js";
 import { featureLookback, parseFeatureId } from "../lab/engine/features.js";
 import { isoDate } from "../lab/engine/util.js";
 import type { LoadDatasetFn } from "../lab/service.js";
-import { DAY_MS, type LabDataset } from "../lab/types.js";
+import { DAY_MS, NOT_LOADED_BY_DEADLINE, type LabDataset } from "../lab/types.js";
 import { mapLimit, msg } from "../lab/util.js";
 import { DEFINITIONS, definitionRule, type SignalDefinition } from "./definitions.js";
 
@@ -175,11 +175,11 @@ export function createDefinitionScanner(deps: DefinitionScannerDeps) {
       const left = deadlineMs - (deps.now() - started);
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        if (left <= 0) throw new Error("not loaded before the deadline");
+        if (left <= 0) throw new Error(NOT_LOADED_BY_DEADLINE);
         const load = deps.loadDataset({ asset: coin, metrics, price: "ht:price", from, metricFrom, deadline: true });
         // No timer without a deadline: setTimeout(Infinity) is clamped to 1 ms.
         const r = Number.isFinite(left) ? await Promise.race([load, new Promise<null>((res) => (timer = setTimeout(() => res(null), left)))]) : await load;
-        if (!r) throw new Error("not loaded before the deadline");
+        if (!r) throw new Error(NOT_LOADED_BY_DEADLINE);
         if (isoDate(r.dataset.t.at(-1) ?? 0) !== bar) throw new Error(`data ends before ${bar}`);
         return r;
       } catch (err) {

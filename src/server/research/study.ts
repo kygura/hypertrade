@@ -2,6 +2,7 @@ import { z } from "zod";
 import { EventStudyResultSchema, StudySummarySchema, type StudyRequest, type StudyResponse, type StudySummary } from "../../shared/research.js";
 import { ruleId } from "../lab/engine/rules.js";
 import type { LabStore } from "../lab/store.js";
+import { NOT_LOADED_BY_DEADLINE } from "../lab/types.js";
 import type { ToolContext } from "../mcp/types.js";
 
 // Board studies (docs/RESEARCH.md B2): a lab_event_study run through the Lab tool (so it is a trial exactly as a
@@ -111,6 +112,13 @@ export function createStudyCache(now: () => number = Date.now, max = STUDY_CACHE
 }
 export type StudyCache = ReturnType<typeof createStudyCache>;
 
+/** Whether the study's deadline left coins out (their data did not load in time): such a study is not complete. */
+export const cutByDeadline = (s: EventStudyOutput): boolean => {
+  const coins = StudyCoinsSchema.safeParse(s.coins);
+  return coins.success && coins.data.some((c) => c.reason === NOT_LOADED_BY_DEADLINE);
+};
+const StudyCoinsSchema = z.array(z.object({ reason: z.string().optional() }).passthrough());
+
 /** Calls lab_event_study (the registered tool) with these arguments. */
 export type RunEventStudy = (args: Record<string, unknown>, ctx: ToolContext) => Promise<unknown>;
 
@@ -146,7 +154,9 @@ export function createStudyRunner(deps: StudyRunnerDeps) {
       const args = { rule: q.rule, stopAtr: q.stopAtr, targetAtr: q.targetAtr, ...(q.coin ? { coins: [q.coin] } : {}) };
       const study = EventStudyResultSchema.parse(await deps.eventStudy(args, ctx));
       const entry = { summary: studySummary(study, new Date(deps.now()).toISOString()), study };
-      deps.cache.set(key, entry);
+      // A study the deadline cut short (coins not loaded in time) is not the day's study: it is answered, not cached,
+      // so the next ask runs it again (and the Lab counts that run as a trial too).
+      if (!cutByDeadline(study)) deps.cache.set(key, entry);
       return { studyId: key, cached: false, ...entry };
     })().finally(() => inflight.delete(key));
     inflight.set(key, p);

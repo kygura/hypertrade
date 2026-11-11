@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { DAY_MS, type DailySeries, type LabProvider } from "../types.js";
-import { clip, dayStart, getJson, toDaily, type LabMetricDef } from "./series.js";
+import { DAY_MS, type DailySeries } from "../types.js";
+import { clip, dayStart, getJson, requestTimeout, toDaily, type CollectableProvider, type HistorySeries, type LabMetricDef } from "./series.js";
 
 // OKX open interest (keyless): daily USD open interest of the coin's OKX USDT-margined perpetual swap, from
 // February 2024. It stands in for market positioning because Hyperliquid publishes no OI history (ht:oi is the
@@ -80,7 +80,7 @@ export interface OkxDeps {
   sleep?: (ms: number) => Promise<void>;
 }
 
-export function createOkxProvider(deps: OkxDeps = {}): LabProvider {
+export function createOkxProvider(deps: OkxDeps = {}): CollectableProvider {
   const fetchFn = deps.fetchFn ?? fetch;
   const now = deps.now ?? Date.now;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
@@ -98,36 +98,69 @@ export function createOkxProvider(deps: OkxDeps = {}): LabProvider {
     return run;
   };
 
-  async function history(inst: string, fromMs: number, toMs: number): Promise<DailySeries> {
+  const page = (inst: string, end: number, deadline?: number) =>
+    paced(async () => parseOiPage(await getJson(oiUrl(inst, end), fetchFn, `okx ${inst}`, requestTimeout(deadline, now()))));
+
+  /**
+   * Live range [fromMs, toMs], paged newest first. An empty first page with code 0 is an outage (or a range before
+   * the listing), never "not listed": that is OKX's 51001, the only answer read as no data for the coin.
+   */
+  async function range(inst: string, fromMs: number, toMs: number): Promise<DailySeries> {
     const today = dayStart(now());
     const lo = Math.max(dayStart(fromMs), OKX_OI_EPOCH);
     const points: Array<{ t: number; v: number }> = [];
     // `end` is exclusive: start just after the last day wanted, never past the running day.
     let end = Math.min(dayStart(toMs) + DAY_MS, today);
     while (end > lo) {
-      const page = parseOiPage(await paced(() => getJson(oiUrl(inst, end), fetchFn, `okx ${inst}`)));
-      if (page === null) return { t: [], v: [] }; // not listed on OKX
-      points.push(...page);
-      const oldest = Math.min(...page.map((p) => p.t));
-      if (page.length < OKX_PAGE || !(oldest < end)) break; // the start of the history, or no progress
+      const got = await page(inst, end);
+      if (got === null) return { t: [], v: [] }; // not listed on OKX
+      if (!got.length && !points.length) throw new Error(`okx ${inst}: empty response before ${new Date(end).toISOString().slice(0, 10)}`);
+      points.push(...got);
+      const oldest = Math.min(...got.map((p) => p.t));
+      if (got.length < OKX_PAGE || !(oldest < end)) break; // the start of the history, or no progress
       end = oldest;
     }
     return toDaily(points.filter((p) => p.t < today), "last");
+  }
+
+  /**
+   * The collector's history (src/server/lab/collect.ts): every completed day since sinceMs (null = since
+   * OKX_OI_EPOCH), paged oldest first in windows of OKX_PAGE days (each request's `end` is its window's end, so a page
+   * holds exactly that window), so a run the deadline cuts short returns an ascending prefix (`partial`) the next run
+   * resumes. Windows before the coin's listing are empty; an incremental run (sinceMs set) that gets nothing at all is
+   * an outage and throws (retried in an hour), never a sync.
+   */
+  async function collect(inst: string, sinceMs: number | null, deadline?: number): Promise<HistorySeries> {
+    const today = dayStart(now());
+    const points: Array<{ t: number; v: number }> = [];
+    for (let lo = Math.max(dayStart(sinceMs ?? OKX_OI_EPOCH), OKX_OI_EPOCH); lo < today; lo += OKX_PAGE * DAY_MS) {
+      if (deadline !== undefined && now() + OKX_PACE_MS >= deadline) return { ...toDaily(points, "last"), partial: true };
+      const got = await page(inst, Math.min(lo + OKX_PAGE * DAY_MS, today), deadline);
+      if (got === null) return { t: [], v: [] }; // not listed on OKX
+      points.push(...got.filter((p) => p.t >= lo && p.t < today));
+    }
+    if (sinceMs !== null && !points.length) throw new Error(`okx ${inst}: empty response since ${new Date(sinceMs).toISOString().slice(0, 10)}`);
+    return toDaily(points, "last");
   }
 
   return {
     id: "okx",
     name: "OKX open interest",
     notes:
-      "Keyless. rubik/stat/contracts/open-interest-history, period 1Dutc: daily USD open interest of <COIN>-USDT-SWAP since Feb 2024, the day's last 5-minute snapshot; the running day is left out. 100 bars per request, requests 450 ms apart.",
+      "Keyless. rubik/stat/contracts/open-interest-history, period 1Dutc: daily USD open interest of <COIN>-USDT-SWAP since Feb 2024, the day's last 5-minute snapshot; the running day is left out. 100 bars per request, requests 450 ms apart. Collected daily (lab-collect) for the definition scan's coins; read from the database with a live top-up when stale, live without a database.",
     metrics: () => METRICS,
     async fetch(key, asset, fromMs, toMs) {
       if (key !== "oi") throw new Error(`unknown okx metric: ${key}`);
       const inst = okxInstrument(asset);
       if (!inst) return { t: [], v: [] };
-      return clip(await history(inst, fromMs, toMs), fromMs, toMs);
+      return clip(await range(inst, fromMs, toMs), fromMs, toMs);
     },
-  };
+    async history(key, asset, sinceMs, opts) {
+      if (key !== "oi") throw new Error(`unknown okx metric: ${key}`);
+      const inst = okxInstrument(asset);
+      return inst ? collect(inst, sinceMs, opts?.deadline) : { t: [], v: [] };
+    },
+  } satisfies CollectableProvider;
 }
 
 export const okxProvider = createOkxProvider();

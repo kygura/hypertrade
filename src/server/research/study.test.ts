@@ -159,6 +159,26 @@ describe("study runner", () => {
     expect((await run(other, { source: "api" })).cached).toBe(false);
   });
 
+  test("a study with coins cut by the deadline is answered but not cached (nor stored): the next ask runs it again", async () => {
+    const puts: string[] = [];
+    let late = true;
+    let runs = 0;
+    const cache = createStudyCache(() => T, 10, { getStudies: async () => new Map(), putStudy: async (k) => void puts.push(k) });
+    const run = createStudyRunner({
+      cache, now: () => T,
+      eventStudy: async () => (runs++, fakeStudy({ coins: [{ coin: "ETH", bars: 400, events: 9, status: "ok" }, ...(late ? [{ coin: "SOL", bars: 0, from: null, to: null, events: 0, status: "insufficient", reason: "not loaded before the deadline" }] : [])] } as never)),
+    });
+    expect((await run(q, { source: "ui" })).cached).toBe(false);
+    expect(cache.size()).toBe(0);
+    late = false;
+    expect((await run(q, { source: "ui" })).cached).toBe(false); // ran again
+    expect(runs).toBe(2);
+    expect((await run(q, { source: "ui" })).cached).toBe(true); // complete: the day's study
+    expect(runs).toBe(2);
+    await Promise.resolve();
+    expect(puts).toEqual([studyKey(q, T)]);
+  });
+
   test("the study id and cache key use the UTC day the run started", async () => {
     let now = T; // 23:59
     let release!: () => void;
