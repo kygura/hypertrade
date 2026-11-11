@@ -217,7 +217,9 @@ describe("evidence kinds", () => {
     expect(html).toContain("not studied today · tested short · top-20 universe");
     expect(html).toContain(">STUDY</button>");
     expect(html).toContain('href="/asset/SOL"');
-    expect(html).not.toContain("coin=");
+    expect(html).toContain('href="/moves?coin=SOL"');
+    // The study link carries no coin scope (only the MOVES cross-link does).
+    expect(html.replace(/\/moves\?coin=[^"]*/g, "")).not.toContain("coin=");
     expect(html).not.toContain('/asset/UNIVERSE');
     expect(html).not.toContain(">UNIVERSE<");
   });

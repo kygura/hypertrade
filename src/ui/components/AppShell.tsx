@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router'
 import { Button } from './Button'
 import { StatusDot, type DotStatus } from './Badge'
 import { api, useApi } from '../lib/api'
+import { isDbUnavailable } from '../lib/dbUnavailable'
 import { isEnginePath } from './strategy/EngineTabs'
 import { isTerminalPath } from './intel/TerminalTabs'
 import { isMarketPath } from './market/MarketTabs'
@@ -22,9 +23,9 @@ export const NAV = [
   // TRADE family (docs/CONSOLIDATION.md): Intel -> Act. /terminal, /watch, /journal,
   // /theses, /query, /feed, /order and /desk switch inside via TerminalTabs.
   { to: '/feed', label: 'TRADE', tab: 'TRADE', glyph: '◉' },
-  // MARKET family: /markets, /sectors, /state, /cycles (and their drills) switch
+  // MARKET family: /moves, /markets, /sectors, /state, /cycles (and their drills) switch
   // inside via MarketTabs; /overview redirects to /markets.
-  { to: '/markets', label: 'MARKET', tab: 'MKT', glyph: '≋' },
+  { to: '/moves', label: 'MARKET', tab: 'MKT', glyph: '≋' },
   // Read-only LLM analyst (docs/SPEC.md "Analyst").
   { to: '/analyst', label: 'ASK', tab: 'ASK', glyph: '?' },
   // Strategy console: /strategies, /decisions and /governor switch inside via EngineTabs.
@@ -35,19 +36,30 @@ export function isActive(pathname: string, to: string): boolean {
   if (to === '/') return isResearchPath(pathname)
   if (to === '/feed') return isTerminalPath(pathname)
   if (to === '/strategies') return isEnginePath(pathname)
-  if (to === '/markets') return isMarketPath(pathname)
+  if (to === '/moves') return isMarketPath(pathname)
   return pathname === to || pathname.startsWith(`${to}/`)
 }
 
-function useFreshness(): { status: DotStatus; label: string } {
-  const { data, error } = useApi<{ ts: string | null }[]>('/metrics/summary?ids=hl.total_oi_usd')
-  if (error) return { status: 'down', label: 'DATA —' }
-  const ts = data?.[0]?.ts
+export interface Freshness {
+  status: DotStatus
+  label: string
+  /** Set when the dot is quiet because the server has no database (not a failure). */
+  title?: string
+}
+
+/** The DATA dot: red only for a real failure; the no-database 503 is a neutral dot with the reason. */
+export function freshnessOf(error: string | null, ts: string | null | undefined, now = Date.now()): Freshness {
+  if (error) return isDbUnavailable(error) ? { status: 'unknown', label: 'DATA —', title: error } : { status: 'down', label: 'DATA —' }
   if (!ts) return { status: 'unknown', label: 'DATA —' }
-  const ageMin = (Date.now() - new Date(ts).getTime()) / 60_000
+  const ageMin = (now - new Date(ts).getTime()) / 60_000
   const status: DotStatus = ageMin < 30 ? 'ok' : ageMin < 120 ? 'degraded' : 'down'
   const label = `DATA ${new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
   return { status, label }
+}
+
+function useFreshness(): Freshness {
+  const { data, error } = useApi<{ ts: string | null }[]>('/metrics/summary?ids=hl.total_oi_usd')
+  return freshnessOf(error, data?.[0]?.ts)
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -88,7 +100,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="flex items-center gap-3">
           <ThemeSwitcher />
-          <span className="hidden md:flex items-center gap-1.5" title="last collector run (hl.total_oi_usd)">
+          <span className="hidden md:flex items-center gap-1.5" title={freshness.title ?? 'last collector run (hl.total_oi_usd)'}>
             <StatusDot status={freshness.status} />
             <span className="text-xs text-text-secondary tabular">{freshness.label}</span>
           </span>

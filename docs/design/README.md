@@ -461,7 +461,8 @@ Per-table drop order (P1 = never dropped):
 
 | Table | P1 (always) | P2 (always) | P3 (md+ only) | P4 (lg only) |
 |---|---|---|---|---|
-| Markets universe | COIN, PRICE | 24H% | OI | FUNDING, VOLUME |
+| Markets universe | COIN, PRICE | 24H% | OI | FUNDING 1H, VOLUME |
+| Moves (§10.13) | COIN, RESIDUAL + Z | TOTAL | BETA, SECTOR, CROWD | TAGS, LIQ σ, CHECK |
 | Branches list | NAME, RETURN% | MAX DD | VS BTC | UPDATED |
 | Sector tokens (drill-in) | TOKEN, PRICE | 24H% | OI | FUNDING |
 | Rotations list | FROM→TO, CONF | TRIGGER | NOTE (full) | — |
@@ -529,12 +530,12 @@ to right (`NAV` in `AppShell.tsx`):
 |---|---|---|---|---|---|
 | 1 | RESEARCH | RSRCH | `⚗` | `/` | the RESEARCH family (`isResearchPath`): the board `/`, `/lab/*` (including `/lab/rules/:id`) and `/branches`, `/branches/:id` |
 | 2 | TRADE | TRADE | `◉` | `/feed` | the TRADE family (`isTerminalPath`): `/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/feed`, `/order`, `/desk`, `/asset/:coin` |
-| 3 | MARKET | MKT | `≋` | `/markets` | the MARKET family (`isMarketPath`): `/markets`, `/sectors`, `/state`, `/cycles` and their `/:coin` drills |
+| 3 | MARKET | MKT | `≋` | `/moves` | the MARKET family (`isMarketPath`): `/moves`, `/markets`, `/sectors`, `/state`, `/cycles` and their `/:coin` drills |
 | 4 | ASK | ASK | `?` | `/analyst` | `/analyst` |
 | 5 | ENGINE | ENGIN | `⚙` | `/strategies` | the strategy console (`isEnginePath`): `/strategies`, `/decisions`, `/governor` and their `/:id` drills |
 
 Four cells group several routes behind an in-view sub-nav, all `SectionTabs`
-wrappers: TRADE (`TerminalTabs`, brief below), MARKET (`MarketTabs`: PERPS ·
+wrappers: TRADE (`TerminalTabs`, brief below), MARKET (`MarketTabs`: MOVES · PERPS ·
 SECTORS · STATE · CYCLES, with the `MetricsStrip` under the tabs on every
 MARKET route, §10.2), RESEARCH (`LabTabs`: BOARD · STUDY · SEARCH · RUNS ·
 CATALOGUE · PULSE · BRANCHES, §10.9; the board brief is docs/RESEARCH.md
@@ -841,6 +842,7 @@ Route map (`src/ui/App.tsx`). Every route renders inside the shell except
 | `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch` | TRADE tabs (`/terminal` is CHANGES) (`/?review=1` redirects to `/terminal?review=1`) | docs/design/terminal.md §1, §3–§8 |
 | `/asset/:coin` | asset page, a drill-in of CHANGES | docs/design/terminal.md §15.4 |
 | `/overview` | redirects to `/markets` | — |
+| `/moves` | MARKET · MOVES, the first MARKET tab: why each coin moved (attribution), the triage queue, agent records; `?window=`, `?coin=`, `?sector=` | §10.13 |
 | `/markets`, `/markets/:coin` | MARKET · PERPS: HL universe; candle drill-in | §10.7 |
 | `/sectors` | MARKET · SECTORS: narratives, mindshare map, rotations, drill-in (one selection drives both panels) | §10.5 |
 | `/state` | MARKET · STATE: MarketState briefing | §10.6 |
@@ -881,7 +883,7 @@ All widths: a single centered panel, max-width 320px, vertically centered
 ### 10.2 MARKET header — MetricsStrip
 
 There is no Overview page (`/overview` redirects to `/markets`). The
-`MetricsStrip` sits under `MarketTabs` on every MARKET route (`/markets`,
+`MetricsStrip` sits under `MarketTabs` on every MARKET route (`/moves`, `/markets`,
 `/sectors`, `/state`, `/cycles`, and their drills), inside the family's
 `PageContainer`. It is the only UI for funding skew, fear/greed, BTC dominance
 and stablecoin cap. The MarketState headline lives on `/state` (§10.6), sector
@@ -892,7 +894,7 @@ Purpose: a 5-second read of where the market is, above whichever MARKET tab
 is open. Nothing is edited here.
 
 ```
-┌ MARKET: [PERPS|SECTORS|STATE|CYCLES] ───────────────────────────┐
+┌ MARKET: [MOVES|PERPS|SECTORS|STATE|CYCLES] ───────────────────────────┐
 ├ METRICS STRIP ─────────────────────────────────────────────────┤
 │ TOTAL OI      FUND SKEW    FEAR/GREED   BTC DOM    STABLES    │
 │ $4.21B        +0.0031      72 GREED     54.2%      $168B      │
@@ -1145,7 +1147,7 @@ snapshot stays on screen (no skeleton flash).
 Purpose: the raw market surface. Live-ish (short-cache pass-through), the
 only view with tick flash.
 
-Desktop: full-width panel, table per §4.4 (COIN, PRICE, 24H%, OI, FUNDING,
+Desktop: full-width panel, table per §4.4 (COIN, PRICE, 24H%, OI, FUNDING 1H,
 VOLUME), sortable headers, default sort OI desc. Header: `MARKETS` +
 src-tag `HL` + result count (`142 PERPS`, xs secondary) + a filter input
 (ghost-styled, placeholder `FILTER`, filters by coin substring, right-
@@ -1161,17 +1163,20 @@ dex whose snapshot failed is named in one amber xs line above the table.
 - PRICE: tabular, tick-flash on refetch delta (poll `GET /api/hl/markets`
   every 15s; flash cells whose value changed, §8 coalescing).
 - 24H%: signed, colored, glyph.
-- FUNDING: signed, colored; |funding| ≥ 0.1%/8h renders amber (crowded
-  trade flag).
+- FUNDING 1H: signed, colored. Hyperliquid funding is an hourly fraction, so
+  the header carries its unit; |funding| ≥ 0.1%/8h (0.0125%/h, about 110%
+  APR) renders amber (crowded trade flag).
 - Row tap → drill-in.
 
 **Drill-in** — route `/markets/:coin?tf=4h`. Desktop AND mobile: a full view
 (not an overlay — back button friendly, linkable; `tf` omitted = 1D). The top
-row carries ghost `← MARKETS` and ghost `INTEL →` (`/asset/:coin`, the same
-coin's Intel page; that page's `CHART →` links back here):
+row carries ghost `← MARKETS` and, right-aligned, ghost `MOVES →`
+(`/moves?coin=X`), `EVIDENCE →` (`/?coin=X`, the research board) and `INTEL →`
+(`/asset/:coin`, the same coin's Intel page; that page's `CHART →` links back
+here):
 
 ```
-┌ ← MARKETS ──────────────────────────────────────────── INTEL → ┐
+┌ ← MARKETS ──────────────────── MOVES → · EVIDENCE → · INTEL → ┐
 │ ETH  $3,512.40 (xl, AnimatedDigits) +2.1% ▲  LIVE  AT OI CAP  25x MAX │
 │ ORACLE | FUNDING 1H | NEXT FUNDING | OPEN INTEREST | OI 7D |   │
 │ 24H VOLUME | IMPACT SPREAD | MID            (MetricStat grid)  │
@@ -1786,6 +1791,10 @@ Desktop: a header strip, then `xl:` (1280px) two columns of 2 : 1. Below
 - **KILL**: the shared `KillSwitchDialog` (Level 3, typed `KILL`; `RESUME`
   is Level 2), the same flow as the Cockpit header (§7).
 
+Coins in the book, the proposal cards and the recent fills link to `/asset/:coin`.
+All five GETs refetch every 30 s through `usePoll` (paused while the tab is
+hidden, updated in place); the SSE ask lane is not polled.
+
 Data: `GET /api/desk/{status,portfolio,proposals,alerts,runs}`; `POST
 /api/desk/{ask,review}` (SSE), `/proposals/:id/{approve,reject}`, `/exit`,
 `/kill`; `PUT /api/desk/{approval,settings}`. States: status offline or error
@@ -1844,6 +1853,79 @@ UNREACHABLE` (the proxy's reason, verbatim) with RETRY; when a later poll
 fails over cached data, an amber `OfflineStrip` (`<reason> — showing data
 from 14:02 UTC`) sits above the undimmed data.
 
+### 10.13 `/moves` — MOVES: why each coin moved
+
+The first MARKET tab (`MarketTabs`, MetricsStrip above it, §10.2). Purpose:
+for each main-dex crypto perp, split the move over a window into what is
+explained after the fact (BTC and ETH beta, sector, residual) and show the
+positioning around it, with a short ranked triage queue of the coins worth a
+look today. Code computes every number; an agent may propose a cause, which
+renders as a hypothesis beside the numbers. Nothing here places, approves or
+sizes an order. Spec: docs/SPEC.md ("Moves"). It is not the landing and not
+`/feed`: the Cockpit's items are opportunities with a status machine, these
+are informational facts (the two-lists rule, §5).
+
+Loaded lazily with the route. Query: `?window=4h|24h|72h` (default 24h),
+`?coin=`, `?sector=`. Polls every 60 s (triage, moves, the selected detail),
+record stats every 5 min; polling pauses when the tab is hidden.
+
+```
+MarketTabs [MOVES|PERPS|SECTORS|STATE|CYCLES] + MetricsStrip
+├ MOVES [4H|24H|72H]  asOf 14:00 UTC · 38 coins · 2 dropped*  BETA● FLOW● NEWS● LIQ● AGENTS● ┤
+├ A FACTORS (12) ─ BTC −1.8% · ETH −2.4% · ETH ex-BTC −0.7% · sectors ex-majors … ────────────┤
+├ B TRIAGE · 6 OF 8 TODAY (12) ─ ranked queue ──────────────────────────────────────────────┤
+├ C MOVES · BY |RESIDUAL Z| (7) ──────────────────┬ D SELECTED · HYPE (5) ───────────────────┤
+│ COIN TOTAL BETA SECTOR RESIDUAL▇ Z TAGS CROWD …  │ actions · D1 attribution · D2 agent record │
+│                                                  │ D3 positioning · D4 liq · D5 attention · D6 checks │
+└──────────────────────────────────────────────────┴───────────────────────────────────────────┘
+```
+
+- **Header**: window `Segmented`; `asOf` is the last closed 1h bar; coin and
+  dropped counts (`*` title lists coin and reason); one `StatusDot` chip per
+  layer (`ok`, `partial`, `unavailable`) with the reason in `title` and, when
+  not ok, as a visible line under the chips.
+- **A FACTORS**: `StatCell`s for BTC, ETH, ETH ex-BTC and the top sector
+  baskets ex-majors, each with its coin count. Clicking a sector sets
+  `?sector=`; `SECTORS →` goes to `/sectors`. `AgeStamp` on the sector file
+  (threshold 24h).
+- **B TRIAGE**: at most 8 items per UTC day, stated as `6 OF 8 TODAY`.
+  Ranking and the cap are code. Each row: coin, window, the reason as facts
+  (`residual +6.2% · z 3.1 · 24h · no news in window`), the agent record's
+  status (`INVESTIGATING…`, the claim line with its layer badge and
+  falsifier, or `no cause found`) and age. Actions: `OPEN` selects the coin,
+  `DISMISS` hides it for the day (it still counts against the budget),
+  `INVESTIGATE` costs one LLM run and says so in its `title`; disabled with a
+  reason at the cap or without a provider. Budget exhausted reads `budget
+  reached: 4 more candidates not shown`; nothing nags.
+- **C MOVES table**: `DataTable` (§4.4), sort `|Z|` · `TOTAL` · `CROWD`. TOTAL
+  is a log %; RESIDUAL is a signed bar plus the number; Z is amber at |z| ≥ 2;
+  TAGS are `FLOW` / `NEWS` badges labelled `in OI-drop hours` and `in news
+  hours`, because the residual is split by hour bucket, not regressed, and
+  must not read as causal. CHECK is the best checklist, e.g. `FADE 2/3`. A
+  row with no attribution shows `—` with the reason in `title`. Keyboard:
+  j/k, Enter selects (`?coin=`).
+- **D SELECTED**: an action bar of links (`EVIDENCE →` `/?coin=X`, `CHART →`
+  `/markets/:coin`, `INTEL →` `/asset/:coin`, `LIQ MAP →`, `STUDY →` when a
+  checklist maps to a shipped definition, `OPPORTUNITY →` `/feed?id=`), then
+  D1 attribution (stacked bar, factor table with R² and n, cumulative actual
+  vs beta-fitted line), D2 agent record, D3 positioning, D4 liquidation
+  proximity, D5 attention and D6 condition check.
+- **Agent records** use the HYP claim styling (info colour): claim, layer
+  badge, falsifier with its distance from the mark, sources with `ClaimAge`,
+  status `open` / `falsified` / `graded`, and the track record with n
+  (`n<5 — not enough graded` below 5 clusters).
+- **D6** and any checklist are predicted-beforehand material: a
+  `--color-info` left border, `--color-info-bg` header and the label
+  `CONDITION CHECK · NOT A FORECAST`. Thresholds are starting points, said so.
+
+Phone (<768): header, A as a 2-col grid, B first after A, then C with P1 and
+P2 columns. A row tap or `OPEN` pushes `?coin=` as a history entry; the detail
+shows `← MOVES` and D1 to D6 stacked, the action bar sticky at the bottom
+(`env(safe-area-inset-bottom)`, controls at least `--tap-min`). At md the
+mobile order holds; C and D sit side by side from `lg:` (7/5).
+
+States: see §13. Not on this page: APPROVE, KILL, order entry.
+
 ---
 
 ## 11. Component inventory
@@ -1893,7 +1975,7 @@ Ported components keep their Hyperion source semantics (files:
 | `DataTable` | `columns: {key, label, priority: 1\|2\|3\|4, align, render}[]`, `rows`, `onRowClick?`, `sortable?` | §4.4 priority hiding via `hidden md:table-cell`/`hidden lg:table-cell`; row height `var(--row-h)`; focusable rows |
 | `MetricStat` | `label`, `value`, `delta?`, `deltaPositive?`, `z30?` | §10.2 cell |
 | `MetricsStrip` | none (fetches its own data) | §10.2; the five-cell strip in the MARKET header (`components/market/MetricsStrip.tsx`) |
-| `MarketTabs` | none | §5; `SectionTabs` over PERPS · SECTORS · STATE · CYCLES, with `isMarketPath` (`components/market/MarketTabs.tsx`) |
+| `MarketTabs` | none | §5; `SectionTabs` over MOVES · PERPS · SECTORS · STATE · CYCLES, with `isMarketPath` (`components/market/MarketTabs.tsx`) |
 | `MomentumBadge` | `momentum: number` | §3; bucket thresholds ±0.15/±0.5 |
 | `Sparkline` | `points: number[]`, `height?` | §4.5; white 1px, no axes, no tooltip |
 
@@ -1923,7 +2005,11 @@ Analyst and Paths: `Markdown`; `ModelSelector`; `PathCard`;
 (`components/strategy/`, §10.12): `EngineTabs` (+ `isEnginePath`);
 `EngineOffline` (+ `OfflineStrip`); `DecisionView`; `IntentRow`; `ParamForm`;
 `VerdictBadge`; `ProbBar`; `ScoreRubric`; `NoulBar`. Desk (§10.11): panels
-are local to `pages/Desk.tsx`. Login is `pages/Login.tsx`.
+are local to `pages/Desk.tsx`. Moves (§10.13, `pages/moves/`): `Moves` (container:
+pollers, query, keyboard) and `MovesView` (presentational: header, factors,
+triage queue, moves table, detail D1 to D6), built from the shared pieces
+above (`DataTable`, `Segmented`, `StatCell`, `MetricStat`, `ClaimLine`,
+`AgeStamp`, `StatusDot`). Login is `pages/Login.tsx`.
 
 Lab (§10.9, under `src/ui/components/lab/`): `LabTabs` (a `SectionTabs`, includes BRANCHES); `LabSearchForm`
 (+ `MetricPicker`, `AdvancedDisclosure`, `SearchSummaryBar`);
@@ -2013,6 +2099,7 @@ Non-negotiable, verified before done:
 | Cockpit `/feed` (feed, liquidation map, detail, health) | per DESIGN-terminal C7 | per DESIGN-terminal C7 | per DESIGN-terminal C7 | per DESIGN-terminal C7 |
 | Sectors narratives | SkeletonRows | EmptyBlock per row set | ErrorBlock / OfflineBlock | AgeStamp `sectorsAsOf` > 24h |
 | Cycles | SkeletonRows + `loading <COIN> history since <year>…` | in-run / not-enough-history sentence in the estimate | ErrorBlock / OfflineBlock | — |
+| Moves (§10.13) | SkeletonRows (10 rows; `FIRST RUN — 21 OF 40 COINS LOADED` while pending) | EmptyBlock (`no coin has enough history for this window`, `no coins in <SECTOR>`; triage: `nothing crossed the bar today`) | ErrorBlock / OfflineBlock; a layer chip `unavailable` with its reason | StaleBanner when `asOf` > 2h old; AgeStamp on the sector file > 24h |
 | Desk (§10.11) | SkeletonRows per panel | EmptyBlock (`no proposals yet`, `no alerts yet`, `no runs yet`) | page-level OfflineBlock / ErrorBlock; verbatim line in a panel | red venue note; amber live-testnet line |
 | Engine console (§10.12) | SkeletonRows | EmptyBlock (`no strategies registered`, `no venues registered`) | `EngineOffline` (`ENGINE NOT CONFIGURED` / `ENGINE UNREACHABLE`) | amber `OfflineStrip` over cached data |
 | Watch `/watch` (watches, changes) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |

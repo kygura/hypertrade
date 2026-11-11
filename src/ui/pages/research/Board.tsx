@@ -291,6 +291,9 @@ function SignalRow(p: BoardViewProps & { s: BoardSignal }) {
           <Link to={`/asset/${encodeURIComponent(s.coin)}`} className={LINK}>
             asset →
           </Link>
+          <Link to={`/moves?coin=${encodeURIComponent(s.coin)}`} className={LINK}>
+            moves →
+          </Link>
         </div>
       </div>
       <div className="basis-full sm:basis-auto sm:w-[19rem] min-w-0">
@@ -479,7 +482,9 @@ function RadarBody({ r, onNote }: { r: RadarResponse; onNote: () => void }) {
         <ul className="flex flex-col gap-1">
           {calls.map((c) => (
             <li key={c.id} className="text-xs tabular text-text-primary flex flex-wrap gap-x-2 min-w-0">
-              <span className="font-semibold">{c.market}</span>
+              <Link to={`/moves?coin=${encodeURIComponent(c.market)}`} className="font-semibold hover:underline" title={`why ${c.market} moved`}>
+                {c.market}
+              </Link>
               <span>
                 {c.stance} {c.direction}
               </span>

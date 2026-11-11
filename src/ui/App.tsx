@@ -46,6 +46,8 @@ const Order = lazy(() => import('./pages/terminal/Order').then((m) => ({ default
 const Watch = lazy(() => import('./pages/terminal/Watch').then((m) => ({ default: m.Watch })))
 // `/asset/:coin` is a drill-in of `/terminal` (DESIGN-terminal §15.4), under TerminalTabs.
 const Asset = lazy(() => import('./pages/terminal/Asset').then((m) => ({ default: m.Asset })))
+// MOVES (docs/design/README.md §10.13): attribution + triage, first MARKET tab.
+const Moves = lazy(() => import('./pages/moves/Moves').then((m) => ({ default: m.Moves })))
 const TOP_PAGES = [
   { path: '/', Page: Board },
   { path: '/feed', Page: Cockpit },
@@ -158,6 +160,16 @@ export default function App() {
           element={
             <MarketLayout>
               <State />
+            </MarketLayout>
+          }
+        />
+        <Route
+          path="/moves"
+          element={
+            <MarketLayout>
+              <Suspense fallback={<SkeletonRows />}>
+                <Moves />
+              </Suspense>
             </MarketLayout>
           }
         />

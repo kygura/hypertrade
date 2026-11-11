@@ -88,6 +88,8 @@ export const AgentRecordSchema = z.object({
   promptVersion: z.string().min(1),
   /** Lines the number validator dropped from the model's output. */
   dropped: Count,
+  /** Why a `failed` or `capped` record has no content (no provider, cap reached, schema miss); null otherwise. */
+  error: z.string().max(300).nullable().optional(),
 });
 export type AgentRecord = z.infer<typeof AgentRecordSchema>;
 

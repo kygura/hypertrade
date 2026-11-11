@@ -98,6 +98,9 @@ export const OpportunityDetail = forwardRef<
           <Link to={boardHref(o.coin)} className={COIN_LINK} title={`research board filtered to ${o.coin}`}>
             EVIDENCE →
           </Link>
+          <Link to={`/moves?coin=${encodeURIComponent(o.coin)}`} className={COIN_LINK} title={`why ${o.coin} moved`}>
+            MOVES →
+          </Link>
         </span>
       </div>
       {midAgeSec != null && midAgeSec > STALE_MID_SEC && <StaleStrip>live price {Math.floor(midAgeSec)}s old — approve is blocked</StaleStrip>}

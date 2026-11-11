@@ -223,6 +223,8 @@ rule drill (`/lab/rules/study?rule=…`), matching its evaluation id against the
 - The Lab data provider stops loading the pulse on every Lab route; PULSE and the tab dot
   load it lazily.
 - Cockpit detail and `/asset/:coin` link to the board filtered by coin (`/?coin=X`).
+- Board rows link `MOVES →` (`/moves?coin=X`, the MARKET attribution page, README §10.13) beside `asset →`,
+  and a radar call's market links there too.
 
 ## Done
 

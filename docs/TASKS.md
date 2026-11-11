@@ -20,6 +20,29 @@ object; 6 shell cells today against a ceiling of 9, target 5):
   platform read tools. Type-scale codemod and `check:type-scale` done. Deferred: the
   `runToolLoop` extraction (see `docs/CONSOLIDATION.md`).
 
+MOVES (`/moves`, first MARKET tab; attribution, positioning, triage, agent records), deferred past v1:
+
+- [ ] Make MOVES the landing: a one-line change to `rootRedirect` (`src/ui/lib/research.ts`) and the Login
+  default; decide after a week of use.
+- [ ] Approve or any order action on MOVES (links only in v1).
+- [ ] HIP-3 dexes and non-crypto coins (main-dex crypto only); agents watching HIP-3.
+- [ ] Microstructure as an attributed layer (spread and depth stay in the Cockpit cost model).
+- [ ] OKX hourly OI as a fallback when no scanner runs; a liquidation-volume feed.
+- [ ] Intercept (alpha) reporting; per-window beta re-estimation for 4h windows (or 4h returns over 30 days).
+- [ ] Elfa trend history.
+- [ ] Multi-step agent tool loops (the analyst loop with moves read tools; an ASK read tool `moves_records`).
+- [ ] Telegram push of triage items (through `routeFor` / materiality, rare).
+- [ ] Graded agent records as a fourth evidence kind on the board; agents proposing Lab definitions from
+  repeated layers.
+- [ ] A replay or event study of the ENTER/FADE checklists: news is not a Lab metric, so ENTER stays untested.
+- [ ] Combined Hyperliquid weight budget: MOVES (400), the replay (600) and the scanner can starve each other;
+  make `hlWaitBelow` budgets additive in `hl-client.ts`.
+- [ ] Without a database the OI history is boot-local, so the flow layer is `partial` for the first 48 h, and
+  agent records and triage are lost on restart.
+- [ ] Cross-link leftovers: Desk alerts carry free text and no coin field, so their coins stay plain text;
+  the three `fmtSigned` implementations (`components/intel/format.ts`, `lib/lab.ts`, `lib/format.ts`) differ in
+  signature (suffix vs unit argument, default decimals 1 / 2 / 0), so they were not unified.
+
 Research terminal follow-ups (docs/RESEARCH.md; each changes live scanner output, applied migrations
 or study semantics, so each needs its own change):
 
