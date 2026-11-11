@@ -52,7 +52,7 @@ export interface ScanDrop {
   /** The definition left unevaluated on the coin; null when the whole coin was dropped. */
   definition: string | null;
   reason: string;
-  /** Whether a later scan may evaluate it: false only when a metric it reads has no data at all for the coin. */
+  /** Whether a later scan may evaluate it: false only for a coin Hyperliquid does not list, or a metric with no data at all for the coin (OKX does not list it). */
   retry: boolean;
 }
 
@@ -76,6 +76,12 @@ export interface DefinitionScannerDeps {
   loadDataset: LoadDatasetFn;
   /** Coins to scan: the Lab's default universe plus the watchlist. */
   coins: () => Promise<string[]>;
+  /**
+   * Coins Hyperliquid lists now (its perp universe). A scanned coin not in it is dropped for the day without a load
+   * (Hyperliquid answers an unknown coin with a 500, which reads like an outage). Omitted, or failing: every coin is
+   * loaded.
+   */
+  listed?: () => Promise<ReadonlySet<string>>;
   now: () => number;
   definitions?: readonly SignalDefinition[];
   /**
@@ -133,8 +139,10 @@ export function evaluableDefinitions(defs: readonly SignalDefinition[], lastRaw:
 /**
  * Scans every definition over `coins()`, at most once per closed daily bar: a complete scan of a UTC day is shared by
  * every caller (in flight or done) until the day turns; one that dropped anything a later scan may evaluate is kept
- * only SCAN_RETRY_MS (the first scan after midnight may run before stored data reaches the bar); a scan that fails as
- * a whole (no coin list) is forgotten so the next call retries. A coin whose data fails, arrives after the deadline or
+ * only SCAN_RETRY_MS after it finished (the first scan after midnight may run before stored data reaches the bar);
+ * drops a retry cannot change (a coin Hyperliquid does not list, a metric with no data at all for the coin) keep the
+ * scan for the day; a scan that fails as a whole (no coin list) is forgotten so the next call retries. Scans never
+ * overlap: one still running when the day turns finishes before the new day's starts. A coin whose data fails, arrives after the deadline or
  * does not reach the closed bar is dropped and counted, never fatal; so is a coin × definition whose metrics have no
  * raw value on it. `latest()` is the last scan that finished, without waiting for one in flight: a caller that cannot
  * wait (the board without a database, where the first scan takes minutes) kicks `scan()` and serves `latest()`.
@@ -153,8 +161,16 @@ export function createDefinitionScanner(deps: DefinitionScannerDeps) {
     const from = isoDate(barMs - (SCAN_LOOKBACK_DAYS - 1) * DAY_MS);
     const metricFrom = Object.fromEntries(Object.entries(lookback).map(([m, days]) => [m, isoDate(barMs - (days - 1) * DAY_MS)]));
     const all = await deps.coins();
-    const coins = all.filter((c, i) => all.findIndex((x) => x.toUpperCase() === c.toUpperCase()) === i);
+    const unique = all.filter((c, i) => all.findIndex((x) => x.toUpperCase() === c.toUpperCase()) === i);
+    const listed = deps.listed
+      ? await deps.listed().then((s) => new Set([...s].map((c) => c.toUpperCase())), (err) => (console.warn(`[signals] listed coins unavailable (${msg(err)}); loading every coin`), null))
+      : null;
     const drops: ScanDrop[] = [];
+    const coins = unique.filter((coin) => {
+      if (!listed || listed.has(coin.toUpperCase())) return true;
+      drops.push({ coin, definition: null, reason: "not listed on Hyperliquid", retry: false });
+      return false;
+    });
     const loaded = await mapLimit(coins, SCAN_CONCURRENCY, async (coin) => {
       const left = deadlineMs - (deps.now() - started);
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -198,12 +214,16 @@ export function createDefinitionScanner(deps: DefinitionScannerDeps) {
       const now = deps.now();
       const day = isoDate(now);
       if (memo?.day === day && !(memo.until !== undefined && now >= memo.until)) return memo.p;
-      const m: NonNullable<typeof memo> = { day, p: run(now) };
+      // One scan at a time: a scan still running when the day turns (or past a retry) finishes before the next starts,
+      // whose clock (bar, deadline) starts when it does.
+      const prev = memo?.p;
+      const m: NonNullable<typeof memo> = { day, p: prev ? prev.then(() => {}, () => {}).then(() => run(deps.now())) : run(now) };
       memo = m;
-      // An incomplete scan expires SCAN_RETRY_MS after it started; a failed one clears only its own memo, never a newer one.
+      // An incomplete scan expires SCAN_RETRY_MS after it finished (not after it started: a scan longer than that would
+      // be stale on arrival); a failed one clears only its own memo, never a newer one.
       m.p.then(
         (r) => {
-          if (r.drops.some((x) => x.retry)) m.until = now + SCAN_RETRY_MS;
+          if (r.drops.some((x) => x.retry)) m.until = deps.now() + SCAN_RETRY_MS;
           if (!last || r.bar >= last.bar) last = r;
         },
         () => {

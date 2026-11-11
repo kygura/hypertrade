@@ -224,6 +224,73 @@ describe("definition scanner (service)", () => {
     expect(loads).toBe(1);
   });
 
+  test("an incomplete scan longer than SCAN_RETRY_MS is kept SCAN_RETRY_MS after it finished, not rescanned on arrival", async () => {
+    let now = NOW;
+    let loads = 0;
+    const scanner = createDefinitionScanner({
+      loadDataset: async (cfg) => {
+        loads++;
+        now += SCAN_RETRY_MS + 5 * 60_000; // a slow scan: 20 min a coin
+        if (cfg.asset === "BAD") throw new Error("HL down");
+        return loaded(current(cfg.asset, NOW));
+      },
+      coins: async () => ["AAA", "BAD"],
+      now: () => now,
+      deadlineMs: Infinity,
+    });
+    const a = await scanner.scan();
+    expect(a.drops.some((d) => d.retry)).toBe(true);
+    expect(await scanner.scan()).toBe(a); // just finished: not stale
+    expect(loads).toBe(2);
+    now += SCAN_RETRY_MS;
+    await scanner.scan();
+    expect(loads).toBe(4); // retried once the window after completion has passed
+  });
+
+  test("a coin Hyperliquid does not list is dropped for the day without a load; a failing list loads every coin", async () => {
+    let now = NOW;
+    const loads: string[] = [];
+    const load: LoadDatasetFn = async (cfg) => (loads.push(cfg.asset), loaded(current(cfg.asset, now)));
+    const scanner = createDefinitionScanner({ loadDataset: load, coins: async () => ["AAA", "GONE"], listed: async () => new Set(["AAA", "BBB"]), now: () => now });
+    const a = await scanner.scan();
+    expect(loads).toEqual(["AAA"]);
+    expect(a.drops).toEqual([{ coin: "GONE", definition: null, reason: "not listed on Hyperliquid", retry: false }]);
+    now += 3 * SCAN_RETRY_MS;
+    expect(await scanner.scan()).toBe(a); // nothing a retry could change: kept for the day
+    const open = await createDefinitionScanner({ loadDataset: load, coins: async () => ["CCC"], listed: async () => { throw new Error("meta down"); }, now: () => NOW }).scan();
+    expect(open).toMatchObject({ coins: 1, dropped: 0 });
+  });
+
+  test("a scan still running at 00:00 UTC finishes before the new day's starts (never two at once)", async () => {
+    let now = Date.UTC(2026, 10, 10, 23, 59);
+    let active = 0;
+    let most = 0;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const scanner = createDefinitionScanner({
+      loadDataset: async (cfg) => {
+        most = Math.max(most, ++active);
+        if (cfg.asset === "AAA") await gate; // yesterday's scan is slow
+        active--;
+        return loaded(current(cfg.asset, now));
+      },
+      coins: async () => [isoDate(now) === "2026-11-10" ? "AAA" : "BBB"],
+      now: () => now,
+      deadlineMs: Infinity,
+    });
+    const old = scanner.scan();
+    await Promise.resolve();
+    now = Date.UTC(2026, 10, 11, 0, 1);
+    const fresh = scanner.scan();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(active).toBe(1); // the new day's scan has not started loading
+    release();
+    const [a, b] = await Promise.all([old, fresh]);
+    expect(most).toBe(1);
+    expect(a.bar).toBe("2026-11-09");
+    expect(b.bar).toBe("2026-11-10");
+  });
+
   test("latest(): null until the first scan finishes, then the last finished scan while a newer one runs", async () => {
     let now = NOW;
     let release: () => void = () => {};

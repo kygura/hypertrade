@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { isoDate } from "../lab/engine/util.js";
 import { DAY_MS, type LabDataset } from "../lab/types.js";
+import { SourceUnavailable } from "../research/board.js";
 import { boardDefinitionScan } from "./runtime.js";
 import { createDefinitionScanner } from "./scan.js";
 
@@ -34,10 +35,21 @@ describe("the board's definition source", () => {
     expect(done).toMatchObject({ bar: isoDate(bar), coins: 1, dropped: 0 });
   });
 
-  test("with a database: the day's scan, awaited (the board's source timeout bounds it)", async () => {
+  test("with a database: the day's scan, awaited (the board's source timeout bounds it), serverless or not", async () => {
+    for (const serverless of [false, true]) {
+      const g = gated();
+      const p = boardDefinitionScan(g.scanner, true, serverless);
+      g.release();
+      expect(await p).toMatchObject({ bar: isoDate(bar), coins: 1 });
+    }
+  });
+
+  test("serverless without a database: unavailable with the reason, and no scan is started", async () => {
     const g = gated();
-    const p = boardDefinitionScan(g.scanner, true);
-    g.release();
-    expect(await p).toMatchObject({ bar: isoDate(bar), coins: 1 });
+    const err = await boardDefinitionScan(g.scanner, false, true).catch((e) => e);
+    expect(err).toBeInstanceOf(SourceUnavailable);
+    expect(err.reason).toBe("needs a database or the always-on server; or run `bun run signals:scan`");
+    expect(g.loads()).toBe(0);
+    expect(g.scanner.latest()).toBeNull();
   });
 });
