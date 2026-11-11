@@ -1,4 +1,5 @@
 import type { FixedWindow, FlowFlag, HeatmapMetric } from "../../shared/intel.js";
+import { quantile } from "../../shared/signalMath.js";
 import { flowFlag, LOOKBACK, pickWindow, robustLevelZ, valueAt, type Series, type WindowResult } from "./windows.js";
 
 // Flow detectors (docs/SPEC.md § Flow F0.4). Pure, deterministic. Each condition
@@ -54,10 +55,7 @@ const maxAbs = (...zs: (number | null | undefined)[]) => Math.max(0, ...zs.flatM
 
 /** 10th percentile, linear between ranks. */
 function p10(xs: number[]): number {
-  const s = [...xs].sort((a, b) => a - b);
-  const r = 0.1 * (s.length - 1);
-  const lo = Math.floor(r);
-  return s[lo]! + (s[Math.min(lo + 1, s.length - 1)]! - s[lo]!) * (r - lo);
+  return quantile([...xs].sort((a, b) => a - b), 0.1);
 }
 
 export function detectFlows(i: DetectorInput): FlowFlag[] {

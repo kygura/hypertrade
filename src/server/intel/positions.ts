@@ -1,4 +1,4 @@
-import type { ExposurePosition, ManualPosition, PositionSourceStatus, PositionsResponse } from "../../shared/intel.js";
+import type { ExposurePosition, ManualPosition, PositionSourceStatus, PositionsResponse, WatchlistItem, WatchlistResponse } from "../../shared/intel.js";
 import { loadDeskConfig } from "../desk/config.js";
 import { readHlAccount } from "../desk/data.js";
 import type { AccountState } from "../desk/types.js";
@@ -105,8 +105,35 @@ export async function loadExposure(deps: ExposureDeps): Promise<PositionsRespons
   };
 }
 
-/** Watched assets: intel_watchlist, or DESK_WATCHLIST when it is empty. */
-export async function watchedAssets(store: Pick<IntelStore, "getWatchlist">, env: Record<string, string | undefined> = process.env): Promise<string[]> {
-  const items = await store.getWatchlist();
-  return items.length ? items.map((i) => i.asset) : loadDeskConfig(env).watchlist;
+/**
+ * The monitoring watchlist, pure precedence: intel_watchlist rows (edited on the WATCH page) when the
+ * table has any, else DESK_WATCHLIST, else the desk default (loadDeskConfig). `rows` null means the
+ * store could not be read, which falls back like an empty table. `fallback` is true when the rows
+ * did not decide. Not myMarkets (platform/universe.ts), which only widens research universes.
+ */
+export function monitoringWatchlist(rows: readonly WatchlistItem[] | null, env: Record<string, string | undefined> = process.env): WatchlistResponse {
+  return rows?.length ? { items: [...rows], fallback: false } : { items: loadDeskConfig(env).watchlist.map((asset) => ({ asset, tags: [] })), fallback: true };
+}
+
+let watchlistStoreDown = false;
+
+/**
+ * Coins I monitor: the one resolver for the desk watch tick, the desk status and the Intel brief.
+ * Reads the store on every call, so UI edits apply on the next tick or request. A store failure never
+ * throws: it falls back to the env/default list and logs once until a read succeeds again.
+ */
+export async function watchedAssets(
+  store: Pick<IntelStore, "getWatchlist">,
+  env: Record<string, string | undefined> = process.env,
+  log: (line: string) => void = console.warn,
+): Promise<string[]> {
+  let rows: WatchlistItem[] | null = null;
+  try {
+    rows = await store.getWatchlist();
+    watchlistStoreDown = false;
+  } catch (err) {
+    if (!watchlistStoreDown) log(`[watchlist] intel_watchlist unreadable, using DESK_WATCHLIST/default: ${message(err)}`);
+    watchlistStoreDown = true;
+  }
+  return monitoringWatchlist(rows, env).items.map((i) => i.asset);
 }

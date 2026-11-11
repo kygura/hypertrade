@@ -27,10 +27,24 @@ export class NetworkError extends Error {}
 
 export const REDIRECT_KEY = 'ht_redirect_to'
 
+/** A same-origin, app-relative path (`/x?y`), never `//host` or `/\\host` or a full URL. */
+export function safeReturnPath(raw: string | null | undefined): string | null {
+  return raw && /^\/(?![/\\])/.test(raw) ? raw : null
+}
+
+/** Remembers where to return after login: path and query (`/feed?id=…`, `/lab/study?rule=…`). */
+export function rememberReturnPath(loc: { pathname: string; search: string } = location): void {
+  try {
+    sessionStorage.setItem(REDIRECT_KEY, `${loc.pathname}${loc.search}`)
+  } catch {
+    /* storage blocked: login falls back to `/` */
+  }
+}
+
 /** 401 → remember the path and go to /login; any other failure → ApiError carrying the server's `error`. Never returns. */
 export async function failFrom(res: Response): Promise<never> {
   if (res.status === 401) {
-    sessionStorage.setItem(REDIRECT_KEY, location.pathname)
+    rememberReturnPath()
     location.href = '/login'
     throw new ApiError('unauthorized', 401)
   }
@@ -63,7 +77,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (res.status === 401 && path !== '/auth/login') {
-    sessionStorage.setItem(REDIRECT_KEY, location.pathname)
+    rememberReturnPath()
     location.href = '/login'
     throw new ApiError('unauthorized', 401)
   }
@@ -88,7 +102,7 @@ export const api = {
 export function consumeRedirectTarget(fallback = '/'): string {
   const target = sessionStorage.getItem(REDIRECT_KEY)
   sessionStorage.removeItem(REDIRECT_KEY)
-  return target ?? fallback
+  return safeReturnPath(target) ?? fallback
 }
 
 export interface ApiState<T> {

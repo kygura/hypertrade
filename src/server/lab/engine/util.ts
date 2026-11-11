@@ -34,14 +34,7 @@ export function sortedFinite(col: ArrayLike<number>, from: number, to: number): 
 }
 
 /** Linear-interpolated quantile of a sorted array; NaN when empty. */
-export function quantileSorted(s: ArrayLike<number>, q: number): number {
-  const m = s.length;
-  if (!m) return NaN;
-  const pos = Math.min(1, Math.max(0, q)) * (m - 1);
-  const i = Math.floor(pos);
-  const f = pos - i;
-  return i + 1 < m ? s[i]! + f * (s[i + 1]! - s[i]!) : s[i]!;
-}
+export { quantile as quantileSorted } from "../../../shared/signalMath.js";
 
 /** Share of values strictly below x (sorted input). */
 export function ecdf(s: ArrayLike<number>, x: number): number {

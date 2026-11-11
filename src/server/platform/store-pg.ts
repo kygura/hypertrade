@@ -198,8 +198,11 @@ export class PgPlatformStore implements PlatformStore {
     return rows.length;
   }
 
-  async scanSnapshotsSince(since: string) {
-    const rows = await this.db.query<any>(`select * from scan_snapshots where ts >= $1::timestamptz order by ts, coin`, [iso(since)]);
+  async scanSnapshotsSince(since: string, coins?: readonly string[]) {
+    // The coin list goes in as jsonb text (no array params: db.ts runs with fetch_types false).
+    const rows = coins
+      ? await this.db.query<any>(`select * from scan_snapshots where ts >= $1::timestamptz and coin in (select jsonb_array_elements_text($2::text::jsonb)) order by ts, coin`, [iso(since), J(coins)])
+      : await this.db.query<any>(`select * from scan_snapshots where ts >= $1::timestamptz order by ts, coin`, [iso(since)]);
     return rows.map((r): ScanSnapshot => ({ coin: r.coin, ts: iso(r.ts), inputs: r.inputs }));
   }
 
@@ -236,13 +239,18 @@ export class PgPlatformStore implements PlatformStore {
     return (await this.db.query<any>(`select coin, sectors, tagged_at from market_sectors order by coin`)).map((r): SectorTag => ({ coin: r.coin, sectors: r.sectors, taggedAt: iso(r.tagged_at) }));
   }
 
-  async pruneHistory(before: string) {
+  async scanTickCount(since: string) {
+    const [r] = await this.db.query<{ n: number }>(`select count(distinct ts)::int as n from scan_snapshots where ts >= $1::timestamptz`, [iso(since)]);
+    return r!.n;
+  }
+
+  async pruneHistory(before: string, scansBefore = before) {
     const [r] = await this.db.query<{ n: number }>(
       `with a as (delete from liqmap_snapshots where ts < $1::timestamptz returning 1),
-            b as (delete from scan_snapshots where ts < $1::timestamptz returning 1),
+            b as (delete from scan_snapshots where ts < $2::timestamptz returning 1),
             c as (delete from hl_position_changes where ts < $1::timestamptz returning 1)
        select ((select count(*) from a) + (select count(*) from b) + (select count(*) from c))::int as n`,
-      [iso(before)],
+      [iso(before), iso(scansBefore)],
     );
     return r!.n;
   }
@@ -345,13 +353,13 @@ export class PgPlatformStore implements PlatformStore {
 
   async outcomeRows({ setupKind, regime, tier }: Parameters<PlatformStore["outcomeRows"]>[0]) {
     const rows = await this.db.query<any>(
-      `select o.id, o.created_at as opp_created_at, o.setup_kind, o.regime, o.liquidity_tier, (o.costs is not null) as has_costs, l.payload from ledger_entries l join opportunities o on o.id = l.opportunity_id
+      `select o.id, o.created_at as opp_created_at, o.setup_kind, o.regime, o.score_version, o.liquidity_tier, (o.costs is not null) as has_costs, l.payload from ledger_entries l join opportunities o on o.id = l.opportunity_id
        where l.kind = 'outcome' and ($1::text is null or o.setup_kind = $1) and ($2::text is null or o.regime = $2) and ($3::int is null or o.liquidity_tier = $3::int)
        order by l.id`,
       [setupKind ?? null, regime ?? null, tier ?? null],
     );
     return rows.map((r): OutcomeRow => ({
-      opportunityId: r.id, setupKind: r.setup_kind, regime: r.regime, liquidityTier: r.liquidity_tier,
+      opportunityId: r.id, setupKind: r.setup_kind, regime: r.regime, scoreVersion: r.score_version, liquidityTier: r.liquidity_tier,
       horizon: r.payload.horizon, createdAtMs: new Date(r.opp_created_at).getTime(), grossReturn: r.payload.grossReturn, netReturn: r.payload.netReturn, hasCosts: Boolean(r.has_costs),
     }));
   }

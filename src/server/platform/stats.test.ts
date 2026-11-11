@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { evidenceLine, groupStats } from "./stats.js";
+import { SCORE_VERSION } from "./score.js";
 import type { OutcomeRow } from "./store.js";
 
 let seq = 0; // default: each row in its own 2-day-apart bucket
 const row = (netReturn: number, o: Partial<OutcomeRow> = {}): OutcomeRow => ({
-  opportunityId: crypto.randomUUID(), setupKind: "squeeze", regime: "trend", liquidityTier: 1, horizon: "1h", createdAtMs: seq++ * 2 * 86_400_000, grossReturn: netReturn, netReturn, hasCosts: true, ...o,
+  opportunityId: crypto.randomUUID(), setupKind: "squeeze", regime: "trend", scoreVersion: SCORE_VERSION, liquidityTier: 1, horizon: "1h", createdAtMs: seq++ * 2 * 86_400_000, grossReturn: netReturn, netReturn, hasCosts: true, ...o,
 });
 
 describe("groupStats", () => {
@@ -62,6 +63,12 @@ describe("groupStats", () => {
     const split = groupStats(rows, { regime: true, tier: true });
     expect(split).toHaveLength(4);
     expect(split.find((s) => s.regime === "chop")!.tier).toBe(3);
+  });
+  test("by regime, only current-score-version rows count; without regime, every version pools", () => {
+    const rows = [row(0.01, { regime: "range" }), row(0.02, { regime: "range", scoreVersion: "score-v1" }), row(0.03, { regime: "new_longs", scoreVersion: "score-v1" })];
+    expect(groupStats(rows, { regime: true }).map((s) => [s.regime, s.n])).toEqual([["range", 1]]);
+    expect(groupStats(rows).map((s) => s.n)).toEqual([3]);
+    expect(groupStats(rows, { tier: true }).map((s) => s.n)).toEqual([3]);
   });
   test("non-finite returns are skipped; empty input is empty", () => {
     expect(groupStats([row(NaN)])).toEqual([]);

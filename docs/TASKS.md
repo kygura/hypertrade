@@ -20,6 +20,72 @@ object; 6 shell cells today against a ceiling of 9, target 5):
   platform read tools. Type-scale codemod and `check:type-scale` done. Deferred: the
   `runToolLoop` extraction (see `docs/CONSOLIDATION.md`).
 
+Research terminal follow-ups (docs/RESEARCH.md; each changes live scanner output, applied migrations
+or study semantics, so each needs its own change):
+
+- [ ] Scanner funding windows. Event studies run 2026-11-10 (8 majors, 2025-06-29 to 2026-11-09, 3-day
+  hold, 1.5/3 ATR, net of fees and funding; six rules tested, so read each as one of six):
+  fading high funding is flat on every window (z7 >= 1.5: +0.04R, 63 events, 4 of 8 coins loaded;
+  z14 >= 2: 0.00R, 70 events; z30 >= 2: +0.09R, 55 events, 19 weeks, insufficient). Longs after low
+  funding: z7 < -1.5 +0.06R (267 events), z14 < -2 +0.02R (161), z30 < -2 +0.18R (138 events, 46 weeks,
+  holdout +0.18R on 37 events). Nothing here supports a 7 d / 14 d funding feature in the scanner, so
+  the stored `funding` table is not loaded into the tick. The 30-day low-funding long is the one
+  result worth re-testing on more coins before it is used; it is a daily condition (novelty / Lab
+  catalogue), not an intraday one.
+- [ ] Event studies without a database fetch about 500 days of hourly funding per coin from HL and the
+  weight guard allows about one coin a minute, so a multi-coin study cannot finish inside the 50 s
+  tool deadline. With `DATABASE_URL` the stored tables are used. Partly addressed (2026-11-11): the ht
+  provider keeps each coin's live settlements in process and later fetches only what it lacks, so a
+  second study (or the scan) in the same process is fast; the first one per coin is not, and nothing
+  survives a restart. `bun run signals:study` runs without the deadline.
+
+Signals v2 follow-ups (docs/RESEARCH.md "Signals v2"):
+
+- [x] Short breakouts have no daily definition: `range_breakdown` (2026-11-11); a short `vol_expansion_breakout`
+  opportunity carries it.
+- [x] The live definition scan needs a database: without `DATABASE_URL` it runs in the background on live
+  Hyperliquid and OKX data (2026-11-11); `bun run signals:scan` runs it once.
+- [x] Definitions thin (two conditions): up to four conditions and `vchg` restore the price and funding parts of
+  B.4 (2026-11-11). Still dropped: the 4 h triggers, liquidation z, ATR-scaled distance to the 20-day mean.
+- [x] OI definitions could not be studied (`ht:oi` is weeks deep): they read `okx:oi` (2026-11-11).
+- [x] A partial day of funding is not detected by the scan: the ht provider leaves out a last day without its
+  23:00 UTC settlement (2026-11-11).
+- [ ] `okx:oi` is OKX's book, not Hyperliquid's. Replace it with `ht:oi` once the collector holds a year of daily
+  OI for the universe (needs ≥ 30 event-weeks per definition), or compare the two over the overlap first.
+- [ ] Event-study results of the definitions (`bun run signals:study`) are not yet read into thresholds; they stay
+  starting points until a decision is made on the numbers. First run (2026-11-11, no database, 17 of the top 20
+  coins): without a database live funding stops at 500 days (`LIVE_FUNDING_PAGES`), so the period is 2025-06-30 →
+  2026-11-10 and the OI and funding definitions are `insufficient` (< 30 event-weeks; `funding_fade` 6 events).
+  Re-run with `DATABASE_URL` (funding from 2023, OKX OI from Feb 2024) before reading anything into them.
+- [x] Intraday replay (RESEARCH.md S5, backend shipped 2026-11-11): the UI (shipped). Render
+  `GET /api/research/setups/replay` on `/lab/study` under the DEFINITIONS picker (states `pending`, `unavailable`
+  with reason, `ok`; not-evaluable rows with their reason, never as 0).
+- [ ] `crowded_long`, `negative_funding_squeeze` and `deleveraging_washout` read `oiChg1hZ` and stay unreplayable
+  until intraday OI is stored at a 15-min or finer cadence: HL serves no OI history, and production `scan_snapshots`
+  hold about 4 ticks a day (scanner run from a cron). An always-on scanner writes 288 a day; with
+  `PLATFORM_SCAN_RETENTION_DAYS` (30) the `snapshots` replay then covers them after a few weeks.
+- [ ] Production scanner cadence: the intraday setups cannot fire at about 4 ticks a day (the features need 96); the
+  board's `opportunity` source says so. Run the always-on server (`bun start`) or tick at least every 15 min.
+- [ ] The candle replay charges no slippage (no historical book) and reads funding up to an hour late; per-coin
+  slippage from the live cost model's typical `l2Book` walk would tighten the net numbers.
+- [x] Review fixes to Signals v2 / S5 (2026-11-11): snapshot replay grades jittered timestamps (exit tolerance one
+  persist step plus a minute); the replay yields to the event loop, the snapshot source is capped (top N, 14 days)
+  and signed-in only; a candle replay whose fetches failed is a failed run, not zeros; replay and the no-database
+  scan answer `unavailable` on Vercel; the scan's retry window runs from completion, unlisted coins are dropped for
+  the day and scans never overlap at 00:00 UTC; `okx:oi` is collected and read stored; a deadline-cut study is not
+  cached; live funding's left extension is capped to the cold span.
+- [ ] Hyperliquid weight contention: the replay's own fetches stay under 600 of the guard's 1000 per minute
+  (`REPLAY_HL_BUDGET`, `hlWaitBelow`), but the no-database definition scan (and Lab studies) still share the full
+  budget with the live scanner, so a cold scan can delay a scanner tick by up to a minute on the guard. A per-caller
+  share for the scan needs a seam through the Lab loader (`HtDeps.liveFunding` / `liveCandles`) that only the scan
+  uses; not done.
+- [ ] A study retried after a deadline cut (not cached, by design) counts another Lab trial: the Lab records one per
+  `lab_event_study` call. With `okx:oi` collected the cut is rare; counting at most one trial per study key and day
+  would need the study key passed into the Lab tool.
+- [ ] Live, an idea the scanner does not cost (beyond `PLATFORM_COST_TOP_N`, or no book) stays `new`, never expires
+  and blocks re-fires of its key; the replay assumes every idea costed (a test shows the divergence). Expiring or
+  costing such ideas is a scanner change, not made here.
+
 Radar routine (2026-11-02): the 4 h setup board is retired (24 setups, all low conviction, −1.77R; it
 never saw news, sectors or HIP-3). `ROUTINE.md` is now a twice-daily radar: `bun run radar` scans every
 dex, the session researches catalysts and lands at most 3 graded calls in `data/radar/`.
@@ -56,9 +122,18 @@ setups, candidate universe = top 30 by 24 h notional plus "my markets".
   `src/server/setups/store.ts`), `bun run setups:export` to `data/setups/ledger.json`,
   gate expiry cap 10 days.
 - [ ] Phase 1: daily/4 h feature frame from stored tables, with parity against novelty
-  `funding_z90` and Lab `ht:funding`.
+  `funding_z90` and Lab `ht:funding`. Partly shipped by Signals v2 (docs/RESEARCH.md S2,
+  2026-11-10): the daily frame is the Lab's own features (`ht:*` through the Lab dataset
+  loader), so `ht:funding` parity holds by construction. Volatility-scaled returns ship as the Lab
+  transform `vchg` (2026-11-11; w-day sigmas, not ATR). Not shipped: the 4 h frame, liquidation and
+  sector features, and the novelty `funding_z90` parity test.
 - [ ] Phase 2: catalogue definitions as data plus level builder, each with a Lab rule
-  twin; scanner hits equal event-study entries.
+  twin; scanner hits equal event-study entries. Partly shipped by Signals v2 (S1–S3): six
+  definitions as Lab rules (`src/server/signals/definitions.ts`), the live scan with the
+  replay parity test, the board's `definition` source. Not shipped: the level builder, 4 h
+  triggers and entry zones, `sector_continuation` (needs sector features the Lab lacks), and
+  the B.4 conditions a Lab rule still cannot say (listed in docs/RESEARCH.md S1; rules hold four
+  conditions since 2026-11-11). The UI (S4) shipped 2026-11-10.
 - [ ] Phase 3: `bun run candidates` and `candidates:advance`, budget gate, one LLM
   narration call, routine writes through the setups store.
 - [ ] Phase 4: workflows, ROUTINE.md as a thin wrapper, narrative job split out,

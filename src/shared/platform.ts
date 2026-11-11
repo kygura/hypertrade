@@ -151,6 +151,9 @@ export type LedgerKind = LedgerEntry["kind"];
 export type LedgerPayload<K extends LedgerKind> = Extract<LedgerEntry, { kind: K }>["payload"];
 export type NewLedgerEntry = z.infer<typeof NewLedgerEntrySchema>;
 
+/** Clusters below which a ledger or replay mean carries no 95% interval (groupStats, P0.14); the UI reads the same. */
+export const CI_MIN_CLUSTERS = 5;
+
 export const LedgerStatsSchema = z.object({
   setupKind: Text(64),
   horizon: HorizonSchema,
@@ -335,6 +338,10 @@ export const OpportunityDetailSchema = z.object({
   risk: z.object({ before: RiskVerdictSchema, after: RiskVerdictSchema }).nullable(),
   /** Pre-filled ticket. sizeUsd comes from the governor preview only; null without one. */
   ticket: z.object({ side: SideSchema, entryPx: Pos.nullable(), stopPx: Pos.nullable(), targetPx: Pos.nullable(), sizeUsd: Pos.nullable(), sizeSource: z.literal("governor") }),
+  /** The server's freshness gate (P0.15, context.ts approveBlock) now: false = approve would answer 409 stale_feed. Status and governor are separate. */
+  canApprove: z.boolean(),
+  /** Why approval is blocked by that gate (the 409 message), null when it is not. */
+  approveBlockedReason: z.string().nullable(),
 });
 export type OpportunityDetail = z.infer<typeof OpportunityDetailSchema>;
 

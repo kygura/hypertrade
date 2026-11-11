@@ -7,7 +7,7 @@ import {
   WatchlistPutSchema,
   type WatchlistResponse,
 } from "../../../shared/intel.js";
-import { loadDeskConfig } from "../../desk/config.js";
+import { monitoringWatchlist } from "../../intel/positions.js";
 import { buildBrief, type TerminalDeps } from "../../intel/terminal.js";
 import { body, failure, invalid } from "./http.js";
 
@@ -43,10 +43,8 @@ export function createTerminalRoutes(deps: TerminalRouteDeps) {
   const { store } = deps;
   const env = deps.env ?? process.env;
 
-  const watchlist = async (): Promise<WatchlistResponse> => {
-    const items = await store.getWatchlist();
-    return items.length ? { items, fallback: false } : { items: loadDeskConfig(env).watchlist.map((asset) => ({ asset, tags: [] })), fallback: true };
-  };
+  // The editor shows the stored list, so a store error is a 5xx here, not the silent fallback watchedAssets uses.
+  const watchlist = async (): Promise<WatchlistResponse> => monitoringWatchlist(await store.getWatchlist(), env);
 
   return new Hono()
     .get("/positions", async (c) => {

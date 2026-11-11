@@ -74,7 +74,7 @@ export function PulseAssetRow({ asset: a, entries, metrics }: { asset: PulseAsse
                   <span className="text-sm text-text-primary truncate">{r.name}</span>
                   <DirectionWord direction={r.direction} className="text-xs" />
                   {rule ? (
-                    <RuleText rule={rule} metrics={metrics} size="xs" className="text-text-secondary truncate block" />
+                    <RuleText rule={rule} metrics={metrics} size="xs" className="text-text-secondary block line-clamp-2 break-words" />
                   ) : (
                     <span className="text-xs text-text-secondary truncate">{r.text}</span>
                   )}

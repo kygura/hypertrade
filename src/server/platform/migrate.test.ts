@@ -7,6 +7,20 @@ const DIR = new URL("../../../db/migrations/", import.meta.url);
 const FILES = readdirSync(DIR).filter((f) => f.endsWith(".sql")).sort();
 const quiet = () => {};
 
+test("every migration has a unique NNN_ number (022 is the one allowed duplicate)", () => {
+  // 022_enable_rls and 022_narrative_alerts both shipped and are applied; schema_migrations keys by file name,
+  // so renaming either would re-run it. The runner orders them by code-unit sort: enable_rls, then narrative_alerts.
+  const ALLOWED = new Set(["022"]);
+  const byNum = new Map<string, string[]>();
+  for (const f of FILES) {
+    const n = /^(\d{3})_[a-z0-9_]+\.sql$/.exec(f)?.[1] ?? `bad name: ${f}`;
+    byNum.set(n, [...(byNum.get(n) ?? []), f]);
+  }
+  expect([...byNum.keys()].filter((n) => n.startsWith("bad"))).toEqual([]);
+  expect([...byNum].filter(([n, fs]) => fs.length > 1 && !ALLOWED.has(n))).toEqual([]);
+  expect(byNum.get("022")).toEqual(["022_enable_rls.sql", "022_narrative_alerts.sql"]);
+});
+
 describe("db/migrate.ts on PGlite", () => {
   test("a fresh database runs every migration for real, once", async () => {
     const db = pgliteDb(newPglite());

@@ -72,6 +72,8 @@ export interface OutcomeRow {
   opportunityId: string;
   setupKind: string;
   regime: string;
+  /** Score version the opportunity was scored under; the regime label's meaning follows it. */
+  scoreVersion: string;
   liquidityTier: LiquidityTier;
   horizon: string;
   /** Opportunity creation time (ms): the cluster bucket for stats. */
@@ -111,10 +113,15 @@ export interface PlatformStore {
   liqmapHistory(coin: string, since: string): Promise<LiqMapSnapshot[]>;
   /** Upsert on (coin, ts). Returns rows written. */
   insertScanSnapshots(rows: ScanSnapshot[]): Promise<number>;
-  /** ts >= since, ascending by ts then coin. */
-  scanSnapshotsSince(since: string): Promise<ScanSnapshot[]>;
-  /** Retention (P0.4 prune): deletes scan and liqmap snapshots and position changes with ts < before. Never the ledger. */
-  pruneHistory(before: string): Promise<number>;
+  /** ts >= since, ascending by ts then coin; only `coins` when given (an empty list reads nothing). */
+  scanSnapshotsSince(since: string, coins?: readonly string[]): Promise<ScanSnapshot[]>;
+  /** Distinct scan timestamps with ts >= since: scanner ticks persisted (at most one per 5 min). */
+  scanTickCount(since: string): Promise<number>;
+  /**
+   * Retention (P0.4 prune): deletes liqmap snapshots and position changes with ts < before, and scan snapshots with
+   * ts < scansBefore (default `before`; PLATFORM_SCAN_RETENTION_DAYS keeps them longer for replays). Never the ledger.
+   */
+  pruneHistory(before: string, scansBefore?: string): Promise<number>;
 
   /**
    * Dedupe upsert (P0.11): with a live opportunity on the same key, returns it with created false and no ledger
@@ -175,6 +182,14 @@ export interface PlatformStore {
 }
 
 // ---------------------------------------------------------------- shared rules
+
+/** PLATFORM_RETENTION_DAYS (14): liqmap snapshots and position changes. */
+export const retentionDays = (env: Record<string, string | undefined> = process.env) => Number(env.PLATFORM_RETENTION_DAYS ?? 14) || 14;
+/**
+ * PLATFORM_SCAN_RETENTION_DAYS (30): scan_snapshots, the only stored intraday OI, kept longer than the rest for the
+ * snapshot replay. Never shorter than PLATFORM_RETENTION_DAYS.
+ */
+export const scanRetentionDays = (env: Record<string, string | undefined> = process.env) => Math.max(retentionDays(env), Number(env.PLATFORM_SCAN_RETENTION_DAYS ?? 30) || 30);
 
 export const dedupeKey = (o: Pick<Opportunity, "coin" | "direction" | "setupKind">) => `${o.coin}|${o.direction}|${o.setupKind}`;
 export const isLive = (s: OpportunityStatus) => LIVE_STATUSES.includes(s);

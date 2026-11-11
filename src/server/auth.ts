@@ -111,16 +111,16 @@ export const requireCronToken: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
-/** `/lab`, `/lab/...`, `/mcp`, `/mcp/...` — not `/labx` or `/mcpfoo`. All methods: the lab's own tools are called over POST. */
-const LAB_PATH = /^\/(lab|mcp)(\/|$)/;
+/** `/lab`, `/lab/...`, `/mcp`, `/mcp/...` — not `/labx` or `/mcpfoo` — and `/research/study` (a lab_event_study run). All methods: the lab's own tools are called over POST. */
+const LAB_PATH = /^\/(lab|mcp)(\/|$)|^\/research\/study$/;
 
 /**
- * `/metrics`, `/sectors`, `/marketstate`, `/intel`, `/platform` and their subpaths — not
+ * `/metrics`, `/sectors`, `/marketstate`, `/intel`, `/platform`, `/research`, `/radar` and their subpaths — not
  * `/metricsx`. The bearer only opens them on GET, so the routine can read;
  * every write under these paths (Intel's positions, orders, watches…) still
  * needs the session cookie.
  */
-const READ_PATH = /^\/(metrics|sectors|marketstate|intel|platform)(\/|$)/;
+const READ_PATH = /^\/(metrics|sectors|marketstate|intel|platform|research|radar)(\/|$)/;
 
 /**
  * Bearer token for the lab surfaces and the read-only paths above (docs/LAB.md
@@ -140,8 +140,8 @@ function labBearerValid(c: Context): boolean {
   return ok;
 }
 
-/** Proxies to services with their own tokens; guests never reach them, even on GET. */
-const GUEST_DENIED = /^\/(engine|mcp)(\/|$)/;
+/** Proxies to services with their own tokens, and the radar (LLM-written theses and notes): guests never reach them, even on GET. */
+const GUEST_DENIED = /^\/(engine|mcp|radar)(\/|$)/;
 
 /**
  * PUBLIC_MODE=1 (or "true") lets visitors read the app without logging in:
@@ -155,6 +155,11 @@ export function publicMode(): boolean {
 
 function guestReadable(c: Context, path: string): boolean {
   return publicMode() && (c.req.method === "GET" || c.req.method === "HEAD") && !GUEST_DENIED.test(path);
+}
+
+/** A PUBLIC_MODE visitor: no session cookie and no read bearer. */
+export function isGuest(c: Context): boolean {
+  return publicMode() && !hasSession(c) && !labBearerValid(c);
 }
 
 /** True when the request carries a valid session cookie. */

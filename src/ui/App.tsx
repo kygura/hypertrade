@@ -30,8 +30,11 @@ const Cycles = lazy(() => import('./pages/Cycles').then((m) => ({ default: m.Cyc
 // Lab (docs/design/README.md §10.9): research view, loaded with its routes.
 const Lab = lazy(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
 const LabRule = lazy(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
-const LAB_TAB_PATHS = ['/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
-// Terminal family (docs/design/terminal.md §1.1, C1): `/` is the Cockpit, `/terminal`
+const LAB_TAB_PATHS = ['/lab/study', '/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
+// Research board (docs/RESEARCH.md "Board"): the landing `/`. Its own redirect rule sends old
+// Cockpit queries (`/?id=…`) to `/feed` and `/?review=1` to `/terminal?review=1`.
+const Board = lazy(() => import('./pages/research/Board').then((m) => ({ default: m.Board })))
+// Terminal family (docs/design/terminal.md §1.1, C1): `/feed` is the Cockpit, `/terminal`
 // the Terminal; each sub-tab is its own route, loaded with it. `/overview`
 // redirects to `/markets`.
 const Cockpit = lazy(() => import('./pages/cockpit/Cockpit').then((m) => ({ default: m.Cockpit })))
@@ -43,8 +46,9 @@ const Order = lazy(() => import('./pages/terminal/Order').then((m) => ({ default
 const Watch = lazy(() => import('./pages/terminal/Watch').then((m) => ({ default: m.Watch })))
 // `/asset/:coin` is a drill-in of `/terminal` (DESIGN-terminal §15.4), under TerminalTabs.
 const Asset = lazy(() => import('./pages/terminal/Asset').then((m) => ({ default: m.Asset })))
-const TERMINAL_PAGES = [
-  { path: '/', Page: Cockpit },
+const TOP_PAGES = [
+  { path: '/', Page: Board },
+  { path: '/feed', Page: Cockpit },
   { path: '/terminal', Page: Terminal },
   { path: '/journal', Page: Journal },
   { path: '/theses', Page: Theses },
@@ -111,7 +115,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        {TERMINAL_PAGES.map(({ path, Page }) => (
+        {TOP_PAGES.map(({ path, Page }) => (
           <Route
             key={path}
             path={path}

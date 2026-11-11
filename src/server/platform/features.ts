@@ -1,8 +1,9 @@
 import type { FeatureVector, LiquidityTier } from "../../shared/platform.js";
+import { fundingAprPct, median, robustSigma } from "../../shared/signalMath.js";
 import { classifyRegime } from "../desk/analytics.js";
 import type { Point } from "../intel/normalize.js";
-import { fin, median } from "../intel/util.js";
-import { robustLevelZ, robustSigma, spanResult, valueAt } from "../intel/windows.js";
+import { fin } from "../intel/util.js";
+import { robustLevelZ, spanResult, valueAt } from "../intel/windows.js";
 import { depthWithin, midOf, type Book } from "./costs.js";
 
 // Per-asset feature set (docs/SPEC.md § Platform P0.9). Pure: history in, numbers out.
@@ -22,6 +23,14 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 const LOOKBACK = { days: 1, min: 12 };
+/**
+ * Ring points per 24 h the features need: one per 15 min. A 15-min change reads a point within 20 min of each window
+ * end (intel/windows.ts valueAt), and fundingZ24h / fundingPctile24h need 48 points in 24 h. A sparser ring leaves
+ * them null and no setup can fire. The replay's density check and the board's scanner note use this.
+ */
+export const FEATURE_MIN_TICKS_24H = 96;
+/** |z| at which a signal counts as active: score confluence (score.ts) and the regime's non-flat cut (1 σ). */
+export const ACTIVE_Z = 1;
 const series = (ring: RingPoint[], f: (p: RingPoint) => number): Point[] => ring.map((p) => ({ t: p.ts, v: f(p) })).filter((p) => Number.isFinite(p.v));
 
 /**
@@ -80,8 +89,13 @@ export function computeFeatures(history: RingPoint[], now: number, extras: Featu
   const rv24h = rv(marks, now - DAY, 240);
   const sigma1h = rv24h == null ? null : rv24h * Math.sqrt(60);
 
-  const fundingApr = last ? last.funding * 24 * 365 * 100 : null;
-  const regime = ret1h.delta == null ? null : classifyRegime(ret1h.delta, oi1h.delta, fundingZ24h, fundingApr);
+  const fundingApr = last ? fundingAprPct(last.funding) : null;
+  // The desk's fixed 1.5 % / 3 % are multi-hour cuts; on 1 h the cuts are the coin's own dispersion: price is
+  // non-flat at ACTIVE_Z × sigma1h, OI moves at |oiChg1hZ| ≥ ACTIVE_Z (the OI leg runs in z units). No sigma: range.
+  const regime =
+    ret1h.delta == null ? null
+    : !(sigma1h != null && sigma1h > 0) ? "range"
+    : classifyRegime(ret1h.delta, oi1h.z, fundingZ24h, fundingApr, { flatPct: ACTIVE_Z * sigma1h * 100, oiMovePct: ACTIVE_Z });
 
   const liq = fin(extras.liqNearUsd);
   const b = extras.book ?? null;
@@ -115,7 +129,7 @@ export function computeFeatures(history: RingPoint[], now: number, extras: Featu
       sigma1h: fin(sigma1h),
       liqNearUsd: liq,
       points: ring.length,
-      /** classifyRegime on the 1 h price and OI change. null without 1 h of history. */
+      /** classifyRegime on the 1 h change, non-flat at 1 σ (sigma1h), OI leg on oiChg1hZ. null without 1 h of history, "range" without sigma1h. */
       regime,
     },
   };

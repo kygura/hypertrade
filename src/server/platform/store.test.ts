@@ -117,6 +117,11 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(await s.insertScanSnapshots([{ coin: "ETH", ts: t(1), inputs: { mark: 3000 } }, { coin: "BTC", ts: t(1), inputs: { mark: 61000 } }, { coin: "BTC", ts: t(0), inputs: {} }])).toBe(3);
   put("scan.since", await s.scanSnapshotsSince(t(1)));
   expect((out["scan.since"] as { coin: string }[]).map((r) => r.coin)).toEqual(["BTC", "ETH"]);
+  expect((await s.scanSnapshotsSince(t(0), ["ETH"])).map((r) => r.coin)).toEqual(["ETH"]);
+  expect((await s.scanSnapshotsSince(t(0), ["BTC", "SOL"])).map((r) => `${r.coin}@${r.ts}`)).toEqual([`BTC@${t(0)}`, `BTC@${t(1)}`]);
+  expect(await s.scanSnapshotsSince(t(0), [])).toEqual([]);
+  expect(await s.scanTickCount(t(0))).toBe(2); // distinct timestamps, not rows
+  expect(await s.scanTickCount(t(1))).toBe(1);
 
   // opportunities
   const first = await s.upsertOpportunity(opp(), created(2));
@@ -215,14 +220,15 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((out["ledger.o1"] as { kind: string }[]).map((e) => e.kind)).toEqual(["created", "status", "status", "status", "decision", "outcome"]);
   put("ledger.o2", await s.ledgerFor(o2));
   expect(await s.ledgerFor("not-a-uuid")).toEqual([]);
-  expect(await s.outcomeRows({})).toEqual([{ opportunityId: o1, setupKind: "breakout", regime: "new_longs", liquidityTier: 1, horizon: "1h", createdAtMs: expect.any(Number), grossReturn: 0.01, netReturn: 0.0091, hasCosts: false }]);
+  expect(await s.outcomeRows({})).toEqual([{ opportunityId: o1, setupKind: "breakout", regime: "new_longs", scoreVersion: "v1", liquidityTier: 1, horizon: "1h", createdAtMs: expect.any(Number), grossReturn: 0.01, netReturn: 0.0091, hasCosts: false }]);
   expect(await s.outcomeRows({ setupKind: "breakout", regime: "new_longs", tier: 1 })).toHaveLength(1);
   expect(await s.outcomeRows({ tier: 2 })).toEqual([]);
   expect(await s.outcomeRows({ regime: "range" })).toEqual([]);
 
   // retention: BTC t0 + ETH t0 liqmaps, BTC t0 scan; changes are all at t2+. The ledger is untouched.
   expect(await s.pruneHistory(t(1))).toBe(3);
-  expect(await s.pruneHistory(t(3))).toBe(1 + 2 + 2); // BTC t1 liqmap, two t1 scans, two t2 opens
+  expect(await s.pruneHistory(t(3), t(1))).toBe(1 + 2); // scans kept longer (PLATFORM_SCAN_RETENTION_DAYS): BTC t1 liqmap, two t2 opens
+  expect(await s.pruneHistory(t(3))).toBe(2); // the two t1 scans
   expect((await s.ledgerFor(o1)).length).toBe(6);
   put("changes.after", await s.positionChanges(A1));
 

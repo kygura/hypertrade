@@ -1,4 +1,5 @@
 import type { NoveltyEntry, NoveltyFeature } from "../../shared/platform.js";
+import { fundingAprPct, mean, quantile, sdSample as stdev, zSample } from "../../shared/signalMath.js";
 
 // Novelty detector (docs/FEATURES.md section 4): has this coin ever been here? Pure: detection on closed daily
 // bars against the coin's own history, then admission (dedupe, which hits are pushed). Information only.
@@ -26,11 +27,6 @@ const IDS = Object.keys(FAMILY);
 const ORDER: Family[] = ["funding", "oi", "price"];
 const familiesOf = (ids: string[]) => ORDER.filter((f) => ids.some((id) => FAMILY[id] === f));
 
-const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-const stdev = (xs: number[]) => {
-  const m = mean(xs);
-  return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1));
-};
 const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
 const ok = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
 
@@ -47,11 +43,10 @@ function at(d: NoveltyDaily, id: string, i: number): number | null {
     x = a != null && b != null ? a / b : null;
   } else if (id === "funding_apr(7)") {
     const w = f.slice(i - 6, i + 1);
-    x = i >= 6 && w.every(ok) ? mean(w as number[]) * 24 * 365 * 100 : null;
+    x = i >= 6 && w.every(ok) ? fundingAprPct(mean(w as number[])) : null;
   } else if (id === "funding_z90") {
     const w = f.slice(Math.max(0, i - 90), i).filter(ok);
-    const s = w.length >= 60 && ok(f[i]) ? stdev(w) : 0;
-    x = s > 0 ? (f[i]! - mean(w)) / s : null;
+    x = w.length >= 60 && ok(f[i]) ? zSample(f[i]!, w) : null;
   } else if (id === "oi_change(7)") {
     const a = oiCoins(i), b = i >= 7 ? oiCoins(i - 7) : null;
     x = a != null && b ? a / b - 1 : null;
@@ -61,12 +56,6 @@ function at(d: NoveltyDaily, id: string, i: number): number | null {
   }
   return ok(x) ? x : null;
 }
-
-/** Linear-interpolated quantile of an ascending array. */
-const quantile = (s: number[], q: number) => {
-  const k = (s.length - 1) * q, lo = Math.floor(k);
-  return s[lo]! + (s[Math.ceil(k)]! - s[lo]!) * (k - lo);
-};
 
 export interface NoveltyHit {
   kind: NoveltyEntry["kind"];

@@ -1,7 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { databaseUrl, sql } from "../db.js";
+import type postgres from "postgres";
+import { databaseUrl, sql as client } from "../db.js";
 import type { CatalogueEntry, Direction, SearchConfig, SearchResult, Trial } from "./types.js";
 
 // Lab persistence (db/migrations/004_lab.sql). Three LabStore implementations:
@@ -40,6 +41,15 @@ export type NewCatalogueEntry = Omit<CatalogueEntry, "savedAt"> & { savedAt?: st
 export type NewTrial = Omit<Trial, "n" | "at">;
 export type CatalogueFilter = { asset?: string; direction?: Direction };
 
+/** A cached event study (src/server/research/study.ts): opaque here, zod-parsed by its reader. */
+export interface StoredStudy {
+  summary: unknown;
+  study: unknown;
+}
+/** Stored studies older than this are pruned on the next put: lookups only ever want today's (UTC), so 2 days covers the day turn. */
+export const STUDY_KEEP_DAYS = 2;
+const DAY_MS = 86_400_000;
+
 export interface LabStore {
   readonly kind: "pg" | "memory" | "file";
   saveRun(r: NewRun): Promise<StoredRun>;
@@ -62,6 +72,10 @@ export interface LabStore {
   appendTrial(t: NewTrial): Promise<Trial>;
   /** Oldest first (n ascending). */
   listTrials(): Promise<Trial[]>;
+  /** The stored studies among `keys` (research/study.ts studyKey), in one read; unknown keys are absent. */
+  getStudies(keys: string[]): Promise<Map<string, StoredStudy>>;
+  /** Upsert by key, stamped `at`; drops studies stamped more than STUDY_KEEP_DAYS before `at`. */
+  putStudy(key: string, value: StoredStudy, at: Date): Promise<void>;
 }
 
 // ---------------------------------------------------------------- helpers
@@ -156,7 +170,8 @@ export function toTrial(r: any): Trial {
   return { n: Number(r.n), at: iso(r.at)!, ruleId: r.rule_id, intent: r.intent ?? null, verdict: r.verdict ?? null, rule: r.rule ?? null };
 }
 
-export function pgStore(): LabStore {
+/** `sql` is the postgres.js client: a seam so the shared suite runs this twin on PGlite (testing/pglite.ts pgliteSql). */
+export function pgStore(sql: () => postgres.Sql = client): LabStore {
   const json = (v: unknown) => sql().json(v as never);
   return {
     kind: "pg",
@@ -221,19 +236,33 @@ export function pgStore(): LabStore {
     async listTrials() {
       return (await sql()`select * from lab_trials order by n`).map(toTrial);
     },
+    async getStudies(keys) {
+      if (!keys.length) return new Map();
+      const rows = await sql()`select key, summary, study from research_studies where key in ${sql()(keys)}`;
+      return new Map(rows.map((r) => [r.key as string, { summary: r.summary, study: r.study }]));
+    },
+    async putStudy(key, v, at) {
+      await sql()`
+        insert into research_studies (key, summary, study, created_at)
+        values (${key}, ${json(v.summary)}, ${json(v.study)}, ${at.toISOString()}::timestamptz)
+        on conflict (key) do update set summary = excluded.summary, study = excluded.study, created_at = excluded.created_at`;
+      await sql()`delete from research_studies where created_at < ${new Date(at.getTime() - STUDY_KEEP_DAYS * DAY_MS).toISOString()}::timestamptz`;
+    },
   };
 }
 
 // ---------------------------------------------------------------- memory / file
 
 type StoredRule = CatalogueEntry & { archivedAt: string | null };
+type StudyRow = StoredStudy & { key: string; at: string };
 interface State {
   runs: StoredRun[]; // insertion order, oldest first
   rules: StoredRule[];
   trials: Trial[]; // n ascending
+  studies: StudyRow[];
 }
 
-const emptyState = (): State => ({ runs: [], rules: [], trials: [] });
+const emptyState = (): State => ({ runs: [], rules: [], trials: [], studies: [] });
 const entryOf = ({ archivedAt: _a, ...e }: StoredRule): CatalogueEntry => structuredClone(e);
 
 /**
@@ -312,6 +341,19 @@ function localStore(
     async listTrials() {
       return structuredClone((await load()).trials);
     },
+    async getStudies(keys) {
+      const want = new Set(keys);
+      const out = new Map<string, StoredStudy>();
+      for (const r of (await load()).studies) if (want.has(r.key)) out.set(r.key, structuredClone({ summary: r.summary, study: r.study }));
+      return out;
+    },
+    async putStudy(key, v, at) {
+      const s = await load();
+      const cutoff = at.getTime() - STUDY_KEEP_DAYS * DAY_MS;
+      s.studies = s.studies.filter((r) => r.key !== key && Date.parse(r.at) >= cutoff);
+      s.studies.push(structuredClone({ key, at: at.toISOString(), summary: v.summary, study: v.study }));
+      await persist(s);
+    },
   };
 }
 
@@ -324,7 +366,8 @@ function parseState(text: string): State | null {
   try {
     const raw = JSON.parse(text);
     if (raw && typeof raw === "object" && Array.isArray(raw.runs) && Array.isArray(raw.rules)) {
-      return { runs: raw.runs, rules: raw.rules, trials: Array.isArray(raw.trials) ? raw.trials : [] };
+      // Fields added later read as empty from files written before them.
+      return { runs: raw.runs, rules: raw.rules, trials: Array.isArray(raw.trials) ? raw.trials : [], studies: Array.isArray(raw.studies) ? raw.studies : [] };
     }
   } catch {
     // fall through
@@ -359,7 +402,7 @@ export function fileStore(path: string, clock: () => Date = () => new Date()): L
     }));
 
   const persist = (s: State) => {
-    const body = JSON.stringify({ version: 1, runs: s.runs, rules: s.rules, trials: s.trials });
+    const body = JSON.stringify({ version: 1, runs: s.runs, rules: s.rules, trials: s.trials, studies: s.studies });
     const tmp = `${path}.${process.pid}.tmp`;
     // Chained so concurrent mutations never interleave their tmp writes.
     writing = writing

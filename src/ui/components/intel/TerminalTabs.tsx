@@ -15,7 +15,7 @@ export const TERMINAL_TABS: readonly (SegmentOption<TerminalTab> & { path: strin
   { value: 'journal', path: '/journal', label: 'JOURNAL', short: 'JRNL', title: 'what my trades say' },
   { value: 'theses', path: '/theses', label: 'THESES', short: 'THES', title: 'test a thesis against the data' },
   { value: 'query', path: '/query', label: 'QUERY', short: 'QRY', title: 'ask the snapshot store' },
-  { value: 'cockpit', path: '/', label: 'FEED', short: 'FEED', title: 'what to act on now' },
+  { value: 'cockpit', path: '/feed', label: 'FEED', short: 'FEED', title: 'what to act on now' },
   { value: 'order', path: '/order', label: 'ORDER', short: 'ORDR', title: 'preview and place a Desk order' },
   { value: 'desk', path: '/desk', label: 'DESK', short: 'DESK', title: 'agent team, governor and paper book' },
 ]
@@ -25,7 +25,7 @@ export function terminalTabOf(pathname: string): TerminalTab | null {
   // `/asset/:coin` is a drill-in of `/terminal` (docs/design/terminal.md §15.4, C1).
   if (pathname.startsWith('/asset/')) return 'terminal'
   for (const t of TERMINAL_TABS) {
-    if (t.path === '/' ? pathname === '/' : pathname === t.path || pathname.startsWith(`${t.path}/`)) return t.value
+    if (pathname === t.path || pathname.startsWith(`${t.path}/`)) return t.value
   }
   return null
 }

@@ -2,12 +2,12 @@
 
 A personal market terminal and signal platform for crypto perps. It tracks assets, simulates allocation branches against historical data, monitors sector dynamics, and runs an always-on worker that scans Hyperliquid and surfaces ranked setups.
 
-Surfaces: the platform cockpit (`/`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade radar (a scheduled Claude session, twice a day: code scans every live perp on the main and HIP-3 dexes, the session researches what the tape has not priced yet and lands at most 3 dated calls that code prices and grades in `data/radar/`; one ntfy push only when a call lands; see `ROUTINE.md`).
+Surfaces: the Research board (`/`, the landing: live signals with their event-study evidence, docs/RESEARCH.md), the platform cockpit (`/feed`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade radar (a scheduled Claude session, twice a day: code scans every live perp on the main and HIP-3 dexes, the session researches what the tape has not priced yet and lands at most 3 dated calls that code prices and grades in `data/radar/`; one ntfy push only when a call lands; see `ROUTINE.md`).
 
 ## Status
 
 - **Live in the repo (master):** the platform backend in `src/server/platform/` (scanner, crawler, liquidation map, outcomes, alerts loops) on one Bun process, the cockpit UI, `/api/platform/*`, and the routine pipeline (`bun run routine`: board scan, tripwires, setups ledger, daily brief; Opus 5.5 by default, Kimi as fallback).
-- **Hosting:** free tier first. Vercel serves the UI and API, a GitHub Actions hourly tick (`.github/workflows/platform-tick.yml`, `bun run platform:tick`) runs the platform worker loops against Postgres, and the Claude routine commits research. The always-on Railway worker below is the upgrade path for when live mids (order approval) or sub-hourly scans become a hard requirement. History in `docs/TASKS.md`.
+- **Hosting:** free tier first. Vercel serves the UI and API, a GitHub Actions hourly tick (`.github/workflows/platform-tick.yml`, `bun run platform:tick`) runs the platform worker loops against Postgres, and the Claude routine commits research. The always-on Railway worker below is the upgrade path for when live mids (order approval) or sub-hourly scans become a hard requirement. At an hourly tick the intraday setups cannot fire (their features need a ring point every 15 min); the research board's `opportunity` source says so. `bun run signals:replay` replays the setups over HL 15-min candles instead (docs/RESEARCH.md S5). History in `docs/TASKS.md`.
 - **Terminal client:** `tui/` is a separate Ink package (`bun run tui`) with its own `README.md`, `SPEC.md`, `DESIGN.md` and `TASKS.md`.
 
 ## Setup
@@ -40,9 +40,9 @@ Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is
 
 | Cell | Routes |
 |---|---|
-| TRADE | `TerminalTabs`, intel to act: `/terminal` (CHANGES), `/watch`, `/journal`, `/theses`, `/query`, then `/` (FEED, the Cockpit landing: ranked opportunities, liquidation map, approve/reject, desk kill switch), `/order`, `/desk`. `/asset/:coin` is the per-coin page under CHANGES. |
+| RESEARCH | `LabTabs`: `/` (BOARD, the landing: live signals with their evidence, `?coin=` filter), `/lab/study`, `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id`, and `/branches`, `/branches/:id` |
+| TRADE | `TerminalTabs`, intel to act: `/terminal` (CHANGES), `/watch`, `/journal`, `/theses`, `/query`, then `/feed` (FEED, the Cockpit: ranked opportunities, liquidation map, approve/reject, desk kill switch; an old `/?id=…` redirects here), `/order`, `/desk`. `/asset/:coin` is the per-coin page under CHANGES. |
 | MARKET | `MarketTabs`, with the metrics strip under it: `/markets` (and `/markets/:coin`, chart; links to `/asset/:coin`), `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`. |
-| RESEARCH | `LabTabs`: `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id`, and `/branches`, `/branches/:id` |
 | ASK | `/analyst` (ASK and SIMULATE) |
 | ENGINE | `EngineTabs`: `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` |
 
@@ -114,8 +114,12 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `PLATFORM_LIQMAP_COINS` (30) | Coins in each 15-minute liquidation snapshot. |
    | `PLATFORM_CRAWL_WEIGHT_PER_MIN` (800) | Hyperliquid weight budget for the crawler. |
    | `PLATFORM_CRAWL_MAX_AGE_MIN` (30) | Max age of a poll for addresses with open positions. |
-   | `PLATFORM_RETENTION_DAYS` (14) | Pruning window for snapshot and history tables. The ledger is never pruned. |
+   | `PLATFORM_RETENTION_DAYS` (14) | Pruning window for liquidation snapshots and position history. The ledger is never pruned. |
+   | `PLATFORM_SCAN_RETENTION_DAYS` (30) | Pruning window for `scan_snapshots`, the only stored intraday OI (read by the `snapshots` setup replay). Never shorter than `PLATFORM_RETENTION_DAYS`. At the always-on cadence that is one row per coin every 5 minutes, about 288 × coins rows a day. |
+   | `PLATFORM_REPLAY_TOP` (20) | Coins in the setup replay (`/api/research/setups/replay`, `bun run signals:replay`), most liquid first: candles (about 230 Hyperliquid weight per coin, kept under 600 of the guard's 1000 per minute) and snapshots (at most 14 days of `scan_snapshots`). The replay runs on the always-on server or the CLI only: on Vercel the route answers `unavailable`. `source=snapshots` needs a signed-in reader. |
    | `PLATFORM_OUTCOME_HORIZONS` (`1h,4h,24h,72h`) | Outcome horizons. |
+   | `HL_API_URL` (`https://api.hyperliquid.xyz`) | Hyperliquid API base, server side: `/info` serves prices, funding, candles and live OI. Point it at a proxy, a node or the testnet API. `HL_WS_URL` overrides the websocket (default: the same base, `wss`, `/ws`). The browser keeps the public endpoint. |
+   | `OKX_API_URL` (`https://www.okx.com`) | OKX API base. OKX serves one thing: daily open-interest history (`okx:oi`), which Hyperliquid does not publish. Everything else stays on Hyperliquid. |
    | `PLATFORM_EDGE_MIN_N` (30) | Resolved outcomes needed before edge leaves `unvalidated`. |
    | `PLATFORM_READY_TTL_MIN` (60) | Minutes before an undecided `ready` opportunity expires. |
    | `PLATFORM_RESEARCH_SCORE` (4) | Score at which a new opportunity moves to `investigating` and runs the research stage, when the research budget allows. |
@@ -300,8 +304,11 @@ specialist, 3 proposals, 3 alerts, 240 s.
 
 **Watching.** `tick()` (`watch.ts`) settles paper stops, checks the day-loss
 limit, and evaluates triggers: 1h/4h moves, funding extremes, 4h OI surges,
-positions near their stop or without one, breadth shocks. Each alerts once
-per 3h; a trigger (or the scheduled review, `DESK_REVIEW_HOURS`) wakes the
+positions near their stop or without one, breadth shocks. The coins it watches
+are held positions plus the WATCH-page watchlist (`intel_watchlist`), re-read
+every tick; `DESK_WATCHLIST` applies only while that list is empty. A coin new
+to the list is recorded on its first tick and evaluated from the next. Each
+alerts once per 3h; a trigger (or the scheduled review, `DESK_REVIEW_HOURS`) wakes the
 team for a cycle, capped by `DESK_MAX_CYCLES_PER_DAY` and
 `DESK_CYCLE_COOLDOWN_MIN`. It runs from `collect.yml`'s `desk` job every 15
 minutes (set the repo variable `DESK_ENABLED=true`), or every minute from
@@ -367,12 +374,12 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 
 `/terminal` shows what changed since your last look, measured
 against your positions and watchlist: a ranked diff, the alerts and catalysts
-that touch those assets, and a short brief. `/` is the Cockpit (phase 8) and
+that touch those assets, and a short brief. `/feed` is the Cockpit (phase 8), `/` the Research board, and
 there is no Overview (`/overview` redirects to `/markets`). Design: `docs/design/terminal.md`. Spec: docs/SPEC.md
 § Intel. Code: `src/server/intel/*`, `src/server/routes/intel/*`,
 `src/ui/pages/terminal/*`.
 
-**Routes.** These share one sub-tab strip (`TerminalTabs`) with the Cockpit at `/`:
+**Routes.** These share one sub-tab strip (`TerminalTabs`) with the Cockpit at `/feed`:
 
 | route | what it does |
 |---|---|
@@ -390,8 +397,9 @@ Telegram deep links to `/terminal?review=1` open the Terminal and log a review; 
 rows live in `intel_positions` and are edited from the Terminal. `hl` is the
 account at `DESK_WATCH_ADDRESS`, read-only. `desk` is the Desk's paper or
 testnet book. A source that fails is listed in `sources` with its error and
-contributes nothing; the page still loads. The watchlist is `intel_watchlist`,
-falling back to `DESK_WATCHLIST` when it is empty.
+contributes nothing; the page still loads. The watchlist is `intel_watchlist`
+(edited on the WATCH page), falling back to `DESK_WATCHLIST` when it is empty.
+It is the one monitoring list: the brief and the desk watch tick both read it.
 
 **Snapshot store.** `intel_snapshots` holds one row per asset per tick: price,
 24 h volume, funding, open interest, premium, basis, and book depth and spread.
@@ -652,8 +660,13 @@ kept), in a JSON file locally, or in memory.
 **Lab data.** `/api/cron/lab-collect` runs the Lab collector
 (`src/server/lab/collect.ts`) which stores the daily history of every `cm`
 (per `LAB_ASSETS`, default `BTC,ETH`), `fng`, `llama`, `bc` and `deribit`
-metric in `observations` as `lab.<provider>.<key>[.<asset>]` (e.g.
-`lab.cm.CapMVRVCur.btc`, `lab.bc.hash_rate`). The collect workflow calls it
+metric, and OKX open interest (`okx:oi`) for the definition scan's coins (the
+Lab's top-20 universe plus the watchlist), in `observations` as
+`lab.<provider>.<key>[.<asset>]` (e.g. `lab.cm.CapMVRVCur.btc`,
+`lab.bc.hash_rate`, `lab.okx.oi.hype`). The first `okx:oi` run backfills
+about 11 requests a coin from Feb 2024 at 450 ms each, so the first one or two
+runs end `partial` and resume; after that one request a coin, made as soon as
+the stored series lacks yesterday. The collect workflow calls it
 in its own job every 15 minutes (a no-op for fresh series) and Vercel Cron
 daily at 06:30 UTC as a fallback. A run has a 200 s budget: no series starts
 after it and every upstream request is cut to end by it; a paged history it
@@ -723,6 +736,16 @@ bun run lab lab_list_metrics --provider cm --asset BTC
 bun run lab lab_search --asset BTC --metrics '["cm:CapMVRVCur","ht:funding","fng:value"]' --horizon-days 14
 bun run lab lab_market_pulse --pretty
 ```
+
+**Signal definitions** (docs/RESEARCH.md "Signals v2"): `bun run signals:scan` runs the
+definition scan once (Postgres with `DATABASE_URL`, else live Hyperliquid and OKX; the
+first live scan takes minutes) and prints each drop and hit; `bun run signals:study
+[id…]` runs each definition's event study over the default universe and prints the
+verdict table (each study is a Lab trial). With a database the board's scan reads stored
+candles, funding and the collected `okx:oi`, so it runs inline on Vercel; without one, on
+Vercel the board's definition source is `unavailable` (no background scan is started there).
+`bun run signals:replay [--top N] [--source candles|snapshots]` replays the intraday setups
+once; the HTTP replay runs only on the always-on server.
 
 **REST**: `GET /api/lab/tools` lists definitions; `POST /api/lab/tools/<name>`
 takes the arguments as JSON and answers `{ ok: true, result }` or

@@ -29,6 +29,26 @@ export const dbPlatformContext = (store: PlatformStore): PlatformContext => ({
   scanIntervalSec: 3600,
 });
 
+/** P0.15: a mid older than this blocks approval. */
+export const MAX_MID_AGE_SEC = 30;
+
+/**
+ * The freshness gate of an approval (SPEC P0.15), as one pure function: the reason approval is blocked, or null.
+ * The approve route answers 409 stale_feed with this string, and the detail payload exposes it as
+ * `approveBlockedReason` / `canApprove`, so the button and the route cannot disagree.
+ */
+export function approveBlock(q: { coin: string; midAgeSec: number | null; lastScanAt: Date | null; now: number; scanIntervalSec: number }): string | null {
+  if (q.midAgeSec == null) return `no live mid for ${q.coin}`;
+  if (q.midAgeSec > MAX_MID_AGE_SEC) return `${q.coin} mid is ${Math.round(q.midAgeSec)} s old (limit ${MAX_MID_AGE_SEC} s)`;
+  if (!q.lastScanAt || q.now - q.lastScanAt.getTime() > 2 * q.scanIntervalSec * 1000) return "the last scan is older than twice the scan interval";
+  return null;
+}
+
+/** approveBlock read from a context now. */
+export async function approveBlockOf(ctx: PlatformContext, coin: string, now: number): Promise<string | null> {
+  return approveBlock({ coin, midAgeSec: ctx.midAge(coin, now), lastScanAt: await ctx.lastScanAt(), now, scanIntervalSec: ctx.scanIntervalSec });
+}
+
 let ctx: PlatformContext | null = null;
 export const setPlatformContext = (c: PlatformContext | null) => { ctx = c; };
 export const getPlatformContext = () => ctx;

@@ -7,7 +7,7 @@ import type { PromptDef, ToolDef, ToolInputSchema } from "../mcp/types.js";
 import { SECTORS, SectorSchema } from "../../shared/platform.js";
 import { createLabService, parseInput, type LabService } from "./service.js";
 import { MIN_DEFLATED_SHARPE, MIN_STABILITY, MIN_WALK_FORWARD_SHARPE } from "./engine/verdict.js";
-import { ASSET_PATTERN, DaySchema, RULE_EXTRAS_JSON, RuleSchema, SearchConfigSchema, TRANSFORMS, VERDICT_LEVELS } from "./types.js";
+import { ASSET_PATTERN, DaySchema, MAX_CONDITIONS, RULE_EXTRAS_JSON, RuleSchema, SearchConfigSchema, TRANSFORMS, VERDICT_LEVELS } from "./types.js";
 
 export type { PromptDef, ToolContext, ToolDef, ToolSource } from "../mcp/types.js";
 export { ToolInputError } from "../mcp/types.js";
@@ -106,7 +106,7 @@ const ruleSchema = {
     conditions: {
       type: "array",
       minItems: 1,
-      maxItems: 2,
+      maxItems: MAX_CONDITIONS,
       items: {
         type: "object",
         properties: {
@@ -142,7 +142,7 @@ const searchSchema = obj(
       type: "array",
       items: { type: "string", enum: [...TRANSFORMS] },
       minItems: 1,
-      description: "Feature transforms. Default all: raw, z (rolling z-score), rsi, ma_ratio (value/SMA − 1), roc (rate of change), vol (rolling stdev of log changes), pctile (rolling percentile 0–1).",
+      description: "Feature transforms. Default all but vchg: raw, z (rolling z-score), rsi, ma_ratio (value/SMA − 1), roc (rate of change), vol (rolling stdev of log changes), pctile (rolling percentile 0–1). vchg (the window's log change over the 30-day daily log-change stdev × √window: the move in units of the coin's own volatility) only when listed.",
     },
     windows: windowsSchema("Rolling windows in days for every transform except raw. Default [7, 30, 90]."),
     horizonDays: { type: "integer", minimum: 1, maximum: 180, description: "Forward-return horizon that defines a good day. Default 14." },
@@ -347,7 +347,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_event_study",
       title: "Event-study screen",
       description:
-        "Reject-only screen of a rule as discrete trades across coins (default: the 20 listed HL perps with the most day volume; without a database at most 20 coins; coins need ≥ 365 daily bars with funding, else status insufficient). Per coin, an event is a day the rule is in zone at the close (the same predicate as lab_market_pulse), at least horizonDays after the previous event (no overlapping holds). Entry at the signal close; stop/target = stopAtr/targetAtr × ATR(14), unless the rule has its own stop/target levels; with the rule's invalidation, exit at the next open after it holds at a close; stop fills at the worse of stop and open and wins a bar that hits both; else exit at the horizon close. R per event is net of a 0.09% round-trip fee, slippageBps per side and the funding paid over the hold. Events cluster by ISO week; verdict over weekly means: insufficient (< 30 weeks), rejected (one-sided 95% upper bound < 0: clearly lost), else clear (not shown to lose; never proof of an edge). Returns { screen, verdict, train, holdout (last 30% by time, facts only), period, coins, eventList (most recent 200), eventListTotal, survivorship, warnings, idea: { n, of } }; recorded as the next trial. Runs alongside the save-bar verdict, which it does not change. Fetches daily candles and funding per coin: seconds to tens of seconds. " +
+        "Reject-only screen of a rule as discrete trades across coins (default: the 20 listed HL perps with the most day volume; without a database at most 20 coins; coins need ≥ 365 daily bars with funding, else status insufficient). Per coin, an event is a day the rule is in zone at the close (the same predicate as lab_market_pulse), at least horizonDays after the previous event (no overlapping holds). Entry at the signal close; stop/target = stopAtr/targetAtr × ATR(14), unless the rule has its own stop/target levels; with the rule's invalidation, exit at the next open after it holds at a close; stop fills at the worse of stop and open and wins a bar that hits both; else exit at the horizon close. R per event is net of a 0.09% round-trip fee, slippageBps per side and the funding paid over the hold. Events cluster by ISO week; verdict over weekly means: insufficient (< 30 weeks), rejected (one-sided 95% upper bound < 0: clearly lost), else clear (not shown to lose; never proof of an edge). Returns { screen, verdict, train, holdout (last 30% by time, facts only), period, coins, eventList (most recent 200), eventListTotal, survivorship, warnings, idea: { n, of }, catalogueId (the rule's lab_catalogue_list id if saved, else null) }; recorded as the next trial. Runs alongside the save-bar verdict, which it does not change. Fetches daily candles and funding per coin: seconds to tens of seconds. " +
         HONESTY,
       inputSchema: obj(
         {

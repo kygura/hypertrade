@@ -19,6 +19,7 @@ const detail = (over: Partial<OpportunityDetail["ticket"]> = {}): OpportunityDet
   },
   signals: [], bearCase: null, stats: null, evidence: "ledger 24h: n 0 · 0 clusters · edge unvalidated", risk: null,
   ticket: { side: "long", entryPx: 42.18, stopPx: 39.9, targetPx: 45, sizeUsd: 1500, sizeSource: "governor", ...over },
+  canApprove: true, approveBlockedReason: null,
 });
 const noop = () => {};
 const confirmBtn = (html: string) => (html.match(/<button[^>]*>(?:(?!<\/button>).)*CONFIRM(?:(?!<\/button>).)*<\/button>/g) ?? []).at(-1) ?? "";
@@ -56,6 +57,14 @@ test("ActionBar: approve disabled outside READY and when the governor blocks", (
   expect(approveBtn(renderToStaticMarkup(<ActionBar {...props} status="ready" blockedReason={null} />))).not.toContain('disabled=""');
   expect(approveBtn(renderToStaticMarkup(<ActionBar {...props} status="calculated" blockedReason={null} />))).toContain("approve needs READY — status is CALC");
   expect(approveBtn(renderToStaticMarkup(<ActionBar {...props} status="ready" blockedReason="gross leverage above 3x" />))).toContain('title="gross leverage above 3x"');
+});
+
+test("ActionBar: a blocked approve shows its reason as text before any dialog (B3)", () => {
+  const props = { venue: "paper" as const, busy: false, error: null, hint: null, snoozeOpen: false, onApprove: noop, onReject: noop, onSnoozeMenu: noop, onSnooze: noop, onCloseSnooze: noop, onResearch: noop };
+  const html = renderToStaticMarkup(<ActionBar {...props} status="ready" blockedReason="no live mid for HYPE" />);
+  expect(html.match(/<button[^>]*>APPROVE/)![0]).toContain('disabled=""');
+  expect(html).toContain("approve blocked: no live mid for HYPE");
+  expect(renderToStaticMarkup(<ActionBar {...props} status="calculated" blockedReason="no live mid for HYPE" />)).not.toContain("approve blocked");
 });
 
 test("CoverageLine: partial map below 25%", () => {

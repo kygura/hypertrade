@@ -1,4 +1,5 @@
 import { RADAR_STATE_DAYS, type RadarDay, type RadarState } from "../../shared/radar.js";
+import { fundingAprPct, median } from "../../shared/signalMath.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
 
 // The radar scan (ROUTINE.md §1): every live perp on every Hyperliquid dex (main plus HIP-3), diffed against the
@@ -81,7 +82,7 @@ export function toMarkets(books: DexBook[], atCap: ReadonlySet<string>): RadarMa
         chg24hPct: c.prevDayPx > 0 ? (c.markPx / c.prevDayPx - 1) * 100 : null,
         vol24h: finiteOr0(c.dayNtlVlm),
         oiUsd: finiteOr0(c.openInterest * c.markPx),
-        fundingApr: finiteOr0(c.funding) * 24 * 365 * 100,
+        fundingApr: fundingAprPct(finiteOr0(c.funding)),
         premiumBps: finiteOr0(c.premium) * 10_000,
         atCap: atCap.has(c.name),
       });
@@ -91,11 +92,6 @@ export function toMarkets(books: DexBook[], atCap: ReadonlySet<string>): RadarMa
 
 const DAY_MS = 86_400_000;
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY_MS);
-const median = (xs: number[]) => {
-  const s = [...xs].sort((a, b) => a - b);
-  const m = Math.floor(s.length / 2);
-  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
-};
 const topVolKeys = (entries: [string, number][], n: number) => new Set([...entries].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, n).map((e) => e[0]));
 
 /** Days strictly before `today`, oldest first. A same-day snapshot from an earlier run is not history. */

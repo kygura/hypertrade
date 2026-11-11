@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Rule } from "../types.js";
+import { MAX_CONDITIONS, RuleSchema, type Rule } from "../types.js";
 import { mulberry32 } from "./rng.js";
 import { canonicalConditions, extractRules, fmtNum, ruleId, ruleText } from "./rules.js";
 import { binFeatures, growForest } from "./tree.js";
@@ -73,6 +73,27 @@ describe("rules", () => {
     expect(ruleId({ ...rule, asset: "btc", conditions: [...rule.conditions].reverse() })).toBe(id);
     expect(ruleId({ ...rule, direction: "short" })).not.toBe(id);
     expect(ruleId({ ...rule, price: "cm:PriceUSD" })).not.toBe(id);
+  });
+
+  test("ids of one- and two-condition rules are unchanged by the four-condition limit (pinned)", () => {
+    expect(ruleId({ asset: "BTC", direction: "long", horizonDays: 7, conditions: [{ feature: "ht:funding|z|90", op: "<", threshold: -1.5 }, { feature: "ht:price|roc|7", op: ">=", threshold: 0 }] })).toBe("3aeec2b61626e360");
+    expect(ruleId({ asset: "BTC", direction: "short", horizonDays: 14, conditions: [{ feature: "cm:CapMVRVCur|z|90", op: ">=", threshold: 2 }] })).toBe("d16a0ca517d45473");
+  });
+
+  test("an authored rule holds up to MAX_CONDITIONS (4) conditions; its id and text cover all of them", () => {
+    const c = (feature: string, op: "<" | ">=", threshold: number) => ({ feature, op, threshold });
+    const four: Rule = {
+      asset: "ETH",
+      direction: "short",
+      horizonDays: 7,
+      conditions: [c("ht:funding|z|90", ">=", 2), c("okx:oi|pctile|30", ">=", 0.95), c("ht:price|vchg|3", ">=", -1), c("ht:price|vchg|3", "<", 1)],
+    };
+    expect(MAX_CONDITIONS).toBe(4);
+    expect(RuleSchema.safeParse(four).success).toBe(true);
+    expect(RuleSchema.safeParse({ ...four, conditions: [...four.conditions, c("ht:volume|z|30", ">=", 0)] }).success).toBe(false);
+    expect(ruleId({ ...four, conditions: [...four.conditions].reverse() })).toBe(ruleId(four));
+    expect(ruleId({ ...four, conditions: four.conditions.slice(0, 3) })).not.toBe(ruleId(four));
+    expect(ruleText(four)).toBe("ht:funding z(90) ≥ 2 AND okx:oi pctile(30) ≥ 0.95 AND ht:price vchg(3) ≥ -1 AND ht:price vchg(3) < 1");
   });
 
   test("text", () => {

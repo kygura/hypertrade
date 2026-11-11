@@ -91,9 +91,12 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
     await service.alert("critical", "Daily loss limit hit", `Day PnL $${account.dayPnlUsd.toFixed(2)} (${dayLossPct.toFixed(2)}%). New entries are blocked until 00:00 UTC.`);
   }
 
-  // Mark history for move triggers.
-  const coins = [...new Set([...service.config.watchlist, ...account.positions.map((p) => p.coin)])].filter((c) => marks.has(c));
+  // Mark history for move triggers. The watchlist is resolved every tick, so UI edits apply without a restart.
+  const coins = [...new Set([...(await service.watchlist()), ...account.positions.map((p) => p.coin)])].filter((c) => marks.has(c));
   const hist = state.marks ?? {};
+  // A coin with no stored marks (newly watched or held, or the first tick ever) has no baseline yet: it is
+  // recorded this tick and only evaluated from the next, so adding coins never fires funding/OI levels at once.
+  const seen = coins.filter((c) => hist[c]?.length);
   for (const c of coins) {
     const h = (hist[c] ?? []).filter(([ts]) => ts >= t - MARK_HISTORY_MS);
     h.push([t, marks.get(c)!]);
@@ -104,7 +107,7 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
 
   const oiChange4h: Record<string, number | null> = {};
   await Promise.all(
-    coins.map(async (c) => {
+    seen.map(async (c) => {
       const pts = await service.data.series(`hl.oi.${c}`, new Date(t - 5 * HOUR)).catch(() => []);
       const first = pts.find((p) => p.t >= t - 4.5 * HOUR);
       const last = pts[pts.length - 1];
@@ -112,7 +115,7 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
     }),
   );
 
-  const all = evaluateTriggers({ now: t, coins, ctxs, marks: hist, oiChange4h, account });
+  const all = evaluateTriggers({ now: t, coins: seen, ctxs, marks: hist, oiChange4h, account });
   const cooldowns = (await service.store.getState<Record<string, string>>(COOLDOWN_KEY)) ?? {};
   for (const tr of all) {
     const last = cooldowns[tr.key];

@@ -9,6 +9,7 @@ import { WindowStatsTable } from '../components/lab/WindowStatsTable'
 import { SensitivityGrid } from '../components/lab/SensitivityGrid'
 import { LatestValuesRow } from '../components/lab/LatestValuesRow'
 import { SaveToCatalogueForm } from '../components/lab/SaveToCatalogueForm'
+import { InCatalogueLink } from '../components/lab/InCatalogueLink'
 import { RemoveRuleDialog } from '../components/lab/RemoveRuleDialog'
 import { DataTo, LabFooter, StabValue } from '../components/lab/common'
 import {
@@ -28,11 +29,14 @@ import {
   type LabState,
 } from '../lib/lab'
 import type { AtSearch } from '../components/lab/WindowStatsTable'
+import { catalogueIdIn, parseExitParams, parseRuleParam, studyHref } from '../lib/study'
 
 // /lab/rules/:id — rule drill (docs/design/README.md §10.9). Full-view route like the
 // markets drill: linkable from MCP/CLI output, back-button friendly.
 // Resolution: ?run=<runId> → lab_get_run and that run's rule with this id;
-// else the catalogue entry with this id; else `rule not found`. Then one
+// else the catalogue entry with this id; else an ad-hoc `?rule=` (OPEN RULE
+// from /lab/study: no search-time numbers, only the fresh evaluation); else
+// `rule not found`. Then one
 // lab_evaluate_rule (equity + sensitivity, `trials` = the search's N) gives
 // today's numbers and the server's fresh verdict and DSR; the search-time
 // (save-time) walk-forward, DSR and verdict stay beside them, labelled
@@ -54,7 +58,10 @@ export function LabRule() {
   const { id = '' } = useParams<{ id: string }>()
   const [params] = useSearchParams()
   const runId = params.get('run')
-  const back = BACK[params.get('from') ?? ''] ?? BACK.results!
+  const ruleParam = params.get('rule')
+  const adhoc = useMemo(() => parseRuleParam(ruleParam).rule, [ruleParam])
+  const from = params.get('from') ?? ''
+  const back = from === 'study' && adhoc ? { label: '← STUDY', to: studyHref(adhoc, params.get('coin'), parseExitParams(params.get('stop'), params.get('target'))) } : (BACK[from] ?? BACK.results!)
   const navigate = useNavigate()
   const location = useLocation()
   const focusSave = (location.state as { focusSave?: boolean } | null)?.focusSave === true
@@ -71,7 +78,7 @@ export function LabRule() {
   const entry: Pick<CatalogueEntry, 'id' | 'name' | 'savedAt' | 'runId'> | null = savedEntry ?? listed
   const runRule = run.data?.result?.rules.find((r) => r.id === id) ?? null
   const base = runRule ?? listed?.saved ?? null
-  const rule = base?.rule ?? null
+  const rule = base?.rule ?? adhoc
   const ruleKey = rule ? JSON.stringify(rule) : null
   const slippageBps = run.data?.config.slippageBps
   const windows = run.data?.config.windows
@@ -79,7 +86,6 @@ export function LabRule() {
   const settled = (s: Pick<LabState<unknown>, 'data' | 'error' | 'offline'>) => s.data != null || s.error != null || s.offline
   const runSettled = !runId || settled(run)
   const catSettled = settled(catalogue)
-  const resolving = !base && (!runSettled || !catSettled)
 
   // N of the search behind `base`: the ?run's, else the catalogue entry's run
   // (fetched for its effective trials; 1 when saved without a run, unknown
@@ -99,12 +105,16 @@ export function LabRule() {
 
   const fresh = evaluation.data
   const evaluating = evaluation.loading || (rule != null && trialsN === undefined)
+  // An ad-hoc rule has nothing to show until its evaluation lands.
+  const resolving = !base && (!runSettled || !catSettled || (adhoc != null && !fresh && evaluating))
   const current = fresh != null
   const ev = fresh ?? base
   const baseDsrN: DsrN = { n: trialsN ?? null }
   const dsrN: DsrN = current ? freshDsrN(trialsN ?? null) : baseDsrN
   const atSearch: AtSearch | null = base ? { label: runRule ? 'AT SEARCH' : 'AT SAVE', ev: base, dsrN: baseDsrN } : null
   const metricDefs = metrics.data ?? []
+  // An ad-hoc rule (/lab/rules/study?rule=…) that is already saved: link to its entry instead of offering SAVE again.
+  const adhocCatalogueId = !base && adhoc && !savedEntry ? catalogueIdIn(fresh?.id, catalogue.data) : null
   const defaultName = useMemo(() => (rule ? defaultRuleName(rule, metricDefs) : ''), [ruleKey, metrics.data]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Arriving from a card's SAVE: the save form is pre-focused.
@@ -115,9 +125,16 @@ export function LabRule() {
   }, [focusSave, ruleKey, entry == null]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const backButton = (
-    <Button tier="ghost" onClick={() => navigate(back.to)} className="self-start">
-      {back.label}
-    </Button>
+    <div className="flex flex-wrap gap-2">
+      <Button tier="ghost" onClick={() => navigate(back.to)}>
+        {back.label}
+      </Button>
+      {rule && (
+        <Button tier="ghost" onClick={() => navigate(studyHref(rule))} title="event study: the rule as discrete trades across coins">
+          STUDY
+        </Button>
+      )}
+    </div>
   )
   const wrap = (children: ReactNode) => <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)] flex flex-col gap-3">{children}</div>
 
@@ -143,7 +160,7 @@ export function LabRule() {
     )
   }
   if (!ev || !rule) {
-    const err = (runId ? failed(run) : null) ?? (catalogue.error || catalogue.offline ? failed(catalogue) : null)
+    const err = (runId ? failed(run) : null) ?? (catalogue.error || catalogue.offline ? failed(catalogue) : null) ?? (adhoc ? failed(evaluation) : null)
     return wrap(
       <>
         {backButton}
@@ -241,6 +258,10 @@ export function LabRule() {
               <PanelHeader title="SAVE TO CATALOGUE" />
               {catalogue.loading && !catalogue.data ? (
                 <SkeletonRows rows={2} />
+              ) : adhocCatalogueId ? (
+                <div className="p-3">
+                  <InCatalogueLink id={adhocCatalogueId} />
+                </div>
               ) : (
                 <SaveToCatalogueForm
                   ref={nameRef}

@@ -110,9 +110,9 @@ export class MemoryPlatformStore implements PlatformStore {
     return rows.length;
   }
 
-  async scanSnapshotsSince(since: string) {
+  async scanSnapshotsSince(since: string, coins?: readonly string[]) {
     const lo = iso(since);
-    return [...this.scans.values()].filter((r) => r.ts >= lo).sort((a, b) => byTs(a, b) || a.coin.localeCompare(b.coin)).map(clone);
+    return [...this.scans.values()].filter((r) => r.ts >= lo && (!coins || coins.includes(r.coin))).sort((a, b) => byTs(a, b) || a.coin.localeCompare(b.coin)).map(clone);
   }
 
   async saveNovelty(entries: NoveltyEntry[]) {
@@ -145,10 +145,15 @@ export class MemoryPlatformStore implements PlatformStore {
     return [...this.sectors.values()].sort((a, b) => a.coin.localeCompare(b.coin)).map(clone);
   }
 
-  async pruneHistory(before: string) {
+  async scanTickCount(since: string) {
+    const lo = iso(since);
+    return new Set([...this.scans.values()].filter((r) => r.ts >= lo).map((r) => r.ts)).size;
+  }
+
+  async pruneHistory(before: string, scansBefore = before) {
     const hi = iso(before);
     let n = 0;
-    for (const m of [this.liqmaps, this.scans]) for (const [k, r] of m) if (r.ts < hi) (m.delete(k), n++);
+    for (const [m, cut] of [[this.liqmaps, hi], [this.scans, iso(scansBefore)]] as const) for (const [k, r] of m) if (r.ts < cut) (m.delete(k), n++);
     const kept = this.changes.filter((c) => c.ts >= hi);
     n += this.changes.length - kept.length;
     this.changes = kept;
@@ -245,7 +250,7 @@ export class MemoryPlatformStore implements PlatformStore {
       const o = this.opportunities.get(e.opportunityId)!;
       if ((setupKind && o.setupKind !== setupKind) || (regime && o.regime !== regime) || (tier !== undefined && o.liquidityTier !== tier)) continue;
       out.push({
-        opportunityId: o.id, setupKind: o.setupKind, regime: o.regime, liquidityTier: o.liquidityTier,
+        opportunityId: o.id, setupKind: o.setupKind, regime: o.regime, scoreVersion: o.scoreVersion, liquidityTier: o.liquidityTier,
         horizon: e.payload.horizon, createdAtMs: Date.parse(o.createdAt), grossReturn: e.payload.grossReturn, netReturn: e.payload.netReturn, hasCosts: o.costs != null,
       });
     }

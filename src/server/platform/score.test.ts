@@ -5,7 +5,7 @@ import { SCORE_VERSION, scoreOpportunity } from "./score.js";
 const fv = (features: Record<string, number | null>, regime: string | null = "range"): FeatureVector => ({ features, inputs: { regime } });
 
 describe("scoreOpportunity", () => {
-  test("version is pinned", () => expect(SCORE_VERSION).toBe("score-v1"));
+  test("version is pinned", () => expect(SCORE_VERSION).toBe("score-v2"));
 
   test("deterministic: twice, and after a JSON round trip of the inputs", () => {
     const f = fv({ ret15mZ: 2.37, priceAccelZ: -1.1, oiChg1hZ: 1.9, fundingZ24h: 2.2, volRatio1hZ: null }, "crowded_long_build");

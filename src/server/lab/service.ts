@@ -28,6 +28,7 @@ import { defaultStore, type LabStore, type RunSummary, type StoredRun } from "./
 import {
   RuleSchema,
   SearchConfigSchema,
+  NOT_LOADED_BY_DEADLINE,
   type CatalogueEntry,
   type CatalogueHealth,
   type Direction,
@@ -49,7 +50,11 @@ import { mapLimit, msg } from "./util.js";
 // orchestration layer over the providers (data), the engine (all math) and
 // the store (persistence). Transports call it through tools.ts.
 
-export type LoadDatasetFn = (cfg: LoadConfig) => Promise<{ dataset: LabDataset; warnings: string[] }>;
+/**
+ * `lastRaw` (registry loadDataset): metric id → last day with a raw, not forward-filled, value; `noData`: metrics that
+ * fetched but hold nothing in range. Both optional for fakes.
+ */
+export type LoadDatasetFn = (cfg: LoadConfig) => Promise<{ dataset: LabDataset; warnings: string[]; lastRaw?: Record<string, string>; noData?: string[] }>;
 
 export interface LabServiceDeps {
   store: LabStore;
@@ -73,7 +78,7 @@ const DECAY_MIN_LIVE_DAYS = 30;
 const DECAY_HOLDOUT_SHARE = 0.25;
 const OVERLAP_JACCARD = 0.6;
 /** lab_event_study: default coins (top by day volume) and the cap without a DB; eventList keeps the most recent this many. */
-const STUDY_MAX_COINS = 20;
+export const STUDY_MAX_COINS = 20;
 const EVENT_LIST_MAX = 200;
 /** Kept back from a search deadline for the work after the last trial (refit, ranking, persisting). */
 export const SEARCH_FINISH_MS = 5_000;
@@ -474,7 +479,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     },
 
     /** Reject-only event-study screen of a rule across coins (docs/FEATURES.md § 2), recorded as a trial; informational, gates nothing. */
-    async eventStudy(input: EventStudyInput, ctx?: CallBudget): Promise<EventStudyResult & { eventListTotal: number; warnings: string[]; idea: IdeaNumber }> {
+    async eventStudy(input: EventStudyInput, ctx?: CallBudget): Promise<EventStudyResult & { eventListTotal: number; warnings: string[]; idea: IdeaNumber; catalogueId: string | null }> {
       const rule = parseInput(RuleSchema, input.rule, "rule");
       if (rule.price && rule.price !== "ht:price") throw new ToolInputError("the event study trades ht:price: stops and targets need its candles' open/high/low", "rule.price");
       const metrics = [...new Set([...ruleMetrics(rule), ...STUDY_METRICS])];
@@ -499,7 +504,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       const unique = coins.filter((c, i) => coins!.findIndex((x) => x.toLowerCase() === c.toLowerCase()) === i);
       const warned = new Map<string, string[]>(); // warning → coins
       const failed: EventStudyResult["coins"] = [];
-      const LATE = "not loaded before the deadline";
+      const LATE = NOT_LOADED_BY_DEADLINE;
       const loaded = await mapLimit(unique, LOAD_CONCURRENCY, async (coin) => {
         const fail = (reason: string) => (failed.push({ coin, bars: 0, from: null, to: null, events: 0, status: "insufficient", reason }), null);
         const left = ctx?.deadlineMs == null ? Infinity : ctx.deadlineMs - SEARCH_FINISH_MS - (deps.now() - started);
@@ -507,8 +512,10 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
           const load = deps.loadDataset({ asset: coin, metrics, price: "ht:price", ...underDeadline(ctx) });
-          const late = new Promise<null>((r) => (timer = setTimeout(() => r(null), left)));
-          const r = await (Number.isFinite(left) ? Promise.race([load, late]) : load);
+          // No timer without a deadline: setTimeout(Infinity) is clamped to 1 ms and warns.
+          const r = await (Number.isFinite(left)
+            ? Promise.race([load, new Promise<null>((res) => (timer = setTimeout(() => res(null), left)))])
+            : load);
           if (!r) return fail(LATE);
           for (const w of r.warnings) warned.set(w, [...(warned.get(w) ?? []), coin]);
           return r.dataset;
@@ -529,7 +536,8 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       const eventListTotal = result.eventList.length;
       result.eventList = result.eventList.slice(-EVENT_LIST_MAX);
       const t = await deps.store.appendTrial({ ruleId: ruleId(rule), intent: "lab_event_study", verdict: result.verdict, rule });
-      return { ...result, eventListTotal, warnings, idea: { n: t.n, of: (await deps.store.listTrials()).length } };
+      const catalogueId = (await deps.store.getCatalogueEntry(t.ruleId))?.id ?? null; // the catalogue key is the rule hash, as on save
+      return { ...result, eventListTotal, warnings, idea: { n: t.n, of: (await deps.store.listTrials()).length }, catalogueId };
     },
 
     async catalogueSave(input: SaveInput, ctx?: CallBudget): Promise<CatalogueEntry> {

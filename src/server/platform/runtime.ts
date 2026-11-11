@@ -101,3 +101,11 @@ type HealthExtras = () => Promise<Partial<PlatformHealth>> | Partial<PlatformHea
 let healthExtras: HealthExtras | null = null;
 export const setHealthExtras = (fn: HealthExtras | null) => void (healthExtras = fn);
 export const getHealthExtras = () => healthExtras;
+
+/**
+ * A serverless runtime (Vercel sets VERCEL=1 in its functions): a function ends minutes before a long background job
+ * would, so such jobs (the setup replay, a definition scan fetched live) are not started there.
+ */
+export const isServerless = (env: Record<string, string | undefined> = process.env): boolean => Boolean(env.VERCEL);
+/** Why a background-only job answers `unavailable` on a serverless runtime; `cli` runs it from a terminal instead. */
+export const needsAlwaysOn = (cli: string) => `needs the always-on server; or run \`${cli}\``;

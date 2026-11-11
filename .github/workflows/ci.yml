@@ -19,6 +19,7 @@ jobs:
       - run: bun test ./src
       - run: bun run build
       - run: bun run check:api
+      - run: bun run check:type-scale
 
   tui:
     runs-on: ubuntu-latest

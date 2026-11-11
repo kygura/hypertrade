@@ -1,6 +1,6 @@
 import { fmtDur, fmtSigned } from '../../lib/format'
 import {
-  bucketBounds, PRE_DECISION_STATUSES, TERMINAL_STATUSES, type FeedRow, type LiqBucket, type LiqCell, type OpportunityStatus, type PlatformHealth,
+  bucketBounds, PRE_DECISION_STATUSES, TERMINAL_STATUSES, type FeedRow, type LiqBucket, type LiqCell, type OpportunityDetail, type OpportunityStatus, type PlatformHealth,
 } from '../../../shared/platform'
 
 // Cockpit pure helpers (DESIGN-terminal § Cockpit C9). No React, no DOM: the
@@ -32,6 +32,23 @@ export function filterFeed(rows: readonly FeedRow[], status: StatusFilter, tier:
     ;(r.snoozedUntil && Date.parse(r.snoozedUntil) > now ? snoozed : ranked).push(r)
   }
   return { ranked, snoozed }
+}
+
+/** Browser-side stale mark (the StaleStrip): the live price is older than this. */
+export const STALE_MID_SEC = 30
+
+/**
+ * Why APPROVE is disabled before any dialog opens, or null. Order: the server's freshness gate (the 409 it
+ * would answer, B3), the browser's own stale mark, then the governor; no governor preview or size blocks too.
+ */
+export function approveBlockedReason(d: Pick<OpportunityDetail, 'canApprove' | 'approveBlockedReason' | 'risk' | 'ticket'> | null, midAgeSec: number | null): string | null {
+  if (!d) return null
+  if (!d.canApprove) return d.approveBlockedReason ?? 'stale feed'
+  if (midAgeSec != null && midAgeSec > STALE_MID_SEC) return `live price ${Math.floor(midAgeSec)}s old`
+  if (!d.risk) return 'governor preview unavailable'
+  if (!d.risk.after.approved) return d.risk.after.reasons[0] ?? 'governor blocks'
+  if (d.ticket.sizeUsd == null) return 'size unavailable'
+  return null
 }
 
 /** j/k: next/previous id; a selection outside the list resumes from the top. */

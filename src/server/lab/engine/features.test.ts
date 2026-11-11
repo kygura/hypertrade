@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { TRANSFORMS } from "../types.js";
-import { buildFeatures, featureId, featureSpecs, parseFeatureId, transformSeries } from "./features.js";
+import { buildFeatures, featureId, featureLookback, featureSpecs, parseFeatureId, transformSeries, VCHG_VOL_WINDOW } from "./features.js";
 import { gauss, mulberry32 } from "./rng.js";
 
 function series(seed: number, n: number, nanEvery = 0): number[] {
@@ -74,6 +74,35 @@ describe("transforms", () => {
     expect(fs.ids[0]).toBe("a:x|raw|0");
     expect(fs.ids).toContain("b:y|pctile|30");
     expect(fs.columns.every((c) => c.length === n)).toBe(true);
+  });
+
+  test("vchg: the w-day log change over the trailing 30-day daily log-change sd × √w; NaN on warm-up", () => {
+    const x = series(9, 80);
+    const v = transformSeries(x, "vchg", 3);
+    const t = 60;
+    const d = Array.from({ length: VCHG_VOL_WINDOW }, (_, k) => Math.log(x[t - k]! / x[t - k - 1]!));
+    const m = d.reduce((a, b) => a + b, 0) / d.length;
+    const sd = Math.sqrt(d.reduce((a, b) => a + (b - m) ** 2, 0) / (d.length - 1));
+    expect(v[t]).toBeCloseTo(Math.log(x[t]! / x[t - 3]!) / (sd * Math.sqrt(3)), 12);
+    // Scale-free: the same path at 1/1000 of the price gives the same value.
+    expect(transformSeries(x.map((p) => p / 1000), "vchg", 3)[t]).toBeCloseTo(v[t]!, 9);
+    // Warm-up: 15 log changes (half the volatility window) are needed; before that NaN.
+    expect(transformSeries(x, "vchg", 3)[14]).toBeNaN();
+    expect(Number.isFinite(transformSeries(x, "vchg", 3)[15]!)).toBe(true);
+    // Non-positive values have no log change.
+    expect(transformSeries([1, 2, 0, 3, 4, 5], "vchg", 2)[4]).toBeNaN();
+  });
+
+  test("featureLookback: the last value of every transform reads only that many trailing days", () => {
+    const x = series(21, 200);
+    for (const tr of TRANSFORMS) {
+      for (const w of tr === "raw" ? [0] : [2, 7, 20, 30, 90]) {
+        const L = featureLookback({ transform: tr, window: w });
+        const full = transformSeries(x, tr, w).at(-1);
+        const masked = x.map((v, i) => (i < x.length - L ? NaN : v));
+        expect(Object.is(transformSeries(masked, tr, w).at(-1), full)).toBe(true);
+      }
+    }
   });
 
   test("non-stationary metrics (a random walk flagged false) get no raw feature", () => {

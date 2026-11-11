@@ -4,6 +4,8 @@ import { z } from "zod";
 // the tool registry and the UI (via the tool results). Keep wire shapes here.
 
 export const DAY_MS = 86_400_000;
+/** The reason a coin carries when a call's deadline passed before its data loaded (an event study, the definition scan). */
+export const NOT_LOADED_BY_DEADLINE = "not loaded before the deadline";
 
 /** UTC-daily series: t[i] is a UTC midnight in ms, ascending, unique; v[i] finite. */
 export interface DailySeries {
@@ -26,7 +28,11 @@ const AssetSchema = z.string().regex(ASSET_PATTERN, "expected a ticker of 1–20
 
 export type Direction = "long" | "short";
 export type Objective = "sharpe" | "return";
-export const TRANSFORMS = ["raw", "z", "rsi", "ma_ratio", "roc", "vol", "pctile"] as const;
+/**
+ * Feature transforms. `vchg` (volatility-scaled change) is for authored rules: the search's default list leaves it
+ * out (SearchConfigSchema.transforms), so searches without an explicit `transforms` list are unchanged.
+ */
+export const TRANSFORMS = ["raw", "z", "rsi", "ma_ratio", "roc", "vol", "pctile", "vchg"] as const;
 export type Transform = (typeof TRANSFORMS)[number];
 
 export type MetricCategory =
@@ -113,11 +119,14 @@ export const LevelSchema = z
   .refine((l) => (l.ref === "entry") === (l.n === undefined), { message: "n is required for low/high/ma and not allowed for entry" });
 export type Level = z.infer<typeof LevelSchema>;
 
+/** Conditions an authored rule may hold. The search's trees stay at depth 2, so searched rules hold at most 2. */
+export const MAX_CONDITIONS = 4;
+
 export const RuleSchema = z.object({
   asset: AssetSchema,
   direction: z.enum(["long", "short"]),
   horizonDays: z.number().int().min(1).max(180),
-  conditions: z.array(ConditionSchema).min(1).max(2),
+  conditions: z.array(ConditionSchema).min(1).max(MAX_CONDITIONS),
   /** Price metric the rule trades; defaults to `ht:price`. */
   price: z.string().optional(),
   // Optional exits and regime (PS-B4). Absent = the rule behaves exactly as before.

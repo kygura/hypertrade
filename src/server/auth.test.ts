@@ -19,7 +19,7 @@ testApp.all("/engine/status", (c) => c.json({ proxied: true }));
 for (const p of ["/lab", "/lab/tools", "/mcp", "/mcp/x", "/labx", "/mcpfoo", "/labx/tools"]) {
   testApp.all(p, (c) => c.json({ reached: p }));
 }
-for (const p of ["/metrics/summary", "/sectors", "/marketstate", "/metricsx", "/sectorsfoo", "/marketstatex", "/intel", "/intel/positions", "/intelx/positions"]) {
+for (const p of ["/metrics/summary", "/sectors", "/marketstate", "/metricsx", "/sectorsfoo", "/marketstatex", "/intel", "/intel/positions", "/intelx/positions", "/research/board", "/research/study", "/research/studyx", "/radar"]) {
   testApp.all(p, (c) => c.json({ reached: p }));
 }
 
@@ -265,6 +265,17 @@ describe("lab bearer (LAB_API_TOKEN)", () => {
       expect((await req("/metrics/summary", { cookie }, "POST")).status).toBe(200);
     }));
 
+  test("research: the bearer reads GET /research/* and /radar, and runs POST /research/study like a Lab tool", () =>
+    withTokens("tok-one", async () => {
+      for (const path of ["/research/board", "/radar"]) {
+        expect((await req(path, bearer("tok-one"))).status).toBe(200);
+        expect((await req(path, bearer("tok-one"), "POST")).status).toBe(401);
+      }
+      expect((await req("/research/study", bearer("tok-one"), "POST")).status).toBe(200);
+      expect((await req("/research/study", bearer("wrong"), "POST")).status).toBe(401);
+      expect((await req("/research/studyx", bearer("tok-one"), "POST")).status).toBe(401);
+    }));
+
   test("empty entries never match an empty or blank bearer", () =>
     withTokens(" , ,,", async () => {
       expect((await req("/lab/tools", { authorization: "Bearer " })).status).toBe(401);
@@ -326,6 +337,13 @@ describe("PUBLIC_MODE guest access", () => {
         expect((await req(path)).status).toBe(200);
       }
       expect((await req("/branches", "HEAD")).status).toBe(200);
+    }));
+
+  test("guests read the research board but not the radar (LLM-written theses)", () =>
+    withPublic("true", async () => {
+      expect((await req("/research/board")).status).toBe(200);
+      expect((await req("/radar")).status).toBe(401);
+      expect((await req("/research/study", "POST")).status).toBe(401);
     }));
 
   test("guests cannot write anywhere", () =>

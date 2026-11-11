@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { bucketBounds, bucketIndex, type FeedRow, type LiqBucket, type PlatformHealth } from "../../../shared/platform";
 import {
-  alphaStep, cellRow, cellSide, coverageTreatment, denseBuckets, edgeWord, filterFeed, fmtSigned, fmtSignedPct, healthItems, keyAction, p95, priceY, stepSelection, worstItem,
+  alphaStep, approveBlockedReason, cellRow, cellSide, coverageTreatment, denseBuckets, edgeWord, filterFeed, fmtSigned, fmtSignedPct, healthItems, keyAction, p95, priceY, stepSelection, worstItem,
 } from "./logic";
 
 const row = (over: Partial<FeedRow>): FeedRow => ({
@@ -156,5 +156,19 @@ describe("keyAction", () => {
     expect(k("3", { snoozeOpen: true })).toEqual({ type: "snooze", minutes: 240 });
     expect(k("Escape", { snoozeOpen: true })).toEqual({ type: "closeMenu" });
     expect(k("j", { snoozeOpen: true })).toBeNull();
+  });
+});
+
+describe("approveBlockedReason (B3)", () => {
+  const ok = { canApprove: true, approveBlockedReason: null, risk: { before: { approved: true, reasons: [], warnings: [] }, after: { approved: true, reasons: [], warnings: [] } }, ticket: { side: "long" as const, entryPx: 1, stopPx: 1, targetPx: null, sizeUsd: 100, sizeSource: "governor" as const } };
+  test("server gate first, then the browser's stale mid, then the governor", () => {
+    expect(approveBlockedReason(null, null)).toBeNull();
+    expect(approveBlockedReason(ok, 5)).toBeNull();
+    expect(approveBlockedReason({ ...ok, canApprove: false, approveBlockedReason: "no live mid for HYPE" }, 45)).toBe("no live mid for HYPE");
+    expect(approveBlockedReason(ok, 31.7)).toBe("live price 31s old");
+    expect(approveBlockedReason(ok, 30)).toBeNull();
+    expect(approveBlockedReason({ ...ok, risk: null }, null)).toBe("governor preview unavailable");
+    expect(approveBlockedReason({ ...ok, risk: { ...ok.risk, after: { approved: false, reasons: ["max positions"], warnings: [] } } }, null)).toBe("max positions");
+    expect(approveBlockedReason({ ...ok, ticket: { ...ok.ticket, sizeUsd: null } }, null)).toBe("size unavailable");
   });
 });

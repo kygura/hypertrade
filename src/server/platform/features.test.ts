@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { computeFeatures, liquidityTiers, type RingPoint } from "./features.js";
+import { classifyRegime } from "../desk/analytics.js";
+import { computeFeatures, FEATURE_MIN_TICKS_24H, liquidityTiers, type RingPoint } from "./features.js";
 import { DEFAULT_THRESHOLDS, setupsFor } from "./setups.js";
 
 const MIN = 60_000;
@@ -24,6 +25,17 @@ describe("computeFeatures", () => {
       noNaN(fv.features);
       for (const k of ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "fundingPctile24h", "volRatio1hZ", "rvExpansion"]) expect(fv.features[k]).toBeNull();
     }
+  });
+
+  test("FEATURE_MIN_TICKS_24H: a 15-min ring (96 a day) computes the price, volume and funding features; 6-hourly ticks compute no z feature", () => {
+    const every = (k: number) => ring(24 * 60).filter((_, i) => (24 * 60 - 1 - i) % k === 0);
+    const q = every(15);
+    expect(q.length).toBe(FEATURE_MIN_TICKS_24H);
+    const fv = computeFeatures(q, NOW);
+    for (const k of ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "fundingPctile24h", "volRatio1hZ", "rvExpansion"]) expect(fv.features[k]).not.toBeNull();
+    const sparse = computeFeatures(every(6 * 60), NOW);
+    // rvExpansion is gap-normalized, so one 6-hour return still gives a number; every setup also reads a z feature.
+    for (const k of ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "fundingPctile24h", "volRatio1hZ"]) expect(sparse.features[k]).toBeNull();
   });
 
   test("full day: z features exist and a quiet series reads near zero", () => {
@@ -83,6 +95,66 @@ describe("computeFeatures", () => {
   test("junk points (NaN, zero mark, future) are ignored", () => {
     const h = [...ring(24 * 60), { ts: NOW, mark: NaN, oiUsd: NaN, funding: NaN, dayNtlVlm: NaN }, { ts: NOW + MIN, mark: 1, oiUsd: 1, funding: 0, dayNtlVlm: 1 }];
     noNaN(computeFeatures(h, NOW).features);
+  });
+});
+
+describe("platform regime (1 h change, non-flat at 1 σ of the coin's own hourly vol)", () => {
+  const N = 24 * 60;
+  /** 24 h of 1-min points on a ±0.05 % zig-zag (sigma1h ≈ 0.77 %); `px` / `oi` multiply minute i (NOW at N − 1). */
+  const path = (px: (i: number) => number, oi: (i: number) => number): RingPoint[] =>
+    Array.from({ length: N }, (_, i) => ({ ts: NOW - (N - 1 - i) * MIN, mark: 100 * (i % 2 ? 0.9995 : 1.0005) * px(i), oiUsd: 1e8 * oi(i), funding: 1e-5, dayNtlVlm: 5e8 }));
+  const lastHour = (i: number) => Math.max(0, i - (N - 61)) / 60;
+  const prevHour = (i: number) => Math.min(1, Math.max(0, i - (N - 121)) / 60);
+  // `v1` is what the same 1 h inputs read on the desk's fixed 1.5 % / 3 % (score-v1).
+  test.each([
+    ["trending: +1.2 % with OI +1 % in the last hour", path((i) => 1 + 0.012 * lastHour(i), (i) => 1 + 0.01 * lastHour(i)), "new_longs", "range"],
+    ["flat: zig-zag only, flat OI", path(() => 1, () => 1), "range", "range"],
+    ["reversing: +3 % then −1.2 % with OI −1 % in the last hour", path((i) => (1 + 0.03 * prevHour(i)) * (1 - 0.012 * lastHour(i)), (i) => 1 - 0.01 * lastHour(i)), "long_liquidation", "range"],
+  ] as const)("%s", (_, h, regime, v1) => {
+    const fv = computeFeatures([...h], NOW);
+    expect(fv.inputs.regime).toBe(regime);
+    expect(classifyRegime(fv.inputs.ret1hPct as number, fv.inputs.oiChg1hPct as number, fv.features.fundingZ24h ?? null, fv.inputs.fundingApr as number)).toBe(v1);
+  });
+
+  test("no sigma (warm-up or a flat ring) reads range", () => {
+    const h = Array.from({ length: 120 }, (_, i) => ({ ts: NOW - (119 - i) * MIN, mark: 100 * (1 + 0.05 * Math.max(0, i - 59) / 60), oiUsd: 1e8, funding: 1e-5, dayNtlVlm: 5e8 }));
+    const fv = computeFeatures(h, NOW);
+    expect(fv.inputs.sigma1h).toBeNull();
+    expect(fv.inputs.regime).toBe("range");
+    const still = computeFeatures(path(() => 1, () => 1).map((p) => ({ ...p, mark: 100 })), NOW);
+    expect(still.inputs.regime).toBe("range");
+  });
+
+  test("base rate on a seeded random walk: ~1/3 of hours non-range now, ~0 under v1's fixed cuts", () => {
+    let seed = 42;
+    const u = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) + 0.5) / 2 ** 32;
+    const gauss = () => Math.sqrt(-2 * Math.log(u())) * Math.cos(2 * Math.PI * u());
+    const len = 4 * N;
+    let mark = 100, oi = 1e8;
+    const h: RingPoint[] = Array.from({ length: len }, (_, i) => {
+      mark *= Math.exp(0.0006 * gauss()); // ~0.46 % per hour
+      oi *= Math.exp(0.0003 * gauss());
+      return { ts: NOW - (len - 1 - i) * MIN, mark, oiUsd: oi, funding: 1e-5, dayNtlVlm: 5e8 };
+    });
+    let now = 0, v1 = 0, n = 0;
+    for (let t = NOW - 3 * N * MIN; t <= NOW; t += 60 * MIN) {
+      const fv = computeFeatures(h, t);
+      n++;
+      if (fv.inputs.regime !== "range") now++;
+      if (classifyRegime(fv.inputs.ret1hPct as number, fv.inputs.oiChg1hPct as number, null, null) !== "range") v1++;
+    }
+    expect(n).toBe(73);
+    expect(now / n).toBeGreaterThanOrEqual(0.2);
+    expect(now / n).toBeLessThanOrEqual(0.45);
+    expect(v1 / n).toBeLessThanOrEqual(0.02); // measured: 26/73 now, 0/73 under v1
+  });
+
+  test("desk defaults stay 1.5 % / 3 %; explicit thresholds override", () => {
+    expect(classifyRegime(1.4, 0, null, null)).toBe("range");
+    expect(classifyRegime(1.6, 0, null, null)).toBe("spot_led_rally");
+    expect(classifyRegime(1.6, 3, null, null)).toBe("new_longs");
+    expect(classifyRegime(0.5, 1, null, null, { flatPct: 0.4, oiMovePct: 1 })).toBe("new_longs");
+    expect(classifyRegime(0.3, 1, null, null, { flatPct: 0.4, oiMovePct: 1 })).toBe("range");
   });
 });
 

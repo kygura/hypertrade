@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { LlmDeps } from "../intel/llm.js";
 import type { ToolSpec } from "../llm/provider.js";
 import { canonicalConditions, parseFeatureId, ruleId } from "./engine/index.js";
-import { ASSET_PATTERN, RULE_EXTRAS_JSON, RuleSchema, TRANSFORMS, type Direction, type MetricDef, type Rule } from "./types.js";
+import { ASSET_PATTERN, MAX_CONDITIONS, RULE_EXTRAS_JSON, RuleSchema, TRANSFORMS, type Direction, type MetricDef, type Rule } from "./types.js";
 
 // Rule authoring from intent (docs/FEATURES.md § 1). The LLM only recombines the
 // audited feature vocabulary: every candidate is a plain `Rule`, validated
@@ -10,7 +10,7 @@ import { ASSET_PATTERN, RULE_EXTRAS_JSON, RuleSchema, TRANSFORMS, type Direction
 // feeds a validation failure back once (the repair round), then fails closed.
 // Nothing is saved here.
 
-export const AUTHOR_PROMPT_VERSION = "lab-author-2";
+export const AUTHOR_PROMPT_VERSION = "lab-author-3";
 export const MAX_CANDIDATES = 3;
 
 export interface AuthorInput {
@@ -43,7 +43,7 @@ const jsonSchema: ToolSpec["input_schema"] = {
           conditions: {
             type: "array",
             minItems: 1,
-            maxItems: 2,
+            maxItems: MAX_CONDITIONS,
             items: {
               type: "object",
               properties: {
@@ -92,7 +92,7 @@ function candidatesSchema(metrics: MetricDef[], input: AuthorInput) {
   return z.object({ candidates: z.array(rule).min(1).max(MAX_CANDIDATES) }).strict();
 }
 
-const SYSTEM = `You translate a trader's idea into Lab rules. A rule is: asset, direction (long|short), horizonDays (1-180) and 1 or 2 conditions. A condition is {feature, op, threshold} with op "<" or ">=" and feature "<metric>|<transform>|<window>".
+const SYSTEM = `You translate a trader's idea into Lab rules. A rule is: asset, direction (long|short), horizonDays (1-180) and 1 to ${MAX_CONDITIONS} conditions. A condition is {feature, op, threshold} with op "<" or ">=" and feature "<metric>|<transform>|<window>".
 Transforms: ${TRANSFORMS.join(", ")}. Window is 0 for raw and 2-365 otherwise. Use ONLY metric ids from the catalogue in the user message.
 Rules for candidates: use the fewest conditions that express the idea (one if one is enough); round, defensible thresholds (e.g. z-scores -1, -2, 1, 2; percentiles 0.1, 0.9), never tuned values; no near-duplicate filters (do not stack two transforms of one metric); return 1 to ${MAX_CANDIDATES} genuinely different readings of the idea, fewer is better. You do not predict returns or judge the idea: you only write rules.
 Optional, only when the idea names them: stop / target levels ({ref: entry|low|high|ma, n, atr}, atr signed, e.g. a long's stop {ref:"low",n:7,atr:-0.25}); invalidation (1-2 conditions that end the trade at the next open); regime {trend: [up|down|range]} to trade only in those daily trends.`;

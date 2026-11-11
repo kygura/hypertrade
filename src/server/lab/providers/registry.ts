@@ -1,6 +1,6 @@
 import { databaseUrl, seriesCoverage, seriesRange } from "../../db.js";
 import { UpstreamError } from "../../mcp/types.js";
-import { parseDay } from "../engine/util.js";
+import { isoDate, parseDay } from "../engine/util.js";
 import { DAY_MS, type DailySeries, type FetchOptions, type LabDataset, type LabProvider, type MetricCategory, type MetricDef } from "../types.js";
 import { bcProvider } from "./bc.js";
 import { cmProvider } from "./cm.js";
@@ -8,13 +8,14 @@ import { deribitProvider } from "./deribit.js";
 import { fngProvider } from "./fng.js";
 import { htProvider } from "./ht.js";
 import { llamaProvider } from "./llama.js";
+import { okxProvider } from "./okx.js";
 import { clip, dayStart, isCollectable, labSeriesId, toDaily, type LabMetricDef } from "./series.js";
 import { mapLimit, msg } from "../util.js";
 
 // Provider registry and dataset loader: resolves metric ids, fetches with a
 // short TTL cache, and aligns everything to the price calendar for the engine.
 
-export const PROVIDERS: LabProvider[] = [htProvider, cmProvider, fngProvider, llamaProvider, bcProvider, deribitProvider];
+export const PROVIDERS: LabProvider[] = [htProvider, cmProvider, fngProvider, llamaProvider, bcProvider, deribitProvider, okxProvider];
 
 const DEFAULT_PRICE = "ht:price";
 const FALLBACK_PRICE = "cm:PriceUSD";
@@ -166,10 +167,24 @@ export interface LoadConfig {
   to?: string;
   /** Under a request deadline: providers skip slow optional work. */
   deadline?: boolean;
+  /**
+   * Per metric, a later start (YYYY-MM-DD) than `from`: a caller that reads only the last bar loads no more of a
+   * metric than its features read (the live scan; Hyperliquid funding is the slow fetch). The price calendar keeps `from`.
+   */
+  metricFrom?: Record<string, string>;
 }
 
-/** Fetches price + metrics and aligns them to the price calendar. Per-metric failures become warnings. */
-export async function loadDataset(cfg: LoadConfig, deps: RegistryDeps = {}): Promise<{ dataset: LabDataset; warnings: string[] }> {
+/**
+ * Fetches price + metrics and aligns them to the price calendar. Per-metric failures become warnings. `lastRaw`:
+ * metric id → the last calendar-range day (YYYY-MM-DD, lag-shifted) with a raw value, i.e. before the forward fill, so
+ * a caller can tell a value observed on the last bar from one carried forward to it. Studies do not read it.
+ * `noData`: metrics that fetched without error but have no value in range (e.g. a coin OKX does not list), as opposed
+ * to a fetch that failed (a warning only): the first will not change on a retry, the second may.
+ */
+export async function loadDataset(
+  cfg: LoadConfig,
+  deps: RegistryDeps = {},
+): Promise<{ dataset: LabDataset; warnings: string[]; lastRaw: Record<string, string>; noData: string[] }> {
   const providers = deps.providers ?? PROVIDERS;
   const defs = [...new Set(cfg.metrics)].map((id) => resolve(id, providers).def); // throws on unknown ids up front
   const priceId = cfg.price ?? DEFAULT_PRICE;
@@ -209,9 +224,12 @@ export async function loadDataset(cfg: LoadConfig, deps: RegistryDeps = {}): Pro
 
   const metrics: Record<string, number[]> = {};
   const stationary: Record<string, boolean> = {};
+  const lastRaw: Record<string, string> = {};
+  const noData: string[] = [];
   const results = await mapLimit(defs, CONCURRENCY, async (def) => {
+    const from = cfg.metricFrom?.[def.id];
     try {
-      return { def, s: await fetchMetric(def.id, cfg.asset, fromMs, toMs, deps, opts) };
+      return { def, s: await fetchMetric(def.id, cfg.asset, from ? Math.max(fromMs, parseDay(from)) : fromMs, toMs, deps, opts) };
     } catch (err) {
       warnings.push(`${def.id}: ${msg(err)}; dropped`);
       return null;
@@ -222,10 +240,17 @@ export async function loadDataset(cfg: LoadConfig, deps: RegistryDeps = {}): Pro
     const aligned = alignToCalendar(r.s, t, r.def.lagDays, (r.def as LabMetricDef).maxFillDays);
     if (aligned.every((v) => Number.isNaN(v))) {
       warnings.push(`${r.def.id}: no data for ${cfg.asset} in range; dropped`);
+      noData.push(r.def.id);
       continue;
     }
     metrics[r.def.id] = aligned;
+    const shift = r.def.lagDays * DAY_MS;
+    let last = -Infinity;
+    r.s.t.forEach((d, j) => {
+      if (d + shift <= t.at(-1)! && Number.isFinite(r.s.v[j])) last = Math.max(last, d + shift);
+    });
+    if (last > -Infinity) lastRaw[r.def.id] = isoDate(last);
     if (r.def.stationary !== undefined) stationary[r.def.id] = r.def.stationary;
   }
-  return { dataset: { asset: cfg.asset, t, price: pv, metrics, stationary }, warnings };
+  return { dataset: { asset: cfg.asset, t, price: pv, metrics, stationary }, warnings, lastRaw, noData };
 }

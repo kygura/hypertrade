@@ -14,6 +14,7 @@
 // distribution of those candidate dates. Descriptive, not a prediction: four
 // cycles is a small sample, and the method spread is the honest error bar.
 
+import { quantile } from "./signalMath.js";
 import { DAY_MS, HALVINGS, NEXT_HALVING_ESTIMATE, type CyclePhase, type CyclePoint } from "./cycles.js";
 
 /** Euphoria runs closer than this belong to one bull run. */
@@ -124,13 +125,7 @@ export interface CycleAnalog {
 
 const days = (ms: number) => Math.round(ms / DAY_MS);
 
-export function quantile(sorted: number[], q: number): number {
-  if (sorted.length === 0) return NaN;
-  const pos = (sorted.length - 1) * q;
-  const lo = Math.floor(pos);
-  const hi = Math.ceil(pos);
-  return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (pos - lo);
-}
+export { quantile };
 
 function range(values: number[]): DateRange | null {
   if (values.length === 0) return null;

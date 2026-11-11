@@ -32,7 +32,12 @@ without buying a key.
    (rate of change), `vol` (rolling stdev of log changes), `pctile` (rolling
    percentile rank 0–1), each at every window in `windows` (default
    `[7, 30, 90]`; `raw` has no window). Every transform at day t uses only
-   data ≤ t. Each metric carries `lagDays` (publication lag; on-chain data
+   data ≤ t. One more transform, `vchg` (volatility-scaled change), is only
+   computed when a search lists it or a rule names it: the w-day log change
+   divided by the sample stdev of the 30 daily log changes ending at t times
+   √w, i.e. the w-day move in w-day sigmas of the series' own volatility, so
+   "moved less than one sigma over 3 days" is one threshold on BTC and on a
+   memecoin. Positive series only; NaN until 15 of the 30 daily changes exist. Each metric carries `lagDays` (publication lag; on-chain data
    lands a day late) and is shifted by it before anything else happens.
    Metrics flagged `stationary: false` (trending levels: price, market cap,
    supply) get no `raw` feature, since an absolute threshold on a level that
@@ -45,7 +50,9 @@ without buying a key.
    scored by walk-forward strategy performance under the objective, not by
    classification accuracy.
 5. **Rules, not predictions.** Every root-to-leaf path whose leaf is majority
-   class 1 is a rule of one or two conditions. A path's single-condition
+   class 1 is a rule of one or two conditions (a searched rule never holds
+   more; a rule written by hand, e.g. a signal definition or an authored
+   rule, holds up to four, `MAX_CONDITIONS`). A path's single-condition
    prefixes are kept as rules too, so a pair can be read whole or split into
    single-metric rules. Each rule is judged on **precision** (share of in-zone
    days labelled good) and **support** (in-zone days); rules below `minSupport`
@@ -228,10 +235,11 @@ whole search.
 
 | provider | source | metrics (scope) | notes |
 |---|---|---|---|
-| `ht` | hypertrade Postgres (`candles`, `funding`, `observations`) with live Hyperliquid fallback for price/funding when the DB is absent | `price`, `volume`, `range` (h−l)/c, `funding` (daily sum of hourly rates), `premium` (daily mean), `oi` (`hl.oi.<COIN>`, last per day) per asset; stored globals `fng`, `btc_dominance`, `total_mcap`, `stablecoin_cap`, `dvol`, every `fred.*` series present; `elfa_mentions`, `elfa_share` per asset | stored series only go back to when collection started |
+| `ht` | hypertrade Postgres (`candles`, `funding`, `observations`) with live Hyperliquid fallback for price/funding when the DB is absent | `price`, `volume`, `range` (h−l)/c, `funding` (daily sum of hourly rates), `premium` (daily mean), `oi` (`hl.oi.<COIN>`, last per day) per asset; stored globals `fng`, `btc_dominance`, `total_mcap`, `stablecoin_cap`, `dvol`, every `fred.*` series present; `elfa_mentions`, `elfa_share` per asset | stored series only go back to when collection started. A last day of funding/premium without its 23:00 UTC settlement is left out (a partial day's sum is not the day's funding); earlier days are untouched. Without a database the provider keeps each coin's live settlements in process (60 coins) and later fetches only what it lacks |
 | `cm` | Coin Metrics community API (keyless) `community-api.coinmetrics.io/v4/timeseries/asset-metrics` | `PriceUSD`, `CapMrktCurUSD`, `CapMVRVCur`, `AdrActCnt`, `TxCnt`, `TxTfrCnt`, `HashRate`, `FeeTotNtv`, `SplyCur`, `IssTotNtv`, `NVTAdj`, `TxTfrValAdjUSD` per asset (btc, eth, …); `lagDays` 1 | the stand-in for Glassnode on-chain data. A metric the community tier refuses is dropped with a warning |
 | `fng` | alternative.me `/fng/?limit=0` (keyless, 2018→) | `value` (global) | |
 | `llama` | DefiLlama keyless: `stablecoins.llama.fi/stablecoincharts/all`, `api.llama.fi/v2/historicalChainTvl` | `stablecoin_cap`, `defi_tvl` (global) | |
+| `okx` | OKX keyless `rubik/stat/contracts/open-interest-history`, `period=1Dutc` | `oi` (asset): USD open interest of `<COIN>-USDT-SWAP`, Feb 2024 → | OKX's market, standing in for positioning (Hyperliquid has no public OI history; `ht:oi` is the collector's snapshots). The bar stamped day D holds D's last 5-minute snapshot, so `lagDays` 0; the running day is left out. 100 bars a request, 450 ms apart. `kPEPE`-style coins map to the token's swap (USD OI does not depend on the unit); `kNEIRO` and 1000-prefixed names are not mapped; a coin OKX does not list (its `51001`) is an empty series; an empty code-0 answer or a non-200 is an outage (an error, retried), never "no data". Matched by ticker: a different token trading under the same ticker on OKX would read that token's OI, and nothing here can tell. Collected (`lab-collect`, `lab.okx.oi.<coin>`) for the definition scan's coins (the Lab's default universe plus the watchlist): pages oldest first in 100-day windows from Feb 2024 (a budget cut resumes), and refetched as soon as the stored series lacks yesterday (`dailyClose`), so with a database the scan and universe studies read it stored and top up only a stale tail; without a database it is fetched live. Base URL: `OKX_API_URL` (default `https://www.okx.com`). `stationary: false` |
 
 **Price for labels** comes from `config.price` (default `ht:price`, falling
 back to `cm:PriceUSD` if `ht` has no history for the asset).

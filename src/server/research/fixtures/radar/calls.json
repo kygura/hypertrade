@@ -1,0 +1,6 @@
+{
+ "calls": [
+  {"id": "2026-11-01-1-HYPE", "date": "2026-11-01", "at": "2026-11-01T13:00:00.000Z", "market": "HYPE", "stance": "ride", "direction": "long", "kind": "catalyst", "thesis": "fixture thesis text", "cause_url": "https://example.com/a", "cause_date": "2026-11-01", "kill_price": 30, "kill_if": "below 30 at a scan", "mark": 32, "btc": 100000, "rel": {}, "killed_at": null},
+  {"id": "2026-11-01-2-SOL", "date": "2026-11-01", "at": "2026-11-01T13:00:00.000Z", "market": "SOL", "stance": "fade", "direction": "short", "kind": "structure", "thesis": "fixture thesis text", "cause_url": "https://example.com/b", "cause_date": "2026-11-01", "kill_price": 200, "kill_if": "above 200 at a scan", "mark": 180, "btc": 100000, "rel": {"3": -1.5}, "killed_at": null}
+ ]
+}

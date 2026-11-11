@@ -9,6 +9,7 @@ import { requireAuth, signSession } from "../auth.js";
 import { makeService } from "../desk/testkit.js";
 import { dbPlatformContext, type PlatformContext } from "../platform/context.js";
 import { reconcileOnce } from "../platform/reconcile.js";
+import { SCORE_VERSION } from "../platform/score.js";
 import { setHealthExtras } from "../platform/runtime.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
 import { createPlatformRoutes, defaultPlatformDeps, deskRisk, type PlatformDeps, type RiskGate } from "./platform.js";
@@ -104,15 +105,21 @@ describe("feed and detail", () => {
   });
 
   test("detail: signals, costs, stats, risk before/after and a governor-sized ticket", async () => {
-    const o = await seed();
-    await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: { horizon: "1h", entryBasis: "mark", entryPx: 4000, horizonPx: 4040, grossReturn: 0.01, netReturn: 0.009 } });
+    // stats and the evidence line are one record: the 24h group over current-score-version outcomes (setupLedgerStats),
+    // not the largest group at any horizon. The 1h outcome and the old-version opportunity's outcome are left out.
+    const o = await seed("ready", { scoreVersion: SCORE_VERSION });
+    const old = await seed("ready", { coin: "BTC", scoreVersion: "v1" });
+    const outcome = (h: string, net: number) => ({ horizon: h, entryBasis: "mark" as const, entryPx: 4000, horizonPx: 4040, grossReturn: net, netReturn: net });
+    await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: outcome("1h", 0.009) });
+    await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: outcome("24h", 0.02) });
+    await store.appendLedger({ opportunityId: old.id, kind: "outcome", payload: outcome("24h", 0.5) });
     const d = OpportunityDetailSchema.parse(await (await req(`/opportunities/${o.id}`)).json());
-    expect(d.evidence).toBe("ledger 24h: n 0 · 0 clusters · edge unvalidated");
+    expect(d.evidence).toBe("ledger 24h: n 1 · 1 clusters · +2.00% · edge unvalidated");
     // z-features carry their raw input as value (none for priceAccelZ); plain features carry themselves.
     expect(d.signals).toEqual([{ name: "ret15mZ", value: 0.012, z: 2.1 }, { name: "priceAccelZ", value: null, z: 1.2 }, { name: "fundingPctile14d", value: 0.9, z: null }]);
     expect(d.opportunity.costs?.absorbableUsd).toBe(50_000);
     expect(d.opportunity.invalidation).toBe("15m close below 3800");
-    expect(d.stats).toMatchObject({ setupKind: "breakout", n: 1 });
+    expect(d.stats).toMatchObject({ setupKind: "breakout", horizon: "24h", n: 1, meanNet: 0.02 });
     expect(d.risk?.after.approved).toBe(true);
     expect(d.ticket).toEqual({ side: "long", entryPx: 4000, stopPx: 3800, targetPx: 4400, sizeUsd: 1000, sizeSource: "governor" });
     expect(d.bearCase).toBeNull();
@@ -205,6 +212,17 @@ describe("approve", () => {
     }
     expect(risk.placed).toBe(0);
     expect((await store.getOpportunity(o.id))?.status).toBe("ready");
+  });
+
+  test("detail exposes the same gate the route answers with: canApprove and approveBlockedReason", async () => {
+    const o = await seed();
+    const detail = async () => OpportunityDetailSchema.parse(await (await req(`/opportunities/${o.id}`)).json());
+    expect(await detail()).toMatchObject({ canApprove: true, approveBlockedReason: null });
+    midAge = 31;
+    const d = await detail();
+    expect(d).toMatchObject({ canApprove: false, approveBlockedReason: "ETH mid is 31 s old (limit 30 s)" });
+    const res = await post(`/opportunities/${o.id}/approve`);
+    expect(await res.json()).toEqual({ error: "stale_feed", message: d.approveBlockedReason });
   });
 
   test("happy path: decision entry with seen, ready → approved → open", async () => {
@@ -423,7 +441,7 @@ describe("liqmap and ledger", () => {
   });
 
   test("ledger stats and entries parse; unknown opportunity 404", async () => {
-    const o = await seed();
+    const o = await seed("ready", { scoreVersion: SCORE_VERSION }); // grouping by regime counts current-version rows only
     await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: { horizon: "1h", entryBasis: "mark", entryPx: 4000, horizonPx: 4040, grossReturn: 0.01, netReturn: 0.009 } });
     const s = LedgerStatsResponseSchema.parse(await (await req("/ledger/stats?setupKind=breakout")).json());
     expect(s.stats).toMatchObject([{ setupKind: "breakout", horizon: "1h", n: 1, regime: null }]);

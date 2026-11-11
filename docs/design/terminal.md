@@ -27,7 +27,7 @@ Numbers computed by code render as plain values. Words written by the model
 render only as claim lines (§2), never as bare prose. No surface predicts
 direction, prints a price target, or offers a trade on its own. Orders reach
 the Desk venue (paper or testnet) only from an operator's click on a Level 2
-dialog: here, the `/order` copilot (§7); on `/`, the Cockpit's APPROVE
+dialog: here, the `/order` copilot (§7); on `/feed`, the Cockpit's APPROVE
 (Cockpit section C5). Nothing on this surface places an order on a timer, on
 Enter, or on preview.
 
@@ -39,12 +39,12 @@ Enter, or on preview.
 
 | Path | Tab | Content |
 |---|---|---|
-| `/terminal` | CHANGES | what changed since I last looked (§3); `/terminal?review=1` = Telegram deep link (§1.5); `/?review=1` redirects here with `replace` |
+| `/terminal` | CHANGES | what changed since I last looked (§3); `/terminal?review=1` = Telegram deep link (§1.5); `/?review=1` redirects here with `replace` (the board's `rootRedirect`) |
 | `/watch` | WATCH | doc/contract/wallet watches (§8); `?id=<id>` selects a watch |
 | `/journal` | JOURNAL | trades, per-tag stats, weekly report (§4); `?trade=<id>` selects a trade, `?tag=<tag>` filters |
 | `/theses` | THESES | compose + saved list + detail (§5); `?id=<id>` selects a thesis |
 | `/query` | QUERY | NL → DSL → SQL → result (§6) |
-| `/` | FEED | the landing: ranked opportunity feed, liquidation map, detail (Cockpit section); `/?id=<opportunityId>` selects (`replace: true`) |
+| `/feed` | FEED | ranked opportunity feed, liquidation map, detail (Cockpit section); `/feed?id=<opportunityId>` selects (`replace: true`). An old `/?id=…` (or any other Cockpit param on `/`) redirects here with the query intact; `/` itself is the Research board (docs/RESEARCH.md) |
 | `/order` | ORDER | order copilot (§7) |
 | `/desk` | DESK | agentic portfolio desk (docs/design/README.md §10.11) |
 | `/asset/:coin` | (drill-in) | asset page (§15.4); a drill-in of CHANGES: renders under TerminalTabs with the CHANGES segment active |
@@ -55,14 +55,15 @@ with `replace: true` so back steps between routes, not rows (mobile exception:
 
 ### 1.2 Nav (docs/design/README.md §5)
 
-The family is one shell cell, the first: top-bar and mobile label `TRADE`,
-glyph `◉` (U+25C9, a text character like the others), link `/`. The shell has
+The family is one shell cell, the second (RESEARCH is first and the landing):
+top-bar and mobile label `TRADE`, glyph `◉` (U+25C9, a text character like the
+others), link `/feed`. The shell has
 five cells; DESK is a tab here, not a cell.
 
 - Active on every route of the family: `/terminal`, `/watch`, `/journal`,
-  `/theses`, `/query`, `/`, `/order`, `/desk` and `/asset/*`
+  `/theses`, `/query`, `/feed`, `/order`, `/desk` and `/asset/*`
   (`isTerminalPath(pathname)`, beside `isEnginePath` and `isMarketPath`).
-- Wordmark click → `/` (the Cockpit feed).
+- Wordmark click → `/` (the Research board).
 - The freshness cluster is unchanged; per-source health lives in §3.3 and
   the Cockpit health strip (C6).
 - Cockpit feed items and Terminal change items are two separate lists (the
@@ -915,7 +916,7 @@ Route pages under `src/ui/pages/terminal/`; panels and cards under
 | `Journal`, `Theses`, `Query`, `Order`, `Watch` | `pages/terminal/<Name>.tsx` | routes `/journal` … `/watch`; own their fetches and `?id`/`?trade`/`?tag` params |
 | 
 | `Asset` | `pages/terminal/Asset.tsx` | route `/asset/:coin` (§15.4); `AssetHeader` is local to it |
-| `Cockpit` | `pages/cockpit/Cockpit.tsx` | route `/`; see C9 |
+| `Cockpit` | `pages/cockpit/Cockpit.tsx` | route `/feed`; see C9 |
 
 Shared files outside these folders: `AppShell.tsx` NAV entry and
 `isTerminalPath`; `SrcTag.tsx` union; `App.tsx` routes.
@@ -1524,15 +1525,16 @@ Recharts.
 ### C1. Routes and navigation
 
 The route table, the shell cell and the tab strip are §1.1–§1.3 and §1.5:
-`/` is this page (the FEED tab), `/terminal` is CHANGES, and `/?review=1`
-redirects to `/terminal?review=1`. This page owns `/?id=<opportunityId>`
+`/feed` is this page (the FEED tab), `/terminal` is CHANGES, and `/?review=1`
+redirects to `/terminal?review=1`. This page owns `/feed?id=<opportunityId>`
 (selection, `replace: true`; a real history entry on mobile), `?status=`,
 `?tier=`, `?liqh=` and `?liq=<coin>`.
 
 Coin cross-links: the detail header carries ghost `CHART →`
-(`/markets/:coin`) and `INTEL →` (`/asset/:coin`); `/asset/:coin` links back
-with `CHART →` and `/markets/:coin` with `INTEL →`, so from any coin page the
-other two are one click away.
+(`/markets/:coin`), `INTEL →` (`/asset/:coin`) and `EVIDENCE →` (the
+Research board filtered to the coin, `/?coin=X`); `/asset/:coin` links back
+with `CHART →` and `EVIDENCE →`, and `/markets/:coin` with `INTEL →`, so from
+any coin page the other two are one click away.
 
 ### C2. Layout
 
@@ -1574,7 +1576,7 @@ below it. Health strip wraps to two lines if needed; never hidden.
 **Phone ~400 (<768).** Single column: header (COCKPIT, venue, KILL) → health
 as one line of dots + worst item text (`● SCAN 3M OLD`), tap expands the full
 strip → filters (wrapping) → feed. Tapping a row (or Enter) pushes
-`/?id=` (a real history entry on mobile, the §5.1 exception) and shows the
+`/feed?id=` (a real history entry on mobile, the §5.1 exception) and shows the
 detail screen: `← FEED`, the opportunity header, liquidation panel (PROFILE
 default, `Segmented` to HISTORY), the five questions, and the action bar
 **sticky at the bottom** (`env(safe-area-inset-bottom)` padding, controls
@@ -1618,7 +1620,7 @@ input/textarea/select, while any dialog is open, or with Ctrl/Meta/Alt):
 | Key | Action |
 |---|---|
 | `j` / `k` | next / previous row; selects, focuses and scrolls it into view |
-| `Enter` | open detail: desktop moves focus to the detail heading; phone pushes `/?id=` |
+| `Enter` | open detail: desktop moves focus to the detail heading; phone pushes `/feed?id=` |
 | `a` | approve → ticket dialog (C5); not `ready` → inline line `approve needs READY — status is CALC` |
 | `r` | reject dialog |
 | `s` | snooze menu; `1`/`2`/`3` = 15M/1H/4H, `Esc` closes |
@@ -1710,8 +1712,13 @@ sections in this fixed order, each a `.label` heading:
   `— TESTNET` (VenueBadge, large, from desk status): the pre-filled ticket
   (side, size USD, entry ref, stop, target, net edge) read from detail;
   CONFIRM → `POST /approve`. Desk APPROVE asks the same weight of
-  confirmation (docs/design/README.md §7). Governor blocked → APPROVE disabled
-  with `title` = first reason.
+  confirmation (docs/design/README.md §7). APPROVE is disabled before any
+  dialog opens, with the reason as `title` and as an amber line under the bar
+  (`approve blocked: <reason>`), in this order (`approveBlockedReason`,
+  `logic.ts`): the server's freshness gate (`canApprove` false →
+  `approveBlockedReason`, the same string a 409 `stale_feed` would carry);
+  the browser's live price older than 30 s (the StaleStrip); no governor
+  preview; the governor's first reason; no size.
 - `REJECT` (ghost) → dialog with a required `REASON` textarea; CONFIRM
   disabled while blank → `POST /reject {reason}`.
 - `SNOOZE ▾` → menu `15M · 1H · 4H` → `POST /snooze {minutes}`.
@@ -1765,7 +1772,7 @@ mark live. Every POST refetches feed + detail.
 
 | Component | Kind | Consumes / props |
 |---|---|---|
-| `Cockpit` (`Cockpit.tsx`) | container (route `/`) | owns pollers (C8), `?id/status/tier/liqh/liq`, keyboard handler, action state, the `?review=1` redirect |
+| `Cockpit` (`Cockpit.tsx`) | container (route `/feed`) | owns pollers (C8), `?id/status/tier/liqh/liq`, keyboard handler, action state |
 | `CockpitHeader`, `KeyHint` (`Header.tsx`) | presentational | `venue, liveCount, readyCount, desk, noDb, killRef, onKill(), onHelp()`; desk status via Cockpit |
 | `HealthStrip` (`Header.tsx`) | presentational | `health` (`GET /health`), `loading, offline, error, now` |
 | `OpportunityFeed` / `FeedFilters` / `StatusPill` / `EdgeCell` / `WarmingLine` (`Feed.tsx`) | presentational | `GET /opportunities`: rows, selection, status/tier filters |
@@ -1774,9 +1781,9 @@ mark live. Every POST refetches feed + detail.
 | `OpportunityDetail` (`Detail.tsx`) | presentational | `GET /opportunities/:id` → the five numbered sections of C5 (`SimilarSetups` and `PortfolioRisk` are local components; ledger stats come inside the detail) |
 | `ActionBar` / `TicketDialog` / `RejectDialog` / `SnoozeMenu` (`Detail.tsx`) | presentational | `status, blocked, venue, busy, error, onApprove/onReject(reason)/onSnooze(min)/onResearch` → the four POSTs |
 | `KeysHelp` (`Header.tsx`) | presentational | C3 table |
-| `logic.ts` | pure, tested | `filterFeed`, `stepSelection`, `edgeWord`, `coverageTreatment`, `healthItems`, `worstItem`, `keyAction`, `denseBuckets`, `alphaStep`, `priceY` |
+| `logic.ts` | pure, tested | `approveBlockedReason`, `filterFeed`, `stepSelection`, `edgeWord`, `coverageTreatment`, `healthItems`, `worstItem`, `keyAction`, `denseBuckets`, `alphaStep`, `priceY` |
 
-Shared files: `App.tsx` routes (`/` Cockpit, `/terminal` Terminal),
+Shared files: `App.tsx` routes (`/` Research board, `/feed` Cockpit, `/terminal` Terminal),
 `AppShell.tsx` NAV, `TerminalTabs.tsx`.
 
 **Fields read beyond SPEC P2** (pin in `src/shared/platform.ts`; if absent the

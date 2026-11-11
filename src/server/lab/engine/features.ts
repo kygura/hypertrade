@@ -49,6 +49,31 @@ export function featureSpecs(
 
 const minObs = (w: number) => Math.max(2, Math.ceil(w / 2));
 
+/** Daily log changes the `vchg` transform's volatility is measured over (ending at t, like ATR at the signal bar). */
+export const VCHG_VOL_WINDOW = 30;
+
+/**
+ * Days of history ending at t (t included) a feature reads, so a caller can load the least data that answers on the
+ * last bar exactly as the full history does. The regime is not a feature of a metric: it reads the price series.
+ */
+export function featureLookback(spec: Pick<FeatureSpec, "transform" | "window">): number {
+  const w = spec.window;
+  switch (spec.transform) {
+    case "raw":
+      return 1;
+    case "z":
+    case "ma_ratio":
+    case "pctile":
+      return w;
+    case "roc":
+    case "vol":
+    case "rsi":
+      return w + 1;
+    case "vchg":
+      return Math.max(w, VCHG_VOL_WINDOW) + 1;
+  }
+}
+
 export function transformSeries(x: ArrayLike<number>, transform: Transform, window: number): Float64Array {
   const n = x.length;
   const v = new Float64Array(n);
@@ -138,6 +163,37 @@ export function transformSeries(x: ArrayLike<number>, transform: Transform, wind
           if (y === y) ss += (y - m) * (y - m);
         }
         out[t] = Math.sqrt(ss / (c - 1));
+      }
+      return out;
+    }
+
+    case "vchg": {
+      // The w-day log change in units of the series' own daily volatility over the same span:
+      // ln(x_t / x_{t−w}) / (σ_t · √w), σ_t = sample sd of the daily log changes over the VCHG_VOL_WINDOW days
+      // ending at t (at least half of them present). Positive series only (log changes), like vol. NaN when x_t,
+      // x_{t−w} or σ_t is missing, or σ_t is 0. "Moved less than one w-day sigma" reads |vchg| < 1 on any coin.
+      const d = new Float64Array(n).fill(NaN);
+      for (let t = 1; t < n; t++) if (v[t - 1]! > 0 && v[t]! > 0) d[t] = Math.log(v[t]! / v[t - 1]!);
+      const need = minObs(VCHG_VOL_WINDOW);
+      for (let t = w; t < n; t++) {
+        const a = v[t - w]!;
+        const b = v[t]!;
+        if (!(a > 0 && b > 0)) continue;
+        let c = 0;
+        let s = 0;
+        for (let k = Math.max(1, t - VCHG_VOL_WINDOW + 1); k <= t; k++) {
+          const y = d[k]!;
+          if (y === y) (c++, (s += y));
+        }
+        if (c < need) continue;
+        const m = s / c;
+        let ss = 0;
+        for (let k = Math.max(1, t - VCHG_VOL_WINDOW + 1); k <= t; k++) {
+          const y = d[k]!;
+          if (y === y) ss += (y - m) * (y - m);
+        }
+        const sd = Math.sqrt(ss / (c - 1));
+        if (sd > 0) out[t] = Math.log(b / a) / (sd * Math.sqrt(w));
       }
       return out;
     }

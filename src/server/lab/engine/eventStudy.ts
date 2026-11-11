@@ -1,3 +1,4 @@
+import { atrAt as atrAtBar } from "../../../shared/signalMath.js";
 import { DAY_MS, RuleSchema, type EventVerdict, type LabDataset, type Level, type Rule } from "../types.js";
 import { makeCtx } from "./context.js";
 import { funnel, inZoneDays, type FunnelStep } from "./evaluate.js";
@@ -153,12 +154,7 @@ export function replayCoin(rule: Rule, data: LabDataset, opts: EventStudyOptions
   const fires = inZoneDays(rule, data);
   const invalid = rule.invalidation ? makeCtx(data).signal(rule.invalidation) : null;
 
-  const atrAt = (j: number): number => {
-    if (j < ATR_WINDOW) return NaN;
-    let s = 0;
-    for (let i = j - ATR_WINDOW + 1; i <= j; i++) s += Math.max(h[i]! - l[i]!, Math.abs(h[i]! - c[i - 1]!), Math.abs(l[i]! - c[i - 1]!));
-    return s / ATR_WINDOW; // NaN when any input is
-  };
+  const atrAt = (j: number): number => atrAtBar(h, l, c, j, ATR_WINDOW); // NaN when any input is
 
   /** NaN when any bar it reads is missing. */
   const levelAt = (e: Level, j: number): number => {

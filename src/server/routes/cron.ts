@@ -32,7 +32,7 @@ import { defaultIntelDeps } from "./intel/index.js";
 
 const DAY_MS = 86400000;
 const DEFAULT_BACKFILL_DAYS = 365;
-/** Always kept warm, so charts have history before anyone opens them. */
+/** Always kept warm, so charts have history before anyone opens them. A backfill floor, not the operator's markets (myMarkets): Intel held ∪ watched are added per run. */
 export const CORE_COINS = ["BTC", "ETH", "SOL", "HYPE"];
 /** A coin charted within this window stays warm (LTF bars, funding, OI snapshots). */
 const RECENT_MS = 7 * DAY_MS;

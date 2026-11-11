@@ -11,11 +11,11 @@ import { DeskService } from "../desk/service.js";
 import type { OperatorOrder } from "../desk/types.js";
 import { researchDailyLimit, researchDeps, runResearch, RESEARCH_PROMPT_VERSION, utcDayStart } from "../intel/research.js";
 import { aggregate, coverage } from "../platform/liqmap.js";
-import { dbPlatformContext, getPlatformContext, placedBy, placing, type PlatformContext } from "../platform/context.js";
+import { approveBlockOf, dbPlatformContext, getPlatformContext, placedBy, placing, type PlatformContext } from "../platform/context.js";
 import { Z_KEYS } from "../platform/score.js";
 import { databaseUrl } from "../db.js";
 import { PgPlatformStore } from "../platform/store-pg.js";
-import { evidenceLine, groupStats } from "../platform/stats.js";
+import { evidenceLine, groupStats, setupLedgerStats } from "../platform/stats.js";
 import { defaultDeskService } from "./desk.js";
 import { defaultIntelDeps } from "./intel/index.js";
 import { body, failure, invalid } from "./intel/http.js";
@@ -49,7 +49,6 @@ export interface PlatformDeps {
 }
 
 const OPERATOR = "operator";
-const MAX_MID_AGE_SEC = 30;
 const CACHE_MS = 10_000;
 /** Risk the ticket is sized at, percent of equity (the governor clips it to its own limit). */
 const TICKET_RISK_PCT = 0.5;
@@ -177,22 +176,24 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         const raw = RAW_OF[name as (typeof Z_KEYS)[number]];
         return { name, value: raw ? num(fv.inputs[raw]) : null, z: value };
       });
-      const groups = groupStats(await store.outcomeRows({ setupKind: opp.setupKind }));
-      const stats = [...groups].sort((a, b) => b.n - a.n)[0] ?? null;
+      const stats = setupLedgerStats(opp.setupKind, await store.outcomeRows({ setupKind: opp.setupKind }));
       const ticket = ticketOf(opp);
       let risk: { before: RiskVerdict; after: RiskVerdict } | null = null;
       if (ticket) risk = await deps.risk.assess(ticket).catch((err) => (console.error("[platform] risk preview failed", err), null));
       const rid = entries.filter((e): e is Extract<LedgerEntry, { kind: "research" }> => e.kind === "research").at(-1)?.payload.researchId;
       const research = rid ? await deps.research.get(rid, opp.coin).catch(() => null) : null;
       const size = risk?.after.sizing;
+      const approveBlockedReason = await approveBlockOf(c.var.ctx, opp.coin, deps.now().getTime());
       return c.json({
         opportunity: opp,
         signals,
         bearCase: research && (research.status === "found" || research.status === "no_cause") ? research.explanation : null,
         stats,
-        evidence: evidenceLine(groups.find((g) => g.horizon === "24h") ?? null, opp.edgeBasis),
+        evidence: evidenceLine(stats, opp.edgeBasis),
         risk,
         ticket: { side: opp.direction, entryPx: opp.entryPx, stopPx: opp.stopPx, targetPx: opp.targetPx, sizeUsd: size?.notionalUsd && size.notionalUsd > 0 ? size.notionalUsd : null, sizeSource: "governor" as const },
+        canApprove: approveBlockedReason == null,
+        approveBlockedReason,
       });
     })
     .post("/opportunities/:id/approve", async (c) => {
@@ -201,14 +202,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       const ctx = c.var.ctx;
       if (opp.status !== "ready") return c.json({ error: "illegal_transition", message: `${opp.status} → approved is not allowed` }, 409);
       // P0.15 freshness gate: nothing reaches the governor on a stale feed.
-      const now = deps.now();
-      const age = ctx.midAge(opp.coin, now.getTime());
-      const scan = await ctx.lastScanAt();
-      const stale =
-        age == null ? `no live mid for ${opp.coin}`
-        : age > MAX_MID_AGE_SEC ? `${opp.coin} mid is ${Math.round(age)} s old (limit ${MAX_MID_AGE_SEC} s)`
-        : !scan || now.getTime() - scan.getTime() > 2 * ctx.scanIntervalSec * 1000 ? "the last scan is older than twice the scan interval"
-        : null;
+      const stale = await approveBlockOf(ctx, opp.coin, deps.now().getTime());
       if (stale) return c.json({ error: "stale_feed", message: stale }, 409);
 
       const ticket = ticketOf(opp);

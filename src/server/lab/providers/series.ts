@@ -79,6 +79,11 @@ export async function getJson(url: string, fetchFn: typeof fetch, label: string,
 export type LabMetricDef = MetricDef & {
   /** Days a value may be forward-filled on the calendar; default 3 (weekly series: 8). */
   maxFillDays?: number;
+  /**
+   * Day D's value is final at D's UTC close (no publication delay): the collector refetches the tail as soon as the
+   * stored series lacks yesterday, not only 20 h after its last sync, so daily readers have it shortly after 00:00.
+   */
+  dailyClose?: boolean;
 };
 
 export type HistoryOptions = {

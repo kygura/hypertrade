@@ -31,7 +31,7 @@ export interface TelegramIntel {
   store: Pick<IntelStore, "setAlertFeedback">;
   /** The POST /api/intel/brief builder (ui surface; logs the review). */
   brief(o: { via: "telegram_digest"; signal: AbortSignal }): Promise<Brief>;
-  /** The /?review=1 deep link. */
+  /** The /terminal?review=1 deep link. */
   link?: string;
 }
 

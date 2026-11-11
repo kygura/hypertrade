@@ -15,11 +15,7 @@ export const iso = (d: Date | string) => new Date(d).toISOString();
 /** Arithmetic mean, or null for an empty list. */
 export const meanOrNull = (xs: number[]): number | null => (xs.length ? mean(xs) : null);
 
-export function median(xs: number[]): number {
-  const s = [...xs].sort((a, b) => a - b);
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
-}
+export { median } from "../../shared/signalMath.js";
 
 /** The number if finite, else null. */
 export const fin = (n: number | null | undefined): number | null => (n != null && Number.isFinite(n) ? n : null);

@@ -6,6 +6,7 @@ import { api, useApi } from '../lib/api'
 import { isEnginePath } from './strategy/EngineTabs'
 import { isTerminalPath } from './intel/TerminalTabs'
 import { isMarketPath } from './market/MarketTabs'
+import { isResearchPath } from './lab/LabTabs'
 import { ThemeSwitcher } from './ThemeSwitcher'
 
 // AppShell — docs/design/README.md §5. TopBar (>=768) / TopStrip + bottom tab bar
@@ -15,15 +16,15 @@ import { ThemeSwitcher } from './ThemeSwitcher'
 // heartbeat: green <30min, amber 30min-2h, red >2h or fetch failed.
 
 export const NAV = [
+  // RESEARCH family, the landing (docs/RESEARCH.md): the board `/`, the Lab (/lab/*) and the
+  // Branches simulator (/branches/*) switch inside via LabTabs.
+  { to: '/', label: 'RESEARCH', tab: 'RSRCH', glyph: '⚗' },
   // TRADE family (docs/CONSOLIDATION.md): Intel -> Act. /terminal, /watch, /journal,
-  // /theses, /query, / (feed), /order and /desk switch inside via TerminalTabs.
-  { to: '/', label: 'TRADE', tab: 'TRADE', glyph: '◉' },
+  // /theses, /query, /feed, /order and /desk switch inside via TerminalTabs.
+  { to: '/feed', label: 'TRADE', tab: 'TRADE', glyph: '◉' },
   // MARKET family: /markets, /sectors, /state, /cycles (and their drills) switch
   // inside via MarketTabs; /overview redirects to /markets.
   { to: '/markets', label: 'MARKET', tab: 'MKT', glyph: '≋' },
-  // RESEARCH family: heuristic research (docs/design/README.md §10.9) and the
-  // Branches simulator; /lab/* and /branches/* switch inside via LabTabs.
-  { to: '/lab', label: 'RESEARCH', tab: 'RSRCH', glyph: '⚗' },
   // Read-only LLM analyst (docs/SPEC.md "Analyst").
   { to: '/analyst', label: 'ASK', tab: 'ASK', glyph: '?' },
   // Strategy console: /strategies, /decisions and /governor switch inside via EngineTabs.
@@ -31,10 +32,10 @@ export const NAV = [
 ]
 
 export function isActive(pathname: string, to: string): boolean {
-  if (to === '/') return isTerminalPath(pathname)
+  if (to === '/') return isResearchPath(pathname)
+  if (to === '/feed') return isTerminalPath(pathname)
   if (to === '/strategies') return isEnginePath(pathname)
   if (to === '/markets') return isMarketPath(pathname)
-  if (to === '/lab') return pathname === '/lab' || pathname.startsWith('/lab/') || pathname === '/branches' || pathname.startsWith('/branches/')
   return pathname === to || pathname.startsWith(`${to}/`)
 }
 
