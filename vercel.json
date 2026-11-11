@@ -7,7 +7,7 @@
     }
   },
   "buildCommand": "if [ \"$VERCEL_ENV\" = production ]; then bun run db:migrate; fi && bun run build",
-  "ignoreCommand": "git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- . ':(exclude)data/setups' ':(exclude)data/board' ':(exclude)data/radar'; [ $? -eq 0 ]",
+  "ignoreCommand": "[ \"$VERCEL_GIT_PREVIOUS_SHA\" = \"$VERCEL_GIT_COMMIT_SHA\" ] && exit 1; git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- . ':(exclude)data/setups' ':(exclude)data/board' ':(exclude)data/radar'; [ $? -eq 0 ]",
   "rewrites": [
     {
       "source": "/api/(.*)",
