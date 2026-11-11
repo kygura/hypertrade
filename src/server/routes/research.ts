@@ -125,7 +125,7 @@ let pulseMemo: { at: number; value: ReturnType<BoardDeps["pulse"]> } | null = nu
 let dbCtx: PlatformContext | null = null;
 
 /** The worker's context on the always-on server, else Postgres-only reads; null with neither. */
-const platformContext = () => getPlatformContext() ?? (databaseUrl() ? (dbCtx ??= dbPlatformContext(new PgPlatformStore())) : null);
+export const platformContext = () => getPlatformContext() ?? (databaseUrl() ? (dbCtx ??= dbPlatformContext(new PgPlatformStore())) : null);
 
 let scanner: DefinitionScanner | null = null;
 /** One definition scanner per process (signals/runtime.ts), scanned at most once per closed daily bar. */

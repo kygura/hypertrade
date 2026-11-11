@@ -6,7 +6,8 @@ import { Segmented } from './Segmented'
 // A Segmented (md) sticky under the top bar (--topbar-h), --subnav-h tall,
 // path-based so each tab is a bookmarkable page. TerminalTabs, MarketTabs and
 // LabTabs are thin wrappers. Mobile: keep short labels ≤ 4 chars; overflow-x
-// stays only as a safety net.
+// stays only as a safety net. A `hidden` tab is off the row unless its own page is open
+// (a screen retired from nav, docs/TASKS.md 2026-11-11, still shows a true active state by URL).
 
 export interface SectionTab {
   to: string
@@ -18,14 +19,17 @@ export interface SectionTab {
   match?: (pathname: string) => boolean
   /** A status dot before the label: green when true, dim when false, none when omitted. */
   dot?: boolean
+  /** Off the row unless the current path is this tab's. */
+  hidden?: boolean
 }
 
 export function tabMatches(tab: SectionTab, pathname: string): boolean {
   return tab.match ? tab.match(pathname) : pathname === tab.to || pathname.startsWith(`${tab.to}/`)
 }
 
-export function SectionTabs({ label, tabs }: { label: string; tabs: readonly SectionTab[] }) {
+export function SectionTabs({ label, tabs: all }: { label: string; tabs: readonly SectionTab[] }) {
   const { pathname } = useLocation()
+  const tabs = all.filter((t) => !t.hidden || tabMatches(t, pathname))
   const navigate = useNavigate()
   const current = (tabs.find((t) => tabMatches(t, pathname)) ?? tabs[0])?.to ?? ''
   const options = tabs.map((t) => ({

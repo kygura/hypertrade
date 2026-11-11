@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { AsyncBody, Panel, PanelHeader, StaleBanner } from '../components'
 import { CatalogueHealthStrip } from '../components/lab/CatalogueHealthStrip'
 import { CatalogueTable } from '../components/lab/CatalogueTable'
@@ -8,9 +8,12 @@ import { RemoveRuleDialog } from '../components/lab/RemoveRuleDialog'
 import { LabFooter } from '../components/lab/common'
 import { dateIso, lab, useLab, type CatalogueListEntry } from '../lib/lab'
 
-// CATALOGUE tab — docs/design/README.md §10.9. Saved rules with their live record since
+// RULES tab (the catalogue) — docs/design/README.md §10.9. Saved rules with their live record since
 // saving, health flags, and the rank key said aloud (LIVE SHARPE — not the
-// search's key).
+// search's key). SEARCH and RUNS are off the tab row (docs/TASKS.md 2026-11-11); the line under the
+// header is their entry point, since they are how a rule gets here.
+
+const LINK = 'text-text-secondary hover:text-text-primary underline-offset-2 hover:underline'
 
 export function LabCatalogue() {
   const navigate = useNavigate()
@@ -26,6 +29,16 @@ export function LabCatalogue() {
       <PanelHeader title={catalogue.data ? `CATALOGUE · ${entries.length}` : 'CATALOGUE'}>
         <span className="label">RANKED BY LIVE SHARPE</span>
       </PanelHeader>
+      <p className="px-3 py-1.5 text-xs text-text-secondary border-b border-border-subtle">
+        add a rule:{' '}
+        <Link to="/lab/search" className={LINK}>
+          SEARCH
+        </Link>
+        {' · '}
+        <Link to="/lab/runs" className={LINK}>
+          RUNS
+        </Link>
+      </p>
       {liveTo && <StaleBanner generatedAt={dateIso(liveTo)} thresholdHours={48} noun="live data" />}
       <AsyncBody
         {...catalogue}

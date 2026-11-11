@@ -134,6 +134,9 @@ function AssetHeader({
             <Button tier="ghost" onClick={() => navigate(boardHref(coin))} title={`research board filtered to ${coin}`}>
               EVIDENCE →
             </Button>
+            <Button tier="ghost" onClick={() => navigate(`/moves?coin=${encodeURIComponent(coin)}`)} title={`why ${coin} moved`}>
+              MOVES →
+            </Button>
           </span>
         </div>
       </div>

@@ -1109,7 +1109,7 @@ a pane on arrival.
 ```
 ┌ TerminalTabs ──────────────────────────────────────────────────────────────── 12 ┐
 ├ [← CHANGES]  HYPE (lg)  HELD · LONG 3× · 12.4 HYPE · $12.4K  MANUAL   [1D|7D|30D] ─ 12 ┤
-│ MARK $32.18 · STOP −3.1% · 0.8×ATR · MAT 0.71 · FLAGS crowded long   SNAP 12M  [CHART →]   │
+│ MARK $32.18 · STOP −3.1% · 0.8×ATR · MAT 0.71 · FLAGS crowded long   SNAP 12M  [CHART →] [MOVES →] │
 ├ TIMELINE ─────────────────────────────────────────────────── 8 ┬ EXPOSURE ──────── 4 ┤
 │ PRICE  ╱╲╱╲╲╱╱   ┆      ┆  ┆                                   │ 9 EDGES · 4 PATHS     │
 │ OI     ────╱╱─   ┆      ┆  ┆                                   │ COLLATERAL · 2        │
@@ -1531,10 +1531,13 @@ redirects to `/terminal?review=1`. This page owns `/feed?id=<opportunityId>`
 `?tier=`, `?liqh=` and `?liq=<coin>`.
 
 Coin cross-links: the detail header carries ghost `CHART →`
-(`/markets/:coin`), `INTEL →` (`/asset/:coin`) and `EVIDENCE →` (the
-Research board filtered to the coin, `/?coin=X`); `/asset/:coin` links back
-with `CHART →` and `EVIDENCE →`, and `/markets/:coin` with `INTEL →`, so from
-any coin page the other two are one click away.
+(`/markets/:coin`), `INTEL →` (`/asset/:coin`), `EVIDENCE →` (the
+Research board filtered to the coin, `/?coin=X`) and `MOVES →` (the MARKET
+attribution page, `/moves?coin=X`, README §10.13); `/asset/:coin` links back
+with `CHART →`, `EVIDENCE →` and `MOVES →`, and `/markets/:coin` with `MOVES →`,
+`EVIDENCE →` and `INTEL →`, so from any coin page the others are one click
+away. On the Desk, coins in the book, proposals and recent fills link to
+`/asset/:coin`.
 
 ### C2. Layout
 

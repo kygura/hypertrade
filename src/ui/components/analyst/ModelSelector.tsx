@@ -212,7 +212,7 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
     // control (when shown) on its own row beneath, left-aligned, no
     // horizontal scroll (docs/design/README.md forbids it). Desktop: the original
     // single inline row.
-    <div className="relative flex flex-col items-start gap-2 w-full md:inline-flex md:flex-row md:items-center md:w-auto" ref={containerRef}>
+    <div className="relative flex flex-col items-start gap-2 w-full md:inline-flex md:flex-row md:flex-wrap md:items-center md:w-auto" ref={containerRef}>
       <button
         ref={triggerRef}
         type="button"
@@ -237,7 +237,7 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
       </button>
 
       {!anyAvailable && reasons && (
-        <span className="text-xs text-text-secondary normal-case" title={allReasons.join('\n')}>
+        <span className="w-full min-w-0 break-words text-xs text-text-secondary normal-case" title={allReasons.join('\n')}>
           {reasons}
         </span>
       )}

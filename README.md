@@ -2,7 +2,7 @@
 
 A personal market terminal and signal platform for crypto perps. It tracks assets, simulates allocation branches against historical data, monitors sector dynamics, and runs an always-on worker that scans Hyperliquid and surfaces ranked setups.
 
-Surfaces: the Research board (`/`, the landing: live signals with their event-study evidence, docs/RESEARCH.md), the platform cockpit (`/feed`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade radar (a scheduled Claude session, twice a day: code scans every live perp on the main and HIP-3 dexes, the session researches what the tape has not priced yet and lands at most 3 dated calls that code prices and grades in `data/radar/`; one ntfy push only when a call lands; see `ROUTINE.md`).
+Surfaces: the attention queue (`/queue`, the landing: what deserves a look today; `/coin/:coin`, where to decide on one coin), MOVES (`/moves`: what moved and why), the Research board (`/board`: live signals with their event-study evidence, docs/RESEARCH.md), the platform cockpit (`/feed`) and Terminal (`/terminal`), Intel, Desk, Lab, Analyst, and the hypertrade radar (a scheduled Claude session, twice a day: code scans every live perp on the main and HIP-3 dexes, the session researches what the tape has not priced yet and lands at most 3 dated calls that code prices and grades in `data/radar/`; one ntfy push only when a call lands; see `ROUTINE.md`).
 
 ## Status
 
@@ -36,23 +36,79 @@ bun run build     # typecheck + vite build
 
 ## Screens
 
-Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is the contract). The top bar has five cells, under the nine-cell ceiling in `docs/design/README.md` §5.2; each family switches through one `SectionTabs` row.
+Every route except `/login` renders inside the shell (docs/SPEC.md "UI views" is the contract). The top bar has three cells, one per job (docs/RESEARCH.md "Nav"); each family switches through one `SectionTabs` row. Routes marked hidden are off the nav since 2026-11-11 and still open by URL (docs/TASKS.md).
 
 | Cell | Routes |
 |---|---|
-| RESEARCH | `LabTabs`: `/` (BOARD, the landing: live signals with their evidence, `?coin=` filter), `/lab/study`, `/lab/search`, `/lab/runs`, `/lab/runs/:runId`, `/lab/catalogue`, `/lab/pulse`, `/lab/rules/:id`, and `/branches`, `/branches/:id` |
-| TRADE | `TerminalTabs`, intel to act: `/terminal` (CHANGES), `/watch`, `/journal`, `/theses`, `/query`, then `/feed` (FEED, the Cockpit: ranked opportunities, liquidation map, approve/reject, desk kill switch; an old `/?id=…` redirects here), `/order`, `/desk`. `/asset/:coin` is the per-coin page under CHANGES. |
-| MARKET | `MarketTabs`, with the metrics strip under it: `/markets` (and `/markets/:coin`, chart; links to `/asset/:coin`), `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/overview` redirects to `/markets`. |
-| ASK | `/analyst` (ASK and SIMULATE) |
-| ENGINE | `EngineTabs`: `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` |
+| QUEUE | `MarketTabs` (QUEUE · MOVES): `/queue` (QUEUE, the landing: one short list merged from moves triage, ready opportunities and radar calls), `/coin/:coin` (the decide page for one coin), `/moves` (MOVES, with the metrics strip under the tabs: why each coin moved). Hidden: `/markets`, `/sectors`, `/state`, `/cycles` (and `/cycles/:coin`). `/markets/:coin` redirects to `/coin/:coin?chart=price`; `/overview` redirects to `/markets`; `/` redirects to `/queue`. |
+| RESEARCH | `LabTabs`: `/board` (BOARD: live signals with their evidence, `?coin=` filter; an old `/?coin=…` redirects here), `/lab/study`, `/lab/catalogue` (RULES), `/lab/rules/:id`, and `/branches`, `/branches/:id`. Hidden: `/lab/search` and `/lab/runs`, `/lab/runs/:runId` (linked from the RULES page), `/lab/pulse`. |
+| TRADE | `TerminalTabs`: `/desk`, `/order`, `/journal`. Hidden: `/feed` (the Cockpit: ranked opportunities, liquidation map, approve/reject, desk kill switch; an old `/?id=…` redirects here), `/terminal` (CHANGES), `/watch`, `/theses`, `/query`, `/asset/:coin`. |
+
+Not a cell: the top bar's `ASK` button opens a drawer over the current screen (it carries the coin in view; its full page is `/analyst`, ASK and SIMULATE, with SIMULATE reached from BRANCHES). Hidden, no entry point: the ENGINE console (`EngineTabs`: `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor`).
 
 Themes: `hyperdash` (default), `tradexyz` and `hyperion`, switched from the top bar (`src/ui/themes/README.md`).
 
 Confirmations: a plain click for reversible actions; a dialog for anything that places, approves or cancels an order (Desk and Cockpit APPROVE, `/order` place, engine decision approve); a typed word for the kill switches (desk and engine).
 
+## Moves (why each coin moved)
+
+`GET /api/queue` is the attention queue (docs/SPEC.md § Queue): today's one-item-per-coin list merged from moves triage, ready opportunities and radar calls, listed up to `MOVES_TRIAGE_DAILY` (first come, first listed); `POST /api/queue/:id/dismiss` hides a coin for the UTC day (migration `025_queue_dismissals.sql`). The queue sends no alerts. `GET /api/moves?window=4h|24h|72h` splits each coin's move over the window into BTC beta, ETH-ex-BTC beta, sector-ex-majors beta and a residual (with its z, R², n and estimation window), beside positioning and crowding checks, liquidation proximity, attention facts and the ENTER/FADE condition checklists. `GET /api/moves/:coin?window=` is one coin with its cumulative series, headlines and latest agent record. `/api/moves/triage`, `/api/moves/records`, `/api/moves/records/stats` and `POST /api/moves/:coin/investigate` are the agent watch; `POST /api/moves/:coin/proposal` lands an investigation the scheduled routine researched (claim, layer, direction, falsifier, sources; code stamps, vets, stores and grades it, `trigger: "routine"`), and is the one write the `LAB_API_TOKEN` bearer opens. Formulas, minimum-n rules and layer states: docs/SPEC.md § Moves.
+
+- Runs on live Hyperliquid data. On the always-on server (`bun start`) one background run per closed hour loads 1h candles under 400 of the weight guard's 1000 per minute, so the first answer is `pending` for about 2.5 minutes. On Vercel the table, the triage and the queue's moves source serve the latest run the moves jobs stored (migration `026_moves_runs.sql`, needs `DATABASE_URL`); `reason` says when that run is over 2 h old or none is stored yet. The single-coin route computes inline on both.
+- Layers degrade on their own and say why: OI-drop hours need the scanner's snapshots, news and Elfa need `DATABASE_URL`, liquidation proximity needs the crawler.
+- `bun run moves [--window 24h] [--top N]` prints the table once, with no server.
+- `MOVES_TRIAGE_DAILY` (8): triage items surfaced per UTC day, and the cap of the queue across all its sources. `MOVES_AGENT_DAILY` (6): agent investigations per UTC day.
+
 ## Deployment
 
 The database is Supabase Postgres. The app has run on Vercel (static UI, serverless API, crons in `vercel.json`); the upgrade path is the single always-on Railway service below. Set environment variables from `.env.example` in whichever host is active.
+
+**Platform tick over HTTP.** Without the always-on server, schedule `POST /api/cron/platform-tick` every 10–15 minutes (header `x-cron-token: $CRON_TOKEN`, or `Authorization: Bearer $CRON_SECRET`). One call runs the scanner, outcomes and prune under a lease and answers within 240 s with JSON counts; the novelty pass is not part of it. Needs `DATABASE_URL` (503 without it).
+
+**Moves over HTTP.** Without the always-on server, schedule `POST /api/cron/moves` hourly, a few minutes past the hour (the bar closes on the hour), and `POST /api/cron/moves-agent` every 15 minutes, with the same header. `moves` runs attribution for 4h, 24h and 72h and stores each window's latest run (about 1.5–2.5 min on a cold instance, seconds on a warm one; no fetch starts after 150 s, no window after 200 s). `moves-agent` triages from the stored 24h run, grades open agent records and runs at most one investigation (only with an LLM provider and under `MOVES_AGENT_DAILY`). Both are leased (`{skipped: "leased"}`), answer within 240 s with JSON facts and 503 without a database.
+
+### Scheduling
+
+The jobs run from the Supabase database, not GitHub Actions: pg_cron fires, pg_net POSTs the cron endpoints on the Vercel API with `x-cron-token`. `db/cron/schedule.sql` is the whole schedule (not a migration: `db:migrate` never runs it). `collect.yml` and `platform-tick.yml` keep only `workflow_dispatch`, as a manual fallback.
+
+| Job | Minutes (UTC) | Endpoint |
+| --- | --- | --- |
+| `hypertrade-collect` | :00 :15 :30 :45 | `/api/cron/collect` (replays the last answer's `spill`) |
+| `hypertrade-backfill` | :02 :17 :32 :47 | `/api/cron/backfill` |
+| `hypertrade-platform-tick` | :04 :19 :34 :49 | `/api/cron/platform-tick` |
+| `hypertrade-moves` | :05 hourly | `/api/cron/moves` |
+| `hypertrade-moves-agent` | :07 :22 :37 :52 | `/api/cron/moves-agent` |
+| `hypertrade-desk-tick` | :09 :24 :39 :54 | `/api/desk/tick` (switch `desk_enabled`, on) |
+| `hypertrade-novelty` | :10 :40 | `/api/cron/novelty` (bounded: ~200 s of coins per call, progress stored; a daily pass takes several calls) |
+| `hypertrade-intel-ingest` | :12 :27 :42 :57 | `/api/cron/intel/ingest` (switch `intel_enabled`, off) |
+| `hypertrade-intel-brief` / `-graph` / `-watch` | :14 / :29 / :44 hourly | `/api/cron/intel/{brief,graph,watch}` (same switch; each self-throttles) |
+| `hypertrade-lab-collect` | :26 hourly | `/api/cron/lab-collect` (a no-op until a series is 20 h stale) |
+| `hypertrade-cleanup` | 03:33 daily | prunes `cron.job_run_details` and `ops.cron_calls` after 7 days |
+
+Every HTTP job has its own minute. pg_net sends the requests queued together side by side and waits for the whole batch before it takes the next, so jobs on different minutes run one after another and never share the Vercel instance's DB pool. The request timeout is 310 s, past Vercel's 300 s limit, so the real answer (or Vercel's 504) is recorded. `bun test src/server/routes/cronSchedule.test.ts` fails if a scheduled path is not a mounted cron route, a name repeats, an expression does not parse or two jobs share a minute.
+
+Apply, as `postgres` in the Supabase SQL editor:
+
+1. Create the two Vault secrets once (placeholders: the deployed origin without a trailing slash, and the app's `CRON_TOKEN`):
+
+   ```sql
+   select vault.create_secret('https://<your-app>.vercel.app', 'hypertrade_app_url');
+   select vault.create_secret('<CRON_TOKEN value>', 'hypertrade_cron_token');
+   -- to rotate later: select vault.update_secret((select id from vault.secrets where name = 'hypertrade_cron_token'), '<new value>');
+   ```
+
+2. Run `db/cron/schedule.sql` as is. Re-run it after any edit; jobs are upserted by name.
+3. Check: `select * from ops.cron_status;` gives each job's last run and last HTTP status (`pending` while in flight; pg_net keeps answers 6 hours). Recent failures: `select c.job, c.called_at, r.status_code, r.timed_out, r.error_msg from ops.cron_calls c left join net._http_response r using (id) where c.called_at > now() - interval '1 day' and coalesce(r.status_code, 0) not between 200 and 299 order by c.id desc;`
+
+Switching off: set `intel_enabled` / `desk_enabled` at the top of the `do` block and re-run the script. One job for now: `select cron.unschedule('hypertrade-desk-tick');` (re-running the script brings it back). Everything: `db/cron/unschedule.sql`.
+
+Limits:
+
+- **Supabase free plan** pauses a project after 7 days of low activity. The Vercel endpoints query the database every 15 minutes, which is the activity Supabase counts (queries, per a Supabase staff answer); that pg_cron alone keeps a project awake is not documented. A paused database runs no jobs, so nothing wakes it from inside.
+- **Vercel Hobby** includes 4 active-CPU hours, 360 GB-hours of provisioned memory and 1M invocations a month. The schedule makes about 576 calls a day (744 with Intel on), about 17k a month. Memory is billed for wall time: at the 2 GB default that is 180 instance-hours a month, so calls must average under about 37 s (29 s with Intel). Measured on a recent GitHub run: collect 4 s, backfill 14 s, desk under 1 s, a stale lab run 95 s; with platform tick and moves at an assumed 20–30 s, about 2.3 h a day, plus about 20 min of novelty calls (5–6 at ~200 s; the other ~42 return in seconds), about 160 GB-hours a month. Active CPU allows about 0.9 s of CPU per call and has not been measured. Check Usage in the Vercel dashboard after the first days; the GitHub schedule fired only 2–5 times a day, so the old numbers do not predict this.
+- **Kept from the GitHub job:** the collect spill replay (the helper sends the last answer's `spill`, or what it sent if that call got no answer), and the novelty pass `platform-tick.yml` ran, now its own job: each call checks coins until its 200 s budget runs out, stores how far it got (`sync_state` row `_platform`/`novelty-progress`) and answers `{pass, universe, checked, remaining, done}`; the next call resumes. Estimated, not measured: the ~14-minute pass over ~70 tier-1 coins takes 5–6 calls, so at :10 and :40 a day's pass is done by about 03:00 UTC; calls after that only retry undelivered pushes. **Lost:** curl's single retry when the connection never opened (the next quarter is the retry) and the workflow's red run on failure (read `ops.cron_status` instead).
+- **Token exposure (residual, cannot be revoked).** pg_net grants schema `net` and its tables to PUBLIC, and on Supabase the extension is owned by `supabase_admin`, so a revoke run as `postgres` removes nothing, and Supabase says removing those grants would break pg_net for pg_cron jobs and Database Webhooks ([pg_net grants](https://github.com/supabase/pg_net/blob/master/sql/pg_net.sql), [Supabase: queued headers are readable](https://supabase.com/docs/guides/troubleshooting/database-roles-can-read-request-headers-queued-by-pg_net-ad6357), [Supabase: revoking has no effect](https://supabase.com/docs/guides/troubleshooting/revoking-access-to-pg_net-objects-has-no-effect-0bbc16)). So the `x-cron-token` header is readable in `net.http_request_queue` from the moment a job queues its call until pg_net's worker takes the batch (it deletes the rows as it reads them); with one job waiting behind another, up to about 5 minutes. Who can read it: any session that can log in to the database: `postgres` (which can read Vault anyway), Supabase's internal login roles and any login role you add. `anon` and `authenticated` cannot log in and reach SQL only through the Data API, which exposes `public` and `graphql_public` by default, not `net`; so do not add `net` to the exposed schemas and do not create a view or function in an exposed schema that reads pg_net's tables (`schedule.sql` fails if a view outside `net`/`ops` does). `net._http_response` holds response headers and bodies, never request headers. The token is never in `cron.job.command`, `cron.job_run_details` or `ops.cron_calls`, and `ops.cron_status` selects no header column; `schedule.sql` checks all three on every run. If the token may have been read, rotate it (step 1) and set the new `CRON_TOKEN` on Vercel.
+- `vercel.json` still has daily crons (collect, lab-collect, backfill) as a backstop. They duplicate this schedule and Hobby fires them anywhere in their hour, so one can land beside a pg_cron call.
 
 ## Railway (always-on backend, phase 8)
 
@@ -163,14 +219,14 @@ The runbook is `ROUTINE.md`. The scheduled task fires twice a day: the first run
 
 | Variable | Purpose |
 | --- | --- |
-| `APP_URL`, `LAB_API_TOKEN` (optional) | Worker origin and the read bearer, for the novelty read (`GET /api/platform/novelty`). The session needs no `DATABASE_URL`: it has no route to Postgres. |
+| `APP_URL`, `LAB_API_TOKEN` (optional) | Worker origin and the read bearer, for the novelty read (`GET /api/platform/novelty`) and the moves investigations (`bun run moves:triage` reads `/api/moves/*`; `bun run moves:propose` posts `/api/moves/:coin/proposal`). The same value must be in the app's `LAB_API_TOKEN`. The session needs no `DATABASE_URL`: it has no route to Postgres. |
 | `NTFY_TOPIC` (`NTFY_SERVER`, `NTFY_TOKEN` optional) | The push channel. No Telegram setup is needed. |
 
 When the cloud run does not happen (a spent claude.ai session limit rejects it, and cloud sessions cannot use an API key), `.github/workflows/radar-fallback.yml` runs the same runbook with Claude Code on the Anthropic API, about 1h40 after each slot. It calls no model when radar notes landed since the slot or a cloud radar PR is open; a cloud radar PR open over 30 min is reported as `landing stuck` instead. It lands `data/radar/` itself after typecheck and tests. GitHub repository secrets: `ANTHROPIC_API_KEY` (required; a dedicated Console workspace key with a monthly spend limit), `EXA_API_KEY` (optional), `NTFY_TOPIC` (`NTFY_SERVER`, `NTFY_TOKEN` optional), `LAB_API_TOKEN` (optional).
 
 ## Chart history
 
-`/markets/:coin` charts every Hyperliquid perp at `1m 5m 15m 1H 4H 1D 1W 1M`
+The coin page's PRICE view (`/coin/:coin?chart=price`; `/markets/:coin` redirects there) charts every Hyperliquid perp at `1m 5m 15m 1H 4H 1D 1W 1M`
 with funding, open interest and premium panes. History is stitched from
 layers, newest first (`src/server/market/candleSync.ts`):
 
@@ -388,7 +444,7 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 
 `/terminal` shows what changed since your last look, measured
 against your positions and watchlist: a ranked diff, the alerts and catalysts
-that touch those assets, and a short brief. `/feed` is the Cockpit (phase 8), `/` the Research board, and
+that touch those assets, and a short brief. `/feed` is the Cockpit (phase 8), `/board` the Research board, and
 there is no Overview (`/overview` redirects to `/markets`). Design: `docs/design/terminal.md`. Spec: docs/SPEC.md
 § Intel. Code: `src/server/intel/*`, `src/server/routes/intel/*`,
 `src/ui/pages/terminal/*`.
@@ -398,7 +454,7 @@ there is no Overview (`/overview` redirects to `/markets`). Design: `docs/design
 | route | what it does |
 |---|---|
 | `/terminal` | Terminal: brief, alerts, catalysts, exposure, flow heatmap, research. A UI open logs a review. |
-| `/asset/:coin` | One coin: snapshot and flow series with event markers, exposure graph, research. Linked from Terminal rows, the Cockpit detail and `/markets/:coin`. |
+| `/asset/:coin` | One coin: snapshot and flow series with event markers, exposure graph, research. Linked from Terminal rows and the Cockpit detail. |
 | `/journal` | Round trips from the watched address and the Desk paper book, with session, hold time, R, MAE/MFE, per-tag stats and a weekly report. |
 | `/theses` | Paste a thesis. The LLM extracts claims; code checks each against a fixed catalogue. |
 | `/query` | Natural language to a screener DSL over the snapshot store. The DSL is editable; the SQL is shown read-only. |

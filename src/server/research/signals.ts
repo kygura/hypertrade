@@ -165,7 +165,7 @@ export function opportunitySignal(o: Opportunity, ledger: readonly LedgerStats[]
     id: `opportunity:${o.coin}:${o.id}`, source: "opportunity", coin: o.coin, direction: o.direction,
     headline: `${o.setupKind} · ${o.status} · score ${o.score.toFixed(2)} · tier ${o.liquidityTier}${edge}`,
     tested: rule?.direction ?? null, scope: rule ? "universe" : "coin",
-    at: Date.parse(o.createdAt), rule, ruleText: rule && ruleText(rule), href: `/feed?id=${o.id}`,
+    at: Date.parse(o.createdAt), rule, ruleText: rule && ruleText(rule), href: `/coin/${encodeURIComponent(o.coin)}`,
     evidence: ledger ? ledgerEvidence(o.setupKind, ledger) : null, definitionId: daily?.id ?? null,
   };
 }

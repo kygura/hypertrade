@@ -461,7 +461,8 @@ Per-table drop order (P1 = never dropped):
 
 | Table | P1 (always) | P2 (always) | P3 (md+ only) | P4 (lg only) |
 |---|---|---|---|---|
-| Markets universe | COIN, PRICE | 24H% | OI | FUNDING, VOLUME |
+| Markets universe | COIN, PRICE | 24H% | OI | FUNDING 1H, VOLUME |
+| Moves (§10.13) | COIN, RESIDUAL + Z | TOTAL | BETA, SECTOR, CROWD | TAGS, LIQ σ, CHECK |
 | Branches list | NAME, RETURN% | MAX DD | VS BTC | UPDATED |
 | Sector tokens (drill-in) | TOKEN, PRICE | 24H% | OI | FUNDING |
 | Rotations list | FROM→TO, CONF | TRIGGER | NOTE (full) | — |
@@ -519,35 +520,45 @@ tabs and a back link, or is a full view with a back link, and every coin page
 links to every other coin page for the same coin (`/markets/:coin` ↔
 `/asset/:coin`, and the Cockpit detail links to both). An action has one
 implementation, and its confirmation weight follows the action, not the page
-(§7). The ceiling is nine cells; the shell has five.
+(§7). The ceiling is nine cells; the shell has three.
 
-**Current state: five cells, under the ceiling.** Each family keeps one
-sub-nav, `SectionTabs` (§11), and one `PageContainer` gutter. The cells, left
-to right (`NAV` in `AppShell.tsx`):
+**Current state: three cells, one per job** (2026-11-11; the nav contract is
+docs/RESEARCH.md "Nav"). Each family keeps one sub-nav, `SectionTabs` (§11),
+and one `PageContainer` gutter. The cells, left to right (`NAV` in
+`AppShell.tsx`):
 
 | # | Desktop | Mobile | Glyph | Link | Active on |
 |---|---|---|---|---|---|
-| 1 | RESEARCH | RSRCH | `⚗` | `/` | the RESEARCH family (`isResearchPath`): the board `/`, `/lab/*` (including `/lab/rules/:id`) and `/branches`, `/branches/:id` |
-| 2 | TRADE | TRADE | `◉` | `/feed` | the TRADE family (`isTerminalPath`): `/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/feed`, `/order`, `/desk`, `/asset/:coin` |
-| 3 | MARKET | MKT | `≋` | `/markets` | the MARKET family (`isMarketPath`): `/markets`, `/sectors`, `/state`, `/cycles` and their `/:coin` drills |
-| 4 | ASK | ASK | `?` | `/analyst` | `/analyst` |
-| 5 | ENGINE | ENGIN | `⚙` | `/strategies` | the strategy console (`isEnginePath`): `/strategies`, `/decisions`, `/governor` and their `/:id` drills |
+| 1 | QUEUE | QUEUE | `≋` | `/queue` | the QUEUE family (`isMarketPath`): `/queue`, `/coin/:coin`, `/moves`; also the hidden `/markets`, `/sectors`, `/state`, `/cycles` |
+| 2 | RESEARCH | RSRCH | `⚗` | `/board` | the RESEARCH family (`isResearchPath`): the board `/board`, `/lab/*` (including `/lab/rules/:id`) and `/branches`, `/branches/:id` |
+| 3 | TRADE | TRADE | `◉` | `/desk` | the TRADE family (`isTerminalPath`): `/desk`, `/order`, `/journal`; also the hidden `/feed`, `/terminal`, `/watch`, `/theses`, `/query`, `/asset/:coin` |
 
-Four cells group several routes behind an in-view sub-nav, all `SectionTabs`
-wrappers: TRADE (`TerminalTabs`, brief below), MARKET (`MarketTabs`: PERPS ·
-SECTORS · STATE · CYCLES, with the `MetricsStrip` under the tabs on every
-MARKET route, §10.2), RESEARCH (`LabTabs`: BOARD · STUDY · SEARCH · RUNS ·
-CATALOGUE · PULSE · BRANCHES, §10.9; the board brief is docs/RESEARCH.md
-"Board") and ENGINE (`EngineTabs`,
-§10.12). There is no Overview page: `/overview` redirects to `/markets`.
-After login the landing is `/`, the Research board. `/?review=1` redirects to
-`/terminal?review=1`, and an old Cockpit query on `/` (`id`, `status`, `tier`,
-`liqh`, `liq`) redirects to `/feed` with the query intact (`rootRedirect`,
-`src/ui/lib/research.ts`). `/login` renders outside the shell entirely.
-Unknown paths redirect to `/`.
+Each cell groups its routes behind an in-view sub-nav, all `SectionTabs`
+wrappers: QUEUE (`MarketTabs`: QUEUE · MOVES; the `MetricsStrip`, §10.2, sits under
+the tabs on every route of the family except `/queue` and `/coin/:coin`, which
+show none), RESEARCH (`LabTabs`: BOARD · STUDY · RULES · BRANCHES,
+§10.9; the board brief is docs/RESEARCH.md "Board") and TRADE (`TerminalTabs`:
+DESK · ORDER · JOURNAL). ASK is not a cell: a ghost `ASK` button in the top
+bar opens a drawer over the current screen (§10.16); the full page `/analyst`
+(§10.8) hosts SIMULATE, reached from BRANCHES. The ENGINE console
+(`EngineTabs`, §10.12) has no entry point.
 
-**TRADE family brief.** The job: what changed for my book, and what should I
-place, approve or kill now. One tab row, ordered as a funnel from intel to act:
+Screens hidden from nav on 2026-11-11 (docs/TASKS.md) keep their routes:
+MARKETS, SECTORS, STATE, CYCLES; SEARCH, RUNS, PULSE; FEED, CHANGES, WATCH, THESES,
+QUERY. They are `hidden` tabs: off the row, except that a hidden page opened
+by URL shows its own tab, checked. The briefs below still describe them.
+
+There is no Overview page: `/overview` redirects to `/markets`.
+After login the landing is `/queue`. `/` is no page (`rootRedirect`,
+`src/ui/lib/research.ts`): it redirects to `/queue`; `/?review=1` redirects to
+`/terminal?review=1`, an old Cockpit query on `/` (`id`, `status`, `tier`,
+`liqh`, `liq`) to `/feed` with the query intact, and an old board link
+`/?coin=…` to `/board?coin=…`. `/login` renders outside the shell entirely.
+Unknown paths redirect to `/queue`.
+
+**TRADE family brief.** The job: what did I do and was I right. The row is
+`DESK · ORDER · JOURNAL`; the rest of this brief describes the full family,
+whose other tabs are hidden (above). Its order was a funnel from intel to act:
 `CHANGES · WATCH · JOURNAL · THESES · QUERY · FEED · ORDER · DESK`
 (`/terminal`, `/watch`, `/journal`, `/theses`, `/query`, `/feed`, `/order`,
 `/desk`; mobile short labels `CHNG · WTCH · JRNL · THES · QRY · FEED · ORDR ·
@@ -570,28 +581,29 @@ Its three views switch through `EngineTabs`, a `SectionTabs` over
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ HYPERTRADE ▪ │ RESEARCH TRADE MARKET ASK ENGINE │ theme ● DATA 12:41 │ LOGOUT │
+│ HYPERTRADE ▪ │ QUEUE RESEARCH TRADE │ ASK │ theme ● DATA 12:41 │ LOGOUT │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Left → right:
 
 1. **Wordmark** `HYPERTRADE` 11px uppercase bold + a 6×6px accent square
-   (`--color-accent`). Click → `/`.
-2. **Routes**: the five cells above as 10px control-case links, 12px gap.
+   (`--color-accent`). Click → `/moves`.
+2. **Routes**: the three cells above as 10px control-case links, 12px gap.
    Active route gets the theme's active treatment (Hyperion: `text-primary` +
    2px accent bottom border, `.tab-active`; Hyperdash: white text, the orange
    rule is reserved for tabs) and `aria-current="page"`.
-3. **ThemeSwitcher**: a `Segmented` toggle (`HYPERDASH · TRADE[XYZ] ·
+3. **ASK**: a ghost button that toggles the ASK drawer (§10.16; all breakpoints).
+4. **ThemeSwitcher**: a `Segmented` toggle (`HYPERDASH · TRADE[XYZ] ·
    HYPERION`, short codes `HD · XYZ · HYP` below `xl:`).
-4. **Data-freshness cluster** (md+ only): a StatusDot + `DATA 12:41` in 10px
+5. **Data-freshness cluster** (md+ only): a StatusDot + `DATA 12:41` in 10px
    `text-secondary` — the time of the newest `hl.total_oi_usd` observation
    from `GET /api/metrics/summary?ids=hl.total_oi_usd`, used as the collector
    heartbeat. Dot: green if < 30min old, amber 30min–2h, red > 2h or fetch
    failed (`DATA —`). Tooltip (`title`): `last collector run
    (hl.total_oi_usd)`. This is the shell-level staleness signal from
    principle 3.
-5. **LOGOUT** ghost button → `POST /api/auth/logout`, redirect `/login`.
+6. **LOGOUT** ghost button → `POST /api/auth/logout`, redirect `/login`.
 
 Sticky (`position: sticky; top: 0; z-index: 40`), height
 `var(--topbar-h)` (40px Hyperion, 54px Hyperdash, 48px Trade[XYZ]),
@@ -599,13 +611,13 @@ Sticky (`position: sticky; top: 0; z-index: 40`), height
 
 ### 5.2 Mobile (<768px): bottom tab bar + slim top strip
 
-Top strip (`--topbar-h`, sticky): wordmark left, ThemeSwitcher + LOGOUT
+Top strip (`--topbar-h`, sticky): wordmark left, ASK + ThemeSwitcher + LOGOUT
 right (the freshness cluster is desktop-only). Route links move to a
 **bottom tab bar**, one cell per NAV entry:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ TRADE MKT RSRCH ASK ENGIN                                         │  56px + safe-area
+│ QUEUE RSRCH TRADE                                                 │  56px + safe-area
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -613,11 +625,11 @@ right (the freshness cluster is desktop-only). Route links move to a
   height `calc(56px + env(safe-area-inset-bottom))` with the inset as
   padding-bottom.
 - Equal cells (`flex: 1`), each a flex column: a 12px glyph over a 9px
-  control-case label. Glyphs are text characters, no icon library: `◉`
-  Trade, `≋` Market, `⚗` Research, `?` Ask, `⚙` Engine.
+  control-case label. Glyphs are text characters, no icon library: `≋`
+  Moves, `⚗` Research, `◉` Trade.
 - Active cell: `text-primary` + a 2px accent top border on the cell (the
   underline idiom, flipped to the touchable edge). Inactive: `text-secondary`.
-- Labels: `TRADE / MKT / RSRCH / ASK / ENGIN` — 5 chars max,
+- Labels: `QUEUE / RSRCH / TRADE` — 5 chars max,
   `letter-spacing` ≤ 0.02em on the tab bar only (the theme's control tracking
   would push a 5-char label past the cell).
 - Whole cell is the target (≥56px tall — over `--tap-min`).
@@ -625,8 +637,8 @@ right (the freshness cluster is desktop-only). Route links move to a
 No hamburger, no drawer. A drawer would hide the map of the product behind
 a tap.
 
-**Nine cells is the ceiling; the shell has five.** The ceiling is
-arithmetic. At 320px five cells are 64px wide, and a 5-char label at 9px Geist
+**Nine cells is the ceiling; the shell has three.** The ceiling is
+arithmetic. At 320px five cells would be 64px wide (three are 106px), and a 5-char label at 9px Geist
 Mono is ≈27px, so labels fit without abbreviating further. Cells are 56px
 tall: above WCAG 2.5.8's 24×24 and the iOS tab-bar norm, but below the 44px
 `--tap-min` horizontally at higher cell counts, which is why the count stays
@@ -831,22 +843,26 @@ rebuilt on theme change.
 ## 10. Views
 
 Route map (`src/ui/App.tsx`). Every route renders inside the shell except
-`/login`; unknown paths redirect to `/`.
+`/login`; unknown paths redirect to `/queue`.
 
 | Route | View | Brief |
 |---|---|---|
 | `/login` | password gate | §10.1 |
-| `/` | RESEARCH · BOARD, the landing: live signals with their evidence cell, PULSE, RADAR; `?coin=` filters (old Cockpit queries redirect to `/feed`) | docs/RESEARCH.md "Board" |
+| `/` | no page: redirects to the landing `/queue` (old Cockpit queries to `/feed`, `/?coin=` to `/board`) | docs/RESEARCH.md "Nav" |
+| `/queue` | QUEUE · QUEUE, the landing: what deserves a look today | §10.14 |
+| `/coin/:coin` | QUEUE family: the decide page for one coin | §10.15 |
+| `/board` | RESEARCH · BOARD: live signals with their evidence cell, PULSE, RADAR; `?coin=` filters | docs/RESEARCH.md "Board" |
 | `/feed` | TRADE · FEED (the Cockpit): ranked opportunity feed, liquidation map, detail | docs/design/terminal.md "Cockpit" |
 | `/terminal`, `/journal`, `/theses`, `/query`, `/order`, `/watch` | TRADE tabs (`/terminal` is CHANGES) (`/?review=1` redirects to `/terminal?review=1`) | docs/design/terminal.md §1, §3–§8 |
 | `/asset/:coin` | asset page, a drill-in of CHANGES | docs/design/terminal.md §15.4 |
 | `/overview` | redirects to `/markets` | — |
-| `/markets`, `/markets/:coin` | MARKET · PERPS: HL universe; candle drill-in | §10.7 |
+| `/moves` | QUEUE · MOVES: why each coin moved (attribution), the moves table, agent records; `?window=`, `?coin=`, `?sector=` | §10.13 |
+| `/markets` | hidden: HL universe. `/markets/:coin` redirects to `/coin/:coin?chart=price` | §10.7 |
 | `/sectors` | MARKET · SECTORS: narratives, mindshare map, rotations, drill-in (one selection drives both panels) | §10.5 |
 | `/state` | MARKET · STATE: MarketState briefing | §10.6 |
 | `/cycles`, `/cycles/:coin` | MARKET · CYCLES: BTC / ETH cycle phases and next-bull-run estimate | §10.10 |
 | `/branches`, `/branches/:id` | RESEARCH · BRANCHES: branch list; editor + results (back link `← BRANCHES`) | §10.3, §10.4; docs/design/chat.md §4 |
-| `/analyst` | ASK: read-only analyst and Paths chat (SIMULATE) | §10.8; docs/design/chat.md |
+| `/analyst` | ASK full page: read-only analyst and Paths chat (SIMULATE); the header ASK button opens a drawer instead | §10.8, §10.16; docs/design/chat.md |
 | `/desk` | TRADE · DESK: agentic portfolio desk | §10.11 |
 | `/strategies`, `/strategies/:id`, `/decisions`, `/decisions/:id`, `/governor` | ENGINE console | §10.12 |
 | `/lab` → `/lab/search`; `/lab/{study,search,runs,catalogue,pulse}`, `/lab/runs/:runId`, `/lab/rules/:id` | RESEARCH: heuristic research | §10.9 |
@@ -881,7 +897,7 @@ All widths: a single centered panel, max-width 320px, vertically centered
 ### 10.2 MARKET header — MetricsStrip
 
 There is no Overview page (`/overview` redirects to `/markets`). The
-`MetricsStrip` sits under `MarketTabs` on every MARKET route (`/markets`,
+`MetricsStrip` sits under `MarketTabs` on every MARKET route (`/moves`, `/markets`,
 `/sectors`, `/state`, `/cycles`, and their drills), inside the family's
 `PageContainer`. It is the only UI for funding skew, fear/greed, BTC dominance
 and stablecoin cap. The MarketState headline lives on `/state` (§10.6), sector
@@ -892,7 +908,7 @@ Purpose: a 5-second read of where the market is, above whichever MARKET tab
 is open. Nothing is edited here.
 
 ```
-┌ MARKET: [PERPS|SECTORS|STATE|CYCLES] ───────────────────────────┐
+┌ MARKET: [MOVES|PERPS|SECTORS|STATE|CYCLES] ───────────────────────────┐
 ├ METRICS STRIP ─────────────────────────────────────────────────┤
 │ TOTAL OI      FUND SKEW    FEAR/GREED   BTC DOM    STABLES    │
 │ $4.21B        +0.0031      72 GREED     54.2%      $168B      │
@@ -1145,7 +1161,7 @@ snapshot stays on screen (no skeleton flash).
 Purpose: the raw market surface. Live-ish (short-cache pass-through), the
 only view with tick flash.
 
-Desktop: full-width panel, table per §4.4 (COIN, PRICE, 24H%, OI, FUNDING,
+Desktop: full-width panel, table per §4.4 (COIN, PRICE, 24H%, OI, FUNDING 1H,
 VOLUME), sortable headers, default sort OI desc. Header: `MARKETS` +
 src-tag `HL` + result count (`142 PERPS`, xs secondary) + a filter input
 (ghost-styled, placeholder `FILTER`, filters by coin substring, right-
@@ -1161,17 +1177,22 @@ dex whose snapshot failed is named in one amber xs line above the table.
 - PRICE: tabular, tick-flash on refetch delta (poll `GET /api/hl/markets`
   every 15s; flash cells whose value changed, §8 coalescing).
 - 24H%: signed, colored, glyph.
-- FUNDING: signed, colored; |funding| ≥ 0.1%/8h renders amber (crowded
-  trade flag).
+- FUNDING 1H: signed, colored. Hyperliquid funding is an hourly fraction, so
+  the header carries its unit; |funding| ≥ 0.1%/8h (0.0125%/h, about 110%
+  APR) renders amber (crowded trade flag).
 - Row tap → drill-in.
+
+**Drill-in** — the route `/markets/:coin` now redirects to the coin page (§10.15); its chart, perp header and funding panel are the coin page's PRICE view. The brief below is the former page.
 
 **Drill-in** — route `/markets/:coin?tf=4h`. Desktop AND mobile: a full view
 (not an overlay — back button friendly, linkable; `tf` omitted = 1D). The top
-row carries ghost `← MARKETS` and ghost `INTEL →` (`/asset/:coin`, the same
-coin's Intel page; that page's `CHART →` links back here):
+row carries ghost `← MARKETS` and, right-aligned, ghost `MOVES →`
+(`/moves?coin=X`), `EVIDENCE →` (`/?coin=X`, the research board) and `INTEL →`
+(`/asset/:coin`, the same coin's Intel page; that page's `CHART →` links back
+here):
 
 ```
-┌ ← MARKETS ──────────────────────────────────────────── INTEL → ┐
+┌ ← MARKETS ──────────────────── MOVES → · EVIDENCE → · INTEL → ┐
 │ ETH  $3,512.40 (xl, AnimatedDigits) +2.1% ▲  LIVE  AT OI CAP  25x MAX │
 │ ORACLE | FUNDING 1H | NEXT FUNDING | OPEN INTEREST | OI 7D |   │
 │ 24H VOLUME | IMPACT SPREAD | MID            (MetricStat grid)  │
@@ -1243,7 +1264,7 @@ States: SkeletonRows while the status probe runs; OfflineBlock
 `ANALYST NOT CONFIGURED` (naming the provider key vars) on 503; OfflineBlock
 `ANALYST UNREACHABLE` on 502 or no network; a per-turn verbatim ErrorBlock
 for timeouts, refusals and provider errors. No spinners: pulse labels only.
-Mobile: the fourth tab-bar cell (`ASK`, glyph `?`); single column with the
+Mobile: reached from the top strip's `ASK` button; single column with the
 rail below the thread, and the composer sticks above the tab bar.
 
 ### 10.9 `/lab` — heuristic research
@@ -1281,30 +1302,30 @@ bookmarkable page and the browser back button steps between them:
 
 | Path | Tab | Content |
 |---|---|---|
-| `/` | BOARD | the Research board, the app landing (docs/RESEARCH.md "Board") |
+| `/board` | BOARD | the Research board (docs/RESEARCH.md "Board") |
 | `/lab` | — | redirects to `/lab/search` |
 | `/lab/study` | STUDY | the event study of one rule (`?rule=`, `?coin=`; docs/RESEARCH.md "Study") |
-| `/lab/search` | SEARCH | form + results of the current/last run in this browser; after a reload with no last run, the newest stored run (`lab_list_runs` limit 1 → `lab_get_run`) |
-| `/lab/runs` | RUNS | recent runs list |
-| `/lab/runs/:runId` | SEARCH | the Search tab with that run's config in the form and its results below; header stamp `RUN 7f3a · 2026-10-08 09:12 UTC` |
-| `/lab/catalogue` | CATALOGUE | saved rules, health, live stats |
-| `/lab/pulse` | PULSE | Market Pulse board |
+| `/lab/search` | SEARCH (hidden) | form + results of the current/last run in this browser; after a reload with no last run, the newest stored run (`lab_list_runs` limit 1 → `lab_get_run`) |
+| `/lab/runs` | RUNS (hidden) | recent runs list |
+| `/lab/runs/:runId` | SEARCH (hidden) | the Search tab with that run's config in the form and its results below; header stamp `RUN 7f3a · 2026-10-08 09:12 UTC` |
+| `/lab/catalogue` | RULES | the catalogue: saved rules, health, live stats; one quiet line links to SEARCH and RUNS |
+| `/lab/pulse` | PULSE (hidden) | Market Pulse board |
 | `/branches`, `/branches/:id` | BRANCHES | the Branches simulator (§10.3, §10.4), under the same tab row |
 | `/lab/rules/:id` | (drill) | rule detail; `?run=<runId>` when the rule is not catalogued; `?from=catalogue\|results\|pulse` sets the back link |
 
 **LabTabs**: a `SectionTabs` (`size: 'md'` Segmented) directly under the
-shell: `BOARD · STUDY · SEARCH · RUNS · CATALOGUE · PULSE · BRANCHES`, in
-workflow order (what fires now → its history as an event study → search →
-its history → what you kept → what it says today → portfolio simulation).
-It is the RESEARCH cell's sub-nav; the cell lands on BOARD (`/`), and `/lab`
-lands on SEARCH. Mobile: `short` labels `BRD · STDY · SRCH · RUNS · CTLG ·
-PULSE · BRNCH`; the tab
+shell: `BOARD · STUDY · RULES · BRANCHES`, in
+workflow order (what fires now → its history as an event study → what you
+kept → portfolio simulation). SEARCH, RUNS and PULSE are hidden tabs (§5):
+each shows in its workflow position only while its own page is open.
+It is the RESEARCH cell's sub-nav; the cell lands on BOARD (`/board`), and `/lab`
+lands on SEARCH. Mobile: `short` labels `BRD · STDY · RULE · BRNCH`; the tab
 row is `position: sticky; top: var(--topbar-h)`, `--subnav-h` tall, under the
 top strip. The catalogue segment carries a count suffix
-(`CATALOGUE · 7`) at md+; the Pulse segment carries a 6px dot, green if any
+(`RULES · 7`) at md+; the Pulse segment (on `/lab/pulse` only) carries a 6px dot, green if any
 rule fires, gray otherwise (number + word remain inside the tab). On the
 board there is no Lab data provider: no count, and the dot reads the board's
-own pulse counts, so the landing starts no catalogue or pulse load.
+own pulse counts, so the board starts no catalogue or pulse load.
 
 Rule detail is a **full view route** (the markets-drill pattern, §10.7),
 not the sectors inline panel: it is tall (chart, drawdown, two tables, a
@@ -1786,6 +1807,10 @@ Desktop: a header strip, then `xl:` (1280px) two columns of 2 : 1. Below
 - **KILL**: the shared `KillSwitchDialog` (Level 3, typed `KILL`; `RESUME`
   is Level 2), the same flow as the Cockpit header (§7).
 
+Coins in the book, the proposal cards and the recent fills link to `/asset/:coin`.
+All five GETs refetch every 30 s through `usePoll` (paused while the tab is
+hidden, updated in place); the SSE ask lane is not polled.
+
 Data: `GET /api/desk/{status,portfolio,proposals,alerts,runs}`; `POST
 /api/desk/{ask,review}` (SSE), `/proposals/:id/{approve,reject}`, `/exit`,
 `/kill`; `PUT /api/desk/{approval,settings}`. States: status offline or error
@@ -1844,6 +1869,142 @@ UNREACHABLE` (the proxy's reason, verbatim) with RETRY; when a later poll
 fails over cached data, an amber `OfflineStrip` (`<reason> — showing data
 from 14:02 UTC`) sits above the undimmed data.
 
+### 10.13 `/moves` — MOVES: why each coin moved
+
+The second tab of the first family (`MarketTabs`, MetricsStrip above it, §10.2); the daily triage list moved to the QUEUE (§10.14), and the page keeps one line, `today's triage is in QUEUE →`, in its place. Purpose:
+for each main-dex crypto perp, split the move over a window into what is
+explained after the fact (BTC and ETH beta, sector, residual) and show the
+positioning around it, with a short ranked triage queue of the coins worth a
+look today. Code computes every number; an agent may propose a cause, which
+renders as a hypothesis beside the numbers. Nothing here places, approves or
+sizes an order. Spec: docs/SPEC.md ("Moves"). The Cockpit's items are opportunities with a status machine, these
+are informational facts (the two-lists rule, §5).
+
+Loaded lazily with the route. Query: `?window=4h|24h|72h` (default 24h),
+`?coin=`, `?sector=`. Polls every 60 s (triage, moves, the selected detail),
+record stats every 5 min; polling pauses when the tab is hidden.
+
+```
+MarketTabs [QUEUE|MOVES] + MetricsStrip
+├ MOVES [4H|24H|72H]  asOf 14:00 UTC · 38 coins · 2 dropped*  BETA● FLOW● NEWS● LIQ● AGENTS● ┤
+├ A FACTORS (12) ─ BTC −1.8% · ETH −2.4% · ETH ex-BTC −0.7% · sectors ex-majors … ────────────┤
+├ B TRIAGE · 6 OF 8 TODAY (12) ─ ranked queue ──────────────────────────────────────────────┤
+├ C MOVES · BY |RESIDUAL Z| (7) ──────────────────┬ D SELECTED · HYPE (5) ───────────────────┤
+│ COIN TOTAL BETA SECTOR RESIDUAL▇ Z TAGS CROWD …  │ actions · D1 attribution · D2 agent record │
+│                                                  │ D3 positioning · D4 liq · D5 attention · D6 checks │
+└──────────────────────────────────────────────────┴───────────────────────────────────────────┘
+```
+
+- **Header**: window `Segmented`; `asOf` is the last closed 1h bar; coin and
+  dropped counts (`*` title lists coin and reason); one `StatusDot` chip per
+  layer (`ok`, `partial`, `unavailable`) with the reason in `title` and, when
+  not ok, as a visible line under the chips.
+- **A FACTORS**: `StatCell`s for BTC, ETH, ETH ex-BTC and the top sector
+  baskets ex-majors, each with its coin count. Clicking a sector sets
+  `?sector=`; `SECTORS →` goes to `/sectors`. `AgeStamp` on the sector file
+  (threshold 24h).
+- **B TRIAGE** (the item's component still exists but `/moves` does not render it; the QUEUE shows the same items under the shared budget): at most 8 items per UTC day, stated as `6 OF 8 TODAY`.
+  Ranking and the cap are code. Each row: coin, window, the reason as facts
+  (`residual +6.2% · z 3.1 · 24h · no news in window`), the agent record's
+  status (`INVESTIGATING…`, the claim line with its layer badge and
+  falsifier, or `no cause found`) and age. Actions: `OPEN` selects the coin,
+  `DISMISS` hides it for the day (it still counts against the budget),
+  `INVESTIGATE` costs one LLM run and says so in its `title`; disabled with a
+  reason at the cap or without a provider. Budget exhausted reads `budget
+  reached: 4 more candidates not shown`; nothing nags.
+- **C MOVES table**: `DataTable` (§4.4), sort `|Z|` · `TOTAL` · `CROWD`. TOTAL
+  is a log %; RESIDUAL is a signed bar plus the number; Z is amber at |z| ≥ 2;
+  TAGS are `FLOW` / `NEWS` badges labelled `in OI-drop hours` and `in news
+  hours`, because the residual is split by hour bucket, not regressed, and
+  must not read as causal. CHECK is the best checklist, e.g. `FADE 2/3`. A
+  row with no attribution shows `—` with the reason in `title`. Keyboard:
+  j/k, Enter selects (`?coin=`).
+- **D SELECTED**: an action bar of links (`COIN →` `/coin/:coin`, `EVIDENCE →`
+  the board, `CHART →` `/coin/:coin?chart=price`, `LIQ MAP →`
+  `/coin/:coin?liq=1`, `OPPORTUNITY →` `/coin/:coin`, `STUDY →` when a
+  checklist maps to a shipped definition, `ORDER →`), then
+  D1 attribution (stacked bar, factor table with R² and n, cumulative actual
+  vs beta-fitted line), D2 agent record, D3 positioning, D4 liquidation
+  proximity, D5 attention and D6 condition check.
+- **Agent records** use the HYP claim styling (info colour): claim, layer
+  badge, falsifier with its distance from the mark, sources with `ClaimAge`,
+  status `open` / `falsified` / `graded`, and the track record with n
+  (`n<5 — not enough graded` below 5 clusters).
+- **D6** and any checklist are predicted-beforehand material: a
+  `--color-info` left border, `--color-info-bg` header and the label
+  `CONDITION CHECK · NOT A FORECAST`. Thresholds are starting points, said so.
+
+Phone (<768): header, A as a 2-col grid, B first after A, then C with P1 and
+P2 columns. A row tap or `OPEN` pushes `?coin=` as a history entry; the detail
+shows `← MOVES` and D1 to D6 stacked, the action bar sticky at the bottom
+(`env(safe-area-inset-bottom)`, controls at least `--tap-min`). At md the
+mobile order holds; C and D sit side by side from `lg:` (7/5).
+
+States: see §13. Not on this page: APPROVE, KILL, order entry.
+
+### 10.14 `/queue` — QUEUE: what deserves a look today
+
+The landing and first tab of the first family (`MarketTabs`: QUEUE · MOVES). Purpose: one short list of coins, each with
+the facts that put it there, so the trader decides where to look. Spec: docs/SPEC.md § Queue. Components: `Queue.tsx`
+(poll, selection, keyboard, DISMISS), `QueueView.tsx` (presentational), `logic.ts`. Nothing here approves, investigates
+on its own or places an order.
+
+**The rule for these three views: nothing above the content that isn't the content. A missing layer is one quiet line,
+never a card.** No hero, no summary tiles, no banner, no empty-state panel; a source that is down is a line of text.
+
+- **Header**: the panel title is the count, `QUEUE · 5 listed of 8 · 2 weaker over cap` (`weaker over cap` only when above zero).
+- **Source row**: one `StatusDot` chip per source (`MOVES`, `SETUP`, `RADAR`) with the coins it contributed before the
+  cap (`title` says so), then `agents 2/6 today` (plus `investigate off: <reason>` when it cannot run). A source that
+  could not be read is not a card: one line under the row, `RADAR off: sign in required`.
+- **Rows**: a new item shows the coin, its source labels joined by `·` (`MOVES·SETUP`), the side (`long`, `short`, `mixed`,
+  or a dash), age in the queue (`14m`), the facts-only reason, a record chip (`OPEN record`, `graded · hit`, `falsified`,
+  `no cause found`, …) and ghost `DISMISS` (its `title`: hides for today, keeps its slot in the day's budget). Acted and
+  dismissed items sit behind a collapsed `▸ dismissed / acted (n)` line and show their state as a gray badge.
+- **Empty**: one text line, `nothing crossed the bar today · 38 coins watched` (the count when known); when only handled
+  items remain, `nothing new · every item today is handled`.
+- **Desktop (lg and up)**: list in 4 columns, the selected coin's decision pane in 8 (the COIN body in `pane` layout,
+  §10.15). Selection is `?coin=` (replace); `j`/`k` move it and focus the row, `Enter` opens `/coin/:coin`; keys are off
+  while a dialog (the ASK drawer) is open.
+- **Phone (<1024)**: the list only. A tap pushes `/coin/:coin` so back returns to the list; there is no default selection.
+- Polls `/api/queue` every 60 s, paused while the tab is hidden. States follow §13 (loading rows, error with retry).
+
+### 10.15 `/coin/:coin` — COIN: decide on one coin
+
+Route `/coin/:coin` (QUEUE tab stays checked) and the QUEUE's right pane. `/markets/:coin` redirects here with
+`?chart=price`. Coin names are case-sensitive and may carry a dex prefix (`kPEPE`, `xyz:TSLA`); the param is used as-is.
+Components: `CoinPage.tsx` (looks the coin up in the queue), `CoinDecision.tsx` (pollers, view), `logic.ts`.
+
+Top to bottom, in the order of the decision: header (`← QUEUE` on the page, coin, sector, mark, window `Segmented`), then
+**IN QUEUE** (`IN QUEUE · 14M`, `· DISMISSED`, or `not in today's queue`; one line per source part: label, side,
+facts-only reason, own drill-in), the **action row**, then **WHY IT MOVED** (attribution, with a MOVE | PRICE switch; PRICE
+is the perp header, `MarketChart`, funding panel, `?tf=`), the **agent record** with its falsifier and track record, **PRICED
+IN** (positioning, liquidation proximity, a `▸ LIQ MAP` toggle, `?liq=1`), **attention** and **ENTER / FADE**. From `lg`
+the page is two columns (7/5); the pane and phones are one column.
+
+- **Actions** are links, the drawer, or one agent run: `INVESTIGATE` (only while no record exists; its `title` says it
+  costs one LLM run, disabled with the reason at the cap), `ASK` (opens the drawer), `SIMULATE` (`/analyst?mode=sim`,
+  prefilled, not sent), `ORDER`, `EVIDENCE` (the board), `MOVES`, and `OPPORTUNITY · APPROVE ON FEED` only when a ready
+  opportunity exists. Nothing on the page approves or places an order.
+- **A missing layer is one quiet line in place**: a HIP-3 market reads `xyz:TSLA is a HIP-3 market: move attribution,
+  positioning and the checklists cover main-dex perps only` and keeps the PRICE view; a 400/404 detail or an unavailable
+  layer prints its reason; an unreadable queue leaves IN QUEUE out. No error block for these.
+- Detail polls every 60 s, record stats every 5 min, the liquidation map only while open.
+
+### 10.16 ASK drawer
+
+Opened by the header `ASK` button (toggle) or the `ht:ask` window event; `AskDrawer.tsx` mounted by the shell.
+Read-only, as the page. Not a route: it opens over whatever screen the trader is on and closes back to it.
+
+- **Shape**: `role="dialog"`, a right-hand panel 440 px wide from md, full screen above the bottom tab bar on phones, a
+  dimmed backdrop (click closes), Escape closes, Tab is trapped, focus returns to where it was.
+- **Header**: `ASK`, `OPEN FULL PAGE →` (`/analyst`), close. Under it a context chip `ABOUT BTC ✕` when the URL names a coin
+  (`/coin/:c`, `/asset/:c`, `/markets/:c`, or `?coin=` on `/queue`, `/moves`, `/board`); the ✕ drops it; the model selector.
+- **Context**: when that coin is in today's queue the question goes out prefixed with the item's facts
+  (`[context: coin BTC · in queue: … · agent record: … · falsifier …]`); the thread shows only the user's text.
+- **Thread**: shares the ASK thread of `/analyst` (`useAnalystThread`), so an answer in flight survives closing. Empty
+  state is one line (`Ask about BTC or anything on the tape. Read-only; it cannot trade.`); an unreachable analyst is the
+  standard `OfflineBlock` with retry.
+
 ---
 
 ## 11. Component inventory
@@ -1893,7 +2054,7 @@ Ported components keep their Hyperion source semantics (files:
 | `DataTable` | `columns: {key, label, priority: 1\|2\|3\|4, align, render}[]`, `rows`, `onRowClick?`, `sortable?` | §4.4 priority hiding via `hidden md:table-cell`/`hidden lg:table-cell`; row height `var(--row-h)`; focusable rows |
 | `MetricStat` | `label`, `value`, `delta?`, `deltaPositive?`, `z30?` | §10.2 cell |
 | `MetricsStrip` | none (fetches its own data) | §10.2; the five-cell strip in the MARKET header (`components/market/MetricsStrip.tsx`) |
-| `MarketTabs` | none | §5; `SectionTabs` over PERPS · SECTORS · STATE · CYCLES, with `isMarketPath` (`components/market/MarketTabs.tsx`) |
+| `MarketTabs` | none | §5; `SectionTabs` over MOVES · PERPS · SECTORS · STATE · CYCLES, with `isMarketPath` (`components/market/MarketTabs.tsx`) |
 | `MomentumBadge` | `momentum: number` | §3; bucket thresholds ±0.15/±0.5 |
 | `Sparkline` | `points: number[]`, `height?` | §4.5; white 1px, no axes, no tooltip |
 
@@ -1923,7 +2084,11 @@ Analyst and Paths: `Markdown`; `ModelSelector`; `PathCard`;
 (`components/strategy/`, §10.12): `EngineTabs` (+ `isEnginePath`);
 `EngineOffline` (+ `OfflineStrip`); `DecisionView`; `IntentRow`; `ParamForm`;
 `VerdictBadge`; `ProbBar`; `ScoreRubric`; `NoulBar`. Desk (§10.11): panels
-are local to `pages/Desk.tsx`. Login is `pages/Login.tsx`.
+are local to `pages/Desk.tsx`. Moves (§10.13, `pages/moves/`): `Moves` (container:
+pollers, query, keyboard) and `MovesView` (presentational: header, factors,
+triage queue, moves table, detail D1 to D6), built from the shared pieces
+above (`DataTable`, `Segmented`, `StatCell`, `MetricStat`, `ClaimLine`,
+`AgeStamp`, `StatusDot`). Login is `pages/Login.tsx`.
 
 Lab (§10.9, under `src/ui/components/lab/`): `LabTabs` (a `SectionTabs`, includes BRANCHES); `LabSearchForm`
 (+ `MetricPicker`, `AdvancedDisclosure`, `SearchSummaryBar`);
@@ -2013,6 +2178,7 @@ Non-negotiable, verified before done:
 | Cockpit `/feed` (feed, liquidation map, detail, health) | per DESIGN-terminal C7 | per DESIGN-terminal C7 | per DESIGN-terminal C7 | per DESIGN-terminal C7 |
 | Sectors narratives | SkeletonRows | EmptyBlock per row set | ErrorBlock / OfflineBlock | AgeStamp `sectorsAsOf` > 24h |
 | Cycles | SkeletonRows + `loading <COIN> history since <year>…` | in-run / not-enough-history sentence in the estimate | ErrorBlock / OfflineBlock | — |
+| Moves (§10.13) | SkeletonRows (10 rows; `FIRST RUN — 21 OF 40 COINS LOADED` while pending) | EmptyBlock (`no coin has enough history for this window`, `no coins in <SECTOR>`; triage: `nothing crossed the bar today`) | ErrorBlock / OfflineBlock; a layer chip `unavailable` with its reason | StaleBanner when `asOf` > 2h old; AgeStamp on the sector file > 24h |
 | Desk (§10.11) | SkeletonRows per panel | EmptyBlock (`no proposals yet`, `no alerts yet`, `no runs yet`) | page-level OfflineBlock / ErrorBlock; verbatim line in a panel | red venue note; amber live-testnet line |
 | Engine console (§10.12) | SkeletonRows | EmptyBlock (`no strategies registered`, `no venues registered`) | `EngineOffline` (`ENGINE NOT CONFIGURED` / `ENGINE UNREACHABLE`) | amber `OfflineStrip` over cached data |
 | Watch `/watch` (watches, changes) | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §10 | per DESIGN-terminal §1.7 / §10 |

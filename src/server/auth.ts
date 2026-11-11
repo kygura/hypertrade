@@ -115,12 +115,18 @@ export const requireCronToken: MiddlewareHandler = async (c, next) => {
 const LAB_PATH = /^\/(lab|mcp)(\/|$)|^\/research\/study$/;
 
 /**
- * `/metrics`, `/sectors`, `/marketstate`, `/intel`, `/platform`, `/research`, `/radar` and their subpaths — not
- * `/metricsx`. The bearer only opens them on GET, so the routine can read;
- * every write under these paths (Intel's positions, orders, watches…) still
+ * `/metrics`, `/sectors`, `/marketstate`, `/intel`, `/platform`, `/research`, `/radar`, `/queue`, `/moves` and their
+ * subpaths — not `/metricsx`. The bearer only opens them on GET, so the routine can read;
+ * every write under these paths (Intel's positions, orders, watches, dismissals, investigations…) still
  * needs the session cookie.
  */
-const READ_PATH = /^\/(metrics|sectors|marketstate|intel|platform|research|radar)(\/|$)/;
+const READ_PATH = /^\/(metrics|sectors|marketstate|intel|platform|research|radar|queue|moves)(\/|$)/;
+
+/**
+ * The one write the bearer opens: POST /moves/:coin/proposal, where the owner's scheduled routine lands an
+ * investigation it researched (moves/agentRoutes.ts). Code stamps, vets and stores the record; nothing approves or orders.
+ */
+const PROPOSAL_PATH = /^\/moves\/[^/]+\/proposal$/;
 
 /**
  * Bearer token for the lab surfaces and the read-only paths above (docs/LAB.md
@@ -187,7 +193,12 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
     return c.json({ error: "unauthorized" }, 401);
   }
 
-  // Metrics/sectors/marketstate/intel: session cookie on any method, or the same
+  if (c.req.method === "POST" && PROPOSAL_PATH.test(path)) {
+    if (labBearerValid(c) || verifySession(getCookie(c, COOKIE_NAME))) return next();
+    return c.json({ error: "unauthorized" }, 401);
+  }
+
+  // Metrics/sectors/marketstate/intel/queue/moves: session cookie on any method, or the same
   // bearer but GET only. The bearer grants nothing on any other path.
   if (READ_PATH.test(path)) {
     if ((c.req.method === "GET" && labBearerValid(c)) || verifySession(getCookie(c, COOKIE_NAME))) return next();

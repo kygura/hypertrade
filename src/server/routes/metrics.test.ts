@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { Hono } from "hono";
+import * as db from "../db.js";
 import { metricsRoutes } from "./metrics.js";
 
 const app = new Hono().route("/metrics", metricsRoutes);
@@ -25,5 +26,16 @@ describe("GET /metrics/series/:id", () => {
   test("400s on a non-positive buckets param", async () => {
     const res = await app.request("/metrics/series/hl.total_oi_usd?buckets=0");
     expect(res.status).toBe(400);
+  });
+});
+
+describe("without a database", () => {
+  afterEach(() => spyOn(db, "summaryFor").mockRestore());
+
+  test("summary answers 503 with the stated reason, not a bare 500", async () => {
+    spyOn(db, "summaryFor").mockRejectedValue(new Error("DATABASE_URL is not set — database queries are unavailable"));
+    const res = await app.request("/metrics/summary?ids=fng.value");
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "DATABASE_URL is not set — database queries are unavailable" });
   });
 });

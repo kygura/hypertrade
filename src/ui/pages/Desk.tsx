@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router'
 import { AsyncBody, Badge, Button, ConfirmDialog, ErrorBlock, OfflineBlock, Panel, PanelBody, PanelHeader, Segmented, SkeletonRows, DataTable, type Column } from '../components'
 import { Markdown } from '../components/analyst/Markdown'
 import { KillSwitchDialog } from '../components/KillSwitchDialog'
-import { api, ApiError, NetworkError, useApi } from '../lib/api'
+import { api, ApiError, NetworkError } from '../lib/api'
+import { usePoll } from '../lib/poll'
 import { useDeskKill } from '../lib/useDeskKill'
 import {
   emptyRun,
@@ -45,12 +47,23 @@ const SUGGESTIONS = [
   'Review the book: anything to cut or tighten given current flows and the macro calendar?',
 ]
 
+// Equity, proposals and alerts change without the operator doing anything (the governor queues, the
+// book marks to market): refetch on the same 30 s cadence as the Cockpit's desk strip. usePoll pauses
+// while the tab is hidden and updates in place. The SSE ask lane (streamDesk) is not polled.
+const DESK_POLL_MS = 30_000
+
+/** usePoll on a desk GET, in the `offline: boolean` shape the panels take. */
+function useDeskPoll<T>(path: string) {
+  const s = usePoll(() => api.get<T>(path), [path], { intervalMs: DESK_POLL_MS })
+  return { ...s, offline: s.offline != null }
+}
+
 export function Desk() {
-  const status = useApi<DeskStatus>('/desk/status')
-  const portfolio = useApi<Portfolio>('/desk/portfolio')
-  const proposals = useApi<{ proposals: ProposalRecord[] }>('/desk/proposals?limit=30')
-  const alerts = useApi<{ alerts: AlertRow[] }>('/desk/alerts?limit=30')
-  const runs = useApi<{ runs: RunRow[] }>('/desk/runs?limit=15')
+  const status = useDeskPoll<DeskStatus>('/desk/status')
+  const portfolio = useDeskPoll<Portfolio>('/desk/portfolio')
+  const proposals = useDeskPoll<{ proposals: ProposalRecord[] }>('/desk/proposals?limit=30')
+  const alerts = useDeskPoll<{ alerts: AlertRow[] }>('/desk/alerts?limit=30')
+  const runs = useDeskPoll<{ runs: RunRow[] }>('/desk/runs?limit=15')
 
   const refreshBook = useCallback(() => {
     portfolio.refetch()
@@ -440,14 +453,19 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
   const exit = p.kind === 'exit' ? (p.proposal as ExitProposal) : null
   return (
     <div className="border-b border-border-subtle p-3 flex flex-col gap-1.5 min-w-0">
-      <button className="flex items-center gap-2 text-left min-w-0" onClick={() => setOpen((o) => !o)}>
-        <Badge tone={STATUS_TONE[p.status] ?? 'gray'}>{p.status.toUpperCase()}</Badge>
-        <span className={`text-md ${entry?.side === 'short' ? 'text-red-text' : 'text-green'}`}>
-          {entry ? `${entry.side.toUpperCase()} ${entry.coin}` : `EXIT ${Math.round((exit?.fraction ?? 0) * 100)}% ${exit?.coin}`}
-        </span>
-        <span className="text-xs text-text-secondary truncate">{op ? 'operator order (copilot)' : (open_?.setup ?? exit?.reason)}</span>
-        <span className="text-xs text-text-secondary ml-auto shrink-0 tabular">{new Date(p.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-      </button>
+      <div className="flex items-center gap-2 min-w-0">
+        <button className="flex items-center gap-2 text-left shrink-0" onClick={() => setOpen((o) => !o)}>
+          <Badge tone={STATUS_TONE[p.status] ?? 'gray'}>{p.status.toUpperCase()}</Badge>
+          <span className={`text-md ${entry?.side === 'short' ? 'text-red-text' : 'text-green'}`}>
+            {entry ? entry.side.toUpperCase() : `EXIT ${Math.round((exit?.fraction ?? 0) * 100)}%`}
+          </span>
+        </button>
+        <CoinLink coin={(entry ?? exit)?.coin ?? ''} className={`text-md hover:underline ${entry?.side === 'short' ? 'text-red-text' : 'text-green'}`} />
+        <button className="flex flex-1 items-center gap-2 text-left min-w-0" onClick={() => setOpen((o) => !o)}>
+          <span className="text-xs text-text-secondary truncate">{op ? 'operator order (copilot)' : (open_?.setup ?? exit?.reason)}</span>
+          <span className="text-xs text-text-secondary ml-auto shrink-0 tabular">{new Date(p.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+        </button>
+      </div>
       {s && (
         <div className="text-xs text-text-secondary tabular">
           mark {fmtPx(s.markPx)}
@@ -509,6 +527,15 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
   )
 }
 
+/** A coin that opens its coin page (the TRADE cross-link, docs/design/terminal.md C1). */
+function CoinLink({ coin, className = 'hover:underline' }: { coin: string; className?: string }) {
+  return (
+    <Link to={`/coin/${encodeURIComponent(coin)}`} className={className} title={`open ${coin}`}>
+      {coin}
+    </Link>
+  )
+}
+
 type DeskPosition = Portfolio['desk']['positions'][number]
 
 const BOOK_COLUMNS: Column<DeskPosition>[] = [
@@ -518,7 +545,7 @@ const BOOK_COLUMNS: Column<DeskPosition>[] = [
     priority: 1,
     render: (p) => (
       <span className={p.side === 'long' ? 'text-green' : 'text-red-text'}>
-        {p.side === 'long' ? '▲' : '▼'} {p.coin}
+        {p.side === 'long' ? '▲' : '▼'} <CoinLink coin={p.coin} />
       </span>
     ),
   },
@@ -583,7 +610,7 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
             <span className="label text-2xs">RECENT FILLS</span>
             {portfolio.fills.slice(0, 6).map((f) => (
               <span key={f.id} className="text-xs text-text-secondary tabular">
-                {new Date(f.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} {f.side} {f.size} {f.coin} @ {fmtPx(f.px)} · {f.reason}
+                {new Date(f.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} {f.side} {f.size} <CoinLink coin={f.coin} /> @ {fmtPx(f.px)} · {f.reason}
                 {f.pnl !== 0 ? ` · ${fmtUsd(f.pnl)}` : ''}
               </span>
             ))}

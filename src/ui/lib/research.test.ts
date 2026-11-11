@@ -38,10 +38,11 @@ describe("rootRedirect: old `/` queries", () => {
     expect(rootRedirect("?status=ready&tier=2")).toBe("/feed?status=ready&tier=2");
     expect(rootRedirect("?liq=ETH&liqh=6&coin=ETH")).toBe("/feed?liq=ETH&liqh=6&coin=ETH");
   });
-  test("the board's own ?coin= and an empty query stay on the board", () => {
-    expect(rootRedirect("")).toBeNull();
-    expect(rootRedirect("?coin=ETH")).toBeNull();
-    expect(rootRedirect("?review=0")).toBeNull();
+  test("an old board link (?coin=) goes to /board with the query; no legacy query lands on /queue", () => {
+    expect(rootRedirect("?coin=ETH")).toBe("/board?coin=ETH");
+    expect(rootRedirect("?coin=xyz%3ASKHX")).toBe("/board?coin=xyz%3ASKHX");
+    expect(rootRedirect("")).toBe("/queue");
+    expect(rootRedirect("?review=0")).toBe("/queue");
   });
 });
 
@@ -52,7 +53,7 @@ describe("links and scope", () => {
     expect(signalStudyHref(sig("a", "ETH", 1, { rule }))).toBe(`/lab/study?rule=${encodeURIComponent(JSON.stringify(rule))}&coin=ETH`);
     expect(signalStudyHref(sig("a", "ETH", 1, { rule, scope: "universe" }))).toBe(`/lab/study?rule=${encodeURIComponent(JSON.stringify(rule))}`);
     expect(signalStudyHref(sig("a", "ETH", 1))).toBeNull();
-    expect(boardHref("xyz:SKHX")).toBe("/?coin=xyz%3ASKHX");
+    expect(boardHref("xyz:SKHX")).toBe("/board?coin=xyz%3ASKHX");
     // A definition's rule is studied over the universe: the link carries no coin, and never the placeholder.
     const def = { ...rule, asset: UNIVERSE_ASSET };
     expect(signalStudyHref(sig("d", "SOL", 1, { rule: def, scope: "universe" }))).toBe(`/lab/study?rule=${encodeURIComponent(JSON.stringify(def))}`);

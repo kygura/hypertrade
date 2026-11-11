@@ -13,6 +13,8 @@ describe("MarketDrill coin cross-links", () => {
       </MemoryRouter>,
     );
     expect(html).toContain("INTEL →");
+    expect(html).toContain("MOVES →");
+    expect(html).toContain("EVIDENCE →");
     expect(html).toContain("← MARKETS");
   });
 });

@@ -22,6 +22,12 @@ for (const p of ["/lab", "/lab/tools", "/mcp", "/mcp/x", "/labx", "/mcpfoo", "/l
 for (const p of ["/metrics/summary", "/sectors", "/marketstate", "/metricsx", "/sectorsfoo", "/marketstatex", "/intel", "/intel/positions", "/intelx/positions", "/research/board", "/research/study", "/research/studyx", "/radar"]) {
   testApp.all(p, (c) => c.json({ reached: p }));
 }
+const MOVES_READS = ["/queue", "/moves", "/moves/triage", "/moves/SOL", "/moves/records", "/moves/records/stats"];
+const MOVES_WRITES = [
+  "/moves/SOL/investigate", "/moves/triage/2026-11-11:SOL/dismiss", "/queue/x/dismiss", "/moves/SOL/proposalx", "/moves/SOL/proposal/x",
+  "/platform/opportunities/o1/approve", "/platform/opportunities/o1/reject", "/desk/proposals/p1/approve", "/desk/exit", "/desk/kill", "/desk/approval", "/desk/settings",
+];
+for (const p of [...MOVES_READS, ...MOVES_WRITES, "/moves/SOL/proposal", "/movesx", "/queuex"]) testApp.all(p, (c) => c.json({ reached: p }));
 
 describe("session token", () => {
   test("signs and verifies a roundtrip", () => {
@@ -274,6 +280,25 @@ describe("lab bearer (LAB_API_TOKEN)", () => {
       expect((await req("/research/study", bearer("tok-one"), "POST")).status).toBe(200);
       expect((await req("/research/study", bearer("wrong"), "POST")).status).toBe(401);
       expect((await req("/research/studyx", bearer("tok-one"), "POST")).status).toBe(401);
+    }));
+
+  test("moves: the bearer reads the queue, triage, detail and records, and posts a proposal, nothing else", () =>
+    withTokens("tok-one", async () => {
+      for (const path of MOVES_READS) {
+        expect((await req(path, bearer("tok-one"))).status).toBe(200);
+        expect((await req(path, bearer("wrong"))).status).toBe(401);
+      }
+      expect((await req("/moves/SOL/proposal", bearer("tok-one"), "POST")).status).toBe(200);
+      expect((await req("/moves/SOL/proposal", bearer("wrong"), "POST")).status).toBe(401);
+      for (const method of ["PUT", "DELETE", "PATCH"]) expect((await req("/moves/SOL/proposal", bearer("tok-one"), method)).status).toBe(401);
+      // No other write opens: dismiss, investigate, approve, orders and the desk stay cookie-only.
+      for (const path of MOVES_WRITES) {
+        for (const method of ["POST", "PUT"]) expect({ path, method, status: (await req(path, bearer("tok-one"), method)).status }).toEqual({ path, method, status: 401 });
+      }
+      for (const path of ["/movesx", "/queuex"]) expect((await req(path, bearer("tok-one"))).status).toBe(401);
+      const cookie = (await postLogin("correct-horse")).headers.get("set-cookie")!.split(";")[0];
+      expect((await req("/moves/SOL/proposal", { cookie }, "POST")).status).toBe(200);
+      expect((await req("/moves/SOL/investigate", { cookie }, "POST")).status).toBe(200);
     }));
 
   test("empty entries never match an empty or blank bearer", () =>
