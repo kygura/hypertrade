@@ -150,6 +150,7 @@ export default function App() {
           />
         ))}
         <Route path="/overview" element={<Navigate to="/markets" replace />} />
+        <Route path="/vector" element={<Navigate to="/htf" replace />} />
         <Route
           path="/branches"
           element={
@@ -235,7 +236,7 @@ export default function App() {
           />
         ))}
         <Route
-          path="/vector"
+          path="/htf"
           element={
             <MarketLayout>
               <Suspense fallback={<SkeletonRows />}>

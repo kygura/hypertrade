@@ -25,7 +25,7 @@ export function VectorView({ vector, refreshing, now = Date.now() }: { vector: V
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)] flex flex-col gap-3 lg:grid lg:grid-cols-12">
       <Panel className="lg:col-span-12">
-        <PanelHeader title="BTC VECTOR · REGIME">
+        <PanelHeader title="BTC HTF VIEW · REGIME">
           <span className={`text-xs text-text-secondary tabular ${refreshing ? 'pulse-label' : ''}`}>as of {fmtDate(vector.asOf)}</span>
         </PanelHeader>
         <PanelBody className="p-0">

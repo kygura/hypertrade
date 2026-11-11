@@ -3,7 +3,7 @@ import { useApi } from '../lib/api'
 import { VectorView } from '../components/vector/VectorView'
 import type { VectorResponse } from '../../shared/vector'
 
-// /vector — the hl-cycles BTC Vector regime screen: regime and allocation,
+// /htf — HTF view, the hl-cycles BTC Vector regime screen: regime and allocation,
 // four gauges, the regime-coloured price chart, the market compass, key
 // cost-basis levels, the brief, macro context and source health. The payload
 // moves once a day; a failed refetch keeps the last body on screen.

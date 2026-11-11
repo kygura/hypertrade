@@ -1,13 +1,13 @@
 import { SectionTabs, tabMatches, type SectionTab } from '../SectionTabs'
 
-// MarketTabs — the first family's row (docs/RESEARCH.md "Nav"): QUEUE, MOVES and VECTOR. MARKETS, SECTORS, STATE and
+// MarketTabs — the first family's row (docs/RESEARCH.md "Nav"): QUEUE, MOVES and HTF. MARKETS, SECTORS, STATE and
 // CYCLES are hidden from the row (docs/TASKS.md 2026-11-11) and show only on their own pages.
 // Drills (/cycles/:coin) stay on their tab via the prefix match.
 
 export const MARKET_TABS: readonly SectionTab[] = [
   { to: '/queue', label: 'QUEUE', short: 'QUE', match: (p) => p === '/queue' || p.startsWith('/coin/') },
   { to: '/moves', label: 'MOVES', short: 'MOVE' },
-  { to: '/vector', label: 'VECTOR', short: 'VECT' },
+  { to: '/htf', label: 'HTF', short: 'HTF' },
   { to: '/markets', label: 'MARKETS', short: 'MKTS', hidden: true },
   { to: '/sectors', label: 'SECTORS', short: 'SECT', hidden: true },
   { to: '/state', label: 'STATE', short: 'STATE', hidden: true },
