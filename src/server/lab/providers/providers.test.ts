@@ -6,12 +6,16 @@ import stablesFixture from "./fixtures/llama-stablecoincharts.json" with { type:
 import tvlFixture from "./fixtures/llama-chain-tvl.json" with { type: "json" };
 import bcFixture from "./fixtures/bc-hash-rate.json" with { type: "json" };
 import dvolFixture from "./fixtures/deribit-dvol.json" with { type: "json" };
+import okxBtcFixture from "./fixtures/okx-oi-btc.json" with { type: "json" };
+import okxUnknownFixture from "./fixtures/okx-oi-unknown.json" with { type: "json" };
 import { bcUrl, createBcProvider, parseBlockchainChart } from "./bc.js";
 import { createDeribitProvider, dvolUrls, parseDvolHistory } from "./deribit.js";
 import { cmAsset, createCmProvider, parseCmPage } from "./cm.js";
 import { createFngProvider, parseFngHistory } from "./fng.js";
 import { createHtProvider, htCoin, type HtDeps } from "./ht.js";
 import { createLlamaProvider, parseChainTvl, parseStablecoinChart } from "./llama.js";
+import { createOkxProvider, OKX_OI_EPOCH, OKX_PACE_MS, OKX_PAGE, okxInstrument, parseOiPage } from "./okx.js";
+import { loadDataset } from "./registry.js";
 import { HttpError, type LabMetricDef } from "./series.js";
 
 const D0 = Date.UTC(2024, 0, 1);
@@ -349,5 +353,116 @@ describe("deribit", () => {
     const m = p.metrics() as LabMetricDef[];
     expect(m.map((d) => d.id)).toEqual(["deribit:btc_dvol", "deribit:eth_dvol"]);
     expect(m.every((d) => d.scope === "global" && d.lagDays === 0 && d.stationary === undefined)).toBe(true);
+  });
+});
+
+describe("okx open interest", () => {
+  const NOV9 = Date.UTC(2026, 10, 9);
+  const noDbHt: HtDeps = {
+    hasDb: () => false,
+    ensureHistory: async () => {},
+    candles: async () => [],
+    funding: async () => [],
+    series: async () => [],
+    liveCandles: async () => [],
+    liveFunding: async () => [],
+  };
+
+  test("parses a 1Dutc page (newest first) into USD open interest by UTC day; an unknown instrument is null", () => {
+    expect(parseOiPage(okxBtcFixture)).toEqual([
+      { t: NOV9, v: 2613291923.900201 },
+      { t: NOV9 - DAY, v: 2526238559.2878103 },
+      { t: NOV9 - 2 * DAY, v: 2608753144.1352625 },
+    ]);
+    expect(parseOiPage(okxUnknownFixture)).toBeNull();
+    expect(() => parseOiPage({ code: "50011", msg: "Too Many Requests", data: [] })).toThrow("50011");
+    expect(() => parseOiPage({ code: "0", data: [["1", "2"]] })).toThrow();
+  });
+
+  test("HL coin → OKX swap: plain tickers, kPEPE-style thousands to the token, unmappable names to null", () => {
+    expect(okxInstrument("BTC")).toBe("BTC-USDT-SWAP");
+    expect(okxInstrument("0G")).toBe("0G-USDT-SWAP");
+    expect(okxInstrument("kPEPE")).toBe("PEPE-USDT-SWAP");
+    expect(okxInstrument("kBONK")).toBe("BONK-USDT-SWAP");
+    expect(okxInstrument("kNEIRO")).toBeNull(); // two tokens trade as NEIRO
+    expect(okxInstrument("1000SATS")).toBeNull();
+    expect(okxInstrument("btc")).toBeNull();
+    expect(okxInstrument("constructor")).toBeNull();
+  });
+
+  /** A synthetic instrument: one bar per UTC day from `first`, value = day index; serves `end`-paged requests like OKX. */
+  function okxStub(first: number, nowMs: number, inst = "ETH-USDT-SWAP") {
+    const urls: URL[] = [];
+    const fn = (async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      urls.push(url);
+      if (url.searchParams.get("instId") !== inst) return Response.json({ code: "51001", data: [], msg: "Instrument ID doesn’t exist." });
+      const end = Number(url.searchParams.get("end"));
+      const rows: string[][] = [];
+      // The running day's bar exists too (OKX serves it), so the provider must leave it out itself.
+      for (let t = Math.min(end - DAY, Math.floor(nowMs / DAY) * DAY); t >= first && rows.length < OKX_PAGE; t -= DAY) {
+        const i = (t - first) / DAY;
+        rows.push([String(t), String(i * 10), String(i), String(i * 1000)]);
+      }
+      return Response.json({ code: "0", data: rows, msg: "" });
+    }) as typeof fetch;
+    return { fn, urls };
+  }
+
+  test("pages back with `end` to the range start, paced, the running day left out; day D's value is stamped D", async () => {
+    const first = Date.UTC(2025, 0, 1);
+    let now = Date.UTC(2025, 9, 1, 12); // 273 days after first, mid-day
+    const sleeps: number[] = [];
+    const { fn, urls } = okxStub(first, now);
+    const p = createOkxProvider({ fetchFn: fn, now: () => now, sleep: async (ms) => void sleeps.push(ms) });
+    const today = Math.floor(now / DAY) * DAY;
+    const s = await p.fetch("oi", "ETH", first, today);
+    expect(s.t[0]).toBe(first);
+    expect(s.t.at(-1)).toBe(today - DAY); // yesterday is the last closed day; today is still moving
+    expect(s.t).toHaveLength((today - first) / DAY);
+    expect(s.v.at(-1)).toBe(((today - DAY - first) / DAY) * 1000);
+    expect(urls).toHaveLength(3); // 273 bars: 100 + 100 + 73
+    expect(urls.every((u) => u.searchParams.get("period") === "1Dutc")).toBe(true);
+    expect(Number(urls[0]!.searchParams.get("end"))).toBe(today);
+    expect(sleeps.every((ms) => ms > 0 && ms <= OKX_PACE_MS)).toBe(true);
+    expect(sleeps).toHaveLength(2); // the clock does not move in the test: each later request waits
+    // A short range is one request and stops at its start.
+    urls.length = 0;
+    const short = await p.fetch("oi", "ETH", today - 30 * DAY, today - DAY);
+    expect(short.t).toHaveLength(30);
+    expect(urls).toHaveLength(1);
+    // Nothing before OKX's epoch is asked for.
+    now = OKX_OI_EPOCH + 5 * DAY;
+    const early = okxStub(OKX_OI_EPOCH, now);
+    const e = await createOkxProvider({ fetchFn: early.fn, now: () => now, sleep: async () => {} }).fetch("oi", "ETH", Date.UTC(2020, 0, 1), now);
+    expect(e.t).toHaveLength(5);
+    expect(early.urls).toHaveLength(1);
+  });
+
+  test("an unknown or unmappable instrument is an empty series, not an error", async () => {
+    const now = Date.UTC(2025, 9, 1);
+    const { fn, urls } = okxStub(Date.UTC(2025, 0, 1), now);
+    const p = createOkxProvider({ fetchFn: fn, now: () => now, sleep: async () => {} });
+    expect(await p.fetch("oi", "NOPE", now - 50 * DAY, now)).toEqual({ t: [], v: [] });
+    expect(await p.fetch("oi", "kNEIRO", now - 50 * DAY, now)).toEqual({ t: [], v: [] });
+    expect(urls).toHaveLength(1); // kNEIRO is never requested
+  });
+
+  test("a level (no raw in a search), asset scope, lag 0; loads with no database and its lastRaw is the last closed day", async () => {
+    const m = createOkxProvider().metrics();
+    expect(m).toEqual([expect.objectContaining({ id: "okx:oi", scope: "asset", lagDays: 0, stationary: false })]);
+    const now = Date.UTC(2025, 9, 1, 6);
+    const today = Math.floor(now / DAY) * DAY;
+    const okx = createOkxProvider({ fetchFn: okxStub(Date.UTC(2025, 0, 1), now).fn, now: () => now, sleep: async () => {} });
+    const ht = createHtProvider({
+      ...noDbHt,
+      liveCandles: async (_c, from) => Array.from({ length: (today - from) / DAY }, (_, i) => ({ t: from + i * DAY, o: 1, h: 1, l: 1, c: 1, v: 1 })),
+    });
+    const { dataset, lastRaw } = await loadDataset(
+      { asset: "ETH", metrics: ["okx:oi"], from: "2025-08-01" },
+      { providers: [ht, okx], now: () => now, cache: new Map(), store: { hasDb: () => false, coverage: async () => null, range: async () => [] } },
+    );
+    expect(lastRaw["okx:oi"]).toBe(new Date(today - DAY).toISOString().slice(0, 10));
+    expect(dataset.metrics["okx:oi"]!.at(-1)).toBe(((today - DAY - Date.UTC(2025, 0, 1)) / DAY) * 1000);
   });
 });

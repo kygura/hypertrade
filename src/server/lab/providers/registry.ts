@@ -8,13 +8,14 @@ import { deribitProvider } from "./deribit.js";
 import { fngProvider } from "./fng.js";
 import { htProvider } from "./ht.js";
 import { llamaProvider } from "./llama.js";
+import { okxProvider } from "./okx.js";
 import { clip, dayStart, isCollectable, labSeriesId, toDaily, type LabMetricDef } from "./series.js";
 import { mapLimit, msg } from "../util.js";
 
 // Provider registry and dataset loader: resolves metric ids, fetches with a
 // short TTL cache, and aligns everything to the price calendar for the engine.
 
-export const PROVIDERS: LabProvider[] = [htProvider, cmProvider, fngProvider, llamaProvider, bcProvider, deribitProvider];
+export const PROVIDERS: LabProvider[] = [htProvider, cmProvider, fngProvider, llamaProvider, bcProvider, deribitProvider, okxProvider];
 
 const DEFAULT_PRICE = "ht:price";
 const FALLBACK_PRICE = "cm:PriceUSD";
