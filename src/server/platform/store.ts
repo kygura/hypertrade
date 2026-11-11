@@ -23,6 +23,7 @@ import {
   type Position,
 } from "../../shared/platform.js";
 import { AgentRecordSchema, TriageItemSchema, type AgentRecord, type AgentRecordStatus, type TriageItem } from "../../shared/agentRecords.js";
+import { MovesResponseSchema, type MovesResponse, type MoveWindow } from "../../shared/moves.js";
 
 // Platform persistence (db/migrations/011_platform.sql). Loops and routes run
 // against PlatformStore: MemoryPlatformStore (store-memory.ts) in tests,
@@ -202,6 +203,37 @@ export interface PlatformStore {
   dismissQueue(day: string, coin: string, at: string): Promise<QueueDismissal>;
   /** The day's queue dismissals, coin order (code units). */
   listQueueDismissals(day: string): Promise<QueueDismissal[]>;
+
+  /**
+   * Moves runs (026): the latest `ok` run per window, zod-parsed first (a run that is not `ok` throws). A run whose
+   * computedAt is older than the stored one is ignored, so two writers never move it back.
+   */
+  saveMovesRun(run: MovesResponse): Promise<void>;
+  /** The window's stored run; null before the first one. */
+  latestMovesRun(window: MoveWindow): Promise<MovesResponse | null>;
+  /** The latest triage pass (026, one row, replaced each pass). */
+  saveTriageScan(scan: TriageScan): Promise<void>;
+  /** The row saveTriageScan wrote; null before the first pass. */
+  loadTriageScan(): Promise<TriageScan | null>;
+}
+
+/** One triage pass of the moves agent (docs/SPEC.md § Moves M4): what the triage and queue routes report. */
+export interface TriageScan {
+  day: string;
+  at: string;
+  state: "ok" | "pending" | "unavailable";
+  reason: string | null;
+  /** Coins in the moves universe the pass read. */
+  watched: number;
+  /** Candidates over the day's budget in the pass. */
+  overBudget: number;
+}
+
+/** The run as stored: zod-parsed, and only an `ok` run with an asOf. */
+export function parseMovesRun(run: MovesResponse): MovesResponse & { asOf: string } {
+  const r = MovesResponseSchema.parse(run);
+  if (r.state !== "ok" || r.asOf === null) throw new Error(`only an ok moves run is stored (got ${r.state})`);
+  return r as MovesResponse & { asOf: string };
 }
 
 /** One coin hidden from the queue for one UTC day (docs/SPEC.md § Queue). */

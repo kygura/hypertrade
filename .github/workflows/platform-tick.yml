@@ -1,13 +1,13 @@
 name: Platform tick
 
+# Manual fallback only. Scheduling moved to db/cron/schedule.sql, which POSTs
+# /api/cron/platform-tick every 15 minutes from the project's Supabase Postgres.
 # One-shot platform worker (scripts/platform-tick.ts): scanner, novelty, outcomes and prune
 # against Postgres once an hour, so /api/platform answers on Vercel without an always-on
 # server. Hourly resolution; GitHub may delay a scheduled run. Leased in the database, so an
 # overlapping run exits at once. Without DATABASE_URL it prints a notice and exits 0.
 
 on:
-  schedule:
-    - cron: "7 * * * *"
   workflow_dispatch:
 
 concurrency:

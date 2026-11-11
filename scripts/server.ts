@@ -49,6 +49,7 @@ import { createWsIngest, MID_MAX_AGE_MS } from "../src/server/platform/ws";
 import { createAgentLoop } from "../src/server/moves/agentLoop";
 import { liveMark, sharedAgentDeps } from "../src/server/moves/agentRoutes";
 import { getMovesService } from "../src/server/moves/service";
+import { MOVES_JOB_BUDGET_MS, runMovesJob } from "../src/server/moves/jobs";
 import { triageBudget } from "../src/server/moves/triage";
 import { fetchCandles } from "../src/shared/hl-client";
 import type { PlatformHealth } from "../src/shared/platform";
@@ -129,8 +130,9 @@ async function boot() {
         }
       : undefined,
   });
-  // Agent watch (docs/SPEC.md § Moves): triage every 15 min, auto-investigate under MOVES_AGENT_DAILY, grade records.
-  // Shares the routes' agent deps (same in-flight set, LLM caps) and this process's store.
+  // Agent watch (docs/SPEC.md § Moves): triage, grade records, auto-investigate under MOVES_AGENT_DAILY, every minute.
+  // The same pass the moves-agent job runs on Vercel (moves/jobs.ts), over the in-process moves service. Shares the
+  // routes' agent deps (same in-flight set, LLM caps) and this process's store.
   const movesAgent = createAgentLoop({
     store,
     moves: getMovesService(),
@@ -151,6 +153,8 @@ async function boot() {
     outcomes.def,
     alerts.def,
     movesAgent.def,
+    // The in-process moves runs, stored as the hourly moves job stores them (026), so the serverless API reads the same.
+    { name: "moves-runs", intervalSec: 600, run: async () => void (await runMovesJob({ service: getMovesService(), store, now: Date.now, deadline: Date.now() + MOVES_JOB_BUDGET_MS })) },
     // Daily inputs live in Postgres (candles, funding, observations): no database, no novelty loop.
     ...(dbUrl ? [createNoveltyLoop({ store, notify: alerts.novel, nearMiss: scanner.nearMiss }).def] : []),
   ];

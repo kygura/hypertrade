@@ -126,3 +126,28 @@ describe("POST /api/queue/:id/dismiss", () => {
     expect(await res.json()).toMatchObject({ error: "unavailable", reason: expect.any(String) });
   });
 });
+
+describe("GET /api/queue from the stored triage pass (serverless)", () => {
+  test("watched and the moves source come from the stored pass; staleness and no pass are stated", async () => {
+    const { store, req } = setup({ scan: () => store.loadTriageScan() });
+    const none = QueueResponseSchema.parse(await (await req("/")).json());
+    expect(none.sources.moves).toEqual({ state: "ok", reason: "no moves run stored yet", count: 0 });
+    expect(none.watched).toBe(0);
+
+    await store.saveTriageScan({ day, at: iso(T0 - 5 * 60_000), state: "ok", reason: null, watched: 38, overBudget: 1 });
+    await store.upsertTriageItem(triage("SOL"));
+    const fresh = QueueResponseSchema.parse(await (await req("/")).json());
+    expect(fresh.sources.moves).toEqual({ state: "ok", reason: null, count: 1 });
+    expect(fresh.watched).toBe(38);
+    expect(fresh.items.map((i) => i.coin)).toEqual(["SOL"]);
+
+    await store.saveTriageScan({ day, at: iso(T0 - 60 * 60_000), state: "ok", reason: null, watched: 38, overBudget: 1 });
+    const stale = QueueResponseSchema.parse(await (await req("/")).json());
+    expect(stale.sources.moves.reason).toBe("latest triage pass is 60 min old; the moves-agent job is expected every 15 min");
+    expect(stale.items.map((i) => i.coin)).toEqual(["SOL"]); // today's items are still listed
+
+    await store.saveTriageScan({ day, at: iso(T0 - 60_000), state: "unavailable", reason: "latest moves run is 3.0 h old (as of x); runs are expected hourly", watched: 38, overBudget: 0 });
+    const staleRun = QueueResponseSchema.parse(await (await req("/")).json());
+    expect(staleRun.sources.moves.reason).toContain("latest moves run is 3.0 h old");
+  });
+});

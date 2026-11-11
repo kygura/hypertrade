@@ -29,7 +29,8 @@ import { attention, liqProximity, positioning, type Sample } from "./positioning
 // per coin, under MOVES_HL_BUDGET of the HL weight guard); every answer then recomputes attribution, positioning,
 // liquidation proximity, attention and the checklists from the run, the live contexts (60 s cache), the scanner's
 // snapshots and the stores. Each layer degrades on its own with a stated reason; nothing is ever filled with demo data.
-// universe(): the table (always-on server only: on a serverless runtime it answers `unavailable` and starts nothing).
+// universe(): the table (always-on server, or the moves job's own instance, jobs.ts; with `serverless` it answers
+// `unavailable` and starts nothing: the serverless route serves the stored run instead, stored.ts).
 // coin(): one coin inline (coin, BTC, ETH, up to DETAIL_SECTOR_PEERS sector peers), so it also works on Vercel.
 
 export interface MovesService {
@@ -69,6 +70,8 @@ export interface MovesDeps {
   top?: number;
   /** Longest a universe request waits on a running run before it answers `pending` (default MOVES_WAIT_MS). */
   waitMs?: number;
+  /** Epoch ms after which a run starts no more coin fetches (the moves job's budget); those coins are dropped and named. */
+  loadDeadline?: number;
 }
 
 const iso = (t: number) => new Date(t).toISOString();
@@ -104,6 +107,10 @@ async function load(deps: MovesDeps, asOf: number, coins: string[], fundingFor: 
   const start = asOf - (CANDLE_BARS + 1) * HOUR_MS;
   const out: Loaded = { asOf, coins: [], dropped: [], candles: new Map(), funding: new Map() };
   for (const [i, coin] of coins.entries()) {
+    if (deps.loadDeadline != null && deps.now() >= deps.loadDeadline) {
+      out.dropped.push({ coin, reason: "not loaded before the job deadline" });
+      continue;
+    }
     try {
       const cs = (await deps.candles(coin, start, asOf - 1)).filter((c) => c.t + HOUR_MS <= asOf);
       if (!cs.length) throw new Error("no candles");
@@ -414,7 +421,14 @@ function emptyRow(coin: string, live: AssetCtx, sectors: SectorsData, now: numbe
 // ---------------------------------------------------------------- process defaults
 
 // The moves fetches' own trailing-60s weight stays under MOVES_HL_BUDGET (createHlShare); the memo keeps one series per coin.
-const movesShare = createHlShare(MOVES_HL_BUDGET);
+const hlShare = createHlShare(MOVES_HL_BUDGET);
+let weightBooked = 0;
+const movesShare = async (weight: number) => {
+  await hlShare(weight);
+  weightBooked += weight;
+};
+/** HL weight the moves fetches of this process have booked so far (the moves job reports its own delta). */
+export const movesWeightBooked = () => weightBooked;
 const candleMemo = memoSeries(async (coin: string, s: number, e: number) => (await movesShare(20 + Math.ceil(CANDLE_BARS / 60)), fetchCandles(coin, "1h", s, e)), MOVES_TOP + 8);
 const fundingMemo = memoSeries(async (coin: string, s: number, e: number) => (await movesShare(20 + Math.ceil(HL_FUNDING_PAGE / 20)), fetchFundingPage(coin, s, e)), MOVES_TOP + 8);
 

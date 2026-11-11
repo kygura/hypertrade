@@ -5,7 +5,8 @@ import { MoveDetailSchema, MovesResponseSchema, type MoveDetail, type MovesRespo
 import detailFixture from "../moves/fixtures/move-detail.json" with { type: "json" };
 import responseFixture from "../moves/fixtures/moves-response.json" with { type: "json" };
 import { UnknownCoinError } from "../moves/service.js";
-import { agentsLayer, movesRoutes } from "./moves.js";
+import { MemoryPlatformStore } from "../platform/store-memory.js";
+import { agentsLayer, movesRoutes, storedMovesService } from "./moves.js";
 
 const RESPONSE = MovesResponseSchema.parse(responseFixture);
 const DETAIL = MoveDetailSchema.parse(detailFixture);
@@ -112,5 +113,45 @@ describe("/moves routes", () => {
   test("agentsLayer maps the triage state", () => {
     expect(agentsLayer(triage({ state: "unavailable", reason: "needs the always-on server; or run `bun start`" }) as never)).toEqual({ state: "unavailable", reason: "needs the always-on server; or run `bun start`" });
     expect(agentsLayer(null).state).toBe("unavailable");
+  });
+});
+
+describe("/moves on a serverless runtime (stored runs)", () => {
+  const stored = (store: MemoryPlatformStore | null, now: number) => {
+    const coinCalls: string[] = [];
+    const routes = movesRoutes({
+      service: () => storedMovesService(() => store, () => ({ coin: async (coin) => (coinCalls.push(coin), DETAIL) }), () => now),
+      agents: new Hono().get("/triage", (c) => c.json(triage())),
+      latestRecord: async () => null,
+      isGuest: () => false,
+    });
+    return { app: new Hono().route("/moves", routes), coinCalls };
+  };
+  const computed = Date.parse(RESPONSE.computedAt);
+
+  test("GET /moves serves the latest stored run of the window; over 2 h old it says so in `reason`", async () => {
+    const store = new MemoryPlatformStore();
+    await store.saveMovesRun({ ...RESPONSE, state: "ok", reason: null, window: "4h" });
+    const fresh = MovesResponseSchema.parse(await (await stored(store, computed + 30 * 60_000).app.request("/moves?window=4h")).json());
+    expect(fresh).toMatchObject({ state: "ok", reason: null, window: "4h", asOf: RESPONSE.asOf });
+    expect(fresh.rows).toEqual(RESPONSE.rows);
+    expect(fresh.layers.agents).toEqual({ state: "ok", reason: null });
+    const old = MovesResponseSchema.parse(await (await stored(store, computed + 3 * 3_600_000).app.request("/moves?window=4h")).json());
+    expect(old.state).toBe("ok");
+    expect(old.reason).toBe(`latest moves run is 3.0 h old (as of ${RESPONSE.asOf}); runs are expected hourly`);
+  });
+
+  test("before the first run: unavailable, no moves run stored yet; without a database it says that", async () => {
+    const none = MovesResponseSchema.parse(await (await stored(new MemoryPlatformStore(), computed).app.request("/moves")).json());
+    expect(none).toMatchObject({ state: "unavailable", reason: "no moves run stored yet", rows: [] });
+    const noDb = MovesResponseSchema.parse(await (await stored(null, computed).app.request("/moves")).json());
+    expect(noDb.reason).toBe("needs a database (moves runs are stored by the moves job)");
+  });
+
+  test("GET /moves/:coin still computes inline, with no stored run", async () => {
+    const { app: a, coinCalls } = stored(new MemoryPlatformStore(), computed);
+    const d = MoveDetailSchema.parse(await (await a.request("/moves/COIN")).json());
+    expect(d.state).toBe("ok");
+    expect(coinCalls).toEqual(["COIN"]);
   });
 });

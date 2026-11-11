@@ -72,6 +72,8 @@ MOVES (`/moves`, first MARKET tab; attribution, positioning, triage, agent recor
 - [ ] Combined Hyperliquid weight budget: MOVES (400), the replay (600), the crawler (500) and the scanner add up to
   more than the guard's 1000. Each job now counts only its own calls (`createHlShare`), so none is locked out, but
   with all of them busy the guard makes them queue and the crawler, which yields first, polls less.
+- [ ] The queue's moves source states a stale or missing triage pass in `reason` (migration 026), but the queue UI
+  shows a source's reason only when it is off: show it (MOVES has its own `staleLine` on `asOf`).
 - [ ] Without a database the OI history is boot-local, so the flow layer is `partial` for the first 48 h, and
   agent records and triage are lost on restart.
 - [ ] Cross-link leftovers: Desk alerts carry free text and no coin field, so their coins stay plain text;

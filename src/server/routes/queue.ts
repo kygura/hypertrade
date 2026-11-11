@@ -6,9 +6,9 @@ import type { RadarCall } from "../../shared/radar.js";
 import { isGuest } from "../auth.js";
 import type { AgentDeps } from "../moves/agent.js";
 import { latestTriageScan, type TriageScan } from "../moves/agentLoop.js";
+import { readTriageScan, triageNote } from "../moves/stored.js";
 import { agentBlockedReason, agentStore, sharedAgentDeps } from "../moves/agentRoutes.js";
 import { triageBudget, triageId, utcDay, utcDayStart } from "../moves/triage.js";
-import { isServerless, needsAlwaysOn } from "../platform/runtime.js";
 import type { PlatformStore, QueueDismissal } from "../platform/store.js";
 import { mergeQueue, type SourceInput } from "../queue/merge.js";
 import { readRadar } from "../research/radar.js";
@@ -29,14 +29,14 @@ export interface QueueRouteDeps {
   cap: number;
   /** The platform store (triage items, agent records, queue dismissals); null without the worker or a database. */
   store(): PlatformStore | null;
-  /** Why the moves triage loop cannot run in this process (serverless), or null. */
+  /** Why the moves source cannot be read in this process, or null (the default: the stored triage serves every runtime). */
   movesUnavailable(): string | null;
   /** Ready opportunities and those whose status moved since `dayStart`; throws when the platform is offline. */
   opportunities(dayStart: Date): Promise<Opportunity[]>;
   /** Landed radar calls; throws with the reason when the files are unavailable. */
   radar(): Promise<RadarCall[]>;
-  /** The moves loop's latest scan (its `watched` count, as /api/moves/triage reads it). */
-  scan(): TriageScan | null;
+  /** The latest triage pass, stored by the moves-agent job or loop (its `watched` count, as /api/moves/triage reads it). */
+  scan(): TriageScan | null | Promise<TriageScan | null>;
   /** The agent's deps less the store (daily cap, LLM wiring). */
   agent(): Omit<AgentDeps, "store">;
   isGuest?: (c: Context) => boolean;
@@ -68,13 +68,14 @@ export function queueRoutes(d: QueueRouteDeps) {
       const store = d.store();
       const off = d.movesUnavailable();
       const none = <T>(reason: string): Promise<SourceInput<T>> => Promise.resolve({ unavailable: reason });
-      const [triage, opportunities, radar, records, dismissals, runs] = await Promise.all([
+      const [triage, opportunities, radar, records, dismissals, runs, scan] = await Promise.all([
         off ? none<TriageItem>(off) : store ? load("triage", () => store.listTriage(day), ms) : none<TriageItem>(NO_STORE),
         store ? load("opportunities", () => d.opportunities(dayStart), ms) : none<Opportunity>(NO_STORE),
         hide ? none<RadarCall>("sign in required") : load("radar", () => d.radar(), ms),
         store && !hide ? load<AgentRecord>("records", () => store.listAgentRecords({ since, limit: 1000 }), ms) : none<AgentRecord>(NO_STORE),
         store ? load<QueueDismissal>("dismissals", () => store.listQueueDismissals(day), ms) : none<QueueDismissal>(NO_STORE),
         store ? bounded(store.agentRunsSince(since), 0, ms, "queue agent runs") : Promise.resolve(0),
+        off ? null : bounded(Promise.resolve(d.scan()).catch(() => null), null, ms, "queue triage scan"),
       ]);
       const merged = mergeQueue({
         day, now, cap: d.cap, guest: hide, triage, opportunities, radar,
@@ -82,7 +83,9 @@ export function queueRoutes(d: QueueRouteDeps) {
         dismissals: "ok" in dismissals ? dismissals.ok : [],
       });
       const blocked = off ?? (store ? await agentBlockedReason(agent, runs) : NO_STORE);
-      const body: QueueResponse = { ...merged, agentRuns: runs, agentCap: agent.dailyCap, agentBlockedReason: blocked, watched: off ? 0 : (d.scan()?.watched ?? 0) };
+      // The moves source states how fresh its triage pass is (none stored yet, stale, or the pass's own reason).
+      const sources = merged.sources.moves.state === "ok" ? { ...merged.sources, moves: { ...merged.sources.moves, reason: triageNote(scan, now.getTime()) } } : merged.sources;
+      const body: QueueResponse = { ...merged, sources, agentRuns: runs, agentCap: agent.dailyCap, agentBlockedReason: blocked, watched: scan?.watched ?? 0 };
       return c.json(QueueResponseSchema.parse(body));
     })
     .post("/:id/dismiss", async (c) => {
@@ -107,7 +110,7 @@ export const defaultQueueDeps = (): QueueRouteDeps => ({
   now: () => new Date(),
   cap: triageBudget(),
   store: agentStore,
-  movesUnavailable: () => (isServerless() ? needsAlwaysOn("bun start") : null),
+  movesUnavailable: () => null,
   opportunities: async (dayStart) => {
     const ctx = platformContext();
     if (!ctx) throw new Error("platform offline (no worker loop and no database)");
@@ -122,6 +125,6 @@ export const defaultQueueDeps = (): QueueRouteDeps => ({
     if (r.state === "unavailable") throw new Error(r.reason ?? "radar files unreadable");
     return r.calls;
   },
-  scan: latestTriageScan,
+  scan: () => readTriageScan(agentStore(), latestTriageScan),
   agent: sharedAgentDeps,
 });

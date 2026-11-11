@@ -4,14 +4,19 @@ import { TriageResponseSchema, type AgentRecord } from "../../shared/agentRecord
 import { AssetSchema } from "../../shared/intel.js";
 import { MoveDetailSchema, MovesResponseSchema, MoveWindowSchema, type LayerState } from "../../shared/moves.js";
 import { isGuest } from "../auth.js";
-import { defaultMoveAgentDeps, latestAgentRecord, moveAgentRoutes } from "../moves/agentRoutes.js";
+import { agentStore, defaultMoveAgentDeps, latestAgentRecord, moveAgentRoutes } from "../moves/agentRoutes.js";
 import { getMovesService, UnknownCoinError, type MovesService } from "../moves/service.js";
+import { storedUniverse } from "../moves/stored.js";
+import { isServerless } from "../platform/runtime.js";
+import type { PlatformStore } from "../platform/store.js";
 import { failure, invalid } from "./intel/http.js";
 
 // /api/moves (docs/SPEC.md § Moves): per-coin move attribution (BTC, ETH ex-BTC, sector ex-majors, residual) with
 // positioning, liquidation proximity, attention and the ENTER/FADE condition checklists. Explained after the fact.
-//   GET /moves?window=4h|24h|72h       → MovesResponse (always-on server; `pending` on the first run, `unavailable`
-//                                        on a serverless runtime)
+//   GET /moves?window=4h|24h|72h       → MovesResponse: the in-process run on the always-on server (`pending` on the
+//                                        first run); on a serverless runtime the latest run the moves job stored
+//                                        (moves/stored.ts: `reason` says when it is over 2 h old; `unavailable`
+//                                        "no moves run stored yet" before the first)
 //   GET /moves/:coin?window=           → MoveDetail, computed inline (works on Vercel); 404 for an unknown coin
 //   /moves/triage, /moves/records*, POST /moves/triage/:id/dismiss, POST /moves/:coin/investigate → the agent watch
 //                                        (moves/agentRoutes.ts), mounted before /:coin
@@ -83,8 +88,16 @@ export function movesRoutes(deps: MovesRouteDeps) {
     });
 }
 
-export const defaultMovesRouteDeps = (): MovesRouteDeps => ({
-  service: getMovesService,
+/**
+ * The moves source where no in-process service runs (serverless): the universe from the stored run, the single-coin
+ * detail inline (service.ts coin() loads the coin, BTC, ETH and a few peers itself, without an hourly run).
+ */
+export function storedMovesService(store: () => Pick<PlatformStore, "latestMovesRun"> | null, inline: () => Pick<MovesService, "coin">, now: () => number = Date.now): Pick<MovesService, "universe" | "coin"> {
+  return { universe: (w) => storedUniverse(store(), w, now()), coin: (coin, w) => inline().coin(coin, w) };
+}
+
+export const defaultMovesRouteDeps = (env: Record<string, string | undefined> = process.env): MovesRouteDeps => ({
+  service: isServerless(env) ? () => storedMovesService(agentStore, getMovesService) : getMovesService,
   agents: moveAgentRoutes(defaultMoveAgentDeps()),
   latestRecord: latestAgentRecord,
 });

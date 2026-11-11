@@ -14,20 +14,22 @@ import {
 import { AssetSchema } from "../../shared/intel.js";
 import { isGuest } from "../auth.js";
 import { databaseUrl } from "../db.js";
-import { intelProviderFactory, webSearchAvailable, type LlmDeps } from "../intel/llm.js";
+import { intelProviderFactory, type LlmDeps } from "../intel/llm.js";
 import { PgIntelStore } from "../intel/store.js";
 import { getPlatformContext } from "../platform/context.js";
-import { isServerless, needsAlwaysOn } from "../platform/runtime.js";
 import type { PlatformStore } from "../platform/store.js";
 import { PgPlatformStore } from "../platform/store-pg.js";
 import { getCtxs } from "../routes/hl.js";
 import { MemoryLlmCache } from "../routine/llm.js";
 import { invalid } from "../routes/intel/http.js";
-import { capReason, investigate, NO_PROVIDER, NO_WEB_SEARCH, type AgentDeps } from "./agent.js";
+import { agentBlockedReason, investigate, NO_PROVIDER, NO_WEB_SEARCH, type AgentDeps } from "./agent.js";
 import { agentStats } from "./agentGrade.js";
 import { latestTriageScan, linkTriage, type TriageScan } from "./agentLoop.js";
+import { readTriageScan, triageNote } from "./stored.js";
 import { getMovesService, type MovesService } from "./service.js";
 import { agentDailyCap, triageBudget, utcDay, utcDayStart } from "./triage.js";
+
+export { agentBlockedReason };
 
 // Agent watch routes (docs/SPEC.md § Moves), mounted by routes/moves.ts before its own /:coin handler:
 //   GET  /triage                 → TriageResponse: the day's queue under MOVES_TRIAGE_DAILY, each item with its record
@@ -35,11 +37,12 @@ import { agentDailyCap, triageBudget, utcDay, utcDayStart } from "./triage.js";
 //   GET  /records/stats          → AgentStatsResponse: n, clusters, mean vs BTC and hit rate (null under 5 clusters)
 //   POST /triage/:id/dismiss     → { item }: hides it for the day; it still counts against the budget
 //   POST /:coin/investigate?window= → AgentRecord: one LLM run. 409 one in flight · 429 cap reached · 503 no provider
-// On a serverless runtime the loop does not run: triage answers `unavailable` with the reason, the POSTs 503 with it;
-// records and stats read the database when one is configured. Nothing here approves an opportunity or places an order.
+// Every route reads and writes the platform store, so they work on Vercel with a database: the triage pass is the one
+// stored by the moves-agent job or loop (stored.ts), its staleness stated in `reason`. Without a store the triage
+// answer is `unavailable` and the POSTs 503. Nothing here approves an opportunity or places an order.
 
 export interface MoveAgentDeps {
-  /** Why the agent watch cannot run in this process (serverless), or null. */
+  /** Why the agent watch cannot run in this process, or null (the default: the store decides). */
   unavailable(): string | null;
   /** The platform store holding records and triage items; null without the worker or a database. */
   store(): PlatformStore | null;
@@ -50,24 +53,13 @@ export interface MoveAgentDeps {
   budget: number;
   /** Live mark (BTC is the grading baseline); null when unknown. */
   mark(coin: string): Promise<number | null>;
-  /** The loop's latest scan (watched, overBudget). */
-  scan(): TriageScan | null;
+  /** The latest triage pass (watched, overBudget): the stored one, else this process's. */
+  scan(): TriageScan | null | Promise<TriageScan | null>;
   now(): Date;
   isGuest?: (c: Context) => boolean;
 }
 
 const NO_STORE = "needs the always-on server or a database (agent records live in the platform store)";
-
-/** Why an investigation cannot run now, or null. Checked in the order the run checks them; never calls a provider. */
-export async function agentBlockedReason(agent: Omit<AgentDeps, "store">, runs: number): Promise<string | null> {
-  const llm = agent.llm;
-  if (!llm || !llm.makeProvider("strong")) return NO_PROVIDER;
-  if (webSearchAvailable(llm, "strong") === false) return NO_WEB_SEARCH;
-  if (runs >= agent.dailyCap) return capReason(runs, agent.dailyCap);
-  const dayStart = utcDayStart(agent.now());
-  if ((await llm.cache.callsSince(dayStart).catch(() => 0)) >= llm.dailyCap) return "LLM cap reached";
-  return null;
-}
 
 const RecordsQuerySchema = z.object({
   coin: AssetSchema.optional(),
@@ -94,16 +86,15 @@ export function moveAgentRoutes(deps: MoveAgentDeps): Hono {
         return c.json(TriageResponseSchema.parse({ ...empty, reason, agentBlockedReason: reason }));
       }
       const since = utcDayStart(now).toISOString();
-      const [items, records, runs] = await Promise.all([store.listTriage(day), store.listAgentRecords({ since, limit: 1000 }), store.agentRunsSince(since)]);
+      const [items, records, runs, scan] = await Promise.all([store.listTriage(day), store.listAgentRecords({ since, limit: 1000 }), store.agentRunsSince(since), deps.scan()]);
       const byId = new Map(records.map((r) => [r.id, r]));
-      const scan = deps.scan();
       const today = scan?.day === day ? scan : null;
       const hide = guest(c);
       return c.json(
         TriageResponseSchema.parse({
           ...empty,
           state: "ok",
-          reason: !scan ? "first scan pending" : scan.state !== "ok" ? scan.reason : null,
+          reason: triageNote(scan, now.getTime()),
           surfaced: items.length,
           overBudget: today?.overBudget ?? 0,
           watched: scan?.watched ?? 0,
@@ -202,13 +193,13 @@ export async function liveMark(coin: string): Promise<number | null> {
 
 export function defaultMoveAgentDeps(): MoveAgentDeps {
   return {
-    unavailable: () => (isServerless() ? needsAlwaysOn("bun start") : null),
+    unavailable: () => null,
     store: agentStore,
     moves: getMovesService,
     agent: sharedAgentDeps,
     budget: triageBudget(),
     mark: liveMark,
-    scan: latestTriageScan,
+    scan: () => readTriageScan(agentStore(), latestTriageScan),
     now: () => new Date(),
   };
 }

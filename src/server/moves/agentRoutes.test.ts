@@ -53,6 +53,13 @@ describe("GET /triage", () => {
     expect((await req("/records")).status).toBe(401);
   });
 
+  test("the stored triage pass: none yet, stale (older than 30 min), or the pass's own reason", async () => {
+    const reason = async (scan: MoveAgentDeps["scan"]) => TriageResponseSchema.parse(await (await setup({ scan }).req("/triage")).json()).reason;
+    expect(await reason(async () => null)).toBe("no moves run stored yet");
+    expect(await reason(async () => ({ day, at: iso(T0 - 45 * 60_000), state: "ok", reason: null, watched: 38, overBudget: 0 }))).toBe("latest triage pass is 45 min old; the moves-agent job is expected every 15 min");
+    expect(await reason(async () => ({ day, at: iso(T0), state: "pending", reason: "first run", watched: 0, overBudget: 0 }))).toBe("first run");
+  });
+
   test("no provider: the queue says so", async () => {
     const body = TriageResponseSchema.parse(await (await setup({ provider: null }).req("/triage")).json());
     expect(body.agentBlockedReason).toBe("no LLM provider configured");

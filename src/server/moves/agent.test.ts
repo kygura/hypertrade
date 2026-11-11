@@ -173,7 +173,7 @@ describe("investigate", () => {
 
 describe("the agent cannot reach approval, orders or the desk", () => {
   test("no agent-watch module imports approve, order, desk or platform route code", () => {
-    for (const f of ["agent.ts", "agentGrade.ts", "agentLoop.ts", "agentRoutes.ts", "triage.ts"]) {
+    for (const f of ["agent.ts", "agentGrade.ts", "agentLoop.ts", "agentRoutes.ts", "jobs.ts", "stored.ts", "triage.ts"]) {
       const src = readFileSync(new URL(`./${f}`, import.meta.url), "utf8");
       const imports = [...src.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)].map((m) => m[1]!);
       expect(imports.length).toBeGreaterThan(0);

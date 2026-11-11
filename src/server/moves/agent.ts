@@ -198,6 +198,17 @@ export function vetOutput(out: AgentOutput, seen: Seen, payload: unknown, d: Pic
   return { patch: { claim, layer: out.layer, direction: out.direction, assets, falsifier, sources, status: "open", dropped }, rejectedClaim: false };
 }
 
+/** Why an investigation cannot run now, or null. Checked in the order the run checks them; never calls a provider. */
+export async function agentBlockedReason(agent: Omit<AgentDeps, "store">, runs: number): Promise<string | null> {
+  const llm = agent.llm;
+  if (!llm || !llm.makeProvider("strong")) return NO_PROVIDER;
+  if (webSearchAvailable(llm, "strong") === false) return NO_WEB_SEARCH;
+  if (runs >= agent.dailyCap) return capReason(runs, agent.dailyCap);
+  const dayStart = utcDayStart(agent.now());
+  if ((await llm.cache.callsSince(dayStart).catch(() => 0)) >= llm.dailyCap) return "LLM cap reached";
+  return null;
+}
+
 /** An open record whose call has not finished (written before the call, claim filled after). */
 export const isInFlight = (r: Pick<AgentRecord, "status" | "claim" | "grade" | "model">) => r.status === "open" && r.claim === "" && r.grade === null && r.model !== null;
 

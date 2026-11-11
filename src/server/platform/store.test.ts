@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { AgentRecord, TriageItem } from "../../shared/agentRecords.js";
+import type { MovesResponse } from "../../shared/moves.js";
 import type { LedgerPayload, NoveltyEntry } from "../../shared/platform.js";
+import { row as moveRow } from "../moves/agent.fixture.js";
 import { migrate } from "../../../db/migrate.js";
 import { newPglite, pgliteDb } from "../testing/pglite.js";
 import type { OpportunityInput, PlatformStore, PolledPosition } from "./store.js";
@@ -319,6 +321,32 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((await s.listQueueDismissals("2026-10-17")).map((d) => d.coin)).toEqual(["SOL"]);
   expect(await s.listQueueDismissals("2026-10-18")).toEqual([]);
   await expect(s.dismissQueue("16/10", "SOL", t(3))).rejects.toThrow();
+
+  // moves runs and the triage pass (026): one row per window, an older run never replaces a newer one
+  const ok = { state: "ok" as const, reason: null };
+  const run = (window: MovesResponse["window"], h: number, coins: string[]): MovesResponse => ({
+    state: "ok", reason: null, asOf: t(h), computedAt: t(h).replace(":00:00.000Z", ":03:00.000Z"), window, progress: null,
+    universe: { coins: coins.length, dropped: [{ coin: "NOPE", reason: "not a listed main-dex perp" }] }, sectorsAsOf: null,
+    factors: [{ id: "BTC", label: "BTC", pct: -1.25, n: 1 }], layers: { beta: ok, flow: { state: "unavailable", reason: "x" }, attention: ok, liq: ok, agents: ok },
+    rows: coins.map((c) => moveRow(c, { sector: { id: "l1", label: "L1" } })),
+  });
+  expect(await s.latestMovesRun("24h")).toBeNull();
+  await s.saveMovesRun(run("24h", 2, ["BTC", "SOL"]));
+  await s.saveMovesRun(run("24h", 3, ["BTC", "ETH", "SOL"]));
+  await s.saveMovesRun(run("24h", 1, ["BTC"])); // older than the stored run: ignored
+  await s.saveMovesRun(run("4h", 3, ["BTC"]));
+  await expect(s.saveMovesRun({ ...run("72h", 3, []), state: "pending", asOf: null })).rejects.toThrow();
+  put("moves.24h", await s.latestMovesRun("24h"));
+  put("moves.4h", await s.latestMovesRun("4h"));
+  expect(out["moves.24h"]).toEqual(run("24h", 3, ["BTC", "ETH", "SOL"]));
+  expect((out["moves.4h"] as MovesResponse).rows.map((r) => r.coin)).toEqual(["BTC"]);
+  expect(await s.latestMovesRun("72h")).toBeNull();
+
+  expect(await s.loadTriageScan()).toBeNull();
+  await s.saveTriageScan({ day: "2026-10-16", at: t(2), state: "pending", reason: "first run", watched: 0, overBudget: 0 });
+  await s.saveTriageScan({ day: "2026-10-16", at: t(3), state: "ok", reason: null, watched: 31, overBudget: 2 });
+  put("triage.scan", await s.loadTriageScan());
+  expect(out["triage.scan"]).toEqual({ day: "2026-10-16", at: t(3), state: "ok", reason: null, watched: 31, overBudget: 2 });
   return out;
 }
 

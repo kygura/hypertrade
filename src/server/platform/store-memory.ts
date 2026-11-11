@@ -1,11 +1,13 @@
 import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
 import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/agentRecords.js";
+import type { MovesResponse, MoveWindow } from "../../shared/moves.js";
 import {
   byNewest,
   byCoin,
   byScore,
   isAgentRun,
   parseAgentRecord,
+  parseMovesRun,
   parseTriageItem,
   patchAgentRecord,
   type AgentRecordPatch,
@@ -30,6 +32,7 @@ import {
   type PolledPosition,
   type PositionChange,
   type ScanSnapshot,
+  type TriageScan,
 } from "./store.js";
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -52,6 +55,27 @@ export class MemoryPlatformStore implements PlatformStore {
   agentRecords = new Map<string, AgentRecord>();
   triage = new Map<string, TriageItem>();
   queueDismissals = new Map<string, QueueDismissal>();
+  movesRuns = new Map<MoveWindow, MovesResponse>();
+  triageScan: TriageScan | null = null;
+
+  async saveMovesRun(run: MovesResponse) {
+    const row = parseMovesRun(run);
+    const held = this.movesRuns.get(row.window);
+    if (held && Date.parse(held.computedAt) > Date.parse(row.computedAt)) return;
+    this.movesRuns.set(row.window, clone(row));
+  }
+
+  async latestMovesRun(window: MoveWindow) {
+    return clone(this.movesRuns.get(window) ?? null);
+  }
+
+  async saveTriageScan(scan: TriageScan) {
+    this.triageScan = clone({ ...scan, at: iso(scan.at) });
+  }
+
+  async loadTriageScan() {
+    return clone(this.triageScan);
+  }
 
   async insertAgentRecord(r: AgentRecord) {
     const row = parseAgentRecord(r);

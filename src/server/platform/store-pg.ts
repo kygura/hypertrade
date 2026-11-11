@@ -2,12 +2,14 @@ import type postgres from "postgres";
 import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
 import { LIVE_STATUSES, PRE_DECISION_STATUSES, TERMINAL_STATUSES } from "../../shared/platform.js";
 import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/agentRecords.js";
+import type { MovesResponse, MoveWindow } from "../../shared/moves.js";
 import { sql } from "../db.js";
 import {
   byNewest,
   byCoin,
   byScore,
   parseAgentRecord,
+  parseMovesRun,
   parseTriageItem,
   patchAgentRecord,
   type AgentRecordPatch,
@@ -28,6 +30,7 @@ import {
   type PolledPosition,
   type PositionChange,
   type ScanSnapshot,
+  type TriageScan,
 } from "./store.js";
 
 /**
@@ -169,6 +172,34 @@ export class PgPlatformStore implements PlatformStore {
   async listQueueDismissals(day: string) {
     const rows = await this.db.query<any>(`select day, coin, dismissed_at from queue_dismissals where day = $1 order by coin collate "C"`, [day]);
     return rows.map((r): QueueDismissal => ({ day: r.day, coin: r.coin, dismissedAt: iso(r.dismissed_at) })).sort(byCoin);
+  }
+
+  async saveMovesRun(run: MovesResponse) {
+    const row = parseMovesRun(run);
+    await this.db.query(
+      `insert into moves_runs (win, as_of, computed_at, body) values ($1, $2::timestamptz, $3::timestamptz, $4::text::jsonb)
+       on conflict (win) do update set as_of = excluded.as_of, computed_at = excluded.computed_at, body = excluded.body
+       where moves_runs.computed_at <= excluded.computed_at`,
+      [row.window, iso(row.asOf), iso(row.computedAt), J(row)],
+    );
+  }
+
+  async latestMovesRun(window: MoveWindow) {
+    const [r] = await this.db.query<any>(`select body from moves_runs where win = $1`, [window]);
+    return r ? (r.body as MovesResponse) : null;
+  }
+
+  async saveTriageScan(scan: TriageScan) {
+    const row = { ...scan, at: iso(scan.at) };
+    await this.db.query(
+      `insert into moves_triage_scan (id, at, body) values ('latest', $1::timestamptz, $2::text::jsonb) on conflict (id) do update set at = excluded.at, body = excluded.body`,
+      [row.at, J(row)],
+    );
+  }
+
+  async loadTriageScan() {
+    const [r] = await this.db.query<any>(`select body from moves_triage_scan where id = 'latest'`);
+    return r ? (r.body as TriageScan) : null;
   }
 
   async recordAddresses(rows: AddressSighting[]) {

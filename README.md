@@ -54,7 +54,7 @@ Confirmations: a plain click for reversible actions; a dialog for anything that 
 
 `GET /api/queue` is the attention queue (docs/SPEC.md § Queue): today's one-item-per-coin list merged from moves triage, ready opportunities and radar calls, listed up to `MOVES_TRIAGE_DAILY` (first come, first listed); `POST /api/queue/:id/dismiss` hides a coin for the UTC day (migration `025_queue_dismissals.sql`). The queue sends no alerts. `GET /api/moves?window=4h|24h|72h` splits each coin's move over the window into BTC beta, ETH-ex-BTC beta, sector-ex-majors beta and a residual (with its z, R², n and estimation window), beside positioning and crowding checks, liquidation proximity, attention facts and the ENTER/FADE condition checklists. `GET /api/moves/:coin?window=` is one coin with its cumulative series, headlines and latest agent record. `/api/moves/triage`, `/api/moves/records`, `/api/moves/records/stats` and `POST /api/moves/:coin/investigate` are the agent watch. Formulas, minimum-n rules and layer states: docs/SPEC.md § Moves.
 
-- Runs on live Hyperliquid data with no database. The table needs the always-on server (`bun start`): one background run per closed hour loads 1h candles under 400 of the weight guard's 1000 per minute, so the first answer is `pending` for about 2.5 minutes. On Vercel the table answers `unavailable`; the single-coin route still answers.
+- Runs on live Hyperliquid data. On the always-on server (`bun start`) one background run per closed hour loads 1h candles under 400 of the weight guard's 1000 per minute, so the first answer is `pending` for about 2.5 minutes. On Vercel the table, the triage and the queue's moves source serve the latest run the moves jobs stored (migration `026_moves_runs.sql`, needs `DATABASE_URL`); `reason` says when that run is over 2 h old or none is stored yet. The single-coin route computes inline on both.
 - Layers degrade on their own and say why: OI-drop hours need the scanner's snapshots, news and Elfa need `DATABASE_URL`, liquidation proximity needs the crawler.
 - `bun run moves [--window 24h] [--top N]` prints the table once, with no server.
 - `MOVES_TRIAGE_DAILY` (8): triage items surfaced per UTC day, and the cap of the queue across all its sources. `MOVES_AGENT_DAILY` (6): agent investigations per UTC day.
@@ -62,6 +62,51 @@ Confirmations: a plain click for reversible actions; a dialog for anything that 
 ## Deployment
 
 The database is Supabase Postgres. The app has run on Vercel (static UI, serverless API, crons in `vercel.json`); the upgrade path is the single always-on Railway service below. Set environment variables from `.env.example` in whichever host is active.
+
+**Platform tick over HTTP.** Without the always-on server, schedule `POST /api/cron/platform-tick` every 10–15 minutes (header `x-cron-token: $CRON_TOKEN`, or `Authorization: Bearer $CRON_SECRET`). One call runs the scanner, outcomes and prune under a lease and answers within 240 s with JSON counts; the novelty pass is not part of it. Needs `DATABASE_URL` (503 without it).
+
+**Moves over HTTP.** Without the always-on server, schedule `POST /api/cron/moves` hourly, a few minutes past the hour (the bar closes on the hour), and `POST /api/cron/moves-agent` every 15 minutes, with the same header. `moves` runs attribution for 4h, 24h and 72h and stores each window's latest run (about 1.5–2.5 min on a cold instance, seconds on a warm one; no fetch starts after 150 s, no window after 200 s). `moves-agent` triages from the stored 24h run, grades open agent records and runs at most one investigation (only with an LLM provider and under `MOVES_AGENT_DAILY`). Both are leased (`{skipped: "leased"}`), answer within 240 s with JSON facts and 503 without a database.
+
+### Scheduling
+
+The jobs run from the Supabase database, not GitHub Actions: pg_cron fires, pg_net POSTs the cron endpoints on the Vercel API with `x-cron-token`. `db/cron/schedule.sql` is the whole schedule (not a migration: `db:migrate` never runs it). `collect.yml` and `platform-tick.yml` keep only `workflow_dispatch`, as a manual fallback.
+
+| Job | Minutes (UTC) | Endpoint |
+| --- | --- | --- |
+| `hypertrade-collect` | :00 :15 :30 :45 | `/api/cron/collect` (replays the last answer's `spill`) |
+| `hypertrade-backfill` | :02 :17 :32 :47 | `/api/cron/backfill` |
+| `hypertrade-platform-tick` | :04 :19 :34 :49 | `/api/cron/platform-tick` |
+| `hypertrade-moves` | :05 hourly | `/api/cron/moves` |
+| `hypertrade-moves-agent` | :07 :22 :37 :52 | `/api/cron/moves-agent` |
+| `hypertrade-desk-tick` | :09 :24 :39 :54 | `/api/desk/tick` (switch `desk_enabled`, on) |
+| `hypertrade-intel-ingest` | :12 :27 :42 :57 | `/api/cron/intel/ingest` (switch `intel_enabled`, off) |
+| `hypertrade-intel-brief` / `-graph` / `-watch` | :14 / :29 / :44 hourly | `/api/cron/intel/{brief,graph,watch}` (same switch; each self-throttles) |
+| `hypertrade-lab-collect` | :26 hourly | `/api/cron/lab-collect` (a no-op until a series is 20 h stale) |
+| `hypertrade-cleanup` | 03:33 daily | prunes `cron.job_run_details` and `ops.cron_calls` after 7 days |
+
+Every HTTP job has its own minute. pg_net sends the requests queued together side by side and waits for the whole batch before it takes the next, so jobs on different minutes run one after another and never share the Vercel instance's DB pool. The request timeout is 310 s, past Vercel's 300 s limit, so the real answer (or Vercel's 504) is recorded. `bun test src/server/routes/cronSchedule.test.ts` fails if a scheduled path is not a mounted cron route, a name repeats, an expression does not parse or two jobs share a minute.
+
+Apply, as `postgres` in the Supabase SQL editor:
+
+1. Create the two Vault secrets once (placeholders: the deployed origin without a trailing slash, and the app's `CRON_TOKEN`):
+
+   ```sql
+   select vault.create_secret('https://<your-app>.vercel.app', 'hypertrade_app_url');
+   select vault.create_secret('<CRON_TOKEN value>', 'hypertrade_cron_token');
+   -- to rotate later: select vault.update_secret((select id from vault.secrets where name = 'hypertrade_cron_token'), '<new value>');
+   ```
+
+2. Run `db/cron/schedule.sql` as is. Re-run it after any edit; jobs are upserted by name.
+3. Check: `select * from ops.cron_status;` gives each job's last run and last HTTP status (`pending` while in flight; pg_net keeps answers 6 hours). Recent failures: `select c.job, c.called_at, r.status_code, r.timed_out, r.error_msg from ops.cron_calls c left join net._http_response r using (id) where c.called_at > now() - interval '1 day' and coalesce(r.status_code, 0) not between 200 and 299 order by c.id desc;`
+
+Switching off: set `intel_enabled` / `desk_enabled` at the top of the `do` block and re-run the script. One job for now: `select cron.unschedule('hypertrade-desk-tick');` (re-running the script brings it back). Everything: `db/cron/unschedule.sql`.
+
+Limits:
+
+- **Supabase free plan** pauses a project after 7 days of low activity. The Vercel endpoints query the database every 15 minutes, which is the activity Supabase counts (queries, per a Supabase staff answer); that pg_cron alone keeps a project awake is not documented. A paused database runs no jobs, so nothing wakes it from inside.
+- **Vercel Hobby** includes 4 active-CPU hours, 360 GB-hours of provisioned memory and 1M invocations a month. The schedule makes about 528 calls a day (696 with Intel on), about 16k a month. Memory is billed for wall time: at the 2 GB default that is 180 instance-hours a month, so calls must average under about 41 s (31 s with Intel). Measured on a recent GitHub run: collect 4 s, backfill 14 s, desk under 1 s, a stale lab run 95 s; with platform tick and moves at an assumed 20–30 s, about 2.3 h a day, about 140 GB-hours a month. Active CPU allows about 0.9 s of CPU per call and has not been measured. Check Usage in the Vercel dashboard after the first days; the GitHub schedule fired only 2–5 times a day, so the old numbers do not predict this.
+- **Kept from the GitHub job:** the collect spill replay (the helper sends the last answer's `spill`, or what it sent if that call got no answer). **Lost:** curl's single retry when the connection never opened (the next quarter is the retry), the workflow's red run on failure (read `ops.cron_status` instead), and the novelty pass `platform-tick.yml` ran (the HTTP tick excludes it).
+- `vercel.json` still has daily crons (collect, lab-collect, backfill) as a backstop. They duplicate this schedule and Hobby fires them anywhere in their hour, so one can land beside a pg_cron call.
 
 ## Railway (always-on backend, phase 8)
 
