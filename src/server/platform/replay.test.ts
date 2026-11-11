@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Bus } from "./bus.js";
 import type { RingPoint } from "./features.js";
-import { evaluability, gradeEntry, replayEntries, setupRefs, summarise, type ReplayEntry } from "./replay.js";
+import { evaluability, gradeEntry, replayEntries, replayEntriesAsync, setupRefs, summarise, yieldToLoop, type ReplayEntry } from "./replay.js";
 import { fixtureTicks, STEP, STEPS, T0, type Tick } from "./replay.fixture.js";
 import { createScanner, type Info } from "./scanner.js";
 import { SETUPS } from "./setups.js";
@@ -28,7 +28,7 @@ afterEach(() => setSystemTime());
  * the wall clock). Neutral gates: every candidate is costed (costTopN above the candidate count, a deep book), so
  * each idea goes ready on creation and expires at the TTL, the lifecycle the replay models; no operator decides.
  */
-async function liveOpportunities(cooldownMin: number, readyTtlMin: number) {
+async function liveOpportunities(cooldownMin: number, readyTtlMin: number, costTopN = 1000) {
   const store = new MemoryPlatformStore();
   const coins = [...new Set(ticks.map((t) => t.coin))];
   let step = 0;
@@ -47,7 +47,7 @@ async function liveOpportunities(cooldownMin: number, readyTtlMin: number) {
       }),
     ];
   }) as Info;
-  const sc = createScanner({ store, info, now: () => Date.now(), bus: new Bus(), costTopN: 1000, cooldownMin, readyTtlMin, filter: undefined });
+  const sc = createScanner({ store, info, now: () => Date.now(), bus: new Bus(), costTopN, cooldownMin, readyTtlMin, filter: undefined });
   for (step = 0; step < grid.length; step++) {
     setSystemTime(new Date(grid[step]!));
     await sc.tick();
@@ -66,6 +66,40 @@ describe("replay parity with the live scanner", () => {
       expect(replay.length).toBe(cooldownMin ? 4 : 6);
     }, 60_000);
   }
+
+  // The replay's stated assumption (every candidate costed) shown false on purpose: live, an idea the scanner does
+  // not cost (beyond PLATFORM_COST_TOP_N, here 0, or no book) stays `new`, never expires and blocks its key, so a
+  // re-fire the replay counts never happens live. The parity above holds only with every candidate costed.
+  test("divergence: with no candidate costed, live fires no re-entry of a key; the replay (every idea costed) does", async () => {
+    const live = await liveOpportunities(0, 60, 0);
+    const replay = replayEntries({ streams: streamsOf(ticks), grid, cooldownMs: 0, readyTtlMs: 60 * MIN });
+    const keyOf = (e: { coin: string; kind: string; direction: string }) => `${e.coin}|${e.kind}|${e.direction}`;
+    expect(new Set(live.map(keyOf)).size).toBe(live.length); // one idea per key, forever `new`
+    expect(new Set(replay.map(keyOf)).size).toBeLessThan(replay.length); // the replay re-fires keys after the TTL
+    expect(live.map(key).every((k) => replay.map(key).includes(k))).toBe(true); // live's first fires are the replay's
+    expect(live.length).toBeLessThan(replay.length);
+  }, 60_000);
+});
+
+describe("replayEntriesAsync", () => {
+  test("same entries as replayEntries, handing the event loop back between slices", async () => {
+    const o = { streams: streamsOf(ticks), grid, cooldownMs: 240 * MIN, readyTtlMs: 60 * MIN };
+    let yields = 0;
+    let clock = 0;
+    // A clock that moves 1 ms per read: with a 5 ms slice it yields every few steps.
+    const got = await replayEntriesAsync(o, async () => void yields++, 5, () => clock++);
+    expect(got).toEqual(replayEntries(o));
+    expect(yields).toBeGreaterThan(10);
+  });
+  test("a timer due during the replay runs before it ends (the loop is not held)", async () => {
+    const o = { streams: streamsOf(ticks), grid, cooldownMs: 240 * MIN, readyTtlMs: 60 * MIN };
+    let fired = false;
+    setTimeout(() => (fired = true), 0);
+    let firedBeforeEnd = false;
+    let clock = 0;
+    await replayEntriesAsync(o, async () => { await yieldToLoop(); await new Promise((r) => setTimeout(r, 1)); firedBeforeEnd ||= fired; }, 1, () => (clock += 2));
+    expect(firedBeforeEnd).toBe(true);
+  });
 });
 
 describe("replayEntries", () => {
@@ -116,6 +150,19 @@ describe("grading", () => {
     expect(r.netReturn).toBeCloseTo(-0.04 - (9 - 1e-5 * 4 * 1e4) / 1e4, 12);
     expect(gradeEntry(e, stream, "3h", 4.5)).toBeNull(); // no point at exactly ts + 3 h
     expect(gradeEntry(e, stream, "24h", 4.5)).toBeNull(); // past the stream
+  });
+
+  test("jittered timestamps: the first point in [horizon, horizon + tolerance], never one before the horizon", () => {
+    // ms-jittered ticks every 5 min, as scan_snapshots stores them: none sits exactly at entry + 1 h.
+    const jit: RingPoint[] = Array.from({ length: 30 }, (_, i) => ({ ts: T0 + i * 5 * MIN + (i % 2 ? -3 : 7), mark: 100 + i, oiUsd: NaN, funding: 0, dayNtlVlm: 1 }));
+    const x = { ...e, direction: "long" as const, fundingHourly: 0, ts: T0 };
+    expect(gradeEntry(x, jit, "1h", 0)).toBeNull(); // exact match only: nothing graded
+    // horizon T0 + 60 min; tick 12 is 7 ms after it: the exit.
+    expect(gradeEntry(x, jit, "1h", 0, 6 * MIN)!.grossReturn).toBeCloseTo(112 / 100 - 1, 12);
+    // horizon T0 + 60 min + 8 ms: tick 12 is 1 ms before it (never used), tick 13 (5 min later, 3 ms early) is the exit.
+    const late = { ...x, ts: T0 + 8 };
+    expect(gradeEntry(late, jit, "1h", 0, 6 * MIN)!.grossReturn).toBeCloseTo(113 / 100 - 1, 12);
+    expect(gradeEntry(late, jit, "1h", 0, 4 * MIN)).toBeNull(); // beyond the tolerance: not graded
   });
 
   test("summarise: groupStats per kind × side × horizon; not-evaluable rows say why; empty rows are n 0 with nulls", () => {

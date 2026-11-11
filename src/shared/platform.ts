@@ -151,6 +151,9 @@ export type LedgerKind = LedgerEntry["kind"];
 export type LedgerPayload<K extends LedgerKind> = Extract<LedgerEntry, { kind: K }>["payload"];
 export type NewLedgerEntry = z.infer<typeof NewLedgerEntrySchema>;
 
+/** Clusters below which a ledger or replay mean carries no 95% interval (groupStats, P0.14); the UI reads the same. */
+export const CI_MIN_CLUSTERS = 5;
+
 export const LedgerStatsSchema = z.object({
   setupKind: Text(64),
   horizon: HorizonSchema,

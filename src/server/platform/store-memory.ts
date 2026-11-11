@@ -110,9 +110,9 @@ export class MemoryPlatformStore implements PlatformStore {
     return rows.length;
   }
 
-  async scanSnapshotsSince(since: string) {
+  async scanSnapshotsSince(since: string, coins?: readonly string[]) {
     const lo = iso(since);
-    return [...this.scans.values()].filter((r) => r.ts >= lo).sort((a, b) => byTs(a, b) || a.coin.localeCompare(b.coin)).map(clone);
+    return [...this.scans.values()].filter((r) => r.ts >= lo && (!coins || coins.includes(r.coin))).sort((a, b) => byTs(a, b) || a.coin.localeCompare(b.coin)).map(clone);
   }
 
   async saveNovelty(entries: NoveltyEntry[]) {

@@ -81,21 +81,53 @@ function upper(pts: RingPoint[], t: number): number {
  * Walks the grid forward and records every idea the scanner would have created. Dedupe, TTL and cooldown as the
  * scanner with every candidate costed and nobody deciding: a fired key is created, goes ready the same tick, stays
  * live (a re-fire only refreshes it) until the first step >= readyTtl after creation, expires there, and is not
- * created again until cooldown has passed since that expiry.
+ * created again until cooldown has passed since that expiry. Live, a candidate the scanner does not cost (beyond
+ * PLATFORM_COST_TOP_N, or no book) stays `new`, never expires and blocks re-fires of its key: the replay does not
+ * model that (replay.test.ts shows the divergence).
  */
 export function replayEntries(o: ReplayOpts): ReplayEntry[] {
+  const r = replayer(o);
+  for (const t of o.grid) r.step(t);
+  return r.out;
+}
+
+/** Hands the event loop back (timers and I/O run) before the next slice of replay work. */
+export const yieldToLoop = (): Promise<void> => new Promise((r) => setImmediate(r));
+/** Longest a replay computes before it yields to the event loop. */
+export const REPLAY_SLICE_MS = 20;
+
+/**
+ * replayEntries without holding the event loop: grid steps run in slices of at most about `sliceMs` of wall time,
+ * `yieldFn` awaited between slices, so requests the same process serves are not blocked for the whole replay. Same
+ * entries as replayEntries.
+ */
+export async function replayEntriesAsync(o: ReplayOpts, yieldFn: () => Promise<void> = yieldToLoop, sliceMs = REPLAY_SLICE_MS, clock: () => number = () => performance.now()): Promise<ReplayEntry[]> {
+  const r = replayer(o);
+  let since = clock();
+  for (const t of o.grid) {
+    r.step(t);
+    if (clock() - since >= sliceMs) {
+      await yieldFn();
+      since = clock();
+    }
+  }
+  return r.out;
+}
+
+/** The replay's state and one grid step (steps must come in ascending order). */
+function replayer(o: ReplayOpts) {
   const out: ReplayEntry[] = [];
   const live = new Map<string, number>(); // key -> ready since
   const ended = new Map<string, number>(); // key -> expired at
   const context = (o.tierContext ?? []).filter((c) => !o.streams.has(c.coin));
-  for (const t of o.grid) {
+  const step = (t: number) => {
     const rings = new Map<string, RingPoint[]>();
     for (const [coin, pts] of o.streams) {
       const hi = upper(pts, t);
       if (!hi || pts[hi - 1]!.ts !== t) continue;
       rings.set(coin, pts.slice(upper(pts, t - RING_MS - 1), hi)); // ts >= t - RING_MS, as the scanner's ring
     }
-    if (!rings.size) continue;
+    if (!rings.size) return;
     const vols = [...[...rings].map(([coin, r]) => ({ coin, dayNtlVlm: r.at(-1)!.dayNtlVlm })), ...context];
     for (const { coin, fv, tier, setups } of evaluateTick({ t, vols, coins: [...rings.keys()], ring: (c) => rings.get(c) ?? [] })) {
       for (const s of setups) {
@@ -109,24 +141,25 @@ export function replayEntries(o: ReplayOpts): ReplayEntry[] {
       }
     }
     for (const [key, since] of live) if (t - since >= o.readyTtlMs) (live.delete(key), ended.set(key, t));
-  }
-  return out;
+  };
+  return { out, step };
 }
 
 /** Cost assumptions of a replayed outcome (no historical book). */
 export const REPLAY_COSTS = { slippageBps: 0 } as const;
 
 /**
- * An entry's outcome at a horizon, as the ledger grades one (outcomes.ts netReturn): exit at the stream's mark at
- * exactly ts + horizon; fee each way (feeBps), slippage 0, funding = the hourly rate at entry × horizon hours, signed
- * for the side (the ledger charges the creation funding scaled to the horizon). null when the stream has no point
- * there (past its end, or a gap).
+ * An entry's outcome at a horizon, as the ledger grades one (outcomes.ts netReturn): exit at the stream's mark at the
+ * first point in [ts + horizon, ts + horizon + toleranceMs]; fee each way (feeBps), slippage 0, funding = the hourly
+ * rate at entry × horizon hours, signed for the side (the ledger charges the creation funding scaled to the horizon).
+ * null when the stream has no point there (past its end, or a gap). The tolerance is for streams off a fixed grid
+ * (scan snapshots carry each tick's wall clock, ms-jittered, so no point sits exactly at entry + horizon): the exit is
+ * never before the horizon and at most `toleranceMs` after it, which is the only look-ahead past the horizon.
  */
-export function gradeEntry(e: ReplayEntry, stream: RingPoint[], horizon: string, feeBps: number): OutcomeRow | null {
+export function gradeEntry(e: ReplayEntry, stream: RingPoint[], horizon: string, feeBps: number, toleranceMs = 0): OutcomeRow | null {
   const at = e.ts + horizonMs(horizon);
-  const i = upper(stream, at) - 1;
-  const p = stream[i];
-  if (!p || p.ts !== at || !(p.mark > 0)) return null;
+  const p = stream[upper(stream, at - 1)]; // the first point with ts >= at
+  if (!p || p.ts > at + toleranceMs || !(p.mark > 0)) return null;
   const fundingBps = (e.direction === "long" ? 1 : -1) * (e.fundingHourly ?? 0) * (horizonMs(horizon) / 3_600_000) * 1e4;
   const costs = { feeBps, slippageBps: REPLAY_COSTS.slippageBps, fundingBps };
   const a = { direction: e.direction, entryPx: e.entryPx, horizonPx: p.mark };
@@ -157,6 +190,8 @@ export function summarise(o: {
   horizons: string[];
   missing: readonly StreamInput[];
   feeBps: number;
+  /** gradeEntry's exit tolerance past the horizon; 0 (default) on a fixed grid. */
+  toleranceMs?: number;
   schemas?: SetupSchema[];
 }): ReplayRow[] {
   const rows: ReplayRow[] = [];
@@ -165,7 +200,7 @@ export function summarise(o: {
     for (const side of sidesOf(s)) {
       const es = o.entries.filter((e) => e.kind === s.kind && e.direction === side);
       for (const horizon of o.horizons) {
-        const graded = es.flatMap((e) => gradeEntry(e, o.streams.get(e.coin) ?? [], horizon, o.feeBps) ?? []);
+        const graded = es.flatMap((e) => gradeEntry(e, o.streams.get(e.coin) ?? [], horizon, o.feeBps, o.toleranceMs) ?? []);
         const g = groupStats(graded).find((x) => x.horizon === horizon);
         rows.push({
           kind: s.kind, side, horizon, evaluable: ev.evaluable, ...(!ev.evaluable && { reason: ev.reason }),

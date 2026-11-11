@@ -1,10 +1,12 @@
 // Replays the shipped intraday setup predicates once and prints the per-setup table (docs/RESEARCH.md, Intraday replay).
 //   bun run signals:replay [--top N] [--source candles|snapshots]
 // candles (default): HL 15-min candles + funding for the top N coins by 24 h volume (PLATFORM_REPLAY_TOP, 20); needs
-// no database (stored funding is used when DATABASE_URL is set). snapshots: stored scan_snapshots (needs DATABASE_URL).
+// no database (stored funding is used when DATABASE_URL is set). snapshots: stored scan_snapshots of the top N coins,
+// at most 14 days (needs DATABASE_URL).
 // No request timeout: the candle fetch runs under the HL weight guard, about 4 coins a minute.
 import { databaseUrl, releaseConnection } from "../src/server/db";
-import { defaultCandleDeps, formatReplay, replayParams, runCandleReplay, runSnapshotReplay } from "../src/server/platform/replaySource";
+import { DEFAULT_REPLAY_TOP, defaultCandleDeps, formatReplay, replayParams, runCandleReplay, runSnapshotReplay } from "../src/server/platform/replaySource";
+import { envNum } from "../src/server/platform/scanner";
 import { scanRetentionDays } from "../src/server/platform/store";
 import { PgPlatformStore } from "../src/server/platform/store-pg";
 
@@ -24,7 +26,7 @@ async function main() {
     console.error(`[replay] done in ${Math.round((Date.now() - t0) / 1000)} s`);
   } else if (source === "snapshots") {
     if (!databaseUrl()) throw new Error("--source snapshots needs DATABASE_URL");
-    console.log(formatReplay(await runSnapshotReplay({ store: new PgPlatformStore(), now: Date.now, sinceDays: scanRetentionDays(), params: replayParams() })));
+    console.log(formatReplay(await runSnapshotReplay({ store: new PgPlatformStore(), now: Date.now, sinceDays: scanRetentionDays(), params: replayParams(), top: top ? Number(top) : envNum("PLATFORM_REPLAY_TOP", DEFAULT_REPLAY_TOP) })));
   } else throw new Error(`unknown --source ${source} (candles | snapshots)`);
 }
 

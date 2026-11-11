@@ -198,8 +198,11 @@ export class PgPlatformStore implements PlatformStore {
     return rows.length;
   }
 
-  async scanSnapshotsSince(since: string) {
-    const rows = await this.db.query<any>(`select * from scan_snapshots where ts >= $1::timestamptz order by ts, coin`, [iso(since)]);
+  async scanSnapshotsSince(since: string, coins?: readonly string[]) {
+    // The coin list goes in as jsonb text (no array params: db.ts runs with fetch_types false).
+    const rows = coins
+      ? await this.db.query<any>(`select * from scan_snapshots where ts >= $1::timestamptz and coin in (select jsonb_array_elements_text($2::text::jsonb)) order by ts, coin`, [iso(since), J(coins)])
+      : await this.db.query<any>(`select * from scan_snapshots where ts >= $1::timestamptz order by ts, coin`, [iso(since)]);
     return rows.map((r): ScanSnapshot => ({ coin: r.coin, ts: iso(r.ts), inputs: r.inputs }));
   }
 

@@ -117,6 +117,9 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(await s.insertScanSnapshots([{ coin: "ETH", ts: t(1), inputs: { mark: 3000 } }, { coin: "BTC", ts: t(1), inputs: { mark: 61000 } }, { coin: "BTC", ts: t(0), inputs: {} }])).toBe(3);
   put("scan.since", await s.scanSnapshotsSince(t(1)));
   expect((out["scan.since"] as { coin: string }[]).map((r) => r.coin)).toEqual(["BTC", "ETH"]);
+  expect((await s.scanSnapshotsSince(t(0), ["ETH"])).map((r) => r.coin)).toEqual(["ETH"]);
+  expect((await s.scanSnapshotsSince(t(0), ["BTC", "SOL"])).map((r) => `${r.coin}@${r.ts}`)).toEqual([`BTC@${t(0)}`, `BTC@${t(1)}`]);
+  expect(await s.scanSnapshotsSince(t(0), [])).toEqual([]);
   expect(await s.scanTickCount(t(0))).toBe(2); // distinct timestamps, not rows
   expect(await s.scanTickCount(t(1))).toBe(1);
 

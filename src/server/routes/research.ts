@@ -22,7 +22,7 @@ import type { Rule } from "../lab/types.js";
 import { invalid } from "./intel/http.js";
 import { z } from "zod";
 import { REPLAY_SOURCES, SetupReplayResponseSchema, type ReplaySource, type SetupReplayResponse } from "../../shared/research.js";
-import { replayAnswer } from "../platform/replaySource.js";
+import { replayAnswer, replayUnavailable } from "../platform/replaySource.js";
 
 // /api/research and /api/radar (docs/RESEARCH.md B2). Inputs and outputs zod-parsed against src/shared/research.ts.
 // GET /research/board   → BoardResponse: every source loads on its own; a failing one is `unavailable` with a reason.
@@ -36,6 +36,8 @@ import { replayAnswer } from "../platform/replaySource.js";
 // GET /research/setups/replay?source=candles|snapshots → SetupReplayResponse: the shipped intraday setup predicates
 //                       replayed (platform/replay.ts), run in the background and memoised; `pending` while the
 //                       first run is in flight, never a request blocked on it. Not a Lab trial. 400 bad source.
+//                       `snapshots` for a signed-in reader only (a PUBLIC_MODE guest gets `unavailable`, sign in
+//                       required); on a serverless runtime (Vercel) both answer `unavailable` and start nothing.
 // GET /radar            → RadarResponse from data/radar/ (state `unavailable` + reason when the files are absent).
 // Auth (auth.ts): GETs are read paths (cookie, or the LAB_API_TOKEN bearer on GET); /radar is not guest-readable in
 // PUBLIC_MODE (LLM-written theses). The study POST takes the same cookie-or-bearer as the Lab tool POSTs.
@@ -75,6 +77,8 @@ export function researchRoutes(deps: ResearchRouteDeps) {
     .get("/setups/replay", async (c) => {
       const q = ReplayQuerySchema.safeParse({ source: c.req.query("source") });
       if (!q.success) return invalid(c, q.error, "query");
+      // The snapshot replay reads the whole stored scan history: signed in only (guests get the candle replay).
+      if (q.data.source === "snapshots" && (deps.isGuest ?? isGuest)(c)) return c.json(SetupReplayResponseSchema.parse(replayUnavailable("snapshots", "sign in required")));
       return c.json(SetupReplayResponseSchema.parse(await (deps.replay ?? defaultReplay)(q.data.source)));
     })
     .post("/study", async (c) => {
