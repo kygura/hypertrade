@@ -11,9 +11,9 @@ import { DASH } from '../moves/logic'
 export const PART_LABEL: Record<QueueSource, string> = { moves: 'MOVES', opportunity: 'SETUP', radar: 'RADAR' }
 export const partLabel = (s: QueueSource): string => PART_LABEL[s]
 
-/** `QUEUE · 5 listed of 8 · 2 over cap`. */
+/** `QUEUE · 5 listed of 8 · 2 weaker over cap`. */
 export function headerLine(q: Pick<QueueResponse, 'items' | 'cap' | 'overCap'>): string {
-  const over = q.overCap > 0 ? ` · ${q.overCap} over cap` : ''
+  const over = q.overCap > 0 ? ` · ${q.overCap} weaker over cap` : ''
   return `QUEUE · ${q.items.length} listed of ${q.cap}${over}`
 }
 

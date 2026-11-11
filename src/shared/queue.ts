@@ -61,7 +61,7 @@ export const QueueItemSchema = z.object({
   reason: z.string().min(1).max(200),
   /** Max of the parts' scores. */
   score: Num.nonnegative(),
-  /** Earliest part `at`: the item's place in the day's budget (first come, first listed); the UI's age reads from it. */
+  /** Earliest part `at`: the tie-break for the day's budget (strongest first, then earlier); the UI's age reads from it. */
   firstAt: Iso,
   /** Latest part `at`. */
   lastAt: Iso,
@@ -90,7 +90,7 @@ export const QueueResponseSchema = z.object({
   day: Day,
   /** MOVES_TRIAGE_DAILY: items listed per UTC day at most, across every source. */
   cap: Count,
-  /** Items past the cap: counted, not listed. */
+  /** Weaker items past the cap: counted, not listed. */
   overCap: Count,
   sources: z.object({ moves: QueueSourceStatusSchema, opportunity: QueueSourceStatusSchema, radar: QueueSourceStatusSchema }),
   /** Agent investigations run today, the daily cap (MOVES_AGENT_DAILY) and why one cannot run now (null when it can). */
@@ -99,7 +99,7 @@ export const QueueResponseSchema = z.object({
   agentBlockedReason: z.string().nullable(),
   /** Coins scanned in the latest moves run (what /api/moves/triage calls `watched`); 0 when moves is unavailable. */
   watched: Count,
-  /** Listed items in display order: new, acted, dismissed; then more sources, higher score, newer. */
+  /** Listed items in display order: new, acted, dismissed; then by strength (score, agreeing sources, earlier firstAt, coin). */
   items: z.array(QueueItemSchema),
 });
 export type QueueResponse = z.infer<typeof QueueResponseSchema>;

@@ -41,9 +41,9 @@ const input = (over: Partial<MergeInput> = {}): MergeInput => ({
 });
 
 describe("mergeQueue", () => {
-  test("three sources on one coin make one item with three parts, ranked above single-source items", () => {
+  test("three sources on one coin make one item with three parts, ranked above weaker single-source items", () => {
     const q = mergeQueue(input({
-      triage: { ok: [triage("SOL", 3), triage("WIF", 1, { score: 2 })] },
+      triage: { ok: [triage("SOL", 3), triage("WIF", 1, { score: 1.1 })] },
       opportunities: { ok: [opp("SOL", 4)] },
       radar: { ok: [call("SOL", 2)] },
     }));
@@ -56,11 +56,29 @@ describe("mergeQueue", () => {
     expect(q.sources).toEqual({ moves: { state: "ok", reason: null, count: 2 }, opportunity: { state: "ok", reason: null, count: 1 }, radar: { state: "ok", reason: null, count: 1 } });
   });
 
-  test("cap is first come, first listed: a later, stronger item waits over the cap", () => {
-    const q = mergeQueue(input({ cap: 2, triage: { ok: [triage("A", 1), triage("B", 2), triage("C", 3, { score: 5 })] } }));
-    expect(q.items.map((i) => i.coin).sort()).toEqual(["A", "B"]);
+  test("cap lists the strongest regardless of arrival order; the weakest is over the cap", () => {
+    const q = mergeQueue(input({ cap: 2, triage: { ok: [triage("A", 1, { score: 1.5 }), triage("B", 2, { score: 1.2 }), triage("C", 3, { score: 5 })] } }));
+    expect(q.items.map((i) => i.coin)).toEqual(["C", "A"]);
     expect(q.overCap).toBe(1);
     expect(q.sources.moves.count).toBe(3);
+  });
+
+  test("slot ties fall back to agreeing sources, then earlier firstAt, then coin", () => {
+    const ties = (c: number, ...cs: string[]) => mergeQueue(input({ cap: c, triage: { ok: cs.map((x, i) => triage(x, 5 - i, { score: 1 })) } }));
+    // same score and one part: earliest firstAt wins (C at 3h, B at 4h, A at 5h, so A is over the cap); coin breaks equal times
+    expect(ties(2, "A", "B", "C").items.map((i) => i.coin)).toEqual(["C", "B"]);
+    const same = mergeQueue(input({ cap: 1, triage: { ok: [triage("B", 1, { score: 1 }), triage("A", 1, { score: 1 })] } }));
+    expect(same.items.map((i) => i.coin)).toEqual(["A"]);
+    // equal score: the coin with two agreeing sources beats an earlier single-source one
+    const parts = mergeQueue(input({ cap: 1, triage: { ok: [triage("A", 1, { score: 1 }), triage("B", 5, { score: 1 })] }, radar: { ok: [call("B", 6)] } }));
+    expect(parts.items.map((i) => i.coin)).toEqual(["B"]);
+  });
+
+  test("dismissed and acted items still count and compete on score", () => {
+    const dismissals = [{ day: DAY, coin: "A", dismissedAt: t(9) }] as MergeInput["dismissals"];
+    const q = mergeQueue(input({ cap: 2, dismissals, triage: { ok: [triage("A", 1, { score: 3 }), triage("B", 2, { score: 2 }), triage("C", 3, { score: 1.5 })] } }));
+    expect(q.items.map((i) => [i.coin, i.state])).toEqual([["B", "new"], ["A", "dismissed"]]);
+    expect(q.overCap).toBe(1);
   });
 
   test("a queue dismissal hides the item until a newer part arrives; a triage dismissal alone also dismisses", () => {

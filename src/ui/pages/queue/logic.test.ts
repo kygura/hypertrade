@@ -6,7 +6,7 @@ import { agentLine, ageText, defaultSelection, directionOf, emptyLine, headerLin
 describe('queue logic', () => {
   test('headerLine: listed of cap, over cap only when some wait', () => {
     expect(headerLine(queueResponse({ items: [item('SOL'), item('WIF')] }))).toBe('QUEUE · 2 listed of 8')
-    expect(headerLine(queueResponse({ items: [item('SOL')], overCap: 2 }))).toBe('QUEUE · 1 listed of 8 · 2 over cap')
+    expect(headerLine(queueResponse({ items: [item('SOL')], overCap: 2 }))).toBe('QUEUE · 1 listed of 8 · 2 weaker over cap')
   })
 
   test('source chips: counts when ok, the reason as hover and as one quiet line when unavailable', () => {

@@ -1952,7 +1952,7 @@ on its own or places an order.
 **The rule for these three views: nothing above the content that isn't the content. A missing layer is one quiet line,
 never a card.** No hero, no summary tiles, no banner, no empty-state panel; a source that is down is a line of text.
 
-- **Header**: the panel title is the count, `QUEUE · 5 listed of 8 · 2 over cap` (`over cap` only when above zero).
+- **Header**: the panel title is the count, `QUEUE · 5 listed of 8 · 2 weaker over cap` (`weaker over cap` only when above zero).
 - **Source row**: one `StatusDot` chip per source (`MOVES`, `SETUP`, `RADAR`) with the coins it contributed before the
   cap (`title` says so), then `agents 2/6 today` (plus `investigate off: <reason>` when it cannot run). A source that
   could not be read is not a card: one line under the row, `RADAR off: sign in required`.

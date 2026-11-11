@@ -8,11 +8,11 @@ import type { QueueDismissal } from "../platform/store.js";
 // The queue merge (docs/SPEC.md § Queue). Pure: the same sources give the same queue.
 // - One item per coin per UTC day, at most one part per source (opportunity: a ready one over a decided one, then
 //   newest; radar: newest call; moves: the day's triage item). Scores: 1 = crossed the source's own bar.
-// - One attention budget (`cap`, MOVES_TRIAGE_DAILY) across sources, first come first listed: items by firstAt, then
-//   coin; the first `cap` are listed, the rest only counted (`overCap`). A later, stronger arrival never displaces a
-//   listed one. Dismissed and acted items keep their slot.
+// - One attention budget (`cap`, MOVES_TRIAGE_DAILY) across sources, strongest first: all the day's items by score,
+//   then agreeing sources, then earlier firstAt, then coin; the first `cap` are listed, the rest only counted
+//   (`overCap`). A stronger arrival displaces the weakest listed item. Dismissed and acted items still count and compete.
 // - State: acted (an opportunity decided today) > dismissed (every part at or before the dismissal) > new.
-// - Display: new, acted, dismissed; then more sources, higher score, newer firstAt, coin.
+// - Display: new, acted, dismissed; then the same strength order as the slots.
 // - Reasons are facts written by code; the radar thesis (LLM text) never enters a reason.
 
 export type SourceInput<T> = { ok: T[] } | { unavailable: string };
@@ -145,12 +145,12 @@ export function mergeQueue(q: MergeInput): MergedQueue {
     };
   });
 
-  // Slots: first come, first listed.
+  // Slots: strongest first (score, agreeing sources, earlier firstAt, coin); display: state, then the same order.
   const cap = Math.max(0, Math.floor(q.cap));
-  const slotted = [...items].sort((x, y) => ms(x.firstAt) - ms(y.firstAt) || cmp(x.coin, y.coin));
-  const listed = slotted.slice(0, cap).sort(
-    (x, y) => STATE_ORDER[x.state] - STATE_ORDER[y.state] || y.parts.length - x.parts.length || y.score - x.score || ms(y.firstAt) - ms(x.firstAt) || cmp(x.coin, y.coin),
-  );
+  const strength = (x: QueueItem, y: QueueItem) =>
+    y.score - x.score || y.parts.length - x.parts.length || ms(x.firstAt) - ms(y.firstAt) || cmp(x.coin, y.coin);
+  const slotted = [...items].sort(strength);
+  const listed = slotted.slice(0, cap).sort((x, y) => STATE_ORDER[x.state] - STATE_ORDER[y.state] || strength(x, y));
 
   return QueueResponseSchema.omit({ agentRuns: true, agentCap: true, agentBlockedReason: true, watched: true }).parse({
     asOf: q.now.toISOString(),

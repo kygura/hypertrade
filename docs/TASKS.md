@@ -20,9 +20,9 @@ by URL.
   (answer "is there an edge", heavy to load, no per-item state, dozens a day would fill the cap); Intel alerts (the
   asset can be a narrative id: needs an asset-to-perp mapping and a rule for alerts Telegram already pushed);
   Terminal changes (one brief, not per coin, an LLM run per open); Desk alerts (free text, no coin field).
-- [ ] The cap is first come, first listed, so a strong late item waits as `over cap`. The owner may want rank-based
-  slots (they flicker) or a separate `QUEUE_DAILY` so triage does not use the whole `MOVES_TRIAGE_DAILY` budget before
-  opportunities and radar calls arrive.
+- [ ] Queue slots are strongest first (item score, then agreeing sources). Open: a separate `QUEUE_DAILY` so triage does
+  not use the whole `MOVES_TRIAGE_DAILY` budget, and cross-source score weights (an opportunity's own `score` is raw,
+  not normalised to its bar, so the queue still scores a ready setup and a radar call as 1).
 - [ ] `src/ui/pages/moves/Moves.tsx` still polls `/api/moves/triage` although `TriagePanel` is no longer rendered on
   `/moves`; drop the poll (or the panel) in the cleanup.
 - [ ] Telegram review links (`intel/mapper.ts`, `intel/terminal.ts`) still open `/terminal?review=1`, a hidden screen;

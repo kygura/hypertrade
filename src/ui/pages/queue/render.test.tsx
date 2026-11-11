@@ -28,7 +28,7 @@ describe('QueueView', () => {
       ],
     })
     const out = html(props(feed(q), { selected: 'SOL' }))
-    expect(out).toContain('QUEUE · 2 listed of 8 · 2 over cap')
+    expect(out).toContain('QUEUE · 2 listed of 8 · 2 weaker over cap')
     expect(out).toContain('MOVES·SETUP')
     expect(out).toContain('FADE 3/3 · crowd long 3/4')
     expect(out).toContain('14m')
