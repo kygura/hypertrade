@@ -69,7 +69,11 @@ export function MovesView(p: MovesViewProps) {
         <>
           <MovesHeader moves={p.moves} window={p.window} onWindow={p.onWindow} />
           <FactorsPanel moves={p.moves} sector={p.sector} onSector={p.onSector} />
-          <TriagePanel triage={p.triage} selected={p.selected} onOpen={p.onSelect} onDismiss={p.onDismiss} onInvestigate={p.onInvestigate} busy={p.busy} error={p.actionError} now={p.now} />
+          <p className="text-xs text-text-secondary">
+            <Link to="/queue" className={LINK}>
+              today's triage is in QUEUE →
+            </Link>
+          </p>
         </>
       )}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 min-w-0">
@@ -134,9 +138,6 @@ export function FactorsPanel({ moves, sector, onSector }: { moves: Feed<MovesRes
     <Panel>
       <PanelHeader title="FACTORS">
         {m?.sectorsAsOf && <AgeStamp generatedAt={m.sectorsAsOf} thresholdHours={24} />}
-        <Link to="/sectors" className={LINK}>
-          SECTORS →
-        </Link>
       </PanelHeader>
       <AsyncBody
         loading={moves.loading}
@@ -478,7 +479,7 @@ function Section({ id, title, children, info }: { id: string; title: string; chi
 const SEG_CLASS = { beta: 'bg-text-secondary/40', flow: '', news: '', other: '' } as const
 const segColor = (kind: keyof typeof SEG_CLASS, pct: number) => (kind === 'beta' ? undefined : pct >= 0 ? 'var(--color-mom-pos2)' : 'var(--color-mom-neg2)')
 
-function AttributionBlock({ d }: { d: MoveDetail }) {
+export function AttributionBlock({ d }: { d: MoveDetail }) {
   const a = d.attribution
   return (
     <Section id="d1" title="ATTRIBUTION · EXPLAINED AFTER THE FACT">
@@ -640,7 +641,7 @@ export function RecordBlock({ d, stats, busy, onInvestigate, error, blocked }: {
   )
 }
 
-function PositioningBlock({ d }: { d: MoveDetail }) {
+export function PositioningBlock({ d }: { d: MoveDetail }) {
   const p = d.positioning
   return (
     <Section id="d3" title="POSITIONING (NOW)">
@@ -696,7 +697,7 @@ function ClusterLine({ side, c, sigmas }: { side: string; c: { priceLo: number; 
   )
 }
 
-function LiqBlock({ d }: { d: MoveDetail }) {
+export function LiqBlock({ d }: { d: MoveDetail }) {
   const l = d.liq
   const cov = coverageCopy(l.coverageRatio)
   return (
@@ -722,7 +723,7 @@ function LiqBlock({ d }: { d: MoveDetail }) {
   )
 }
 
-function AttentionBlock({ d }: { d: MoveDetail }) {
+export function AttentionBlock({ d }: { d: MoveDetail }) {
   const a = d.attention
   const note = layerNote(a.state, 'needs a database (news and Elfa are stored)')
   return (
@@ -741,9 +742,11 @@ function AttentionBlock({ d }: { d: MoveDetail }) {
           {a.sectorStage && (
             <p className="text-xs text-text-secondary">
               sector {d.sector?.label ?? a.sectorId}: <Badge tone="gray">{a.sectorStage.toUpperCase()}</Badge>{' '}
-              <Link to="/sectors" className={LINK}>
-                SECTORS →
-              </Link>
+              {(d.sector?.id ?? a.sectorId) && (
+                <Link to={`/moves?sector=${encodeURIComponent((d.sector?.id ?? a.sectorId)!)}`} className={LINK} title="MOVES filtered to this sector">
+                  SECTOR MOVES →
+                </Link>
+              )}
             </p>
           )}
           {note && <p className="text-xs text-text-secondary">{note}</p>}
@@ -774,7 +777,7 @@ function AttentionBlock({ d }: { d: MoveDetail }) {
   )
 }
 
-function ChecklistBlock({ d, defs }: { d: MoveDetail; defs: DefinitionsResponse | null }) {
+export function ChecklistBlock({ d, defs }: { d: MoveDetail; defs: DefinitionsResponse | null }) {
   return (
     <Section id="d6" title={NOT_A_FORECAST} info>
       {d.setups.length === 0 ? (

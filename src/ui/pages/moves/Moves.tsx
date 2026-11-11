@@ -7,7 +7,8 @@ import { usePoll } from '../../lib/poll'
 import { research } from '../../lib/research'
 import { stepSelection } from '../cockpit/logic'
 import { MovesView } from './MovesView'
-import { filterSector, investigateFailure, moveKey, parseCoin, parseSort, parseWindow, sortRows } from './logic'
+import { useInvestigate } from './useInvestigate'
+import { filterSector, moveKey, parseCoin, parseSort, parseWindow, sortRows } from './logic'
 
 // MOVES — the MARKET cell's first tab, route `/moves` (docs/design/README.md § MOVES). Container: owns the
 // pollers (moves, triage and detail every 60 s, record stats every 5 min; all pause while the tab is hidden),
@@ -49,8 +50,10 @@ export function Moves() {
   const defs = usePoll(research.definitions, [], { intervalMs: null, enabled: showDetail })
 
   // ── actions ──
-  const [busy, setBusy] = useState<string[]>([])
-  const [actionError, setActionError] = useState<{ coin: string; message: string } | null>(null)
+  const { busy, actionError, setActionError, investigate } = useInvestigate(() => {
+    triage.refetch()
+    detail.refetch()
+  })
   const dismiss = useCallback(
     async (id: string) => {
       try {
@@ -62,24 +65,7 @@ export function Moves() {
         triage.refetch()
       }
     },
-    [triage],
-  )
-  const investigate = useCallback(
-    async (coin: string) => {
-      setActionError(null)
-      setBusy((b) => (b.includes(coin) ? b : [...b, coin]))
-      try {
-        await moves.investigate(coin)
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 401) return
-        setActionError({ coin, message: investigateFailure(e instanceof ApiError ? e.status : undefined, e instanceof Error ? e.message : '') })
-      } finally {
-        setBusy((b) => b.filter((c) => c !== coin))
-        triage.refetch()
-        detail.refetch()
-      }
-    },
-    [triage, detail],
+    [triage, setActionError],
   )
 
   // ── selection ──

@@ -198,6 +198,17 @@ export interface PlatformStore {
   listTriage(day: string): Promise<TriageItem[]>;
   /** Stamps dismissedAt once (a second dismiss keeps the first stamp). Null when the id is missing. */
   dismissTriage(id: string, at: string): Promise<TriageItem | null>;
+  /** Queue dismissal (025): upsert on (day, coin); a re-dismiss after re-entry moves dismissedAt. */
+  dismissQueue(day: string, coin: string, at: string): Promise<QueueDismissal>;
+  /** The day's queue dismissals, coin order (code units). */
+  listQueueDismissals(day: string): Promise<QueueDismissal[]>;
+}
+
+/** One coin hidden from the queue for one UTC day (docs/SPEC.md § Queue). */
+export interface QueueDismissal {
+  day: string;
+  coin: string;
+  dismissedAt: string;
 }
 
 /** Fields an agent record may change after insert: the call's result and, later, its grade. */
@@ -217,6 +228,7 @@ const codeUnit = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
 /** Store order for agent records and triage items (code-unit ties, as `collate "C"` in SQL). */
 export const byNewest = (a: AgentRecord, b: AgentRecord) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || codeUnit(a.id, b.id);
 export const byScore = (a: TriageItem, b: TriageItem) => b.score - a.score || codeUnit(a.coin, b.coin);
+export const byCoin = (a: { coin: string }, b: { coin: string }) => codeUnit(a.coin, b.coin);
 
 // ---------------------------------------------------------------- shared rules
 

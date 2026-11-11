@@ -1,23 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { Badge, Button, ErrorBlock, OfflineBlock, Segmented, SkeletonRows, StatusDot } from '../components'
 import { Markdown } from '../components/analyst/Markdown'
 import { ModelSelector } from '../components/analyst/ModelSelector'
 import { PathCard, PathPending } from '../components/paths/PathCard'
-import { ApiError, NetworkError } from '../lib/api'
+import { applyEvent, offlineFrom, toHistory, useAnalystThread, type Offline, type TraceItem, type TurnState } from '../components/analyst/useAnalystThread'
 import {
   getAnalystModels,
   getAnalystStatus,
-  streamAnalyst,
-  compactSim,
   type AnalystCatalog,
   type AnalystMode,
   type AnalystChoice,
   type AnalystCitation,
   type AnalystStatus,
-  type AnalystStreamEvent,
-  type AnalystUsage,
-  type HistoryTurn,
-  type SimResultEvent,
 } from '../lib/analyst'
 
 // /analyst — natural-language analyst over the app's data (docs/SPEC.md
@@ -35,12 +30,7 @@ import {
 // "ANALYST UNREACHABLE"; per-turn failures → verbatim ErrorBlock under it.
 
 const MODEL_STORAGE_KEY = 'ht_analyst_model'
-const SESSION_STORAGE_KEY = 'ht_analyst_session_v2'
-const HISTORY_TURNS = 10 // prior turns sent back as context
-const STORED_TURNS = 30
 const MODE_STORAGE_KEY = 'ht_analyst_mode'
-const SIM_SESSION_STORAGE_KEY = 'ht_paths_session_v1'
-const SIM_STORED_TURNS = 10 // sim cards carry equity arrays
 
 const PROMPTS: Array<{ group: string; items: string[] }> = [
   { group: 'Briefing', items: ['What changed since the last briefing?', 'Summarize the market state in five bullets, with the numbers.'] },
@@ -75,7 +65,7 @@ function loadStoredMode(): AnalystMode {
 
 // ─── choice persistence ───
 
-function loadStoredChoice(): AnalystChoice | null {
+export function loadStoredChoice(): AnalystChoice | null {
   try {
     const raw = localStorage.getItem(MODEL_STORAGE_KEY)
     if (!raw) return null
@@ -87,7 +77,7 @@ function loadStoredChoice(): AnalystChoice | null {
   return null
 }
 
-function saveChoice(choice: AnalystChoice) {
+export function saveChoice(choice: AnalystChoice) {
   try {
     localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(choice))
   } catch {
@@ -115,134 +105,6 @@ export function resolveChoice(catalog: AnalystCatalog, candidate: AnalystChoice 
       model: catalog.default.model,
     }
   )
-}
-
-// ─── turns ───
-
-interface TraceItem {
-  id: string
-  name: string
-  server: boolean
-  input: unknown
-  result?: { ok: boolean; summary: string }
-}
-
-export interface TurnState {
-  id: number
-  question: string
-  /** Who was asked (catalog labels at ask time), shown before `done` arrives. */
-  asked: { provider: string; model: string; effort?: string } | null
-  answer: string
-  reasoning: string
-  trace: TraceItem[]
-  /** simulate_paths results (sim mode), in arrival order. */
-  sims: SimResultEvent[]
-  /** "<simId>#<branchIndex>" → saved branch id (survives reload: no duplicate saves). */
-  saved: Record<string, string>
-  citations: AnalystCitation[]
-  error: string | null
-  done: { usage: AnalystUsage; model: string; provider: string; label?: string; effort?: string; rounds: number; stop: string } | null
-  streaming: boolean
-  startedAt: number
-  finishedAt: number | null
-}
-
-function loadSession(key: string): TurnState[] {
-  try {
-    const raw = localStorage.getItem(key)
-    const v = raw ? (JSON.parse(raw) as TurnState[]) : []
-    return Array.isArray(v)
-      ? v.filter((t) => t && typeof t.question === 'string').map((t) => ({ ...t, sims: t.sims ?? [], saved: t.saved ?? {}, streaming: false }))
-      : []
-  } catch {
-    return []
-  }
-}
-
-function saveSession(key: string, max: number, turns: TurnState[]) {
-  const keep = turns
-    .filter((t) => !t.streaming)
-    .slice(-max)
-    .map((t) => ({ ...t, reasoning: t.reasoning.slice(0, 4000), sims: t.sims.map(compactSim) }))
-  // Quota: drop the oldest turn and retry; the session still lives for the tab.
-  for (let from = 0; from <= keep.length; from++) {
-    try {
-      localStorage.setItem(key, JSON.stringify(keep.slice(from)))
-      return
-    } catch {
-      // Storage full or blocked.
-    }
-  }
-}
-
-let nextId = 1
-
-// Module-level store: keeps in-flight/unsaved turns alive across route changes. React state mirrors it.
-let sessionThreads: Record<AnalystMode, TurnState[]> | null = null
-
-function seedThreads(): Record<AnalystMode, TurnState[]> {
-  if (!sessionThreads) {
-    sessionThreads = { ask: loadSession(SESSION_STORAGE_KEY), sim: loadSession(SIM_SESSION_STORAGE_KEY) }
-    nextId = Math.max(nextId, 0, ...sessionThreads.ask.map((t) => t.id), ...sessionThreads.sim.map((t) => t.id)) + 1
-  }
-  return sessionThreads
-}
-
-export function applyEvent(t: TurnState, e: AnalystStreamEvent, now = Date.now()): TurnState {
-  switch (e.type) {
-    case 'text':
-      return { ...t, answer: t.answer + e.delta }
-    case 'reasoning':
-      return { ...t, reasoning: t.reasoning + e.delta }
-    case 'tool_call':
-      return { ...t, trace: [...t.trace, { id: e.id, name: e.name, server: e.server, input: e.input }] }
-    case 'tool_result':
-      return { ...t, trace: t.trace.map((x) => (x.id === e.id ? { ...x, result: { ok: e.ok, summary: e.summary } } : x)) }
-    case 'sim_result':
-      return { ...t, sims: [...t.sims, e] }
-    case 'citations':
-      return { ...t, citations: e.citations }
-    case 'error':
-      return { ...t, error: e.error }
-    case 'done':
-      return {
-        ...t,
-        streaming: false,
-        finishedAt: now,
-        done: { usage: e.usage, model: e.model, provider: e.provider, label: e.label, effort: e.effort, rounds: e.rounds, stop: e.stop },
-      }
-  }
-  return t
-}
-
-/** Sim turns end their assistant content with a "[paths]" trailer of each path's normalized {name, config} (SPEC decision 8). */
-export function toHistory(turns: TurnState[], mode: AnalystMode = 'ask'): HistoryTurn[] {
-  const out: HistoryTurn[] = []
-  for (const t of turns.slice(-HISTORY_TURNS)) {
-    if ((!t.answer.trim() && !t.sims.length) || t.streaming) continue
-    const trailer =
-      mode === 'sim' && t.sims.length
-        ? `\n\n[paths]\n${t.sims.flatMap((s) => s.branches.map((b) => JSON.stringify({ name: b.name, config: b.config }))).join('\n')}`
-        : ''
-    out.push({ role: 'user', content: t.question }, { role: 'assistant', content: t.answer + trailer })
-  }
-  return out
-}
-
-type Offline = { title: string; message: string } | null
-
-function offlineFrom(err: unknown): Offline {
-  if (err instanceof ApiError && err.status === 503) {
-    return {
-      title: 'ANALYST NOT CONFIGURED',
-      message:
-        'set at least one provider key on the server: ANTHROPIC_API_KEY (or ANALYST_ANTHROPIC_API_KEY), OPENAI_API_KEY, GEMINI_API_KEY, XAI_API_KEY, DEEPSEEK_API_KEY, MOONSHOT_API_KEY, DASHSCOPE_API_KEY or OPENROUTER_API_KEY (README "Analyst")',
-    }
-  }
-  if (err instanceof NetworkError || (err instanceof ApiError && err.status === 502)) {
-    return { title: 'ANALYST UNREACHABLE', message: 'check your connection and retry' }
-  }
-  return null
 }
 
 function inputText(v: unknown): string {
@@ -343,7 +205,7 @@ function Sources({ items }: { items: AnalystCitation[] }) {
   )
 }
 
-function Turn({
+export function Turn({
   t,
   onRetry,
   busy,
@@ -426,7 +288,28 @@ function Turn({
   )
 }
 
-function Composer({ draft, setDraft, busy, onAsk, onStop, disabled, mode }: { draft: string; setDraft: (s: string) => void; busy: boolean; onAsk: () => void; onStop: () => void; disabled: boolean; mode: AnalystMode }) {
+export function Composer({
+  draft,
+  setDraft,
+  busy,
+  onAsk,
+  onStop,
+  disabled,
+  mode,
+  embedded = false,
+  id = 'analyst-q',
+}: {
+  draft: string
+  setDraft: (s: string) => void
+  busy: boolean
+  onAsk: () => void
+  onStop: () => void
+  disabled: boolean
+  mode: AnalystMode
+  /** Inside a container that already clears the mobile tab bar (the ASK drawer). */
+  embedded?: boolean
+  id?: string
+}) {
   const ref = useRef<HTMLTextAreaElement | null>(null)
   useEffect(() => {
     const el = ref.current
@@ -437,18 +320,18 @@ function Composer({ draft, setDraft, busy, onAsk, onStop, disabled, mode }: { dr
   return (
     <form
       // Clears the fixed mobile tab bar (AppShell: 56px + safe area) below md.
-      className="sticky bottom-[calc(56px_+_env(safe-area-inset-bottom))] md:bottom-0 z-10 border-t border-border bg-panel p-2 flex flex-col gap-1"
+      className={`sticky ${embedded ? 'bottom-0' : 'bottom-[calc(56px_+_env(safe-area-inset-bottom))] md:bottom-0'} z-10 border-t border-border bg-panel p-2 flex flex-col gap-1`}
       onSubmit={(e) => {
         e.preventDefault()
         onAsk()
       }}
     >
       <div className="flex gap-2 items-end">
-        <label className="sr-only" htmlFor="analyst-q">
+        <label className="sr-only" htmlFor={id}>
           Question
         </label>
         <textarea
-          id="analyst-q"
+          id={id}
           ref={ref}
           value={draft}
           disabled={disabled}
@@ -614,32 +497,40 @@ function Rail({
 
 // ─── page ───
 
+// Re-exported: the thread logic lives in useAnalystThread (shared with the ASK drawer).
+export { applyEvent, toHistory }
+export type { TurnState }
+
+function modeFromParam(v: string | null): AnalystMode | null {
+  return v === 'sim' || v === 'ask' ? v : null
+}
+
 export function Analyst() {
+  const [params] = useSearchParams()
   const [status, setStatus] = useState<AnalystStatus | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
   const [offline, setOffline] = useState<Offline>(null)
-  const [mode, setModeState] = useState<AnalystMode>(loadStoredMode)
-  const [threads, setThreads] = useState<Record<AnalystMode, TurnState[]>>(seedThreads)
-  const turns = threads[mode]
-  const setTurnsFor = useCallback((m: AnalystMode, fn: (ts: TurnState[]) => TurnState[]) => {
-    const th = seedThreads()
-    sessionThreads = { ...th, [m]: fn(th[m]) }
-    setThreads(sessionThreads)
-  }, [])
-  const [draft, setDraft] = useState('')
+  // ?mode= wins over the stored mode; ?q= only prefills the composer, it is never sent.
+  const [mode, setModeState] = useState<AnalystMode>(() => modeFromParam(params.get('mode')) ?? loadStoredMode())
+  const [draft, setDraft] = useState(() => (params.get('q') ?? '').slice(0, 4000))
   const [catalog, setCatalog] = useState<AnalystCatalog | null>(null)
   const [catalogError, setCatalogError] = useState<string | null>(null)
   const [choice, setChoice] = useState<AnalystChoice | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
-  const busy = turns.some((t) => t.streaming)
+  const { turns, busy, ask: askThread, stop, clear, markSaved } = useAnalystThread({
+    mode,
+    choice,
+    onError: (err) => {
+      const off = offlineFrom(err)
+      if (off) setOffline(off)
+    },
+  })
 
   useEffect(() => {
-    if (!busy) {
-      saveSession(SESSION_STORAGE_KEY, STORED_TURNS, threads.ask)
-      saveSession(SIM_SESSION_STORAGE_KEY, SIM_STORED_TURNS, threads.sim)
-    }
-  }, [threads, busy])
+    const m = modeFromParam(params.get('mode'))
+    if (m) setMode(m)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
 
   const setMode = (m: AnalystMode) => {
     setModeState(m)
@@ -660,8 +551,7 @@ export function Analyst() {
     })
   }
 
-  const onSaved = (turnId: number, key: string, branchId: string) =>
-    setTurnsFor(mode, (ts) => ts.map((t) => (t.id === turnId ? { ...t, saved: { ...t.saved, [key]: branchId } } : t)))
+  const onSaved = markSaved
 
   const probe = useCallback(() => {
     setStatusLoading(true)
@@ -696,7 +586,6 @@ export function Analyst() {
   useEffect(() => {
     probe()
     loadCatalog()
-    return () => abortRef.current?.abort()
   }, [probe, loadCatalog])
 
   useEffect(() => {
@@ -710,52 +599,13 @@ export function Analyst() {
 
   const ask = useCallback(
     async (question: string) => {
-      const q = question.trim()
-      if (!q || busy) return
-      const id = nextId++
-      const m = mode
-      const history = toHistory(turns, m)
-      const fresh: TurnState = {
-        id,
-        question: q,
-        asked: choice ? { provider: choice.provider, model: choice.model, effort: choice.effort } : null,
-        answer: '',
-        reasoning: '',
-        trace: [],
-        sims: [],
-        saved: {},
-        citations: [],
-        error: null,
-        done: null,
-        streaming: true,
-        startedAt: Date.now(),
-        finishedAt: null,
-      }
-      setTurnsFor(m, (ts) => [...ts, fresh])
+      if (!question.trim() || busy) return
       setDraft('')
-      const ctrl = new AbortController()
-      abortRef.current = ctrl
-      const update = (fn: (t: TurnState) => TurnState) => setTurnsFor(m, (ts) => ts.map((t) => (t.id === id ? fn(t) : t)))
-      try {
-        // choice is undefined until the catalog loads — the server then uses its own default.
-        await streamAnalyst(q, history, (e) => update((t) => applyEvent(t, e)), ctrl.signal, choice ?? undefined, m)
-        update((t) =>
-          t.streaming
-            ? { ...t, streaming: false, finishedAt: Date.now(), error: t.error ?? (ctrl.signal.aborted ? 'stopped' : 'stream ended without a done event') }
-            : t,
-        )
-      } catch (err) {
-        const off = offlineFrom(err)
-        if (off) setOffline(off)
-        update((t) => ({ ...t, streaming: false, finishedAt: Date.now(), error: err instanceof Error ? err.message : String(err) }))
-      } finally {
-        if (abortRef.current === ctrl) abortRef.current = null
-      }
+      await askThread(question)
     },
-    [busy, turns, choice, mode, setTurnsFor],
+    [askThread, busy],
   )
 
-  const stop = () => abortRef.current?.abort()
   const selectedProvider = catalog?.providers.find((p) => p.id === choice?.provider && p.available)
   const ready = !!status && !offline
 
@@ -786,7 +636,7 @@ export function Analyst() {
               <span className="flex items-center gap-1.5">
                 <Badge tone={selectedProvider.webSearch ? 'info' : 'gray'}>{selectedProvider.webSearch ? 'web search' : 'app data only'}</Badge>
                 {turns.length > 0 && (
-                  <Button tier="ghost" disabled={busy} onClick={() => setTurnsFor(mode, () => [])}>
+                  <Button tier="ghost" disabled={busy} onClick={clear}>
                     CLEAR
                   </Button>
                 )}

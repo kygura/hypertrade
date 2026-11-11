@@ -276,13 +276,13 @@ function SignalRow(p: BoardViewProps & { s: BoardSignal }) {
           </p>
         )}
         <div className="flex flex-wrap gap-x-3">
-          {s.href && (
+          {s.href && s.href !== `/coin/${encodeURIComponent(s.coin)}` && (
             <Link to={s.href} className={LINK}>
-              {s.source === 'rule' ? 'rule →' : s.source === 'opportunity' ? 'feed →' : 'source →'}
+              {s.source === 'rule' ? 'rule →' : s.source === 'opportunity' ? 'setup →' : 'source →'}
             </Link>
           )}
-          <Link to={`/asset/${encodeURIComponent(s.coin)}`} className={LINK}>
-            asset →
+          <Link to={`/coin/${encodeURIComponent(s.coin)}`} className={LINK}>
+            coin →
           </Link>
           <Link to={`/moves?coin=${encodeURIComponent(s.coin)}`} className={LINK}>
             moves →
@@ -404,8 +404,8 @@ function PulsePanel({ board }: { board: Poll<BoardResponse> }) {
   return (
     <Panel>
       <PanelHeader title="PULSE">
-        <Link to="/lab/pulse" className={LINK}>
-          open →
+        <Link to="/lab/catalogue" className={LINK}>
+          RULES →
         </Link>
       </PanelHeader>
       <AsyncBody loading={board.loading} data={b} error={board.error} offline={board.offline} onRetry={board.refetch} rows={1}>

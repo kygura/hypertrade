@@ -99,12 +99,12 @@ describe('MovesHeader', () => {
 })
 
 describe('FactorsPanel', () => {
-  test('factors with n, sector buttons, SECTORS link, 9d-old sector file amber', () => {
+  test('factors with n, sector buttons (no /sectors link), 9d-old sector file amber', () => {
     const out = html(<FactorsPanel moves={feed(movesResponse())} sector={null} onSector={noop} />)
     expect(out).toContain('ETH ex-BTC')
     expect(out).toContain('DeFi ex-majors')
     expect(out).toContain('n 9')
-    expect(out).toContain('href="/sectors"')
+    expect(out).not.toContain('/sectors')
     expect(out).toContain('aria-pressed="false"')
     expect(out).toContain('GEN ')
   })
@@ -189,7 +189,8 @@ describe('MovesView', () => {
     expect(out).toContain('href="/order"')
   })
   test('outbound links of the selected coin', () => {
-    for (const to of ['/?coin=HYPE', '/markets/HYPE', '/asset/HYPE', '/feed?liq=HYPE']) expect(out).toContain(`href="${to}"`)
+    for (const to of ['/coin/HYPE', '/?coin=HYPE', '/coin/HYPE?chart=price', '/coin/HYPE?liq=1']) expect(out).toContain(`href="${to}"`)
+    for (const gone of ['/asset/', '/feed?liq', '/sectors', '/markets/']) expect(out).not.toContain(gone)
     expect(out).not.toContain('OPPORTUNITY')
   })
   test('the condition check is its own info-styled block, apart from attribution', () => {
@@ -239,9 +240,14 @@ describe('MovesView', () => {
     expect(phone).not.toContain('TRIAGE')
     expect(phone).not.toContain('moves table')
   })
+  test('no TriagePanel on /moves: one line pointing at QUEUE', () => {
+    expect(out).not.toContain('TRIAGE')
+    expect(out).toContain('href="/queue"')
+    expect(out).toContain('today&#x27;s triage is in QUEUE →')
+  })
   test('phone list: no detail pane', () => {
     const list = html(<MovesView {...viewProps({ showDetail: false })} />)
-    expect(list).toContain('TRIAGE · 6 OF 8 TODAY')
+    expect(list).toContain('href="/queue"')
     expect(list).not.toContain('data-block="d1"')
   })
 })
@@ -289,6 +295,7 @@ describe('detail states', () => {
     expect(ok).toContain('news 24h 4 vs 7d daily mean 1.5')
     expect(ok).toContain('HYPE announces buyback')
     expect(ok).toContain('href="https://example.com/n1"')
+    expect(ok).toContain('href="/moves?sector=defi"')
   })
   test('no record: reason line and an INVESTIGATE button that is off with the agent layer reason', () => {
     const d = detail({ record: null, layers: { ...movesResponse().layers, agents: { state: 'unavailable', reason: 'no LLM provider configured' } } })

@@ -2,6 +2,7 @@ import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, 
 import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/agentRecords.js";
 import {
   byNewest,
+  byCoin,
   byScore,
   isAgentRun,
   parseAgentRecord,
@@ -25,6 +26,7 @@ import {
   type OpportunityInput,
   type OutcomeRow,
   type PlatformStore,
+  type QueueDismissal,
   type PolledPosition,
   type PositionChange,
   type ScanSnapshot,
@@ -49,6 +51,7 @@ export class MemoryPlatformStore implements PlatformStore {
   readonly ledger: LedgerEntry[] = [];
   agentRecords = new Map<string, AgentRecord>();
   triage = new Map<string, TriageItem>();
+  queueDismissals = new Map<string, QueueDismissal>();
 
   async insertAgentRecord(r: AgentRecord) {
     const row = parseAgentRecord(r);
@@ -95,6 +98,17 @@ export class MemoryPlatformStore implements PlatformStore {
     if (!t) return null;
     t.dismissedAt ??= iso(at);
     return clone(t);
+  }
+
+  async dismissQueue(day: string, coin: string, at: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error(`invalid day ${day}`);
+    const row: QueueDismissal = { day, coin, dismissedAt: iso(at) };
+    this.queueDismissals.set(`${day}|${coin}`, row);
+    return clone(row);
+  }
+
+  async listQueueDismissals(day: string) {
+    return [...this.queueDismissals.values()].filter((d) => d.day === day).sort(byCoin).map(clone);
   }
 
   async recordAddresses(rows: AddressSighting[]): Promise<number> {

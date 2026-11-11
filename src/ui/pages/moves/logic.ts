@@ -281,12 +281,12 @@ export function studyLinkFor(defs: DefinitionsResponse | null, definitionId: str
 export function outboundLinks(row: Pick<MoveRow, 'coin' | 'opportunityId' | 'setups'>, defs: DefinitionsResponse | null): LinkSpec[] {
   const c = enc(row.coin)
   const links: LinkSpec[] = [
+    { key: 'coin', label: 'COIN', to: `/coin/${c}`, title: `decide on ${row.coin}: why it moved, priced in, attention, checklist, agent record` },
     { key: 'evidence', label: 'EVIDENCE', to: `/?coin=${c}`, title: `research board signals for ${row.coin}` },
-    { key: 'chart', label: 'CHART', to: `/markets/${c}`, title: 'price chart and market drill' },
-    { key: 'intel', label: 'INTEL', to: `/asset/${c}`, title: 'asset page: news, exposure, notes' },
-    { key: 'liq', label: 'LIQ MAP', to: `/feed?liq=${c}`, title: 'liquidation map in the cockpit' },
+    { key: 'chart', label: 'CHART', to: `/coin/${c}?chart=price`, title: 'price chart, funding and OI on the coin page' },
+    { key: 'liq', label: 'LIQ MAP', to: `/coin/${c}?liq=1`, title: 'liquidation map on the coin page' },
   ]
-  if (row.opportunityId) links.push({ key: 'opportunity', label: 'OPPORTUNITY', to: `/feed?id=${enc(row.opportunityId)}`, title: 'open opportunity in the cockpit feed' })
+  if (row.opportunityId) links.push({ key: 'opportunity', label: 'OPPORTUNITY', to: `/coin/${c}`, title: 'the ready opportunity on the coin page (APPROVE ON FEED sits there)' })
   for (const s of row.setups) {
     const to = studyLinkFor(defs, s.definitionId, row.coin)
     if (to) {

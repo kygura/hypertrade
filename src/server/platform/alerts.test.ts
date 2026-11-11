@@ -16,7 +16,7 @@ function setup(age: { v: number | null } = { v: 1 }, clock = { t: 0 }, rows: Out
 }
 
 describe("ready push", () => {
-  test("fires once per opportunity at or above the score, linking to the cockpit", async () => {
+  test("fires once per opportunity at or above the score, linking to the coin page", async () => {
     const { sent, bus } = setup();
     const pub = (o: Opportunity, change: "status" | "updated" = "status") => bus.publish("opportunity", { opportunity: o, change });
     pub(opp({ score: 2 }));
@@ -27,7 +27,7 @@ describe("ready push", () => {
     pub(opp({ id: "b" }));
     await Bun.sleep(0);
     expect(sent).toHaveLength(2);
-    expect(sent[0]!.body).toEndWith("https://app.example.com/feed?id=a");
+    expect(sent[0]!.body).toEndWith("https://app.example.com/coin/SOL");
     expect(sent[0]!.body).not.toContain("terminal");
   });
 });

@@ -527,10 +527,10 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
   )
 }
 
-/** A coin that opens its asset page (the TRADE cross-link, docs/design/terminal.md C1). */
+/** A coin that opens its coin page (the TRADE cross-link, docs/design/terminal.md C1). */
 function CoinLink({ coin, className = 'hover:underline' }: { coin: string; className?: string }) {
   return (
-    <Link to={`/asset/${encodeURIComponent(coin)}`} className={className} title={`open ${coin}`}>
+    <Link to={`/coin/${encodeURIComponent(coin)}`} className={className} title={`open ${coin}`}>
       {coin}
     </Link>
   )

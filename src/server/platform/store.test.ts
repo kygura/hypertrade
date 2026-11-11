@@ -304,6 +304,21 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((out["triage.dismissed"] as TriageItem[]).length).toBe(3); // a dismissed item still counts against the day
   expect((await s.listTriage("2026-10-17")).map((x) => x.coin)).toEqual(["SOL"]);
   expect(await s.listTriage("2026-10-18")).toEqual([]);
+
+  // queue dismissals (025): upsert on (day, coin), a re-dismiss moves the stamp, listed per day in coin order
+  expect(await s.listQueueDismissals("2026-10-16")).toEqual([]);
+  expect(await s.dismissQueue("2026-10-16", "SOL", t(3))).toEqual({ day: "2026-10-16", coin: "SOL", dismissedAt: t(3) });
+  await s.dismissQueue("2026-10-16", "xyz:TSLA", t(3));
+  await s.dismissQueue("2026-10-17", "SOL", t(4));
+  expect((await s.dismissQueue("2026-10-16", "SOL", t(5))).dismissedAt).toBe(t(5)); // re-dismiss after re-entry: time moves
+  put("queue.dismissals", await s.listQueueDismissals("2026-10-16"));
+  expect(out["queue.dismissals"]).toEqual([
+    { day: "2026-10-16", coin: "SOL", dismissedAt: t(5) },
+    { day: "2026-10-16", coin: "xyz:TSLA", dismissedAt: t(3) },
+  ]);
+  expect((await s.listQueueDismissals("2026-10-17")).map((d) => d.coin)).toEqual(["SOL"]);
+  expect(await s.listQueueDismissals("2026-10-18")).toEqual([]);
+  await expect(s.dismissQueue("16/10", "SOL", t(3))).rejects.toThrow();
   return out;
 }
 

@@ -5,6 +5,7 @@ import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/ag
 import { sql } from "../db.js";
 import {
   byNewest,
+  byCoin,
   byScore,
   parseAgentRecord,
   parseTriageItem,
@@ -23,6 +24,7 @@ import {
   type OpportunityInput,
   type OutcomeRow,
   type PlatformStore,
+  type QueueDismissal,
   type PolledPosition,
   type PositionChange,
   type ScanSnapshot,
@@ -153,6 +155,20 @@ export class PgPlatformStore implements PlatformStore {
       [id, iso(at)],
     );
     return r ? (r.body as TriageItem) : null;
+  }
+
+  async dismissQueue(day: string, coin: string, at: string) {
+    const [r] = await this.db.query<any>(
+      `insert into queue_dismissals (day, coin, dismissed_at) values ($1, $2, $3::timestamptz)
+       on conflict (day, coin) do update set dismissed_at = excluded.dismissed_at returning day, coin, dismissed_at`,
+      [day, coin, iso(at)],
+    );
+    return { day: r.day as string, coin: r.coin as string, dismissedAt: iso(r.dismissed_at) };
+  }
+
+  async listQueueDismissals(day: string) {
+    const rows = await this.db.query<any>(`select day, coin, dismissed_at from queue_dismissals where day = $1 order by coin collate "C"`, [day]);
+    return rows.map((r): QueueDismissal => ({ day: r.day, coin: r.coin, dismissedAt: iso(r.dismissed_at) })).sort(byCoin);
   }
 
   async recordAddresses(rows: AddressSighting[]) {

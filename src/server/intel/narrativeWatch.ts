@@ -22,7 +22,7 @@ import { AUTO_RESEARCH_MARGIN_MS, utcDayStart } from "./research.js";
 // stage it left less than STAGE_RETURN_MS ago (a threshold never ping-pongs).
 // The alert is kind "narrative", asset = narrative id, ref =
 // stage:<id>:<to>:<since>, an observed line written by code from the flow facts,
-// linking to /sectors. Materiality 1 when the operator has a continuation/fade
+// linking to /moves?sector=<id>. Materiality 1 when the operator has a continuation/fade
 // view on the narrative or holds/watches one of its tokens, else 0.2; routed
 // like the mapper.
 //
@@ -48,8 +48,9 @@ export const STAGE_COOLDOWN_MS = 12 * 3_600_000;
 /** Returning to the stage left less than this long ago is committed silently. */
 export const STAGE_RETURN_MS = 24 * 3_600_000;
 export const AUTO_CONTRAST_Z = 2.5;
-/** Where a narrative line points: the NARRATIVES panel. */
-const SOURCE: EventSource = { label: "snapshot", url: "/sectors" };
+/** Where a narrative line points: the MOVES table filtered to the narrative (a narrative id is a data/sectors id, as MoveRow.sector.id). */
+const sectorPath = (id: string) => `/moves?sector=${encodeURIComponent(id)}`;
+const sourceOf = (id: string): EventSource => ({ label: "snapshot", url: sectorPath(id) });
 
 const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : def);
 /** INTEL_NARRATIVE_AUTO_DAILY (2): automatic contrast runs per UTC day. */
@@ -156,8 +157,8 @@ const flowsOf = (deps: NarrativeWatchDeps, sectors: SectorsData) =>
   (deps.flows ?? (() => loadNarrativeFlows({ store: deps.store, now: deps.now, sectors, history: deps.history ?? SECTORS_HISTORY })))();
 const viewsOf = async (deps: NarrativeWatchDeps) => (await deps.store.getSetting<Record<string, NarrativeView>>(VIEWS_SETTING)) ?? {};
 const contrastsOf = async (deps: NarrativeWatchDeps) => (await deps.store.getSetting<Record<string, NarrativeContrast>>(CONTRASTS_SETTING)) ?? {};
-/** Narrative alerts open the NARRATIVES panel. */
-const sectorsLink = (appUrl?: string) => (appUrl ? `${appUrl.replace(/\/+$/, "")}/sectors` : undefined);
+/** Narrative alerts open the MOVES table filtered to the narrative's sector. */
+const sectorsLink = (id: string, appUrl?: string) => (appUrl ? `${appUrl.replace(/\/+$/, "")}${sectorPath(id)}` : undefined);
 
 /** Inserts one narrative alert (null when its ref already exists) and pushes it; a push that reaches no channel falls back to batch. */
 async function narrativeAlert(
@@ -177,13 +178,13 @@ async function narrativeAlert(
     edgeType: null,
     hops: 0,
     pathWeight: 1,
-    sources: [SOURCE],
+    sources: [sourceOf(a.asset)],
     materiality: a.materiality,
     pricedIn: null,
     route: routeFor(deps.pushMateriality, ctx.feedback, a.materiality, { eventType: a.eventType, edgeType: null, hops: 0 }),
   });
   if (alert?.route === "push") {
-    const sent = await sendIntel(deps.notifier, { title: a.title, lines: [a.line], link: sectorsLink(deps.appUrl), actions: feedbackActions([alert]) });
+    const sent = await sendIntel(deps.notifier, { title: a.title, lines: [a.line], link: sectorsLink(a.asset, deps.appUrl), actions: feedbackActions([alert]) });
     if (!sent.length) {
       // Nothing reached a channel: the next brief carries it.
       await deps.store.setAlertRoute([alert.id], "batch");
@@ -225,7 +226,7 @@ export async function narrativeStageAlerts(deps: NarrativeWatchDeps, now: Date):
           asset: ch.id,
           title: `${flow.label}: ${ch.from} → ${ch.to}`,
           eventType: `stage_${ch.to}`,
-          line: { tag: "observed", text, source: SOURCE, ts: now.toISOString() },
+          line: { tag: "observed", text, source: sourceOf(ch.id), ts: now.toISOString() },
           materiality: focus ? 1 : 0.2,
         });
         if (alert) out.alerts.push(alert);

@@ -45,7 +45,7 @@ import { catalogueIdIn, parseExitParams, parseRuleParam, studyHref } from '../li
 const BACK: Record<string, { label: string; to: string }> = {
   results: { label: '← RESULTS', to: '/lab/search' },
   catalogue: { label: '← CATALOGUE', to: '/lab/catalogue' },
-  pulse: { label: '← PULSE', to: '/lab/pulse' },
+  pulse: { label: '← RULES', to: '/lab/catalogue' },
 }
 
 function failed<T>(s: LabState<T>): ReactNode | null {

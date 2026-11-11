@@ -182,15 +182,20 @@ describe('links', () => {
   })
   test('outbound set: no approve, no order params', () => {
     const links = outboundLinks(row('HYPE'), null)
-    expect(links.map((l) => `${l.label} ${l.to}`)).toEqual(['EVIDENCE /?coin=HYPE', 'CHART /markets/HYPE', 'INTEL /asset/HYPE', 'LIQ MAP /feed?liq=HYPE', 'ORDER /order'])
+    expect(links.map((l) => `${l.label} ${l.to}`)).toEqual(['COIN /coin/HYPE', 'EVIDENCE /?coin=HYPE', 'CHART /coin/HYPE?chart=price', 'LIQ MAP /coin/HYPE?liq=1', 'ORDER /order'])
     expect(links.some((l) => /approve|kill/i.test(l.label + l.to))).toBe(false)
+  })
+  test('every link stays on linked screens: no /asset, /feed?liq, /sectors, /markets', () => {
+    const all = outboundLinks(row('HYPE', { opportunityId: 'opp 1' }), defs).map((l) => l.to)
+    for (const to of all) expect(to).not.toMatch(/^\/asset|^\/feed\?liq|^\/sectors|^\/markets/)
+    expect(outboundLinks(row('xyz:TSLA'), null)[0]!.to).toBe('/coin/xyz%3ATSLA')
   })
   test('opportunity and study links appear only when they exist', () => {
     const r = row('HYPE', { opportunityId: 'opp 1' })
     const labels = outboundLinks(r, defs).map((l) => l.label)
     expect(labels).toContain('OPPORTUNITY')
     expect(labels).toContain('STUDY')
-    expect(outboundLinks(r, defs).find((l) => l.key === 'opportunity')!.to).toBe('/feed?id=opp%201')
+    expect(outboundLinks(r, defs).find((l) => l.key === 'opportunity')!.to).toBe('/coin/HYPE')
     expect(outboundLinks(row('HYPE'), null).map((l) => l.label)).not.toContain('STUDY')
     expect(studyLinkFor(defs, 'funding_fade', 'HYPE')).toStartWith('/lab/study?rule=')
     expect(studyLinkFor(defs, null, 'HYPE')).toBeNull()
