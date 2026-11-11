@@ -97,11 +97,14 @@ export function attachStudy(cache: StudyCache, s: ResearchSignal, now: number): 
 /**
  * The opportunity source's note when the scanner cannot compute its features: the z features need a ring point
  * every 15 min (FEATURE_MIN_TICKS_24H a day), which only the always-on server's 1-minute scan gives; a scanner run
- * from a cron leaves them null and no setup can fire. null when the cadence is enough or unknown.
+ * from a cron leaves them null and no setup can fire. null when the cadence is enough or unknown. The count and the
+ * need are stated; the claim that nothing can fire only well under the need (under half: the 24 h funding features
+ * need 48 points), never near it, where one missed run would not stop the features.
  */
 export function scannerNote(ticks24h: number | null): string | null {
   if (ticks24h == null || ticks24h >= FEATURE_MIN_TICKS_24H) return null;
-  return `scanner has ${ticks24h} tick${ticks24h === 1 ? "" : "s"} stored in the last 24 h; setups need ${FEATURE_MIN_TICKS_24H} (one per 15 min; the always-on server scans every minute), so none can fire`;
+  const base = `scanner has ${ticks24h} tick${ticks24h === 1 ? "" : "s"} stored in the last 24 h; the setup features need one per 15 min (${FEATURE_MIN_TICKS_24H} a day; the always-on server scans every minute)`;
+  return ticks24h < FEATURE_MIN_TICKS_24H / 2 ? `${base}: too few for any setup to fire` : base;
 }
 
 /** Maps and validates each item on its own; an item that throws or fails the schema is dropped (and logged). */

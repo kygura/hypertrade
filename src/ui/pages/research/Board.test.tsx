@@ -70,6 +70,7 @@ describe("board states", () => {
   });
   test("chip title names dropped items", () => {
     expect(chipTitle({ state: "ok", count: 2, dropped: 1 })).toBe("2 signals now · 1 item dropped as invalid (server log)");
+    expect(chipTitle({ state: "ok", count: 2, dropped: 3 }, "definition")).toBe("2 signals now · 3 items not evaluable today (data missing, late or not yet on the bar)");
     expect(chipTitle({ state: "unavailable", reason: "sign in required", count: 0, dropped: 0 })).toBe("sign in required");
   });
   test("pulse panel shows the board error ladder, not a blank", () => {

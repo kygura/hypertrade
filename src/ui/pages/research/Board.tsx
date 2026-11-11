@@ -176,7 +176,7 @@ function HeaderLine({ board, coin, onClearCoin }: { board: BoardResponse | null;
           const st = board.sources[src]
           const off = st.state === 'unavailable'
           return (
-            <span key={src} title={chipTitle(st)} className="inline-flex">
+            <span key={src} title={chipTitle(st, src)} className="inline-flex">
               <Badge tone={off ? 'amber' : 'gray'}>
                 {SOURCE_LABEL[src]} {off ? 'unavailable' : st.count}
                 {st.note && <span aria-hidden="true"> *</span>}
@@ -204,10 +204,15 @@ function HeaderLine({ board, coin, onClearCoin }: { board: BoardResponse | null;
   )
 }
 
-/** Source chip title: the reason when unavailable, else the count, then its note; items dropped as invalid are named, never hidden. */
-export function chipTitle(st: BoardResponse['sources'][keyof BoardResponse['sources']]): string {
+/**
+ * Source chip title: the reason when unavailable, else the count, then its note; dropped items are named, never
+ * hidden. The definition scan's drops are coins or coin × definitions not evaluable today (data missing, late or not
+ * yet on the bar), not invalid items.
+ */
+export function chipTitle(st: BoardResponse['sources'][keyof BoardResponse['sources']], source?: keyof BoardResponse['sources']): string {
   const base = st.state === 'unavailable' ? (st.reason ?? 'unavailable') : `${st.count} signal${st.count === 1 ? '' : 's'} now`
-  const dropped = st.dropped > 0 ? `${base} · ${st.dropped} item${st.dropped === 1 ? '' : 's'} dropped as invalid (server log)` : base
+  const what = source === 'definition' ? 'not evaluable today (data missing, late or not yet on the bar)' : 'dropped as invalid (server log)'
+  const dropped = st.dropped > 0 ? `${base} · ${st.dropped} item${st.dropped === 1 ? '' : 's'} ${what}` : base
   return st.note ? `${dropped} · ${st.note}` : dropped
 }
 
