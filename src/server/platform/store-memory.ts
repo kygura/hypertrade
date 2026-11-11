@@ -71,6 +71,12 @@ export class MemoryPlatformStore implements PlatformStore {
     return clone(this.movesRuns.get(window) ?? null);
   }
 
+  async movesRunAt(window: MoveWindow) {
+    const r = this.movesRuns.get(window);
+    const iso = (t: string) => new Date(t).toISOString();
+    return r ? { asOf: iso(r.asOf!), computedAt: iso(r.computedAt) } : null;
+  }
+
   async saveTriageScan(scan: TriageScan) {
     this.triageScan = clone({ ...scan, at: iso(scan.at) });
   }

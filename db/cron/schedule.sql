@@ -173,7 +173,7 @@ revoke all on all functions in schema ops from public, anon, authenticated, serv
 
 -- The schedule. Edit the switches, then re-run the whole file.
 --   intel_enabled: /api/cron/intel/{ingest,brief,graph,watch}; collect.yml ran them only with the
---     repository variable INTEL_ENABLED=true (unset when this moved: the intel job was skipped).
+--     repository variable INTEL_ENABLED=true (unset when this moved; switched on 2026-11-11).
 --   desk_enabled: /api/desk/tick; collect.yml ran it only with DESK_ENABLED=true (set: it ran).
 -- Each 15-minute quarter: collect :00, backfill :02, platform tick :04, moves agent :07, desk :09,
 -- intel ingest :12. Hourly jobs take free minutes. No two HTTP jobs share a minute.
@@ -181,7 +181,7 @@ revoke all on all functions in schema ops from public, anon, authenticated, serv
 -- :15 / :45; each call checks coins for ~200 s and stores where it got to, and a full daily pass takes several calls.
 do $$
 declare
-  intel_enabled constant boolean := false;
+  intel_enabled constant boolean := true;
   desk_enabled  constant boolean := true;
   j record;
   keep text[] := array['hypertrade-cleanup'];

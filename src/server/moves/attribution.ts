@@ -2,7 +2,7 @@ import type { IntelEvent } from "../../shared/intel.js";
 import { WINDOW_HOURS, type Attribution, type BetaFit, type MoveSeriesPoint, type MoveWindow } from "../../shared/moves.js";
 import { robustSigma, zRobust } from "../../shared/signalMath.js";
 import type { Candle } from "../../shared/types.js";
-import { EST_BARS, FLOW_MIN_N, FLOW_Z, HOUR_MS, MIN_EST_BARS, MIN_WINDOW_SHARE, NEWS_AFTER_MS, NEWS_BEFORE_MS, OI_SAMPLE_TOLERANCE_MS, SECTOR_MIN_PEERS, SIGMA_FLOOR } from "./constants.js";
+import { EST_BARS, FLOW_MIN_N, FLOW_Z, HOUR_MS, MIN_EST_BARS, MIN_WINDOW_SHARE, NEWS_AFTER_MS, NEWS_BEFORE_MS, NEWS_FEED_FRESH_MS, OI_SAMPLE_TOLERANCE_MS, SECTOR_MIN_PEERS, SIGMA_FLOOR } from "./constants.js";
 
 // Move attribution (docs/SPEC.md § Moves). Pure. A coin's hourly log return over the window W (the last h closed
 // bars) is split into BTC beta, ETH-ex-BTC beta, sector-ex-majors beta and a residual, with the betas fitted on the
@@ -161,6 +161,18 @@ export function coinEvents(events: Pick<IntelEvent, "assets" | "origin" | "first
   return events.filter((e) => e.origin !== "flow" && e.assets.some((a) => a.toLowerCase() === c)).map((e) => Date.parse(e.firstSeen)).filter(Number.isFinite);
 }
 
+/** Origins that do not come from the news feed: flow-detector numbers and events the operator typed in. */
+const NOT_FEED: ReadonlySet<string> = new Set(["flow", "manual"]);
+
+/**
+ * Why the news layer is unknown, or null when the feed is being ingested: at least one feed event (origin not flow
+ * or manual) first seen within NEWS_FEED_FRESH_MS of `now`. `events` is the newest-first read the caller already made.
+ */
+export function newsFeedGap(events: Pick<IntelEvent, "origin" | "firstSeen">[], now: number): string | null {
+  const fresh = events.some((e) => !NOT_FEED.has(e.origin) && now - Date.parse(e.firstSeen) <= NEWS_FEED_FRESH_MS);
+  return fresh ? null : `news feed not ingested (no news event in the last ${NEWS_FEED_FRESH_MS / HOUR_MS} h)`;
+}
+
 /** News hours of W: hour t when an event was first seen in [t − 2h, t + 1h). */
 export function newsHours(firstSeen: number[], win: number[]): Set<number> {
   return new Set(win.filter((t) => firstSeen.some((f) => f >= t - NEWS_BEFORE_MS && f < t + NEWS_AFTER_MS)));
@@ -180,7 +192,7 @@ export interface AttributeInput {
   peers: Returns[] | null;
   /** Null: the flow layer is unavailable for the coin (its bucket is null, its hours fall into other). */
   flow: FlowHours | null;
-  /** Null: the news layer is unavailable (no store). */
+  /** Null: the news layer is unknown (no store, or the feed is not being ingested). */
   news: Set<number> | null;
 }
 

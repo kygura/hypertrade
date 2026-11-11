@@ -80,7 +80,7 @@ The jobs run from the Supabase database, not GitHub Actions: pg_cron fires, pg_n
 | `hypertrade-moves-agent` | :07 :22 :37 :52 | `/api/cron/moves-agent` |
 | `hypertrade-desk-tick` | :09 :24 :39 :54 | `/api/desk/tick` (switch `desk_enabled`, on) |
 | `hypertrade-novelty` | :10 :40 | `/api/cron/novelty` (bounded: ~200 s of coins per call, progress stored; a daily pass takes several calls) |
-| `hypertrade-intel-ingest` | :12 :27 :42 :57 | `/api/cron/intel/ingest` (switch `intel_enabled`, off) |
+| `hypertrade-intel-ingest` | :12 :27 :42 :57 | `/api/cron/intel/ingest` (switch `intel_enabled`, on since 2026-11-11) |
 | `hypertrade-intel-brief` / `-graph` / `-watch` | :14 / :29 / :44 hourly | `/api/cron/intel/{brief,graph,watch}` (same switch; each self-throttles) |
 | `hypertrade-lab-collect` | :26 hourly | `/api/cron/lab-collect` (a no-op until a series is 20 h stale) |
 | `hypertrade-cleanup` | 03:33 daily | prunes `cron.job_run_details` and `ops.cron_calls` after 7 days |

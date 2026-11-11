@@ -14,8 +14,9 @@ import { autoInvestigate, planTriage, triageId, utcDay, utcDayStart, type Triage
 // 1. triage: read the 24h moves, surface new candidates under the day's budget; a stale run (older than 2 h) is not
 //    triaged (its moves are not today's news). The pass is stored (moves_triage_scan) for the read routes;
 // 2. grade: open records against closed hourly bars (falsifier) and, at the horizon, the mark vs BTC;
-// 3. auto-investigate: at most one coin per pass whose residual crossed |z| ≥ 2.5 with no news hour, and only when a
-//    provider is configured and the caps allow (agentBlockedReason; nothing is written when blocked).
+// 3. auto-investigate: at most one coin per pass whose residual crossed |z| ≥ 2.5 with no news hour (a known news
+//    layer: unknown news is not "no news"), and only when a provider is configured and the caps allow
+//    (agentBlockedReason; nothing is written when blocked).
 // Shaped like platform/outcomesLoop.ts. The human's actions stay DISMISS and links; nothing here approves or orders.
 
 const HOUR_MS = 3_600_000;
@@ -53,8 +54,9 @@ export interface AgentPassResult {
   surfaced: number;
   /** Records closed this pass (graded, falsified, or a stale in-flight call failed). */
   graded: number;
-  /** The coin investigated, or null with why not. */
+  /** The coin investigated, or null. */
   investigated: string | null;
+  /** Facts about it: the stored record's id and status (`record <id> · <status>`), or why none ran. */
   investigation: string | null;
   /** The triage step's error (grading and the rest still ran). */
   error: string | null;
@@ -100,11 +102,18 @@ export function createAgentLoop(deps: AgentLoopDeps) {
     const runs = await store.agentRunsSince(since);
     const room = deps.agent.dailyCap - runs - deps.agent.inflight.size;
     const coins = autoInvestigate({ items: await store.listTriage(tr.day), candidates: tr.candidates, recordsToday: await store.listAgentRecords({ since, limit: 1000 }), room }).slice(0, deps.autoPerTick ?? 1);
-    if (!coins.length) return { investigated: null, investigation: room <= 0 ? `cap reached (${runs}/${deps.agent.dailyCap} today)` : "no surfaced no-news residual without a record" };
+    if (!coins.length) {
+      const unknown = tr.candidates.filter((c) => c.byResidual && c.newsUnknown).length;
+      const why = room <= 0 ? `cap reached (${runs}/${deps.agent.dailyCap} today)`
+        : unknown ? `no surfaced no-news residual without a record (news unknown for ${unknown} residual candidate${unknown === 1 ? "" : "s"}: no auto-investigation without a news feed)`
+        : "no surfaced no-news residual without a record";
+      return { investigated: null, investigation: why };
+    }
     // Fail closed before any record is written: no provider, no web search, the moves cap or the LLM cap.
     const blocked = await agentBlockedReason(deps.agent, runs);
     if (blocked) return { investigated: null, investigation: blocked };
     let investigated: string | null = null;
+    let done: string | null = null;
     let why: string | null = null;
     for (const coin of coins) {
       const detail = await deps.moves.coin(coin, "24h");
@@ -117,9 +126,10 @@ export function createAgentLoop(deps: AgentLoopDeps) {
       if (rec) {
         await linkTriage(store, tr.day, coin, rec.id);
         investigated = coin;
+        done = `record ${rec.id} · ${rec.status}`;
       } else why = `${coin}: an investigation is in flight`;
     }
-    return { investigated, investigation: investigated ? null : why };
+    return { investigated, investigation: investigated ? done : why };
   }
 
   async function grade(t: Date): Promise<number> {

@@ -6,7 +6,7 @@ import type { LlmDeps } from "../intel/llm.js";
 import type { Citation, Conversation, LLMProvider, StepResult } from "../llm/provider.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
 import { detail, iso, record, T0 } from "./agent.fixture.js";
-import { agentPayload, checkFalsifier, investigate, NO_PROVIDER, NO_WEB_SEARCH, recordProposal, type AgentDeps, type AgentOutput } from "./agent.js";
+import { agentPayload, checkFalsifier, investigate, NEWS_UNKNOWN, NO_PROVIDER, NO_WEB_SEARCH, recordProposal, type AgentDeps, type AgentOutput } from "./agent.js";
 
 const URL_A = "https://news.example.com/sol-unlock";
 const URL_B = "https://blog.example.org/other";
@@ -89,6 +89,24 @@ describe("investigate", () => {
     expect(p.prompts[0]).toContain('"residualPct":6.2');
     expect(p.prompts[0]).toContain("<untrusted>\nSOL ecosystem fund announced\n</untrusted>");
     expect(agentPayload(detail(), 60000).falsifierBand).toEqual({ long: [8.86920, 9.90050], short: [10.1005, 11.2750] });
+    expect(agentPayload(detail(), 60000).attention.news).toBe("ingested");
+  });
+
+  test("with no news feed the prompt says news is unknown, not absent", async () => {
+    const p = new EmitProvider(() => out());
+    const { deps } = setup(p);
+    const off = { state: "unavailable" as const, reason: "news feed not ingested (no news event in the last 24 h)" };
+    const base = detail();
+    const d = detail("SOL", {
+      headlines: [],
+      attribution: { ...base.attribution!, newsHours: null, residualNewsPct: null },
+      attention: { ...base.attention, state: off, news24h: null, news72h: null, newsDailyMean7d: null, newsRatio: null },
+      layers: { ...base.layers, attention: off },
+    });
+    await run(deps, d);
+    expect(agentPayload(d, 60000).attention).toMatchObject({ news: NEWS_UNKNOWN, news24h: null });
+    expect(p.prompts[0]).toContain(`"news":"${NEWS_UNKNOWN}"`);
+    expect(p.prompts[0]).toContain(`Headlines we already know:\n(none: news is ${NEWS_UNKNOWN})`);
   });
 
   test("an advice line and an unbacked number are dropped and counted", async () => {

@@ -9,6 +9,7 @@ import { MemoryPlatformStore } from "../platform/store-memory.js";
 import { CANDLE_BARS, HOUR_MS } from "./constants.js";
 import { FIXTURE_SECTORS, fixtureSet } from "./fixtures/series.js";
 import { asOfHour, createMovesService, movesUniverse, UnknownCoinError, type MovesDeps } from "./service.js";
+import { candidateOf } from "./triage.js";
 
 const fx = fixtureSet();
 const COINS = Object.keys(fx.candles);
@@ -166,5 +167,31 @@ describe("createMovesService", () => {
     expect(d.liq.longSigmas!).toBeGreaterThan(0);
     expect(d.attention).toMatchObject({ state: { state: "ok" }, news24h: 1 });
     expect(d.headlines).toEqual([{ title: "COIN listing", firstSeen: event.firstSeen, url: "https://x.example/a", assets: ["COIN"] }]);
+  });
+
+  test("a database whose news feed was never ingested: news is unknown, never `no news in window`", async () => {
+    const now = fx.asOf + 5 * 60_000;
+    const ev = (origin: string, ageMs: number, assets = ["ZZZ"]) =>
+      ({ id: `e-${origin}-${ageMs}`, key: `k-${origin}-${ageMs}`, clusterId: null, type: "news", title: "x", summary: null, entities: [], assets, magnitude: "low", sources: [], origin, firstSeen: new Date(now - ageMs).toISOString(), scheduledAt: null, catalyst: null, tag: "observed" }) as unknown as IntelEvent;
+    const feeds: Array<[string, IntelEvent[]]> = [
+      ["empty table", []],
+      ["silent feed (newest event 30 h old)", [ev("rss", 30 * HOUR_MS)]],
+      ["flow and manual events only", [ev("flow", HOUR_MS), ev("manual", HOUR_MS)]],
+    ];
+    for (const [what, events] of feeds) {
+      const d = MoveDetailSchema.parse(await setup({ intel: () => ({ listEvents: async () => events }) }).svc.coin("COIN", "24h"));
+      const reason = "news feed not ingested (no news event in the last 24 h)";
+      expect({ what, layer: d.layers.attention, state: d.attention.state }).toEqual({ what, layer: { state: "unavailable", reason }, state: { state: "unavailable", reason } });
+      expect({ what, newsHours: d.attribution!.newsHours, residualNewsPct: d.attribution!.residualNewsPct, news24h: d.attention.news24h }).toEqual({ what, newsHours: null, residualNewsPct: null, news24h: null });
+      // The ENTER/FADE attention checks are unevaluable (null), not "not met".
+      const check = (kind: string, key: string) => d.setups.find((s) => s.kind === kind)!.checks.find((c) => c.key === key)!.met;
+      expect({ what, enter: check("enter", "attention_rising"), fade: check("fade", "attention_saturated") }).toEqual({ what, enter: null, fade: null });
+      expect(candidateOf({ ...d, attribution: { ...d.attribution!, residualZ: 4 } })!.reason).toEndWith("· 24h · news unknown");
+    }
+    // A feed that is ingesting (any feed event in the last 24 h) makes "no news" a known fact for a coin it never named.
+    const live = MoveDetailSchema.parse(await setup({ intel: () => ({ listEvents: async () => [ev("rss", 2 * HOUR_MS)] }) }).svc.coin("COIN", "24h"));
+    expect(live.layers.attention).toEqual({ state: "ok", reason: null });
+    expect([live.attribution!.newsHours, live.attribution!.residualNewsPct, live.attention.news24h]).toEqual([0, 0, 0]);
+    expect(candidateOf({ ...live, attribution: { ...live.attribution!, residualZ: 4 } })!.reason).toEndWith("· 24h · no news in window");
   });
 });

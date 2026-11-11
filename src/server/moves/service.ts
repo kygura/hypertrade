@@ -17,7 +17,7 @@ import { PgPlatformStore } from "../platform/store-pg.js";
 import { myMarkets } from "../platform/universe.js";
 import { getCtxs } from "../routes/hl.js";
 import { loadSocial, type TokenSocial } from "../routes/sectors.js";
-import { attribute, basketReturns, buildFactors, coinEvents, flowHours, hourlyOi, hourlyReturns, hourlySample, newsHours, windowBars, type FlowHours, type Returns } from "./attribution.js";
+import { attribute, basketReturns, buildFactors, coinEvents, flowHours, hourlyOi, hourlyReturns, hourlySample, newsFeedGap, newsHours, windowBars, type FlowHours, type Returns } from "./attribution.js";
 import { checklists } from "./checklists.js";
 import {
   CANDLE_BARS, DETAIL_SECTOR_PEERS, EST_BARS, FUNDING_Z_LOOKBACK, HOUR_MS, LIQ_BUCKET_BPS, LIQ_RANGE, MIN_WINDOW_SHARE, MOVES_EVENT_LIMIT, MOVES_HEADLINES,
@@ -135,7 +135,9 @@ interface Ctx {
   snaps: Map<string, Array<{ ts: number; oiUsd: number; funding: number }>> | null;
   positions: Map<string, Position[]> | null;
   opportunities: Map<string, string>;
+  /** Null when the news layer is unknown (`newsOff` says why): no store, a failed read, or a feed not being ingested. */
   events: IntelEvent[] | null;
+  newsOff: string | null;
   eventsCapped: boolean;
   social: Map<string, TokenSocial>;
   stages: Map<string, NarrativeStage>;
@@ -143,6 +145,7 @@ interface Ctx {
 }
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const NO_NEWS_DB = "needs a database (news and Elfa are stored)";
 
 export function createMovesService(deps: MovesDeps): MovesService {
   const progress = { loaded: 0, total: 0 };
@@ -215,7 +218,7 @@ export function createMovesService(deps: MovesDeps): MovesService {
     const now = deps.now();
     const p = deps.platform();
     const intel = deps.intel();
-    const [ctxs, snaps, positions, opps, events, social, stages] = await Promise.all([
+    const [ctxs, snaps, positions, opps, read, social, stages] = await Promise.all([
       deps.ctxs(),
       snapshots(asOf, coins).catch((err) => (deps.log?.(`snapshots: ${errMsg(err)}`), null)),
       p ? p.store.listPositions().then((ps) => {
@@ -230,9 +233,12 @@ export function createMovesService(deps: MovesDeps): MovesService {
     ]);
     const opportunities = new Map<string, string>();
     for (const o of opps) if (!opportunities.has(o.coin)) opportunities.set(o.coin, o.id);
+    // An empty or silent feed is not "no news": the layer is known only while the feed is being ingested.
+    const newsOff = !intel ? NO_NEWS_DB : read == null ? "news read failed (see server log)" : newsFeedGap(read, now);
+    const events = newsOff ? null : read;
     return {
       now, ctx: new Map(ctxs.filter(isMain).map((c) => [c.name, c])), snaps, positions, opportunities,
-      events, eventsCapped: events != null && events.length >= MOVES_EVENT_LIMIT, social, stages, sectors: deps.sectors(),
+      events, newsOff, eventsCapped: events != null && events.length >= MOVES_EVENT_LIMIT, social, stages, sectors: deps.sectors(),
     };
   };
 
@@ -291,7 +297,7 @@ export function createMovesService(deps: MovesDeps): MovesService {
 
     const social = c.social.get(coin) ?? null;
     const att = attention({
-      state: c.events == null ? off("needs a database (news and Elfa are stored)") : c.eventsCapped ? partial(`news read capped at ${MOVES_EVENT_LIMIT} events`) : ok,
+      state: c.events == null ? off(c.newsOff ?? NO_NEWS_DB) : c.eventsCapped ? partial(`news read capped at ${MOVES_EVENT_LIMIT} events`) : ok,
       news, social, sectorId: sector?.id ?? null, sectorStage: sector ? (c.stages.get(sector.id) ?? null) : null, now: c.now,
     });
     const a24 = res24.attribution;
@@ -319,7 +325,7 @@ export function createMovesService(deps: MovesDeps): MovesService {
     const thin = built.find((b) => b.flow?.hours === null);
     const flow = c.snaps == null ? off("needs the always-on scanner (OI snapshots)")
       : thin ? partial(`OI snapshots too short: ${thin.row.coin} ${(thin.flow as { reason: string }).reason}`) : ok;
-    const attentionL = c.events == null ? off("needs a database (news and Elfa are stored)") : c.eventsCapped ? partial(`news read capped at ${MOVES_EVENT_LIMIT} events`) : ok;
+    const attentionL = c.events == null ? off(c.newsOff ?? NO_NEWS_DB) : c.eventsCapped ? partial(`news read capped at ${MOVES_EVENT_LIMIT} events`) : ok;
     const liq = c.positions == null ? off("needs the always-on scanner and crawler") : c.positions.size === 0 ? partial("the crawler holds no positions yet") : ok;
     return { beta, flow, attention: attentionL, liq, agents: off("agent watch not attached") };
   }

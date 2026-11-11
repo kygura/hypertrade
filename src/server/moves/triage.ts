@@ -33,6 +33,8 @@ export interface TriageCandidate {
   residualPct: number | null;
   /** The window had zero news hours (false when the news layer is unknown). */
   noNews: boolean;
+  /** The news layer is unknown (no feed ingested, no store): neither "no news" nor "news". */
+  newsUnknown: boolean;
   /** Qualified on the residual (|z| ≥ 2.5 with a ≥ 1% move), not only on a checklist. */
   byResidual: boolean;
   reason: string;
@@ -63,6 +65,7 @@ export function candidateOf(row: MoveRow): TriageCandidate | null {
     residualZ: z,
     residualPct: a?.residualPct ?? null,
     noNews: a?.newsHours === 0,
+    newsUnknown: a != null && a.newsHours === null,
     byResidual,
     reason: parts.join(" · ").slice(0, 200),
   };
@@ -110,7 +113,8 @@ export function planTriage(q: { rows: MoveRow[]; existing: TriageItem[]; day: st
 /**
  * Coins the agent investigates on its own (plan §5 E): a surfaced, undismissed item without a record whose 24h
  * residual crossed |z| ≥ 2.5 with no news hour in the window, no record for the coin yet today, best score first,
- * at most `room` (what is left of the daily agent cap).
+ * at most `room` (what is left of the daily agent cap). "No news hour" needs a known news layer: with the news
+ * unknown (no feed ingested) the item still surfaces, reading `news unknown`, but is investigated only on request.
  */
 export function autoInvestigate(q: { items: TriageItem[]; candidates: TriageCandidate[]; recordsToday: Pick<AgentRecord, "coin">[]; room: number }): string[] {
   if (q.room <= 0) return [];

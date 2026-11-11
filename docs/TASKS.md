@@ -74,6 +74,13 @@ MOVES (`/moves`, first MARKET tab; attribution, positioning, triage, agent recor
   with all of them busy the guard makes them queue and the crawler, which yields first, polls less.
 - [ ] Without a database the OI history is boot-local, so the flow layer is `partial` for the first 48 h, and
   agent records and triage are lost on restart.
+- [x] "no news in window" without a news feed (2026-11-11): the news layer is known only while the feed is being
+  ingested (a feed event in the last 24 h); otherwise news is unknown everywhere it is derived and no auto-investigation
+  runs on it (docs/SPEC.md § Moves M0, M3, M4). The queue's moves-run age reads two columns, not the run's body.
+- [ ] Production's Intel ingest has never run (`intel_events` empty): until `POST /cron/intel/ingest` runs,
+  every moves row reads `news unknown` and auto-investigation is off (INVESTIGATE and the routine still work).
+- [ ] News feed evidence is a 24 h recency check, not window coverage: a feed that started ingesting an hour ago makes
+  the 72h window's earlier hours read as "no news". A recorded ingest run (start time) would close this.
 - [ ] Cross-link leftovers: Desk alerts carry free text and no coin field, so their coins stay plain text;
   the three `fmtSigned` implementations (`components/intel/format.ts`, `lib/lab.ts`, `lib/format.ts`) differ in
   signature (suffix vs unit argument, default decimals 1 / 2 / 0), so they were not unified.

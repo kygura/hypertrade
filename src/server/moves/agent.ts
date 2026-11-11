@@ -133,9 +133,13 @@ export function checkFalsifier(level: number | null, direction: "long" | "short"
   return sigmas >= lo - 1e-9 && sigmas <= hi + 1e-9 ? { level, side } : null;
 }
 
+/** Said to the model when the news layer is unknown (no feed ingested, no store): null news numbers are not zero. */
+export const NEWS_UNKNOWN = "unknown: our news feed is not ingested, so news counts and news hours are unknown, not zero";
+
 /** What the model is shown: the code-computed MoveDetail numbers, rounded. Headlines go separately, as untrusted text. */
 export function agentPayload(d: MoveDetail, btcMark: number) {
   const a = d.attribution;
+  const newsKnown = d.attention.news24h !== null;
   const band = falsifierBand(d.mark, d.liq.sigma24hPct);
   return {
     coin: d.coin,
@@ -157,7 +161,7 @@ export function agentPayload(d: MoveDetail, btcMark: number) {
       crowdingLongMet: d.positioning.longMet, crowdingShortMet: d.positioning.shortMet, crowdingChecks: d.positioning.of,
     },
     liquidations: { sigma24hPct: r2(d.liq.sigma24hPct), nearestLongSigmas: r2(d.liq.longSigmas), nearestShortSigmas: r2(d.liq.shortSigmas) },
-    attention: { news24h: d.attention.news24h, news72h: d.attention.news72h, newsRatio: r2(d.attention.newsRatio), mentions24h: d.attention.mentions24h, mentionsChg24hPct: r2(d.attention.mentionsChg24hPct), sectorStage: d.attention.sectorStage },
+    attention: { news: newsKnown ? "ingested" : NEWS_UNKNOWN, news24h: d.attention.news24h, news72h: d.attention.news72h, newsRatio: r2(d.attention.newsRatio), mentions24h: d.attention.mentions24h, mentionsChg24hPct: r2(d.attention.mentionsChg24hPct), sectorStage: d.attention.sectorStage },
     falsifierBand: band && { long: band.long.map(sig), short: band.short.map(sig) },
   };
 }
@@ -300,7 +304,9 @@ export async function investigate(deps: AgentDeps, input: InvestigateInput): Pro
       const res = await completeStructured({
         tier: "strong",
         system: SYSTEM,
-        user: `Why did ${d.coin} move beyond its beta over the last ${payload.horizonHours}h?\n\nOur data (JSON):\n${JSON.stringify(payload)}\n\nHeadlines we already know:\n${untrusted(headlines.join("\n") || "(none)")}`,
+        user: `Why did ${d.coin} move beyond its beta over the last ${payload.horizonHours}h?\n\nOur data (JSON):\n${JSON.stringify(payload)}\n\nHeadlines we already know:\n${
+          headlines.length ? untrusted(headlines.join("\n")) : payload.attention.news === "ingested" ? untrusted("(none)") : `(none: news is ${NEWS_UNKNOWN})`
+        }`,
         schema: OutputSchema,
         jsonSchema,
         promptVersion: AGENT_PROMPT_VERSION,
