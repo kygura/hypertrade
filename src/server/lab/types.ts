@@ -4,6 +4,8 @@ import { z } from "zod";
 // the tool registry and the UI (via the tool results). Keep wire shapes here.
 
 export const DAY_MS = 86_400_000;
+/** The reason a coin carries when a call's deadline passed before its data loaded (an event study, the definition scan). */
+export const NOT_LOADED_BY_DEADLINE = "not loaded before the deadline";
 
 /** UTC-daily series: t[i] is a UTC midnight in ms, ascending, unique; v[i] finite. */
 export interface DailySeries {

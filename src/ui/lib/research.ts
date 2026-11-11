@@ -2,6 +2,7 @@ import {
   boardStudy, BoardResponseSchema, DefinitionsResponseSchema, RadarResponseSchema, SetupReplayResponseSchema, StudyResponseSchema, type DefinitionsResponse, type LedgerEvidence, type SetupReplayResponse, type SetupReplayRow, type ResearchSignal, type ScorecardEvidence, type StudySummary,
   type ResearchSource, type StudyRequest, type StudyResponse,
 } from '../../shared/research'
+import { CI_MIN_CLUSTERS } from '../../shared/platform'
 import type { RadarCall } from '../../shared/radar'
 import { ApiError, api, parseWith } from './api'
 import { fmtSigned } from './lab'
@@ -203,8 +204,8 @@ export const noEvidenceText = (source: ResearchSource) => (source === 'radar' ? 
 
 /** A pending replay (first run, 4–5 min) is asked again this often. */
 export const REPLAY_POLL_MS = 25_000
-/** The replay's 95% interval is null under this many clusters (docs/RESEARCH.md S5). */
-export const REPLAY_MIN_CLUSTERS = 5
+/** The replay's 95% interval is null under this many clusters (docs/RESEARCH.md S5): the server's groupStats constant. */
+export const REPLAY_MIN_CLUSTERS = CI_MIN_CLUSTERS
 
 /** 24h when the replay grades it, else the longest horizon it has. */
 export const defaultReplayHorizon = (horizons: readonly string[]): string => (horizons.includes('24h') ? '24h' : (horizons[horizons.length - 1] ?? ''))

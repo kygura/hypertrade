@@ -68,6 +68,23 @@ Signals v2 follow-ups (docs/RESEARCH.md "Signals v2"):
   board's `opportunity` source says so. Run the always-on server (`bun start`) or tick at least every 15 min.
 - [ ] The candle replay charges no slippage (no historical book) and reads funding up to an hour late; per-coin
   slippage from the live cost model's typical `l2Book` walk would tighten the net numbers.
+- [x] Review fixes to Signals v2 / S5 (2026-11-11): snapshot replay grades jittered timestamps (exit tolerance one
+  persist step plus a minute); the replay yields to the event loop, the snapshot source is capped (top N, 14 days)
+  and signed-in only; a candle replay whose fetches failed is a failed run, not zeros; replay and the no-database
+  scan answer `unavailable` on Vercel; the scan's retry window runs from completion, unlisted coins are dropped for
+  the day and scans never overlap at 00:00 UTC; `okx:oi` is collected and read stored; a deadline-cut study is not
+  cached; live funding's left extension is capped to the cold span.
+- [ ] Hyperliquid weight contention: the replay's own fetches stay under 600 of the guard's 1000 per minute
+  (`REPLAY_HL_BUDGET`, `hlWaitBelow`), but the no-database definition scan (and Lab studies) still share the full
+  budget with the live scanner, so a cold scan can delay a scanner tick by up to a minute on the guard. A per-caller
+  share for the scan needs a seam through the Lab loader (`HtDeps.liveFunding` / `liveCandles`) that only the scan
+  uses; not done.
+- [ ] A study retried after a deadline cut (not cached, by design) counts another Lab trial: the Lab records one per
+  `lab_event_study` call. With `okx:oi` collected the cut is rare; counting at most one trial per study key and day
+  would need the study key passed into the Lab tool.
+- [ ] Live, an idea the scanner does not cost (beyond `PLATFORM_COST_TOP_N`, or no book) stays `new`, never expires
+  and blocks re-fires of its key; the replay assumes every idea costed (a test shows the divergence). Expiring or
+  costing such ideas is a scanner change, not made here.
 
 Radar routine (2026-11-02): the 4 h setup board is retired (24 setups, all low conviction, −1.77R; it
 never saw news, sectors or HIP-3). `ROUTINE.md` is now a twice-daily radar: `bun run radar` scans every

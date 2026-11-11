@@ -133,6 +133,7 @@ export const UNAVAILABLE_REASONS = [
   "source failed (see server log)",
   "sign in required",
   "first scan in progress",
+  "needs a database or the always-on server; or run `bun run signals:scan`",
 ] as const;
 export const UnavailableReasonSchema = z.enum(UNAVAILABLE_REASONS);
 export type UnavailableReason = z.infer<typeof UnavailableReasonSchema>;

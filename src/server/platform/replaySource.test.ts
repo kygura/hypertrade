@@ -3,7 +3,7 @@ import { SetupReplayResponseSchema } from "../../shared/research.js";
 import type { Candle } from "../../shared/types.js";
 import { FEATURE_MIN_TICKS_24H } from "./features.js";
 import { fixtureTicks } from "./replay.fixture.js";
-import { candleStream, createReplayService, formatReplay, GRID_MS, memoSeries, replayParams, runCandleReplay, runSnapshotReplay, snapshotDensity, snapshotStreams } from "./replaySource.js";
+import { candleStream, createReplayService, formatReplay, GRID_MS, memoSeries, replayAnswer, replayParams, runCandleReplay, runSnapshotReplay, SNAPSHOT_REPLAY_MAX_DAYS, snapshotDensity, snapshotStreams } from "./replaySource.js";
 import { MemoryPlatformStore } from "./store-memory.js";
 
 const MIN = 60_000;
@@ -67,6 +67,41 @@ describe("snapshots", () => {
     expect(r.setups.every((s) => s.evaluable)).toBe(true);
     expect(new Set(r.setups.filter((s) => s.entries > 0).map((s) => s.kind))).toEqual(new Set(["deleveraging_washout", "vol_expansion_breakout", "crowded_long"]));
   });
+  test("ms-jittered tick timestamps (the scanner's clock) still grade: n > 0", async () => {
+    const store = new MemoryPlatformStore();
+    // One timestamp per tick for every coin (as the scanner persists a tick), jittered by a few ms either way.
+    const jitter = (ts: number) => ((ts / GRID_MS) % 7) - 3;
+    await store.insertScanSnapshots(fixtureTicks().map((t) => ({ coin: t.coin, ts: new Date(t.ts + jitter(t.ts)).toISOString(), inputs: { mark: t.mark, oiUsd: t.openInterest * t.mark, funding: t.funding, dayNtlVlm: t.dayNtlVlm } })));
+    const last = Math.max(...fixtureTicks().map((t) => t.ts)) + 3;
+    const r = SetupReplayResponseSchema.parse(await runSnapshotReplay({ store, now: () => last, sinceDays: 30, params }));
+    expect(r.state).toBe("ok");
+    const graded = r.setups.filter((s) => s.n > 0);
+    expect(graded.length).toBeGreaterThan(0);
+    expect(r.assumptions.some((a) => a.includes("every 5 min") && a.includes("one per minute"))).toBe(true);
+  });
+  test("bounded: only the top N coins by latest 24 h volume, at most SNAPSHOT_REPLAY_MAX_DAYS; the rest rank in the tiers", async () => {
+    const store = new MemoryPlatformStore();
+    await store.insertScanSnapshots(fixtureTicks().map((t) => ({ coin: t.coin, ts: new Date(t.ts).toISOString(), inputs: { mark: t.mark, oiUsd: t.openInterest * t.mark, funding: t.funding, dayNtlVlm: t.dayNtlVlm } })));
+    const asked: Array<[string, readonly string[] | undefined]> = [];
+    const spy = { scanSnapshotsSince: (since: string, coins?: readonly string[]) => (asked.push([since, coins]), store.scanSnapshotsSince(since, coins)) };
+    const last = Math.max(...fixtureTicks().map((t) => t.ts));
+    const r = SetupReplayResponseSchema.parse(await runSnapshotReplay({ store: spy, now: () => last, sinceDays: 90, params, top: 2 }));
+    expect(r.coins).toEqual(["BRK", "WASH"]);
+    expect(asked).toHaveLength(2);
+    expect(asked[0]).toEqual([new Date(last - DAY).toISOString(), undefined]); // the ranking read: last 24 h
+    expect(asked[1]).toEqual([new Date(last - SNAPSHOT_REPLAY_MAX_DAYS * DAY).toISOString(), ["BRK", "WASH"]]);
+  });
+});
+
+describe("serverless", () => {
+  test("on Vercel the replay answers unavailable with the reason and starts nothing", async () => {
+    let asked = false;
+    for (const source of ["candles", "snapshots"] as const) {
+      const r = SetupReplayResponseSchema.parse(await replayAnswer(source, () => ((asked = true), null), { VERCEL: "1" }));
+      expect(r).toMatchObject({ state: "unavailable", reason: "needs the always-on server; or run `bun run signals:replay`", source });
+    }
+    expect(asked).toBe(false);
+  });
 });
 
 describe("runCandleReplay", () => {
@@ -114,6 +149,23 @@ describe("runCandleReplay", () => {
     expect(r.coins).toEqual(["A"]);
     expect(r.assumptions).toContain("dropped (fetch failed or empty): B");
   });
+
+  test("a run whose fetches all failed (or loaded under half the coins) fails, so the service records a failure and retries; never ok with zeros", async () => {
+    const deps = (ok: string[]) => ({
+      universe: async () => ["A", "B", "C"].map((coin, i) => ({ coin, dayNtlVlm: 3 - i })),
+      candles: async (coin: string) => { if (!ok.includes(coin)) throw new Error("HL 500"); return Array.from({ length: 200 }, (_, i) => candle(i, 100)); },
+      funding: async () => [],
+      now: () => T0 + 201 * GRID_MS,
+      top: 3,
+      params,
+    });
+    await expect(runCandleReplay(deps([]))).rejects.toThrow("candle replay loaded 0 of 3 coins (dropped: A, B, C)");
+    await expect(runCandleReplay(deps(["A"]))).rejects.toThrow("loaded 1 of 3");
+    expect((await runCandleReplay(deps(["A", "B"]))).state).toBe("ok");
+    let t = 0;
+    const svc = createReplayService({ run: () => runCandleReplay(deps([])), now: () => t, ttlMs: 6 * HOUR, retryMs: 15 * MIN, waitMs: 1_000 });
+    expect(await svc.get()).toEqual({ state: "failed" });
+  });
 });
 
 describe("memoSeries", () => {
@@ -123,6 +175,26 @@ describe("memoSeries", () => {
     expect((await f("A", 0, 100)).length).toBe(11);
     expect((await f("A", 20, 150)).map((x) => x.t)).toEqual([20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150]);
     expect(calls).toEqual([[0, 100], [100, 150]]);
+  });
+  test("a series whose first point is after the range start (hourly funding) is not refetched in full on the next call", async () => {
+    const calls: Array<[number, number]> = [];
+    // Points on multiples of 60 only: the range [15, 300] holds its first point at 60.
+    const f = memoSeries(async (_c: string, s: number, e: number) => (calls.push([s, e]), Array.from({ length: 10 }, (_, i) => ({ t: (i + 1) * 60 })).filter((x) => x.t >= s && x.t <= e)));
+    await f("A", 15, 300);
+    await f("A", 30, 310); // the window moved 15: still inside what was fetched
+    expect(calls).toEqual([[15, 300], [300, 310]]);
+  });
+  test("keeps at most maxCoins coins, least recently used out", async () => {
+    const calls: string[] = [];
+    const f = memoSeries(async (c: string, s: number) => (calls.push(`${c}@${s}`), [{ t: 1 }]), 2);
+    await f("A", 0, 1);
+    await f("B", 0, 1);
+    await f("A", 0, 1); // A used again: B is now the oldest
+    await f("C", 0, 1); // B goes
+    calls.length = 0;
+    await f("A", 0, 1);
+    await f("B", 0, 1);
+    expect(calls).toEqual(["A@1", "B@0"]); // A kept: from its newest point only; B evicted: in full
   });
 });
 

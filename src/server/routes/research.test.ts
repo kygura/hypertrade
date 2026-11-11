@@ -199,10 +199,10 @@ describe("/radar route", () => {
 });
 
 describe("/research/setups/replay route", () => {
-  const replayApp = (replay?: (s: ReplaySource) => Promise<SetupReplayResponse>) =>
+  const replayApp = (replay?: (s: ReplaySource) => Promise<SetupReplayResponse>, guest = false) =>
     new Hono().route("/research", researchRoutes({
       cache: createStudyCache(() => NOW), runStudy: async () => { throw new Error("unused"); }, deadlineMs: () => 1, catalogueId: async () => null,
-      board: () => { throw new Error("unused"); }, ...(replay && { replay }),
+      board: () => { throw new Error("unused"); }, isGuest: () => guest, ...(replay && { replay }),
     }));
   const pending = (source: ReplaySource): SetupReplayResponse => ({ state: "pending", asOf: new Date(NOW).toISOString(), source, window: null, coins: [], grid: "15m", horizons: ["24h"], assumptions: [], setups: [] });
 
@@ -215,6 +215,15 @@ describe("/research/setups/replay route", () => {
     const bad = await a.request("/research/setups/replay?source=ticks");
     expect(bad.status).toBe(400);
     expect((await bad.json()).field).toBe("source");
+  });
+
+  test("a guest gets the candle replay; the snapshot replay needs a signed-in reader (nothing is run for a guest)", async () => {
+    const asked: ReplaySource[] = [];
+    const a = replayApp(async (s) => (asked.push(s), pending(s)), true);
+    expect(SetupReplayResponseSchema.parse(await (await a.request("/research/setups/replay")).json()).state).toBe("pending");
+    const r = SetupReplayResponseSchema.parse(await (await a.request("/research/setups/replay?source=snapshots")).json());
+    expect(r).toMatchObject({ state: "unavailable", reason: "sign in required", source: "snapshots", setups: [] });
+    expect(asked).toEqual(["candles"]);
   });
 
   test("default service: snapshots without a database or worker answer unavailable at once (no run)", async () => {

@@ -28,6 +28,7 @@ import { defaultStore, type LabStore, type RunSummary, type StoredRun } from "./
 import {
   RuleSchema,
   SearchConfigSchema,
+  NOT_LOADED_BY_DEADLINE,
   type CatalogueEntry,
   type CatalogueHealth,
   type Direction,
@@ -503,7 +504,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       const unique = coins.filter((c, i) => coins!.findIndex((x) => x.toLowerCase() === c.toLowerCase()) === i);
       const warned = new Map<string, string[]>(); // warning → coins
       const failed: EventStudyResult["coins"] = [];
-      const LATE = "not loaded before the deadline";
+      const LATE = NOT_LOADED_BY_DEADLINE;
       const loaded = await mapLimit(unique, LOAD_CONCURRENCY, async (coin) => {
         const fail = (reason: string) => (failed.push({ coin, bars: 0, from: null, to: null, events: 0, status: "insufficient", reason }), null);
         const left = ctx?.deadlineMs == null ? Infinity : ctx.deadlineMs - SEARCH_FINISH_MS - (deps.now() - started);

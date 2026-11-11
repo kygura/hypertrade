@@ -1,8 +1,11 @@
+import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
 import { databaseUrl } from "../db.js";
 import { monitoringWatchlist, watchedAssets } from "../intel/positions.js";
 import { PgIntelStore } from "../intel/store.js";
 import { STUDY_MAX_COINS } from "../lab/service.js";
 import { getLabService } from "../lab/tools.js";
+import { isServerless } from "../platform/runtime.js";
+import { SourceUnavailable } from "../research/board.js";
 import { createDefinitionScanner, SCAN_DEADLINE_MS, type DefinitionScanner } from "./scan.js";
 
 // The process's definition scan (docs/RESEARCH.md "Signals v2" S2): the Lab service's dataset loader (and its
@@ -28,6 +31,7 @@ export function processDefinitionScanner(env: Record<string, string | undefined>
   return createDefinitionScanner({
     loadDataset: (cfg) => getLabService().deps.loadDataset(cfg),
     coins: () => definitionScanCoins(env),
+    listed: async () => new Set((await fetchPerpMetaAndCtxs()).ctxs.filter((c) => !c.isDelisted).map((c) => c.name)),
     now: Date.now,
     deadlineMs: deadlineMs ?? (databaseUrl() ? SCAN_DEADLINE_MS : LIVE_SCAN_DEADLINE_MS),
   });
@@ -35,11 +39,15 @@ export function processDefinitionScanner(env: Record<string, string | undefined>
 
 /**
  * What the board's `definition` source shows. With a database: the day's scan, awaited (the board bounds the wait
- * with its source timeout). Without one: the scan runs in the background and is never awaited; the last finished scan
- * is served, and null (the caller says "first scan in progress") until there is one.
+ * with its source timeout); it reads stored history (candles, funding, collected okx:oi), so it runs inline on a
+ * serverless runtime too. Without one: the scan runs in the background and is never awaited; the last finished scan
+ * is served, and null (the caller says "first scan in progress") until there is one. Without a database on a
+ * serverless runtime (Vercel) nothing is started: the live scan takes minutes, past a function's life, so every poll
+ * would start another partial scan against Hyperliquid; the source is unavailable with the reason.
  */
-export async function boardDefinitionScan(scanner: DefinitionScanner, hasDb: boolean) {
+export async function boardDefinitionScan(scanner: DefinitionScanner, hasDb: boolean, serverless = isServerless()) {
   if (hasDb) return scanner.scan();
+  if (serverless) throw new SourceUnavailable("needs a database or the always-on server; or run `bun run signals:scan`");
   scanner.scan().catch((err) => console.warn(`[signals] background definition scan failed: ${err instanceof Error ? err.message : String(err)}`));
   return scanner.latest();
 }

@@ -1,4 +1,4 @@
-import type { LedgerStats } from "../../shared/platform.js";
+import { CI_MIN_CLUSTERS, type LedgerStats } from "../../shared/platform.js";
 import { horizonMs } from "./outcomes.js";
 import { SCORE_VERSION } from "./score.js";
 import type { OutcomeRow } from "./store.js";
@@ -30,7 +30,7 @@ export function groupStats(rows: OutcomeRow[], by: { regime?: boolean; tier?: bo
     const k = ms.length;
     const meanNet = ms.reduce((a, b) => a + b, 0) / k;
     let ci95: LedgerStats["ci95"] = null;
-    if (k >= 5) {
+    if (k >= CI_MIN_CLUSTERS) {
       const sd = Math.sqrt(ms.reduce((a, x) => a + (x - meanNet) ** 2, 0) / (k - 1));
       const h = (tCrit(k - 1) * sd) / Math.sqrt(k);
       ci95 = [meanNet - h, meanNet + h];

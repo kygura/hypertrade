@@ -48,7 +48,7 @@ export const DEFINITIONS: SignalDefinition[] = [
   {
     id: "negative_funding_build",
     name: "Negative funding build",
-    thesis: "Funding at a 90-day low, open interest up 10% in a week and price not down more than one 7-day sigma: shorts piling in, long the squeeze.",
+    thesis: "Funding more than 1.5 sigma below its 90-day mean, OKX open interest up 10% in a week and price not down more than one 7-day sigma: shorts piling in, long the squeeze.",
     rule: {
       direction: "long",
       horizonDays: 7,

@@ -113,8 +113,8 @@ export interface PlatformStore {
   liqmapHistory(coin: string, since: string): Promise<LiqMapSnapshot[]>;
   /** Upsert on (coin, ts). Returns rows written. */
   insertScanSnapshots(rows: ScanSnapshot[]): Promise<number>;
-  /** ts >= since, ascending by ts then coin. */
-  scanSnapshotsSince(since: string): Promise<ScanSnapshot[]>;
+  /** ts >= since, ascending by ts then coin; only `coins` when given (an empty list reads nothing). */
+  scanSnapshotsSince(since: string, coins?: readonly string[]): Promise<ScanSnapshot[]>;
   /** Distinct scan timestamps with ts >= since: scanner ticks persisted (at most one per 5 min). */
   scanTickCount(since: string): Promise<number>;
   /**

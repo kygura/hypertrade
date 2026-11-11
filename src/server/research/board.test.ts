@@ -201,7 +201,7 @@ describe("scanner cadence note on the opportunity source", () => {
     const b = BoardResponseSchema.parse(await buildBoard(deps({ opportunities: async () => [], scannerTicks24h: async () => 4 })));
     expect(b.sources.opportunity).toEqual({
       ...ok(0),
-      note: "scanner has 4 ticks stored in the last 24 h; setups need 96 (one per 15 min; the always-on server scans every minute), so none can fire",
+      note: "scanner has 4 ticks stored in the last 24 h; the setup features need one per 15 min (96 a day; the always-on server scans every minute): too few for any setup to fire",
     });
   });
   test("no note at the always-on cadence (288 persisted ticks), when unknown, or when the read fails or stalls", async () => {
@@ -210,8 +210,10 @@ describe("scanner cadence note on the opportunity source", () => {
       expect(b.sources.opportunity).toEqual(ok(1));
     }
   });
-  test("scannerNote: under 96 a day only", () => {
-    expect(scannerNote(95)).toContain("95 ticks");
+  test("scannerNote: under 96 a day only; no absolute claim near the need (one missed 15-min run)", () => {
+    expect(scannerNote(95)).toBe("scanner has 95 ticks stored in the last 24 h; the setup features need one per 15 min (96 a day; the always-on server scans every minute)");
+    expect(scannerNote(48)).not.toContain("too few");
+    expect(scannerNote(47)).toEndWith(": too few for any setup to fire");
     expect(scannerNote(1)).toContain("1 tick stored");
     expect(scannerNote(96)).toBeNull();
     expect(scannerNote(null)).toBeNull();

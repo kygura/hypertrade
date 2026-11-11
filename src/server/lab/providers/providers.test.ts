@@ -12,10 +12,10 @@ import { bcUrl, createBcProvider, parseBlockchainChart } from "./bc.js";
 import { createDeribitProvider, dvolUrls, parseDvolHistory } from "./deribit.js";
 import { cmAsset, createCmProvider, parseCmPage } from "./cm.js";
 import { createFngProvider, parseFngHistory } from "./fng.js";
-import { createHtProvider, dropPartialLastDay, htCoin, type HtDeps } from "./ht.js";
+import { createHtProvider, dropPartialLastDay, htCoin, LIVE_FUNDING_SPAN_MS, type HtDeps } from "./ht.js";
 import { createLlamaProvider, parseChainTvl, parseStablecoinChart } from "./llama.js";
 import { createOkxProvider, OKX_OI_EPOCH, OKX_PACE_MS, OKX_PAGE, okxInstrument, parseOiPage } from "./okx.js";
-import { loadDataset } from "./registry.js";
+import { fetchMetric, loadDataset } from "./registry.js";
 import { HttpError, type LabMetricDef } from "./series.js";
 
 const D0 = Date.UTC(2024, 0, 1);
@@ -240,6 +240,27 @@ describe("ht", () => {
     now += H;
     await Promise.all([p.fetch("funding", "BTC", D0, D0 + 4 * DAY), p.fetch("premium", "BTC", D0, D0 + 4 * DAY)]);
     expect(asked).toHaveLength(4);
+  });
+
+  test("no DB: the same funding range gives the same days whichever caller filled the cache first (left extension capped)", async () => {
+    const now = D0 + 900 * DAY;
+    const to = D0 + 899 * DAY;
+    const hourly = (from: number, end: number) => {
+      const out = [];
+      for (let t = Math.ceil(from / H) * H; t <= Math.min(end, now); t += H) out.push({ t, rate: 0.0001, premium: 0 });
+      return out;
+    };
+    // The real cold-fetch cap: at most LIVE_FUNDING_SPAN_MS before the range end.
+    const capped = async (_c: string, from: number, end: number) => hourly(Math.max(from, end - LIVE_FUNDING_SPAN_MS), end);
+    const long = D0; // a study over the whole history (900 days, past the span)
+    const short = to - 300 * DAY; // the scan's lookback
+    const cold = await createHtProvider(deps({ hasDb: () => false, now: () => now, liveFunding: capped })).fetch("funding", "BTC", long, to);
+    // Another process: the short range first, then the long one extends the cache to the left.
+    const warm = createHtProvider(deps({ hasDb: () => false, now: () => now, liveFunding: capped }));
+    await warm.fetch("funding", "BTC", short, to);
+    const after = await warm.fetch("funding", "BTC", long, to);
+    expect(after.t).toEqual(cold.t);
+    expect(after.t[0]).toBeGreaterThanOrEqual(to + DAY - 1 - LIVE_FUNDING_SPAN_MS);
   });
 
   test("observation metrics take the last value per day from the right series", async () => {
@@ -494,6 +515,78 @@ describe("okx open interest", () => {
     expect(await p.fetch("oi", "NOPE", now - 50 * DAY, now)).toEqual({ t: [], v: [] });
     expect(await p.fetch("oi", "kNEIRO", now - 50 * DAY, now)).toEqual({ t: [], v: [] });
     expect(urls).toHaveLength(1); // kNEIRO is never requested
+  });
+
+  test("an outage is an error, never `no data`: an empty code-0 first page or a non-200 throws; only 51001 is an empty series", async () => {
+    const now = Date.UTC(2025, 9, 1, 6);
+    const empty = (async () => Response.json({ code: "0", data: [], msg: "" })) as unknown as typeof fetch;
+    const down = (async () => new Response("bad gateway", { status: 502 })) as unknown as typeof fetch;
+    for (const fetchFn of [empty, down]) {
+      const p = createOkxProvider({ fetchFn, now: () => now, sleep: async () => {} });
+      await expect(p.fetch("oi", "ETH", now - 50 * DAY, now)).rejects.toThrow();
+    }
+    // Through the dataset loader: an outage is a dropped metric (a warning: the scan retries it), 51001 is noData.
+    const ht = createHtProvider({ ...noDbHt, liveCandles: async (_c, from) => Array.from({ length: 60 }, (_, i) => ({ t: from + i * DAY, o: 1, h: 1, l: 1, c: 1, v: 1 })) });
+    const cfg = { asset: "ETH", metrics: ["okx:oi"], from: new Date(now - 59 * DAY).toISOString().slice(0, 10) };
+    const deps = (fetchFn: typeof fetch) => ({ providers: [ht, createOkxProvider({ fetchFn, now: () => now, sleep: async () => {} })], now: () => now, cache: new Map(), store: { hasDb: () => false, coverage: async () => null, range: async () => [] } });
+    const out = await loadDataset(cfg, deps(empty));
+    expect(out.noData).toEqual([]);
+    expect(out.warnings.some((w) => w.startsWith("okx:oi: okx ETH-USDT-SWAP: empty response"))).toBe(true);
+    const unlisted = await loadDataset(cfg, deps((async () => Response.json(okxUnknownFixture)) as unknown as typeof fetch));
+    expect(unlisted.noData).toEqual(["okx:oi"]);
+  });
+
+  test("collectable: history pages oldest first in OKX_PAGE-day windows to yesterday; a deadline returns an ascending prefix that resumes", async () => {
+    const first = Date.UTC(2025, 0, 1);
+    const start = Date.UTC(2025, 9, 1, 12); // 273 closed days after first
+    const today = Math.floor(start / DAY) * DAY;
+    let now = start;
+    const { fn, urls } = okxStub(first, start);
+    const clocked = (async (u: string | URL | Request) => ((now += 1_000), fn(u))) as typeof fetch; // each request takes 1 s
+    const p = createOkxProvider({ fetchFn: clocked, now: () => now, sleep: async () => {} });
+    const full = await p.history!("oi", "ETH", null, {});
+    expect(full.partial).toBeUndefined();
+    expect(full.t[0]).toBe(first);
+    expect(full.t.at(-1)).toBe(today - DAY);
+    expect(full.t).toHaveLength((today - first) / DAY);
+    expect(full.t.every((t, i) => i === 0 || t === full.t[i - 1]! + DAY)).toBe(true);
+    expect(urls.length).toBe(Math.ceil((today - OKX_OI_EPOCH) / (OKX_PAGE * DAY))); // from the epoch: windows before the listing are empty
+    // A budget that allows two requests: the first 200 days, partial; the next run resumes from the last stored day.
+    now = start;
+    urls.length = 0;
+    const cut = await p.history!("oi", "ETH", first, { deadline: start + 2_000 });
+    expect(cut.partial).toBe(true);
+    expect(cut.t).toEqual(full.t.slice(0, 2 * OKX_PAGE));
+    const rest = await p.history!("oi", "ETH", cut.t.at(-1)!, {});
+    expect(rest.t[0]).toBe(cut.t.at(-1)!);
+    expect(rest.t.at(-1)).toBe(today - DAY);
+    // Incremental: an empty answer is an outage (retried), not a sync; an unknown instrument is no history.
+    const empty = createOkxProvider({ fetchFn: (async () => Response.json({ code: "0", data: [], msg: "" })) as unknown as typeof fetch, now: () => start, sleep: async () => {} });
+    await expect(empty.history!("oi", "ETH", today - 10 * DAY, {})).rejects.toThrow("empty response");
+    expect(await p.history!("oi", "NOPE", null, {})).toEqual({ t: [], v: [] });
+    expect(await p.history!("oi", "kNEIRO", null, {})).toEqual({ t: [], v: [] });
+  });
+
+  test("with a database the registry reads the collected lab.okx.oi series: fresh = no request; stale = one top-up request", async () => {
+    const now = Date.UTC(2025, 9, 1, 6);
+    const today = Math.floor(now / DAY) * DAY;
+    const first = Date.UTC(2025, 0, 1);
+    const { fn, urls } = okxStub(first, now);
+    const okx = createOkxProvider({ fetchFn: fn, now: () => now, sleep: async () => {} });
+    const stored = (lastDay: number) => Array.from({ length: (lastDay - first) / DAY + 1 }, (_, i) => ({ t: first + i * DAY, v: i * 1000 }));
+    const store = (pts: Array<{ t: number; v: number }>, ids: string[]) => ({
+      hasDb: () => true,
+      coverage: async (id: string) => (ids.push(id), pts.length ? { min: pts[0]!.t, max: pts.at(-1)!.t } : null),
+      range: async (_id: string, lo: number, hi: number) => pts.filter((p) => p.t >= lo && p.t <= hi),
+    });
+    const ids: string[] = [];
+    const fresh = await fetchMetric("okx:oi", "ETH", today - 60 * DAY, today, { providers: [okx], now: () => now, cache: new Map(), store: store(stored(today - DAY), ids) });
+    expect(urls).toHaveLength(0);
+    expect(ids).toEqual(["lab.okx.oi.eth"]);
+    expect(fresh.t.at(-1)).toBe(today - DAY);
+    const stale = await fetchMetric("okx:oi", "ETH", today - 60 * DAY, today, { providers: [okx], now: () => now, cache: new Map(), store: store(stored(today - 5 * DAY), []) });
+    expect(urls).toHaveLength(1); // the tail only, one page
+    expect(stale.t.at(-1)).toBe(today - DAY);
   });
 
   test("a level (no raw in a search), asset scope, lag 0; loads with no database and its lastRaw is the last closed day", async () => {

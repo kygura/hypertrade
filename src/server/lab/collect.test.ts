@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Observation, SyncState } from "../db.js";
-import { collectLab, labAssets, labJobs, LAB_SYNC_COIN, OVERLAP_MS, REFRESH_MS, RETRY_MS, type LabCollectDeps, type LabJob } from "./collect.js";
+import { collectLab, labAssets, labJobs, LAB_SYNC_COIN, oiAssets, OVERLAP_MS, REFRESH_MS, RETRY_MS, type LabCollectDeps, type LabJob } from "./collect.js";
 import { HttpError } from "./providers/series.js";
 import type { DailySeries, LabProvider, MetricDef } from "./types.js";
 
@@ -70,11 +70,17 @@ describe("labJobs", () => {
     expect(ids).toEqual(["lab.cm.CapMVRVCur.btc", "lab.cm.CapMVRVCur.eth", "lab.cm.TxCnt.btc", "lab.cm.TxCnt.eth", "lab.bc.hash_rate", "lab.deribit.btc_dvol"]);
   });
 
-  test("the real catalogue: cm × assets, fng, llama ×2, bc ×4, deribit ×2; own namespace", () => {
-    const ids = labJobs(undefined, ["BTC", "ETH"]).map((j) => j.id);
-    expect(ids).toHaveLength(12 * 2 + 1 + 2 + 4 + 2);
-    for (const id of ["lab.cm.CapMVRVCur.eth", "lab.fng.value", "lab.llama.stablecoin_cap", "lab.bc.hash_rate", "lab.deribit.eth_dvol"]) expect(ids).toContain(id);
+  test("the real catalogue: cm × assets, fng, llama ×2, bc ×4, deribit ×2, okx:oi × its own coins; own namespace", () => {
+    const ids = labJobs(undefined, ["BTC", "ETH"], { okx: ["BTC", "HYPE", "kPEPE"] }).map((j) => j.id);
+    expect(ids).toHaveLength(12 * 2 + 1 + 2 + 4 + 2 + 3);
+    for (const id of ["lab.cm.CapMVRVCur.eth", "lab.fng.value", "lab.llama.stablecoin_cap", "lab.bc.hash_rate", "lab.deribit.eth_dvol", "lab.okx.oi.hype", "lab.okx.oi.kpepe"]) expect(ids).toContain(id);
+    expect(ids).not.toContain("lab.okx.oi.eth"); // okx takes its own list, not LAB_ASSETS
     expect(ids.every((id) => id.startsWith("lab."))).toBe(true);
+  });
+
+  test("okx:oi coins: the definition scan's (deduped by case), LAB_ASSETS when that list fails", async () => {
+    expect(await oiAssets(async () => ["BTC", "HYPE", "btc", "kPEPE"])).toEqual(["BTC", "HYPE", "kPEPE"]);
+    expect(await oiAssets(async () => { throw new Error("HL down"); })).toEqual(labAssets());
   });
 
   test("LAB_ASSETS", () => {
@@ -247,7 +253,28 @@ describe("collectLab", () => {
     const done = await run(m, jobs([]), at + 120_000);
     expect(done.sources["lab.bc.hash_rate"]).toBe("ok");
     expect(m.state.get(`${LAB_SYNC_COIN}/lab.bc.hash_rate`)!.syncedAt).toBe(at + 120_000);
-    expect(m.state.get(`${LAB_SYNC_COIN}/lab.bc.hash_rate`)!.ext as unknown).toEqual({ lab: { attemptedAt: at + 120_000 } });
+    expect(m.state.get(`${LAB_SYNC_COIN}/lab.bc.hash_rate`)!.ext as unknown).toEqual({ lab: { attemptedAt: at + 120_000, lastDay: D0 + 9 * DAY } });
     expect([...new Set(m.rows.map((r) => r.value))].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  test("a dailyClose series (okx:oi) is due again once it lacks yesterday, not only 20 h after its last sync", async () => {
+    const m = memoryDeps();
+    const daily = (calls: Call[]) =>
+      labJobs(fakeProviders(calls), ["BTC"]).filter((j) => j.id === "lab.bc.hash_rate").map((j) => ({ ...j, def: { ...j.def, dailyClose: true } as LabJob["def"] }));
+    // Synced at 23:00 on day 3: stored through day 2 (yesterday then).
+    const evening = D0 + 3 * DAY + 23 * 3_600_000;
+    await run(m, daily([]), evening);
+    const same = { at: [] as Call[] };
+    await run(m, daily(same.at), evening + 30 * 60_000); // 23:30: still has yesterday
+    expect(same.at).toHaveLength(0);
+    const after = { at: [] as Call[] };
+    await run(m, daily(after.at), D0 + 4 * DAY + 15 * 60_000); // 00:15 on day 4: lacks day 3, 75 min after the last sync
+    expect(after.at).toHaveLength(1);
+    // A plain series synced at 23:00 waits its 20 h.
+    const plain: Call[] = [];
+    const m2 = memoryDeps();
+    await run(m2, labJobs(fakeProviders([]), ["BTC"]).filter((j) => j.id === "lab.bc.hash_rate"), evening);
+    await run(m2, labJobs(fakeProviders(plain), ["BTC"]).filter((j) => j.id === "lab.bc.hash_rate"), D0 + 4 * DAY + 15 * 60_000);
+    expect(plain).toHaveLength(0);
   });
 });

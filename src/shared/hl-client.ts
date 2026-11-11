@@ -38,6 +38,15 @@ export function hlWeightWaitMs(now: number = Date.now()): number {
   return weightWaitMs(weightLog, now);
 }
 
+/**
+ * Waits until one more base-weight call fits a lower trailing-60s budget than the guard's own, so a background job
+ * (the setup replay's history fetches) takes at most that share and leaves the rest to the live scanner. Call it
+ * before each request; the request itself still goes through the full guard.
+ */
+export async function hlWaitBelow(budget: number): Promise<void> {
+  for (let wait = weightWaitMs(weightLog, Date.now(), budget); wait > 0; wait = weightWaitMs(weightLog, Date.now(), budget)) await sleep(wait);
+}
+
 function logWeight(weight: number) {
   const now = Date.now();
   weightLog.push({ t: now, weight });

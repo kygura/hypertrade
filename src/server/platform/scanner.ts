@@ -25,7 +25,8 @@ export const envNum = (name: string, def: number): number => {
 
 const MIN = 60_000;
 const RING_MS = 24 * 60 * MIN;
-const PERSIST_MS = 5 * MIN;
+/** scan_snapshots cadence: the 1-min ring is persisted every 5 min. */
+export const PERSIST_MS = 5 * MIN;
 /** Reference size for costs: min(absorbableUsd, this). Governor-free: the scanner has no account, the governor sizes at approval. */
 export const REF_SIZE_USD = 10_000;
 /** Holding time funding is charged over. ponytail: fixed 4 h (the middle outcome horizon); per-setup holds when the ledger says they differ. */

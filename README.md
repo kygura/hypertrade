@@ -116,7 +116,7 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `PLATFORM_CRAWL_MAX_AGE_MIN` (30) | Max age of a poll for addresses with open positions. |
    | `PLATFORM_RETENTION_DAYS` (14) | Pruning window for liquidation snapshots and position history. The ledger is never pruned. |
    | `PLATFORM_SCAN_RETENTION_DAYS` (30) | Pruning window for `scan_snapshots`, the only stored intraday OI (read by the `snapshots` setup replay). Never shorter than `PLATFORM_RETENTION_DAYS`. At the always-on cadence that is one row per coin every 5 minutes, about 288 × coins rows a day. |
-   | `PLATFORM_REPLAY_TOP` (20) | Coins in the candle setup replay (`/api/research/setups/replay`, `bun run signals:replay`), most liquid first. About 230 Hyperliquid weight per coin. |
+   | `PLATFORM_REPLAY_TOP` (20) | Coins in the setup replay (`/api/research/setups/replay`, `bun run signals:replay`), most liquid first: candles (about 230 Hyperliquid weight per coin, kept under 600 of the guard's 1000 per minute) and snapshots (at most 14 days of `scan_snapshots`). The replay runs on the always-on server or the CLI only: on Vercel the route answers `unavailable`. `source=snapshots` needs a signed-in reader. |
    | `PLATFORM_OUTCOME_HORIZONS` (`1h,4h,24h,72h`) | Outcome horizons. |
    | `PLATFORM_EDGE_MIN_N` (30) | Resolved outcomes needed before edge leaves `unvalidated`. |
    | `PLATFORM_READY_TTL_MIN` (60) | Minutes before an undecided `ready` opportunity expires. |
@@ -658,8 +658,13 @@ kept), in a JSON file locally, or in memory.
 **Lab data.** `/api/cron/lab-collect` runs the Lab collector
 (`src/server/lab/collect.ts`) which stores the daily history of every `cm`
 (per `LAB_ASSETS`, default `BTC,ETH`), `fng`, `llama`, `bc` and `deribit`
-metric in `observations` as `lab.<provider>.<key>[.<asset>]` (e.g.
-`lab.cm.CapMVRVCur.btc`, `lab.bc.hash_rate`). The collect workflow calls it
+metric, and OKX open interest (`okx:oi`) for the definition scan's coins (the
+Lab's top-20 universe plus the watchlist), in `observations` as
+`lab.<provider>.<key>[.<asset>]` (e.g. `lab.cm.CapMVRVCur.btc`,
+`lab.bc.hash_rate`, `lab.okx.oi.hype`). The first `okx:oi` run backfills
+about 11 requests a coin from Feb 2024 at 450 ms each, so the first one or two
+runs end `partial` and resume; after that one request a coin, made as soon as
+the stored series lacks yesterday. The collect workflow calls it
 in its own job every 15 minutes (a no-op for fresh series) and Vercel Cron
 daily at 06:30 UTC as a fallback. A run has a 200 s budget: no series starts
 after it and every upstream request is cut to end by it; a paged history it
@@ -734,7 +739,11 @@ bun run lab lab_market_pulse --pretty
 definition scan once (Postgres with `DATABASE_URL`, else live Hyperliquid and OKX; the
 first live scan takes minutes) and prints each drop and hit; `bun run signals:study
 [id…]` runs each definition's event study over the default universe and prints the
-verdict table (each study is a Lab trial).
+verdict table (each study is a Lab trial). With a database the board's scan reads stored
+candles, funding and the collected `okx:oi`, so it runs inline on Vercel; without one, on
+Vercel the board's definition source is `unavailable` (no background scan is started there).
+`bun run signals:replay [--top N] [--source candles|snapshots]` replays the intraday setups
+once; the HTTP replay runs only on the always-on server.
 
 **REST**: `GET /api/lab/tools` lists definitions; `POST /api/lab/tools/<name>`
 takes the arguments as JSON and answers `{ ok: true, result }` or
