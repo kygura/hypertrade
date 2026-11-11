@@ -32,7 +32,8 @@ Built for the always-on server (`bun start`, `WORKER_LOOPS=all`). On Vercel (tic
 the board still renders: sources that need a loop or Postgres report `unavailable` with a
 reason, studies run on demand inside the 50 s tool deadline (without a database only a one- or
 two-coin study fits: funding history is rate-limited to about one coin a minute), and approve is disabled with
-the reason shown before the dialog opens.
+the reason shown before the dialog opens. The `definition` source runs without a database too, in the background
+(S2 below); on Vercel a function instance rarely lives long enough to finish it.
 
 ## Backend
 
@@ -220,8 +221,11 @@ and a rule-bearing signal opens a prefilled study.
 
 ## Signals v2 — one definition, two evaluators
 
-Status: done (2026-11-10): S1–S4 shipped, review fixes applied. Phases 1–2 of the candidate pipeline
-(`docs/research/candidates-redesign.md` § B.3, B.4), cut to what the Lab can replay today.
+Status: done (2026-11-10): S1–S4 shipped, review fixes applied. Follow-ups shipped 2026-11-11: rules up to four
+conditions, the `vchg` transform, `okx:oi`, the dropped thesis parts restored where the Lab can say them,
+`range_breakdown`, the scan without a database, partial funding days, `bun run signals:scan` / `signals:study`.
+Phases 1–2 of the candidate pipeline (`docs/research/candidates-redesign.md` § B.3, B.4), cut to what the Lab can
+replay today.
 
 Problem: four engines each defined "signal" their own way (scanner setups, novelty, Lab rules,
 radar calls), and only Lab rules could be replayed. Rows on the board said `no Lab twin`.
@@ -242,25 +246,32 @@ features exist: `funding_fade` (short), `negative_funding_build` (long), `washou
 needs two entries), `range_breakout`. A definition whose predicate the Lab cannot express is
 left out and listed in `docs/TASKS.md`, not approximated silently.
 
-Shipped (thresholds are starting points; each rule's comment in the file names what B.4 asked that it drops):
+Shipped (thresholds are starting points; each rule's comment in the file names what B.4 asked that it drops). A rule
+holds up to four conditions (`MAX_CONDITIONS`; the search still produces at most two). `vchg(w)` is the w-day log
+change in w-day sigmas of the coin's own daily volatility (docs/LAB.md), standing in for B.4's ATR-scaled returns: a
+w-day sigma is not ATR(14), so "1 ATR" in B.4 and "1 sigma" here are different cuts.
 
 | id | side, hold | rule | dropped from B.4 |
 |---|---|---|---|
-| `funding_fade` | short 7d | `ht:funding z(90) ≥ 2 AND ht:oi pctile(30) ≥ 0.95` | `\|ret_3d\| < 1 ATR` (third condition, ATR-scaled) |
-| `negative_funding_build` | long 7d | `ht:funding z(90) < −1.5 AND ht:oi roc(7) ≥ 0.1` | `ret_7d ≥ −1 ATR` |
-| `washout_reclaim` | long 7d, stop 2-bar low | `ht:price roc(3) < −0.08 AND ht:oi roc(3) < −0.1` | the 4 h reclaim trigger, funding < 0, liquidation z (no metric); a 1-day return needs roc(1), below the minimum window |
-| `trend_pullback_long` / `_short` ("Trend at its 20-day mean") | long / short 10d | `ht:price ma_ratio(20)` in [−0.02, 0.02) `AND trend ∈ {up}` / `{down}`: price at its 20-day mean in a trend, above it included, so not strictly a pullback (the id keeps the B.4 name) | distance in %, not ATR; funding-not-crowded |
+| `funding_fade` | short 7d | `ht:funding z(90) ≥ 2 AND okx:oi pctile(30) ≥ 0.95 AND ht:price vchg(3)` in [−1, 1) | the 4 h trigger; `\|ret_3d\| < 1 ATR` is read in 3-day sigmas |
+| `negative_funding_build` | long 7d | `ht:funding z(90) < −1.5 AND okx:oi roc(7) ≥ 0.1 AND ht:price vchg(7) ≥ −1` | the 4 h trigger; `ret_7d ≥ −1 ATR` is read in 7-day sigmas |
+| `washout_reclaim` | long 7d, stop 2-bar low | `ht:price roc(3) < −0.08 AND okx:oi roc(3) < −0.1 AND ht:funding raw < 0` | the 4 h reclaim trigger, liquidation z (no metric); a 1-day return needs roc(1), below the minimum window, so the drop is 3 days in percent; OI from its 20-day peak is a 3-day change |
+| `trend_pullback_long` / `_short` ("Trend at its 20-day mean") | long / short 10d | `ht:price ma_ratio(20)` in [−0.02, 0.02) `AND ht:funding z(90)` in [−1, 1) `AND trend ∈ {up}` / `{down}`: price at its 20-day mean in a trend, above it included, so not strictly a pullback (the id keeps the B.4 name) | distance in %, not ATR (no feature scales a distance to a mean by volatility) |
 | `range_breakout` | long 7d | `ht:price pctile(20) ≥ 1 AND ht:volume ma_ratio(20) ≥ 0.5`; the 20-day mean includes the day, so volume ≥ about 1.54× the prior 19-day mean | breakout on closes, not highs (no rolling-max feature) |
+| `range_breakdown` | short 7d | `ht:price pctile(20) < 0.01 AND ht:volume ma_ratio(20) ≥ 0.5`: pctile is 0 only below every other close in the window and its smallest other value is ½/19 ≈ 0.026 (½/9 at the fewest closes it accepts), so < 0.01 is exactly "below all 19 prior closes" | as `range_breakout` |
 
-Nothing was left out. `ht:oi` is collector snapshots (stored history only), so the three OI definitions are in zone
-only where OI is collected. Stop/target levels are left to the study's exits except the washout's structural stop.
+OI is `okx:oi`, the coin's OKX USDT-swap open interest, standing in for market positioning: Hyperliquid publishes no
+OI history and `ht:oi` (collector snapshots) covers about six weeks for about 20 coins, too short for the study's 30
+event-weeks. `ht:oi` can replace it once the collector has enough history. A coin OKX does not list has no OI
+definitions. Stop/target levels are left to the study's exits except the washout's structural stop.
 A definition's `rule` carries `asset: UNIVERSE_ASSET` (`"UNIVERSE"`, `src/shared/research.ts`), not a ticker: it is
 studied over the universe without a `coin`, so every coin in zone shares one study, one cache key and one trial.
 
 `intradayKinds` names the platform setup kinds (`src/server/platform/setups.ts`) that share the
-thesis: `crowded_long → funding_fade`, `negative_funding_squeeze → negative_funding_build`,
-`deleveraging_washout → washout_reclaim`, `vol_expansion_breakout → range_breakout`. A test
-asserts every platform setup kind is named by exactly one definition.
+thesis on the definition's side: `crowded_long → funding_fade`, `negative_funding_squeeze → negative_funding_build`,
+`deleveraging_washout → washout_reclaim`, `vol_expansion_breakout` long → `range_breakout`, short →
+`range_breakdown`. `definitionForKind(kind, side)` picks by side. A test asserts every platform setup kind is named by
+exactly one definition per side it can take, and by none on a side it cannot.
 
 ### S2. Live evaluation — `src/server/signals/scan.ts`
 
@@ -278,18 +289,36 @@ loads its own 200-day window, so it does not share study cache entries; refreshe
 closed daily bar; a coin whose data fails is dropped and counted, never fatal. Evaluating a
 definition live is **not** a trial (no study runs).
 
-Concrete: `createDefinitionScanner` loads 200 days per coin (`SCAN_LOOKBACK_DAYS`: the 90-day window plus the
-regime's 50-day mean) through the Lab service's `loadDataset` (registry cache), memoises one complete scan per UTC
-day (callers in flight share it; a scan that dropped anything is kept only 15 min, `SCAN_RETRY_MS`, so a scan run
-before stored data reaches the bar is retried; a scan that fails as a whole is forgotten), and drops a coin that
-fails, is not loaded within 120 s (`SCAN_DEADLINE_MS`) or whose price does not reach yesterday's bar. A definition is
-evaluated on a coin only when every metric its conditions read has a raw, not forward-filled, value on the bar (the
-loader's `lastRaw`; the registry forward-fills funding and OI up to 3 days); otherwise that coin × definition is
-dropped. A partial day of funding (the day's hourly settlements not all stored yet) is not detected: the loader
-returns only the daily sum. Dropped coins and coin × definitions are added to the source's `dropped`. A test checks
-that the 200-bar window answers as the full history does for every definition on the fixture. The board bounds the wait with its source timeout like every source. Watchlist = `watchedAssets`
-(intel_watchlist, else DESK_WATCHLIST). Without `DATABASE_URL` the source is `unavailable` ("needs a database"):
-every coin's funding would be fetched live at about a coin a minute (Runtime above), and OI is stored-only.
+Concrete: `createDefinitionScanner` loads per coin 200 days of price (`SCAN_LOOKBACK_DAYS`: the regime's 50-day mean
+and its persistence) and of each condition metric only what its features read on the bar (`metricLookbackDays`:
+`featureLookback` + 7 days for the registry's forward fill; about 100 days for funding z(90), 37 for OKX OI), through
+the Lab service's `loadDataset` (registry cache), memoises one complete scan per UTC day (callers in flight share it;
+a scan that dropped anything a later scan may evaluate is kept only 15 min, `SCAN_RETRY_MS`, so a scan run before
+data reaches the bar is retried; a scan that fails as a whole is forgotten), and drops a coin that fails, is not
+loaded within the deadline (120 s, `SCAN_DEADLINE_MS`, with a database; 45 min without) or whose price does not reach
+yesterday's bar. A definition is evaluated on a coin only when every metric its conditions read has a raw, not
+forward-filled, value on the bar (the loader's `lastRaw`; the registry forward-fills up to 3 days); otherwise that
+coin × definition is dropped with the metric's last complete day as the reason. A metric that loaded but has nothing
+for the coin (`noData`, e.g. a coin OKX does not list) drops its definitions without a retry. Funding: the daily value
+is the sum of the day's hourly settlements; the ht provider leaves out a last day without its 23:00 UTC settlement, so
+a day still settling (or not yet stored) never reaches a rule as a sum: lastRaw ends the day before and the scan
+drops and retries that coin × definition. History and event studies read every earlier day as before. Each drop
+(coin, definition, reason, retry) is in the scan's `drops`; the board counts them in the source's `dropped`. A test
+checks that the window (200 days of price, each metric from its own lookback) answers as the full history does for
+every definition on the fixture. Watchlist = `watchedAssets` (intel_watchlist, else DESK_WATCHLIST).
+
+With `DATABASE_URL` the board awaits the day's scan and bounds the wait with its source timeout, as every source.
+Without it the data is fetched live (price and volume: one Hyperliquid candle request a coin; funding: Hyperliquid's
+hourly settlements under the weight guard, about five pages a coin on the first scan; OI: OKX, requests 450 ms apart),
+which takes minutes, so the scan runs in the background (`boardDefinitionScan`, `src/server/signals/runtime.ts`): the
+board never waits for it, reports `unavailable` "first scan in progress" until the first finishes, then serves the last
+finished scan (its `bar` says which day) while a newer one runs. The ht provider keeps each coin's live settlements in
+process, so later scans fetch only the settlements since the last one held.
+
+`bun run signals:scan` runs the scan once with no deadline against whatever is configured and prints the bar, the coins
+scanned, every drop with its reason and every hit with its feature values. `bun run signals:study [id…]` runs each
+definition's `lab_event_study` over the default universe (the tool the study route runs, without its 50 s deadline,
+recorded as a trial) and prints verdict, events, weeks, expectancy, upper95, train vs holdout and coins used/dropped.
 
 ### S3. Board
 
@@ -324,8 +353,8 @@ Shape as built (`src/shared/research.ts`):
 - `dailyStudy: StudySummary | null`: opportunity only, today's cached study of its `rule` (the daily definition,
   universe scope). Study evidence never replaces the ledger evidence.
 - `definitionId: string | null`: the definition in zone, or an opportunity's daily definition. An opportunity gets
-  the definition only when the definition's side matches (a short `vol_expansion_breakout` has none: `range_breakout`
-  is long-only), else `rule: null`.
+  the definition named for its setup kind on its side (`definitionForKind(kind, side)`: a short
+  `vol_expansion_breakout` gets `range_breakdown`, a long one `range_breakout`), else `rule: null`.
 - `GET /api/research/definitions` → `{ definitions: [{ id, name, thesis, rule, ruleText, intradayKinds }] }`, zod-parsed,
   read like the board (guest-readable in PUBLIC_MODE). Each `rule` is a valid `POST /research/study` body without
   `coin` (universe scope).

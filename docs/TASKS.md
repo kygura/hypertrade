@@ -34,20 +34,26 @@ or study semantics, so each needs its own change):
   catalogue), not an intraday one.
 - [ ] Event studies without a database fetch about 500 days of hourly funding per coin from HL and the
   weight guard allows about one coin a minute, so a multi-coin study cannot finish inside the 50 s
-  tool deadline. With `DATABASE_URL` the stored tables are used. Either cap no-database studies at
-  what fits, or fetch funding once per coin per day into the Lab store.
+  tool deadline. With `DATABASE_URL` the stored tables are used. Partly addressed (2026-11-11): the ht
+  provider keeps each coin's live settlements in process and later fetches only what it lacks, so a
+  second study (or the scan) in the same process is fast; the first one per coin is not, and nothing
+  survives a restart. `bun run signals:study` runs without the deadline.
 
 Signals v2 follow-ups (docs/RESEARCH.md "Signals v2"):
 
-- [ ] Short breakouts have no daily definition: `range_breakout` is long-only, so a short
-  `vol_expansion_breakout` opportunity carries no rule.
-- [ ] The live definition scan needs a database (`DATABASE_URL`); without one the `definition` source is
-  `unavailable`.
-- [ ] Firing rates of the funding and OI definitions (`funding_fade`, `negative_funding_build`,
-  `washout_reclaim`) are unmeasured: there is no public OI history, only what the collector stored.
-  `trend_pullback_long` / `_short` and `range_breakout` measured at 5.3 % / 6.8 % / 3.8 % of coin-days on HL
-  daily candles.
-- [ ] A partial day of funding is not detected by the scan (the loader returns the daily sum only).
+- [x] Short breakouts have no daily definition: `range_breakdown` (2026-11-11); a short `vol_expansion_breakout`
+  opportunity carries it.
+- [x] The live definition scan needs a database: without `DATABASE_URL` it runs in the background on live
+  Hyperliquid and OKX data (2026-11-11); `bun run signals:scan` runs it once.
+- [x] Definitions thin (two conditions): up to four conditions and `vchg` restore the price and funding parts of
+  B.4 (2026-11-11). Still dropped: the 4 h triggers, liquidation z, ATR-scaled distance to the 20-day mean.
+- [x] OI definitions could not be studied (`ht:oi` is weeks deep): they read `okx:oi` (2026-11-11).
+- [x] A partial day of funding is not detected by the scan: the ht provider leaves out a last day without its
+  23:00 UTC settlement (2026-11-11).
+- [ ] `okx:oi` is OKX's book, not Hyperliquid's. Replace it with `ht:oi` once the collector holds a year of daily
+  OI for the universe (needs ≥ 30 event-weeks per definition), or compare the two over the overlap first.
+- [ ] Event-study results of the definitions (`bun run signals:study`) are not yet read into thresholds; they stay
+  starting points until a decision is made on the numbers.
 
 Radar routine (2026-11-02): the 4 h setup board is retired (24 setups, all low conviction, −1.77R; it
 never saw news, sectors or HIP-3). `ROUTINE.md` is now a twice-daily radar: `bun run radar` scans every
@@ -87,15 +93,16 @@ setups, candidate universe = top 30 by 24 h notional plus "my markets".
 - [ ] Phase 1: daily/4 h feature frame from stored tables, with parity against novelty
   `funding_z90` and Lab `ht:funding`. Partly shipped by Signals v2 (docs/RESEARCH.md S2,
   2026-11-10): the daily frame is the Lab's own features (`ht:*` through the Lab dataset
-  loader), so `ht:funding` parity holds by construction. Not shipped: the 4 h frame, ATR-scaled
-  returns, liquidation and sector features, and the novelty `funding_z90` parity test.
+  loader), so `ht:funding` parity holds by construction. Volatility-scaled returns ship as the Lab
+  transform `vchg` (2026-11-11; w-day sigmas, not ATR). Not shipped: the 4 h frame, liquidation and
+  sector features, and the novelty `funding_z90` parity test.
 - [ ] Phase 2: catalogue definitions as data plus level builder, each with a Lab rule
   twin; scanner hits equal event-study entries. Partly shipped by Signals v2 (S1–S3): six
   definitions as Lab rules (`src/server/signals/definitions.ts`), the live scan with the
   replay parity test, the board's `definition` source. Not shipped: the level builder, 4 h
   triggers and entry zones, `sector_continuation` (needs sector features the Lab lacks), and
-  the B.4 conditions the two-condition Rule drops (listed in docs/RESEARCH.md S1). The UI (S4)
-  shipped 2026-11-10.
+  the B.4 conditions a Lab rule still cannot say (listed in docs/RESEARCH.md S1; rules hold four
+  conditions since 2026-11-11). The UI (S4) shipped 2026-11-10.
 - [ ] Phase 3: `bun run candidates` and `candidates:advance`, budget gate, one LLM
   narration call, routine writes through the setups store.
 - [ ] Phase 4: workflows, ROUTINE.md as a thin wrapper, narrative job split out,

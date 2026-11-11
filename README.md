@@ -728,6 +728,12 @@ bun run lab lab_search --asset BTC --metrics '["cm:CapMVRVCur","ht:funding","fng
 bun run lab lab_market_pulse --pretty
 ```
 
+**Signal definitions** (docs/RESEARCH.md "Signals v2"): `bun run signals:scan` runs the
+definition scan once (Postgres with `DATABASE_URL`, else live Hyperliquid and OKX; the
+first live scan takes minutes) and prints each drop and hit; `bun run signals:study
+[id…]` runs each definition's event study over the default universe and prints the
+verdict table (each study is a Lab trial).
+
 **REST**: `GET /api/lab/tools` lists definitions; `POST /api/lab/tools/<name>`
 takes the arguments as JSON and answers `{ ok: true, result }` or
 `{ ok: false, error, field? }` (400 on bad arguments):
