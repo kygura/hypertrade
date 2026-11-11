@@ -15,6 +15,8 @@ const ENSURE_MS = 10_000;
 const ENSURE_DEADLINE_MS = 4_000;
 const ENSURE_TTL_MS = 10 * 60_000;
 const LIVE_FUNDING_PAGES = 24;
+/** Live funding reaches back at most this far before the range end (24 pages of 500 hourly rows, about 500 days). */
+export const LIVE_FUNDING_SPAN_MS = LIVE_FUNDING_PAGES * HL_FUNDING_PAGE * HOUR_MS;
 const CANDLE_REUSE_MS = 60_000; // × 500 hourly rows ≈ 500 days
 /** Coins whose live funding settlements the process keeps (about 12 000 rows each at 500 days). */
 export const LIVE_FUNDING_CACHE_COINS = 60;
@@ -96,7 +98,7 @@ export const defaultHtDeps: HtDeps = {
   },
   async liveFunding(coin, fromMs, toMs) {
     const out: FundingPoint[] = [];
-    let cursor = Math.max(fromMs, toMs - LIVE_FUNDING_PAGES * HL_FUNDING_PAGE * HOUR_MS);
+    let cursor = Math.max(fromMs, toMs - LIVE_FUNDING_SPAN_MS);
     for (let page = 0; page < LIVE_FUNDING_PAGES && cursor < toMs; page++) {
       const rows = await fetchFundingPage(coin, cursor, toMs);
       out.push(...rows);
@@ -235,7 +237,10 @@ export function createHtProvider(deps: HtDeps = defaultHtDeps): LabProvider {
     for (const r of b) m.set(r.t, r);
     return [...m.values()].sort((x, y) => x.t - y.t);
   };
-  function liveFunding(coin: string, fromMs: number, toMs: number): Promise<FundingPoint[]> {
+  function liveFunding(coin: string, from: number, toMs: number): Promise<FundingPoint[]> {
+    // The span a cold fetch gets (defaultHtDeps.liveFunding stops at LIVE_FUNDING_PAGES pages before toMs): the cache
+    // neither extends further left nor serves older rows, so the same range gives the same rows whatever filled it.
+    const fromMs = Math.max(from, toMs - LIVE_FUNDING_SPAN_MS);
     const run = (locks.get(coin) ?? Promise.resolve()).then(async () => {
       let e = held.get(coin);
       if (!e) e = { from: fromMs, rows: await deps.liveFunding(coin, fromMs, toMs) };

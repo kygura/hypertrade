@@ -12,7 +12,7 @@ import { bcUrl, createBcProvider, parseBlockchainChart } from "./bc.js";
 import { createDeribitProvider, dvolUrls, parseDvolHistory } from "./deribit.js";
 import { cmAsset, createCmProvider, parseCmPage } from "./cm.js";
 import { createFngProvider, parseFngHistory } from "./fng.js";
-import { createHtProvider, dropPartialLastDay, htCoin, type HtDeps } from "./ht.js";
+import { createHtProvider, dropPartialLastDay, htCoin, LIVE_FUNDING_SPAN_MS, type HtDeps } from "./ht.js";
 import { createLlamaProvider, parseChainTvl, parseStablecoinChart } from "./llama.js";
 import { createOkxProvider, OKX_OI_EPOCH, OKX_PACE_MS, OKX_PAGE, okxInstrument, parseOiPage } from "./okx.js";
 import { fetchMetric, loadDataset } from "./registry.js";
@@ -240,6 +240,27 @@ describe("ht", () => {
     now += H;
     await Promise.all([p.fetch("funding", "BTC", D0, D0 + 4 * DAY), p.fetch("premium", "BTC", D0, D0 + 4 * DAY)]);
     expect(asked).toHaveLength(4);
+  });
+
+  test("no DB: the same funding range gives the same days whichever caller filled the cache first (left extension capped)", async () => {
+    const now = D0 + 900 * DAY;
+    const to = D0 + 899 * DAY;
+    const hourly = (from: number, end: number) => {
+      const out = [];
+      for (let t = Math.ceil(from / H) * H; t <= Math.min(end, now); t += H) out.push({ t, rate: 0.0001, premium: 0 });
+      return out;
+    };
+    // The real cold-fetch cap: at most LIVE_FUNDING_SPAN_MS before the range end.
+    const capped = async (_c: string, from: number, end: number) => hourly(Math.max(from, end - LIVE_FUNDING_SPAN_MS), end);
+    const long = D0; // a study over the whole history (900 days, past the span)
+    const short = to - 300 * DAY; // the scan's lookback
+    const cold = await createHtProvider(deps({ hasDb: () => false, now: () => now, liveFunding: capped })).fetch("funding", "BTC", long, to);
+    // Another process: the short range first, then the long one extends the cache to the left.
+    const warm = createHtProvider(deps({ hasDb: () => false, now: () => now, liveFunding: capped }));
+    await warm.fetch("funding", "BTC", short, to);
+    const after = await warm.fetch("funding", "BTC", long, to);
+    expect(after.t).toEqual(cold.t);
+    expect(after.t[0]).toBeGreaterThanOrEqual(to + DAY - 1 - LIVE_FUNDING_SPAN_MS);
   });
 
   test("observation metrics take the last value per day from the right series", async () => {
