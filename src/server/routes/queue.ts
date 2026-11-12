@@ -10,7 +10,7 @@ import { MOVES_STALE_MS, readTriageScan, TRIAGE_STALE_MS, triageNote } from "../
 import { agentBlockedReason, agentStore, sharedAgentDeps } from "../moves/agentRoutes.js";
 import { triageBudget, triageId, utcDay, utcDayStart } from "../moves/triage.js";
 import type { PlatformStore, QueueDismissal } from "../platform/store.js";
-import { mergeQueue, type SourceInput } from "../queue/merge.js";
+import { mergeQueue, RECORD_WINDOW_MS, type SourceInput } from "../queue/merge.js";
 import { readRadar } from "../research/radar.js";
 import { bounded } from "../research/study.js";
 import { platformContext, RADAR_DIR } from "./research.js";
@@ -72,7 +72,7 @@ export function queueRoutes(d: QueueRouteDeps) {
         off ? none<TriageItem>(off) : store ? load("triage", () => store.listTriage(day), ms) : none<TriageItem>(NO_STORE),
         store ? load("opportunities", () => d.opportunities(dayStart), ms) : none<Opportunity>(NO_STORE),
         hide ? none<RadarCall>("sign in required") : load("radar", () => d.radar(), ms),
-        store && !hide ? load<AgentRecord>("records", () => store.listAgentRecords({ since, limit: 1000 }), ms) : none<AgentRecord>(NO_STORE),
+        store && !hide ? load<AgentRecord>("records", () => store.listAgentRecords({ since: new Date(now.getTime() - RECORD_WINDOW_MS).toISOString(), limit: 1000 }), ms) : none<AgentRecord>(NO_STORE),
         store ? load<QueueDismissal>("dismissals", () => store.listQueueDismissals(day), ms) : none<QueueDismissal>(NO_STORE),
         store ? bounded(store.agentRunsSince(since), 0, ms, "queue agent runs") : Promise.resolve(0),
         off ? null : bounded(Promise.resolve(d.scan()), null, ms, "queue triage scan"),

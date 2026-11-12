@@ -119,6 +119,12 @@ describe("mergeQueue", () => {
     expect(Object.fromEntries(user.items.map((i) => [i.coin, i.record?.id ?? null]))).toEqual({ SOL: "r1", WIF: "r3", HYPE: null });
   });
 
+  test("a record from late yesterday shows on today's item; one older than 24 h does not", () => {
+    const sources = { triage: { ok: [triage("SOL", 3), triage("WIF", 3)] }, records: [record("r1", "SOL", -1), record("r2", "WIF", -13)] };
+    const q = mergeQueue(input(sources));
+    expect(Object.fromEntries(q.items.map((i) => [i.coin, i.record?.id ?? null]))).toEqual({ SOL: "r1", WIF: null });
+  });
+
   test("one source unavailable: the others still merge and its reason is stated", () => {
     const q = mergeQueue(input({ triage: { unavailable: "needs the always-on server" }, opportunities: { ok: [opp("SOL", 1)] }, radar: { unavailable: "radar files not deployed" } }));
     expect(q.items.map((i) => i.coin)).toEqual(["SOL"]);
