@@ -11,7 +11,7 @@ import { useMedia, useNow, useQueryPatch } from '../../lib/hooks'
 import { usePoll } from '../../lib/poll'
 import { useDeskKill } from '../../lib/useDeskKill'
 import type { OpportunityDetail as DetailT } from '../../../shared/platform'
-import { approveBlockedReason, filterFeed, isLive, keyAction, stepSelection, STATUS_WORD, type StatusFilter, type TierFilter } from './logic'
+import { approveBlockedReason, feedInsight, filterFeed, isLive, keyAction, stepSelection, STATUS_WORD, type StatusFilter, type TierFilter } from './logic'
 import { ActionBar, canApprove, canReject, OpportunityDetail, RejectDialog, TicketDialog } from './Detail'
 import { OpportunityFeed, WarmingLine } from './Feed'
 import { CockpitHeader, HealthStrip, KeysHelp } from './Header'
@@ -326,6 +326,7 @@ function CockpitPage() {
             error={feed.data ? null : feed.error}
             scanAgeSec={feed.data?.scanAgeSec ?? null}
             hasRows={rows.length > 0}
+            insight={feedInsight(rows)}
             now={now}
             readyTtlMin={feed.data?.readyTtlMin ?? 60}
             emptySlot={boardSlot}

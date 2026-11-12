@@ -17,7 +17,7 @@ export function RunsTable({ runs, onOpen }: { runs: RunSummary[]; onOpen: (r: Ru
     },
     {
       key: 'asset',
-      label: 'ASSET·DIR·HZN',
+      label: 'SEARCH',
       priority: 1,
       render: (r) => (
         <span title={`${r.asset.toUpperCase()} ${r.direction.toUpperCase()} ${r.horizonDays}D`}>{runKey(r)}</span>
@@ -30,7 +30,7 @@ export function RunsTable({ runs, onOpen }: { runs: RunSummary[]; onOpen: (r: Ru
       align: 'right',
       render: (r) =>
         r.bestSharpe == null ? (
-          <span className="text-text-secondary" title="no walk-forward">
+          <span className="text-text-secondary" title="no walk-forward result in this run">
             —
           </span>
         ) : (

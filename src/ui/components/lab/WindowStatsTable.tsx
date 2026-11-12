@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from 'react'
-import { ddTone, fmtPct0, fmtPctSigned, fmtSigned, foldBars, foldCell, liveCell, signTone, type DsrN, type PerfStats, type RuleEvaluation } from '../../lib/lab'
+import { ddTone, EVAL_TERMS, fmtPct0, fmtPctSigned, fmtSigned, foldBars, foldCell, LIVE_MIN_DAYS, liveCell, signTone, type DsrN, type PerfStats, type RuleEvaluation } from '../../lib/lab'
+import type { Term } from '../HowToRead'
 import { DsrValue, SharpeValue } from './common'
 
 // WindowStatsTable — docs/design/README.md §10.9. All four windows at every width (rule
@@ -13,11 +14,35 @@ import { DsrValue, SharpeValue } from './common'
 
 type Col = { key: string; label: string; sub?: string; stats: PerfStats | null; title?: string }
 
+const T = EVAL_TERMS
+/** Columns first (the windows), then every row label. */
+export const WINDOW_TERMS: readonly Term[] = [
+  ['IN-SAMPLE', T.inSample[1]],
+  ['WALK-FWD', T.walkForward[1]],
+  ['HOLDOUT', T.holdout[1]],
+  ['LIVE', `days after the rule was saved, which could not have influenced its choice. Numbers show from ${LIVE_MIN_DAYS} live days.`],
+  T.then,
+  ['TOTAL RETURN', 'growth of 1 unit over the window, compounded daily, net of slippage.'],
+  ['CAGR', 'the same growth expressed per year.'],
+  ['SHARPE', T.sharpe[1]],
+  ['DEFLATED SHARPE', T.dsr[1]],
+  ['WALK-FWD FOLDS', 'the Sharpe of each walk-forward block on its own, oldest first. A result that rests on one block is weaker than one spread across all. Reported only; nothing is ranked on it.'],
+  ['MAX DRAWDOWN', T.maxDd[1]],
+  ['HIT RATE', T.hit[1]],
+  ['TRADES', T.trades[1]],
+  ['TRADES/YR', T.tradesYr[1]],
+  ['EXPOSURE', T.exposure[1]],
+  ['DAYS / RANGE', 'length of the window in days, and its first and last day.'],
+  ['HOLD … SHARPE / RETURN', 'the benchmark over the same days: simply holding the asset (or holding it short, for a short rule).'],
+  T.untested,
+  T.slippage,
+]
+
 const ROWS: Array<{ label: string; cell: (s: PerfStats) => ReactNode }> = [
   { label: 'TOTAL RETURN', cell: (s) => <span className={signTone(s.totalReturn)}>{fmtPctSigned(s.totalReturn)}</span> },
   { label: 'CAGR', cell: (s) => <span className={signTone(s.cagr)}>{fmtPctSigned(s.cagr)}</span> },
   { label: 'SHARPE', cell: (s) => <SharpeValue stats={s} /> },
-  { label: 'MAX DD', cell: (s) => <span className={ddTone(s.maxDrawdown)}>{fmtPctSigned(s.maxDrawdown)}</span> },
+  { label: 'MAX DRAWDOWN', cell: (s) => <span className={ddTone(s.maxDrawdown)}>{fmtPctSigned(s.maxDrawdown)}</span> },
   { label: 'HIT RATE', cell: (s) => fmtPct0(s.hitRate) },
   { label: 'TRADES', cell: (s) => s.trades },
   { label: 'TRADES/YR', cell: (s) => s.tradesPerYear.toFixed(1) },
@@ -59,7 +84,7 @@ function FoldSharpes({ folds }: { folds: readonly (number | null)[] }) {
           )
         })}
       </span>
-      <span className="text-xs text-text-secondary">not ranked</span>
+      <span className="text-xs text-text-secondary" title="shown for information: no rule is ranked or chosen by a single block">not ranked</span>
     </span>
   )
 }
@@ -99,7 +124,7 @@ export function WindowStatsTable({
             label: 'WALK-FWD',
             sub: at.label,
             stats: at.ev.walkForward,
-            title: at.ev.walkForward ? `walk-forward ${at.label.toLowerCase()} — the rank key; today's walk-forward can differ` : 'not enough history',
+            title: at.ev.walkForward ? `walk-forward ${at.label.toLowerCase()}: what the rule was ranked by; today's walk-forward can differ` : 'not enough history',
           },
         ]
       : []),
@@ -165,7 +190,7 @@ export function WindowStatsTable({
                   {showDsr && (
                     <tr className="border-b border-border-subtle" style={{ height: 'var(--row-h)' }}>
                       <th scope="row" className={ROW_TH}>
-                        DSR
+                        DEFLATED SHARPE
                       </th>
                       {cols.map((c) => (
                         <td key={c.key} className="px-2 text-right">
@@ -174,8 +199,8 @@ export function WindowStatsTable({
                       ))}
                     </tr>
                   )}
-                  {at && at.ev.walkForwardFolds && at.ev.walkForwardFolds.length > 0 && foldRow(`WF FOLDS ${at.label}`, at.ev.walkForwardFolds, 1)}
-                  {ev.walkForwardFolds && ev.walkForwardFolds.length > 0 && foldRow(at ? 'WF FOLDS NOW' : 'WF FOLDS', ev.walkForwardFolds, wfAt)}
+                  {at && at.ev.walkForwardFolds && at.ev.walkForwardFolds.length > 0 && foldRow(`WALK-FWD FOLDS ${at.label}`, at.ev.walkForwardFolds, 1)}
+                  {ev.walkForwardFolds && ev.walkForwardFolds.length > 0 && foldRow(at ? 'WALK-FWD FOLDS NOW' : 'WALK-FWD FOLDS', ev.walkForwardFolds, wfAt)}
                 </>
               )}
             </Fragment>

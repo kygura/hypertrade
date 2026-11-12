@@ -1,8 +1,8 @@
-import { AsyncBody, Badge, Button, PageContainer, Panel, PanelHeader, StatusDot } from '../../components'
+import { AsyncBody, Badge, Button, HowToRead, PageContainer, Panel, PanelHeader, StatusDot } from '../../components'
 import type { QueueItem, QueueResponse } from '../../../shared/queue'
 import { CoinDecision } from '../coin/CoinDecision'
 import type { Feed } from '../moves/MovesView'
-import { agentLine, ageText, directionOf, emptyLine, headerLine, partsLabel, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
+import { agentLine, ageText, directionOf, emptyLine, emptyWhy, headerLine, partsLabel, QUEUE_TERMS, queueTakeaway, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
 
 // QUEUE view (PLAN2 §2.1/§2.2). Presentational: Queue.tsx owns the poll, the URL selection, the keyboard and
 // DISMISS. The list is the page: a header line (plus one quiet staleness line when the moves list is old), the source chips (a source problem is one quiet line), the new
@@ -60,8 +60,17 @@ export function QueueView(p: QueueViewProps) {
 export function QueueList(p: QueueViewProps & { q: QueueResponse }) {
   const { open, handled } = splitItems(p.q.items)
   const problem = sourceProblemLine(p.q)
+  const takeaway = queueTakeaway(p.q)
   return (
     <div data-queue className="flex flex-col min-w-0">
+      {takeaway && (
+        <p data-takeaway className="px-3 pt-2 text-md text-text-primary">
+          {takeaway}
+        </p>
+      )}
+      <HowToRead terms={QUEUE_TERMS} className="px-3 py-2 border-b border-border-subtle">
+        Coins that crossed a bar today (UTC), one row per coin, strongest first. Each row names the source that flagged it and the facts it measured; open a row to see why the coin moved.
+      </HowToRead>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 border-b border-border-subtle text-xs text-text-secondary">
         {sourceChips(p.q).map((c) => (
           <span key={c.source} className="inline-flex items-center gap-1 tabular" title={c.title} data-source={c.source} data-state={c.ok ? 'ok' : 'off'}>
@@ -70,11 +79,16 @@ export function QueueList(p: QueueViewProps & { q: QueueResponse }) {
             {c.ok && ` ${c.count}`}
           </span>
         ))}
-        <span className="tabular">{agentLine(p.q)}</span>
+        <span className="tabular" title="agent investigations run today out of the daily cap">
+          {agentLine(p.q)}
+        </span>
       </div>
       {problem && <p className="px-3 py-1 text-xs text-text-secondary break-words">{problem}</p>}
       {open.length === 0 && handled.length === 0 ? (
-        <p className="px-3 py-3 text-sm text-text-secondary">{emptyLine(p.q.watched)}</p>
+        <div className="px-3 py-3 flex flex-col gap-1">
+          <p className="text-sm text-text-secondary">{emptyLine(p.q.watched)}</p>
+          <p className="text-sm text-text-muted max-w-[90ch]">{emptyWhy(p.q)}</p>
+        </div>
       ) : (
         <>
           {open.length === 0 && <p className="px-3 py-3 text-sm text-text-secondary">nothing new · every item today is handled</p>}
@@ -118,8 +132,12 @@ export function QueueRow({ i, ...p }: QueueViewProps & { i: QueueItem }) {
         <button type="button" data-row className="min-w-0 text-left flex flex-col gap-0.5 min-h-[var(--tap-min)]" onClick={() => p.onRow(i.coin)}>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
             <span className={`text-sm font-semibold ${i.state === 'new' ? 'text-text-primary' : 'text-text-secondary'}`}>{i.coin}</span>
-            <span className="text-xs text-text-secondary">{partsLabel(i)}</span>
-            <span className="text-xs text-text-secondary">{directionOf(i)}</span>
+            <span className="text-xs text-text-secondary" title="the sources that flagged this coin today">
+              {partsLabel(i)}
+            </span>
+            <span className="text-xs text-text-secondary" title="the side the sources state; a dash when none does">
+              {directionOf(i)}
+            </span>
             <span className="text-xs tabular text-text-secondary" title={`in the queue since ${i.firstAt}`}>
               {ageText(i.firstAt, p.now)}
             </span>

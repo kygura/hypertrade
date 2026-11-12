@@ -6,6 +6,7 @@ import { useHlSubscription, type WsAssetCtx } from '../../lib/hlWs'
 import { useNow } from '../../lib/hooks'
 import { AnimatedDigits } from '../AnimatedDigits'
 import { Badge } from '../Badge'
+import { HowToRead, type Term } from '../HowToRead'
 import { MetricStat } from '../MetricStat'
 import { PanelHeader } from '../Panel'
 import { AgeStamp, AsyncBody } from '../state'
@@ -19,6 +20,28 @@ const POLL_MS = 60_000
 const STALE_HOURS = 5 / 60
 
 type Ctx = NonNullable<PerpStats['ctx']>
+
+const HEADER_TERMS: readonly Term[] = [
+  ['Price · %', 'Mark price, the price Hyperliquid uses for margin and liquidations, and its change against the previous-day price.'],
+  ['LIVE', 'Values are streaming over Hyperliquid\'s websocket. Without it they refresh every 60 seconds and an age stamp shows.'],
+  ['AT OI CAP', 'Hyperliquid reports this perp at its open interest cap.'],
+  ['Nx MAX', 'Highest leverage allowed on this perp.'],
+  ['Oracle · premium', 'Oracle is the reference spot price. Premium is how far the perp trades from it, in basis points (1bp = 0.01%). Positive means the perp is above spot.'],
+  ['Funding 1h', 'The rate longs pay shorts each hour, as a percent of position size. Negative means shorts pay longs. APR is that rate times the 8,760 hours in a year. The neutral rate is +0.00125% per hour (about 11% a year).'],
+  ['Next funding', 'Time to the next hourly settlement.'],
+  ['Open interest', 'USD value of all open contracts, with its change over 24 hours from stored snapshots. Before snapshots exist it shows the size in coins.'],
+  ['OI 7d', 'Change in open interest over 7 days. "collecting snapshots" means there is not yet a stored reading from 7 days ago.'],
+  ['24h volume', 'Notional traded over the last 24 hours, in USD.'],
+  ['Impact spread', 'Gap between Hyperliquid\'s impact bid and ask (the prices a standard-size market order would fill at), as basis points of the mid price. Wider means a market order costs more.'],
+  ['Mid', 'Midpoint of best bid and ask, with the previous-day price the % change is measured from.'],
+]
+
+const FUNDING_TERMS: readonly Term[] = [
+  ['PREDICTED', 'The rate each venue is expected to charge at its next settlement, with that venue\'s settlement interval after the slash (1h on Hyperliquid). Positive means longs pay shorts.'],
+  ['APR', 'The predicted rate scaled to a year (rate × 8,760 ÷ interval hours), so venues with different intervals compare.'],
+  ['NEXT', 'Time to that venue\'s next settlement.'],
+  ['Avg 24h · 7d · 30d', 'Mean of Hyperliquid\'s realized hourly funding over each window, annualized. "syncing history" means the funding history for that window is not stored yet.'],
+]
 
 const num = (s: string | null | undefined) => (s == null || s === '' ? null : Number(s))
 
@@ -112,7 +135,7 @@ export function PerpHeader({ coin, stats }: { coin: string; stats: ReturnType<ty
       <AsyncBody loading={stats.loading} data={ctx} error={data ? null : stats.error} rows={2} onRetry={stats.refetch}>
         {(ctx) => (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 border-b border-border">
-          <MetricStat label="Oracle" value={fmtPrice(ctx.oraclePx)} delta={`prem ${bp(ctx.premium)}`} deltaPositive={null} />
+          <MetricStat label="Oracle" value={fmtPrice(ctx.oraclePx)} delta={`premium ${bp(ctx.premium)}`} deltaPositive={null} />
           <MetricStat
             label="Funding 1h"
             value={fmtPct(ctx.funding, { decimals: 4, sign: true })}
@@ -142,6 +165,10 @@ export function PerpHeader({ coin, stats }: { coin: string; stats: ReturnType<ty
         </div>
         )}
       </AsyncBody>
+      <HowToRead className="px-3 py-2" terms={HEADER_TERMS}>
+        Live state of this perp on Hyperliquid. Compare mark with oracle to see how far the perp trades from spot, and funding with open
+        interest to see which side is paying to hold and whether positions are building.
+      </HowToRead>
     </>
   )
 }
@@ -156,6 +183,10 @@ export function FundingPanel({ stats }: { stats: ReturnType<typeof usePerpStats>
   return (
     <>
       <PanelHeader title="FUNDING" />
+      <HowToRead className="px-3 py-2 border-b border-border-subtle" terms={FUNDING_TERMS}>
+        The next funding payment predicted on each venue, and what Hyperliquid has charged on average, all annualized. Look at whether
+        venues agree on the sign and how the current rate sits against its own averages.
+      </HowToRead>
       <AsyncBody loading={stats.loading} data={data} error={null} rows={3}>
         {(data) => (
         <div className="grid md:grid-cols-2">
@@ -172,7 +203,7 @@ export function FundingPanel({ stats }: { stats: ReturnType<typeof usePerpStats>
               {data.predicted.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-3 py-2 text-text-secondary">
-                    no cross-venue prediction for this coin
+                    No predicted funding for this coin: Hyperliquid's predicted-funding feed has no entry for it.
                   </td>
                 </tr>
               ) : (

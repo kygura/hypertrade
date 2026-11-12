@@ -14,6 +14,17 @@
   font-display: swap;
 }
 
+/* Geist (sans) is the default theme's reading face: running text, labels and
+   controls. Self-hosted from the geist package like Geist Mono. */
+@font-face {
+  font-family: 'Geist';
+  src: url('../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2')
+    format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
   /* ── Hyperion base palette, verbatim ─────────────────────────── */
   --color-body: #100e0a;
@@ -100,14 +111,14 @@
   --color-regime-strong-on: #7484f5;
   --color-band-mid: #9aa3ad;
 
-  /* ── Type scale (Hyperion §2.4, closed set, unchanged) ───────── */
-  --text-2xs: 9px;
-  --text-xs: 10px;
-  --text-sm: 11px;
-  --text-md: 12px;
-  --text-base: 13px;
-  --text-lg: 16px;
-  --text-xl: 22px;
+  /* ── Type scale (closed set; raised two steps from Hyperion §2.4 for legibility) ───────── */
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 24px;
   /* Scale classes set font-size only: Tailwind's default per-size line-heights are cleared so rows inherit the body's 1.5. */
   --text-xs--line-height: initial;
   --text-sm--line-height: initial;
@@ -172,7 +183,7 @@
   --control-case: uppercase;
   --control-tracking: 0.05em;
   --control-weight: 400;
-  --base-font-size: 13px;
+  --base-font-size: 14px;
 
   /* Segmented control (theme contract). Hyperion: a hairline box of
      divided cells, checked cell filled. Themes turn it into a padded well
@@ -253,7 +264,7 @@ body {
   text-transform: var(--label-case);
   letter-spacing: var(--label-tracking);
   font-weight: var(--label-weight);
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-text-secondary);
 }
 
@@ -284,7 +295,7 @@ body {
   text-transform: var(--label-case);
   letter-spacing: calc(var(--label-tracking) + 0.02em);
   font-weight: var(--label-weight);
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-text-secondary);
 }
 
@@ -331,7 +342,7 @@ textarea {
   border-radius: var(--radius-control);
   color: var(--color-text-primary);
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: 14px;
   min-height: var(--control-md);
   outline: none;
 }
@@ -368,7 +379,7 @@ textarea:focus {
   justify-content: center;
   white-space: nowrap;
   font-family: var(--font-control);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: var(--control-weight);
   text-transform: var(--control-case);
   letter-spacing: var(--control-tracking);
@@ -413,7 +424,7 @@ textarea:focus {
 
 /* Source-attribution tag (Night Desk import, restyled square) */
 .src-tag {
-  font-size: 9px;
+  font-size: 11px;
   color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.1em;

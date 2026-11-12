@@ -1,5 +1,6 @@
 import type { JournalReport, ReportFinding } from '../../../shared/intel'
 import { Button } from '../Button'
+import { HowToRead, type Term } from '../HowToRead'
 import { Panel, PanelHeader } from '../Panel'
 import { AsyncBody, ErrorBlock } from '../state'
 import { ClaimAge } from './ClaimAge'
@@ -15,6 +16,16 @@ import { TradeIdLinks } from './TradeIdLinks'
 // not configured) shows verbatim; the numbers still stand.
 
 export const REPORT_STALE_H = 168
+
+const REPORT_TERMS: Term[] = [
+  ['WEEK OF', 'Start date of the period the report covers.'],
+  ['GEN 3D', 'Time since the report was generated. Amber when older than 7 days.'],
+  ['LEAKS', 'Up to 3 setup types with the most negative mean result per trade in the period. Only types with at least 3 closed trades qualify.'],
+  ['EDGES', 'Up to 2 setup types with the most positive mean result per trade, same minimum of 3 trades.'],
+  ['EXP', 'Expectancy: mean result per trade, in R when stops are known, else in USD after fees.'],
+  ['OBS / HYP', 'A line written by the model about a finding. OBS cites a source; HYP is the model\'s inference. Lines whose numbers are not in the data are dropped.'],
+  ['Trade ids', 'The trades behind a finding. Click one to jump to it in TRADES.'],
+]
 
 export function weekOf(report: Pick<JournalReport, 'createdAt' | 'periodDays'>): string {
   const t = Date.parse(report.createdAt) - report.periodDays * 86_400_000
@@ -87,7 +98,7 @@ export function ReportCard({
       error={loadError ?? null}
       offline={!!offline}
       staleError={false}
-      empty={{ label: 'no report yet', action: { label: 'GENERATE REPORT', onClick: onGenerate } }}
+      empty={{ label: 'No report yet. Generating one ranks your setup types by result over the last 7 days.', action: { label: 'GENERATE REPORT', onClick: onGenerate } }}
       onRetry={onRetry}
     >
       {(report) => {
@@ -109,9 +120,12 @@ export function ReportCard({
   return (
     <Panel>
       <PanelHeader title={title}>{report && <ClaimAge ts={report.createdAt} thresholdHours={REPORT_STALE_H} prefix="GEN" />}</PanelHeader>
+      <HowToRead className="px-3 pt-2" terms={REPORT_TERMS}>
+        The setup types that cost and made the most per trade in the period, picked by code from your closed trades. The model only adds the wording.
+      </HowToRead>
       {generateError && <ErrorBlock message={generateError} onRetry={onGenerate} />}
       {body}
-      <p className="px-3 py-2 border-t border-border-subtle text-xs text-text-secondary">historical record</p>
+      <p className="px-3 py-2 border-t border-border-subtle text-xs text-text-secondary">Historical record of past trades. It does not predict the next one.</p>
     </Panel>
   )
 }

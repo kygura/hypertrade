@@ -34,6 +34,20 @@ export function filterFeed(rows: readonly FeedRow[], status: StatusFilter, tier:
   return { ranked, snoozed }
 }
 
+/**
+ * The one fact line above the feed, over every row the server returned (before the status and tier filters):
+ * ideas still awaiting a decision, how many of those are READY, the highest-scoring one, and how many have
+ * estimated costs above their edge. Null with no live idea.
+ */
+export function feedInsight(rows: readonly Pick<FeedRow, 'coin' | 'direction' | 'status' | 'score' | 'netEdgeBps'>[]): string | null {
+  const live = rows.filter((r) => isLive(r.status))
+  if (live.length === 0) return null
+  const ready = live.filter((r) => r.status === 'ready').length
+  const top = live.reduce((a, r) => (r.score > a.score ? r : a))
+  const under = live.filter((r) => r.netEdgeBps != null && r.netEdgeBps < 0).length
+  return `${live.length} ${live.length === 1 ? 'idea' : 'ideas'} awaiting a decision, ${ready} READY; highest score ${top.score.toFixed(2)} on ${top.coin} ${top.direction}; estimated costs exceed the edge on ${under}.`
+}
+
 /** Browser-side stale mark (the StaleStrip): the live price is older than this. */
 export const STALE_MID_SEC = 30
 

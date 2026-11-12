@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
-import { EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelHeader, SkeletonRows, StaleBanner } from '../components'
+import { EmptyBlock, ErrorBlock, HowToRead, OfflineBlock, Panel, PanelHeader, SkeletonRows, StaleBanner, type Term } from '../components'
 import { LabWarnings } from '../components/LabWarnings'
 import { useLabData } from '../components/lab/LabData'
 import { LabSearchForm, SearchSummaryBar } from '../components/lab/LabSearchForm'
@@ -10,13 +10,61 @@ import { SignalCard } from '../components/lab/SignalCard'
 import { FeatureImportanceList } from '../components/lab/FeatureImportanceList'
 import { LabFooter } from '../components/lab/common'
 import { searchStore, useSearchStore } from '../components/lab/searchStore'
-import { dateIso, DEFAULT_FILTERS, effectiveTrials, filterRules, readLocal, validateForm, writeLocal, type Direction, type ResultsFilterState, type RuleEvaluation } from '../lib/lab'
+import { dateIso, DEFAULT_FILTERS, effectiveTrials, EVAL_TERMS as T, filterRules, readLocal, searchLine, TRANSFORM_TERMS, validateForm, VERDICT_TERMS, writeLocal, type Direction, type ResultsFilterState, type RuleEvaluation } from '../lib/lab'
 
 // SEARCH tab — docs/design/README.md §10.9. Form (sticky at lg) + the results of the
 // current/last run in this browser; /lab/runs/:runId loads a stored run's
 // config and results into the same layout.
 
 const FILTERS_KEY = 'lab.filters'
+const GUIDE = 'px-3 py-2 border-b border-border-subtle'
+
+/** Every field of the search form, top to bottom (the engine's meaning: docs/LAB.md "Methodology"). */
+const FORM_TERMS: readonly Term[] = [
+  ['ASSET', 'the coin whose daily price the rules are scored on.'],
+  ['DIRECTION', 'LONG: the rule holds the asset while its conditions are true. SHORT: it holds it short.'],
+  ['METRICS', 'the daily series a rule may use as conditions: price, funding, volume, on-chain data and so on. Up to 40.'],
+  ['HORIZON', 'how many days ahead the search looks to decide whether a day was a good one to be in the market: the return over that many days.'],
+  ['OBJECTIVE', 'what the search maximises and ranks by, always measured walk-forward: SHARPE (return per unit of risk) or RETURN (total growth).'],
+  ['EFFORT', 'the number of search rounds. More rounds try more variants and take longer, and the luck correction (deflated Sharpe) grows with them.'],
+  ['TRANSFORMS', 'the ways a metric is turned into a condition. Each is defined below; n is one of the WINDOWS.'],
+  ...TRANSFORM_TERMS.map(([k, v]): Term => [k === 'no prefix' ? 'raw' : k === 'pct(n)' ? 'pctile' : k.replace('(n)', ''), v]),
+  ['WINDOWS', 'the lookbacks in days that every transform is computed over.'],
+  ['LABEL QUANTILE', 'the share of days counted as good: 0.3 marks the best 30% of forward returns (which must also be positive) for a long, the worst 30% for a short.'],
+  ['FOLDS', 'the number of walk-forward test blocks, 2 to 6.'],
+  ['MIN SUPPORT', 'the fewest days a rule\'s conditions must have been true in the training data for the rule to be kept.'],
+  ['SLIPPAGE BPS', 'the cost charged on every entry and exit, in basis points: 10 is 0.10%.'],
+  ['TOP K', 'how many rules the search returns.'],
+  ['SEED', 'fixes the random choices, so the same search on the same data returns the same rules.'],
+  ['FROM / TO', 'limits the history used. Blank uses everything available.'],
+]
+
+/** Everything a results card and the header above the list print. */
+const RESULT_TERMS: readonly Term[] = [
+  ['#1', 'rank by the walk-forward objective. The holdout never moves the rank.'],
+  ...VERDICT_TERMS,
+  T.firing,
+  ['SINGLE / PAIR', 'a rule of one condition, or of two that must both be true.'],
+  ['PRECISION', T.precision[1]],
+  ['WF SHARPE', `${T.sharpe[1]} Walk-forward: ${T.walkForward[1]}`],
+  ['HOLDOUT', `the Sharpe on ${T.holdout[1]}`],
+  T.holdoutGap,
+  ['DSR', `deflated Sharpe: ${T.dsr[1]}`],
+  ['HIT', T.hit[1]],
+  ['MAX DD', T.maxDd[1]],
+  ['TR/YR', T.tradesYr[1]],
+  ['SUPPORT', T.support[1]],
+  ['STAB', T.stability[1]],
+  T.untested,
+  ['IN-SAMPLE / WALK-FWD / HOLDOUT', 'the switch above the list picks the window that HIT, MAX DD, TR/YR and the three filters read. WF SHARPE, HOLDOUT and DSR never change with it. In-sample: the first 80% of the history, the part the search saw.'],
+  ['MIN SHARPE / MAX DD / MIN HIT', 'hide rules that fall short in the chosen window. Blank means no filter.'],
+  ['HOLDOUT FROM', 'first day of the holdout.'],
+  ['FEATURES', 'metric × transform × window combinations the search could build conditions from.'],
+  ['TRIALS', 'search rounds run out of the rounds asked for. PARTIAL means the time limit cut the run short.'],
+  T.trialsN,
+  T.slippage,
+  ...TRANSFORM_TERMS,
+]
 
 export function LabSearch() {
   const { runId } = useParams<{ runId?: string }>()
@@ -109,7 +157,7 @@ export function LabSearch() {
     body = (
       <Panel>
         <PanelHeader title="RESULTS" />
-        <EmptyBlock label="no results yet — run a search" />
+        <EmptyBlock label="no results yet: run a search and the rules it keeps list here, best walk-forward result first" />
       </Panel>
     )
   } else if (landed.error || !result) {
@@ -117,7 +165,7 @@ export function LabSearch() {
       <Panel>
         <PanelHeader title="RESULTS" />
         <div className="px-3 py-2 text-xs text-text-secondary tabular" title={landed.runId ?? undefined}>
-          RUN {landed.runId?.slice(0, 4) ?? '—'} · FAILED — its config is loaded in the form for correction
+          RUN {landed.runId?.slice(0, 4) ?? '—'} · FAILED: its settings are loaded in the form so you can correct them and run again
         </div>
         <ErrorBlock message={landed.error ?? 'run has no result'} />
       </Panel>
@@ -129,10 +177,15 @@ export function LabSearch() {
           <PanelHeader title="RESULTS" />
           <StaleBanner generatedAt={dateIso(result.dataRange.to)} thresholdHours={48} noun="data" />
           <ResultsHeader runId={landed.runId} createdAt={landed.createdAt} result={result} />
+          {searchLine(result) && <p className="px-3 pt-2 text-md text-text-primary">{searchLine(result)}</p>}
+          <HowToRead terms={RESULT_TERMS} className={GUIDE}>
+            The rules this search kept, best walk-forward result first. Each card is one rule with its backtest: read the verdict badge, then walk-forward and holdout side by side.
+            These are results on past data and say nothing certain about the future.
+          </HowToRead>
           <LabWarnings warnings={result.warnings} />
           <ResultsFilters value={filters} onChange={setFilters} shown={filtered.length} total={result.rules.length} />
           {result.rules.length === 0 ? (
-            <EmptyBlock label="no rule survived — try more metrics, a longer horizon or a lower min support" />
+            <EmptyBlock label="no rule survived: none was true on enough days, traded often enough and scored. More metrics, a longer horizon or a lower min support widen the search" />
           ) : filtered.length === 0 ? (
             <EmptyBlock label="no rule matches these filters" action={{ label: 'CLEAR FILTERS', onClick: () => setFilters({ ...DEFAULT_FILTERS, window: filters.window }) }} />
           ) : (
@@ -158,6 +211,10 @@ export function LabSearch() {
         </Panel>
         <Panel>
           <PanelHeader title="FEATURE IMPORTANCE" />
+          <HowToRead className={GUIDE}>
+            Which inputs the search's decision trees split on most, as shares that sum to 1. It shows where the search found structure in this history, not that an input predicts
+            anything.
+          </HowToRead>
           <FeatureImportanceList items={result.featureImportance} metrics={metricDefs} />
         </Panel>
       </>
@@ -171,6 +228,10 @@ export function LabSearch() {
         <div className={`lg:col-span-4 lg:sticky lg:top-[calc(var(--topbar-h)+var(--subnav-h))] ${store.collapsed && landed ? 'hidden lg:block' : ''}`}>
           <Panel>
             <PanelHeader title="SEARCH" />
+            <HowToRead terms={FORM_TERMS} className={GUIDE}>
+              A search tries many simple rules of the form "when metric A is below x and metric B is above y" on one asset's daily history and keeps the ones that held up on data they
+              were not set on. It produces candidates to examine, not trades.
+            </HowToRead>
             <LabSearchForm
               form={store.form}
               setForm={(patch) => {

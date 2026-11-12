@@ -16,6 +16,7 @@ import {
   fmtUsd2,
   PREVIEW_AMBER_MS,
   previewRemainingMs,
+  previewTakeaway,
   STALE_TEXT,
   stopResolution,
   type DeskVenue,
@@ -128,6 +129,7 @@ export function PreviewCard({
             <span className="label">RISK OF BOOK</span>
             <span className="text-sm tabular text-text-muted">· {fmtUsd2(r.riskUsd)}</span>
           </div>
+          <p className="text-sm text-text-muted tabular">{previewTakeaway(preview)}</p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <Fact label="SIZE">
               {fmtSize(r.size)} {intent.asset}
@@ -137,14 +139,16 @@ export function PreviewCard({
             <Fact label="STOP" sub={`${stopResolution(intent, preview.notes)} · ${distFromEntry(r.stopPx, r.entryPx)}`}>
               {fmtPrice(r.stopPx)}
             </Fact>
-            <Fact label="LIQ" sub={r.liqPx != null ? `${distFromEntry(r.liqPx, r.entryPx)} from entry` : undefined}>
+            <Fact label="EST. LIQUIDATION" sub={r.liqPx != null ? `${distFromEntry(r.liqPx, r.entryPx)} from entry` : undefined}>
               {fmtPrice(r.liqPx)}
             </Fact>
             <Fact label="TARGET">{intent.target != null ? fmtPrice(intent.target) : '—'}</Fact>
           </div>
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="label">GOVERNOR</span>
+              <span className="label" title="the desk's fixed risk rules, run on this order at the current mark">
+                GOVERNOR
+              </span>
               <Badge tone={v.tone}>{v.word}</Badge>
               {verdict.clip && <span className="text-sm text-text-primary">{verdict.clip}</span>}
             </div>
@@ -172,7 +176,9 @@ export function PreviewCard({
           )}
           {preview.assumptions && preview.assumptions.length > 0 && (
             <div className="flex flex-col gap-1">
-              <span className="label text-xs">ASSUMED BY THE PARSER</span>
+              <span className="label text-xs" title="fields your text left out, filled with defaults by the model that read it">
+                ASSUMED BY THE PARSER
+              </span>
               <ol className="flex flex-col gap-1.5">
                 {preview.assumptions.map((a, i) => (
                   <ClaimLine key={i} claim={{ tag: 'hypothesis', text: a }} as="li" />

@@ -24,8 +24,8 @@ describe('vector scales', () => {
     expect(zoneFor(GAUGE_ZONES.risk, 25).word).toBe('low risk')
     expect(zoneFor(GAUGE_ZONES.risk, 25.1).word).toBe('elevated')
     expect(zoneFor(GAUGE_ZONES.risk, 140).word).toBe('high risk')
-    expect(zoneFor(GAUGE_ZONES.momentum, -3).word).toBe('bearish')
-    expect(zoneFor(GAUGE_ZONES.momentum, 3).word).toBe('bullish')
+    expect(zoneFor(GAUGE_ZONES.momentum, -3).word).toBe('below zero')
+    expect(zoneFor(GAUGE_ZONES.momentum, 3).word).toBe('above zero')
   })
 
   test('band index fixed at 20/40/60/80, 100 is the top band', () => {
@@ -121,7 +121,9 @@ describe('VectorView', () => {
   })
 
   test('levels ladder: high to low, price divider between, distance signed', () => {
-    const html = renderToStaticMarkup(<LevelsTable levels={fixture().levels} price={80_000} />)
+    // The reading guide above the table names the levels too: check the ladder order in the table itself.
+    const full = renderToStaticMarkup(<LevelsTable levels={fixture().levels} price={80_000} />)
+    const html = full.slice(full.indexOf('<table'))
     const etf = html.indexOf('ETF cost basis')
     const div = html.indexOf('price $80,000')
     const sth = html.indexOf('STH cost basis')

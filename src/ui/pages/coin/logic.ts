@@ -1,8 +1,10 @@
+import type { Term } from '../../components'
 import type { MoveDetail } from '../../../shared/moves'
 import type { Opportunity, OpportunityDetail } from '../../../shared/platform'
 import type { QueueItem, QueuePart, QueueSource } from '../../../shared/queue'
 import { fmtDur } from '../../lib/format'
 import { boardHref } from '../../lib/research'
+import { REASON_TERMS } from '../queue/logic'
 
 // COIN page pure helpers (PLAN2 §2.3–§2.6): URL parsing, the action list, the IN QUEUE lines and the reason line
 // a coin without move attribution prints. No React, no DOM; tested in logic.test.ts. The action row never
@@ -98,3 +100,30 @@ export function setupFacts(o: Pick<Opportunity, 'netEdgeBps'>, t: OpportunityDet
   const size = t.sizeUsd == null ? 'size unavailable' : `size $${Math.round(t.sizeUsd).toLocaleString('en-US')}`
   return [`net ${o.netEdgeBps == null ? '—' : `${Math.round(o.netEdgeBps)} bps`}`, `entry ${px(t.entryPx)}`, `stop ${px(t.stopPx)}`, `target ${px(t.targetPx)}`, size].join(' · ')
 }
+
+// ─── Reading guide ───
+
+/** Why a coin that is not in today's queue still has a page. */
+export const NOT_QUEUED_NOTE = 'No source flagged this coin today (UTC). The blocks below still show its current numbers.'
+
+export const COIN_TERMS: readonly Term[] = [
+  ['4H · 24H · 72H', 'The window the move split is measured over. Positioning, liquidations and attention are current values and do not change with it.'],
+  ['IN QUEUE · 14M', 'The coin is on today’s list, and the time since the first source flagged it. DISMISSED or ACTED is added once it was handled.'],
+  ['MOVES · SETUP · RADAR', 'The source behind each line: the moves scan, a scanner setup, a radar call. The arrow opens that source’s own view.'],
+  ...REASON_TERMS,
+  ['MOVE · PRICE', 'MOVE shows the move split by what it tracks. PRICE shows the price chart with funding.'],
+  ['INVESTIGATE', 'Runs one agent investigation: one LLM run, counted against the daily cap. Offered while the coin has no agent record.'],
+  ['ASK', 'Opens the analyst drawer with this coin in context.'],
+  ['SIMULATE', 'Opens the analyst with a what-if question prefilled. Nothing is sent until you send it.'],
+  ['ORDER', 'Opens the order ticket. It does not carry numbers over from this page.'],
+  ['EVIDENCE', 'The research board’s signals for this coin, with their event studies.'],
+  ['MOVES', 'The moves table with this coin selected.'],
+]
+
+export const SETUP_TERMS: readonly Term[] = [
+  ['kind · side · status', 'The scanner rule that fired, the side it would trade, and where the setup stands. Only a READY setup can be decided.'],
+  ['net … bps', 'Expected edge after fees, slippage and funding, in basis points (1 bp = 0.01%). Once the ledger holds enough graded outcomes for this setup kind it is their mean; until then it is the distance from mark to target minus costs.'],
+  ['entry · stop · target', 'The ticket’s prices: where it would enter, where it exits at a loss, where it exits at a gain.'],
+  ['size', 'The order’s notional in USD.'],
+  ['invalidation', 'The condition, written when the setup was created, under which it no longer holds.'],
+]

@@ -154,7 +154,13 @@ export function MethodsTable({ forecast, coin }: { forecast: CycleForecast; coin
       ),
     },
   ]
-  return <DataTable columns={columns} rows={forecast.methods} rowKey={(m) => m.key} emptyLabel={<div className="p-3 text-sm text-text-secondary">no estimate</div>} />
+  return <DataTable columns={columns} rows={forecast.methods} rowKey={(m) => m.key} emptyLabel={
+        <div className="p-3 text-sm text-text-secondary">
+          {forecast.status === 'in_run'
+            ? 'No estimate while a bull run is in progress. The four methods resume once the cycle tops out.'
+            : 'No estimate yet. The methods measure gaps between past bull runs and need at least two in the history.'}
+        </div>
+      } />
 }
 
 export function EpisodesTable({ episodes, kind }: { episodes: BullEpisode[]; kind: OnsetKind }) {
@@ -217,7 +223,7 @@ export function CoolingHighsTable({ highs }: { highs: CoolingHigh[] }) {
       columns={columns}
       rows={[...highs].reverse()}
       rowKey={(h) => String(h.t)}
-      emptyLabel={<div className="p-3 text-sm text-text-secondary">no all-time-high leg has peaked on lower heat than the one before</div>}
+      emptyLabel={<div className="p-3 text-sm text-text-secondary">None in this history: no all-time-high leg has peaked at least 0.05 lower in heat than the leg before it.</div>}
     />
   )
 }

@@ -106,6 +106,29 @@ export function stopResolution(intent: OrderIntent, notes: readonly string[] | u
   }
 }
 
+/**
+ * One fact line under the preview headline: what a stop-out costs and how far the stop, the
+ * estimated liquidation and the target sit from entry. Numbers are the order as resolved,
+ * before any governor clip.
+ */
+export function previewTakeaway(p: Pick<OrderPreview, 'intent' | 'resolved'>): string {
+  const r = p.resolved
+  const dist = (px: number) => (r.entryPx > 0 ? Math.abs(px / r.entryPx - 1) * 100 : null)
+  const pct = (x: number) => `${x.toFixed(1)}%`
+  const out = [`A fill at the stop ${fmtPrice(r.stopPx)} loses ${fmtUsd2(r.riskUsd)}, ${pct(r.riskPct)} of the book, before fees.`]
+  const stopDist = dist(r.stopPx)
+  if (stopDist != null) {
+    const liqDist = r.liqPx != null ? dist(r.liqPx) : null
+    out.push(`Stop is ${pct(stopDist)} from entry` + (liqDist != null ? `, estimated liquidation ${pct(liqDist)}.` : '; no liquidation estimate.'))
+    if (p.intent.target == null) out.push('No target given.')
+    else {
+      const targetDist = dist(p.intent.target)!
+      out.push(`Target is ${pct(targetDist)} from entry` + (stopDist > 0 ? `, ${(targetDist / stopDist).toFixed(1)} times the stop distance.` : '.'))
+    }
+  }
+  return out.join(' ')
+}
+
 /** The body of the Level 2 dialog: names everything and reads as irreversible (DESIGN-terminal §7.1 item 4, §7.3). */
 export function confirmBody(p: OrderPreview, venue: DeskVenue | null): string {
   const r = p.resolved

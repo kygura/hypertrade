@@ -1,6 +1,6 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { AsyncBody, Badge, Button, PageContainer, Panel, Segmented, SkeletonRows } from '../../components'
+import { AsyncBody, Badge, Button, HowToRead, PageContainer, Panel, Segmented, SkeletonRows } from '../../components'
 import { FundingPanel, PerpHeader, usePerpStats } from '../../components/market/PerpPanels'
 import type { AgentStatsResponse } from '../../../shared/agentRecords'
 import { MOVE_WINDOWS, type MoveWindow } from '../../../shared/moves'
@@ -17,7 +17,7 @@ import { investigateGate, parseWindow } from '../moves/logic'
 import { AttentionBlock, AttributionBlock, ChecklistBlock, LiqBlock, PositioningBlock, RecordBlock, type Feed } from '../moves/MovesView'
 import { useInvestigate, type ActionError } from '../moves/useInvestigate'
 import {
-  coinActions, detailOutcome, hip3Reason, isHip3, opportunityId, parseChart, queueHeadline, queuePartsLine, rejectedDetail, type ChartView, type DetailOutcome,
+  COIN_TERMS, coinActions, detailOutcome, hip3Reason, isHip3, NOT_QUEUED_NOTE, opportunityId, parseChart, queueHeadline, queuePartsLine, rejectedDetail, type ChartView, type DetailOutcome,
 } from './logic'
 import { SetupApprove } from './Approve'
 
@@ -141,6 +141,10 @@ export function CoinDecisionView(p: CoinDecisionViewProps) {
     <>
       <Panel>
         <CoinHeader {...p} />
+        <HowToRead terms={COIN_TERMS} className="px-3 py-2 border-b border-border-subtle">
+          One coin, read top to bottom: why it is in the queue, why it moved, whether positioning and attention already reflect the move, and which checklist conditions are met. Every block states
+          measurements, not a recommendation.
+        </HowToRead>
         <QueueParts item={p.item} coin={p.coin} now={p.now} />
         <Actions {...p} blocked={blocked} hasDetail={d != null} />
         {oppId && p.setup?.(oppId)}
@@ -225,6 +229,7 @@ function QueueParts({ item, coin, now }: { item: QueueItem | null | undefined; c
   return (
     <div className="flex flex-col gap-1 px-3 py-2 border-b border-border-subtle min-w-0" data-block="inqueue">
       <p className={`text-xs tabular ${item ? 'label' : 'text-text-secondary'}`}>{head}</p>
+      {item === null && <p className="text-sm text-text-muted">{NOT_QUEUED_NOTE}</p>}
       {parts.length > 0 && (
         <ul className="flex flex-col gap-1">
           {parts.map((l) => (

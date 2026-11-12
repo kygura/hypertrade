@@ -311,6 +311,21 @@ export const TRANSFORM_HINT: Partial<Record<Transform, string>> = {
   vchg: 'volatility-scaled change: the window\'s log change in units of the coin\'s own daily volatility (off by default)',
 }
 
+/**
+ * The transform prefixes as RuleText prints them (`z(90) MVRV`), each as the engine computes it
+ * (src/server/lab/engine/features.ts). Shared by every reading guide that sits next to a rule.
+ */
+export const TRANSFORM_TERMS: ReadonlyArray<readonly [string, string]> = [
+  ['z(n)', 'z-score: how many standard deviations today is from the mean of the last n days. +2 is unusually high, −2 unusually low.'],
+  ['rsi(n)', 'relative strength over n days, 0 to 100: the share of the daily movement that was upward. 100 means every change was a rise.'],
+  ['ma(n)', 'distance from the n-day mean as a fraction: 0.10 is 10% above it, −0.10 is 10% below.'],
+  ['roc(n)', 'change over n days as a fraction: 0.10 is a 10% rise.'],
+  ['vol(n)', 'volatility: standard deviation of the daily log changes over n days. Higher is choppier.'],
+  ['pct(n)', 'rank of today among the last n days, from 0 (lowest) to 1 (highest).'],
+  ['vchg(n)', 'the n-day move divided by the series\' own 30-day volatility scaled to n days: within ±1 is an ordinary move for that coin.'],
+  ['no prefix', 'the metric\'s raw value that day.'],
+]
+
 export interface ParsedFeature {
   metric: string
   transform: Transform
@@ -906,3 +921,173 @@ export function freshDsrN(trialsN: number | null): DsrN {
 export function latestRunId(runs: readonly Pick<RunSummary, 'id'>[] | null | undefined): string | null {
   return runs?.[0]?.id ?? null
 }
+
+// ------------------------------------------------------------------ fact lines (one-line takeaways, facts only)
+
+/**
+ * The save bar's other cut-offs. Mirror MIN_WALK_FORWARD_SHARPE and MIN_STABILITY in
+ * src/server/lab/engine/verdict.ts (same reason as MIN_DEFLATED_SHARPE above); lab.test.ts asserts they are equal.
+ */
+export const MIN_WALK_FORWARD_SHARPE = 1
+export const MIN_STABILITY = 0.5
+/** A catalogue rule's live Sharpe is shown from this many live days (CatalogueTable, liveCell, the decay check). */
+export const LIVE_MIN_DAYS = 30
+
+/** What each server verdict level requires, in plain words (the checks of engine/verdict.ts, in its order). */
+export const VERDICT_MEANING: Record<VerdictLevel, string> = {
+  robust: `passes every check: holdout Sharpe above 0 with at least one trade, walk-forward Sharpe above ${MIN_WALK_FORWARD_SHARPE}, stability at least ${MIN_STABILITY} when it was measured, deflated Sharpe at least ${MIN_DEFLATED_SHARPE}. This is the save bar`,
+  candidate: `passes holdout, walk-forward and stability, but the deflated Sharpe is below ${MIN_DEFLATED_SHARPE}, undefined or not computed: it could be the luckiest of the many variants tried`,
+  fragile: `passes holdout and walk-forward, but stability is below ${MIN_STABILITY}: the result does not survive small changes to a threshold or window`,
+  weak: `passes holdout, but the walk-forward Sharpe is ${MIN_WALK_FORWARD_SHARPE} or lower, or there is no walk-forward`,
+  fails_holdout: 'the holdout Sharpe is 0 or lower, the holdout holds no trade, or there is no holdout. Checked first',
+}
+
+/** x for an "x of bar" miss: 3 decimals when 2 would round it up to the bar (as the server's reasons do). */
+const belowBar = (x: number, bar: number) => (Number(x.toFixed(2)) >= bar ? x.toFixed(3) : x.toFixed(2))
+
+export type BarCheck = {
+  key: 'holdout' | 'walkForward' | 'stability' | 'deflatedSharpe'
+  /** true = passes, false = misses, null = not measured (stability without a sensitivity grid). */
+  pass: boolean | null
+  /** The check with its number when it misses, e.g. `deflated Sharpe (0.71 of 0.9)`. */
+  text: string
+}
+
+/**
+ * The four save-bar checks of an evaluation against the server's cut-offs, in the server's order. It explains a
+ * verdict, it does not make one: the level shown is always the server's. lab.test.ts checks that the first miss
+ * here is the level engine/verdict.ts returns.
+ */
+export function saveBarChecks(ev: Pick<RuleEvaluation, 'holdout' | 'walkForward' | 'sensitivity' | 'deflatedSharpe'>): BarCheck[] {
+  const ho = ev.holdout
+  const wf = ev.walkForward
+  const st = ev.sensitivity?.stability
+  const dsr = ev.deflatedSharpe
+  return [
+    !ho
+      ? { key: 'holdout', pass: false, text: 'holdout (none)' }
+      : ho.untested
+        ? { key: 'holdout', pass: false, text: 'holdout (no trade)' }
+        : ho.sharpe > 0
+          ? { key: 'holdout', pass: true, text: 'holdout' }
+          : { key: 'holdout', pass: false, text: `holdout (Sharpe ${fmtSigned(ho.sharpe)}, needs above 0)` },
+    !wf
+      ? { key: 'walkForward', pass: false, text: 'walk-forward (none)' }
+      : wf.sharpe > MIN_WALK_FORWARD_SHARPE
+        ? { key: 'walkForward', pass: true, text: 'walk-forward' }
+        : { key: 'walkForward', pass: false, text: `walk-forward (Sharpe ${fmtSigned(wf.sharpe)}, needs above ${MIN_WALK_FORWARD_SHARPE})` },
+    st == null
+      ? { key: 'stability', pass: null, text: 'stability' }
+      : st >= MIN_STABILITY
+        ? { key: 'stability', pass: true, text: 'stability' }
+        : { key: 'stability', pass: false, text: `stability (${belowBar(st, MIN_STABILITY)} of ${MIN_STABILITY})` },
+    dsr == null || !Number.isFinite(dsr)
+      ? { key: 'deflatedSharpe', pass: false, text: `deflated Sharpe (${dsr === null && wf && wf.days >= 4 ? 'undefined' : 'not computed'})` }
+      : dsr >= MIN_DEFLATED_SHARPE
+        ? { key: 'deflatedSharpe', pass: true, text: 'deflated Sharpe' }
+        : { key: 'deflatedSharpe', pass: false, text: `deflated Sharpe (${belowBar(dsr, MIN_DEFLATED_SHARPE)} of ${MIN_DEFLATED_SHARPE})` },
+  ]
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+const windowFact = (name: string, s: PerfStats | null | undefined) =>
+  !s ? `no ${name}` : s.untested ? `${name} had no trade in ${s.days} days` : `${name} Sharpe ${fmtSigned(s.sharpe)} on ${plural(s.trades, 'trade')} over ${s.days} days`
+
+/**
+ * A rule evaluation in one line: the walk-forward and holdout Sharpe with their trade counts and lengths, then which
+ * save-bar checks pass and which miss, with the numbers. Facts about a backtest, e.g. `Walk-forward Sharpe +1.40 on
+ * 38 trades over 900 days; holdout Sharpe +0.60 on 9 trades over 290 days. Passes holdout, walk-forward; misses
+ * deflated Sharpe (0.71 of 0.9); stability not measured.`
+ */
+export function saveBarLine(ev: Pick<RuleEvaluation, 'holdout' | 'walkForward' | 'sensitivity' | 'deflatedSharpe'>): string {
+  const checks = saveBarChecks(ev)
+  const of = (pass: boolean | null) => checks.filter((c) => c.pass === pass).map((c) => c.text)
+  const parts = [
+    of(true).length ? `passes ${of(true).join(', ')}` : null,
+    of(false).length ? `misses ${of(false).join(', ')}` : null,
+    of(null).length ? 'stability not measured' : null,
+  ].filter((x): x is string => x != null)
+  const head = `${windowFact('walk-forward', ev.walkForward)}; ${windowFact('holdout', ev.holdout)}`
+  const tail = parts.join('; ')
+  return `${head[0]!.toUpperCase()}${head.slice(1)}. ${tail[0]!.toUpperCase()}${tail.slice(1)}.`
+}
+
+/**
+ * A search result in one line: how many rules it kept, out of how many variants, their server verdicts, the best
+ * walk-forward Sharpe, and when the holdout starts. null when it kept none (the empty state says why).
+ */
+export function searchLine(result: Pick<SearchResult, 'rules' | 'dataRange' | 'variantsScored' | 'effectiveTrials'>): string | null {
+  const rules = result.rules
+  if (rules.length === 0) return null
+  const counts = (Object.keys(VERDICT_BADGE) as VerdictLevel[])
+    .map((level) => ({ level, n: rules.filter((r) => verdictOf(r)?.level === level).length }))
+    .filter((c) => c.n > 0)
+    .map((c) => `${c.n} ${VERDICT_BADGE[c.level].label.toLowerCase()}`)
+  const unjudged = rules.filter((r) => !verdictOf(r)).length
+  if (unjudged) counts.push(`${unjudged} without a verdict`)
+  const best = rules.map((r) => sharpeOf(r.walkForward)).filter((x): x is number => x != null)
+  const n = effectiveTrials(result)
+  const from =
+    result.variantsScored != null
+      ? ` out of ${result.variantsScored.toLocaleString('en-US')} variants scored${result.effectiveTrials != null && n != null ? ` (about ${Math.round(n).toLocaleString('en-US')} independent)` : ''}`
+      : ''
+  return `${plural(rules.length, 'rule')} kept${from}: ${counts.join(', ')}.${best.length ? ` Best walk-forward Sharpe ${fmtSigned(Math.max(...best))}.` : ''} The holdout starts ${result.dataRange.holdoutFrom} and was not used to pick or rank them.`
+}
+
+/**
+ * The catalogue in one line: how many saved rules have enough live days for a live Sharpe, how many of those are
+ * above 0 since saving, and the health flags. null when empty.
+ */
+export function catalogueLine(entries: readonly Pick<CatalogueListEntry, 'live' | 'flags'>[]): string | null {
+  if (entries.length === 0) return null
+  const live = entries.filter((e) => e.live != null && e.live.days >= LIVE_MIN_DAYS)
+  const up = live.filter((e) => e.live!.sharpe > 0).length
+  const decayed = entries.filter((e) => e.flags.includes('decayed')).length
+  const overlap = entries.filter((e) => e.flags.includes('overlap')).length
+  const liveText = live.length === 0 ? `None has ${LIVE_MIN_DAYS} live days yet, so no live Sharpe is shown.` : `${live.length} ${live.length === 1 ? 'has' : 'have'} ${LIVE_MIN_DAYS} or more live days: ${up} with a live Sharpe above 0, ${live.length - up} at or below.`
+  return `${plural(entries.length, 'saved rule')}. ${liveText} ${decayed} flagged decayed, ${overlap} flagged overlap.`
+}
+
+/** Market Pulse in one line: saved rules in zone on the latest daily bar, by side. null without rules. */
+export function pulseLine(assets: readonly Pick<PulseAsset, 'longActive' | 'longTotal' | 'shortActive' | 'shortTotal'>[]): string | null {
+  const sum = (f: (a: (typeof assets)[number]) => number) => assets.reduce((n, a) => n + f(a), 0)
+  const total = sum((a) => a.longTotal + a.shortTotal)
+  if (total === 0) return null
+  const long = sum((a) => a.longActive)
+  const short = sum((a) => a.shortActive)
+  const on = assets.filter((a) => a.longActive + a.shortActive > 0).length
+  return `${long + short} of ${plural(total, 'saved rule')} in zone on the latest daily bar: ${long} long, ${short} short, on ${on} of ${plural(assets.length, 'asset')}.`
+}
+
+// ------------------------------------------------------------------ reading-guide terms (shared by the Lab views)
+
+type TermPair = readonly [string, string]
+
+/** The server's verdict levels as their badges print, each with what it requires. */
+export const VERDICT_TERMS: readonly TermPair[] = (Object.keys(VERDICT_BADGE) as VerdictLevel[]).map((l) => [VERDICT_BADGE[l].label, `${VERDICT_MEANING[l]}.`] as const)
+
+/**
+ * Plain definitions of what an evaluation prints, as the engine computes each (docs/LAB.md §5–8,
+ * src/server/lab/engine/{backtest,validate,stats}.ts). One wording for every view that shows the number.
+ */
+export const EVAL_TERMS = {
+  sharpe: ['Sharpe', 'return per unit of risk: the mean daily return divided by its standard deviation, scaled to a year. Around 0 is noise, negative lost money, above 1 is a steady result. It does not say how large the gain was.'],
+  inSample: ['in-sample', 'the first 80% of the history, the part a search could see. It flatters the rule by construction.'],
+  walkForward: ['walk-forward', 'the first 80% of the history cut into blocks in date order. Each block is scored using only what came before it, and the blocks are joined into one track. Rules are ranked by this.'],
+  holdout: ['holdout', 'the most recent 20% of the history, set aside before any search and never used to pick or rank a rule. A one-time check on data the rule has not seen.'],
+  holdoutGap: ['HOLDOUT GAP', 'the holdout Sharpe has the opposite sign to the walk-forward Sharpe, or is under half of it: a sign the rule fitted the past better than it carried forward.'],
+  dsr: ['deflated Sharpe', `a probability from 0 to 1 that the walk-forward Sharpe beats the best result luck alone would give across everything the search tried. ${MIN_DEFLATED_SHARPE} or more passes the save bar; near 0.5 it is as likely luck as not. A rule that came from no search is not corrected and reads higher.`],
+  trialsN: ['N≈', 'effective trials: how many meaningfully different rule variants the search scored. Variants that are in the market on mostly the same days count once. The deflated Sharpe is corrected for this many tries.'],
+  stability: ['stability', `the share of nudged copies of the rule that keep the sign of its Sharpe and at least half its size. Each threshold is moved a little and each window swapped for its neighbour. ${MIN_STABILITY} or more passes; the word reads STABLE from 0.75, SOFT from ${MIN_STABILITY}, FRAGILE below.`],
+  hit: ['hit rate', 'share of closed trades that ended with a net gain. A trade is one unbroken run of days in the market.'],
+  maxDd: ['max drawdown', 'the deepest fall of the equity curve from an earlier high, in percent. Printed red beyond −20%.'],
+  trades: ['trades', 'times the rule entered the market in that window. Few trades make every other number in the column unreliable.'],
+  tradesYr: ['trades per year', 'trades divided by the length of the window in years.'],
+  exposure: ['exposure', 'share of days the rule was in the market.'],
+  support: ['support', 'days in the training data on which all conditions were true. Low support means the rule rests on few cases.'],
+  precision: ['precision', 'of those in-zone days, the share followed by a good outcome: for a long, a forward return over the hold that is positive and in the top 30% of the history (bottom 30% and negative for a short). 30% is the default label quantile.'],
+  firing: ['FIRING / FLAT', 'whether every condition is true on the latest daily bar. Firing is a condition met, not a call.'],
+  untested: ['untested', 'the rule made no trade in that window, so there is no result. It is not the same as a Sharpe of 0.'],
+  slippage: ['net of slippage', 'every entry and exit is charged the slippage shown under the table (in basis points; 10 bps is 0.10%). No other cost is modelled here.'],
+  then: ['AT SEARCH / AT SAVE / NOW', 'AT SEARCH (or AT SAVE) are the numbers from when the rule was found (or saved); NOW is the same rule re-run on today\'s data. They can differ: days have been added, and a search re-fits the thresholds inside each walk-forward block while a re-run keeps them fixed.'],
+} as const satisfies Record<string, TermPair>

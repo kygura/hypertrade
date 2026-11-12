@@ -26,9 +26,7 @@ export const THEMES: readonly ThemeDef[] = [
     label: 'HYPERDASH',
     short: 'HD',
     scheme: 'dark',
-    // BDO Grotesk (Hyperdash's face) isn't on Google Fonts; Host Grotesk
-    // stands in, and the theme's stack still prefers BDO if installed.
-    fonts: ['https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@300..700&display=swap'],
+    // Geist is self-hosted (index.css @font-face): no web-font request.
   },
   {
     id: 'tradexyz',

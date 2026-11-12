@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router'
-import { Button, Panel, PanelHeader } from '../../components'
+import { Button, HowToRead, Panel, PanelHeader } from '../../components'
 import { AsyncBody, EmptyBlock } from '../../components/state'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { ClaimAge } from '../../components/intel/ClaimAge'
@@ -65,6 +65,9 @@ export function Theses() {
   return (
     <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col">
       <TerminalTabs />
+      <HowToRead className="pb-2">
+        Write a thesis in your own words. The app splits it into claims and marks each one as supported or contradicted by the current data.
+      </HowToRead>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
         <div className={`lg:col-span-4 min-w-0 flex-col gap-3 ${selectedId ? 'hidden lg:flex' : 'flex'}`}>
           <Panel>

@@ -39,12 +39,12 @@ export function FanChart({ projection, height = 220 }: { projection: MonteCarloR
           domain={['dataMin', 'dataMax']}
           scale="time"
           tickFormatter={fmtChartDate}
-          tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+          tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
           stroke="var(--color-border)"
         />
         <YAxis
           tickFormatter={fmtUsdCompact}
-          tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+          tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
           stroke="var(--color-border)"
           width={48}
         />
@@ -82,7 +82,7 @@ export function ProjectionReadout({ projection }: { projection: MonteCarloResult
   const p90 = projection.p90.at(-1)?.value
   if (p10 == null || p50 == null || p90 == null) return null
   return (
-    <div className="text-sm text-info text-right tabular">
+    <div className="text-sm text-info text-right tabular" title="value at the end of the projection: 90th percentile, median and 10th percentile of the simulated paths">
       P90 {fmtUsdCompact(p90)} / P50 {fmtUsdCompact(p50)} / P10 {fmtUsdCompact(p10)}
     </div>
   )
@@ -95,7 +95,10 @@ export function ProjectionAssumptions({ scenario }: { scenario: NonNullable<Bran
     (a) => `${a.coin} ${a.annualReturnPct >= 0 ? '+' : ''}${a.annualReturnPct}%/${a.annualVolPct}% VOL`,
   )
   return (
-    <div className="text-xs text-text-secondary">
+    <div
+      className="text-xs text-text-secondary"
+      title="the assumptions behind the fan: days projected, number of random paths, and per coin the yearly return and volatility you entered. GBM = each path is a random walk with that drift and volatility; coins are treated as uncorrelated. An illustration, not a forecast"
+    >
       PROJECTION {scenario.horizonDays}D · {scenario.paths} PATHS · {parts.join(' · ')} · GBM
     </div>
   )

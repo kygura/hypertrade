@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { AsyncBody, Badge, DataTable, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column } from '../../components'
+import { AsyncBody, Badge, DataTable, EmptyBlock, ErrorBlock, HowToRead, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column, type Term } from '../../components'
 import { fmtUsdCompact } from '../../components/branches/format'
 import { fmtAge, fmtDur } from '../../components/strategy/format'
 import { fmtPx } from '../../lib/desk'
@@ -19,6 +19,23 @@ const CHART_H = 280
 const X_AXIS_H = 20
 const LONG = 'var(--color-proj-line)'
 const SHORT = 'var(--color-bench-btc)'
+
+const MAP_TERMS: readonly Term[] = [
+  ['Long · short liquidations', 'Long positions are liquidated when price falls, so their levels sit below the mark; shorts sit above it. A liquidation is a forced market order, so a large cluster is a price where forced selling (longs) or buying (shorts) would hit the book.'],
+  ['COVERAGE % OF OI', 'How much of the open interest the map can see: tracked position value divided by twice the open interest (every contract has a long and a short). Under 25% the map is marked partial; under 5% no cluster is named. "OI UNKNOWN" means open interest was not available, not that coverage is zero.'],
+  ['ADDR', 'Addresses with a tracked position on this coin. The crawler finds addresses as they trade.'],
+  ['POLL p50 · p90', 'Age of the last position check for the median address and for the slowest tenth. p90 turns amber past 30 minutes: some positions on the map may have moved since.'],
+  ['PROFILE', 'Bars by price level: USD value of tracked positions that would be liquidated in each price step (0.25% wide), right now. The legend above the bars names the colour of each side. The line marks the current mark price.'],
+  ['HISTORY', 'The same map over time. Columns are snapshots taken every 15 minutes, rows are price levels, and a stronger colour means more value at that level (five steps, scaled to the 95th percentile of the window). The line is the mark price.'],
+  ['6H · 24H · 72H', 'How far back the history view reaches.'],
+  ['SHORT · LONG CLUSTER', 'The price step nearest the mark that holds at least 1% of that side\'s mapped value and at least $250K: its value, its mid price, and its distance from the mark. "≥" means the map is partial, so the true value is at least this.'],
+]
+
+const BOARD_TERMS: readonly Term[] = [
+  ['LONG LIQS · SHORT LIQS', 'Liqs is short for liquidations. The nearest cluster on each side: its distance from the mark in percent (longs below, shorts above) and its USD value. A dash means no step holds at least 1% of that side and $250K, or coverage is under 5%.'],
+  ['COVERAGE', 'Share of the coin\'s open interest the map can see. Amber under 25%: clusters are likely missing.'],
+  ['MARK', 'Current mark price.'],
+]
 
 type PanelProps = {
   coin: string
@@ -71,7 +88,7 @@ export function LiqMapView({
   if (!data && live.loading && live.fetchedAt == null) profile = <SkeletonRows rows={6} />
   else if (!data && live.offline) profile = <OfflineBlock message={live.offline} onRetry={live.refetch} />
   else if (!data && live.error) profile = <ErrorBlock message={live.error} onRetry={live.refetch} />
-  else if (!data || data.buckets.length === 0) profile = <EmptyBlock label={`no tracked positions on ${coin} yet — the crawler adds addresses as they trade`} />
+  else if (!data || data.buckets.length === 0) profile = <EmptyBlock label={`no tracked positions on ${coin} yet — the crawler adds addresses as they trade, and bars appear once one of them holds ${coin} with a liquidation price within range of the mark`} />
   else profile = <LiqProfile buckets={dense} mark={mark!} coverage={data.coverage} coin={coin} />
 
   let history
@@ -81,7 +98,7 @@ export function LiqMapView({
   else if (!h && hist.error) history = <ErrorBlock message={hist.error} onRetry={hist.refetch} />
   else if ((!h || h.snapshots.length === 0) && tracked && !tracked.has)
     history = <EmptyBlock label={`history is kept for the top ${tracked.count} coins by OI — ${coin} is not one`} />
-  else if (!h || h.snapshots.length === 0) history = <EmptyBlock label="no snapshots yet — history builds every 15 min" />
+  else if (!h || h.snapshots.length === 0) history = <EmptyBlock label="no snapshots yet — history builds every 15 min, so the time view needs two snapshots to draw" />
   else if (h.snapshots.length < 2) history = <EmptyBlock label={`history builds every 15 min — first snapshot ${fmtAge(h.snapshots[0]!.ts).toLowerCase()}`} />
   else if (!axis) history = <EmptyBlock label="history unavailable" />
   else history = <LiqHistory history={h} lo={axis.lo} hi={axis.hi} coin={coin} />
@@ -109,6 +126,10 @@ export function LiqMapView({
           ]}
         />
       </PanelHeader>
+      <HowToRead className="px-3 py-2 border-b border-border-subtle" terms={MAP_TERMS}>
+        Prices where tracked positions on {coin} would be force-closed: longs below the current price, shorts above. It only sees addresses
+        the crawler has found, so read the coverage line before the clusters.
+      </HowToRead>
       {data && <CoverageLine coverage={data.coverage} />}
       {data && ageSec > 60 && <StaleStrip>liquidation map {Math.floor(ageSec / 60)}m old</StaleStrip>}
       {data && partial && (
@@ -196,11 +217,11 @@ function ClusterCell({ c, side, coverage }: { c: Cluster | null; side: 'long' | 
 const BOARD_COLUMNS: Column<BoardRow>[] = [
   { key: 'coin', label: 'COIN', priority: 1, render: (r) => <span className="text-text-primary">{r.coin}</span> },
   { key: 'mark', label: 'MARK', priority: 3, align: 'right', render: (r) => fmtPx(r.mark) },
-  { key: 'long', label: 'LONG LIQS', priority: 1, align: 'right', render: (r) => <ClusterCell c={r.nearestLong} side="long" coverage={r.coverage} /> },
-  { key: 'short', label: 'SHORT LIQS', priority: 1, align: 'right', render: (r) => <ClusterCell c={r.nearestShort} side="short" coverage={r.coverage} /> },
+  { key: 'long', label: <span title="Nearest long liquidation cluster below the mark: distance and USD value">LONG LIQS</span>, priority: 1, align: 'right', render: (r) => <ClusterCell c={r.nearestLong} side="long" coverage={r.coverage} /> },
+  { key: 'short', label: <span title="Nearest short liquidation cluster above the mark: distance and USD value">SHORT LIQS</span>, priority: 1, align: 'right', render: (r) => <ClusterCell c={r.nearestShort} side="short" coverage={r.coverage} /> },
   {
     key: 'cov',
-    label: 'COV',
+    label: <span title="Share of open interest the map can see">COVERAGE</span>,
     priority: 2,
     align: 'right',
     render: (r) => {
@@ -234,6 +255,10 @@ export function LiqBoard({
   return (
     <section aria-label="liquidation board" className="border-t border-border-subtle">
       <h3 className="label px-3 pt-2 pb-1">LIQUIDATION BOARD ─ BY NEAREST CLUSTER</h3>
+      <HowToRead className="px-3 pb-2" terms={BOARD_TERMS}>
+        Shown while the feed has no ideas: for each of the largest coins by open interest, how close the nearest cluster of forced closes sits to the current
+        price. Click a coin to open its full map.
+      </HowToRead>
       <AsyncBody
         loading={loading}
         data={rows}
@@ -241,7 +266,7 @@ export function LiqBoard({
         offline={offline}
         rows={8}
         staleError={false}
-        empty={{ label: 'no marks yet — the board fills after the first scan' }}
+        empty={{ label: 'no marks yet — the board fills after the first scan, one row per coin among the largest by open interest' }}
         onRetry={onRetry}
       >
         {(r) => (
@@ -261,8 +286,8 @@ export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBuck
   return (
     <figure aria-label={`liquidation profile for ${coin}: long liquidations below mark ${fmtPx(mark)}, short above; ${coverage.ratio == null ? 'open interest unknown' : `${Math.round(coverage.ratio * 100)}% of open interest mapped`}`}>
       <div className="flex justify-between h-4 text-xs label px-1">
-        <span style={{ color: SHORT }}>▲ SHORT LIQS</span>
-        <span style={{ color: LONG }}>▼ LONG LIQS</span>
+        <span style={{ color: SHORT }}>▲ SHORT LIQUIDATIONS</span>
+        <span style={{ color: LONG }}>▼ LONG LIQUIDATIONS</span>
       </div>
       <ResponsiveContainer width="100%" height={CHART_H}>
         <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 0 }} barCategoryGap={0}>
@@ -272,7 +297,7 @@ export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBuck
             ticks={[0, max / 2, max]}
             height={X_AXIS_H}
             tickFormatter={(v: number) => fmtUsdCompact(v)}
-            tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+            tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
             stroke="var(--color-border)"
           />
           <YAxis
@@ -281,7 +306,7 @@ export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBuck
             orientation="right"
             width={56}
             interval={Math.max(0, Math.ceil(rows.length / 8) - 1)}
-            tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+            tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
             stroke="var(--color-border)"
           />
           <Tooltip
@@ -303,7 +328,7 @@ export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBuck
               y={markRow.label}
               stroke="var(--color-equity)"
               strokeWidth={1}
-              label={{ value: `MARK ${fmtPx(mark)}`, position: 'insideBottomRight', fontSize: 10, fill: 'var(--color-equity)' }}
+              label={{ value: `MARK ${fmtPx(mark)}`, position: 'insideBottomRight', fontSize: 12, fill: 'var(--color-equity)' }}
             />
           )}
         </BarChart>
@@ -403,7 +428,7 @@ export function LiqHistory({ history, lo, hi, coin }: { history: LiqMapHistory; 
       <div className="flex justify-between h-4 text-xs label px-1" aria-hidden>
         <span>TIME × PRICE</span>
         <span>
-          <span style={{ color: SHORT }}>■ SHORT LIQS</span> <span style={{ color: LONG }}>■ LONG LIQS</span>
+          <span style={{ color: SHORT }}>■ SHORT</span> <span style={{ color: LONG }}>■ LONG</span>
         </span>
       </div>
       <canvas

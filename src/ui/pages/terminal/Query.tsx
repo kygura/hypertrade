@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Badge, Panel, PanelHeader } from '../../components'
+import { Badge, HowToRead, Panel, PanelHeader } from '../../components'
 import { EmptyBlock, SkeletonRows } from '../../components/state'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { DslEditor, prettyDsl, validateDsl } from '../../components/intel/DslEditor'
@@ -66,6 +66,9 @@ export function Query() {
   return (
     <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col">
       <TerminalTabs />
+      <HowToRead className="pb-2">
+        Ask the stored market snapshots a question in words. The page shows the exact query that ran, then the rows it returned.
+      </HowToRead>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
         <Panel className="lg:col-span-12">
           <PanelHeader title="QUESTION" />

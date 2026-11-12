@@ -7,7 +7,7 @@ import { EmptyBlock } from '../state'
 export const briefTitle = (wocPhase: WocPhase | null) => `BRIEF${wocPhase ? ` · ${wocPhase.replace(/_/g, ' ').toUpperCase()}` : ''}`
 
 export function Brief({ brief }: { brief: VectorResponse['brief'] }) {
-  if (brief.sentences.length === 0) return <EmptyBlock label="no brief — the model has not produced a reading yet" />
+  if (brief.sentences.length === 0) return <EmptyBlock label="No brief yet. It is written from the daily model once price and on-chain inputs have loaded." />
   return (
     <ol className="flex flex-col gap-2 p-3">
       {brief.sentences.map((s, i) => (

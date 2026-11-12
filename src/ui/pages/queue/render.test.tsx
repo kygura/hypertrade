@@ -35,7 +35,9 @@ describe('QueueView', () => {
     expect(out).toContain('2h')
     expect(out).toContain('OPEN record')
     expect(out).toContain('agents 2/6 today')
-    expect(out.match(/DISMISS/g)).toHaveLength(2)
+    expect(out).toContain('2 new today (MOVES 2, SETUP 1). 1 flagged by more than one source; 1 has an agent record.')
+    expect(out).toContain('What the terms mean')
+    expect(out.match(/<button[^>]*>DISMISS</g)).toHaveLength(2)
     expect(out).toContain('aria-selected="true"')
     expect(out).not.toMatch(/APPROVE|ORDER/)
     expect(out).not.toContain('aria-label="selected coin"') // no pane on a phone
@@ -55,13 +57,17 @@ describe('QueueView', () => {
   test('empty: one calm line with the watched count, no panels stacked before it', () => {
     const out = html(props(feed(queueResponse({ watched: 38 }))))
     expect(out).toContain('nothing crossed the bar today · 38 coins watched')
-    expect(out).not.toContain('DISMISS')
-    expect(out).not.toContain('dismissed / acted')
+    expect(out).toContain('A coin is listed when the moves scan measures an unusual 24h move')
+    expect(out).not.toContain('No moves scan is stored yet')
+    expect(out).not.toContain('data-takeaway')
+    expect(out).not.toMatch(/<button[^>]*>DISMISS</)
+    expect(out).not.toContain('▸ dismissed / acted')
   })
 
   test('empty with no scan (watched 0): the bare line, no count', () => {
     const out = html(props(feed(queueResponse({ watched: 0 }))))
     expect(out).toContain('nothing crossed the bar today')
+    expect(out).toContain('No moves scan is stored yet, so MOVES has ranked nothing.')
     expect(out).not.toContain('coins watched')
   })
 
@@ -83,7 +89,7 @@ describe('QueueView', () => {
     expect(opened).toContain('▾ dismissed / acted (2)')
     expect(opened).toContain('data-coin="WIF" data-state="acted"')
     expect(opened).toContain('data-coin="ETH" data-state="dismissed"')
-    expect(opened.match(/DISMISS</g)).toHaveLength(1)
+    expect(opened.match(/<button[^>]*>DISMISS</g)).toHaveLength(1)
   })
 
   test('a failed dismiss shows its words on the row', () => {

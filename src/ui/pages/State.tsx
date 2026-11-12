@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Panel, PanelHeader, PanelBody } from '../components/Panel'
 import { AgeStamp, StaleBanner, SkeletonRows, EmptyBlock, ErrorBlock, OfflineBlock } from '../components/state'
 import { Button } from '../components/Button'
+import { HowToRead, type Term } from '../components/HowToRead'
 import { useApi } from '../lib/api'
 import { fmtUtcStamp } from '../lib/format'
 import { DomainCard } from '../components/state/DomainCard'
@@ -15,6 +16,17 @@ import type { MarketStateData } from '../../shared/types'
 // risks verbatim, history stepper, trigger button.
 
 type LatestResponse = MarketStateData & { history: string[] }
+
+const TERMS: readonly Term[] = [
+  ['Headline · summary', 'The routine\'s one-line read of the market and a short summary under it.'],
+  ['OBSERVE', 'What the collected data showed. This part restates measurements.'],
+  ['INFER', 'What the routine concludes from those observations. Interpretation, not measurement.'],
+  ['FORECAST', 'What the routine expects next. A hypothesis; nothing on this page checks it.'],
+  ['Domain cards', 'One card per area the routine covers, each with its own summary and the signals it cited. ▲ or ▼ beside a value is the direction the routine recorded for that signal.'],
+  ['RISKS', 'What the routine says could prove its read wrong, in its own words.'],
+  ['Date stepper', 'Moves through earlier briefings. A bar under the header shows when you are not on the latest.'],
+  ['Age stamp', 'Time since the briefing was written. A banner appears once it is more than 24 hours old.'],
+]
 
 function fullStamp(iso: string): string {
   return fmtUtcStamp(iso)
@@ -42,7 +54,7 @@ export function State() {
         {latest && latest.history.length === 0 && (
           <Panel>
             <PanelBody className="p-3 flex flex-col items-center gap-3">
-              <EmptyBlock label="no briefing yet" />
+              <EmptyBlock label="No briefing yet. The scheduled routine writes one per run from the collected market data; trigger it below to produce the first." />
               <TriggerRoutineButton />
             </PanelBody>
           </Panel>
@@ -76,6 +88,11 @@ export function State() {
                 </Button>
               </div>
             )}
+
+            <HowToRead terms={TERMS}>
+              A market briefing written by the scheduled model routine from collected data. Read OBSERVE as what was measured and INFER
+              and FORECAST as the routine's interpretation.
+            </HowToRead>
 
             <div>
               <h1 className="text-xl leading-snug text-text-primary">{briefing.headline}</h1>

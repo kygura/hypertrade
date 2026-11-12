@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { AsyncBody, DataTable, EmptyBlock, ErrorBlock, SkeletonRows, type Column } from '../components'
+import { AsyncBody, DataTable, EmptyBlock, ErrorBlock, HowToRead, SkeletonRows, type Column } from '../components'
 import { engine, errorMessage, useEngine } from '../lib/engine'
 import type { DecisionRecord, StrategyStatus } from '../../shared/strategy-protocol'
 import { EngineTabs } from '../components/strategy/EngineTabs'
@@ -128,6 +128,9 @@ export function Strategies() {
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)]">
       <EngineTabs />
+      <HowToRead className="pb-2">
+        Automated strategies known to the engine: whether each is enabled, where it trades, how often it runs and what it last did.
+      </HowToRead>
       <div className="panel">
         {offline && data && <OfflineStrip reason={offline} fetchedAt={fetchedAt} />}
         <div className="panel-header">

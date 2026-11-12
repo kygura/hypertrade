@@ -98,7 +98,7 @@ const MARGIN = { top: 4, right: 8, left: 0, bottom: 0 }
 /** recharts 2.15 treats an explicit `yAxisId={undefined}` as a real id and throws; omit the prop instead. */
 export const yAxisIdProp = (id?: string) => (id ? { yAxisId: id } : {})
 
-const TICK = { fontSize: 9, fill: 'var(--color-text-secondary)' }
+const TICK = { fontSize: 11, fill: 'var(--color-text-secondary)' }
 const pct = (v: number | null | undefined, d = 4) => (v == null ? '—' : `${fmtSigned(v, d)}%`)
 const usd = (v: number | null | undefined) => (v == null ? '—' : fmtUsd(v, { compact: true }))
 

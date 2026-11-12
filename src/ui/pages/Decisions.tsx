@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { AsyncBody, Badge, DataTable, EmptyBlock, SkeletonRows, type Column } from '../components'
+import { AsyncBody, Badge, DataTable, EmptyBlock, HowToRead, SkeletonRows, type Column } from '../components'
 import { engine, useEngine } from '../lib/engine'
 import { useQueryPatch } from '../lib/hooks'
 import type { DecisionRecord } from '../../shared/strategy-protocol'
@@ -101,6 +101,9 @@ export function Decisions() {
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)]">
       <EngineTabs />
+      <HowToRead className="pb-2">
+        Every decision a strategy produced, newest first: what it wanted to do and whether the engine's governor allowed it.
+      </HowToRead>
       <div className="panel">
         {offline && data && <OfflineStrip reason={offline} fetchedAt={fetchedAt} />}
         <div className="panel-header flex-wrap gap-2">

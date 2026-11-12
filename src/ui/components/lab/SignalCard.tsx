@@ -5,6 +5,7 @@ import { FiringBadge } from '../FiringBadge'
 import { RuleText } from '../RuleText'
 import {
   ddTone,
+  EVAL_TERMS as T,
   fmtPct0,
   fmtSigned,
   holdoutGap,
@@ -93,33 +94,41 @@ export function SignalCard({
         <span>·</span>
         <span>{ev.rule.horizonDays}D</span>
         <span>·</span>
-        <span>{kindWord(ev.rule.conditions.length)}</span>
+        <span title="number of conditions that must all be true">{kindWord(ev.rule.conditions.length)}</span>
         <span>·</span>
         {ruleProviders(ev.rule).map((p) => (
           <ProviderTag key={p} provider={p} />
         ))}
         <span>·</span>
-        <span className="tabular">PRECISION {ev.precision.toFixed(2)}</span>
+        <span className="tabular" title={T.precision[1]}>
+          PRECISION {ev.precision.toFixed(2)}
+        </span>
       </div>
 
       <div className="grid grid-cols-4 lg:grid-cols-8 gap-x-3 gap-y-2 pl-6">
-        <StatCell label="WF SHARPE">
+        <StatCell label="WF SHARPE" title={`walk-forward Sharpe. ${T.sharpe[1]} Walk-forward: ${T.walkForward[1]}`}>
           <SharpeValue stats={ev.walkForward} className="text-base" />
         </StatCell>
-        <StatCell label="HOLDOUT">
+        <StatCell label="HOLDOUT" title={`the Sharpe on ${T.holdout[1]}`}>
           <SharpeValue stats={ev.holdout} />
           {gap && <Badge tone="amber">HOLDOUT GAP</Badge>}
         </StatCell>
-        <StatCell label="DSR">
+        <StatCell label="DSR" title={`deflated Sharpe: ${T.dsr[1]}`}>
           <DsrValue ev={ev} n={trialsN} />
         </StatCell>
-        <StatCell label="HIT">{fmtPct0(s?.hitRate)}</StatCell>
-        <StatCell label="MAX DD">
+        <StatCell label="HIT" title={`hit rate: ${T.hit[1]}`}>
+          {fmtPct0(s?.hitRate)}
+        </StatCell>
+        <StatCell label="MAX DD" title={`max drawdown: ${T.maxDd[1]}`}>
           <span className={ddTone(s?.maxDrawdown)}>{s ? fmtSigned(s.maxDrawdown * 100, 1) + '%' : '—'}</span>
         </StatCell>
-        <StatCell label="TR/YR">{s ? s.tradesPerYear.toFixed(1) : '—'}</StatCell>
-        <StatCell label="SUPPORT">{ev.support}</StatCell>
-        <StatCell label="STAB">
+        <StatCell label="TR/YR" title={`trades per year: ${T.tradesYr[1]}`}>
+          {s ? s.tradesPerYear.toFixed(1) : '—'}
+        </StatCell>
+        <StatCell label="SUPPORT" title={T.support[1]}>
+          {ev.support}
+        </StatCell>
+        <StatCell label="STAB" title={`stability: ${T.stability[1]}`}>
           <StabValue stability={ev.sensitivity?.stability} />
         </StatCell>
       </div>

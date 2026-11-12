@@ -3,6 +3,7 @@ import type { EquityPoint, MonteCarloResult } from '../branches/types'
 import { fmtChartDate, fmtUsdCompact } from '../branches/format'
 import { fmtUsd } from '../../../shared/format'
 import { buildBandData, ProjectionReadout } from './FanChart'
+import { HowToRead, type Term } from '../HowToRead'
 
 // Equity curve vs benchmarks — docs/design/README.md §9.1 (+ §9.3 forward fan on the
 // same chart). One ComposedChart; each series carries its own `data` so
@@ -14,6 +15,30 @@ const LEGEND = [
   { glyph: '—', label: 'HODL BTC', color: 'var(--color-bench-btc)' },
   { glyph: '┄', label: 'USDC', color: 'var(--color-bench-usdc)' },
 ] as const
+
+const EQUITY_TERMS: readonly Term[] = [
+  ['BRANCH line', 'the simulated value of the portfolio in USD on each daily close, with its rebalance and DCA rules applied.'],
+  ['HODL BTC line', 'the same starting capital put into BTC on the start date and left alone.'],
+  ['USDC dashed line', 'the same starting capital left in USDC.'],
+  ['vertical axis', 'value in USD.'],
+  ['horizontal axis', 'date, as month/day.'],
+]
+const PROJECTION_TERMS: readonly Term[] = [
+  ['TODAY dotted line', 'where the history ends and the projection starts.'],
+  ['shaded band', 'the middle 80% of the simulated paths: on each day, from the 10th to the 90th percentile.'],
+  ['dashed line in the band', 'the median path: half the simulated paths are above it, half below.'],
+  ['P90 / P50 / P10', 'the value at the end of the projection at the 90th percentile, the median and the 10th percentile of the paths.'],
+]
+
+/** How to read the equity chart; `projection` adds the fan's encoding. The page renders it under the chart. */
+export function EquityGuide({ projection, className }: { projection: boolean; className?: string }) {
+  return (
+    <HowToRead terms={projection ? [...EQUITY_TERMS, ...PROJECTION_TERMS] : EQUITY_TERMS} className={className}>
+      The branch's simulated value over time against two yardsticks: the same capital held in BTC, and left in USDC. Everything up to today is replayed history on daily closes.
+      {projection ? ' The fan after TODAY is a spread of random paths drawn from the return and volatility you typed in: an illustration of those assumptions, not a forecast.' : ''}
+    </HowToRead>
+  )
+}
 
 function tooltipFormatter(value: number) {
   return fmtUsd(value, { decimals: 0 })
@@ -52,12 +77,12 @@ export function EquityChart({
             domain={['dataMin', 'dataMax']}
             scale="time"
             tickFormatter={fmtChartDate}
-            tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+            tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
             stroke="var(--color-border)"
           />
           <YAxis
             tickFormatter={fmtUsdCompact}
-            tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+            tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
             stroke="var(--color-border)"
             width={48}
           />
@@ -67,7 +92,7 @@ export function EquityChart({
             contentStyle={{
               background: 'var(--color-panel)',
               border: '1px solid var(--color-border)',
-              fontSize: 11,
+              fontSize: 13,
             }}
           />
 
@@ -111,7 +136,7 @@ export function EquityChart({
               x={todayTs}
               stroke="var(--color-text-secondary)"
               strokeDasharray="1 3"
-              label={{ value: 'TODAY', position: 'insideTopRight', fontSize: 10, fill: 'var(--color-text-secondary)' }}
+              label={{ value: 'TODAY', position: 'insideTopRight', fontSize: 12, fill: 'var(--color-text-secondary)' }}
             />
           )}
         </ComposedChart>

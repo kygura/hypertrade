@@ -104,11 +104,11 @@
   --base-font-size: 14px; /* app body = text-sm */
 
   /* Closed scale, shifted up one notch toward the app's 12/14px rhythm. */
-  --text-2xs: 10px;
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 13px;
-  --text-base: 14px;
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-base: 15px;
   --text-lg: 18px;
   --text-xl: 24px;
 

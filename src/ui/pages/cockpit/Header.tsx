@@ -4,7 +4,7 @@ import { VenueBadge } from '../../components/intel/VenueBadge'
 import { fmtAge } from '../../components/strategy/format'
 import type { DeskStatus } from '../../lib/desk'
 import type { PlatformHealth } from '../../../shared/platform'
-import { healthItems, worstItem, type Level } from './logic'
+import { healthItems, worstItem, type HealthItem, type Level } from './logic'
 
 // CockpitHeader, HealthStrip, KeysHelp — DESIGN-terminal C2/C6/C3.
 // Presentational: data and callbacks come from Cockpit.tsx.
@@ -49,7 +49,7 @@ export function CockpitHeader({
         )}
         {noDb && <Badge tone="gray">NO DATABASE — MEMORY STORE</Badge>}
         {liveCount != null && (
-          <span className="text-sm tabular text-text-secondary">
+          <span className="text-sm tabular text-text-secondary" title="LIVE: ideas awaiting a decision. READY: ideas that can be approved now.">
             {liveCount} LIVE · {readyCount} READY
           </span>
         )}
@@ -79,6 +79,15 @@ export function CockpitHeader({
   )
 }
 
+/** What each health key measures and where its dot changes colour (thresholds from logic.healthItems). */
+const KEY_TITLE: Record<HealthItem['key'], string> = {
+  WS: 'Market data socket: time since the last message from Hyperliquid. Amber over 10s, red over 30s or when the socket is not open.',
+  SCAN: 'Scanner: time since its last pass over the market. Amber over 90s, red over 120s.',
+  CRAWL: 'Position crawler: address polls per minute and addresses tracked. It feeds the liquidation map. Amber under 100 a minute, red at 0.',
+  LOOPS: 'Background loops that beat within twice their expected interval, out of all loops. Amber when one is more than 2 intervals late, red past 5 or after a crash.',
+  LLM: 'Model spend today in USD.',
+}
+
 const DOT: Record<Level, DotStatus> = { ok: 'ok', warn: 'degraded', critical: 'down', unknown: 'unknown' }
 const TEXT: Record<Level, string> = { ok: 'text-text-secondary', warn: 'text-amber', critical: 'text-red-text', unknown: 'text-text-secondary' }
 
@@ -97,7 +106,7 @@ export function HealthStrip({ health, loading, offline, error, now }: { health: 
   const strip = (
     <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular" aria-label="system health">
       {items.map((i) => (
-        <li key={i.key} className={`flex items-center gap-1.5 ${TEXT[i.level]}`} title={i.title}>
+        <li key={i.key} className={`flex items-center gap-1.5 ${TEXT[i.level]}`} title={[KEY_TITLE[i.key], i.title].filter(Boolean).join('\n')}>
           <StatusDot status={DOT[i.level]} />
           <span className="label">{i.key}</span>
           <span>{i.value}</span>

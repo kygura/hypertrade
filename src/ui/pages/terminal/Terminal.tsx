@@ -25,7 +25,7 @@ import { useAction } from '../../components/intel/useAction'
 import { CATALYSTS_ANCHOR, FLOW_ANCHOR, NEWS_ANCHOR, ReviewStrip } from '../../components/intel/ReviewStrip'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { WhatChangedPanel } from '../../components/intel/WhatChangedPanel'
-import { Panel } from '../../components'
+import { HowToRead, Panel } from '../../components'
 import { OfflineBlock } from '../../components/state'
 import { ApiError, NetworkError } from '../../lib/api'
 import { isDbUnavailable } from '../../lib/dbUnavailable'
@@ -234,6 +234,9 @@ export function Terminal() {
   return (
     <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col" onClickCapture={() => setHighlightId(null)}>
       <TerminalTabs />
+      <HowToRead className="pb-2">
+        Changes since you last opened this page that touch your positions and watchlist: what moved, flow by coin, coming catalysts, news and alerts.
+      </HowToRead>
       <p className="sr-only" aria-live="polite">
         {announce}
       </p>

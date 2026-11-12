@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { boardLine, replayLine } from "./research";
 import type { RadarCall } from "../../shared/radar";
 import type { Rule } from "./lab";
 import { boardStudy, STUDY_DEFAULTS, UNIVERSE_ASSET, type LedgerEvidence, type SetupReplayRow } from "../../shared/research";
@@ -163,5 +164,38 @@ describe("replay helpers", () => {
     expect(definitionForKind(defs, "vol_expansion_breakout", "short")?.id).toBe("range_breakdown");
     expect(definitionForKind(defs, "crowded_long", "short")).toBeNull();
     expect(definitionForKind(null, "vol_expansion_breakout", "long")).toBeNull();
+  });
+});
+
+describe("fact lines", () => {
+  const ok = { state: "ok" as const, count: 0, dropped: 0 };
+  const sources = { novelty: ok, rule: ok, opportunity: { ...ok, state: "unavailable" as const }, radar: ok, definition: ok };
+  const study = (verdict: "clear" | "rejected" | "insufficient") => ({ kind: "study" as const, verdict, events: 41, weeks: 38, expectancy: 0.2, upper95: 0.3, holdoutExpectancy: null, idea: null, asOf: "2026-11-11T00:00:00.000Z" });
+
+  test("boardLine: signals, coins, studies by verdict, unstudied rules, other evidence, sources off", () => {
+    const signals = [
+      sig("a", "BTC", 1, { rule, evidence: study("clear") }),
+      sig("b", "BTC", 2, { rule, evidence: study("rejected") }),
+      sig("c", "ETH", 3, { rule }),
+      sig("d", "SOL", 4, { source: "opportunity", rule, evidence: { kind: "ledger", setupKind: "crowded_long", horizon: "24h", n: 3, clusters: 2, meanNet: 0.01, ci95: null, hitRate: 0.5 } }),
+      sig("e", "HYPE", 5, { source: "radar" }),
+    ];
+    expect(boardLine({ signals, sources })).toBe(
+      "5 signals on 4 coins. 2 studied today: 1 clear, 1 rejected, 0 insufficient. 1 with a rule not studied today. 1 backed by a live record or graded calls. 1 with nothing recorded yet. 1 source unavailable.",
+    );
+    expect(boardLine({ signals: [sig("c", "ETH", 3, { rule })], sources: { ...sources, opportunity: ok } })).toBe("1 signal on 1 coin. None studied today. 1 with a rule not studied today.");
+    // an empty ledger is not a record
+    const emptyLedger = sig("f", "SOL", 6, { source: "opportunity", evidence: { kind: "ledger", setupKind: "crowded_long", horizon: "24h", n: 0, clusters: 0, meanNet: null, ci95: null, hitRate: null } });
+    expect(boardLine({ signals: [emptyLedger], sources: { ...sources, opportunity: ok } })).toBe("1 signal on 1 coin. None studied today. 1 with nothing recorded yet.");
+    expect(boardLine({ signals: [], sources })).toBeNull();
+  });
+
+  test("replayLine: sides that could be replayed, their entries and graded outcomes", () => {
+    const row = (over: Partial<SetupReplayRow>): SetupReplayRow => ({ kind: "k", side: "long", horizon: "24h", evaluable: true, entries: 0, n: 0, clusters: 0, meanNet: null, ci95: null, hitRate: null, ...over });
+    expect(replayLine([row({ entries: 20, n: 18 }), row({ side: "short", entries: 11, n: 10 }), row({ kind: "x", evaluable: false, entries: 0 })], "24h")).toBe(
+      "At 24h, 2 of 3 setup sides could be replayed: 31 entries, 28 graded. The other 1 read an input this data lacks.",
+    );
+    expect(replayLine([row({ entries: 4, n: 4 })], "4h")).toBe("At 4h, 1 of 1 setup sides could be replayed: 4 entries, 4 graded.");
+    expect(replayLine([], "24h")).toBeNull();
   });
 });

@@ -4,6 +4,7 @@ import { Button } from '../Button'
 import { MomentumBadge } from '../MomentumBadge'
 import { SrcTag } from '../SrcTag'
 import { DataTable, type Column } from '../DataTable'
+import { HowToRead, type Term } from '../HowToRead'
 import type { EnrichedSector, SectorTokenRow } from './MindshareGrid'
 
 // SectorDrillPanel — docs/design/README.md §10.5. rationale verbatim, sources as
@@ -11,6 +12,16 @@ import type { EnrichedSector, SectorTokenRow } from './MindshareGrid'
 // same §4.4 drop order as Markets) built from GET /api/sectors's per-token
 // enrichment. Tokens with no HL listing (not in tokenRows) render as plain
 // chips below the table — absence shown, not hidden.
+
+const TERMS: readonly Term[] = [
+  ['Paragraph', 'The routine\'s reasoning for this sector, as written. The tags under it are the data sources it cited.'],
+  ['24H%', 'Mark price against the previous-day price.'],
+  ['OI', 'Open interest in USD: all open contracts times the mark price.'],
+  ['FUNDING 1H', 'The rate longs pay shorts each hour, as a percent of position size. Negative means shorts pay longs.'],
+  ['MENTIONS 24H', 'Crypto-social posts mentioning the token over the last 24 hours (Elfa). The column shows only when at least one token here has a sample; a dash means none was collected for that token.'],
+  ['Δ MENTIONS', 'Change in that count as Elfa reports it, in percent.'],
+  ['Plain chips', 'Tokens the routine listed that have no Hyperliquid perp, so no live numbers.'],
+]
 
 export function SectorDrillPanel({ sector, onClose }: { sector: EnrichedSector; onClose: () => void }) {
   const navigate = useNavigate()
@@ -49,7 +60,7 @@ export function SectorDrillPanel({ sector, onClose }: { sector: EnrichedSector; 
     },
     {
       key: 'funding',
-      label: 'FUNDING',
+      label: 'FUNDING 1H',
       priority: 4,
       align: 'right',
       sortValue: (r) => r.funding,
@@ -95,6 +106,10 @@ export function SectorDrillPanel({ sector, onClose }: { sector: EnrichedSector; 
           CLOSE ✕
         </Button>
       </div>
+
+      <HowToRead terms={TERMS}>
+        The routine's reasoning for this sector, then live Hyperliquid numbers for each of its tokens. Click a token row for its chart.
+      </HowToRead>
 
       <p className="text-base text-text-muted">{sector.rationale}</p>
 

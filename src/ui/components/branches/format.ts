@@ -76,3 +76,26 @@ export function fmtChartDate(ts: number): string {
   const d = new Date(ts)
   return `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`
 }
+
+const usd0 = (x: number) => '$' + Math.round(x).toLocaleString('en-US')
+const pct1 = (x: number) => `${Math.abs(x).toFixed(1)}%`
+
+/**
+ * A simulated branch in one line: start capital and date, end value and date, the deepest fall from a peak, and where
+ * it ended against holding BTC over the same days. Facts about a historical simulation; null without an equity curve.
+ */
+export function branchLine(
+  result: { equity: EquityPoint[]; benchmarks: { btc: EquityPoint[] }; stats: { finalValue: number; maxDrawdownPct: number; vsBtcPct: number } },
+  initialCapitalUsd: number,
+): string | null {
+  const first = result.equity[0]
+  const last = result.equity.at(-1)
+  if (!first || !last || !(initialCapitalUsd > 0)) return null
+  const day = (ts: number) => new Date(ts).toISOString().slice(0, 10)
+  const days = Math.round((last.ts - first.ts) / 86_400_000)
+  const ret = (result.stats.finalValue / initialCapitalUsd - 1) * 100
+  const btc = result.benchmarks.btc.at(-1)?.value
+  const vs = result.stats.vsBtcPct
+  const btcText = btc == null ? '' : ` Holding BTC over the same days ended at ${usd0(btc)}: the branch ended ${Math.abs(vs) < 0.05 ? 'level with' : `${pct1(vs)} ${vs > 0 ? 'above' : 'below'}`} that.`
+  return `${usd0(initialCapitalUsd)} on ${day(first.ts)} became ${usd0(result.stats.finalValue)} by ${day(last.ts)} (${ret >= 0 ? '+' : '−'}${pct1(ret)} over ${days} days). Deepest fall from a peak: ${pct1(result.stats.maxDrawdownPct)}.${btcText}`
+}

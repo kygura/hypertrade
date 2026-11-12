@@ -243,7 +243,16 @@ describe('MovesView', () => {
   test('no TriagePanel on /moves: one line pointing at QUEUE', () => {
     expect(out).not.toContain('TRIAGE')
     expect(out).toContain('href="/queue"')
-    expect(out).toContain('today&#x27;s triage is in QUEUE →')
+    expect(out).toContain('the coins that crossed today&#x27;s bar are in QUEUE →')
+  })
+  test('reading guides: the table takeaway on top, one guide per panel and block, the coin takeaway in D1', () => {
+    expect(out).toContain('24h: a residual of 2σ or more on 1 of 2 coins (1 up, 0 down); 0 of those had no news hour; 3 coins meet 3 or more crowding checks on one side; 1 coin lacks the history for a split.')
+    expect(out.indexOf('data-takeaway')).toBeLessThan(out.indexOf('FACTORS'))
+    expect(out.match(/class="how-to-read/g)).toHaveLength(9) // page, factors, table, D1 to D6
+    expect(block(out, 'd1')).toContain('Over 24h HYPE moved +9.9%: +3.3% tracks BTC, ETH and its sector, +6.4% does not.')
+    const pending = html(<MovesView {...viewProps({ moves: feed(movesResponse({ state: 'pending', rows: [], progress: { loaded: 1, total: 2 } })), rows: [], showDetail: false })} />)
+    expect(pending).not.toContain('data-takeaway')
+    expect(pending).toContain('class="how-to-read')
   })
   test('phone list: no detail pane', () => {
     const list = html(<MovesView {...viewProps({ showDetail: false })} />)

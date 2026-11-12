@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Badge, Button } from '../../components'
+import { Badge, Button, HowToRead } from '../../components'
 import type { OpportunityDetail } from '../../../shared/platform'
 import { api, ApiError } from '../../lib/api'
 import type { DeskStatus } from '../../lib/desk'
@@ -8,7 +8,7 @@ import { actionFailure, platform, PLATFORM_POLL } from '../../lib/platformApi'
 import { usePoll } from '../../lib/poll'
 import { canApprove, canReject, RejectDialog, TicketDialog } from '../cockpit/Detail'
 import { approveBlockedReason, STATUS_WORD } from '../cockpit/logic'
-import { setupFacts } from './logic'
+import { SETUP_TERMS, setupFacts } from './logic'
 
 // SETUP — the ready opportunity for this coin, decided where the coin is read (docs/SPEC.md § Queue, COIN).
 // The same gates as the feed: the server's freshness gate (canApprove), then the governor preview; APPROVE
@@ -103,6 +103,7 @@ export function SetupApproveView({
         <span className="tabular text-text-secondary">{setupFacts(o, d.ticket, fmtPx)}</span>
       </div>
       {o.invalidation && <p className="text-xs text-text-secondary break-words">invalidation: {o.invalidation}</p>}
+      <HowToRead terms={SETUP_TERMS}>A setup the scanner has for this coin, and the order it would place. Nothing is sent before CONFIRM in the ticket dialog.</HowToRead>
       <div className="flex flex-wrap items-center gap-1.5">
         <Button
           tier="neutral"

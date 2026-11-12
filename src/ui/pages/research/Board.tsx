@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
-import { AsyncBody, Badge, Button, DialogShell, EmptyBlock, ErrorBlock, Panel, PanelHeader, PageContainer } from '../../components'
+import { AsyncBody, Badge, Button, DialogShell, EmptyBlock, ErrorBlock, HowToRead, Panel, PanelHeader, PageContainer, type Term } from '../../components'
 import { LabTabs } from '../../components/lab/LabTabs'
 import { StudyVerdictBadge } from '../../components/lab/StudyVerdictBadge'
 import { rememberReturnPath, useApi } from '../../lib/api'
@@ -8,11 +8,11 @@ import { fmtAge } from '../../lib/format'
 import { useNow, useQueryPatch } from '../../lib/hooks'
 import { usePoll, type PollState } from '../../lib/poll'
 import {
-  authOf, BOARD_POLL_MS, boardKey, cellState, dailyState, flatSignals, ledgerText, noEvidenceText, recentCalls, research, rowStudyKey, runState, scopeLabel, scorecardText, signalBlocks,
+  authOf, BOARD_POLL_MS, boardKey, boardLine, cellState, dailyState, flatSignals, ledgerText, noEvidenceText, recentCalls, research, rowStudyKey, runState, scopeLabel, scorecardText, signalBlocks,
   signalStudyHref, SOURCE_LABEL, studyFailed, testedLabel, type Auth, type BoardSignal, type CellState, type RowStudy,
 } from '../../lib/research'
-import { fmtR } from '../../lib/study'
-import { RESEARCH_SOURCES, type BoardResponse, type RadarResponse, type StudySummary } from '../../../shared/research'
+import { DEFAULT_TOP, fmtR, STUDY_MIN_WEEKS } from '../../lib/study'
+import { RESEARCH_SOURCES, STUDY_DEFAULTS, type BoardResponse, type RadarResponse, type StudySummary } from '../../../shared/research'
 
 // Research board — `/board` (docs/RESEARCH.md "Board"). Live signals from five sources,
 // each with its evidence cell by kind: the cached event study of its Lab rule (or a STUDY button that runs it
@@ -132,6 +132,48 @@ export interface BoardViewProps {
 }
 
 const LINK = 'text-xs text-text-secondary hover:text-text-primary underline-offset-2 hover:underline'
+const GUIDE = 'px-3 py-2 border-b border-border-subtle'
+
+/** Every badge, word and number a signal row can print (docs/RESEARCH.md "Board"; the cut-offs are the engine's). */
+const SIGNAL_TERMS: readonly Term[] = [
+  ['NOVELTY', 'a daily reading of the coin (funding, open interest, return, volatility or volume) beyond anything in its own history, or two kinds of reading beyond their 1st/99th percentile on the same day. It has no side of its own: its rule is studied as a fade of the extreme.'],
+  ['RULE', 'a rule saved in the catalogue whose conditions are all true on the latest daily bar.'],
+  ['SETUP', 'an intraday setup found by the scanner on minute data. It is backed by its live record, not by a study.'],
+  ['RADAR', 'a call written by the scheduled radar session (an LLM) about a dated catalyst. It is graded forward against BTC, never replayed.'],
+  ['DEFINITION', 'one of the shipped daily signal definitions whose conditions are all true on the latest closed daily bar.'],
+  ['LONG / SHORT', 'the side the source itself names, when it has one.'],
+  ['z(90), z90', 'z-score: how many standard deviations the value is from its own mean over the last 90 days. +2 is unusually high, −2 unusually low.'],
+  ['roc(7)', 'change over the last 7 days as a fraction: −0.08 is a fall of 8%.'],
+  ['pctile(30)', 'rank of today among the last 30 days, from 0 (lowest) to 1 (highest).'],
+  ['ma_ratio(20)', 'distance from the 20-day mean as a fraction: 0.5 is 50% above it.'],
+  ['vchg(3)', 'the 3-day move in units of the coin\'s own 3-day volatility: within ±1 is an ordinary move.'],
+  ['→ long 7d', 'the trade the study replays when the conditions are true: side and days held.'],
+  ['tested long / short', 'the side the event study trades. A fact about the study, not a recommendation: a negative result means that side lost, not that the other side won.'],
+  [`this coin / top-${DEFAULT_TOP} universe`, `the markets the study replayed: this coin only, or the ${DEFAULT_TOP} Hyperliquid perps with the most daily volume. A universe study is not this coin's own history.`],
+  ['CLEAR', 'the study did not show the rule losing: the 95% upper bound of its average result is not below 0. Never proof of an edge.'],
+  ['REJECTED', 'the rule clearly lost: even the 95% upper bound of its average result is below 0.'],
+  ['INSUFFICIENT', `fewer than ${STUDY_MIN_WEEKS} weeks with trades, so the study gives no verdict.`],
+  ['events', `past trades the study replayed: in at the daily close on a day the conditions were true, out at the stop (${STUDY_DEFAULTS.stopAtr} ATR), the target (${STUDY_DEFAULTS.targetAtr} ATR) or the end of the hold. ATR is the average daily range over 14 days.`],
+  ['weeks', 'calendar weeks holding at least one event. Trades in the same week move together, so each week is averaged first and counts once.'],
+  ['+0.21R', 'average result per trade in units of risk, after fees, slippage and funding. 1R is the distance from entry to stop, so +0.21R is a gain of 0.21 times the amount risked.'],
+  ['(≤ +0.35R)', 'one-sided 95% upper bound of that average: the true average is unlikely to be higher.'],
+  ['live record', 'graded outcomes of this setup kind in the scanner\'s own ledger, each measured 24 hours after the signal.'],
+  ['outcomes / clusters', 'outcomes are signals that were graded. Clusters are outcomes grouped by day: signals on the same day are not independent, so a day counts once.'],
+  ['mean net [lo, hi]', 'average return per outcome after fees, slippage and funding, taken over the cluster averages, with its 95% interval. The interval needs 5 clusters.'],
+  ['graded forward', 'radar calls of the same stance checked 7 days later: the mean move against BTC in the called direction, and the share that went the called way (hit).'],
+  ['STUDY', 'runs the event study now (up to about 50 s). Each run is recorded as a trial: the more ideas are tried, the likelier one looks good by luck.'],
+  ['daily version', 'on a setup row: the study of the daily-bar definition of the same idea. It does not test the intraday setup itself.'],
+  ['chips above', 'one per source with the number of signals it shows. Unavailable means the source could not be read; hover for the reason. A * points to the note under the chips.'],
+]
+
+const RADAR_TERMS: readonly Term[] = [
+  ['ride / fade', 'the call\'s stance: ride is with the move it describes, fade is against it. Long or short says which way that is.'],
+  ['kill', 'the price that ends the call: below it for a long, above it for a short. "killed" with a date means a scan saw the price cross it.'],
+  ['DAYS', 'how long after the call it was graded: 3 or 7 days.'],
+  ['CALLS', 'calls of that stance graded at that horizon. Small counts say little.'],
+  ['MEAN VS BTC', 'average move of the market relative to BTC over those days, in percent, signed so that positive means it went the called way.'],
+  ['HIT', 'calls that went the called way out of calls graded.'],
+]
 
 export function BoardView(p: BoardViewProps) {
   const firing = p.board.data?.pulse ? p.board.data.pulse.firing > 0 : undefined
@@ -143,8 +185,14 @@ export function BoardView(p: BoardViewProps) {
         <section aria-label="signals" className="lg:col-span-8 min-w-0">
           <Panel>
             <PanelHeader title="SIGNALS">
-              <span className="hidden [@media(pointer:fine)]:inline text-xs text-text-secondary">j/k · enter study · s run</span>
+              <span className="hidden [@media(pointer:fine)]:inline text-xs text-text-secondary" title="keyboard: j and k move between rows, Enter opens the row's study page, s runs its study in place">
+                keys: j/k move · enter open · s study
+              </span>
             </PanelHeader>
+            <HowToRead terms={SIGNAL_TERMS} className={GUIDE}>
+              Each row is a condition that is true on a market now. The cell on its right says what happened in the past when the same condition was true: how many cases, and whether they
+              lost money. All of it is history, not a forecast, and no row is a recommendation.
+            </HowToRead>
             <AsyncBody loading={p.board.loading} data={p.board.data} error={p.board.error} offline={p.board.offline} onRetry={p.board.refetch} rows={6}>
               {(b) => <SignalList {...p} data={b} />}
             </AsyncBody>
@@ -213,29 +261,38 @@ export function chipTitle(st: BoardResponse['sources'][keyof BoardResponse['sour
 export function emptyLabel(b: BoardResponse, coin: string | null): string {
   if (coin) return `no signal on ${coin.toUpperCase()} now`
   const on = RESEARCH_SOURCES.filter((s) => b.sources[s].state === 'ok').map((s) => SOURCE_LABEL[s].toLowerCase())
-  return on.length ? `no condition firing · sources on: ${on.join(', ')}` : 'no source available — see the chips above'
+  return on.length ? `no condition firing · sources on: ${on.join(', ')}` : 'no source could be read, so no signal can show. Each chip above gives its reason'
 }
 
 function SignalList(p: BoardViewProps & { data: BoardResponse }) {
   const blocks = signalBlocks(p.data.signals, p.coin)
   if (blocks.length === 0) return <EmptyBlock label={emptyLabel(p.data, p.coin)} action={p.coin ? { label: 'SHOW ALL', onClick: p.onClearCoin } : undefined} />
+  const line = boardLine(p.data)
   return (
-    <ul className="flex flex-col">
-      {blocks.map((b) => (
-        <li key={b.coin} className="border-b border-border-subtle last:border-b-0">
-          {b.grouped && (
-            <div className="px-3 pt-2 text-xs text-text-secondary tabular">
-              {b.coin} · {b.signals.length} signals
-            </div>
-          )}
-          <ul>
-            {b.signals.map((s) => (
-              <SignalRow key={s.id} {...p} s={s} />
-            ))}
-          </ul>
-        </li>
-      ))}
-    </ul>
+    <>
+      {line && (
+        <p className="px-3 py-2 text-md text-text-primary border-b border-border-subtle">
+          {p.coin ? 'Whole board: ' : ''}
+          {line}
+        </p>
+      )}
+      <ul className="flex flex-col">
+        {blocks.map((b) => (
+          <li key={b.coin} className="border-b border-border-subtle last:border-b-0">
+            {b.grouped && (
+              <div className="px-3 pt-2 text-xs text-text-secondary tabular">
+                {b.coin} · {b.signals.length} signals
+              </div>
+            )}
+            <ul>
+              {b.signals.map((s) => (
+                <SignalRow key={s.id} {...p} s={s} />
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </>
   )
 }
 
@@ -408,6 +465,7 @@ function PulsePanel({ board }: { board: Poll<BoardResponse> }) {
           RULES →
         </Link>
       </PanelHeader>
+      <HowToRead className={GUIDE}>How many of the rules saved in the catalogue have all their conditions true on the latest daily bar, and how many assets those rules cover. A firing rule is a condition that is met, not a call.</HowToRead>
       <AsyncBody loading={board.loading} data={b} error={board.error} offline={board.offline} onRetry={board.refetch} rows={1}>
         {(d) =>
           d.pulse ? (
@@ -416,7 +474,7 @@ function PulsePanel({ board }: { board: Poll<BoardResponse> }) {
             </p>
           ) : (
             <p className="px-3 py-2 text-sm text-text-secondary" title={d.sources.rule.reason}>
-              pulse unavailable{d.sources.rule.reason ? ` — ${d.sources.rule.reason}` : ''}
+              pulse unavailable{d.sources.rule.reason ? ` — ${d.sources.rule.reason}` : ''}. The count of saved rules firing would show here.
             </p>
           )
         }
@@ -432,6 +490,10 @@ function RadarPanel({ radar, auth, onAuthRetry, onSignIn }: { radar: Poll<RadarR
   return (
     <Panel>
       <PanelHeader title="RADAR" />
+      <HowToRead terms={RADAR_TERMS} className={GUIDE}>
+        Calls from the twice-daily radar session about dated catalysts, each with the price that ends it, then how past calls did against BTC 3 and 7 days later. The table is a
+        track record of past calls, not a forecast for the open ones.
+      </HowToRead>
       {auth.state === 'error' ? (
         <ErrorBlock message={`session check failed: ${auth.message}`} onRetry={onAuthRetry} />
       ) : auth.state === 'guest' ? (
@@ -445,7 +507,7 @@ function RadarPanel({ radar, auth, onAuthRetry, onSignIn }: { radar: Poll<RadarR
         <AsyncBody loading={radar.loading || auth.state === 'loading'} data={radar.data} error={radar.error} offline={radar.offline} onRetry={radar.refetch} rows={3}>
           {(r) =>
             r.state === 'unavailable' ? (
-              <p className="px-3 py-2 text-sm text-text-secondary">radar unavailable{r.reason ? ` — ${r.reason}` : ''}</p>
+              <p className="px-3 py-2 text-sm text-text-secondary">radar unavailable{r.reason ? ` — ${r.reason}` : ''}. The latest note, the open calls and their track record would show here.</p>
             ) : (
               <RadarBody r={r} onNote={() => setOpen(true)} />
             )
@@ -470,7 +532,7 @@ function RadarBody({ r, onNote }: { r: RadarResponse; onNote: () => void }) {
         )}
       </div>
       {calls.length === 0 ? (
-        <p className="text-sm text-text-secondary">no calls landed</p>
+        <p className="text-sm text-text-secondary">no calls yet: the radar session has not recorded a ride or fade call</p>
       ) : (
         <ul className="flex flex-col gap-1">
           {calls.map((c) => (
@@ -495,9 +557,9 @@ function RadarBody({ r, onNote }: { r: RadarResponse; onNote: () => void }) {
             <thead>
               <tr>
                 <th className="text-left">STANCE</th>
-                <th className="text-right">H</th>
-                <th className="text-right">N</th>
-                <th className="text-right">MEAN</th>
+                <th className="text-right">DAYS</th>
+                <th className="text-right">CALLS</th>
+                <th className="text-right">MEAN VS BTC</th>
                 <th className="text-right">HIT</th>
               </tr>
             </thead>

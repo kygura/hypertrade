@@ -22,6 +22,7 @@ import { TIMEFRAMES, type Timeframe } from '../../../shared/timeframes'
 import { useCandlePages } from '../../lib/candles'
 import { useHlReconnect, useHlSubscription, type WsCandle } from '../../lib/hlWs'
 import { useTheme } from '../../themes/registry'
+import { HowToRead, type Term } from '../HowToRead'
 import { Segmented } from '../Segmented'
 import { AsyncBody, SkeletonRows } from '../state'
 import { alpha, css } from './theme'
@@ -40,10 +41,22 @@ const TF_OPTIONS = TIMEFRAMES.map((v) => ({ value: v, label: <span style={{ text
 
 type Overlay = 'vol' | 'funding' | 'oi' | 'premium'
 const OVERLAYS: { id: Overlay; label: string; title: string }[] = [
-  { id: 'vol', label: 'VOL', title: 'Volume (base units)' },
-  { id: 'funding', label: 'FUND', title: 'Funding, annualized (mean hourly rate per bar)' },
+  { id: 'vol', label: 'VOLUME', title: 'Volume (base units)' },
+  { id: 'funding', label: 'FUNDING', title: 'Funding, annualized (mean hourly rate per bar)' },
   { id: 'oi', label: 'OI', title: 'Open interest, USD (15-minute snapshots)' },
-  { id: 'premium', label: 'PREM', title: 'Mark vs oracle premium, basis points' },
+  { id: 'premium', label: 'PREMIUM', title: 'Mark vs oracle premium, basis points' },
+]
+
+const TERMS: readonly Term[] = [
+  ['Candles', 'One bar per timeframe step, in UTC. Green closed at or above its open, red below. The newest bar updates live.'],
+  ['O H L C · Δ', 'In the readout: open, high, low and close of the bar under the cursor (the latest bar otherwise). Δ is the close against the previous bar\'s close.'],
+  ['VOLUME', 'Bars at the bottom of the price pane: amount traded in the bar, in coins, coloured like its candle.'],
+  ['FUNDING', 'Its own pane: the mean hourly funding rate during the bar, scaled to a yearly percent. Green above zero means longs paid shorts; red below zero means shorts paid longs.'],
+  ['OI', 'Its own pane: open interest in USD at the bar\'s close, from snapshots stored every 15 minutes for tracked coins. Rising means positions were opened on net between snapshots; falling means they were closed.'],
+  ['PREMIUM', 'Its own pane: how far the perp traded from the oracle (spot) price during the bar, in basis points (1bp = 0.01%). Above zero means the perp was above spot.'],
+  ['LOG', 'Switches the price axis to a log scale: equal distances are equal percent moves.'],
+  ['Arrows on the chart', 'Where the price history switches source. Bars from before the Hyperliquid listing come from Binance, then Bitstamp, and are labelled SRC in the readout.'],
+  ['Footer line', 'Where each source starts, and how far back funding and open interest history go for this coin.'],
 ]
 const DEFAULT_OVERLAYS: Record<Overlay, boolean> = { vol: true, funding: true, oi: true, premium: false }
 const PREFS_KEY = 'hypertrade.chart.overlays'
@@ -173,7 +186,7 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
         background: { type: ColorType.Solid, color: 'transparent' },
         textColor: text,
         fontFamily: font,
-        fontSize: 10,
+        fontSize: 12,
         attributionLogo: false,
         panes: { separatorColor: border, separatorHoverColor: alpha(text, 0.2), enableResize: true },
       },
@@ -216,7 +229,7 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
       series.funding = chart.addSeries(
         HistogramSeries,
         {
-          title: 'FUND APR',
+          title: 'FUNDING APR',
           priceLineVisible: false,
           priceFormat: { type: 'custom', formatter: (v: number) => fmtPct(v, { decimals: 1 }), minMove: 0.0001 },
         },
@@ -244,7 +257,7 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
       series.premium = chart.addSeries(
         LineSeries,
         {
-          title: 'PREM',
+          title: 'PREMIUM',
           color: amber,
           lineWidth: 1,
           priceLineVisible: false,
@@ -418,7 +431,11 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
             <span className="text-xs text-text-secondary text-center pulse-label">backfilling candles…</span>
           </div>
         }
-        empty={{ label: data.syncError ? `no candle data — ${data.syncError}` : 'no candle data' }}
+        empty={{
+          label: data.syncError
+            ? `No candles for ${coin} on this timeframe. The history sync reported: ${data.syncError}`
+            : `No candles for ${coin} on this timeframe. The server looked on Hyperliquid, then Binance, then Bitstamp, and none returned bars.`,
+        }}
         onRetry={data.reload}
       >
         {() => (
@@ -437,6 +454,10 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
             )}
           </div>
           <Footnote spans={spans} hasMore={data.hasMore} funding={data.funding} oi={data.oi} syncError={data.syncError} overlays={overlays} />
+          <HowToRead className="px-2 py-2 border-t border-border" terms={TERMS}>
+            Price candles with optional panes on the same time axis: volume, funding, open interest and premium. Look at bars where price,
+            open interest and funding moved together or apart.
+          </HowToRead>
         </>
         )}
       </AsyncBody>
@@ -481,10 +502,10 @@ function Legend({
       {cell('L', fmtPrice(bar.l))}
       {cell('C', fmtPrice(bar.c), tone)}
       {cell('Δ', fmtPct(change, { sign: true }), tone)}
-      {overlays.vol && cell('V', fmtCompact(bar.v))}
-      {overlays.funding && cell('FUND', bar.f == null ? '--' : `${fmtPct(fundingApr(bar.f), { decimals: 1, sign: true })} apr`)}
+      {overlays.vol && cell('VOL', fmtCompact(bar.v))}
+      {overlays.funding && cell('FUNDING', bar.f == null ? '--' : `${fmtPct(fundingApr(bar.f), { decimals: 1, sign: true })} apr`)}
       {overlays.oi && cell('OI', bar.oi == null ? '--' : fmtUsd(bar.oi, { compact: true }))}
-      {overlays.premium && cell('PREM', bar.p == null ? '--' : fmtBp(bar.p))}
+      {overlays.premium && cell('PREMIUM', bar.p == null ? '--' : fmtBp(bar.p))}
       {bar.src !== 'hl' && <span className="text-text-secondary whitespace-nowrap">SRC {SRC_LABEL[bar.src] ?? bar.src}</span>}
     </div>
   )
@@ -516,7 +537,7 @@ function Footnote({
     )
   }
   if (overlays.oi) {
-    parts.push(oi?.from != null ? `OI snapshots from ${date(oi.from)} (every 15m)` : 'no OI snapshots in view — collected every 15m for tracked coins')
+    parts.push(oi?.from != null ? `OI snapshots from ${date(oi.from)} (every 15m)` : 'no OI snapshots in view: open interest is stored every 15m, and only for tracked coins')
   }
   return (
     <div className="px-2 py-1.5 border-t border-border text-xs text-text-secondary flex flex-wrap gap-x-3 gap-y-0.5">

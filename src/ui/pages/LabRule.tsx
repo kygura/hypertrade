@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
-import { Button, EmptyBlock, ErrorBlock, OfflineBlock, Panel, PanelHeader, SkeletonRows, StaleBanner } from '../components'
-import { RuleEquityChart } from '../components/charts/RuleEquityChart'
-import { DrawdownChart } from '../components/branches/DrawdownChart'
+import { Button, EmptyBlock, ErrorBlock, HowToRead, OfflineBlock, Panel, PanelHeader, SkeletonRows, StaleBanner, type Term } from '../components'
+import { RuleEquityChart, RuleEquityGuide } from '../components/charts/RuleEquityChart'
+import { DrawdownChart, DrawdownGuide } from '../components/branches/DrawdownChart'
 import { computeDrawdown } from '../components/branches/format'
 import { RuleDrillHeader } from '../components/lab/RuleDrillHeader'
-import { WindowStatsTable } from '../components/lab/WindowStatsTable'
+import { WINDOW_TERMS, WindowStatsTable } from '../components/lab/WindowStatsTable'
 import { SensitivityGrid } from '../components/lab/SensitivityGrid'
 import { LatestValuesRow } from '../components/lab/LatestValuesRow'
 import { SaveToCatalogueForm } from '../components/lab/SaveToCatalogueForm'
@@ -16,6 +16,8 @@ import {
   benchmarkLabel,
   dateIso,
   defaultRuleName,
+  EVAL_TERMS,
+  MIN_STABILITY,
   drillEvaluateArgs,
   drillTrialsN,
   freshDsrN,
@@ -47,6 +49,17 @@ const BACK: Record<string, { label: string; to: string }> = {
   catalogue: { label: '← CATALOGUE', to: '/lab/catalogue' },
   pulse: { label: '← RULES', to: '/lab/catalogue' },
 }
+
+const GUIDE = 'px-3 py-2 border-b border-border-subtle'
+
+const SENSITIVITY_TERMS: readonly Term[] = [
+  ['THRESHOLD row', 'the same rule with this condition\'s cut-off moved along the metric\'s own history: q−0.10 and q−0.05 put it 10 and 5 percentile points lower, q+0.05 and q+0.10 higher. BASE is the rule as written.'],
+  ['WINDOW row', 'the same rule with this condition\'s lookback swapped for the next shorter and the next longer window (for example w7 and w90 around w30), keeping the cut-off at the same percentile.'],
+  ['top number', 'Sharpe of that variant over the search region (the first 80% of the history).'],
+  ['bottom number', 'its total return over the same days.'],
+  ['cell colour', 'against the BASE Sharpe: red = the sign flipped, light red = under half of it, neutral = between half and all of it, green = at least as high.'],
+  ['STABILITY', EVAL_TERMS.stability[1]],
+]
 
 function failed<T>(s: LabState<T>): ReactNode | null {
   if (s.offline && !s.data) return <OfflineBlock onRetry={s.refetch} />
@@ -165,7 +178,7 @@ export function LabRule() {
       <>
         {backButton}
         <Panel>
-          {err ?? <EmptyBlock label="rule not found — it was never saved and its run is unknown" action={{ label: 'SEARCH', onClick: () => navigate('/lab/search') }} />}
+          {err ?? <EmptyBlock label="rule not found: it is not in the catalogue and the search run it came from is not known" action={{ label: 'SEARCH', onClick: () => navigate('/lab/search') }} />}
         </Panel>
       </>,
     )
@@ -208,27 +221,33 @@ export function LabRule() {
               ) : evaluating ? (
                 <SkeletonRows />
               ) : (
-                failed(evaluation) ?? <EmptyBlock label="no equity curve" />
+                failed(evaluation) ?? <EmptyBlock label="no equity curve: today's evaluation returned none, or the holdout start is unknown" />
               )}
             </div>
+            <RuleEquityGuide benchmarkLabel={bench} saved={entry?.savedAt != null} className="px-3 pb-2" />
             <LabFooter dataTo={dataTo} slippageBps={slip} className="px-3 pb-2" />
           </Panel>
 
           <Panel className="order-3 lg:order-none">
-            <PanelHeader title="DRAWDOWN">{equity && <span className="text-xs tabular text-red-text">MAX DD {fmtSigned(maxDd, 1)}%</span>}</PanelHeader>
+            <PanelHeader title="DRAWDOWN">{equity && <span className="text-xs tabular text-red-text">MAX DRAWDOWN {fmtSigned(maxDd, 1)}%</span>}</PanelHeader>
             <div className="p-2">
               {equity ? (
                 <DrawdownChart equity={equity.map((p) => ({ ts: p.t, value: p.strategy }))} />
               ) : evaluating ? (
                 <SkeletonRows rows={2} />
               ) : (
-                failed(evaluation) ?? <EmptyBlock label="no equity curve" />
+                failed(evaluation) ?? <EmptyBlock label="no equity curve, so no drawdown to draw" />
               )}
             </div>
+            <DrawdownGuide className="px-3 pb-2" />
           </Panel>
 
           <Panel className="order-4 lg:order-none">
             <PanelHeader title="STATS BY WINDOW" />
+            <HowToRead terms={WINDOW_TERMS} className={GUIDE}>
+              One column per stretch of history, the same statistics in each. Compare walk-forward with holdout: a rule that carries forward shows a similar Sharpe in both, on enough
+              trades to mean something. In-sample is the flattering view and is not evidence.
+            </HowToRead>
             <WindowStatsTable
               ev={ev}
               live={live}
@@ -250,12 +269,19 @@ export function LabRule() {
               </span>
             </PanelHeader>
             {isStaleDate(ev.latest.date) && <StaleBanner generatedAt={dateIso(ev.latest.date)} thresholdHours={48} noun="latest values" />}
+            <HowToRead className={GUIDE}>
+              Each condition of the rule with the metric's value on the latest daily bar, the cut-off, and whether it is met. The rule is firing only when every row is met.
+            </HowToRead>
             <LatestValuesRow ev={ev} metrics={metricDefs} />
           </Panel>
 
           <div ref={saveRef} className="order-6 lg:order-none">
             <Panel>
               <PanelHeader title="SAVE TO CATALOGUE" />
+              <HowToRead className={GUIDE}>
+                Saving keeps the rule with today's numbers and starts its live record from the save date, so later results cannot have shaped the choice. The verdict does not block
+                saving. The Lab's own bar is ROBUST; a CANDIDATE is worth a note saying why you track it anyway.
+              </HowToRead>
               {catalogue.loading && !catalogue.data ? (
                 <SkeletonRows rows={2} />
               ) : adhocCatalogueId ? (
@@ -286,6 +312,10 @@ export function LabRule() {
                 </span>
               ) : null}
             </PanelHeader>
+            <HowToRead terms={SENSITIVITY_TERMS} className={GUIDE}>
+              Does the result survive small changes? Each cell is the rule with one cut-off or one window nudged. A rule that only works at its exact settings is likely fitted to
+              noise: stability under {MIN_STABILITY} fails the save bar.
+            </HowToRead>
             {sens ? (
               <SensitivityGrid rule={rule} sensitivity={sens} metrics={metricDefs} />
             ) : evaluating ? (
@@ -296,7 +326,7 @@ export function LabRule() {
                 </p>
               </>
             ) : (
-              failed(evaluation) ?? <EmptyBlock label="no sensitivity" />
+              failed(evaluation) ?? <EmptyBlock label="no sensitivity grid: today's evaluation did not return one" />
             )}
           </Panel>
         </div>

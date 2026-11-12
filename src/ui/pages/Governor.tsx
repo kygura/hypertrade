@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AsyncBody, Badge, Button, ConfirmDialog, DataTable, ErrorBlock, Segmented, SkeletonRows, type Column } from '../components'
+import { AsyncBody, Badge, Button, ConfirmDialog, DataTable, ErrorBlock, HowToRead, Segmented, SkeletonRows, type Column } from '../components'
 import { engine, errorMessage, useEngine } from '../lib/engine'
 import type { GovernorMode, GovernorSettings, VenueStatus } from '../../shared/strategy-protocol'
 import { GovernorLimitFields, governorLimitErrors } from '../components/strategy/GovernorLimits'
@@ -214,6 +214,9 @@ export function Governor() {
   return (
     <div className="max-w-[1440px] mx-auto p-3 md:p-[var(--gutter)]">
       <EngineTabs />
+      <HowToRead className="pb-2">
+        Approval mode, limits and kill switch for the strategy engine, with the venues they act on. The Desk has its own limits and kill switch on its page.
+      </HowToRead>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
         <div className="lg:col-span-5 panel">
           {offline && data && <OfflineStrip reason={offline} fetchedAt={fetchedAt} />}
