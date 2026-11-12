@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { Badge, Button, DialogShell, EmptyBlock, ErrorBlock, MetricStat, OfflineBlock, Panel, SkeletonRows, StaleStrip } from '../../components'
+import { Badge, Button, DialogShell, EmptyBlock, ErrorBlock, HowToRead, MetricStat, OfflineBlock, Panel, SkeletonRows, StaleStrip, type Term } from '../../components'
 import { VenueBadge } from '../../components/intel/VenueBadge'
 import { fmtUsdCompact } from '../../components/branches/format'
 import { fmtAge } from '../../components/strategy/format'
@@ -18,6 +18,20 @@ type Venue = 'paper' | 'testnet' | null
 /** Section 4 sub-rows: the same setup restricted to this idea's regime / tier (GET /ledger/stats?regime= / ?tier=). */
 export type SubStats = { regime: LedgerStats | null; tier: LedgerStats | null }
 const bp = (n: number) => fmtSigned(n, 'bp')
+
+const TERMS: readonly Term[] = [
+  ['score', 'How unusual the move is: the largest z-score among the scanner\'s features, raised when several kinds of signal fire together. It does not measure profit.'],
+  ['NOT IN FEED', 'The idea is open here but hidden from the list by the current filters.'],
+  ['1 · SIGNAL, VALUE, Z', 'The measurements stored when the idea was raised. Z is how many standard deviations the value sits from its own recent history; amber from 2 in either direction.'],
+  ['2 · GROSS', 'Expected move in basis points (100bp = 1%) before costs. While marked UNVALIDATED it is just the distance from stop to target.'],
+  ['2 · FEES · SLIPPAGE · FUNDING', 'Estimated costs: the taker fee paid twice (in and out), the price given up crossing the book at the reference size, and funding over the holding period (negative means funding is received).'],
+  ['2 · NET', 'Gross minus those costs. This is the edge shown in the feed.'],
+  ['2 · absorbable', 'Order size the book could take near the current price: 10% of the resting depth within 0.5% of mid on the side the order would hit.'],
+  ['3 · Invalidation', 'The price at which the setup\'s premise no longer holds, its distance from the mark, and the rule in words. "written by the model" marks text from the research model, which argues the case against the trade.'],
+  ['4 · n · clusters', 'n is past outcomes of the same setup. Outcomes raised in the same time bucket (a day, or the holding period if longer) move together, so they count as one cluster; the interval is computed over clusters and needs at least 5.'],
+  ['4 · hit · mean net · 95% CI', 'Share of outcomes above zero, the average result after costs, and the range that average would fall in 95 times out of 100. "NOT DISTINGUISHABLE FROM ZERO" means that range includes zero. REGIME and TIER rows repeat this for outcomes in the same market regime or liquidity tier.'],
+  ['5 · BEFORE · AFTER', 'The risk governor\'s check on the portfolio as it is and as it would be with this trade: whether it passes, position size, gross leverage and money at risk. A red block lists the rule this trade would break.'],
+]
 
 export const canApprove = (s: OpportunityStatus) => s === 'ready'
 export const canReject = (s: OpportunityStatus) => s === 'ready' || s === 'approved'
@@ -104,6 +118,10 @@ export const OpportunityDetail = forwardRef<
         </span>
       </div>
       {midAgeSec != null && midAgeSec > STALE_MID_SEC && <StaleStrip>live price {Math.floor(midAgeSec)}s old — approve is blocked</StaleStrip>}
+      <HowToRead className="px-3 pb-2" terms={TERMS}>
+        One idea in five parts: what triggered it, what it costs to trade, where it is wrong, how the same setup did before, and what it
+        does to portfolio risk. Approving sends the ticket to the paper or testnet desk shown on the badge.
+      </HowToRead>
       {liqSlot && <div className="px-2 pb-2">{liqSlot}</div>}
       <div className="flex flex-col">
         <div className="order-last lg:order-none sticky bottom-0 lg:bottom-auto lg:top-[calc(var(--topbar-h)+var(--subnav-h))] z-10 bg-[var(--color-panel)] border-t lg:border-t-0 lg:border-b border-border-subtle pb-[env(safe-area-inset-bottom)]">
@@ -111,7 +129,7 @@ export const OpportunityDetail = forwardRef<
         </div>
         <Section n={1} title="WHY IT PASSED">
           {detail.signals.length === 0 ? (
-            <p className="text-sm text-text-secondary">no signals recorded</p>
+            <p className="text-sm text-text-secondary">No signals recorded for this idea, so there is no measurement to show for why it fired.</p>
           ) : (
             <div className="table-scroll">
               <table className="dt w-full text-sm tabular">
@@ -154,7 +172,7 @@ export const OpportunityDetail = forwardRef<
               <p className="text-sm tabular text-text-secondary">{fmtUsdCompact(o.costs.absorbableUsd)} absorbable (10% of depth ±0.5%)</p>
             </>
           ) : (
-            <p className="text-sm text-text-secondary">no cost breakdown yet</p>
+            <p className="text-sm text-text-secondary">No cost breakdown yet. Fees, slippage and funding are attached when the idea moves to CALC.</p>
           )}
           <EdgeCell row={o} />
         </Section>
@@ -170,11 +188,11 @@ export const OpportunityDetail = forwardRef<
             <span className="label pulse-label">RESEARCHING…</span>
           ) : detail.bearCase ? (
             <div className="flex flex-col gap-1">
-              <span className="text-xs text-text-secondary">model words</span>
+              <span className="text-xs text-text-secondary">written by the model</span>
               <p className="text-md text-text-primary whitespace-pre-line">{detail.bearCase}</p>
             </div>
           ) : (
-            <EmptyBlock label="no research yet" action={isLive(o.status) ? { label: 'RESEARCH', onClick: onResearch } : undefined} />
+            <EmptyBlock label="No research yet. Running it asks the model for the case against this trade." action={isLive(o.status) ? { label: 'RESEARCH', onClick: onResearch } : undefined} />
           )}
         </Section>
         <Section n={4} title="HAVE SIMILAR SETUPS PAID">
@@ -215,7 +233,7 @@ function SimilarSetups({ stats, label, evidence }: { stats: Detail['stats']; lab
 type Verdict = NonNullable<Detail['risk']>['before']
 
 function PortfolioRisk({ risk }: { risk: Detail['risk'] }) {
-  if (!risk) return <p className="text-sm text-text-secondary">no governor preview</p>
+  if (!risk) return <p className="text-sm text-text-secondary">No governor preview came back for this idea, so the portfolio check cannot be shown and approve stays blocked.</p>
   const col = (label: string, v: Verdict) => {
     const s = v.sizing
     return (

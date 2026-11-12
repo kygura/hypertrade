@@ -25,14 +25,14 @@ const MAP_TERMS: readonly Term[] = [
   ['COVERAGE % OF OI', 'How much of the open interest the map can see: tracked position value divided by twice the open interest (every contract has a long and a short). Under 25% the map is marked partial; under 5% no cluster is named. "OI UNKNOWN" means open interest was not available, not that coverage is zero.'],
   ['ADDR', 'Addresses with a tracked position on this coin. The crawler finds addresses as they trade.'],
   ['POLL p50 · p90', 'Age of the last position check for the median address and for the slowest tenth. p90 turns amber past 30 minutes: some positions on the map may have moved since.'],
-  ['PROFILE', 'Bars by price level: USD value of tracked positions that would be liquidated in each 0.25% price step, right now. Blue bars are longs, yellow are shorts. The line marks the current mark price.'],
+  ['PROFILE', 'Bars by price level: USD value of tracked positions that would be liquidated in each price step (0.25% wide), right now. The legend above the bars names the colour of each side. The line marks the current mark price.'],
   ['HISTORY', 'The same map over time. Columns are snapshots taken every 15 minutes, rows are price levels, and a stronger colour means more value at that level (five steps, scaled to the 95th percentile of the window). The line is the mark price.'],
   ['6H · 24H · 72H', 'How far back the history view reaches.'],
   ['SHORT · LONG CLUSTER', 'The price step nearest the mark that holds at least 1% of that side\'s mapped value and at least $250K: its value, its mid price, and its distance from the mark. "≥" means the map is partial, so the true value is at least this.'],
 ]
 
 const BOARD_TERMS: readonly Term[] = [
-  ['LONG · SHORT LIQUIDATIONS', 'The nearest cluster on each side: its distance from the mark in percent (longs below, shorts above) and its USD value. A dash means no step holds at least 1% of that side and $250K, or coverage is under 5%.'],
+  ['LONG LIQS · SHORT LIQS', 'Liqs is short for liquidations. The nearest cluster on each side: its distance from the mark in percent (longs below, shorts above) and its USD value. A dash means no step holds at least 1% of that side and $250K, or coverage is under 5%.'],
   ['COVERAGE', 'Share of the coin\'s open interest the map can see. Amber under 25%: clusters are likely missing.'],
   ['MARK', 'Current mark price.'],
 ]
@@ -217,8 +217,8 @@ function ClusterCell({ c, side, coverage }: { c: Cluster | null; side: 'long' | 
 const BOARD_COLUMNS: Column<BoardRow>[] = [
   { key: 'coin', label: 'COIN', priority: 1, render: (r) => <span className="text-text-primary">{r.coin}</span> },
   { key: 'mark', label: 'MARK', priority: 3, align: 'right', render: (r) => fmtPx(r.mark) },
-  { key: 'long', label: <span title="Nearest long liquidation cluster below the mark: distance and USD value">LONG LIQUIDATIONS</span>, priority: 1, align: 'right', render: (r) => <ClusterCell c={r.nearestLong} side="long" coverage={r.coverage} /> },
-  { key: 'short', label: <span title="Nearest short liquidation cluster above the mark: distance and USD value">SHORT LIQUIDATIONS</span>, priority: 1, align: 'right', render: (r) => <ClusterCell c={r.nearestShort} side="short" coverage={r.coverage} /> },
+  { key: 'long', label: <span title="Nearest long liquidation cluster below the mark: distance and USD value">LONG LIQS</span>, priority: 1, align: 'right', render: (r) => <ClusterCell c={r.nearestLong} side="long" coverage={r.coverage} /> },
+  { key: 'short', label: <span title="Nearest short liquidation cluster above the mark: distance and USD value">SHORT LIQS</span>, priority: 1, align: 'right', render: (r) => <ClusterCell c={r.nearestShort} side="short" coverage={r.coverage} /> },
   {
     key: 'cov',
     label: <span title="Share of open interest the map can see">COVERAGE</span>,
@@ -256,7 +256,7 @@ export function LiqBoard({
     <section aria-label="liquidation board" className="border-t border-border-subtle">
       <h3 className="label px-3 pt-2 pb-1">LIQUIDATION BOARD ─ BY NEAREST CLUSTER</h3>
       <HowToRead className="px-3 pb-2" terms={BOARD_TERMS}>
-        Shown while the feed has no ideas: for each tracked coin, how close the nearest cluster of forced closes sits to the current
+        Shown while the feed has no ideas: for each of the largest coins by open interest, how close the nearest cluster of forced closes sits to the current
         price. Click a coin to open its full map.
       </HowToRead>
       <AsyncBody
@@ -266,7 +266,7 @@ export function LiqBoard({
         offline={offline}
         rows={8}
         staleError={false}
-        empty={{ label: 'no marks yet — the board fills after the first scan, one row per coin the crawler tracks' }}
+        empty={{ label: 'no marks yet — the board fills after the first scan, one row per coin among the largest by open interest' }}
         onRetry={onRetry}
       >
         {(r) => (

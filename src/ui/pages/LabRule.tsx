@@ -53,8 +53,8 @@ const BACK: Record<string, { label: string; to: string }> = {
 const GUIDE = 'px-3 py-2 border-b border-border-subtle'
 
 const SENSITIVITY_TERMS: readonly Term[] = [
-  ['THRESHOLD row', 'the same rule with this condition\'s cut-off moved: q−0.10 and q−0.05 are looser or tighter by 10 and 5 percentile points of the metric\'s own history, q+0.05 and q+0.10 the other way. BASE is the rule as written.'],
-  ['WINDOW row', 'the same rule with this condition\'s lookback swapped for the next shorter and longer window (w7, w30, w90), keeping the cut-off at the same percentile.'],
+  ['THRESHOLD row', 'the same rule with this condition\'s cut-off moved along the metric\'s own history: q−0.10 and q−0.05 put it 10 and 5 percentile points lower, q+0.05 and q+0.10 higher. BASE is the rule as written.'],
+  ['WINDOW row', 'the same rule with this condition\'s lookback swapped for the next shorter and the next longer window (for example w7 and w90 around w30), keeping the cut-off at the same percentile.'],
   ['top number', 'Sharpe of that variant over the search region (the first 80% of the history).'],
   ['bottom number', 'its total return over the same days.'],
   ['cell colour', 'against the BASE Sharpe: red = the sign flipped, light red = under half of it, neutral = between half and all of it, green = at least as high.'],
