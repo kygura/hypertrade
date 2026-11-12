@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { detail, NOW } from '../moves/fixtures'
 import { queueItem } from './fixtures'
-import { coinActions, detailOutcome, hip3Reason, isHip3, opportunityId, parseChart, parseLiq, queueHeadline, queuePartsLine, rejectedDetail, simulateHref, simulatePrompt } from './logic'
+import { coinActions, detailOutcome, hip3Reason, isHip3, opportunityId, parseChart, queueHeadline, queuePartsLine, rejectedDetail, setupFacts, simulateHref, simulatePrompt } from './logic'
 
 describe('url state', () => {
   test('parseChart defaults to move; only `price` switches', () => {
@@ -9,11 +9,6 @@ describe('url state', () => {
     expect(parseChart('')).toBe('move')
     expect(parseChart('PRICE')).toBe('move')
     expect(parseChart('price')).toBe('price')
-  })
-  test('parseLiq opens only on 1', () => {
-    expect(parseLiq('1')).toBe(true)
-    expect(parseLiq(null)).toBe(false)
-    expect(parseLiq('0')).toBe(false)
   })
 })
 
@@ -32,20 +27,23 @@ describe('simulate', () => {
 describe('coinActions', () => {
   const keys = (a: ReturnType<typeof coinActions>) => a.map((x) => x.key)
 
-  test('APPROVE ON FEED only with an opportunity id', () => {
-    const none = coinActions('HYPE', null, detail())
-    expect(keys(none)).not.toContain('opportunity')
-    const withPart = coinActions('HYPE', queueItem(), detail())
-    expect(withPart.find((a) => a.key === 'opportunity')).toMatchObject({ label: 'OPPORTUNITY · APPROVE ON FEED', kind: 'link', to: '/feed?id=opp-1' })
-    const fromDetail = coinActions('HYPE', null, detail({ opportunityId: 'o 2' }))
-    expect(fromDetail.find((a) => a.key === 'opportunity')!.to).toBe('/feed?id=o%202')
+  test('the ready opportunity is the SETUP block, not an action: its id comes from the queue part, else the detail', () => {
+    expect(opportunityId(null, detail())).toBeNull()
+    expect(opportunityId(queueItem(), detail())).toBe('opp-1')
+    expect(opportunityId(null, detail({ opportunityId: 'o 2' }))).toBe('o 2')
+    for (const a of coinActions('HYPE', queueItem(), detail({ opportunityId: 'o' }))) expect(a.to ?? '').not.toContain('/feed')
+  })
+  test('setupFacts prints the ticket; an unknown number is a dash, a missing size says so', () => {
+    const px = (n: number | null) => (n == null ? '—' : String(n))
+    expect(setupFacts({ netEdgeBps: 42.4 }, { side: 'long', entryPx: 182, stopPx: 178, targetPx: 190, sizeUsd: 1200, sizeSource: 'governor' }, px)).toBe('net 42 bps · entry 182 · stop 178 · target 190 · size $1,200')
+    expect(setupFacts({ netEdgeBps: null }, { side: 'long', entryPx: 182, stopPx: null, targetPx: null, sizeUsd: null, sizeSource: 'governor' }, px)).toBe('net — · entry 182 · stop — · target — · size unavailable')
   })
   test('a decided opportunity part is not a ready one', () => {
     const acted = queueItem({ parts: [{ ...queueItem().parts[1]!, actedAt: '2026-11-11T14:15:00.000Z' }], state: 'acted' })
     expect(opportunityId(acted, null)).toBeNull()
   })
   test('never an approve or order POST: links, ASK and INVESTIGATE only', () => {
-    for (const a of coinActions('HYPE', queueItem(), detail({ opportunityId: 'o', record: null }))) {
+    for (const a of coinActions('HYPE', queueItem(), detail({ record: null }))) {
       expect(['link', 'ask', 'investigate']).toContain(a.kind)
       if (a.kind === 'link') expect(a.to).toBeString()
       if (a.kind !== 'link') expect(a.label).not.toMatch(/approve|order/i)

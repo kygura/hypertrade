@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { AsyncBody, Badge, Button, PageContainer, Panel, Segmented, SkeletonRows } from '../../components'
 import { FundingPanel, PerpHeader, usePerpStats } from '../../components/market/PerpPanels'
@@ -13,18 +13,19 @@ import { useNow, useQueryPatch } from '../../lib/hooks'
 import { moves } from '../../lib/moves'
 import { usePoll } from '../../lib/poll'
 import { research } from '../../lib/research'
-import { LiqMapPanel, type HistWindow } from '../cockpit/LiqMap'
 import { investigateGate, parseWindow } from '../moves/logic'
 import { AttentionBlock, AttributionBlock, ChecklistBlock, LiqBlock, PositioningBlock, RecordBlock, type Feed } from '../moves/MovesView'
 import { useInvestigate, type ActionError } from '../moves/useInvestigate'
 import {
-  coinActions, detailOutcome, hip3Reason, isHip3, parseChart, parseLiq, queueHeadline, queuePartsLine, rejectedDetail, type ChartView, type DetailOutcome,
+  coinActions, detailOutcome, hip3Reason, isHip3, opportunityId, parseChart, queueHeadline, queuePartsLine, rejectedDetail, type ChartView, type DetailOutcome,
 } from './logic'
+import { SetupApprove } from './Approve'
 
 // COIN — the decide page (PLAN2 §2.3/§2.4), route `/coin/:coin` and the QUEUE's right pane (layout='pane').
 // Top to bottom: why it moved, is it priced in, is attention rising or saturated, the ENTER/FADE checklist, what
 // the agent claimed and what would falsify it; then the actions. A missing layer is one quiet reason line in
-// place. Nothing here approves or places an order (APPROVE stays on FEED, linked when a ready opportunity exists).
+// place. A ready opportunity is decided here: the SETUP block (Approve.tsx) carries APPROVE and REJECT behind the
+// ticket dialog, with the feed's gates. The liquidation map is not on this page.
 
 export interface CoinDecisionProps {
   coin: string
@@ -40,14 +41,13 @@ const POLL_MS = 60_000
 const STATS_MS = 300_000
 const DEFAULT_TF: Timeframe = '1d'
 
-/** Container: the pollers (detail 60 s, record stats 5 min, definitions once), `?window/chart/liq/tf`, INVESTIGATE. */
+/** Container: the pollers (detail 60 s, record stats 5 min, definitions once), `?window/chart/tf`, INVESTIGATE. */
 export function CoinDecision({ coin, item, blocked = null, layout = 'page' }: CoinDecisionProps) {
   const [params] = useSearchParams()
   const patch = useQueryPatch()
   const now = useNow(30_000)
   const win = parseWindow(params.get('window'))
   const chart = parseChart(params.get('chart'))
-  const liqOpen = parseLiq(params.get('liq'))
   const tfParam = params.get('tf')
   const tf: Timeframe = isTimeframe(tfParam) ? tfParam : DEFAULT_TF
   const hip3 = isHip3(coin)
@@ -83,8 +83,6 @@ export function CoinDecision({ coin, item, blocked = null, layout = 'page' }: Co
       onWindow={(w) => patch({ window: w === '24h' ? null : w })}
       chart={chart}
       onChart={(c) => patch({ chart: c === 'move' ? null : c })}
-      liqOpen={liqOpen}
-      onLiq={(open) => patch({ liq: open ? '1' : null })}
       tf={tf}
       onTf={(t) => patch({ tf: t === DEFAULT_TF ? null : t })}
       detail={feed}
@@ -95,6 +93,7 @@ export function CoinDecision({ coin, item, blocked = null, layout = 'page' }: Co
       actionError={inv.actionError?.coin === coin ? inv.actionError : null}
       onInvestigate={(c) => void inv.investigate(c)}
       onAsk={() => globalThis.dispatchEvent(new Event('ht:ask'))}
+      setup={(oppId) => <SetupApprove key={oppId} oppId={oppId} onDecided={() => detail.refetch()} />}
     />
   )
 }
@@ -117,8 +116,6 @@ export interface CoinDecisionViewProps {
   onWindow: (w: MoveWindow) => void
   chart: ChartView
   onChart: (c: ChartView) => void
-  liqOpen: boolean
-  onLiq: (open: boolean) => void
   tf: Timeframe
   onTf: (tf: Timeframe) => void
   detail: Feed<DetailOutcome>
@@ -129,6 +126,8 @@ export interface CoinDecisionViewProps {
   actionError: ActionError | null
   onInvestigate: (coin: string) => void
   onAsk: () => void
+  /** The SETUP block for a ready opportunity (the container passes the live one; tests pass a stub or nothing). */
+  setup?: (oppId: string) => ReactNode
 }
 
 /** Presentational: header, IN QUEUE, actions, then the decision blocks (two columns on the page from lg). */
@@ -137,12 +136,14 @@ export function CoinDecisionView(p: CoinDecisionViewProps) {
   const d = p.detail.data?.detail ?? null
   const reason = p.detail.data?.reason ?? null
   const blocked = p.blocked ?? (d && d.layers.agents.state === 'unavailable' ? d.layers.agents.reason : null)
+  const oppId = opportunityId(p.item, d)
   const body = (
     <>
       <Panel>
         <CoinHeader {...p} />
         <QueueParts item={p.item} coin={p.coin} now={p.now} />
         <Actions {...p} blocked={blocked} hasDetail={d != null} />
+        {oppId && p.setup?.(oppId)}
       </Panel>
       <div className={`grid grid-cols-1 gap-3 min-w-0 ${page ? 'lg:grid-cols-12' : ''}`}>
         <div className={`flex flex-col gap-3 min-w-0 ${page ? 'lg:col-span-7' : ''}`}>
@@ -172,12 +173,6 @@ export function CoinDecisionView(p: CoinDecisionViewProps) {
               <Group id="priced" title="PRICED IN">
                 <PositioningBlock d={d} />
                 <LiqBlock d={d} />
-                <div className="px-3 pb-2">
-                  <Button tier="ghost" className="min-h-[var(--tap-min)]" aria-expanded={p.liqOpen} onClick={() => p.onLiq(!p.liqOpen)} title="the liquidation map polls only while open">
-                    {p.liqOpen ? '▾' : '▸'} LIQ MAP
-                  </Button>
-                </div>
-                {p.liqOpen && <LiqMapSection coin={p.coin} now={p.now} />}
               </Group>
             </Panel>
             <Panel>
@@ -319,16 +314,6 @@ function PriceView({ coin, tf, onTf }: { coin: string; tf: Timeframe; onTf: (tf:
       <div className="border-t border-border-subtle">
         <FundingPanel stats={stats} />
       </div>
-    </div>
-  )
-}
-
-/** The cockpit's liquidation map for this coin; mounted (and polling) only while LIQ MAP is open. */
-function LiqMapSection({ coin, now }: { coin: string; now: number }) {
-  const [hist, setHist] = useState<HistWindow>(24)
-  return (
-    <div className="px-3 pb-3 border-t border-border-subtle pt-2 min-w-0">
-      <LiqMapPanel coin={coin} coins={[coin]} onCoin={() => {}} tracked={null} wsMark={null} window={hist} onWindow={setHist} now={now} />
     </div>
   )
 }

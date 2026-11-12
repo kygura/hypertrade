@@ -1,5 +1,5 @@
 import type { AgentRecord, TriageItem } from "../../shared/agentRecords.js";
-import type { MoveRow } from "../../shared/moves.js";
+import { simplePct, type MoveRow } from "../../shared/moves.js";
 
 // Triage queue (docs/SPEC.md § Moves, plan §3.6). Pure: same rows and same stored items give the same queue.
 // Agents widen what is watched; this ranks what reaches the human, under a daily attention budget.
@@ -53,7 +53,7 @@ export function candidateOf(row: MoveRow): TriageCandidate | null {
   const parts: string[] = [];
   if (byResidual) {
     const news = a.newsHours === null ? "news unknown" : a.newsHours === 0 ? "no news in window" : `news in ${a.newsHours}h`;
-    parts.push(`residual ${signed(a.residualPct)}% · z ${signed(a.residualZ!)} · 24h · ${news}`);
+    parts.push(`residual ${signed(simplePct(a.residualPct))}% · z ${signed(a.residualZ!)} · 24h · ${news}`);
   }
   for (const s of full) {
     const crowd = s.kind === "fade" && s.side ? ` · crowd ${s.side} ${s.side === "long" ? row.positioning.longMet : row.positioning.shortMet}/${row.positioning.of}` : s.side ? ` · ${s.side}` : "";

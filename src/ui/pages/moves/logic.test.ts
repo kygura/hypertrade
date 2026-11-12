@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { DefinitionsResponseSchema } from '../../../shared/research'
 import { ASOF, detail, movesResponse, nullRow, NOW, record, row, stats, triage } from './fixtures'
 import {
-  attributionCell, attributionSegments, barScale, barWidth, bestChecklist, budgetLine, chartData, coverageCopy, crowdText, falsifierLine, filterSector, fundingZText, gradeLine, headerLine,
+  attributionCell, attributionSegments, barScale, barWidth, bestChecklist, budgetLine, chartData, coverageCopy, crowdText, falsifierLine, filterSector, fmtMove, fundingZText, gradeLine, headerLine,
   investigateFailure, investigateGate, layerChips, liqSigmaText, moveKey, outboundLinks, overBudgetLine, parseSort, parseWindow, progressLine, recordView, sectorOfFactor, sortRows, staleLine,
   studyLinkFor, tagText, trackLine, triageEmptyLabel, visibleItems,
 } from './logic'
@@ -168,11 +168,20 @@ describe('record words', () => {
   })
 })
 
+describe('moves print as ordinary percent', () => {
+  test('a log-% is shown as the price change it stands for', () => {
+    expect(fmtMove(-69.6)).toBe('−50.1%') // a halving, not a 70% drop
+    expect(fmtMove(69.3)).toBe('+100.0%')
+    expect(fmtMove(1)).toBe('+1.0%')
+    expect(fmtMove(null)).toBe('—')
+  })
+})
+
 describe('chart data', () => {
   test('marks sit on the actual line at flow and news hours', () => {
     const { points, marks } = chartData(detail().series)
     expect(points).toHaveLength(4)
-    expect(marks.map((m) => `${m.kind}@${m.y}`)).toEqual(['flow@4', 'news@6'])
+    expect(marks.map((m) => `${m.kind}@${m.y.toFixed(2)}`)).toEqual(['flow@4.08', 'news@6.18']) // log-% 4 and 6 as ordinary percent
   })
 })
 
@@ -182,7 +191,7 @@ describe('links', () => {
   })
   test('outbound set: no approve, no order params', () => {
     const links = outboundLinks(row('HYPE'), null)
-    expect(links.map((l) => `${l.label} ${l.to}`)).toEqual(['COIN /coin/HYPE', 'EVIDENCE /?coin=HYPE', 'CHART /coin/HYPE?chart=price', 'LIQ MAP /coin/HYPE?liq=1', 'ORDER /order'])
+    expect(links.map((l) => `${l.label} ${l.to}`)).toEqual(['COIN /coin/HYPE', 'EVIDENCE /?coin=HYPE', 'CHART /coin/HYPE?chart=price', 'ORDER /order'])
     expect(links.some((l) => /approve|kill/i.test(l.label + l.to))).toBe(false)
   })
   test('every link stays on linked screens: no /asset, /feed?liq, /sectors, /markets', () => {

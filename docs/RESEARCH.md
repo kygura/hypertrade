@@ -171,8 +171,8 @@ Hidden from nav, not deleted (docs/TASKS.md 2026-11-11): every route still works
 FEED, CHANGES, WATCH, THESES, QUERY, SECTORS, STATE and CYCLES are `hidden` tabs: off the row, except that a
 hidden page opened by URL shows its own tab, checked, so the row never points at a page that is not open. SEARCH
 and RUNS stay reachable from one line of links on the RULES page (they are how a rule gets into the catalogue).
-`/lab/pulse` is unlinked (the board's PULSE summary links to RULES) and `/feed` is linked only from the coin
-page's `OPPORTUNITY · APPROVE ON FEED`.
+`/lab/pulse` and `/feed` are unlinked (the board's PULSE summary links to RULES; approval sits on the coin page's
+SETUP block).
 
 ### Board (`/board`)
 
