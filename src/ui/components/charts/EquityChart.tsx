@@ -52,12 +52,12 @@ export function EquityChart({
             domain={['dataMin', 'dataMax']}
             scale="time"
             tickFormatter={fmtChartDate}
-            tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+            tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
             stroke="var(--color-border)"
           />
           <YAxis
             tickFormatter={fmtUsdCompact}
-            tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+            tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
             stroke="var(--color-border)"
             width={48}
           />
@@ -67,7 +67,7 @@ export function EquityChart({
             contentStyle={{
               background: 'var(--color-panel)',
               border: '1px solid var(--color-border)',
-              fontSize: 11,
+              fontSize: 13,
             }}
           />
 
@@ -111,7 +111,7 @@ export function EquityChart({
               x={todayTs}
               stroke="var(--color-text-secondary)"
               strokeDasharray="1 3"
-              label={{ value: 'TODAY', position: 'insideTopRight', fontSize: 10, fill: 'var(--color-text-secondary)' }}
+              label={{ value: 'TODAY', position: 'insideTopRight', fontSize: 12, fill: 'var(--color-text-secondary)' }}
             />
           )}
         </ComposedChart>

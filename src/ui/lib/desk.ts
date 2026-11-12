@@ -121,4 +121,57 @@ export function reduceRun(v: RunView, e: DeskEvent): RunView {
 export const streamDesk = (path: '/desk/ask' | '/desk/review', body: unknown, onEvent: (e: DeskEvent) => void, signal?: AbortSignal): Promise<void> =>
   streamSse<DeskEvent>(`/api${path}`, body ?? {}, onEvent, signal)
 
+/** Stop risk of an open position in USD; the governor's own rule (server/desk/governor.ts openRiskUsd), parity-tested. */
+export function openRiskUsd(p: Position): number {
+  if (p.stopPx == null) return p.notionalUsd
+  return Math.max(0, p.side === 'long' ? (p.markPx - p.stopPx) * p.size : (p.stopPx - p.markPx) * p.size)
+}
+
+const pct1 = (x: number) => `${(Math.round(x * 10) / 10).toString()}%`
+const lev2 = (x: number) => `${(Math.round(x * 100) / 100).toString()}x`
+const limitOf = (limits: DeskStatus['limits'] | undefined, key: string): number | null => {
+  const v = limits?.[key]
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+/**
+ * One fact line for the top of the Desk: position count, gross notional and open stop risk against
+ * equity (with the governor limit each is checked against), the largest position's share, missing
+ * stops, day loss and proposals waiting. Counts and sums only; null when the account was not read.
+ */
+export function deskTakeaway(desk: AccountState, proposals: readonly Pick<ProposalRecord, 'status'>[] = [], limits?: DeskStatus['limits']): string | null {
+  if (!desk.available) return null
+  const out: string[] = []
+  const n = desk.positions.length
+  const eq = desk.equityUsd
+  const maxPos = limitOf(limits, 'maxPositions')
+  if (n === 0) {
+    out.push('No open positions.')
+  } else {
+    const gross = desk.positions.reduce((a, p) => a + p.notionalUsd, 0)
+    const risk = desk.positions.reduce((a, p) => a + openRiskUsd(p), 0)
+    const maxGross = limitOf(limits, 'maxGrossLeverage')
+    const maxRisk = limitOf(limits, 'maxOpenRiskPct')
+    out.push(
+      `${n} open ${n === 1 ? 'position' : 'positions'}${maxPos != null ? ` (limit ${maxPos})` : ''}, ${fmtUsd(gross)} gross notional` +
+        (eq > 0 ? `, ${lev2(gross / eq)} equity${maxGross != null ? ` (limit ${maxGross}x)` : ''}` : '') +
+        '.',
+    )
+    out.push(`Open stop risk ${fmtUsd(risk)}` + (eq > 0 ? `, ${pct1((risk / eq) * 100)} of equity${maxRisk != null ? ` (limit ${maxRisk}%)` : ''}` : '') + '.')
+    if (n > 1 && gross > 0) {
+      const top = desk.positions.reduce((a, p) => (p.notionalUsd > a.notionalUsd ? p : a))
+      out.push(`Largest: ${top.coin}, ${Math.round((top.notionalUsd / gross) * 100)}% of gross.`)
+    }
+    const noStop = desk.positions.filter((p) => p.stopPx == null).length
+    if (noStop > 0) out.push(`${noStop} ${noStop === 1 ? 'position has' : 'positions have'} no stop.`)
+  }
+  if (desk.dayPnlUsd < 0 && eq > 0) {
+    const dayLimit = limitOf(limits, 'dailyLossLimitPct')
+    out.push(`Day loss ${pct1((-desk.dayPnlUsd / eq) * 100)} of equity${dayLimit != null ? ` (new entries are blocked at ${dayLimit}%)` : ''}.`)
+  }
+  const pending = proposals.filter((p) => p.status === 'pending').length
+  out.push(`${pending} ${pending === 1 ? 'proposal' : 'proposals'} waiting for approval.`)
+  return out.join(' ')
+}
+
 export { fmtUsd, fmtPx }

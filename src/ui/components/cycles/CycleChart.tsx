@@ -117,7 +117,7 @@ export function CycleChart({
         background: { type: ColorType.Solid, color: 'transparent' },
         textColor: text,
         fontFamily: css('--font-mono', 'ui-monospace, monospace'),
-        fontSize: 10,
+        fontSize: 12,
         attributionLogo: false,
       },
       grid: { vertLines: { color: alpha(border, 0.6) }, horzLines: { color: alpha(border, 0.6) } },

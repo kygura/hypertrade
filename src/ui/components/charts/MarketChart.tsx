@@ -173,7 +173,7 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
         background: { type: ColorType.Solid, color: 'transparent' },
         textColor: text,
         fontFamily: font,
-        fontSize: 10,
+        fontSize: 12,
         attributionLogo: false,
         panes: { separatorColor: border, separatorHoverColor: alpha(text, 0.2), enableResize: true },
       },

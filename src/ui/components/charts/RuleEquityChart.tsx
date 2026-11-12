@@ -73,12 +73,12 @@ export function RuleEquityChart({
               tickFormatter={month}
               interval="preserveStartEnd"
               minTickGap={32}
-              tick={{ fontSize: 9, fill: 'var(--color-text-secondary)' }}
+              tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }}
               stroke="var(--color-border)"
             />
             <YAxis
               tickFormatter={mult}
-              tick={{ fontSize: 9, fill: 'var(--color-text-secondary)' }}
+              tick={{ fontSize: 11, fill: 'var(--color-text-secondary)' }}
               stroke="var(--color-border)"
               width={44}
               scale="log"
@@ -88,7 +88,7 @@ export function RuleEquityChart({
             <Tooltip
               labelFormatter={(t: number) => day(t)}
               formatter={(v: number, name: string) => [multExact(v), name === 'strategy' ? 'RULE' : benchmarkLabel]}
-              contentStyle={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)', fontSize: 11 }}
+              contentStyle={{ background: 'var(--color-elevated)', border: '1px solid var(--color-border)', fontSize: 13 }}
             />
             {showHoldout && (
               <ReferenceArea
@@ -98,7 +98,7 @@ export function RuleEquityChart({
                 fillOpacity={1}
                 stroke="none"
                 ifOverflow="extendDomain"
-                label={{ value: 'HOLDOUT', position: 'insideTopLeft', fontSize: 10, fill: 'var(--color-info)' }}
+                label={{ value: 'HOLDOUT', position: 'insideTopLeft', fontSize: 12, fill: 'var(--color-info)' }}
               />
             )}
             <Line dataKey="benchmark" stroke="var(--color-bench-btc)" strokeWidth={1} dot={false} isAnimationActive={false} />
@@ -108,7 +108,7 @@ export function RuleEquityChart({
                 x={savedMs}
                 stroke="var(--color-text-secondary)"
                 strokeDasharray="3 3"
-                label={{ value: 'SAVED', position: 'insideTopRight', fontSize: 10, fill: 'var(--color-text-secondary)' }}
+                label={{ value: 'SAVED', position: 'insideTopRight', fontSize: 12, fill: 'var(--color-text-secondary)' }}
               />
             )}
           </ComposedChart>

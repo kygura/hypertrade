@@ -23,13 +23,13 @@ export function DrawdownChart({ equity, height = 120 }: { equity: EquityPoint[];
           domain={['dataMin', 'dataMax']}
           scale="time"
           tickFormatter={fmtChartDate}
-          tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+          tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
           stroke="var(--color-border)"
         />
         <YAxis
           domain={['dataMin', 0]}
           tickFormatter={(v: number) => `${v.toFixed(0)}%`}
-          tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+          tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
           stroke="var(--color-border)"
           width={40}
         />

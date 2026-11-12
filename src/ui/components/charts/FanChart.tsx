@@ -39,12 +39,12 @@ export function FanChart({ projection, height = 220 }: { projection: MonteCarloR
           domain={['dataMin', 'dataMax']}
           scale="time"
           tickFormatter={fmtChartDate}
-          tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+          tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
           stroke="var(--color-border)"
         />
         <YAxis
           tickFormatter={fmtUsdCompact}
-          tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+          tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
           stroke="var(--color-border)"
           width={48}
         />

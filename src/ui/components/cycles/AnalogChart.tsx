@@ -55,7 +55,7 @@ export function AnalogChart({ analogs, forecast }: { analogs: CycleAnalog[]; for
             domain={[0, HORIZON]}
             ticks={[0, 200, 400, 600, 800, 1000, 1200, 1400]}
             tickFormatter={(d: number) => `${d}d`}
-            tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+            tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
             stroke="var(--color-border)"
           />
           <YAxis
@@ -64,13 +64,13 @@ export function AnalogChart({ analogs, forecast }: { analogs: CycleAnalog[]; for
             allowDataOverflow
             ticks={Y_TICKS}
             tickFormatter={fmtRatio}
-            tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+            tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
             stroke="var(--color-border)"
             width={40}
           />
           {core && <ReferenceArea x1={core.from} x2={core.to} fill="var(--color-proj-line)" fillOpacity={0.14} stroke="none" ifOverflow="hidden" />}
           <ReferenceLine y={1} stroke="var(--color-border)" strokeDasharray="3 3" />
-          {today && <ReferenceLine x={today.d} stroke="var(--color-text-secondary)" strokeDasharray="2 3" label={{ value: 'today', position: 'insideTopLeft', fontSize: 10, fill: 'var(--color-text-secondary)' }} />}
+          {today && <ReferenceLine x={today.d} stroke="var(--color-text-secondary)" strokeDasharray="2 3" label={{ value: 'today', position: 'insideTopLeft', fontSize: 12, fill: 'var(--color-text-secondary)' }} />}
           <Tooltip
             cursor={{ stroke: 'var(--color-border)' }}
             content={({ active, label, payload }) =>

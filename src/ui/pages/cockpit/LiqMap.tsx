@@ -272,7 +272,7 @@ export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBuck
             ticks={[0, max / 2, max]}
             height={X_AXIS_H}
             tickFormatter={(v: number) => fmtUsdCompact(v)}
-            tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+            tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
             stroke="var(--color-border)"
           />
           <YAxis
@@ -281,7 +281,7 @@ export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBuck
             orientation="right"
             width={56}
             interval={Math.max(0, Math.ceil(rows.length / 8) - 1)}
-            tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }}
+            tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
             stroke="var(--color-border)"
           />
           <Tooltip
@@ -303,7 +303,7 @@ export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBuck
               y={markRow.label}
               stroke="var(--color-equity)"
               strokeWidth={1}
-              label={{ value: `MARK ${fmtPx(mark)}`, position: 'insideBottomRight', fontSize: 10, fill: 'var(--color-equity)' }}
+              label={{ value: `MARK ${fmtPx(mark)}`, position: 'insideBottomRight', fontSize: 12, fill: 'var(--color-equity)' }}
             />
           )}
         </BarChart>
