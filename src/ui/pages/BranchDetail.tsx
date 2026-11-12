@@ -6,19 +6,21 @@ import {
   ConfirmDialog,
   EmptyBlock,
   ErrorBlock,
+  HowToRead,
   OfflineBlock,
   Segmented,
   SkeletonRows,
   StatCell,
+  type Term,
 } from '../components'
 import { api, ApiError, useApi } from '../lib/api'
 import { BranchConfigSchema, isPerp, STABLES } from '../../shared/schemas'
 import type { Allocation, BranchConfig, Scenario } from '../../shared/types'
 import type { BranchDetail as BranchDetailData, BranchResult } from '../components/branches/types'
-import { EquityChart } from '../components/charts/EquityChart'
+import { EquityChart, EquityGuide } from '../components/charts/EquityChart'
 import { ProjectionAssumptions } from '../components/charts/FanChart'
-import { DrawdownChart } from '../components/branches/DrawdownChart'
-import { maxDdClass, signClass, sumWeights } from '../components/branches/format'
+import { DrawdownChart, DrawdownGuide } from '../components/branches/DrawdownChart'
+import { branchLine, maxDdClass, signClass, sumWeights } from '../components/branches/format'
 import { fmtPct, fmtUsd } from '../../shared/format'
 
 // /branches/:id — docs/design/README.md §10.4. Editor (left, 4 cols) + results (right,
@@ -59,6 +61,27 @@ const REBALANCE_OPTIONS: { value: BranchConfig['rebalance']; label: string }[] =
   { value: 'monthly', label: 'MONTHLY' },
   { value: 'weekly', label: 'WEEKLY' },
   { value: 'threshold5pct', label: '5% BAND' },
+]
+
+// Reading guides: what each field and number means in the simulation (src/server/sim/engine.ts, montecarlo.ts).
+const CONFIG_TERMS: readonly Term[] = [
+  ['START / CAPITAL', 'the day the simulation begins and the USD it begins with.'],
+  ['WEIGHT', 'percent of the capital put in that coin on the start date. Weights must add to 100.'],
+  ['SIDE', 'LONG holds the coin. SHORT is a perp leg that gains when the price falls. Stablecoins are spot only.'],
+  ['LEV', 'leverage of a perp leg, 1 to 50: the weight is its margin and the position is margin × leverage. A leg is wiped out when its loss reaches its whole margin, checked on the daily low or high.'],
+  ['DCA', 'a scheduled buy: each week or month the amount moves from the USDC/USDT part into the coin at that day\'s close, until the stablecoins run out.'],
+  ['REBALANCE', 'when the weights are reset to target: never, on the first day of each month, once a week, or (5% BAND) whenever any weight is more than 5 percentage points off target.'],
+  ['SCENARIO', 'an optional projection past today, for portfolios without perp legs. DAYS is how far ahead, PATHS how many random futures are drawn.'],
+  ['% RET / % VOL', 'the yearly return and yearly volatility you assume for each coin. The projection is built from these numbers only, with coins treated as uncorrelated, so it shows your assumptions, not a forecast.'],
+  ['amber square', 'the form has unsaved changes. RUN SIMULATION replays the saved branch; SAVE stores the form and then runs it.'],
+]
+
+const STATS_TERMS: readonly Term[] = [
+  ['CAGR', 'the growth from start to end expressed per year.'],
+  ['MAX DD', 'max drawdown: the deepest fall of the portfolio from an earlier high. Red from 20%.'],
+  ['FINAL', 'the portfolio\'s value on the latest daily close.'],
+  ['VS BTC', 'how much higher or lower the branch ended than the same capital held in BTC over the same days, as a percent of the BTC result.'],
+  ['VS USDC', 'the same against capital left in USDC.'],
 ]
 
 export function BranchDetail() {
@@ -252,11 +275,12 @@ export function BranchDetail() {
             </div>
             <div className="panel-body p-3">
               {!result && busy !== 'running' && (
-                <EmptyBlock label="not simulated yet — RUN SIMULATION" action={{ label: 'RUN SIMULATION', onClick: run }} />
+                <EmptyBlock label="not simulated yet: run it to see the branch's value over time against BTC and USDC" action={{ label: 'RUN SIMULATION', onClick: run }} />
               )}
               {!result && busy === 'running' && <SkeletonRows rows={4} />}
               {result && (
                 <div style={{ opacity: busy === 'running' ? 0.7 : 1 }}>
+                  {branchLine(result, form.initialCapitalUsd) && <p className="text-md text-text-primary mb-2">{branchLine(result, form.initialCapitalUsd)}</p>}
                   <div className="mb-1">
                     <span className="text-xl tabular">
                       <AnimatedDigits text={fmtUsd(result.stats.finalValue, { decimals: 0 })} />
@@ -282,6 +306,7 @@ export function BranchDetail() {
                       <ProjectionAssumptions scenario={resolvedScenario} />
                     </div>
                   )}
+                  <EquityGuide projection={result.montecarlo != null} className="mt-2" />
                 </div>
               )}
               {runError && (
@@ -301,6 +326,9 @@ export function BranchDetail() {
               </span>
             </div>
             <div className="panel-body p-3 flex flex-col gap-3">
+              <HowToRead terms={CONFIG_TERMS}>
+                The recipe for the what-if: how much capital, from which day, split across which coins, and how it is maintained. Nothing here places an order.
+              </HowToRead>
               <label className="flex flex-col gap-1">
                 <span className="label">NAME</span>
                 <input value={form.name} onChange={(e) => patch({ name: e.target.value })} className="w-full" />
@@ -341,7 +369,7 @@ export function BranchDetail() {
                       <span>COIN</span>
                       <span>WEIGHT</span>
                       <span>SIDE</span>
-                      <span>LEV</span>
+                      <span title="leverage of a perp leg, 1 to 50">LEV</span>
                     </div>
                     {form.allocations.map((a, i) => {
                       const stable = STABLES.has(a.coin.toUpperCase())
@@ -414,7 +442,7 @@ export function BranchDetail() {
               </div>
 
               <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
-                <span className="label">DCA</span>
+                <span className="label" title="dollar-cost averaging: a fixed USD amount bought on a schedule">DCA</span>
                 {form.dca.length > 0 && (
                   <div className="table-scroll">
                     <div className="flex flex-col gap-1 min-w-max">
@@ -523,8 +551,8 @@ export function BranchDetail() {
                 )}
                 {perp && (
                   <span className={perpConflict ? 'text-sm text-red-text' : 'text-xs text-text-secondary'}>
-                    {perpConflict ? 'remove the projection or the perp leg' : 'projection unavailable'} — Monte Carlo
-                    models unlevered long-only portfolios
+                    {perpConflict ? 'remove the projection or the perp leg' : 'projection unavailable'}: the projection only
+                    models portfolios with no short or leveraged leg
                   </span>
                 )}
                 {form.scenario && (
@@ -563,7 +591,7 @@ export function BranchDetail() {
                           value={a.annualReturnPct}
                           onChange={(e) => updateAssumption(a.coin, { annualReturnPct: Number(e.target.value) })}
                         />
-                        <span className="text-text-secondary text-xs">% RET</span>
+                        <span className="text-text-secondary text-xs" title="assumed yearly return of this coin, in percent">% RET</span>
                         <input
                           type="number"
                           className="w-[6ch]"
@@ -571,7 +599,7 @@ export function BranchDetail() {
                           value={a.annualVolPct}
                           onChange={(e) => updateAssumption(a.coin, { annualVolPct: Number(e.target.value) })}
                         />
-                        <span className="text-text-secondary text-xs">% VOL</span>
+                        <span className="text-text-secondary text-xs" title="assumed yearly volatility of this coin, in percent">% VOL</span>
                       </div>
                     ))}
                     <Button tier="danger" onClick={() => setRemoveProjectionOpen(true)} className="self-start">
@@ -607,14 +635,15 @@ export function BranchDetail() {
             <div className="panel-header">
               <span className="panel-title">DRAWDOWN</span>
               {result && (
-                <span className={`text-sm tabular ${maxDdClass(result.stats.maxDrawdownPct)}`}>
+                <span className={`text-sm tabular ${maxDdClass(result.stats.maxDrawdownPct)}`} title="max drawdown: the deepest fall from an earlier high">
                   MAX DD {fmtPct(-Math.abs(result.stats.maxDrawdownPct) / 100, { decimals: 1 })}
                 </span>
               )}
             </div>
             <div className="panel-body p-3">
-              {!result && <EmptyBlock label="not simulated yet" />}
+              {!result && <EmptyBlock label="not simulated yet: how far the branch fell below its own highs shows here after a run" />}
               {result && <DrawdownChart equity={result.equity} />}
+              {result && <DrawdownGuide className="mt-2" />}
             </div>
           </div>
 
@@ -624,9 +653,12 @@ export function BranchDetail() {
               <span className="panel-title">STATS</span>
             </div>
             <div className="panel-body p-3">
-              {!result && <EmptyBlock label="not simulated yet" />}
+              {!result && <EmptyBlock label="not simulated yet: yearly growth, max drawdown and the result against BTC and USDC show here after a run" />}
               {result && (
                 <>
+                  <HowToRead terms={STATS_TERMS} className="mb-3">
+                    The simulation summed up in five numbers, each over the whole period from the start date to the latest daily close.
+                  </HowToRead>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <StatCell label="CAGR" className={signClass(result.stats.cagrPct)}>
                       {fmtPct(result.stats.cagrPct / 100, { decimals: 1, sign: true })}
@@ -642,7 +674,9 @@ export function BranchDetail() {
                       {fmtPct(result.stats.vsUsdcPct / 100, { decimals: 1, sign: true })}
                     </StatCell>
                   </div>
-                  <div className="text-xs text-text-secondary mt-3">COMPUTED —</div>
+                  <div className="text-xs text-text-secondary mt-3">
+                    historical simulation on daily closes · no fees, slippage or funding are charged · a perp leg is liquidated only when its whole margin is lost
+                  </div>
                 </>
               )}
             </div>

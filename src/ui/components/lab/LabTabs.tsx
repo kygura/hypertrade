@@ -33,10 +33,10 @@ export function LabTabs({ pulseFiring }: { pulseFiring?: boolean } = {}) {
 
   const tabs: SectionTab[] = [
     { to: '/board', label: 'BOARD', short: 'BRD', title: 'live signals with their evidence', match: (p) => p === '/board' },
-    { to: '/lab/study', label: 'STUDY', short: 'STDY', match: inLab('study') },
-    { to: '/lab/search', label: 'SEARCH', short: 'SRCH', match: inLab('search'), hidden: true },
-    { to: '/lab/runs', label: 'RUNS', short: 'RUNS', match: inLab('runs'), hidden: true },
-    { to: '/lab/catalogue', label: count != null ? `RULES · ${count}` : 'RULES', short: 'RULE', title: 'the rule catalogue', match: inLab('catalogue') },
+    { to: '/lab/study', label: 'STUDY', short: 'STDY', title: 'event study: one rule replayed as past trades across coins', match: inLab('study') },
+    { to: '/lab/search', label: 'SEARCH', short: 'SRCH', title: 'search for simple rules on one asset', match: inLab('search'), hidden: true },
+    { to: '/lab/runs', label: 'RUNS', short: 'RUNS', title: 'stored searches', match: inLab('runs'), hidden: true },
+    { to: '/lab/catalogue', label: count != null ? `RULES · ${count}` : 'RULES', short: 'RULE', title: 'the rule catalogue: rules you saved and how they have done since', match: inLab('catalogue') },
     {
       to: '/lab/pulse',
       label: (
@@ -50,7 +50,7 @@ export function LabTabs({ pulseFiring }: { pulseFiring?: boolean } = {}) {
       match: inLab('pulse'),
       hidden: true,
     },
-    { to: '/branches', label: 'BRANCHES', short: 'BRNCH', match: (p) => p === '/branches' || p.startsWith('/branches/') },
+    { to: '/branches', label: 'BRANCHES', short: 'BRNCH', title: 'what-if portfolios replayed on past prices', match: (p) => p === '/branches' || p.startsWith('/branches/') },
   ]
   return <SectionTabs label="research sections" tabs={tabs} />
 }

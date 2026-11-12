@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { Badge } from '../Badge'
 import { SrcTag, type Source } from '../SrcTag'
-import { dsrCell, isStaleDate, sharpeCell, stabWord, verdictBadge, verdictOf, type Direction, type PerfStats } from '../../lib/lab'
+import { dsrCell, isStaleDate, sharpeCell, stabWord, VERDICT_MEANING, verdictBadge, verdictOf, type Direction, type PerfStats } from '../../lib/lab'
 
 // Small pieces every /lab surface repeats (docs/design/README.md §10.9).
 
@@ -25,7 +25,7 @@ export function DataTo({ date }: { date: string }) {
 /** Honesty rule 3: slippage + data age on every result surface. */
 export function LabFooter({ dataTo, slippageBps = 10, className = '' }: { dataTo?: string | null; slippageBps?: number; className?: string }) {
   return (
-    <p className={`text-xs text-text-secondary ${className}`}>
+    <p className={`text-xs text-text-secondary ${className}`} title="every number is a backtest on past data, not a forecast. Each entry and exit is charged the slippage shown (10 bps = 0.10%); funding and fees are not charged here">
       historical research · net of {slippageBps} bps slippage
       {dataTo ? (
         <>
@@ -84,13 +84,13 @@ export function invalidStyle(invalid: boolean): CSSProperties | undefined {
   return invalid ? { borderColor: 'var(--color-red)' } : undefined
 }
 
-/** Server verdict as a Badge, reasons in the title; nothing when the evaluation carries none. */
+/** Server verdict as a Badge; the title says what the level requires, then the server's reasons. Nothing when the evaluation carries none. */
 export function VerdictBadge({ ev, className = '' }: { ev: object | null | undefined; className?: string }) {
   const v = verdictOf(ev)
   if (!v) return null
   const b = verdictBadge(v.level)
   return (
-    <span className={`inline-flex ${className}`} title={v.reasons.length ? v.reasons.join('\n') : undefined}>
+    <span className={`inline-flex ${className}`} title={[`${b.label}: ${VERDICT_MEANING[v.level]}`, ...v.reasons].join('\n')}>
       <Badge tone={b.tone}>{b.label}</Badge>
     </span>
   )

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { HOLDOUT_SHARE, MIN_WEEKS } from "../../server/lab/engine/eventStudy";
-import { STUDY_HOLDOUT_SHARE, STUDY_MIN_WEEKS, studyLine } from "./study";
+import { STUDY_HOLDOUT_SHARE, STUDY_MIN_WEEKS, studyLine, studyVerdict } from "./study";
 
 const screen = (events: number, weeks: number, expectancy: number | null, upper95: number | null) => ({ events, weeks, expectancy, upper95 });
 
@@ -8,6 +8,7 @@ describe("studyLine", () => {
   test("the cut-offs mirror the engine's", () => {
     expect(STUDY_MIN_WEEKS).toBe(MIN_WEEKS);
     expect(STUDY_HOLDOUT_SHARE).toBe(HOLDOUT_SHARE);
+    expect(studyVerdict("insufficient").text).toContain(`fewer than ${MIN_WEEKS} weeks`);
   });
 
   test("clear: trades, weeks, weekly average, why it is not rejected, then the two parts of the period", () => {
