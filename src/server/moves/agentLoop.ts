@@ -65,6 +65,8 @@ export interface AgentPassResult {
 const toBars = (cs: Candle[]): Bar[] => cs.filter((c) => Number.isFinite(c.h) && Number.isFinite(c.l) && c.c > 0).map((c) => ({ t: c.t, h: c.h, l: c.l, c: c.c }));
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+const AUTO_REPEAT_MS = 24 * 3_600_000;
+
 export function createAgentLoop(deps: AgentLoopDeps) {
   const { store } = deps;
   const now = deps.agent.now;
@@ -95,13 +97,15 @@ export function createAgentLoop(deps: AgentLoopDeps) {
     return out;
   }
 
+  // A coin investigated in the last 24 h is not investigated again: a 24 h move straddles the UTC day change,
+  // so a per-day check would pay twice for the same answer. The daily cap still counts from the day start.
   /** At most autoPerTick investigations; returns the coin run or why none ran. */
   async function autoInvestigateStep(t: Date, tr: Triaged | null): Promise<{ investigated: string | null; investigation: string | null }> {
     if (!tr) return { investigated: null, investigation: "no fresh moves run to triage" };
     const since = utcDayStart(t).toISOString();
     const runs = await store.agentRunsSince(since);
     const room = deps.agent.dailyCap - runs - deps.agent.inflight.size;
-    const coins = autoInvestigate({ items: await store.listTriage(tr.day), candidates: tr.candidates, recordsToday: await store.listAgentRecords({ since, limit: 1000 }), room }).slice(0, deps.autoPerTick ?? 1);
+    const coins = autoInvestigate({ items: await store.listTriage(tr.day), candidates: tr.candidates, recordsToday: await store.listAgentRecords({ since: new Date(t.getTime() - AUTO_REPEAT_MS).toISOString(), limit: 1000 }), room }).slice(0, deps.autoPerTick ?? 1);
     if (!coins.length) {
       const unknown = tr.candidates.filter((c) => c.byResidual && c.newsUnknown).length;
       const why = room <= 0 ? `cap reached (${runs}/${deps.agent.dailyCap} today)`

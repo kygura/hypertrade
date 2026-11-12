@@ -67,7 +67,7 @@ export interface MergeInput {
   /** A PUBLIC_MODE guest: no radar (LLM-written), no agent record. */
   guest: boolean;
   triage: SourceInput<TriageItem>;
-  /** Today's agent records (any order). */
+  /** Agent records of the last 24 h (any order): a 24 h move investigated late yesterday is the same move today. */
   records: AgentRecord[];
   /** Ready opportunities and those decided today. */
   opportunities: SourceInput<Opportunity>;
@@ -95,6 +95,9 @@ function bestPerCoin(cs: Candidate[]): Map<string, QueuePart> {
 
 const validCoin = (coin: string) => AssetSchema.safeParse(coin).success;
 
+/** The agent does not investigate a coin twice in 24 h (moves/agentLoop.ts), so the queue shows a record that long. */
+export const RECORD_WINDOW_MS = 24 * 3_600_000;
+
 export function mergeQueue(q: MergeInput): MergedQueue {
   const dayStart = new Date(`${q.day}T00:00:00Z`);
   const radarIn: SourceInput<RadarCall> = q.guest ? { unavailable: "sign in required" } : q.radar;
@@ -119,7 +122,7 @@ export function mergeQueue(q: MergeInput): MergedQueue {
   const recordsById = new Map(q.records.map((r) => [r.id, r]));
   const newestRecord = new Map<string, AgentRecord>();
   for (const r of q.records) {
-    if (ms(r.createdAt) < dayStart.getTime()) continue;
+    if (ms(r.createdAt) < q.now.getTime() - RECORD_WINDOW_MS) continue;
     const prev = newestRecord.get(r.coin);
     if (!prev || ms(r.createdAt) > ms(prev.createdAt) || (r.createdAt === prev.createdAt && r.id < prev.id)) newestRecord.set(r.coin, r);
   }

@@ -59,6 +59,23 @@ describe("moves-agent loop", () => {
     expect((await store.listTriage("2026-11-11")).map((i) => i.coin)).toEqual(["SOL", "PEPE"]);
   });
 
+  test("a coin investigated late in the day is not investigated again after the UTC day change", async () => {
+    const day = Date.UTC(2026, 10, 11);
+    let clock = day + 23 * H;
+    const rows = [row("BTC", { mark: 60000, attribution: null }), row("SOL", { attribution: attribution({ residualZ: 4 }) })];
+    const { deps, coinCalls } = setup({ now: () => clock, rows });
+    // The moves run is fresh at every tick, so each tick triages.
+    const loop = createAgentLoop({ ...deps, moves: { ...deps.moves, universe: async () => ({ ...universe(rows), asOf: iso(clock), computedAt: iso(clock) }) } });
+    await loop.tick();
+    expect(coinCalls).toEqual(["SOL"]);
+    clock = day + 24 * H + 7 * 60_000; // a new day's queue, the same 24 h move
+    await loop.tick();
+    expect(coinCalls).toEqual(["SOL"]);
+    clock = day + 48 * H; // more than 24 h on, a still-unexplained residual is worth a second look
+    await loop.tick();
+    expect(coinCalls).toEqual(["SOL", "SOL"]);
+  });
+
   test("the cap counted from the store stops auto investigations (a restart with the same store keeps it)", async () => {
     const { store, deps, coinCalls } = setup({ cap: 1 });
     await createAgentLoop(deps).tick();
