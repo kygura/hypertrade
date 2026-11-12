@@ -71,7 +71,10 @@ describe('CoinDecisionView', () => {
     expect(out).toContain('ATTRIBUTION · EXPLAINED AFTER THE FACT')
     expect(out).not.toContain('data-view="price"')
   })
-  test('not in the queue says so in one line', () => {
+  test('the page guide leads; not in the queue says so and why', () => {
+    expect(out).toContain('One coin, read top to bottom')
+    expect(out).not.toContain('No source flagged this coin today')
+    expect(html(<CoinDecisionView {...props({ item: null })} />)).toContain('No source flagged this coin today (UTC).')
     expect(html(<CoinDecisionView {...props({ item: null })} />)).toContain('not in today&#x27;s queue')
     expect(html(<CoinDecisionView {...props({ item: undefined })} />)).not.toContain('data-block="inqueue"')
   })

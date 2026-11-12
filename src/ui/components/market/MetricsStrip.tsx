@@ -1,4 +1,4 @@
-import { Panel, MetricStat } from '..'
+import { Panel, MetricStat, HowToRead, type Term } from '..'
 import { AsyncBody, StaleBanner } from '../state'
 import { useApi } from '../../lib/api'
 import { isDbUnavailable } from '../../lib/dbUnavailable'
@@ -40,41 +40,53 @@ export const METRIC_DEFS: {
 }[] = [
   {
     id: 'hl.total_oi_usd',
-    label: 'TOTAL OI',
+    label: 'TOTAL OPEN INTEREST',
     fmtValue: (v: number) => fmtUsd(v, { compact: true }),
     fmtDelta: (r) => pctChange(r.latest, r.previous),
   },
   {
     id: 'hl.funding_skew',
-    label: 'FUND SKEW',
-    fmtValue: (v) => `${v >= 0 ? '+' : ''}${v.toFixed(4)}`,
-    fmtDelta: (r) => (r.delta == null ? null : { text: `${r.delta >= 0 ? '+' : ''}${r.delta.toFixed(4)} ${r.delta >= 0 ? '▲' : '▼'}`, positive: r.delta >= 0 }),
+    label: 'FUNDING, OI-WEIGHTED',
+    // Stored as an hourly fraction (0.0000125 = 0.00125% per hour): shown in percent so the neutral rate is not "+0.0000".
+    fmtValue: (v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(4)}%/h`,
+    fmtDelta: (r) => (r.delta == null ? null : { text: `${r.delta >= 0 ? '+' : ''}${(r.delta * 100).toFixed(4)}% ${r.delta >= 0 ? '▲' : '▼'}`, positive: r.delta >= 0 }),
   },
   {
     id: 'fng.value',
-    label: 'FEAR/GREED',
+    label: 'FEAR & GREED',
     fmtValue: (v) => `${Math.round(v)} ${fngWord(v)}`,
     fmtDelta: (r) => (r.delta == null ? null : { text: `${r.delta >= 0 ? '+' : ''}${Math.round(r.delta)} ${r.delta >= 0 ? '▲' : '▼'}`, positive: r.delta >= 0 }),
   },
   {
     id: 'cg.btc_dominance',
-    label: 'BTC DOM',
+    label: 'BTC DOMINANCE',
     fmtValue: (v) => `${v.toFixed(1)}%`,
     fmtDelta: (r) => (r.delta == null ? null : { text: `${r.delta >= 0 ? '+' : ''}${r.delta.toFixed(1)}% ${r.delta >= 0 ? '▲' : '▼'}`, positive: r.delta >= 0 }),
   },
   {
     id: 'llama.stablecoin_cap_usd',
-    label: 'STABLES',
+    label: 'STABLECOIN CAP',
     fmtValue: (v: number) => fmtUsd(v, { compact: true }),
     fmtDelta: (r) => pctChange(r.latest, r.previous),
   },
+]
+
+const TERMS: readonly Term[] = [
+  ['TOTAL OPEN INTEREST', 'USD value of all open perp positions on Hyperliquid. The line under it is the percent change since the previous stored reading.'],
+  ['FUNDING, OI-WEIGHTED', 'Average hourly funding rate across Hyperliquid perps, weighted by each perp\'s open interest. Positive means longs are paying shorts on balance. The neutral rate is +0.00125% per hour.'],
+  ['FEAR & GREED', 'The Crypto Fear & Greed index, 0 to 100, with its band: under 25 extreme fear, 25 to 44 fear, 45 to 55 neutral, 56 to 75 greed, 76 and up extreme greed.'],
+  ['BTC DOMINANCE', 'Bitcoin\'s share of total crypto market cap, in percent.'],
+  ['STABLECOIN CAP', 'Total market cap of stablecoins in USD.'],
+  ['▲ ▼ line', 'Change since the previous stored reading of that series.'],
+  ['z', 'How far the latest reading is from the mean of its last 30 stored readings, in standard deviations (needs at least 5). Shown from 1, amber from 2.'],
 ]
 
 /** No database: one quiet text line with the server's reason, never a card. */
 export function MetricsUnavailable({ reason }: { reason: string }) {
   return (
     <p className="px-3 py-1.5 text-xs text-text-secondary break-words" data-metrics-unavailable>
-      metrics unavailable{reason ? ` · ${reason}` : ''}
+      metrics unavailable{reason ? ` · ${reason}` : ''}. Total open interest, funding, fear and greed, BTC dominance and stablecoin cap show
+      here once the metrics database is connected.
     </p>
   )
 }
@@ -94,7 +106,7 @@ export function MetricsStrip() {
         data={data}
         error={error}
         offline={offline}
-        empty={{ label: 'no metrics yet' }}
+        empty={{ label: 'No metrics stored yet. The collectors write these series on a schedule; values appear after their first run.' }}
         onRetry={refetch}
       >
         {(rows) => {
@@ -122,6 +134,10 @@ export function MetricsStrip() {
                   )
                 })}
               </div>
+              <HowToRead className="px-3 py-1.5" terms={TERMS}>
+                Market-wide gauges with their change since the previous reading. A z value appears when a reading is unusual against its own
+                recent history.
+              </HowToRead>
             </>
           )
         }}

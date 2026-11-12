@@ -10,7 +10,7 @@ import { zWarn } from './logic'
 
 describe('GUIDE', () => {
   test('every quoted number is the server constant', () => {
-    expect(GUIDE).toEqual({
+    expect<Record<string, number>>(GUIDE).toEqual({
       estBars: C.EST_BARS, minEstBars: C.MIN_EST_BARS, minWindowSharePct: C.MIN_WINDOW_SHARE * 100, sectorMinPeers: C.SECTOR_MIN_PEERS, sectorsShown: 6,
       flowZ: C.FLOW_Z, newsBeforeH: C.NEWS_BEFORE_MS / C.HOUR_MS, newsAfterH: C.NEWS_AFTER_MS / C.HOUR_MS,
       fundingLookback: C.FUNDING_Z_LOOKBACK, fundingMinN: C.FUNDING_Z_MIN_N, crowdedFundingZ: C.CROWDED_FUNDING_Z, crowdedAprPct: C.CROWDED_FUNDING_APR_PCT,

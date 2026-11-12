@@ -52,7 +52,7 @@ export function Sectors() {
             error={error}
             offline={offline}
             staleError={false}
-            empty={{ label: 'no sector data yet — trigger the routine from STATE' }}
+            empty={{ label: 'No sector data yet. The scheduled routine writes this map; run it from the STATE page to produce the first one.' }}
             isEmpty={(d) => d.sectors.length === 0}
             onRetry={refetch}
           >
@@ -67,7 +67,7 @@ export function Sectors() {
             {selected ? (
               <SectorDrillPanel sector={selected} onClose={() => setSelectedId(null)} />
             ) : (
-              <EmptyBlock label="no sector data for this narrative" />
+              <EmptyBlock label="This narrative has no sector entry in the latest routine run, so there is nothing to drill into." />
             )}
           </Panel>
         </div>

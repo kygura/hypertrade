@@ -74,8 +74,17 @@ export function Desk() {
     runs.refetch()
   }, [portfolio, proposals, alerts, runs])
 
-  if (status.offline) return <OfflineBlock onRetry={status.refetch} />
-  if (status.error) return <ErrorBlock message={status.error} onRetry={status.refetch} />
+  if (status.offline || status.error) {
+    return (
+      <div className="flex flex-col gap-2 min-w-0">
+        {status.offline ? <OfflineBlock onRetry={status.refetch} /> : <ErrorBlock message={status.error ?? ''} onRetry={status.refetch} />}
+        <HowToRead className="px-3">
+          The desk could not be loaded, for the reason above. When it loads, this page shows the practice account's equity and open positions, the trades the
+          agent team proposed with the risk checks each one passed or failed, alerts, and past runs.
+        </HowToRead>
+      </div>
+    )
+  }
 
   const limits = status.data?.limits
   const takeaway = portfolio.data ? deskTakeaway(portfolio.data.desk, proposals.data?.proposals, limits) : null

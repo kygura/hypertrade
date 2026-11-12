@@ -31,7 +31,7 @@ export function SkeletonRows({ rows = 3, colSpan }: { rows?: number; colSpan?: n
   return <div className="space-y-2 p-2">{bars}</div>
 }
 
-// EmptyBlock (loaded, zero items) — centered 11px uppercase text-secondary
+// EmptyBlock (loaded, zero items) — centered 11px text-secondary, printed as written so a sentence stays a sentence
 // line, optional single ghost action beneath.
 export function EmptyBlock({
   label,
@@ -42,7 +42,7 @@ export function EmptyBlock({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-8 px-3 text-center">
-      <span className="state-title text-sm [text-transform:var(--label-case)] tracking-[var(--label-tracking)] font-[number:var(--label-weight)] text-text-secondary">{label}</span>
+      <span className="state-title text-sm tracking-[var(--label-tracking)] font-[number:var(--label-weight)] text-text-secondary">{label}</span>
       {action && (
         <Button tier="ghost" onClick={action.onClick}>
           {action.label}

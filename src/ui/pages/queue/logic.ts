@@ -135,7 +135,7 @@ export const REASON_TERMS: readonly Term[] = [
   ['residual +6.2%', 'The coin’s 24h move minus the part that tracks BTC, ETH and its sector. Unexplained, not a cause.'],
   ['z +3.1', `That residual divided by its usual size for this coin over 24h. The queue bar is ${GUIDE.queueZ} in either direction, with a total move of at least ${GUIDE.queueMinMovePct}%.`],
   ['no news in window · news in 3h · news unknown', 'Hours of the 24h window that had a news item naming the coin. Unknown: the news feed is not being ingested.'],
-  ['FADE 3/3 · ENTER 3/3', 'A checklist with every condition met. FADE: one side crowded, attention saturated, liquidations nearby. ENTER: attention rising, little crowding, a residual z of 1.5 or more.'],
+  ['FADE 3/3 · ENTER 3/3', 'A checklist with every condition met. FADE: one side crowded, attention saturated, liquidations nearby. ENTER: attention rising, little crowding, a residual z of ' + GUIDE.enterResidualZ + ' or more.'],
   ['crowd long 3/4', 'Crowding checks met on that side, out of those that could be evaluated.'],
   ['crowded_short long · ready · net 42 bps', 'A scanner setup: its kind, side, status, and its expected edge after fees, slippage and funding in basis points (1 bp = 0.01%).'],
   ['ride long · catalyst · kill 31.2', 'A radar call: stance (ride or fade), side, kind, and the price at which the call is closed.'],

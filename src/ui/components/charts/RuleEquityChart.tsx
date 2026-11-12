@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { CartesianGrid, ComposedChart, Line, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { logSafeEquity } from '../../lib/lab'
+import { HowToRead, type Term } from '../HowToRead'
 
 // Rule equity vs its benchmark — docs/design/README.md §10.9 (§9.1 variant). Growth
 // multiple on a log Y axis (a 40× benchmark no longer flattens the rule;
@@ -20,6 +21,24 @@ const month = (t: number) => new Date(t).toISOString().slice(0, 7)
 const mult = (v: number) => `${v >= 10 ? v.toFixed(0) : Number(v.toPrecision(2))}×`
 const multExact = (v: number | null) => (v == null ? '—' : `${v.toFixed(2)}×`)
 const toMs = (d: string) => Date.parse(d.length === 10 ? `${d}T00:00:00Z` : d)
+
+/** How to read the chart: both lines, the shaded stretch, the dashed line and the axes. The page renders it under the chart. */
+export function RuleEquityGuide({ benchmarkLabel, saved, className }: { benchmarkLabel: string; saved: boolean; className?: string }) {
+  const terms: Term[] = [
+    ['RULE line', 'what 1 unit became following the rule: in the market on the day after its conditions were true, out otherwise, net of slippage. Flat stretches are days out of the market.'],
+    [`${benchmarkLabel} line`, 'what 1 unit became simply holding the asset over the same days (holding it short, for a short rule).'],
+    ['HOLDOUT shading', 'the most recent 20% of the history. It was set aside before any search, so the lines inside it are the part the rule was not chosen on.'],
+    ...(saved ? ([['SAVED dashed line', 'the day the rule was saved. Everything to its right is the live record.']] as Term[]) : []),
+    ['vertical axis · LOG', 'growth multiple: 2× is doubled, 0.5× is halved. The scale is logarithmic, so equal distances are equal percentage moves. A value at or below 0 is drawn as a gap.'],
+    ['horizontal axis', 'date, labelled by month.'],
+  ]
+  return (
+    <HowToRead terms={terms} className={className}>
+      Growth of 1 unit following the rule against simply holding the asset, over the whole history. Look at whether the rule line keeps its course inside the shaded holdout, not at how
+      high it ends. Past growth, not a forecast.
+    </HowToRead>
+  )
+}
 
 export function RuleEquityChart({
   equity,

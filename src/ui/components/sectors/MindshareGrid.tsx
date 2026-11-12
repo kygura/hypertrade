@@ -1,6 +1,8 @@
 import { fmtPct } from '../../../shared/format'
 import type { Sector } from '../../../shared/types'
+import { HowToRead, type Term } from '../HowToRead'
 import { MomentumBadge } from '../MomentumBadge'
+import { mindshareInsight } from './insight'
 
 // MindshareGrid — docs/design/README.md §10.5. Tiered heat-grid: cell SIZE tier from
 // mindshare_score, cell BACKGROUND from the momentum ramp (§2 tokens).
@@ -31,6 +33,14 @@ export type EnrichedSector = Sector & {
   social_share_24h?: number | null
   social_as_of?: string | null
 }
+
+const TERMS: readonly Term[] = [
+  ['Tile size', 'The mindshare score: large from 0.25, medium from 0.10, small below. Tiles are sorted by it.'],
+  ['mindshare', 'From 0 to 1: how much of the market\'s attention the routine judges this sector to hold. A judgment by the scheduled model run, written from measured open interest, funding, 24-hour change and social share.'],
+  ['social', 'Measured, unlike mindshare: the sector\'s share of crypto-social mentions over the last 24 hours, summed over its tokens (Elfa). Shown only when a recent sample exists.'],
+  ['Tile colour · ▲ ▼ badge', 'The momentum score, from −1 to +1: whether the routine judges attention to be building or fading. Also the routine\'s judgment. Green from +0.15 and stronger green from +0.5; red from −0.15 and stronger red from −0.5; grey in between.'],
+  ['Click', 'Opens the sector below with the routine\'s reasoning and live numbers for its tokens.'],
+]
 
 type Tier = 'lg' | 'md' | 'sm'
 
@@ -69,6 +79,14 @@ export function MindshareGrid({
   const sorted = [...sectors].sort((a, b) => b.mindshare_score - a.mindshare_score)
 
   return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1">
+        <p className="text-md text-text-primary">{mindshareInsight(sectors)}</p>
+        <HowToRead terms={TERMS}>
+          One tile per sector. Size is the mindshare score and colour is the momentum score, both judged by the scheduled routine from
+          measured market data. Look for large tiles changing colour, and for mindshare that differs from measured social share.
+        </HowToRead>
+      </div>
     <div
       className="grid grid-cols-2 lg:grid-cols-4 auto-rows-[64px] lg:auto-rows-[72px] gap-[2px]"
       style={{ background: 'var(--color-body)' }}
@@ -92,10 +110,10 @@ export function MindshareGrid({
             <span className="text-md uppercase text-text-primary line-clamp-2">{s.label}</span>
             <span className="flex items-end justify-between gap-1">
               <span className="text-xs text-text-secondary tabular">
-                MS {s.mindshare_score.toFixed(2)}
+                <span title="Mindshare score, 0 to 1: the routine's judgment of attention">mindshare</span> {s.mindshare_score.toFixed(2)}
                 {s.social_share_24h != null && (
                   <span title="Share of crypto-social mentions, trailing 24h (Elfa). Measured, unlike MS, which is the routine's judgment.">
-                    {' · '}SOC {fmtPct(s.social_share_24h, { decimals: 1 })}
+                    {' · '}social {fmtPct(s.social_share_24h, { decimals: 1 })}
                   </span>
                 )}
               </span>
@@ -104,6 +122,7 @@ export function MindshareGrid({
           </button>
         )
       })}
+    </div>
     </div>
   )
 }

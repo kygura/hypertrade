@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { record } from '../moves/fixtures'
 import { item, NOW, queueResponse, setupPart } from './fixtures'
-import { agentLine, ageText, defaultSelection, directionOf, emptyLine, headerLine, partLabel, partsLabel, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
+import { agentLine, ageText, defaultSelection, directionOf, emptyLine, emptyWhy, headerLine, queueTakeaway, partLabel, partsLabel, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
 
 describe('queue logic', () => {
   test('headerLine: listed of cap, over cap only when some wait', () => {
@@ -42,6 +42,25 @@ describe('queue logic', () => {
     expect(agentLine(queueResponse({ agentBlockedReason: 'no LLM provider configured' }))).toBe('agents 2/6 today · investigate off: no LLM provider configured')
     expect(emptyLine(38)).toBe('nothing crossed the bar today · 38 coins watched')
     expect(emptyLine(null)).toBe('nothing crossed the bar today')
+  })
+
+  test('queueTakeaway: new items by source, agreement and records, then the handled count; null when empty', () => {
+    const both = item('SOL', { parts: [item('SOL').parts[0]!, setupPart('SOL')], record: record({ coin: 'SOL' }) })
+    expect(queueTakeaway(queueResponse({ items: [both, item('WIF'), item('ETH', { state: 'acted' })] }))).toBe(
+      '2 new today (MOVES 2, SETUP 1). 1 flagged by more than one source; 1 has an agent record. 1 handled today.',
+    )
+    expect(queueTakeaway(queueResponse({ items: [item('WIF'), item('SOL')] }))).toBe('2 new today (MOVES 2). 0 flagged by more than one source; 0 have an agent record.')
+    expect(queueTakeaway(queueResponse({ items: [item('ETH', { state: 'dismissed', dismissedAt: '2026-11-11T14:10:00.000Z' })] }))).toBe('Nothing new. 1 handled today.')
+    expect(queueTakeaway(queueResponse())).toBeNull()
+  })
+
+  test('emptyWhy: the bars that list a coin; says when no moves scan is stored', () => {
+    expect(emptyWhy(queueResponse({ watched: 38 }))).toBe(
+      'A coin is listed when the moves scan measures an unusual 24h move (residual z of 2.5 or more with a move of at least 1%) or a fully met ENTER or FADE checklist, when the scanner has a ready setup, or when the radar lands a call.',
+    )
+    expect(emptyWhy(queueResponse({ watched: 0 }))).toEndWith('No moves scan is stored yet, so MOVES has ranked nothing.')
+    const off = { ...queueResponse().sources, moves: { state: 'unavailable' as const, reason: 'no store', count: 0 } }
+    expect(emptyWhy(queueResponse({ watched: 0, sources: off }))).not.toContain('No moves scan')
   })
 
   test('ageText reads from firstAt', () => {

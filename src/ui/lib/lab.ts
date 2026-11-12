@@ -311,6 +311,21 @@ export const TRANSFORM_HINT: Partial<Record<Transform, string>> = {
   vchg: 'volatility-scaled change: the window\'s log change in units of the coin\'s own daily volatility (off by default)',
 }
 
+/**
+ * The transform prefixes as RuleText prints them (`z(90) MVRV`), each as the engine computes it
+ * (src/server/lab/engine/features.ts). Shared by every reading guide that sits next to a rule.
+ */
+export const TRANSFORM_TERMS: ReadonlyArray<readonly [string, string]> = [
+  ['z(n)', 'z-score: how many standard deviations today is from the mean of the last n days. +2 is unusually high, −2 unusually low.'],
+  ['rsi(n)', 'relative strength over n days, 0 to 100: the share of the daily movement that was upward. 100 means every change was a rise.'],
+  ['ma(n)', 'distance from the n-day mean as a fraction: 0.10 is 10% above it, −0.10 is 10% below.'],
+  ['roc(n)', 'change over n days as a fraction: 0.10 is a 10% rise.'],
+  ['vol(n)', 'volatility: standard deviation of the daily log changes over n days. Higher is choppier.'],
+  ['pct(n)', 'rank of today among the last n days, from 0 (lowest) to 1 (highest).'],
+  ['vchg(n)', 'the n-day move divided by the series\' own 30-day volatility scaled to n days: within ±1 is an ordinary move for that coin.'],
+  ['no prefix', 'the metric\'s raw value that day.'],
+]
+
 export interface ParsedFeature {
   metric: string
   transform: Transform
@@ -1043,3 +1058,36 @@ export function pulseLine(assets: readonly Pick<PulseAsset, 'longActive' | 'long
   const on = assets.filter((a) => a.longActive + a.shortActive > 0).length
   return `${long + short} of ${plural(total, 'saved rule')} in zone on the latest daily bar: ${long} long, ${short} short, on ${on} of ${plural(assets.length, 'asset')}.`
 }
+
+// ------------------------------------------------------------------ reading-guide terms (shared by the Lab views)
+
+type TermPair = readonly [string, string]
+
+/** The server's verdict levels as their badges print, each with what it requires. */
+export const VERDICT_TERMS: readonly TermPair[] = (Object.keys(VERDICT_BADGE) as VerdictLevel[]).map((l) => [VERDICT_BADGE[l].label, `${VERDICT_MEANING[l]}.`] as const)
+
+/**
+ * Plain definitions of what an evaluation prints, as the engine computes each (docs/LAB.md §5–8,
+ * src/server/lab/engine/{backtest,validate,stats}.ts). One wording for every view that shows the number.
+ */
+export const EVAL_TERMS = {
+  sharpe: ['Sharpe', 'return per unit of risk: the mean daily return divided by its standard deviation, scaled to a year. Around 0 is noise, negative lost money, above 1 is a steady result. It does not say how large the gain was.'],
+  inSample: ['in-sample', 'the first 80% of the history, the part a search could see. It flatters the rule by construction.'],
+  walkForward: ['walk-forward', 'the first 80% of the history cut into blocks in date order. Each block is scored using only what came before it, and the blocks are joined into one track. Rules are ranked by this.'],
+  holdout: ['holdout', 'the most recent 20% of the history, set aside before any search and never used to pick or rank a rule. A one-time check on data the rule has not seen.'],
+  holdoutGap: ['HOLDOUT GAP', 'the holdout Sharpe has the opposite sign to the walk-forward Sharpe, or is under half of it: a sign the rule fitted the past better than it carried forward.'],
+  dsr: ['deflated Sharpe', `a probability from 0 to 1 that the walk-forward Sharpe beats the best result luck alone would give across everything the search tried. ${MIN_DEFLATED_SHARPE} or more passes the save bar; near 0.5 it is as likely luck as not. A rule that came from no search is not corrected and reads higher.`],
+  trialsN: ['N≈', 'effective trials: how many meaningfully different rule variants the search scored. Variants that are in the market on mostly the same days count once. The deflated Sharpe is corrected for this many tries.'],
+  stability: ['stability', `the share of nudged copies of the rule that keep the sign of its Sharpe and at least half its size. Each threshold is moved a little and each window swapped for its neighbour. ${MIN_STABILITY} or more passes; the word reads STABLE from 0.75, SOFT from ${MIN_STABILITY}, FRAGILE below.`],
+  hit: ['hit rate', 'share of closed trades that ended with a net gain. A trade is one unbroken run of days in the market.'],
+  maxDd: ['max drawdown', 'the deepest fall of the equity curve from an earlier high, in percent. Printed red beyond −20%.'],
+  trades: ['trades', 'times the rule entered the market in that window. Few trades make every other number in the column unreliable.'],
+  tradesYr: ['trades per year', 'trades divided by the length of the window in years.'],
+  exposure: ['exposure', 'share of days the rule was in the market.'],
+  support: ['support', 'days in the training data on which all conditions were true. Low support means the rule rests on few cases.'],
+  precision: ['precision', 'of those in-zone days, the share followed by a good outcome: for a long, a forward return over the hold that is positive and in the top 30% of the history (bottom 30% and negative for a short). 30% is the default label quantile.'],
+  firing: ['FIRING / FLAT', 'whether every condition is true on the latest daily bar. Firing is a condition met, not a call.'],
+  untested: ['untested', 'the rule made no trade in that window, so there is no result. It is not the same as a Sharpe of 0.'],
+  slippage: ['net of slippage', 'every entry and exit is charged the slippage shown under the table (in basis points; 10 bps is 0.10%). No other cost is modelled here.'],
+  then: ['AT SEARCH / AT SAVE / NOW', 'AT SEARCH (or AT SAVE) are the numbers from when the rule was found (or saved); NOW is the same rule re-run on today\'s data. They can differ: days have been added, and a search re-fits the thresholds inside each walk-forward block while a re-run keeps them fixed.'],
+} as const satisfies Record<string, TermPair>

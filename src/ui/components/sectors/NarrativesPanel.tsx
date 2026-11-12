@@ -8,10 +8,12 @@ import { Button } from '../Button'
 import { DataTable, type Column } from '../DataTable'
 import { Segmented } from '../Segmented'
 import { EmptyBlock } from '../state'
+import { HowToRead, type Term } from '../HowToRead'
 import { ClaimAge } from '../intel/ClaimAge'
 import { ClaimList } from '../intel/ClaimList'
 import { fmtCost, toClaim } from '../intel/research'
 import { sourceHref } from '../intel/SourceLink'
+import { narrativesInsight } from './insight'
 
 // NarrativesPanel — docs/SPEC.md § Narratives. One row per routine sector
 // basket, strongest LTF flow first: HTF stage with the numbers it comes from,
@@ -41,6 +43,19 @@ const AGREEMENT_WORD: Record<NarrativeContrast['view']['agreement'], string> = {
   mixed: 'EVIDENCE UNCLEAR VS YOUR VIEW',
   no_view: 'NO VIEW GIVEN',
 }
+
+const TERMS: readonly Term[] = [
+  ['NARRATIVE', 'A basket of tokens the routine grouped into one sector, tracked as a single equal-weight composite. Click a row for its tokens, headlines and research.'],
+  ['STAGE', 'A label set by code from the 7-day and 30-day numbers in the row. Emerging: ahead of BTC over 7 days with open interest up, but not over 30 days. Expanding: ahead of BTC over both 7 and 30 days with open interest up. Crowded: funding z of 2 or more while 7-day open interest is up. Fading: ahead of BTC over 30 days but now behind over 7 days, or with 7-day open interest down. Quiet: none of these. Unknown: a 7-day number is missing. "Ahead" and "up" mean by more than 1 point.'],
+  ['LAST 1H · 6H · 24H', 'Three marks, one per window, for what price and open interest did together. L+ long build: price up, open interest up. S− short cover: price up, open interest down. S+ short build: price down, open interest up. L− long unwind: price down, open interest down. A mark shows only when both moves are at least 1 standard deviation against that basket\'s own history; · means neither stood out and – means not enough history. Hover a mark for the z values.'],
+  ['7D VS BTC', 'The basket\'s 7-day price change minus BTC\'s, in percentage points.'],
+  ['OI 7D', 'Change in the basket\'s open interest over 7 days, in percent.'],
+  ['FUNDING Z', 'How far the basket\'s current funding (weighted by open interest) sits from its own level over the last 30 days, in robust standard deviations. Positive means longs are paying more than usual.'],
+  ['OI', 'Open interest summed over the basket\'s tokens, in USD.'],
+  ['YOUR VIEW', 'The lean you saved for this narrative: continuation, fade or unsure.'],
+  ['RESEARCH', 'Which case the latest contrast research favoured, as the model read the evidence. A hypothesis; hover for how it sits against your view.'],
+  ['ALIGNMENT', 'In the detail row: whether the strongest 1h, 6h or 24h move points the same way as the basket\'s 7-day price change (with), the other way (against), or there is no standout move (none).'],
+]
 
 const pct = (x: number | null) => (x == null ? <span className="text-text-disabled">--</span> : <span className={classForPnl(x)}>{fmtPct(x / 100, { sign: true, decimals: 1 })}</span>)
 const z = (x: number | null) => (x == null ? '--' : x.toFixed(1))
@@ -77,20 +92,20 @@ export function NarrativesPanel({
     { key: 'label', label: 'NARRATIVE', priority: 1, sortValue: (r) => r.label, render: (r) => r.label.toUpperCase() },
     {
       key: 'stage',
-      label: 'HTF',
+      label: <span title="Stage, set by code from the 7-day and 30-day numbers">STAGE</span>,
       priority: 1,
       sortValue: (r) => r.stage,
       render: (r) => <Badge tone={STAGE_TONE[r.stage]}>{r.stage.toUpperCase()}</Badge>,
     },
-    { key: 'ltf', label: <span title="1h · 6h · 24h price × OI">LTF</span>, priority: 1, render: (r) => <Quads row={r} /> },
+    { key: 'ltf', label: <span title="What price and open interest did together over the last 1h · 6h · 24h">LAST 1H · 6H · 24H</span>, priority: 1, render: (r) => <Quads row={r} /> },
     { key: 'rel7', label: '7D VS BTC', priority: 2, align: 'right', sortValue: (r) => r.htf.relBtc7d ?? -Infinity, render: (r) => pct(r.htf.relBtc7d) },
     { key: 'oi7', label: 'OI 7D', priority: 3, align: 'right', sortValue: (r) => r.htf.oiPct7d ?? -Infinity, render: (r) => pct(r.htf.oiPct7d) },
-    { key: 'fz', label: 'FUND Z', priority: 3, align: 'right', sortValue: (r) => r.htf.fundingZ ?? -Infinity, render: (r) => z(r.htf.fundingZ) },
+    { key: 'fz', label: <span title="Current funding against its own last 30 days, in robust standard deviations">FUNDING Z</span>, priority: 3, align: 'right', sortValue: (r) => r.htf.fundingZ ?? -Infinity, render: (r) => z(r.htf.fundingZ) },
     { key: 'oi', label: 'OI', priority: 4, align: 'right', sortValue: (r) => r.oiUsd ?? -1, render: (r) => (r.oiUsd == null ? '--' : fmtUsd(r.oiUsd, { compact: true })) },
-    { key: 'view', label: 'YOU', priority: 2, render: (r) => (r.view ? r.view.lean.toUpperCase() : <span className="text-text-disabled">--</span>) },
+    { key: 'view', label: 'YOUR VIEW', priority: 2, render: (r) => (r.view ? r.view.lean.toUpperCase() : <span className="text-text-disabled">--</span>) },
     {
       key: 'read',
-      label: 'READ',
+      label: <span title="Which case the latest contrast research favoured, as the model read it">RESEARCH</span>,
       priority: 2,
       render: (r) => (r.contrast ? <span title={AGREEMENT_WORD[r.contrast.view.agreement]}>{r.contrast.favours.toUpperCase()}</span> : <span className="text-text-disabled">--</span>),
     },
@@ -98,6 +113,13 @@ export function NarrativesPanel({
 
   return (
     <div className="flex flex-col">
+      <div className="flex flex-col gap-1 pb-2">
+        {data.narratives.length > 0 && <p className="text-md text-text-primary max-w-[110ch]">{narrativesInsight(data.narratives)}</p>}
+        <HowToRead terms={TERMS}>
+          Each row is a sector basket read as one asset from stored market snapshots. STAGE describes the last 7 and 30 days; the three
+          marks beside it describe the last 1, 6 and 24 hours. Rows with the largest recent moves come first.
+        </HowToRead>
+      </div>
       <DataTable
         columns={columns}
         rows={data.narratives}
@@ -105,10 +127,10 @@ export function NarrativesPanel({
         onRowClick={(r) => onSelect(r.id)}
         isSelected={(r) => r.id === selectedId}
         sortable
-        emptyLabel={<EmptyBlock label="no narratives: the routine has not written sector baskets yet" />}
+        emptyLabel={<EmptyBlock label="No narratives yet. Each one is a sector basket from the scheduled routine, and the routine has not written any." />}
       />
       {selected && <NarrativeDetail key={selected.id} row={selected} onChanged={onChanged} />}
-      {selectedId && !selected && <EmptyBlock label="no narrative for this sector" />}
+      {selectedId && !selected && <EmptyBlock label="No narrative row for this sector yet, so there is no flow detail to show." />}
     </div>
   )
 }
@@ -130,7 +152,7 @@ function NarrativeDetail({ row, onChanged }: { row: NarrativeRow; onChanged: () 
         </span>
         <span>7D {pct(row.htf.pricePct7d)} · 30D {pct(row.htf.pricePct30d)} · 30D VS BTC {pct(row.htf.relBtc30d)} · OI 30D {pct(row.htf.oiPct30d)}</span>
         {row.firstSeen && <span>LISTED SINCE {row.firstSeen}</span>}
-        <span>ALIGNMENT {row.alignment.toUpperCase()}</span>
+        <span title="Whether the strongest 1h, 6h or 24h move points the same way as the 7-day price change">ALIGNMENT {row.alignment.toUpperCase()}</span>
       </div>
       <Headlines items={row.headlines} />
       <ViewEditor id={row.id} view={row.view} onSaved={onChanged} />

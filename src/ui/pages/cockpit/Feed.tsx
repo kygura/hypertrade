@@ -1,11 +1,24 @@
 import { useMemo, type ReactNode } from 'react'
-import { Badge, DataTable, ErrorBlock, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column } from '../../components'
+import { Badge, DataTable, ErrorBlock, HowToRead, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column, type Term } from '../../components'
 import { fmtAge } from '../../components/strategy/format'
 import type { FeedRow as Row, OpportunityStatus } from '../../../shared/platform'
 import { edgeWord, STATUS_WORD, type StatusFilter, type TierFilter } from './logic'
 
 // OpportunityFeed / FeedRow / FeedFilters — DESIGN-terminal C3. Server order
 // (score desc), no click sort; the container filters client-side.
+
+const TERMS: readonly Term[] = [
+  ['Row, left to right', 'Coin, direction, score, edge, status, and the time since the idea was raised. The second line holds up to three tags from the setup, the liquidity tier, and the trade type when it is not a plain directional trade.'],
+  ['Score', 'How unusual the move is, not how profitable. It is the largest z-score among five features (15-minute return, price acceleration, 1-hour open interest change, funding against its last 24 hours, 1-hour volume ratio), multiplied by 1.25 when two kinds of signal fire together and 1.5 when three do. The feed is sorted by it.'],
+  ['Edge (bp)', 'Estimated profit after costs, in basis points (100bp = 1%): gross edge minus fees on entry and exit, slippage and funding. A dash means no cost model exists for that trade type. Score and edge are separate numbers and are never combined.'],
+  ['COSTS EXCEED EDGE', 'The estimated costs are larger than the gross edge, so the net is negative.'],
+  ['UNVALIDATED', 'The gross edge is only the distance from stop to target, because this setup has fewer than 30 resolved outcomes on record.'],
+  ['Status', 'NEW: just raised. INVESTIGATING: research is running. CALC: costs are attached. READY: can be approved. APPROVED, OPEN, CLOSED: the order was sent, is in the market, is finished. REJECTED: you declined it. EXPIRED: it stayed READY past its time limit. FAILED: the order could not be placed after approval.'],
+  ['tier T1 · T2 · T3', 'Liquidity tier by 24-hour volume: T1 is the most traded third of all perps, T3 the least.'],
+  ['Age', 'Time since the idea was raised. Amber when a READY idea is within 10 minutes of expiring.'],
+  ['LIVE · READY · DECIDED', 'Filters. LIVE is everything not yet decided; DECIDED is approved, open or finished.'],
+  ['SNOOZED', 'Ideas you hid for a set time. They stay below the list until the timer runs out.'],
+]
 
 export function StatusPill({ status }: { status: OpportunityStatus }) {
   const word = STATUS_WORD[status]
@@ -55,11 +68,11 @@ function rowColumns(now: number, readyTtlMin: number): Column<Row>[] {
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span className="text-md text-text-primary w-14 truncate">{r.coin}</span>
               <span className="w-10">{r.direction.toUpperCase()}</span>
-              <span className="tabular text-text-primary">{r.score.toFixed(2)}</span>
+              <span className="tabular text-text-primary" title="score: how unusual the move is (largest z-score, raised when signals coincide)">{r.score.toFixed(2)}</span>
               <EdgeCell row={r} />
               <StatusPill status={r.status} />
               {snoozed && <Badge tone="gray">SNOOZED {snoozeLeft(r.snoozedUntil!, now)}</Badge>}
-              <span className={`ml-auto tabular text-xs ${nearExpiry ? 'text-amber' : 'text-text-secondary'}`} title={nearExpiry ? 'READY expires soon' : undefined}>
+              <span className={`ml-auto tabular text-xs ${nearExpiry ? 'text-amber' : 'text-text-secondary'}`} title={nearExpiry ? 'READY expires within 10 minutes' : 'time since the idea was raised'}>
                 {fmtAge(r.createdAt)}
               </span>
             </div>
@@ -68,7 +81,7 @@ function rowColumns(now: number, readyTtlMin: number): Column<Row>[] {
                 <span key={t}>{t}</span>
               ))}
               {r.tags.length > 3 && <span>+{r.tags.length - 3}</span>}
-              <span>tier T{r.liquidityTier}</span>
+              <span title="liquidity tier by 24h volume: T1 most traded third of perps, T3 least">tier T{r.liquidityTier}</span>
               {r.tradeType !== 'directional' && <span>{r.tradeType}</span>}
             </div>
           </div>
@@ -86,7 +99,8 @@ export function WarmingLine({ scanHistoryMin, hasRows }: { scanHistoryMin: numbe
   if (scanHistoryMin == null || scanHistoryMin >= WARM_MIN || hasRows) return null
   return (
     <p className="px-3 py-1.5 text-xs tabular text-amber" role="status">
-      SCANNER WARMING UP — {Math.floor(scanHistoryMin)} of {WARM_MIN} MIN HISTORY
+      SCANNER WARMING UP — {Math.floor(scanHistoryMin)} of {WARM_MIN} MIN HISTORY. The z-scores need an hour of stored scans before any idea can
+      clear the bar.
     </p>
   )
 }
@@ -124,6 +138,7 @@ export function OpportunityFeed({
   error,
   scanAgeSec,
   hasRows,
+  insight,
   now,
   readyTtlMin,
   emptySlot,
@@ -144,6 +159,8 @@ export function OpportunityFeed({
   scanAgeSec: number | null
   /** Any row at all before filtering (decides which empty copy). */
   hasRows: boolean
+  /** feedInsight over the unfiltered rows; null hides the line. */
+  insight?: string | null
   now: number
   /** PLATFORM_READY_TTL_MIN from the feed response. */
   readyTtlMin: number
@@ -165,7 +182,11 @@ export function OpportunityFeed({
   else if (count === 0)
     body = (
       <>
-        <p className="px-3 py-2 text-sm text-text-secondary">{hasRows ? `no ${filterWord} opportunities` : 'nothing cleared the bar — the scanner runs every minute'}</p>
+        <p className="px-3 py-2 text-sm text-text-secondary">
+          {hasRows
+            ? `no ${filterWord} opportunities. Other filters still have rows.`
+            : 'No ideas right now. The scanner checks the market every minute and lists an idea here when a setup fires; nothing has cleared the bar.'}
+        </p>
         {emptySlot}
       </>
     )
@@ -189,6 +210,13 @@ export function OpportunityFeed({
         <span className="text-xs tabular text-text-secondary">{count}</span>
       </PanelHeader>
       {scanAgeSec != null && scanAgeSec > 120 && <StaleStrip>scan {Math.floor(scanAgeSec / 60)}m old — scores are frozen</StaleStrip>}
+      <div className="flex flex-col gap-1 px-2 py-2 border-b border-border-subtle">
+        {insight && <p className="text-md text-text-primary">{insight}</p>}
+        <HowToRead terms={TERMS}>
+          Trade ideas the scanner raised, highest score first. Score says how unusual the move is; edge says what is left after costs.
+          Select a row to see why it fired and what it would cost.
+        </HowToRead>
+      </div>
       <div className="px-2 py-2 border-b border-border-subtle">
         <FeedFilters status={status} tier={tier} onFilter={onFilter} />
       </div>

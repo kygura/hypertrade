@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
-import { AsyncBody, Badge, Button, DataTable, EmptyBlock, ErrorBlock, Panel, PanelHeader, RuleText, Segmented, SkeletonRows, type Column } from '../components'
+import { AsyncBody, Badge, Button, DataTable, EmptyBlock, ErrorBlock, HowToRead, Panel, PanelHeader, RuleText, Segmented, SkeletonRows, type Column, type Term } from '../components'
 import { LabWarnings } from '../components/LabWarnings'
 import { useLabData } from '../components/lab/LabData'
 import { SaveToCatalogueForm } from '../components/lab/SaveToCatalogueForm'
 import { DataTo, DirectionWord } from '../components/lab/common'
-import { defaultRuleName, fmtSigned, lab, signTone, useLab, wireText, type CatalogueEntry, type LabState, type MetricDef, type Rule, type StudyResult } from '../lib/lab'
-import { concreteRule, DEFAULT_TOP, exitParams, exitsForm, exitValue, fmtR, parseExitParams, parseRuleParam, realCoin, ruleDrillHref, screenLine, studyHref, studyRoute, studyVerdict, type StudyExits, type StudyUniverse } from '../lib/study'
-import { STUDY_EXIT_MAX, type DefinitionsResponse } from '../../shared/research'
+import { defaultRuleName, fmtSigned, lab, signTone, TRANSFORM_TERMS, useLab, wireText, type CatalogueEntry, type LabState, type MetricDef, type Rule, type StudyResult } from '../lib/lab'
+import { concreteRule, DEFAULT_TOP, exitParams, exitsForm, exitValue, fmtR, parseExitParams, parseRuleParam, realCoin, ruleDrillHref, screenLine, STUDY_HOLDOUT_SHARE, STUDY_MIN_WEEKS, studyHref, studyLine, studyRoute, studyVerdict, type StudyExits, type StudyUniverse } from '../lib/study'
+import { STUDY_DEFAULTS, STUDY_EXIT_MAX, type DefinitionsResponse } from '../../shared/research'
 import { research } from '../lib/research'
 import { StudyVerdictBadge } from '../components/lab/StudyVerdictBadge'
 import { InCatalogueLink } from '../components/lab/InCatalogueLink'
@@ -27,6 +27,65 @@ import { SetupReplay } from '../components/lab/SetupReplay'
 type Screen = StudyResult['screen']
 type CoinRow = StudyResult['coins'][number]
 type EventRow = StudyResult['eventList'][number]
+
+const GUIDE = 'px-3 py-2 border-b border-border-subtle'
+const EARLY_PCT = Math.round((1 - STUDY_HOLDOUT_SHARE) * 100)
+
+// Reading guides (HowToRead): every head, badge and number the page prints, as the engine computes it
+// (src/server/lab/engine/eventStudy.ts). Cut-offs come from lib/study.ts, which mirrors the engine under test.
+const WHAT_IT_IS =
+  'An event study replays one rule as separate trades on daily bars: in at the close of a day its conditions are true, out at the stop, the target or the end of the hold. It answers one question: did this lose money in the past. It is history, not a forecast.'
+
+const RULE_TERMS: readonly Term[] = [
+  ['LONG / SHORT · 7D HOLD', 'the side every replayed trade takes and the most days it is held. After an entry the rule waits that many days before it can enter the same coin again, so trades never overlap.'],
+  ...TRANSFORM_TERMS,
+  ['UNIVERSE', `the markets replayed: this coin only, the top N Hyperliquid perps by daily volume (default ${DEFAULT_TOP}), or my markets (the server's configured list). More coins give more trades, but a universe result is not one coin's own history.`],
+  ['EXITS · ATR', `stop and target as multiples of ATR, the coin's average daily range over the 14 days up to entry. Defaults: stop ${STUDY_DEFAULTS.stopAtr}, target ${STUDY_DEFAULTS.targetAtr}. A rule that sets its own stop or target keeps it.`],
+  ['RUN', 'runs the study again with the edited exits. Every run is recorded as a trial: the more ideas are tried, the likelier one looks good by luck.'],
+  ['RAW', 'the rule as stored: metric|transform|window, operator, threshold.'],
+  ['OPEN RULE, SAVE', 'OPEN RULE scores the same rule as an always-on daily strategy: equity curve, walk-forward, holdout and sensitivity. SAVE adds it to the catalogue, which then tracks it on new data from the save date.'],
+]
+
+const VERDICT_TERMS: readonly Term[] = [
+  ['CLEAR', `${studyVerdict('clear').text}.`],
+  ['REJECTED', `${studyVerdict('rejected').text}.`],
+  ['INSUFFICIENT', `fewer than ${STUDY_MIN_WEEKS} weeks with trades, so the screen gives no verdict.`],
+  ['events', 'replayed trades, pooled over every studied coin.'],
+  ['weeks', 'calendar weeks holding at least one event. Trades in the same week move together, so each week is averaged first and counts once.'],
+  ['R', 'result in units of risk: 1R is the distance from entry to stop. +0.5R is a gain of half the amount risked, −1R a full stop-out. Every R here is after fees, slippage and funding.'],
+  ['expectancy', 'the mean of the weekly averages, in R: what the average trade made.'],
+  ['upper95', 'one-sided 95% upper bound of the expectancy: the true average is unlikely to be higher. Below 0 means the rule lost beyond reasonable doubt.'],
+  ['screen', 'this test can only reject. A rule that is not rejected has not been shown to work, and nothing in the app is blocked or allowed by the result.'],
+]
+
+const SPLIT_TERMS: readonly Term[] = [
+  ['TRAIN', `events dated in the earlier ${EARLY_PCT}% of the studied period.`],
+  ['HOLDOUT', `events dated in the most recent ${100 - EARLY_PCT}% of the period. This is a different cut from the rule drill's holdout, which is the last 20% of days.`],
+  ['EVENTS / WEEKS', 'trades in that part, and the calendar weeks that hold them.'],
+  ['EXPECTANCY', 'mean of the weekly average result per trade, in R, after costs.'],
+  ['UPPER 95%', 'one-sided 95% upper bound of that mean. With few weeks it is wide.'],
+]
+
+const FUNNEL_TERMS: readonly Term[] = [
+  ['coin-days', 'one coin on one day. The count is how many coin-days pass this condition and every condition above it.'],
+  ['−93%', 'the share of the previous step\'s coin-days this condition removes (the first step: of all coin-days).'],
+  ['BOTTLENECK', 'the condition that removes the largest share. Loosening it adds the most events.'],
+]
+
+const COIN_TERMS: readonly Term[] = [
+  ['EVENTS', 'trades the rule made on this coin.'],
+  ['STATUS', 'OK = studied. INSUFFICIENT = left out: too few daily bars with a close and funding, or a metric the rule reads is missing for this coin. REASON gives the numbers.'],
+  ['REASON', 'why a coin was left out or cut short.'],
+  ['BARS', 'daily bars with both a close and funding.'],
+  ['RANGE', 'first and last of those bars.'],
+]
+
+const EVENT_TERMS: readonly Term[] = [
+  ['DATE', 'the day the conditions were true. Entry is at that day\'s close.'],
+  ['R', 'the trade\'s result in units of risk after fees, slippage and funding. A * means stop and target were both inside one daily bar: it is scored as the stop.'],
+  ['EXIT', 'STOP = stop hit; TARGET = target hit; INVALIDATION = the rule\'s own invalidation was true at a close, out at the next open; HORIZON = neither hit, out at the close of the last day of the hold.'],
+  ['FUNDING R', 'the part of R that is funding over the hold. Negative means funding was paid.'],
+]
 
 
 export function LabStudy() {
@@ -121,6 +180,7 @@ export function StudyView({ parsedError, rule, coin, coinParam = null, universe,
       <div className="flex flex-col gap-3 min-w-0">
         <Panel>
           <PanelHeader title="EVENT STUDY" />
+          <HowToRead className={GUIDE}>{WHAT_IT_IS} Nothing shows yet because no rule is loaded: the verdict, the trades and the per-coin table appear once you pick one.</HowToRead>
           {parsedError && <ErrorBlock message={parsedError} />}
           <EmptyBlock label="no rule to study — pick a definition below, or open a rule from a search result or the catalogue" />
           <div className="flex flex-wrap justify-center gap-2 px-3 pb-6">
@@ -154,7 +214,10 @@ export function StudyView({ parsedError, rule, coin, coinParam = null, universe,
           <p className="text-xs text-text-secondary">
             <DirectionWord direction={rule.direction} /> · {rule.horizonDays}D HOLD · EVENT STUDY
           </p>
-          <p className="text-xs text-text-secondary break-all">RAW {r?.text ?? wireText(rule)}</p>
+          <p className="text-xs text-text-secondary break-all" title="the rule as stored: metric|transform|window, operator, threshold">
+            RAW {r?.text ?? wireText(rule)}
+          </p>
+          <HowToRead terms={RULE_TERMS}>{WHAT_IT_IS}</HowToRead>
           <div className="flex flex-wrap items-end gap-2">
             <UniverseControl coin={coin} universe={universe} onChange={onUniverse} />
             <ExitsControl {...exits} />
@@ -215,6 +278,10 @@ function DefinitionsPicker({ definitions }: { definitions: StudyViewProps['defin
   return (
     <Panel>
       <PanelHeader title="DEFINITIONS" />
+      <HowToRead className={GUIDE}>
+        The signal definitions shipped with the app, each a fixed rule on daily bars with its one-line idea. Picking one opens its event study over the top-{DEFAULT_TOP} universe; the study
+        runs on load and counts as a trial. The thresholds are starting points to study, not claims.
+      </HowToRead>
       <AsyncBody {...definitions} onRetry={definitions.refetch} rows={3} isEmpty={(d) => d.definitions.length === 0} empty={{ label: 'no definitions shipped' }}>
         {(d) => (
           <ul className="flex flex-col">
@@ -365,8 +432,8 @@ const screenCols: Column<{ k: string; s: Screen }>[] = [
   { key: 'k', label: 'WINDOW', priority: 1, render: (x) => x.k },
   { key: 'events', label: 'EVENTS', priority: 1, align: 'right', render: (x) => x.s.events },
   { key: 'weeks', label: 'WEEKS', priority: 1, align: 'right', render: (x) => x.s.weeks },
-  { key: 'exp', label: 'EXP', priority: 1, align: 'right', render: (x) => <span className={x.s.expectancy == null ? '' : signTone(x.s.expectancy)}>{fmtR(x.s.expectancy)}</span> },
-  { key: 'up', label: 'UP95', priority: 2, align: 'right', render: (x) => fmtR(x.s.upper95) },
+  { key: 'exp', label: 'EXPECTANCY', priority: 1, align: 'right', render: (x) => <span className={x.s.expectancy == null ? '' : signTone(x.s.expectancy)}>{fmtR(x.s.expectancy)}</span> },
+  { key: 'up', label: 'UPPER 95%', priority: 2, align: 'right', render: (x) => fmtR(x.s.upper95) },
 ]
 
 const coinCols: Column<CoinRow>[] = [
@@ -418,19 +485,28 @@ export function StudyResultView({ result: d }: { result: StudyResult }) {
         <PanelHeader title="VERDICT" />
         <LabWarnings warnings={d.warnings} />
         <div className="flex flex-col gap-1 p-3">
+          <p className="text-md text-text-primary">{studyLine(d)}</p>
           <p className="flex flex-wrap items-center gap-2">
             <StudyVerdictBadge verdict={d.verdict} />
             <span className="text-sm text-text-secondary">{v.text}</span>
           </p>
           <p className="tabular text-base text-text-primary">{screenLine(d.screen)}</p>
           <p className="text-xs text-text-secondary">
-            week-clustered over all coins · one-sided 95% upper bound · reject-only screen, gates nothing
+            weeks pooled over all coins · one-sided 95% upper bound · the screen can only reject and blocks nothing
           </p>
+          <HowToRead terms={VERDICT_TERMS}>
+            The badge is the screen's verdict and the line under it is the evidence: how many past trades, over how many weeks, what the average one made and how high that average
+            could plausibly be.
+          </HowToRead>
         </div>
       </Panel>
 
       <Panel>
         <PanelHeader title="TRAIN VS HOLDOUT" />
+        <HowToRead terms={SPLIT_TERMS} className={GUIDE}>
+          The same numbers split by date: the earlier {EARLY_PCT}% of the period against the most recent {100 - EARLY_PCT}%. The rule was given, not fitted to either part, so this only shows
+          whether the result held up later.
+        </HowToRead>
         <DataTable columns={screenCols} rows={[{ k: 'TRAIN', s: d.train }, { k: 'HOLDOUT', s: d.holdout }]} rowKey={(x) => x.k} />
         <p className="px-3 py-2 text-xs text-text-secondary">
           {d.period ? `${d.period.from} → ${d.period.to} · holdout from ${d.period.holdoutFrom} (last 30% by time)` : 'no period — no coin had enough data'} · facts, not a
@@ -440,6 +516,10 @@ export function StudyResultView({ result: d }: { result: StudyResult }) {
 
       <Panel>
         <PanelHeader title="CONDITION FUNNEL" />
+        <HowToRead terms={FUNNEL_TERMS} className={GUIDE}>
+          How rare each condition is: the rule's conditions applied one after another, with how many coin-days are left after each. It shows which condition decides how often the rule
+          fires.
+        </HowToRead>
         {d.funnel.steps.length === 0 ? (
           <EmptyBlock label="no condition steps" />
         ) : (
@@ -460,7 +540,10 @@ export function StudyResultView({ result: d }: { result: StudyResult }) {
 
       <Panel>
         <PanelHeader title={`PER COIN · ${d.coins.length}`} />
-        <DataTable columns={coinCols} rows={d.coins} rowKey={(c) => c.coin} sortable defaultSort={{ key: 'events', dir: 'desc' }} emptyLabel={<EmptyBlock label="no coins studied" />} />
+        <HowToRead terms={COIN_TERMS} className={GUIDE}>
+          Which coins the study covered and how many trades each gave. A result carried by one or two coins is weaker than one spread across many.
+        </HowToRead>
+        <DataTable columns={coinCols} rows={d.coins} rowKey={(c) => c.coin} sortable defaultSort={{ key: 'events', dir: 'desc' }} emptyLabel={<EmptyBlock label="no coins studied: none had the data this rule reads" />} />
       </Panel>
 
       <Panel>
@@ -469,7 +552,10 @@ export function StudyResultView({ result: d }: { result: StudyResult }) {
             {shown < d.eventListTotal ? `${shown} of ${d.eventListTotal.toLocaleString('en-US')} · most recent` : `${d.eventListTotal}`}
           </span>
         </PanelHeader>
-        <DataTable columns={eventCols} rows={d.eventList} rowKey={(e) => `${e.coin}|${e.date}`} sortable defaultSort={{ key: 'date', dir: 'desc' }} emptyLabel={<EmptyBlock label="no events — the rule never fired on these coins" />} />
+        <HowToRead terms={EVENT_TERMS} className={GUIDE}>
+          Every replayed trade, newest first: when it entered, how it ended and what it made in units of risk. A long list is cut to the most recent trades (the header gives the counts); the verdict uses all of them.
+        </HowToRead>
+        <DataTable columns={eventCols} rows={d.eventList} rowKey={(e) => `${e.coin}|${e.date}`} sortable defaultSort={{ key: 'date', dir: 'desc' }} emptyLabel={<EmptyBlock label="no events: the rule's conditions were never all true on these coins, so there is no trade to list" />} />
       </Panel>
 
       <StudyFooter result={d} />
@@ -493,6 +579,7 @@ function StudyFooter({ result: d }: { result: StudyResult }): ReactNode {
       </p>
       <p title="this rule's first recorded trial over every trial recorded (each idea tried counts against the next)">
         idea {d.idea.n} of {d.idea.of}
+        <span> · this rule's first recorded trial out of every trial recorded. Each idea tried raises the odds that one looks good by luck.</span>
       </p>
     </div>
   )

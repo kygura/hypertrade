@@ -85,8 +85,8 @@ test("CoverageLine: unknown OI is a muted line, not a 0% partial map", () => {
 describe("OpportunityFeed states (C7)", () => {
   const base = { ranked: [], snoozed: [], selectedId: null, status: "live" as const, tier: "all" as const, loading: false, offline: null, error: null, scanAgeSec: 10, hasRows: false, now: Date.now(), readyTtlMin: 60, snoozedOpen: false, onToggleSnoozed: noop, onSelect: noop, onFilter: noop, onRetry: noop };
   test("empty, filter-empty, offline, stale", () => {
-    expect(renderToStaticMarkup(<OpportunityFeed {...base} />)).toContain("nothing cleared the bar — the scanner runs every minute");
-    expect(renderToStaticMarkup(<OpportunityFeed {...base} hasRows status="ready" />)).toContain("no READY opportunities");
+    expect(renderToStaticMarkup(<OpportunityFeed {...base} />)).toContain("nothing has cleared the bar");
+    expect(renderToStaticMarkup(<OpportunityFeed {...base} hasRows status="ready" />)).toContain("no READY opportunities. Other filters still have rows.");
     expect(renderToStaticMarkup(<OpportunityFeed {...base} offline="x" />)).toContain("platform API unreachable");
     expect(renderToStaticMarkup(<OpportunityFeed {...base} scanAgeSec={180} />)).toContain("scan 3m old — scores are frozen");
   });

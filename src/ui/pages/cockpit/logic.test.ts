@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { bucketBounds, bucketIndex, type FeedRow, type LiqBucket, type PlatformHealth } from "../../../shared/platform";
 import {
-  alphaStep, approveBlockedReason, cellRow, cellSide, coverageTreatment, denseBuckets, edgeWord, filterFeed, fmtSigned, fmtSignedPct, healthItems, keyAction, p95, priceY, stepSelection, worstItem,
+  alphaStep, approveBlockedReason, cellRow, cellSide, coverageTreatment, denseBuckets, edgeWord, feedInsight, filterFeed, fmtSigned, fmtSignedPct, healthItems, keyAction, p95, priceY, stepSelection, worstItem,
 } from "./logic";
 
 const row = (over: Partial<FeedRow>): FeedRow => ({
@@ -170,5 +170,21 @@ describe("approveBlockedReason (B3)", () => {
     expect(approveBlockedReason({ ...ok, risk: null }, null)).toBe("governor preview unavailable");
     expect(approveBlockedReason({ ...ok, risk: { ...ok.risk, after: { approved: false, reasons: ["max positions"], warnings: [] } } }, null)).toBe("max positions");
     expect(approveBlockedReason({ ...ok, ticket: { ...ok.ticket, sizeUsd: null } }, null)).toBe("size unavailable");
+  });
+});
+
+describe("feedInsight", () => {
+  test("counts ideas awaiting a decision, names the top score, counts costs above edge", () => {
+    const rows = [
+      row({ coin: "HYPE", status: "ready", score: 2.4, netEdgeBps: 38 }),
+      row({ coin: "SOL", direction: "short", status: "calculated", score: 3.41, netEdgeBps: -12 }),
+      row({ coin: "ETH", status: "new", score: 1.1, netEdgeBps: null }),
+      row({ coin: "BTC", status: "rejected", score: 9, netEdgeBps: -50 }),
+    ];
+    expect(feedInsight(rows)).toBe("3 ideas awaiting a decision, 1 READY; highest score 3.41 on SOL short; estimated costs exceed the edge on 1.");
+  });
+  test("null when nothing awaits a decision", () => {
+    expect(feedInsight([row({ status: "closed" })])).toBeNull();
+    expect(feedInsight([])).toBeNull();
   });
 });

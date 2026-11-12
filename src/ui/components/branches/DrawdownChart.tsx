@@ -1,6 +1,23 @@
 import { Area, AreaChart, ReferenceDot, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import type { EquityPoint } from './types'
 import { computeDrawdown, fmtChartDate } from './format'
+import { HowToRead, type Term } from '../HowToRead'
+
+const DRAWDOWN_TERMS: readonly Term[] = [
+  ['shaded area', 'the fall from the highest value reached so far, on each day. A wide area is a long stretch below the old high.'],
+  ['square', 'the deepest point: the max drawdown printed in the header.'],
+  ['vertical axis', 'percent below the running high. 0% at the top means a new high.'],
+  ['horizontal axis', 'date, as month/day.'],
+]
+
+/** How to read the drawdown chart. The page renders it under the chart. */
+export function DrawdownGuide({ className }: { className?: string }) {
+  return (
+    <HowToRead terms={DRAWDOWN_TERMS} className={className}>
+      How far the value sits below its own highest point so far. It shows the losses you would have had to sit through: how deep they went and how long they lasted.
+    </HowToRead>
+  )
+}
 
 // Drawdown panel chart — docs/design/README.md §9.2. Values <= 0, 0 sits naturally at
 // the top since it's the greatest value on the axis. Worst point gets a

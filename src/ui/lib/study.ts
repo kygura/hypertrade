@@ -133,9 +133,9 @@ export function studyRoute(rule: Rule, coinIn: string, universe: StudyUniverse, 
 export type EventVerdict = StudyResult['verdict']
 
 const VERDICT: Record<EventVerdict, { label: string; tone: 'green' | 'red' | 'gray'; text: string }> = {
-  clear: { label: 'CLEAR', tone: 'green', text: 'not shown to lose — never proof of an edge' },
-  rejected: { label: 'REJECTED', tone: 'red', text: 'clearly lost: the 95% upper bound of expectancy is below 0' },
-  insufficient: { label: 'INSUFFICIENT', tone: 'gray', text: 'fewer than 30 weeks with events — no verdict' },
+  clear: { label: 'CLEAR', tone: 'green', text: 'not shown to lose: the 95% upper bound of the average result is not below 0. Never proof of an edge' },
+  rejected: { label: 'REJECTED', tone: 'red', text: 'clearly lost: even the 95% upper bound of the average result is below 0' },
+  insufficient: { label: 'INSUFFICIENT', tone: 'gray', text: 'fewer than 30 weeks with trades, so no verdict' },
 }
 
 export function studyVerdict(v: EventVerdict): { label: string; tone: 'green' | 'red' | 'gray'; text: string } {
