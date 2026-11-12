@@ -57,7 +57,29 @@ import type { PlatformHealth } from "../src/shared/platform";
 const DIST = resolve(import.meta.dir, "../dist");
 
 /** /api/* -> the Hono app (mounted at basePath /api, so the path is passed through untouched); else dist/ with SPA fallback. */
+const COMPRESSIBLE = /^(application\/(json|javascript)|text\/(html|css|javascript|plain)|image\/svg\+xml)/;
+
+/**
+ * Gzips a text response for a client that accepts it. Nothing sits in front of this server to do it,
+ * and the bundle and the JSON payloads shrink to about a third. Streams (SSE) and already-encoded
+ * bodies pass through untouched.
+ */
+export function gzipped(req: Request, res: Response): Response {
+  if (!res.body || res.headers.has("content-encoding") || !COMPRESSIBLE.test(res.headers.get("content-type") ?? "")) return res;
+  if (!/\bgzip\b/.test(req.headers.get("accept-encoding") ?? "")) return res;
+  const headers = new Headers(res.headers);
+  headers.set("content-encoding", "gzip");
+  headers.append("vary", "accept-encoding");
+  headers.delete("content-length");
+  return new Response(res.body.pipeThrough(new CompressionStream("gzip")), { status: res.status, statusText: res.statusText, headers });
+}
+
 export function createHandler(api: (req: Request) => Response | Promise<Response>, dist = DIST) {
+  const serve = createUncompressedHandler(api, dist);
+  return async (req: Request): Promise<Response> => gzipped(req, await serve(req));
+}
+
+function createUncompressedHandler(api: (req: Request) => Response | Promise<Response>, dist: string) {
   const index = join(dist, "index.html");
   return async (req: Request): Promise<Response> => {
     const { pathname } = new URL(req.url);

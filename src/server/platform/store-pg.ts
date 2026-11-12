@@ -423,7 +423,7 @@ export class PgPlatformStore implements PlatformStore {
   async listOpportunities({ statuses, tier, limit }: Parameters<PlatformStore["listOpportunities"]>[0]) {
     const rows = await this.db.query(
       `select * from opportunities
-       where ($1::text::jsonb is null or $1::text::jsonb ? status) and ($2::int is null or liquidity_tier = $2::int)
+       where ($1::text::jsonb is null or status in (select jsonb_array_elements_text($1::text::jsonb))) and ($2::int is null or liquidity_tier = $2::int)
        order by score desc, created_at desc, id limit $3::int`,
       [statuses ? J(statuses) : null, tier ?? null, limit],
     );

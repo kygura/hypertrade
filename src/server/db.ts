@@ -346,16 +346,12 @@ export function toMetricSummary(r: SummaryRow): MetricSummary {
 }
 
 /** Latest value + previous (delta) + mean/stddev over the last 30 and 90 observations. */
-export async function summaryFor(seriesIds: string[]): Promise<MetricSummary[]> {
+export async function summaryFor(seriesIds: string[], db: postgres.Sql = sql()): Promise<MetricSummary[]> {
   if (seriesIds.length === 0) return []
-  const rows = await sql()<SummaryRow[]>`
-    with ranked as (
-      select series_id, ts, value,
-             row_number() over (partition by series_id order by ts desc) as rn
-      from observations
-      where series_id in ${sql()(seriesIds)}
-    )
-    select series_id,
+  // Per series, the newest 90 rows straight off the (series_id, ts) key: ranking a series' whole
+  // history to keep 90 of it made every page's metrics strip slower as the history grew.
+  const rows = await db<SummaryRow[]>`
+    select s.id as series_id,
            max(ts)    filter (where rn = 1)   as ts,
            max(value) filter (where rn = 1)   as latest,
            max(value) filter (where rn = 2)   as previous,
@@ -364,9 +360,13 @@ export async function summaryFor(seriesIds: string[]): Promise<MetricSummary[]> 
            (count(*) filter (where rn <= 30))::int as n30,
            avg(value)        filter (where rn <= 90) as mean90,
            stddev_pop(value) filter (where rn <= 90) as stddev90
-    from ranked
-    where rn <= 90
-    group by series_id
+    from series s
+    cross join lateral (
+      select ts, value, row_number() over (order by ts desc) as rn
+      from (select ts, value from observations o where o.series_id = s.id order by ts desc limit 90) newest
+    ) r
+    where s.id in ${db(seriesIds)}
+    group by s.id
   `
   return rows.map(toMetricSummary)
 }

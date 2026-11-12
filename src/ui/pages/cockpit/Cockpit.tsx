@@ -53,7 +53,7 @@ function CockpitPage() {
   const patch = useQueryPatch()
 
   // ── pollers (C8) ──
-  const feed = usePoll(platform.feed, [], { intervalMs: 15_000, ...PLATFORM_POLL })
+  const feed = usePoll(platform.feed, [], { intervalMs: 15_000, cacheKey: 'platform.feed', ...PLATFORM_POLL })
   const health = usePoll(platform.health, [], { intervalMs: 15_000 })
 
   const rows = useMemo(() => feed.data?.opportunities ?? [], [feed.data])
@@ -66,7 +66,7 @@ function CockpitPage() {
   const paneOpen = desktop || idParam != null || liqParam != null
   // The left pane (board, header venue) is hidden while the phone's right pane is open: nothing polls behind it either.
   const leftVisible = desktop || !paneOpen
-  const board = usePoll(platform.board, [], { intervalMs: 30_000, enabled: leftVisible, ...PLATFORM_POLL })
+  const board = usePoll(platform.board, [], { intervalMs: 30_000, enabled: leftVisible, cacheKey: 'platform.board', ...PLATFORM_POLL })
   const desk = usePoll(() => api.get<DeskStatus>('/desk/status'), [], { intervalMs: 30_000, enabled: leftVisible })
 
   const detail = usePoll<DetailT | null>(() => platform.detail(selectedId!), [selectedId], {

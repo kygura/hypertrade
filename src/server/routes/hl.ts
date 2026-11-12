@@ -10,8 +10,13 @@ import type { AssetCtx } from "../../shared/types.js";
 // the main-dex snapshot the Desk, sim and analyst read stays unchanged.
 
 const CACHE_MS = 60_000;
-let cache: { ts: number; ctxs: AssetCtx[]; markets: MarketRow[] } | null = null;
-let allCache: { ts: number; ctxs: AssetCtx[]; markets: MarketRow[]; failedDexes: string[] } | null = null;
+type Snapshot = { ts: number; ctxs: AssetCtx[]; markets: MarketRow[] };
+type AllSnapshot = Snapshot & { failedDexes: string[] };
+let cache: Snapshot | null = null;
+let allCache: AllSnapshot | null = null;
+// Loads in flight: routes that miss the cache together (markets, sectors, perp, positions) share one upstream call.
+let loading: Promise<Snapshot> | null = null;
+let loadingAll: Promise<AllSnapshot> | null = null;
 
 export interface MarketsResponse {
   fetchedAt: string;
@@ -54,26 +59,25 @@ export function toMarketRows(ctxs: AssetCtx[]): MarketRow[] {
     .sort((a, b) => b.openInterestUsd - a.openInterestUsd);
 }
 
-async function refresh() {
-  if (!cache || Date.now() - cache.ts >= CACHE_MS) {
-    const { ctxs } = await fetchPerpMetaAndCtxs();
-    cache = { ts: Date.now(), ctxs, markets: toMarketRows(ctxs) };
-  }
-  return cache;
+function refresh(): Promise<Snapshot> {
+  if (cache && Date.now() - cache.ts < CACHE_MS) return Promise.resolve(cache);
+  return (loading ??= fetchPerpMetaAndCtxs()
+    .then(({ ctxs }) => (cache = { ts: Date.now(), ctxs, markets: toMarketRows(ctxs) }))
+    .finally(() => (loading = null)));
 }
 
-async function refreshAll() {
+async function refreshAll(): Promise<AllSnapshot> {
   const main = await refresh();
-  if (!allCache || Date.now() - allCache.ts >= CACHE_MS) {
+  if (allCache && Date.now() - allCache.ts < CACHE_MS) return allCache;
+  return (loadingAll ??= (async () => {
     const dexes = await fetchPerpDexs();
     // One broken builder dex must not blank the board: keep the rest, name the gap.
     const settled = await Promise.allSettled(dexes.map((d) => fetchPerpMetaAndCtxs(fetch, d.name)));
     const failedDexes = dexes.filter((_, i) => settled[i]!.status === "rejected").map((d) => d.name);
     const hip3 = settled.flatMap((r) => (r.status === "fulfilled" ? r.value.ctxs : []));
     const ctxs = [...main.ctxs, ...hip3];
-    allCache = { ts: Date.now(), ctxs, markets: toMarketRows(ctxs), failedDexes };
-  }
-  return allCache;
+    return (allCache = { ts: Date.now(), ctxs, markets: toMarketRows(ctxs), failedDexes });
+  })().finally(() => (loadingAll = null)));
 }
 
 /** Cached asset contexts across the main dex and every HIP-3 dex. */

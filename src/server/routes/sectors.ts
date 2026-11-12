@@ -142,15 +142,10 @@ const defaultSectorsDeps: SectorsDeps = { ctxs: async () => (await getCtxs()).ct
  */
 export async function getSectorsPayload(deps: SectorsDeps = defaultSectorsDeps) {
   const data = SectorsDataSchema.parse(latest);
-  let ctxs: AssetCtx[] = [];
-  try {
-    ctxs = await deps.ctxs();
-  } catch {
-    // Hyperliquid unreachable: still serve the routine's sector read, just
-    // without live enrichment, rather than 500ing the whole route.
-  }
   const coins = [...new Set(data.sectors.flatMap((s) => s.tokens))];
-  const social = await deps.social(coins);
+  // Hyperliquid unreachable: still serve the routine's sector read, just
+  // without live enrichment, rather than 500ing the whole route.
+  const [ctxs, social] = await Promise.all([deps.ctxs().catch((): AssetCtx[] => []), deps.social(coins)]);
   const sectors = data.sectors.map((s) => ({ ...s, ...enrichSector(s.tokens, ctxs, social) }));
   return { ...data, sectors };
 }

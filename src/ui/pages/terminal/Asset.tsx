@@ -154,7 +154,7 @@ export function Asset() {
   const now = useNow()
 
   const asset = useIntel(() => fetchAsset(coin, days), [coin, days], { intervalMs: INTEL_POLL_MS.asset, enabled: !!coin })
-  const positions = useIntel(intel.positions, [], { intervalMs: INTEL_POLL_MS.positions })
+  const positions = useIntel(intel.positions, [], { intervalMs: INTEL_POLL_MS.positions, cacheKey: 'intel.positions' })
   const heatmap = useIntel(() => intel.heatmap(readFlowWindow()), [], { intervalMs: INTEL_POLL_MS.heatmap })
 
   const d = asset.data === 'missing' ? null : asset.data
