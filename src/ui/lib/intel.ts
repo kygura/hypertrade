@@ -229,9 +229,9 @@ export type IntelState<T> = PollState<T>
 export function useIntel<T>(
   fetcher: () => Promise<T>,
   deps: unknown[],
-  opts: { intervalMs?: number | null; enabled?: boolean } = {},
+  opts: { intervalMs?: number | null; enabled?: boolean; cacheKey?: string } = {},
 ): IntelState<T> {
-  return usePoll(fetcher, deps, { intervalMs: opts.intervalMs ?? null, enabled: opts.enabled ?? true })
+  return usePoll(fetcher, deps, { intervalMs: opts.intervalMs ?? null, enabled: opts.enabled ?? true, cacheKey: opts.cacheKey })
 }
 
 // ── review throttle (docs/design/terminal.md §1.5) ──

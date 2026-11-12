@@ -16,6 +16,7 @@ import { walk } from "../../intel/graph.js";
 import { assetExposure, graphEdges, type RoutingContext } from "../../intel/mapper.js";
 import { FALLBACK_BASELINE_MS, toCatalyst } from "../../intel/terminal.js";
 import { computeWindows, LOOKBACK, pickWindow, seriesFromRows, spanResult } from "../../intel/windows.js";
+import { mapLimit } from "../../lab/util.js";
 import { failure, invalid } from "./http.js";
 import type { TerminalRouteDeps } from "./terminal.js";
 
@@ -36,6 +37,9 @@ const LIST_LIMIT = 500;
 const FLOW_SOURCE = COINALYZE_COLLECTOR.slice("intel:".length);
 
 export type FlowRouteDeps = Pick<TerminalRouteDeps, "store" | "exposure" | "watched" | "candles1h" | "ingestHealth" | "now" | "env">;
+
+/** Assets read at once by the heatmap: under the database pool's size (db.ts DEFAULT_POOL_MAX), so other routes still get a connection. */
+const HEATMAP_CONCURRENCY = 4;
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -86,10 +90,8 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
         const ctx: RoutingContext = { exposure, targets, edges: [], feedback: [], sources: new Map() };
         const span = window === "review" ? Math.max(HOUR_MS, t - (review ? Date.parse(review.ts) : t - FALLBACK_BASELINE_MS)) : null;
         const o = flowOptions(env);
-        const rows: HeatmapResponse["rows"] = [];
-        const cells: HeatmapResponse["cells"] = [];
-        const flags: FlowFlag[] = [];
-        for (const asset of targets) {
+        // A few assets at a time (the pool's size), not one after another; results keep the targets' order.
+        const perAsset = await mapLimit(targets, HEATMAP_CONCURRENCY, async (asset) => {
           let flow: AssetFlow;
           try {
             flow = await loadAssetFlow(store, asset, now);
@@ -108,10 +110,11 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
           });
           const exp = await assetExposure(deps, ctx, asset);
           const peak = Math.max(0, ...mine.map((m) => Math.abs(m.z ?? 0)), ...own.filter((f) => !f.degraded).map((f) => f.score));
-          rows.push({ asset, held: held.has(asset), materiality: peak * exp.weight * exp.proximity });
-          cells.push(...mine);
-          flags.push(...own);
-        }
+          return { row: { asset, held: held.has(asset), materiality: peak * exp.weight * exp.proximity }, mine, own };
+        });
+        const rows: HeatmapResponse["rows"] = perAsset.map((a) => a.row);
+        const cells: HeatmapResponse["cells"] = perAsset.flatMap((a) => a.mine);
+        const flags: FlowFlag[] = perAsset.flatMap((a) => a.own);
         rows.sort((a, b) => b.materiality - a.materiality);
         const run = health.find((h) => h.source === FLOW_SOURCE);
         const sourceStatus = !env.COINALYZE_API_KEY?.trim() ? { ok: false, error: "no_source" } : run ? { ok: run.ok, ...(run.error ? { error: run.error } : {}) } : { ok: false, error: "not_run" };

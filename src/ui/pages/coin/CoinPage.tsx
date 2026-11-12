@@ -9,7 +9,7 @@ import { CoinDecision } from './CoinDecision'
 
 export function CoinPage() {
   const { coin = '' } = useParams()
-  const q = usePoll(queue.get, [], { intervalMs: QUEUE_POLL_MS })
+  const q = usePoll(queue.get, [], { intervalMs: QUEUE_POLL_MS, cacheKey: 'queue' })
   const item = q.data ? (q.data.items.find((i) => i.coin === coin) ?? null) : undefined
   return <CoinDecision key={coin} coin={coin} item={item} blocked={q.data?.agentBlockedReason ?? null} />
 }

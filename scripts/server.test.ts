@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getHealthExtras, setHealthExtras } from "../src/server/platform/runtime";
 import { PlatformHealthSchema } from "../src/shared/platform";
-import { createHandler, orStop, start } from "./server";
+import { createHandler, gzipped, orStop, start } from "./server";
 
 let dir: string;
 let handle: (r: Request) => Promise<Response>;
@@ -21,6 +21,21 @@ const get = (p: string) => handle(new Request("http://x" + p));
 describe("server handler", () => {
   test("/api goes to the api", async () => {
     expect(await (await get("/api/health")).text()).toBe("api:/api/health");
+  });
+  test("text responses are gzipped for a client that accepts it; streams and other clients are left alone", async () => {
+    const gz = (p: string) => handle(new Request("http://x" + p, { headers: { "accept-encoding": "gzip, br" } }));
+    const asset = await gz("/assets/app-abc.js");
+    expect(asset.headers.get("content-encoding")).toBe("gzip");
+    expect(asset.headers.get("vary")).toContain("accept-encoding");
+    expect(asset.headers.get("cache-control")).toContain("immutable");
+    expect(new TextDecoder().decode(Bun.gunzipSync(new Uint8Array(await asset.arrayBuffer())))).toBe("x");
+    expect((await get("/assets/app-abc.js")).headers.get("content-encoding")).toBeNull();
+    const req = new Request("http://x/api/x", { headers: { "accept-encoding": "gzip" } });
+    const json = gzipped(req, Response.json({ a: 1 }));
+    expect(json.headers.get("content-encoding")).toBe("gzip");
+    expect(JSON.parse(new TextDecoder().decode(Bun.gunzipSync(new Uint8Array(await json.arrayBuffer()))))).toEqual({ a: 1 });
+    const sse = new Response("data: 1\n\n", { headers: { "content-type": "text/event-stream" } });
+    expect(gzipped(req, sse)).toBe(sse);
   });
   test("hashed assets are immutable", async () => {
     const r = await get("/assets/app-abc.js");

@@ -65,8 +65,8 @@ export function CoinDecision({ coin, item, blocked = null, layout = 'page' }: Co
     [coin, win],
     { intervalMs: POLL_MS, enabled: coin !== '' && !hip3 },
   )
-  const stats = usePoll(moves.stats, [], { intervalMs: STATS_MS, enabled: !hip3 })
-  const defs = usePoll(research.definitions, [], { intervalMs: null, enabled: !hip3 })
+  const stats = usePoll(moves.stats, [], { intervalMs: STATS_MS, enabled: !hip3, cacheKey: 'moves.stats' })
+  const defs = usePoll(research.definitions, [], { intervalMs: null, enabled: !hip3, cacheKey: 'research.definitions' })
   const inv = useInvestigate(() => detail.refetch())
 
   const feed: Feed<DetailOutcome> = hip3

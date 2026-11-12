@@ -74,7 +74,7 @@ export function usePerpStats(coin: string) {
   const { refetch } = res
 
   useEffect(() => {
-    const id = setInterval(refetch, POLL_MS)
+    const id = setInterval(() => document.visibilityState !== 'hidden' && refetch(), POLL_MS)
     return () => clearInterval(id)
   }, [refetch])
   useEffect(() => setLive(null), [coin])

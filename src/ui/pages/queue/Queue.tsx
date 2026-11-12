@@ -24,7 +24,7 @@ export function Queue() {
   const desktop = useMedia(LG)
   const now = useNow(30_000)
 
-  const feed = usePoll(queue.get, [], { intervalMs: QUEUE_POLL_MS })
+  const feed = usePoll(queue.get, [], { intervalMs: QUEUE_POLL_MS, cacheKey: 'queue' })
   const items = feed.data?.items ?? []
 
   const param = params.get('coin')

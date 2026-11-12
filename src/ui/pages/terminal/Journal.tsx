@@ -82,7 +82,7 @@ export function Journal() {
   const selectedId = params.get('trade')
   const tagFilter = params.get('tag')
   const [days, setDaysState] = useState<JournalDays>(readDays)
-  const journal = useIntel(() => intel.journal(days), [days])
+  const journal = useIntel(() => intel.journal(days), [days], { cacheKey: `intel.journal:${days}` })
   const report = useIntel(() => intel.latestReport(), [])
   const [tagNote, setTagNote] = useState<string | null>(null)
   const [tagError, setTagError] = useState<string | null>(null)

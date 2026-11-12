@@ -21,7 +21,7 @@ export function Theses() {
   const [params] = useSearchParams()
   const patch = useQueryPatch()
   const selectedId = params.get('id')
-  const theses = useIntel(() => intel.theses(), [])
+  const theses = useIntel(() => intel.theses(), [], { cacheKey: 'intel.theses' })
   const list = theses.data ?? []
   const selected = selectedId ? (list.find((t) => t.id === selectedId) ?? null) : null
 

@@ -76,7 +76,7 @@ export function Markets() {
   const [flash, setFlash] = useState<Map<string, 'up' | 'down'>>(new Map())
 
   useEffect(() => {
-    const id = setInterval(refetch, POLL_MS)
+    const id = setInterval(() => document.visibilityState !== 'hidden' && refetch(), POLL_MS)
     return () => clearInterval(id)
   }, [refetch])
 
