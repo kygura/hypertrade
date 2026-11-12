@@ -1920,8 +1920,8 @@ MarketTabs [QUEUE|MOVES] + MetricsStrip
   row with no attribution shows `—` with the reason in `title`. Keyboard:
   j/k, Enter selects (`?coin=`).
 - **D SELECTED**: an action bar of links (`COIN →` `/coin/:coin`, `EVIDENCE →`
-  the board, `CHART →` `/coin/:coin?chart=price`, `LIQ MAP →`
-  `/coin/:coin?liq=1`, `OPPORTUNITY →` `/coin/:coin`, `STUDY →` when a
+  the board, `CHART →` `/coin/:coin?chart=price`,
+  `OPPORTUNITY →` `/coin/:coin`, `STUDY →` when a
   checklist maps to a shipped definition, `ORDER →`), then
   D1 attribution (stacked bar, factor table with R² and n, cumulative actual
   vs beta-fitted line), D2 agent record, D3 positioning, D4 liquidation
@@ -1978,17 +1978,21 @@ Top to bottom, in the order of the decision: header (`← QUEUE` on the page, co
 **IN QUEUE** (`IN QUEUE · 14M`, `· DISMISSED`, or `not in today's queue`; one line per source part: label, side,
 facts-only reason, own drill-in), the **action row**, then **WHY IT MOVED** (attribution, with a MOVE | PRICE switch; PRICE
 is the perp header, `MarketChart`, funding panel, `?tf=`), the **agent record** with its falsifier and track record, **PRICED
-IN** (positioning, liquidation proximity, a `▸ LIQ MAP` toggle, `?liq=1`), **attention** and **ENTER / FADE**. From `lg`
+IN** (positioning, liquidation proximity; no liquidation map), **attention** and **ENTER / FADE**. From `lg`
 the page is two columns (7/5); the pane and phones are one column.
 
 - **Actions** are links, the drawer, or one agent run: `INVESTIGATE` (only while no record exists; its `title` says it
   costs one LLM run, disabled with the reason at the cap), `ASK` (opens the drawer), `SIMULATE` (`/analyst?mode=sim`,
-  prefilled, not sent), `ORDER`, `EVIDENCE` (the board), `MOVES`, and `OPPORTUNITY · APPROVE ON FEED` only when a ready
-  opportunity exists. Nothing on the page approves or places an order.
+  prefilled, not sent), `ORDER`, `EVIDENCE` (the board), `MOVES`. The action row never approves or places an order.
+- **SETUP** renders under the action row only when a ready opportunity exists: one line of facts (`setup · side ·
+  status`, `net 42 bps · entry · stop · target · size`), the invalidation, then `APPROVE` (neutral tier) and `REJECT`
+  (ghost). `APPROVE` opens the feed's ticket dialog and only `CONFIRM` posts; it is disabled with one amber line
+  (`approve blocked: <reason>`) when the server freshness gate, the governor preview or the size says no.
 - **A missing layer is one quiet line in place**: a HIP-3 market reads `xyz:TSLA is a HIP-3 market: move attribution,
   positioning and the checklists cover main-dex perps only` and keeps the PRICE view; a 400/404 detail or an unavailable
   layer prints its reason; an unreadable queue leaves IN QUEUE out. No error block for these.
-- Detail polls every 60 s, record stats every 5 min, the liquidation map only while open.
+- Detail polls every 60 s, record stats every 5 min, the setup's opportunity detail every 15 s while it shows.
+- Every move is printed as an ordinary percent change (the contract's log-% converted); parts compound to the total.
 
 ### 10.16 ASK drawer
 

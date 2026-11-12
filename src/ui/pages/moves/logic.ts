@@ -1,5 +1,5 @@
 import type { AgentFalsifier, AgentRecord, AgentStatsResponse, TriageResponse } from '../../../shared/agentRecords'
-import { MOVE_WINDOWS, type Attribution, type CrowdingCheck, type LayerState, type MoveRow, type MovesResponse, type MoveSeriesPoint, type MoveWindow, type Positioning, type SetupChecklist } from '../../../shared/moves'
+import { MOVE_WINDOWS, simplePct, type Attribution, type CrowdingCheck, type LayerState, type MoveRow, type MovesResponse, type MoveSeriesPoint, type MoveWindow, type Positioning, type SetupChecklist } from '../../../shared/moves'
 import type { DefinitionsResponse } from '../../../shared/research'
 import { fmtPx, fmtSigned } from '../../lib/format'
 import { studyHref } from '../../lib/study'
@@ -80,6 +80,8 @@ export function barWidth(residualPct: number | null | undefined, scale: number):
 export const zWarn = (z: number | null | undefined) => z != null && Math.abs(z) >= 2
 export const fmtZ = (z: number | null | undefined) => (z == null ? DASH : fmtSigned(z, '', 1))
 export const fmtPct = (n: number | null | undefined, dp = 1) => fmtSigned(n, '%', dp)
+/** A move the contract carries in log-%, printed as the ordinary percent change (shared/moves simplePct). */
+export const fmtMove = (logPct: number | null | undefined, dp = 1) => fmtPct(logPct == null ? logPct : simplePct(logPct), dp)
 
 /** Beta = btc + eth contribution; null without an attribution. */
 export const betaPct = (a: Attribution | null): number | null => (a ? a.btcPct + a.ethPct : null)
@@ -231,13 +233,13 @@ export function attributionSegments(a: Attribution): Segment[] {
 }
 
 export interface ChartData { points: { t: number; actual: number; fitted: number }[]; marks: { t: number; y: number; kind: 'flow' | 'news' }[] }
-/** Cumulative actual vs beta-fitted, with a mark on each OI-drop and news hour (both when an hour is both). */
+/** Cumulative actual vs beta-fitted in ordinary percent, with a mark on each OI-drop and news hour (both when an hour is both). */
 export function chartData(series: readonly MoveSeriesPoint[]): ChartData {
-  const points = series.map((p) => ({ t: p.t, actual: p.cumTotalPct, fitted: p.cumFittedPct }))
+  const points = series.map((p) => ({ t: p.t, actual: simplePct(p.cumTotalPct), fitted: simplePct(p.cumFittedPct) }))
   const marks: ChartData['marks'] = []
   for (const p of series) {
-    if (p.flowHour) marks.push({ t: p.t, y: p.cumTotalPct, kind: 'flow' })
-    if (p.newsHour) marks.push({ t: p.t, y: p.cumTotalPct, kind: 'news' })
+    if (p.flowHour) marks.push({ t: p.t, y: simplePct(p.cumTotalPct), kind: 'flow' })
+    if (p.newsHour) marks.push({ t: p.t, y: simplePct(p.cumTotalPct), kind: 'news' })
   }
   return { points, marks }
 }
@@ -284,9 +286,8 @@ export function outboundLinks(row: Pick<MoveRow, 'coin' | 'opportunityId' | 'set
     { key: 'coin', label: 'COIN', to: `/coin/${c}`, title: `decide on ${row.coin}: why it moved, priced in, attention, checklist, agent record` },
     { key: 'evidence', label: 'EVIDENCE', to: `/?coin=${c}`, title: `research board signals for ${row.coin}` },
     { key: 'chart', label: 'CHART', to: `/coin/${c}?chart=price`, title: 'price chart, funding and OI on the coin page' },
-    { key: 'liq', label: 'LIQ MAP', to: `/coin/${c}?liq=1`, title: 'liquidation map on the coin page' },
   ]
-  if (row.opportunityId) links.push({ key: 'opportunity', label: 'OPPORTUNITY', to: `/coin/${c}`, title: 'the ready opportunity on the coin page (APPROVE ON FEED sits there)' })
+  if (row.opportunityId) links.push({ key: 'opportunity', label: 'OPPORTUNITY', to: `/coin/${c}`, title: 'the ready opportunity on the coin page (APPROVE and REJECT sit there)' })
   for (const s of row.setups) {
     const to = studyLinkFor(defs, s.definitionId, row.coin)
     if (to) {

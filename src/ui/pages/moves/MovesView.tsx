@@ -11,7 +11,7 @@ import { fmtAge, fmtPx, fmtUsdCompact, signClass } from '../../lib/format'
 import { coverageTreatment } from '../cockpit/logic'
 import {
   attributionCell, attributionSegments, barScale, barWidth, BUCKET_LABEL, bestChecklist, betaPct, budgetLine, CHECK_LABEL, checkValue, checklistText, chartData, coverageCopy, crowdText, DASH,
-  droppedTitle, falsifierLine, fmtPct, fmtZ, fundingZText, gradeLine, headerLine, investigateGate, isFactorCoin, layerChips, layerNote, liqSigmaText, metMark, NOT_A_FORECAST,
+  droppedTitle, falsifierLine, fmtMove, fmtPct, fmtZ, fundingZText, gradeLine, headerLine, investigateGate, isFactorCoin, layerChips, layerNote, liqSigmaText, metMark, NOT_A_FORECAST,
   outboundLinks, overBudgetLine, recordView, SORT_KEYS, SORT_LABEL, staleLine, studyLinkFor, tagText, trackLine, triageEmptyLabel, visibleItems, zWarn, type SortKey,
 } from './logic'
 
@@ -156,7 +156,7 @@ export function FactorsPanel({ moves, sector, onSector }: { moves: Feed<MovesRes
               const active = id != null && id === sector
               const cell = (
                 <StatCell label={f.label} className={signClass(f.pct)}>
-                  {fmtPct(f.pct)} <span className="text-2xs text-text-secondary">n {f.n}</span>
+                  {fmtMove(f.pct)} <span className="text-2xs text-text-secondary">n {f.n}</span>
                 </StatCell>
               )
               return (
@@ -310,15 +310,15 @@ function columns(scale: number): Column<MoveRow>[] {
     },
     {
       key: 'total', label: 'TOTAL', priority: 2, align: 'right',
-      render: (r) => attr(r, (a) => a.totalPct, (v) => <span className={signClass(v)} title="log-% over the window">{fmtPct(v)}</span>),
+      render: (r) => attr(r, (a) => a.totalPct, (v) => <span className={signClass(v)} title="price change over the window">{fmtMove(v)}</span>),
     },
     {
       key: 'beta', label: 'BETA', priority: 3, align: 'right',
-      render: (r) => attr(r, (a) => betaPct(r.attribution), (v) => <span className="text-text-secondary" title="BTC + ETH ex-BTC contribution">{fmtPct(v)}</span>),
+      render: (r) => attr(r, (a) => betaPct(r.attribution), (v) => <span className="text-text-secondary" title="BTC + ETH ex-BTC contribution">{fmtMove(v)}</span>),
     },
     {
       key: 'sector', label: 'SECTOR', priority: 3, align: 'right',
-      render: (r) => attr(r, (a) => a.sectorPct, (v) => (v == null ? <Dash title="no sector factor for this coin" /> : <span className="text-text-secondary">{fmtPct(v)}</span>)),
+      render: (r) => attr(r, (a) => a.sectorPct, (v) => (v == null ? <Dash title="no sector factor for this coin" /> : <span className="text-text-secondary">{fmtMove(v)}</span>)),
     },
     {
       key: 'residual', label: 'RESIDUAL', priority: 1, align: 'right',
@@ -326,7 +326,7 @@ function columns(scale: number): Column<MoveRow>[] {
         attr(r, (a) => a.residualPct, (v) => (
           <span className="inline-flex items-center justify-end gap-2" title="total minus beta and sector: unexplained, not a cause">
             <ResidualBar pct={v} scale={scale} />
-            <span className={`${signClass(v)} w-12 text-right`}>{fmtPct(v)}</span>
+            <span className={`${signClass(v)} w-12 text-right`}>{fmtMove(v)}</span>
           </span>
         )),
     },
@@ -488,15 +488,18 @@ export function AttributionBlock({ d }: { d: MoveDetail }) {
       ) : isFactorCoin(d.coin) ? (
         <div className="flex flex-col gap-1">
           <p className="text-sm text-text-secondary">BTC is the factor: total only.</p>
-          <StatCell label={`TOTAL · ${a.window} · log-%`} className={signClass(a.totalPct)}>
-            {fmtPct(a.totalPct)} <span className="text-2xs text-text-secondary">n {a.hours} h</span>
+          <StatCell label={`TOTAL · ${a.window}`} className={signClass(a.totalPct)}>
+            {fmtMove(a.totalPct)} <span className="text-2xs text-text-secondary">n {a.hours} h</span>
           </StatCell>
         </div>
       ) : (
         <>
+          <StatCell label={`TOTAL · ${a.window}`} className={signClass(a.totalPct)}>
+            {fmtMove(a.totalPct)} <span className="text-2xs text-text-secondary">n {a.hours} h</span>
+          </StatCell>
           <div role="img" aria-label="attribution bar" className="flex h-3 w-full bg-elevated overflow-hidden">
             {attributionSegments(a).map((s) => (
-              <span key={s.key} data-seg={s.key} title={`${s.label} ${fmtPct(s.pct)}`} className={SEG_CLASS[s.kind]} style={{ width: `${s.width}%`, background: segColor(s.kind, s.pct), opacity: s.key === 'eth' ? 0.7 : 1 }} />
+              <span key={s.key} data-seg={s.key} title={`${s.label} ${fmtMove(s.pct)}`} className={SEG_CLASS[s.kind]} style={{ width: `${s.width}%`, background: segColor(s.kind, s.pct), opacity: s.key === 'eth' ? 0.7 : 1 }} />
             ))}
           </div>
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5 text-xs tabular">
@@ -504,7 +507,7 @@ export function AttributionBlock({ d }: { d: MoveDetail }) {
               <li key={s.key} className="flex justify-between gap-2">
                 <span className="text-text-secondary">{s.label}</span>
                 <span className={signClass(s.pct)}>
-                  {fmtPct(s.pct)}
+                  {fmtMove(s.pct)}
                   {s.kind === 'flow' && a.flowHours != null && ` · ${a.flowHours}h`}
                   {s.kind === 'news' && a.newsHours != null && ` · ${a.newsHours}h`}
                 </span>
@@ -523,7 +526,7 @@ export function AttributionBlock({ d }: { d: MoveDetail }) {
               </li>
             )}
           </ul>
-          <p className="text-2xs text-text-secondary">Residual buckets split the unexplained part by hour. They are not causes.</p>
+          <p className="text-2xs text-text-secondary">Residual buckets split the unexplained part by hour. They are not causes. Each part is a percent change; the parts compound to the total.</p>
           <div className="table-scroll">
             <table className="dt w-full text-xs tabular border-collapse">
               <thead>
@@ -539,7 +542,7 @@ export function AttributionBlock({ d }: { d: MoveDetail }) {
                   <tr key={b.factor} className="border-b border-border-subtle" title={b.reason ?? undefined}>
                     <td className="px-2 py-1">{b.factor}</td>
                     <td className="px-2 py-1 text-right">{b.beta == null ? DASH : b.beta.toFixed(2)}</td>
-                    <td className={`px-2 py-1 text-right ${signClass(b.contributionPct)}`}>{fmtPct(b.contributionPct)}</td>
+                    <td className={`px-2 py-1 text-right ${signClass(b.contributionPct)}`}>{fmtMove(b.contributionPct)}</td>
                     <td className="px-2 py-1 text-right">{b.n}</td>
                   </tr>
                 ))}
@@ -586,7 +589,7 @@ function AttributionChart({ d }: { d: MoveDetail }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <figcaption className="text-2xs text-text-secondary">solid: actual · dashed: beta-fitted (cumulative log-%) · amber dot: OI-drop hour · blue dot: news hour</figcaption>
+      <figcaption className="text-2xs text-text-secondary">solid: actual · dashed: beta-fitted (cumulative % change) · amber dot: OI-drop hour · blue dot: news hour</figcaption>
     </figure>
   )
 }

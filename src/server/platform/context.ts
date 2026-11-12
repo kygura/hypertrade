@@ -1,10 +1,12 @@
+import { hlInfo } from "../../shared/hl-client.js";
 import type { PlatformStore } from "./store.js";
+import { parseMids } from "./ws.js";
 import type { NearMiss } from "../../shared/platform.js";
 
 // What /api/platform reads from the running worker (SPEC P0.15, P2): the store,
 // live mids with their ages, and the scanner clock. scripts/server.ts sets it at
-// boot. Without it, routes use dbPlatformContext (Postgres only, no live mids) when a database
-// is configured, else answer 503 platform_offline.
+// boot. Without it, routes use dbPlatformContext (Postgres plus mids fetched from Hyperliquid on demand)
+// when a database is configured, else answer 503 platform_offline.
 
 export interface PlatformContext {
   store: PlatformStore;
@@ -14,20 +16,37 @@ export interface PlatformContext {
   /** Near-misses of the latest scan, closest first. */
   nearMisses(): Promise<NearMiss[]>;
   scanIntervalSec: number;
+  /** Bring the mids up to date before a freshness check. Absent where a websocket already keeps them live. */
+  refreshMids?(now: number): Promise<void>;
 }
+
+/** A fetched mid is reused this long, so a poll and the approve that follows it share one request. */
+const MID_REUSE_MS = 5_000;
+
 /**
- * The context of a process without the worker (Vercel): reads only what the tick persisted. No live mids,
- * so approval stays blocked by the freshness gate (409 stale_feed). The scan clock is the near-miss row's
- * timestamp, written at the end of each completed scan.
+ * The context of a process without the worker (Vercel): reads what the tick persisted, and takes mids from
+ * Hyperliquid's `allMids` on demand (refreshMids), so the freshness gate judges a real price age. A failed
+ * fetch keeps the last mids, which then age past the gate; before any fetch there is no mid. The scan clock is
+ * the near-miss row's timestamp, written at the end of each completed scan.
  */
-export const dbPlatformContext = (store: PlatformStore): PlatformContext => ({
-  store,
-  midAge: () => null,
-  mid: () => null,
-  lastScanAt: async () => { const r = await store.latestNearMisses(); return r ? new Date(r.ts) : null; },
-  nearMisses: async () => (await store.latestNearMisses())?.items ?? [],
-  scanIntervalSec: 3600,
-});
+export function dbPlatformContext(store: PlatformStore, deps: { info?: typeof hlInfo } = {}): PlatformContext {
+  const info = deps.info ?? hlInfo;
+  let mids = new Map<string, number>();
+  let at: number | null = null;
+  return {
+    store,
+    midAge: (coin, now = Date.now()) => (at != null && mids.has(coin) ? Math.max(0, (now - at) / 1000) : null),
+    mid: (coin) => mids.get(coin) ?? null,
+    lastScanAt: async () => { const r = await store.latestNearMisses(); return r ? new Date(r.ts) : null; },
+    nearMisses: async () => (await store.latestNearMisses())?.items ?? [],
+    scanIntervalSec: 3600,
+    refreshMids: async (now) => {
+      if (at != null && now - at < MID_REUSE_MS) return;
+      const next = await info<unknown>({ type: "allMids" }).then((d) => parseMids({ mids: d }), () => null);
+      if (next && next.size > 0) { mids = next; at = now; }
+    },
+  };
+}
 
 /** P0.15: a mid older than this blocks approval. */
 export const MAX_MID_AGE_SEC = 30;
@@ -46,6 +65,7 @@ export function approveBlock(q: { coin: string; midAgeSec: number | null; lastSc
 
 /** approveBlock read from a context now. */
 export async function approveBlockOf(ctx: PlatformContext, coin: string, now: number): Promise<string | null> {
+  await ctx.refreshMids?.(now);
   return approveBlock({ coin, midAgeSec: ctx.midAge(coin, now), lastScanAt: await ctx.lastScanAt(), now, scanIntervalSec: ctx.scanIntervalSec });
 }
 

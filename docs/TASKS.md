@@ -14,8 +14,9 @@ by URL.
   radar calls under `MOVES_TRIAGE_DAILY`; dismissals in migration 025; `/coin/:coin` is the decide page and
   `/markets/:coin` redirects to it; ASK is a drawer that carries the coin and queue item. Contract: docs/SPEC.md
   § Queue; screens: docs/design/README.md §10.14 to §10.16.
-- [ ] Approval still only exists on `/feed` (the coin page links to it as `OPPORTUNITY · APPROVE ON FEED`), so `/feed`
-  cannot be deleted on 11-18 until approve (the opportunity detail and `TicketDialog`) moves to the coin page.
+- [x] Approval on the coin page (2026-11-12): the SETUP block carries APPROVE and REJECT with the feed's gates and
+  `TicketDialog`, so `/feed` no longer blocks the 11-18 review. The liquidation map left the coin page (the crawler
+  holds no positions without an always-on process); moves print as ordinary percent, not log-%.
 - [ ] Queue sources not yet in (docs/SPEC.md § Queue Q0), each with its blocker: board definitions, rules and novelty
   (answer "is there an edge", heavy to load, no per-item state, dozens a day would fill the cap); Intel alerts (the
   asset can be a narrative id: needs an asset-to-perp mapping and a rule for alerts Telegram already pushed);

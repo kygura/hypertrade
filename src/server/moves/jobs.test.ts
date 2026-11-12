@@ -180,7 +180,7 @@ describe("runMovesAgentJob", () => {
     await store.saveMovesRun(run(ROWS.map(unknown)));
     const r = await runMovesAgentJob(deps);
     expect(r).toMatchObject({ surfaced: 3, investigated: null, investigation: "no surfaced no-news residual without a record (news unknown for 3 residual candidates: no auto-investigation without a news feed)" });
-    expect((await store.listTriage("2026-11-11")).map((i) => i.reason)).toEqual(["residual +6.2% · z +4.0 · 24h · news unknown", "residual +6.2% · z +3.5 · 24h · news unknown", "residual +6.2% · z +3.0 · 24h · news unknown"]);
+    expect((await store.listTriage("2026-11-11")).map((i) => i.reason)).toEqual(["residual +6.4% · z +4.0 · 24h · news unknown", "residual +6.4% · z +3.5 · 24h · news unknown", "residual +6.4% · z +3.0 · 24h · news unknown"]);
     expect(coinCalls).toEqual([]);
   });
 

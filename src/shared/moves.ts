@@ -6,7 +6,14 @@ import { ClusterSchema } from "./platform.js";
 // Moves contract (docs/SPEC.md § Moves): a coin's move over a window split into beta (BTC, ETH ex-BTC, sector
 // ex-majors) and a residual, with the positioning, liquidation and attention facts beside it. Attribution is
 // explained after the fact; the checklists are condition checks, not forecasts. Every percentage is a log-%
-// (100 · Σ ln returns) unless a field says otherwise. Server and UI both import this file.
+// (100 · Σ ln returns) unless a field says otherwise, because only log returns add up across factors and hours.
+// What a person reads is converted with `simplePct`. Server and UI both import this file.
+
+/**
+ * A log-% as the ordinary percent change it stands for: a −69.6 log-% move is a −50.1% price change. The parts of
+ * a move converted this way compound to the total ((1+a)(1+b)… − 1); they do not add.
+ */
+export const simplePct = (logPct: number): number => Math.expm1(logPct / 100) * 100;
 
 export { MOVE_WINDOWS, MoveWindowSchema, WINDOW_HOURS } from "./agentRecords.js";
 export type { MoveWindow } from "./agentRecords.js";

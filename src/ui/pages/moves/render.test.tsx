@@ -24,7 +24,7 @@ describe('MovesTablePanel', () => {
   test('ok: rows with signed residual, z, bar, and a null attribution as a dash with its reason', () => {
     const out = html(<MovesTablePanel {...tableProps(feed(movesResponse()))} />)
     expect(out).toContain('HYPE')
-    expect(out).toContain('+6.2%')
+    expect(out).toContain('+6.4%')
     expect(out).toContain('3.1')
     expect(out).toContain('data-bar="100"')
     expect(out).toContain('title="needs 120 of 168 hourly bars before the window — has 74"')
@@ -189,7 +189,7 @@ describe('MovesView', () => {
     expect(out).toContain('href="/order"')
   })
   test('outbound links of the selected coin', () => {
-    for (const to of ['/coin/HYPE', '/?coin=HYPE', '/coin/HYPE?chart=price', '/coin/HYPE?liq=1']) expect(out).toContain(`href="${to}"`)
+    for (const to of ['/coin/HYPE', '/?coin=HYPE', '/coin/HYPE?chart=price']) expect(out).toContain(`href="${to}"`)
     for (const gone of ['/asset/', '/feed?liq', '/sectors', '/markets/']) expect(out).not.toContain(gone)
     expect(out).not.toContain('OPPORTUNITY')
   })

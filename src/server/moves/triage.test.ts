@@ -11,8 +11,8 @@ const fade = (coin: string, met: number, of: number) =>
 
 describe("candidateOf", () => {
   test("residual bar: |z| ≥ 2.5 and a ≥ 1% move, facts-only reason", () => {
-    expect(candidateOf(z("SOL", 3.1))).toMatchObject({ coin: "SOL", score: 3.1 / 2.5, residualZ: 3.1, noNews: true, byResidual: true, reason: "residual +6.2% · z +3.1 · 24h · no news in window" });
-    expect(candidateOf(z("SOL", -2.6))!.reason).toBe("residual −5.2% · z −2.6 · 24h · no news in window");
+    expect(candidateOf(z("SOL", 3.1))).toMatchObject({ coin: "SOL", score: 3.1 / 2.5, residualZ: 3.1, noNews: true, byResidual: true, reason: "residual +6.4% · z +3.1 · 24h · no news in window" });
+    expect(candidateOf(z("SOL", -2.6))!.reason).toBe("residual −5.1% · z −2.6 · 24h · no news in window");
     expect(candidateOf(z("SOL", 2.4))).toBeNull();
     expect(candidateOf(z("SOL", 3, { totalPct: 0.5 }))).toBeNull(); // move under 1%
     expect(candidateOf(z("SOL", 3, { window: "4h" }))).toBeNull(); // only the 24h attribution counts
@@ -76,7 +76,7 @@ describe("autoInvestigate", () => {
   test("unknown news (no feed ingested) still surfaces, reads `news unknown`, and is not auto-investigated", () => {
     const u = planTriage({ rows: [z("U", 4, { newsHours: null, residualNewsPct: null }), z("A", 2.6)], existing: [], day, now, budget: 8 });
     expect(u.upserts.map((i) => i.coin)).toEqual(["U", "A"]);
-    expect(u.candidates.find((c) => c.coin === "U")).toMatchObject({ byResidual: true, noNews: false, newsUnknown: true, reason: "residual +8.0% · z +4.0 · 24h · news unknown" });
+    expect(u.candidates.find((c) => c.coin === "U")).toMatchObject({ byResidual: true, noNews: false, newsUnknown: true, reason: "residual +8.3% · z +4.0 · 24h · news unknown" });
     expect(autoInvestigate({ items: u.upserts, candidates: u.candidates, recordsToday: [], room: 5 })).toEqual(["A"]);
   });
 });
