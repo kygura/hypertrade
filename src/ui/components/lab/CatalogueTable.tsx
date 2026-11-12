@@ -3,7 +3,7 @@ import { Button } from '../Button'
 import { DataTable, type Column } from '../DataTable'
 import { FiringBadge } from '../FiringBadge'
 import { RuleText } from '../RuleText'
-import { fmtSigned, sharpeOf, signTone, type CatalogueHealth, type CatalogueListEntry, type MetricDef } from '../../lib/lab'
+import { fmtSigned, LIVE_MIN_DAYS, sharpeOf, signTone, type CatalogueHealth, type CatalogueListEntry, type MetricDef } from '../../lib/lab'
 import { DirectionWord, SharpeValue, VerdictBadge } from './common'
 
 // CatalogueTable — docs/design/README.md §10.9, §4.4 drop order. Ranked by LIVE SHARPE
@@ -11,7 +11,7 @@ import { DirectionWord, SharpeValue, VerdictBadge } from './common'
 // save time, printed as a pair and kept at every width, with the server
 // verdict Badge in the NAME cell. Per-row REMOVE at lg only.
 
-const liveOk = (e: CatalogueListEntry) => e.live != null && e.live.days >= 30
+const liveOk = (e: CatalogueListEntry) => e.live != null && e.live.days >= LIVE_MIN_DAYS
 
 export function CatalogueTable({
   entries,
@@ -32,7 +32,7 @@ export function CatalogueTable({
   const partners = (id: string) =>
     (health?.overlaps ?? [])
       .filter((o) => o.a === id || o.b === id)
-      .map((o) => `${nameOf(o.a === id ? o.b : o.a)} (J ${o.jaccard.toFixed(2)})`)
+      .map((o) => `${nameOf(o.a === id ? o.b : o.a)} (shares ${o.jaccard.toFixed(2)} of in-market days)`)
       .join(', ')
 
   const columns: Column<CatalogueListEntry>[] = [
@@ -61,14 +61,14 @@ export function CatalogueTable({
         liveOk(e) ? (
           <span className={signTone(e.live!.sharpe)}>{fmtSigned(e.live!.sharpe)}</span>
         ) : (
-          <span className="text-text-secondary" title={`${e.live?.days ?? 0} live days`}>
+          <span className="text-text-secondary" title={`${e.live?.days ?? 0} live days: a live Sharpe shows from ${LIVE_MIN_DAYS}`}>
             —
           </span>
         ),
     },
     {
       key: 'wf',
-      label: 'WF',
+      label: <span title="walk-forward Sharpe at save time">WF</span>,
       priority: 2,
       align: 'right',
       sortValue: (e) => sharpeOf(e.saved.walkForward) ?? -Infinity,
@@ -100,10 +100,14 @@ export function CatalogueTable({
           <span className="text-text-secondary">—</span>
         ) : (
           <span className="inline-flex gap-1">
-            {e.flags.includes('decayed') && <Badge tone="amber">DECAYED</Badge>}
+            {e.flags.includes('decayed') && (
+              <Badge tone="amber">
+                <span title="live Sharpe below 0, or below a quarter of the holdout Sharpe it was saved with">DECAYED</span>
+              </Badge>
+            )}
             {e.flags.includes('overlap') && (
               <Badge tone="gray">
-                <span title={partners(e.id) || 'overlaps another rule'}>OVERLAP</span>
+                <span title={partners(e.id) || 'in the market on mostly the same days as another saved rule'}>OVERLAP</span>
               </Badge>
             )}
           </span>
@@ -111,7 +115,7 @@ export function CatalogueTable({
     },
     {
       key: 'dirhzn',
-      label: 'DIR·HZN',
+      label: 'SIDE · HOLD',
       priority: 3,
       render: (e) => (
         <span>

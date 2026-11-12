@@ -27,11 +27,13 @@ export function ResultsHeader({ runId, createdAt, result }: { runId: string | nu
         </span>
       </div>
       <div className="text-xs tabular text-text-secondary flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-info">HOLDOUT FROM {result.dataRange.holdoutFrom}</span>
+        <span className="text-info" title="first day of the holdout: the most recent 20% of the history, never used to pick or rank a rule">
+          HOLDOUT FROM {result.dataRange.holdoutFrom}
+        </span>
         <span>·</span>
-        <span>{result.featureCount} FEATURES</span>
+        <span title="metric × transform × window combinations the search could build conditions from">{result.featureCount} FEATURES</span>
         <span>·</span>
-        <span className={partial ? 'text-amber' : undefined}>
+        <span className={partial ? 'text-amber' : undefined} title={partial ? 'search rounds run out of the rounds asked for: the time limit cut this run short' : 'search rounds run out of the rounds asked for'}>
           {result.trialsRun}/{c.trials} TRIALS
         </span>
         {partial && <Badge tone="amber">PARTIAL</Badge>}
@@ -46,7 +48,7 @@ export function ResultsHeader({ runId, createdAt, result }: { runId: string | nu
         <span>·</span>
         <AgeStamp generatedAt={createdAt} thresholdHours={48} />
       </div>
-      <span className="label" title="walk-forward: thresholds refit per fold">
+      <span className="label" title="rules are ordered by their walk-forward result, with thresholds re-fitted inside each walk-forward block. The holdout never changes the order">
         RANKED BY WALK-FORWARD {c.objective === 'return' ? 'RETURN' : 'SHARPE'}
       </span>
     </div>

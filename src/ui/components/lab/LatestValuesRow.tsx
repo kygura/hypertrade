@@ -17,9 +17,13 @@ export function LatestValuesRow({ ev, metrics }: { ev: RuleEvaluation; metrics: 
               <th scope="row" className="px-3 text-left font-normal">
                 {fmtFeature(c.feature, metrics)}
               </th>
-              <td className="px-1 text-right text-text-primary">{v == null ? '—' : fmtFeatureValue(c.feature, v, metrics)}</td>
+              <td className="px-1 text-right text-text-primary" title="value on the latest daily bar">
+                {v == null ? '—' : fmtFeatureValue(c.feature, v, metrics)}
+              </td>
               <td className="px-1 text-center text-text-secondary">{c.op === '<' ? '<' : '≥'}</td>
-              <td className="px-1 text-right">{fmtFeatureValue(c.feature, c.threshold, metrics)}</td>
+              <td className="px-1 text-right" title="the rule's cut-off">
+                {fmtFeatureValue(c.feature, c.threshold, metrics)}
+              </td>
               <td className="px-3 text-right" title={word}>
                 {met == null ? (
                   <span className="text-xs">no data</span>

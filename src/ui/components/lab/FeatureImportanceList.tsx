@@ -6,7 +6,7 @@ import { fmtFeature, type MetricDef } from '../../lib/lab'
 export function FeatureImportanceList({ items, metrics }: { items: Array<{ feature: string; score: number }>; metrics: readonly MetricDef[] }) {
   const top = [...items].sort((a, b) => b.score - a.score).slice(0, 10)
   const max = top[0]?.score || 1
-  if (top.length === 0) return <p className="px-3 py-3 text-xs text-text-secondary">no feature importance reported</p>
+  if (top.length === 0) return <p className="px-3 py-3 text-xs text-text-secondary">no feature importance in this run. The inputs the search leaned on most would list here</p>
   return (
     <ol className="flex flex-col py-1">
       {top.map((f) => (

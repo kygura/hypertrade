@@ -22,17 +22,17 @@ export function CatalogueHealthStrip({ health, entries }: { health: LabState<Cat
   return (
     <AsyncBody {...health} rows={1} staleError={false} onRetry={health.refetch}>
       {(h) => {
-      const counters: Array<{ key: Exclude<Open, null>; label: string; n: number }> = [
-        { key: 'decayed', label: 'DECAYED', n: h.decayed.length },
-        { key: 'overlaps', label: 'OVERLAPS', n: h.overlaps.length },
-        { key: 'gaps', label: 'GAPS', n: h.gaps.length },
+      const counters: Array<{ key: Exclude<Open, null>; label: string; n: number; title: string }> = [
+        { key: 'decayed', label: 'DECAYED', n: h.decayed.length, title: 'rules whose live Sharpe has fallen below 0 or below a quarter of their holdout Sharpe. Click to list' },
+        { key: 'overlaps', label: 'OVERLAPS', n: h.overlaps.length, title: 'pairs of rules on the same asset and side that are in the market on mostly the same days. Click to list' },
+        { key: 'gaps', label: 'GAPS', n: h.gaps.length, title: 'assets with no saved rule on one side. Click to list' },
       ]
 
       return (
         <div className="border-b border-border-subtle">
           <div className="flex flex-wrap items-center gap-2 px-3 py-2">
             {counters.map((c) => (
-              <Button key={c.key} tier="ghost" aria-pressed={open === c.key} aria-controls="lab-health-list" onClick={() => setOpen(open === c.key ? null : c.key)}>
+              <Button key={c.key} tier="ghost" title={c.title} aria-pressed={open === c.key} aria-controls="lab-health-list" onClick={() => setOpen(open === c.key ? null : c.key)}>
                 <span className={c.n > 0 ? 'text-amber' : 'text-text-secondary'}>
                   {c.label} {c.n}
                 </span>
@@ -46,7 +46,7 @@ export function CatalogueHealthStrip({ health, entries }: { health: LabState<Cat
             <ul id="lab-health-list" className="flex flex-col pb-2">
               {open === 'decayed' &&
                 (h.decayed.length === 0 ? (
-                  <li className="px-3 text-xs text-text-secondary">no decayed rules</li>
+                  <li className="px-3 text-xs text-text-secondary">no decayed rules: none has a live Sharpe below 0 or below a quarter of its holdout Sharpe after 30 live days</li>
                 ) : (
                   h.decayed.map((d) => (
                     <li key={d.id} className="flex flex-wrap items-center gap-2 px-3 min-h-[var(--row-h)] text-sm tabular">
@@ -58,22 +58,25 @@ export function CatalogueHealthStrip({ health, entries }: { health: LabState<Cat
                 ))}
               {open === 'overlaps' &&
                 (h.overlaps.length === 0 ? (
-                  <li className="px-3 text-xs text-text-secondary">no overlapping rules</li>
+                  <li className="px-3 text-xs text-text-secondary">no overlapping rules: no two on the same asset and side are in the market on mostly the same days</li>
                 ) : (
                   h.overlaps.map((o) => (
                     <li key={`${o.a}-${o.b}`} className="px-3 min-h-[var(--row-h)] flex items-center text-sm tabular">
-                      {nameOf(o.a)} ↔ {nameOf(o.b)} <span className="text-text-secondary">&nbsp;· J {o.jaccard.toFixed(2)}</span>
+                      {nameOf(o.a)} ↔ {nameOf(o.b)}{' '}
+                      <span className="text-text-secondary" title="share of the days either rule is in the market on which both are (Jaccard overlap)">
+                        &nbsp;· shared days {o.jaccard.toFixed(2)}
+                      </span>
                     </li>
                   ))
                 ))}
               {open === 'gaps' &&
                 (h.gaps.length === 0 ? (
-                  <li className="px-3 text-xs text-text-secondary">no gaps</li>
+                  <li className="px-3 text-xs text-text-secondary">no gaps: every asset in the catalogue has a rule on both sides</li>
                 ) : (
                   h.gaps.map((g) => (
                     <li key={`${g.asset}-${g.direction}`} className="flex flex-wrap items-center gap-2 px-3 min-h-[var(--row-h)] text-sm">
                       <span>
-                        {g.asset.toUpperCase()} {g.direction.toUpperCase()} <span className="text-text-secondary">— no active rule</span>
+                        {g.asset.toUpperCase()} {g.direction.toUpperCase()} <span className="text-text-secondary">: no saved rule on this side</span>
                       </span>
                       <Button tier="ghost" onClick={() => navigate('/lab/search', { state: { prefill: { asset: g.asset, direction: g.direction } } })}>
                         SEARCH →

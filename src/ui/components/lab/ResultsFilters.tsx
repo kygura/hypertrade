@@ -35,8 +35,8 @@ export function ResultsFilters({
         label="rule kind"
         options={[
           { value: 'all', label: 'ALL' },
-          { value: 'pairs', label: 'PAIRS' },
-          { value: 'single', label: 'SINGLE' },
+          { value: 'pairs', label: 'PAIRS', title: 'rules of two or more conditions' },
+          { value: 'single', label: 'SINGLE', title: 'rules of one condition' },
         ]}
         value={value.kind}
         onChange={(kind) => set({ kind })}
@@ -44,9 +44,9 @@ export function ResultsFilters({
       <Segmented
         label="stats window"
         options={[
-          { value: 'is', label: 'IS', title: 'in-sample' },
-          { value: 'wf', label: 'WF', title: 'walk-forward' },
-          { value: 'ho', label: 'HO', title: 'holdout' },
+          { value: 'is', label: 'IN-SAMPLE', short: 'IS', title: 'HIT, MAX DD, TR/YR and the filters read the in-sample window: the first 80% of the history, the part the search saw' },
+          { value: 'wf', label: 'WALK-FWD', short: 'WF', title: 'HIT, MAX DD, TR/YR and the filters read the walk-forward window: each block scored on what came before it' },
+          { value: 'ho', label: 'HOLDOUT', short: 'HO', title: 'HIT, MAX DD, TR/YR and the filters read the holdout: the most recent 20%, never used to pick or rank' },
         ]}
         value={value.window}
         onChange={(window) => set({ window })}

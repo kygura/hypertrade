@@ -39,10 +39,12 @@ export function PulseAssetRow({ asset: a, entries, metrics }: { asset: PulseAsse
           <span className="flex flex-1 max-w-[200px] md:flex-none md:w-[120px]">
             <LeanBar lean={a.lean} width="100%" />
           </span>
-          <span className={`text-sm tabular whitespace-nowrap ${leanTone}`}>LEAN {fmtSigned(a.lean)}</span>
+          <span className={`text-sm tabular whitespace-nowrap ${leanTone}`} title="long rules firing minus short rules firing, divided by all saved rules on this asset (−1 to +1)">
+            LEAN {fmtSigned(a.lean)}
+          </span>
         </div>
         <div className="flex items-center gap-3 md:flex-1">
-          <span className="text-xs tabular text-text-secondary">
+          <span className="text-xs tabular text-text-secondary" title="rules firing out of rules saved, per side">
             <Count label="LONG" active={a.longActive} total={a.longTotal} /> · <Count label="SHORT" active={a.shortActive} total={a.shortTotal} />
           </span>
           <button
