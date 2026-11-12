@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, NetworkError, makeSequencer } from './api'
+import { cacheGet, cacheSet } from './cache'
 
 // usePoll — the shared polling hook behind useEngine (lib/engine.ts) and
 // useIntel (lib/intel.ts). Runs `fetcher` now and every `intervalMs` while
@@ -10,6 +11,8 @@ import { ApiError, NetworkError, makeSequencer } from './api'
 // back to a skeleton (docs/design/README.md §6). Latest-wins: a response
 // older than the newest request (or than a deps change / setData) is dropped.
 // A deps change resets `data` so the previous key's data is never shown.
+// With `cacheKey`, the last response for that key (lib/cache.ts) is shown at
+// mount while the first fetch runs, so returning to a page does not skeleton.
 // Unmounted callers never poll.
 
 export function errorMessage(err: unknown, fallback = 'request failed'): string {
@@ -39,18 +42,25 @@ export interface PollOptions {
   isOffline?: (err: unknown) => boolean
   /** Offline text when the error carries no message. */
   offlineFallback?: string
+  /**
+   * Names this request in the response cache. It must change whenever deps do (put them in the key).
+   * Leave unset for anything a trade decision reads (desk, engine): those never show a past response.
+   */
+  cacheKey?: string
 }
 
-/** State at mount and whenever deps change: nothing from the previous key survives. */
-export function pollInitial(enabled: boolean): Omit<PollState<never>, 'refetch' | 'setData'> {
+/** State at mount and whenever deps change: nothing from the previous key survives; a `cacheKey` starts from its cached response. */
+export function pollInitial<T = never>(enabled: boolean, cacheKey?: string): Omit<PollState<T>, 'refetch' | 'setData'> {
+  const hit = cacheGet<T>(cacheKey)
+  if (hit) return { data: hit.data, loading: false, error: null, offline: null, fetchedAt: hit.at }
   return { data: null, loading: enabled, error: null, offline: null, fetchedAt: null }
 }
 
 const isNetworkError = (err: unknown) => err instanceof NetworkError
 
 export function usePoll<T>(fetcher: () => Promise<T>, deps: unknown[], opts: PollOptions = {}): PollState<T> {
-  const { intervalMs = null, enabled = true, isOffline = isNetworkError, offlineFallback = 'api unreachable' } = opts
-  const [state, setState] = useState<Omit<PollState<T>, 'refetch' | 'setData'>>(pollInitial(enabled))
+  const { intervalMs = null, enabled = true, isOffline = isNetworkError, offlineFallback = 'api unreachable', cacheKey } = opts
+  const [state, setState] = useState<Omit<PollState<T>, 'refetch' | 'setData'>>(() => pollInitial<T>(enabled, cacheKey))
   const seq = useRef(makeSequencer())
   const fetcherRef = useRef(fetcher)
   fetcherRef.current = fetcher
@@ -58,6 +68,8 @@ export function usePoll<T>(fetcher: () => Promise<T>, deps: unknown[], opts: Pol
   isOfflineRef.current = isOffline
   const inflight = useRef<number | null>(null)
   const lastOk = useRef<number | null>(null)
+  const cacheKeyRef = useRef(cacheKey)
+  cacheKeyRef.current = cacheKey
 
   const load = useCallback(async () => {
     if (!enabled || inflight.current != null) return
@@ -67,6 +79,7 @@ export function usePoll<T>(fetcher: () => Promise<T>, deps: unknown[], opts: Pol
       const data = await fetcherRef.current()
       if (!seq.current.isCurrent(ticket)) return
       lastOk.current = Date.now()
+      cacheSet(cacheKeyRef.current, data, lastOk.current)
       setState({ data, loading: false, error: null, offline: null, fetchedAt: lastOk.current })
     } catch (err) {
       if (!seq.current.isCurrent(ticket)) return
@@ -90,7 +103,7 @@ export function usePoll<T>(fetcher: () => Promise<T>, deps: unknown[], opts: Pol
     seq.current.next()
     inflight.current = null
     lastOk.current = null
-    setState(pollInitial(enabled))
+    setState(pollInitial<T>(enabled, cacheKeyRef.current))
   }, deps) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -130,6 +143,7 @@ export function usePoll<T>(fetcher: () => Promise<T>, deps: unknown[], opts: Pol
   const setData = useCallback((data: T) => {
     seq.current.next()
     lastOk.current = Date.now()
+    cacheSet(cacheKeyRef.current, data, lastOk.current)
     setState((s) => ({ ...s, data, loading: false, error: null, offline: null, fetchedAt: lastOk.current }))
   }, [])
 

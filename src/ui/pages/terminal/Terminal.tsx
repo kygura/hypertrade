@@ -127,11 +127,11 @@ export function Terminal() {
     }
   }, [fromTelegram, brief, reviewing])
 
-  const positions = useIntel(intel.positions, [], { intervalMs: INTEL_POLL_MS.positions })
-  const watchlist = useIntel(intel.watchlist, [])
-  const catalysts = useIntel(() => intel.catalysts(14), [], { intervalMs: INTEL_POLL_MS.catalysts })
+  const positions = useIntel(intel.positions, [], { intervalMs: INTEL_POLL_MS.positions, cacheKey: 'intel.positions' })
+  const watchlist = useIntel(intel.watchlist, [], { cacheKey: 'intel.watchlist' })
+  const catalysts = useIntel(() => intel.catalysts(14), [], { intervalMs: INTEL_POLL_MS.catalysts, cacheKey: 'intel.catalysts:14' })
   const [flowWindow, setFlowWindow] = useState<HeatmapWindow>(readFlowWindow)
-  const heatmap = useIntel(() => intel.heatmap(flowWindow), [flowWindow], { intervalMs: INTEL_POLL_MS.heatmap })
+  const heatmap = useIntel(() => intel.heatmap(flowWindow), [flowWindow], { intervalMs: INTEL_POLL_MS.heatmap, cacheKey: `intel.heatmap:${flowWindow}` })
   const since = brief?.since
   const alerts = useIntel(() => intel.alerts(since ? { since } : {}), [since], {
     intervalMs: INTEL_POLL_MS.alerts,

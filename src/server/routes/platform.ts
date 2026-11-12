@@ -118,7 +118,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
 
   /** Mark and OI from the live mid and the latest scan snapshot of the coin. */
   const marketFor = async (ctx: PlatformContext, coin: string, now: Date) => {
-    const snap = (await ctx.store.scanSnapshotsSince(new Date(now.getTime() - 3_600_000).toISOString())).filter((s) => s.coin === coin).at(-1);
+    const snap = (await ctx.store.scanSnapshotsSince(new Date(now.getTime() - 3_600_000).toISOString(), [coin])).at(-1);
     return { mark: ctx.mid(coin) ?? num(snap?.inputs.mark), oiUsd: num(snap?.inputs.oiUsd) };
   };
 
@@ -157,8 +157,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       const q = FeedQuerySchema.safeParse(c.req.query());
       if (!q.success) return invalid(c, q.error, "query");
       const ctx = c.var.ctx;
-      const rows = await ctx.store.listOpportunities({ statuses: q.data.status, tier: q.data.tier, limit: q.data.limit });
-      const last = await ctx.lastScanAt();
+      const [rows, last] = await Promise.all([ctx.store.listOpportunities({ statuses: q.data.status, tier: q.data.tier, limit: q.data.limit }), ctx.lastScanAt()]);
       return c.json({
         opportunities: rows.map((r) => FeedRowSchema.parse(r)),
         scanAgeSec: last ? seenAge(last.toISOString(), deps.now()) : null,

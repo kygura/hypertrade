@@ -14,7 +14,7 @@ import { boardStudy, SourceUnavailable } from "../research/board.js";
 import { readRadar } from "../research/radar.js";
 import { createStudyCache, createStudyRunner, studyKey, type RunEventStudy } from "../research/study.js";
 import { fakeStudy } from "../research/testkit.js";
-import { catalogueIdOf, radarRoutes, researchRoutes, toolEventStudy } from "./research.js";
+import { catalogueIdOf, radarRoutes, researchRoutes, staleWhileRevalidate, toolEventStudy } from "./research.js";
 import { SetupReplayResponseSchema, type ReplaySource, type SetupReplayResponse } from "../../shared/research.js";
 
 const NOW = Date.parse("2026-11-09T12:00:00Z");
@@ -230,5 +230,72 @@ describe("/research/setups/replay route", () => {
     if (process.env.DATABASE_URL) return;
     const r = SetupReplayResponseSchema.parse(await (await replayApp().request("/research/setups/replay?source=snapshots")).json());
     expect(r).toMatchObject({ state: "unavailable", reason: "needs a database (DATABASE_URL unset)", source: "snapshots", setups: [] });
+  });
+});
+
+describe("staleWhileRevalidate (the board's Market Pulse memo)", () => {
+  const setup = () => {
+    let t = 0;
+    const pending: Array<{ ok: (v: string) => void; fail: (e: Error) => void }> = [];
+    const read = staleWhileRevalidate(() => new Promise<string>((ok, fail) => pending.push({ ok, fail })), { ttlMs: 100, maxStaleMs: 1000, now: () => t });
+    return { read, pending, at: (ms: number) => void (t = ms) };
+  };
+
+  test("cold: every caller waits on the one load; within the TTL nothing loads again", async () => {
+    const { read, pending, at } = setup();
+    const [a, b] = [read(), read()];
+    expect(pending.length).toBe(1);
+    pending[0]!.ok("v1");
+    expect(await Promise.all([a, b])).toEqual(["v1", "v1"]);
+    at(99);
+    expect(await read()).toBe("v1");
+    expect(pending.length).toBe(1);
+  });
+
+  test("past the TTL the last value answers at once while one new load runs; then the new value answers", async () => {
+    const { read, pending, at } = setup();
+    const first = read();
+    pending[0]!.ok("v1");
+    await first;
+    at(150);
+    expect(await read()).toBe("v1");
+    expect(await read()).toBe("v1");
+    expect(pending.length).toBe(2);
+    pending[1]!.ok("v2");
+    await Promise.resolve();
+    expect(await read()).toBe("v2");
+  });
+
+  test("a value older than maxStaleMs is not served: the call waits for the load", async () => {
+    const { read, pending, at } = setup();
+    const first = read();
+    pending[0]!.ok("v1");
+    await first;
+    at(1500);
+    const waiting = read();
+    pending[1]!.ok("v2");
+    expect(await waiting).toBe("v2");
+  });
+
+  test("a failed refresh is not kept: the last value keeps answering and the next call loads again", async () => {
+    const { read, pending, at } = setup();
+    const first = read();
+    pending[0]!.ok("v1");
+    await first;
+    at(150);
+    expect(await read()).toBe("v1");
+    pending[1]!.fail(new Error("lab down"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(await read()).toBe("v1");
+    expect(pending.length).toBe(3);
+  });
+
+  test("a cold failure reaches the caller and is not kept", async () => {
+    const { read, pending } = setup();
+    const first = read();
+    pending[0]!.fail(new Error("lab down"));
+    await expect(first).rejects.toThrow("lab down");
+    void read().catch(() => {});
+    expect(pending.length).toBe(2);
   });
 });

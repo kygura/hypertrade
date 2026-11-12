@@ -33,7 +33,7 @@ export function Board() {
   // The shell's own /auth/me probe is local to AppShell; this one fails to an error with a retry, never a hang.
   const me = useApi<{ ok: boolean; guest?: boolean }>('/auth/me')
   const auth = authOf(me)
-  const board = usePoll(research.board, [], { intervalMs: BOARD_POLL_MS })
+  const board = usePoll(research.board, [], { intervalMs: BOARD_POLL_MS, cacheKey: 'research.board' })
   // The radar needs a session: a guest sees the sign-in affordance instead of a fetch.
   const radar = usePoll(research.radar, [], { enabled: auth.state === 'user' })
 

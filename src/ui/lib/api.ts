@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { z } from 'zod'
+import { cacheClear, cacheGet, cacheSet, shared } from './cache'
 
 // Tiny fetch wrapper — JSON in/out, credentials included, 401 redirects to
 // /login (docs/SPEC.md: "Frontend route guard redirects to /login"). The intended
@@ -44,6 +45,7 @@ export function rememberReturnPath(loc: { pathname: string; search: string } = l
 /** 401 → remember the path and go to /login; any other failure → ApiError carrying the server's `error`. Never returns. */
 export async function failFrom(res: Response): Promise<never> {
   if (res.status === 401) {
+    cacheClear()
     rememberReturnPath()
     location.href = '/login'
     throw new ApiError('unauthorized', 401)
@@ -75,6 +77,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (err) {
     throw new NetworkError(err instanceof Error ? err.message : 'network unreachable')
   }
+
+  // A new or ended session must not see the previous one's cached responses.
+  if (res.status === 401 || (path.startsWith('/auth/') && init?.method != null)) cacheClear()
 
   if (res.status === 401 && path !== '/auth/login') {
     rememberReturnPath()
@@ -129,8 +134,17 @@ export function apiFailed<T>(prev: ApiState<T>, err: unknown): ApiState<T> {
 // from `error` (server responded with a failure) — docs/design/README.md §6 renders
 // OfflineBlock vs ErrorBlock accordingly. A failed refetch keeps the last good
 // `data` (exposed next to `error`/`offline`); a changed `path` resets it.
+// Responses are cached by path (lib/cache.ts): a path seen in the last few minutes
+// paints its last response at once and refetches behind it, and components asking
+// for the same path at the same time share one request.
+
+/** State at mount and on a path change: the cached response for this path, if any. */
+export function apiInitial<T>(path: string | null): ApiState<T> {
+  return { data: cacheGet<T>(path)?.data ?? null, loading: path != null, error: null, offline: false }
+}
+
 export function useApi<T>(path: string | null): ApiState<T> & { refetch: () => void } {
-  const [state, setState] = useState<ApiState<T>>({ data: null, loading: path != null, error: null, offline: false })
+  const [state, setState] = useState<ApiState<T>>(() => apiInitial<T>(path))
   const seq = useRef(makeSequencer())
   const lastPath = useRef(path)
 
@@ -138,9 +152,9 @@ export function useApi<T>(path: string | null): ApiState<T> & { refetch: () => v
     if (!path) return
     const ticket = seq.current.next()
     setState((s) => ({ ...s, loading: true, error: null, offline: false }))
-    api
-      .get<T>(path)
+    shared(path, () => api.get<T>(path))
       .then((data) => {
+        cacheSet(path, data)
         if (seq.current.isCurrent(ticket)) setState({ data, loading: false, error: null, offline: false })
       })
       .catch((err: unknown) => {
@@ -153,7 +167,7 @@ export function useApi<T>(path: string | null): ApiState<T> & { refetch: () => v
     if (lastPath.current !== path) {
       lastPath.current = path
       seq.current.next()
-      setState({ data: null, loading: path != null, error: null, offline: false })
+      setState(apiInitial<T>(path))
     }
     refetch()
   }, [path, refetch])

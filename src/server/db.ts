@@ -41,6 +41,11 @@ let lastActive = 0
 export const DEFAULT_QUERY_TIMEOUT_MS = 30_000
 /** Matches postgres.js idle_timeout below (s → ms). */
 const IDLE_MS = 20_000
+/**
+ * The always-on server keeps quiet connections this long: at 20 s every page opened after a pause paid
+ * for a new TLS connection to the pooler before its first query.
+ */
+const LONG_RUNNING_IDLE_MS = 5 * 60_000
 
 export class QueryTimeoutError extends Error {
   readonly code = 'QUERY_TIMEOUT'
@@ -54,8 +59,9 @@ const queryTimeoutMs = () => Number(process.env.DB_QUERY_TIMEOUT_MS) || DEFAULT_
  * queue, the 30 s clock runs while a query waits its turn, and one slow
  * statement times out everything behind it. Nothing here holds session state
  * (no advisory locks, no SET), so a few connections are safe behind the pooler.
+ * Six, because one page load fans out: the queue alone starts eight reads at once.
  */
-export const DEFAULT_POOL_MAX = 3
+export const DEFAULT_POOL_MAX = 6
 const poolMax = () => Math.max(1, Math.floor(Number(process.env.DB_POOL_MAX)) || DEFAULT_POOL_MAX)
 
 /**
@@ -89,7 +95,9 @@ export function sql(): postgres.Sql {
   // Idle past idle_timeout and still open: its idle timer never ran, so the
   // process was suspended in between and the socket may be dead. Replace it
   // before a query finds out the hard way.
-  if (client && inflight === 0 && Date.now() - lastActive > IDLE_MS) reset()
+  // The always-on server is never suspended: there the driver's own idle timer closes quiet sockets,
+  // and the client stays.
+  if (client && !longRunning && inflight === 0 && Date.now() - lastActive > IDLE_MS) reset()
   if (client) return client
   const url = databaseUrl()
   if (!url) throw new Error('DATABASE_URL is not set — database queries are unavailable')
@@ -98,7 +106,7 @@ export function sql(): postgres.Sql {
   // it can hit the statement timeout, blocking the one connection meanwhile and
   // then crashing the process with an unhandled rejection. No query here relies
   // on array types (lists go through `in ${sql()(ids)}`).
-  const c = postgres(url, { max: poolMax(), prepare: false, idle_timeout: IDLE_MS / 1000, fetch_types: false })
+  const c = postgres(url, { max: poolMax(), prepare: false, idle_timeout: (longRunning ? LONG_RUNNING_IDLE_MS : IDLE_MS) / 1000, fetch_types: false })
   raw = c
   inflight = 0
   lastActive = Date.now()
@@ -346,16 +354,12 @@ export function toMetricSummary(r: SummaryRow): MetricSummary {
 }
 
 /** Latest value + previous (delta) + mean/stddev over the last 30 and 90 observations. */
-export async function summaryFor(seriesIds: string[]): Promise<MetricSummary[]> {
+export async function summaryFor(seriesIds: string[], db: postgres.Sql = sql()): Promise<MetricSummary[]> {
   if (seriesIds.length === 0) return []
-  const rows = await sql()<SummaryRow[]>`
-    with ranked as (
-      select series_id, ts, value,
-             row_number() over (partition by series_id order by ts desc) as rn
-      from observations
-      where series_id in ${sql()(seriesIds)}
-    )
-    select series_id,
+  // Per series, the newest 90 rows straight off the (series_id, ts) key: ranking a series' whole
+  // history to keep 90 of it made every page's metrics strip slower as the history grew.
+  const rows = await db<SummaryRow[]>`
+    select s.id as series_id,
            max(ts)    filter (where rn = 1)   as ts,
            max(value) filter (where rn = 1)   as latest,
            max(value) filter (where rn = 2)   as previous,
@@ -364,9 +368,13 @@ export async function summaryFor(seriesIds: string[]): Promise<MetricSummary[]> 
            (count(*) filter (where rn <= 30))::int as n30,
            avg(value)        filter (where rn <= 90) as mean90,
            stddev_pop(value) filter (where rn <= 90) as stddev90
-    from ranked
-    where rn <= 90
-    group by series_id
+    from series s
+    cross join lateral (
+      select ts, value, row_number() over (order by ts desc) as rn
+      from (select ts, value from observations o where o.series_id = s.id order by ts desc limit 90) newest
+    ) r
+    where s.id in ${db(seriesIds)}
+    group by s.id
   `
   return rows.map(toMetricSummary)
 }

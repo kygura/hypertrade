@@ -38,16 +38,16 @@ export function Moves() {
 
   // Re-poll cadence follows the state: a pending first run is asked more often.
   const [fast, setFast] = useState(false)
-  const feed = usePoll(() => moves.list(win), [win], { intervalMs: fast ? PENDING_POLL_MS : POLL_MS, enabled: showList })
+  const feed = usePoll(() => moves.list(win), [win], { intervalMs: fast ? PENDING_POLL_MS : POLL_MS, enabled: showList, cacheKey: `moves.list:${win}` })
   useEffect(() => setFast(feed.data?.state === 'pending'), [feed.data])
-  const triage = usePoll(moves.triage, [], { intervalMs: POLL_MS, enabled: showList })
+  const triage = usePoll(moves.triage, [], { intervalMs: POLL_MS, enabled: showList, cacheKey: 'moves.triage' })
 
   const rows = useMemo(() => sortRows(filterSector(feed.data?.rows ?? [], sector), sort), [feed.data, sector, sort])
   const selected = coinParam ?? (desktop ? (rows[0]?.coin ?? null) : null)
 
   const detail = usePoll(() => moves.detail(selected!, win), [selected, win], { intervalMs: POLL_MS, enabled: selected != null && showDetail })
-  const stats = usePoll(moves.stats, [], { intervalMs: 300_000, enabled: showDetail })
-  const defs = usePoll(research.definitions, [], { intervalMs: null, enabled: showDetail })
+  const stats = usePoll(moves.stats, [], { intervalMs: 300_000, enabled: showDetail, cacheKey: 'moves.stats' })
+  const defs = usePoll(research.definitions, [], { intervalMs: null, enabled: showDetail, cacheKey: 'research.definitions' })
 
   // ── actions ──
   const { busy, actionError, setActionError, investigate } = useInvestigate(() => {

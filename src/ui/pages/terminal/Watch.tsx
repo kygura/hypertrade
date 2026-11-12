@@ -26,7 +26,7 @@ export function Watch() {
   const [params] = useSearchParams()
   const patch = useQueryPatch()
   const selectedId = params.get('id')
-  const watches = useIntel(() => intel.watches(), [], { intervalMs: INTEL_POLL_MS.watches })
+  const watches = useIntel(() => intel.watches(), [], { intervalMs: INTEL_POLL_MS.watches, cacheKey: 'intel.watches' })
   const [adding, setAdding] = useState(false)
   const openerRef = useRef<HTMLButtonElement>(null)
 
