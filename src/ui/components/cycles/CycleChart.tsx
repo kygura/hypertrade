@@ -235,8 +235,8 @@ export function CycleChart({
           <Segmented label="Timeframe" options={TF_OPTIONS} value={tf} onChange={onTfChange} />
           <Segmented label="Range" options={RANGE_OPTIONS} value={range} onChange={setRange} />
           <div className="seg seg--sm" role="group" aria-label="Layers">
-            <button type="button" role="checkbox" aria-checked={showProj} onClick={() => setShowProj((v) => !v)} className="seg-item" title="Projected bull-run window">
-              PROJ
+            <button type="button" role="checkbox" aria-checked={showProj} onClick={() => setShowProj((v) => !v)} className="seg-item" title="Show the estimated next-run and next-top windows">
+              FORECAST
             </button>
             <button
               type="button"
@@ -246,7 +246,7 @@ export function CycleChart({
               className="seg-item"
               title="Higher highs on lower heat: all-time-high legs that peaked less stretched than the leg before"
             >
-              COOL
+              COOLER HIGHS
             </button>
           </div>
         </div>
@@ -256,15 +256,15 @@ export function CycleChart({
       <div className="px-[var(--panel-pad)] pb-1 min-h-[16px] text-xs tabular text-text-secondary truncate">
         {shown ? (
           <>
-            {fmtDay(shown.t)} · C <span className="text-text-primary">{fmtUsdPx(shown.c)}</span>
+            {fmtDay(shown.t)} · close <span className="text-text-primary">{fmtUsdPx(shown.c)}</span>
             {shown.sma200 != null && <> · SMA200 {fmtUsdPx(shown.sma200)}</>}
-            {shown.mayer != null && <> · Mayer {shown.mayer.toFixed(2)}</>}
-            <> · DD {fmtPct(shown.drawdown, { decimals: 0 })}</>
-            {shown.trend != null && <> · trend {shown.trend.toFixed(2)}</>}
-            {shown.heat != null && <> · heat {shown.heat.toFixed(2)}</>}
+            {shown.mayer != null && <> · <span title="Price divided by its 200-day average">Mayer</span> {shown.mayer.toFixed(2)}</>}
+            <> · drawdown {fmtPct(shown.drawdown, { decimals: 0 })}</>
+            {shown.trend != null && <> · <span title="−1 to +1: Mayer multiple, 200-day slope and 50/200-day cross blended. Positive means rising.">trend</span> {shown.trend.toFixed(2)}</>}
+            {shown.heat != null && <> · <span title="−1 to +1: 4-year rank of the Mayer multiple, drawdown and 365-day return blended. High means stretched.">heat</span> {shown.heat.toFixed(2)}</>}
             {' · '}
             <span style={{ color: shown.phase ? `var(${PHASE_VAR[shown.phase]})` : undefined }}>{shown.phase ? PHASE_LABEL[shown.phase] : '—'}</span>
-            <> · {shown.src}</>
+            <> · <span title="Venue this bar's price comes from">{shown.src}</span></>
             {coolAt && (
               <>
                 {' · '}
@@ -276,7 +276,7 @@ export function CycleChart({
           </>
         ) : hoverT != null ? (
           <>
-            {fmtDay(hoverT * 1000)} · projection · {futureWindow ? WINDOW_LABEL[futureWindow] : 'outside the estimated windows'}
+            {fmtDay(hoverT * 1000)} · projection · {futureWindow ? WINDOW_LABEL[futureWindow] : 'outside the estimated windows'} · no price is forecast, only dates
           </>
         ) : null}
       </div>

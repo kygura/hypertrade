@@ -184,6 +184,9 @@ describe("fact lines", () => {
       "5 signals on 4 coins. 2 studied today: 1 clear, 1 rejected, 0 insufficient. 1 with a rule not studied today. 1 backed by a live record or graded calls. 1 with nothing recorded yet. 1 source unavailable.",
     );
     expect(boardLine({ signals: [sig("c", "ETH", 3, { rule })], sources: { ...sources, opportunity: ok } })).toBe("1 signal on 1 coin. None studied today. 1 with a rule not studied today.");
+    // an empty ledger is not a record
+    const emptyLedger = sig("f", "SOL", 6, { source: "opportunity", evidence: { kind: "ledger", setupKind: "crowded_long", horizon: "24h", n: 0, clusters: 0, meanNet: null, ci95: null, hitRate: null } });
+    expect(boardLine({ signals: [emptyLedger], sources: { ...sources, opportunity: ok } })).toBe("1 signal on 1 coin. None studied today. 1 with nothing recorded yet.");
     expect(boardLine({ signals: [], sources })).toBeNull();
   });
 

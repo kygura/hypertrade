@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from 'recharts'
-import { AgeStamp, AsyncBody, Badge, Button, DataTable, EmptyBlock, MetricStat, PageContainer, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, StatCell, StatusDot, type Column } from '../../components'
+import { AgeStamp, AsyncBody, Badge, Button, DataTable, EmptyBlock, HowToRead, MetricStat, PageContainer, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, StatCell, StatusDot, type Column } from '../../components'
 import { ClaimAge } from '../../components/intel'
 import { sourceHref, SourceLink } from '../../components/intel/SourceLink'
 import type { AgentRecord, AgentStatsResponse, TriageResponse } from '../../../shared/agentRecords'
@@ -14,6 +14,7 @@ import {
   droppedTitle, falsifierLine, fmtMove, fmtPct, fmtZ, fundingZText, gradeLine, headerLine, investigateGate, isFactorCoin, layerChips, layerNote, liqSigmaText, metMark, NOT_A_FORECAST,
   outboundLinks, overBudgetLine, recordView, SORT_KEYS, SORT_LABEL, staleLine, studyLinkFor, tagText, trackLine, triageEmptyLabel, visibleItems, zWarn, type SortKey,
 } from './logic'
+import { ATTENTION_TERMS, ATTRIBUTION_TERMS, CHECKLIST_TERMS, FACTOR_TERMS, GUIDE, LIQ_TERMS, movesTakeaway, moveTakeaway, PAGE_TERMS, POSITIONING_TERMS, RECORD_TERMS, TABLE_TERMS } from './guide'
 
 // MOVES view (docs/design/README.md § MOVES, PLAN §2). Presentational: Moves.tsx owns the pollers, the URL and
 // the actions. Explained-after-the-fact (D1, neutral and signed colours) and condition checks / agent
@@ -68,10 +69,11 @@ export function MovesView(p: MovesViewProps) {
       {p.showList && (
         <>
           <MovesHeader moves={p.moves} window={p.window} onWindow={p.onWindow} />
+          <MovesLead moves={p.moves} rows={p.rows} window={p.window} />
           <FactorsPanel moves={p.moves} sector={p.sector} onSector={p.onSector} />
           <p className="text-xs text-text-secondary">
             <Link to="/queue" className={LINK}>
-              today's triage is in QUEUE →
+              the coins that crossed today's bar are in QUEUE →
             </Link>
           </p>
         </>
@@ -130,6 +132,24 @@ export function MovesHeader({ moves, window, onWindow }: { moves: Feed<MovesResp
   )
 }
 
+/** The takeaway of the shown rows (facts only) and the page's reading guide. */
+export function MovesLead({ moves, rows, window }: { moves: Feed<MovesResponse>; rows: readonly MoveRow[]; window: MoveWindow }) {
+  const takeaway = moves.data?.state === 'ok' ? movesTakeaway(rows, window) : null
+  return (
+    <div className="flex flex-col gap-1 min-w-0">
+      {takeaway && (
+        <p data-takeaway className="text-md text-text-primary max-w-[90ch]">
+          {takeaway}
+        </p>
+      )}
+      <HowToRead terms={PAGE_TERMS}>
+        Each coin’s move over the window, split into the part that tracks BTC, ETH and its sector and the part that does not (the residual). Look for a large residual z: the move is unusual for that coin
+        and the market does not account for it.
+      </HowToRead>
+    </div>
+  )
+}
+
 // ─── A · Factors ───
 
 export function FactorsPanel({ moves, sector, onSector }: { moves: Feed<MovesResponse>; sector: string | null; onSector: (id: string | null) => void }) {
@@ -139,6 +159,9 @@ export function FactorsPanel({ moves, sector, onSector }: { moves: Feed<MovesRes
       <PanelHeader title="FACTORS">
         {m?.sectorsAsOf && <AgeStamp generatedAt={m.sectorsAsOf} thresholdHours={24} />}
       </PanelHeader>
+      <HowToRead terms={FACTOR_TERMS} className="px-3 py-2 border-b border-border-subtle">
+        What the market itself did over the window: BTC, ETH, and the sector baskets that moved most. A coin’s move is measured against these. Click a sector to filter the table to its coins.
+      </HowToRead>
       <AsyncBody
         loading={moves.loading}
         data={m}
@@ -146,7 +169,7 @@ export function FactorsPanel({ moves, sector, onSector }: { moves: Feed<MovesRes
         offline={moves.offline}
         onRetry={moves.refetch}
         rows={2}
-        empty={{ label: m?.state === 'unavailable' ? (m.reason ?? 'unavailable') : m?.state === 'pending' ? 'factors appear when the first run finishes' : 'no factor moves yet' }}
+        empty={{ label: m?.state === 'unavailable' ? (m.reason ?? 'unavailable') : m?.state === 'pending' ? 'factors appear when the first run finishes' : `no factor moves yet: BTC and ETH need ${GUIDE.minWindowSharePct}% of the window's hourly bars` }}
         isEmpty={(d) => d.factors.length === 0}
       >
         {(d) => (
@@ -266,7 +289,7 @@ function TriageRecord({ view, record }: { view: ReturnType<typeof recordView>; r
   return (
     <div className={`${infoRule} pl-2 flex flex-col gap-0.5`}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-        <Badge tone="info">HYP</Badge>
+        <Badge tone="info">HYPOTHESIS</Badge>
         <Badge tone="info">{record.layer.replace('_', ' ').toUpperCase()}</Badge>
       </div>
       <p className="text-sm text-text-primary break-words">{record.claim}</p>
@@ -331,11 +354,11 @@ function columns(scale: number): Column<MoveRow>[] {
         )),
     },
     {
-      key: 'z', label: 'Z', priority: 1, align: 'right',
+      key: 'z', label: <span title="residual z: the residual divided by its usual size for this coin over the window">Z</span>, priority: 1, align: 'right',
       render: (r) => attr(r, (a) => a.residualZ, (v) => <span className={zWarn(v) ? 'text-amber' : 'text-text-primary'} title="residual z: Σ residual / (σ1h · √hours)">{fmtZ(v)}</span>),
     },
     {
-      key: 'tags', label: 'TAGS', priority: 4,
+      key: 'tags', label: <span title="hours in the window with a sharp open-interest drop (FLOW) or with news (NEWS)">TAGS</span>, priority: 4,
       render: (r) =>
         attr(r, (a) => a, (a) => {
           const flow = tagText(a.flowHours, 'FLOW')
@@ -350,13 +373,13 @@ function columns(scale: number): Column<MoveRow>[] {
           )
         }),
     },
-    { key: 'crowd', label: 'CROWD L/S', priority: 3, render: (r) => <span title="crowding checks met, long · short">{crowdText(r.positioning)}</span> },
+    { key: 'crowd', label: <span title="crowding checks met: long side · short side">CROWD L/S</span>, priority: 3, render: (r) => <span title="crowding checks met, long · short">{crowdText(r.positioning)}</span> },
     {
-      key: 'liq', label: 'LIQ σ', priority: 4, align: 'right',
+      key: 'liq', label: <span title="distance to the nearest liquidation cluster, in units of the coin's usual 24h move">LIQ σ</span>, priority: 4, align: 'right',
       render: (r) => (r.liq.state.state === 'unavailable' ? <Dash title={r.liq.state.reason ?? 'liquidation layer unavailable'} /> : <span title="nearest cluster, in 24h sigmas">{liqSigmaText(r.liq)}</span>),
     },
     {
-      key: 'check', label: 'CHECK', priority: 4,
+      key: 'check', label: <span title="the ENTER or FADE checklist closest to complete: conditions met / evaluable">CHECKLIST</span>, priority: 4,
       render: (r) => {
         const b = bestChecklist(r.setups)
         return b ? <Badge tone="info">{checklistText(b)}</Badge> : <Dash title="no checklist could be evaluated" />
@@ -383,6 +406,10 @@ export function MovesTablePanel(p: { moves: Feed<MovesResponse>; rows: MoveRow[]
         const stale = staleLine(m.asOf, p.now)
         return stale ? <StaleStrip>{stale}</StaleStrip> : null
       })()}
+      <HowToRead terms={TABLE_TERMS} className="px-3 py-2 border-b border-border-subtle">
+        One row per coin. TOTAL is the move; BETA and SECTOR are the parts that track the market; RESIDUAL is what is left and Z says how unusual that residual is for the coin. The other columns are
+        what was measured alongside: news and open-interest hours, crowding, liquidation distance and the checklists.
+      </HowToRead>
       <AsyncBody
         loading={p.moves.loading}
         data={m}
@@ -393,7 +420,7 @@ export function MovesTablePanel(p: { moves: Feed<MovesResponse>; rows: MoveRow[]
       >
         {(d) => {
           if (d.state === 'pending') return <EmptyBlock label={headerLine(d)} />
-          if (d.state === 'unavailable') return <EmptyBlock label={d.reason ?? 'unavailable'} />
+          if (d.state === 'unavailable') return <EmptyBlock label={d.reason ?? 'the moves run is unavailable and the server gave no reason'} />
           if (p.rows.length === 0) {
             return <EmptyBlock label={p.sector ? `no coins in ${sectorLabel}` : 'no coin has enough history for this window'} action={p.sector ? { label: 'SHOW ALL', onClick: () => p.onSector(null) } : undefined} />
           }
@@ -441,7 +468,7 @@ function DetailPane(p: MovesViewProps) {
         )}
       </div>
       {coin == null ? (
-        <EmptyBlock label="select a coin" />
+        <EmptyBlock label="select a coin in the table to see its move split, positioning and checklists" />
       ) : (
         <AsyncBody loading={p.detail.loading} data={p.detail.data} error={p.detail.error} offline={p.detail.offline} onRetry={p.detail.refetch} rows={6}>
           {(d) =>
@@ -483,11 +510,19 @@ export function AttributionBlock({ d }: { d: MoveDetail }) {
   const a = d.attribution
   return (
     <Section id="d1" title="ATTRIBUTION · EXPLAINED AFTER THE FACT">
+      {a && moveTakeaway(d.coin, a) && (
+        <p data-takeaway className="text-md text-text-primary">
+          {moveTakeaway(d.coin, a)}
+        </p>
+      )}
+      <HowToRead terms={a && !isFactorCoin(d.coin) ? ATTRIBUTION_TERMS : undefined}>
+        How much of the move came with BTC, ETH and the coin’s sector, and how much is left over. The split is measured after the fact; the leftover part is unexplained, not a cause.
+      </HowToRead>
       {!a ? (
         <p className="text-sm text-text-secondary">{d.attributionReason ?? 'no attribution for this window'}</p>
       ) : isFactorCoin(d.coin) ? (
         <div className="flex flex-col gap-1">
-          <p className="text-sm text-text-secondary">BTC is the factor: total only.</p>
+          <p className="text-sm text-text-secondary">BTC is the factor: total only. Other coins are measured against it, so its own move has no split.</p>
           <StatCell label={`TOTAL · ${a.window}`} className={signClass(a.totalPct)}>
             {fmtMove(a.totalPct)} <span className="text-2xs text-text-secondary">n {a.hours} h</span>
           </StatCell>
@@ -532,9 +567,9 @@ export function AttributionBlock({ d }: { d: MoveDetail }) {
               <thead>
                 <tr className="border-b border-border">
                   <th className="px-2 py-1 label text-left">FACTOR</th>
-                  <th className="px-2 py-1 label text-right">β</th>
-                  <th className="px-2 py-1 label text-right">CONTRIB</th>
-                  <th className="px-2 py-1 label text-right">N</th>
+                  <th className="px-2 py-1 label text-right" title="how much the coin moves per 1% move of the factor">BETA</th>
+                  <th className="px-2 py-1 label text-right" title="beta × the factor's move over the window">CONTRIBUTION</th>
+                  <th className="px-2 py-1 label text-right" title="hourly bars the fit used">BARS</th>
                 </tr>
               </thead>
               <tbody>
@@ -555,7 +590,7 @@ export function AttributionBlock({ d }: { d: MoveDetail }) {
             </p>
           ))}
           <p className="text-xs tabular text-text-secondary">
-            R² {a.r2 == null ? DASH : a.r2.toFixed(2)} · estimation {a.estimation.from.slice(0, 16).replace('T', ' ')} → {a.estimation.to.slice(0, 16).replace('T', ' ')} UTC (n {a.estimation.n}) · σ1h resid {a.sigma1hPct == null ? DASH : `${a.sigma1hPct.toFixed(2)}%`} · z {fmtZ(a.residualZ)}
+            R² {a.r2 == null ? DASH : a.r2.toFixed(2)} · betas fitted on {a.estimation.from.slice(0, 16).replace('T', ' ')} → {a.estimation.to.slice(0, 16).replace('T', ' ')} UTC (n {a.estimation.n} bars) · hourly residual σ {a.sigma1hPct == null ? DASH : `${a.sigma1hPct.toFixed(2)}%`} · z {fmtZ(a.residualZ)}
           </p>
           <AttributionChart d={d} />
         </>
@@ -600,10 +635,13 @@ export function RecordBlock({ d, stats, busy, onInvestigate, error, blocked }: {
   return (
     <Section id="d2" title="AGENT RECORD · HYPOTHESIS" info>
       <p className="text-2xs text-info">{NOT_A_FORECAST}</p>
+      <HowToRead terms={RECORD_TERMS}>
+        A hypothesis an agent wrote for why this coin moved, with the price level that would prove it wrong. It is graded against BTC at its horizon; the last line is how such records have graded so far.
+      </HowToRead>
       {r ? (
         <div className="flex flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Badge tone="info">HYP</Badge>
+            <Badge tone="info">HYPOTHESIS</Badge>
             <Badge tone="info">{r.layer.replace('_', ' ').toUpperCase()}</Badge>
             <Badge tone="gray">{r.status.replace('_', ' ').toUpperCase()}</Badge>
             {r.direction && <span className="text-xs text-text-secondary">{r.direction.toUpperCase()} · {r.horizonHours}h</span>}
@@ -627,7 +665,7 @@ export function RecordBlock({ d, stats, busy, onInvestigate, error, blocked }: {
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <p className="text-sm text-text-secondary">no agent record for this coin yet</p>
+          <p className="text-sm text-text-secondary">no agent record for this coin yet: no investigation has been run on it</p>
           <Button tier="ghost" className="min-h-[var(--tap-min)]" disabled={gate.disabled} title={gate.title} onClick={() => onInvestigate(d.coin)}>
             INVESTIGATE
           </Button>
@@ -648,12 +686,15 @@ export function PositioningBlock({ d }: { d: MoveDetail }) {
   const p = d.positioning
   return (
     <Section id="d3" title="POSITIONING (NOW)">
+      <HowToRead terms={POSITIONING_TERMS}>
+        How leveraged traders are positioned right now. The table runs four crowding checks per side; the more checks one side meets, the more of the usual signs of a crowded trade are present on that side.
+      </HowToRead>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-x-2">
         <MetricStat label="FUNDING APR" value={fmtPct(p.fundingAprPct)} delta={fundingZText(p)} />
         <MetricStat label="PREMIUM" value={p.premiumBps == null ? DASH : `${p.premiumBps.toFixed(1)}bp`} />
         <MetricStat label="OI" value={fmtUsdCompact(p.oiUsd)} delta={`n ${p.oiN}`} />
-        <MetricStat label="ΔOI 24H" value={fmtPct(p.oiChg24hPct)} delta={`n ${p.oiN}`} />
-        <MetricStat label="ΔOI 72H" value={fmtPct(p.oiChg72hPct)} delta={`n ${p.oiN}`} />
+        <MetricStat label="OI CHANGE 24H" value={fmtPct(p.oiChg24hPct)} delta={`n ${p.oiN}`} />
+        <MetricStat label="OI CHANGE 72H" value={fmtPct(p.oiChg72hPct)} delta={`n ${p.oiN}`} />
         <MetricStat label="OI / VOLUME" value={p.oiToVolume == null ? DASH : p.oiToVolume.toFixed(2)} />
       </div>
       <div className="table-scroll">
@@ -680,7 +721,7 @@ export function PositioningBlock({ d }: { d: MoveDetail }) {
           </tbody>
         </table>
       </div>
-      <p className="text-xs tabular text-text-secondary">met long {p.longMet} of {p.of} · short {p.shortMet} of {p.of}</p>
+      <p className="text-xs tabular text-text-secondary" title="crowding checks met per side, of those that could be evaluated">met long {p.longMet} of {p.of} · short {p.shortMet} of {p.of}</p>
     </Section>
   )
 }
@@ -705,8 +746,11 @@ export function LiqBlock({ d }: { d: MoveDetail }) {
   const cov = coverageCopy(l.coverageRatio)
   return (
     <Section id="d4" title="LIQUIDATION PROXIMITY">
+      <HowToRead terms={LIQ_TERMS}>
+        Where the nearest clusters of traders’ liquidation prices sit, below the mark for longs and above it for shorts. The σ figure puts the distance in units of the coin’s usual 24h move.
+      </HowToRead>
       {l.state.state === 'unavailable' ? (
-        <p className="text-sm text-text-secondary">{l.state.reason ?? 'needs the always-on scanner and crawler'}</p>
+        <p className="text-sm text-text-secondary">No liquidation map for this coin: {l.state.reason ?? 'needs the always-on scanner and crawler'}</p>
       ) : (
         <>
           {coverageTreatment(l.coverageRatio) === 'none' ? (
@@ -731,6 +775,9 @@ export function AttentionBlock({ d }: { d: MoveDetail }) {
   const note = layerNote(a.state, 'needs a database (news and Elfa are stored)')
   return (
     <Section id="d5" title="ATTENTION">
+      <HowToRead terms={ATTENTION_TERMS}>
+        How much the coin is in the news and on social feeds now, against its own recent baseline. A ratio above 1× is more news than a usual day for this coin; below 1× is less.
+      </HowToRead>
       {a.state.state === 'unavailable' ? (
         <p className="text-sm text-text-secondary">{note}</p>
       ) : (
@@ -739,7 +786,7 @@ export function AttentionBlock({ d }: { d: MoveDetail }) {
             news 24h {a.news24h ?? DASH} vs 7d daily mean {a.newsDailyMean7d == null ? DASH : a.newsDailyMean7d.toFixed(1)} · ratio {a.newsRatio == null ? DASH : `${a.newsRatio.toFixed(1)}×`} · 72h {a.news72h ?? DASH}
           </p>
           <p className="text-xs tabular text-text-secondary">
-            Elfa mentions 24h {a.mentions24h ?? DASH} · Δ {fmtPct(a.mentionsChg24hPct, 0)}
+            social mentions (Elfa) 24h {a.mentions24h ?? DASH} · change {fmtPct(a.mentionsChg24hPct, 0)}
             {a.mentionsAsOf ? ` · as of ${a.mentionsAsOf.slice(0, 16).replace('T', ' ')} UTC` : ''}
           </p>
           {a.sectorStage && (
@@ -774,7 +821,7 @@ export function AttentionBlock({ d }: { d: MoveDetail }) {
           })}
         </ul>
       ) : (
-        a.state.state !== 'unavailable' && <p className="text-xs text-text-secondary">no headlines (guests see none)</p>
+        a.state.state !== 'unavailable' && <p className="text-xs text-text-secondary">no stored headline names this coin in the last 72h (signed-out guests see none)</p>
       )}
     </Section>
   )
@@ -783,8 +830,12 @@ export function AttentionBlock({ d }: { d: MoveDetail }) {
 export function ChecklistBlock({ d, defs }: { d: MoveDetail; defs: DefinitionsResponse | null }) {
   return (
     <Section id="d6" title={NOT_A_FORECAST} info>
+      <HowToRead terms={CHECKLIST_TERMS}>
+        Two fixed lists of conditions checked against the numbers above. ENTER describes a move with rising attention and little crowding; FADE describes a crowded side with saturated attention and
+        liquidations nearby. A count of conditions met is a fact about now, not a forecast.
+      </HowToRead>
       {d.setups.length === 0 ? (
-        <p className="text-sm text-text-secondary">no checklist for this coin</p>
+        <p className="text-sm text-text-secondary">no checklist for this coin: the server returned no ENTER or FADE conditions for it</p>
       ) : (
         d.setups.map((s) => {
           const study = studyLinkFor(defs, s.definitionId, d.coin)

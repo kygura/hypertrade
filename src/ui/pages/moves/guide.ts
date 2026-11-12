@@ -127,7 +127,7 @@ export const ATTENTION_TERMS: readonly Term[] = [
   ['news 24h · 72h', 'Stored news items naming the coin, first seen in the last 24h or 72h.'],
   ['7d daily mean', 'Average items per day over the 7 days before the last 24h.'],
   ['ratio', 'News in the last 24h divided by that daily mean (the mean is floored at 0.5). 1× is a usual day.'],
-  ['social mentions 24h · Δ', 'Mentions counted by Elfa in the last 24h and the change against the 24h before, as of the stamp shown.'],
+  ['social mentions 24h · Δ', 'Mentions counted by Elfa over 24h and the 24h change Elfa reports, as of the stamp shown.'],
   ['Sector stage', 'A label for the coin’s sector from 7-day and 30-day data. EMERGING or EXPANDING: ahead of BTC over 7 days with open interest rising (expanding when also ahead over 30 days). CROWDED: funding z ≥ 2 with open interest rising. FADING: ahead over 30 days but behind over 7 days or losing open interest. QUIET: none of these. UNKNOWN: not enough data.'],
 ]
 
@@ -145,7 +145,7 @@ const n = (count: number, one: string, many: string) => `${count} ${count === 1 
 /**
  * The table's takeaway, facts only: how many of the shown coins have a residual beyond the amber mark (|z| ≥ 2),
  * their direction, how many of those had no news hour, and how many coins meet 3+ crowding checks on one side.
- * Null when no shown coin has an attribution. `tracks` and the residual are ordinary percent changes (fmtMove).
+ * Null when no shown coin has an attribution.
  */
 export function movesTakeaway(rows: readonly MoveRow[], window: MoveWindow): string | null {
   const known = rows.flatMap((r) => (r.attribution ? [r.attribution] : []))

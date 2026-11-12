@@ -4,6 +4,7 @@ import { fmtPrice, fmtUsd } from '../../../shared/format'
 import type { AssetDetailResponse, ExposurePosition, FlowFlag } from '../../../shared/intel'
 import { Badge } from '../../components/Badge'
 import { Button } from '../../components/Button'
+import { HowToRead } from '../../components/HowToRead'
 import { AssetTimeline, paneOf, timelineRows } from '../../components/intel/AssetTimeline'
 import { ClaimAge } from '../../components/intel/ClaimAge'
 import { ResearchSuffix } from '../../components/intel/DetectorChips'
@@ -186,6 +187,10 @@ export function Asset() {
   return (
     <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col" onClickCapture={() => setHighlight(null)}>
       <TerminalTabs />
+      <HowToRead className="pb-2">
+        One coin over the last 1, 7 or 30 days: price, open interest, funding, order book depth and liquidations on one time axis, with your position marked when
+        you hold it.
+      </HowToRead>
       <div className="flex flex-col gap-3 lg:grid lg:grid-cols-12 lg:items-start">
         <div className="lg:col-span-12">
           {!asset.data && !asset.error && !asset.offline ? (

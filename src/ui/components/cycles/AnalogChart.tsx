@@ -43,7 +43,8 @@ export function AnalogChart({ analogs, forecast }: { analogs: CycleAnalog[]; for
   const startDay = (a: CycleAnalog) => (forecast.kind === 'breakout' ? a.breakoutDay : a.onsetDay)
   const core = live && onset ? { from: Math.round((onset.p25 - live.topT) / DAY_MS), to: Math.round((onset.p75 - live.topT) / DAY_MS) } : null
 
-  if (shown.length === 0) return null
+  if (shown.length === 0)
+    return <p className="p-3 text-sm text-text-secondary">No cycle tops in this history yet. One line appears per bull run once the model has seen it top.</p>
   return (
     <div className="flex flex-col">
       <ResponsiveContainer width="100%" height={300}>

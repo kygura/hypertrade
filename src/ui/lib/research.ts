@@ -246,7 +246,7 @@ export function boardLine(b: Pick<BoardResponse, 'signals' | 'sources'>): string
   const n = (k: number, word: string) => `${k} ${word}${k === 1 ? '' : 's'}`
   const studied = s.flatMap((x) => (x.evidence?.kind === 'study' ? [x.evidence.verdict] : []))
   const count = (v: StudySummary['verdict']) => studied.filter((x) => x === v).length
-  const record = s.filter((x) => x.evidence?.kind === 'ledger' || x.evidence?.kind === 'scorecard').length
+  const record = s.filter((x) => (x.evidence?.kind === 'ledger' && x.evidence.n > 0) || x.evidence?.kind === 'scorecard').length
   const unstudied = s.filter((x) => !x.evidence && x.rule && x.source !== 'opportunity' && x.source !== 'radar').length
   const bare = s.length - studied.length - record - unstudied
   const off = Object.values(b.sources).filter((x) => x.state === 'unavailable').length

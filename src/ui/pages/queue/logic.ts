@@ -1,7 +1,8 @@
 import type { AgentRecord } from '../../../shared/agentRecords'
 import { QUEUE_SOURCES, type QueueItem, type QueueResponse, type QueueSource } from '../../../shared/queue'
-import type { Tone } from '../../components'
+import type { Term, Tone } from '../../components'
 import { fmtDur } from '../../lib/format'
+import { GUIDE } from '../moves/guide'
 import { DASH } from '../moves/logic'
 
 // QUEUE home (docs/SPEC.md § Queue, PLAN2 §2.1/§2.2). Pure helpers for QueueView and Queue.tsx: the header line,
@@ -99,3 +100,63 @@ export function recordChip(r: Pick<AgentRecord, 'status' | 'grade'> | null): { l
     case 'capped': return { label: 'agent cap reached', tone: 'gray' }
   }
 }
+
+// ─── Reading guide ───
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+/**
+ * The list's takeaway, facts only: `2 new today (MOVES 2, SETUP 1). 1 flagged by more than one source; 1 has an
+ * agent record. 1 handled today.` Counts are of listed items; null when nothing is listed.
+ */
+export function queueTakeaway(q: Pick<QueueResponse, 'items'>): string | null {
+  if (q.items.length === 0) return null
+  const { open, handled } = splitItems(q.items)
+  const out: string[] = []
+  if (open.length > 0) {
+    const by = QUEUE_SOURCES.map((s) => [PART_LABEL[s], open.filter((i) => i.parts.some((p) => p.source === s)).length] as const).filter(([, n]) => n > 0)
+    out.push(`${open.length} new today (${by.map(([label, n]) => `${label} ${n}`).join(', ')}).`)
+    const multi = open.filter((i) => i.parts.length > 1).length
+    const recorded = open.filter((i) => i.record != null).length
+    out.push(`${multi} flagged by more than one source; ${count(recorded, 'has', 'have')} an agent record.`)
+  } else out.push('Nothing new.')
+  if (handled.length > 0) out.push(`${handled.length} handled today.`)
+  return out.join(' ')
+}
+
+/** What puts a coin in the queue, for the empty list; says so when no moves scan has run yet. */
+export function emptyWhy(q: Pick<QueueResponse, 'watched' | 'sources'>): string {
+  const bar = `A coin is listed when the moves scan measures an unusual 24h move (residual z of ${GUIDE.queueZ} or more with a move of at least ${GUIDE.queueMinMovePct}%) or a fully met ENTER or FADE checklist, when the scanner has a ready setup, or when the radar lands a call.`
+  return q.sources.moves.state === 'ok' && q.watched === 0 ? `${bar} No moves scan is stored yet, so MOVES has ranked nothing.` : bar
+}
+
+/** The words a queue reason is made of (written by code in src/server/moves/triage.ts and src/server/queue/merge.ts). */
+export const REASON_TERMS: readonly Term[] = [
+  ['residual +6.2%', 'The coin’s 24h move minus the part that tracks BTC, ETH and its sector. Unexplained, not a cause.'],
+  ['z +3.1', `That residual divided by its usual size for this coin over 24h. The queue bar is ${GUIDE.queueZ} in either direction, with a total move of at least ${GUIDE.queueMinMovePct}%.`],
+  ['no news in window · news in 3h · news unknown', 'Hours of the 24h window that had a news item naming the coin. Unknown: the news feed is not being ingested.'],
+  ['FADE 3/3 · ENTER 3/3', 'A checklist with every condition met. FADE: one side crowded, attention saturated, liquidations nearby. ENTER: attention rising, little crowding, a residual z of 1.5 or more.'],
+  ['crowd long 3/4', 'Crowding checks met on that side, out of those that could be evaluated.'],
+  ['crowded_short long · ready · net 42 bps', 'A scanner setup: its kind, side, status, and its expected edge after fees, slippage and funding in basis points (1 bp = 0.01%).'],
+  ['ride long · catalyst · kill 31.2', 'A radar call: stance (ride or fade), side, kind, and the price at which the call is closed.'],
+]
+
+export const QUEUE_TERMS: readonly Term[] = [
+  ['listed of N', 'Coins on today’s list out of the daily cap. One cap covers all three sources; the day is the UTC day.'],
+  ['weaker over cap', 'Coins that crossed a bar but ranked below the listed ones. Counted, not shown.'],
+  ['MOVES', `Flagged by the moves scan: on the 24h window its residual z is ${GUIDE.queueZ} or more in size with a total move of at least ${GUIDE.queueMinMovePct}%, or an ENTER or FADE checklist has all ${GUIDE.queueMinChecks} conditions met.`],
+  ['SETUP', 'The scanner has a setup for this coin that is ready, or one that was decided today.'],
+  ['RADAR', 'The twice-daily radar routine landed a call on this market today or yesterday, and its close price has not been reached.'],
+  ['Source counts', 'Coins each source flagged today, before the cap. A source without a count could not be read; its reason is printed below.'],
+  ['agents 2/6 today', 'Agent investigations run today out of the daily cap. An investigation is one LLM run that writes a hypothesis for a move.'],
+  ['long · short · mixed · —', 'The side the sources state. MOVES states none (the sign is in its residual). Mixed: two sources disagree.'],
+  ['14m · 2h', 'Time since the first source flagged the coin today.'],
+  ...REASON_TERMS,
+  ['OPEN record', 'An agent hypothesis for this coin is open and not graded yet.'],
+  ['graded · hit / miss', 'The hypothesis reached its horizon. Hit: the coin beat BTC in the stated direction. Miss: it did not.'],
+  ['falsified', 'Price reached the level the hypothesis named as proving it wrong.'],
+  ['no cause found', 'The agent investigated and found no public cause for the move.'],
+  ['Order of rows', 'Strongest first: the highest score (1 means the source’s bar was just crossed), then more sources agreeing, then the earlier flag.'],
+  ['DISMISS', 'Hides the coin for today. It keeps its slot in the cap, and it is listed again if a source flags it afterwards with new facts.'],
+  ['dismissed / acted', 'Coins dismissed today, and coins whose setup was decided today.'],
+]

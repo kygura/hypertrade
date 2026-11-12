@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { AsyncBody, Button, EmptyBlock, Panel, PanelBody, PanelHeader, SkeletonRows } from '../../components'
+import { AsyncBody, Button, EmptyBlock, HowToRead, Panel, PanelBody, PanelHeader, SkeletonRows } from '../../components'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { WatchesTable } from '../../components/intel/WatchesTable'
 import { WatchForm } from '../../components/intel/WatchForm'
@@ -43,6 +43,9 @@ export function Watch() {
   return (
     <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col gap-3">
       <TerminalTabs />
+      <HowToRead className="pb-2">
+        Web pages, contracts and wallets the app checks for you. CHANGES lists what differed from the previous check.
+      </HowToRead>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
         <div className={`lg:col-span-5 ${selectedId ? 'hidden lg:block' : ''}`}>
           <Panel>

@@ -27,7 +27,10 @@ const radarOk: RadarResponse = {
   scorecard: [{ stance: "ride", horizonDays: 3, n: 4, meanPct: 2.1, hits: 3 }],
 };
 
-const render = (over: Partial<BoardViewProps> = {}) =>
+// The reading guides' folded term lists name every badge and word a row can print, so assertions about what the rows
+// show (and do not show) run on the page without them; `renderAll` keeps them.
+const render = (over: Partial<BoardViewProps> = {}) => renderAll(over).replace(/<details[\s\S]*?<\/details>/g, "");
+const renderAll = (over: Partial<BoardViewProps> = {}) =>
   renderToStaticMarkup(
     <MemoryRouter initialEntries={["/board"]}>
       <BoardView
@@ -48,6 +51,23 @@ const render = (over: Partial<BoardViewProps> = {}) =>
       />
     </MemoryRouter>,
   );
+
+describe("reading guides", () => {
+  test("each panel says how to read it; the signals guide defines the verdicts with the engine's cut-off", () => {
+    const html = renderAll({ board: poll(boardData([sig("a", { coin: "BTC", rule, evidence: { ...summary, kind: "study" }, tested: "short" }), sig("b", { coin: "SOL", rule })])) });
+    expect(html.match(/class="how-to-read/g)?.length).toBe(3);
+    expect(html).toContain("Each row is a condition that is true on a market now.");
+    expect(html).toContain("fewer than 30 weeks with trades, so the study gives no verdict.");
+    expect(html).toContain("MEAN VS BTC");
+    // the fact line over the board's own data
+    expect(html).toContain("2 signals on 2 coins. 1 studied today: 1 clear, 0 rejected, 0 insufficient. 1 with a rule not studied today.");
+  });
+  test("an empty board keeps the guide and prints no fact line", () => {
+    const html = renderAll();
+    expect(html).toContain("Each row is a condition that is true on a market now.");
+    expect(html).not.toContain("studied today");
+  });
+});
 
 describe("board states", () => {
   test("loading: skeleton, no empty copy; BOARD tab checked first in the research row", () => {
