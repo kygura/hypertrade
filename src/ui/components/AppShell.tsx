@@ -100,12 +100,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 md:gap-3 min-w-0">
           {/* The analyst: a button that toggles a drawer, not a cell. */}
           <Button tier="ghost" aria-expanded={ask} onClick={() => setAsk((v) => !v)} title="ask the analyst">
             ASK
           </Button>
-          <ThemeSwitcher />
+          {/* Under 360px the bar holds the wordmark, ASK and LOGIN only; the theme choice persists from a wider screen. */}
+          <span className="max-[359px]:hidden">
+            <ThemeSwitcher />
+          </span>
           <span className="hidden md:flex items-center gap-1.5" title={freshness.title ?? 'last collector run (hl.total_oi_usd)'}>
             <StatusDot status={freshness.status} />
             <span className="text-xs text-text-secondary tabular">{freshness.label}</span>
