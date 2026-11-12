@@ -217,6 +217,25 @@ describe("StudyView states", () => {
   }
 });
 
+describe("reading guides", () => {
+  test("the result leads with the fact line and every panel carries a guide with the engine's cut-offs", () => {
+    const html = render(props({ study: { data: result("clear"), loading: false, error: null, offline: false, refetch: noop } }));
+    expect(html).toContain("46 trades in 42 weeks; the average week returned +0.12R per trade after costs.");
+    expect(html).toContain("so the screen does not reject it. That is not proof of an edge.");
+    // rule header, verdict, split, funnel, per coin, events, replay
+    expect(html.match(/class="how-to-read/g)?.length).toBe(7);
+    expect(html).toContain("fewer than 30 weeks with trades, so the screen gives no verdict.");
+    expect(html).toContain("events dated in the most recent 30% of the period.");
+    expect(html).toContain(">EXPECTANCY<");
+    expect(html).toContain(">UPPER 95%<");
+  });
+  test("no rule: the page says what an event study is and what would appear", () => {
+    const html = render(props({ rule: null }));
+    expect(html).toContain("An event study replays one rule as separate trades on daily bars");
+    expect(html).toContain("Nothing shows yet because no rule is loaded");
+  });
+});
+
 // Signals v2: a definition's rule has the placeholder asset UNIVERSE_ASSET. It is a universe study, never a coin.
 describe("placeholder asset", () => {
   const defRule: Rule = { ...rule, asset: UNIVERSE_ASSET, direction: "short", horizonDays: 7 };
