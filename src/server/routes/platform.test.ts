@@ -171,11 +171,11 @@ describe("DB-only context (no worker, as on Vercel)", () => {
     }
   });
 
-  test("serves the persisted near-miss and the feed; approval stays blocked", async () => {
+  test("serves the persisted near-miss and the feed; approval is blocked while Hyperliquid cannot be reached", async () => {
     const nm = { coin: "ETH", setupKind: "crowded_long", cond: 2, value: 0.95, limit: 1, relDistance: 0.05 };
     await store.saveNearMisses(new Date(NOW.getTime() - 600_000).toISOString(), [nm]);
     const o = await seed();
-    const dbApp = new Hono().basePath("/api").route("/platform", createPlatformRoutes({ ...deps, context: () => dbPlatformContext(store) }));
+    const dbApp = new Hono().basePath("/api").route("/platform", createPlatformRoutes({ ...deps, context: () => dbPlatformContext(store, { info: async () => { throw new Error("offline"); } }) }));
     const get = (path: string) => dbApp.request(`/api/platform${path}`);
     expect(NearMissResponseSchema.parse(await (await get("/near-miss")).json())).toEqual({ top: nm, all: [nm] });
     const feed = await get("/opportunities");
@@ -183,7 +183,22 @@ describe("DB-only context (no worker, as on Vercel)", () => {
     expect((await feed.json() as { scanAgeSec: number }).scanAgeSec).toBe(600);
     const r = await dbApp.request(`/api/platform/opportunities/${o.id}/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     expect(r.status).toBe(409);
-    expect((await r.json() as { error: string }).error).toBe("stale_feed");
+    expect(await r.json()).toEqual({ error: "stale_feed", message: "no live mid for ETH" });
+  });
+
+  test("without the worker the mid comes from Hyperliquid on demand, so a fresh scan can be approved", async () => {
+    await store.saveNearMisses(new Date(NOW.getTime() - 600_000).toISOString(), []);
+    const o = await seed();
+    let calls = 0;
+    const info = (async (body: { type: string }) => (calls++, expect(body).toEqual({ type: "allMids" }), { ETH: "4000.5", BTC: "60000" })) as never;
+    const dbCtx = dbPlatformContext(store, { info });
+    const dbApp = new Hono().basePath("/api").route("/platform", createPlatformRoutes({ ...deps, context: () => dbCtx }));
+    const detail = OpportunityDetailSchema.parse(await (await dbApp.request(`/api/platform/opportunities/${o.id}`)).json());
+    expect(detail).toMatchObject({ canApprove: true, approveBlockedReason: null });
+    const r = await dbApp.request(`/api/platform/opportunities/${o.id}/approve`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    expect(r.status).toBe(200);
+    expect(risk.placed).toBe(1);
+    expect(calls).toBe(1); // the detail read and the approve share one fetch
   });
 });
 
