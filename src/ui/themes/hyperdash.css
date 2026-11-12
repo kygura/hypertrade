@@ -3,13 +3,9 @@
    Scoped to :root[data-theme='hyperdash']; only redefines contract tokens
    (themes/README.md) plus looks on the structural hook classes.
 
-   Typography rule carried over from Hyperdash: sentence-case text and
-   numbers are BDO Grotesk (tabular figures); anything UPPERCASE (nav, tabs,
-   labels, tags) is Geist Mono. HYPERTRADE's JSX strings are uppercase, so
-   controls/labels route to Geist Mono and running text + numerals to the
-   grotesk. BDO Grotesk is not on Google Fonts: the stack names it first (used
-   if installed) and falls back to Host Grotesk (Google Fonts, loaded by
-   registry.ts), whose default figures are already tabular. */
+   Typography: Geist (sans) for everything, numbers with tabular figures.
+   Hyperdash itself sets uppercase labels in Geist Mono; here labels stay
+   sans so they read as words at a glance. */
 
 :root[data-theme='hyperdash'] {
   /* ── Surfaces (covert: gray-15 / gray-14 / gray-13b / gray-13) ───── */
@@ -84,24 +80,26 @@
   --color-drawdown-line: #d44b62;
 
   /* ── Type ────────────────────────────────────────────────────────── */
-  --font-sans: 'BDO Grotesk', 'Host Grotesk', system-ui, sans-serif;
-  --font-mono: 'BDO Grotesk', 'Host Grotesk', system-ui, sans-serif; /* numbers = grotesk + tnum */
-  --font-display: 'BDO Grotesk', 'Host Grotesk', system-ui, sans-serif;
-  --font-control: 'Geist Mono', ui-monospace, monospace;
-  --base-font-size: 12px;
-  --text-2xs: 9px;
-  --text-xs: 10px;
-  --text-sm: 11px;
-  --text-md: 12px;
-  --text-base: 13px;
-  --text-lg: 16px;
-  --text-xl: 22px;
+  /* One sans family for text, numbers (tnum) and controls: no monospace in
+     this theme, so labels read as words. */
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist', system-ui, sans-serif; /* numbers = Geist + tnum */
+  --font-display: 'Geist', system-ui, sans-serif;
+  --font-control: 'Geist', system-ui, sans-serif;
+  --base-font-size: 14px;
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 24px;
 
   --label-case: uppercase;
-  --label-tracking: -0.01em;
+  --label-tracking: 0.02em;
   --label-weight: 500;
   --control-case: uppercase;
-  --control-tracking: 0em;
+  --control-tracking: 0.02em;
   --control-weight: 500;
 
   /* ── Shape & depth ───────────────────────────────────────────────── */
@@ -187,7 +185,7 @@
   margin-right: auto;
 }
 :root[data-theme='hyperdash'] .app-nav-link {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 16px;
   padding-bottom: 0;
   color: var(--color-text-secondary);
@@ -217,7 +215,7 @@
 }
 :root[data-theme='hyperdash'] .panel-title {
   font-family: var(--font-control);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 14px;
   font-weight: 500;
   letter-spacing: -0.01em;
@@ -246,7 +244,7 @@
 /* Buttons. neutral = orange skeuomorphic primary; ghost = raised chip with
    a strong hairline (hd-btn-secondary); danger = rose "Countertrade" fill. */
 :root[data-theme='hyperdash'] .btn {
-  font-size: 11px;
+  font-size: 13px;
   padding-left: 12px;
   padding-right: 12px;
   transition:
@@ -300,7 +298,7 @@
 :root[data-theme='hyperdash'] .badge {
   padding: 1px 5px;
   line-height: 14px;
-  font-size: 10px;
+  font-size: 12px;
 }
 :root[data-theme='hyperdash'] .badge--gray {
   background: rgba(255, 255, 255, 0.04); /* badge-neutral-subtle */
@@ -314,7 +312,7 @@
 /* Tables (hd-table-header / hd-table-cell-sans): sans caps 10px header on the
    panel surface, 32px rows split by 4% hairlines, grotesk tabular cells. */
 :root[data-theme='hyperdash'] .dt {
-  font-size: 12px;
+  font-size: 14px;
   letter-spacing: 0.02em;
 }
 :root[data-theme='hyperdash'] .dt thead tr {
@@ -322,7 +320,7 @@
 }
 :root[data-theme='hyperdash'] .dt th {
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 14px;
   font-weight: 500;
   letter-spacing: -0.01em;
@@ -370,7 +368,7 @@
   border-color: rgba(255, 255, 255, 0.12);
 }
 :root[data-theme='hyperdash'] .seg-item {
-  font-size: 11px;
+  font-size: 13px;
   padding: 0 10px;
   transition:
     color 150ms cubic-bezier(0.4, 0, 0.2, 1),

@@ -17,7 +17,7 @@ Trade[XYZ] are CSS files that override tokens under
 `:root[data-theme='<id>']`, and **Hyperion** is the third, selectable theme
 with no file — it is the unscoped token defaults in `src/ui/index.css`.
 The token listing in §2 is therefore the Hyperion look (Geist Mono
-everywhere, zero radius, 13px base, `#ed3602` accent); under the default
+everywhere, zero radius, 14px base, `#ed3602` accent); under the default
 theme the same tokens read as below. The choice persists per browser
 (`localStorage['hypertrade.theme']`; a visitor who never chose follows the
 default) and is switched from the top bar.
@@ -26,10 +26,10 @@ default) and is switched from the top bar.
 |---|---|---|---|
 | `--topbar-h` | 40px | 54px | 48px |
 | `--subnav-h` | 52px | 52px | 52px |
-| `--base-font-size` | 13px | 12px | 14px |
+| `--base-font-size` | 14px | 14px | 14px |
 | `--radius-panel` / `-control` / `-badge` | 0 / 0 / 0 | 4 / 4 / 2px | 10 / 6 / 4px |
 | `--color-accent` | `#ed3602` | `#fd4612` | `#ffce55` |
-| `--font-sans`, `--font-mono` | Geist Mono | BDO Grotesk, Host Grotesk | Inter, IBM Plex Sans |
+| `--font-sans`, `--font-mono` | Geist Mono | Geist (sans, self-hosted; controls too) | Inter, IBM Plex Sans |
 
 `--topbar-h` and `--subnav-h` are the only sanctioned sources of sticky
 offsets: the top bar is `h-[var(--topbar-h)]`, a sub-tab row sticks at
@@ -174,13 +174,13 @@ scroll (§4.1).
   --color-drawdown-line: #bc263e;
 
   /* ── Type scale (Hyperion §2.4, closed set, unchanged) ───────── */
-  --text-2xs: 9px;
-  --text-xs: 10px;
-  --text-sm: 11px;
-  --text-md: 12px;
-  --text-base: 13px;
-  --text-lg: 16px;
-  --text-xl: 22px;
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-base: 15px;
+  --text-lg: 18px;
+  --text-xl: 24px;
 
   --font-mono: 'Geist Mono', ui-monospace, monospace;
   --font-sans: 'Geist Mono', ui-monospace, monospace;
@@ -361,12 +361,22 @@ input:focus, select:focus, textarea:focus {
 
 ### 2.2 Type scale usage
 
-Identical to Hyperion: 2xs chart ticks; xs labels/badges/table headers; sm
+The scale is 11 / 12 / 13 / 14 / 15 / 18 / 24px (2xs to xl), two steps up
+from Hyperion's 9 / 10 / 11 / 12 / 13 / 16 / 22 because 9 to 11px text was the
+bulk of every screen and too small to read. Literal px sizes quoted elsewhere
+in this document predate the change: read them as the token they name (9px =
+2xs, 10px = xs, 11px = sm, 12px = md, 13px = base). All three themes share
+the scale.
+
+Explanatory copy uses `HowToRead` (§11): one visible sentence saying what a
+panel shows and what to look for, with definitions of every printed term
+behind a disclosure. Facts only, never a verdict.
+
+Usage is unchanged from Hyperion: 2xs chart ticks; xs labels/badges/table headers; sm
 dense cells and panel titles; md inputs/buttons; base body; lg stat values;
 xl exactly one per view (the view's headline number or title figure). On
-mobile the scale does NOT change — density changes, type does not. 13px mono
-is already at the floor of comfortable phone reading; shrinking it is
-forbidden.
+mobile the scale does NOT change — density changes, type does not.
+Shrinking it is forbidden.
 
 ---
 
@@ -2045,6 +2055,7 @@ Ported components keep their Hyperion source semantics (files:
 | `ClaimAge` | `ts: string`, `thresholdHours?: number`, `prefix?: string` | DESIGN-terminal §2.3; `40S`/`12M`/`3H`/`2D`, amber over threshold, `title` full UTC |
 | `SourceLink` | `source: {label, url?}` | DESIGN-terminal §2.2; `.src-tag`; internal → router Link, external → new tab + `↗`, `snapshot` → `SNAP` |
 | `VenueBadge` | `venue: 'paper'\|'testnet'\|null` | DESIGN-terminal §7.1; `PAPER` info, `TESTNET` amber, `VENUE …` gray |
+| `HowToRead` | `children`, `terms?: [label, meaning][]` | §2.2; lead sentence always visible, term definitions in a native `<details>` |
 | `LabWarnings` | `warnings: string[]` | §10.9; amber-bg strip, one verbatim 11px `text-primary` row per warning with a 6px amber square; renders nothing when empty |
 | `LeanBar` | `lean: number` (−1..1), `width?: number` | §10.9 Pulse; bipolar fill from a center tick, green right / red left, always paired with the printed signed number by its caller |
 | `RuleText` | `rule: Rule`, `metrics: MetricDef[]`, `size?: 'xs'\|'sm'\|'lg'` | §10.9; conditions typeset in our language (`z(90) MVRV < −1.12 AND funding ≥ 0.03%`); wire text in `title` |
