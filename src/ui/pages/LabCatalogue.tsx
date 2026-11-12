@@ -28,7 +28,7 @@ const CATALOGUE_TERMS: readonly Term[] = [
   ['DECAYED', `${LIVE_MIN_DAYS} or more live days and a live Sharpe below 0, or below a quarter of the holdout Sharpe the rule was saved with.`],
   ['OVERLAP / OVERLAPS', 'two saved rules on the same asset and side that are in the market on mostly the same days (0.6 or more of the days either is in). They are closer to one bet than two. The number is that share.'],
   ['GAPS', 'an asset in the catalogue with no rule on one side, long or short.'],
-  ['SIDE · HOLD', 'side, asset and the horizon in days the rule was searched for.'],
+  ['SIDE · HORIZON', 'side, asset and the horizon in days the rule was searched for.'],
   ['LIVE DAYS', 'days of data since the rule was saved.'],
   ['ORIGIN', 'who saved it: user = you, agent = a research agent through the tools, seed = shipped with the app.'],
   T.untested,

@@ -15,7 +15,7 @@ const RUNS_TERMS: readonly Term[] = [
   ['RULES', 'rules the run kept.'],
   ['STATUS', 'OK or FAILED (hover a failure for the error).'],
   ['METRICS', 'number of metrics the search was given.'],
-  ['SOURCE', 'where the run was started: ui = this page, mcp = an agent over MCP, cli = the command line.'],
+  ['SOURCE', 'where the run was started: ui = this page, mcp = an agent over MCP, cli = the command line, api = a direct API call.'],
 ]
 
 export function LabRuns() {

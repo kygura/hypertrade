@@ -115,7 +115,7 @@ export function CatalogueTable({
     },
     {
       key: 'dirhzn',
-      label: 'SIDE · HOLD',
+      label: 'SIDE · HORIZON',
       priority: 3,
       render: (e) => (
         <span>

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { Badge } from '../Badge'
 import { Button } from '../Button'
 import { AgeStamp, AsyncBody } from '../state'
-import { fmtSigned, type CatalogueHealth, type CatalogueListEntry, type LabState } from '../../lib/lab'
+import { fmtSigned, LIVE_MIN_DAYS, type CatalogueHealth, type CatalogueListEntry, type LabState } from '../../lib/lab'
 
 // CatalogueHealthStrip — docs/design/README.md §10.9. DECAYED · OVERLAPS · GAPS as ghost
 // toggles (amber when > 0); each expands its list. Health is computed on
@@ -46,7 +46,7 @@ export function CatalogueHealthStrip({ health, entries }: { health: LabState<Cat
             <ul id="lab-health-list" className="flex flex-col pb-2">
               {open === 'decayed' &&
                 (h.decayed.length === 0 ? (
-                  <li className="px-3 text-xs text-text-secondary">no decayed rules: none has a live Sharpe below 0 or below a quarter of its holdout Sharpe after 30 live days</li>
+                  <li className="px-3 text-xs text-text-secondary">no decayed rules: none has a live Sharpe below 0 or below a quarter of its holdout Sharpe after {LIVE_MIN_DAYS} live days</li>
                 ) : (
                   h.decayed.map((d) => (
                     <li key={d.id} className="flex flex-wrap items-center gap-2 px-3 min-h-[var(--row-h)] text-sm tabular">
