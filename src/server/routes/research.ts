@@ -121,7 +121,46 @@ export const toolEventStudy = (tools: () => ToolDef[] = labTools): RunEventStudy
 
 /** Market Pulse loads every catalogue asset's data: kept this long between board loads. */
 const PULSE_TTL_MS = 5 * 60_000;
-let pulseMemo: { at: number; value: ReturnType<BoardDeps["pulse"]> } | null = null;
+/** Past the TTL the last pulse still answers at once while a new one loads, up to this age (its signals carry the pulse's own asOf). */
+const PULSE_MAX_STALE_MS = 30 * 60_000;
+/** The ledger reads every outcome row of a setup kind; outcomes resolve over hours. */
+const LEDGER_TTL_MS = 5 * 60_000;
+
+/**
+ * Memo for a slow read. Within `ttlMs` of its start a load answers every call. After that the last good value still
+ * answers at once (up to `maxStaleMs` old) while one new load runs behind it; with nothing that recent the call waits
+ * for the load. A failed load is never kept: the next call starts again, and a last good value still within
+ * `maxStaleMs` keeps answering.
+ */
+export function staleWhileRevalidate<T>(load: () => Promise<T>, o: { ttlMs: number; maxStaleMs: number; now?: () => number }): () => Promise<T> {
+  const now = o.now ?? Date.now;
+  let run: { at: number; value: Promise<T> } | null = null;
+  let good: { at: number; value: T } | null = null;
+  return () => {
+    const t = now();
+    if (!run || t - run.at >= o.ttlMs) {
+      const started = { at: t, value: load() };
+      run = started;
+      started.value.then(
+        (value) => {
+          if (!good || good.at <= started.at) good = { at: started.at, value };
+        },
+        () => {
+          if (run === started) run = null; // a late failure clears only its own run, never a newer one
+        },
+      );
+    }
+    if (good && good.at !== run.at && t - good.at < o.maxStaleMs) {
+      run.value.catch(() => {}); // refreshing behind the answer: its failure is the next call's to see
+      return Promise.resolve(good.value);
+    }
+    return run.value;
+  };
+}
+
+type PulseValue = Awaited<ReturnType<BoardDeps["pulse"]>>;
+let pulseMemo: (() => Promise<PulseValue>) | null = null;
+const ledgerMemo = new Map<string, () => ReturnType<BoardDeps["ledger"]>>();
 let dbCtx: PlatformContext | null = null;
 
 /** The worker's context on the always-on server, else Postgres-only reads; null with neither. */
@@ -134,18 +173,14 @@ const definitionScanner = (env: Record<string, string | undefined>): DefinitionS
 export function defaultBoardDeps(env: Record<string, string | undefined> = process.env): Omit<BoardDeps, "cache"> {
   return {
     now: Date.now,
-    pulse: () => {
-      if (pulseMemo && Date.now() - pulseMemo.at < PULSE_TTL_MS) return pulseMemo.value;
-      const service = getLabService();
-      const value = Promise.all([service.marketPulse({}, { deadlineMs: labDeadlineMs(env, SERVER_DEADLINE_MS) }), service.deps.store.listCatalogue()]).then(([pulse, catalogue]) => ({ pulse, catalogue }));
-      const memo = { at: Date.now(), value };
-      pulseMemo = memo;
-      // A late failure clears only its own memo, never a newer one.
-      value.catch(() => {
-        if (pulseMemo === memo) pulseMemo = null;
-      });
-      return value;
-    },
+    pulse: () =>
+      (pulseMemo ??= staleWhileRevalidate(
+        () => {
+          const service = getLabService();
+          return Promise.all([service.marketPulse({}, { deadlineMs: labDeadlineMs(env, SERVER_DEADLINE_MS) }), service.deps.store.listCatalogue()]).then(([pulse, catalogue]) => ({ pulse, catalogue }));
+        },
+        { ttlMs: PULSE_TTL_MS, maxStaleMs: PULSE_MAX_STALE_MS },
+      ))(),
     novelty: async (sinceBar) => {
       // The novelty loop runs only with a database (its daily inputs live in Postgres).
       if (!databaseUrl()) throw new SourceUnavailable("needs a database (DATABASE_URL unset)");
@@ -162,8 +197,13 @@ export function defaultBoardDeps(env: Record<string, string | undefined> = proce
       const ctx = platformContext();
       if (!ctx) throw new SourceUnavailable("platform offline (no worker loop and no database)");
       // Only the kinds on the board, one filtered read each (the store's setupKind filter), not every outcome row.
-      const stats = await Promise.all(kinds.map(async (k) => setupLedgerStats(k, await ctx.store.outcomeRows({ setupKind: k }))));
-      return stats.filter((s) => s !== null);
+      const key = [...kinds].sort().join("|");
+      let memo = ledgerMemo.get(key);
+      if (!memo) {
+        const load = async () => (await Promise.all(kinds.map(async (k) => setupLedgerStats(k, await ctx.store.outcomeRows({ setupKind: k }))))).filter((s) => s !== null);
+        ledgerMemo.set(key, (memo = staleWhileRevalidate(load, { ttlMs: LEDGER_TTL_MS, maxStaleMs: LEDGER_TTL_MS })));
+      }
+      return memo();
     },
     scannerTicks24h: async () => {
       const ctx = platformContext();

@@ -41,6 +41,11 @@ let lastActive = 0
 export const DEFAULT_QUERY_TIMEOUT_MS = 30_000
 /** Matches postgres.js idle_timeout below (s → ms). */
 const IDLE_MS = 20_000
+/**
+ * The always-on server keeps quiet connections this long: at 20 s every page opened after a pause paid
+ * for a new TLS connection to the pooler before its first query.
+ */
+const LONG_RUNNING_IDLE_MS = 5 * 60_000
 
 export class QueryTimeoutError extends Error {
   readonly code = 'QUERY_TIMEOUT'
@@ -54,8 +59,9 @@ const queryTimeoutMs = () => Number(process.env.DB_QUERY_TIMEOUT_MS) || DEFAULT_
  * queue, the 30 s clock runs while a query waits its turn, and one slow
  * statement times out everything behind it. Nothing here holds session state
  * (no advisory locks, no SET), so a few connections are safe behind the pooler.
+ * Six, because one page load fans out: the queue alone starts eight reads at once.
  */
-export const DEFAULT_POOL_MAX = 3
+export const DEFAULT_POOL_MAX = 6
 const poolMax = () => Math.max(1, Math.floor(Number(process.env.DB_POOL_MAX)) || DEFAULT_POOL_MAX)
 
 /**
@@ -89,7 +95,9 @@ export function sql(): postgres.Sql {
   // Idle past idle_timeout and still open: its idle timer never ran, so the
   // process was suspended in between and the socket may be dead. Replace it
   // before a query finds out the hard way.
-  if (client && inflight === 0 && Date.now() - lastActive > IDLE_MS) reset()
+  // The always-on server is never suspended: there the driver's own idle timer closes quiet sockets,
+  // and the client stays.
+  if (client && !longRunning && inflight === 0 && Date.now() - lastActive > IDLE_MS) reset()
   if (client) return client
   const url = databaseUrl()
   if (!url) throw new Error('DATABASE_URL is not set — database queries are unavailable')
@@ -98,7 +106,7 @@ export function sql(): postgres.Sql {
   // it can hit the statement timeout, blocking the one connection meanwhile and
   // then crashing the process with an unhandled rejection. No query here relies
   // on array types (lists go through `in ${sql()(ids)}`).
-  const c = postgres(url, { max: poolMax(), prepare: false, idle_timeout: IDLE_MS / 1000, fetch_types: false })
+  const c = postgres(url, { max: poolMax(), prepare: false, idle_timeout: (longRunning ? LONG_RUNNING_IDLE_MS : IDLE_MS) / 1000, fetch_types: false })
   raw = c
   inflight = 0
   lastActive = Date.now()

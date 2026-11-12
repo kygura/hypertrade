@@ -461,6 +461,7 @@ export async function readPage(
 
   let bars = await deps.before(coin, tf, before, opts.limit);
   let exhausted = false;
+  let state: Awaited<ReturnType<SyncDeps["getState"]>> | null = null;
   const budget: FillBudget = { extPages: DEFAULT_EXT_PAGES, deadline: Date.now() + (opts.deadlineMs ?? 20_000) };
   if (bars.length < opts.limit) {
     const end = bars.length ? bars[0]!.t : before;
@@ -468,13 +469,14 @@ export async function readPage(
     exhausted = r.exhausted;
     if (r.added > 0) bars = await deps.before(coin, tf, before, opts.limit);
   } else {
-    exhausted = isExhausted(await deps.getState(coin, tf), tf, deps.sources);
+    state = await deps.getState(coin, tf); // nothing below writes it: reused for the page's error
+    exhausted = isExhausted(state, tf, deps.sources);
     if (exhausted) {
       const b = await deps.bounds(coin, tf);
       exhausted = b != null && bars[0]!.t <= b.min;
     }
   }
-  const state = await deps.getState(coin, tf);
+  state ??= await deps.getState(coin, tf);
   return { bars, hasMore: bars.length > 0 && !exhausted, error: state.error };
 }
 

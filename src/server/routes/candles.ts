@@ -100,7 +100,7 @@ export function candlesRoute(deps: CandlesDeps = defaultCandlesDeps) {
     const coin = await deps.resolveCoin(c.req.param("coin"));
     if (!deps.hasDb()) return c.json(await livePageBody(coin, tf, parsed.data.before, limit));
 
-    await deps.touch(coin, tf).catch(() => {}); // bookkeeping only; never fails the chart
+    const touched = deps.touch(coin, tf).catch(() => {}); // bookkeeping only; never fails or delays the chart
     const page = await deps.readPage(coin, tf, { before: parsed.data.before, limit });
 
     let bars: ChartBar[] = page.bars.map((b) => ({ ...b, f: null, p: null, oi: null }));
@@ -109,16 +109,16 @@ export function candlesRoute(deps: CandlesDeps = defaultCandlesDeps) {
     if (page.bars.length > 0) {
       const from = page.bars[0]!.t;
       const to = nextBarT(page.bars[page.bars.length - 1]!.t, tf);
+      // OI is stored already: it loads while the funding sync runs; funding is read after its sync.
+      const oiRead = deps.oi(coin, from - HOUR, to).catch(() => []);
       const fs = await deps.syncFunding(coin, from).catch(() => null);
-      const [funding, oi] = await Promise.all([
-        deps.funding(coin, from, to + HOUR).catch(() => []),
-        deps.oi(coin, from - HOUR, to).catch(() => []),
-      ]);
+      const [funding, oi] = await Promise.all([deps.funding(coin, from, to + HOUR).catch(() => []), oiRead]);
       bars = joinOverlays(page.bars, tf, funding, oi);
       fundingMeta = { from: fs?.from ?? null, complete: fs?.complete ?? false };
       oiFrom = oi[0]?.t ?? null;
     }
 
+    await touched;
     const body: CandlesResponse = { coin, tf, bars, hasMore: page.hasMore, error: page.error, funding: fundingMeta, oi: { from: oiFrom } };
     return c.json(body);
   });
