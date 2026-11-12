@@ -906,3 +906,140 @@ export function freshDsrN(trialsN: number | null): DsrN {
 export function latestRunId(runs: readonly Pick<RunSummary, 'id'>[] | null | undefined): string | null {
   return runs?.[0]?.id ?? null
 }
+
+// ------------------------------------------------------------------ fact lines (one-line takeaways, facts only)
+
+/**
+ * The save bar's other cut-offs. Mirror MIN_WALK_FORWARD_SHARPE and MIN_STABILITY in
+ * src/server/lab/engine/verdict.ts (same reason as MIN_DEFLATED_SHARPE above); lab.test.ts asserts they are equal.
+ */
+export const MIN_WALK_FORWARD_SHARPE = 1
+export const MIN_STABILITY = 0.5
+/** A catalogue rule's live Sharpe is shown from this many live days (CatalogueTable, liveCell, the decay check). */
+export const LIVE_MIN_DAYS = 30
+
+/** What each server verdict level requires, in plain words (the checks of engine/verdict.ts, in its order). */
+export const VERDICT_MEANING: Record<VerdictLevel, string> = {
+  robust: `passes every check: holdout Sharpe above 0 with at least one trade, walk-forward Sharpe above ${MIN_WALK_FORWARD_SHARPE}, stability at least ${MIN_STABILITY} when it was measured, deflated Sharpe at least ${MIN_DEFLATED_SHARPE}. This is the save bar`,
+  candidate: `passes holdout, walk-forward and stability, but the deflated Sharpe is below ${MIN_DEFLATED_SHARPE}, undefined or not computed: it could be the luckiest of the many variants tried`,
+  fragile: `passes holdout and walk-forward, but stability is below ${MIN_STABILITY}: the result does not survive small changes to a threshold or window`,
+  weak: `passes holdout, but the walk-forward Sharpe is ${MIN_WALK_FORWARD_SHARPE} or lower, or there is no walk-forward`,
+  fails_holdout: 'the holdout Sharpe is 0 or lower, the holdout holds no trade, or there is no holdout. Checked first',
+}
+
+/** x for an "x of bar" miss: 3 decimals when 2 would round it up to the bar (as the server's reasons do). */
+const belowBar = (x: number, bar: number) => (Number(x.toFixed(2)) >= bar ? x.toFixed(3) : x.toFixed(2))
+
+export type BarCheck = {
+  key: 'holdout' | 'walkForward' | 'stability' | 'deflatedSharpe'
+  /** true = passes, false = misses, null = not measured (stability without a sensitivity grid). */
+  pass: boolean | null
+  /** The check with its number when it misses, e.g. `deflated Sharpe (0.71 of 0.9)`. */
+  text: string
+}
+
+/**
+ * The four save-bar checks of an evaluation against the server's cut-offs, in the server's order. It explains a
+ * verdict, it does not make one: the level shown is always the server's. lab.test.ts checks that the first miss
+ * here is the level engine/verdict.ts returns.
+ */
+export function saveBarChecks(ev: Pick<RuleEvaluation, 'holdout' | 'walkForward' | 'sensitivity' | 'deflatedSharpe'>): BarCheck[] {
+  const ho = ev.holdout
+  const wf = ev.walkForward
+  const st = ev.sensitivity?.stability
+  const dsr = ev.deflatedSharpe
+  return [
+    !ho
+      ? { key: 'holdout', pass: false, text: 'holdout (none)' }
+      : ho.untested
+        ? { key: 'holdout', pass: false, text: 'holdout (no trade)' }
+        : ho.sharpe > 0
+          ? { key: 'holdout', pass: true, text: 'holdout' }
+          : { key: 'holdout', pass: false, text: `holdout (Sharpe ${fmtSigned(ho.sharpe)}, needs above 0)` },
+    !wf
+      ? { key: 'walkForward', pass: false, text: 'walk-forward (none)' }
+      : wf.sharpe > MIN_WALK_FORWARD_SHARPE
+        ? { key: 'walkForward', pass: true, text: 'walk-forward' }
+        : { key: 'walkForward', pass: false, text: `walk-forward (Sharpe ${fmtSigned(wf.sharpe)}, needs above ${MIN_WALK_FORWARD_SHARPE})` },
+    st == null
+      ? { key: 'stability', pass: null, text: 'stability' }
+      : st >= MIN_STABILITY
+        ? { key: 'stability', pass: true, text: 'stability' }
+        : { key: 'stability', pass: false, text: `stability (${belowBar(st, MIN_STABILITY)} of ${MIN_STABILITY})` },
+    dsr == null || !Number.isFinite(dsr)
+      ? { key: 'deflatedSharpe', pass: false, text: `deflated Sharpe (${dsr === null && wf && wf.days >= 4 ? 'undefined' : 'not computed'})` }
+      : dsr >= MIN_DEFLATED_SHARPE
+        ? { key: 'deflatedSharpe', pass: true, text: 'deflated Sharpe' }
+        : { key: 'deflatedSharpe', pass: false, text: `deflated Sharpe (${belowBar(dsr, MIN_DEFLATED_SHARPE)} of ${MIN_DEFLATED_SHARPE})` },
+  ]
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+const windowFact = (name: string, s: PerfStats | null | undefined) =>
+  !s ? `no ${name}` : s.untested ? `${name} had no trade in ${s.days} days` : `${name} Sharpe ${fmtSigned(s.sharpe)} on ${plural(s.trades, 'trade')} over ${s.days} days`
+
+/**
+ * A rule evaluation in one line: the walk-forward and holdout Sharpe with their trade counts and lengths, then which
+ * save-bar checks pass and which miss, with the numbers. Facts about a backtest, e.g. `Walk-forward Sharpe +1.40 on
+ * 38 trades over 900 days; holdout Sharpe +0.60 on 9 trades over 290 days. Passes holdout, walk-forward; misses
+ * deflated Sharpe (0.71 of 0.9); stability not measured.`
+ */
+export function saveBarLine(ev: Pick<RuleEvaluation, 'holdout' | 'walkForward' | 'sensitivity' | 'deflatedSharpe'>): string {
+  const checks = saveBarChecks(ev)
+  const of = (pass: boolean | null) => checks.filter((c) => c.pass === pass).map((c) => c.text)
+  const parts = [
+    of(true).length ? `passes ${of(true).join(', ')}` : null,
+    of(false).length ? `misses ${of(false).join(', ')}` : null,
+    of(null).length ? 'stability not measured' : null,
+  ].filter((x): x is string => x != null)
+  const head = `${windowFact('walk-forward', ev.walkForward)}; ${windowFact('holdout', ev.holdout)}`
+  const tail = parts.join('; ')
+  return `${head[0]!.toUpperCase()}${head.slice(1)}. ${tail[0]!.toUpperCase()}${tail.slice(1)}.`
+}
+
+/**
+ * A search result in one line: how many rules it kept, out of how many variants, their server verdicts, the best
+ * walk-forward Sharpe, and when the holdout starts. null when it kept none (the empty state says why).
+ */
+export function searchLine(result: Pick<SearchResult, 'rules' | 'dataRange' | 'variantsScored' | 'effectiveTrials'>): string | null {
+  const rules = result.rules
+  if (rules.length === 0) return null
+  const counts = (Object.keys(VERDICT_BADGE) as VerdictLevel[])
+    .map((level) => ({ level, n: rules.filter((r) => verdictOf(r)?.level === level).length }))
+    .filter((c) => c.n > 0)
+    .map((c) => `${c.n} ${VERDICT_BADGE[c.level].label.toLowerCase()}`)
+  const unjudged = rules.filter((r) => !verdictOf(r)).length
+  if (unjudged) counts.push(`${unjudged} without a verdict`)
+  const best = rules.map((r) => sharpeOf(r.walkForward)).filter((x): x is number => x != null)
+  const n = effectiveTrials(result)
+  const from =
+    result.variantsScored != null
+      ? ` out of ${result.variantsScored.toLocaleString('en-US')} variants scored${result.effectiveTrials != null && n != null ? ` (about ${Math.round(n).toLocaleString('en-US')} independent)` : ''}`
+      : ''
+  return `${plural(rules.length, 'rule')} kept${from}: ${counts.join(', ')}.${best.length ? ` Best walk-forward Sharpe ${fmtSigned(Math.max(...best))}.` : ''} The holdout starts ${result.dataRange.holdoutFrom} and was not used to pick or rank them.`
+}
+
+/**
+ * The catalogue in one line: how many saved rules have enough live days for a live Sharpe, how many of those are
+ * above 0 since saving, and the health flags. null when empty.
+ */
+export function catalogueLine(entries: readonly Pick<CatalogueListEntry, 'live' | 'flags'>[]): string | null {
+  if (entries.length === 0) return null
+  const live = entries.filter((e) => e.live != null && e.live.days >= LIVE_MIN_DAYS)
+  const up = live.filter((e) => e.live!.sharpe > 0).length
+  const decayed = entries.filter((e) => e.flags.includes('decayed')).length
+  const overlap = entries.filter((e) => e.flags.includes('overlap')).length
+  const liveText = live.length === 0 ? `None has ${LIVE_MIN_DAYS} live days yet, so no live Sharpe is shown.` : `${live.length} ${live.length === 1 ? 'has' : 'have'} ${LIVE_MIN_DAYS} or more live days: ${up} with a live Sharpe above 0, ${live.length - up} at or below.`
+  return `${plural(entries.length, 'saved rule')}. ${liveText} ${decayed} flagged decayed, ${overlap} flagged overlap.`
+}
+
+/** Market Pulse in one line: saved rules in zone on the latest daily bar, by side. null without rules. */
+export function pulseLine(assets: readonly Pick<PulseAsset, 'longActive' | 'longTotal' | 'shortActive' | 'shortTotal'>[]): string | null {
+  const sum = (f: (a: (typeof assets)[number]) => number) => assets.reduce((n, a) => n + f(a), 0)
+  const total = sum((a) => a.longTotal + a.shortTotal)
+  if (total === 0) return null
+  const long = sum((a) => a.longActive)
+  const short = sum((a) => a.shortActive)
+  const on = assets.filter((a) => a.longActive + a.shortActive > 0).length
+  return `${long + short} of ${plural(total, 'saved rule')} in zone on the latest daily bar: ${long} long, ${short} short, on ${on} of ${plural(assets.length, 'asset')}.`
+}

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
-import { AsyncBody, Badge, Button, ConfirmDialog, ErrorBlock, OfflineBlock, Panel, PanelBody, PanelHeader, Segmented, SkeletonRows, DataTable, type Column } from '../components'
+import { AsyncBody, Badge, Button, ConfirmDialog, ErrorBlock, HowToRead, OfflineBlock, Panel, PanelBody, PanelHeader, Segmented, SkeletonRows, DataTable, type Column } from '../components'
 import { Markdown } from '../components/analyst/Markdown'
 import { KillSwitchDialog } from '../components/KillSwitchDialog'
 import { api, ApiError, NetworkError } from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { useDeskKill } from '../lib/useDeskKill'
 import {
+  deskTakeaway,
   emptyRun,
   fmtPx,
   fmtUsd,
@@ -24,6 +25,7 @@ import {
   type RunView,
   type TradeProposal,
 } from '../lib/desk'
+import type { Term } from '../components'
 
 // /desk — the agentic portfolio desk (docs/SPEC.md "Desk"). Ask the team a
 // question and watch the PM fan out to specialists; approve or reject what
@@ -75,16 +77,30 @@ export function Desk() {
   if (status.offline) return <OfflineBlock onRetry={status.refetch} />
   if (status.error) return <ErrorBlock message={status.error} onRetry={status.refetch} />
 
+  const limits = status.data?.limits
+  const takeaway = portfolio.data ? deskTakeaway(portfolio.data.desk, proposals.data?.proposals, limits) : null
+
   return (
     <div className="flex flex-col gap-3 p-3 min-w-0">
       <HeaderStrip status={status.data} portfolio={portfolio.data} onChange={() => (status.refetch(), refreshBook())} />
+      <div className="flex flex-col gap-1 px-1 min-w-0">
+        {takeaway && (
+          <p className="m-0 text-md text-text-primary tabular" data-testid="desk-takeaway">
+            {takeaway}
+          </p>
+        )}
+        <HowToRead terms={deskTerms(limits)}>
+          The desk is a team of model agents that researches and proposes trades on a practice account. Every entry is sized and checked by fixed risk rules (the
+          governor) before it can fill. Read the line above for how much of each limit the book uses now.
+        </HowToRead>
+      </div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 min-w-0">
         <div className="xl:col-span-2 flex flex-col gap-3 min-w-0">
           <AskPanel status={status.data} onRunFinished={refreshBook} />
-          <RunsPanel runs={runs.data?.runs} loading={runs.loading} error={runs.error} offline={runs.offline} onRetry={runs.refetch} />
+          <RunsPanel schedule={status.data?.schedule} runs={runs.data?.runs} loading={runs.loading} error={runs.error} offline={runs.offline} onRetry={runs.refetch} />
         </div>
         <div className="flex flex-col gap-3 min-w-0">
-          <ApprovalsPanel proposals={proposals.data?.proposals} loading={proposals.loading} error={proposals.error} offline={proposals.offline} onRetry={proposals.refetch} onChange={refreshBook} />
+          <ApprovalsPanel limits={limits} proposals={proposals.data?.proposals} loading={proposals.loading} error={proposals.error} offline={proposals.offline} onRetry={proposals.refetch} onChange={refreshBook} />
           <PositionsPanel portfolio={portfolio.data} loading={portfolio.loading} onChange={refreshBook} />
           <AlertsPanel alerts={alerts.data?.alerts} loading={alerts.loading} error={alerts.error} offline={alerts.offline} onRetry={alerts.refetch} />
         </div>
@@ -92,6 +108,72 @@ export function Desk() {
     </div>
   )
 }
+
+const lim = (limits: DeskStatus['limits'] | undefined, key: string, unit = '') => (limits?.[key] != null ? `${limits[key]}${unit}` : 'not loaded')
+
+/** Header strip and governor limits, with the limit values the server reports. */
+function deskTerms(limits: DeskStatus['limits'] | undefined): Term[] {
+  return [
+    ['PAPER / HL-TESTNET', 'Where orders go. Paper is a simulated book filled at the live Hyperliquid mark plus slippage and the taker fee. HL-TESTNET sends real orders to the Hyperliquid test network. Mainnet is not supported.'],
+    ['EQUITY', 'Account value in USD: cash plus unrealized profit or loss on open positions.'],
+    ['DAY PNL', 'Change in equity since 00:00 UTC, realized plus unrealized, in USD.'],
+    ['MODEL', 'The language model that runs the portfolio manager, then the one for the specialists if it differs.'],
+    ['APPROVE EACH / AUTO', 'Approve each: an entry that passes the governor waits for your approval. Auto: it fills at once. Exits never wait, they only reduce risk.'],
+    ['4H … 48H / OFF', 'How often the team runs a full review of the book on its own. OFF stops scheduled reviews; price and risk alerts can still start one.'],
+    ['ENV', 'The review interval comes from the server configuration. Saving a value here replaces it.'],
+    ['KILL / RESUME', 'Kill blocks every new entry until you resume. Exits stay allowed.'],
+    ['Governor', 'The fixed rules every entry must pass. It computes size itself from equity, the stop and the live mark, and checks again at fill time.'],
+    ['Risk per trade', `Loss if the stop fills, as a share of equity. Limit ${lim(limits, 'maxRiskPct', '%')}; a larger request is cut to it.`],
+    ['Open stop risk', `Sum over open positions of the loss from mark to stop (the whole notional when a position has no stop). Limit ${lim(limits, 'maxOpenRiskPct', '%')} of equity, including the new trade.`],
+    ['Gross notional', `Sum of position sizes times mark, in USD. Limit ${lim(limits, 'maxGrossLeverage', 'x')} equity in total and ${lim(limits, 'maxCoinLeverage', 'x')} equity in one coin.`],
+    ['Positions', `At most ${lim(limits, 'maxPositions')} open at once, one per coin.`],
+    ['Stop distance', `Distance from mark to stop. Allowed range ${lim(limits, 'minStopPct', '%')} to ${lim(limits, 'maxStopPct', '%')}.`],
+    ['Day loss', `When equity is down ${lim(limits, 'dailyLossLimitPct', '%')} since 00:00 UTC, new entries are blocked until the next UTC day.`],
+  ]
+}
+
+function proposalTerms(limits: DeskStatus['limits'] | undefined): Term[] {
+  return [
+    ['PENDING', 'Passed the governor and waits for your decision. It expires at the time shown if you do nothing.'],
+    ['EXECUTED', 'Filled on the desk venue.'],
+    ['BLOCKED', 'The governor refused it, on submission or when it re-checked at fill time. The lines marked ✕ are the reasons.'],
+    ['FAILED', 'It passed the governor but the venue did not fill it. The venue error is shown.'],
+    ['REJECTED / EXPIRED', 'You rejected it, or it was not approved before its expiry time.'],
+    ['LONG / SHORT / EXIT 50%', 'An entry and its direction, or an exit and the share of the position it closes.'],
+    ['mark', 'Venue mark price when the governor last checked.'],
+    ['stop (x%)', 'Stop price, and its distance from the mark in percent.'],
+    ['R:R', `Reward to risk at the current mark: distance to target divided by distance to stop. Entries under ${lim(limits, 'minRewardRisk')} are blocked. n/a means no target was given.`],
+    ['risk', 'USD lost if the stop fills at its price: notional times stop distance. Fees and slippage are extra.'],
+    ['size', 'Order size in coins, with its USD notional. The governor sets it from the risk and the stop distance, then caps it by the leverage limits.'],
+    ['confidence', `The proposing agent's own rating: low, medium or high. Entries below ${lim(limits, 'minConfidence')} are blocked.`],
+    ['asked x% risk', 'Share of equity the agent asked to risk. The size shown is what the governor allowed, which can be smaller.'],
+    ['✕ / ⚠', '✕ is a reason the entry is blocked. ⚠ is a warning: something was reduced or could not be checked, and the entry can still fill.'],
+    ['[source]', 'The data source an agent cites for each evidence line.'],
+  ]
+}
+
+const BOOK_TERMS: Term[] = [
+  ['▲ / ▼', 'Long or short.'],
+  ['SIZE', 'Position size in coins.'],
+  ['ENTRY', 'Average entry price.'],
+  ['STOP', 'Stop price. A dash means the position has no stop.'],
+  ['UPNL', 'Unrealized profit or loss at the current mark, in USD, before exit fees.'],
+  ['Amount beside the title', 'That account\'s equity in USD.'],
+  ['WATCHED HYPERLIQUID ACCOUNT', 'A real Hyperliquid account the desk reads but never trades. It is shown for context and cannot be closed from here.'],
+  ['RECENT FILLS', 'Latest desk fills: time, buy or sell, size, coin, fill price, why it filled (entry, stop, target or an exit reason) and the realized profit or loss in USD before fees.'],
+]
+
+const ALERT_TERMS: Term[] = [
+  ['INFO / WARN / CRITICAL', 'How urgent the desk rated it. Critical is used for a position without a stop, the daily loss limit and the kill switch.'],
+  ['x% in 1h / 4h', 'A watched or held coin moved at least 4% in 1 hour (BTC 2.5%), or at least 8% in 4 hours (BTC 5%).'],
+  ['funding x% APR', 'Hourly funding, annualized, is at or above 50% or at or below −30%.'],
+  ['OI x% in 4h', 'Open interest changed by 10% or more over about 4 hours.'],
+  ['near its stop', 'A quarter or less of the distance from entry to stop is left.'],
+  ['Breadth shock', 'The median of the 50 largest perps moved 6% or more in 24 hours and at most 15%, or at least 85%, of them rose.'],
+  ['Approve? / Blocked', 'A proposal waits for you, or the governor refused one. The reasons are in the text.'],
+  ['stopped out / hit target', 'A position closed at its stop or target, with the fill and its profit or loss.'],
+  ['Repeat rule', 'The same market condition alerts at most once every 3 hours.'],
+]
 
 function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | null; portfolio: Portfolio | null; onChange: () => void }) {
   const kill = status?.killSwitch.on ?? false
@@ -110,10 +192,10 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
           <Badge tone={status?.live ? 'amber' : 'info'}>{(status?.venue ?? 'paper').toUpperCase()}</Badge>
           {kill && <Badge tone="red">KILL SWITCH</Badge>}
         </div>
-        <Stat label="EQUITY" value={desk ? fmtUsd(desk.equityUsd) : '—'} />
-        <Stat label="DAY" value={desk ? fmtUsd(desk.dayPnlUsd) : '—'} tone={desk ? (desk.dayPnlUsd >= 0 ? 'text-green' : 'text-red-text') : undefined} />
+        <Stat label="EQUITY" title="cash plus unrealized profit or loss, in USD" value={desk ? fmtUsd(desk.equityUsd) : '—'} />
+        <Stat label="DAY PNL" title="change in equity since 00:00 UTC, realized plus unrealized" value={desk ? fmtUsd(desk.dayPnlUsd) : '—'} tone={desk ? (desk.dayPnlUsd >= 0 ? 'text-green' : 'text-red-text') : undefined} />
         <Stat label="POSITIONS" value={desk ? String(desk.positions.length) : '—'} />
-        <Stat label="MODEL" value={status?.model ? `${status.model.pm}${status.model.scouts !== status.model.pm ? ` / ${status.model.scouts}` : ''}` : 'not configured'} />
+        <Stat label="MODEL" title="model running the portfolio manager / the specialists" value={status?.model ? `${status.model.pm}${status.model.scouts !== status.model.pm ? ` / ${status.model.scouts}` : ''}` : 'not configured'} />
         <div className="flex items-center gap-2 ml-auto">
           {status && (
             <Segmented
@@ -180,7 +262,11 @@ function ReviewIntervalControl({ status, onChange }: { status: DeskStatus | null
         disabled={!status}
         options={REVIEW_HOURS_OPTIONS.map((h) => ({ value: h, label: h === 0 ? 'OFF' : `${h}H`, title: h === 0 ? 'Scheduled reviews off' : `Full review every ${h}h` }))}
       />
-      {status && status.schedule.reviewEveryHoursSource === 'env' && !dirty && <Badge tone="gray">ENV</Badge>}
+      {status && status.schedule.reviewEveryHoursSource === 'env' && !dirty && (
+        <span title="interval set in the server configuration; saving a value here replaces it">
+          <Badge tone="gray">ENV</Badge>
+        </span>
+      )}
       {dirty && (
         <Button tier="ghost" onClick={() => void save()} disabled={busy}>
           SAVE
@@ -191,9 +277,9 @@ function ReviewIntervalControl({ status, onChange }: { status: DeskStatus | null
   )
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+function Stat({ label, value, tone, title }: { label: string; value: string; tone?: string; title?: string }) {
   return (
-    <div className="flex flex-col min-w-0">
+    <div className="flex flex-col min-w-0" title={title}>
       <span className="label text-2xs">{label}</span>
       <span className={`text-md tabular truncate ${tone ?? 'text-text-primary'}`}>{value}</span>
     </div>
@@ -258,6 +344,10 @@ function AskPanel({ status, onRunFinished }: { status: DeskStatus | null; onRunF
         </Button>
       </PanelHeader>
       <PanelBody className="flex flex-col gap-3 p-3">
+        <HowToRead terms={ASK_TERMS}>
+          Ask a market or portfolio question. A portfolio manager model splits it across specialist agents that read live data, then writes one answer with its
+          sources. Nothing is proposed or traded unless you tick "let the desk act".
+        </HowToRead>
         {status && !status.configured && <ErrorBlock message="No model configured. Set an analyst provider key (see README: Desk)." />}
         <textarea
           className="input w-full min-h-[72px] text-md p-2 bg-transparent border border-border resize-y"
@@ -300,6 +390,16 @@ function AskPanel({ status, onRunFinished }: { status: DeskStatus | null; onRunF
     </Panel>
   )
 }
+
+const ASK_TERMS: Term[] = [
+  ['RUN REVIEW', 'Starts a full review of the book now, the same run the schedule starts. A review may propose entries and exits; they go through the governor.'],
+  ['NEW SESSION', 'Forgets the earlier questions and answers, so the next question starts without that context.'],
+  ['let the desk act', 'Off: the team only answers. On: it may also propose entries, exits and alerts. Proposals still pass the governor and, in approve-each mode, wait for you.'],
+  ['RUNNING / DONE / red badge', 'State of one agent. A red badge shows why it stopped early, for example timeout, error or max_rounds.'],
+  ['n tools', 'Number of data lookups the agent made. Each chip is one lookup; red means it failed. Open the lane for the task and what each lookup returned.'],
+  ['SOURCES', 'Web pages the agents cited.'],
+  ['Last line', 'How the run ended (end means normally), agents used, tokens read and written in thousands, and the estimated model cost in USD.'],
+]
 
 function RunDetail({ run, live }: { run: RunView; live: boolean }) {
   const pm = run.agents.find((a) => a.id === 'pm')
@@ -362,7 +462,7 @@ function AgentLane({ agent, defaultOpen }: { agent: AgentView; defaultOpen: bool
   return (
     <div className="border border-border-subtle p-2 flex flex-col gap-1 min-w-0">
       <button className="flex items-center gap-2 text-left min-w-0" onClick={() => setOpen((o) => !o)}>
-        <Badge tone={tone}>{agent.state === 'running' ? 'RUN' : agent.state === 'done' ? 'DONE' : (agent.stop ?? 'ERR').toUpperCase()}</Badge>
+        <Badge tone={tone}>{agent.state === 'running' ? 'RUNNING' : agent.state === 'done' ? 'DONE' : (agent.stop ?? 'ERR').toUpperCase()}</Badge>
         <span className="text-sm text-text-primary truncate">{agent.role}</span>
         <span className="text-xs text-text-secondary ml-auto shrink-0">{agent.tools.length} tools</span>
       </button>
@@ -392,7 +492,7 @@ function AgentLane({ agent, defaultOpen }: { agent: AgentView; defaultOpen: bool
   )
 }
 
-function ApprovalsPanel({ proposals, loading, error, offline, onRetry, onChange }: { proposals: ProposalRecord[] | undefined; loading: boolean; error: string | null; offline: boolean; onRetry: () => void; onChange: () => void }) {
+function ApprovalsPanel({ limits, proposals, loading, error, offline, onRetry, onChange }: { limits: DeskStatus['limits'] | undefined; proposals: ProposalRecord[] | undefined; loading: boolean; error: string | null; offline: boolean; onRetry: () => void; onChange: () => void }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [approving, setApproving] = useState<ProposalRecord | null>(null)
@@ -419,8 +519,20 @@ function ApprovalsPanel({ proposals, loading, error, offline, onRetry, onChange 
     <Panel>
       <PanelHeader title="PROPOSALS">{pending.length > 0 && <Badge tone="amber">{pending.length} PENDING</Badge>}</PanelHeader>
       <PanelBody className="flex flex-col">
+        <HowToRead className="px-3 pt-2" terms={proposalTerms(limits)}>
+          Entries and exits the agents or the ORDER tab submitted, newest pending first, then the last 8 decided. Each shows the size and risk the governor
+          computed and, when blocked, why.
+        </HowToRead>
         {err && <div className="px-3 pt-2 text-sm text-red-text">{err}</div>}
-        <AsyncBody loading={loading} data={proposals} error={error} offline={offline} onRetry={onRetry} rows={3} empty={{ label: 'no proposals yet' }}>
+        <AsyncBody
+          loading={loading}
+          data={proposals}
+          error={error}
+          offline={offline}
+          onRetry={onRetry}
+          rows={3}
+          empty={{ label: 'No proposals yet. One appears when an agent run or the ORDER tab submits an entry or exit.' }}
+        >
           {() =>
             [...pending, ...recent].map((p) => (
               <ProposalCard key={p.id} p={p} busy={busy === p.id} onDecide={(v) => (v === 'approve' ? (setErr(null), setApproving(p)) : void decide(p.id, v))} />
@@ -554,7 +666,7 @@ const BOOK_COLUMNS: Column<DeskPosition>[] = [
   { key: 'stop', label: 'STOP', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.stopPx)}</span> },
   {
     key: 'upnl',
-    label: 'UPNL',
+    label: <span title="unrealized profit or loss at the current mark, in USD">UPNL</span>,
     priority: 1,
     align: 'right',
     render: (p) => <span className={p.unrealizedPnl >= 0 ? 'text-green' : 'text-red-text'}>{fmtUsd(p.unrealizedPnl)}</span>,
@@ -592,7 +704,7 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
         <span className="text-xs text-text-secondary tabular ml-auto">{acc.available ? fmtUsd(acc.equityUsd) : (acc.note ?? 'unavailable')}</span>
       </div>
       {acc.positions.length === 0 ? (
-        <span className="px-3 py-2 text-xs text-text-secondary">flat</span>
+        <span className="px-3 py-2 text-xs text-text-secondary">no open positions</span>
       ) : (
         <DataTable columns={closable ? [...BOOK_COLUMNS, closeColumn] : BOOK_COLUMNS} rows={acc.positions} rowKey={(p) => p.coin} />
       )}
@@ -602,6 +714,9 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
     <Panel>
       <PanelHeader title="BOOK" />
       <PanelBody className="flex flex-col gap-1 pb-2">
+        <HowToRead className="px-3 pt-2" terms={BOOK_TERMS}>
+          Open positions on the desk account, marked at the live price. Compare ENTRY with STOP to see what each position risks; CLOSE exits the whole position.
+        </HowToRead>
         {loading && !portfolio && <SkeletonRows rows={2} />}
         {portfolio && book(`DESK (${portfolio.desk.venue.toUpperCase()})`, portfolio.desk, true)}
         {portfolio?.watched && book('WATCHED HYPERLIQUID ACCOUNT (READ-ONLY)', portfolio.watched, false)}
@@ -637,7 +752,19 @@ function AlertsPanel({ alerts, loading, error, offline, onRetry }: { alerts: Ale
     <Panel>
       <PanelHeader title="ALERTS" />
       <PanelBody className="flex flex-col max-h-[420px] overflow-y-auto">
-        <AsyncBody loading={loading} data={alerts} error={error} offline={offline} onRetry={onRetry} rows={3} empty={{ label: 'no alerts yet' }}>
+        <HowToRead className="px-3 pt-2" terms={ALERT_TERMS}>
+          What the desk flagged, newest first: large moves in watched or held coins, risk events on the book and proposal decisions. Each states what was
+          measured, not what to do.
+        </HowToRead>
+        <AsyncBody
+          loading={loading}
+          data={alerts}
+          error={error}
+          offline={offline}
+          onRetry={onRetry}
+          rows={3}
+          empty={{ label: 'No alerts yet. The desk checks watched and held coins on a timer and writes one here when a threshold is crossed.' }}
+        >
           {(rows) =>
             rows.map((a) => (
               <div key={a.id} className="border-b border-border-subtle px-3 py-2 flex flex-col gap-0.5 min-w-0">
@@ -656,7 +783,7 @@ function AlertsPanel({ alerts, loading, error, offline, onRetry }: { alerts: Ale
   )
 }
 
-function RunsPanel({ runs, loading, error, offline, onRetry }: { runs: RunRow[] | undefined; loading: boolean; error: string | null; offline: boolean; onRetry: () => void }) {
+function RunsPanel({ schedule, runs, loading, error, offline, onRetry }: { schedule: DeskStatus['schedule'] | undefined; runs: RunRow[] | undefined; loading: boolean; error: string | null; offline: boolean; onRetry: () => void }) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [view, setView] = useState<RunView | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -682,7 +809,21 @@ function RunsPanel({ runs, loading, error, offline, onRetry }: { runs: RunRow[] 
     <Panel>
       <PanelHeader title="RUNS" />
       <PanelBody className="flex flex-col">
-        <AsyncBody loading={loading} data={runs} error={error} offline={offline} onRetry={onRetry} rows={3} empty={{ label: 'no runs yet' }}>
+        <HowToRead
+          className="px-3 pt-2"
+          terms={[
+            ['ASK', 'A run you started with a question.'],
+            [
+              'CYCLE',
+              `A review run: scheduled, started with RUN REVIEW, or started by an alert.${schedule ? ` Alert-started runs are at least ${schedule.cycleCooldownMin} minutes apart, and at most ${schedule.maxCyclesPerDay} cycles run per UTC day.` : ''}`,
+            ],
+            ['Badge colour', 'Green finished, amber still running, red ended with an error.'],
+            ['$', 'Estimated model cost of the run in USD.'],
+          ]}
+        >
+          The last 15 runs of the agent team, newest first. Open one to replay which agents ran, what data they read and the answer.
+        </HowToRead>
+        <AsyncBody loading={loading} data={runs} error={error} offline={offline} onRetry={onRetry} rows={3} empty={{ label: 'No runs yet. Ask a question above or run a review to create one.' }}>
           {(list) =>
             list.map((r) => (
               <div key={r.id} className="border-b border-border-subtle">

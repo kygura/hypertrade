@@ -65,8 +65,8 @@ export const GAUGE_ZONES: Record<GaugeKey, GaugeZone[]> = {
   ],
   // Sign only.
   momentum: [
-    { to: 0, color: BAND[1], word: 'bearish' },
-    { to: 100, color: BAND[3], word: 'bullish' },
+    { to: 0, color: BAND[1], word: 'below zero' },
+    { to: 100, color: BAND[3], word: 'above zero' },
   ],
   // Compass band edges. Fundamentals and flows words are replaced by the matching
   // lens band at render time so gauge and tile agree; these are the fallback.

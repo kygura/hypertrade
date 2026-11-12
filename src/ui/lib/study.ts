@@ -149,3 +149,32 @@ export const fmtR = (x: number | null) => (x == null ? '—' : `${fmtSigned(x)}R
 export function screenLine(s: { events: number; weeks: number; expectancy: number | null; upper95: number | null }): string {
   return `${s.events} events · ${s.weeks} weeks · expectancy ${fmtR(s.expectancy)} · upper95 ${fmtR(s.upper95)}`
 }
+
+/**
+ * The screen's cut-offs. Mirror MIN_WEEKS and HOLDOUT_SHARE in src/server/lab/engine/eventStudy.ts (a value import
+ * would pull the engine into the bundle); study.test.ts asserts they are equal.
+ */
+export const STUDY_MIN_WEEKS = 30
+export const STUDY_HOLDOUT_SHARE = 0.3
+
+type ScreenFacts = { events: number; weeks: number; expectancy: number | null; upper95: number | null }
+
+/**
+ * An event study in one line: trades, weeks, the weekly-averaged result per trade, what the 95% upper bound says
+ * about the server's verdict, then the same average on the earlier and the most recent part. Facts about a replay.
+ */
+export function studyLine(d: { verdict: EventVerdict; screen: ScreenFacts; train: ScreenFacts; holdout: ScreenFacts }): string {
+  const s = d.screen
+  if (s.events === 0) return 'The rule never fired on the studied coins, so there is nothing to score.'
+  const trades = (n: number) => `${n} trade${n === 1 ? '' : 's'}`
+  const head = `${trades(s.events)} in ${s.weeks} week${s.weeks === 1 ? '' : 's'}; the average week returned ${fmtR(s.expectancy)} per trade after costs.`
+  const why =
+    d.verdict === 'insufficient'
+      ? `Fewer than ${STUDY_MIN_WEEKS} weeks with trades, so the screen gives no verdict.`
+      : d.verdict === 'rejected'
+        ? `Even the optimistic end of that estimate (95% upper bound ${fmtR(s.upper95)}) is below 0, so the screen rejects it.`
+        : `The 95% upper bound ${fmtR(s.upper95)} is not below 0, so the screen does not reject it. That is not proof of an edge.`
+  const part = (name: string, x: ScreenFacts) => `${name}: ${x.events === 0 ? 'no trades' : `${fmtR(x.expectancy)} over ${trades(x.events)}`}`
+  const early = Math.round((1 - STUDY_HOLDOUT_SHARE) * 100)
+  return `${head} ${why} ${part(`Earlier ${early}% of the period`, d.train)}; ${part(`most recent ${100 - early}%`, d.holdout)}.`
+}

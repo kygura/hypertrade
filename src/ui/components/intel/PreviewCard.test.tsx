@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import type { OrderPreview } from "../../../shared/intel";
 import { PreviewCard } from "./PreviewCard";
-import { confirmBlock, confirmBody, createSingleFlight, fmtPreviewClock, previewRemainingMs, STALE_TEXT, venueOf } from "./order";
+import { confirmBlock, confirmBody, createSingleFlight, fmtPreviewClock, previewRemainingMs, previewTakeaway, STALE_TEXT, venueOf } from "./order";
 
 // Render-check (react-dom/server, no jsdom), the ClaimLine.test.tsx approach:
 // DESIGN-terminal §7.3/§7.4 markup, plus the pure confirm gates.
@@ -153,5 +153,20 @@ describe("confirm single-flight", () => {
     await expect(third).rejects.toThrow("409");
     expect(flight.busy).toBe(false);
     expect(calls).toBe(1);
+  });
+});
+
+describe("previewTakeaway", () => {
+  test("states the stop-out loss and the distances from entry", () => {
+    expect(previewTakeaway(preview())).toBe(
+      "A fill at the stop $3,412.5 loses $78.90, 0.8% of the book, before fees. Stop is 5.2% from entry, estimated liquidation 32.5%. No target given.",
+    );
+  });
+
+  test("target as a multiple of the stop distance; no liquidation estimate", () => {
+    const p = preview();
+    const line = previewTakeaway({ intent: { ...p.intent, target: 3975.3 }, resolved: { ...p.resolved, liqPx: null } });
+    expect(line).toContain("Stop is 5.2% from entry; no liquidation estimate.");
+    expect(line).toContain("Target is 10.4% from entry, 2.0 times the stop distance.");
   });
 });

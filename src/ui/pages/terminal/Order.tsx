@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { ConfirmDialog, EmptyBlock, Panel, PanelBody, PanelHeader } from '../../components'
+import { ConfirmDialog, EmptyBlock, HowToRead, Panel, PanelBody, PanelHeader, type Term } from '../../components'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
 import { OrderBanner } from '../../components/intel/OrderBanner'
 import { OrderComposer } from '../../components/intel/OrderComposer'
@@ -36,6 +36,22 @@ import type { OrderConfirmResponse, OrderIntent, OrderPreview, OrderPreviewReque
 //   disabled while the request is in flight;
 // - success clears the preview; a 409 marks it stale (its hash is never sent
 //   again) and only RE-PREVIEW is offered.
+
+const ORDER_TERMS: Term[] = [
+  ['PAPER / TESTNET', 'Where the order goes: the desk\'s simulated book, or the Hyperliquid test network. Mainnet is refused.'],
+  ['3×', 'Leverage used for the liquidation estimate. It does not change the size; size comes from the amount you gave.'],
+  ['RISK OF BOOK', 'Loss if the stop fills at its price, as a share of desk equity, with the USD amount beside it. Size times the distance from entry to stop, before fees and slippage.'],
+  ['SIZE / NOTIONAL', 'Order size in coins, rounded down to the venue\'s size step, and its USD value at entry.'],
+  ['ENTRY', 'MARKET ≈ is the venue mark at preview time; the fill can differ. LIMIT is the price you gave; the order is rejected when the mark is already past it.'],
+  ['STOP', 'Stop price, how it was derived (as given, a percent, yesterday\'s low or high, or a multiple of the 14-day ATR on daily candles) and its distance from entry.'],
+  ['EST. LIQUIDATION', 'Approximate liquidation price for an isolated position at that leverage, and its distance from entry. An estimate, not the venue\'s number.'],
+  ['TARGET', 'Take-profit price, if you gave one. Without it the reward to risk check is skipped.'],
+  ['GOVERNOR', 'The desk\'s fixed risk rules run on this order. PASS: within every limit. CLIPPED: allowed at a smaller size, stated beside the badge. REJECTED: not allowed, with the reasons; adjust and preview again.'],
+  ['HOW IT RESOLVED', 'How each number was derived from your words and from market data.'],
+  ['ASSUMED BY THE PARSER', 'Fields your text left out and the model filled with a default. HYP marks a line as the model\'s assumption, not an observed fact.'],
+  ['VALID 0:42 / STALE', 'A preview can be confirmed for 60 seconds. After that, after an edit, or once the mark has moved more than 0.5%, it is stale and must be previewed again.'],
+  ['ADJUST', 'Edit the resolved fields directly instead of rewriting the text. Any edit makes the preview stale.'],
+]
 
 interface Held {
   data: OrderPreview
@@ -140,6 +156,10 @@ export function Order() {
     <div className="max-w-[1440px] mx-auto px-3 pb-3 md:px-[var(--gutter)] md:pb-[var(--gutter)] flex flex-col gap-3">
       <TerminalTabs />
       <OrderBanner venue={deskVenue} venueError={venueError} />
+      <HowToRead terms={ORDER_TERMS}>
+        Describe an order in words. The preview turns it into exact size, entry, stop and risk and runs the desk's risk rules on it. Check the risk of book and
+        the governor line before confirming; nothing is placed until you confirm, and a preview is valid for 60 seconds.
+      </HowToRead>
       <p role="status" aria-live="polite" className="sr-only">
         {announce}
       </p>
@@ -176,7 +196,7 @@ export function Order() {
             <Panel>
               <PanelHeader title="PREVIEW" />
               <PanelBody>
-                <EmptyBlock label="describe an order to preview it" />
+                <EmptyBlock label="No preview yet. Describe an order and press PREVIEW; its size, stop, risk and the governor's check appear here." />
               </PanelBody>
             </Panel>
           )}

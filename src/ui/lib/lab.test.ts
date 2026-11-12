@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { verdictOf as engineVerdict, MIN_WALK_FORWARD_SHARPE as ENGINE_WF, MIN_STABILITY as ENGINE_STAB } from "../../server/lab/engine/verdict";
+import { MIN_WALK_FORWARD_SHARPE, MIN_STABILITY, saveBarChecks, saveBarLine, searchLine, catalogueLine, pulseLine, VERDICT_MEANING } from "./lab";
 import { MIN_DEFLATED_SHARPE as ENGINE_MIN_DEFLATED_SHARPE } from "../../server/lab/engine/verdict";
 import { getMetric } from "../../server/lab/providers/registry";
 import {
@@ -402,5 +404,83 @@ describe("robustness: untested, DSR, verdict, folds", () => {
     expect(latestRunId([{ id: "b" }, { id: "a" }])).toBe("b");
     expect(latestRunId([])).toBeNull();
     expect(latestRunId(undefined)).toBeNull();
+  });
+});
+
+describe("fact lines", () => {
+  const sens = (stability: number) => ({ base: { sharpe: 1, totalReturn: 0.1 }, stability, points: [] });
+
+  test("the save bar's cut-offs mirror the engine's", () => {
+    expect(MIN_WALK_FORWARD_SHARPE).toBe(ENGINE_WF);
+    expect(MIN_STABILITY).toBe(ENGINE_STAB);
+    expect(Object.keys(VERDICT_MEANING).sort()).toEqual(["candidate", "fails_holdout", "fragile", "robust", "weak"]);
+  });
+
+  test("saveBarChecks: the first miss is the level the engine's verdict gives (parity)", () => {
+    const LEVEL = { holdout: "fails_holdout", walkForward: "weak", stability: "fragile", deflatedSharpe: "candidate" } as const;
+    const cases: Array<Partial<RuleEvaluation>> = [
+      { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: 0.95, sensitivity: sens(0.7) },
+      { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: 0.95 },
+      { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: 0.71 },
+      { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: 0.899 },
+      { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: null },
+      { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: 0.95, sensitivity: sens(0.33) },
+      { walkForward: stats({ sharpe: 1 }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: 0.95 },
+      { walkForward: null, holdout: stats({ sharpe: 0.6 }), deflatedSharpe: null },
+      { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0 }), deflatedSharpe: 0.95 },
+      { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0, trades: 0, untested: true }), deflatedSharpe: 0.95 },
+      { walkForward: stats({ sharpe: 1.4 }), holdout: null, deflatedSharpe: 0.95 },
+    ];
+    for (const c of cases) {
+      const e = ev(c);
+      const miss = saveBarChecks(e).find((x) => x.pass === false);
+      expect(miss ? LEVEL[miss.key] : "robust").toBe(engineVerdict(e).level);
+    }
+  });
+
+  test("saveBarLine: Sharpe with trades and days per window, then passes and misses with their numbers", () => {
+    const wf = stats({ sharpe: 1.4, trades: 38, days: 900 });
+    const ho = stats({ sharpe: 0.6, trades: 9, days: 290 });
+    expect(saveBarLine(ev({ walkForward: wf, holdout: ho, deflatedSharpe: 0.71 }))).toBe(
+      "Walk-forward Sharpe +1.40 on 38 trades over 900 days; holdout Sharpe +0.60 on 9 trades over 290 days. Passes holdout, walk-forward; misses deflated Sharpe (0.71 of 0.9); stability not measured.",
+    );
+    expect(saveBarLine(ev({ walkForward: wf, holdout: ho, deflatedSharpe: 0.95, sensitivity: sens(0.7) }))).toContain("Passes holdout, walk-forward, stability, deflated Sharpe.");
+    // 0.899 never prints as "0.90 of 0.9"
+    expect(saveBarLine(ev({ walkForward: wf, holdout: ho, deflatedSharpe: 0.899 }))).toContain("deflated Sharpe (0.899 of 0.9)");
+    const none = saveBarLine(ev({ walkForward: null, holdout: stats({ trades: 0, untested: true, days: 120 }), deflatedSharpe: null, sensitivity: sens(0.2) }));
+    expect(none).toBe("No walk-forward; holdout had no trade in 120 days. Misses holdout (no trade), walk-forward (none), stability (0.20 of 0.5), deflated Sharpe (not computed).");
+    expect(saveBarLine(ev({ walkForward: stats({ sharpe: 0.8, trades: 1 }), holdout: stats({ sharpe: -0.2 }), deflatedSharpe: 0.95 }))).toContain(
+      "misses holdout (Sharpe −0.20, needs above 0), walk-forward (Sharpe +0.80, needs above 1)",
+    );
+  });
+
+  test("searchLine: rules kept, variants, verdict counts, best walk-forward, holdout start; null when none kept", () => {
+    const dataRange = { from: "2020-01-01", to: "2026-01-01", days: 2000, holdoutFrom: "2024-10-01" };
+    const rules = [
+      ev({ walkForward: stats({ sharpe: 1.8 }), verdict: { level: "robust", reasons: [] } }),
+      ev({ walkForward: stats({ sharpe: 1.2 }), verdict: { level: "candidate", reasons: [] } }),
+      ev({ walkForward: stats({ sharpe: 0.4 }), verdict: { level: "candidate", reasons: [] } }),
+      ev({ walkForward: null }),
+    ];
+    expect(searchLine({ rules, dataRange, variantsScored: 4200, effectiveTrials: 151 })).toBe(
+      "4 rules kept out of 4,200 variants scored (about 151 independent): 1 robust, 2 candidate, 1 without a verdict. Best walk-forward Sharpe +1.80. The holdout starts 2024-10-01 and was not used to pick or rank them.",
+    );
+    expect(searchLine({ rules: rules.slice(0, 1), dataRange })).toBe("1 rule kept: 1 robust. Best walk-forward Sharpe +1.80. The holdout starts 2024-10-01 and was not used to pick or rank them.");
+    expect(searchLine({ rules: [], dataRange })).toBeNull();
+  });
+
+  test("catalogueLine: live Sharpe only from 30 live days; flags counted", () => {
+    const e = (days: number | null, sharpe: number, flags: Array<"decayed" | "overlap"> = []) => ({ live: days == null ? null : stats({ days, sharpe }), flags });
+    expect(catalogueLine([e(45, 0.8), e(60, -0.2, ["decayed"]), e(12, 3), e(null, 0, ["overlap"])])).toBe(
+      "4 saved rules. 2 have 30 or more live days: 1 with a live Sharpe above 0, 1 at or below. 1 flagged decayed, 1 flagged overlap.",
+    );
+    expect(catalogueLine([e(3, 1)])).toBe("1 saved rule. None has 30 live days yet, so no live Sharpe is shown. 0 flagged decayed, 0 flagged overlap.");
+    expect(catalogueLine([])).toBeNull();
+  });
+
+  test("pulseLine: rules in zone by side over the assets covered", () => {
+    const a = (longActive: number, longTotal: number, shortActive: number, shortTotal: number) => ({ longActive, longTotal, shortActive, shortTotal });
+    expect(pulseLine([a(2, 3, 0, 1), a(0, 2, 1, 1), a(0, 1, 0, 0)])).toBe("3 of 8 saved rules in zone on the latest daily bar: 2 long, 1 short, on 2 of 3 assets.");
+    expect(pulseLine([])).toBeNull();
   });
 });

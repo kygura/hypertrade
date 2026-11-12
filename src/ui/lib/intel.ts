@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { api, ApiError, parseWith } from './api'
 import { usePoll, type PollState } from './poll'
+import { fmtUsdSigned } from './format'
 import {
   AlertsResponseSchema,
   AssetDetailResponseSchema,
@@ -57,6 +58,7 @@ import {
   type Review,
   type ScreenerDslInput,
   type Thesis,
+  type Trade,
   type TradeNote,
   type UserEdgeInput,
   type Watch,
@@ -284,4 +286,40 @@ export const reviewThrottle = {
       // ignore
     }
   },
+}
+
+// ── journal takeaway ──
+
+type TakeawayTrade = Pick<Trade, 'closedAt' | 'pnlUsd' | 'r' | 'tag'>
+
+/**
+ * One fact line for the top of the Journal: closed trades in the window, how many made money,
+ * the net result after fees, mean R over the trades with a known stop, and what is untagged or
+ * still open. Counts and sums only; null when the window holds no trades.
+ */
+export function journalTakeaway(trades: readonly TakeawayTrade[], days: number): string | null {
+  if (trades.length === 0) return null
+  const closed = trades.filter((t) => t.closedAt != null)
+  const open = trades.length - closed.length
+  const out: string[] = []
+  if (closed.length === 0) {
+    out.push(`No closed trades in the last ${days} days.`)
+  } else {
+    const wins = closed.filter((t) => t.pnlUsd > 0).length
+    const net = closed.reduce((a, t) => a + t.pnlUsd, 0)
+    out.push(
+      `${closed.length} closed ${closed.length === 1 ? 'trade' : 'trades'} in the last ${days} days: ${wins} made money (${Math.round((wins / closed.length) * 100)}%), net ${fmtUsdSigned(net)} after fees.`,
+    )
+    const rs = closed.flatMap((t) => (t.r == null ? [] : [t.r]))
+    if (rs.length > 0) {
+      const mean = rs.reduce((a, b) => a + b, 0) / rs.length
+      out.push(`Mean result ${mean > 0 ? '+' : mean < 0 ? '−' : ''}${Math.abs(mean).toFixed(2)}R over the ${rs.length} with a known stop.`)
+    } else {
+      out.push('No closed trade has a known stop, so there are no R values.')
+    }
+    const untagged = closed.filter((t) => t.tag == null).length
+    if (untagged > 0) out.push(`${untagged} untagged.`)
+  }
+  if (open > 0) out.push(`${open} still open.`)
+  return out.join(' ')
 }

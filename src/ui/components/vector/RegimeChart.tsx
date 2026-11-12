@@ -18,6 +18,7 @@ import {
 } from 'lightweight-charts'
 import type { RegimeState, VectorResponse } from '../../../shared/vector'
 import { useTheme } from '../../themes/registry'
+import { HowToRead, type Term } from '../HowToRead'
 import { Segmented } from '../Segmented'
 import { alpha, css } from '../charts/theme'
 import { fmtUsdPx } from '../cycles/format'
@@ -42,6 +43,17 @@ const isOff = (s: RegimeState) => s.endsWith('risk_off')
 const word = (s: RegimeState) => REGIME_WORD[s].toLowerCase()
 /** ①–⑳ in UI text; plain digits past 20. */
 const circled = (n: number): string => (n >= 1 && n <= 20 ? String.fromCharCode(0x2460 + n - 1) : String(n))
+
+const CHART_TERMS: readonly Term[] = [
+  ['Line colour', 'The regime the model had committed to on that day (legend at top right). Grey means no regime yet: the on-chain inputs it needs start in late 2022.'],
+  ['Bottom strip', 'The same regime colours as a band, so changes are visible when the line is flat.'],
+  ['Numbered dots', 'Flips: days the regime reached the opposite extreme, strong risk-on after the last extreme was strong risk-off, or the reverse. Moves through the mild states are not flips. A dot above the line is a flip to strong risk-off, below it to strong risk-on. The last four are numbered and listed under the chart with the price that day.'],
+  ['Price axis', 'USD on a log scale: equal distances are equal percent moves.'],
+  ['1Y · 4Y · ALL', 'Visible range ending at the last close. Double-click the chart to reset it.'],
+  ['LEVELS', 'Draws the key levels from the levels table as dashed lines. On by default at 1Y only, because they bunch up over longer ranges.'],
+  ['risk', 'In the readout: share of the six stress conditions active that day, 0 to 100.'],
+  ['momentum', 'In the readout: the momentum score that day, −100 to +100.'],
+]
 
 type Series = { price: ISeriesApi<'Line'>; strip: ISeriesApi<'Histogram'>; markers: ISeriesMarkersPluginApi<Time> }
 
@@ -182,6 +194,10 @@ export function RegimeChart({
 
   return (
     <div className="flex flex-col">
+      <HowToRead className="px-[var(--panel-pad)] py-2 border-b border-border-subtle" terms={CHART_TERMS}>
+        BTC daily close, coloured by the regime the model read on each day. Look at where the colour changed relative to turns in price, and
+        how long each stretch lasted.
+      </HowToRead>
       <div className="flex flex-wrap items-center justify-between gap-2 px-[var(--panel-pad)] py-1.5">
         <div className="flex items-center gap-2">
           <Segmented
@@ -214,7 +230,7 @@ export function RegimeChart({
           <>
             {fmtDate(shown.t)} · <span className="text-text-primary">{fmtPrice(shown.price)}</span> ·{' '}
             <span style={{ color: regimeColor(shown.state) }}>{shown.state ? REGIME_WORD[shown.state] : '—'}</span> · risk{' '}
-            {fmtInt(shown.riskOff == null ? null : shown.riskOff * 100)} · mom {fmtDeltaPts(shown.momentum)}
+            {fmtInt(shown.riskOff == null ? null : shown.riskOff * 100)} · momentum {fmtDeltaPts(shown.momentum)}
           </>
         )}
       </div>
@@ -227,13 +243,13 @@ export function RegimeChart({
           aria-label={`Bitcoin daily log price coloured by Vector regime, ${fmtDate(history[0]?.t)} to ${fmtDate(asOf)}`}
         />
         {history.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-text-secondary">insufficient history</div>
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-text-secondary">No daily BTC price history loaded yet, so there is nothing to draw.</div>
         )}
       </div>
 
       <div className="flex flex-col gap-1 px-[var(--panel-pad)] py-1.5 text-xs tabular text-text-secondary" title={olderTitle || undefined}>
         {flips.length === 0 ? (
-          <span>no regime flips in history</span>
+          <span>No flips yet: the regime has not gone from one extreme (strong risk-on or strong risk-off) to the other in this history.</span>
         ) : (
           recent.map((f, i) => {
             const n = flips.length - recent.length + i + 1

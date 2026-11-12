@@ -47,7 +47,7 @@ export function RegimeHero({
       <div className="text-xl leading-none tabular tracking-[0.02em]" style={{ color }}>
         {regime.state ? REGIME_WORD[regime.state] : '—'}
       </div>
-      {regime.state == null && <div className="text-base text-text-muted">insufficient history</div>}
+      {regime.state == null && <div className="text-base text-text-muted">insufficient history: the regime starts once every on-chain and price input has enough data</div>}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-base tabular">
         <span className="text-text-primary">{alloc == null ? '—' : `${Math.round(alloc)}% BTC`}</span>
         <span

@@ -1,5 +1,5 @@
 import {
-  boardStudy, BoardResponseSchema, DefinitionsResponseSchema, RadarResponseSchema, SetupReplayResponseSchema, StudyResponseSchema, type DefinitionsResponse, type LedgerEvidence, type SetupReplayResponse, type SetupReplayRow, type ResearchSignal, type ScorecardEvidence, type StudySummary,
+  boardStudy, BoardResponseSchema, type BoardResponse, DefinitionsResponseSchema, RadarResponseSchema, SetupReplayResponseSchema, StudyResponseSchema, type DefinitionsResponse, type LedgerEvidence, type SetupReplayResponse, type SetupReplayRow, type ResearchSignal, type ScorecardEvidence, type StudySummary,
   type ResearchSource, type StudyRequest, type StudyResponse,
 } from '../../shared/research'
 import { CI_MIN_CLUSTERS } from '../../shared/platform'
@@ -231,4 +231,41 @@ export function replayFacts(r: SetupReplayRow): { mean: string; interval: string
     hit: r.hitRate == null ? '—' : `${Math.round(r.hitRate * 100)}%`,
     note: r.ci95 ? null : `interval needs ${REPLAY_MIN_CLUSTERS}+ clusters (has ${r.clusters})`,
   }
+}
+
+// ─── fact lines (one-line takeaways, facts only) ───
+
+/**
+ * The board in one line: signals and coins, how many carry an event study run today and its verdicts, how many have
+ * a rule nobody studied today, how many are backed by a live record or graded calls instead, and sources that are
+ * off. null with no signals (the empty state says which sources are on).
+ */
+export function boardLine(b: Pick<BoardResponse, 'signals' | 'sources'>): string | null {
+  const s = b.signals
+  if (s.length === 0) return null
+  const n = (k: number, word: string) => `${k} ${word}${k === 1 ? '' : 's'}`
+  const studied = s.flatMap((x) => (x.evidence?.kind === 'study' ? [x.evidence.verdict] : []))
+  const count = (v: StudySummary['verdict']) => studied.filter((x) => x === v).length
+  const record = s.filter((x) => x.evidence?.kind === 'ledger' || x.evidence?.kind === 'scorecard').length
+  const unstudied = s.filter((x) => !x.evidence && x.rule && x.source !== 'opportunity' && x.source !== 'radar').length
+  const bare = s.length - studied.length - record - unstudied
+  const off = Object.values(b.sources).filter((x) => x.state === 'unavailable').length
+  const parts = [
+    `${n(s.length, 'signal')} on ${n(new Set(s.map((x) => x.coin)).size, 'coin')}.`,
+    studied.length ? `${studied.length} studied today: ${count('clear')} clear, ${count('rejected')} rejected, ${count('insufficient')} insufficient.` : 'None studied today.',
+    unstudied ? `${unstudied} with a rule not studied today.` : null,
+    record ? `${record} backed by a live record or graded calls.` : null,
+    bare ? `${bare} with nothing recorded yet.` : null,
+    off ? `${n(off, 'source')} unavailable.` : null,
+  ]
+  return parts.filter((x): x is string => x != null).join(' ')
+}
+
+/** The replay at one horizon in one line: how many setup sides the data could replay, entries created and graded. */
+export function replayLine(rows: readonly SetupReplayRow[], horizon: string): string | null {
+  if (rows.length === 0) return null
+  const ok = rows.filter((r) => r.evaluable)
+  const sum = (f: (r: SetupReplayRow) => number) => ok.reduce((a, r) => a + f(r), 0)
+  const rest = rows.length - ok.length
+  return `At ${horizon}, ${ok.length} of ${rows.length} setup sides could be replayed: ${sum((r) => r.entries)} entries, ${sum((r) => r.n)} graded.${rest ? ` The other ${rest} read an input this data lacks.` : ''}`
 }
