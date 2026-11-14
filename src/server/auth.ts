@@ -16,7 +16,7 @@ const PUBLIC_PATHS = new Set(["/health", "/auth/login", "/auth/logout"]);
  * comparison operates on fixed-width buffers, which keeps timingSafeEqual from
  * throwing on length mismatch and stops length from leaking through timing.
  */
-function safeEqual(a: string, b: string): boolean {
+export function safeEqual(a: string, b: string): boolean {
   const digest = (s: string) => createHash("sha256").update(s, "utf8").digest();
   return timingSafeEqual(digest(a), digest(b));
 }
@@ -158,7 +158,7 @@ const GUEST_DENIED = /^\/(engine|mcp|radar)(\/|$)/;
  * session cookie, so orders, positions, briefs and LLM runs stay owner-only.
  * Read at call time, so flipping the env var and restarting is the whole toggle.
  */
-export function publicMode(): boolean {
+function publicMode(): boolean {
   return /^(1|true)$/i.test(process.env.PUBLIC_MODE ?? "");
 }
 
@@ -191,24 +191,24 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
 
   // Lab REST and MCP: session cookie or a LAB_API_TOKEN bearer, any method.
   if (LAB_PATH.test(path)) {
-    if (labBearerValid(c) || verifySession(getCookie(c, COOKIE_NAME))) return next();
+    if (labBearerValid(c) || hasSession(c)) return next();
     if (path.startsWith("/mcp")) c.header("WWW-Authenticate", "Bearer");
     return c.json({ error: "unauthorized" }, 401);
   }
 
   if (c.req.method === "POST" && (PROPOSAL_PATH.test(path) || VERDICT_PATH.test(path))) {
-    if (labBearerValid(c) || verifySession(getCookie(c, COOKIE_NAME))) return next();
+    if (labBearerValid(c) || hasSession(c)) return next();
     return c.json({ error: "unauthorized" }, 401);
   }
 
   // Metrics/sectors/marketstate/intel/queue/moves: session cookie on any method, or the same
   // bearer but GET only. The bearer grants nothing on any other path.
   if (READ_PATH.test(path)) {
-    if ((c.req.method === "GET" && labBearerValid(c)) || verifySession(getCookie(c, COOKIE_NAME))) return next();
+    if ((c.req.method === "GET" && labBearerValid(c)) || hasSession(c)) return next();
     return c.json({ error: "unauthorized" }, 401);
   }
 
-  if (!verifySession(getCookie(c, COOKIE_NAME))) {
+  if (!hasSession(c)) {
     return c.json({ error: "unauthorized" }, 401);
   }
   await next();

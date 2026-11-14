@@ -147,6 +147,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
           store.listResearch({ asset, since, limit: LIST_LIMIT }),
         ]);
         const targets = [...new Set([...exposure.positions.map((p) => p.asset), ...watched])];
+        const focus = new Set(targets);
         const mine = scheduled.filter((e) => e.assets.some((a) => same(a, asset)));
         const events: AssetEvent[] = [
           ...flowEvents
@@ -171,7 +172,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
           snapshots,
           flow,
           events,
-          catalysts: mine.map((e) => toCatalyst(e, new Set(targets))),
+          catalysts: mine.map((e) => toCatalyst(e, focus)),
           graph: { edges: edges.filter((e) => same(e.src, asset) || same(e.dst, asset)), paths: walk(edges, [asset], targets) },
         };
         return c.json(res);

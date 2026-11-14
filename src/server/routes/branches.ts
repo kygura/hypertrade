@@ -32,9 +32,9 @@ export const branchesRoutes = new Hono()
     return c.json(branch, 201);
   })
   .get("/:id", async (c) => {
-    const branch = await db.getBranch(c.req.param("id"));
+    const id = c.req.param("id");
+    const [branch, cached] = await Promise.all([db.getBranch(id), db.getBranchResult(id)]);
     if (!branch) return c.json({ error: "not found" }, 404);
-    const cached = await db.getBranchResult(branch.id);
     return c.json({ ...branch, result: cached?.result ?? null });
   })
   .put("/:id", async (c) => {

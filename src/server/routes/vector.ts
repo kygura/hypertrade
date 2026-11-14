@@ -25,7 +25,7 @@ export const FAIL_RETRY_MS = 30 * 60_000;
 /** Per-source overrides of FAIL_RETRY_MS: bitcoin-data's keyless quota is 10/hour and 15/day. */
 const SOURCE_RETRY_MS: Record<string, number> = { bgeometrics: 3 * 60 * 60_000 };
 /** One source's load is abandoned (reported as a timeout) after this long. */
-export const SOURCE_TIMEOUT_MS = 180_000; // no-DB cold start: HL funding + alts share the weight guard (~60 s each measured)
+const SOURCE_TIMEOUT_MS = 180_000; // no-DB cold start: HL funding + alts share the weight guard (~60 s each measured)
 
 export type VectorDeps = {
   now: () => number;
@@ -33,7 +33,7 @@ export type VectorDeps = {
   sources: () => Record<string, Loader>;
 };
 
-export const defaultVectorDeps: VectorDeps = {
+const defaultVectorDeps: VectorDeps = {
   now: () => Date.now(),
   sources: () => createVectorLoaders(defaultVectorIo()),
 };
@@ -51,7 +51,7 @@ function timeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 }
 
 /** The model over whatever the sources hold; a source without data contributes nothing (its inputs read null). */
-export function assembleVector(states: Record<string, SourceState>, now: number): VectorResponse {
+function assembleVector(states: Record<string, SourceState>, now: number): VectorResponse {
   let series: SeriesMap = {};
   const data = Object.values(states).map((s) => s.data).filter((d): d is SourceData => d != null);
   for (const d of data) if (d.series) series = mergeSeries(series, d.series);

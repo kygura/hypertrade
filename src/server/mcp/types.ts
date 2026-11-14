@@ -19,7 +19,7 @@ export interface ToolInputSchema {
   additionalProperties?: boolean;
 }
 
-export interface ToolAnnotations {
+interface ToolAnnotations {
   readOnlyHint?: boolean;
   destructiveHint?: boolean;
   idempotentHint?: boolean;
@@ -53,7 +53,7 @@ export class UpstreamError extends Error {
   }
 }
 
-export interface PromptArgument {
+interface PromptArgument {
   name: string;
   description: string;
   required?: boolean;
