@@ -45,7 +45,10 @@ account-wide by `PROPR_MAX_LEVERAGE` (default 10). Each trade's leverage is pick
    set it on `propose_trade` from their conviction (the portfolio tool tells them the venue picks
    leverage per trade). A copilot order runs at the leverage its preview shows (1x unless the
    order text or the adjust form gives one);
-2. else the proposal's confidence through `PROPR_LEVERAGE_BY_CONFIDENCE` (`low:1,medium:3,high:5`);
+2. else the proposal's confidence through `PROPR_LEVERAGE_BY_CONFIDENCE` (`low:1,medium:3,high:5`).
+   An approved extremes take carries its own: the research session's `leverage` goes in step 1,
+   its conviction (the session's, else the priced R:R's) here (docs/EXTREMES.md, Pricing). Its
+   ticket is still sized at 0.5% risk from the stop: the leverage never sizes it;
 3. else `PROPR_DEFAULT_LEVERAGE`;
 4. else the smallest leverage that carries the ladder's notional on the account's equity.
 
@@ -118,5 +121,5 @@ hourly:
   confirmed once `propr:check` runs against a real account.
 - The governor's open-risk check does not see resting rungs; the firm worst case does.
 - Propr's effective leverage limits endpoint is not read; the rulebook caps above stand in for it.
-- Entry, stop and target pricing from perp-radar's scanner on top of the extremes module is not
-  here yet. Proposals still come from the desk's agents and the operator.
+- Extremes takes are priced on Hyperliquid's 1h candles, not Propr's marks; the governor and the
+  ladder re-check against Propr's own mark when it is approved.

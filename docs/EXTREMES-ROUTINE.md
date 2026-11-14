@@ -75,12 +75,13 @@ Work the events strongest first (highest `severity`). At most 4 web searches per
    ```bash
    curl -sS -X POST "$APP_URL/api/extremes/verdict" \
      -H "Authorization: Bearer $LAB_API_TOKEN" -H "Content-Type: application/json" \
-     -d '{"key":"<key>","stance":"take","direction":"long","killPx":92.1,"cause":"<one or two sentences, with the dated cause if there is one>","sources":["https://..."]}'
+     -d '{"key":"<key>","stance":"take","direction":"long","killPx":92.1,"cause":"<one or two sentences, with the dated cause if there is one>","sources":["https://..."],"confidence":"medium"}'
    ```
    - `stance`: `take`, `watch` or `pass`. `direction` and `killPx` only with `take`.
    - `cause`: 1 to 600 characters. `sources`: up to 5 URLs you actually read.
-   - No other fields. You never set an entry, a target or a size.
-   - 200: stored. On `take` the app pushes it to his phone itself and it becomes a setup he can approve or reject on the coin page; it expires after `EXTREMES_READY_TTL_H` (4 h by default). Do not notify him another way.
+   - Optional on `take`: `confidence` (`low`, `medium` or `high`), how sure you are of the thesis after steps 1 to 4; and `leverage` (whole number 1 to 10), only when you have a reason for a specific one. Leave both out when unsure: the app then takes the conviction from the priced R:R, and the conviction picks the leverage on Propr.
+   - No other fields. You never set an entry, a target or a size: the app prices the stop and target from candles and keeps the farther of its stop and your `killPx`.
+   - 200: stored. On `take` the app pushes it to his phone itself and, when the priced R:R clears the floor (2:1 by default), it becomes a setup he can approve or reject on the coin page; it expires after `EXTREMES_READY_TTL_H` (4 h by default). Under the floor the push says so and nothing opens: that is the app's call, not an error. Do not notify him another way.
    - 422: `killPx` is on the wrong side of the live mark. Correct it once from step 2, or downgrade to `watch`.
    - 409: the key already has a verdict. Leave it.
    - 404: unknown key. Copy the key exactly as the payload gives it.

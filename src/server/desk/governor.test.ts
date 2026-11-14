@@ -150,6 +150,13 @@ describe("operatorRiskOrder", () => {
     expect(warnings.join(" | ")).toContain("risk 5% clipped to the 0.5% per-trade limit");
   });
 
+  test("with a riskPct, leverage and conviction only ride along for the venue: the riskPct sizes it", () => {
+    expect(operatorRiskOrder({ ...base, riskPct: 0.3, leverage: 5, confidence: "high" }, gctx())).toEqual({
+      order: { coin: "ETH", side: "long", stop: 3800, target: 4500, entryLimit: undefined, leverage: 5, confidence: "high", riskPct: 0.3 },
+      warnings: [],
+    });
+  });
+
   test("without notional or leverage the order's riskPct stands", () => {
     expect(operatorRiskOrder({ ...base, riskPct: 0.3 }, gctx())).toEqual({ order: { coin: "ETH", side: "long", stop: 3800, target: 4500, entryLimit: undefined, riskPct: 0.3 }, warnings: [] });
   });

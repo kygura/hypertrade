@@ -1,4 +1,4 @@
-import { deskRisk } from "../../routes/platform.js";
+import { deskRisk, type Ticket } from "../../routes/platform.js";
 import { describe, expect, test } from "bun:test";
 import { loadDeskConfig, type ProprVenueConfig } from "../config.js";
 import { DeskService } from "../service.js";
@@ -398,6 +398,20 @@ describe("DeskService on the Propr venue", () => {
     const placed = await deskRisk(() => service).place({ coin: "ETH", side: "long", stopPx: 3800, targetPx: 4500 }, "opp:o1");
     expect(placed.status).not.toBe("executed");
     expect(placed.reasons.join(" ")).toContain("Propr dry run");
+  });
+
+  test("a platform ticket's conviction or leverage picks the ladder's leverage, never its size", async () => {
+    const now = () => NOW;
+    const config = loadDeskConfig(env({ PROPR_LEVERAGE_BY_CONFIDENCE: "low:1, medium:2, high:4" }));
+    const store = new MemoryStore(now);
+    const service = new DeskService({ config, store, data: new FakeData([ctx("ETH", 4000)]), notifier: new RecordingNotifier(), now, broker: new ProprBroker({ config: config.propr!, market, fetchFn: fakePropr({}).fetchFn }) });
+    const ticket = { coin: "ETH", side: "long" as const, stopPx: 3800, targetPx: 4500 };
+    const leverageOf = async (t: Ticket) => {
+      const rec = (await store.getProposal((await deskRisk(() => service).place(t, "opp:o1")).proposalId))!;
+      return { leverage: ((rec.execution as { requests: Array<{ margin?: { leverage: number } }> }).requests[0]!.margin!).leverage, riskPct: (rec.proposal as { resolvedRiskPct: number }).resolvedRiskPct };
+    };
+    expect(await leverageOf({ ...ticket, confidence: "high" })).toEqual({ leverage: 4, riskPct: 0.5 });
+    expect(await leverageOf({ ...ticket, confidence: "high", leverage: 3 })).toEqual({ leverage: 3, riskPct: 0.5 });
   });
 
   test("an agent's exit waits for approval; the operator's close does not", async () => {

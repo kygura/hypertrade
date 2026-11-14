@@ -139,15 +139,19 @@ function assess(p: RiskOrder, ctx: GovernorContext, proposalReasons: string[]): 
 }
 
 /**
- * An operator order sized by notional (or leverage × equity) becomes the
- * riskPct that notional implies at the current stop distance, clipped to the
- * per-trade limit with a warning; evaluateRisk then applies every other cap.
- * Without notional or leverage the order's own riskPct stands.
+ * An operator order sized by notional (or, without a riskPct, leverage ×
+ * equity) becomes the riskPct that notional implies at the current stop
+ * distance, clipped to the per-trade limit with a warning; evaluateRisk then
+ * applies every other cap. Otherwise the order's own riskPct stands, and its
+ * leverage only sets the venue's leverage (a platform ticket's conviction).
  */
 export function operatorRiskOrder(o: OperatorOrder, ctx: GovernorContext): { order: RiskOrder; warnings: string[] } {
-  const base = { coin: ctx.market?.coin ?? o.coin, side: o.side, stop: o.stop, target: o.target, entryLimit: o.entryLimit, ...(o.leverage != null ? { leverage: o.leverage } : {}) };
+  const base = {
+    coin: ctx.market?.coin ?? o.coin, side: o.side, stop: o.stop, target: o.target, entryLimit: o.entryLimit,
+    ...(o.leverage != null ? { leverage: o.leverage } : {}), ...(o.confidence ? { confidence: o.confidence } : {}),
+  };
   const equity = ctx.account.equityUsd;
-  const notional = o.notionalUsd ?? (o.leverage != null ? o.leverage * equity : null);
+  const notional = o.notionalUsd ?? (o.leverage != null && o.riskPct == null ? o.leverage * equity : null);
   if (notional == null) return { order: { ...base, riskPct: o.riskPct! }, warnings: [] };
   const mark = ctx.market?.markPx;
   // No market or no equity: evaluateRisk rejects with its own reason.

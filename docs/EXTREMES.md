@@ -25,12 +25,14 @@ says `take`. Contracts: `src/shared/extremes.ts`.
    idempotency and a retry starts a second session. With no target, or on any failure, each
    event's facts are pushed through the desk notifier instead.
 4. **Verdict** (`POST /api/extremes/verdict`, bearer `LAB_API_TOKEN`). Body
-   `{key, stance: take|watch|pass, direction?, killPx?, cause, sources?}`. Every stance stamps the live mark
-   (`verdictMark`; null for `watch`/`pass` when no fresh mark exists). `take` needs a direction, a fresh mark (503
-   otherwise) and a kill level on the right side of it (422 otherwise); it becomes an approvable opportunity (below)
-   and sends one push linking to the coin page. `watch` and `pass` are stored, no push. One verdict per event. The
-   session never writes an entry, a target or a size. Response: `{record, mark, pushed, opportunity, opportunityReason}`,
-   `opportunity` = `{id, status, created}` or null.
+   `{key, stance: take|watch|pass, direction?, killPx?, cause, sources?, confidence?, leverage?}`. Every stance stamps
+   the live mark (`verdictMark`; null for `watch`/`pass` when no fresh mark exists). `take` needs a direction, a fresh
+   mark (503 otherwise) and a kill level on the right side of it (422 otherwise); code prices it (Pricing, below), it
+   becomes an approvable opportunity (Approve, below) and sends one push linking to the coin page. `confidence`
+   (low|medium|high) and `leverage` (1-10) are optional on a take: the session's conviction and the Propr leverage it
+   wants. `watch` and `pass` are stored, no push. One verdict per event. The session never writes an entry, a target or
+   a size. Response: `{record, mark, pushed, opportunity, opportunityReason, pricing}`, `opportunity` = `{id, status,
+   created}` or null, `pricing` = `{priced: true, setup, stop, target, rr, minRr}`, `{priced: false, reason}` or null.
 
 `GET /api/extremes?days=7` (max 30) lists events with delivery, verdict and grade, plus a summary (below):
 `{since, records: [ExtremeRecord & {grade}], summary}`.
@@ -121,6 +123,30 @@ set, else the code defaults, and print which.
   defaults; the next job run uses them. When the code defaults change, run it too: applied
   rows hold full thresholds, so they keep the old ones until the next applied run.
 
+## Pricing
+
+`src/server/extremes/pricing.ts`, ported from perp-radar's scanner (`src/setups.ts` there), on the coin's last 80 h of
+Hyperliquid 1h candles (current bar last). Entry is the verdict mark. Levels: 1h ATR(14), the last 24 bars' high and
+low with the mark, and the 72 bars before the current one (low, high, median close; needs 48). One template per kind
+and fade side:
+
+| kind | direction | setup | template stop | target |
+| --- | --- | --- | --- | --- |
+| `price_dislocation` | short (long mirrored) | `fade_extension` | 24h high + 0.5 ATR | 72h median |
+| `oi_flush` | long | `flush_reversion` | 24h low − 0.5 ATR | 24h low + half the 24h range |
+| `oi_flush` | short | `squeeze_exhaustion` | 24h high + 0.5 ATR | 24h high − half the 24h range |
+| `crowded_asymmetry` | long | `short_squeeze_loading` | 72h low − 0.25 ATR | 72h high |
+| `crowded_asymmetry` | short | `long_squeeze_loading` | 72h high + 0.25 ATR | 72h low |
+
+- The stop is the farther from the entry of the template's stop and `killPx`, then widened to at least 0.75 ATR
+  (perp-radar's `MIN_STOP_ATR`), so a tight stop cannot inflate the R:R. R:R = reward / risk at the entry.
+- A priced take must clear `EXTREMES_MIN_RR` (default 2), compared at one decimal (1.98 passes against 2). Under it the
+  verdict is stored and pushed with the levels and the reason, and no opportunity opens (`opportunityReason` says why).
+- Unpriced (a direction against the event's fade side, a target already behind the mark, under 15 h of candles, under
+  48 h for a 72 h range, or a failed candle read): it opens as before, stop = `killPx`, no target, and the push says why.
+- Conviction: the verdict's `confidence`, else the R:R's (3.5:1 or more high, 2.5:1 or more medium, else low). It and the
+  verdict's `leverage` go on the opportunity as tags, `conviction:<c>` and `leverage:<n>`.
+
 ## Approve
 
 A `take` becomes a platform `Opportunity` (`src/server/extremes/opportunity.ts`), shown in the coin page's SETUP block
@@ -128,11 +154,17 @@ and decided there like any ready setup (APPROVE sizes the ticket through the des
 cookie only, the research bearer cannot approve).
 
 - `setupKind` = the event kind, `direction` = the verdict's, `entryPx` = the verdict mark, `stopPx` = `invalidationPx` =
-  `killPx`, no target, no costs. Tags `extreme`, the kind (and `tier:unknown` when no volume is stored for the coin).
+  the priced stop and `targetPx` the priced target (unpriced: `killPx` and no target), no costs. Tags `extreme`, the
+  kind (and `tier:unknown` when no volume is stored for the coin), then when priced the setup and `conviction:<c>`, and
+  `leverage:<n>` when the verdict gave one. Approving hands the target, conviction and leverage to the desk: the ticket
+  is still sized at 0.5% risk from the stop; on Propr the leverage (else the conviction through
+  `PROPR_LEVERAGE_BY_CONFIDENCE`) picks the trade's cross leverage and the governor's per-coin cap, never the size.
 - `score` = the event severity under `scoreVersion` `extremes-1` (`EXTREMES_SCORE_VERSION`), a different number from
   the scanner score: the feed labels it SEV, the detail says severity, and it never enters ledger stats or evidence.
 - Liquidity tier from the latest stored 24 h volumes, regime from the coin's last 24 h of snapshots (`unknown` without).
-  The `created` ledger entry holds the event facts and `{mark, verdictMark, killPx, eventTs, window, source}`.
+  The `created` ledger entry holds the event facts and `{mark, verdictMark, killPx, eventTs, window, source}`, plus
+  `pricing` (setup, stop, target, rr, zone, structural stop, ATR, the 24h and 72h levels, or `unpriced` with the
+  reason), `conviction` and `leverage` when known.
 - Status `new -> calculated -> ready`, actor system. A live row on the same `coin|direction|kind` is reported, not
   duplicated or refreshed. If creating it fails, the verdict and the push still go through (`opportunity: null`).
 - It expires `EXTREMES_READY_TTL_H` (4) hours after it became ready, in the scanner and in this job (the serverless API

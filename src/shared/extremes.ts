@@ -37,7 +37,7 @@ export type ExtremeEvent = z.infer<typeof ExtremeEventSchema>;
 
 export const EXTREME_STANCES = ["take", "watch", "pass"] as const;
 
-/** What the research session answers for one event. `take` needs a direction and a kill level; code prices the rest. */
+/** What the research session answers for one event. `take` needs a direction and a kill level; code prices the rest (extremes/pricing.ts). */
 export const ExtremeVerdictSchema = z
   .strictObject({
     key: z.string().min(1),
@@ -48,6 +48,10 @@ export const ExtremeVerdictSchema = z
     /** Why the event exists, one or two sentences, with the dated cause when there is one. */
     cause: z.string().min(1).max(600),
     sources: z.array(z.string().url()).max(5).default([]),
+    /** Optional, take only: the session's conviction in the thesis. Without it the priced R:R decides. */
+    confidence: z.enum(["low", "medium", "high"]).optional(),
+    /** Optional, take only: the cross leverage the trade should run at on Propr (1-10, capped per coin there). Without it the conviction picks. */
+    leverage: z.number().int().min(1).max(10).optional(),
   })
   .superRefine((v, ctx) => {
     if (v.stance !== "take") return;

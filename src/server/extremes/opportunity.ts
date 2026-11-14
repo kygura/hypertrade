@@ -5,11 +5,14 @@ import { snapshotStreams } from "../platform/replaySource.js";
 import { clean } from "../platform/scanner.js";
 import { dedupeKey, type OpportunityInput, type PlatformStore } from "../platform/store.js";
 import { latestVolumes, RANK_WINDOW_MS } from "./job.js";
+import { convictionOfRr, convictionTag, leverageTag, type ExtremePricing } from "./pricing.js";
 
 // A `take` verdict as a platform Opportunity (docs/EXTREMES.md § Approve): the coin page's SETUP block can then approve
 // it through the desk governor like any ready setup. Only what is known goes in: kind and direction from the event and
-// the verdict, stop = invalidation = killPx, no target, entry = the live mark stamped at verdict time, score = the
-// event's severity under its own scoreVersion (EXTREMES_SCORE_VERSION), no costs (no book read here). It reaches
+// the verdict, entry = the live mark stamped at verdict time, score = the event's severity under its own scoreVersion
+// (EXTREMES_SCORE_VERSION), no costs (no book read here). Priced (pricing.ts): stop = invalidation = the priced stop and
+// the template's target, tagged with the conviction (the verdict's, else the R:R's) and the verdict's leverage, which
+// the desk reads back. Unpriced: stop = invalidation = killPx and no target, as before. It reaches
 // `ready` by the shortest legal path new -> calculated -> ready (checkTransition), actor system. A live row on the same
 // dedupe key (coin|direction|kind) is returned as it is: never a second one, and never refreshed.
 
@@ -27,20 +30,35 @@ export interface ExtremeMarket {
 }
 
 /** The opportunity and its `created` ledger payload for a take (pure). Throws for a record that is not a take with a stamped mark. */
-export function extremeOpportunityInput(r: ExtremeRecord, m: ExtremeMarket): { input: OpportunityInput; created: LedgerPayload<"created"> } {
+export function extremeOpportunityInput(r: ExtremeRecord, m: ExtremeMarket, pricing: ExtremePricing | null = null): { input: OpportunityInput; created: LedgerPayload<"created"> } {
   const v = r.verdict;
   if (v?.stance !== "take" || !v.direction || v.killPx == null || r.verdictMark == null) throw new Error("only a take with a stamped mark becomes an opportunity");
   const e = r.event;
   const kill = v.killPx;
   const cause = v.cause.length > 400 ? `${v.cause.slice(0, 399)}…` : v.cause;
+  const p = pricing?.priced ? pricing : null;
+  const stop = p ? p.stop : kill;
+  const conviction = v.confidence ?? (p ? convictionOfRr(p.rr) : undefined);
+  const where = p ? `(stop; kill ${px(kill)}, ${p.setup} to ${px(p.target)} at ${p.rr}:1)` : "(kill)";
   const input: OpportunityInput = {
     coin: e.coin, direction: v.direction, setupKind: e.kind, tradeType: "directional", score: e.severity, scoreVersion: EXTREMES_SCORE_VERSION,
-    tags: ["extreme", e.kind, ...(m.tier == null ? ["tier:unknown"] : [])], liquidityTier: m.tier ?? 3, regime: m.regime ?? "unknown",
-    invalidation: `${v.direction === "long" ? "Below" : "Above"} ${px(kill)} (kill). ${cause}`,
-    entryPx: r.verdictMark, stopPx: kill, targetPx: null, invalidationPx: kill,
+    tags: [
+      "extreme", e.kind, ...(m.tier == null ? ["tier:unknown"] : []),
+      ...(p ? [p.setup] : []), ...(conviction ? [convictionTag(conviction)] : []), ...(v.leverage != null ? [leverageTag(v.leverage)] : []),
+    ],
+    liquidityTier: m.tier ?? 3, regime: m.regime ?? "unknown",
+    invalidation: `${v.direction === "long" ? "Below" : "Above"} ${px(stop)} ${where}. ${cause}`,
+    entryPx: r.verdictMark, stopPx: stop, targetPx: p ? p.target : null, invalidationPx: stop,
   };
+  const priced = p
+    ? { setup: p.setup, stopPx: p.stop, targetPx: p.target, rr: p.rr, zone: p.zone, structuralStop: p.structuralStop, atr1h: px(p.levels.atr1h), hi24h: p.levels.hi24h, lo24h: p.levels.lo24h, range72h: p.levels.range72h }
+    : { unpriced: pricing && !pricing.priced ? pricing.reason : null };
   const created = clean({
-    features: { features: e.facts, inputs: { mark: e.mark, verdictMark: r.verdictMark, killPx: kill, eventTs: e.ts, window: e.window, source: "extremes" } },
+    features: {
+      features: e.facts,
+      inputs: { mark: e.mark, verdictMark: r.verdictMark, killPx: kill, eventTs: e.ts, window: e.window, source: "extremes",
+        ...(pricing ? { pricing: priced } : {}), ...(conviction ? { conviction } : {}), ...(v.leverage != null ? { leverage: v.leverage } : {}) },
+    },
     market: { mark: r.verdictMark, dayNtlVlm: m.dayNtlVlm, oiUsd: m.oiUsd },
     score: e.severity, scoreVersion: EXTREMES_SCORE_VERSION,
   }) as LedgerPayload<"created">;
@@ -74,13 +92,14 @@ export async function openExtremeOpportunity(
   r: ExtremeRecord,
   now: number,
   publish: (o: Opportunity, change: "created" | "status") => void = () => {},
+  pricing: ExtremePricing | null = null,
 ): Promise<{ opportunity: Opportunity; created: boolean }> {
   const v = r.verdict;
   if (v?.stance !== "take" || !v.direction) throw new Error("not a take");
   const key = dedupeKey({ coin: r.event.coin, direction: v.direction, setupKind: r.event.kind });
   const live = (await store.listOpportunities({ statuses: [...LIVE_STATUSES], limit: 500 })).find((o) => o.dedupeKey === key);
   if (live) return { opportunity: live, created: false };
-  const { input, created } = extremeOpportunityInput(r, await extremeMarket(store, r.event.coin, now));
+  const { input, created } = extremeOpportunityInput(r, await extremeMarket(store, r.event.coin, now), pricing);
   const res = await store.upsertOpportunity(input, created);
   let cur = res.opportunity;
   if (res.created) publish(cur, "created");
