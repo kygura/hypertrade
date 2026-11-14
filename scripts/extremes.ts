@@ -4,15 +4,26 @@
 //   bun run extremes replay [--top 30] [--days N] [--events] [--source candles|snapshots]
 //   bun run extremes score [--days 30]           stored events graded from scan_snapshots (needs DATABASE_URL): the
 //                                                GET /api/extremes summary by stance and by kind
+//   bun run extremes calibrate [--days 30] [--top N] [--apply] [--json] [--reset]
+//                                                frequency calibration of the thresholds on stored scan_snapshots
+//                                                (needs DATABASE_URL; extremes/calibrate.ts, docs/EXTREMES.md § Calibration
+//                                                pipeline). Stores a run row (applied only with --apply and a change);
+//                                                --reset stores an applied row equal to the code defaults (rollback).
+// scan, show and replay detect with the latest applied calibration when DATABASE_URL is set, else the code defaults.
 // candles (default): HL 15-min candles (the latest 5000, about 52 days) + hourly funding through the setup replay's loader
 // (platform/replaySource.ts, memoised HL fetchers under the weight guard, about 3 coins a minute). Candles carry no OI,
 // so oi_flush and crowded_asymmetry are not evaluable on them. snapshots: stored scan_snapshots (needs DATABASE_URL).
 import { HL_MAX_CANDLES } from "../src/shared/hl-client";
 import { fundingAprPct } from "../src/shared/signalMath";
 import { databaseUrl, releaseConnection } from "../src/server/db";
+import { createNotifier } from "../src/server/desk/notify";
+import {
+  appliedThresholds, calibrateExtremes, calibrationAlert, calibrationParams, calibrationTable, resetResult, universeFromStreams, type AppliedThresholds,
+} from "../src/server/extremes/calibrate";
 import {
   BTC_COIN, DEFAULT_EXTREME_THRESHOLDS, detectExtremes, EXTREME_LOOKBACK_MS, EXTREME_MIN_HISTORY_MS, readExtremes,
 } from "../src/server/extremes/detect";
+import { extremesParams } from "../src/server/extremes/job";
 import { gradedExtremes, type ExtremeSummaryRow } from "../src/server/extremes/grade";
 import { replayExtremes, type ReturnStats } from "../src/server/extremes/replay";
 import type { RingPoint } from "../src/server/platform/features";
@@ -56,6 +67,13 @@ async function candleStreams(o: { top?: number; coins?: string[]; spanMs: number
   return { end, streams };
 }
 
+/** The thresholds the live job applies (latest applied calibration), or the code defaults without a database. */
+async function liveThresholds(): Promise<AppliedThresholds & { label: string }> {
+  if (!databaseUrl()) return { thresholds: DEFAULT_EXTREME_THRESHOLDS, source: "defaults", label: "code defaults (no DATABASE_URL)" };
+  const a = await appliedThresholds(new PgPlatformStore(), log);
+  return { ...a, label: a.source === "defaults" ? "code defaults" : `calibration #${a.source.id} (${a.source.ranAt})` };
+}
+
 const pct = (x: number | null, d = 2) => (x == null ? "-" : `${x < 0 ? "-" : "+"}${Math.abs(x * 100).toFixed(d)}%`);
 const num = (x: number | null, d = 2) => (x == null ? "-" : x.toFixed(d));
 const cell = (s: ReturnStats) => (s.n ? `n${s.n} hit ${Math.round(s.hitRate! * 100)}% med ${pct(s.median)} mean ${pct(s.mean)}` : "n0");
@@ -63,8 +81,9 @@ const cell = (s: ReturnStats) => (s.n ? `n${s.n} hit ${Math.round(s.hitRate! * 1
 async function scan(top: number) {
   const { end, streams } = await candleStreams({ top, spanMs: EXTREME_LOOKBACK_MS + DAY });
   const btc = streams.get(BTC_COIN) ?? null;
-  const events = [...streams].flatMap(([coin, points]) => detectExtremes({ coin, points, btc: coin === BTC_COIN ? null : btc, now: end }));
-  console.log(`extremes at ${new Date(end).toISOString()} · ${streams.size} coins · candles (oi_flush, crowded_asymmetry not evaluable: no OI)`);
+  const live = await liveThresholds();
+  const events = [...streams].flatMap(([coin, points]) => detectExtremes({ coin, points, btc: coin === BTC_COIN ? null : btc, now: end }, live.thresholds));
+  console.log(`extremes at ${new Date(end).toISOString()} · ${streams.size} coins · candles (oi_flush, crowded_asymmetry not evaluable: no OI) · thresholds: ${live.label}`);
   if (!events.length) console.log("none");
   for (const e of events.sort((a, b) => b.severity - a.severity)) console.log(`${e.kind.padEnd(18)} ${e.side.padEnd(5)} ${e.line}`);
 }
@@ -73,9 +92,10 @@ async function show(coin: string) {
   const { end, streams } = await candleStreams({ coins: coin === BTC_COIN ? [BTC_COIN] : [BTC_COIN, coin], spanMs: EXTREME_LOOKBACK_MS + DAY });
   const points = streams.get(coin);
   if (!points) throw new Error(`no candles for ${coin}`);
-  const r = readExtremes({ coin, points, btc: coin === BTC_COIN ? null : (streams.get(BTC_COIN) ?? null), now: end });
-  const th = DEFAULT_EXTREME_THRESHOLDS;
-  console.log(`${coin} at ${new Date(end).toISOString()} · mark ${r.mark ?? "-"} · funding ${r.funding == null ? "-" : `${fundingAprPct(r.funding).toFixed(1)}% apr`}`);
+  const live = await liveThresholds();
+  const th = live.thresholds;
+  const r = readExtremes({ coin, points, btc: coin === BTC_COIN ? null : (streams.get(BTC_COIN) ?? null), now: end }, th);
+  console.log(`${coin} at ${new Date(end).toISOString()} · mark ${r.mark ?? "-"} · funding ${r.funding == null ? "-" : `${fundingAprPct(r.funding).toFixed(1)}% apr`} · thresholds: ${live.label}`);
   if (!r.evaluable) return console.log(`not evaluable: needs ${EXTREME_MIN_HISTORY_MS / DAY} days of history and a mark at now`);
   const cut = (x: number, need: number, d = 1) => `${x.toFixed(d)}/${need}`;
   const zc = (z: number | null, need: number) => (z == null ? "-" : cut(Math.abs(z), need));
@@ -119,10 +139,11 @@ async function replay(top: number) {
   const grid: number[] = [];
   for (let t = from; t <= end; t += GRID_MS) grid.push(t);
   const t0 = Date.now();
-  const r = replayExtremes({ streams, grid, gradeToleranceMs: toleranceMs });
+  const live = await liveThresholds();
+  const r = replayExtremes({ streams, grid, gradeToleranceMs: toleranceMs, thresholds: live.thresholds });
   log(`replayed ${grid.length} steps × ${streams.size} coins in ${Math.round((Date.now() - t0) / 1000)} s`);
 
-  console.log(`extremes replay · ${source} · ${r.from ? new Date(r.from).toISOString() : "-"} -> ${r.to ? new Date(r.to).toISOString() : "-"} (${r.weeks.toFixed(1)} weeks) · ${streams.size} coins · cooldown 24h per key`);
+  console.log(`extremes replay · ${source} · ${r.from ? new Date(r.from).toISOString() : "-"} -> ${r.to ? new Date(r.to).toISOString() : "-"} (${r.weeks.toFixed(1)} weeks) · ${streams.size} coins · cooldown 24h per key · thresholds: ${live.label}`);
   console.log("fade-side gross return (no fees, no funding); vs BTC = minus BTC's return over the same span (BTC's own events excluded)");
   for (const row of r.rows) {
     if (!row.evaluable) {
@@ -167,6 +188,71 @@ async function score() {
   for (const l of scoreTable(summary)) console.log(l);
 }
 
+/**
+ * Frequency calibration on stored snapshots (extremes/calibrate.ts). Reads each coin's history one coin at a time, as
+ * the job does, replays the job's universe per step, stores the run (applied with --apply when a kind changed) and
+ * sends one info push when an applied run changed a threshold. --json prints {id, applied, thresholdsBefore, result,
+ * markdown} on stdout (logs go to stderr), for the workflow's step summary.
+ */
+async function calibrate() {
+  if (!databaseUrl()) {
+    console.error("extremes calibrate reads scan_snapshots and stores the run: set DATABASE_URL (or POSTGRES_URL) and rerun.");
+    process.exitCode = 1;
+    return;
+  }
+  const json = process.argv.includes("--json");
+  const apply = process.argv.includes("--apply");
+  const store = new PgPlatformStore();
+  const now = Date.now();
+  const { targets, limits } = calibrationParams();
+  const job = extremesParams();
+  const current = await appliedThresholds(store, log);
+  const out = async (result: ReturnType<typeof resetResult>, applied: boolean) => {
+    const row = await store.insertExtremeCalibration({ ranAt: new Date(now).toISOString(), from: result.from, to: result.to, coins: result.coins, result, thresholds: result.thresholds, applied });
+    const table = calibrationTable(result, { id: row.id, applied });
+    if (json) console.log(JSON.stringify({ id: row.id, applied, thresholdsBefore: current.source, result, markdown: table.join("\n") }, null, 2));
+    else console.log([...table, "", `thresholds before: ${current.source === "defaults" ? "code defaults" : `calibration #${current.source.id} (${current.source.ranAt})`}`].join("\n"));
+    return row;
+  };
+
+  if (process.argv.includes("--reset")) {
+    await out(resetResult(targets, now), true);
+    return;
+  }
+
+  const days = posInt("--days", 30);
+  const top = posInt("--top", job.top);
+  const end = Math.floor(now / GRID_MS) * GRID_MS;
+  const since = new Date(Math.max(end - days * DAY - EXTREME_LOOKBACK_MS - DAY, end - scanRetentionDays() * DAY)).toISOString();
+  const coins = [...new Set((await store.scanSnapshotsSince(new Date(end - DAY).toISOString())).map((s) => s.coin))].sort();
+  const all = new Map<string, RingPoint[]>();
+  for (const [i, coin] of coins.entries()) {
+    const pts = snapshotStreams(await store.scanSnapshotsSince(since, [coin])).get(coin);
+    if (pts?.length) all.set(coin, pts);
+    if ((i + 1) % 25 === 0 || i + 1 === coins.length) log(`read ${i + 1}/${coins.length} coins`);
+  }
+  if (!all.size) throw new Error("no stored snapshots");
+  const firsts = [...all.values()].map((p) => p[0]!.ts);
+  const from = Math.max(Math.ceil((Math.min(...firsts) + EXTREME_MIN_HISTORY_MS) / GRID_MS) * GRID_MS, end - days * DAY);
+  const grid: number[] = [];
+  for (let t = from; t <= end; t += GRID_MS) grid.push(t);
+  // Keep only coins that are in the job's universe at some step (BTC always): the rest never reach the detector.
+  const universe = universeFromStreams(all, top);
+  const used = new Set<string>([BTC_COIN]);
+  for (const t of grid) for (const c of universe(t)) used.add(c);
+  const streams = new Map([...all].filter(([coin]) => used.has(coin)));
+  const t0 = Date.now();
+  const result = calibrateExtremes({ streams, grid, current: current.thresholds, targets, limits, cooldownMs: job.cooldownMs, universe, gradeToleranceMs: SNAPSHOT_GRADE_TOLERANCE_MS });
+  log(`calibrated ${grid.length} steps × ${streams.size} coins (top ${top} + BTC per step) in ${Math.round((Date.now() - t0) / 1000)} s`);
+
+  const applied = apply && result.kinds.some((k) => k.changed);
+  await out(result, applied);
+  if (!applied) return;
+  const alert = calibrationAlert(result);
+  const notifier = createNotifier();
+  if (alert && notifier.channels.length) log(`pushed: ${(await notifier.send(alert)).join(", ") || "nothing went out"}`);
+}
+
 async function main() {
   const cmd = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : "scan";
   const top = posInt("--top", 30);
@@ -177,7 +263,8 @@ async function main() {
     await show(coin);
   } else if (cmd === "replay") await replay(top);
   else if (cmd === "score") await score();
-  else throw new Error(`unknown command ${cmd} (scan | show <COIN> | replay | score)`);
+  else if (cmd === "calibrate") await calibrate();
+  else throw new Error(`unknown command ${cmd} (scan | show <COIN> | replay | score | calibrate)`);
 }
 
 try {

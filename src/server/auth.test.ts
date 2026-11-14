@@ -28,7 +28,7 @@ const MOVES_WRITES = [
   "/platform/opportunities/o1/approve", "/platform/opportunities/o1/reject", "/desk/proposals/p1/approve", "/desk/exit", "/desk/kill", "/desk/approval", "/desk/settings",
 ];
 for (const p of [...MOVES_READS, ...MOVES_WRITES, "/moves/SOL/proposal", "/movesx", "/queuex"]) testApp.all(p, (c) => c.json({ reached: p }));
-for (const p of ["/extremes", "/extremes/verdict", "/extremes/verdictx", "/extremes/x", "/extremesx"]) testApp.all(p, (c) => c.json({ reached: p }));
+for (const p of ["/extremes", "/extremes/calibration", "/extremes/verdict", "/extremes/verdictx", "/extremes/x", "/extremesx"]) testApp.all(p, (c) => c.json({ reached: p }));
 /** An extremes take's opportunity (extremes/opportunity.ts): approved only with the operator's cookie. */
 const TAKE_APPROVE = "/platform/opportunities/00000000-0000-4000-8000-000000000001/approve";
 testApp.all(TAKE_APPROVE, (c) => c.json({ reached: TAKE_APPROVE }));
@@ -309,6 +309,9 @@ describe("lab bearer (LAB_API_TOKEN)", () => {
     withTokens("tok-one", async () => {
       expect((await req("/extremes", bearer("tok-one"))).status).toBe(200);
       expect((await req("/extremes", bearer("wrong"))).status).toBe(401);
+      expect((await req("/extremes/calibration", bearer("tok-one"))).status).toBe(200);
+      expect((await req("/extremes/calibration", bearer("wrong"))).status).toBe(401);
+      expect((await req("/extremes/calibration", bearer("tok-one"), "POST")).status).toBe(401);
       expect((await req("/extremes/verdict", bearer("tok-one"), "POST")).status).toBe(200);
       expect((await req("/extremes/verdict", bearer("wrong"), "POST")).status).toBe(401);
       expect((await req("/extremes/verdict", {}, "POST")).status).toBe(401);

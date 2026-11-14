@@ -1,14 +1,16 @@
 import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
 import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/agentRecords.js";
 import type { MovesResponse, MoveWindow } from "../../shared/moves.js";
-import type { ExtremeRecord, ExtremeVerdict } from "../../shared/extremes.js";
+import type { ExtremeRecord, ExtremeVerdict, NewExtremeCalibration, StoredExtremeCalibration } from "../../shared/extremes.js";
 import {
+  byCalibrationNewest,
   byExtremeNewest,
   byNewest,
   byCoin,
   byScore,
   isAgentRun,
   parseAgentRecord,
+  parseExtremeCalibration,
   parseExtremeRecord,
   parseExtremeVerdict,
   parseVerdictMark,
@@ -106,6 +108,23 @@ export class MemoryPlatformStore implements PlatformStore {
     if (!r || !r.verdict || r.opportunityId) return null;
     r.opportunityId = opportunityId.toLowerCase();
     return clone(r);
+  }
+
+  /** Calibration runs (029), in insertion order; id = position + 1. */
+  calibrations: StoredExtremeCalibration[] = [];
+
+  async insertExtremeCalibration(run: NewExtremeCalibration) {
+    const row: StoredExtremeCalibration = { id: this.calibrations.length + 1, ...clone(parseExtremeCalibration(run)) };
+    this.calibrations.push(row);
+    return clone(row);
+  }
+
+  async latestAppliedExtremeCalibration() {
+    return clone(this.calibrations.filter((r) => r.applied).sort(byCalibrationNewest)[0] ?? null);
+  }
+
+  async listExtremeCalibrations(limit: number) {
+    return [...this.calibrations].sort(byCalibrationNewest).slice(0, limit).map(clone);
   }
 
   async saveMovesRun(run: MovesResponse) {

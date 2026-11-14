@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { EXTREMES_SCORE_VERSION, type ExtremeEvent, type ExtremeGrade, type ExtremeRecord } from "../../shared/extremes.js";
 import type { Alert } from "../desk/notify.js";
+import { resetResult, withMultiplier } from "../extremes/calibrate.js";
+import { DEFAULT_EXTREME_THRESHOLDS } from "../extremes/detect.js";
 import type { ExtremeSummaryRow } from "../extremes/grade.js";
 import { createAlerts } from "../platform/alerts.js";
 import { Bus } from "../platform/bus.js";
@@ -230,17 +232,32 @@ describe("GET /extremes", () => {
   });
 });
 
+describe("GET /extremes/calibration", () => {
+  test("defaults without an applied run; then the latest applied run's thresholds, the defaults and the last runs", async () => {
+    const { app, store } = await setup();
+    let body = (await (await app.request("/calibration")).json()) as any;
+    expect(body).toEqual({ applied: { source: "defaults", thresholds: DEFAULT_EXTREME_THRESHOLDS }, defaults: DEFAULT_EXTREME_THRESHOLDS, runs: [] });
+    const th = withMultiplier(DEFAULT_EXTREME_THRESHOLDS, "price_dislocation", 1.2);
+    const result = { ...resetResult({ perWeek: 1, min: 0.5, max: 1.5 }, NOW.getTime()), reset: false, thresholds: th };
+    const run = await store.insertExtremeCalibration({ ranAt: iso(NOW.getTime() - HOUR), from: null, to: null, coins: ["BTC"], result, thresholds: th, applied: true });
+    await store.insertExtremeCalibration({ ranAt: NOW.toISOString(), from: null, to: null, coins: ["BTC"], result, thresholds: DEFAULT_EXTREME_THRESHOLDS, applied: false });
+    body = await (await app.request("/calibration")).json();
+    expect(body.applied).toEqual({ source: { id: run.id, ranAt: run.ranAt }, thresholds: th });
+    expect(body.runs.map((r: any) => [r.applied, r.coins, r.result?.thresholds.price.z["4h"]])).toEqual([[false, 1, th.price.z["4h"]], [true, 1, th.price.z["4h"]]]);
+  });
+});
+
 describe("POST /cron/extremes", () => {
   const lease = (free = true) => ({ acquire: async () => free, release: async () => {} });
   const job = (): ReturnType<CronExtremesDeps["job"]> => ({
-    store: new MemoryPlatformStore(), detect: () => [], lookbackMs: 1, wake: async () => false, notifier: { send: async () => [] }, appUrl: null, now: () => NOW.getTime(),
+    store: new MemoryPlatformStore(), detect: () => [], thresholds: async () => ({ thresholds: DEFAULT_EXTREME_THRESHOLDS, source: "defaults" }), lookbackMs: 1, wake: async () => false, notifier: { send: async () => [] }, appUrl: null, now: () => NOW.getTime(),
   });
 
   test("503 without a database, skipped when leased, counts otherwise", async () => {
     expect((await runExtremesCron({ hasDb: () => false, lease: lease(), job })).status).toBe(503);
     expect(await runExtremesCron({ hasDb: () => true, lease: lease(false), job })).toEqual({ status: 200, body: { ok: true, skipped: "leased" } });
     const r = await runExtremesCron({ hasDb: () => true, lease: lease(), job });
-    expect(r).toEqual({ status: 200, body: { ok: true, coins: 0, evaluated: 0, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired: 0, lines: [] } });
+    expect(r).toEqual({ status: 200, body: { ok: true, coins: 0, evaluated: 0, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired: 0, calibration: "defaults", lines: [] } });
   });
 
   test("a failing job is a 500 body; the route needs the cron token", async () => {

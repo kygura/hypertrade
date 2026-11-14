@@ -1,4 +1,4 @@
-import type { ExtremeEvent, ExtremeKind, ExtremeWindow } from "../../shared/extremes.js";
+import type { ExtremeEvent, ExtremeKind, ExtremeThresholds, ExtremeWindow } from "../../shared/extremes.js";
 import type { Side } from "../../shared/intel.js";
 import { fundingAprPct, robustSigma } from "../../shared/signalMath.js";
 import { ENDPOINT_TOLERANCE_MS, METRIC_RULES, robustLevelZ } from "../intel/windows.js";
@@ -42,38 +42,12 @@ const MIN_SAMPLES = 40;
 /** Beta to BTC from 4 h returns, clamped: a thin or odd history cannot make the residual leg meaningless. */
 const BETA_RANGE = [0, 2] as const;
 
-export type ExtremeThresholds = {
-  price: {
-    /** |own z| at least, per window: short windows have fatter tails, so one cut would fire almost only on 4 h. */
-    z: Record<PriceWindow, number>;
-    /** |BTC-residual z| at least, same sign as the move (non-BTC coins), per window. */
-    zResid: Record<PriceWindow, number>;
-    /** |return| at least, per window (fraction): a quiet coin's big z is not an extreme price. */
-    minMove: Record<PriceWindow, number>;
-  };
-  oiFlush: {
-    /** OI contracts change z at most −this, per window (as price: shorter windows have fatter tails). */
-    z: Record<OiWindow, number>;
-    /** OI contracts drop at least, per window (fraction). */
-    minDrop: Record<OiWindow, number>;
-    /** |price z| over the same window at least. */
-    zPrice: number;
-  };
-  crowded: {
-    /** Funding level robust z at least (sign of the crowd). */
-    zFunding: number;
-    /** Funding percentile at least (longs crowded) or at most 1 − this (shorts crowded). */
-    pctile: number;
-    /** |funding apr %| at least. */
-    minAprPct: number;
-    /** OI contracts percentile over the lookback at least. */
-    oiPctile: number;
-    /** 24 h price z in the crowd's direction at most (flat or against it). */
-    maxFollowZ: number;
-  };
-};
+/** The detectors' cuts; schema and field docs in src/shared/extremes.ts (ExtremeThresholdsSchema). */
+export type { ExtremeThresholds };
 
 /**
+ * The code defaults. The live job uses the latest applied calibration instead when one is stored (calibrate.ts,
+ * docs/EXTREMES.md § Calibration pipeline); these stay the base its multipliers scale and the fallback.
  * Calibrated on the candle replay (`bun run extremes replay`, top 30 HL perps, 15-min candles, 2026-10-05..11-14, 5.4
  * weeks) for frequency only, never for forward returns:
  *   price      robust z on 15-min data is fat-tailed (a 4σ cut fired 31 a week); these cuts give about 1.8 a week.
@@ -97,7 +71,7 @@ export interface DetectInput {
   now: number;
 }
 
-type PriceReading = {
+export type PriceReading = {
   window: PriceWindow;
   ret: number;
   z: number | null;
@@ -109,7 +83,7 @@ type PriceReading = {
   oiChg: number | null;
   fires: boolean;
 };
-type OiReading = {
+export type OiReading = {
   window: OiWindow;
   oiChg: number;
   z: number | null;
@@ -119,7 +93,7 @@ type OiReading = {
   fundingAfter: number | null;
   fires: boolean;
 };
-type CrowdedReading = {
+export type CrowdedReading = {
   funding: number;
   fundingAprPct: number;
   fundingPctile: number;
@@ -218,6 +192,38 @@ function hourly(points: RingPoint[], f: Get, now: number): Array<{ t: number; v:
 }
 
 const pctileOf = (xs: number[], v: number) => xs.filter((x) => x <= v).length / xs.length;
+
+// The threshold tests. Each reads only the reading's own numbers, so stored readings can be re-thresholded
+// (rethreshold below; the calibration's fast path) with exactly the result readExtremes gives.
+/** price_dislocation at one window: own z and move past the window's cuts, and (non-BTC) the BTC residual extreme the same way. */
+export function priceFires(p: Omit<PriceReading, "fires">, th: ExtremeThresholds, isBtc: boolean): boolean {
+  const c = th.price;
+  const residOk = isBtc || (p.zResid != null && Math.sign(p.zResid) === Math.sign(p.ret) && Math.abs(p.zResid) >= c.zResid[p.window]);
+  return p.z != null && Math.abs(p.z) >= c.z[p.window] && Math.abs(p.ret) >= c.minMove[p.window] && residOk;
+}
+/** oi_flush at one window: OI contracts down hard (z and fraction) with a price move of at least zPrice. */
+export function oiFires(o: Omit<OiReading, "fires">, th: ExtremeThresholds): boolean {
+  const c = th.oiFlush;
+  return o.z != null && o.z <= -c.z[o.window] && o.oiChg <= -c.minDrop[o.window] && o.zPrice != null && o.ret !== 0 && Math.abs(o.zPrice) >= c.zPrice;
+}
+/** crowded_asymmetry: funding extreme (percentile and z), apr bar, OI near its high, 24 h price flat or against the crowd. */
+export function crowdedFires(r: Omit<CrowdedReading, "fires">, th: ExtremeThresholds): boolean {
+  const c = th.crowded;
+  const d = Math.sign(r.funding);
+  const extreme = d > 0 ? r.fundingPctile >= c.pctile && r.fundingZ != null && r.fundingZ >= c.zFunding : r.fundingPctile <= 1 - c.pctile && r.fundingZ != null && r.fundingZ <= -c.zFunding;
+  return extreme && Math.abs(r.fundingAprPct) >= c.minAprPct && r.oiPctile >= c.oiPctile && r.z24h != null && d * r.z24h <= c.maxFollowZ;
+}
+
+/** The same readings with every `fires` recomputed under `th` (equal to readExtremes(input, th) for the same input). */
+export function rethreshold(r: ExtremeReadings, th: ExtremeThresholds): ExtremeReadings {
+  const isBtc = r.coin === BTC_COIN;
+  return {
+    ...r,
+    price: r.price.map((p) => ({ ...p, fires: priceFires(p, th, isBtc) })),
+    oi: r.oi.map((o) => ({ ...o, fires: oiFires(o, th) })),
+    crowded: r.crowded && { ...r.crowded, fires: crowdedFires(r.crowded, th) },
+  };
+}
 const exp1 = (x: number | null) => (x == null ? null : Math.expm1(x));
 
 /** Every reading the three detectors take at `now`, with whether each passes its thresholds. Pure; reads ts <= now only. */
@@ -251,11 +257,9 @@ export function readExtremes(input: DetectInput, th: ExtremeThresholds = DEFAULT
       });
       if (hist.length >= MIN_SAMPLES) zResid = resid / robustSigma(hist, METRIC_RULES.price.floor);
     }
-    const p = th.price;
-    const ret = Math.expm1(own.x);
-    const residOk = isBtc || (zResid != null && Math.sign(zResid) === Math.sign(own.x) && Math.abs(zResid) >= p.zResid[window]);
-    const fires = own.z != null && Math.abs(own.z) >= p.z[window] && Math.abs(ret) >= p.minMove[window] && residOk;
-    out.price.push({ window, ret, z: own.z, btcRet: exp1(btcRet), beta, resid: exp1(resid), zResid, oiChg: exp1(logChange(points, contractsOf, now, ms)), fires });
+    // ret = expm1(x) keeps x's sign, so priceFires' sign test on ret is the sign test on the log return.
+    const reading = { window, ret: Math.expm1(own.x), z: own.z, btcRet: exp1(btcRet), beta, resid: exp1(resid), zResid, oiChg: exp1(logChange(points, contractsOf, now, ms)) };
+    out.price.push({ ...reading, fires: priceFires(reading, th, isBtc) });
   }
 
   // oi_flush
@@ -264,10 +268,8 @@ export function readExtremes(input: DetectInput, th: ExtremeThresholds = DEFAULT
     const oi = changeZ(points, contractsOf, now, ms);
     if (oi.x == null) continue;
     const px = changeZ(points, markOf, now, ms);
-    const o = th.oiFlush;
-    const oiChg = Math.expm1(oi.x);
-    const fires = oi.z != null && oi.z <= -o.z[window] && oiChg <= -o.minDrop[window] && px.z != null && px.x !== 0 && Math.abs(px.z) >= o.zPrice;
-    out.oi.push({ window, oiChg, z: oi.z, ret: exp1(px.x), zPrice: px.z, fundingBefore: at(points, now - ms, fundingOf), fundingAfter: funding, fires });
+    const reading = { window, oiChg: Math.expm1(oi.x), z: oi.z, ret: exp1(px.x), zPrice: px.z, fundingBefore: at(points, now - ms, fundingOf), fundingAfter: funding };
+    out.oi.push({ ...reading, fires: oiFires(reading, th) });
   }
 
   // crowded_asymmetry: needs OI at now, funding at now and their lookback distributions.
@@ -279,12 +281,9 @@ export function readExtremes(input: DetectInput, th: ExtremeThresholds = DEFAULT
       const fundingPctile = pctileOf(fh.map((p) => p.v), funding);
       const fundingZ = robustLevelZ("funding", fh, now);
       const oiPctile = pctileOf(oh, contracts);
-      const d = Math.sign(funding);
       const px = changeZ(points, markOf, now, DAY);
-      const c = th.crowded;
-      const extreme = d > 0 ? fundingPctile >= c.pctile && fundingZ != null && fundingZ >= c.zFunding : fundingPctile <= 1 - c.pctile && fundingZ != null && fundingZ <= -c.zFunding;
-      const fires = extreme && Math.abs(fundingAprPct(funding)) >= c.minAprPct && oiPctile >= c.oiPctile && px.z != null && d * px.z <= c.maxFollowZ;
-      out.crowded = { funding, fundingAprPct: fundingAprPct(funding), fundingPctile, fundingZ, oiPctile, ret24h: exp1(px.x), z24h: px.z, fires };
+      const reading = { funding, fundingAprPct: fundingAprPct(funding), fundingPctile, fundingZ, oiPctile, ret24h: exp1(px.x), z24h: px.z };
+      out.crowded = { ...reading, fires: crowdedFires(reading, th) };
     }
   }
   return out;
@@ -302,7 +301,7 @@ function event(kind: ExtremeKind, r: ExtremeReadings, side: Side, window: Extrem
 }
 
 /** Events from readings: per kind, the passing reading furthest past its threshold (|z| / the window's cut). */
-function eventsOf(r: ExtremeReadings, th: ExtremeThresholds = DEFAULT_EXTREME_THRESHOLDS): ExtremeEvent[] {
+export function eventsOf(r: ExtremeReadings, th: ExtremeThresholds = DEFAULT_EXTREME_THRESHOLDS): ExtremeEvent[] {
   const out: ExtremeEvent[] = [];
   const fundingFact = { funding: r.funding, fundingAprPct: r.funding == null ? null : fundingAprPct(r.funding) };
 

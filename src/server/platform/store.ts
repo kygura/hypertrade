@@ -24,7 +24,10 @@ import {
 } from "../../shared/platform.js";
 import { AgentRecordSchema, TriageItemSchema, type AgentRecord, type AgentRecordStatus, type TriageItem } from "../../shared/agentRecords.js";
 import { MovesResponseSchema, type MovesResponse, type MoveWindow } from "../../shared/moves.js";
-import { ExtremeRecordSchema, ExtremeVerdictSchema, type ExtremeRecord, type ExtremeVerdict } from "../../shared/extremes.js";
+import {
+  ExtremeRecordSchema, ExtremeVerdictSchema, NewExtremeCalibrationSchema,
+  type ExtremeRecord, type ExtremeVerdict, type NewExtremeCalibration, type StoredExtremeCalibration,
+} from "../../shared/extremes.js";
 
 // Platform persistence (db/migrations/011_platform.sql). Loops and routes run
 // against PlatformStore: MemoryPlatformStore (store-memory.ts) in tests,
@@ -235,6 +238,13 @@ export interface PlatformStore {
   setExtremeVerdict(key: string, ts: string, verdict: ExtremeVerdict, at: string, verdictMark: number | null): Promise<ExtremeRecord | null>;
   /** Links the opportunity a `take` became (028), once. Null when (key, ts) is missing, has no verdict or already has one. */
   setExtremeOpportunity(key: string, ts: string, opportunityId: string): Promise<ExtremeRecord | null>;
+
+  /** Extremes calibration runs (029): inserts a zod-parsed run, returns it with its id. */
+  insertExtremeCalibration(run: NewExtremeCalibration): Promise<StoredExtremeCalibration>;
+  /** The newest run with applied true (ran_at, then id); result and thresholds unparsed (the reader parses). Null when none. */
+  latestAppliedExtremeCalibration(): Promise<StoredExtremeCalibration | null>;
+  /** The newest runs first (ran_at, then id), applied or not. */
+  listExtremeCalibrations(limit: number): Promise<StoredExtremeCalibration[]>;
 }
 
 /** Where a novelty pass stands (noveltyLoop.ts): survives a stateless invocation, so the next one resumes. */
@@ -293,6 +303,14 @@ export function parseExtremeRecord(r: ExtremeRecord): ExtremeRecord {
 /** A verdict mark as stored: positive and finite, or null. */
 export const parseVerdictMark = (m: number | null): number | null => ExtremeRecordSchema.shape.verdictMark.parse(m);
 export const parseExtremeVerdict = (v: ExtremeVerdict): ExtremeVerdict => ExtremeVerdictSchema.parse(v);
+/** A calibration run to store, zod-parsed, times normalized to ISO. */
+export function parseExtremeCalibration(run: NewExtremeCalibration): NewExtremeCalibration {
+  const r = NewExtremeCalibrationSchema.parse(run);
+  const iso = (s: string | null) => (s == null ? null : new Date(s).toISOString());
+  return { ...r, ranAt: iso(r.ranAt)!, from: iso(r.from), to: iso(r.to) };
+}
+/** Store order for calibration runs: newest ran_at first, then the higher id. */
+export const byCalibrationNewest = (a: StoredExtremeCalibration, b: StoredExtremeCalibration) => Date.parse(b.ranAt) - Date.parse(a.ranAt) || b.id - a.id;
 /** Store order for extreme records: newest event first, then key (code units). */
 export const byExtremeNewest = (a: ExtremeRecord, b: ExtremeRecord) => Date.parse(b.event.ts) - Date.parse(a.event.ts) || codeUnit(a.event.key, b.event.key);
 

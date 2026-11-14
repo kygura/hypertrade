@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { AgentRecord, TriageItem } from "../../shared/agentRecords.js";
-import type { ExtremeEvent, ExtremeRecord } from "../../shared/extremes.js";
+import type { ExtremeEvent, ExtremeRecord, NewExtremeCalibration, StoredExtremeCalibration } from "../../shared/extremes.js";
+import { resetResult } from "../extremes/calibrate.js";
+import { DEFAULT_EXTREME_THRESHOLDS } from "../extremes/detect.js";
 import type { MovesResponse } from "../../shared/moves.js";
 import type { LedgerPayload, NoveltyEntry } from "../../shared/platform.js";
 import { row as moveRow } from "../moves/agent.fixture.js";
@@ -405,6 +407,28 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(await s.setExtremeOpportunity("oi_flush|SOL|long", t(3), "00000000-0000-4000-8000-000000000002")).toBeNull();
   expect(await s.setExtremeOpportunity("oi_flush|SOL|long", t(9), "00000000-0000-4000-8000-000000000002")).toBeNull();
   expect((await s.listExtremes({ since: t(3), limit: 10 })).find((r) => r.event.key === "oi_flush|SOL|long")).toMatchObject({ verdictMark: 101.25, opportunityId: "00000000-0000-4000-8000-0000000000ab" });
+
+  // extremes calibration runs (029): insert returns the row with an id, latest applied, newest first
+  expect(await s.latestAppliedExtremeCalibration()).toBeNull();
+  expect(await s.listExtremeCalibrations(10)).toEqual([]);
+  const strict = { ...DEFAULT_EXTREME_THRESHOLDS, crowded: { ...DEFAULT_EXTREME_THRESHOLDS.crowded, minAprPct: 90 } };
+  const calRun = (h: number, applied: boolean, thresholds = DEFAULT_EXTREME_THRESHOLDS): NewExtremeCalibration => ({
+    ranAt: t(h), from: "2026-10-01T00:00:00Z", to: t(h), coins: ["BTC", "SOL"], result: { ...resetResult({ perWeek: 1, min: 0.5, max: 1.5 }, Date.parse(t(h))), thresholds }, thresholds, applied,
+  });
+  const firstRun = await s.insertExtremeCalibration(calRun(1, true));
+  expect(firstRun).toMatchObject({ ranAt: t(1), from: "2026-10-01T00:00:00.000Z", to: t(1), coins: ["BTC", "SOL"], applied: true, thresholds: DEFAULT_EXTREME_THRESHOLDS });
+  expect(firstRun.id).toBeGreaterThan(0);
+  await s.insertExtremeCalibration(calRun(3, true, strict));
+  await s.insertExtremeCalibration(calRun(5, false, strict)); // a proposal: listed, never applied
+  await s.insertExtremeCalibration({ ...calRun(2, false), from: null, to: null });
+  await expect(s.insertExtremeCalibration({ ...calRun(6, true), thresholds: { ...strict, crowded: { ...strict.crowded, pctile: 2 } } })).rejects.toThrow();
+  put("calibration.latest", await s.latestAppliedExtremeCalibration());
+  expect(out["calibration.latest"]).toMatchObject({ ranAt: t(3), applied: true, thresholds: strict });
+  put("calibration.list", await s.listExtremeCalibrations(10));
+  const listed = out["calibration.list"] as StoredExtremeCalibration[];
+  expect(listed.map((r) => [r.ranAt, r.applied])).toEqual([[t(5), false], [t(3), true], [t(2), false], [t(1), true]]);
+  expect(listed[2]).toMatchObject({ from: null, to: null });
+  expect((await s.listExtremeCalibrations(2)).length).toBe(2);
   return out;
 }
 
