@@ -21,7 +21,7 @@ function useNow(ms: number): number {
   return now;
 }
 
-export interface AppProps {
+interface AppProps {
   controller: Controller;
   /** Fixed size (tests); default: the terminal's, tracking resizes. */
   columns?: number;
@@ -72,7 +72,6 @@ export function App({ controller, columns, rows }: AppProps) {
     <>
       <Transcript entries={view.entries} width={cols} prose={prose} />
       <Dock
-        mode={view.mode}
         active={active}
         overlay={overlay}
         state={view.state}
@@ -85,7 +84,6 @@ export function App({ controller, columns, rows }: AppProps) {
         }}
         hints={{
           mode: view.mode,
-          width: cols,
           quitArmed: view.quitArmed,
           agentElapsedS: view.agentRun ? Math.max(0, Math.floor((now - view.agentRun.startedAt) / 1000)) : 0,
           completionOpen: !!view.completion,

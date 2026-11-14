@@ -19,7 +19,7 @@ function szDec(map: SzMap | undefined, coin: string, size: number): number {
 
 const nearStop = (p: PositionRow) => p.stopDistPct != null && Math.abs(p.stopDistPct) < 1;
 
-export function positionColumns(szDecimals?: SzMap): Column<PositionRow>[] {
+function positionColumns(szDecimals?: SzMap): Column<PositionRow>[] {
   const px = (p: PositionRow, v: number | null) => fmtPx(v, szDec(szDecimals, p.coin, p.size), p.markPx);
   return [
     { key: "coin", header: "COIN", width: 6, align: "left", dropRank: 0, render: (p) => ({ text: p.coin }) },
@@ -44,8 +44,8 @@ export function positionColumns(szDecimals?: SzMap): Column<PositionRow>[] {
   ];
 }
 
-export function PositionsTable({ positions, width, szDecimals, header = true }: { positions: PositionRow[]; width: number; szDecimals?: SzMap; header?: boolean }) {
-  return <Table columns={positionColumns(szDecimals)} rows={positions} width={width} header={header} />;
+export function PositionsTable({ positions, width, szDecimals }: { positions: PositionRow[]; width: number; szDecimals?: SzMap }) {
+  return <Table columns={positionColumns(szDecimals)} rows={positions} width={width} />;
 }
 
 function orderKind(o: OpenOrder): { kind: string; px: number } {
@@ -58,7 +58,7 @@ function orderFlags(o: OpenOrder): string {
 }
 
 /** `81234 BTC sell 0.04500 stop 59,200.0 sl·ro` */
-export function orderText(o: OpenOrder, szDecimals?: SzMap): string {
+function orderText(o: OpenOrder, szDecimals?: SzMap): string {
   const d = szDec(szDecimals, o.coin, o.size);
   const k = orderKind(o);
   const flags = orderFlags(o);
@@ -121,7 +121,7 @@ function stripItem(p: PositionRow): Line {
 }
 
 /** `  BTC L +$34.11 stop -3.2%  ·  ETH S +$88.32 no stop`, `+N more` on overflow. */
-export function stripLine(positions: PositionRow[], width: number): Line {
+function stripLine(positions: PositionRow[], width: number): Line {
   const sep: Line = [{ text: "  ·  ", tone: "dim" }];
   let out: Line = [{ text: "  " }];
   for (let i = 0; i < positions.length; i++) {

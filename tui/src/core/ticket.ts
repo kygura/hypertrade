@@ -31,7 +31,7 @@ export interface TicketDeps {
  *   at quote time (listed in the ticket notes) that the exchange cancels after a
  *   full close, or replaces with the new stop. Rebuilt fresh on every requote.
  */
-export type OpenTicketAction = Extract<TicketAction, { kind: "open" }> & { riskPct?: number };
+type OpenTicketAction = Extract<TicketAction, { kind: "open" }> & { riskPct?: number };
 export type CloseTicketAction = Extract<TicketAction, { kind: "close" }> & { cleanupOids?: number[] };
 export type StopTicketAction = Extract<TicketAction, { kind: "stop" }> & { replaceOids?: number[] };
 export type TicketRequest = TicketAction | OpenTicketAction;

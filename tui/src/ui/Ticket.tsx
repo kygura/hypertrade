@@ -8,7 +8,7 @@ import { fmtBps, fmtClock, fmtDist, fmtLev, fmtPx, fmtRr, fmtSz, fmtUsd, padEnd 
 import { lineWidth, padLine, SegLine, wrapSegs, type Line, type Seg } from "./segs.js";
 import { g, tone, type Tone } from "./theme.js";
 
-export function cardWidth(cols: number): number {
+function cardWidth(cols: number): number {
   return cols >= 82 ? 80 : Math.max(20, cols - 2);
 }
 
@@ -50,7 +50,7 @@ function verdictWord(t: Ticket): "PASS" | "CLIPPED" | "REJECTED" | null {
 
 const VERDICT_TONE: Record<string, Tone> = { PASS: "pass", CLIPPED: "warn", REJECTED: "critical" };
 
-export interface CardModel {
+interface CardModel {
   title: string;
   badge: { text: string; tone: Tone };
   border: Tone;
@@ -180,7 +180,7 @@ export function ticketCard(t: Ticket, ui: TicketUi, at: number): CardModel {
 }
 
 /** Frame lines (with borders) for a card, clipped to maxHeight by eliding the middle. */
-export function cardLines(m: CardModel, width: number, maxHeight = Infinity): Line[] {
+function cardLines(m: CardModel, width: number, maxHeight = Infinity): Line[] {
   const W = cardWidth(width);
   const inner = W - 4;
   const box = g().box;
@@ -211,7 +211,7 @@ export function TicketCard({ ticket, ui, width, at, maxHeight }: { ticket: Ticke
 }
 
 /** `– ticket t-3f2a discarded · LONG 0.0123 BTC ≈ $752.40` */
-export function ticketSummary(t: Ticket, szDecimals: number): string {
+function ticketSummary(t: Ticket, szDecimals: number): string {
   const side = t.side ? t.side.toUpperCase() : "";
   switch (t.action.kind) {
     case "open":
@@ -233,7 +233,7 @@ export function TicketNote({ ticket, ui }: { ticket: Ticket; ui: TicketUi }) {
   );
 }
 
-export function resultHeadline(result: SendResult, outcome?: TicketOutcome, demo?: boolean): string {
+function resultHeadline(result: SendResult, outcome?: TicketOutcome, demo?: boolean): string {
   if (demo) return result.ok ? "simulated" : "simulated: order refused";
   if (result.ok) return "order sent";
   return outcome === "failed" ? "order not sent" : "outcome uncertain, check /pos";

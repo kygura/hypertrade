@@ -16,7 +16,7 @@ export type Tone =
   | "badgeDemo"
   | "selected";
 
-export interface ToneProps {
+interface ToneProps {
   color?: string;
   dimColor?: boolean;
   bold?: boolean;
@@ -71,7 +71,7 @@ const ASCII: typeof UNICODE = {
   box: { tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|" },
 };
 
-export type Glyphs = typeof UNICODE;
+type Glyphs = typeof UNICODE;
 
 let useColor = colorEnabled();
 let glyphs: Glyphs = process.env.HT_ASCII === "1" ? ASCII : UNICODE;

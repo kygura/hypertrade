@@ -11,13 +11,13 @@ import { PositionsMini, PositionStrip } from "./Positions.js";
 import { StatusBar } from "./StatusBar.js";
 import { g, tone } from "./theme.js";
 
-export type Tier = "narrow" | "medium" | "wide";
+type Tier = "narrow" | "medium" | "wide";
 
-export const MIN_COLS = 80;
-export const MIN_ROWS = 20;
-export const MINI_WIDTH = 42;
+const MIN_COLS = 80;
+const MIN_ROWS = 20;
+const MINI_WIDTH = 42;
 
-export function tierOf(cols: number, rows: number): Tier {
+function tierOf(cols: number, rows: number): Tier {
   if (cols >= 160 && rows >= 30) return "wide";
   if (cols >= 100) return "medium";
   return "narrow";
@@ -29,7 +29,7 @@ export function proseWidth(cols: number, rows: number): number {
   return tierOf(cols, rows) === "wide" ? Math.min(w, cols - 44) : w;
 }
 
-export interface PromptProps {
+interface PromptProps {
   value: string;
   cursor: number;
   disabled: boolean;
@@ -37,7 +37,7 @@ export interface PromptProps {
   width: number;
 }
 
-export function Prompt({ value, cursor, disabled, disabledText, width }: PromptProps) {
+function Prompt({ value, cursor, disabled, disabledText, width }: PromptProps) {
   const c = Math.max(0, Math.min(cursor, value.length));
   return (
     <Box flexDirection="column">
@@ -59,9 +59,8 @@ export function Prompt({ value, cursor, disabled, disabledText, width }: PromptP
   );
 }
 
-export interface HintsProps {
+interface HintsProps {
   mode: Mode;
-  width: number;
   quitArmed: boolean;
   agentElapsedS: number;
   completionOpen?: boolean;
@@ -69,7 +68,7 @@ export interface HintsProps {
   ticketDismissOnly?: boolean;
 }
 
-export function hintText(p: HintsProps): string {
+function hintText(p: HintsProps): string {
   if (p.quitArmed) return "press ctrl-c again to quit";
   if (p.completionOpen) return "tab/↑↓ select · enter accept · esc close";
   switch (p.mode) {
@@ -84,7 +83,7 @@ export function hintText(p: HintsProps): string {
   }
 }
 
-export function Hints(p: HintsProps) {
+function Hints(p: HintsProps) {
   return (
     <Text {...tone(p.quitArmed ? "warn" : "dim")} wrap="truncate-end">
       {"  "}
@@ -93,7 +92,7 @@ export function Hints(p: HintsProps) {
   );
 }
 
-export function CompletionList({ items, selected, maxRows = 6 }: { items: Completion["items"]; selected: number; maxRows?: number }) {
+function CompletionList({ items, selected, maxRows = 6 }: { items: Completion["items"]; selected: number; maxRows?: number }) {
   const start = Math.max(0, Math.min(items.length - maxRows, selected - Math.floor(maxRows / 2)));
   const shown = items.slice(start, start + maxRows);
   const w = Math.max(...shown.map((i) => i.label.length)) + 2;
@@ -143,8 +142,7 @@ export function AgentLive({ run, width, maxLines, now }: { run: AgentRun; width:
   );
 }
 
-export interface DockProps {
-  mode: Mode;
+interface DockProps {
   /** Active area (agent stream, busy line, ticket card); already clipped to `activeMax`. */
   active: ReactNode;
   /** Overlay content replaces active area, prompt, hints, strip and side panel. */
@@ -192,7 +190,7 @@ export function Dock({ active, overlay, state, prompt, hints, completion, agentL
       {completion && <CompletionList items={completion.items} selected={completion.selected} />}
       {tier === "medium" && state.account && <PositionStrip positions={state.account.positions} width={width} />}
       <Prompt {...prompt} width={leftW} />
-      <Hints {...hints} width={leftW} />
+      <Hints {...hints} />
     </Box>
   );
   return (

@@ -6,7 +6,7 @@ import type { Alert, AlertLevel } from "../core/types.js";
 import { fmtAge, fmtClock, shortAddr } from "./format.js";
 import { g, tone } from "./theme.js";
 
-export const VERSION = "0.1";
+const VERSION = "0.1";
 
 export function BannerLine({ info }: { info: BannerInfo }) {
   const parts = info.demo
@@ -26,7 +26,7 @@ export function UserLine({ text }: { text: string }) {
 }
 
 /** `**bold**` and `code` only; no colors inside model text other than accent for code. */
-export function inlineSegments(text: string): Array<{ text: string; kind: "plain" | "bold" | "code" }> {
+function inlineSegments(text: string): Array<{ text: string; kind: "plain" | "bold" | "code" }> {
   const out: Array<{ text: string; kind: "plain" | "bold" | "code" }> = [];
   for (const part of text.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/)) {
     if (!part) continue;

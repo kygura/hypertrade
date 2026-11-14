@@ -8,8 +8,6 @@ import { orderToIntent } from "../commands/intent.js";
 import { parseInput, type Command, type OrderCommand, type SortKey } from "../commands/parse.js";
 import type { Brief } from "../core/brief.js";
 import { buildCoinView, closestCoins } from "../core/coin.js";
-
-export { closestCoins };
 import type { Exchange } from "../core/exchange.js";
 import type { Pulse } from "../core/lab.js";
 import { buildTicket, findMarket, livePx, requote, type TicketDeps, type TicketRequest } from "../core/ticket.js";
@@ -69,7 +67,7 @@ const realTimers: Timers = {
   clearInterval: (h) => clearInterval(h as ReturnType<typeof setInterval>),
 };
 
-export interface ControllerOptions {
+interface ControllerOptions {
   config: Config;
   store: StoreLike;
   info: InfoSource;
@@ -93,14 +91,14 @@ export interface ControllerOptions {
 
 // ─── constants ───
 
-export const QUIT_ARM_MS = 2000;
+const QUIT_ARM_MS = 2000;
 /** `y` is ignored this long after a ticket appears or is re-quoted (stray typing, key repeat). */
 export const ARM_DELAY_MS = 500;
-export const BOOK_POLL_MS = 3000;
+const BOOK_POLL_MS = 3000;
 const HISTORY_MAX = 200;
 const DEMO_BLOCKER = "demo: orders disabled";
 
-export const HELP: HelpItem[] = [
+const HELP: HelpItem[] = [
   { usage: "/markets [oi|vol|chg|funding] [filter]", summary: "live markets table (esc closes)" },
   { usage: "/coin COIN", summary: "funding, OI, ATR, regime and flow diagnostics" },
   { usage: "/book COIN", summary: "live order book, depth and slippage (esc closes)" },
@@ -122,7 +120,7 @@ export const HELP: HelpItem[] = [
 const HELP_SUMMARY: Record<string, string> = Object.fromEntries(HELP.map((h) => [h.usage.split(" ")[0]!, h.summary]));
 
 /** A confirmed send and how it ended. */
-export interface InFlight {
+interface InFlight {
   ticket: Ticket;
   result: SendResult;
   outcome: "sent" | "failed" | "uncertain";
@@ -668,7 +666,6 @@ export class Controller {
     this.resolveTicket(t, ui, "simulated", result);
   }
 
-
   private discard(): void {
     const p = this.view.pending;
     if (!p || p.ui.phase === "requoting" || p.ui.phase === "sending") return;
@@ -769,15 +766,11 @@ export class Controller {
 
   // ─── overlays ───
 
-  private bookLevels(): number {
-    return bookLevels(overlayHeight(this.size.rows));
-  }
-
   private async openBook(coin: string, back: MarketsOverlay | null): Promise<void> {
     const m = findMarket(this.state().markets, coin);
     if (!m) return this.unknownCoin(coin, "book");
     this.stopBookPoll();
-    this.set({ overlay: { kind: "book", coin: m.coin, levels: this.bookLevels(), book: null, error: null, back } });
+    this.set({ overlay: { kind: "book", coin: m.coin, levels: bookLevels(overlayHeight(this.size.rows)), book: null, error: null, back } });
     this.bookTimer = this.timers.setInterval(() => void this.fetchBook(m.coin), BOOK_POLL_MS);
     await this.fetchBook(m.coin);
   }
@@ -811,10 +804,6 @@ export class Controller {
     this.set({ overlay: next });
   }
 
-  private marketsRows(o: MarketsOverlay): MarketRow[] {
-    return sortMarkets(this.state().markets, o.sort, o.dir, o.filter);
-  }
-
   private async marketsKey(o: MarketsOverlay, input: string, key: KeyLike): Promise<void> {
     if (o.editing != null) {
       if (key.escape) this.set({ overlay: { ...o, editing: null } });
@@ -828,7 +817,7 @@ export class Controller {
       }
       return;
     }
-    const rows = this.marketsRows(o);
+    const rows = sortMarkets(this.state().markets, o.sort, o.dir, o.filter);
     const last = Math.max(0, rows.length - 1);
     const page = Math.max(1, this.size.rows - 5);
     const sel = (n: number) => this.set({ overlay: { ...o, selected: Math.max(0, Math.min(last, n)) } });
@@ -1020,7 +1009,7 @@ function modeOf(v: View): Mode {
 
 // ─── agent deps ───
 
-export interface AgentDepsInput {
+interface AgentDepsInput {
   store: StoreLike;
   info: InfoSource;
   pulse: (() => Promise<Pulse>) | null;

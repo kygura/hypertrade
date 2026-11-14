@@ -2,17 +2,16 @@
 import { Box, Text } from "ink";
 import { sortMarkets } from "../app/controller.js";
 import type { MarketsOverlay as MarketsState } from "../app/model.js";
+import { livePx } from "../core/ticket.js";
 import type { AppState, MarketRow } from "../core/types.js";
 import { aprOf, fmtAge, fmtApr, fmtFundingH, fmtPct, fmtPx, fmtUsdCompact, MISSING } from "./format.js";
 import { SegLine, spread, type Line } from "./segs.js";
 import { Table, type Column } from "./Table.js";
 import { g, signTone, tone, type Tone } from "./theme.js";
 
-const live = (m: MarketRow) => m.midPx ?? m.markPx;
-
-export const MARKET_COLUMNS: Column<MarketRow>[] = [
+const MARKET_COLUMNS: Column<MarketRow>[] = [
   { key: "coin", header: "COIN", width: 9, align: "left", dropRank: 0, render: (m) => ({ text: m.coin }) },
-  { key: "mark", header: "MARK", width: 11, align: "right", dropRank: 0, render: (m) => ({ text: fmtPx(live(m), m.szDecimals) }) },
+  { key: "mark", header: "MARK", width: 11, align: "right", dropRank: 0, render: (m) => ({ text: fmtPx(livePx(m), m.szDecimals) }) },
   { key: "chg", header: "24H", width: 8, align: "right", dropRank: 0, render: (m) => ({ text: fmtPct(m.dayChangePct), tone: signTone(m.dayChangePct) }) },
   { key: "fund", header: "FUND/H", width: 9, align: "right", dropRank: 5, render: (m) => ({ text: fmtFundingH(m.fundingHourly), tone: signTone(m.fundingHourly) }) },
   { key: "apr", header: "APR", width: 8, align: "right", dropRank: 0, render: (m) => ({ text: fmtApr(m.fundingAprPct), tone: signTone(m.fundingAprPct) }) },
@@ -36,13 +35,13 @@ export function MarketsTable({ rows, width, selected, offset }: { rows: MarketRo
 }
 
 /** Poll age tone: warn after 45 s, critical after 120 s. */
-export function pollTone(ageMs: number): Tone {
+function pollTone(ageMs: number): Tone {
   return ageMs > 120_000 ? "critical" : ageMs > 45_000 ? "warn" : "dim";
 }
 
 const WS_TEXT = { open: "ws live", connecting: "ws connecting", closed: "ws down", off: "ws off" } as const;
 
-export interface MarketsOverlayProps {
+interface MarketsOverlayProps {
   state: AppState;
   overlay: MarketsState;
   maxHeight: number;
@@ -51,7 +50,7 @@ export interface MarketsOverlayProps {
 }
 
 /** Window start keeping `selected` in view, centred where possible. */
-export function windowOffset(selected: number, total: number, visible: number): number {
+function windowOffset(selected: number, total: number, visible: number): number {
   if (total <= visible) return 0;
   return Math.max(0, Math.min(total - visible, selected - Math.floor(visible / 2)));
 }

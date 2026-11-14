@@ -3,8 +3,8 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { actionHash, addressOf, agentDigest } from "../../../src/server/desk/hl/signing.js";
-import { loadConfig } from "./config.js";
-import { API_BASE, buildCancelAction, buildCloseAction, buildOpenActions, buildStopActions, createExchange } from "./exchange.js";
+import { API_BASE, loadConfig } from "./config.js";
+import { buildCancelAction, buildCloseAction, buildOpenActions, buildStopActions, createExchange } from "./exchange.js";
 import { buildTicket, type TicketDeps } from "./ticket.js";
 import type { AccountSnapshot, BookView, Config, InfoSource, MarketRow, OpenOrder, OrderIntent, PositionRow, Ticket } from "./types.js";
 

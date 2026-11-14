@@ -5,7 +5,7 @@ import { clipTo, padEnd, padStart } from "./format.js";
 import { SegLine, type Line } from "./segs.js";
 import type { Tone } from "./theme.js";
 
-export interface Cell {
+interface Cell {
   text: string;
   tone?: Tone;
 }
@@ -38,11 +38,11 @@ const fit = (text: string, w: number, align: "left" | "right") => {
   return align === "right" ? padStart(t, w) : padEnd(t, w);
 };
 
-export function headerLine<R>(cols: Column<R>[]): Line {
+function headerLine<R>(cols: Column<R>[]): Line {
   return [{ text: cols.map((c) => fit(c.header, c.width, c.align)).join(" "), tone: "dim" }];
 }
 
-export function rowLine<R>(cols: Column<R>[], row: R, selected = false): Line {
+function rowLine<R>(cols: Column<R>[], row: R, selected = false): Line {
   const out: Line = [];
   cols.forEach((c, i) => {
     const cell = c.render(row);
@@ -52,20 +52,19 @@ export function rowLine<R>(cols: Column<R>[], row: R, selected = false): Line {
   return out;
 }
 
-export interface TableProps<R> {
+interface TableProps<R> {
   columns: Column<R>[];
   rows: R[];
   width: number;
   /** Index into rows rendered inverse. */
   selected?: number | null;
-  header?: boolean;
 }
 
-export function Table<R>({ columns, rows, width, selected = null, header = true }: TableProps<R>) {
+export function Table<R>({ columns, rows, width, selected = null }: TableProps<R>) {
   const cols = fitColumns(columns, width);
   return (
     <Box flexDirection="column">
-      {header && <SegLine line={headerLine(cols)} />}
+      <SegLine line={headerLine(cols)} />
       {rows.map((r, i) => (
         <SegLine key={i} line={rowLine(cols, r, i === selected)} />
       ))}

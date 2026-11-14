@@ -15,10 +15,8 @@ import type { Config, MarketRow, SendResult, Ticket } from "./types.js";
 // canSend, network match, notional cap, mark drift since the quote, ticket
 // age, one send per ticket id, one send at a time. Errors never carry the key.
 
-export { API_BASE };
-
 /** A ticket older than this must be re-quoted before sending. */
-export const MAX_TICKET_AGE_MS = 30_000;
+const MAX_TICKET_AGE_MS = 30_000;
 /**
  * The emergency flatten after a rejected stop: IOC attempts this many times the
  * configured slippage through a fresh mid (the second only for what the first
@@ -27,9 +25,9 @@ export const MAX_TICKET_AGE_MS = 30_000;
 const FLATTEN_SLIPPAGE_MULTS = [2, 5];
 const FLATTEN_MAX_BAND = 0.2;
 
-export type LeverageAction = ReturnType<typeof updateLeverageAction>;
-export type OrderAction = ReturnType<typeof orderAction>;
-export type CancelAction = ReturnType<typeof cancelAction>;
+type LeverageAction = ReturnType<typeof updateLeverageAction>;
+type OrderAction = ReturnType<typeof orderAction>;
+type CancelAction = ReturnType<typeof cancelAction>;
 
 const fmtPx = (x: number) => x.toLocaleString("en-US", { maximumSignificantDigits: 6 });
 
@@ -151,7 +149,7 @@ export interface Exchange {
   send(t: Ticket, markets: MarketRow | MarketRow[]): Promise<SendResult>;
 }
 
-export interface ExchangeOptions {
+interface ExchangeOptions {
   fetchFn?: typeof fetch;
   /** Nonce and ticket-age clock, ms. */
   now?: () => number;

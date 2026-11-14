@@ -3,6 +3,7 @@ import { Box, Text } from "ink";
 import type { HelpItem } from "../app/model.js";
 import type { Brief } from "../core/brief.js";
 import type { Pulse } from "../core/lab.js";
+import { livePx } from "../core/ticket.js";
 import type { CoinView } from "../core/types.js";
 import { aprOf, fmtAge, fmtApr, fmtClock, fmtFundingH, fmtPct, fmtPx, fmtUsdCompact, MISSING, padEnd } from "./format.js";
 import { PositionsTable } from "./Positions.js";
@@ -14,7 +15,7 @@ const label = (s: string) => ({ text: padEnd(s, LABEL_W), tone: "dim" as const }
 
 export function CoinCard({ view, width, at }: { view: CoinView; width: number; at: number }) {
   const m = view.market;
-  const px = m.midPx ?? m.markPx;
+  const px = livePx(m);
   const rows: Line[] = [
     [
       label("funding"),
