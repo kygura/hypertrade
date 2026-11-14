@@ -44,6 +44,12 @@ export interface Broker {
   housekeep?(now: Date): Promise<UpkeepNote[]>;
   /** Venues where a trade picks its own leverage (Propr): the leverage it runs at and the coin's maximum. */
   tradeLeverage?(coin: string, chosen: number | undefined, confidence?: Confidence): { leverage: number | null; max: number; warning?: string };
+  /**
+   * Venues that ladder entries (Propr): whether the desk still holds a coin and side there, as a position or as its
+   * own resting entry rungs. A ladder's position grows rung by rung, so it never matches the first fill exactly.
+   * null when the venue cannot be read.
+   */
+  holds?(coin: string, side: "long" | "short", now: Date): Promise<boolean | null>;
   /** Entries always wait for the operator on this venue (real money), whatever the approval mode says. */
   readonly manualOnly?: boolean;
 }

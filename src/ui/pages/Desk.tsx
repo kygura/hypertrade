@@ -580,7 +580,7 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
     <div className="border-b border-border-subtle p-3 flex flex-col gap-1.5 min-w-0">
       <div className="flex items-center gap-2 min-w-0">
         <button className="flex items-center gap-2 text-left shrink-0" onClick={() => setOpen((o) => !o)}>
-          <Badge tone={STATUS_TONE[p.status] ?? 'gray'}>{p.status.toUpperCase()}</Badge>
+          {p.execution?.dryRun ? <Badge tone="amber">DRY RUN</Badge> : <Badge tone={STATUS_TONE[p.status] ?? 'gray'}>{p.status.toUpperCase()}</Badge>}
           <span className={`text-md ${entry?.side === 'short' ? 'text-red-text' : 'text-green'}`}>
             {entry ? entry.side.toUpperCase() : `EXIT ${Math.round((exit?.fraction ?? 0) * 100)}%`}
           </span>
@@ -613,7 +613,7 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
                 ))}
               </ul>
               <span className="text-xs text-text-secondary">
-                {open_.horizon} · confidence {open_.confidence} · asked {open_.riskPct}% risk
+                {open_.horizon} · confidence {open_.confidence} · asked {open_.riskPct}% risk{open_.leverage != null ? ` · ${open_.leverage}x leverage` : ''}
               </span>
             </>
           )}
@@ -633,7 +633,8 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
               ⚠ {w}
             </span>
           ))}
-          {p.execution?.error && <span className="text-xs text-red-text">{p.execution.error}</span>}
+          {p.execution?.error && <span className={`text-xs ${p.execution.dryRun ? 'text-amber' : 'text-red-text'}`}>{p.execution.error}</span>}
+          {p.execution?.note && <span className="text-xs text-text-secondary">{p.execution.note}</span>}
           {p.decidedBy && <span className="text-xs text-text-secondary">decided by {p.decidedBy}</span>}
         </div>
       )}

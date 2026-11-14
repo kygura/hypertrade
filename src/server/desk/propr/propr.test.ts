@@ -1,3 +1,4 @@
+import { deskRisk } from "../../routes/platform.js";
 import { describe, expect, test } from "bun:test";
 import { loadDeskConfig, type ProprVenueConfig } from "../config.js";
 import { DeskService } from "../service.js";
@@ -330,6 +331,20 @@ describe("ProprBroker", () => {
     expect(api.posts().filter((c) => c.url.endsWith("/cancel"))).toEqual([]);
   });
 
+  test("holds: a position or the desk's own resting entry rungs on the coin and side; another side, a manual order or no read is not", async () => {
+    const t = NOW.getTime() - 3_600_000;
+    const rung = { orderId: "o1", intentId: ladderId(t, "p", 1, "entry"), type: "limit", base: "ETH", positionSide: "long", side: "buy", status: "open", quantity: "0.12", price: "3950" };
+    const manual = { orderId: "o2", intentId: "manual", type: "limit", base: "SOL", positionSide: "long", side: "buy", status: "open", quantity: "1", price: "140" };
+    const b = (o: Parameters<typeof fakePropr>[0]) => new ProprBroker({ config: cfgOf({ PROPR_LIVE: "true" }), market, fetchFn: fakePropr(o).fetchFn });
+    const resting = b({ orders: [rung, manual] });
+    expect(await resting.holds("ETH", "long", NOW)).toBe(true);
+    expect(await resting.holds("ETH", "short", NOW)).toBe(false);
+    expect(await resting.holds("SOL", "long", NOW)).toBe(false);
+    expect(await b({ positions: [{ base: "BTC", positionSide: "short", quantity: "0.01", entryPrice: "100000", markPrice: "100000" }] }).holds("btc", "short", NOW)).toBe(true);
+    const down = new ProprBroker({ config: cfgOf({ PROPR_LIVE: "true" }), market, fetchFn: (async () => new Response("down", { status: 503 })) as unknown as typeof fetch });
+    expect(await down.holds("ETH", "long", NOW)).toBeNull();
+  });
+
   test("housekeeping: live cancels a stale desk ladder, never other orders; a dry run cancels nothing; unprotected positions are critical", async () => {
     const old = NOW.getTime() - 9 * 3_600_000;
     const orders = [
@@ -376,6 +391,13 @@ describe("DeskService on the Propr venue", () => {
     expect(exec.requests).toHaveLength(6);
     expect(notifier.sent.at(-1)).toMatchObject({ level: "info", title: "Dry run: long ETH built, not sent (propr)" });
     expect(api.posts()).toEqual([]);
+  });
+
+  test("a platform ticket placed on a dry run reports the venue's reason, not an empty one", async () => {
+    const { service } = build();
+    const placed = await deskRisk(() => service).place({ coin: "ETH", side: "long", stopPx: 3800, targetPx: 4500 }, "opp:o1");
+    expect(placed.status).not.toBe("executed");
+    expect(placed.reasons.join(" ")).toContain("Propr dry run");
   });
 
   test("an agent's exit waits for approval; the operator's close does not", async () => {

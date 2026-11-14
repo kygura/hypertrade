@@ -41,8 +41,10 @@ Propr sets cross leverage per coin, from 1x up to the coin's maximum: 10x on BTC
 elsewhere per the rulebook, overridable with `PROPR_LEVERAGE_BY_COIN` (`HYPE:5`) and capped
 account-wide by `PROPR_MAX_LEVERAGE` (default 10). Each trade's leverage is picked in this order:
 
-1. the trade's own `leverage` (an operator order, or a proposal whose agent or signal chose it from
-   its conviction), capped at the coin's maximum and rounded to a whole number;
+1. the trade's own `leverage`, capped at the coin's maximum and rounded to a whole number. Agents
+   set it on `propose_trade` from their conviction (the portfolio tool tells them the venue picks
+   leverage per trade). A copilot order runs at the leverage its preview shows (1x unless the
+   order text or the adjust form gives one);
 2. else the proposal's confidence through `PROPR_LEVERAGE_BY_CONFIDENCE` (`low:1,medium:3,high:5`);
 3. else `PROPR_DEFAULT_LEVERAGE`;
 4. else the smallest leverage that carries the ladder's notional on the account's equity.
@@ -89,6 +91,11 @@ built, not sent`. Housekeeping only reports what it sees; it cancels nothing.
 Fill prices are read from `averageFillPrice` (falling back to `averagePrice`) and quantities from
 `cumulativeQuantity`. Orders, positions and trades are read page by page (100 per page, up to 10
 pages; trades only back to 00:00 UTC).
+
+Platform opportunities (extremes takes included) placed on Propr are tracked by the venue itself:
+reconcile asks the broker whether the coin and side are still held, as a position or as the desk's
+resting entry rungs, since a ladder's position grows rung by rung and never matches its first fill.
+A dry run or a firm-rule refusal fails the placement with the venue's own reason.
 
 ## Exits and housekeeping
 

@@ -280,6 +280,20 @@ export class ProprBroker implements Broker {
    * targets go too. Orders the desk did not place, perp-radar's included, are never cancelled. A dry run sent nothing,
    * so it has nothing to clean up. Each note carries a key, so the watch alerts a condition once.
    */
+  async holds(coin: string, side: "long" | "short", now: Date): Promise<boolean | null> {
+    let s: ProprSnapshot;
+    try {
+      s = await this.snapshot(now);
+    } catch {
+      return null;
+    }
+    const c = coin.toUpperCase();
+    if (s.positions.some((p) => p.coin.toUpperCase() === c && p.side === side)) return true;
+    const entrySide = side === "long" ? "buy" : "sell";
+    const sideOf = (o: Row) => (o.positionSide === "long" || o.positionSide === "short" ? o.positionSide === side : o.side === entrySide);
+    return s.orders.some((o) => isLadderId(o.intentId) && isEntry(o) && isOpen(o) && String(o.base ?? o.asset).toUpperCase() === c && sideOf(o));
+  }
+
   async housekeep(now: Date): Promise<UpkeepNote[]> {
     let s: ProprSnapshot;
     try {

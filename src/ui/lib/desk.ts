@@ -19,7 +19,15 @@ export type { AccountState, DeskEvent, ExitProposal, OperatorOrderRecord, Positi
 
 /** Server record with the field the wire narrows: `execution` is `unknown` server-side. */
 export type ProposalRecord = Omit<ServerProposalRecord, 'execution'> & {
-  execution: { ok: boolean; fills: Array<{ side: string; size: number; px: number; fee: number; pnl: number }>; error?: string } | null
+  execution: {
+    ok: boolean
+    fills: Array<{ side: string; size: number; px: number; fee: number; pnl: number }>
+    error?: string
+    /** What a live venue reports beside the fills (Propr: rungs still working, a rescued stop). */
+    note?: string
+    /** Nothing was sent: the venue only built the requests (Propr without PROPR_LIVE). */
+    dryRun?: boolean
+  } | null
 }
 export type RunRow = Omit<ServerRunRow, 'trigger' | 'usage'>
 /** Rows from GET /desk/alerts always carry their id. */

@@ -301,7 +301,15 @@ export const READ_TOOLS: DeskTool[] = [
       const s = ctx.service;
       const [account, watched, kill, approval] = await Promise.all([s.account(), s.watchedAccount(), s.killSwitch(), s.approval()]);
       return ok(
-        { desk: account, watched, killSwitch: kill, approval, venue: s.broker.venue, limits: s.config.limits },
+        {
+          desk: account,
+          watched,
+          killSwitch: kill,
+          approval,
+          venue: s.broker.venue,
+          limits: s.config.limits,
+          ...(s.broker.tradeLeverage ? { leverage: "per trade: set leverage on propose_trade (1x up to 10x BTC, ETH, SOL; 2x others), or omit it to use your confidence" } : {}),
+        },
         `equity $${account.equityUsd.toFixed(0)}, ${account.positions.length} positions${watched ? `; watched $${watched.equityUsd.toFixed(0)}` : ""}`,
       );
     },
@@ -357,6 +365,13 @@ const tradeSchemaJson = {
     target: { type: "number", description: "take-profit price" },
     riskPct: { type: "number", minimum: 0.05, maximum: 2, description: "percent of equity lost if the stop fills; the governor sizes from this and may clip it" },
     entryLimit: { type: "number", description: "worst acceptable entry price; omit to accept the live mark" },
+    leverage: {
+      type: "number",
+      minimum: 1,
+      maximum: 10,
+      description:
+        "Only where the portfolio's venue is propr: the cross leverage this trade runs at, chosen from your conviction (high conviction or pushing a challenge: higher; minimal exposure that must not get near liquidation: 1-2). Capped at the coin's maximum (10x BTC, ETH, SOL; 2x others) and it caps the trade's notional at that multiple of equity. Omit to let the desk pick from your confidence. Ignored on other venues.",
+    },
     invalidation: { type: "string", description: "what would prove the thesis wrong before the stop" },
     evidence: {
       type: "array",

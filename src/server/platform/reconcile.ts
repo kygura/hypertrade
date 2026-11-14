@@ -21,7 +21,7 @@ import type { PlatformStore } from "./store.js";
 
 export interface ReconcileDesk {
   readonly store: Pick<DeskStore, "getProposal" | "listProposals" | "paperPositions">;
-  readonly broker: Pick<Broker, "live">;
+  readonly broker: Pick<Broker, "live" | "holds">;
   account(): Promise<AccountState>;
   alert(level: AlertLevel, title: string, body: string): Promise<void>;
 }
@@ -49,9 +49,14 @@ async function proposalFor(desk: ReconcileDesk, o: Opportunity, entries: LedgerE
   return (await desk.store.listProposals({ limit: 100 })).find((p) => p.decidedBy?.includes(placedBy(o.id))) ?? null;
 }
 
-/** null when the venue cannot be read this run. Live: the position must still be this proposal's fill (size and entry). */
-async function positionOpen(desk: ReconcileDesk, o: Opportunity, ref: string): Promise<boolean | null> {
+/**
+ * null when the venue cannot be read this run. Live: the position must still be this proposal's fill (size and entry).
+ * A laddering venue (Propr) answers itself: its position grows rung by rung, and a ladder can start with every rung
+ * resting, so it reports the coin and side as held while the position or the desk's own entry rungs are there.
+ */
+async function positionOpen(desk: ReconcileDesk, o: Opportunity, ref: string, now: Date): Promise<boolean | null> {
   if (!desk.broker.live) return (await desk.store.paperPositions()).some((p) => p.proposalId === ref);
+  if (desk.broker.holds) return desk.broker.holds(o.coin, o.direction, now);
   const fill = ((await desk.store.getProposal(ref))?.execution as ExecutionResult | null)?.fills?.[0];
   if (!fill) return false;
   const a = await desk.account();
@@ -84,7 +89,7 @@ export async function reconcileOnce({ store, desk: getDesk, now }: ReconcileDeps
       if (r) moved.push({ id: o.id, to });
     } else {
       const ref = lastRef(entries);
-      if (!ref || (await positionOpen(desk, o, ref)) !== false) continue;
+      if (!ref || (await positionOpen(desk, o, ref, new Date(t))) !== false) continue;
       const r = await store.transitionOpportunity(o.id, "open", "closed", "system", undefined, { ref, reason: "reconciled: desk position closed" });
       if (r) moved.push({ id: o.id, to: "closed" });
     }
