@@ -41,22 +41,22 @@ import { AUTO_RESEARCH_MARGIN_MS, utcDayStart } from "./research.js";
 
 export const STAGES_SETTING = "narrative_stages";
 export const AUTO_SETTING = "narrative_contrast_auto";
-export const STAGE_CONFIRM_RUNS = 2;
+const STAGE_CONFIRM_RUNS = 2;
 /** A pending stage must also be at least this old before it is committed. */
 export const STAGE_CONFIRM_MS = 2 * 3_600_000;
 export const STAGE_COOLDOWN_MS = 12 * 3_600_000;
 /** Returning to the stage left less than this long ago is committed silently. */
 export const STAGE_RETURN_MS = 24 * 3_600_000;
-export const AUTO_CONTRAST_Z = 2.5;
+const AUTO_CONTRAST_Z = 2.5;
 /** Where a narrative line points: the MOVES table filtered to the narrative (a narrative id is a data/sectors id, as MoveRow.sector.id). */
 const sectorPath = (id: string) => `/moves?sector=${encodeURIComponent(id)}`;
 const sourceOf = (id: string): EventSource => ({ label: "snapshot", url: sectorPath(id) });
 
 const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : def);
 /** INTEL_NARRATIVE_AUTO_DAILY (2): automatic contrast runs per UTC day. */
-export const narrativeAutoLimit = (env: Record<string, string | undefined>) => intEnv(env.INTEL_NARRATIVE_AUTO_DAILY, 2);
+const narrativeAutoLimit = (env: Record<string, string | undefined>) => intEnv(env.INTEL_NARRATIVE_AUTO_DAILY, 2);
 
-export interface StageState {
+interface StageState {
   stage: NarrativeStage;
   /** When the committed stage was first seen. */
   since: string;
@@ -126,7 +126,7 @@ const AGREEMENT: Record<NarrativeContrast["view"]["agreement"], string> = {
 };
 
 /** Code-written line: "Privacy: 6h long build (z 2.9) against the 7d move · your view: continuation · contrast favours fade (medium confidence, conflicts with your view)". */
-export function contrastLine(f: NarrativeFlow, view: NarrativeView, c: NarrativeContrast): string {
+function contrastLine(f: NarrativeFlow, view: NarrativeView, c: NarrativeContrast): string {
   const w = strongestMove(f.ltf);
   const flow = w ? `${w.window} ${w.quadrant.replace(/_/g, " ")} (z ${plain(Math.max(Math.abs(w.priceZ ?? 0), Math.abs(w.oiZ ?? 0)))}) ${f.alignment} the 7d move` : "LTF flow";
   return `${f.label}: ${flow} · your view: ${view.lean} · contrast favours ${c.favours} (${c.confidence} confidence, ${AGREEMENT[c.view.agreement]})`.slice(0, 600);
@@ -285,8 +285,9 @@ export async function narrativeAutoContrast(deps: NarrativeWatchDeps, o: { left(
       out.ran++;
       out.statuses[res.status]++;
       if (res.status !== "done") continue;
-      const before = (await contrastsOf(deps))[flow.id];
-      await deps.store.setSetting(CONTRASTS_SETTING, { ...(await contrastsOf(deps)), [flow.id]: res });
+      const stored = await contrastsOf(deps);
+      const before = stored[flow.id];
+      await deps.store.setSetting(CONTRASTS_SETTING, { ...stored, [flow.id]: res });
       // The same read as last time is stored, not pinged again.
       if (before && before.favours === res.favours && before.view.agreement === res.view.agreement) continue;
       try {

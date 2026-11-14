@@ -6,7 +6,7 @@ import type { AlertAction, Notifier } from "../desk/notify.js";
 // reach the same Telegram chat / Discord / webhook as Desk alerts and inherit
 // its "a channel failing never fails the caller" rule. Formatting only here.
 
-export const MAX_LINES = 5;
+const MAX_LINES = 5;
 
 /** One bullet per line: observed facts name their source, hypotheses are marked as inference. */
 export function formatIntel(m: { lines: Array<Claim | string>; link?: string }): string {

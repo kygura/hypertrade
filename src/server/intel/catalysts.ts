@@ -3,7 +3,7 @@ import type { Alert, CatalystWindow, IntelEvent, ManualCatalystInputSchema } fro
 import type { z } from "zod";
 import { confluenceK, materiality as materialityOf } from "./diff.js";
 import { hostLabel } from "./ingest/common.js";
-import { assetExposure, deepLink, exposureHits, loadContext, MAGNITUDE_WEIGHT, pathText, routeFor, type MapperDeps } from "./mapper.js";
+import { assetExposure, deepLink, exposureHits, loadContext, MAGNITUDE_WEIGHT, pathText, routeFor, type AssetExposure, type MapperDeps } from "./mapper.js";
 import { feedbackActions, sendIntel } from "./notify.js";
 import type { IntelStore } from "./store.js";
 
@@ -41,12 +41,15 @@ export async function catalystAlerts(deps: CatalystDeps, now: Date): Promise<{ a
   if (!events.length) return { alerts: [] };
   const ctx = await loadContext(deps);
   const alerts: Alert[] = [];
+  // One read per asset: several catalysts often reach the same position.
+  const exposures = new Map<string, AssetExposure>();
   for (const e of events) {
     const until = Date.parse(e.scheduledAt!) - t;
     const window: CatalystWindow = until <= HOUR_MS ? "1h" : "24h";
     const inserted: Alert[] = [];
     for (const hit of exposureHits(ctx.edges, [...e.entities, ...e.assets], ctx.targets)) {
-      const exp = await assetExposure(deps, ctx, hit.asset);
+      const exp = exposures.get(hit.asset) ?? (await assetExposure(deps, ctx, hit.asset));
+      exposures.set(hit.asset, exp);
       const text = `${e.title} at ${utc(e.scheduledAt!)} (${countdown(until)}). ${exp.label}; exposed via ${pathText(hit)}.`.slice(0, 600);
       const materiality = materialityOf({ surprise: MAGNITUDE_WEIGHT[e.magnitude] * hit.pathWeight, exposure: exp.weight, proximity: exp.proximity }, confluenceK(ctx.sources.get(hit.asset), "news"));
       const alert = await deps.store.insertAlert({

@@ -8,7 +8,7 @@ import type { IntelStore } from "./store.js";
 // hand. No auto-tuning beyond the mapper's push dampening (mapper.ts).
 
 export const REPORT_PERIOD_MS = 7 * 86_400_000;
-export const WORST_K = 5;
+const WORST_K = 5;
 
 export interface FeedbackDeps {
   store: Pick<IntelStore, "feedbackStats" | "insertReport">;

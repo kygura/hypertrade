@@ -11,9 +11,9 @@ import { fresh, hashKey, headlineEvent, hostLabel, message, pastIso, SKIPPED_DIS
 // delistings, mainnets/upgrades). An item without a usable https URL is a
 // `hypothesis`, never an observed fact.
 
-export const WEBSEARCH_PROMPT_VERSION = "websearch-v1";
+const WEBSEARCH_PROMPT_VERSION = "websearch-v1";
 export const WEBSEARCH_SETTING = "websearch:last_run";
-export const WEBSEARCH_MIN_INTERVAL_MS = 3600_000;
+const WEBSEARCH_MIN_INTERVAL_MS = 3600_000;
 
 const SweepSchema = z.object({
   headlines: z

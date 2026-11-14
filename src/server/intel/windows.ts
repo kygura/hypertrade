@@ -1,7 +1,7 @@
 import { FixedWindowSchema, HEATMAP_METRICS, type FixedWindow, type FlowFlag, type FlowRow, type HeatmapMetric, type SnapshotRow } from "../../shared/intel.js";
 import { metricValue } from "./diff.js";
 import type { Point } from "./normalize.js";
-import { MAD_SCALE, median, robustSigma, zRobust } from "../../shared/signalMath.js";
+import { median, robustSigma, zRobust } from "../../shared/signalMath.js";
 
 // Fixed windows, regime flips and threshold crossings (docs/SPEC.md § Flow F0.2,
 // F0.3). Pure. Runs alongside the I0.4 last-review baseline, not instead of it.
@@ -23,15 +23,13 @@ const HOUR_MS = 60 * MIN_MS;
 const DAY_MS = 24 * HOUR_MS;
 
 export const FIXED_WINDOWS = FixedWindowSchema.options;
-export const WINDOW_HOURS: Record<FixedWindow, number> = { "1h": 1, "6h": 6, "24h": 24 };
+const WINDOW_HOURS: Record<FixedWindow, number> = { "1h": 1, "6h": 6, "24h": 24 };
 export const ENDPOINT_TOLERANCE_MS = 20 * MIN_MS;
 export const LOOKBACK: Record<FixedWindow, { days: number; min: number }> = {
   "1h": { days: 30, min: 48 },
   "6h": { days: 30, min: 20 },
   "24h": { days: 90, min: 30 },
 };
-/** Robust σ = MAD × this (σ of a normal distribution). */
-export { MAD_SCALE };
 
 /** σ floor for sum metrics, in log(1 + USD): sparse history (MAD 0) cannot make a small total look extreme. */
 const SUM_FLOOR = 0.5;
