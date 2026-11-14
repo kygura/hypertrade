@@ -21,7 +21,7 @@ export const OPEN_STATUSES = ["watching", "triggered"] as const satisfies readon
  * Who built the levels: "code" = a catalogue definition, "menu" = the model picked them from the code-computed level
  * menu of the board scan (src/server/routine/scan.ts), "model" = free prices from an LLM proposal the gate accepted.
  */
-export const LevelsSourceSchema = z.enum(["code", "menu", "model"]);
+const LevelsSourceSchema = z.enum(["code", "menu", "model"]);
 /** The bar the trigger is read on; it sets the expiry (src/server/routine/scan.ts EXPIRY_DAYS). */
 export const SetupTimeframeSchema = z.enum(["4h", "1d", "1w"]);
 

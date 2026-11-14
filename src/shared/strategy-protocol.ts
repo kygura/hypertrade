@@ -6,19 +6,19 @@ import { z } from "zod";
 
 // ─── Jev primitives ───
 
-export const ChoiceQuestionSchema = z.object({
+const ChoiceQuestionSchema = z.object({
   type: z.literal("choice"),
   instructions: z.string(),
   criteria: z.record(z.string(), z.string()),
 });
 
-export const ScoreQuestionSchema = z.object({
+const ScoreQuestionSchema = z.object({
   type: z.literal("score"),
   instructions: z.string(),
   criteria: z.array(z.string()),
 });
 
-export const NoulQuestionSchema = z.object({
+const NoulQuestionSchema = z.object({
   type: z.literal("noul"),
   instructions: z.string(),
 });
@@ -31,19 +31,19 @@ export const QuestionSchema = z.discriminatedUnion("type", [
 
 // Legend values may be plain strings or objects; clients render `what` when
 // it is an object.
-export const LegendValueSchema = z.union([
+const LegendValueSchema = z.union([
   z.string(),
   z.object({ what: z.string() }).passthrough(),
 ]);
 
-export const ChoiceAnswerSchema = z.object({
+const ChoiceAnswerSchema = z.object({
   type: z.literal("choice"),
   choice: z.string(),
   probabilities: z.record(z.string(), z.number()),
   confidence: z.number().optional(),
 });
 
-export const ScoreAnswerSchema = z.object({
+const ScoreAnswerSchema = z.object({
   type: z.literal("score"),
   score: z.number(),
   probabilities: z.record(z.string(), z.number()),
@@ -51,7 +51,7 @@ export const ScoreAnswerSchema = z.object({
   confidence: z.number().optional(),
 });
 
-export const NoulAnswerSchema = z.object({
+const NoulAnswerSchema = z.object({
   type: z.literal("noul"),
   noul: z.number(),
   confidence: z.number().optional(),
@@ -65,9 +65,9 @@ export const AnswerSchema = z.discriminatedUnion("type", [
 
 // ─── Core types ───
 
-export const ParamTypeSchema = z.enum(["number", "string", "bool", "enum"]);
+const ParamTypeSchema = z.enum(["number", "string", "bool", "enum"]);
 
-export const ParamSpecSchema = z.object({
+const ParamSpecSchema = z.object({
   key: z.string(),
   type: ParamTypeSchema,
   label: z.string().optional(),
@@ -91,7 +91,7 @@ export const ManifestSchema = z.object({
   questions: z.record(z.string(), QuestionSchema).default({}),
 });
 
-export const GovernorModeSchema = z.enum(["manual", "threshold", "auto"]);
+const GovernorModeSchema = z.enum(["manual", "threshold", "auto"]);
 
 export const GovernorSettingsSchema = z.object({
   mode: GovernorModeSchema,
@@ -102,7 +102,7 @@ export const GovernorSettingsSchema = z.object({
 });
 
 // Per-strategy override: same shape, every field optional.
-export const GovernorOverrideSchema = GovernorSettingsSchema.partial();
+const GovernorOverrideSchema = GovernorSettingsSchema.partial();
 
 export const StrategyConfigSchema = z.object({
   id: z.string(),
@@ -123,7 +123,7 @@ export const StrategyStatusSchema = z.object({
   next_run_at: z.string().nullish(),
 });
 
-export const IntentActionSchema = z.enum([
+const IntentActionSchema = z.enum([
   "open_long",
   "open_short",
   "close",
@@ -132,7 +132,7 @@ export const IntentActionSchema = z.enum([
   "hold",
 ]);
 
-export const IntentSchema = z.object({
+const IntentSchema = z.object({
   id: z.string(),
   strategy_id: z.string(),
   venue: z.string(),
@@ -145,7 +145,7 @@ export const IntentSchema = z.object({
   confidence: z.number().nullish(),
 });
 
-export const VerdictStatusSchema = z.enum([
+const VerdictStatusSchema = z.enum([
   "proposed",
   "approved",
   "rejected",
@@ -154,9 +154,9 @@ export const VerdictStatusSchema = z.enum([
   "failed",
 ]);
 
-export const VerdictBySchema = z.enum(["governor", "operator", "gate", "venue"]);
+const VerdictBySchema = z.enum(["governor", "operator", "gate", "venue"]);
 
-export const VerdictSchema = z.object({
+const VerdictSchema = z.object({
   intent_id: z.string(),
   status: VerdictStatusSchema,
   by: VerdictBySchema,
@@ -164,7 +164,7 @@ export const VerdictSchema = z.object({
   ts: z.string(),
 });
 
-export const UsageSchema = z.object({
+const UsageSchema = z.object({
   input_tokens: z.number().default(0),
   output_tokens: z.number().default(0),
 });
@@ -187,7 +187,7 @@ export const DecisionRecordSchema = z.object({
   error: z.string().default(""),
 });
 
-export const PositionSchema = z.object({
+const PositionSchema = z.object({
   market: z.string(),
   size_usd: z.number(),
   entry: z.number().nullish(),
@@ -195,7 +195,7 @@ export const PositionSchema = z.object({
   upnl_usd: z.number().nullish(),
 });
 
-export const VenueStatusSchema = z.object({
+const VenueStatusSchema = z.object({
   id: z.string(),
   kind: z.string(),
   chain: z.string().default("none"),
@@ -215,23 +215,11 @@ export const StrategiesResponseSchema = z.object({ strategies: z.array(StrategyS
 export const DecisionsResponseSchema = z.object({ decisions: z.array(DecisionRecordSchema) });
 export const VenuesResponseSchema = z.object({ venues: z.array(VenueStatusSchema) });
 
-export const EngineErrorSchema = z.object({
-  error: z.string(),
-  field: z.string().optional(),
-});
-
 // ─── Inferred types ───
 
-export type ChoiceQuestion = z.infer<typeof ChoiceQuestionSchema>;
-export type ScoreQuestion = z.infer<typeof ScoreQuestionSchema>;
-export type NoulQuestion = z.infer<typeof NoulQuestionSchema>;
 export type Question = z.infer<typeof QuestionSchema>;
 export type LegendValue = z.infer<typeof LegendValueSchema>;
-export type ChoiceAnswer = z.infer<typeof ChoiceAnswerSchema>;
-export type ScoreAnswer = z.infer<typeof ScoreAnswerSchema>;
-export type NoulAnswer = z.infer<typeof NoulAnswerSchema>;
 export type Answer = z.infer<typeof AnswerSchema>;
-export type ParamType = z.infer<typeof ParamTypeSchema>;
 export type ParamSpec = z.infer<typeof ParamSpecSchema>;
 export type Manifest = z.infer<typeof ManifestSchema>;
 export type GovernorMode = z.infer<typeof GovernorModeSchema>;
@@ -244,13 +232,7 @@ export type Intent = z.infer<typeof IntentSchema>;
 export type VerdictStatus = z.infer<typeof VerdictStatusSchema>;
 export type Verdict = z.infer<typeof VerdictSchema>;
 export type DecisionRecord = z.infer<typeof DecisionRecordSchema>;
-export type Position = z.infer<typeof PositionSchema>;
 export type VenueStatus = z.infer<typeof VenueStatusSchema>;
-export type ManifestsResponse = z.infer<typeof ManifestsResponseSchema>;
-export type StrategiesResponse = z.infer<typeof StrategiesResponseSchema>;
-export type DecisionsResponse = z.infer<typeof DecisionsResponseSchema>;
-export type VenuesResponse = z.infer<typeof VenuesResponseSchema>;
-export type EngineError = z.infer<typeof EngineErrorSchema>;
 
 /** Text to render for a legend entry: `what` when the value is an object. */
 export function legendText(v: LegendValue | undefined): string {

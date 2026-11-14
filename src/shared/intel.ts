@@ -51,7 +51,7 @@ export const HttpsUrlSchema = z
 
 export const EvmAddressSchema = z.string().trim().regex(/^0x[0-9a-fA-F]{40}$/, "invalid EVM address");
 
-export const SourceHealthSchema = z.object({
+const SourceHealthSchema = z.object({
   source: z.string(),
   ok: z.boolean(),
   error: z.string().optional(),
@@ -59,7 +59,7 @@ export const SourceHealthSchema = z.object({
 export type SourceHealth = z.infer<typeof SourceHealthSchema>;
 
 /** Every LLM call's record (SPEC I0.6); stored with each alert, brief and report. */
-export const LlmTraceSchema = z.object({
+const LlmTraceSchema = z.object({
   promptVersion: z.string(),
   tier: z.enum(["cheap", "strong"]),
   /** Null when no provider was called (cache hit, not configured, cap). */
@@ -81,10 +81,9 @@ export type LlmTrace = z.infer<typeof LlmTraceSchema>;
 
 // ─── Positions and watchlist (I0.2) ───
 
-export const PositionSourceSchema = z.enum(["manual", "hl", "desk"]);
-export type PositionSource = z.infer<typeof PositionSourceSchema>;
+const PositionSourceSchema = z.enum(["manual", "hl", "desk"]);
 
-export const ExposurePositionSchema = z.object({
+const ExposurePositionSchema = z.object({
   id: z.string(),
   source: PositionSourceSchema,
   asset: z.string(),
@@ -101,7 +100,7 @@ export const ExposurePositionSchema = z.object({
 });
 export type ExposurePosition = z.infer<typeof ExposurePositionSchema>;
 
-export const PositionSourceStatusSchema = SourceHealthSchema.extend({ source: PositionSourceSchema });
+const PositionSourceStatusSchema = SourceHealthSchema.extend({ source: PositionSourceSchema });
 export type PositionSourceStatus = z.infer<typeof PositionSourceStatusSchema>;
 
 export const PositionsResponseSchema = z.object({
@@ -139,7 +138,7 @@ export const ManualPositionSchema = z.object({
 });
 export type ManualPosition = z.infer<typeof ManualPositionSchema>;
 
-export const WatchlistItemSchema = z
+const WatchlistItemSchema = z
   .object({
     asset: AssetSchema,
     tags: z.array(z.string().trim().min(1).max(32)).max(10).default([]),
@@ -160,7 +159,7 @@ export const WatchlistResponseSchema = z.object({
 });
 export type WatchlistResponse = z.infer<typeof WatchlistResponseSchema>;
 
-export const ReviewSchema = z.object({
+const ReviewSchema = z.object({
   id: z.string(),
   ts: Iso,
   via: z.enum(["ui", "deeplink", "telegram_digest"]),
@@ -186,7 +185,7 @@ export const SNAPSHOT_METRICS = [
   "depth_ask_2",
   "spread_bps",
 ] as const;
-export const SnapshotMetricSchema = z.enum(SNAPSHOT_METRICS);
+const SnapshotMetricSchema = z.enum(SNAPSHOT_METRICS);
 export type SnapshotMetric = z.infer<typeof SnapshotMetricSchema>;
 
 export const SnapshotRowSchema = z.object({
@@ -207,10 +206,10 @@ export const SnapshotRowSchema = z.object({
 export type SnapshotRow = z.infer<typeof SnapshotRowSchema>;
 
 /** How DiffItem.delta reads: percent change, basis points, USD, or the raw metric unit. */
-export const DeltaUnitSchema = z.enum(["pct", "bps", "usd", "abs"]);
+const DeltaUnitSchema = z.enum(["pct", "bps", "usd", "abs"]);
 export type DeltaUnit = z.infer<typeof DeltaUnitSchema>;
 
-export const DiffItemSchema = z.object({
+const DiffItemSchema = z.object({
   asset: z.string(),
   metric: SnapshotMetricSchema,
   /** True when any position source holds the asset (false: watchlist only). */
@@ -252,8 +251,7 @@ export const EDGE_TYPE_WEIGHT: Record<EdgeType, number> = {
   macro_beta: 0.3,
 };
 
-export const EdgeOriginSchema = z.enum(["seed", "llm", "user"]);
-export type EdgeOrigin = z.infer<typeof EdgeOriginSchema>;
+const EdgeOriginSchema = z.enum(["seed", "llm", "user"]);
 
 export const EdgeSchema = z.object({
   id: z.string(),
@@ -283,10 +281,10 @@ export type UserEdgeInput = z.input<typeof UserEdgeInputSchema>;
 export const EdgeKeySchema = z.object({ src: EntitySchema, dst: EntitySchema, type: EdgeTypeSchema }).strict();
 export type EdgeKey = z.infer<typeof EdgeKeySchema>;
 
-export const PathEdgeSchema = z.object({ from: z.string(), to: z.string(), type: EdgeTypeSchema });
+const PathEdgeSchema = z.object({ from: z.string(), to: z.string(), type: EdgeTypeSchema });
 export type PathEdge = z.infer<typeof PathEdgeSchema>;
 
-export const GraphPathSchema = z.object({
+const GraphPathSchema = z.object({
   /** Where the walk started (event entity or the asset asked about). */
   from: z.string(),
   /** The held or watched asset it reaches. */
@@ -322,25 +320,23 @@ export const EVENT_TYPES = [
 export const EventTypeSchema = z.enum([...EVENT_TYPES, "data"]);
 export type EventType = z.infer<typeof EventTypeSchema>;
 
-export const EventOriginSchema = z.enum(["rss", "governance", "calendar", "websearch", "x", "telegram", "manual", "docwatch", "flow"]);
-export type EventOrigin = z.infer<typeof EventOriginSchema>;
+const EventOriginSchema = z.enum(["rss", "governance", "calendar", "websearch", "x", "telegram", "manual", "docwatch", "flow"]);
 
-export const MagnitudeSchema = z.enum(["low", "med", "high"]);
+const MagnitudeSchema = z.enum(["low", "med", "high"]);
 export type Magnitude = z.infer<typeof MagnitudeSchema>;
 
-export const ClaimTagSchema = z.enum(["observed", "hypothesis"]);
+const ClaimTagSchema = z.enum(["observed", "hypothesis"]);
 
-export const EventSourceSchema = z.object({ label: Text(120), url: z.string().trim().max(2000).optional() }).strict();
+const EventSourceSchema = z.object({ label: Text(120), url: z.string().trim().max(2000).optional() }).strict();
 export type EventSource = z.infer<typeof EventSourceSchema>;
 
-export const CatalystInfoSchema = z
+const CatalystInfoSchema = z
   .object({
     size: Text(120).optional(),
     /** Always a hypothesis (SPEC I0.13). */
     directionHypothesis: z.enum(["up", "down", "unclear"]).optional(),
   })
   .strict();
-export type CatalystInfo = z.infer<typeof CatalystInfoSchema>;
 
 /** What the LLM extracts from a headline cluster (cheap tier). */
 export const EventExtractionSchema = z
@@ -378,7 +374,7 @@ export const IntelEventSchema = z.object({
 });
 export type IntelEvent = z.infer<typeof IntelEventSchema>;
 
-export const ClusterSchema = z.object({
+const ClusterSchema = z.object({
   id: z.string(),
   label: z.string().nullable(),
   entities: z.array(z.string()),
@@ -389,7 +385,7 @@ export const ClusterSchema = z.object({
 });
 export type Cluster = z.infer<typeof ClusterSchema>;
 
-export const CatalystSchema = z.object({
+const CatalystSchema = z.object({
   eventId: z.string(),
   title: z.string(),
   type: EventTypeSchema,
@@ -418,7 +414,6 @@ export const ManualCatalystInputSchema = z
 export type ManualCatalystInput = z.input<typeof ManualCatalystInputSchema>;
 
 export const EventsQuerySchema = z.object({ since: Iso.optional(), type: EventTypeSchema.optional() });
-export const EventsResponseSchema = z.object({ events: z.array(IntelEventSchema) });
 export const CatalystsQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(90).default(14) });
 export const CatalystsResponseSchema = z.object({ catalysts: z.array(CatalystSchema) });
 
@@ -426,10 +421,10 @@ export const CatalystsResponseSchema = z.object({ catalysts: z.array(CatalystSch
 
 export const AlertKindSchema = z.enum(["mapper", "catalyst", "docwatch", "terminal", "flow", "narrative"]);
 export type AlertKind = z.infer<typeof AlertKindSchema>;
-export const CatalystWindowSchema = z.enum(["24h", "1h"]);
+const CatalystWindowSchema = z.enum(["24h", "1h"]);
 export type CatalystWindow = z.infer<typeof CatalystWindowSchema>;
 
-export const PricedInSchema = z.object({
+const PricedInSchema = z.object({
   pricePct: Num,
   /** Null when only candles were available (no OI history at first_seen). */
   oiPct: Num.nullable(),
@@ -437,7 +432,7 @@ export const PricedInSchema = z.object({
 });
 export type PricedIn = z.infer<typeof PricedInSchema>;
 
-export const AlertSchema = z.object({
+const AlertSchema = z.object({
   id: z.string(),
   kind: AlertKindSchema,
   /** Dedupe reference: cluster id (mapper), event id (catalyst, flow), watch change id (docwatch), brief id (terminal), stage change or contrast id (narrative; asset = narrative id). */
@@ -469,7 +464,7 @@ export const AlertsResponseSchema = z.object({ alerts: z.array(AlertSchema) });
 export const AlertFeedbackInputSchema = z.object({ vote: z.union([z.literal(1), z.literal(-1)]) }).strict();
 export type AlertFeedbackInput = z.infer<typeof AlertFeedbackInputSchema>;
 
-export const FeedbackBucketSchema = z.object({
+const FeedbackBucketSchema = z.object({
   eventType: z.string().nullable(),
   edgeType: EdgeTypeSchema.nullable(),
   hops: z.number().int(),
@@ -485,7 +480,7 @@ export const BriefSurfaceSchema = z.enum(["ui", "cron"]);
 export type BriefSurface = z.infer<typeof BriefSurfaceSchema>;
 
 /** Last run per ingest source (collector_runs `intel:<source>`). */
-export const IngestHealthSchema = z.object({
+const IngestHealthSchema = z.object({
   source: z.string(),
   ok: z.boolean(),
   lastRunAt: Iso.nullable(),
@@ -517,14 +512,13 @@ export const BriefLatestResponseSchema = z.object({ brief: BriefSchema.nullable(
 export const BriefLatestQuerySchema = z.object({ surface: BriefSurfaceSchema.optional() });
 /** POST /brief body (optional): `deeplink` when the open came from Telegram's `/?review=1`. */
 export const BriefRequestSchema = z.object({ via: ReviewSchema.shape.via.default("ui") }).strict();
-export type BriefRequest = z.input<typeof BriefRequestSchema>;
 
 // ─── Journal (I0.15) ───
 
-export const SessionSchema = z.enum(["asia", "eu", "us", "off"]);
+const SessionSchema = z.enum(["asia", "eu", "us", "off"]);
 export type Session = z.infer<typeof SessionSchema>;
 
-export const TradeSchema = z.object({
+const TradeSchema = z.object({
   /** `<venue>:<coin>:<open fill tid>` */
   id: z.string(),
   venue: z.enum(["hl", "desk"]),
@@ -553,7 +547,7 @@ export const TradeSchema = z.object({
 });
 export type Trade = z.infer<typeof TradeSchema>;
 
-export const TagStatsSchema = z.object({
+const TagStatsSchema = z.object({
   tag: z.string(),
   trades: z.number().int(),
   winRate: Num,
@@ -582,7 +576,7 @@ export const TradeNoteSchema = z.object({
 export type TradeNote = z.infer<typeof TradeNoteSchema>;
 export const JournalTagResponseSchema = z.object({ tagged: z.number().int() });
 
-export const ReportFindingSchema = z.object({
+const ReportFindingSchema = z.object({
   tag: z.string(),
   tradeIds: z.array(z.string()),
   trades: z.number().int(),
@@ -612,7 +606,7 @@ export const FeedbackReportSchema = z.object({
 });
 export type FeedbackReport = z.infer<typeof FeedbackReportSchema>;
 
-export const ReportSchema = z.discriminatedUnion("kind", [JournalReportSchema, FeedbackReportSchema]);
+const ReportSchema = z.discriminatedUnion("kind", [JournalReportSchema, FeedbackReportSchema]);
 export type Report = z.infer<typeof ReportSchema>;
 export type ReportKind = Report["kind"];
 
@@ -633,7 +627,7 @@ export const ThesisCheckSchema = z.discriminatedUnion("kind", [
 export type ThesisCheck = z.infer<typeof ThesisCheckSchema>;
 
 /** What a check evaluated to, and where the number came from. */
-export const ThesisEvidenceSchema = z
+const ThesisEvidenceSchema = z
   .object({
     value: z.union([Num, z.string(), z.null()]),
     source: z.object({ label: Text(120), url: z.string().trim().max(2000).optional() }).strict(),
@@ -655,7 +649,7 @@ export const ThesisClaimSchema = z
 export type ThesisClaim = z.infer<typeof ThesisClaimSchema>;
 
 /** One check run: status and value of every claim, then every invalidation, in order. */
-export const ThesisHistoryEntrySchema = z.object({
+const ThesisHistoryEntrySchema = z.object({
   ts: Iso,
   checks: z.array(z.object({ status: z.enum(["supported", "contradicted", "unknown", "triggered", "clear"]), value: z.union([Num, z.string(), z.null()]) })),
 });
@@ -706,10 +700,10 @@ export const SCREENER_TABLES = {
   observations: { assetCol: null, cols: { series_id: "text", ts: "ts", value: "num" } },
 } as const satisfies Record<string, { assetCol: string | null; cols: Record<string, ColKind> }>;
 export type ScreenerSource = keyof typeof SCREENER_TABLES;
-export const ScreenerSourceSchema = z.enum(["snapshots", "funding", "candles", "observations"]);
+const ScreenerSourceSchema = z.enum(["snapshots", "funding", "candles", "observations"]);
 
 const ColNameSchema = z.string().regex(/^[a-z][a-z0-9_]{0,31}$/, "invalid column");
-export const ScreenerOpSchema = z.enum(["=", "!=", ">", ">=", "<", "<="]);
+const ScreenerOpSchema = z.enum(["=", "!=", ">", ">=", "<", "<="]);
 /** String filter values are bound parameters anyway; the charset keeps them to coin/series/tf names. */
 const FilterValueSchema = z.union([Num, z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/, "invalid filter value")]);
 
@@ -763,7 +757,7 @@ export type QueryResult = z.infer<typeof QueryResultSchema>;
 
 // ─── Order copilot (I0.18) ───
 
-export const OrderStopSchema = z.discriminatedUnion("type", [
+const OrderStopSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("price"), px: Pos }).strict(),
   z.object({ type: z.literal("pct"), pct: z.number().finite().gt(0).max(50) }).strict(),
   z.object({ type: z.literal("prev_day_low") }).strict(),
@@ -796,7 +790,7 @@ export type OrderPreviewRequest = z.infer<typeof OrderPreviewRequestSchema>;
  * reading of it: reject when not approved, clip when approved with a
  * "clipped" warning, approve otherwise. Built by toOrderVerdict.
  */
-export const OrderVerdictSchema = z.object({
+const OrderVerdictSchema = z.object({
   decision: z.enum(["approve", "clip", "reject"]),
   approved: z.boolean(),
   reasons: z.array(z.string()),
@@ -862,7 +856,7 @@ export type OrderConfirmResponse = z.infer<typeof OrderConfirmResponseSchema>;
 // ─── Doc/contract watcher (I0.19) ───
 
 export const CHAINS = ["ethereum", "arbitrum", "base", "optimism", "polygon", "bsc", "avalanche", "hyperevm"] as const;
-export const ChainSchema = z.enum(CHAINS);
+const ChainSchema = z.enum(CHAINS);
 export type Chain = z.infer<typeof ChainSchema>;
 
 const watchCommon = { asset: AssetSchema.optional(), label: Text(80) };
@@ -873,7 +867,7 @@ export const WatchInputSchema = z.discriminatedUnion("kind", [
 ]);
 export type WatchInput = z.infer<typeof WatchInputSchema>;
 
-export const WatchKindSchema = z.enum(["url", "evm_contract", "evm_wallet"]);
+const WatchKindSchema = z.enum(["url", "evm_contract", "evm_wallet"]);
 export const WatchSchema = z.object({
   id: z.string(),
   kind: WatchKindSchema,
@@ -890,7 +884,7 @@ export const WatchSchema = z.object({
 });
 export type Watch = z.infer<typeof WatchSchema>;
 
-export const WatchChangeSchema = z.object({
+const WatchChangeSchema = z.object({
   id: z.string(),
   watchId: z.string(),
   ts: Iso,
@@ -915,7 +909,7 @@ export const WatchChangesResponseSchema = z.object({ changes: z.array(WatchChang
 // ─── Flow (SPEC § Flow F0.1–F0.4, F1) ───
 
 /** Non-HL venue metrics stored in intel_flow; volume and liquidation values are per 15-min interval. */
-export const FLOW_METRICS = [
+const FLOW_METRICS = [
   "oi_usd",
   "funding",
   "long_short_ratio",
@@ -925,10 +919,10 @@ export const FLOW_METRICS = [
   "perp_buy_volume_usd",
   "spot_volume_usd",
 ] as const;
-export const FlowMetricSchema = z.enum(FLOW_METRICS);
+const FlowMetricSchema = z.enum(FLOW_METRICS);
 export type FlowMetric = z.infer<typeof FlowMetricSchema>;
 
-export const FlowRowSchema = z.object({
+const FlowRowSchema = z.object({
   asset: z.string(),
   /** `agg` (Coinalyze provider aggregate, may include HL) or an exchange code. */
   venue: z.string(),
@@ -956,15 +950,15 @@ export const HEATMAP_METRICS = [
   "perp_volume_usd",
   "spot_volume_usd",
 ] as const;
-export const HeatmapMetricSchema = z.enum(HEATMAP_METRICS);
+const HeatmapMetricSchema = z.enum(HEATMAP_METRICS);
 export type HeatmapMetric = z.infer<typeof HeatmapMetricSchema>;
 
 export const FixedWindowSchema = z.enum(["1h", "6h", "24h"]);
 export type FixedWindow = z.infer<typeof FixedWindowSchema>;
-export const HeatmapWindowSchema = z.enum(["review", "1h", "6h", "24h"]);
+const HeatmapWindowSchema = z.enum(["review", "1h", "6h", "24h"]);
 export type HeatmapWindow = z.infer<typeof HeatmapWindowSchema>;
 
-export const FlowFlagSchema = z.object({
+const FlowFlagSchema = z.object({
   id: z.string(),
   asset: z.string(),
   kind: z.enum(["detector", "flip", "crossing"]),
@@ -980,7 +974,7 @@ export const FlowFlagSchema = z.object({
 });
 export type FlowFlag = z.infer<typeof FlowFlagSchema>;
 
-export const FlowSourceStatusSchema = z.object({ ok: z.boolean(), error: z.string().optional() });
+const FlowSourceStatusSchema = z.object({ ok: z.boolean(), error: z.string().optional() });
 
 export const HeatmapQuerySchema = z.object({ window: HeatmapWindowSchema.default("review") });
 export const HeatmapResponseSchema = z.object({
@@ -996,7 +990,7 @@ export const HeatmapResponseSchema = z.object({
 });
 export type HeatmapResponse = z.infer<typeof HeatmapResponseSchema>;
 
-export const AssetEventSchema = z.object({
+const AssetEventSchema = z.object({
   ts: Iso,
   kind: z.enum(["flow", "alert", "catalyst", "research"]),
   title: z.string(),
@@ -1025,12 +1019,12 @@ export const FlowsResponseSchema = z.object({ flags: z.array(FlowFlagSchema) });
 
 // ─── Scout research (docs/SPEC.md § Scout S0.1) ───
 
-export const RESEARCH_STATUSES = ["running", "found", "no_cause", "capped", "failed"] as const;
-export const ResearchStatusSchema = z.enum(RESEARCH_STATUSES);
+const RESEARCH_STATUSES = ["running", "found", "no_cause", "capped", "failed"] as const;
+const ResearchStatusSchema = z.enum(RESEARCH_STATUSES);
 export type ResearchStatus = z.infer<typeof ResearchStatusSchema>;
 
 /** observed needs a url; hypothesis may omit it and is never phrased as fact. */
-export const ResearchEvidenceSchema = z
+const ResearchEvidenceSchema = z
   .object({
     claim: Text(500),
     url: HttpsUrlSchema.nullable(),
@@ -1065,7 +1059,7 @@ export type ResearchResult = z.infer<typeof ResearchResultSchema>;
 // both; the contrast research is the one LLM step, and it carries the operator's
 // own view as an input it must weigh, not defer to.
 
-export const NarrativeLeanSchema = z.enum(["continuation", "fade", "unsure"]);
+const NarrativeLeanSchema = z.enum(["continuation", "fade", "unsure"]);
 export type NarrativeLean = z.infer<typeof NarrativeLeanSchema>;
 
 /** PUT /intel/narratives/:id/view body: the operator's own read. */
@@ -1079,7 +1073,7 @@ export const NARRATIVE_STAGES = ["emerging", "expanding", "crowded", "fading", "
 export type NarrativeStage = (typeof NARRATIVE_STAGES)[number];
 
 /** Price × OI quadrant of one window (both |z| ≥ 1), else quiet; unknown when either z is null. */
-export const FLOW_QUADRANTS = ["long_build", "short_build", "short_cover", "long_unwind", "quiet", "unknown"] as const;
+const FLOW_QUADRANTS = ["long_build", "short_build", "short_cover", "long_unwind", "quiet", "unknown"] as const;
 export type FlowQuadrant = (typeof FLOW_QUADRANTS)[number];
 
 export interface NarrativeWindow {
@@ -1123,12 +1117,12 @@ export interface NarrativeFlow {
   flowScore: number | null;
 }
 
-export const NarrativeCaseSchema = z.object({
+const NarrativeCaseSchema = z.object({
   case: z.string(),
   evidence: z.array(ResearchEvidenceSchema),
 });
 
-export const NarrativeContrastSchema = z.object({
+const NarrativeContrastSchema = z.object({
   id: z.string(),
   narrativeId: z.string(),
   status: z.enum(["done", "failed", "capped", "no_web_search"]),

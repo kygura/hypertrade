@@ -213,7 +213,7 @@ async function boot() {
     setHealthExtras(async () => ({
       store: storeKind,
       loops: loops.health(),
-      ws: { state: selected === "all" || selected.has("ws") ? ws.state : "off", lastMessageAgeSec: ws.lastMessageAgeSec() },
+      ws: { state: wants("ws") ? ws.state : "off", lastMessageAgeSec: ws.lastMessageAgeSec() },
       scanHistoryMin: scanner.historyMin(),
       scanAgeSec: scanner.lastScanAt() ? (Date.now() - scanner.lastScanAt()!.getTime()) / 1000 : null,
       crawler: { pollsPerMin: crawler.pollsPerMin(), addresses: await addressCount() },

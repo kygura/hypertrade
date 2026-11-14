@@ -47,8 +47,8 @@ export const UNIVERSE_ASSET = "UNIVERSE";
  * - `scorecard`: a radar call's stance in the radar scorecard at its longest graded horizon: n calls, mean move vs
  *   BTC (%, signed by direction), share that went the called way.
  */
-export const StudyEvidenceSchema = StudySummarySchema.extend({ kind: z.literal("study") });
-export const LedgerEvidenceSchema = z.object({
+const StudyEvidenceSchema = StudySummarySchema.extend({ kind: z.literal("study") });
+const LedgerEvidenceSchema = z.object({
   kind: z.literal("ledger"),
   setupKind: z.string().min(1),
   horizon: z.string().min(1),
@@ -58,7 +58,7 @@ export const LedgerEvidenceSchema = z.object({
   ci95: z.tuple([Num, Num]).nullable(),
   hitRate: Num.nullable(),
 });
-export const ScorecardEvidenceSchema = z.object({
+const ScorecardEvidenceSchema = z.object({
   kind: z.literal("scorecard"),
   stance: z.enum(["ride", "fade"]),
   horizonDays: z.number().int().positive(),
@@ -66,8 +66,7 @@ export const ScorecardEvidenceSchema = z.object({
   meanPct: Num,
   hitRate: Num,
 });
-export const EvidenceSchema = z.discriminatedUnion("kind", [StudyEvidenceSchema, LedgerEvidenceSchema, ScorecardEvidenceSchema]);
-export type Evidence = z.infer<typeof EvidenceSchema>;
+const EvidenceSchema = z.discriminatedUnion("kind", [StudyEvidenceSchema, LedgerEvidenceSchema, ScorecardEvidenceSchema]);
 export type StudyEvidence = z.infer<typeof StudyEvidenceSchema>;
 export type LedgerEvidence = z.infer<typeof LedgerEvidenceSchema>;
 export type ScorecardEvidence = z.infer<typeof ScorecardEvidenceSchema>;
@@ -123,7 +122,7 @@ export const ResearchSignalSchema = z.object({
 export type ResearchSignal = z.infer<typeof ResearchSignalSchema>;
 
 /** Fixed reasons a source or the radar is unavailable; the underlying error is logged server-side only. */
-export const UNAVAILABLE_REASONS = [
+const UNAVAILABLE_REASONS = [
   "needs a database (DATABASE_URL unset)",
   "platform offline (no worker loop and no database)",
   "radar files not deployed",
@@ -135,10 +134,10 @@ export const UNAVAILABLE_REASONS = [
   "first scan in progress",
   "needs a database or the always-on server; or run `bun run signals:scan`",
 ] as const;
-export const UnavailableReasonSchema = z.enum(UNAVAILABLE_REASONS);
+const UnavailableReasonSchema = z.enum(UNAVAILABLE_REASONS);
 export type UnavailableReason = z.infer<typeof UnavailableReasonSchema>;
 
-export const SourceStatusSchema = z.object({
+const SourceStatusSchema = z.object({
   state: z.enum(["ok", "unavailable"]),
   reason: UnavailableReasonSchema.optional(),
   /** Signals shown. */
@@ -164,7 +163,7 @@ export const BoardResponseSchema = z.object({
 export type BoardResponse = z.infer<typeof BoardResponseSchema>;
 
 /** One shipped signal definition (Signals v2 S1), as GET /api/research/definitions lists it. */
-export const SignalDefinitionWireSchema = z.object({
+const SignalDefinitionWireSchema = z.object({
   id: z.string().regex(/^[a-z0-9_]+$/),
   name: z.string().min(1),
   /** One line, facts. */
@@ -230,7 +229,7 @@ export const StudyResponseSchema = z.object({
 export type StudyResponse = z.infer<typeof StudyResponseSchema>;
 
 /** One scorecard line of src/server/radar/calls.ts as data. */
-export const RadarScoreRowSchema = z.object({
+const RadarScoreRowSchema = z.object({
   stance: z.enum(["ride", "fade"]),
   horizonDays: z.number().int().positive(),
   n: z.number().int().positive(),
@@ -270,7 +269,7 @@ export type ReplaySource = (typeof REPLAY_SOURCES)[number];
  * null numbers. `evaluable: false` = the setup reads a feature the stream cannot build (`reason` says which); it
  * could not fire, which is not the same as firing 0 times.
  */
-export const SetupReplayRowSchema = z.object({
+const SetupReplayRowSchema = z.object({
   kind: z.string().min(1),
   side: z.enum(["long", "short"]),
   horizon: z.string().regex(/^\d+[mhd]$/),
