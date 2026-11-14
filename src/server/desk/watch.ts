@@ -83,6 +83,12 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
     }
   }
 
+  // Venue upkeep (Propr: stale or finished ladder rungs are cancelled). Never fatal to the tick.
+  if (service.broker.housekeep) {
+    const lines = await service.broker.housekeep(now).catch((err) => [`housekeeping failed: ${err instanceof Error ? err.message : String(err)}`]);
+    if (lines.length) await service.alert("info", `${service.broker.venue} housekeeping`, lines.join("\n"));
+  }
+
   const account = await service.broker.account(marks, now);
   const dayLossPct = account.equityUsd > 0 ? (-account.dayPnlUsd / account.equityUsd) * 100 : 0;
   const today = now.toISOString().slice(0, 10);

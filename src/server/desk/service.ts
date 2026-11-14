@@ -7,6 +7,7 @@ import { evaluateExit, evaluateOpen, evaluateRisk, operatorRiskOrder, type Gover
 import type { Alert, AlertAction, Notifier } from "./notify.js";
 import { HlBroker } from "./hl/broker.js";
 import { PaperBroker, type Broker } from "./paper.js";
+import { ProprBroker } from "./propr/broker.js";
 import type { DeskStore } from "./store.js";
 import {
   OperatorOrderSchema,
@@ -115,7 +116,9 @@ export class DeskService {
       d.broker ??
       (d.config.venue === "hl-testnet" && d.config.hl
         ? new HlBroker({ ...d.config.hl, takerFee: d.config.limits.takerFee })
-        : new PaperBroker(d.store, {
+        : d.config.venue === "propr" && d.config.propr
+          ? new ProprBroker({ config: d.config.propr, market: async (coin) => DeskService.findMarket(await d.data.ctxs(), coin) })
+          : new PaperBroker(d.store, {
             startingEquity: d.config.paperStartingEquity,
             slippage: d.config.paperSlippage,
             takerFee: d.config.limits.takerFee,
@@ -363,8 +366,8 @@ export class DeskService {
       result.ok ? "info" : "warn",
       result.ok ? `Opened ${p.side} ${p.coin} (${this.broker.venue})` : `Open failed: ${p.coin}`,
       result.ok && fill
-        ? `${fill.size} @ ${fmtPx(fill.px)} · stop ${fmtPx(p.stop)} · target ${p.target != null ? fmtPx(p.target) : "none"} · risk $${sizing.riskUsd} · R:R ${sizing.rr ?? "n/a"}\n${note}`
-        : (result.error ?? "unknown error"),
+        ? `${fill.size} @ ${fmtPx(fill.px)} · stop ${fmtPx(p.stop)} · target ${p.target != null ? fmtPx(p.target) : "none"} · risk $${sizing.riskUsd} · R:R ${sizing.rr ?? "n/a"}${result.note ? `\n${result.note}` : ""}\n${note}`
+        : ((result.ok ? result.note : result.error) ?? "unknown error"),
       rec.runId,
     ).catch((err) => console.error(`[desk] alert for proposal ${rec.id} failed`, err));
     return out ?? { ...rec, ...patch };

@@ -33,9 +33,9 @@ export interface DeskStatus {
   configured: boolean
   model: { provider: string; label: string; pm: string; scouts: string; scoutProvider: string; webSearch: boolean } | null
   venue: string
-  /** True when orders reach Hyperliquid (testnet). */
+  /** True when orders reach an exchange (Hyperliquid testnet, or Propr with PROPR_LIVE=true). */
   live: boolean
-  /** The Hyperliquid account a live venue trades. */
+  /** The account a live venue trades (Hyperliquid address or Propr account id). */
   venueAccount: string | null
   /** Why a requested live venue is not in use (bad key, unsupported network). */
   venueNote: string | null
