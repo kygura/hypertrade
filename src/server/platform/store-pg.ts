@@ -3,12 +3,16 @@ import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, 
 import { LIVE_STATUSES, PRE_DECISION_STATUSES, TERMINAL_STATUSES } from "../../shared/platform.js";
 import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/agentRecords.js";
 import type { MovesResponse, MoveWindow } from "../../shared/moves.js";
+import type { ExtremeRecord, ExtremeVerdict } from "../../shared/extremes.js";
 import { sql } from "../db.js";
 import {
+  byExtremeNewest,
   byNewest,
   byCoin,
   byScore,
   parseAgentRecord,
+  parseExtremeRecord,
+  parseExtremeVerdict,
   parseMovesRun,
   parseTriageItem,
   patchAgentRecord,
@@ -87,6 +91,9 @@ const toOpportunity = (r: any): Opportunity => ({
   invalidation: r.invalidation, entryPx: r.entry_px, stopPx: r.stop_px, targetPx: r.target_px, invalidationPx: r.invalidation_px,
   createdAt: iso(r.created_at), updatedAt: iso(r.updated_at), statusChangedAt: iso(r.status_changed_at), snoozedUntil: isoOrNull(r.snoozed_until), dedupeKey: r.dedupe_key,
 });
+const toExtreme = (r: any): ExtremeRecord => ({ event: r.event, delivery: r.delivery, verdict: r.verdict ?? null, verdictAt: isoOrNull(r.verdict_at) });
+const EXTREME_COLS = "event, delivery, verdict, verdict_at";
+
 const toEntry = (r: any): LedgerEntry =>
   ({ id: Number(r.id), opportunityId: r.opportunity_id, kind: r.kind, payload: r.payload, createdAt: iso(r.created_at) }) as LedgerEntry;
 
@@ -104,6 +111,42 @@ async function insertEntries(db: Db, entries: NewLedgerEntry[], skipDuplicates =
 /** PlatformStore over Postgres (011_platform.sql). Every projection move and its ledger entry share a transaction. */
 export class PgPlatformStore implements PlatformStore {
   constructor(private readonly db: Db = pgDb()) {}
+
+  async insertExtremeEvent(r: ExtremeRecord) {
+    const row = parseExtremeRecord(r);
+    const out = await this.db.query(
+      `insert into extreme_events (key, ts, coin, delivery, event) values ($1, $2::timestamptz, $3, $4, $5::text::jsonb) on conflict (key, ts) do nothing returning key`,
+      [row.event.key, row.event.ts, row.event.coin, row.delivery, J(row.event)],
+    );
+    return out.length > 0;
+  }
+
+  async latestExtreme(key: string) {
+    const [r] = await this.db.query<any>(`select ${EXTREME_COLS} from extreme_events where key = $1 order by ts desc limit 1`, [key]);
+    return r ? toExtreme(r) : null;
+  }
+
+  async extremesDeliveredSince(since: string) {
+    const [r] = await this.db.query<any>(`select count(*)::int as n from extreme_events where ts >= $1::timestamptz and delivery in ('woken', 'pushed')`, [iso(since)]);
+    return Number(r?.n ?? 0);
+  }
+
+  async listExtremes({ since, limit }: { since: string; limit: number }) {
+    const rows = await this.db.query<any>(
+      `select ${EXTREME_COLS} from extreme_events where ts >= $1::timestamptz order by ts desc, key collate "C" limit $2::int`,
+      [iso(since), limit],
+    );
+    return rows.map(toExtreme).sort(byExtremeNewest);
+  }
+
+  async setExtremeVerdict(key: string, ts: string, verdict: ExtremeVerdict, at: string) {
+    const v = parseExtremeVerdict(verdict);
+    const [r] = await this.db.query<any>(
+      `update extreme_events set verdict = $3::text::jsonb, verdict_at = $4::timestamptz where key = $1 and ts = $2::timestamptz and verdict is null returning ${EXTREME_COLS}`,
+      [key, iso(ts), J(v), iso(at)],
+    );
+    return r ? toExtreme(r) : null;
+  }
 
   async insertAgentRecord(r: AgentRecord) {
     const row = parseAgentRecord(r);

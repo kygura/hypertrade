@@ -1,8 +1,8 @@
 # Routine pipeline: board scan, setups and the daily brief
 
 Status: the contract for `bun run routine`, the code path behind the
-scheduled routine. The Claude Code session (`ROUTINE.md`) runs the same
-pipeline and stands in for the model call with `--input`; without a session
+scheduled routine. The Claude Code session (following `ROUTINE.md`, removed on 2026-11-14) ran the same
+pipeline and stood in for the model call with `--input`; without a session
 the pipeline calls the app's own LLM layer (`src/server/llm/`: Claude Opus
 5.5 by default, Kimi via the `moonshot` preset when the Anthropic call
 fails). The scheduled workflow that ran it (`routine.yml`) was removed; the

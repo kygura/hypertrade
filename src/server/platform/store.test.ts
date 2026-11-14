@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { AgentRecord, TriageItem } from "../../shared/agentRecords.js";
+import type { ExtremeEvent, ExtremeRecord } from "../../shared/extremes.js";
 import type { MovesResponse } from "../../shared/moves.js";
 import type { LedgerPayload, NoveltyEntry } from "../../shared/platform.js";
 import { row as moveRow } from "../moves/agent.fixture.js";
@@ -358,6 +359,36 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   await s.saveTriageScan({ day: "2026-10-16", at: t(3), state: "ok", reason: null, watched: 31, overBudget: 2 });
   put("triage.scan", await s.loadTriageScan());
   expect(out["triage.scan"]).toEqual({ day: "2026-10-16", at: t(3), state: "ok", reason: null, watched: 31, overBudget: 2 });
+
+  // extreme events (027): insert once per (key, ts), latest per key, delivered count, list newest first, verdict once
+  const ev = (coin: string, h: number, over: Partial<ExtremeEvent> = {}): ExtremeEvent => ({
+    key: `oi_flush|${coin}|long`, kind: "oi_flush", coin, side: "long", ts: t(h), window: "4h", mark: 100 + h, severity: 3.5,
+    facts: { oiChg: -0.18, ret: -0.06, fundingApr: null }, line: `${coin} OI -18% in 4h`, ...over,
+  });
+  const xrec = (e: ExtremeEvent, delivery: ExtremeRecord["delivery"]): ExtremeRecord => ({ event: e, delivery, verdict: null, verdictAt: null });
+  expect(await s.latestExtreme("oi_flush|SOL|long")).toBeNull();
+  expect(await s.insertExtremeEvent(xrec(ev("SOL", 1), "woken"))).toBe(true);
+  expect(await s.insertExtremeEvent(xrec(ev("SOL", 1), "pushed"))).toBe(false); // same (key, ts): kept as first stored
+  expect(await s.insertExtremeEvent(xrec(ev("SOL", 3), "pushed"))).toBe(true);
+  expect(await s.insertExtremeEvent(xrec(ev("ETH", 3, { key: "oi_flush|ETH|long" }), "none"))).toBe(true);
+  expect(await s.insertExtremeEvent(xrec(ev("WIF", 2, { key: "oi_flush|WIF|long", ts: "2026-10-16T02:00:00Z" }), "pushed"))).toBe(true);
+  await expect(s.insertExtremeEvent(xrec(ev("BAD", 2, { kind: "nope" as never }), "none"))).rejects.toThrow();
+  put("extremes.latest", await s.latestExtreme("oi_flush|SOL|long"));
+  expect((out["extremes.latest"] as ExtremeRecord).event.ts).toBe(t(3));
+  expect((out["extremes.latest"] as ExtremeRecord).delivery).toBe("pushed");
+  expect(await s.extremesDeliveredSince(t(0))).toBe(3); // ETH went out with delivery none
+  expect(await s.extremesDeliveredSince(t(2))).toBe(2);
+  put("extremes.list", await s.listExtremes({ since: t(2), limit: 10 }));
+  expect((out["extremes.list"] as ExtremeRecord[]).map((r) => r.event.key)).toEqual(["oi_flush|ETH|long", "oi_flush|SOL|long", "oi_flush|WIF|long"]);
+  expect((out["extremes.list"] as ExtremeRecord[])[2]!.event.ts).toBe(t(2)); // ts normalized to ISO
+  expect((await s.listExtremes({ since: t(0), limit: 2 })).length).toBe(2);
+  const take = { key: "oi_flush|SOL|long", stance: "take" as const, direction: "long" as const, killPx: 95, cause: "Forced long unwind after a listing.", sources: ["https://example.com/a"] };
+  put("extremes.verdict", await s.setExtremeVerdict("oi_flush|SOL|long", t(3), take, t(4)));
+  expect(out["extremes.verdict"]).toEqual({ ...xrec(ev("SOL", 3), "pushed"), verdict: take, verdictAt: t(4) });
+  expect(await s.setExtremeVerdict("oi_flush|SOL|long", t(3), { ...take, stance: "pass" }, t(5))).toBeNull(); // written once
+  expect(await s.setExtremeVerdict("oi_flush|SOL|long", t(9), take, t(5))).toBeNull(); // no such row
+  await expect(s.setExtremeVerdict("oi_flush|SOL|long", t(1), { ...take, killPx: undefined }, t(5))).rejects.toThrow(); // take needs a kill level
+  expect((await s.latestExtreme("oi_flush|SOL|long"))!.verdict).toEqual(take);
   return out;
 }
 
