@@ -20,7 +20,7 @@ export const GATE = {
   maxCounterOpen: 1,
 } as const;
 
-export type GateMode = keyof typeof GATE.maxNew;
+type GateMode = keyof typeof GATE.maxNew;
 
 export interface GateContext {
   mode: GateMode;
@@ -47,7 +47,7 @@ const DAY = 86_400_000;
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
 /** The first rule a proposal breaks, or null. `accepted` counts toward the open-setup rules. */
-export function checkProposal(p: SetupProposal, ctx: GateContext, accepted: Setup[]): { rule: string; detail: string } | null {
+function checkProposal(p: SetupProposal, ctx: GateContext, accepted: Setup[]): { rule: string; detail: string } | null {
   const open = [...ctx.open, ...accepted];
   if (ctx.htf?.stance === "stand_aside" && !(Date.parse(ctx.htf.valid_until) <= ctx.now.getTime()))
     return { rule: "htf_stand_aside", detail: `HTF stance is stand_aside until ${ctx.htf.valid_until}` };

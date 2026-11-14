@@ -97,7 +97,7 @@ export interface DetectInput {
   now: number;
 }
 
-export type PriceReading = {
+type PriceReading = {
   window: PriceWindow;
   ret: number;
   z: number | null;
@@ -109,7 +109,7 @@ export type PriceReading = {
   oiChg: number | null;
   fires: boolean;
 };
-export type OiReading = {
+type OiReading = {
   window: OiWindow;
   oiChg: number;
   z: number | null;
@@ -119,7 +119,7 @@ export type OiReading = {
   fundingAfter: number | null;
   fires: boolean;
 };
-export type CrowdedReading = {
+type CrowdedReading = {
   funding: number;
   fundingAprPct: number;
   fundingPctile: number;
@@ -302,7 +302,7 @@ function event(kind: ExtremeKind, r: ExtremeReadings, side: Side, window: Extrem
 }
 
 /** Events from readings: per kind, the passing reading furthest past its threshold (|z| / the window's cut). */
-export function eventsOf(r: ExtremeReadings, th: ExtremeThresholds = DEFAULT_EXTREME_THRESHOLDS): ExtremeEvent[] {
+function eventsOf(r: ExtremeReadings, th: ExtremeThresholds = DEFAULT_EXTREME_THRESHOLDS): ExtremeEvent[] {
   const out: ExtremeEvent[] = [];
   const fundingFact = { funding: r.funding, fundingAprPct: r.funding == null ? null : fundingAprPct(r.funding) };
 

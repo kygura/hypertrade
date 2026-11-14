@@ -29,7 +29,7 @@ export interface DexBook {
 }
 
 /** "main" for a main-dex key ("BTC"), the dex prefix for a HIP-3 key ("xyz:SKHX" → "xyz"). */
-export const dexOf = (key: string) => (key.includes(":") ? key.slice(0, key.indexOf(":")) : "main");
+const dexOf = (key: string) => (key.includes(":") ? key.slice(0, key.indexOf(":")) : "main");
 
 export interface RadarMarket {
   /** As HL names it: "BTC" on the main dex, "xyz:SKHX" on a HIP-3 dex. */
@@ -45,7 +45,7 @@ export interface RadarMarket {
   atCap: boolean;
 }
 
-export interface Mover extends RadarMarket {
+interface Mover extends RadarMarket {
   chgPct: number;
 }
 

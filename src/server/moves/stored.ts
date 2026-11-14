@@ -10,8 +10,8 @@ const HOUR_MS = 60 * MIN_MS;
 export const MOVES_STALE_MS = 2 * HOUR_MS;
 /** The moves-agent job runs every 15 minutes: a triage pass older than twice that is stale. */
 export const TRIAGE_STALE_MS = 30 * MIN_MS;
-export const NO_RUN = "no moves run stored yet";
-export const NO_DB = "needs a database (moves runs are stored by the moves job)";
+const NO_RUN = "no moves run stored yet";
+const NO_DB = "needs a database (moves runs are stored by the moves job)";
 
 const age = (ms: number) => (ms < 2 * HOUR_MS ? `${Math.round(ms / MIN_MS)} min` : `${(ms / HOUR_MS).toFixed(1)} h`);
 

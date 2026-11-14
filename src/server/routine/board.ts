@@ -23,9 +23,9 @@ export const BOARD = {
   baselineFundingAnnPct: 10.95,
 } as const;
 
-export const BOARD_TFS = ["4h", "1d", "1w"] as const;
-export type BoardTf = (typeof BOARD_TFS)[number];
-export type Trend = "up" | "down" | "range";
+const BOARD_TFS = ["4h", "1d", "1w"] as const;
+type BoardTf = (typeof BOARD_TFS)[number];
+type Trend = "up" | "down" | "range";
 
 /** The level menu: every price a setup may reference, by key (src/server/routine/scan.ts resolves them). */
 export const LEVEL_KEYS = [
@@ -277,7 +277,7 @@ export function positioning(input: BoardInput, history: BoardHistory | null, now
   };
 }
 
-export function levelMenu(mark: number, tf: Record<BoardTf, TfRead | null>, c1d: Candle[] | null, now: number): Partial<Record<LevelKey, number>> {
+function levelMenu(mark: number, tf: Record<BoardTf, TfRead | null>, c1d: Candle[] | null, now: number): Partial<Record<LevelKey, number>> {
   const out: Partial<Record<LevelKey, number>> = { mark: sig(mark) };
   const set = (k: LevelKey, v: number | null | undefined) => {
     if (v !== null && v !== undefined && Number.isFinite(v) && v > 0) out[k] = sig(v);

@@ -44,13 +44,13 @@ export interface AnthropicProviderOptions {
 }
 
 /** Models on the current generation's surface (effort, adaptive thinking, new web search). */
-export function isCurrentGen(model: string): boolean {
+function isCurrentGen(model: string): boolean {
   return !model.startsWith("claude-haiku");
 }
 
 /** Models whose first-party API takes `fallbacks: "default"`. */
 const FALLBACK_MODELS = new Set(["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-opus-5"]);
-export const FALLBACK_BETA = "server-side-fallback-2026-07-01";
+const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
 export class AnthropicProvider implements LLMProvider {
   readonly id = "anthropic" as const;
@@ -197,7 +197,7 @@ function mapStop(reason: Anthropic.Beta.BetaStopReason | null, toolCalls: number
 }
 
 /** Web search results are a list on success and an error object otherwise. */
-export function summarizeWebSearch(content: Anthropic.Beta.BetaWebSearchToolResultBlockContent): { ok: boolean; summary: string } {
+function summarizeWebSearch(content: Anthropic.Beta.BetaWebSearchToolResultBlockContent): { ok: boolean; summary: string } {
   if (!Array.isArray(content)) {
     return { ok: false, summary: `web search error: ${content.error_code}` };
   }

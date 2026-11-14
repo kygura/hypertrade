@@ -393,8 +393,9 @@ export function createMovesService(deps: MovesDeps): MovesService {
       const listed = new Set(ctxs.map((x) => x.name));
       const peers = peersOf(sectors, name).filter((t) => listed.has(t)).slice(0, DETAIL_SECTOR_PEERS);
       const noScanner = deps.platform() == null;
-      const l = memo ?? (await load(deps, asOf, [...new Set([name, "BTC", "ETH", ...peers])], (x) => noScanner && x === name));
-      const c = await context(asOf, [...new Set([name, "BTC", "ETH", ...peers])]);
+      const coins = [...new Set([name, "BTC", "ETH", ...peers])];
+      // The candle load and the store reads are independent.
+      const [l, c] = await Promise.all([memo ?? load(deps, asOf, coins, (x) => noScanner && x === name), context(asOf, coins)]);
       const unavailable = (reason: string): MoveDetail => ({
         ...emptyRow(name, hit, sectors, deps.now()), state: "unavailable", reason, asOf: null, window,
         layers: { beta: off(reason), flow: off(reason), attention: off(reason), liq: off(reason), agents: off("agent watch not attached") }, series: [], headlines: [], record: null,

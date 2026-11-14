@@ -14,9 +14,9 @@ const Price = z.number().finite().positive();
 
 // Setup, Ledger and their parts live in src/shared/setups.ts (one shape for every
 // generator); re-exported here so routine modules keep importing from one place.
-export { DirectionSchema, SetupStatusSchema, SetupSchema, LedgerStatsSchema, LedgerSchema, type Setup, type Ledger, type LedgerStats } from "../../shared/setups.js";
+export { LedgerSchema, type Setup, type Ledger, type LedgerStats } from "../../shared/setups.js";
 
-export const BiasSchema = z.object({
+const BiasSchema = z.object({
   asset: z.string().min(1).max(24),
   bias: z.enum(["long", "short", "neutral"]),
   levels: z.array(z.object({ label: z.string().min(1).max(80), price: Price })).max(6),
@@ -24,7 +24,7 @@ export const BiasSchema = z.object({
 });
 
 /** The operator's stance file (data/setups/htf.json). Optional: while it is valid, stance stand_aside blocks every new setup. */
-export const HtfViewDraftSchema = z.object({
+const HtfViewDraftSchema = z.object({
   regime: z.enum(["risk_on", "neutral", "risk_off"]),
   stance: z.enum(["trend_long", "range", "trend_short", "stand_aside"]),
   thesis: z.string().min(1).max(1500),
@@ -39,7 +39,7 @@ export const HtfViewSchema = HtfViewDraftSchema.extend({
 export type HtfView = z.infer<typeof HtfViewSchema>;
 
 /** A priced proposal: what the gate checks. Built by code from a SetupDraft (scan.ts), never emitted by the model. */
-export const SetupProposalSchema = z.object({
+const SetupProposalSchema = z.object({
   asset: z.string().min(1).max(24),
   direction: DirectionSchema,
   horizon: HorizonSchema,
@@ -57,7 +57,7 @@ export const SetupProposalSchema = z.object({
 export type SetupProposal = z.infer<typeof SetupProposalSchema>;
 
 /** Commonplace imbalances the scan names. "other" needs its note to say what it is. */
-export const IMBALANCE_KINDS = [
+const IMBALANCE_KINDS = [
   "crowded_longs",
   "crowded_shorts",
   "shorts_pressing",
@@ -71,7 +71,7 @@ export const IMBALANCE_KINDS = [
   "trend_exhaustion",
   "other",
 ] as const;
-export const ImbalanceKindSchema = z.enum(IMBALANCE_KINDS);
+const ImbalanceKindSchema = z.enum(IMBALANCE_KINDS);
 
 const LevelRefSchema = z.object({
   level: z.enum(LEVEL_KEYS).describe("A key from this market's level menu"),
@@ -89,7 +89,7 @@ const TargetRefSchema = z
   });
 
 /** A setup as the model writes it: structure and reasons, with every price a reference into the level menu. */
-export const SetupDraftSchema = z.object({
+const SetupDraftSchema = z.object({
   asset: z.string().min(1).max(24).describe("Board symbol, case-sensitive"),
   direction: DirectionSchema,
   template: SetupIdSchema.nullable().describe("The tripwire template this writes up, or null for an imbalance no template covers"),
@@ -130,7 +130,7 @@ export const ScanOutputSchema = z.object({
 });
 export type ScanOutput = z.infer<typeof ScanOutputSchema>;
 
-export const DOMAINS = ["macro", "equities", "crypto", "tech", "geopolitics"] as const;
+const DOMAINS = ["macro", "equities", "crypto", "tech", "geopolitics"] as const;
 
 // Model-side MarketState/Sectors: the app's schemas minus generated_at (code
 // sets it), with the vocabulary ROUTINE.md §2a asks for made strict.
@@ -176,7 +176,6 @@ export const DailyOutputSchema = z
       if (!ids.has(r.from) || !ids.has(r.to)) ctx.addIssue({ code: "custom", path: ["sectors", "rotations", i], message: "from/to must be sector ids listed above" });
     });
   });
-export type DailyOutput = z.infer<typeof DailyOutputSchema>;
 export { MarketStateDataSchema, SectorsDataSchema };
 
 /**

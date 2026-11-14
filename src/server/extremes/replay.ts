@@ -12,12 +12,12 @@ import { BTC_COIN, DEFAULT_EXTREME_THRESHOLDS, detectExtremes, type ExtremeThres
 
 const HOUR = 3_600_000;
 const WEEK = 7 * 24 * HOUR;
-export const DEFAULT_EXTREME_COOLDOWN_MS = 24 * HOUR;
-export const DEFAULT_EXTREME_HORIZONS_MS = [4 * HOUR, 24 * HOUR, 72 * HOUR];
+const DEFAULT_EXTREME_COOLDOWN_MS = 24 * HOUR;
+const DEFAULT_EXTREME_HORIZONS_MS = [4 * HOUR, 24 * HOUR, 72 * HOUR];
 const READS_OI: Record<ExtremeKind, boolean> = { price_dislocation: false, oi_flush: true, crowded_asymmetry: true };
 
 export type ReturnStats = { n: number; hitRate: number | null; median: number | null; mean: number | null };
-export type ExtremeReplayRow = {
+type ExtremeReplayRow = {
   kind: ExtremeKind;
   evaluable: boolean;
   reason?: string;
