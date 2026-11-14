@@ -1,12 +1,16 @@
 import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
 import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/agentRecords.js";
 import type { MovesResponse, MoveWindow } from "../../shared/moves.js";
+import type { ExtremeRecord, ExtremeVerdict } from "../../shared/extremes.js";
 import {
+  byExtremeNewest,
   byNewest,
   byCoin,
   byScore,
   isAgentRun,
   parseAgentRecord,
+  parseExtremeRecord,
+  parseExtremeVerdict,
   parseMovesRun,
   parseTriageItem,
   patchAgentRecord,
@@ -59,6 +63,39 @@ export class MemoryPlatformStore implements PlatformStore {
   movesRuns = new Map<MoveWindow, MovesResponse>();
   triageScan: TriageScan | null = null;
   noveltyProgress: NoveltyProgress | null = null;
+  /** Keyed `${key}|${ts}`. */
+  extremes = new Map<string, ExtremeRecord>();
+
+  async insertExtremeEvent(r: ExtremeRecord) {
+    const row = parseExtremeRecord(r);
+    const id = `${row.event.key}|${row.event.ts}`;
+    if (this.extremes.has(id)) return false;
+    this.extremes.set(id, clone(row));
+    return true;
+  }
+
+  async latestExtreme(key: string) {
+    return clone([...this.extremes.values()].filter((r) => r.event.key === key).sort(byExtremeNewest)[0] ?? null);
+  }
+
+  async extremesDeliveredSince(since: string) {
+    const lo = Date.parse(since);
+    return [...this.extremes.values()].filter((r) => r.delivery !== "none" && Date.parse(r.event.ts) >= lo).length;
+  }
+
+  async listExtremes({ since, limit }: { since: string; limit: number }) {
+    const lo = Date.parse(since);
+    return [...this.extremes.values()].filter((r) => Date.parse(r.event.ts) >= lo).sort(byExtremeNewest).slice(0, limit).map(clone);
+  }
+
+  async setExtremeVerdict(key: string, ts: string, verdict: ExtremeVerdict, at: string) {
+    const v = parseExtremeVerdict(verdict);
+    const r = this.extremes.get(`${key}|${iso(ts)}`);
+    if (!r || r.verdict) return null;
+    r.verdict = clone(v);
+    r.verdictAt = iso(at);
+    return clone(r);
+  }
 
   async saveMovesRun(run: MovesResponse) {
     const row = parseMovesRun(run);

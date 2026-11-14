@@ -28,6 +28,7 @@ const MOVES_WRITES = [
   "/platform/opportunities/o1/approve", "/platform/opportunities/o1/reject", "/desk/proposals/p1/approve", "/desk/exit", "/desk/kill", "/desk/approval", "/desk/settings",
 ];
 for (const p of [...MOVES_READS, ...MOVES_WRITES, "/moves/SOL/proposal", "/movesx", "/queuex"]) testApp.all(p, (c) => c.json({ reached: p }));
+for (const p of ["/extremes", "/extremes/verdict", "/extremes/verdictx", "/extremes/x", "/extremesx"]) testApp.all(p, (c) => c.json({ reached: p }));
 
 describe("session token", () => {
   test("signs and verifies a roundtrip", () => {
@@ -299,6 +300,18 @@ describe("lab bearer (LAB_API_TOKEN)", () => {
       const cookie = (await postLogin("correct-horse")).headers.get("set-cookie")!.split(";")[0];
       expect((await req("/moves/SOL/proposal", { cookie }, "POST")).status).toBe(200);
       expect((await req("/moves/SOL/investigate", { cookie }, "POST")).status).toBe(200);
+    }));
+
+  test("extremes: the bearer reads the list and posts a verdict, nothing else", () =>
+    withTokens("tok-one", async () => {
+      expect((await req("/extremes", bearer("tok-one"))).status).toBe(200);
+      expect((await req("/extremes", bearer("wrong"))).status).toBe(401);
+      expect((await req("/extremes/verdict", bearer("tok-one"), "POST")).status).toBe(200);
+      expect((await req("/extremes/verdict", bearer("wrong"), "POST")).status).toBe(401);
+      expect((await req("/extremes/verdict", {}, "POST")).status).toBe(401);
+      for (const method of ["PUT", "DELETE", "PATCH"]) expect((await req("/extremes/verdict", bearer("tok-one"), method)).status).toBe(401);
+      for (const path of ["/extremes", "/extremes/verdictx", "/extremes/x"]) expect((await req(path, bearer("tok-one"), "POST")).status).toBe(401);
+      expect((await req("/extremesx", bearer("tok-one"))).status).toBe(401);
     }));
 
   test("empty entries never match an empty or blank bearer", () =>

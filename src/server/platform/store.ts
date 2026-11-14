@@ -24,6 +24,7 @@ import {
 } from "../../shared/platform.js";
 import { AgentRecordSchema, TriageItemSchema, type AgentRecord, type AgentRecordStatus, type TriageItem } from "../../shared/agentRecords.js";
 import { MovesResponseSchema, type MovesResponse, type MoveWindow } from "../../shared/moves.js";
+import { ExtremeRecordSchema, ExtremeVerdictSchema, type ExtremeRecord, type ExtremeVerdict } from "../../shared/extremes.js";
 
 // Platform persistence (db/migrations/011_platform.sql). Loops and routes run
 // against PlatformStore: MemoryPlatformStore (store-memory.ts) in tests,
@@ -221,6 +222,17 @@ export interface PlatformStore {
   saveTriageScan(scan: TriageScan): Promise<void>;
   /** The row saveTriageScan wrote; null before the first pass. */
   loadTriageScan(): Promise<TriageScan | null>;
+
+  /** Extreme events (027): inserts a zod-parsed record (verdict null). False when (key, ts) is already stored. */
+  insertExtremeEvent(r: ExtremeRecord): Promise<boolean>;
+  /** The key's record with the newest event ts (the cooldown and the verdict route read it); null when none. */
+  latestExtreme(key: string): Promise<ExtremeRecord | null>;
+  /** Records with event ts >= since whose delivery went out (woken or pushed): the daily cap's count. */
+  extremesDeliveredSince(since: string): Promise<number>;
+  /** Newest event ts first (then key, code units). `since` is inclusive. */
+  listExtremes(q: { since: string; limit: number }): Promise<ExtremeRecord[]>;
+  /** Writes the verdict once (zod-parsed first). Null when (key, ts) is missing or already has a verdict. */
+  setExtremeVerdict(key: string, ts: string, verdict: ExtremeVerdict, at: string): Promise<ExtremeRecord | null>;
 }
 
 /** Where a novelty pass stands (noveltyLoop.ts): survives a stateless invocation, so the next one resumes. */
@@ -270,6 +282,15 @@ export function patchAgentRecord(r: AgentRecord, patch: AgentRecordPatch): Agent
   const { id, coin, createdAt, trigger, inputs, horizonHours, promptVersion } = r;
   return AgentRecordSchema.parse({ ...r, ...patch, id, coin, createdAt, trigger, inputs, horizonHours, promptVersion });
 }
+
+/** The record as stored: zod-parsed, a new record carries no verdict yet. */
+export function parseExtremeRecord(r: ExtremeRecord): ExtremeRecord {
+  const row = ExtremeRecordSchema.parse(r);
+  return { ...row, event: { ...row.event, ts: new Date(row.event.ts).toISOString() }, verdict: null, verdictAt: null };
+}
+export const parseExtremeVerdict = (v: ExtremeVerdict): ExtremeVerdict => ExtremeVerdictSchema.parse(v);
+/** Store order for extreme records: newest event first, then key (code units). */
+export const byExtremeNewest = (a: ExtremeRecord, b: ExtremeRecord) => Date.parse(b.event.ts) - Date.parse(a.event.ts) || codeUnit(a.event.key, b.event.key);
 
 export const parseAgentRecord = (r: AgentRecord): AgentRecord => AgentRecordSchema.parse(r);
 export const parseTriageItem = (t: TriageItem): TriageItem => TriageItemSchema.parse(t);
