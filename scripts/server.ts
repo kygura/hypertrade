@@ -8,6 +8,8 @@
 //   DATABASE_URL                      Postgres; unset = in-memory store, no desk loops
 //   MIGRATE_ON_BOOT                   1 = apply db/migrations before starting (needs DATABASE_URL)
 //   WORKER_LOOPS                      all (default) | off | comma list of loop names
+//   CRON_IN_PROCESS                   1 = run the pg_cron HTTP jobs the loops do not cover in this process (`cron` loop;
+//                                     needs CRON_TOKEN; INTEL_ENABLED=false leaves out the intel jobs). docs/SELF-HOSTING.md
 //   DB_POOL_MAX                       postgres.js pool size (1; use ~5 here)
 //   APP_URL / DESK_APP_URL            link in Telegram alerts
 //   INTEL_LLM_DAILY_USD               not read here; health LLM spend comes from the same intel accounting
@@ -32,6 +34,7 @@ import { createAlerts } from "../src/server/platform/alerts";
 import { bus } from "../src/server/platform/bus";
 import { setPlatformContext } from "../src/server/platform/context";
 import { createCrawler } from "../src/server/platform/crawler";
+import { createCronLoop } from "../src/server/platform/cronLoop";
 import { createLiqmapLoop } from "../src/server/platform/liqmapLoop";
 import { createNoveltyLoop } from "../src/server/platform/noveltyLoop";
 import { createOutcomesLoop, skipped as outcomesSkipped } from "../src/server/platform/outcomesLoop";
@@ -179,6 +182,10 @@ async function boot() {
     { name: "moves-runs", intervalSec: 600, run: async () => void (await runMovesJob({ service: getMovesService(), store, now: Date.now, deadline: Date.now() + MOVES_JOB_BUDGET_MS })) },
     // Daily inputs live in Postgres (candles, funding, observations): no database, no novelty loop.
     ...(dbUrl ? [createNoveltyLoop({ store, notify: alerts.novel, nearMiss: scanner.nearMiss }).def] : []),
+    // The Supabase pg_cron HTTP jobs the loops above do not cover (collect, backfill, extremes, lab, intel), in process.
+    ...(process.env.CRON_IN_PROCESS === "1"
+      ? [createCronLoop({ fetch: app.fetch, token: process.env.CRON_TOKEN?.trim() ?? "", intel: process.env.INTEL_ENABLED?.trim() !== "false" }).def]
+      : []),
   ];
   const selected = parseWorkerLoops(process.env.WORKER_LOOPS);
   const wants = (n: string) => selected === "all" || selected.has(n);
