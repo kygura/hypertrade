@@ -153,7 +153,7 @@ Signals v2 follow-ups (docs/RESEARCH.md "Signals v2"):
   costing such ideas is a scanner change, not made here.
 
 Radar routine (2026-11-02): the 4 h setup board is retired (24 setups, all low conviction, −1.77R; it
-never saw news, sectors or HIP-3). `ROUTINE.md` is now a twice-daily radar: `bun run radar` scans every
+never saw news, sectors or HIP-3). `ROUTINE.md` became a twice-daily radar (the runbook was removed on 2026-11-14): `bun run radar` scans every
 dex, the session researches catalysts and lands at most 3 graded calls in `data/radar/`.
 
 - [ ] After 2 weeks of radar notes: delete the board pipeline (`tripwires.ts`, `gate.ts`, `scan.ts`,
@@ -202,7 +202,7 @@ setups, candidate universe = top 30 by 24 h notional plus "my markets".
   conditions since 2026-11-11). The UI (S4) shipped 2026-11-10.
 - [ ] Phase 3: `bun run candidates` and `candidates:advance`, budget gate, one LLM
   narration call, routine writes through the setups store.
-- [ ] Phase 4: workflows, ROUTINE.md as a thin wrapper, narrative job split out,
+- [ ] Phase 4: workflows, the routine runbook as a thin wrapper (the runbook was removed on 2026-11-14), narrative job split out,
   duplicate collectors removed.
 - [ ] Phase 5: weekly review job: event-study refresh, demotion to watch-only, edge
   facts on candidates.

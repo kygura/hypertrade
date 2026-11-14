@@ -70,8 +70,8 @@ existing databases never see the edit). Add the next number instead.
 
 ## Where things live
 
-Root has only: this file, `README.md` (setup, env, API overview), and `ROUTINE.md`
-(the routine runbook). Everything else is under `docs/`.
+Root has only this file and `README.md` (setup, env, API overview). Everything else is
+under `docs/`.
 
 | Path | Purpose |
 |---|---|
@@ -83,10 +83,6 @@ Root has only: this file, `README.md` (setup, env, API overview), and `ROUTINE.m
 | `docs/LAB.md` | Lab research engine contract: rules, validation, tools, MCP. |
 | `docs/TASKS.md` | Open items, completed-phase summary, pointers to deleted task files in git history. |
 | `docs/fallback-routine.md`, `docs/research/` | Provider-agnostic fallback routine; research notes. |
-| `ROUTINE.md` | Runbook for the scheduled radar routine (twice a day): `bun run radar` scans every HL dex, the session researches catalysts and lands at most 3 calls that code prices and grades (`data/radar/`). On-demand check. |
 | `tui/` | Separate terminal client with its own `SPEC.md`, `DESIGN.md`, `TASKS.md`. |
 
-**The runbook is for the scheduled cloud routine only.** Scheduled sessions open it
-by path, so keep its name and root location. For ordinary development work, do not
-follow them and do not touch `data/**` unless asked; use `docs/SPEC.md`, the design docs
-and `docs/LAB.md`.
+For ordinary development work, do not touch `data/**` unless asked.
