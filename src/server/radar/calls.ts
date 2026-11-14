@@ -7,12 +7,12 @@ import { line, moveSince, type RadarMarket } from "./scan.js";
 // level once. Pure: scripts/radar.ts does the I/O.
 
 /** A call on the same market and direction within this many days is a repeat, not news. */
-export const REPEAT_DAYS = 3;
+const REPEAT_DAYS = 3;
 /** ROUTINE.md §3.1: a cause is news from the last 3 days or an event in the next 14. */
-export const CAUSE_MAX_AGE_DAYS = 3;
-export const CAUSE_MAX_AHEAD_DAYS = 14;
+const CAUSE_MAX_AGE_DAYS = 3;
+const CAUSE_MAX_AHEAD_DAYS = 14;
 /** Kill levels are watched this long after a call. */
-export const KILL_WATCH_DAYS = 7;
+const KILL_WATCH_DAYS = 7;
 /** A horizon grade accepts a snapshot up to this many days late (missed runs). */
 const GRADE_SLACK_DAYS = 2;
 
@@ -20,7 +20,7 @@ const DAY_MS = 86_400_000;
 const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 const signed = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(1)}%`;
 
-export interface LandedCall {
+interface LandedCall {
   call: RadarCall;
   /** Distance from the mark to the kill level, % of the mark. */
   riskPct: number;

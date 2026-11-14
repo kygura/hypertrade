@@ -12,8 +12,8 @@ import type { IntelStore, StopRow } from "./store.js";
 // The same collect records the watched HL account's stop triggers (taken
 // from the exposure read the focus list already makes; no extra info call).
 
-export const TOP_OI = 20;
-export const MAX_BOOKS = 25;
+const TOP_OI = 20;
+const MAX_BOOKS = 25;
 export const SNAPSHOT_RETENTION_DAYS = 90;
 /** intel_stops retention: longer than snapshots, so a long-held trade still finds the stop it was opened with. */
 export const STOP_RETENTION_DAYS = 180;

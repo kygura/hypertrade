@@ -5,16 +5,13 @@
 import { z } from "zod";
 import { fetchCandles, fetchFundingPage, HL_FUNDING_PAGE, hlInfo, parseMetaAndCtxs } from "../../../src/shared/hl-client.js";
 import { bookFromL2, depthWithin, midOf, walkBook } from "../../../src/server/platform/costs.js";
+import { API_BASE } from "./config.js";
 import type { AccountSnapshot, BookView, Candle, FundingPoint, InfoSource, MarketRow, Network, OpenOrder, PositionRow } from "./types.js";
-
-export function infoBase(network: Network): string {
-  return network === "mainnet" ? "https://api.hyperliquid.xyz" : "https://api.hyperliquid-testnet.xyz";
-}
 
 export type FetchFn = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 /** Book sizes (USD) the slippage ladder is quoted for. */
-export const BOOK_SIZES_USD = [10_000, 50_000, 250_000] as const;
+const BOOK_SIZES_USD = [10_000, 50_000, 250_000] as const;
 
 const APR = 24 * 365 * 100;
 
@@ -232,7 +229,7 @@ export class HlInfo implements InfoSource {
     readonly network: Network,
     fetchFn: FetchFn = fetch,
   ) {
-    const url = `${infoBase(network)}/info`;
+    const url = `${API_BASE[network]}/info`;
     // hl-client always posts to the mainnet URL; send it to this network instead.
     this.fetchFn = ((_input: unknown, init?: RequestInit) => fetchFn(url, init)) as unknown as typeof fetch;
   }

@@ -34,16 +34,16 @@ import { FIXED_WINDOWS, robustLevelZ, spanResult, windowResult, type Series } fr
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
-export const HTF_DAYS = [7, 30] as const;
+const HTF_DAYS = [7, 30] as const;
 /** Snapshot history read per token: the 30-day span plus its ±20 min endpoint tolerance. */
-export const NARRATIVE_LOOKBACK_DAYS = 31;
-export const QUADRANT_Z = 1;
+const NARRATIVE_LOOKBACK_DAYS = 31;
+const QUADRANT_Z = 1;
 export const CROWDED_FUNDING_Z = 2;
-export const REL_MIN_PP = 1;
-export const OI_MIN_PCT = 1;
+const REL_MIN_PP = 1;
+const OI_MIN_PCT = 1;
 /** Basket tokens added to the snapshot collect beyond held ∪ watched ∪ top-20 (bounds the write volume). */
-export const MAX_BASKET_COINS = 60;
-export const BENCHMARK = "BTC";
+const MAX_BASKET_COINS = 60;
+const BENCHMARK = "BTC";
 
 /** The basket composite: price and OI indexes and the OI-weighted funding level, ascending. */
 export function basketSeries(members: SnapshotRow[][]): Series {
@@ -100,7 +100,7 @@ export function quadrant(priceZ: number | null, oiZ: number | null): FlowQuadran
   return "quiet";
 }
 
-export function ltfWindows(s: Series, now: number): NarrativeWindow[] {
+function ltfWindows(s: Series, now: number): NarrativeWindow[] {
   return FIXED_WINDOWS.map((window: FixedWindow) => {
     const p = windowResult("price", s.price, now, window);
     const o = windowResult("oi_usd", s.oi_usd, now, window);
@@ -113,7 +113,7 @@ const oiOver = (points: Point[] | undefined, now: number, days: number) => spanR
 const minus = (a: number | null, b: number | null) => (a == null || b == null ? null : a - b);
 
 /** HTF facts of the basket against the benchmark composite (BTC alone). */
-export function htfFacts(s: Series, btc: Series, now: number): NarrativeHtf {
+function htfFacts(s: Series, btc: Series, now: number): NarrativeHtf {
   const [d7, d30] = HTF_DAYS;
   const pricePct7d = pctOver(s.price, now, d7);
   const pricePct30d = pctOver(s.price, now, d30);
@@ -177,7 +177,7 @@ export function basketCoins(sectors: SectorsData, max = MAX_BASKET_COINS): strin
 }
 
 /** One narrative's flow from its tokens' rows (keyed by asset) and the benchmark composite. */
-export function narrativeFlow(
+function narrativeFlow(
   sector: SectorsData["sectors"][number],
   rows: Map<string, SnapshotRow[]>,
   btc: Series,

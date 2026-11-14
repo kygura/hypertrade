@@ -20,7 +20,7 @@ export const DEFAULT_MODEL = "claude-opus-5-5";
  */
 export type ProviderId = "anthropic" | "openai-compatible" | PresetId;
 
-export const PROVIDER_IDS: readonly ProviderId[] = ["anthropic", ...PRESETS.map((p) => p.id), "openai-compatible"];
+const PROVIDER_IDS: readonly ProviderId[] = ["anthropic", ...PRESETS.map((p) => p.id), "openai-compatible"];
 
 export function isProviderId(v: unknown): v is ProviderId {
   return typeof v === "string" && (PROVIDER_IDS as readonly string[]).includes(v);

@@ -14,7 +14,7 @@ export interface EquityPoint {
   value: number;
 }
 
-export interface BranchStats {
+interface BranchStats {
   finalValue: number;
   cagrPct: number;
   maxDrawdownPct: number;
@@ -53,12 +53,15 @@ function priceAt(coin: string, ts: number, series: DailyClose[] | undefined): nu
 
 function candleAt(ts: number, series: DailyClose[] | undefined): DailyClose | undefined {
   if (!series || series.length === 0) return undefined;
-  let ans = series[0]!;
-  for (const c of series) {
-    if (c.ts > ts) break;
-    ans = c;
+  // Last candle at or before ts (series ascending by ts); the first one when ts precedes them all.
+  let lo = 0;
+  let hi = series.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (series[mid]!.ts > ts) hi = mid;
+    else lo = mid + 1;
   }
-  return ans;
+  return series[Math.max(0, lo - 1)]!;
 }
 
 // ponytail: perp legs are a deliberately thin model — no maintenance margin

@@ -11,7 +11,7 @@ import { useAction } from './useAction'
 // never auto-run. Parse failures render verbatim under the question: 503
 // `llm not configured`, 429 `LLM cap reached`, 502 model/compile errors.
 
-export const QUERY_EXAMPLES = ['held coins with widest spread today', 'OI up >20% in 7d', 'funding flipped negative in the last 24h'] as const
+const QUERY_EXAMPLES = ['held coins with widest spread today', 'OI up >20% in 7d', 'funding flipped negative in the last 24h'] as const
 const WRAP_AT = 80
 
 export function QueryInput({ onParsed }: { onParsed: (r: QueryParseResponse) => void }) {

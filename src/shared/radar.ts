@@ -9,7 +9,7 @@ export const RADAR_STATE_DAYS = 10;
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** One run's snapshot. marks[key] = [mark, 24h notional volume USD, open interest USD]. */
-export const RadarDaySchema = z.object({
+const RadarDaySchema = z.object({
   date: isoDate,
   at: z.string(),
   marks: z.record(z.string(), z.tuple([z.number(), z.number(), z.number()])),
@@ -24,7 +24,7 @@ export type RadarDay = z.infer<typeof RadarDaySchema>;
 export const RadarStateSchema = z.object({ days: z.array(RadarDaySchema).default([]) });
 export type RadarState = z.infer<typeof RadarStateSchema>;
 
-export const RADAR_MAX_CALLS = 3;
+const RADAR_MAX_CALLS = 3;
 
 const isRealDate = (d: string) => new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
 const realDate = isoDate.refine(isRealDate, { message: "not a calendar date" });
@@ -33,7 +33,7 @@ const realDate = isoDate.refine(isRealDate, { message: "not a calendar date" });
  * What the session writes to /tmp/run/calls.json. Only ride and fade calls are landed; a watch stays in the
  * notes. Prices are never typed by the model except the kill level, which code checks against the scan.
  */
-export const RadarCallInputSchema = z
+const RadarCallInputSchema = z
   .object({
     /** Market key exactly as the digest prints it: "HYPE", "xyz:SKHX". */
     market: z.string().min(1),

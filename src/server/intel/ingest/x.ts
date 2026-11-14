@@ -5,7 +5,7 @@ import { fetchText, fresh, headlineEvent, message, pastIso, SKIPPED_NO_KEY, type
 // X list timeline (docs/SPEC.md § Intel I0.10), behind X_BEARER_TOKEN +
 // INTEL_X_LIST_ID; either missing → skipped:no-key.
 
-export const X_API = "https://api.twitter.com/2";
+const X_API = "https://api.twitter.com/2";
 
 const ListTweetsSchema = z.object({
   data: z

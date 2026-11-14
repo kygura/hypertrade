@@ -5,7 +5,7 @@ import { LabWarnings } from '../components/LabWarnings'
 import { useLabData } from '../components/lab/LabData'
 import { SaveToCatalogueForm } from '../components/lab/SaveToCatalogueForm'
 import { DataTo, DirectionWord } from '../components/lab/common'
-import { defaultRuleName, fmtSigned, lab, signTone, TRANSFORM_TERMS, useLab, wireText, type CatalogueEntry, type LabState, type MetricDef, type Rule, type StudyResult } from '../lib/lab'
+import { defaultRuleName, lab, signTone, TRANSFORM_TERMS, useLab, wireText, type CatalogueEntry, type LabState, type MetricDef, type Rule, type StudyResult } from '../lib/lab'
 import { concreteRule, DEFAULT_TOP, exitParams, exitsForm, exitValue, fmtR, parseExitParams, parseRuleParam, realCoin, ruleDrillHref, screenLine, STUDY_HOLDOUT_SHARE, STUDY_MIN_WEEKS, studyHref, studyLine, studyRoute, studyVerdict, type StudyExits, type StudyUniverse } from '../lib/study'
 import { STUDY_DEFAULTS, STUDY_EXIT_MAX, type DefinitionsResponse } from '../../shared/research'
 import { research } from '../lib/research'
@@ -347,7 +347,7 @@ function UniverseControl({ coin, universe, onChange }: { coin: string; universe:
 
 const exitsDraft = (e: StudyExits) => ({ stop: String(e.stopAtr), target: String(e.targetAtr) })
 
-export interface ExitsProps {
+interface ExitsProps {
   /** The exits the shown study runs with (the URL's). */
   applied: StudyExits
   draft: { stop: string; target: string }
@@ -407,7 +407,7 @@ function Elapsed() {
 }
 
 /** Busy line: elapsed, not progress (the tool has no progress stream). */
-export function RunningLine() {
+function RunningLine() {
   return (
     <p role="status" className="text-sm text-text-secondary px-1">
       <span className="pulse-label">RUNNING STUDY…</span> <Elapsed /> · daily candles and funding per coin, seconds to tens of seconds · leaving this page stops waiting
@@ -476,7 +476,7 @@ const eventCols: Column<EventRow>[] = [
 ]
 
 /** The study result, in the brief's order after the rule header. */
-export function StudyResultView({ result: d }: { result: StudyResult }) {
+function StudyResultView({ result: d }: { result: StudyResult }) {
   const v = studyVerdict(d.verdict)
   const shown = d.eventList.length
   return (

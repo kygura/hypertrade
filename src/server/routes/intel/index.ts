@@ -46,7 +46,7 @@ export interface IntelDeps extends TerminalRouteDeps {
 }
 
 /** Held ∪ watched assets, deduped. */
-export async function intelTargets(deps: Pick<TerminalRouteDeps, "exposure" | "watched">): Promise<string[]> {
+async function intelTargets(deps: Pick<TerminalRouteDeps, "exposure" | "watched">): Promise<string[]> {
   const f = await focusAssets(() => deps.exposure(), () => deps.watched());
   return [...new Set([...f.held, ...f.watched])];
 }

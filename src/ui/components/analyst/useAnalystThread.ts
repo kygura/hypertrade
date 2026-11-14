@@ -15,8 +15,8 @@ import {
 // The analyst thread behind /analyst and the ASK drawer: turn state, the module-level session store (so in-flight and
 // unsaved turns survive route changes and are shared between the page and the drawer), streaming, abort and storage.
 
-export const SESSION_STORAGE_KEY = 'ht_analyst_session_v2'
-export const SIM_SESSION_STORAGE_KEY = 'ht_paths_session_v1'
+const SESSION_STORAGE_KEY = 'ht_analyst_session_v2'
+const SIM_SESSION_STORAGE_KEY = 'ht_paths_session_v1'
 const HISTORY_TURNS = 10 // prior turns sent back as context
 const STORED_TURNS = 30
 const SIM_STORED_TURNS = 10 // sim cards carry equity arrays
@@ -100,7 +100,7 @@ let sessionThreads: Record<AnalystMode, TurnState[]> | null = null
 const listeners = new Set<(t: Record<AnalystMode, TurnState[]>) => void>()
 const inflight: Record<AnalystMode, AbortController | null> = { ask: null, sim: null }
 
-export function seedThreads(): Record<AnalystMode, TurnState[]> {
+function seedThreads(): Record<AnalystMode, TurnState[]> {
   if (!sessionThreads) {
     sessionThreads = { ask: loadSession(SESSION_STORAGE_KEY), sim: loadSession(SIM_SESSION_STORAGE_KEY) }
     nextId = Math.max(nextId, 0, ...sessionThreads.ask.map((t) => t.id), ...sessionThreads.sim.map((t) => t.id)) + 1

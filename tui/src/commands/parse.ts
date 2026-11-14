@@ -5,8 +5,8 @@ import type { Side } from "../core/types.js";
 export const SORT_KEYS = ["oi", "vol", "chg", "funding"] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
 
-export type OrderSize = { usd: number } | { pctBook: number } | { riskPct: number };
-export type OrderTp = { px: number } | { pct: number } | { r: number };
+type OrderSize = { usd: number } | { pctBook: number } | { riskPct: number };
+type OrderTp = { px: number } | { pct: number } | { r: number };
 
 export interface OrderCommand {
   kind: "order";
@@ -39,7 +39,7 @@ export type Command =
   | { kind: "quit" }
   | { kind: "error"; message: string; token?: string };
 
-export type ErrorCommand = Extract<Command, { kind: "error" }>;
+type ErrorCommand = Extract<Command, { kind: "error" }>;
 
 export const ALIASES: Record<string, string> = { p: "pos", m: "markets", b: "book", q: "quit", h: "help", buy: "long", sell: "short" };
 export const COMMAND_NAMES = [

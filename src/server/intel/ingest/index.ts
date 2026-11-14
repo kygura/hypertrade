@@ -10,8 +10,7 @@ import { fetchTelegram } from "./telegram.js";
 import { fetchWebsearch } from "./websearch.js";
 import { fetchX } from "./x.js";
 
-export type { AdapterResult, IngestDeps, RunRecorder } from "./common.js";
-export { recordRun } from "./common.js";
+export type { IngestDeps } from "./common.js";
 
 // Ingest cycle (docs/SPEC.md § Intel I0.9, I0.10): every source → upsert events →
 // cluster the new ones → extract once per new cluster (cheap tier, cached by

@@ -10,7 +10,6 @@ import { DASH } from '../moves/logic'
 // record chip. Facts only; nothing here judges an item.
 
 export const PART_LABEL: Record<QueueSource, string> = { moves: 'MOVES', opportunity: 'SETUP', radar: 'RADAR' }
-export const partLabel = (s: QueueSource): string => PART_LABEL[s]
 
 /** `QUEUE · 5 listed of 8 · 2 weaker over cap`. */
 export function headerLine(q: Pick<QueueResponse, 'items' | 'cap' | 'overCap'>): string {

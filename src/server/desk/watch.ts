@@ -3,8 +3,6 @@ import { runDesk, type ProviderFactory } from "./agents.js";
 import { HOUR, evaluateTriggers, type Trigger } from "./triggers.js";
 import type { DeskService } from "./service.js";
 
-export { changeOver, evaluateTriggers, type Trigger, type TriggerInput } from "./triggers.js";
-
 // The watch tick: cheap, deterministic, and frequent (every 15 minutes from
 // the collect workflow, or every minute from scripts/desk-worker.ts).
 //
@@ -21,7 +19,7 @@ export { changeOver, evaluateTriggers, type Trigger, type TriggerInput } from ".
 
 const MIN = 60_000;
 export const WATCH_KEY = "watch";
-export const COOLDOWN_KEY = "trigger_cooldowns";
+const COOLDOWN_KEY = "trigger_cooldowns";
 const TRIGGER_COOLDOWN_MS = 3 * HOUR;
 const MARK_HISTORY_MS = 26 * HOUR;
 

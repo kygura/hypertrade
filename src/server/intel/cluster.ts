@@ -17,15 +17,15 @@ import { completeStructured, untrusted, UNTRUSTED_RULE, type LlmDeps, type Struc
 // hash of its earliest item's key, so re-running on the same input names the
 // same cluster and the extraction cache (cacheKey = cluster id) hits.
 
-export const JACCARD_MIN = 0.5;
-export const ENTITY_OVERLAP_MIN = 0.5;
+const JACCARD_MIN = 0.5;
+const ENTITY_OVERLAP_MIN = 0.5;
 export const CLUSTER_WINDOW_MS = 48 * 3600_000;
 
 const STOPWORDS = new Set(
   "a an the of to in on for and or is are was were be been as at by with from into after amid over under its it this that these those has have had says said say report reports reported breaking new news update just will could may might than then via about vs".split(" "),
 );
 
-export function normalizeTitle(title: string): string {
+function normalizeTitle(title: string): string {
   return title
     .toLowerCase()
     .replace(/\$(\d)/g, "$1")
@@ -183,10 +183,10 @@ export function entityMerges(clusters: MergeCandidate[], opts: { minOverlap?: nu
 
 // ---------------------------------------------------------------- extraction
 
-export const EXTRACT_PROMPT_VERSION = "extract-v2";
+const EXTRACT_PROMPT_VERSION = "extract-v2";
 const MAX_HEADLINES = 8;
 
-export const eventExtractionJsonSchema = {
+const eventExtractionJsonSchema = {
   type: "object" as const,
   properties: {
     type: { type: "string", enum: [...EVENT_TYPES] },

@@ -1,4 +1,4 @@
-import type { AgentFalsifier, AgentRecord, AgentStatsResponse, TriageResponse } from '../../../shared/agentRecords'
+import type { AgentFalsifier, AgentRecord, AgentStatsResponse } from '../../../shared/agentRecords'
 import { MOVE_WINDOWS, simplePct, type Attribution, type CrowdingCheck, type LayerState, type MoveRow, type MovesResponse, type MoveSeriesPoint, type MoveWindow, type Positioning, type SetupChecklist } from '../../../shared/moves'
 import type { DefinitionsResponse } from '../../../shared/research'
 import { fmtPx, fmtSigned } from '../../lib/format'
@@ -10,12 +10,12 @@ import { keyAction, type KeyInput } from '../cockpit/logic'
 // links, all tested in logic.test.ts. Every number's null prints `—` with its reason, never 0.
 
 export const DASH = '—'
-export const DEFAULT_WINDOW: MoveWindow = '24h'
+const DEFAULT_WINDOW: MoveWindow = '24h'
 export const NOT_A_FORECAST = 'CONDITION CHECK · NOT A FORECAST'
 /** Residual buckets are hour-bucket splits with precedence, not causes (SPEC § Moves). */
 export const BUCKET_LABEL = { flow: 'in OI-drop hours', news: 'in news hours', other: 'other hours' } as const
-export const STALE_AFTER_HOURS = 2
-export const MIN_CLUSTERS = 5
+const STALE_AFTER_HOURS = 2
+const MIN_CLUSTERS = 5
 
 // ─── URL state ───
 
@@ -120,7 +120,7 @@ export function tagText(hours: number | null, label: string): string | null {
 // ─── Header ───
 
 /** `14:00 UTC` from an ISO time. */
-export const hhmm = (iso: string): string => new Date(iso).toISOString().slice(11, 16)
+const hhmm = (iso: string): string => new Date(iso).toISOString().slice(11, 16)
 
 export const progressLine = (p: { loaded: number; total: number }): string => `FIRST RUN — ${p.loaded} OF ${p.total} COINS LOADED`
 
@@ -142,7 +142,7 @@ export function staleLine(asOf: string | null, now: number): string | null {
   return `attribution ${Math.floor(ageH)}h old — last closed hour ${hhmm(asOf)}`
 }
 
-export const LAYER_LABEL = { beta: 'BETA', flow: 'FLOW', attention: 'NEWS', liq: 'LIQ', agents: 'AGENTS' } as const
+const LAYER_LABEL = { beta: 'BETA', flow: 'FLOW', attention: 'NEWS', liq: 'LIQ', agents: 'AGENTS' } as const
 export type LayerKey = keyof typeof LAYER_LABEL
 const DOT = { ok: 'ok', partial: 'degraded', unavailable: 'down' } as const
 
@@ -152,29 +152,6 @@ export function layerChips(layers: Record<LayerKey, LayerState>): LayerChip[] {
 }
 
 // ─── Triage ───
-
-export const budgetLine = (t: Pick<TriageResponse, 'surfaced' | 'budget'>): string => `${t.surfaced} OF ${t.budget} TODAY`
-export const overBudgetLine = (n: number): string | null => (n > 0 ? `budget reached: ${n} more ${n === 1 ? 'candidate' : 'candidates'} not shown` : null)
-export const triageEmptyLabel = (t: Pick<TriageResponse, 'watched' | 'items' | 'surfaced'>): string =>
-  t.items.length > 0 ? `all ${t.items.length} items surfaced today are dismissed` : `nothing crossed the bar today — ${t.watched} coins watched, residual |z| ≥ 2.5 or a 3/3 checklist surfaces an item`
-/** Dismissed items leave the queue but still count against the budget. */
-export const visibleItems = <T extends { dismissedAt: string | null }>(items: readonly T[]): T[] => items.filter((i) => i.dismissedAt == null)
-
-export interface RecordView {
-  kind: 'absent' | 'investigating' | 'claim' | 'no_cause' | 'failed' | 'capped'
-  text: string
-}
-/** The agent record's one-line state in a triage row. */
-export function recordView(record: AgentRecord | null, busy: boolean): RecordView {
-  if (busy) return { kind: 'investigating', text: 'INVESTIGATING…' }
-  if (!record) return { kind: 'absent', text: 'not investigated' }
-  switch (record.status) {
-    case 'no_cause': return { kind: 'no_cause', text: 'no cause found' }
-    case 'failed': return { kind: 'failed', text: 'investigation failed' }
-    case 'capped': return { kind: 'capped', text: 'daily agent cap reached before the run' }
-    default: return { kind: 'claim', text: record.claim }
-  }
-}
 
 /** INVESTIGATE costs one LLM run; it is off with the server's reason, or while a run for the coin is in flight. */
 export function investigateGate(blockedReason: string | null, busy: boolean): { disabled: boolean; title: string } {

@@ -21,7 +21,7 @@ export function invalid(c: Context, err: ZodError, what = "request") {
 }
 
 /** The message `sql()` throws when no database is configured (db.ts); routes answer it as a stated 503, not a bare 500. */
-export const isDbMissing = (err: unknown): err is Error => err instanceof Error && err.message.startsWith("DATABASE_URL is not set");
+const isDbMissing = (err: unknown): err is Error => err instanceof Error && err.message.startsWith("DATABASE_URL is not set");
 
 type TypedError = Error & { status: number; field?: string };
 

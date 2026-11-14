@@ -41,7 +41,7 @@ export function rebalanceLabel(mode: BranchConfig['rebalance']): string {
   return REBALANCE_LABEL[mode]
 }
 
-export function oneYearAgoISODate(): string {
+function oneYearAgoISODate(): string {
   const d = new Date()
   d.setUTCFullYear(d.getUTCFullYear() - 1)
   return d.toISOString().slice(0, 10)

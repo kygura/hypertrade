@@ -5,21 +5,17 @@ import type {
   OperatorOrderRecord,
   Position,
   ProposalRecord as ServerProposalRecord,
-  ProposalStatus,
-  Side,
-  Sizing,
   TradeProposal,
-  Verdict,
 } from '../../server/desk/types'
 import type { AlertRow as ServerAlertRow, RunRow as ServerRunRow } from '../../server/desk/store'
 import { streamSse } from './sse'
-import { fmtUsd, fmtPx } from './format'
+import { fmtUsd } from './format'
 
 // Client for /api/desk (docs/SPEC.md "Desk"). Runs stream over POST + SSE like
 // the analyst; everything else is plain JSON through api.ts. Wire types are the
 // server's own (type-only import, erased at build), as in lib/lab.ts.
 
-export type { AccountState, DeskEvent, ExitProposal, OperatorOrderRecord, Position, ProposalStatus, Side, Sizing, TradeProposal, Verdict }
+export type { AccountState, DeskEvent, ExitProposal, OperatorOrderRecord, Position, TradeProposal }
 
 /** Server record with the field the wire narrows: `execution` is `unknown` server-side. */
 export type ProposalRecord = Omit<ServerProposalRecord, 'execution'> & {
@@ -174,4 +170,3 @@ export function deskTakeaway(desk: AccountState, proposals: readonly Pick<Propos
   return out.join(' ')
 }
 
-export { fmtUsd, fmtPx }

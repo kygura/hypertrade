@@ -3,6 +3,7 @@ import { Button } from '../Button'
 import { Segmented } from '../Segmented'
 import { ErrorBlock, OfflineBlock } from '../state'
 import { useApi } from '../../lib/api'
+import { useNow } from '../../lib/hooks'
 import {
   advancedDiffers,
   configSummary,
@@ -198,11 +199,7 @@ export function LabSearchForm({
 }
 
 function BusyLine({ startedAt, trials, features, onStop }: { startedAt: number; trials: number; features: number; onStop: () => void }) {
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [])
+  const now = useNow(1000)
   const s = Math.max(0, Math.floor((now - startedAt) / 1000))
   return (
     <div className="flex flex-col gap-1">

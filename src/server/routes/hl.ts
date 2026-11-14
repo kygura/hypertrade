@@ -118,7 +118,7 @@ export async function getMarkets(): Promise<MarketsResponse> {
 }
 
 /** Cached snapshot across the main dex and every HIP-3 dex. */
-export async function getAllMarkets(): Promise<MarketsResponse> {
+async function getAllMarkets(): Promise<MarketsResponse> {
   const c = await refreshAll();
   return { fetchedAt: new Date(c.ts).toISOString(), markets: c.markets, failedDexes: c.failedDexes };
 }

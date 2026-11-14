@@ -30,7 +30,7 @@ export interface Bar {
   src: string;
 }
 
-export type LayerState = db.ExtLayerState;
+type LayerState = db.ExtLayerState;
 export type SyncState = db.SyncState;
 
 /** Everything the engine touches, injectable so tests never hit a network or DB. */
@@ -57,7 +57,7 @@ const toBar = (c: db.Candle): Bar => ({
   src: c.src ?? "hl",
 });
 
-export const defaultDeps: SyncDeps = {
+const defaultDeps: SyncDeps = {
   now: () => Date.now(),
   hlCandles: (coin, tf, start, end) => fetchHlCandles(coin, tf, start, end),
   sources: EXTERNAL_SOURCES,
@@ -103,7 +103,7 @@ export function isGap(prev: number, next: number, tf: Timeframe): boolean {
  * starts at the first real trade, so older history comes from a venue that
  * actually traded it.
  */
-export function dropLeadingEmpty<T extends { v: number }>(bars: T[]): T[] {
+function dropLeadingEmpty<T extends { v: number }>(bars: T[]): T[] {
   const i = bars.findIndex((b) => b.v > 0);
   return i === -1 ? [] : i === 0 ? bars : bars.slice(i);
 }
@@ -321,7 +321,7 @@ export async function fillOlder(
 }
 
 /** No layer has anything left below what is stored. */
-export function isExhausted(state: SyncState, tf: Timeframe, sources: readonly ExternalSource[]): boolean {
+function isExhausted(state: SyncState, tf: Timeframe, sources: readonly ExternalSource[]): boolean {
   if (state.hlFloor == null) return false;
   if (tf === "1w" || tf === "1M") {
     const r = state.ext.resample;

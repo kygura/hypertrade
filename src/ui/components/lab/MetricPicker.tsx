@@ -10,7 +10,7 @@ import { ProviderTag } from './common'
 // restores focus to the trigger. Metrics not offered for the typed asset are
 // hidden and counted in the footer.
 
-export const METRIC_CAP = 40
+const METRIC_CAP = 40
 
 export function MetricPicker({
   metrics,

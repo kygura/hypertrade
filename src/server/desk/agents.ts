@@ -33,14 +33,14 @@ import type { DeskEvent } from "./types.js";
 // Only the PM holds action tools, and only when the run allows acting.
 // Budgets: agents per run, rounds per agent, one wall-clock deadline.
 
-export const PM_MAX_ROUNDS = 10;
-export const SPECIALIST_MAX_ROUNDS = 6;
-export const MAX_AGENTS_PER_RUN = 8;
+const PM_MAX_ROUNDS = 10;
+const SPECIALIST_MAX_ROUNDS = 6;
+const MAX_AGENTS_PER_RUN = 8;
 export const MAX_SPAWNS_PER_RUN = 3;
 /** Scouts stop this long before the run's own deadline, so the PM always has time left to read their reports and decide. */
-export const PM_RESERVE_MS = 90_000;
+const PM_RESERVE_MS = 90_000;
 
-export type ProviderRole = "pm" | "specialist";
+type ProviderRole = "pm" | "specialist";
 export type ProviderFactory = (role: ProviderRole) => LLMProvider | null;
 
 /** $/MTok (input, output) for cost estimates; unknown models report null. */
@@ -127,7 +127,7 @@ interface RunState {
   citations: Map<string, Citation>;
 }
 
-export interface AgentResult {
+interface AgentResult {
   text: string;
   stop: string;
   rounds: number;
@@ -148,7 +148,7 @@ interface AgentSpec {
 }
 
 /** One agent's tool loop. Never throws: failures end the agent with stop "error". */
-export async function runAgent(spec: AgentSpec, task: string, st: RunState): Promise<AgentResult> {
+async function runAgent(spec: AgentSpec, task: string, st: RunState): Promise<AgentResult> {
   st.emit({ type: "agent_start", agent: spec.id, role: spec.role, parent: spec.parent, task, model: spec.provider.model });
   const conv = spec.provider.start(spec.system, [], task);
   const specs = [...spec.tools.map((t) => t.spec), ...(spec.extra?.specs ?? [])];
@@ -360,7 +360,7 @@ export interface DeskRunOptions {
   trigger?: unknown;
 }
 
-export const DEFAULT_RUN_TIMEOUT_MS = 240_000;
+const DEFAULT_RUN_TIMEOUT_MS = 240_000;
 
 /**
  * A full desk run: records the run, drives the PM (which drives the team),

@@ -22,8 +22,8 @@ export interface LabRouteOptions {
   listTrials?: () => Promise<Trial[]>;
 }
 
-export const TRIALS_DEFAULT_LIMIT = 50;
-export const TRIALS_MAX_LIMIT = 500;
+const TRIALS_DEFAULT_LIMIT = 50;
+const TRIALS_MAX_LIMIT = 500;
 
 export function labRoutes(registryFactory: () => Registry = labRegistry, opts: LabRouteOptions = {}) {
   const env = opts.env ?? process.env;

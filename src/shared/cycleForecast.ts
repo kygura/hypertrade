@@ -18,19 +18,19 @@ import { quantile } from "./signalMath.js";
 import { DAY_MS, HALVINGS, NEXT_HALVING_ESTIMATE, type CyclePhase, type CyclePoint } from "./cycles.js";
 
 /** Euphoria runs closer than this belong to one bull run. */
-export const MERGE_GAP_DAYS = 365;
+const MERGE_GAP_DAYS = 365;
 /**
  * Drawdown from the running high that marks a bear market. Mid-run dips stay
  * above it (BTC -53% and ETH -57% in mid-2021); every completed bear went
  * past -75%.
  */
-export const BEAR_BREAK = -0.65;
+const BEAR_BREAK = -0.65;
 /** A run's breakout is where closes last rose through this fraction of its euphoria-onset price. */
-export const BREAKOUT_RATIO = 0.5;
+const BREAKOUT_RATIO = 0.5;
 /** History needed before the first onset to read a meaningful prior low. */
 const MIN_PRE_HISTORY_DAYS = 365;
 
-export interface PricePoint {
+interface PricePoint {
   t: number;
   price: number;
 }
@@ -53,7 +53,7 @@ export interface BullEpisode {
   lowConfirmed: boolean;
 }
 
-export type MethodKey = "rhythm" | "halving" | "low" | "top";
+type MethodKey = "rhythm" | "halving" | "low" | "top";
 
 export interface EstimateMethod {
   key: MethodKey;
@@ -67,7 +67,7 @@ export interface EstimateMethod {
   to: number;
 }
 
-export interface DateRange {
+interface DateRange {
   min: number;
   p25: number;
   median: number;
@@ -324,9 +324,9 @@ export function cycleAnalogs(points: CyclePoint[], episodes: BullEpisode[], hori
 // ─── higher highs on lower heat ───
 
 /** Pullback from the all-time high that separates one ATH leg from the next. */
-export const LEG_PULLBACK = 0.2;
+const LEG_PULLBACK = 0.2;
 /** Heat drop from the previous leg's peak that counts as cooler. */
-export const HEAT_DROP = 0.05;
+const HEAT_DROP = 0.05;
 
 export interface CoolingHigh {
   /** The leg's highest close: a new all-time high. */

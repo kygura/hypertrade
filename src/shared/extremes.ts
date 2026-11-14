@@ -6,11 +6,11 @@ import { SideSchema } from "./intel.js";
 // the verdict that session sends back. The verdict is LLM output, so it is parsed here.
 
 export const EXTREME_KINDS = ["price_dislocation", "oi_flush", "crowded_asymmetry"] as const;
-export const ExtremeKindSchema = z.enum(EXTREME_KINDS);
+const ExtremeKindSchema = z.enum(EXTREME_KINDS);
 export type ExtremeKind = z.infer<typeof ExtremeKindSchema>;
 
-export const EXTREME_WINDOWS = ["1h", "4h", "24h", "72h"] as const;
-export const ExtremeWindowSchema = z.enum(EXTREME_WINDOWS);
+const EXTREME_WINDOWS = ["1h", "4h", "24h", "72h"] as const;
+const ExtremeWindowSchema = z.enum(EXTREME_WINDOWS);
 export type ExtremeWindow = z.infer<typeof ExtremeWindowSchema>;
 
 /** One detector hit. Facts only: `side` is the side the imbalance favours on a fade, not a recommendation. */
@@ -35,7 +35,7 @@ export const ExtremeEventSchema = z.strictObject({
 });
 export type ExtremeEvent = z.infer<typeof ExtremeEventSchema>;
 
-export const EXTREME_STANCES = ["take", "watch", "pass"] as const;
+const EXTREME_STANCES = ["take", "watch", "pass"] as const;
 
 /** What the research session answers for one event. `take` needs a direction and a kill level; code prices the rest. */
 export const ExtremeVerdictSchema = z

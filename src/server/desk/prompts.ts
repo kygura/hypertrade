@@ -1,7 +1,7 @@
 // System prompts for the desk's agents. Kept free of timestamps and run
 // state so each prefix caches; the time and the trigger travel in the task.
 
-export const DESK_PRINCIPLES = `Desk principles:
+const DESK_PRINCIPLES = `Desk principles:
 - Fetch before you assert. Every number you state comes from a tool call or a cited source in this run; name it ("flow_diagnostics", "macro_dashboard", a web source).
 - Separate what the data shows from your read of it, and label the read with a confidence: low, medium or high. No false precision: never a point probability like "73%"; "a bit better than even" is fine.
 - Positioning can unwind; flows that come from spot buying, new money or easing liquidity tend to persist. Say which one you are looking at and why.

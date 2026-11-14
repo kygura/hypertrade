@@ -6,7 +6,7 @@ import { ErrorBlock } from '../state'
 // newline, never a submit: nothing here reaches /order/confirm, and PREVIEW
 // only asks the server for a preview.
 
-export const ORDER_EXAMPLES = ["long ETH 3x $1500, stop below yesterday's low", 'short SOL 0.5% of book, stop 2 ATR'] as const
+const ORDER_EXAMPLES = ["long ETH 3x $1500, stop below yesterday's low", 'short SOL 0.5% of book, stop 2 ATR'] as const
 
 export function OrderComposer({
   text,

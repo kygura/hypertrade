@@ -23,10 +23,6 @@ export const moves = {
   list: async (window: MoveWindow): Promise<MovesResponse> => list(await api.get(`/moves?window=${window}`)),
   detail: async (coin: string, window: MoveWindow): Promise<MoveDetail> => detail(await api.get(`/moves/${enc(coin)}?window=${window}`)),
   triage: async (): Promise<TriageResponse> => triage(await api.get('/moves/triage')),
-  /** DISMISS: hides the item for the UTC day; it still counts against the budget. */
-  dismiss: async (id: string): Promise<void> => {
-    await api.post(`/moves/triage/${enc(id)}/dismiss`)
-  },
   /** INVESTIGATE: one LLM run. 409 in flight, 429 cap reached, 503 no provider (see logic.investigateFailure). */
   investigate: async (coin: string): Promise<AgentRecord> => record(await api.post(`/moves/${enc(coin)}/investigate`)),
   stats: async (): Promise<AgentStatsResponse> => stats(await api.get('/moves/records/stats')),

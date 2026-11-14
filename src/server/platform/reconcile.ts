@@ -31,9 +31,9 @@ export interface ReconcileDeps {
   now: () => Date;
 }
 
-export const STUCK_APPROVED_MS = 2 * 60_000;
+const STUCK_APPROVED_MS = 2 * 60_000;
 /** Longer than any placement (preview TTL 60 s plus venue round trips): only then is "no proposal" final. */
-export const PLACEMENT_BOUND_MS = 10 * 60_000;
+const PLACEMENT_BOUND_MS = 10 * 60_000;
 const ROWS = 500;
 /** Live fills vs the venue's position: equal within rounding. */
 const SAME = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol * Math.abs(b);

@@ -11,15 +11,15 @@ import { SourceLink } from './SourceLink'
 
 export type CheckStatus = ThesisClaim['status']
 
-export const STATUS_TONE: Record<CheckStatus, Tone> = { supported: 'green', contradicted: 'red', unknown: 'gray' }
-export const STATUS_ORDER: Record<CheckStatus, number> = { contradicted: 0, unknown: 1, supported: 2 }
+const STATUS_TONE: Record<CheckStatus, Tone> = { supported: 'green', contradicted: 'red', unknown: 'gray' }
+const STATUS_ORDER: Record<CheckStatus, number> = { contradicted: 0, unknown: 1, supported: 2 }
 
 /** Contradicted first, then unknown, then supported; stable within a status. */
 export function sortChecks<T extends { status: CheckStatus }>(claims: T[]): T[] {
   return claims.map((c, i) => [c, i] as const).sort((a, b) => STATUS_ORDER[a[0].status] - STATUS_ORDER[b[0].status] || a[1] - b[1]).map(([c]) => c)
 }
 
-export function StatusBadge({ status }: { status: CheckStatus }) {
+function StatusBadge({ status }: { status: CheckStatus }) {
   return <Badge tone={STATUS_TONE[status]}>{status.toUpperCase()}</Badge>
 }
 
@@ -42,7 +42,7 @@ export function fmtCheck(c: ThesisCheck): string {
 }
 
 /** The evidence value in the check's own unit. */
-export function fmtEvidenceValue(c: ThesisCheck, v: ThesisEvidence['value']): string {
+function fmtEvidenceValue(c: ThesisCheck, v: ThesisEvidence['value']): string {
   if (v == null) return 'no data'
   if (typeof v === 'string') return v
   switch (c.kind) {
@@ -57,7 +57,7 @@ export function fmtEvidenceValue(c: ThesisCheck, v: ThesisEvidence['value']): st
   }
 }
 
-export function Evidence({ check, evidence }: { check: ThesisCheck; evidence?: ThesisEvidence }) {
+function Evidence({ check, evidence }: { check: ThesisCheck; evidence?: ThesisEvidence }) {
   if (!evidence) return <span className="text-sm text-text-secondary">no data</span>
   return (
     <span className="inline-flex flex-wrap items-center gap-1 text-sm">

@@ -23,7 +23,7 @@ export function matchesTag(t: Trade, tag: string | null): boolean {
   return tag === UNTAGGED_TAG ? t.tag == null : t.tag === tag
 }
 
-export function sortTrades(trades: Trade[]): Trade[] {
+function sortTrades(trades: Trade[]): Trade[] {
   const key = (t: Trade) => (t.closedAt ? Date.parse(t.closedAt) : Number.POSITIVE_INFINITY)
   return [...trades].sort((a, b) => key(b) - key(a))
 }

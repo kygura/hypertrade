@@ -24,8 +24,8 @@ by URL.
 - [ ] Queue slots are strongest first (item score, then agreeing sources). Open: a separate `QUEUE_DAILY` so triage does
   not use the whole `MOVES_TRIAGE_DAILY` budget, and cross-source score weights (an opportunity's own `score` is raw,
   not normalised to its bar, so the queue still scores a ready setup and a radar call as 1).
-- [ ] `src/ui/pages/moves/Moves.tsx` still polls `/api/moves/triage` although `TriagePanel` is no longer rendered on
-  `/moves`; drop the poll (or the panel) in the cleanup.
+- [ ] `src/ui/pages/moves/Moves.tsx` still polls `/api/moves/triage` every 60 s, now only for `agentBlockedReason`
+  (the unrendered `TriagePanel` was deleted); drop the poll or fetch the reason another way.
 - [ ] Telegram review links (`intel/mapper.ts`, `intel/terminal.ts`) still open `/terminal?review=1`, a hidden screen;
   retarget them before `/terminal` is deleted.
 

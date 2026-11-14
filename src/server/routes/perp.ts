@@ -5,8 +5,6 @@ import * as db from "../db.js";
 import { syncFunding } from "../market/fundingSync.js";
 import { getAllCtxs, getCtxs, resolveCoin } from "./hl.js";
 
-export type { PerpStats };
-
 // GET /perp/:coin — everything Hyperliquid exposes about one perp beyond its
 // candles: the live asset context (mark/oracle/premium/funding/OI/volume,
 // impact prices, max leverage), cross-venue predicted funding, the OI-cap
@@ -64,11 +62,10 @@ export const perpRoutes = new Hono().get("/:coin", async (c) => {
   ]);
   const a = ctxRes?.ctxs.find((x) => x.name === coin) ?? null;
 
+  // OI is stored already: it loads while the funding sync runs; funding is read after its sync.
+  const oiRead = db.seriesRange(`hl.oi.${coin}`, new Date(now - 8 * DAY), new Date(now)).catch(() => []);
   await syncFunding(coin, now - 30 * DAY, { maxPages: 2, deadline: now + 5_000 }).catch(() => null);
-  const [fundingRows, oiPts] = await Promise.all([
-    db.getFunding(coin, new Date(now - 30 * DAY - HOUR), new Date(now)).catch(() => []),
-    db.seriesRange(`hl.oi.${coin}`, new Date(now - 8 * DAY), new Date(now)).catch(() => []),
-  ]);
+  const [fundingRows, oiPts] = await Promise.all([db.getFunding(coin, new Date(now - 30 * DAY - HOUR), new Date(now)).catch(() => []), oiRead]);
   const f = fundingRows.map((r) => ({ t: r.ts.getTime(), rate: r.rate }));
   const oi = oiPts.map((p) => ({ t: new Date(p.ts).getTime(), v: p.value }));
 

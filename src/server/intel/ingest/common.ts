@@ -34,8 +34,8 @@ export const SKIPPED_NO_KEY = "skipped:no-key";
 export const SKIPPED_DISABLED = "skipped:disabled";
 export const SKIPPED_THROTTLED = "skipped:throttled";
 /** Items older than this are not ingested: they would only spend extraction calls on stale news. */
-export const MAX_ITEM_AGE_MS = 48 * 3600_000;
-export const FETCH_TIMEOUT_MS = 15_000;
+const MAX_ITEM_AGE_MS = 48 * 3600_000;
+const FETCH_TIMEOUT_MS = 15_000;
 
 export const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 

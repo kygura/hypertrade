@@ -23,7 +23,7 @@ export const RING_MS = 24 * 60 * MIN;
 /** A stream input a feature needs beyond mark, funding and 24 h volume. */
 export type StreamInput = "oi" | "book" | "liquidations";
 /** Features that read an input a stream may not carry (features.ts computeFeatures). */
-export const FEATURE_INPUTS: Record<string, StreamInput[]> = {
+const FEATURE_INPUTS: Record<string, StreamInput[]> = {
   oiChg1hZ: ["oi"],
   liqPressure: ["liquidations", "oi"],
   spreadBps: ["book"],
@@ -94,7 +94,7 @@ export function replayEntries(o: ReplayOpts): ReplayEntry[] {
 /** Hands the event loop back (timers and I/O run) before the next slice of replay work. */
 export const yieldToLoop = (): Promise<void> => new Promise((r) => setImmediate(r));
 /** Longest a replay computes before it yields to the event loop. */
-export const REPLAY_SLICE_MS = 20;
+const REPLAY_SLICE_MS = 20;
 
 /**
  * replayEntries without holding the event loop: grid steps run in slices of at most about `sliceMs` of wall time,
@@ -146,7 +146,7 @@ function replayer(o: ReplayOpts) {
 }
 
 /** Cost assumptions of a replayed outcome (no historical book). */
-export const REPLAY_COSTS = { slippageBps: 0 } as const;
+const REPLAY_COSTS = { slippageBps: 0 } as const;
 
 /**
  * An entry's outcome at a horizon, as the ledger grades one (outcomes.ts netReturn): exit at the stream's mark at the

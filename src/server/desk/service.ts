@@ -37,13 +37,13 @@ import {
 // The kill switch blocks every new entry (exits stay allowed). Every
 // decision, fill and failure raises a stored alert.
 
-export const KILL_KEY = "kill_switch";
-export const APPROVAL_KEY = "approval_override";
-export const REVIEW_HOURS_KEY = "review_hours_override";
+const KILL_KEY = "kill_switch";
+const APPROVAL_KEY = "approval_override";
+const REVIEW_HOURS_KEY = "review_hours_override";
 export const OPERATOR_PREVIEW_KEY = "operator_preview";
 /** A preview can be submitted for this long, while the mark stays within OPERATOR_MAX_MOVE of it. */
-export const OPERATOR_PREVIEW_TTL_MS = 60_000;
-export const OPERATOR_MAX_MOVE = 0.005;
+const OPERATOR_PREVIEW_TTL_MS = 60_000;
+const OPERATOR_MAX_MOVE = 0.005;
 
 export interface OperatorPreview {
   verdict: Verdict;
@@ -62,7 +62,7 @@ interface StoredPreview {
 }
 
 /** Binds an operator order to the mark it was previewed at (6 significant digits) and the second it was shown. */
-export function operatorPreviewHash(o: OperatorOrder, markPx: number | null, atMs: number): string {
+function operatorPreviewHash(o: OperatorOrder, markPx: number | null, atMs: number): string {
   const order = [o.coin, o.side, o.stop, o.target ?? null, o.riskPct ?? null, o.entryLimit ?? null, o.leverage ?? null, o.notionalUsd ?? null, o.source];
   const mark = markPx == null ? null : Number(markPx.toPrecision(6));
   return createHash("sha256")
@@ -413,7 +413,7 @@ export class DeskError extends Error {
 
 export { fmtPx };
 
-export function describeOpen(p: TradeProposal, v: Verdict, appUrl?: string): string {
+function describeOpen(p: TradeProposal, v: Verdict, appUrl?: string): string {
   const s = v.sizing!;
   const lines = [
     `${p.setup} · ${p.horizon} · confidence ${p.confidence}`,

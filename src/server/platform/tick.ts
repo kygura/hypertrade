@@ -13,10 +13,10 @@ import { PgPlatformStore } from "./store-pg.js";
 // Each tick builds a fresh scanner, so its ring comes from stored scan_snapshots (+ seedFrom) and one 5-min snapshot
 // row per live coin is written per tick: ticks every 15 min give the features their one point per 15 min.
 
-export const TICK_STEPS = ["scanner", "novelty", "outcomes", "prune"] as const;
+const TICK_STEPS = ["scanner", "novelty", "outcomes", "prune"] as const;
 export type TickStep = (typeof TICK_STEPS)[number];
 
-export type TickStepResult =
+type TickStepResult =
   | { name: TickStep; status: "ok" | "failed"; ms: number; error?: string }
   | { name: TickStep; status: "skipped"; reason: string };
 

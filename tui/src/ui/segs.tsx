@@ -1,5 +1,5 @@
 // A line as toned segments: the unit most components build and the ticket frame pads.
-import { Box, Text } from "ink";
+import { Text } from "ink";
 import { strWidth } from "./format.js";
 import { tone, type Tone } from "./theme.js";
 
@@ -10,9 +10,7 @@ export interface Seg {
 }
 export type Line = Seg[];
 
-export const seg = (text: string, t?: Tone, bold?: boolean): Seg => ({ text, ...(t ? { tone: t } : {}), ...(bold ? { bold } : {}) });
-
-export const lineText = (l: Line) => l.map((s) => s.text).join("");
+const lineText = (l: Line) => l.map((s) => s.text).join("");
 export const lineWidth = (l: Line) => strWidth(lineText(l));
 
 /** Pads a line with spaces to `w` cells. */
@@ -62,26 +60,14 @@ export function wrapSegs(l: Line, width: number, indent = 0): Line[] {
   return out.map((ln, i) => (i === 0 || !indent ? ln : [{ text: " ".repeat(indent) }, ...ln]));
 }
 
-export function SegLine({ line, pad }: { line: Line; pad?: number }) {
-  const l = pad != null ? padLine(line, pad) : line;
+export function SegLine({ line }: { line: Line }) {
   return (
     <Text wrap="truncate-end">
-      {l.map((s, i) => (
+      {line.map((s, i) => (
         <Text key={i} {...tone(s.tone)} {...(s.bold ? { bold: true } : {})}>
           {s.text}
         </Text>
       ))}
     </Text>
-  );
-}
-
-/** Several lines, one <Text> each. */
-export function SegLines({ lines }: { lines: Line[] }) {
-  return (
-    <Box flexDirection="column">
-      {lines.map((l, i) => (
-        <SegLine key={i} line={l} />
-      ))}
-    </Box>
   );
 }

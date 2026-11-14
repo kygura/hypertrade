@@ -59,9 +59,11 @@ export function fmtUsdSigned(n: number | null | undefined): string {
   return `${sign}$${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
 }
 
+// Built once: constructing an Intl.NumberFormat per call is costly on per-cell and mousemove paths.
+const COMPACT = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
 export function fmtUsdCompact(value: number): string {
   const sign = value < 0 ? '-' : ''
-  return `${sign}$${new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Math.abs(value))}`
+  return `${sign}$${COMPACT.format(Math.abs(value))}`
 }
 
 export function fmtPx(x: number | null | undefined): string {

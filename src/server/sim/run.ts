@@ -20,14 +20,9 @@ export interface RunDeps {
 export const realDeps: RunDeps = {
   backfill: (config, deadline) => backfillBranch(config, undefined, deadline),
   async loadCandles(config) {
-    const coins = new Set([...config.allocations.map((a) => a.coin), ...(config.dca ?? []).map((d) => d.coin), "BTC"]);
-    const out: CandlesByCoin = {};
-    for (const coin of coins) {
-      if (STABLES.has(coin)) continue;
-      const rows = await db.getCandles(coin, "1d", config.startDate);
-      out[coin] = rows.map((r) => ({ ts: new Date(r.ts).getTime(), c: r.c, l: r.l ?? undefined, h: r.h ?? undefined }));
-    }
-    return out;
+    const coins = [...new Set([...config.allocations.map((a) => a.coin), ...(config.dca ?? []).map((d) => d.coin), "BTC"])].filter((c) => !STABLES.has(c));
+    const rows = await Promise.all(coins.map((coin) => db.getCandles(coin, "1d", config.startDate)));
+    return Object.fromEntries(coins.map((coin, i) => [coin, rows[i]!.map((r) => ({ ts: new Date(r.ts).getTime(), c: r.c, l: r.l ?? undefined, h: r.h ?? undefined }))]));
   },
   now: () => Date.now(),
 };

@@ -11,11 +11,11 @@ import { simplePct, type MoveRow } from "../../shared/moves.js";
 export const TRIAGE_Z = 2.5;
 export const TRIAGE_MIN_MOVE_PCT = 1;
 export const TRIAGE_MIN_CHECKS = 3;
-export const TRIAGE_REENTRY_DZ = 1;
+const TRIAGE_REENTRY_DZ = 1;
 /** MOVES_TRIAGE_DAILY default. */
-export const DEFAULT_TRIAGE_DAILY = 8;
+const DEFAULT_TRIAGE_DAILY = 8;
 /** MOVES_AGENT_DAILY default. */
-export const DEFAULT_AGENT_DAILY = 6;
+const DEFAULT_AGENT_DAILY = 6;
 
 const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : def);
 export const triageBudget = (env: Record<string, string | undefined> = process.env) => intEnv(env.MOVES_TRIAGE_DAILY, DEFAULT_TRIAGE_DAILY);
@@ -72,7 +72,7 @@ export function candidateOf(row: MoveRow): TriageCandidate | null {
 }
 
 /** Rank order: score desc, no news first, |residual| desc, coin. */
-export function rankCandidates(cs: TriageCandidate[]): TriageCandidate[] {
+function rankCandidates(cs: TriageCandidate[]): TriageCandidate[] {
   return [...cs].sort((x, y) => y.score - x.score || Number(y.noNews) - Number(x.noNews) || Math.abs(y.residualPct ?? 0) - Math.abs(x.residualPct ?? 0) || cmp(x.coin, y.coin));
 }
 

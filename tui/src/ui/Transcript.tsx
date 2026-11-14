@@ -7,7 +7,7 @@ import { PosSnapshot } from "./Positions.js";
 import { BriefBlock, CoinCard, HelpList, ModelLine, PulseList } from "./Snapshots.js";
 import { ResultBlock, TicketCard, TicketNote } from "./Ticket.js";
 
-export interface EntryViewProps {
+interface EntryViewProps {
   entry: Entry;
   /** Full width (tables, cards). */
   width: number;
@@ -15,7 +15,7 @@ export interface EntryViewProps {
   prose: number;
 }
 
-export function EntryView({ entry: e, width, prose }: EntryViewProps) {
+function EntryView({ entry: e, width, prose }: EntryViewProps) {
   switch (e.kind) {
     case "banner":
       return <BannerLine info={e.info} />;

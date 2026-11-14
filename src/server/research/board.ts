@@ -4,6 +4,7 @@ import {
   boardStudy, ResearchSignalSchema, studyEvidence,
   type BoardResponse, type RadarScoreRow, type ResearchSignal, type ResearchSource, type SourceStatus, type UnavailableReason,
 } from "../../shared/research.js";
+import { isoDate } from "../lab/engine/util.js";
 import type { CatalogueEntry, MarketPulse } from "../lab/types.js";
 import type { DefinitionScan } from "../signals/scan.js";
 import { FEATURE_MIN_TICKS_24H } from "../platform/features.js";
@@ -17,10 +18,10 @@ import { bounded, STUDY_STORE_TIMEOUT_MS, studyKey, type StudyCache } from "./st
 
 const DAY = 86_400_000;
 /** Novelty bars shown: the detector's retry window (closed days). */
-export const NOVELTY_DAYS = 3;
+const NOVELTY_DAYS = 3;
 /** Radar calls shown: those inside the kill-watch window and not killed. */
-export const RADAR_DAYS = 7;
-export const OPPORTUNITY_LIMIT = 50;
+const RADAR_DAYS = 7;
+const OPPORTUNITY_LIMIT = 50;
 export const SOURCE_TIMEOUT_MS = 20_000;
 
 /** Thrown by a loader for a source that cannot exist here, with the fixed reason shown. */
@@ -79,7 +80,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 export { boardStudy };
 
 /** Today's cached study of the signal's rule in its scope, if any. */
-export const evidenceFor = (cache: StudyCache, s: Pick<ResearchSignal, "rule" | "coin" | "scope">, now: number) => {
+const evidenceFor = (cache: StudyCache, s: Pick<ResearchSignal, "rule" | "coin" | "scope">, now: number) => {
   const q = boardStudy(s);
   return q ? (cache.get(studyKey(q, now))?.summary ?? null) : null;
 };
@@ -88,7 +89,7 @@ export const evidenceFor = (cache: StudyCache, s: Pick<ResearchSignal, "rule" | 
  * Attaches today's cached study of the signal's rule: as `study` evidence for the sources it backs (rule, novelty,
  * definition), as `dailyStudy` for an opportunity, whose evidence stays its ledger record.
  */
-export function attachStudy(cache: StudyCache, s: ResearchSignal, now: number): void {
+function attachStudy(cache: StudyCache, s: ResearchSignal, now: number): void {
   const summary = evidenceFor(cache, s, now);
   if (s.source === "opportunity") s.dailyStudy = summary;
   else if (s.rule) s.evidence = summary && studyEvidence(summary);
@@ -130,7 +131,6 @@ function mapEach<T>(source: ResearchSource, items: T[], map: (t: T) => Omit<Rese
 export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
   const now = deps.now();
   const ms = deps.timeoutMs ?? SOURCE_TIMEOUT_MS;
-  const bar = (t: number) => new Date(t).toISOString().slice(0, 10);
   let pulse: BoardResponse["pulse"] = null;
   let rulePulse: BoardResponse["pulse"] = null;
 
@@ -141,7 +141,7 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
       const at = Date.parse(r.pulse.asOf);
       return mapEach("rule", firingEntries(r.pulse, r.catalogue), (e) => ruleSignal(e, at));
     },
-    novelty: async () => mapEach("novelty", await deps.novelty(bar(now - NOVELTY_DAYS * DAY)), noveltySignal),
+    novelty: async () => mapEach("novelty", await deps.novelty(isoDate(now - NOVELTY_DAYS * DAY)), noveltySignal),
     opportunity: async () => {
       const opps = await deps.opportunities(OPPORTUNITY_LIMIT);
       const kinds = [...new Set(opps.map((o) => o.setupKind))];
@@ -155,7 +155,7 @@ export async function buildBoard(deps: BoardDeps): Promise<BoardResponse> {
     },
     radar: async () => {
       const r = await deps.radar();
-      return mapEach("radar", r.calls.filter((c) => !c.killed_at && c.date >= bar(now - RADAR_DAYS * DAY)), (c) => radarSignal(c, r.scorecard));
+      return mapEach("radar", r.calls.filter((c) => !c.killed_at && c.date >= isoDate(now - RADAR_DAYS * DAY)), (c) => radarSignal(c, r.scorecard));
     },
     // Coins the scan dropped (data failed or late) count as dropped items of the source.
     definition: async () => {

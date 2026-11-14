@@ -18,7 +18,7 @@ export function venueOf(v: string | null | undefined): DeskVenue | null {
 }
 
 export const VENUE_UNKNOWN = 'venue unknown — open DESK to check'
-export const PREVIEW_TTL_MS = 60_000
+const PREVIEW_TTL_MS = 60_000
 export const PREVIEW_AMBER_MS = 15_000
 export const STALE_TEXT = 'preview stale — marks moved or 60 s passed; re-preview before confirming'
 /** Gap (DESIGN-terminal §7.4 names the state, not its copy): ADJUST edits mark the card stale. */

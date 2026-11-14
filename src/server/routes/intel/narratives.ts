@@ -20,8 +20,8 @@ import { body, failure, invalid } from "./http.js";
 // POST /narratives/:id/contrast → NarrativeContrast (research, synchronous within CONTRAST_DEADLINE_MS).
 //     409 while a run for any narrative is in flight, 429 at INTEL_NARRATIVE_DAILY runs since UTC midnight.
 
-export const FLOW_CACHE_MS = 120_000;
-export const HEADLINES_PER_ROW = 5;
+const FLOW_CACHE_MS = 120_000;
+const HEADLINES_PER_ROW = 5;
 
 export interface NarrativeRouteDeps {
   store: Pick<IntelStore, "snapshotRange" | "listEvents" | "getSetting" | "setSetting">;

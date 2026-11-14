@@ -11,7 +11,7 @@ import type { StopRow } from "../intel/store.js";
 // on the next run to be merged in and written again (all upserts, so a
 // replay that overlaps a late commit changes nothing).
 
-export type BatchObservation = { seriesId: string; ts: string; value: number };
+type BatchObservation = { seriesId: string; ts: string; value: number };
 
 export type CollectBatch = {
   series: SeriesDef[];
@@ -118,7 +118,7 @@ export type FlushResult = {
 };
 
 /** Observations per statement; one collect is a few hundred, a replayed spill up to SPILL_LIMITS. */
-export const FLUSH_CHUNK = 2_000;
+const FLUSH_CHUNK = 2_000;
 
 /**
  * Writes `batch` within `budgetMs`. A statement still running when the budget

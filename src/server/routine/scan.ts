@@ -13,7 +13,7 @@ import type { ScanOutput, SetupDraft, SetupProposal, WatchItem } from "./schema.
 /** Days a plan stays open, by the bar its trigger is read on. All within GATE.maxDays.swing. */
 export const EXPIRY_DAYS = { "4h": 3, "1d": 7, "1w": 10 } as const;
 
-export interface ResolvedProposal extends SetupProposal {
+interface ResolvedProposal extends SetupProposal {
   setup_id: SetupId | null;
   timeframe: SetupDraft["timeframe"];
   levels_source: "menu";

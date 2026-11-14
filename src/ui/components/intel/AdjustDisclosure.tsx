@@ -33,7 +33,7 @@ const STOP_KINDS: { value: StopKind; label: string }[] = [
   { value: 'atr_mult', label: 'ATR multiple' },
 ]
 
-export function formFromIntent(i: OrderIntent): AdjustForm {
+function formFromIntent(i: OrderIntent): AdjustForm {
   const s = i.stop
   return {
     asset: i.asset,
@@ -52,7 +52,7 @@ export function formFromIntent(i: OrderIntent): AdjustForm {
 const num = (s: string) => (s.trim() === '' ? NaN : Number(s))
 
 /** Form → OrderIntent, or per-field messages. The contract schema has the last word. */
-export function intentFromForm(f: AdjustForm): { intent: OrderIntent; errors?: undefined } | { intent?: undefined; errors: AdjustErrors } {
+function intentFromForm(f: AdjustForm): { intent: OrderIntent; errors?: undefined } | { intent?: undefined; errors: AdjustErrors } {
   const errors: AdjustErrors = {}
   const lev = num(f.leverage)
   const size = num(f.size)

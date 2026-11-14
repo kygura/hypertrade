@@ -9,11 +9,11 @@ import type { ExtremeEvent } from "../../shared/extremes.js";
 
 type Env = Record<string, string | undefined>;
 
-export const WAKE_TIMEOUT_MS = 10_000;
+const WAKE_TIMEOUT_MS = 10_000;
 /** The fire endpoint takes at most 65,536 characters of text. */
 export const WAKE_TEXT_MAX = 60_000;
 /** Sent unless EXTREMES_WAKE_HEADERS overrides them (it may also add headers). */
-export const DEFAULT_WAKE_HEADERS: Readonly<Record<string, string>> = {
+const DEFAULT_WAKE_HEADERS: Readonly<Record<string, string>> = {
   "anthropic-version": "2023-06-01",
   "anthropic-beta": "experimental-cc-routine-2026-04-01",
 };

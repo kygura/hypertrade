@@ -7,9 +7,9 @@ import { fetchText, message, pastIso, type AdapterResult, type IngestDeps } from
 // spaces mapped from assets, as events; each proposal's vote end is its
 // scheduled_at, so open votes surface as catalysts. Keyless hub GraphQL.
 
-export const SNAPSHOT_HUB = "https://hub.snapshot.org/graphql";
+const SNAPSHOT_HUB = "https://hub.snapshot.org/graphql";
 /** Proposals created within this window are fetched. */
-export const PROPOSAL_LOOKBACK_DAYS = 14;
+const PROPOSAL_LOOKBACK_DAYS = 14;
 
 /** asset → Snapshot space id. Check space ids when adding; INTEL_SNAPSHOT_SPACES ("AAVE=aave.eth,UNI=…") replaces the map. */
 export const DEFAULT_SNAPSHOT_SPACES: Record<string, string> = {
@@ -55,7 +55,7 @@ const ProposalsSchema = z.object({
   }),
 });
 
-export const PROPOSALS_QUERY = `query Proposals($spaces: [String], $since: Int) {
+const PROPOSALS_QUERY = `query Proposals($spaces: [String], $since: Int) {
   proposals(first: 100, skip: 0, where: {space_in: $spaces, created_gte: $since}, orderBy: "created", orderDirection: desc) {
     id title created end state link space { id name }
   }

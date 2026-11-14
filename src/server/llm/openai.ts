@@ -263,7 +263,7 @@ function parseArgs(s: string): unknown {
 }
 
 /** Yields the `data:` payload of each SSE event in a byte stream. */
-export async function* sseData(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+async function* sseData(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buf = "";

@@ -13,7 +13,7 @@ export interface RadarFs {
   readFile(path: string): Promise<string>;
   readdir(path: string): Promise<string[]>;
 }
-export const nodeRadarFs: RadarFs = { readFile: (p) => readFile(p, "utf8"), readdir: (p) => readdir(p) };
+const nodeRadarFs: RadarFs = { readFile: (p) => readFile(p, "utf8"), readdir: (p) => readdir(p) };
 
 const NOTE = /^(\d{4}-\d{2}-\d{2})\.md$/;
 const missing = (e: unknown) => (e as NodeJS.ErrnoException)?.code === "ENOENT";

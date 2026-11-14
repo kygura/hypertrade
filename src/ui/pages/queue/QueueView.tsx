@@ -57,7 +57,7 @@ export function QueueView(p: QueueViewProps) {
   )
 }
 
-export function QueueList(p: QueueViewProps & { q: QueueResponse }) {
+function QueueList(p: QueueViewProps & { q: QueueResponse }) {
   const { open, handled } = splitItems(p.q.items)
   const problem = sourceProblemLine(p.q)
   const takeaway = queueTakeaway(p.q)
@@ -122,7 +122,7 @@ export function QueueList(p: QueueViewProps & { q: QueueResponse }) {
   )
 }
 
-export function QueueRow({ i, ...p }: QueueViewProps & { i: QueueItem }) {
+function QueueRow({ i, ...p }: QueueViewProps & { i: QueueItem }) {
   const chip = recordChip(i.record)
   const selected = p.selected === i.coin
   const busy = p.pending.includes(i.id)

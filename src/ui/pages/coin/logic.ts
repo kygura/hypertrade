@@ -1,10 +1,10 @@
 import type { Term } from '../../components'
 import type { MoveDetail } from '../../../shared/moves'
 import type { Opportunity, OpportunityDetail } from '../../../shared/platform'
-import type { QueueItem, QueuePart, QueueSource } from '../../../shared/queue'
+import type { QueueItem, QueuePart } from '../../../shared/queue'
 import { fmtDur } from '../../lib/format'
 import { boardHref } from '../../lib/research'
-import { REASON_TERMS } from '../queue/logic'
+import { PART_LABEL, REASON_TERMS } from '../queue/logic'
 
 // COIN page pure helpers (PLAN2 §2.3–§2.6): URL parsing, the action list, the IN QUEUE lines and the reason line
 // a coin without move attribution prints. No React, no DOM; tested in logic.test.ts. The action row never
@@ -21,7 +21,7 @@ export const simulatePrompt = (coin: string): string => `What if I had put 10% o
 /** The analyst in SIMULATE mode with the question prefilled (not sent: the user presses SIMULATE). */
 export const simulateHref = (coin: string): string => `/analyst?mode=sim&q=${enc(simulatePrompt(coin))}`
 
-export const coinHref = (coin: string) => `/coin/${enc(coin)}`
+const coinHref = (coin: string) => `/coin/${enc(coin)}`
 
 /** A dex-prefixed (HIP-3) market: the moves layer covers main-dex perps only, so it is never asked. */
 export const isHip3 = (coin: string) => coin.includes(':')
@@ -58,8 +58,6 @@ export function coinActions(coin: string, item: QueueItem | null | undefined, de
   actions.push({ key: 'moves', label: 'MOVES', kind: 'link', to: `/moves?coin=${enc(coin)}`, title: 'the moves table' })
   return actions
 }
-
-export const PART_LABEL: Record<QueueSource, string> = { moves: 'MOVES', opportunity: 'SETUP', radar: 'RADAR' }
 
 /** `IN QUEUE · 14M` / `IN QUEUE · DISMISSED · 2H` / `not in today's queue`; null while the queue is unknown. */
 export function queueHeadline(item: QueueItem | null | undefined, now: number): string | null {

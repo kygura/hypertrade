@@ -23,7 +23,7 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 export const GRID_MS = 15 * MIN;
-export const GRID = "15m";
+const GRID = "15m";
 /** Coins a replay covers by default: the most liquid by 24 h volume. About 230 HL weight each for candles (one candle page, three funding pages), so 20 coins take about 5 min under the 1000/min guard. */
 export const DEFAULT_REPLAY_TOP = 20;
 /** Days of scan_snapshots a snapshot replay reads at most (the retention may keep more). */
@@ -31,9 +31,9 @@ export const SNAPSHOT_REPLAY_MAX_DAYS = 14;
 /** A snapshot exit is graded at the first stored tick at most this long after entry + horizon: one persist step, plus the scanner's 1-min tick spacing (a tick a few ms early leaves the next one a full step later). */
 export const SNAPSHOT_GRADE_TOLERANCE_MS = PERSIST_MS + MIN;
 /** Trailing-60s HL weight the replay's own fetches stay under (of the guard's 1000): the live scanner keeps the rest. */
-export const REPLAY_HL_BUDGET = 600;
+const REPLAY_HL_BUDGET = 600;
 /** A candle replay that loaded fewer than this share of its coins failed (a fetch outage), and is retried, never shown as zeros. */
-export const REPLAY_MIN_LOADED_SHARE = 0.5;
+const REPLAY_MIN_LOADED_SHARE = 0.5;
 
 /**
  * Ring points from 15-min candles: one per closed candle at its close boundary (t + 15 min). mark = close;
@@ -233,7 +233,7 @@ export async function runSnapshotReplay(d: { store: Pick<PlatformStore, "scanSna
 // ---------------------------------------------------------------- fetch memo and default deps
 
 /** Coins whose series a memoSeries keeps; the least recently used goes past this. */
-export const MEMO_SERIES_COINS = 2 * DEFAULT_REPLAY_TOP;
+const MEMO_SERIES_COINS = 2 * DEFAULT_REPLAY_TOP;
 
 /**
  * In-process memo of a t-keyed series per coin: a later call whose range starts inside the range already fetched
@@ -342,9 +342,9 @@ export function createReplayService<T>(o: { run: () => Promise<T>; now: () => nu
 }
 
 /** Memo of a replay: a few hours (the window moves 15 min a step; the predicates are fixed). */
-export const REPLAY_TTL_MS = 6 * HOUR;
+const REPLAY_TTL_MS = 6 * HOUR;
 /** Longest a request waits on a running replay before it answers `pending`. */
-export const REPLAY_WAIT_MS = 2_000;
+const REPLAY_WAIT_MS = 2_000;
 const REPLAY_RETRY_MS = 15 * MIN;
 
 const services = new Map<ReplaySource, ReturnType<typeof createReplayService<SetupReplayResponse>>>();

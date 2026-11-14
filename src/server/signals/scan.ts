@@ -47,7 +47,7 @@ export function scanDataset(data: LabDataset, defs: readonly SignalDefinition[] 
 // ---------------------------------------------------------------- service
 
 /** One item a scan left out, and why. */
-export interface ScanDrop {
+interface ScanDrop {
   coin: string;
   /** The definition left unevaluated on the coin; null when the whole coin was dropped. */
   definition: string | null;
@@ -94,7 +94,7 @@ export interface DefinitionScannerDeps {
 /** Days of price history a live scan loads: the regime's 50-day mean, its 3-day persistence and warm-up. */
 export const SCAN_LOOKBACK_DAYS = 200;
 /** Extra days loaded before a metric's own lookback: the registry forward-fills a gap of up to 3 days. */
-export const SCAN_FILL_MARGIN_DAYS = 7;
+const SCAN_FILL_MARGIN_DAYS = 7;
 export const SCAN_DEADLINE_MS = 120_000;
 /** A scan that dropped anything is kept this long, not for the whole UTC day: data may still be arriving. */
 export const SCAN_RETRY_MS = 15 * 60_000;
@@ -122,7 +122,7 @@ export function metricLookbackDays(defs: readonly SignalDefinition[] = DEFINITIO
  * so lastRaw ends the day before and the definition is dropped (and retried), never read on a partial sum. A metric
  * in `noData` (fetched, nothing in range: e.g. a coin OKX does not list) is dropped without a retry.
  */
-export function evaluableDefinitions(defs: readonly SignalDefinition[], lastRaw: Record<string, string> | undefined, bar: string, noData: readonly string[] = []) {
+function evaluableDefinitions(defs: readonly SignalDefinition[], lastRaw: Record<string, string> | undefined, bar: string, noData: readonly string[] = []) {
   const ok: SignalDefinition[] = [];
   const left: Array<{ definition: SignalDefinition; reason: string; retry: boolean }> = [];
   for (const d of defs) {
@@ -156,15 +156,17 @@ export function createDefinitionScanner(deps: DefinitionScannerDeps) {
   let last: DefinitionScan | null = null;
 
   async function run(started: number): Promise<DefinitionScan> {
-    const bar = isoDate(Math.floor(started / DAY_MS) * DAY_MS - DAY_MS);
     const barMs = Math.floor(started / DAY_MS) * DAY_MS - DAY_MS;
+    const bar = isoDate(barMs);
     const from = isoDate(barMs - (SCAN_LOOKBACK_DAYS - 1) * DAY_MS);
     const metricFrom = Object.fromEntries(Object.entries(lookback).map(([m, days]) => [m, isoDate(barMs - (days - 1) * DAY_MS)]));
-    const all = await deps.coins();
+    const [all, listed] = await Promise.all([
+      deps.coins(),
+      deps.listed
+        ? deps.listed().then((s) => new Set([...s].map((c) => c.toUpperCase())), (err) => (console.warn(`[signals] listed coins unavailable (${msg(err)}); loading every coin`), null))
+        : null,
+    ]);
     const unique = all.filter((c, i) => all.findIndex((x) => x.toUpperCase() === c.toUpperCase()) === i);
-    const listed = deps.listed
-      ? await deps.listed().then((s) => new Set([...s].map((c) => c.toUpperCase())), (err) => (console.warn(`[signals] listed coins unavailable (${msg(err)}); loading every coin`), null))
-      : null;
     const drops: ScanDrop[] = [];
     const coins = unique.filter((coin) => {
       if (!listed || listed.has(coin.toUpperCase())) return true;

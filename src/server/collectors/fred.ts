@@ -35,8 +35,8 @@ const SKIPPED_THROTTLED = "skipped:throttled";
 export const FRED_HISTORY_DAYS = 400;
 /** Later runs: a short window that also picks up FRED's revisions and anything a missed run skipped. */
 export const FRED_RECENT_DAYS = 14;
-export const FRED_BACKFILL_AFTER_DAYS = 7;
-export const FRED_MIN_INTERVAL_HOURS = 6;
+const FRED_BACKFILL_AFTER_DAYS = 7;
+const FRED_MIN_INTERVAL_HOURS = 6;
 const FRED_CONCURRENCY = 6;
 const DAY_MS = 86_400_000;
 

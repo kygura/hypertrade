@@ -126,7 +126,7 @@ function TradeLayout({ children }: { children: React.ReactNode }) {
 
 // MARKET family page: MarketTabs + the MetricsStrip above the page.
 // `metrics={false}`: QUEUE and the coin page carry nothing above the content (the strip is terminal furniture).
-export function MarketLayout({ children, metrics = true }: { children: React.ReactNode; metrics?: boolean }) {
+function MarketLayout({ children, metrics = true }: { children: React.ReactNode; metrics?: boolean }) {
   return (
     <Shell>
       <PageContainer>
@@ -164,9 +164,7 @@ export default function App() {
             path={path}
             element={
               <Shell>
-                <Suspense fallback={<SkeletonRows />}>
-                  <Page />
-                </Suspense>
+                <Page />
               </Shell>
             }
           />
@@ -209,9 +207,7 @@ export default function App() {
           path="/moves"
           element={
             <MarketLayout>
-              <Suspense fallback={<SkeletonRows />}>
-                <Moves />
-              </Suspense>
+              <Moves />
             </MarketLayout>
           }
         />
@@ -228,9 +224,7 @@ export default function App() {
           path="/queue"
           element={
             <MarketLayout metrics={false}>
-              <Suspense fallback={<SkeletonRows />}>
-                <Queue />
-              </Suspense>
+              <Queue />
             </MarketLayout>
           }
         />
@@ -238,9 +232,7 @@ export default function App() {
           path="/coin/:coin"
           element={
             <MarketLayout metrics={false}>
-              <Suspense fallback={<SkeletonRows />}>
-                <CoinPage />
-              </Suspense>
+              <CoinPage />
             </MarketLayout>
           }
         />
@@ -250,9 +242,7 @@ export default function App() {
             path={path}
             element={
               <MarketLayout>
-                <Suspense fallback={<SkeletonRows />}>
-                  <Cycles />
-                </Suspense>
+                <Cycles />
               </MarketLayout>
             }
           />
@@ -261,9 +251,7 @@ export default function App() {
           path="/htf"
           element={
             <MarketLayout>
-              <Suspense fallback={<SkeletonRows />}>
-                <Vector />
-              </Suspense>
+              <Vector />
             </MarketLayout>
           }
         />
@@ -311,9 +299,7 @@ export default function App() {
           path="/analyst"
           element={
             <Shell>
-              <Suspense fallback={<SkeletonRows />}>
-                <Analyst />
-              </Suspense>
+              <Analyst />
             </Shell>
           }
         />
@@ -332,9 +318,7 @@ export default function App() {
             path={path}
             element={
               <Shell>
-                <Suspense fallback={<SkeletonRows />}>
-                  <Lab />
-                </Suspense>
+                <Lab />
               </Shell>
             }
           />
@@ -343,9 +327,7 @@ export default function App() {
           path="/lab/rules/:id"
           element={
             <Shell>
-              <Suspense fallback={<SkeletonRows />}>
-                <LabRule />
-              </Suspense>
+              <LabRule />
             </Shell>
           }
         />

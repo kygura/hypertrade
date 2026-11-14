@@ -1,13 +1,9 @@
-import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import type { BranchConfig } from '../../../shared/types'
 import type { MonteCarloResult } from '../branches/types'
-import { fmtChartDate, fmtUsdCompact } from '../branches/format'
+import { fmtUsdCompact } from '../branches/format'
 
-// Monte-carlo fan — docs/design/README.md §9.3. `buildBandData` is the shared merge used
-// both by the standalone chart below and by EquityChart, which draws the
-// same band+median recipe inline on its own combined chart (recharts can't
-// reliably compose a nested chart's <Area>/<Line> into a parent chart, so
-// the two chart components share the data prep, not JSX).
+// Monte-carlo fan — docs/design/README.md §9.3. `buildBandData` is the data prep for the
+// band+median recipe EquityChart draws inline on its own combined chart.
 
 export interface FanPoint {
   ts: number
@@ -23,56 +19,6 @@ export function buildBandData(projection: MonteCarloResult): FanPoint[] {
     bandHeight: (projection.p90[i]?.value ?? m.value) - (projection.p10[i]?.value ?? m.value),
     median: m.value,
   }))
-}
-
-// Standalone fan chart — same visual recipe as EquityChart's forward
-// section, usable on its own (e.g. a future projection-only surface).
-export function FanChart({ projection, height = 220 }: { projection: MonteCarloResult; height?: number }) {
-  const data = buildBandData(projection)
-  return (
-    <ResponsiveContainer width="100%" height={height}>
-      <ComposedChart data={data} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
-        <CartesianGrid stroke="var(--color-border-subtle)" vertical={false} />
-        <XAxis
-          dataKey="ts"
-          type="number"
-          domain={['dataMin', 'dataMax']}
-          scale="time"
-          tickFormatter={fmtChartDate}
-          tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
-          stroke="var(--color-border)"
-        />
-        <YAxis
-          tickFormatter={fmtUsdCompact}
-          tick={{ fontSize: 12, fill: 'var(--color-text-secondary)' }}
-          stroke="var(--color-border)"
-          width={48}
-        />
-        <Area
-          dataKey="p10"
-          stackId="band"
-          stroke="none"
-          fill="transparent"
-          isAnimationActive={false}
-        />
-        <Area
-          dataKey="bandHeight"
-          stackId="band"
-          stroke="none"
-          fill="var(--color-proj-band)"
-          isAnimationActive={false}
-        />
-        <Line
-          dataKey="median"
-          stroke="var(--color-proj-line)"
-          strokeWidth={1.5}
-          strokeDasharray="6 3"
-          dot={false}
-          isAnimationActive={false}
-        />
-      </ComposedChart>
-    </ResponsiveContainer>
-  )
 }
 
 // Terminal readout — plain text, not chart labels (docs/design/README.md §9.3).

@@ -62,7 +62,7 @@ five cells; DESK is a tab here, not a cell.
 
 - Active on every route of the family: `/terminal`, `/watch`, `/journal`,
   `/theses`, `/query`, `/feed`, `/order`, `/desk` and `/asset/*`
-  (`isTerminalPath(pathname)`, beside `isEnginePath` and `isMarketPath`).
+  (`isTerminalPath(pathname)`, beside `isMarketPath`).
 - Wordmark click → `/` (the Research board).
 - The freshness cluster is unchanged; per-source health lives in §3.3 and
   the Cockpit health strip (C6).

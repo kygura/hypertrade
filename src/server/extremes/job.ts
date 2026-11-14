@@ -15,17 +15,17 @@ type Env = Record<string, string | undefined>;
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
-export const DEFAULT_EXTREMES_TOP = 30;
-export const DEFAULT_EXTREMES_COOLDOWN_H = 24;
-export const DEFAULT_EXTREMES_DAILY_CAP = 3;
+const DEFAULT_EXTREMES_TOP = 30;
+const DEFAULT_EXTREMES_COOLDOWN_H = 24;
+const DEFAULT_EXTREMES_DAILY_CAP = 3;
 /** Snapshots read to rank coins by their latest 24 h volume (the tick persists one every 5 min). */
-export const RANK_WINDOW_MS = HOUR;
+const RANK_WINDOW_MS = HOUR;
 
 const posInt = (v: string | undefined, d: number) => {
   const n = Number(v?.trim());
   return v?.trim() && Number.isInteger(n) && n >= 0 ? n : d;
 };
-export const extremesParams = (env: Env = process.env) => ({
+const extremesParams = (env: Env = process.env) => ({
   top: posInt(env.EXTREMES_TOP, DEFAULT_EXTREMES_TOP) || DEFAULT_EXTREMES_TOP,
   cooldownMs: posInt(env.EXTREMES_COOLDOWN_H, DEFAULT_EXTREMES_COOLDOWN_H) * HOUR,
   dailyCap: posInt(env.EXTREMES_DAILY_CAP, DEFAULT_EXTREMES_DAILY_CAP),

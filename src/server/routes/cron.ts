@@ -72,9 +72,9 @@ export const LAB_LEASE_MS = LAB_BUDGET_MS + 60_000;
  */
 export const LAB_HARD_STOP_MS = LAB_BUDGET_MS + 40_000;
 /** sync_state row (coin '_lab') whose synced_at is the Lab run lease's expiry. */
-export const LAB_LEASE_SERIES = "_lease";
+const LAB_LEASE_SERIES = "_lease";
 
-export type WarmResult = { from?: string; to?: string; tfs: number; fundingFrom?: string | null };
+type WarmResult = { from?: string; to?: string; tfs: number; fundingFrom?: string | null };
 
 export type BackfillDeps = {
   listBranches: () => Promise<{ config: unknown }[]>;
@@ -96,7 +96,7 @@ export type BackfillDeps = {
  */
 const canStart = (deadline: number) => Date.now() + hlWeightWaitMs() < deadline;
 
-export async function warmCoin(
+async function warmCoin(
   coin: string,
   startDate: Date,
   deadline: number,
@@ -130,7 +130,7 @@ export async function warmCoin(
   };
 }
 
-export async function pruneRetention(now: number = Date.now()): Promise<Record<string, number>> {
+async function pruneRetention(now: number = Date.now()): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const [tf, keep] of Object.entries(TF_RETENTION_MS) as [Timeframe, number][]) {
     out[tf] = await db.pruneCandles(tf, new Date(now - keep));
@@ -176,9 +176,9 @@ const COLLECT_BUDGET_MS = 90_000;
 /** Cap on each database read the collect's fetch phase still makes (OI coins, Intel focus, Elfa throttle). */
 const COLLECT_READ_MS = 5_000;
 /** The collect's one write phase. The workflow's curl allows 120 s for the whole request. */
-export const FLUSH_BUDGET_MS = 25_000;
+const FLUSH_BUDGET_MS = 25_000;
 /** A spill still holding rows this old fails the collect: the database has been unwritable for hours. */
-export const SPILL_ALARM_MS = 6 * 3_600_000;
+const SPILL_ALARM_MS = 6 * 3_600_000;
 
 /** `p`, or `fallback` once `ms` pass (p keeps running; its late result or error is dropped). */
 function capped<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
@@ -406,7 +406,7 @@ export async function runLabCollect(
 export const INTEL_BUDGET_MS = 200_000;
 export const INTEL_LEASE_MS = INTEL_BUDGET_MS + 60_000;
 export const INTEL_HARD_STOP_MS = INTEL_BUDGET_MS + 40_000;
-export const INTEL_LEASE_COIN = "_intel";
+const INTEL_LEASE_COIN = "_intel";
 /** A run due at 6 h on a 15-minute schedule should not slip a whole tick. */
 const THROTTLE_SLACK_MS = 5 * 60_000;
 
@@ -427,7 +427,7 @@ export interface IntelCronDeps {
 export const intelSettingKey = (job: IntelJob) => `cron_${job}_at`;
 
 /** Minimum gap between runs: brief INTEL_BRIEF_HOURS (default 6, 1–168), graph daily, the rest none. */
-export function intelThrottleMs(job: IntelJob, env: Record<string, string | undefined>): number {
+function intelThrottleMs(job: IntelJob, env: Record<string, string | undefined>): number {
   if (job === "graph") return DAY_MS;
   if (job !== "brief") return 0;
   const h = Number(env.INTEL_BRIEF_HOURS);
@@ -435,7 +435,7 @@ export function intelThrottleMs(job: IntelJob, env: Record<string, string | unde
 }
 
 /** One leased, budgeted Intel job. Never throws; a thrown run or lease error is a 500 body. */
-export async function runIntelJob(job: IntelJob, deps: IntelCronDeps): Promise<{ status: 200 | 500; body: Record<string, unknown> }> {
+async function runIntelJob(job: IntelJob, deps: IntelCronDeps): Promise<{ status: 200 | 500; body: Record<string, unknown> }> {
   const holder = randomUUID();
   const lease = deps.lease(job);
   const fail = (err: unknown) => ({ status: 500 as const, body: { job, ok: false, error: err instanceof Error ? err.message : String(err) } });
@@ -557,7 +557,7 @@ const defaultIntelCronDeps = (): IntelCronDeps => {
         return { ok: true, complete: true, result: { ...result, flows, narratives, research, contrast } };
       },
       brief: async (o) => {
-        const r = await runIntelBrief({ ...d, notifier: d.notifier, appUrl: d.appUrl }, o);
+        const r = await runIntelBrief(d, o);
         return { ok: r.ok, complete: r.ok, result: r };
       },
       graph: async (o) => {

@@ -6,7 +6,7 @@ import type { AccountState } from "../../../src/server/desk/types.js";
 import type { AssetCtx } from "../../../src/shared/types.js";
 import type { AccountSnapshot, Alert, MarketRow } from "./types.js";
 
-export interface AlertEngineOptions {
+interface AlertEngineOptions {
   /** Same alert key is not reported again within this window. */
   cooldownMs?: number;
   /** How much mark / OI history to keep. Must cover the 4h change windows. */

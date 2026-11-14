@@ -4,7 +4,7 @@
 // {ok, result} envelope. The token is never included in any error message.
 import { z } from "zod";
 
-export const PulseRuleSchema = z.object({
+const PulseRuleSchema = z.object({
   id: z.string(),
   name: z.string(),
   direction: z.enum(["long", "short"]),
@@ -12,7 +12,7 @@ export const PulseRuleSchema = z.object({
   text: z.string(),
 });
 
-export const PulseAssetSchema = z.object({
+const PulseAssetSchema = z.object({
   asset: z.string(),
   longActive: z.number().int().nonnegative(),
   longTotal: z.number().int().nonnegative(),
@@ -29,8 +29,6 @@ export const PulseSchema = z.object({
   warnings: z.array(z.string()),
 });
 
-export type PulseRule = z.infer<typeof PulseRuleSchema>;
-export type PulseAsset = z.infer<typeof PulseAssetSchema>;
 export type Pulse = z.infer<typeof PulseSchema>;
 
 export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;

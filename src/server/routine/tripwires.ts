@@ -29,7 +29,7 @@ export const TRIPWIRES = {
   maxNearGap: 1,
 } as const;
 
-export interface Condition {
+interface Condition {
   label: string;
   value: number | string | null;
   op: ">=" | "<=" | "<" | ">" | "=" | "≠";
@@ -71,7 +71,7 @@ interface Template {
 const T = TRIPWIRES;
 const neutral = BOARD.baselineFundingAnnPct;
 
-export const TEMPLATES: Template[] = [
+const TEMPLATES: Template[] = [
   {
     id: "funding_fade",
     direction: "short",

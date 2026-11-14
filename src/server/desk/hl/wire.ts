@@ -4,8 +4,8 @@
 // exchange.py _slippage_price). Object key order follows the SDK exactly:
 // the signature covers the msgpack bytes, which keep insertion order.
 
-export type Tif = "Gtc" | "Ioc" | "Alo";
-export type OrderType = { limit: { tif: Tif } } | { trigger: { isMarket: boolean; triggerPx: number; tpsl: "tp" | "sl" } };
+type Tif = "Gtc" | "Ioc" | "Alo";
+type OrderType = { limit: { tif: Tif } } | { trigger: { isMarket: boolean; triggerPx: number; tpsl: "tp" | "sl" } };
 
 export interface OrderRequest {
   asset: number;
@@ -41,12 +41,12 @@ export function slippagePx(mark: number, isBuy: boolean, slippage: number, szDec
   return roundPerpPx(mark * (isBuy ? 1 + slippage : 1 - slippage), szDecimals);
 }
 
-export function orderTypeWire(t: OrderType) {
+function orderTypeWire(t: OrderType) {
   if ("limit" in t) return { limit: { tif: t.limit.tif } };
   return { trigger: { isMarket: t.trigger.isMarket, triggerPx: floatToWire(t.trigger.triggerPx), tpsl: t.trigger.tpsl } };
 }
 
-export function orderWire(o: OrderRequest) {
+function orderWire(o: OrderRequest) {
   return {
     a: o.asset,
     b: o.isBuy,

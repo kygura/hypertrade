@@ -14,7 +14,7 @@ const Text = (max: number) => z.string().trim().min(1).max(max);
 
 /** A JSON value with finite numbers only: what a ledger payload may hold. Callers map NaN and ±Infinity to null first. */
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
-export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([z.string(), Num, z.boolean(), z.null(), z.array(JsonValueSchema), z.record(JsonValueSchema)]),
 );
 const JsonRecord = z.record(JsonValueSchema);
@@ -27,8 +27,7 @@ export const HorizonSchema = z.string().regex(/^\d+[mhd]$/, "invalid horizon");
 // ─── Opportunities ───
 
 /** Only directional has a cost model this phase (P0.10); extend the enum with a cost model. */
-export const TradeTypeSchema = z.enum(["directional"]);
-export type TradeType = z.infer<typeof TradeTypeSchema>;
+const TradeTypeSchema = z.enum(["directional"]);
 
 export const OpportunityStatusSchema = z.enum(["new", "investigating", "calculated", "ready", "approved", "rejected", "expired", "open", "closed", "failed"]);
 export type OpportunityStatus = z.infer<typeof OpportunityStatusSchema>;
@@ -57,15 +56,15 @@ export const SYSTEM_ONLY: readonly OpportunityStatus[] = ["failed"];
 /** Final statuses the cooldown measures from (P0.11): store.lastTerminalAt. */
 export const TERMINAL_STATUSES: readonly OpportunityStatus[] = ["rejected", "expired", "failed", "closed"];
 
-export const EdgeBasisSchema = z.enum(["unvalidated", "ledger"]);
-export const LiquidityTierSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+const EdgeBasisSchema = z.enum(["unvalidated", "ledger"]);
+const LiquidityTierSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
 export type LiquidityTier = z.infer<typeof LiquidityTierSchema>;
-export const ActorSchema = z.enum(["operator", "system"]);
+const ActorSchema = z.enum(["operator", "system"]);
 
-export const CostsSchema = z.object({ feeBps: NonNeg, slippageBps: NonNeg, fundingBps: Num, absorbableUsd: NonNeg });
+const CostsSchema = z.object({ feeBps: NonNeg, slippageBps: NonNeg, fundingBps: Num, absorbableUsd: NonNeg });
 export type Costs = z.infer<typeof CostsSchema>;
 
-export const OpportunitySchema = z.object({
+const OpportunitySchema = z.object({
   id: z.string().uuid(),
   coin: AssetSchema,
   direction: SideSchema,
@@ -99,7 +98,7 @@ export const OpportunitySchema = z.object({
 export type Opportunity = z.infer<typeof OpportunitySchema>;
 
 /** Named features (z-scores and raw ratios; null without enough history) and the raw inputs they came from. */
-export const FeatureVectorSchema = z.object({
+const FeatureVectorSchema = z.object({
   features: z.record(Num.nullable()),
   inputs: JsonRecord,
 });
@@ -141,20 +140,20 @@ const stored = { id: z.number().int().positive(), opportunityId: z.string().uuid
 const entry = <K extends keyof typeof PAYLOADS>(kind: K) => z.object({ ...stored, kind: z.literal(kind), payload: PAYLOADS[kind] });
 const newEntry = <K extends keyof typeof PAYLOADS>(kind: K) => z.object({ opportunityId: stored.opportunityId, kind: z.literal(kind), payload: PAYLOADS[kind] });
 
-export const LedgerEntrySchema = z.discriminatedUnion("kind", [entry("created"), entry("status"), entry("costs"), entry("research"), entry("decision"), entry("outcome")]);
+const LedgerEntrySchema = z.discriminatedUnion("kind", [entry("created"), entry("status"), entry("costs"), entry("research"), entry("decision"), entry("outcome")]);
 /** What the ledger is given (the store assigns id and createdAt). Stores parse every append with this. */
 export const NewLedgerEntrySchema = z.discriminatedUnion("kind", [
   newEntry("created"), newEntry("status"), newEntry("costs"), newEntry("research"), newEntry("decision"), newEntry("outcome"),
 ]);
 export type LedgerEntry = z.infer<typeof LedgerEntrySchema>;
-export type LedgerKind = LedgerEntry["kind"];
+type LedgerKind = LedgerEntry["kind"];
 export type LedgerPayload<K extends LedgerKind> = Extract<LedgerEntry, { kind: K }>["payload"];
 export type NewLedgerEntry = z.infer<typeof NewLedgerEntrySchema>;
 
 /** Clusters below which a ledger or replay mean carries no 95% interval (groupStats, P0.14); the UI reads the same. */
 export const CI_MIN_CLUSTERS = 5;
 
-export const LedgerStatsSchema = z.object({
+const LedgerStatsSchema = z.object({
   setupKind: Text(64),
   horizon: HorizonSchema,
   regime: Text(40).nullable(),
@@ -171,7 +170,7 @@ export type LedgerStats = z.infer<typeof LedgerStatsSchema>;
 
 // ─── Positions and liquidation map ───
 
-export const PositionSchema = z.object({
+const PositionSchema = z.object({
   address: AddressSchema,
   coin: AssetSchema,
   /** Signed size in coins: > 0 long, < 0 short. */
@@ -188,7 +187,7 @@ export type Position = z.infer<typeof PositionSchema>;
 export const PolledPositionSchema = PositionSchema.omit({ address: true, updatedAt: true });
 export type PolledPosition = z.infer<typeof PolledPositionSchema>;
 
-export const AddressRowSchema = z.object({
+const AddressRowSchema = z.object({
   address: AddressSchema,
   firstSeenAt: Iso,
   /** Last time the WS saw it trade. */
@@ -213,13 +212,13 @@ export const LIQMAP_BUCKET_BPS = 25;
 export const LIQMAP_PANEL_RANGE = 0.1;
 
 /** One stored grid cell. Longs liquidate below mark, shorts above. */
-export const LiqCellSchema = z.object({ idx: z.number().int(), longUsd: NonNeg, shortUsd: NonNeg });
+const LiqCellSchema = z.object({ idx: z.number().int(), longUsd: NonNeg, shortUsd: NonNeg });
 export type LiqCell = z.infer<typeof LiqCellSchema>;
 /** A live cell with its price edges (bucketBounds). */
-export const LiqBucketSchema = LiqCellSchema.extend({ priceLo: Pos, priceHi: Pos });
+const LiqBucketSchema = LiqCellSchema.extend({ priceLo: Pos, priceHi: Pos });
 export type LiqBucket = z.infer<typeof LiqBucketSchema>;
 
-export const CoverageSchema = z.object({
+const CoverageSchema = z.object({
   trackedNotional: NonNeg,
   oiNotional: NonNeg,
   /** trackedNotional / (2 × oiNotional) (P0.8); null when OI is unknown or 0 (unknown is not 0% covered). */
@@ -234,7 +233,7 @@ export type Coverage = z.infer<typeof CoverageSchema>;
 export const ClusterSchema = z.object({ priceLo: Pos, priceHi: Pos, distancePct: NonNeg, notionalUsd: NonNeg });
 export type Cluster = z.infer<typeof ClusterSchema>;
 
-export const LiqMapSchema = z.object({
+const LiqMapSchema = z.object({
   coin: AssetSchema,
   ts: Iso,
   mark: Pos,
@@ -246,10 +245,10 @@ export const LiqMapSchema = z.object({
 export type LiqMap = z.infer<typeof LiqMapSchema>;
 
 /** A 15-min liqmap_snapshots row. */
-export const LiqMapSnapshotSchema = z.object({ coin: AssetSchema, ts: Iso, mark: Pos, bucketBps: Pos, buckets: z.array(LiqCellSchema) });
+const LiqMapSnapshotSchema = z.object({ coin: AssetSchema, ts: Iso, mark: Pos, bucketBps: Pos, buckets: z.array(LiqCellSchema) });
 export type LiqMapSnapshot = z.infer<typeof LiqMapSnapshotSchema>;
 
-export const LiqMapHistorySchema = z.object({
+const LiqMapHistorySchema = z.object({
   coin: AssetSchema,
   bucketBps: Pos,
   snapshots: z.array(LiqMapSnapshotSchema.pick({ ts: true, mark: true, buckets: true })),
@@ -258,7 +257,7 @@ export type LiqMapHistory = z.infer<typeof LiqMapHistorySchema>;
 
 // ─── Health ───
 
-export const LoopHealthSchema = z.object({ name: Text(32), lastBeatAt: Iso.nullable(), expectedIntervalSec: Pos, ok: z.boolean(), error: z.string().nullable() });
+const LoopHealthSchema = z.object({ name: Text(32), lastBeatAt: Iso.nullable(), expectedIntervalSec: Pos, ok: z.boolean(), error: z.string().nullable() });
 export const PlatformHealthSchema = z.object({
   ok: z.boolean(),
   ts: Iso,
@@ -320,7 +319,7 @@ export const FeedResponseSchema = z.object({
 });
 export type FeedResponse = z.infer<typeof FeedResponseSchema>;
 
-export const SignalSchema = z.object({ name: Text(64), value: Num.nullable(), z: Num.nullable() });
+const SignalSchema = z.object({ name: Text(64), value: Num.nullable(), z: Num.nullable() });
 /** Governor verdict as the desk returns it (src/ui/lib/desk.ts Verdict); extra fields pass through. */
 export const RiskVerdictSchema = z.object({
   approved: z.boolean(), reasons: z.array(z.string()), warnings: z.array(z.string()),
@@ -357,16 +356,14 @@ export type LiqBoardResponse = z.infer<typeof LiqBoardResponseSchema>;
 export const LiqMapHistoryResponseSchema = LiqMapHistorySchema;
 /** GET /ledger/stats. */
 export const LedgerStatsResponseSchema = z.object({ stats: z.array(LedgerStatsSchema) });
-export type LedgerStatsResponse = z.infer<typeof LedgerStatsResponseSchema>;
 /** GET /ledger/:opportunityId: entries in insertion order. */
 export const LedgerEntriesResponseSchema = z.object({ opportunityId: z.string().uuid(), entries: z.array(LedgerEntrySchema) });
-export type LedgerEntriesResponse = z.infer<typeof LedgerEntriesResponseSchema>;
 // ─── Novelty (docs/FEATURES.md section 4) ───
 
-export const NoveltyFeatureSchema = z.object({ id: Text(32), value: Num, histMin: Num, histMax: Num, p1: Num, p99: Num, bars: z.number().int().nonnegative(), pctRank: Num });
+const NoveltyFeatureSchema = z.object({ id: Text(32), value: Num, histMin: Num, histMax: Num, p1: Num, p99: Num, bars: z.number().int().nonnegative(), pctRank: Num });
 export type NoveltyFeature = z.infer<typeof NoveltyFeatureSchema>;
 /** One per coin per closed daily bar; id `${barDate}:${coin}`. Only new extremes are pushed. */
-export const NoveltyEntrySchema = z.object({
+const NoveltyEntrySchema = z.object({
   id: Text(64),
   detectedAt: Iso,
   barDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -384,9 +381,8 @@ export type NoveltyEntry = z.infer<typeof NoveltyEntrySchema>;
 export const NoveltyQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(365).default(30), coin: AssetSchema.optional() }).strict();
 /** GET /novelty: newest bar first. */
 export const NoveltyResponseSchema = z.object({ entries: z.array(NoveltyEntrySchema) });
-export type NoveltyResponse = z.infer<typeof NoveltyResponseSchema>;
 // ─── Near-miss (PS-B2) ───
-export const NearMissSchema = z.object({ coin: AssetSchema, setupKind: z.string(), cond: z.number().int(), value: z.number(), limit: z.number(), relDistance: z.number() });
+const NearMissSchema = z.object({ coin: AssetSchema, setupKind: z.string(), cond: z.number().int(), value: z.number(), limit: z.number(), relDistance: z.number() });
 export type NearMiss = z.infer<typeof NearMissSchema>;
 /** GET /near-miss: informational. `top` is the closest; `all` is every coin near a setup, closest first. */
 export const NearMissResponseSchema = z.object({ top: NearMissSchema.nullable(), all: z.array(NearMissSchema) });
@@ -396,11 +392,10 @@ export type NearMissResponse = z.infer<typeof NearMissResponseSchema>;
 /** Fixed vocabulary the LLM tags coins from; anything else is rejected at the trust boundary. */
 export const SECTORS = ["AI", "Privacy", "Stablecoin", "Perp DEX", "L1", "L2", "DeFi", "Meme", "RWA", "Gaming", "Infra", "Exchange token", "Other"] as const;
 export const SectorSchema = z.enum(SECTORS);
-export type Sector = z.infer<typeof SectorSchema>;
-export const SectorTagSchema = z.object({ coin: AssetSchema, sectors: z.array(SectorSchema).min(1), taggedAt: Iso });
+const SectorTagSchema = z.object({ coin: AssetSchema, sectors: z.array(SectorSchema).min(1), taggedAt: Iso });
 export type SectorTag = z.infer<typeof SectorTagSchema>;
 /** GET /sectors: the cached tags. */
-export const SectorsResponseSchema = z.object({ vocabulary: z.array(SectorSchema), tags: z.array(SectorTagSchema) });
+const SectorsResponseSchema = z.object({ vocabulary: z.array(SectorSchema), tags: z.array(SectorTagSchema) });
 export type SectorsResponse = z.infer<typeof SectorsResponseSchema>;
 /** GET /health. */
 export const PlatformHealthResponseSchema = PlatformHealthSchema;

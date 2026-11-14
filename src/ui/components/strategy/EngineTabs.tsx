@@ -9,10 +9,6 @@ const TABS = [
   { to: '/governor', label: 'GOVERNOR', short: 'GOV' },
 ]
 
-export function isEnginePath(pathname: string): boolean {
-  return TABS.some((t) => pathname === t.to || pathname.startsWith(`${t.to}/`))
-}
-
 export function EngineTabs() {
   return <SectionTabs label="engine" tabs={TABS} />
 }

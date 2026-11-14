@@ -23,7 +23,7 @@ export type FlowRegime =
   | "spot_led_selloff"
   | "range";
 
-export interface TrapComponent {
+interface TrapComponent {
   name: string;
   points: number;
   max: number;
@@ -80,7 +80,7 @@ function valueAt(series: Array<{ t: number; v: number }>, t: number): number | n
 }
 
 /** Default classifyRegime thresholds (%), set for the desk's multi-hour flow_diagnostics windows (default 72 h). */
-export const REGIME_THRESHOLDS = { flatPct: 1.5, oiMovePct: 3 };
+const REGIME_THRESHOLDS = { flatPct: 1.5, oiMovePct: 3 };
 
 /**
  * Flow regime from the price and OI change over one window. A price move under `flatPct` is "range"; OI counts

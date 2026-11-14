@@ -49,7 +49,7 @@ import { norm } from "./util.js";
 // through it with kind "docwatch".
 
 export const MAGNITUDE_WEIGHT: Record<Magnitude, number> = { low: 0.3, med: 0.6, high: 1 };
-export const MAPPER_PROMPT_VERSION = "mapper-v2";
+const MAPPER_PROMPT_VERSION = "mapper-v2";
 export const DAMPEN_MIN_VOTES = 5;
 export const DAMPEN_NET = -0.6;
 const FEEDBACK_LOOKBACK_MS = 30 * 86_400_000;
@@ -286,8 +286,7 @@ async function routeWith(deps: MapperDeps, ctx: RoutingContext, input: RouteInpu
     if (signal?.aborted) break;
     // Already alerted (same dedupe key insertAlert enforces): skip before spending candles, priced-in and LLM calls.
     if (await deps.store.alertExists({ kind: input.kind, ref: input.ref, asset: hit.asset, window: null })) continue;
-    const exp = await assetExposure(deps, ctx, hit.asset);
-    const pricedIn = await loadPricedIn(deps, hit.asset, input.firstSeen);
+    const [exp, pricedIn] = await Promise.all([assetExposure(deps, ctx, hit.asset), loadPricedIn(deps, hit.asset, input.firstSeen)]);
     const suffix = pricedIn ? pricedInText(pricedIn) : null;
     const materiality = materialityOf({ surprise: MAGNITUDE_WEIGHT[input.magnitude] * hit.pathWeight, exposure: exp.weight, proximity: exp.proximity }, confluenceK(ctx.sources.get(hit.asset), "news"));
     const route = routeFor(deps.pushMateriality, ctx.feedback, materiality, { eventType: input.eventType, edgeType: hit.edgeType, hops: hit.hops });

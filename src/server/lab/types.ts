@@ -91,7 +91,7 @@ export interface FeatureSpec {
   window: number;
 }
 
-export const ConditionSchema = z.object({
+const ConditionSchema = z.object({
   feature: z.string().min(3),
   op: z.enum(["<", ">="]),
   threshold: z.number().finite(),
@@ -99,7 +99,7 @@ export const ConditionSchema = z.object({
 export type Condition = z.infer<typeof ConditionSchema>;
 
 /** Daily trend regime (port of perpsignal regime.ts rawTrend + 3-bar persistence). */
-export const TRENDS = ["up", "down", "range"] as const;
+const TRENDS = ["up", "down", "range"] as const;
 export type Trend = (typeof TRENDS)[number];
 
 /**
@@ -109,7 +109,7 @@ export type Trend = (typeof TRENDS)[number];
  * 2 ATR is { ref: "entry", atr: -2 }; below the 7-bar low by a quarter ATR is
  * { ref: "low", n: 7, atr: -0.25 }.
  */
-export const LevelSchema = z
+const LevelSchema = z
   .object({
     ref: z.enum(["entry", "low", "high", "ma"]),
     n: z.number().int().min(2).max(365).optional(),

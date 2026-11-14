@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { ApiError } from '../../lib/api'
 import { useMedia, useNow, useQueryPatch } from '../../lib/hooks'
 import { moves } from '../../lib/moves'
 import { usePoll } from '../../lib/poll'
@@ -12,7 +11,7 @@ import { filterSector, moveKey, parseCoin, parseSort, parseWindow, sortRows } fr
 
 // MOVES — the MARKET cell's first tab, route `/moves` (docs/design/README.md § MOVES). Container: owns the
 // pollers (moves, triage and detail every 60 s, record stats every 5 min; all pause while the tab is hidden),
-// `?window/coin/sector/sort`, the page keyboard handler (j/k/Enter) and the two actions. MovesView is
+// `?window/coin/sector/sort`, the page keyboard handler (j/k/Enter) and the INVESTIGATE action. MovesView is
 // presentational. Nothing here approves, kills or places an order.
 
 const LG = '(min-width: 1024px)'
@@ -50,24 +49,10 @@ export function Moves() {
   const defs = usePoll(research.definitions, [], { intervalMs: null, enabled: showDetail, cacheKey: 'research.definitions' })
 
   // ── actions ──
-  const { busy, actionError, setActionError, investigate } = useInvestigate(() => {
+  const { busy, actionError, investigate } = useInvestigate(() => {
     triage.refetch()
     detail.refetch()
   })
-  const dismiss = useCallback(
-    async (id: string) => {
-      try {
-        await moves.dismiss(id)
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 401) return
-        setActionError({ coin: triage.data?.items.find((i) => i.id === id)?.coin ?? '', message: e instanceof Error ? e.message : 'dismiss failed' })
-      } finally {
-        triage.refetch()
-      }
-    },
-    [triage, setActionError],
-  )
-
   // ── selection ──
   const select = useCallback((coin: string, push = !desktop) => patch({ coin }, push), [patch, desktop])
   const back = () => (coinParam ? navigate(-1) : patch({ coin: null }))
@@ -133,7 +118,6 @@ export function Moves() {
       showList={showList}
       showDetail={showDetail}
       now={now}
-      onDismiss={dismiss}
       onInvestigate={investigate}
       busy={busy}
       actionError={actionError}

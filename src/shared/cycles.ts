@@ -50,7 +50,7 @@ export const NEXT_HALVING_ESTIMATE = Date.UTC(2028, 3, 15);
 
 // ─── indicators ───
 
-export function clamp(x: number, a = -1, b = 1): number {
+function clamp(x: number, a = -1, b = 1): number {
   return Math.min(b, Math.max(a, x));
 }
 
@@ -65,12 +65,12 @@ export function sma(c: number[], k: number): (number | null)[] {
   return out;
 }
 
-export function roc(c: number[], k: number): (number | null)[] {
+function roc(c: number[], k: number): (number | null)[] {
   return c.map((x, i) => (i >= k ? x / c[i - k]! - 1 : null));
 }
 
 /** Sample stdev (n-1) of the trailing `window` log returns, annualized by sqrt(annFactor). */
-export function realizedVol(c: number[], window: number, annFactor: number): (number | null)[] {
+function realizedVol(c: number[], window: number, annFactor: number): (number | null)[] {
   const lr = c.map((x, i) => (i > 0 ? Math.log(x / c[i - 1]!) : 0));
   return c.map((_, i) => {
     if (i < window) return null;

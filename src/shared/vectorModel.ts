@@ -30,11 +30,11 @@ import {
 } from "./vectorCompass.js";
 
 // --- regime constants (MODEL §8.3) ---
-export const ON_MAX = 0.25; // mild_risk_on needs riskOff <= this
-export const OFF_MIN = 0.5; // strong_risk_off needs riskOff >= this
-export const COMMIT_CLOSES = 3;
-export const MOM_LOOKBACKS = [20, 50, 200] as const;
-export const MOM_SIGMA = 0.035; // daily log-return scale; lookback k is normalised by MOM_SIGMA·√k
+const ON_MAX = 0.25; // mild_risk_on needs riskOff <= this
+const OFF_MIN = 0.5; // strong_risk_off needs riskOff >= this
+const COMMIT_CLOSES = 3;
+const MOM_LOOKBACKS = [20, 50, 200] as const;
+const MOM_SIGMA = 0.035; // daily log-return scale; lookback k is normalised by MOM_SIGMA·√k
 const MOM_MAX_LOOKBACK = Math.max(...MOM_LOOKBACKS); // momentum is null before this many closes
 const ETF_START = Date.UTC(2024, 0, 11); // US spot ETF launch: the ETF condition is exempt before it
 const DSV_MEDIAN_DAYS = 365;
@@ -42,7 +42,7 @@ const WEEKS52_LAG = 364; // 52-week average = the last 365 closes, today include
 const CORR_DAYS = 30; // BTC vs S&P 500 correlation window, in daily log returns
 const CORR_MIN_N = 10; // fewer paired returns -> no correlation
 
-export const ALLOCATION: Record<RegimeState, number> = { strong_risk_on: 100, mild_risk_on: 66, mild_risk_off: 33, strong_risk_off: 0 };
+const ALLOCATION: Record<RegimeState, number> = { strong_risk_on: 100, mild_risk_on: 66, mild_risk_off: 33, strong_risk_off: 0 };
 const WORD: Record<RegimeState, string> = {
   strong_risk_on: "strong risk-on",
   mild_risk_on: "mild risk-on",
@@ -76,7 +76,7 @@ export function momentumScore(c: number[]): Series {
 }
 
 /** 30d downside semivolatility: sqrt(mean(min(lr, 0)^2)) over 30 daily log returns, × √365. */
-export function downsideSemivol(c: number[], k = 30): Series {
+function downsideSemivol(c: number[], k = 30): Series {
   return c.map((_, i) => {
     if (i < k) return null;
     let s = 0;
@@ -86,7 +86,7 @@ export function downsideSemivol(c: number[], k = 30): Series {
 }
 
 /** Trailing median of x[i−k+1..i]; null unless all k values are present. */
-export function rollMedian(x: Series, k: number): Series {
+function rollMedian(x: Series, k: number): Series {
   return x.map((_, i) => {
     if (i < k - 1) return null;
     const w = x.slice(i - k + 1, i + 1);
@@ -218,7 +218,7 @@ type CondDef = {
 const condOn = (c: CondDef, spine: number[], i: number) => (c.exemptBefore != null && spine[i]! < c.exemptBefore ? false : c.on(i));
 
 /** Regime (MODEL §8.3): six stress conditions, momentum, flows, committed state, flips, staleness. */
-export function computeRegime(c: Ctx) {
+function computeRegime(c: Ctx) {
   const { spine, price } = c;
   const n = spine.length;
   const L = n - 1;
@@ -282,7 +282,7 @@ export function computeRegime(c: Ctx) {
 type Regime = ReturnType<typeof computeRegime>;
 
 /** Key levels (MODEL §8.4) on the last close. */
-export function computeLevels(c: Ctx, r: Regime, sma200: Series): VectorResponse["levels"] {
+function computeLevels(c: Ctx, r: Regime, sma200: Series): VectorResponse["levels"] {
   const { spine, price } = c;
   const L = spine.length - 1;
   const rp = c.s("RealizedPriceUSD");
@@ -331,7 +331,7 @@ export function computeLevels(c: Ctx, r: Regime, sma200: Series): VectorResponse
 }
 
 /** Daily brief (MODEL §8.6): templated sentences plus confirm/invalidate from the nearest levels. */
-export function buildBrief(c: Ctx, r: Regime, levels: VectorResponse["levels"], lenses: LensOut[], headline: Series): VectorResponse["brief"] {
+function buildBrief(c: Ctx, r: Regime, levels: VectorResponse["levels"], lenses: LensOut[], headline: Series): VectorResponse["brief"] {
   const { spine, price } = c;
   const n = spine.length;
   const L = n - 1;
@@ -394,7 +394,7 @@ export function buildBrief(c: Ctx, r: Regime, levels: VectorResponse["levels"], 
 const MACRO_SERIES = ["DTWEXBGS", "DGS10", "DGS2", "DFEDTARU", "T10Y2Y", "SP500"];
 
 /** Macro strip: the same last-close (carried) values the Macro lens scores; asOf = oldest series used. */
-export function macroStrip(c: Ctx, lenses: LensOut[]): VectorResponse["macro"] {
+function macroStrip(c: Ctx, lenses: LensOut[]): VectorResponse["macro"] {
   const { spine, price } = c;
   const L = spine.length - 1;
   const latest = (name: string) => at(c.s(name), L);

@@ -20,8 +20,8 @@ import type { LabLease } from "./cron.js";
 
 export type MovesCronJob = "moves" | "moves-agent";
 
-export const MOVES_LEASE_COIN = "_moves";
-export const MOVES_CRON_HARD_STOP_MS = 240_000;
+const MOVES_LEASE_COIN = "_moves";
+const MOVES_CRON_HARD_STOP_MS = 240_000;
 /** The lease outlives the hard stop by a minute: a run killed mid-way frees it after that. */
 export const MOVES_CRON_LEASE_MS = MOVES_CRON_HARD_STOP_MS + 60_000;
 export const NO_DATABASE = "needs a database (DATABASE_URL unset): moves jobs store their results";
@@ -66,7 +66,7 @@ export async function runMovesCron(job: MovesCronJob, deps: CronMovesDeps): Prom
   return { status: 500, body: { job, ok: false, timedOut: true, error: `still running after ${Math.round(hardStopMs / 1000)}s` } };
 }
 
-export function defaultCronMovesDeps(): CronMovesDeps {
+function defaultCronMovesDeps(): CronMovesDeps {
   return {
     hasDb: () => !!db.databaseUrl() && agentStore() !== null,
     lease: (job) => ({

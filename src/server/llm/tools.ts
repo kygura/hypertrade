@@ -19,7 +19,7 @@ import type { ToolSpec } from "./provider.js";
 export const MAX_TOOL_CHARS = 12_000;
 
 /** The metric strip's series (Overview) — the default for get_metrics_summary. */
-export const DEFAULT_METRIC_IDS = [
+const DEFAULT_METRIC_IDS = [
   "hl.total_oi_usd",
   "hl.funding_skew",
   "fng.value",
@@ -116,7 +116,7 @@ export const LAB_DEADLINE_MS = 40_000;
  * This leaves out lab_search (writes a run, up to ~50 s) and the catalogue
  * save/remove tools.
  */
-export function analystLabTools(tools: ToolDef[] = LAB_TOOLS): ToolDef[] {
+function analystLabTools(tools: ToolDef[] = LAB_TOOLS): ToolDef[] {
   return tools.filter((t) => t.annotations?.readOnlyHint === true);
 }
 
@@ -258,7 +258,7 @@ const inputs = {
     .strict(),
 } as const;
 
-export type ToolName = keyof typeof inputs;
+type ToolName = keyof typeof inputs;
 
 export interface ToolRun {
   content: string;

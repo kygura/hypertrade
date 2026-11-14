@@ -2,10 +2,9 @@ import { describe, expect, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router'
 import type { MoveDetail, MoveRow, MovesResponse } from '../../../shared/moves'
-import type { TriageResponse } from '../../../shared/agentRecords'
-import { ASOF, detail, movesResponse, nullRow, NOW, record, row, stats, triage } from './fixtures'
+import { ASOF, detail, movesResponse, NOW, record, row, stats, triage } from './fixtures'
 import { sortRows } from './logic'
-import { MovesHeader, MovesTablePanel, MovesView, FactorsPanel, TriagePanel, type Feed, type MovesViewProps } from './MovesView'
+import { MovesHeader, MovesTablePanel, MovesView, FactorsPanel, type Feed, type MovesViewProps } from './MovesView'
 
 // Render-checks (react-dom/server, no jsdom), the cockpit/render.test.tsx approach: each state per panel, the
 // separate NOT A FORECAST block, no APPROVE anywhere, and the triage budget lines. Fixtures parse against the
@@ -117,64 +116,12 @@ describe('FactorsPanel', () => {
   })
 })
 
-const triageProps = (t: Feed<TriageResponse>) => ({ triage: t, selected: null, onOpen: noop, onDismiss: noop, onInvestigate: noop, busy: [] as string[], error: null, now: NOW })
-
-describe('TriagePanel', () => {
-  test('header states the budget as facts; rows carry reason, record claim, falsifier and actions', () => {
-    const out = html(<TriagePanel {...triageProps(feed(triage()))} />)
-    expect(out).toContain('TRIAGE · 6 OF 8 TODAY')
-    expect(out).toContain('residual +6.2% · z 3.1 · 24h · no news in window')
-    expect(out).toContain('Buyback announcement reported 2h before the move.')
-    expect(out).toContain('falsifier: price trades below 39.9')
-    expect(out).toContain('>OPEN<')
-    expect(out).toContain('>DISMISS<')
-    expect(out).not.toContain('DOGE') // dismissed
-    expect(out).not.toContain('budget reached')
-  })
-  test('INVESTIGATE only without a record, and it says it costs one run', () => {
-    const out = html(<TriagePanel {...triageProps(feed(triage()))} />)
-    expect(out.match(/>INVESTIGATE</g)).toHaveLength(1)
-    expect(out).toContain('costs one LLM run')
-  })
-  test('INVESTIGATE disabled with the server reason', () => {
-    const out = html(<TriagePanel {...triageProps(feed(triage({ agentBlockedReason: 'daily agent cap reached (6/6)' })))} />)
-    expect(out).toMatch(/<button[^>]*disabled=""[^>]*title="daily agent cap reached \(6\/6\)"[^>]*>INVESTIGATE|<button[^>]*title="daily agent cap reached \(6\/6\)"[^>]*disabled=""[^>]*>INVESTIGATE/)
-    expect(out).toContain('INVESTIGATE off: daily agent cap reached (6/6)')
-  })
-  test('in flight shows INVESTIGATING… and disables the button', () => {
-    const out = html(<TriagePanel {...triageProps(feed(triage()))} busy={['SOL']} />)
-    expect(out).toContain('INVESTIGATING…')
-  })
-  test('budget exhausted: the last line is a fact', () => {
-    const out = html(<TriagePanel {...triageProps(feed(triage({ surfaced: 8, overBudget: 4 })))} />)
-    expect(out).toContain('TRIAGE · 8 OF 8 TODAY')
-    expect(out).toContain('budget reached: 4 more candidates not shown')
-  })
-  test('empty, unavailable, loading, offline', () => {
-    expect(html(<TriagePanel {...triageProps(feed(triage({ items: [], surfaced: 0 })))} />)).toContain('nothing crossed the bar today — 38 coins watched, residual |z| ≥ 2.5 or a 3/3 checklist surfaces an item')
-    expect(html(<TriagePanel {...triageProps(feed(triage({ state: 'unavailable', reason: 'needs the platform store', items: [] })))} />)).toContain('needs the platform store')
-    expect(html(<TriagePanel {...triageProps(none({ loading: true }))} />)).toContain('pulse-label')
-    expect(html(<TriagePanel {...triageProps(none({ offline: 'api unreachable' }))} />)).toContain('API UNREACHABLE')
-  })
-  test('no_cause, failed and capped records read as plain facts', () => {
-    const t = triage({
-      items: [
-        { id: 'a', day: '2026-11-11', coin: 'AAA', reason: 'r', score: 1, residualZ: 3, surfacedAt: '2026-11-11T13:00:00.000Z', dismissedAt: null, recordId: 'x', record: record({ id: 'x', coin: 'AAA', status: 'no_cause', claim: '' }) },
-        { id: 'b', day: '2026-11-11', coin: 'BBB', reason: 'r', score: 1, residualZ: 3, surfacedAt: '2026-11-11T13:00:00.000Z', dismissedAt: null, recordId: 'y', record: record({ id: 'y', coin: 'BBB', status: 'failed' }) },
-      ],
-    })
-    const out = html(<TriagePanel {...triageProps(feed(t))} />)
-    expect(out).toContain('no cause found')
-    expect(out).toContain('investigation failed')
-  })
-})
-
 const viewProps = (over: Partial<MovesViewProps> = {}): MovesViewProps => {
   const m = movesResponse()
   return {
     window: '24h', onWindow: noop, moves: feed(m), triage: feed(triage()), detail: feed<MoveDetail>(detail()), stats: stats(), defs: null,
     rows: sortRows(m.rows, 'z'), sort: 'z', onSort: noop, sector: null, onSector: noop, selected: 'HYPE', onSelect: noop, onBack: noop,
-    showList: true, showDetail: true, now: NOW, onDismiss: noop, onInvestigate: noop, busy: [], actionError: null, ...over,
+    showList: true, showDetail: true, now: NOW, onInvestigate: noop, busy: [], actionError: null, ...over,
   }
 }
 const block = (out: string, id: string) => out.slice(out.indexOf(`data-block="${id}"`)).split('</section>')[0]!

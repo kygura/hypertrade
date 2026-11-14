@@ -7,7 +7,7 @@ import type { PathEdge } from '../../../shared/intel'
 // items. `title` = `2 hops · path weight 0.30`. Screen readers hear
 // "Jito, via collateral to SOL".
 
-export function pathTitle(path: PathEdge[], weight?: number): string {
+function pathTitle(path: PathEdge[], weight?: number): string {
   const hops = `${path.length} ${path.length === 1 ? 'hop' : 'hops'}`
   return weight != null ? `${hops} · path weight ${weight.toFixed(2)}` : hops
 }

@@ -10,7 +10,7 @@ import { useAction } from './useAction'
 // ~30 s). Failure → verbatim ErrorBlock under the button: 503 `llm not
 // configured`, 429 `LLM cap reached`, 502 model failures, 400 zod messages.
 
-export const THESIS_MAX = 2000
+const THESIS_MAX = 2000
 const PLACEHOLDER = 'HYPE grinds higher into the unlock because perp OI keeps rising while funding stays flat'
 
 export function ThesisComposer({ onCreated }: { onCreated: (t: Thesis) => void }) {

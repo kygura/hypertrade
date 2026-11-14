@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { EventStudyResultSchema, StudySummarySchema, type StudyRequest, type StudyResponse, type StudySummary } from "../../shared/research.js";
 import { ruleId } from "../lab/engine/rules.js";
+import { isoDate } from "../lab/engine/util.js";
 import type { LabStore } from "../lab/store.js";
 import { NOT_LOADED_BY_DEADLINE } from "../lab/types.js";
 import type { ToolContext } from "../mcp/types.js";
@@ -26,8 +27,6 @@ export function studySummary(r: EventStudyOutput, asOf: string): StudySummary {
   };
 }
 
-export const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-
 const tenth = (x: number) => Math.round(x * 10) / 10;
 /** Exits to 0.1 ATR: 1.51 and 1.5 are one study (one trial), and the key cannot be fanned out by float noise. */
 export const quantize = (q: StudyRequest): StudyRequest => ({ ...q, stopAtr: tenth(q.stopAtr), targetAtr: tenth(q.targetAtr) });
@@ -35,7 +34,7 @@ export const quantize = (q: StudyRequest): StudyRequest => ({ ...q, stopAtr: ten
 /** The cache key and study id: rule hash, coin (or `*` = the default universe), exits to 0.1 ATR and a UTC day. */
 export function studyKey(q: StudyRequest, nowMs: number): string {
   const n = quantize(q);
-  return `${ruleId(n.rule)}:${n.coin?.toUpperCase() ?? "*"}:${n.stopAtr}:${n.targetAtr}:${utcDay(nowMs)}`;
+  return `${ruleId(n.rule)}:${n.coin?.toUpperCase() ?? "*"}:${n.stopAtr}:${n.targetAtr}:${isoDate(nowMs)}`;
 }
 
 export interface StudyCacheEntry {
@@ -69,7 +68,7 @@ export function bounded<T>(p: Promise<T>, fallback: T, ms: number, what: string)
 export function createStudyCache(now: () => number = Date.now, max = STUDY_CACHE_MAX, store: StudyStore | null = null, storeTimeoutMs = STUDY_STORE_TIMEOUT_MS) {
   const map = new Map<string, StudyCacheEntry>();
   const prune = () => {
-    const day = utcDay(now());
+    const day = isoDate(now());
     for (const k of map.keys()) if (!k.endsWith(`:${day}`)) map.delete(k);
   };
   const remember = (key: string, e: StudyCacheEntry) => {
@@ -89,7 +88,7 @@ export function createStudyCache(now: () => number = Date.now, max = STUDY_CACHE
      */
     async load(keys: readonly string[]): Promise<void> {
       prune();
-      const day = `:${utcDay(now())}`;
+      const day = `:${isoDate(now())}`;
       const missing = [...new Set(keys)].filter((k) => k.endsWith(day) && !map.has(k));
       if (!store || !missing.length) return;
       const rows = await bounded(Promise.resolve().then(() => store.getStudies(missing)), new Map(), storeTimeoutMs, "study store read");
@@ -113,7 +112,7 @@ export function createStudyCache(now: () => number = Date.now, max = STUDY_CACHE
 export type StudyCache = ReturnType<typeof createStudyCache>;
 
 /** Whether the study's deadline left coins out (their data did not load in time): such a study is not complete. */
-export const cutByDeadline = (s: EventStudyOutput): boolean => {
+const cutByDeadline = (s: EventStudyOutput): boolean => {
   const coins = StudyCoinsSchema.safeParse(s.coins);
   return coins.success && coins.data.some((c) => c.reason === NOT_LOADED_BY_DEADLINE);
 };

@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
+import { safeEqual } from "../auth.js";
 import { deskProviderFactory, runDesk, type ProviderFactory } from "../desk/agents.js";
 import { loadDeskConfig } from "../desk/config.js";
 import { liveMarketData } from "../desk/data.js";
@@ -15,6 +15,7 @@ import { ExitProposalSchema } from "../desk/types.js";
 import { watchedAssets } from "../intel/positions.js";
 import { PgIntelStore } from "../intel/store.js";
 import { hasWebSearch } from "../llm/tools.js";
+import { body } from "./intel/http.js";
 
 // /desk — the agentic portfolio desk (docs/SPEC.md "Desk"). Session-cookie
 // protected by the global gate, except /desk/tick (x-cron-token, like
@@ -34,7 +35,7 @@ import { hasWebSearch } from "../llm/tools.js";
 // POST /desk/tick {runCycle?, forceReview?} (x-cron-token)
 // POST /desk/telegram (X-Telegram-Bot-Api-Secret-Token)
 
-export const RUN_TIMEOUT_MS = 240_000;
+const RUN_TIMEOUT_MS = 240_000;
 
 const AskBody = z.object({
   question: z.string().trim().min(1).max(4000),
@@ -62,19 +63,6 @@ export function defaultDeskService(): DeskService {
     shared = new DeskService({ config: loadDeskConfig(), store: new PgStore(), data: liveMarketData, notifier: createNotifier(), watchlist: () => watchedAssets(intel) });
   }
   return shared;
-}
-
-function safeEqual(a: string, b: string): boolean {
-  const d = (s: string) => createHash("sha256").update(s, "utf8").digest();
-  return timingSafeEqual(d(a), d(b));
-}
-
-async function body(c: Context): Promise<unknown> {
-  try {
-    return await c.req.json();
-  } catch {
-    return {};
-  }
 }
 
 function deskError(c: Context, err: unknown) {

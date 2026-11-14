@@ -106,7 +106,7 @@ export function parseBlocks(src: string): Block[] {
 const INLINE = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\s][^*]*\*)|(\[[^\]]+\]\([^)\s]+\))/g
 
 /** Inline spans: `code`, **bold**, *italic*, [text](http…). */
-export function inline(text: string): ReactNode[] {
+function inline(text: string): ReactNode[] {
   const out: ReactNode[] = []
   let last = 0
   let k = 0

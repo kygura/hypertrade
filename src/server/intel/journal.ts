@@ -32,7 +32,7 @@ import { meanOrNull, round } from "./util.js";
 
 // ─── Fills ───
 
-export type Venue = "hl" | "desk";
+type Venue = "hl" | "desk";
 
 export interface Leg {
   venue: Venue;
@@ -230,10 +230,10 @@ export function roundTrips(legs: Leg[]): RoundTrip[] {
 
 // ─── Per-trade computations (pure) ───
 
-export const SESSION_HOURS = { asia: [0, 8], eu: [8, 13], us: [13, 21] } as const;
+const SESSION_HOURS = { asia: [0, 8], eu: [8, 13], us: [13, 21] } as const;
 
 /** A valid IANA zone, else UTC. */
-export function resolveTz(tz: string | undefined): string {
+function resolveTz(tz: string | undefined): string {
   if (!tz) return "UTC";
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
@@ -286,7 +286,7 @@ export function excursions(t: Pick<RoundTrip, "side" | "entryPx" | "openedAt" | 
 }
 
 /** Back to percent for a trade whose excursions are stored in R. */
-export function excursionPct(t: Pick<Trade, "side" | "entryPx" | "stopPx" | "maeUnit">, v: number | null): number | null {
+function excursionPct(t: Pick<Trade, "side" | "entryPx" | "stopPx" | "maeUnit">, v: number | null): number | null {
   if (v == null) return null;
   if (t.maeUnit === "pct") return v;
   const risk = riskPerUnit(t.side, t.entryPx, t.stopPx);
@@ -338,7 +338,7 @@ export function enrich(t: RoundTrip, x: EnrichInput, now: Date, tz = "UTC"): Tra
 
 // ─── Stats (pure) ───
 
-export const UNTAGGED = "untagged";
+const UNTAGGED = "untagged";
 const known = <T>(xs: Array<T | null>): T[] => xs.filter((x): x is T => x != null);
 
 /**
@@ -478,10 +478,10 @@ export async function putNote(store: JournalDeps["store"], tradeId: string, note
   return store.putTradeNote({ tradeId, note: note.trim() ? note.trim() : null, tag: cur?.tag ?? null, summary: null });
 }
 
-export const SETUP_TAGS = ["breakout", "breakdown", "pullback", "trend_follow", "mean_reversion", "range", "news", "funding_fade", "squeeze", "scalp", "other"] as const;
-export const TAG_PROMPT_VERSION = "journal-tag-v1";
-export const REPORT_PROMPT_VERSION = "journal-report-v1";
-export const TAG_BATCH_MAX = 25;
+const SETUP_TAGS = ["breakout", "breakdown", "pullback", "trend_follow", "mean_reversion", "range", "news", "funding_fade", "squeeze", "scalp", "other"] as const;
+const TAG_PROMPT_VERSION = "journal-tag-v1";
+const REPORT_PROMPT_VERSION = "journal-report-v1";
+const TAG_BATCH_MAX = 25;
 
 const TagOutputSchema = z.object({ setup: z.enum(SETUP_TAGS), noteSummary: z.unknown().nullable().optional() });
 const tagJsonSchema: ToolSpec["input_schema"] = {
@@ -560,7 +560,7 @@ export async function tagTrades(deps: Pick<JournalDeps, "store" | "llm">, trades
 
 // ─── Weekly report ───
 
-export const FINDING_MIN_TRADES = 3;
+const FINDING_MIN_TRADES = 3;
 
 /** Code picks the findings: top-3 leaks (worst negative expectancy) and top-2 edges (best positive), each with n ≥ 3. */
 export function pickFindings(trades: Trade[]): { leaks: ReportFinding[]; edges: ReportFinding[] } {

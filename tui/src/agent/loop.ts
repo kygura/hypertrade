@@ -9,7 +9,6 @@ import { agentTools, type AgentDeps, type AgentTool } from "./tools.js";
 
 export interface AgentEvents {
   onText(delta: string): void;
-  onReasoning?(delta: string): void;
   /** inputSummary is a short one-liner for the tool line ("BTC", "coin=BTC interval=1h"). */
   onToolStart(name: string, inputSummary: string): void;
   onToolEnd(name: string, ok: boolean, summary: string): void;
@@ -17,7 +16,7 @@ export interface AgentEvents {
   onServerTool?(name: string, summary: string): void;
 }
 
-export interface AgentOptions {
+interface AgentOptions {
   provider: LLMProvider;
   deps: AgentDeps;
   maxRounds?: number;
@@ -26,16 +25,16 @@ export interface AgentOptions {
 }
 
 /** end | tool_use-less provider stops (max_tokens, refusal) | max_rounds | aborted | timeout */
-export interface AskResult {
+interface AskResult {
   text: string;
   stop: string;
 }
 
-export const MAX_TOOL_ROUNDS = 8;
-export const TIMEOUT_MS = 120_000;
+const MAX_TOOL_ROUNDS = 8;
+const TIMEOUT_MS = 120_000;
 /** History sent to the provider: newest turns only, oldest question/answer pairs dropped first. */
-export const MAX_HISTORY_TURNS = 20;
-export const MAX_HISTORY_CHARS = 60_000;
+const MAX_HISTORY_TURNS = 20;
+const MAX_HISTORY_CHARS = 60_000;
 
 export function trimHistory(history: Turn[], maxTurns = MAX_HISTORY_TURNS, maxChars = MAX_HISTORY_CHARS): Turn[] {
   let from = 0;
@@ -110,7 +109,6 @@ export class Agent {
         current += delta;
         ev.onText(delta);
       },
-      onReasoning: (delta: string) => ev.onReasoning?.(delta),
       onServerToolCall: (c: { name: string; input: unknown }) => ev.onServerTool?.(c.name, summarizeInput(c.input)),
       onServerToolResult: (_id: string, name: string, ok: boolean, summary: string) => ev.onServerTool?.(name, `${ok ? "" : "failed: "}${summary}`),
     };

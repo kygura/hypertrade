@@ -8,11 +8,11 @@ import { CANDLE_BARS, HOUR_MS } from "../constants.js";
 //   COIN  = 1.3·btc + 0.5·ethx + 0.8·sectx + N(0, 0.05%), plus SHOCK (log) in one hour of the window
 // so the recovered betas are about 1.3 (BTC), 0.5 (ETH ex-BTC) and 0.8·var(sectx)/var(sectx + mean idio) ≈ 0.79.
 
-export const FIXTURE_AS_OF = Date.parse("2026-11-10T12:00:00Z");
+const FIXTURE_AS_OF = Date.parse("2026-11-10T12:00:00Z");
 export const PLANTED = { btc: 1.3, eth: 0.5, sector: 0.8 } as const;
 export const SHOCK = 0.05;
 
-export function rng(seed: number) {
+function rng(seed: number) {
   let a = seed >>> 0;
   const u = () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -25,7 +25,7 @@ export function rng(seed: number) {
 }
 
 /** Candles from a log-return path: one candle per bar open, close = 100·exp(Σ r). The first bar has no return. */
-export function candlesFrom(returns: number[], firstOpen: number, start = 100): Candle[] {
+function candlesFrom(returns: number[], firstOpen: number, start = 100): Candle[] {
   let px = start;
   return [{ t: firstOpen, T: firstOpen + HOUR_MS - 1, o: px, h: px, l: px, c: px, v: 1 }, ...returns.map((r, i) => {
     const o = px;

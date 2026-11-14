@@ -17,7 +17,7 @@ export interface CalibrationOptions {
   config?: Partial<SearchConfigInput>;
 }
 
-export interface CalibrationRow {
+interface CalibrationRow {
   threshold: number;
   /** Noise searches where some top-K rule is "robust". */
   noiseAny: number;
@@ -36,7 +36,7 @@ export interface Calibration {
 }
 
 /** The search configuration of the engine tests: 4 synthetic metrics, 3 transforms × 3 windows, 2-day horizon, 16 trials. */
-export const CALIBRATION_CONFIG: Partial<SearchConfigInput> = { transforms: ["raw", "z", "pctile"], horizonDays: 2, trials: 16 };
+const CALIBRATION_CONFIG: Partial<SearchConfigInput> = { transforms: ["raw", "z", "pctile"], horizonDays: 2, trials: 16 };
 
 export function calibrate(o: CalibrationOptions): Calibration {
   const days = o.days ?? 2500;
@@ -82,7 +82,7 @@ export function calibrate(o: CalibrationOptions): Calibration {
  * ≤ maxNoiseRate, the one with the most planted rules robust (summed over
  * drifts); ties go to the higher threshold. Null when none qualifies.
  */
-export function chooseThreshold(c: Calibration, maxNoiseRate = 1 / 20): number | null {
+function chooseThreshold(c: Calibration, maxNoiseRate = 1 / 20): number | null {
   let best: { t: number; score: number } | null = null;
   for (const r of c.rows) {
     if (r.noiseAny > maxNoiseRate * c.noiseRuns) continue;
@@ -93,7 +93,7 @@ export function chooseThreshold(c: Calibration, maxNoiseRate = 1 / 20): number |
 }
 
 /** Markdown table of a calibration. */
-export function calibrationTable(c: Calibration): string {
+function calibrationTable(c: Calibration): string {
   const drifts = c.rows[0]?.planted.map((p) => p.drift) ?? [];
   const head = ["DSR ≥", "noise: any top-10 robust", "noise: top-1 robust", ...drifts.flatMap((d) => [`drift ${d}: planted rule robust`, `drift ${d}: any top-10 robust`])];
   const lines = [`| ${head.join(" | ")} |`, `|${head.map(() => "---").join("|")}|`];

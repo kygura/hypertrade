@@ -70,9 +70,7 @@ export type Entry = { id: string; at: number } & (
   | { kind: "note"; text: string }
 );
 
-export type EntryKind = Entry["kind"];
-
-export interface RunningTool {
+interface RunningTool {
   name: string;
   args: string;
   startedAt: number;
@@ -92,7 +90,7 @@ export interface PendingTicket {
   ui: TicketUi;
 }
 
-export type SortDir = "desc" | "asc";
+type SortDir = "desc" | "asc";
 
 export interface MarketsOverlay {
   kind: "markets";
@@ -153,7 +151,6 @@ export interface KeyLike {
   return?: boolean;
   escape?: boolean;
   ctrl?: boolean;
-  shift?: boolean;
   tab?: boolean;
   backspace?: boolean;
   delete?: boolean;

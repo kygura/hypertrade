@@ -83,7 +83,7 @@ export function signalBlocks(signals: readonly BoardSignal[], coin?: string | nu
 export const flatSignals = (blocks: readonly SignalBlock[]) => blocks.flatMap((b) => b.signals)
 
 /** Cockpit feed params that once lived on `/` (Cockpit.tsx: ?id, ?status, ?tier, ?liqh, ?liq). */
-export const FEED_PARAMS = ['id', 'status', 'tier', 'liqh', 'liq'] as const
+const FEED_PARAMS = ['id', 'status', 'tier', 'liqh', 'liq'] as const
 
 /**
  * Where a visit to `/` with this query belongs. `?review=1` (old Telegram links) → `/terminal?review=1`;

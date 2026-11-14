@@ -19,7 +19,7 @@ export const ObservedClaimSchema = z
   })
   .strict();
 
-export const HypothesisClaimSchema = z
+const HypothesisClaimSchema = z
   .object({
     tag: z.literal("hypothesis"),
     text: z.string().trim().min(1).max(600),

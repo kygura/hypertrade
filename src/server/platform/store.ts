@@ -88,7 +88,7 @@ export interface OutcomeRow {
 }
 
 /** Extra fields on a `status` entry: the desk proposal id and, for code-made moves, why. */
-export type StatusNote = Pick<LedgerPayload<"status">, "ref" | "reason">;
+type StatusNote = Pick<LedgerPayload<"status">, "ref" | "reason">;
 
 export interface PlatformStore {
   /** Address book upsert (P0.4 ws). Invalid addresses are dropped; duplicates keep the latest sighting. Returns addresses written. */

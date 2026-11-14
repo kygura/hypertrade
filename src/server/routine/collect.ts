@@ -3,10 +3,9 @@ import { fetchCandles, fetchFundingPage, fetchPerpMetaAndCtxs, fetchPredictedFun
 import type { AssetCtx, Candle } from "../../shared/types.js";
 import { fundingAprPct } from "../../shared/signalMath.js";
 import { calendarEvents } from "../intel/calendar.js";
+import { mapLimit } from "../lab/util.js";
 import { errDetail, errStatus, FetchError, fetchFred, fetchJson as fetchJsonWithin, fetchYahoo, type Point } from "../radar/macro.js";
 import { boardUniverse, buildBoard, type Board, type BoardHistory, type BoardInput } from "./board.js";
-
-export { parseFredCsv } from "../radar/macro.js";
 
 // Collect stage of the fallback routine (docs/fallback-routine.md, pipeline
 // step 2). Every number the model sees is fetched here. Every fetch has a
@@ -20,10 +19,10 @@ export interface Gap {
 }
 
 export const MAJORS = ["BTC", "ETH", "SOL", "HYPE"] as const;
-export const FRED_IDS = ["DGS10", "DGS2", "T10Y2Y", "VIXCLS", "DTWEXBGS", "DCOILBRENTEU", "NASDAQCOM"] as const;
-export const YAHOO_SYMBOLS = ["SPY", "QQQ", "NVDA", "^VIX"] as const;
+const FRED_IDS = ["DGS10", "DGS2", "T10Y2Y", "VIXCLS", "DTWEXBGS", "DCOILBRENTEU", "NASDAQCOM"] as const;
+const YAHOO_SYMBOLS = ["SPY", "QQQ", "NVDA", "^VIX"] as const;
 /** ROUTINE.md §2a. */
-export const APP_METRIC_IDS = [
+const APP_METRIC_IDS = [
   "hl.total_oi_usd", "hl.funding_skew", "hl.oi.BTC", "hl.oi.ETH", "hl.oi.SOL", "hl.oi.HYPE", "hl.funding.BTC", "hl.funding.ETH", "hl.funding.SOL", "hl.funding.HYPE",
   "fng.value", "cg.btc_dominance", "cg.total_mcap_usd", "llama.stablecoin_cap_usd", "deribit.btc_dvol", "fred.net_liquidity", "fred.spread_2s10s", "fred.VIXCLS",
   "fred.DGS10", "fred.DGS2", "fred.DTWEXBGS", "fred.DCOILWTICO", "elfa.mentions_24h_total",
@@ -96,7 +95,7 @@ export interface HlClient {
   predicted: typeof fetchPredictedFundings;
 }
 
-export const defaultHlClient = (): HlClient => ({ metaAndCtxs: fetchPerpMetaAndCtxs, candles: fetchCandles, funding: fetchFundingPage, predicted: fetchPredictedFundings });
+const defaultHlClient = (): HlClient => ({ metaAndCtxs: fetchPerpMetaAndCtxs, candles: fetchCandles, funding: fetchFundingPage, predicted: fetchPredictedFundings });
 
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const r = (x: number, dp = 2) => Math.round(x * 10 ** dp) / 10 ** dp;
@@ -115,8 +114,8 @@ async function source<T>(gaps: Gap[], name: string, fn: () => Promise<T>): Promi
 }
 
 /** Hyperliquid symbol shape (shared/schemas.ts CoinSchema): names reach the prompt, so anything else is dropped. */
-export const SYMBOL = /^([A-Za-z0-9]+:)?[A-Za-z0-9]{1,24}$/;
-export const liveCtx = (c: AssetCtx) => !c.isDelisted && c.markPx > 0 && SYMBOL.test(c.name);
+const SYMBOL = /^([A-Za-z0-9]+:)?[A-Za-z0-9]{1,24}$/;
+const liveCtx = (c: AssetCtx) => !c.isDelisted && c.markPx > 0 && SYMBOL.test(c.name);
 
 export function summariseHl(ctxs: AssetCtx[]): HlAsset[] {
   const live = ctxs.filter(liveCtx);
@@ -223,7 +222,7 @@ export function condenseHlCycles(vector: unknown, health: unknown, now: Date): H
 
 const MetricSummaryRow = z.object({ seriesId: z.string(), latest: z.number().nullable(), mean30: z.number().nullable().optional(), z30: z.number().nullable().optional() }).passthrough();
 
-export interface LabPulse {
+interface LabPulse {
   asOf: string;
   assets: Array<{ asset: string; lean: number; rules: Array<{ id: string; name: string; direction: string; firing: boolean; text: string }> }>;
 }
@@ -366,21 +365,6 @@ export async function collect(opts: CollectOptions): Promise<ContextPack> {
 const BOARD_CONCURRENCY = 3;
 const BOARD_LOOKBACK = { "4h": 30 * DAY, "1d": 365 * DAY, funding: 7 * DAY };
 
-/** Runs `fn` over `items` with at most `n` in flight, keeping input order (the HL weight guard paces the calls). */
-async function pool<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(n, items.length) }, async () => {
-      while (next < items.length) {
-        const i = next++;
-        out[i] = await fn(items[i]!);
-      }
-    }),
-  );
-  return out;
-}
-
 /**
  * The board's raw inputs for the top-N live markets plus `always` (majors, "my markets"): 4h candles (30 d), daily
  * candles (365 d; weeks are built from them), 7 d of hourly funding, and the predicted funding on other venues. A
@@ -395,7 +379,7 @@ export async function collectBoard(
   const nowMs = o.now.getTime();
   const universe = boardUniverse(o.ctxs.filter(liveCtx), o.always);
   const predicted = await source(gaps, "hyperliquid.predictedFundings", () => hlc.predicted(f));
-  const inputs = await pool(universe, BOARD_CONCURRENCY, async (ctx): Promise<BoardInput> => {
+  const inputs = await mapLimit(universe, BOARD_CONCURRENCY, async (ctx): Promise<BoardInput> => {
     const coin = ctx.name;
     const c4h = await source(gaps, `hyperliquid.candles.${coin}.4h`, () => hlc.candles(coin, "4h", nowMs - BOARD_LOOKBACK["4h"], nowMs, f));
     const c1d = await source(gaps, `hyperliquid.candles.${coin}.1d`, () => hlc.candles(coin, "1d", nowMs - BOARD_LOOKBACK["1d"], nowMs, f));

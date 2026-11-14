@@ -26,18 +26,18 @@ import { utcDayStart } from "./triage.js";
 // The owner's scheduled routine is the other path in (recordProposal): it researches and proposes over HTTPS, and the
 // same buildAgentRecord stamps and vets its record, with no provider call here.
 
-export const AGENT_PROMPT_VERSION = "moves-agent-v1";
+const AGENT_PROMPT_VERSION = "moves-agent-v1";
 /** The falsifier level must sit this many σ24h from the mark, on the side that contradicts the direction. */
-export const FALSIFIER_SIGMAS: readonly [number, number] = [0.25, 3];
+const FALSIFIER_SIGMAS: readonly [number, number] = [0.25, 3];
 /** An open record with no claim older than this is a call that never finished (process restarted). */
 export const INFLIGHT_STALE_MS = RESEARCH_DEADLINE_MS + 5 * 60_000;
 
 export const NO_PROVIDER = "no LLM provider configured";
 export const NO_WEB_SEARCH = "provider has no web search";
-export const capReason = (runs: number, cap: number) => `moves agent cap reached (${runs}/${cap} today)`;
-export const REJECTED_CLAIM = "every claim sentence failed the number or advice check";
+const capReason = (runs: number, cap: number) => `moves agent cap reached (${runs}/${cap} today)`;
+const REJECTED_CLAIM = "every claim sentence failed the number or advice check";
 /** `model` of a record the owner's scheduled routine proposed (trigger "routine"): no provider call was made here. */
-export const ROUTINE_MODEL = "routine";
+const ROUTINE_MODEL = "routine";
 
 const OutputSchema = z.object({
   claim: z.string().max(400),
@@ -173,7 +173,7 @@ const sentences = (text: string) => text.split(/\n+|(?<=[.!?])\s+/).map((s) => s
  * validator against the payload (plus what the provider's citations printed); a source is observed only when the
  * provider returned its URL and cited text from it; the falsifier level is checked against mark and σ24h.
  */
-export function vetOutput(out: AgentOutput, seen: Seen, payload: unknown, d: Pick<MoveDetail, "coin" | "mark" | "liq">): {
+function vetOutput(out: AgentOutput, seen: Seen, payload: unknown, d: Pick<MoveDetail, "coin" | "mark" | "liq">): {
   patch: Pick<AgentRecord, "claim" | "layer" | "direction" | "assets" | "falsifier" | "sources" | "status" | "dropped">;
   rejectedClaim: boolean;
 } {
@@ -225,7 +225,7 @@ export const isInFlight = (r: Pick<AgentRecord, "status" | "claim" | "grade" | "
 /** The headlines a claim is checked against (and the provider is shown, as untrusted text). */
 const agentHeadlines = (d: MoveDetail) => d.headlines.slice(0, 15).map((h) => h.title);
 
-export interface RecordBase {
+interface RecordBase {
   id: string;
   now: Date;
   detail: MoveDetail;
@@ -340,7 +340,7 @@ export async function investigate(deps: AgentDeps, input: InvestigateInput): Pro
 }
 
 /** A routine proposal in the provider's output shape, so both paths go through the same vetting. Pure. */
-export function proposalOutput(p: AgentProposal): AgentOutput {
+function proposalOutput(p: AgentProposal): AgentOutput {
   return {
     claim: p.claim,
     layer: p.layer,

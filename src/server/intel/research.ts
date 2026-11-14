@@ -13,7 +13,7 @@ import type { IntelStore, NewResearch } from "./store.js";
 export const RESEARCH_DEADLINE_MS = 45_000;
 export const RESEARCH_MAX_SEARCHES = 8;
 /** A `running` row older than deadline + this is dead (S0.3). */
-export const RESEARCH_STALE_GRACE_MS = 15_000;
+const RESEARCH_STALE_GRACE_MS = 15_000;
 export const RESEARCH_PROMPT_VERSION = "research-v2";
 export const RESEARCH_NO_WEB_SEARCH = "provider has no web search";
 export const NO_CAUSE = "No public cause found.";
@@ -309,7 +309,7 @@ const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFi
 /** INTEL_RESEARCH_DAILY (10): manual runs per UTC day. */
 export const researchDailyLimit = (env: Record<string, string | undefined>) => intEnv(env.INTEL_RESEARCH_DAILY, 10);
 /** INTEL_RESEARCH_AUTO_DAILY (3): automatic (flag) runs per UTC day. */
-export const researchAutoLimit = (env: Record<string, string | undefined>) => intEnv(env.INTEL_RESEARCH_AUTO_DAILY, 3);
+const researchAutoLimit = (env: Record<string, string | undefined>) => intEnv(env.INTEL_RESEARCH_AUTO_DAILY, 3);
 export const utcDayStart = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 
 /** The engine's deps from a route's or the ingest job's: positions slimmed to what the prompt needs. */

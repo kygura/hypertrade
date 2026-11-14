@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AssetCtx } from "../../shared/types.js";
-import { collect, condenseHlCycles, nextCatalysts, parseFredCsv, stablecoinRead, summariseHl } from "./collect.js";
+import { parseFredCsv } from "../radar/macro.js";
+import { collect, condenseHlCycles, nextCatalysts, stablecoinRead, summariseHl } from "./collect.js";
 
 const NOW = new Date("2026-10-18T10:00:00Z");
 

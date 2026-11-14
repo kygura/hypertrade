@@ -24,7 +24,7 @@ export type IntelIngestDeps = IngestDeps & MapperDeps & {
   journal?: () => JournalDeps;
 };
 
-export type IngestStage = "ingest" | "catalysts" | "mapper" | "feedback" | "journal";
+type IngestStage = "ingest" | "catalysts" | "mapper" | "feedback" | "journal";
 
 export interface IntelIngestSummary {
   ingest: IngestSummary | null;

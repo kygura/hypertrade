@@ -4,7 +4,7 @@ import { Badge, Button, DialogShell, EmptyBlock, ErrorBlock, HowToRead, MetricSt
 import { VenueBadge } from '../../components/intel/VenueBadge'
 import { fmtUsdCompact } from '../../components/branches/format'
 import { fmtAge } from '../../components/strategy/format'
-import { fmtPx, fmtUsd } from '../../lib/desk'
+import { fmtPx, fmtUsd } from '../../lib/format'
 import type { OpportunityDetail as Detail, LedgerStats, OpportunityStatus } from '../../../shared/platform'
 import { boardHref } from '../../lib/research'
 import { fmtSigned, fmtSignedPct, isLive, STALE_MID_SEC, STATUS_WORD } from './logic'

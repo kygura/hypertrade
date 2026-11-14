@@ -23,8 +23,8 @@ import { body, failure, invalid } from "./intel/http.js";
 //                                 against the live mark (422 when killPx is on the wrong side) and pushes once.
 
 /** Answer by now with what ran: the job is a few store reads, at most one wake (10 s timeout) and three pushes. */
-export const EXTREMES_HARD_STOP_MS = 120_000;
-export const EXTREMES_LEASE_MS = EXTREMES_HARD_STOP_MS + 60_000;
+const EXTREMES_HARD_STOP_MS = 120_000;
+const EXTREMES_LEASE_MS = EXTREMES_HARD_STOP_MS + 60_000;
 
 export interface CronExtremesDeps {
   hasDb: () => boolean;
@@ -108,7 +108,7 @@ export async function freshMid(ctx: PlatformContext, coin: string, now: number):
   return age != null && age <= MAX_MID_AGE_SEC && mid != null && mid > 0 ? mid : null;
 }
 
-export const defaultExtremesDeps = (): ExtremesRouteDeps => ({
+const defaultExtremesDeps = (): ExtremesRouteDeps => ({
   store: () => (db.databaseUrl() ? store() : null),
   mark: (coin) => {
     const ctx = getPlatformContext() ?? (dbCtx ??= dbPlatformContext(store()));
@@ -123,7 +123,7 @@ const ListQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(30).
 const DAY = 86_400_000;
 
 /** The `take` push: one per verdict (the store writes a verdict once). */
-export function takeAlert(r: ExtremeRecord, appUrl: string | null, mark: number): Alert {
+function takeAlert(r: ExtremeRecord, appUrl: string | null, mark: number): Alert {
   const v = r.verdict!;
   const base = appUrl?.trim().replace(/\/+$/, "");
   return {
