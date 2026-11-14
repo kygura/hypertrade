@@ -4,7 +4,7 @@ import { Badge } from '../Badge'
 import { Button } from '../Button'
 import { Panel, PanelBody, PanelHeader } from '../Panel'
 import { ClaimAge } from './ClaimAge'
-import { fmtPrice, fmtSize, fmtUsd2, type DeskVenue } from './order'
+import { fmtPrice, fmtSize, fmtUsd2, venueWord, type DeskVenue } from './order'
 
 // OrderResult — DESIGN-terminal §7.3. After a confirmed order: `PLACED ·
 // PAPER` + the fill summary + age, `OPEN DESK →`, `NEW ORDER` (keeps the
@@ -42,7 +42,7 @@ export function OrderResult({
   placedAt: string
   onNew: () => void
 }) {
-  const v = venue === 'testnet' ? 'TESTNET' : 'PAPER'
+  const v = venueWord(venue)
   const exec = readExecution(result.execution)
   const placed = result.status === 'executed' && exec?.ok !== false
   const word = placed ? 'PLACED' : result.status.toUpperCase()

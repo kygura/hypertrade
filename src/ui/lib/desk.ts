@@ -19,7 +19,15 @@ export type { AccountState, DeskEvent, ExitProposal, OperatorOrderRecord, Positi
 
 /** Server record with the field the wire narrows: `execution` is `unknown` server-side. */
 export type ProposalRecord = Omit<ServerProposalRecord, 'execution'> & {
-  execution: { ok: boolean; fills: Array<{ side: string; size: number; px: number; fee: number; pnl: number }>; error?: string } | null
+  execution: {
+    ok: boolean
+    fills: Array<{ side: string; size: number; px: number; fee: number; pnl: number }>
+    error?: string
+    /** What a live venue reports beside the fills (Propr: rungs still working, a rescued stop). */
+    note?: string
+    /** Nothing was sent: the venue only built the requests (Propr without PROPR_LIVE). */
+    dryRun?: boolean
+  } | null
 }
 export type RunRow = Omit<ServerRunRow, 'trigger' | 'usage'>
 /** Rows from GET /desk/alerts always carry their id. */
@@ -29,9 +37,9 @@ export interface DeskStatus {
   configured: boolean
   model: { provider: string; label: string; pm: string; scouts: string; scoutProvider: string; webSearch: boolean } | null
   venue: string
-  /** True when orders reach Hyperliquid (testnet). */
+  /** True when orders reach an exchange (Hyperliquid testnet, or Propr with PROPR_LIVE=true). */
   live: boolean
-  /** The Hyperliquid account a live venue trades. */
+  /** The account a live venue trades (Hyperliquid address or Propr account id). */
   venueAccount: string | null
   /** Why a requested live venue is not in use (bad key, unsupported network). */
   venueNote: string | null

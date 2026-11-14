@@ -34,7 +34,7 @@ interface Placement { status: string; reasons: string[]; proposalId: string }
 export interface RiskGate {
   /** Read-only: the portfolio before and the governor's verdict on adding the ticket. */
   assess(t: Ticket): Promise<{ before: RiskVerdict; after: RiskVerdict }>;
-  /** Preview and submit on the desk's venue (paper or testnet). Records a blocked verdict instead of executing it. Never throws after a fill. */
+  /** Preview and submit on the desk's venue. Records a blocked verdict instead of executing it. Never throws after a fill. */
   place(t: Ticket, by: string): Promise<Placement>;
 }
 
@@ -72,7 +72,9 @@ export function deskRisk(get: () => DeskService): RiskGate {
     async place(t, by) {
       const d = get();
       const rec = await d.placeOperatorOrder(order(t, d.config.limits.maxRiskPct), by);
-      return { status: rec.status, reasons: rec.verdict.reasons, proposalId: rec.id };
+      // A venue's own refusal (firm rules, a dry run) lives on the execution, not the governor's verdict.
+      const why = rec.verdict.reasons.length ? rec.verdict.reasons : (rec.execution as { error?: string } | null)?.error ? [String((rec.execution as { error: string }).error)] : [];
+      return { status: rec.status, reasons: why, proposalId: rec.id };
     },
   };
 }

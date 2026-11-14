@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { Button } from '../../components'
 import { KillSwitchDialog } from '../../components/KillSwitchDialog'
 import { TerminalTabs } from '../../components/intel/TerminalTabs'
+import { venueOf, type DeskVenue } from '../../components/intel/order'
 import { api, ApiError } from '../../lib/api'
 import type { DeskStatus } from '../../lib/desk'
 import { useHlSubscription, type WsAssetCtx } from '../../lib/hlWs'
@@ -144,7 +145,7 @@ function CockpitPage() {
   }
 
   const blockedReason = approveBlockedReason(d, midAgeSec)
-  const venue: 'paper' | 'testnet' | null = desk.data ? (desk.data.live ? 'testnet' : 'paper') : null
+  const venue: DeskVenue | null = desk.data ? venueOf(desk.data.venue) : null
   const killOn = desk.data?.killSwitch.on ?? false
   const kill = useDeskKill(killOn, desk.refetch)
 

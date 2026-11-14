@@ -157,7 +157,7 @@ async function resolveAtDesk(desk: DeskService, intent: OrderIntent, anchorMark?
   };
   const r = resolveOrder(intent, market);
   if (!r.ok) throw new OrderError(400, r.error, `intent.${r.field}`);
-  if (needsCandles && desk.broker.market) r.warnings.push("stop resolved from Hyperliquid mainnet daily candles; testnet prices can differ");
+  if (needsCandles && desk.broker.venue === "hl-testnet") r.warnings.push("stop resolved from Hyperliquid mainnet daily candles; testnet prices can differ");
   const order: OperatorOrder = {
     coin: market.coin,
     side: intent.side,

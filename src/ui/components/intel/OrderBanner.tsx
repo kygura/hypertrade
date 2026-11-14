@@ -11,8 +11,8 @@ export function OrderBanner({ venue, venueError }: { venue: DeskVenue | null; ve
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted">
         <VenueBadge venue={venue} />
         <span>
-          Operator orders only — preview, then your confirm, then the Desk venue. No autonomous execution. Paper or testnet
-          only. Mainnet is refused.
+          Operator orders only — preview, then your confirm, then the Desk venue. No autonomous execution. Paper, testnet
+          or a Propr account (a dry run unless PROPR_LIVE is on). Direct mainnet is refused.
         </span>
       </p>
       {venueError && <p className="text-xs text-red-text">{venueError}</p>}

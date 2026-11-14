@@ -1,6 +1,7 @@
 import { useState, type RefObject } from 'react'
 import { Badge, Button, DialogShell, StatusDot, type DotStatus } from '../../components'
 import { VenueBadge } from '../../components/intel/VenueBadge'
+import type { DeskVenue } from '../../components/intel/order'
 import { fmtAge } from '../../components/strategy/format'
 import type { DeskStatus } from '../../lib/desk'
 import type { PlatformHealth } from '../../../shared/platform'
@@ -24,7 +25,7 @@ export function CockpitHeader({
   onKill,
   onHelp,
 }: {
-  venue: 'paper' | 'testnet' | null
+  venue: DeskVenue | null
   liveCount: number | null
   readyCount: number | null
   desk: { data: DeskStatus | null; offline: string | null; error: string | null }

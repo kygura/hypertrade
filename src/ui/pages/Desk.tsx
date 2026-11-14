@@ -122,7 +122,7 @@ const lim = (limits: DeskStatus['limits'] | undefined, key: string, unit = '') =
 /** Header strip and governor limits, with the limit values the server reports. */
 function deskTerms(limits: DeskStatus['limits'] | undefined): Term[] {
   return [
-    ['PAPER / HL-TESTNET', 'Where orders go. Paper is a simulated book filled at the live Hyperliquid mark plus slippage and the taker fee. HL-TESTNET sends real orders to the Hyperliquid test network. Mainnet is not supported.'],
+    ['PAPER / HL-TESTNET / PROPR', 'Where orders go. Paper is a simulated book filled at the live Hyperliquid mark plus slippage and the taker fee. HL-TESTNET sends real orders to the Hyperliquid test network. PROPR trades a Propr challenge or funded account (Hyperliquid mainnet through Propr) as laddered entries, every entry waiting for your approval; it is a dry run that sends nothing unless PROPR_LIVE is on. Direct mainnet is not supported.'],
     ['EQUITY', 'Account value in USD: cash plus unrealized profit or loss on open positions.'],
     ['DAY PNL', 'Change in equity since 00:00 UTC, realized plus unrealized, in USD.'],
     ['MODEL', 'The language model that runs the portfolio manager, then the one for the specialists if it differs.'],
@@ -225,8 +225,13 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
       </PanelBody>
       {status?.live && (
         <div className="px-3 pb-2 text-xs text-amber break-all">
-          Live orders on Hyperliquid testnet for {status.venueAccount}. Stops and targets rest on the exchange.
+          {status.venue === 'propr'
+            ? `Live orders on the Propr account ${status.venueAccount} (Hyperliquid mainnet through Propr). Each ladder rung carries its own stop on the exchange.`
+            : `Live orders on Hyperliquid testnet for ${status.venueAccount}. Stops and targets rest on the exchange.`}
         </div>
+      )}
+      {status && !status.live && status.venue === 'propr' && (
+        <div className="px-3 pb-2 text-xs text-text-muted break-all">Propr dry run for {status.venueAccount}: approved entries are built and recorded, nothing is sent.</div>
       )}
       {status?.venueNote && <div className="px-3 pb-2 text-xs text-red-text">{status.venueNote}.</div>}
       {killSwitch.open && (
@@ -575,7 +580,7 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
     <div className="border-b border-border-subtle p-3 flex flex-col gap-1.5 min-w-0">
       <div className="flex items-center gap-2 min-w-0">
         <button className="flex items-center gap-2 text-left shrink-0" onClick={() => setOpen((o) => !o)}>
-          <Badge tone={STATUS_TONE[p.status] ?? 'gray'}>{p.status.toUpperCase()}</Badge>
+          {p.execution?.dryRun ? <Badge tone="amber">DRY RUN</Badge> : <Badge tone={STATUS_TONE[p.status] ?? 'gray'}>{p.status.toUpperCase()}</Badge>}
           <span className={`text-md ${entry?.side === 'short' ? 'text-red-text' : 'text-green'}`}>
             {entry ? entry.side.toUpperCase() : `EXIT ${Math.round((exit?.fraction ?? 0) * 100)}%`}
           </span>
@@ -608,7 +613,7 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
                 ))}
               </ul>
               <span className="text-xs text-text-secondary">
-                {open_.horizon} · confidence {open_.confidence} · asked {open_.riskPct}% risk
+                {open_.horizon} · confidence {open_.confidence} · asked {open_.riskPct}% risk{open_.leverage != null ? ` · ${open_.leverage}x leverage` : ''}
               </span>
             </>
           )}
@@ -628,7 +633,8 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
               ⚠ {w}
             </span>
           ))}
-          {p.execution?.error && <span className="text-xs text-red-text">{p.execution.error}</span>}
+          {p.execution?.error && <span className={`text-xs ${p.execution.dryRun ? 'text-amber' : 'text-red-text'}`}>{p.execution.error}</span>}
+          {p.execution?.note && <span className="text-xs text-text-secondary">{p.execution.note}</span>}
           {p.decidedBy && <span className="text-xs text-text-secondary">decided by {p.decidedBy}</span>}
         </div>
       )}

@@ -74,6 +74,8 @@ export interface DeskStore {
   insertProposal(p: NewProposal): Promise<ProposalRecord>;
   updateProposal(id: string, patch: Partial<Pick<ProposalRecord, "status" | "verdict" | "execution" | "decidedBy" | "decidedAt">>): Promise<ProposalRecord | null>;
   getProposal(id: string): Promise<ProposalRecord | null>;
+  /** Takes a pending, undecided proposal for one decision (sets decidedBy/decidedAt). Null when another caller already took it or it is no longer pending. */
+  claimProposal(id: string, by: string, at: string): Promise<ProposalRecord | null>;
   listProposals(opts: { status?: ProposalStatus; limit: number }): Promise<ProposalRecord[]>;
 
   paperPositions(): Promise<PaperPosition[]>;
@@ -170,6 +172,11 @@ export class PgStore implements DeskStore {
     const [row] = await sql()`update desk_proposals set status = ${next.status}, verdict = ${sql().json(next.verdict as any)},
       execution = ${sql().json((next.execution ?? null) as any)}, decided_by = ${next.decidedBy}, decided_at = ${next.decidedAt}
       where id = ${id} returning *`;
+    return row ? toProposal(row) : null;
+  }
+  async claimProposal(id: string, by: string, at: string) {
+    const [row] = await sql()`update desk_proposals set decided_by = ${by}, decided_at = ${at}
+      where id = ${id} and status = 'pending' and decided_by is null returning *`;
     return row ? toProposal(row) : null;
   }
   async getProposal(id: string) {
@@ -313,6 +320,13 @@ export class MemoryStore implements DeskStore {
     const cur = this.proposals.get(id);
     if (!cur) return null;
     const next = { ...cur, ...patch };
+    this.proposals.set(id, next);
+    return next;
+  }
+  async claimProposal(id: string, by: string, at: string) {
+    const cur = this.proposals.get(id);
+    if (!cur || cur.status !== "pending" || cur.decidedBy) return null;
+    const next = { ...cur, decidedBy: by, decidedAt: at };
     this.proposals.set(id, next);
     return next;
   }

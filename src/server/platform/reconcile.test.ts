@@ -119,4 +119,26 @@ describe("reconcile", () => {
     positions = [{ ...positions[0]!, size: fill.size * 3, entryPx: fill.px * 1.01 }]; // someone else's ETH long
     expect(await reconcileOnce(d)).toEqual([{ id, to: "closed" }]);
   });
+
+  test("a laddering venue (Propr) answers itself: resting rungs or a grown position stay open, gone is closed, unreadable waits", async () => {
+    const { store, kit, deps, approved } = setup();
+    const id = await approved(3);
+    const rec = await kit.service.placeOperatorOrder(order, placedBy(id));
+    await store.transitionOpportunity(id, "approved", "open", "system", undefined, { ref: rec.id });
+    let held: boolean | null = true;
+    const asked: Array<[string, string]> = [];
+    const live: ReconcileDesk = {
+      store: kit.store,
+      broker: { live: true, holds: async (coin, side) => (asked.push([coin, side]), held) },
+      alert: async () => {},
+      account: async (): Promise<AccountState> => ({ venue: "propr", equityUsd: 1, dayPnlUsd: 0, positions: [], available: true }),
+    };
+    const d = { ...deps, desk: () => live };
+    expect(await reconcileOnce(d)).toEqual([]);
+    held = null;
+    expect(await reconcileOnce(d)).toEqual([]);
+    held = false;
+    expect(await reconcileOnce(d)).toEqual([{ id, to: "closed" }]);
+    expect(asked[0]).toEqual(["ETH", "long"]);
+  });
 });

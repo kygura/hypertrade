@@ -1,4 +1,5 @@
 import { addressOf, isPrivateKey } from "./hl/signing.js";
+import { proprBaseUrl } from "./propr/client.js";
 import type { Confidence } from "./types.js";
 
 // Desk settings from the environment (docs/SPEC.md "Desk", .env.example). Every
@@ -6,7 +7,7 @@ import type { Confidence } from "./types.js";
 // paper only, with small risk, and always behind the governor.
 
 type Approval = "manual" | "auto";
-type Venue = "paper" | "hl-testnet";
+type Venue = "paper" | "hl-testnet" | "propr";
 
 interface HlVenueConfig {
   /** API (agent) wallet private key. Server-side only; never serialized. */
@@ -15,6 +16,55 @@ interface HlVenueConfig {
   account: string;
   leverage: number;
   slippage: number;
+}
+
+/** Propr challenge or funded account (Hyperliquid mainnet through Propr's API). Ported from perp-radar's executor. */
+export interface ProprVenueConfig {
+  /** PROPR_API_KEY. Server-side only; never serialized. */
+  apiKey: string;
+  accountId: string;
+  baseUrl: string;
+  /** Orders are sent only when PROPR_LIVE=true; otherwise every entry and exit is a dry run that builds the requests. */
+  live: boolean;
+  /** PROPR_STARTING_BALANCE: used when the account does not report its own starting balance. */
+  startingBalance?: number;
+  /** PROPR_MAX_LEVERAGE: account-wide ceiling on the cross leverage the desk sets (1-10, default 10). */
+  maxLeverage: number;
+  /** PROPR_LEVERAGE_BY_COIN: per-coin maximum over Propr's rulebook default (10x BTC/ETH/SOL, 2x other perps). */
+  leverageByCoin: Record<string, number>;
+  /** PROPR_DEFAULT_LEVERAGE: leverage for a trade that names none and has no conviction mapping; unset = the smallest that carries the ladder. */
+  defaultLeverage?: number;
+  /** PROPR_LEVERAGE_BY_CONFIDENCE ("low:1,medium:3,high:5"): leverage from the signal's conviction when the trade names none. */
+  leverageByConfidence: Partial<Record<Confidence, number>>;
+  ladder: {
+    /** Rungs from the mark toward the stop (1 = a single entry). */
+    rungs: number;
+    rungsByCoin: Record<string, number>;
+    /** First rung fills at market; the rest rest as limits. */
+    firstAtMarket: boolean;
+    /** Last rung keeps at least this share of the entry-to-stop distance before the stop. */
+    minStopGapShare: number;
+    /** Smallest rung in dollars (Hyperliquid's minimum is about $10). */
+    minRungUsd: number;
+    /** Unfilled rungs are cancelled by the watch tick after this many hours. */
+    ttlHours: number;
+  };
+  firm: {
+    maxEntriesPerDay: number;
+    /** Propr 1-Step: 3% daily from the 00:00 UTC balance and a 6% static floor, both on equity. */
+    dailyLossPct: number;
+    maxDrawdownPct: number;
+    /** The worst case assumes the stop fills this many times its distance away. */
+    stopSlipFactor: number;
+    /** Fee per side, percent (Propr quotes 0.075%). */
+    feePct: number;
+    /** Equity kept above the daily-loss floor after the worst case, % of the day-start balance. */
+    dailyBufferPct: number;
+    /** Equity kept above the static drawdown floor after the worst case, % of the starting balance. */
+    floorBufferPct: number;
+    /** No new entries for the rest of the UTC day once this share of the daily limit is used. */
+    haltDailyUsedShare: number;
+  };
 }
 
 export interface GovernorLimits {
@@ -42,6 +92,8 @@ export interface DeskConfig {
   venue: Venue;
   /** Set when venue is hl-testnet. */
   hl?: HlVenueConfig;
+  /** Set when venue is propr. */
+  propr?: ProprVenueConfig;
   /** Why the requested venue was not used, if it was not. */
   venueNote?: string;
   approval: Approval;
@@ -93,7 +145,8 @@ export function loadDeskConfig(env: Env = process.env): DeskConfig {
   const venue = resolveVenue(env);
   return {
     ...venue,
-    approval: env.DESK_APPROVAL?.trim().toLowerCase() === "manual" ? "manual" : "auto",
+    // A Propr account is real money: every entry waits for the operator there, whatever DESK_APPROVAL says.
+    approval: venue.venue === "propr" || env.DESK_APPROVAL?.trim().toLowerCase() === "manual" ? "manual" : "auto",
     limits: {
       maxRiskPct: num(env, "DESK_MAX_RISK_PCT", 0.5, 0.05, 2),
       maxOpenRiskPct: num(env, "DESK_MAX_OPEN_RISK_PCT", 2, 0.1, 10),
@@ -126,15 +179,17 @@ export function loadDeskConfig(env: Env = process.env): DeskConfig {
 }
 
 /**
- * DESK_VENUE: "paper" (default) or "hl-testnet". Mainnet is refused on
- * purpose; a bad or missing key falls back to paper with a note the status
- * endpoint shows, so a typo never leaves the desk half-live.
+ * DESK_VENUE: "paper" (default), "hl-testnet" or "propr". Hyperliquid mainnet
+ * is refused; Propr is reached only through its own API and sends nothing
+ * unless PROPR_LIVE=true. A bad or missing key falls back to paper with a note
+ * the status endpoint shows, so a typo never leaves the desk half-live.
  */
-function resolveVenue(env: Env): Pick<DeskConfig, "venue" | "hl" | "venueNote"> {
+function resolveVenue(env: Env): Pick<DeskConfig, "venue" | "hl" | "propr" | "venueNote"> {
   const want = env.DESK_VENUE?.trim().toLowerCase() || "paper";
   if (want === "paper") return { venue: "paper" };
+  if (want === "propr") return resolvePropr(env);
   if (want !== "hl-testnet") {
-    return { venue: "paper", venueNote: `DESK_VENUE=${want} is not supported (paper or hl-testnet); trading paper` };
+    return { venue: "paper", venueNote: `DESK_VENUE=${want} is not supported (paper, hl-testnet or propr); trading paper` };
   }
   const key = env.DESK_HL_SECRET_KEY?.trim();
   if (!isPrivateKey(key)) return { venue: "paper", venueNote: "DESK_VENUE=hl-testnet needs DESK_HL_SECRET_KEY (an API wallet key); trading paper" };
@@ -147,6 +202,75 @@ function resolveVenue(env: Env): Pick<DeskConfig, "venue" | "hl" | "venueNote"> 
       account: (acct ?? addressOf(key)).toLowerCase(),
       leverage: num(env, "DESK_HL_LEVERAGE", 3, 1, 20),
       slippage: num(env, "DESK_HL_SLIPPAGE_PCT", 1, 0.1, 5) / 100,
+    },
+  };
+}
+
+const clampInt = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.floor(x)));
+
+/** "BTC:8, sol:3" to { BTC: 8, SOL: 3 }, each clamped; bad pairs are dropped. */
+function byCoin(v: string | undefined, lo: number, hi: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const part of (v ?? "").split(/[,;\s]+/)) {
+    const m = /^([A-Za-z0-9]+)[:=]([0-9.]+)$/.exec(part.trim());
+    if (m && Number.isFinite(Number(m[2]))) out[m[1]!.toUpperCase()] = clampInt(Number(m[2]), lo, hi);
+  }
+  return out;
+}
+
+/** "low:1, medium:3, high:5" to { low: 1, medium: 3, high: 5 }, each clamped to 1-10; other keys are dropped. */
+function byConfidence(v: string | undefined): Partial<Record<Confidence, number>> {
+  const all = byCoin(v, 1, 10);
+  const out: Partial<Record<Confidence, number>> = {};
+  for (const c of ["low", "medium", "high"] as const) if (all[c.toUpperCase()] != null) out[c] = all[c.toUpperCase()];
+  return out;
+}
+
+function resolvePropr(env: Env): Pick<DeskConfig, "venue" | "propr" | "venueNote"> {
+  const flag = env.PROPR_KILL?.trim().toLowerCase();
+  if (flag === "true" || flag === "1" || flag === "yes") return { venue: "paper", venueNote: "PROPR_KILL is set; trading paper" };
+  const apiKey = env.PROPR_API_KEY?.trim();
+  if (!apiKey) return { venue: "paper", venueNote: "DESK_VENUE=propr needs PROPR_API_KEY; trading paper" };
+  const accountId = env.PROPR_ACCOUNT_ID?.trim();
+  if (!accountId) return { venue: "paper", venueNote: "DESK_VENUE=propr needs PROPR_ACCOUNT_ID (the challenge or funded account); trading paper" };
+  let baseUrl: string;
+  try {
+    baseUrl = proprBaseUrl(env.PROPR_API_URL);
+  } catch (e) {
+    return { venue: "paper", venueNote: `${e instanceof Error ? e.message : String(e)}; trading paper` };
+  }
+  const start = Number(env.PROPR_STARTING_BALANCE?.trim() || NaN);
+  const mkt = env.PROPR_LADDER_FIRST_AT_MARKET?.trim().toLowerCase();
+  return {
+    venue: "propr",
+    propr: {
+      apiKey,
+      accountId,
+      baseUrl,
+      live: env.PROPR_LIVE?.trim() === "true",
+      startingBalance: Number.isFinite(start) && start > 0 ? start : undefined,
+      maxLeverage: num(env, "PROPR_MAX_LEVERAGE", 10, 1, 10),
+      leverageByCoin: byCoin(env.PROPR_LEVERAGE_BY_COIN, 1, 10),
+      defaultLeverage: env.PROPR_DEFAULT_LEVERAGE?.trim() ? clampInt(num(env, "PROPR_DEFAULT_LEVERAGE", 1, 1, 10), 1, 10) : undefined,
+      leverageByConfidence: byConfidence(env.PROPR_LEVERAGE_BY_CONFIDENCE),
+      ladder: {
+        rungs: clampInt(num(env, "PROPR_LADDER_RUNGS", 5, 1, 20), 1, 20),
+        rungsByCoin: byCoin(env.PROPR_LADDER_RUNGS_BY_COIN, 1, 20),
+        firstAtMarket: !(mkt === "false" || mkt === "0" || mkt === "no"),
+        minStopGapShare: 0.2,
+        minRungUsd: 11,
+        ttlHours: num(env, "PROPR_LADDER_TTL_HOURS", 8, 1, 24),
+      },
+      firm: {
+        maxEntriesPerDay: clampInt(num(env, "PROPR_MAX_ENTRIES_PER_DAY", 2, 0, 3), 0, 3),
+        dailyLossPct: num(env, "PROPR_DAILY_LOSS_PCT", 3, 1, 5),
+        maxDrawdownPct: num(env, "PROPR_MAX_DRAWDOWN_PCT", 6, 1, 10),
+        stopSlipFactor: 1.5,
+        feePct: 0.075,
+        dailyBufferPct: 1,
+        floorBufferPct: 1.5,
+        haltDailyUsedShare: 0.5,
+      },
     },
   };
 }

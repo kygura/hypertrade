@@ -7,6 +7,7 @@ import { evaluateExit, evaluateOpen, evaluateRisk, operatorRiskOrder, type Gover
 import type { Alert, AlertAction, Notifier } from "./notify.js";
 import { HlBroker } from "./hl/broker.js";
 import { PaperBroker, type Broker } from "./paper.js";
+import { ProprBroker } from "./propr/broker.js";
 import type { DeskStore } from "./store.js";
 import {
   OperatorOrderSchema,
@@ -115,7 +116,9 @@ export class DeskService {
       d.broker ??
       (d.config.venue === "hl-testnet" && d.config.hl
         ? new HlBroker({ ...d.config.hl, takerFee: d.config.limits.takerFee })
-        : new PaperBroker(d.store, {
+        : d.config.venue === "propr" && d.config.propr
+          ? new ProprBroker({ config: d.config.propr, market: async (coin) => DeskService.findMarket(await d.data.ctxs(), coin) })
+          : new PaperBroker(d.store, {
             startingEquity: d.config.paperStartingEquity,
             slippage: d.config.paperSlippage,
             takerFee: d.config.limits.takerFee,
@@ -135,13 +138,15 @@ export class DeskService {
     await this.alert(on ? "critical" : "info", on ? "Kill switch ON" : "Kill switch off", `${reason} (by ${by})`);
   }
 
-  /** Approval in force: an operator override from the UI, else the env default. */
+  /** Approval in force: manual on a venue that requires it (Propr), else an operator override from the UI, else the env default. */
   async approval(): Promise<"manual" | "auto"> {
+    if (this.broker.manualOnly) return "manual";
     const o = await this.store.getState<{ approval: "manual" | "auto" }>(APPROVAL_KEY);
     return o?.approval ?? this.config.approval;
   }
 
   async setApproval(approval: "manual" | "auto", by: string): Promise<void> {
+    if (approval === "auto" && this.broker.manualOnly) throw new DeskError(409, `approval stays manual on the ${this.broker.venue} venue`);
     await this.store.setState(APPROVAL_KEY, { approval, by, at: this.now().toISOString() });
   }
 
@@ -180,17 +185,23 @@ export class DeskService {
     return c ? { coin: c.name, markPx: c.markPx, szDecimals: c.szDecimals, isDelisted: c.isDelisted } : null;
   }
 
-  private async governorContext(coin: string): Promise<GovernorContext> {
+  /**
+   * What the governor checks an order against. On a venue where the trade picks its leverage (Propr), the coin's
+   * notional ceiling is that leverage (capped to the coin's maximum) in place of DESK_MAX_COIN_LEVERAGE; without a
+   * choice it is DESK_MAX_COIN_LEVERAGE, never above the coin's maximum. `venueWarnings` go on the verdict.
+   */
+  private async governorContext(coin: string, leverage?: number, confidence?: TradeProposal["confidence"]): Promise<GovernorContext & { venueWarnings: string[] }> {
     const { ctxs, marks } = await this.marks();
     const account = await this.broker.account(marks, this.now());
-    return {
-      limits: this.config.limits,
-      account,
-      // A live venue is checked against its own marks (testnet prices differ from mainnet).
-      market: this.broker.market ? await this.broker.market(coin) : DeskService.findMarket(ctxs, coin),
-      killSwitch: (await this.killSwitch()).on,
-      now: this.now(),
-    };
+    // A live venue is checked against its own marks (testnet prices differ from mainnet).
+    const market = this.broker.market ? await this.broker.market(coin) : DeskService.findMarket(ctxs, coin);
+    const lev = this.broker.tradeLeverage?.(market?.coin ?? coin, leverage, confidence);
+    const limits = lev ? { ...this.config.limits, maxCoinLeverage: lev.leverage ?? Math.min(this.config.limits.maxCoinLeverage, lev.max) } : this.config.limits;
+    return { limits, account, market, killSwitch: (await this.killSwitch()).on, now: this.now(), venueWarnings: lev?.warning ? [lev.warning] : [] };
+  }
+
+  private static withWarnings(v: Verdict, extra: string[]): Verdict {
+    return extra.length ? { ...v, warnings: [...extra, ...v.warnings] } : v;
   }
 
   async alert(level: AlertLevel, title: string, body: string, runId: string | null = null, actions?: AlertAction[]): Promise<void> {
@@ -201,9 +212,9 @@ export class DeskService {
 
   /** `forceManual` queues an approved proposal for the operator without reading the approval mode, so a mode flip can't race it (the TUI). */
   async submitOpen(input: TradeProposal, runId: string | null, opts: { forceManual?: boolean } = {}): Promise<ProposalRecord> {
-    const ctx = await this.governorContext(input.coin);
+    const ctx = await this.governorContext(input.coin, input.leverage, input.confidence);
     const p: TradeProposal = ctx.market ? { ...input, coin: ctx.market.coin } : input;
-    const verdict = evaluateOpen(p, ctx);
+    const verdict = DeskService.withWarnings(evaluateOpen(p, ctx), ctx.venueWarnings);
     const approval = opts.forceManual ? "manual" : await this.approval();
     const base = { runId, kind: "open" as const, venue: this.broker.venue, proposal: p, verdict, execution: null };
     if (!verdict.approved) {
@@ -220,7 +231,8 @@ export class DeskService {
       ]);
       return rec;
     }
-    const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt: null });
+    // decidedBy at insert: the proposal is taken, so no approve() can claim it and send it a second time.
+    const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt: null, decidedBy: "auto" });
     return this.executeOpen(rec, "auto");
   }
 
@@ -230,17 +242,27 @@ export class DeskService {
     const verdict = evaluateExit(p, ctx);
     const base = { runId, kind: "exit" as const, venue: this.broker.venue, proposal: p, verdict, execution: null };
     if (!verdict.approved) return this.store.insertProposal({ ...base, status: "blocked", expiresAt: null, decidedBy: "governor" });
-    // Exits reduce risk, so they never wait for approval.
-    const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt: null });
+    // Exits reduce risk, so they don't wait, except an agent's exit on a venue that is real money (Propr): the account
+    // can hold positions the desk did not open, so the operator approves those closes. The operator's own close is direct.
+    if (runId != null && this.broker.manualOnly) {
+      const expiresAt = new Date(this.now().getTime() + this.config.approvalTtlMin * 60_000).toISOString();
+      const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt });
+      await this.alert("warn", `Approve exit? ${p.coin}`, `close ${Math.round(p.fraction * 100)}% of ${p.coin} on ${this.broker.venue}\n${p.reason}`, runId, [
+        { label: "Approve", data: `approve:${rec.id}` },
+        { label: "Reject", data: `reject:${rec.id}` },
+      ]);
+      return rec;
+    }
+    const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt: null, decidedBy: "auto" });
     return this.executeExit(rec, "auto");
   }
 
   /** Operator order sizing at the venue's current mark: the order's risk (from notional or leverage) through the governor. */
   private async operatorVerdict(order: OperatorOrder): Promise<{ ctx: GovernorContext; risk: RiskOrder; verdict: Verdict }> {
-    const ctx = await this.governorContext(order.coin);
+    const ctx = await this.governorContext(order.coin, order.leverage);
     const { order: risk, warnings } = operatorRiskOrder(order, ctx);
     const v = evaluateRisk(risk, ctx);
-    return { ctx, risk, verdict: { ...v, warnings: [...warnings, ...v.warnings] } };
+    return { ctx, risk, verdict: { ...v, warnings: [...ctx.venueWarnings, ...warnings, ...v.warnings] } };
   }
 
   /** Read-only governor verdict for an operator order plus the account it was sized against. Writes nothing (no preview key, no lock), so a caller's pending preview stays valid. */
@@ -324,21 +346,26 @@ export class DeskService {
       await this.store.updateProposal(id, { status: "expired", decidedBy: "clock", decidedAt: this.now().toISOString() });
       throw new DeskError(409, "proposal expired");
     }
-    return rec.kind === "open" ? this.executeOpen(rec, by) : this.executeExit(rec, by);
+    // One decision per proposal: only the caller whose claim lands goes on, so a double click or a Telegram and a UI
+    // approve at once send it once.
+    const claimed = await this.store.claimProposal(id, by, this.now().toISOString());
+    if (!claimed) throw new DeskError(409, "proposal is already being decided");
+    return claimed.kind === "open" ? this.executeOpen(claimed, by) : this.executeExit(claimed, by);
   }
 
   async reject(id: string, by: string): Promise<ProposalRecord> {
     const rec = await this.store.getProposal(id);
     if (!rec) throw new DeskError(404, "proposal not found");
     if (rec.status !== "pending") throw new DeskError(409, `proposal is ${rec.status}`);
+    if (!(await this.store.claimProposal(id, by, this.now().toISOString()))) throw new DeskError(409, "proposal is already being decided");
     return (await this.store.updateProposal(id, { status: "rejected", decidedBy: by, decidedAt: this.now().toISOString() }))!;
   }
 
   /** Re-checks against the live mark, then fills. */
   private async executeOpen(rec: ProposalRecord, by: string): Promise<ProposalRecord> {
     const p = rec.proposal as TradeProposal;
-    const ctx = await this.governorContext(p.coin);
-    const verdict = evaluateOpen(p, ctx);
+    const ctx = await this.governorContext(p.coin, p.leverage, p.confidence);
+    const verdict = DeskService.withWarnings(evaluateOpen(p, ctx), ctx.venueWarnings);
     const decidedAt = this.now().toISOString();
     if (!verdict.approved || !verdict.sizing) {
       const out = await this.store.updateProposal(rec.id, { status: "blocked", verdict, decidedBy: `governor (at ${by})`, decidedAt });
@@ -360,11 +387,11 @@ export class DeskService {
     const out = await this.store.updateProposal(rec.id, patch).catch((err) => (console.error(`[desk] proposal ${rec.id} ${patch.status} but not recorded`, err), null));
     const fill = result.fills[0];
     await this.alert(
-      result.ok ? "info" : "warn",
-      result.ok ? `Opened ${p.side} ${p.coin} (${this.broker.venue})` : `Open failed: ${p.coin}`,
+      result.ok || result.dryRun ? "info" : "warn",
+      result.ok ? `Opened ${p.side} ${p.coin} (${this.broker.venue})` : result.dryRun ? `Dry run: ${p.side} ${p.coin} built, not sent (${this.broker.venue})` : `Open failed: ${p.coin}`,
       result.ok && fill
-        ? `${fill.size} @ ${fmtPx(fill.px)} · stop ${fmtPx(p.stop)} · target ${p.target != null ? fmtPx(p.target) : "none"} · risk $${sizing.riskUsd} · R:R ${sizing.rr ?? "n/a"}\n${note}`
-        : (result.error ?? "unknown error"),
+        ? `${fill.size} @ ${fmtPx(fill.px)} · stop ${fmtPx(p.stop)} · target ${p.target != null ? fmtPx(p.target) : "none"} · risk $${sizing.riskUsd} · R:R ${sizing.rr ?? "n/a"}${result.note ? `\n${result.note}` : ""}\n${note}`
+        : ((result.ok ? result.note : result.error) ?? "unknown error"),
       rec.runId,
     ).catch((err) => console.error(`[desk] alert for proposal ${rec.id} failed`, err));
     return out ?? { ...rec, ...patch };
@@ -383,8 +410,10 @@ export class DeskService {
     const fill = result.fills[0];
     await this.alert(
       "info",
-      result.ok ? `Closed ${fill?.size} ${p.coin} (${this.broker.venue})` : `Exit failed: ${p.coin}`,
-      result.ok && fill ? `@ ${fmtPx(fill.px)} · PnL $${fill.pnl.toFixed(2)}\n${p.reason}` : (result.error ?? "unknown error"),
+      result.ok ? (fill ? `Closed ${fill.size} ${p.coin} (${this.broker.venue})` : `Close sent: ${p.coin} (${this.broker.venue})`) : result.dryRun ? `Dry run: close ${p.coin} built, not sent (${this.broker.venue})` : `Exit failed: ${p.coin}`,
+      result.ok
+        ? `${fill ? `@ ${fmtPx(fill.px)} · PnL $${fill.pnl.toFixed(2)}\n` : ""}${result.note ? `${result.note}\n` : ""}${p.reason}`
+        : (result.error ?? "unknown error"),
       rec.runId,
     );
     return out!;
@@ -393,6 +422,8 @@ export class DeskService {
   async expirePending(): Promise<number> {
     let n = 0;
     for (const rec of await this.store.listProposals({ status: "pending", limit: 100 })) {
+      // A claimed proposal is being sent right now: the send records its outcome.
+      if (rec.decidedBy) continue;
       if (rec.expiresAt && new Date(rec.expiresAt) < this.now()) {
         await this.store.updateProposal(rec.id, { status: "expired", decidedBy: "clock", decidedAt: this.now().toISOString() });
         n++;

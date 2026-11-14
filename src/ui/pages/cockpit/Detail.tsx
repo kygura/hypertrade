@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { Badge, Button, DialogShell, EmptyBlock, ErrorBlock, HowToRead, MetricStat, OfflineBlock, Panel, SkeletonRows, StaleStrip, type Term } from '../../components'
 import { VenueBadge } from '../../components/intel/VenueBadge'
+import { venueWord, type DeskVenue } from '../../components/intel/order'
 import { fmtUsdCompact } from '../../components/branches/format'
 import { fmtAge } from '../../components/strategy/format'
 import { fmtPx, fmtUsd } from '../../lib/format'
@@ -15,7 +16,7 @@ import { KeyHint } from './Header'
 // OpportunityDetail (sections 1–5) + ActionBar / TicketDialog / RejectDialog /
 // SnoozeMenu — DESIGN-terminal C5. Presentational; Cockpit.tsx owns the POSTs.
 
-type Venue = 'paper' | 'testnet' | null
+type Venue = DeskVenue | null
 /** Section 4 sub-rows: the same setup restricted to this idea's regime / tier (GET /ledger/stats?regime= / ?tier=). */
 export type SubStats = { regime: LedgerStats | null; tier: LedgerStats | null }
 const bp = (n: number) => fmtSigned(n, 'bp')
@@ -419,7 +420,7 @@ export function TicketDialog({
       className="md:max-w-[400px]"
       title={
         <>
-          APPROVE — {venue === 'testnet' ? 'TESTNET' : venue === 'paper' ? 'PAPER' : '…'} <VenueBadge venue={venue} />
+          APPROVE — {venue ? venueWord(venue) : '…'} <VenueBadge venue={venue} />
         </>
       }
       onClose={onCancel}

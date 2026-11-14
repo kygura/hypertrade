@@ -7,14 +7,20 @@ import { fmtSigned, MINUS } from './format'
 // guard on POST /order/confirm. Kept out of the components so tests can pin
 // them without a DOM.
 
-export type DeskVenue = 'paper' | 'testnet'
+export type DeskVenue = 'paper' | 'testnet' | 'propr'
 
-/** Desk venue strings (`paper`, `hl-testnet`) → the badge vocabulary; anything else is unknown. */
+/** Desk venue strings (`paper`, `hl-testnet`, `propr`) → the badge vocabulary; anything else is unknown. */
 export function venueOf(v: string | null | undefined): DeskVenue | null {
   const s = v?.trim().toLowerCase()
   if (s === 'paper') return 'paper'
   if (s === 'hl-testnet' || s === 'testnet') return 'testnet'
+  if (s === 'propr') return 'propr'
   return null
+}
+
+/** The venue as one upper-case word for labels. */
+export function venueWord(v: DeskVenue | null): string {
+  return v === 'testnet' ? 'TESTNET' : v === 'propr' ? 'PROPR' : 'PAPER'
 }
 
 export const VENUE_UNKNOWN = 'venue unknown — open DESK to check'
@@ -41,11 +47,11 @@ export function fmtPreviewClock(ms: number): string {
 }
 
 export function confirmLabel(venue: DeskVenue | null): string {
-  return venue === 'testnet' ? 'CONFIRM TESTNET ORDER' : 'CONFIRM PAPER ORDER'
+  return `CONFIRM ${venueWord(venue)} ORDER`
 }
 
 export function placeLabel(venue: DeskVenue | null): string {
-  return venue === 'testnet' ? 'PLACE TESTNET ORDER' : 'PLACE PAPER ORDER'
+  return `PLACE ${venueWord(venue)} ORDER`
 }
 
 /**
@@ -135,10 +141,12 @@ export function confirmBody(p: OrderPreview, venue: DeskVenue | null): string {
   const side = p.intent.side.toUpperCase()
   const at = p.intent.entry.type === 'limit' ? `limit ${fmtPrice(p.intent.entry.px)}` : 'market'
   const liq = r.liqPx != null ? `, liq ${fmtPrice(r.liqPx)}` : ''
-  const v = venue === 'testnet' ? 'TESTNET' : 'PAPER'
+  const v = venueWord(venue)
+  // Propr routes to Hyperliquid mainnet through the challenge account (a dry run unless PROPR_LIVE is on); the others never do.
+  const where = venue === 'propr' ? 'On Propr it trades the challenge account on Hyperliquid mainnet, or is a dry run unless PROPR_LIVE is on.' : 'Nothing goes to mainnet.'
   return (
     `${side} ${fmtSize(r.size)} ${p.intent.asset} (≈ ${fmtUsd2(r.notionalUsd)}) at ${at} on ${v}, ` +
-    `stop ${fmtPrice(r.stopPx)}${liq}. Risks ${r.riskPct.toFixed(1)}% of the book (${fmtUsd2(r.riskUsd)}). Nothing goes to mainnet. ` +
+    `stop ${fmtPrice(r.stopPx)}${liq}. Risks ${r.riskPct.toFixed(1)}% of the book (${fmtUsd2(r.riskUsd)}). ${where} ` +
     `This places the order on ${v} now and can't be undone.`
   )
 }
