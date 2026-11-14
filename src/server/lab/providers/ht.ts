@@ -19,7 +19,7 @@ const LIVE_FUNDING_PAGES = 24;
 export const LIVE_FUNDING_SPAN_MS = LIVE_FUNDING_PAGES * HL_FUNDING_PAGE * HOUR_MS;
 const CANDLE_REUSE_MS = 60_000; // × 500 hourly rows ≈ 500 days
 /** Coins whose live funding settlements the process keeps (about 12 000 rows each at 500 days). */
-export const LIVE_FUNDING_CACHE_COINS = 60;
+const LIVE_FUNDING_CACHE_COINS = 60;
 /** The day's last hourly settlement: a day of funding is complete once it is in. */
 const LAST_SETTLEMENT_MS = 23 * HOUR_MS;
 
@@ -36,7 +36,7 @@ export function dropPartialLastDay(rows: readonly FundingPoint[]): FundingPoint[
   return last >= day + LAST_SETTLEMENT_MS ? [...rows] : rows.filter((r) => r.t < day);
 }
 
-export interface Ohlcv {
+interface Ohlcv {
   t: number;
   o: number;
   h: number;

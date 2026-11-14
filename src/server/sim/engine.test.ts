@@ -188,6 +188,12 @@ describe("simulate", () => {
     expect(() => simulate(config, { BTC: candles([100, 110]) })).toThrow(NoPriceDataError);
   });
 
+  test("before a coin's first candle its first close is used (flat backward extrapolation)", () => {
+    const config: BranchConfig = { startDate: "2024-01-01", initialCapitalUsd: 1000, allocations: [{ coin: "ETH", weightPct: 100 }], rebalance: "none" };
+    const result = simulate(config, { BTC: candles([100, 100, 100]), ETH: [{ ts: d0 + 2 * DAY, c: 50 }] });
+    expect(result.equity.map((p) => p.value)).toEqual([1000, 1000, 1000]);
+  });
+
   test("missing-candle-day carries forward the last known close", () => {
     const d3 = d0 + 3 * DAY;
     const config: BranchConfig = {

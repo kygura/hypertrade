@@ -9,9 +9,6 @@ import { createLabService, parseInput, type LabService } from "./service.js";
 import { MIN_DEFLATED_SHARPE, MIN_STABILITY, MIN_WALK_FORWARD_SHARPE } from "./engine/verdict.js";
 import { ASSET_PATTERN, DaySchema, MAX_CONDITIONS, RULE_EXTRAS_JSON, RuleSchema, SearchConfigSchema, TRANSFORMS, VERDICT_LEVELS } from "./types.js";
 
-export type { PromptDef, ToolContext, ToolDef, ToolSource } from "../mcp/types.js";
-export { ToolInputError } from "../mcp/types.js";
-
 let shared: LabService | null = null;
 
 /** The process-wide service, created on first use (importing this module connects to nothing). */

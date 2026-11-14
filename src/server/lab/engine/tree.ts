@@ -12,7 +12,7 @@ import type { Rng } from "./rng.js";
 // left out of that node's split scoring and goes to neither child, the same
 // way a rule with a NaN condition is out of zone.
 
-export const NAN_CODE = 255;
+const NAN_CODE = 255;
 
 export interface Binned {
   /** Per feature: ascending split thresholds (≤ bins − 1 values from the training rows). */
@@ -69,14 +69,14 @@ export interface TreeParams {
   trees: number;
 }
 
-export interface Leaf {
+interface Leaf {
   leaf: true;
   /** Bootstrap row count. */
   n: number;
   cls: 0 | 1;
 }
 
-export interface SplitNode {
+interface SplitNode {
   leaf: false;
   feature: number;
   /** Left: value < threshold. Right: value ≥ threshold. */

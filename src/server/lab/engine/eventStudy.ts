@@ -20,14 +20,14 @@ export const FUNDING = "ht:funding";
 /** Metrics every coin's dataset needs besides the rule's own (close is dataset.price, ht:price). */
 export const STUDY_METRICS = [OPEN, HIGH, LOW, FUNDING];
 
-export const FEE_ROUND_TRIP_PCT = 0.09;
-export const DEFAULT_SLIPPAGE_BPS = 5; // per side
+const FEE_ROUND_TRIP_PCT = 0.09;
+const DEFAULT_SLIPPAGE_BPS = 5; // per side
 export const ATR_WINDOW = 14;
 /** A coin needs this many bars with a close and funding to be studied. */
-export const MIN_BARS = 365;
+const MIN_BARS = 365;
 export const MIN_WEEKS = 30;
 export const HOLDOUT_SHARE = 0.3;
-export const SURVIVORSHIP_NOTE =
+const SURVIVORSHIP_NOTE =
   "Survivorship: the replay uses today's listed coins, so delisted losers are missing and the past looks better than it was.";
 
 export interface EventStudyOptions {
@@ -50,7 +50,7 @@ export interface StudyEvent {
   ambiguous: boolean; // stop and target in one bar: scored as stop
 }
 
-export interface CoinStudy {
+interface CoinStudy {
   coin: string;
   bars: number; // bars with a close and funding
   from: string | null;

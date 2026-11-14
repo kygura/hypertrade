@@ -6,7 +6,7 @@ import { clip, getJson, requestTimeout, toDaily, type CollectableProvider, type 
 // March 2021, for BTC and ETH. Global metrics, so ETH vol can inform any asset.
 // ht:dvol stays the collector's intraday BTC snapshot; this is the full history.
 
-export const DERIBIT_DVOL_URL = "https://www.deribit.com/api/v2/public/get_volatility_index_data";
+const DERIBIT_DVOL_URL = "https://www.deribit.com/api/v2/public/get_volatility_index_data";
 /** DVOL starts in March 2021. */
 const DVOL_EPOCH = Date.UTC(2021, 2, 24);
 /** Daily candles per request stay under Deribit's 1000-point page. */

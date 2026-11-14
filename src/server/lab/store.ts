@@ -9,7 +9,7 @@ import type { CatalogueEntry, Direction, SearchConfig, SearchResult, Trial } fro
 // Postgres (deployed), in-memory (no DB), and a JSON file (local CLI/stdio).
 // defaultStore() picks one from the environment.
 
-export type RunSource = "api" | "mcp" | "cli" | "ui";
+type RunSource = "api" | "mcp" | "cli" | "ui";
 
 export interface StoredRun {
   id: string;
@@ -37,12 +37,12 @@ export interface RunSummary {
 }
 
 export type NewRun = Omit<StoredRun, "id" | "createdAt">;
-export type NewCatalogueEntry = Omit<CatalogueEntry, "savedAt"> & { savedAt?: string };
-export type NewTrial = Omit<Trial, "n" | "at">;
-export type CatalogueFilter = { asset?: string; direction?: Direction };
+type NewCatalogueEntry = Omit<CatalogueEntry, "savedAt"> & { savedAt?: string };
+type NewTrial = Omit<Trial, "n" | "at">;
+type CatalogueFilter = { asset?: string; direction?: Direction };
 
 /** A cached event study (src/server/research/study.ts): opaque here, zod-parsed by its reader. */
-export interface StoredStudy {
+interface StoredStudy {
   summary: unknown;
   study: unknown;
 }
@@ -81,14 +81,14 @@ export interface LabStore {
 // ---------------------------------------------------------------- helpers
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const isUuid = (s: unknown): s is string => typeof s === "string" && UUID_RE.test(s);
+const isUuid = (s: unknown): s is string => typeof s === "string" && UUID_RE.test(s);
 /** Rule ids are hashes; anything printable and short is accepted. */
-export const isRuleId = (s: unknown): s is string => typeof s === "string" && /^[\w.:-]{1,128}$/.test(s);
+const isRuleId = (s: unknown): s is string => typeof s === "string" && /^[\w.:-]{1,128}$/.test(s);
 
 /** Runs kept by the memory and file stores; older ones are dropped. */
 export const LOCAL_RUN_CAP = 200;
 /** Runs kept in Postgres; older ones are pruned on insert. */
-export const PG_RUN_CAP = 500;
+const PG_RUN_CAP = 500;
 
 const iso = (d: Date | string | null | undefined) => (d == null ? null : new Date(d).toISOString());
 

@@ -4,9 +4,9 @@ import { clip, getJson, requestTimeout, toDaily, type CollectableProvider, type 
 
 // alternative.me Crypto Fear & Greed, full daily history (2018→), keyless.
 
-export const FNG_URL = "https://api.alternative.me/fng/?limit=0&format=json";
+const FNG_URL = "https://api.alternative.me/fng/?limit=0&format=json";
 /** The newest `days` daily values (limit counts back from today). */
-export const fngUrl = (days: number): string => `https://api.alternative.me/fng/?limit=${Math.max(1, Math.floor(days))}&format=json`;
+const fngUrl = (days: number): string => `https://api.alternative.me/fng/?limit=${Math.max(1, Math.floor(days))}&format=json`;
 
 const FngHistorySchema = z.object({
   data: z.array(z.object({ value: z.string(), timestamp: z.string() })),

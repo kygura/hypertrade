@@ -23,9 +23,9 @@ import { mulberry32 } from "./rng.js";
 // with 100+ distinct clusters, which would barely deflate anything.
 
 /** Two variants whose return tracks correlate at least this much are one trial. */
-export const CLUSTER_CORR = 0.5;
+const CLUSTER_CORR = 0.5;
 /** Above this many variants a seeded sample is clustered and the count scaled up (cost bound). */
-export const MAX_CLUSTERED = 20_000;
+const MAX_CLUSTERED = 20_000;
 
 /** In-zone days of a signal as a bitset, with their count. */
 export interface ZoneBits {

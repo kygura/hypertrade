@@ -1,5 +1,5 @@
 import type { Condition, Objective, Rule, Sensitivity, SensitivityPoint } from "../types.js";
-import { objectiveOf, sharpeOf, simulate, totalReturnOf, type Segment } from "./backtest.js";
+import { concatReturns, objectiveOf, sharpeOf, simulate, totalReturnOf, type Segment } from "./backtest.js";
 import type { EvalCtx } from "./context.js";
 import { featureId, parseFeatureId } from "./features.js";
 import { ecdf, quantileSorted } from "./util.js";
@@ -12,7 +12,7 @@ export const HOLDOUT_FRAC = 0.2;
 /** Minimum purged training rows in the first walk-forward fold. */
 export const MIN_TRAIN_ROWS = 60;
 
-export interface Fold {
+interface Fold {
   /** Training rows are [0, purgedEnd): the block edge minus horizonDays. */
   purgedEnd: number;
   /** Test return days [testFrom, testTo). */
@@ -45,7 +45,7 @@ export function makeSplit(n: number, folds: number, horizonDays: number): Split 
 }
 
 /** Same features and operators; each threshold moved to the quantile it sits at in [0, fromEnd), read in [0, toEnd). */
-export function matchThresholds(ctx: EvalCtx, conds: Condition[], fromEnd: number, toEnd: number): Condition[] {
+function matchThresholds(ctx: EvalCtx, conds: Condition[], fromEnd: number, toEnd: number): Condition[] {
   return conds.map((c) => {
     const q = ecdf(ctx.sorted(c.feature, fromEnd), c.threshold);
     const thr = quantileSorted(ctx.sorted(c.feature, toEnd), q);
@@ -74,9 +74,7 @@ export function positions(sig: Uint8Array, dirSign: number): Float64Array {
 }
 
 export function walkForwardScore(segs: Segment[], objective: Objective): number {
-  const all: number[] = [];
-  for (const s of segs) for (const r of s.ret) all.push(r);
-  return objectiveOf(all, objective);
+  return objectiveOf(concatReturns(segs), objective);
 }
 
 export interface SensitivityOptions {
@@ -91,7 +89,7 @@ export interface SensitivityOptions {
 const SHIFTS = [-0.1, -0.05, 0.05, 0.1];
 
 /** Neighbouring windows of w within the configured set (nearest below and above). */
-export function neighbourWindows(w: number, windows: readonly number[]): number[] {
+function neighbourWindows(w: number, windows: readonly number[]): number[] {
   const ws = [...new Set(windows)].filter((x) => x !== w).sort((a, b) => a - b);
   const below = ws.filter((x) => x < w);
   const above = ws.filter((x) => x > w);

@@ -37,7 +37,7 @@ export interface LabSeriesStore {
   range(id: string, fromMs: number, toMs: number): Promise<Array<{ t: number; v: number }>>;
 }
 
-export const dbSeriesStore: LabSeriesStore = {
+const dbSeriesStore: LabSeriesStore = {
   hasDb: () => Boolean(databaseUrl()),
   async coverage(id) {
     const [c] = await seriesCoverage([id]);

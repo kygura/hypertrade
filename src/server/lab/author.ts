@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { LlmDeps } from "../intel/llm.js";
 import type { ToolSpec } from "../llm/provider.js";
 import { canonicalConditions, parseFeatureId, ruleId } from "./engine/index.js";
+import { msg } from "./util.js";
 import { ASSET_PATTERN, MAX_CONDITIONS, RULE_EXTRAS_JSON, RuleSchema, TRANSFORMS, type Direction, type MetricDef, type Rule } from "./types.js";
 
 // Rule authoring from intent (docs/FEATURES.md § 1). The LLM only recombines the
@@ -10,8 +11,8 @@ import { ASSET_PATTERN, MAX_CONDITIONS, RULE_EXTRAS_JSON, RuleSchema, TRANSFORMS
 // feeds a validation failure back once (the repair round), then fails closed.
 // Nothing is saved here.
 
-export const AUTHOR_PROMPT_VERSION = "lab-author-3";
-export const MAX_CANDIDATES = 3;
+const AUTHOR_PROMPT_VERSION = "lab-author-3";
+const MAX_CANDIDATES = 3;
 
 export interface AuthorInput {
   intent: string;
@@ -79,7 +80,7 @@ function candidatesSchema(metrics: MetricDef[], input: AuthorInput) {
         if (!m) bad(`unknown metric ${s.metric}; use only ids from the catalogue`, at);
         else if (s.transform === "raw" && m.stationary === false) bad(`${s.metric} is a trending level: raw is not allowed, use a transform`, at);
       } catch (err) {
-        bad(err instanceof Error ? err.message : String(err), at);
+        bad(msg(err), at);
       }
     });
     if (!canonicalConditions(r.conditions)) bad("conditions can never hold together", ["conditions"]);

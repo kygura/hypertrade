@@ -33,7 +33,7 @@ const CONCURRENCY = 3;
  * Metrics' community tier allows ~10 requests per 6 s.
  */
 const SERIAL_GAP_MS: Record<string, number> = { cm: 700, okx: 0 }; // okx paces its own requests (OKX_PACE_MS): a lane keeps it from holding the shared pool
-export const DEFAULT_LAB_ASSETS = ["BTC", "ETH"];
+const DEFAULT_LAB_ASSETS = ["BTC", "ETH"];
 
 export interface LabJob {
   /** Observation series id, also the sync_state key. */
@@ -98,7 +98,7 @@ export interface LabCollectOptions {
 export type LabProgress = { sources: Record<string, LabSourceStatus>; written: number };
 
 /** `partial`: the budget cut a paged history short; what came back is stored and the next run resumes. */
-export type LabSourceStatus = "ok" | "partial" | "skipped" | "error";
+type LabSourceStatus = "ok" | "partial" | "skipped" | "error";
 export type LabCollectResult = CollectorResult & { sources: Record<string, LabSourceStatus> };
 
 /** A refusal (4xx other than 429) will not fix itself within the hour: wait a full refresh. */
