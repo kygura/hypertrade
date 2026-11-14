@@ -3,9 +3,9 @@ import { HlSocket, keyOf, type HlSub } from '../../shared/hl-ws'
 
 // The socket client lives in shared/hl-ws.ts (the server ingest uses it too);
 // this file is the React adapter around one shared browser connection.
-export { HlSocket, type HlSub, type WsAssetCtx, type WsCandle } from '../../shared/hl-ws'
+export { type HlSub, type WsAssetCtx, type WsCandle } from '../../shared/hl-ws'
 
-export const hlSocket = new HlSocket()
+const hlSocket = new HlSocket()
 
 /** Subscribe while mounted; `sub` null pauses. The handler may change freely. */
 export function useHlSubscription<T>(sub: HlSub | null, handler: (data: T) => void) {

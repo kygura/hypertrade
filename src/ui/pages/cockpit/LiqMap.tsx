@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { AsyncBody, Badge, DataTable, EmptyBlock, ErrorBlock, HowToRead, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column, type Term } from '../../components'
 import { fmtUsdCompact } from '../../components/branches/format'
 import { fmtAge, fmtDur } from '../../components/strategy/format'
-import { fmtPx } from '../../lib/desk'
+import { fmtPx } from '../../lib/format'
 import { platform, PLATFORM_POLL } from '../../lib/platformApi'
 import { usePoll, type PollState } from '../../lib/poll'
 import { bucketBounds, bucketIndex, type Cluster, type Coverage, type LiqBoardResponse, type LiqBucket, type LiqMap, type LiqMapHistory } from '../../../shared/platform'
@@ -279,7 +279,8 @@ export function LiqBoard({
   )
 }
 
-export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBucket[]; mark: number; coverage: Coverage; coin: string }) {
+// memo: the Cockpit re-renders every second (its `now` tick); the chart only needs to when its own props change.
+export const LiqProfile = memo(function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBucket[]; mark: number; coverage: Coverage; coin: string }) {
   const rows = buckets.map((b) => ({ ...b, label: fmtPx((b.priceLo + b.priceHi) / 2) }))
   const markRow = rows.find((r) => mark >= r.priceLo && mark < r.priceHi) ?? null
   const max = Math.max(1, ...rows.map((r) => r.longUsd + r.shortUsd))
@@ -335,11 +336,11 @@ export function LiqProfile({ buckets, mark, coverage, coin }: { buckets: LiqBuck
       </ResponsiveContainer>
     </figure>
   )
-}
+})
 
 const hhmm = (ts: string) => new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
 
-export function LiqHistory({ history, lo, hi, coin }: { history: LiqMapHistory; lo: number; hi: number; coin: string }) {
+export const LiqHistory = memo(function LiqHistory({ history, lo, hi, coin }: { history: LiqMapHistory; lo: number; hi: number; coin: string }) {
   const wrap = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const [width, setWidth] = useState(0)
@@ -454,4 +455,4 @@ export function LiqHistory({ history, lo, hi, coin }: { history: LiqMapHistory; 
       )}
     </div>
   )
-}
+})

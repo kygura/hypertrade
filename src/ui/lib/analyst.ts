@@ -53,7 +53,7 @@ export interface HistoryTurn {
 /** anthropic, a vendor preset (openai, google, xai, deepseek, moonshot, qwen, openrouter) or openai-compatible. */
 export type AnalystProviderId = string
 export type AnalystEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
-export type AnalystTier = 'frontier' | 'balanced' | 'fast'
+type AnalystTier = 'frontier' | 'balanced' | 'fast'
 
 export interface AnalystCatalogModel {
   id: string
@@ -66,7 +66,7 @@ export interface AnalystCatalogModel {
   defaultEffort?: AnalystEffort
 }
 
-export interface AnalystCatalogProvider {
+interface AnalystCatalogProvider {
   id: AnalystProviderId
   label: string
   /** Short line under the name ("Kimi K3, K2.6"). */

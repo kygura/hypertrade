@@ -4,7 +4,7 @@ import { ClaimLine, type LineClaim } from './ClaimLine'
 // server order (never re-sorted). Footer only when the trace reports dropped
 // lines. No list ever mixes claim lines with untagged prose.
 
-export function droppedText(n: number): string {
+function droppedText(n: number): string {
   return `${n} ${n === 1 ? 'line' : 'lines'} dropped — no source or tag`
 }
 

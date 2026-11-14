@@ -85,7 +85,7 @@ const JournalTagResultSchema = JournalTagResponseSchema.extend({ failed: z.numbe
 export type JournalTagResult = z.infer<typeof JournalTagResultSchema>
 
 /** `GET /research` (SPEC S1). `usedToday`/`limit` may be absent: usage line omitted, box never limit-gated (docs/design/terminal.md §16.6). */
-export const ResearchListResponseSchema = z.object({
+const ResearchListResponseSchema = z.object({
   items: z.array(ResearchResultSchema),
   usedToday: z.number().int().optional(),
   limit: z.number().int().optional(),

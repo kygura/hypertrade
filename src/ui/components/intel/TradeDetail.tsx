@@ -24,7 +24,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 const px = (n: number | null) => (n == null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 6 }))
 
-export function entryStateText(s: Trade['entryState']): string {
+function entryStateText(s: Trade['entryState']): string {
   return `FUNDING z ${fmtSigned(s.fundingZ, 1)} · OI z ${fmtSigned(s.oiZ, 1)} · 24H ${fmtSigned(s.change24hPct, 1, '%')}`
 }
 

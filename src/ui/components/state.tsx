@@ -183,11 +183,10 @@ export function StaleBanner({
 }) {
   if (ageHours(generatedAt) <= thresholdHours) return null
   const hours = Math.floor(ageHours(generatedAt))
-  const stamp = fmtUtcStamp(generatedAt)
   return (
-    <div className="px-3 py-1.5 text-xs uppercase tracking-wider text-amber bg-amber-bg border-b border-border-subtle">
-      {noun} {hours}h old — generated {stamp}
-    </div>
+    <StaleStrip>
+      {noun} {hours}h old — generated {fmtUtcStamp(generatedAt)}
+    </StaleStrip>
   )
 }
 

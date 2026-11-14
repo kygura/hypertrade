@@ -307,7 +307,7 @@ function Swatch({ color, label, line }: { color: string; label: string; line?: b
   )
 }
 
-export function PhaseLegend() {
+function PhaseLegend() {
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-secondary">
       {CYCLE_PHASES.map((p) => (

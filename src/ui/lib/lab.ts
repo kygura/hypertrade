@@ -37,7 +37,6 @@ export type {
   Direction,
   MarketPulse,
   MetricDef,
-  Objective,
   PerfStats,
   PulseAsset,
   Rule,
@@ -77,7 +76,7 @@ export function isAbort(err: unknown): boolean {
 }
 
 /** POST /api/lab/tools/<name> with the args as body → result, or ApiError (with `field` on 400s) / NetworkError. */
-export async function labCall<T>(name: string, args: object = {}, signal?: AbortSignal): Promise<T> {
+async function labCall<T>(name: string, args: object = {}, signal?: AbortSignal): Promise<T> {
   let res: Response
   try {
     res = await fetch(`/api/lab/tools/${encodeURIComponent(name)}`, {
@@ -218,7 +217,7 @@ export function writeLocal(key: string, value: unknown): void {
 const MINUS = '−'
 
 /** Typeset minus for display (U+2212). */
-export function typeset(s: string): string {
+function typeset(s: string): string {
   return s.startsWith('-') ? MINUS + s.slice(1) : s
 }
 
@@ -290,7 +289,7 @@ const TRANSFORM_PREFIX: Record<Transform, string> = {
 }
 
 /** The search's default transforms (the server's own default list: `vchg` is for authored rules, offered but off). */
-export const DEFAULT_TRANSFORMS = ['raw', 'z', 'rsi', 'ma_ratio', 'roc', 'vol', 'pctile'] as const satisfies readonly Transform[]
+const DEFAULT_TRANSFORMS = ['raw', 'z', 'rsi', 'ma_ratio', 'roc', 'vol', 'pctile'] as const satisfies readonly Transform[]
 /** Every transform the TRANSFORMS picker offers. */
 export const LAB_TRANSFORMS = [...DEFAULT_TRANSFORMS, 'vchg'] as const satisfies readonly Transform[]
 
@@ -345,7 +344,7 @@ export function parseFeature(feature: string): ParsedFeature {
   }
 }
 
-export function metricName(metricId: string, metrics: readonly MetricDef[]): string {
+function metricName(metricId: string, metrics: readonly MetricDef[]): string {
   const def = metrics.find((m) => m.id === metricId)
   if (def) return def.name
   const i = metricId.indexOf(':')
@@ -475,7 +474,7 @@ export function sortPulse(assets: readonly PulseAsset[]): PulseAsset[] {
 // ------------------------------------------------------------------ results filters (§10.9 ResultsFilters)
 
 export type StatsWindow = 'is' | 'wf' | 'ho'
-export type RuleKind = 'all' | 'pairs' | 'single'
+type RuleKind = 'all' | 'pairs' | 'single'
 
 export interface ResultsFilterState {
   kind: RuleKind
@@ -693,7 +692,7 @@ export function estimateFeatures(metrics: number, transforms: readonly Transform
 export const EFFORT_TRIALS = [20, 40, 100, 200] as const
 const EFFORT_DEFAULT_HINT: Record<number, string> = { 20: '~10 s', 40: '~25 s', 100: '~60 s', 200: '~2 min' }
 
-export function fmtApproxDuration(ms: number): string {
+function fmtApproxDuration(ms: number): string {
   const s = ms / 1000
   if (s < 90) return `~${Math.max(1, Math.round(s))} s`
   return `~${Math.round(s / 60)} min`

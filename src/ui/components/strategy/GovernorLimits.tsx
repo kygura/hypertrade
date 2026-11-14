@@ -1,7 +1,7 @@
 // Governor limit inputs shared by /governor (global settings, all required) and a
 // strategy's override (blank = inherit). Values stay strings until save.
 
-export const LIMIT_KEYS = ['min_confidence', 'max_notional_usd', 'max_open_intents'] as const
+const LIMIT_KEYS = ['min_confidence', 'max_notional_usd', 'max_open_intents'] as const
 export type LimitKey = (typeof LIMIT_KEYS)[number]
 export type LimitForm = Record<LimitKey, string>
 

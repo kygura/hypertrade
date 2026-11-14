@@ -18,7 +18,7 @@ const METHOD_NOTE: Record<EstimateMethod['key'], (m: EstimateMethod, coin: Cycle
 }
 
 /** Date a run by the selected start. */
-export const runStart = (e: BullEpisode, kind: OnsetKind) => (kind === 'breakout' ? e.breakout.t : e.start)
+const runStart = (e: BullEpisode, kind: OnsetKind) => (kind === 'breakout' ? e.breakout.t : e.start)
 
 const KIND_NOTE: Record<OnsetKind, string> = {
   breakout: 'Run start = where the final doubling into euphoria began: the first close of the run-up that stays above half the price on euphoria’s first day.',

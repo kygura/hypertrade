@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import { DefinitionsResponseSchema } from '../../../shared/research'
-import { ASOF, detail, movesResponse, nullRow, NOW, record, row, stats, triage } from './fixtures'
+import { ASOF, detail, movesResponse, nullRow, NOW, record, row, stats } from './fixtures'
 import {
-  attributionCell, attributionSegments, barScale, barWidth, bestChecklist, budgetLine, chartData, coverageCopy, crowdText, falsifierLine, filterSector, fmtMove, fundingZText, gradeLine, headerLine,
-  investigateFailure, investigateGate, layerChips, liqSigmaText, moveKey, outboundLinks, overBudgetLine, parseSort, parseWindow, progressLine, recordView, sectorOfFactor, sortRows, staleLine,
-  studyLinkFor, tagText, trackLine, triageEmptyLabel, visibleItems,
+  attributionCell, attributionSegments, barScale, barWidth, bestChecklist, chartData, coverageCopy, crowdText, falsifierLine, filterSector, fmtMove, fundingZText, gradeLine, headerLine,
+  investigateFailure, investigateGate, layerChips, liqSigmaText, moveKey, outboundLinks, parseSort, parseWindow, progressLine, sectorOfFactor, sortRows, staleLine,
+  studyLinkFor, tagText, trackLine,
 } from './logic'
 
 const withZ = (coin: string, z: number | null, total = 1, longMet = 0) =>
@@ -121,22 +121,6 @@ describe('header and states', () => {
 })
 
 describe('triage words', () => {
-  test('budget line and the over-budget fact', () => {
-    expect(budgetLine({ surfaced: 6, budget: 8 })).toBe('6 OF 8 TODAY')
-    expect(overBudgetLine(4)).toBe('budget reached: 4 more candidates not shown')
-    expect(overBudgetLine(1)).toBe('budget reached: 1 more candidate not shown')
-    expect(overBudgetLine(0)).toBeNull()
-  })
-  test('empty label states what was watched', () => {
-    expect(triageEmptyLabel({ watched: 38, items: [], surfaced: 0 })).toBe('nothing crossed the bar today — 38 coins watched, residual |z| ≥ 2.5 or a 3/3 checklist surfaces an item')
-  })
-  test('dismissed items leave the queue', () => expect(visibleItems(triage().items).map((i) => i.coin)).toEqual(['HYPE', 'SOL']))
-  test('record views', () => {
-    expect(recordView(null, false).kind).toBe('absent')
-    expect(recordView(null, true).text).toBe('INVESTIGATING…')
-    expect(recordView(record({ status: 'no_cause' }), false).text).toBe('no cause found')
-    expect(recordView(record(), false)).toEqual({ kind: 'claim', text: 'Buyback announcement reported 2h before the move.' })
-  })
   test('INVESTIGATE gate carries the server reason, and the 409 / 429 / 503 words', () => {
     expect(investigateGate('no LLM provider configured', false)).toEqual({ disabled: true, title: 'no LLM provider configured' })
     expect(investigateGate(null, true).disabled).toBe(true)

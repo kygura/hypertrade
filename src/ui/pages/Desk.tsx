@@ -5,12 +5,11 @@ import { Markdown } from '../components/analyst/Markdown'
 import { KillSwitchDialog } from '../components/KillSwitchDialog'
 import { api, ApiError, NetworkError } from '../lib/api'
 import { usePoll } from '../lib/poll'
+import { fmtPx, fmtUsd } from '../lib/format'
 import { useDeskKill } from '../lib/useDeskKill'
 import {
   deskTakeaway,
   emptyRun,
-  fmtPx,
-  fmtUsd,
   reduceRun,
   streamDesk,
   type AgentView,

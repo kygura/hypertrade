@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { record } from '../moves/fixtures'
 import { item, NOW, queueResponse, setupPart } from './fixtures'
-import { agentLine, ageText, defaultSelection, directionOf, emptyLine, emptyWhy, headerLine, queueTakeaway, partLabel, partsLabel, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
+import { agentLine, ageText, defaultSelection, directionOf, emptyLine, emptyWhy, headerLine, queueTakeaway, PART_LABEL, partsLabel, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
 
 describe('queue logic', () => {
   test('headerLine: listed of cap, over cap only when some wait', () => {
@@ -29,7 +29,7 @@ describe('queue logic', () => {
   })
 
   test('labels: MOVES/SETUP/RADAR, the parts joined, one side or mixed or a dash', () => {
-    expect(['moves', 'opportunity', 'radar'].map((s) => partLabel(s as never))).toEqual(['MOVES', 'SETUP', 'RADAR'])
+    expect((['moves', 'opportunity', 'radar'] as const).map((s) => PART_LABEL[s])).toEqual(['MOVES', 'SETUP', 'RADAR'])
     const both = item('SOL', { parts: [item('SOL').parts[0]!, setupPart('SOL')] })
     expect(partsLabel(both)).toBe('MOVES·SETUP')
     expect(directionOf(both)).toBe('long')

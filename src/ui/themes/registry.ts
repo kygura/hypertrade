@@ -73,13 +73,13 @@ function loadFonts(def: ThemeDef) {
 let current: ThemeId = DEFAULT_THEME
 const listeners = new Set<() => void>()
 
-export function themeDef(id: ThemeId): ThemeDef {
+function themeDef(id: ThemeId): ThemeDef {
   return THEMES.find((t) => t.id === id) ?? THEMES.find((t) => t.id === DEFAULT_THEME)!
 }
 
 /** Apply a theme. `persist` is false for the startup pass so a visitor who
  *  never chose keeps following DEFAULT_THEME if it changes. */
-export function applyTheme(id: ThemeId, persist = true) {
+function applyTheme(id: ThemeId, persist = true) {
   const def = themeDef(id)
   current = def.id
   const root = document.documentElement

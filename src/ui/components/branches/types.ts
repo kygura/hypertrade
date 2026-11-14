@@ -5,7 +5,6 @@ import type { SimResult } from '../../../shared/intent'
 import type { BranchConfig } from '../../../shared/types'
 
 export type EquityPoint = SimResult['equity'][number]
-export type BranchStats = SimResult['stats']
 export type MonteCarloResult = NonNullable<SimResult['montecarlo']>
 export type BranchResult = SimResult
 

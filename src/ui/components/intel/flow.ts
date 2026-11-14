@@ -52,7 +52,7 @@ export const BUCKET_BG: Record<ZBucket, string> = {
   neg2: 'var(--color-mom-neg2)',
 }
 
-export const WINDOW_WORD: Record<HeatmapWindow, string> = { review: 'since review', '1h': '1h', '6h': '6h', '24h': '24h' }
+const WINDOW_WORD: Record<HeatmapWindow, string> = { review: 'since review', '1h': '1h', '6h': '6h', '24h': '24h' }
 
 const PCT = new Set<HeatmapMetric>(['price', 'oi_usd', 'vol24h', 'depth_2', 'spread_bps'])
 const RATE = new Set<HeatmapMetric>(['funding', 'basis', 'premium'])
