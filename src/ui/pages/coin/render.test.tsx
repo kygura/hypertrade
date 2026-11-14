@@ -174,6 +174,19 @@ describe('SetupApproveView', () => {
     expect(approveBtn(out)).toContain('disabled=""')
     expect(out).not.toContain('approve blocked')
   })
+  test('an extremes take: no costs, no net edge, no target — facts render with dashes and APPROVE stays enabled', () => {
+    const base = opp()
+    const out = view({
+      ...base,
+      opportunity: { ...base.opportunity, setupKind: 'oi_flush', scoreVersion: 'extremes-1', score: 4.2, netEdgeBps: null, grossEdgeBps: null, costs: null, targetPx: null, invalidation: 'Below 39.9 (kill). Forced unwind.', dedupeKey: 'HYPE|long|oi_flush' },
+      evidence: 'extremes take: severity 4.20 (extremes-1, detector sigmas, not the scanner score)',
+      ticket: { ...base.ticket, targetPx: null },
+    })
+    expect(out).toContain('oi_flush · long · READY')
+    expect(out).toContain('net — · entry 42.180 · stop 39.900 · target — · size $1,500')
+    expect(out).toContain('invalidation: Below 39.9 (kill). Forced unwind.')
+    expect(approveBtn(out)).not.toContain('disabled=""')
+  })
   test('no detail: one reason line, or nothing while loading', () => {
     expect(view(null, 'platform API unreachable')).toContain('SETUP · platform API unreachable')
     expect(view(null)).toBe('')

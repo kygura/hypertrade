@@ -5,6 +5,8 @@ import {
   type LedgerPayload, type Opportunity,
 } from "../../shared/platform.js";
 import { app as apiApp } from "../../../api/index.js";
+import { EXTREMES_SCORE_VERSION, type ExtremeRecord } from "../../shared/extremes.js";
+import { openExtremeOpportunity } from "../extremes/opportunity.js";
 import { requireAuth, signSession } from "../auth.js";
 import { makeService } from "../desk/testkit.js";
 import { dbPlatformContext, type PlatformContext } from "../platform/context.js";
@@ -329,6 +331,32 @@ describe("approve", () => {
     const res = await post(`/opportunities/${o.id}/approve`);
     expect(await res.json()).toMatchObject({ opportunity: { status: "open" } });
     expect(await kit.store.listFills(10)).toHaveLength(1);
+  });
+
+  test("an extremes take (no costs, no target, its own score version): detail parses, evidence says what the score is, approve opens it through the real desk", async () => {
+    const kit = makeService();
+    deps.risk = deskRisk(() => kit.service);
+    const rec: ExtremeRecord = {
+      event: { key: "oi_flush|ETH|long", kind: "oi_flush", coin: "ETH", side: "long", ts: "2026-10-16T11:45:00.000Z", window: "4h", mark: 3950, severity: 4.2, facts: { oiChg: -0.2 }, line: "ETH OI -20% in 4h" },
+      delivery: "woken", verdict: { key: "oi_flush|ETH|long", stance: "take", direction: "long", killPx: 3800, cause: "Forced unwind.", sources: [] },
+      verdictAt: NOW.toISOString(), verdictMark: 4000, opportunityId: null,
+    };
+    const { opportunity: o } = await openExtremeOpportunity(store, rec, NOW.getTime());
+    expect(o).toMatchObject({ status: "ready", costs: null, targetPx: null, scoreVersion: EXTREMES_SCORE_VERSION, liquidityTier: 3, regime: "unknown", tags: ["extreme", "oi_flush", "tier:unknown"] });
+    const d = OpportunityDetailSchema.parse(await (await req(`/opportunities/${o.id}`)).json());
+    expect(d.stats).toBeNull();
+    expect(d.evidence).toBe("extremes take: severity 4.20 (extremes-1, detector sigmas, not the scanner score) \u00b7 no cost breakdown \u00b7 graded in /api/extremes");
+    expect(d.ticket).toMatchObject({ side: "long", entryPx: 4000, stopPx: 3800, targetPx: null });
+    expect(d.ticket.sizeUsd).toBeGreaterThan(0);
+    expect(d.signals).toEqual([{ name: "oiChg", value: -0.2, z: null }]);
+    const feed = FeedResponseSchema.parse(await (await req("/opportunities?status=ready")).json());
+    expect(feed.opportunities.map((r) => [r.setupKind, r.scoreVersion])).toEqual([["oi_flush", EXTREMES_SCORE_VERSION]]);
+    const res = await post(`/opportunities/${o.id}/approve`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ opportunity: { status: "open" } });
+    expect(await kit.store.listFills(10)).toHaveLength(1);
+    const dec = (await store.ledgerFor(o.id)).find((e) => e.kind === "decision");
+    expect(dec?.payload).toMatchObject({ seen: { score: 4.2, scoreVersion: EXTREMES_SCORE_VERSION, costs: null, targetPx: null, stopPx: 3800 } });
   });
 
   test("through the real desk: a fill whose desk record write throws still ends open", async () => {

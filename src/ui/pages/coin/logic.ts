@@ -121,7 +121,7 @@ export const COIN_TERMS: readonly Term[] = [
 ]
 
 export const SETUP_TERMS: readonly Term[] = [
-  ['kind · side · status', 'The scanner rule that fired, the side it would trade, and where the setup stands. Only a READY setup can be decided.'],
+  ['kind · side · status', 'The scanner rule that fired (or the extremes kind a take came from: no target, no costs, stop at its kill level), the side it would trade, and where the setup stands. Only a READY setup can be decided.'],
   ['net … bps', 'Expected edge after fees, slippage and funding, in basis points (1 bp = 0.01%). Once the ledger holds enough graded outcomes for this setup kind it is their mean; until then it is the distance from mark to target minus costs.'],
   ['entry · stop · target', 'The ticket’s prices: where it would enter, where it exits at a loss, where it exits at a gain.'],
   ['size', 'The order’s notional in USD.'],

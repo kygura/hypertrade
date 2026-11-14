@@ -5,10 +5,11 @@ import { VenueBadge } from '../../components/intel/VenueBadge'
 import { fmtUsdCompact } from '../../components/branches/format'
 import { fmtAge } from '../../components/strategy/format'
 import { fmtPx, fmtUsd } from '../../lib/desk'
+import { isExtremesOpportunity } from '../../../shared/extremes'
 import type { OpportunityDetail as Detail, LedgerStats, OpportunityStatus } from '../../../shared/platform'
 import { boardHref } from '../../lib/research'
 import { fmtSigned, fmtSignedPct, isLive, STALE_MID_SEC, STATUS_WORD } from './logic'
-import { EdgeCell, StatusPill } from './Feed'
+import { EdgeCell, scoreCell, StatusPill } from './Feed'
 import { KeyHint } from './Header'
 
 // OpportunityDetail (sections 1–5) + ActionBar / TicketDialog / RejectDialog /
@@ -99,7 +100,9 @@ export const OpportunityDetail = forwardRef<
           {o.coin} · {o.direction.toUpperCase()} · {o.setupKind}
         </h2>
         <StatusPill status={o.status} />
-        <span className="text-sm tabular text-text-secondary">score {o.score.toFixed(2)}</span>
+        <span className="text-sm tabular text-text-secondary" title={scoreCell(o).title}>
+          {isExtremesOpportunity(o) ? 'severity' : 'score'} {o.score.toFixed(2)}
+        </span>
         <span className="text-xs tabular text-text-secondary">{fmtAge(o.createdAt)}</span>
         {!inFeed && <Badge tone="gray">NOT IN FEED</Badge>}
         <span className="ml-auto inline-flex gap-2">

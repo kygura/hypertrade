@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { EXTREMES_SCORE_VERSION } from "../../shared/extremes.js";
+import { DEFAULT_TAKER_FEE_BPS } from "./costs.js";
 import { createOutcomesLoop, skipped } from "./outcomesLoop.js";
+import { groupStats, setupLedgerStats } from "./stats.js";
 import { MemoryPlatformStore } from "./store-memory.js";
 
 const HOUR = 3_600_000;
@@ -15,6 +18,22 @@ async function seed() {
 }
 
 describe("outcomes loop", () => {
+  test("an extremes take is marked like any idea (fee-only: it has no costs) and stays out of the ledger stats, scanner or its own", async () => {
+    const { store, created } = await seed();
+    const { opportunity: x } = await store.upsertOpportunity(
+      { coin: "BTC", direction: "short", setupKind: "oi_flush", tradeType: "directional", score: 4.2, scoreVersion: EXTREMES_SCORE_VERSION, tags: ["extreme", "oi_flush"], liquidityTier: 1, regime: "unknown", invalidation: "Above 110 (kill). x", entryPx: 100, stopPx: 110, targetPx: null, invalidationPx: 110 },
+      { features: { features: {}, inputs: {} }, market: {}, score: 4.2, scoreVersion: EXTREMES_SCORE_VERSION },
+    );
+    await createOutcomesLoop({ store, mid: () => 99, scanMark: () => null, now: () => created + HOUR + 60_000 }).tick();
+    const rows = await store.outcomeRows({});
+    const take = rows.find((r) => r.opportunityId === x.id)!;
+    expect(take).toMatchObject({ setupKind: "oi_flush", scoreVersion: EXTREMES_SCORE_VERSION, horizon: "1h", hasCosts: false });
+    expect(take.netReturn).toBeCloseTo(0.01 - 2 * DEFAULT_TAKER_FEE_BPS / 1e4, 9);
+    // groupStats skips rows without a cost breakdown (P0.13): the take is in no group; the scanner row's group is its own.
+    expect(groupStats(rows).map((g) => g.setupKind)).toEqual(["k"]);
+    expect(setupLedgerStats("oi_flush", rows)).toBeNull();
+  });
+
   test("appends one net-of-costs outcome per horizon, once (funding charged over the horizon)", async () => {
     const { store, o, created } = await seed();
     let t = created + 30 * 60_000;

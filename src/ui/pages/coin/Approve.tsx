@@ -103,7 +103,7 @@ export function SetupApproveView({
         <span className="tabular text-text-secondary">{setupFacts(o, d.ticket, fmtPx)}</span>
       </div>
       {o.invalidation && <p className="text-xs text-text-secondary break-words">invalidation: {o.invalidation}</p>}
-      <HowToRead terms={SETUP_TERMS}>A setup the scanner has for this coin, and the order it would place. Nothing is sent before CONFIRM in the ticket dialog.</HowToRead>
+      <HowToRead terms={SETUP_TERMS}>A setup the scanner (or an extremes take) has for this coin, and the order it would place. Nothing is sent before CONFIRM in the ticket dialog.</HowToRead>
       <div className="flex flex-wrap items-center gap-1.5">
         <Button
           tier="neutral"

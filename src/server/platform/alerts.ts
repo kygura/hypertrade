@@ -1,4 +1,5 @@
 import type { Notifier } from "../desk/notify.js";
+import { isExtremesOpportunity } from "../../shared/extremes.js";
 import type { NoveltyEntry } from "../../shared/platform.js";
 import type { Bus } from "./bus.js";
 import { novelText } from "./novelty.js";
@@ -8,7 +9,8 @@ import type { LoopDef } from "./runtime.js";
 import { envNum } from "./scanner.js";
 
 // Telegram alerts through the desk notifier (SPEC P0.15, P0.16):
-//  - an opportunity reaches `ready` with score >= PLATFORM_PUSH_SCORE: once per opportunity
+//  - an opportunity reaches `ready` with score >= PLATFORM_PUSH_SCORE: once per opportunity. Not an extremes take
+//    (isExtremesOpportunity): its verdict route already sent the one `Take:` push (routes/extremes.ts takeAlert)
 //  - the WS feed goes silent for > 30 s (or never delivers a message in the first 60 s): once;
 //    recovery after 2 consecutive ok checks: once; "silent" alerts are at least 10 min apart
 // Links point at the queue `/queue` (a Ready push at its coin page, `/coin/<coin>`). A failing channel never throws out of here.
@@ -67,7 +69,7 @@ export function createAlerts(deps: {
     /** Wire the ready-opportunity push; returns the unsubscribe. */
     subscribe(bus: Pick<Bus, "subscribe">) {
       return bus.subscribe("opportunity", async ({ opportunity: o, change }) => {
-        if (change !== "status" || o.status !== "ready" || o.score < pushScore || pushed.has(o.id)) return;
+        if (change !== "status" || o.status !== "ready" || o.score < pushScore || pushed.has(o.id) || isExtremesOpportunity(o)) return;
         pushed.add(o.id);
         const edge = o.netEdgeBps == null ? "edge n/a" : `net edge ${o.netEdgeBps.toFixed(0)} bps (${o.edgeBasis})`;
         const rows = await deps.store?.outcomeRows({ setupKind: o.setupKind }).catch(() => null);

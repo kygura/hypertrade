@@ -119,6 +119,12 @@ describe("other sources", () => {
     expect(valid(radarSignal(c))).toMatchObject({ id: "radar:HYPE:2026-11-08-1-HYPE", coin: "HYPE", direction: "long", rule: null, tested: null, scope: "coin", href: null, headline: "ride long · catalyst · mark 33 · kill 30 · +3d +2.1% vs BTC" });
   });
 
+  test("an extremes take: its severity is named as such (its own score version), and no daily definition is guessed", () => {
+    const o = { id: "11111111-1111-4111-8111-111111111112", coin: "WIF", direction: "long", setupKind: "oi_flush", status: "ready", score: 4.2, scoreVersion: "extremes-1", liquidityTier: 3,
+      netEdgeBps: null, edgeBasis: "unvalidated", createdAt: "2026-11-09T10:00:00.000Z" } as Opportunity;
+    expect(valid(opportunitySignal(o))).toMatchObject({ rule: null, definitionId: null, headline: "oi_flush · ready · severity 4.20 (extremes-1) · tier 3" });
+  });
+
   test("ledger stats count only the kind's 24h outcomes scored under the current score version", () => {
     const row = (scoreVersion: string, netReturn: number, day: number, horizon = "24h", setupKind = "crowded_long"): OutcomeRow => ({
       opportunityId: `o${day}${scoreVersion}${horizon}`, setupKind, regime: "trend", scoreVersion, liquidityTier: 1, horizon,

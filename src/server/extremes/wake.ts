@@ -31,7 +31,7 @@ export function wakeText(events: ExtremeEvent[], appUrl: string | null): string 
   );
   const head = `hypertrade extremes: ${events.length} new event(s)`;
   const tail = [
-    "Procedure: docs/EXTREMES.md in the hypertrade repository.",
+    "Procedure: docs/EXTREMES-ROUTINE.md in the hypertrade repository.",
     `Verdict: POST ${base}/api/extremes/verdict, one per key, body {key, stance, direction?, killPx?, cause, sources?} (Authorization: Bearer LAB_API_TOKEN).`,
   ].join("\n");
   const text = [head, ...blocks, tail].join("\n\n");

@@ -13,6 +13,7 @@ import {
   parseAgentRecord,
   parseExtremeRecord,
   parseExtremeVerdict,
+  parseVerdictMark,
   parseMovesRun,
   parseTriageItem,
   patchAgentRecord,
@@ -91,8 +92,11 @@ const toOpportunity = (r: any): Opportunity => ({
   invalidation: r.invalidation, entryPx: r.entry_px, stopPx: r.stop_px, targetPx: r.target_px, invalidationPx: r.invalidation_px,
   createdAt: iso(r.created_at), updatedAt: iso(r.updated_at), statusChangedAt: iso(r.status_changed_at), snoozedUntil: isoOrNull(r.snoozed_until), dedupeKey: r.dedupe_key,
 });
-const toExtreme = (r: any): ExtremeRecord => ({ event: r.event, delivery: r.delivery, verdict: r.verdict ?? null, verdictAt: isoOrNull(r.verdict_at) });
-const EXTREME_COLS = "event, delivery, verdict, verdict_at";
+const toExtreme = (r: any): ExtremeRecord => ({
+  event: r.event, delivery: r.delivery, verdict: r.verdict ?? null, verdictAt: isoOrNull(r.verdict_at),
+  verdictMark: r.verdict_mark == null ? null : Number(r.verdict_mark), opportunityId: r.opportunity_id ?? null,
+});
+const EXTREME_COLS = "event, delivery, verdict, verdict_at, verdict_mark, opportunity_id";
 
 const toEntry = (r: any): LedgerEntry =>
   ({ id: Number(r.id), opportunityId: r.opportunity_id, kind: r.kind, payload: r.payload, createdAt: iso(r.created_at) }) as LedgerEntry;
@@ -139,11 +143,23 @@ export class PgPlatformStore implements PlatformStore {
     return rows.map(toExtreme).sort(byExtremeNewest);
   }
 
-  async setExtremeVerdict(key: string, ts: string, verdict: ExtremeVerdict, at: string) {
+  async setExtremeVerdict(key: string, ts: string, verdict: ExtremeVerdict, at: string, verdictMark: number | null) {
     const v = parseExtremeVerdict(verdict);
+    const m = parseVerdictMark(verdictMark);
     const [r] = await this.db.query<any>(
-      `update extreme_events set verdict = $3::text::jsonb, verdict_at = $4::timestamptz where key = $1 and ts = $2::timestamptz and verdict is null returning ${EXTREME_COLS}`,
-      [key, iso(ts), J(v), iso(at)],
+      `update extreme_events set verdict = $3::text::jsonb, verdict_at = $4::timestamptz, verdict_mark = $5::float8
+       where key = $1 and ts = $2::timestamptz and verdict is null returning ${EXTREME_COLS}`,
+      [key, iso(ts), J(v), iso(at), m],
+    );
+    return r ? toExtreme(r) : null;
+  }
+
+  async setExtremeOpportunity(key: string, ts: string, opportunityId: string) {
+    if (!UUID.test(opportunityId)) throw new Error("invalid opportunity id");
+    const [r] = await this.db.query<any>(
+      `update extreme_events set opportunity_id = $3::uuid
+       where key = $1 and ts = $2::timestamptz and verdict is not null and opportunity_id is null returning ${EXTREME_COLS}`,
+      [key, iso(ts), opportunityId],
     );
     return r ? toExtreme(r) : null;
   }

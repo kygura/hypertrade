@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { EXTREME_KINDS, EXTREMES_SCORE_VERSION } from "../../shared/extremes.js";
 import { Bus } from "./bus.js";
+import { SETUPS } from "./setups.js";
 import { scoreOpportunity } from "./score.js";
 import { clean, createScanner, type Info } from "./scanner.js";
 import { MemoryPlatformStore } from "./store-memory.js";
@@ -164,6 +166,37 @@ describe("scanner tick", () => {
     t += MIN;
     await sc.tick();
     expect((await s.store.getOpportunity(o!.id))!.status).toBe("expired");
+  });
+
+  test("an extremes take on a scanned coin: rescans leave it alone, it outlives the 60 min TTL, it expires after EXTREMES_READY_TTL_H", async () => {
+    let t = NOW + MIN;
+    const sc = createScanner({ store: s.store, info: s.info, now: () => t, bus: s.bus, readyTtlMin: 60, extremesReadyTtlMin: 240 });
+    await sc.tick();
+    const [scanned] = await s.store.listOpportunities({ limit: 1 });
+    const input = {
+      coin: scanned!.coin, direction: scanned!.direction, setupKind: "oi_flush", tradeType: "directional" as const, score: 7, scoreVersion: EXTREMES_SCORE_VERSION,
+      tags: ["extreme", "oi_flush"], liquidityTier: 2 as const, regime: "unknown", invalidation: "Below 1 (kill). x", entryPx: 2, stopPx: 1, targetPx: null, invalidationPx: 1,
+    };
+    const { opportunity: x } = await s.store.upsertOpportunity(input, { features: { features: {}, inputs: {} }, market: {}, score: 7, scoreVersion: EXTREMES_SCORE_VERSION });
+    await s.store.transitionOpportunity(x.id, "new", "calculated", "system");
+    const ready = (await s.store.transitionOpportunity(x.id, "calculated", "ready", "system"))!;
+    s.store.opportunities.get(x.id)!.statusChangedAt = new Date(t - 61 * MIN).toISOString();
+    const before = (await s.store.getOpportunity(x.id))!;
+    for (let i = 0; i < 2; i++) {
+      t += MIN;
+      await sc.tick();
+    }
+    expect(await s.store.getOpportunity(x.id)).toEqual(before); // no rescan refresh, no expiry
+    expect(s.store.ledger.filter((e) => e.opportunityId === x.id).length).toBe(3); // created + two status moves, nothing from the scanner
+    s.store.opportunities.get(x.id)!.statusChangedAt = new Date(t - 241 * MIN).toISOString();
+    t += MIN;
+    await sc.tick();
+    expect((await s.store.getOpportunity(x.id))!.status).toBe("expired");
+    expect(ready.status).toBe("ready");
+  });
+
+  test("setup kinds never collide with extremes kinds (a scanner upsert would otherwise refresh an extremes row)", () => {
+    for (const k of EXTREME_KINDS) expect(SETUPS.map((x) => x.kind)).not.toContain(k);
   });
 
   test("determinism: the score recomputed from the created entry's stored features equals the stored score", async () => {

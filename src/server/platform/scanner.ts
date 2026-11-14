@@ -6,7 +6,7 @@ import { bus as defaultBus, type Bus } from "./bus.js";
 import { ABSORB_SHARE, bookFromL2, costs as costsFor, depthWithin, midOf, netEdge, type Book } from "./costs.js";
 import type { RingPoint } from "./features.js";
 import { evaluateTick, nearMiss } from "./setups.js";
-import { nextAutoStatus, shouldExpire } from "./opportunity.js";
+import { extremesReadyTtlMin, nextAutoStatus, readyTtlMinFor, shouldExpire } from "./opportunity.js";
 import { SCORE_VERSION, scoreOpportunity } from "./score.js";
 import { groupStats } from "./stats.js";
 import { dedupeKey, type OpportunityInput, type PlatformStore, type ScanSnapshot } from "./store.js";
@@ -67,6 +67,8 @@ export interface ScannerDeps {
   edgeMinN?: number;
   cooldownMin?: number;
   readyTtlMin?: number;
+  /** Ready TTL of extremes takes (EXTREMES_READY_TTL_H); the scanner never rescans them, it only expires them. */
+  extremesReadyTtlMin?: number;
   researchScore?: number;
   /** Extra history for the ring at boot (e.g. intel_snapshots); the scan_snapshots row wins on a shared timestamp. */
   seedFrom?: (sinceIso: string) => Promise<ScanSnapshot[]>;
@@ -84,6 +86,7 @@ export function createScanner(deps: ScannerDeps) {
   const topN = deps.costTopN ?? envNum("PLATFORM_COST_TOP_N", 25);
   const edgeMinN = deps.edgeMinN ?? envNum("PLATFORM_EDGE_MIN_N", 30);
   const ttlMin = deps.readyTtlMin ?? envNum("PLATFORM_READY_TTL_MIN", DEFAULT_READY_TTL_MIN);
+  const ttl = { scannerMin: ttlMin, extremesMin: deps.extremesReadyTtlMin ?? extremesReadyTtlMin() };
   const researchScore = deps.researchScore ?? envNum("PLATFORM_RESEARCH_SCORE", 4);
   const intervalSec = envNum("PLATFORM_SCAN_INTERVAL_SEC", 60);
   const cooldownMs = (deps.cooldownMin ?? envNum("PLATFORM_COOLDOWN_MIN", DEFAULT_COOLDOWN_MIN)) * MIN;
@@ -241,7 +244,7 @@ export function createScanner(deps: ScannerDeps) {
     if (cands.length && failed === cands.length) throw lastErr;
 
     for (const o of await store.listOpportunities({ statuses: ["ready"], limit: 500 })) {
-      if (!shouldExpire(o, new Date(t), ttlMin)) continue;
+      if (!shouldExpire(o, new Date(t), readyTtlMinFor(o, ttl))) continue;
       const e = await store.transitionOpportunity(o.id, "ready", "expired", "system");
       if (e) publish(e, "status");
     }

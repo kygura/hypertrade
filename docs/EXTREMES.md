@@ -25,12 +25,15 @@ says `take`. Contracts: `src/shared/extremes.ts`.
    idempotency and a retry starts a second session. With no target, or on any failure, each
    event's facts are pushed through the desk notifier instead.
 4. **Verdict** (`POST /api/extremes/verdict`, bearer `LAB_API_TOKEN`). Body
-   `{key, stance: take|watch|pass, direction?, killPx?, cause, sources?}`. `take` needs a
-   direction and a kill level on the right side of the live mark (422 otherwise) and sends one
-   push linking to the coin page. `watch` and `pass` are stored, no push. One verdict per event.
-   The session never writes an entry, a target or a size.
+   `{key, stance: take|watch|pass, direction?, killPx?, cause, sources?}`. Every stance stamps the live mark
+   (`verdictMark`; null for `watch`/`pass` when no fresh mark exists). `take` needs a direction, a fresh mark (503
+   otherwise) and a kill level on the right side of it (422 otherwise); it becomes an approvable opportunity (below)
+   and sends one push linking to the coin page. `watch` and `pass` are stored, no push. One verdict per event. The
+   session never writes an entry, a target or a size. Response: `{record, mark, pushed, opportunity, opportunityReason}`,
+   `opportunity` = `{id, status, created}` or null.
 
-`GET /api/extremes?days=7` lists events with their delivery and verdict.
+`GET /api/extremes?days=7` (max 30) lists events with delivery, verdict and grade, plus a summary (below):
+`{since, records: [ExtremeRecord & {grade}], summary}`.
 
 ## Research session
 
@@ -54,9 +57,32 @@ are not evaluable on candles and their thresholds are set by analogy to the pric
 Re-tune them with `--source snapshots` once `scan_snapshots` holds 14 days or more. Live
 funding is the predicted rate and is noisier than the settled funding the candle replay reads.
 
-## Not built
+## Approve
 
-- One-tap approve. A platform `Opportunity` needs a score, a scanner feature vector and
-  book-based costs that a verdict does not have; inventing them would be false data. It needs
-  an Opportunity source without a score and a cost step for non-scanner ideas.
-- The mark at verdict time is returned and pushed, not stored, so verdicts are not graded yet.
+A `take` becomes a platform `Opportunity` (`src/server/extremes/opportunity.ts`), shown in the coin page's SETUP block
+and decided there like any ready setup (APPROVE sizes the ticket through the desk governor from the stop; operator
+cookie only, the research bearer cannot approve).
+
+- `setupKind` = the event kind, `direction` = the verdict's, `entryPx` = the verdict mark, `stopPx` = `invalidationPx` =
+  `killPx`, no target, no costs. Tags `extreme`, the kind (and `tier:unknown` when no volume is stored for the coin).
+- `score` = the event severity under `scoreVersion` `extremes-1` (`EXTREMES_SCORE_VERSION`), a different number from
+  the scanner score: the feed labels it SEV, the detail says severity, and it never enters ledger stats or evidence.
+- Liquidity tier from the latest stored 24 h volumes, regime from the coin's last 24 h of snapshots (`unknown` without).
+  The `created` ledger entry holds the event facts and `{mark, verdictMark, killPx, eventTs, window, source}`.
+- Status `new -> calculated -> ready`, actor system. A live row on the same `coin|direction|kind` is reported, not
+  duplicated or refreshed. If creating it fails, the verdict and the push still go through (`opportunity: null`).
+- It expires `EXTREMES_READY_TTL_H` (4) hours after it became ready, in the scanner and in this job (the serverless API
+  has no scanner). The scanner never rescans it. The `Take:` push is the only push: no `Ready:` alert for these rows.
+- The platform outcomes loop marks it at its horizons (fee-only, no costs); `groupStats` skips rows without costs, so
+  it appears in no ledger stats group.
+
+## Grading
+
+Computed at read time from stored `scan_snapshots` (`src/server/extremes/grade.ts`), no job. Each horizon (4h, 24h,
+72h) is `gradeEvent` from the replay re-based at the verdict: signed gross return in the graded direction (a take's
+direction, else the event's fade side) from `verdictMark` at `verdictAt` (else the event mark at its bar) to the first
+stored tick in [start + horizon, + 6 min]; null before the horizon or with no tick there. For a take, `killHit` says
+whether a stored mark reached `killPx` between the start and now (capped at 72 h), and `stopped` caps each horizon's
+return at the kill level once it was crossed (raw otherwise). The summary groups by stance and by kind: n, graded n
+(24 h), `returnStats` per horizon (raw and stopped), kill-hit rate over takes. `bun run extremes score [--days 30]`
+prints it (needs `DATABASE_URL`).

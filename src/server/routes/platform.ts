@@ -4,6 +4,7 @@ import {
   FeedQuerySchema, FeedRowSchema, LedgerStatsQuerySchema, LiqBoardQuerySchema, NoveltyQuerySchema, LiqMapHistoryQuerySchema, LiqMapQuerySchema, RejectBodySchema, SECTORS, SnoozeBodySchema,
   type Costs, type LedgerEntry, type LedgerPayload, type LiqBoardResponse, type NearMissResponse, type Opportunity, type Position, type RiskVerdictSchema, type SectorsResponse,
 } from "../../shared/platform.js";
+import { isExtremesOpportunity } from "../../shared/extremes.js";
 import type { Side } from "../../shared/intel.js";
 import type { ResearchResult } from "../../shared/intel.js";
 import { evaluateRisk, operatorRiskOrder } from "../desk/governor.js";
@@ -11,6 +12,7 @@ import { DeskService } from "../desk/service.js";
 import type { OperatorOrder } from "../desk/types.js";
 import { researchDailyLimit, researchDeps, runResearch, RESEARCH_PROMPT_VERSION, utcDayStart } from "../intel/research.js";
 import { aggregate, coverage } from "../platform/liqmap.js";
+import { extremesReadyTtlMin } from "../platform/opportunity.js";
 import { approveBlockOf, dbPlatformContext, getPlatformContext, placedBy, placing, type PlatformContext } from "../platform/context.js";
 import { Z_KEYS } from "../platform/score.js";
 import { databaseUrl } from "../db.js";
@@ -97,6 +99,9 @@ export function defaultPlatformDeps(): PlatformDeps {
 }
 
 const IdSchema = z.string().uuid();
+/** The evidence line of an extremes take: what its score is, and where it is graded (no scanner ledger, no costs). */
+export const extremesEvidence = (o: Pick<Opportunity, "score" | "scoreVersion">) =>
+  `extremes take: severity ${o.score.toFixed(2)} (${o.scoreVersion}, detector sigmas, not the scanner score) \u00b7 no cost breakdown \u00b7 graded in /api/extremes`;
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const seenAge = (iso: string, now: Date) => Math.max(0, (now.getTime() - Date.parse(iso)) / 1000);
 // score.ts keeps its Z_KEYS private; the name pattern stands in until it exports Z_FEATURE_KEYS.
@@ -162,6 +167,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         opportunities: rows.map((r) => FeedRowSchema.parse(r)),
         scanAgeSec: last ? seenAge(last.toISOString(), deps.now()) : null,
         readyTtlMin: Number(process.env.PLATFORM_READY_TTL_MIN) || 60,
+        extremesReadyTtlMin: extremesReadyTtlMin(),
       });
     })
     .get("/opportunities/:id", async (c) => {
@@ -175,7 +181,9 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         const raw = RAW_OF[name as (typeof Z_KEYS)[number]];
         return { name, value: raw ? num(fv.inputs[raw]) : null, z: value };
       });
-      const stats = setupLedgerStats(opp.setupKind, await store.outcomeRows({ setupKind: opp.setupKind }));
+      // An extremes take is scored by severity under its own version: it has no scanner ledger record to quote.
+      const extreme = isExtremesOpportunity(opp);
+      const stats = extreme ? null : setupLedgerStats(opp.setupKind, await store.outcomeRows({ setupKind: opp.setupKind }));
       const ticket = ticketOf(opp);
       let risk: { before: RiskVerdict; after: RiskVerdict } | null = null;
       if (ticket) risk = await deps.risk.assess(ticket).catch((err) => (console.error("[platform] risk preview failed", err), null));
@@ -188,7 +196,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         signals,
         bearCase: research && (research.status === "found" || research.status === "no_cause") ? research.explanation : null,
         stats,
-        evidence: evidenceLine(stats, opp.edgeBasis),
+        evidence: extreme ? extremesEvidence(opp) : evidenceLine(stats, opp.edgeBasis),
         risk,
         ticket: { side: opp.direction, entryPx: opp.entryPx, stopPx: opp.stopPx, targetPx: opp.targetPx, sizeUsd: size?.notionalUsd && size.notionalUsd > 0 ? size.notionalUsd : null, sizeSource: "governor" as const },
         canApprove: approveBlockedReason == null,

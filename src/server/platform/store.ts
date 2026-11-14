@@ -231,8 +231,10 @@ export interface PlatformStore {
   extremesDeliveredSince(since: string): Promise<number>;
   /** Newest event ts first (then key, code units). `since` is inclusive. */
   listExtremes(q: { since: string; limit: number }): Promise<ExtremeRecord[]>;
-  /** Writes the verdict once (zod-parsed first). Null when (key, ts) is missing or already has a verdict. */
-  setExtremeVerdict(key: string, ts: string, verdict: ExtremeVerdict, at: string): Promise<ExtremeRecord | null>;
+  /** Writes the verdict and the mark stamped with it once (zod-parsed first). Null when (key, ts) is missing or already has a verdict. */
+  setExtremeVerdict(key: string, ts: string, verdict: ExtremeVerdict, at: string, verdictMark: number | null): Promise<ExtremeRecord | null>;
+  /** Links the opportunity a `take` became (028), once. Null when (key, ts) is missing, has no verdict or already has one. */
+  setExtremeOpportunity(key: string, ts: string, opportunityId: string): Promise<ExtremeRecord | null>;
 }
 
 /** Where a novelty pass stands (noveltyLoop.ts): survives a stateless invocation, so the next one resumes. */
@@ -283,11 +285,13 @@ export function patchAgentRecord(r: AgentRecord, patch: AgentRecordPatch): Agent
   return AgentRecordSchema.parse({ ...r, ...patch, id, coin, createdAt, trigger, inputs, horizonHours, promptVersion });
 }
 
-/** The record as stored: zod-parsed, a new record carries no verdict yet. */
+/** The record as stored: zod-parsed, a new record carries no verdict (nor its mark or opportunity) yet. */
 export function parseExtremeRecord(r: ExtremeRecord): ExtremeRecord {
   const row = ExtremeRecordSchema.parse(r);
-  return { ...row, event: { ...row.event, ts: new Date(row.event.ts).toISOString() }, verdict: null, verdictAt: null };
+  return { ...row, event: { ...row.event, ts: new Date(row.event.ts).toISOString() }, verdict: null, verdictAt: null, verdictMark: null, opportunityId: null };
 }
+/** A verdict mark as stored: positive and finite, or null. */
+export const parseVerdictMark = (m: number | null): number | null => ExtremeRecordSchema.shape.verdictMark.parse(m);
 export const parseExtremeVerdict = (v: ExtremeVerdict): ExtremeVerdict => ExtremeVerdictSchema.parse(v);
 /** Store order for extreme records: newest event first, then key (code units). */
 export const byExtremeNewest = (a: ExtremeRecord, b: ExtremeRecord) => Date.parse(b.event.ts) - Date.parse(a.event.ts) || codeUnit(a.event.key, b.event.key);

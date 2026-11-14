@@ -11,6 +11,7 @@ import {
   parseAgentRecord,
   parseExtremeRecord,
   parseExtremeVerdict,
+  parseVerdictMark,
   parseMovesRun,
   parseTriageItem,
   patchAgentRecord,
@@ -88,12 +89,22 @@ export class MemoryPlatformStore implements PlatformStore {
     return [...this.extremes.values()].filter((r) => Date.parse(r.event.ts) >= lo).sort(byExtremeNewest).slice(0, limit).map(clone);
   }
 
-  async setExtremeVerdict(key: string, ts: string, verdict: ExtremeVerdict, at: string) {
+  async setExtremeVerdict(key: string, ts: string, verdict: ExtremeVerdict, at: string, verdictMark: number | null) {
     const v = parseExtremeVerdict(verdict);
+    const m = parseVerdictMark(verdictMark);
     const r = this.extremes.get(`${key}|${iso(ts)}`);
     if (!r || r.verdict) return null;
     r.verdict = clone(v);
     r.verdictAt = iso(at);
+    r.verdictMark = m;
+    return clone(r);
+  }
+
+  async setExtremeOpportunity(key: string, ts: string, opportunityId: string) {
+    if (!UUID.test(opportunityId)) throw new Error("invalid opportunity id");
+    const r = this.extremes.get(`${key}|${iso(ts)}`);
+    if (!r || !r.verdict || r.opportunityId) return null;
+    r.opportunityId = opportunityId.toLowerCase();
     return clone(r);
   }
 

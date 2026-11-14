@@ -1,4 +1,5 @@
 import { fmtDur, fmtSigned } from '../../lib/format'
+import { isExtremesOpportunity } from '../../../shared/extremes'
 import {
   bucketBounds, PRE_DECISION_STATUSES, TERMINAL_STATUSES, type FeedRow, type LiqBucket, type LiqCell, type OpportunityDetail, type OpportunityStatus, type PlatformHealth,
 } from '../../../shared/platform'
@@ -39,13 +40,16 @@ export function filterFeed(rows: readonly FeedRow[], status: StatusFilter, tier:
  * ideas still awaiting a decision, how many of those are READY, the highest-scoring one, and how many have
  * estimated costs above their edge. Null with no live idea.
  */
-export function feedInsight(rows: readonly Pick<FeedRow, 'coin' | 'direction' | 'status' | 'score' | 'netEdgeBps'>[]): string | null {
+export function feedInsight(rows: readonly Pick<FeedRow, 'coin' | 'direction' | 'status' | 'score' | 'scoreVersion' | 'setupKind' | 'netEdgeBps'>[]): string | null {
   const live = rows.filter((r) => isLive(r.status))
   if (live.length === 0) return null
   const ready = live.filter((r) => r.status === 'ready').length
-  const top = live.reduce((a, r) => (r.score > a.score ? r : a))
+  // The highest scanner score: an extremes take's severity is a different number (shared/extremes.ts).
+  const scored = live.filter((r) => !isExtremesOpportunity(r))
+  const top = scored.length ? scored.reduce((a, r) => (r.score > a.score ? r : a)) : null
   const under = live.filter((r) => r.netEdgeBps != null && r.netEdgeBps < 0).length
-  return `${live.length} ${live.length === 1 ? 'idea' : 'ideas'} awaiting a decision, ${ready} READY; highest score ${top.score.toFixed(2)} on ${top.coin} ${top.direction}; estimated costs exceed the edge on ${under}.`
+  const best = top ? ` highest score ${top.score.toFixed(2)} on ${top.coin} ${top.direction};` : ''
+  return `${live.length} ${live.length === 1 ? 'idea' : 'ideas'} awaiting a decision, ${ready} READY;${best} estimated costs exceed the edge on ${under}.`
 }
 
 /** Browser-side stale mark (the StaleStrip): the live price is older than this. */

@@ -329,6 +329,7 @@ function CockpitPage() {
             insight={feedInsight(rows)}
             now={now}
             readyTtlMin={feed.data?.readyTtlMin ?? 60}
+            extremesReadyTtlMin={feed.data?.extremesReadyTtlMin}
             emptySlot={boardSlot}
             snoozedOpen={snoozedOpen}
             onToggleSnoozed={() => setSnoozedOpen((v) => !v)}

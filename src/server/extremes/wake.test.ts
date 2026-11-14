@@ -23,7 +23,7 @@ describe("wakeText", () => {
     expect(t).toContain("key: oi_flush|ETH|long");
     expect(t).toContain("line: SOL OI -21% in 4h while price -7.4%");
     expect(t).toContain(`facts: {"oiChg4h":-0.21,"ret4h":-0.074,"fundingApr":null}`);
-    expect(t).toContain("docs/EXTREMES.md");
+    expect(t).toContain("Procedure: docs/EXTREMES-ROUTINE.md");
     expect(t).toContain("POST https://app.example/api/extremes/verdict");
     expect(t).not.toContain("sk-secret");
   });

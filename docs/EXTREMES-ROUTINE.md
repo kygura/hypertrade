@@ -80,7 +80,7 @@ Work the events strongest first (highest `severity`). At most 4 web searches per
    - `stance`: `take`, `watch` or `pass`. `direction` and `killPx` only with `take`.
    - `cause`: 1 to 600 characters. `sources`: up to 5 URLs you actually read.
    - No other fields. You never set an entry, a target or a size.
-   - 200: stored. On `take` the app pushes it to his phone itself; do not notify him another way.
+   - 200: stored. On `take` the app pushes it to his phone itself and it becomes a setup he can approve or reject on the coin page; it expires after `EXTREMES_READY_TTL_H` (4 h by default). Do not notify him another way.
    - 422: `killPx` is on the wrong side of the live mark. Correct it once from step 2, or downgrade to `watch`.
    - 409: the key already has a verdict. Leave it.
    - 404: unknown key. Copy the key exactly as the payload gives it.

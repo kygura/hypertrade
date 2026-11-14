@@ -63,5 +63,35 @@ export const ExtremeRecordSchema = z.strictObject({
   delivery: z.enum(["woken", "pushed", "none"]),
   verdict: ExtremeVerdictSchema.nullable(),
   verdictAt: z.string().nullable(),
+  /** Live mark stamped when the verdict was stored (every stance; null when no fresh mark was available, and on rows before 028). */
+  verdictMark: z.number().positive().nullable(),
+  /** The platform opportunity a `take` became (approvable on the coin page); null otherwise or when its creation failed. */
+  opportunityId: z.string().uuid().nullable(),
 });
 export type ExtremeRecord = z.infer<typeof ExtremeRecordSchema>;
+
+/**
+ * A `take` becomes a platform Opportunity scored by the event's severity (sigmas of the detector, not the scanner's
+ * materiality score), so it carries its own scoreVersion. Anything that compares or aggregates scores keys off this.
+ */
+export const EXTREMES_SCORE_VERSION = "extremes-1";
+/** A platform opportunity created from an extremes `take` (its own ready TTL, no scanner rescan or Ready push). */
+export const isExtremesOpportunity = (o: { scoreVersion: string; setupKind: string }) =>
+  o.scoreVersion === EXTREMES_SCORE_VERSION && (EXTREME_KINDS as readonly string[]).includes(o.setupKind);
+
+// ─── Grading (src/server/extremes/grade.ts; GET /api/extremes) ───
+
+export const EXTREME_GRADE_HORIZONS = ["4h", "24h", "72h"] as const;
+const Ret = z.number().finite().nullable();
+export const ExtremeGradeSchema = z.strictObject({
+  /** verdict.direction for a take, the event's fade side otherwise. */
+  direction: SideSchema,
+  /** verdictMark when stamped, else the event mark. */
+  entryPx: z.number().positive(),
+  entryBasis: z.enum(["verdict", "event"]),
+  /** Signed return in `direction` from entryPx; null before the horizon or with no stored mark near it. `stopped` caps a take at killPx once crossed (equal to raw otherwise). */
+  horizons: z.array(z.strictObject({ horizon: z.enum(EXTREME_GRADE_HORIZONS), raw: Ret, stopped: Ret })),
+  /** Takes only: the mark crossed killPx between the verdict and now (or the last horizon); null for watch/pass. */
+  killHit: z.boolean().nullable(),
+});
+export type ExtremeGrade = z.infer<typeof ExtremeGradeSchema>;
