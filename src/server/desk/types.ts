@@ -5,10 +5,10 @@ import { z } from "zod";
 // proposal into an order, and it never trusts the model's arithmetic: size,
 // risk in dollars and reward:risk are computed here from live marks.
 
-export const SideSchema = z.enum(["long", "short"]);
+const SideSchema = z.enum(["long", "short"]);
 export type Side = z.infer<typeof SideSchema>;
 
-export const ConfidenceSchema = z.enum(["low", "medium", "high"]);
+const ConfidenceSchema = z.enum(["low", "medium", "high"]);
 export type Confidence = z.infer<typeof ConfidenceSchema>;
 
 const price = z.number().finite().positive();

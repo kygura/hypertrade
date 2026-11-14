@@ -367,9 +367,13 @@ export class PgPlatformStore implements PlatformStore {
   }
 
   async saveNovelty(entries: NoveltyEntry[]) {
-    for (const e of entries) {
-      await this.db.query(`insert into platform_novelty (id, bar_date, entry) values ($1, $2, $3::text::jsonb) on conflict (id) do update set entry = excluded.entry`, [e.id, e.barDate, J(e)]);
-    }
+    if (!entries.length) return;
+    // One statement for the batch; the last entry per id wins, as a row-by-row upsert would leave it.
+    await this.db.query(
+      `insert into platform_novelty (id, bar_date, entry) select e.v->>'id', e.v->>'barDate', e.v from jsonb_array_elements($1::text::jsonb) as e(v)
+       on conflict (id) do update set entry = excluded.entry`,
+      [J([...new Map(entries.map((e) => [e.id, e])).values()])],
+    );
   }
 
   async listNovelty(sinceBar: string) {
@@ -404,9 +408,14 @@ export class PgPlatformStore implements PlatformStore {
   }
 
   async saveSectors(tags: SectorTag[]) {
-    for (const t of tags) {
-      await this.db.query(`insert into market_sectors (coin, sectors, tagged_at) values ($1, $2::text::jsonb, $3::timestamptz) on conflict (coin) do update set sectors = excluded.sectors, tagged_at = excluded.tagged_at`, [t.coin, J(t.sectors), iso(t.taggedAt)]);
-    }
+    if (!tags.length) return;
+    // One statement for the batch; the last tag per coin wins, as a row-by-row upsert would leave it.
+    await this.db.query(
+      `insert into market_sectors (coin, sectors, tagged_at)
+       select x.coin, x.sectors, x.tagged_at from jsonb_to_recordset($1::text::jsonb) as x(coin text, sectors jsonb, tagged_at timestamptz)
+       on conflict (coin) do update set sectors = excluded.sectors, tagged_at = excluded.tagged_at`,
+      [J([...new Map(tags.map((t) => [t.coin, { coin: t.coin, sectors: t.sectors, tagged_at: iso(t.taggedAt) }])).values()])],
+    );
   }
 
   async listSectors() {

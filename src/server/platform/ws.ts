@@ -13,12 +13,11 @@ const UNIVERSE_REFRESH_MS = 3_600_000;
 /** "ws silent" threshold: matches the UI and the critical alert (30 s). */
 const SILENT_MS = 30_000;
 /** The socket is torn down and reopened after this long without a message; it must beat SILENT_MS so a reconnect happens before the alarm (checked every STALE_MS / 2 = 10 s). */
-export const STALE_MS = 20_000;
+const STALE_MS = 20_000;
 /** A mid older than this is not a price (outcomes fall back to the scan mark; the freshness gate refuses). */
 export const MID_MAX_AGE_MS = 30_000;
 
 const Num = z.string().transform(Number).pipe(z.number().finite().positive());
-const Mids = z.record(z.string(), Num);
 const Addr = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
 // Live shape (verified 2026-10-16): {coin, side, px, sz, time, hash, tid, users: [buyer, seller]}.
 const Trade = z.object({ coin: z.string().min(1), px: Num, sz: Num, time: z.number(), users: z.tuple([Addr, Addr]) });
@@ -56,8 +55,6 @@ export interface WsIngestDeps {
   /** Called with both counterparties of each valid trade. */
   onAddresses?: (addresses: string[], tradeTimeMs: number) => void;
 }
-
-export type WsIngest = ReturnType<typeof createWsIngest>;
 
 export function createWsIngest(deps: WsIngestDeps = {}) {
   const now = deps.now ?? Date.now;

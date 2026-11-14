@@ -19,10 +19,10 @@ import type { IntelStore } from "../intel/store.js";
 
 export const COINALYZE_COLLECTOR = "intel:flow:coinalyze";
 export const COINALYZE_BASE_URL = "https://api.coinalyze.net/v1";
-export const PERP_VENUE = "agg";
+const PERP_VENUE = "agg";
 export const CALLS_PER_RUN = 40;
-export const FLOW_BUDGET_MS = 60_000;
-export const DEFAULT_MAX_COINS = 8;
+const FLOW_BUDGET_MS = 60_000;
+const DEFAULT_MAX_COINS = 8;
 const MAX_SYMBOLS = 20;
 const LOOKBACK_MS = 24 * 3_600_000;
 const SKIPPED_NO_KEY = "skipped:no-key";
@@ -42,7 +42,7 @@ interface Endpoint {
 /** ponytail: OHLCV volume is taken as base-asset units × close; if Coinalyze reports it in quote, the level is off by a price factor (z is unaffected). */
 const usd = (v: number | undefined, c: number | undefined) => (v == null || c == null ? undefined : v * c);
 
-export const ENDPOINTS: Endpoint[] = [
+const ENDPOINTS: Endpoint[] = [
   { path: "liquidation-history", market: "perp", usd: true, rows: (b) => [["liq_long_usd", b.l], ["liq_short_usd", b.s]] },
   { path: "ohlcv-history", market: "perp", rows: (b) => [["perp_volume_usd", usd(b.v, b.c)], ["perp_buy_volume_usd", usd(b.bv, b.c)]] },
   { path: "ohlcv-history", market: "spot", rows: (b) => [["spot_volume_usd", usd(b.v, b.c)]] },
@@ -88,7 +88,7 @@ export function symbolMap(futuresRaw: unknown, spotRaw: unknown, coins: string[]
 }
 
 /** Pure: one endpoint's response → flow rows. Unknown symbols, missing fields and non-finite values are dropped. */
-export function parseHistory(raw: unknown, ep: Endpoint, bySymbol: Map<string, { asset: string; venue: string }>): FlowRow[] {
+function parseHistory(raw: unknown, ep: Endpoint, bySymbol: Map<string, { asset: string; venue: string }>): FlowRow[] {
   const rows: FlowRow[] = [];
   for (const s of HistorySchema.parse(raw)) {
     const key = bySymbol.get(s.symbol);

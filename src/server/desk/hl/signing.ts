@@ -70,7 +70,7 @@ export function agentDigest(connectionId: Uint8Array, isMainnet: boolean): Uint8
   return keccak(concat([new Uint8Array([0x19, 0x01]), DOMAIN_SEPARATOR, struct]));
 }
 
-export function signDigest(digest: Uint8Array, privateKey: string): Signature {
+function signDigest(digest: Uint8Array, privateKey: string): Signature {
   const raw = secp256k1.sign(digest, hexToBytes(strip0x(privateKey)), { prehash: false, format: "recovered", lowS: true });
   const sig = secp256k1.Signature.fromBytes(raw, "recovered");
   return { r: `0x${sig.r.toString(16).padStart(64, "0")}`, s: `0x${sig.s.toString(16).padStart(64, "0")}`, v: 27 + (sig.recovery ?? 0) };

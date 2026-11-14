@@ -12,7 +12,7 @@ export interface LoopDef {
   run: () => Promise<void>;
 }
 
-export type LoopHealth = PlatformHealth["loops"][number];
+type LoopHealth = PlatformHealth["loops"][number];
 
 export interface Loops {
   health(): LoopHealth[];

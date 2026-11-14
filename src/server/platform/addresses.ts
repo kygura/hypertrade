@@ -5,7 +5,7 @@ import type { AddressSighting, PlatformStore } from "./store.js";
 // ponytail: the store's address book has no notional column, so px×sz is not
 // kept here; add it to AddressSighting when the crawler priority wants it.
 
-export const FLUSH_MS = 5_000;
+const FLUSH_MS = 5_000;
 
 export interface AddressBuffer {
   add(addresses: readonly string[], seenAtMs: number): void;
