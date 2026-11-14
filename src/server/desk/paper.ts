@@ -14,6 +14,8 @@ export interface ExecutionResult {
   fills: Array<{ side: "buy" | "sell"; size: number; px: number; fee: number; pnl: number }>;
   note?: string;
   error?: string;
+  /** Order requests a venue built (sent, or only built in a dry run), kept with the record. */
+  requests?: unknown[];
 }
 
 export interface Broker {
@@ -29,6 +31,8 @@ export interface Broker {
   settle?(ranges: Map<string, { low: number; high: number }>, now: Date): Promise<Array<{ coin: string; kind: "stop" | "target"; result: ExecutionResult }>>;
   /** Paper only. */
   reset?(): Promise<void>;
+  /** Venue upkeep on each watch tick (Propr: cancel stale or finished ladder rungs); returns lines worth an alert. */
+  housekeep?(now: Date): Promise<string[]>;
 }
 
 interface PaperBook {

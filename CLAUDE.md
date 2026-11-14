@@ -83,6 +83,7 @@ under `docs/`.
 | `docs/LAB.md` | Lab research engine contract: rules, validation, tools, MCP. |
 | `docs/EXTREMES.md` | Extremes alerts: detectors, the 15-min job, the research wake and verdict, calibration. |
 | `docs/EXTREMES-ROUTINE.md` | The research routine's stored prompt (source of truth; the routine holds a copy). |
+| `docs/PROPR.md` | Propr desk venue: dry run by default, ladders, firm rules, housekeeping, env. |
 | `docs/TASKS.md` | Open items, completed-phase summary, pointers to deleted task files in git history. |
 | `docs/fallback-routine.md`, `docs/research/` | Provider-agnostic fallback routine; research notes. |
 | `tui/` | Separate terminal client with its own `SPEC.md`, `DESIGN.md`, `TASKS.md`. |

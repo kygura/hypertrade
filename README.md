@@ -365,6 +365,15 @@ refused; a bad key falls back to paper with a note on the page.
 `DESK_HL_LEVERAGE` (cross, default 3) and `DESK_HL_SLIPPAGE_PCT` (default 1)
 tune the orders.
 
+**Propr** (`propr/`, `docs/PROPR.md`): set `DESK_VENUE=propr`,
+`PROPR_API_KEY` and `PROPR_ACCOUNT_ID` to trade a Propr challenge or funded
+account. It is a dry run unless `PROPR_LIVE=true`: the requests are built and
+kept on the proposal, none are sent. Entries go out as a ladder of rungs from
+the mark toward the stop, each with its own reduce-only stop and target, and
+must pass Propr's firm rules (entries per day, daily and drawdown floors with
+a worst-case buffer) after the governor. The watch tick cancels stale or
+finished rungs. `PROPR_KILL=true` falls back to paper.
+
 **Asking.** `POST /api/desk/ask {question, history?, act?}` streams the run
 (SSE). Asks are analysis-only unless `act` is set ("let the desk act" on the
 page). Each run is bounded: 8 agents, 3 spawns, 10 PM rounds, 6 per
