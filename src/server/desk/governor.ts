@@ -145,7 +145,7 @@ function assess(p: RiskOrder, ctx: GovernorContext, proposalReasons: string[]): 
  * Without notional or leverage the order's own riskPct stands.
  */
 export function operatorRiskOrder(o: OperatorOrder, ctx: GovernorContext): { order: RiskOrder; warnings: string[] } {
-  const base = { coin: ctx.market?.coin ?? o.coin, side: o.side, stop: o.stop, target: o.target, entryLimit: o.entryLimit };
+  const base = { coin: ctx.market?.coin ?? o.coin, side: o.side, stop: o.stop, target: o.target, entryLimit: o.entryLimit, ...(o.leverage != null ? { leverage: o.leverage } : {}) };
   const equity = ctx.account.equityUsd;
   const notional = o.notionalUsd ?? (o.leverage != null ? o.leverage * equity : null);
   if (notional == null) return { order: { ...base, riskPct: o.riskPct! }, warnings: [] };

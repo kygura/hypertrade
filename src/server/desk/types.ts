@@ -28,6 +28,10 @@ export const TradeProposalSchema = z
     riskPct: z.number().min(0.05).max(2),
     /** Worst acceptable entry: the governor rejects when the mark is already past it. */
     entryLimit: price.optional(),
+    /** Propr venue only: the cross leverage for this trade, chosen by conviction: 1x for exposure that is hard to
+     * liquidate, up to 10x for high conviction, capped per coin (10x BTC/ETH/SOL, 2x others). It is also the coin's
+     * notional ceiling for this trade; risk still comes from the stop. Omit it to use the desk's default. */
+    leverage: z.number().min(1).max(10).optional(),
     invalidation: z.string().trim().min(5).max(500),
     evidence: z
       .array(z.object({ source: z.string().trim().min(1).max(80), point: z.string().trim().min(3).max(400) }))
@@ -47,6 +51,8 @@ const RiskOrderSchema = z
     target: price.optional(),
     riskPct: z.number().min(0.05).max(2),
     entryLimit: price.optional(),
+    /** The trade's leverage. On the Propr venue: the cross leverage set before the entry and the coin's notional ceiling. */
+    leverage: z.number().positive().max(50).optional(),
   })
   .strict();
 export type RiskOrder = z.infer<typeof RiskOrderSchema>;
@@ -54,7 +60,8 @@ export type RiskOrder = z.infer<typeof RiskOrderSchema>;
 /**
  * An order the operator confirms through the copilot (preview, then submit).
  * Sized by notionalUsd, else leverage × equity, else riskPct; the governor
- * clips it either way. `leverage` is a sizing request, not the venue's leverage.
+ * clips it either way. `leverage` sizes the order (× equity) when no notional is given; on the Propr venue it is
+ * also the cross leverage the trade runs at.
  */
 export const OperatorOrderSchema = RiskOrderSchema.extend({
   riskPct: RiskOrderSchema.shape.riskPct.optional(),

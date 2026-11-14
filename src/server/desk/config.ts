@@ -28,8 +28,14 @@ export interface ProprVenueConfig {
   live: boolean;
   /** PROPR_STARTING_BALANCE: used when the account does not report its own starting balance. */
   startingBalance?: number;
-  /** Cross leverage ceiling set before a ladder (the governor's leverage caps sit under it). */
+  /** PROPR_MAX_LEVERAGE: account-wide ceiling on the cross leverage the desk sets (1-10, default 10). */
   maxLeverage: number;
+  /** PROPR_LEVERAGE_BY_COIN: per-coin maximum over Propr's rulebook default (10x BTC/ETH/SOL, 2x other perps). */
+  leverageByCoin: Record<string, number>;
+  /** PROPR_DEFAULT_LEVERAGE: leverage for a trade that names none and has no conviction mapping; unset = the smallest that carries the ladder. */
+  defaultLeverage?: number;
+  /** PROPR_LEVERAGE_BY_CONFIDENCE ("low:1,medium:3,high:5"): leverage from the signal's conviction when the trade names none. */
+  leverageByConfidence: Partial<Record<Confidence, number>>;
   ladder: {
     /** Rungs from the mark toward the stop (1 = a single entry). */
     rungs: number;
@@ -139,7 +145,8 @@ export function loadDeskConfig(env: Env = process.env): DeskConfig {
   const venue = resolveVenue(env);
   return {
     ...venue,
-    approval: env.DESK_APPROVAL?.trim().toLowerCase() === "manual" ? "manual" : "auto",
+    // A Propr account is real money: every entry waits for the operator there, whatever DESK_APPROVAL says.
+    approval: venue.venue === "propr" || env.DESK_APPROVAL?.trim().toLowerCase() === "manual" ? "manual" : "auto",
     limits: {
       maxRiskPct: num(env, "DESK_MAX_RISK_PCT", 0.5, 0.05, 2),
       maxOpenRiskPct: num(env, "DESK_MAX_OPEN_RISK_PCT", 2, 0.1, 10),
@@ -211,6 +218,14 @@ function byCoin(v: string | undefined, lo: number, hi: number): Record<string, n
   return out;
 }
 
+/** "low:1, medium:3, high:5" to { low: 1, medium: 3, high: 5 }, each clamped to 1-10; other keys are dropped. */
+function byConfidence(v: string | undefined): Partial<Record<Confidence, number>> {
+  const all = byCoin(v, 1, 10);
+  const out: Partial<Record<Confidence, number>> = {};
+  for (const c of ["low", "medium", "high"] as const) if (all[c.toUpperCase()] != null) out[c] = all[c.toUpperCase()];
+  return out;
+}
+
 function resolvePropr(env: Env): Pick<DeskConfig, "venue" | "propr" | "venueNote"> {
   const flag = env.PROPR_KILL?.trim().toLowerCase();
   if (flag === "true" || flag === "1" || flag === "yes") return { venue: "paper", venueNote: "PROPR_KILL is set; trading paper" };
@@ -234,7 +249,10 @@ function resolvePropr(env: Env): Pick<DeskConfig, "venue" | "propr" | "venueNote
       baseUrl,
       live: env.PROPR_LIVE?.trim() === "true",
       startingBalance: Number.isFinite(start) && start > 0 ? start : undefined,
-      maxLeverage: num(env, "PROPR_MAX_LEVERAGE", 3, 1, 10),
+      maxLeverage: num(env, "PROPR_MAX_LEVERAGE", 10, 1, 10),
+      leverageByCoin: byCoin(env.PROPR_LEVERAGE_BY_COIN, 1, 10),
+      defaultLeverage: env.PROPR_DEFAULT_LEVERAGE?.trim() ? clampInt(num(env, "PROPR_DEFAULT_LEVERAGE", 1, 1, 10), 1, 10) : undefined,
+      leverageByConfidence: byConfidence(env.PROPR_LEVERAGE_BY_CONFIDENCE),
       ladder: {
         rungs: clampInt(num(env, "PROPR_LADDER_RUNGS", 5, 1, 20), 1, 20),
         rungsByCoin: byCoin(env.PROPR_LADDER_RUNGS_BY_COIN, 1, 20),

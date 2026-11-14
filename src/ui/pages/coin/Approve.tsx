@@ -6,6 +6,7 @@ import type { DeskStatus } from '../../lib/desk'
 import { fmtPx } from '../../lib/format'
 import { actionFailure, platform, PLATFORM_POLL } from '../../lib/platformApi'
 import { usePoll } from '../../lib/poll'
+import { venueOf, type DeskVenue } from '../../components/intel/order'
 import { canApprove, canReject, RejectDialog, TicketDialog } from '../cockpit/Detail'
 import { approveBlockedReason, STATUS_WORD } from '../cockpit/logic'
 import { SETUP_TERMS, setupFacts } from './logic'
@@ -14,7 +15,7 @@ import { SETUP_TERMS, setupFacts } from './logic'
 // The same gates as the feed: the server's freshness gate (canApprove), then the governor preview; APPROVE
 // opens the ticket dialog and only CONFIRM posts. An approve that cannot succeed is disabled with its reason.
 
-type Venue = 'paper' | 'testnet' | null
+type Venue = DeskVenue | null
 type Dialog = 'approve' | 'reject' | null
 
 /** Container: the opportunity detail (15 s) and the desk venue (30 s), and the two POSTs. */
@@ -50,7 +51,7 @@ export function SetupApprove({ oppId, onDecided }: { oppId: string; onDecided?: 
     }
   }
   const d = detail.data
-  const venue: Venue = desk.data ? (desk.data.live ? 'testnet' : 'paper') : null
+  const venue: Venue = desk.data ? venueOf(desk.data.venue) : null
   return (
     <>
       <SetupApproveView

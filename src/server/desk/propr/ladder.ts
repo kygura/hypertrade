@@ -1,7 +1,7 @@
 import type { ProprVenueConfig } from "../config.js";
 import { floorToDecimals } from "../governor.js";
 import { roundPerpPx } from "../hl/wire.js";
-import type { RiskOrder, Sizing } from "../types.js";
+import type { Confidence, RiskOrder, Sizing } from "../types.js";
 import type { ProprSnapshot } from "./account.js";
 import type { ProprOrderRequest } from "./client.js";
 import { ladderId } from "./ids.js";
@@ -53,6 +53,32 @@ export function ladderPrices(entry: number, edge: number, n: number, szDecimals:
 
 export const rungsFor = (cfg: ProprVenueConfig["ladder"], coin: string) => cfg.rungsByCoin[coin] ?? cfg.rungs;
 
+/** Propr's rulebook: up to 10x on BTC, ETH and SOL, 2x on other crypto perps. PROPR_LEVERAGE_BY_COIN overrides a coin. */
+const MAJORS = new Set(["BTC", "ETH", "SOL"]);
+type LeverageCfg = Pick<ProprVenueConfig, "maxLeverage" | "leverageByCoin" | "defaultLeverage" | "leverageByConfidence">;
+
+export function coinMaxLeverage(cfg: Pick<ProprVenueConfig, "maxLeverage" | "leverageByCoin">, coin: string): number {
+  return Math.max(1, Math.min(cfg.maxLeverage, cfg.leverageByCoin[coin] ?? (MAJORS.has(coin) ? 10 : 2)));
+}
+
+/**
+ * The cross leverage a trade runs at, first that applies: the trade's own choice (the operator's, or the model's from
+ * its conviction), the signal's confidence through PROPR_LEVERAGE_BY_CONFIDENCE, PROPR_DEFAULT_LEVERAGE. 1x is exposure
+ * that is hard to liquidate; the coin's maximum is for a high-conviction trade. Whole and capped, with a warning when
+ * capped. Null: nothing set, the venue uses the smallest leverage that carries the ladder.
+ */
+export function tradeLeverage(cfg: LeverageCfg, coin: string, chosen: number | undefined, confidence?: Confidence): { leverage: number | null; max: number; warning?: string } {
+  const max = coinMaxLeverage(cfg, coin);
+  if (chosen == null) {
+    const fallback = (confidence ? cfg.leverageByConfidence[confidence] : undefined) ?? cfg.defaultLeverage;
+    return fallback == null ? { leverage: null, max } : { leverage: Math.min(max, fallback), max };
+  }
+  const lev = Math.min(max, Math.max(1, Math.round(chosen)));
+  if (chosen > max) return { leverage: lev, max, warning: `leverage ${chosen}x on ${coin} capped at Propr's ${max}x` };
+  if (lev !== chosen) return { leverage: lev, max, warning: `leverage ${chosen}x rounded to ${lev}x (Propr takes whole numbers)` };
+  return { leverage: lev, max };
+}
+
 /**
  * Splits a governor-sized order into equal-quantity rungs from the mark toward the stop. The quantity per rung is the
  * smaller of the governor's risk spread over the rungs' distances and its notional spread over their prices, floored
@@ -100,6 +126,7 @@ export function openStopRisk(s: ProprSnapshot): number {
  */
 export function firmReasons(s: ProprSnapshot, plan: LadderPlan, f: ProprVenueConfig["firm"]): string[] {
   const out: string[] = [];
+  if (s.perpRadarOrders > 0) out.push(`perp-radar's executor has ${s.perpRadarOrders} open order${s.perpRadarOrders === 1 ? "" : "s"} on this account: one executor per account`);
   if (s.positions.some((p) => p.stop == null)) out.push("an open position has no full stop: no new trades until it does");
   if (s.pendingRisk === Infinity) out.push("a resting ladder rung has no stop");
   if (s.working.includes(plan.coin)) out.push(`entry orders on ${plan.coin} are already resting`);

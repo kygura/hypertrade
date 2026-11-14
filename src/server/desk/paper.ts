@@ -1,5 +1,5 @@
 import type { MarketRef } from "./governor.js";
-import type { Sizing, RiskOrder, AccountState, Position } from "./types.js";
+import type { Sizing, RiskOrder, AccountState, Position, Confidence } from "./types.js";
 import type { DeskStore, PaperFill, PaperPosition } from "./store.js";
 
 // The paper broker: fills at the live mark plus slippage and the taker fee,
@@ -16,6 +16,15 @@ export interface ExecutionResult {
   error?: string;
   /** Order requests a venue built (sent, or only built in a dry run), kept with the record. */
   requests?: unknown[];
+  /** Nothing was sent: the venue only built the requests (Propr without PROPR_LIVE). */
+  dryRun?: boolean;
+}
+
+/** One thing a venue's upkeep found. `key` names the condition, so the watch alerts it once, not every tick. */
+export interface UpkeepNote {
+  level: "info" | "warn" | "critical";
+  key: string;
+  text: string;
 }
 
 export interface Broker {
@@ -31,8 +40,12 @@ export interface Broker {
   settle?(ranges: Map<string, { low: number; high: number }>, now: Date): Promise<Array<{ coin: string; kind: "stop" | "target"; result: ExecutionResult }>>;
   /** Paper only. */
   reset?(): Promise<void>;
-  /** Venue upkeep on each watch tick (Propr: cancel stale or finished ladder rungs); returns lines worth an alert. */
-  housekeep?(now: Date): Promise<string[]>;
+  /** Venue upkeep on each watch tick (Propr: cancel stale or finished ladder rungs, flag unprotected positions). */
+  housekeep?(now: Date): Promise<UpkeepNote[]>;
+  /** Venues where a trade picks its own leverage (Propr): the leverage it runs at and the coin's maximum. */
+  tradeLeverage?(coin: string, chosen: number | undefined, confidence?: Confidence): { leverage: number | null; max: number; warning?: string };
+  /** Entries always wait for the operator on this venue (real money), whatever the approval mode says. */
+  readonly manualOnly?: boolean;
 }
 
 interface PaperBook {

@@ -122,7 +122,7 @@ const lim = (limits: DeskStatus['limits'] | undefined, key: string, unit = '') =
 /** Header strip and governor limits, with the limit values the server reports. */
 function deskTerms(limits: DeskStatus['limits'] | undefined): Term[] {
   return [
-    ['PAPER / HL-TESTNET', 'Where orders go. Paper is a simulated book filled at the live Hyperliquid mark plus slippage and the taker fee. HL-TESTNET sends real orders to the Hyperliquid test network. Mainnet is not supported.'],
+    ['PAPER / HL-TESTNET / PROPR', 'Where orders go. Paper is a simulated book filled at the live Hyperliquid mark plus slippage and the taker fee. HL-TESTNET sends real orders to the Hyperliquid test network. PROPR trades a Propr challenge or funded account (Hyperliquid mainnet through Propr) as laddered entries, every entry waiting for your approval; it is a dry run that sends nothing unless PROPR_LIVE is on. Direct mainnet is not supported.'],
     ['EQUITY', 'Account value in USD: cash plus unrealized profit or loss on open positions.'],
     ['DAY PNL', 'Change in equity since 00:00 UTC, realized plus unrealized, in USD.'],
     ['MODEL', 'The language model that runs the portfolio manager, then the one for the specialists if it differs.'],
@@ -225,8 +225,13 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
       </PanelBody>
       {status?.live && (
         <div className="px-3 pb-2 text-xs text-amber break-all">
-          Live orders on Hyperliquid testnet for {status.venueAccount}. Stops and targets rest on the exchange.
+          {status.venue === 'propr'
+            ? `Live orders on the Propr account ${status.venueAccount} (Hyperliquid mainnet through Propr). Each ladder rung carries its own stop on the exchange.`
+            : `Live orders on Hyperliquid testnet for ${status.venueAccount}. Stops and targets rest on the exchange.`}
         </div>
+      )}
+      {status && !status.live && status.venue === 'propr' && (
+        <div className="px-3 pb-2 text-xs text-text-muted break-all">Propr dry run for {status.venueAccount}: approved entries are built and recorded, nothing is sent.</div>
       )}
       {status?.venueNote && <div className="px-3 pb-2 text-xs text-red-text">{status.venueNote}.</div>}
       {killSwitch.open && (

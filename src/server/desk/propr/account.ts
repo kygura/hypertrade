@@ -1,6 +1,6 @@
 import type { AccountState, Position } from "../types.js";
 import type { ProprClient, Row } from "./client.js";
-import { isLadderId } from "./ids.js";
+import { isLadderId, isPerpRadarId } from "./ids.js";
 
 // Reading a Propr account into what the desk and the firm guards need. Pure parsers over Propr's raw rows, plus one
 // read that fetches them. Ported from perp-radar's executor (readAccount, readPositions, pendingLadderRisk,
@@ -33,6 +33,8 @@ export interface ProprSnapshot {
   pendingRisk: number;
   /** Coins with an entry order still resting. */
   working: string[];
+  /** Open orders perp-radar's executor placed: the desk does not trade an account another executor is working. */
+  perpRadarOrders: number;
   orders: Row[];
 }
 
@@ -47,6 +49,11 @@ const firstNum = (o: Row | undefined, keys: string[]) => {
   }
   return null;
 };
+/** Average fill price of an order row (Propr's field is averageFillPrice; older answers used averagePrice). */
+export const fillPx = (o: Row | undefined) => firstNum(o, ["averageFillPrice", "averagePrice", "avgPrice"]);
+/** Quantity filled so far (Propr sends "0" while an order is pending). */
+export const filledQty = (o: Row | undefined) => Math.abs(num(o?.cumulativeQuantity) ?? 0);
+
 export const utcMidnight = (now: number) => {
   const d = new Date(now);
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
@@ -128,10 +135,12 @@ export function snapshotFrom(input: { accountId: string; attempt: Row; account: 
   const equity = Math.min(...[firstNum(acct, ["marginBalance", "equity"]), balance + upnl + iso].filter((x): x is number => x != null));
   const challenge = (attempt.challenge ?? {}) as Row;
   const detected = firstNum(attempt, ["initialBalance", "startingBalance", "accountSize"]) ?? firstNum(challenge, ["initialBalance", "startingBalance", "accountSize"]);
-  if (detected == null && input.startingBalanceEnv == null) throw new Error("starting balance unknown: set PROPR_STARTING_BALANCE");
+  const startingBalance = Math.max(detected ?? 0, input.startingBalanceEnv ?? 0);
+  if (!(startingBalance > 0)) throw new Error("starting balance unknown: set PROPR_STARTING_BALANCE");
+  if (!(balance > 0) || !(equity > 0)) throw new Error("account figures unreadable (balance or equity is not positive)");
   return {
     accountId: input.accountId,
-    startingBalance: Math.max(detected ?? 0, input.startingBalanceEnv ?? 0),
+    startingBalance,
     balance,
     equity,
     dayStartBalance: estimateDayStart(balance, acct, input.trades, input.now),
@@ -139,16 +148,17 @@ export function snapshotFrom(input: { accountId: string; attempt: Row; account: 
     entriesToday: countEntriesToday(input.orders, input.now),
     pendingRisk: pendingLadderRisk(input.orders),
     working: [...new Set(input.orders.filter((o) => isEntry(o) && isOpen(o)).map((o) => String(o.base ?? o.asset)))],
+    perpRadarOrders: input.orders.filter((o) => isOpen(o) && isPerpRadarId(o.intentId)).length,
     orders: input.orders,
   };
 }
 
-/** One read of the configured account; it must be an active challenge or funded account. */
+/** One read of the configured account; it must be an active challenge or a passed (funded) one. */
 export async function readSnapshot(client: ProprClient, accountId: string, startingBalanceEnv: number | undefined, now: number): Promise<ProprSnapshot> {
-  const attempts = await client.activeAttempts();
+  const attempts = await client.attempts();
   const attempt = attempts.find((a) => a.accountId === accountId);
   if (!attempt) throw new Error("PROPR_ACCOUNT_ID is not an active challenge or funded account");
-  const [account, positions, orders, trades] = await Promise.all([client.account(accountId), client.positions(accountId), client.orders(accountId), client.trades(accountId)]);
+  const [account, positions, orders, trades] = await Promise.all([client.account(accountId), client.positions(accountId), client.orders(accountId), client.trades(accountId, utcMidnight(now))]);
   return snapshotFrom({ accountId, attempt, account, positions, orders, trades, startingBalanceEnv, now });
 }
 

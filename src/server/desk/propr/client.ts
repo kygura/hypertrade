@@ -47,8 +47,12 @@ export type ProprOrderRequest = {
 };
 
 export type Row = Record<string, unknown>;
-type Rows = { data?: Row[] } | Row[];
+type Rows = { data?: Row[]; total?: number } | Row[];
 const rows = (b: Rows): Row[] => (Array.isArray(b) ? b : (b.data ?? []));
+const PAGE = 100;
+const MAX_PAGES = 10;
+/** Challenge attempts that can trade: active challenges and passed (funded) ones. */
+const TRADABLE = new Set(["active", "passed", "funded"]);
 
 export class ProprClient {
   readonly #key: string;
@@ -72,7 +76,8 @@ export class ProprClient {
     if (opts.auth !== false) headers["x-api-key"] = this.#key;
     let r: Response;
     try {
-      r = await this.fetchFn(url, { method, headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body), signal: AbortSignal.timeout(TIMEOUT_MS) });
+      // redirect "error": a redirect would resend the key to wherever it points.
+      r = await this.fetchFn(url, { method, headers, redirect: "error", body: opts.body === undefined ? undefined : JSON.stringify(opts.body), signal: AbortSignal.timeout(TIMEOUT_MS) });
     } catch (e) {
       throw new ProprError(0, null, scrub(`${method} ${path}: ${e instanceof Error ? e.message : String(e)}`));
     }
@@ -89,21 +94,40 @@ export class ProprClient {
     return (await r.json()) as T;
   }
 
-  async activeAttempts(): Promise<Row[]> {
-    return rows(await this.req<Rows>("GET", "/challenge-attempts", { params: { status: "active", limit: 20 } }));
+  /**
+   * Every page of a list (limit/offset, Propr's default page is 20): until a short page, the reported total, or
+   * `until` says the rest is older than needed (lists come newest first). At most ten pages of a hundred.
+   */
+  private async all(path: string, params: Record<string, string | number | undefined> = {}, until?: (r: Row) => boolean): Promise<Row[]> {
+    const out: Row[] = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const b = await this.req<Rows>("GET", path, { params: { ...params, limit: PAGE, offset: page * PAGE } });
+      const got = rows(b);
+      out.push(...got);
+      const total = Array.isArray(b) ? undefined : b.total;
+      if (got.length < PAGE || (total != null && out.length >= total) || (until && got.length && until(got[got.length - 1]!))) break;
+    }
+    return out;
+  }
+
+  /** Challenge attempts that can trade (active, or passed and funded). */
+  async attempts(): Promise<Row[]> {
+    return (await this.all("/challenge-attempts")).filter((a) => TRADABLE.has(String(a.status)));
   }
   /** Balance, margin balance, unrealized P&L (the SDK's get_account). */
   account(accountId: string): Promise<Row> {
     return this.req<Row>("GET", `/accounts/${encodeURIComponent(accountId)}`);
   }
-  async positions(accountId: string): Promise<Row[]> {
-    return rows(await this.req<Rows>("GET", `/accounts/${encodeURIComponent(accountId)}/positions`, { params: { status: "open", limit: 100 } }));
+  positions(accountId: string): Promise<Row[]> {
+    return this.all(`/accounts/${encodeURIComponent(accountId)}/positions`, { status: "open" });
   }
-  async orders(accountId: string): Promise<Row[]> {
-    return rows(await this.req<Rows>("GET", `/accounts/${encodeURIComponent(accountId)}/orders`, { params: { limit: 100 } }));
+  /** Every order (open ones can be days old: a held position's stop), up to a thousand. */
+  orders(accountId: string): Promise<Row[]> {
+    return this.all(`/accounts/${encodeURIComponent(accountId)}/orders`);
   }
-  async trades(accountId: string): Promise<Row[]> {
-    return rows(await this.req<Rows>("GET", `/accounts/${encodeURIComponent(accountId)}/trades`, { params: { limit: 100 } }));
+  /** Trades back to `since` (the day's realized P&L). */
+  trades(accountId: string, since: number): Promise<Row[]> {
+    return this.all(`/accounts/${encodeURIComponent(accountId)}/trades`, {}, (r) => Date.parse(String(r.executedAt ?? r.createdAt ?? "")) < since);
   }
   marginConfig(accountId: string, asset: string) {
     return this.req<{ configId: string; leverage: string; marginMode: string }>("GET", `/accounts/${encodeURIComponent(accountId)}/margin-config/${encodeURIComponent(asset)}`);
@@ -123,7 +147,8 @@ export class ProprClient {
       throw e;
     }
   }
-  /** Several orders need a top-level orderGroupId; one entry per request. */
+  /** Several orders go in one request under a top-level orderGroupId (perp-radar's executor sends it; Propr's published
+   * schema does not list it, so `bun run propr:check` is the place to confirm it before going live). One entry per request. */
   async createOrders(accountId: string, body: { orderGroupId?: string; orders: ProprOrderRequest[] }): Promise<Row[]> {
     return rows(await this.req<Rows>("POST", `/accounts/${encodeURIComponent(accountId)}/orders`, { body }));
   }

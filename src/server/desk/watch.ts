@@ -1,6 +1,7 @@
 import { fmtPx } from "../../shared/format.js";
 import { runDesk, type ProviderFactory } from "./agents.js";
 import { HOUR, evaluateTriggers, type Trigger } from "./triggers.js";
+import type { UpkeepNote } from "./paper.js";
 import type { DeskService } from "./service.js";
 
 // The watch tick: cheap, deterministic, and frequent (every 15 minutes from
@@ -29,7 +30,12 @@ export interface WatchState {
   /** Recent marks per coin, [epoch ms, price], oldest first. */
   marks?: Record<string, Array<[number, number]>>;
   dayLossAlerted?: string;
+  /** Venue upkeep conditions already alerted: key → when (epoch ms). A key gone from a tick is dropped, so it alerts again if it returns. */
+  upkeep?: Record<string, number>;
 }
+
+/** A critical upkeep condition (an unprotected position) repeats this often while it lasts; others alert once. */
+const UPKEEP_REPEAT_MS = HOUR;
 
 export interface TickResult {
   at: string;
@@ -81,10 +87,25 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
     }
   }
 
-  // Venue upkeep (Propr: stale or finished ladder rungs are cancelled). Never fatal to the tick.
+  // Venue upkeep (Propr: stale or finished ladder rungs are cancelled, unprotected positions flagged). Never fatal to
+  // the tick. Each condition alerts once (a critical one again every hour while it lasts), not every minute.
   if (service.broker.housekeep) {
-    const lines = await service.broker.housekeep(now).catch((err) => [`housekeeping failed: ${err instanceof Error ? err.message : String(err)}`]);
-    if (lines.length) await service.alert("info", `${service.broker.venue} housekeeping`, lines.join("\n"));
+    const notes = await service.broker.housekeep(now).catch((err): UpkeepNote[] => [{ level: "warn", key: "upkeep-failed", text: `housekeeping failed: ${err instanceof Error ? err.message : String(err)}` }]);
+    const seen = state.upkeep ?? {};
+    const next: Record<string, number> = {};
+    const due: UpkeepNote[] = [];
+    for (const n of notes) {
+      const last = seen[n.key];
+      if (last == null || (n.level === "critical" && t - last >= UPKEEP_REPEAT_MS)) {
+        due.push(n);
+        next[n.key] = t;
+      } else next[n.key] = last;
+    }
+    state.upkeep = next;
+    for (const level of ["critical", "warn", "info"] as const) {
+      const lines = due.filter((n) => n.level === level).map((n) => n.text);
+      if (lines.length) await service.alert(level, `${service.broker.venue} ${level === "info" ? "housekeeping" : "account check"}`, lines.join("\n"));
+    }
   }
 
   const account = await service.broker.account(marks, now);
