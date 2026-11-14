@@ -81,6 +81,7 @@ under `docs/`.
 | `docs/design/terminal.md`, `docs/design/chat.md` | Binding briefs for the Intel Terminal/Cockpit and the Paths chat; extend the main design doc. |
 | `docs/FEATURES.md` | Signal-evidence ideas (phase 9) and what is in scope. |
 | `docs/LAB.md` | Lab research engine contract: rules, validation, tools, MCP. |
+| `docs/EXTREMES.md` | Extremes alerts: detectors, the 15-min job, the research wake and verdict, calibration. |
 | `docs/TASKS.md` | Open items, completed-phase summary, pointers to deleted task files in git history. |
 | `docs/fallback-routine.md`, `docs/research/` | Provider-agnostic fallback routine; research notes. |
 | `tui/` | Separate terminal client with its own `SPEC.md`, `DESIGN.md`, `TASKS.md`. |
