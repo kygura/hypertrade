@@ -122,7 +122,7 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
           model: pm ? { provider: pm.id, label: pm.label ?? pm.id, pm: pm.model, scouts: specialist?.model ?? pm.model, scoutProvider: specialist?.id ?? pm.id, webSearch: hasWebSearch(pm) } : null,
           venue: s.broker.venue,
           live: s.broker.live,
-          venueAccount: s.config.hl?.account ?? null,
+          venueAccount: s.config.hl?.account ?? s.config.propr?.accountId ?? null,
           venueNote: s.config.venueNote ?? null,
           approval,
           killSwitch: kill,
