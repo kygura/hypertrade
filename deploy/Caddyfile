@@ -1,0 +1,6 @@
+# HTTPS in front of the app for the plain compose setup (deploy/compose.yml, profile tls). Caddy gets and renews
+# the Let's Encrypt certificate for $DOMAIN by itself; the DNS A record must point here first.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8787
+}
