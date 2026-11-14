@@ -104,7 +104,7 @@ export function overflowMark(v: number, min: number, max: number): string {
 /** A lens input older than its lens' freshest input by more than this is flagged. */
 export const INPUT_STALE_MS = 7 * DAY_MS
 /** The payload moves once a day; past this age it is shown stale even if the server says fresh. */
-export const VECTOR_STALE_MS = 3 * DAY_MS
+const VECTOR_STALE_MS = 3 * DAY_MS
 
 /** Stale when the server says so or `asOf` is older than three days. */
 export function isVectorStale(v: Pick<VectorResponse, 'stale' | 'asOf'>, now: number): boolean {

@@ -30,7 +30,6 @@ export type { TriageScan };
 let latest: TriageScan | null = null;
 /** The latest pass of this process; null before the first one. The routes prefer the stored pass (stored.ts). */
 export const latestTriageScan = () => latest;
-export const setLatestTriageScan = (s: TriageScan | null) => void (latest = s);
 
 export interface AgentLoopDeps {
   store: PlatformStore;
@@ -103,9 +102,13 @@ export function createAgentLoop(deps: AgentLoopDeps) {
   async function autoInvestigateStep(t: Date, tr: Triaged | null): Promise<{ investigated: string | null; investigation: string | null }> {
     if (!tr) return { investigated: null, investigation: "no fresh moves run to triage" };
     const since = utcDayStart(t).toISOString();
-    const runs = await store.agentRunsSince(since);
+    const [runs, items, recordsToday] = await Promise.all([
+      store.agentRunsSince(since),
+      store.listTriage(tr.day),
+      store.listAgentRecords({ since: new Date(t.getTime() - AUTO_REPEAT_MS).toISOString(), limit: 1000 }),
+    ]);
     const room = deps.agent.dailyCap - runs - deps.agent.inflight.size;
-    const coins = autoInvestigate({ items: await store.listTriage(tr.day), candidates: tr.candidates, recordsToday: await store.listAgentRecords({ since: new Date(t.getTime() - AUTO_REPEAT_MS).toISOString(), limit: 1000 }), room }).slice(0, deps.autoPerTick ?? 1);
+    const coins = autoInvestigate({ items, candidates: tr.candidates, recordsToday, room }).slice(0, deps.autoPerTick ?? 1);
     if (!coins.length) {
       const unknown = tr.candidates.filter((c) => c.byResidual && c.newsUnknown).length;
       const why = room <= 0 ? `cap reached (${runs}/${deps.agent.dailyCap} today)`

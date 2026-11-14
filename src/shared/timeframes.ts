@@ -25,11 +25,6 @@ export function isTimeframe(s: unknown): s is Timeframe {
   return typeof s === "string" && (TIMEFRAMES as readonly string[]).includes(s);
 }
 
-/** HTF = daily and above. Drives which history sources are worth reaching for. */
-export function isHtf(tf: Timeframe): boolean {
-  return TF_MS[tf] >= DAY;
-}
-
 /**
  * Stored-history retention. Hyperliquid only serves the latest 5000 bars per
  * interval (3.5 days of 1m), so LTF history beyond that exists only because

@@ -22,7 +22,7 @@ function fmtSignedUsd(n: number): string {
   return `${n > 0 ? '+' : n < 0 ? MINUS : ''}${fmtUsd(Math.abs(n), { compact: Math.abs(n) >= 10_000 })}`
 }
 
-export function positionColumns(onEdit: (p: ExposurePosition) => void): Column<ExposurePosition>[] {
+function positionColumns(onEdit: (p: ExposurePosition) => void): Column<ExposurePosition>[] {
   return [
     {
       key: 'asset',

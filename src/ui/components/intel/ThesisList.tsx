@@ -13,7 +13,7 @@ export function thesisCounts(t: Pick<Thesis, 'claims'>): { contradicted: number;
   return n
 }
 
-export function firstLine(text: string): string {
+function firstLine(text: string): string {
   return text.split('\n').find((l) => l.trim())?.trim() ?? text
 }
 

@@ -20,10 +20,10 @@ export type OiRow = { t: number; oiUsd: number };
 export type AltData = { coin: string; closes: Row[]; funding: FundingRow[] };
 
 /** Hyperliquid's neutral hourly funding (0.01% per 8h). */
-export const HL_NEUTRAL_HOURLY = 0.0000125;
+const HL_NEUTRAL_HOURLY = 0.0000125;
 
-export const PCT_WINDOW = 1460; // rolling 4y
-export const PCT_MIN = 365; // expanding window minimum
+const PCT_WINDOW = 1460; // rolling 4y
+const PCT_MIN = 365; // expanding window minimum
 export const CARRY_DAYS = 10; // D5 carry-forward, also used for compass inputs
 const BREADTH_MIN_ALTS = 5; // rotation breadth is null with fewer reporting alts
 // Relative float tolerance: an alt resting exactly at the neutral rate must not count as "hot".

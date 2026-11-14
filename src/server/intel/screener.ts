@@ -27,11 +27,11 @@ import { completeStructured, type LlmDeps, type LlmTrace } from "./llm.js";
 // With funding < 0 now, a change below −100% means the baseline was positive:
 // the sign flipped. since_h = 1 keeps roughly the latest snapshots.
 
-export const SCREENER_PROMPT_VERSION = "screener.v1";
-export const MAX_ROWS = 500;
+const SCREENER_PROMPT_VERSION = "screener.v1";
+const MAX_ROWS = 500;
 /** Hours of data one query may read: since_h plus twice the longest change window. */
-export const MAX_RANGE_H = 90 * 24;
-export const STATEMENT_TIMEOUT = "5s";
+const MAX_RANGE_H = 90 * 24;
+const STATEMENT_TIMEOUT = "5s";
 
 const TABLE_SQL: Record<ScreenerSource, string> = {
   snapshots: "intel_snapshots",
@@ -161,7 +161,7 @@ export function compile(dsl: ScreenerDsl): Compiled {
 // ---------------------------------------------------------------- execution
 
 type Row = Record<string, unknown>;
-export interface ReadTx {
+interface ReadTx {
   unsafe(query: string, params?: SqlParam[]): PromiseLike<Row[] & { columns?: ReadonlyArray<{ name: string }> }>;
 }
 /** The slice of postgres.js runQuery uses; tests inject a fake. */
@@ -230,7 +230,7 @@ function describeTables(): string {
     .join("\n");
 }
 
-export const SCREENER_SYSTEM = `You translate a trader's question into a screener query over stored Hyperliquid market data. You never write SQL and never answer the question yourself.
+const SCREENER_SYSTEM = `You translate a trader's question into a screener query over stored Hyperliquid market data. You never write SQL and never answer the question yourself.
 
 Sources and columns:
 ${describeTables()}

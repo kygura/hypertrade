@@ -19,7 +19,7 @@ import { SourceLink } from './SourceLink'
 // caller owns the fetch and refetches on `onChanged`.
 
 /** Edge types in weight order (DIRECT, COLLATERAL, SETTLES_ON, …). */
-export const EDGE_ORDER: EdgeType[] = [...EDGE_TYPES].sort((a, b) => EDGE_TYPE_WEIGHT[b] - EDGE_TYPE_WEIGHT[a])
+const EDGE_ORDER: EdgeType[] = [...EDGE_TYPES].sort((a, b) => EDGE_TYPE_WEIGHT[b] - EDGE_TYPE_WEIGHT[a])
 
 const ORIGIN_BADGE = {
   seed: <Badge tone="gray">SEED</Badge>,

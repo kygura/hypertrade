@@ -3,6 +3,7 @@ import type { FundingPoint } from "../../shared/hl-client.js";
 import type { AltData, FundingRow, OiRow, Row } from "../../shared/vectorCompass.js";
 import type { DailyBar } from "../../shared/cycles.js";
 import * as db from "../db.js";
+import { normCdf } from "../lab/engine/stats.js";
 import { CM_BASE, parseCmPage } from "../lab/providers/cm.js";
 import { createDeribitProvider } from "../lab/providers/deribit.js";
 import { createFngProvider } from "../lab/providers/fng.js";
@@ -47,12 +48,12 @@ const ALT_LIVE_FUNDING_DAYS = 30;
 const ALT_CONCURRENCY = 3;
 
 /** The rotation basket (hl-cycles assets.ts, BTC left out). */
-export const VECTOR_ALTS = ["ETH", "SOL", "XRP", "HYPE", "LIT", "SUI", "NEAR", "ENA", "DOGE", "PUMP", "TAO"] as const;
+const VECTOR_ALTS = ["ETH", "SOL", "XRP", "HYPE", "LIT", "SUI", "NEAR", "ENA", "DOGE", "PUMP", "TAO"] as const;
 
-export const toRows = (s: DailySeries): Row[] => s.t.map((t, i) => ({ t, v: s.v[i]! }));
+const toRows = (s: DailySeries): Row[] => s.t.map((t, i) => ({ t, v: s.v[i]! }));
 
 /** Dedup by UTC day (last write wins), finite values only, ascending. */
-export function dailyRows(pairs: Iterable<[number, number]>): Row[] {
+function dailyRows(pairs: Iterable<[number, number]>): Row[] {
   const byDay = new Map<number, number>();
   for (const [t, v] of pairs) if (Number.isFinite(t) && Number.isFinite(v)) byDay.set(dayStart(t), v);
   return [...byDay.entries()].map(([t, v]) => ({ t, v })).sort((a, b) => a.t - b.t);
@@ -75,7 +76,7 @@ function finite(x: unknown): number | null {
 
 // ─── Coin Metrics (one multi-metric request) ───
 
-export const CM_METRICS = ["CapMrktCurUSD", "CapMVRVCur", "SplyCur", "AdrActCnt", "TxCnt", "FeeTotNtv", "HashRate", "SplyExNtv", "FlowInExNtv"] as const;
+const CM_METRICS = ["CapMrktCurUSD", "CapMVRVCur", "SplyCur", "AdrActCnt", "TxCnt", "FeeTotNtv", "HashRate", "SplyExNtv", "FlowInExNtv"] as const;
 const CM_MAX_PAGES = 5; // full BTC history is one page at page_size 10000
 
 /**
@@ -127,7 +128,7 @@ export async function fetchCoinMetrics(fetchFn: typeof fetch): Promise<SeriesMap
 // fetches at most once per UTC day and keeps what it got (Postgres when configured, else in process).
 // Optional BGEOMETRICS_TOKEN is sent as `?token=`.
 
-export const BG_BASE = "https://bitcoin-data.com/v1";
+const BG_BASE = "https://bitcoin-data.com/v1";
 export const BG_METRICS = ["sth-realized-price", "true-market-mean", "lth-realized-price", "sth-sopr", "nupl", "supply-profit", "etf-flow-btc"] as const;
 const BG_META_KEYS = new Set(["d", "unixTs", "delayed", "time"]);
 const BgRowsSchema = z.array(z.record(z.string(), z.unknown()));
@@ -182,7 +183,7 @@ export async function fetchBGeometrics(fetchFn: typeof fetch, token: string | un
 // value interpolates in T between the two expiries bracketing 30 days. History cannot be backfilled:
 // one snapshot a day accumulates in storage.
 
-export const DERIBIT_BOOK_URL = "https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&kind=option";
+const DERIBIT_BOOK_URL = "https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=BTC&kind=option";
 const YEAR_MS = 365 * DAY;
 const TARGET_T = 30 / 365;
 const BookSchema = z.object({
@@ -190,21 +191,13 @@ const BookSchema = z.object({
 });
 const MONTHS: Record<string, number> = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
 
-export function parseInstrument(name: string): { expiry: number; strike: number; isCall: boolean } | null {
+function parseInstrument(name: string): { expiry: number; strike: number; isCall: boolean } | null {
   const m = /^BTC-(\d{1,2})([A-Z]{3})(\d{2})-(\d+)-([CP])$/.exec(name);
   if (!m || MONTHS[m[2]!] == null) return null;
   return { expiry: Date.UTC(2000 + Number(m[3]), MONTHS[m[2]!]!, Number(m[1]), 8), strike: Number(m[4]), isCall: m[5] === "C" };
 }
 
-/** Standard normal CDF (Abramowitz–Stegun 7.1.26 erf, |error| < 1.5e-7). */
-export function normCdf(x: number): number {
-  const z = Math.abs(x) / Math.SQRT2;
-  const t = 1 / (1 + 0.3275911 * z);
-  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z);
-  return x >= 0 ? 0.5 * (1 + y) : 0.5 * (1 - y);
-}
-
-export function bsDelta(F: number, K: number, T: number, ivPct: number, isCall: boolean): number {
+function bsDelta(F: number, K: number, T: number, ivPct: number, isCall: boolean): number {
   const s = ivPct / 100;
   const d1 = (Math.log(F / K) + 0.5 * s * s * T) / (s * Math.sqrt(T));
   return isCall ? normCdf(d1) : normCdf(d1) - 1;
@@ -284,14 +277,13 @@ const seriesId = (name: string, key: string) => `vector.${name}.${key}`;
 const REWRITE_DAYS = 30;
 
 /** Postgres: observations `vector.<name>.<key>`, fetch times in collector_runs `vector:<name>`. */
-export const dbVectorStore: VectorStore = {
+const dbVectorStore: VectorStore = {
   async read(name, keys) {
+    const [ranges, at] = await Promise.all([Promise.all(keys.map((k) => db.seriesRange(seriesId(name, k)))), db.lastCollectorFetch(`vector:${name}`)]);
     const series: SeriesMap = {};
-    for (const k of keys) {
-      const rows = await db.seriesRange(seriesId(name, k));
-      if (rows.length) series[k] = rows.map((p) => ({ t: new Date(p.ts).getTime(), v: Number(p.value) }));
-    }
-    const at = await db.lastCollectorFetch(`vector:${name}`);
+    keys.forEach((k, i) => {
+      if (ranges[i]!.length) series[k] = ranges[i]!.map((p) => ({ t: new Date(p.ts).getTime(), v: Number(p.value) }));
+    });
     return { series, fetchedAt: at ? at.getTime() : null };
   },
   async write(name, series, at, error) {

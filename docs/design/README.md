@@ -2080,7 +2080,6 @@ Ported components keep their Hyperion source semantics (files:
 | `EquityChart` | `history: {ts, equity, btcHodl, usdc}[]`, `projection?: {ts, p10, p50, p90}[]` | §9.1 + §9.3, TODAY divider |
 | `DrawdownChart` | `points: {ts, ddPct}[]`, `maxDd: number` | §9.2 |
 | `MarketChart` | `coin`, `tf`, `onTfChange` (fetches its own pages) | §9.4, lightweight-charts |
-| `FanChart` | `projection: MonteCarloResult`, `height?` | §9.3 standalone fan (Paths cards); the branch editor draws the same band inline on §9.1's chart |
 | `RuleEquityChart` | `equity: {t, strategy, benchmark}[]`, `holdoutFrom: string`, `savedAt?: string`, `benchmarkLabel: string` | §10.9 rule drill; §9.1 geometry, growth-multiple axis, holdout `ReferenceArea` in `--color-info-bg`, dashed `SAVED` reference |
 
 **View-scoped components** (built per §10, live next to their route)
@@ -2096,7 +2095,7 @@ Cycles (`components/cycles/`): `CycleChart`; `AnalogChart`; `ForecastHero`;
 `ReadinessStrip`; `MethodsTable`; `CoolingHighsTable`; `EpisodesTable`.
 Analyst and Paths: `Markdown`; `ModelSelector`; `PathCard`;
 `SaveBranchButton` (docs/design/chat.md §5). ENGINE console
-(`components/strategy/`, §10.12): `EngineTabs` (+ `isEnginePath`);
+(`components/strategy/`, §10.12): `EngineTabs`;
 `EngineOffline` (+ `OfflineStrip`); `DecisionView`; `IntentRow`; `ParamForm`;
 `VerdictBadge`; `ProbBar`; `ScoreRubric`; `NoulBar`. Desk (§10.11): panels
 are local to `pages/Desk.tsx`. Moves (§10.13, `pages/moves/`): `Moves` (container:

@@ -5,7 +5,7 @@ import { clip, getJson, requestTimeout, toDaily, type CollectableProvider, type 
 // DefiLlama keyless history: total USD-pegged stablecoin supply and total DeFi TVL.
 
 export const LLAMA_STABLES_URL = "https://stablecoins.llama.fi/stablecoincharts/all";
-export const LLAMA_TVL_URL = "https://api.llama.fi/v2/historicalChainTvl";
+const LLAMA_TVL_URL = "https://api.llama.fi/v2/historicalChainTvl";
 
 const StablesSchema = z.array(
   z.object({

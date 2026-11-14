@@ -72,7 +72,7 @@ export function concreteRule(rule: Rule, coin?: string | null): Rule | null {
 }
 
 /** Path id of an ad-hoc (unsaved, run-less) rule in the drill: /lab/rules/study?rule=… resolves from `?rule=`. */
-export const ADHOC_RULE_ID = 'study'
+const ADHOC_RULE_ID = 'study'
 
 /** OPEN RULE from the study: the rule drill for an ad-hoc rule, with a back link to this study. */
 export function ruleDrillHref(rule: Rule, coin?: string | null, exits?: StudyExits): string {

@@ -26,5 +26,5 @@ export function useInvestigate(onSettled: () => void) {
       settled.current()
     }
   }, [])
-  return { busy, actionError, setActionError, investigate }
+  return { busy, actionError, investigate }
 }

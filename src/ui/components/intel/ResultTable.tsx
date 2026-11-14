@@ -10,7 +10,7 @@ type Cell = string | number | null
 
 const ISO_TS = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/
 
-export function fmtCell(v: Cell): { text: string; title?: string; numeric: boolean } {
+function fmtCell(v: Cell): { text: string; title?: string; numeric: boolean } {
   if (v == null) return { text: '—', numeric: false }
   if (typeof v === 'number') return { text: Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(8))), numeric: true }
   if (ISO_TS.test(v)) return { text: fmtMdHm(v), title: fmtTs(v), numeric: false }

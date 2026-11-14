@@ -2,13 +2,13 @@
 import { OrderIntentSchema, type OrderIntent } from "../../../src/shared/intel.js";
 import type { OrderCommand } from "./parse.js";
 
-export interface IntentCtx {
+interface IntentCtx {
   markPx: number;
   equityUsd: number;
   defaultLeverage: number;
   defaultRiskPct: number;
 }
-export type IntentResult = { ok: true; intent: OrderIntent; notes: string[] } | { ok: false; error: string };
+type IntentResult = { ok: true; intent: OrderIntent; notes: string[] } | { ok: false; error: string };
 
 const fail = (error: string): IntentResult => ({ ok: false, error });
 const px6 = (x: number) => Number(x.toPrecision(6));

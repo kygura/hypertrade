@@ -39,7 +39,7 @@ const EMPTY: CandlePages = {
 }
 
 /** Upserts `incoming` into `bars` by open time; both ascending. */
-export function mergeBars(bars: ChartBar[], incoming: ChartBar[]): ChartBar[] {
+function mergeBars(bars: ChartBar[], incoming: ChartBar[]): ChartBar[] {
   if (incoming.length === 0) return bars
   const byT = new Map(bars.map((b) => [b.t, b]))
   for (const b of incoming) byT.set(b.t, b)

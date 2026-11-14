@@ -15,7 +15,7 @@ import { envNum } from "./scanner.js";
 //    recovery after 2 consecutive ok checks: once; "silent" alerts are at least 10 min apart
 // Links point at the queue `/queue` (a Ready push at its coin page, `/coin/<coin>`). A failing channel never throws out of here.
 
-export const WS_SILENT_SEC = 30;
+const WS_SILENT_SEC = 30;
 const NEVER_CONNECTED_MS = 60_000;
 const SILENT_COOLDOWN_MS = 600_000;
 const RECOVERY_CHECKS = 2;

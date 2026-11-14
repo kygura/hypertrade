@@ -84,7 +84,7 @@ export function ensureSeedEdges(store: Pick<IntelStore, "upsertEdges">): Promise
 
 // ---------------------------------------------------------------- refresh
 
-export const GRAPH_PROMPT_VERSION = "graph-v1";
+const GRAPH_PROMPT_VERSION = "graph-v1";
 export const GRAPH_NO_WEB_SEARCH = "provider has no web search; graph refresh skipped";
 const MAX_PROPOSED = 15;
 
@@ -148,7 +148,7 @@ export interface GraphRefreshDeps {
 }
 
 /** What one asset's rebuild changed, as `src -type-> dst` labels. `refused` counts proposals dropped by validation. */
-export interface AssetGraphDiff {
+interface AssetGraphDiff {
   added: string[];
   removed: string[];
   changed: string[];
@@ -176,7 +176,7 @@ export interface GraphRefreshSummary {
  * `shaped` lists the labels of refused proposals that were well-formed relationships (refused for
  * their source only): the model still believes in them, so a rebuild must not delete them.
  */
-export function acceptProposals(
+function acceptProposals(
   asset: string,
   proposed: z.infer<typeof ProposalSchema>["edges"],
   now: Date,

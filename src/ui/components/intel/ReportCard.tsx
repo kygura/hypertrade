@@ -15,7 +15,7 @@ import { TradeIdLinks } from './TradeIdLinks'
 // ids behind it. A narration failure stored on the report (LLM failure, cap,
 // not configured) shows verbatim; the numbers still stand.
 
-export const REPORT_STALE_H = 168
+const REPORT_STALE_H = 168
 
 const REPORT_TERMS: Term[] = [
   ['WEEK OF', 'Start date of the period the report covers.'],
@@ -27,7 +27,7 @@ const REPORT_TERMS: Term[] = [
   ['Trade ids', 'The trades behind a finding. Click one to jump to it in TRADES.'],
 ]
 
-export function weekOf(report: Pick<JournalReport, 'createdAt' | 'periodDays'>): string {
+function weekOf(report: Pick<JournalReport, 'createdAt' | 'periodDays'>): string {
   const t = Date.parse(report.createdAt) - report.periodDays * 86_400_000
   return Number.isNaN(t) ? '—' : new Date(t).toISOString().slice(0, 10)
 }

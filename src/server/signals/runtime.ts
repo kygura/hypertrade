@@ -4,6 +4,7 @@ import { monitoringWatchlist, watchedAssets } from "../intel/positions.js";
 import { PgIntelStore } from "../intel/store.js";
 import { STUDY_MAX_COINS } from "../lab/service.js";
 import { getLabService } from "../lab/tools.js";
+import { msg } from "../lab/util.js";
 import { isServerless } from "../platform/runtime.js";
 import { SourceUnavailable } from "../research/board.js";
 import { createDefinitionScanner, SCAN_DEADLINE_MS, type DefinitionScanner } from "./scan.js";
@@ -48,6 +49,6 @@ export function processDefinitionScanner(env: Record<string, string | undefined>
 export async function boardDefinitionScan(scanner: DefinitionScanner, hasDb: boolean, serverless = isServerless()) {
   if (hasDb) return scanner.scan();
   if (serverless) throw new SourceUnavailable("needs a database or the always-on server; or run `bun run signals:scan`");
-  scanner.scan().catch((err) => console.warn(`[signals] background definition scan failed: ${err instanceof Error ? err.message : String(err)}`));
+  scanner.scan().catch((err) => console.warn(`[signals] background definition scan failed: ${msg(err)}`));
   return scanner.latest();
 }

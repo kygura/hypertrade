@@ -75,21 +75,22 @@ export function fmtUsd(x: number | null | undefined, opts: { sign?: boolean; dec
   return opts.sign && x > 0 ? `+${body}` : body;
 }
 
-/** Signed percent (input already in percent): 2 decimals, 0 when |x| ≥ 100. */
-export function fmtPct(x: number | null | undefined): string {
+/** Signed percent with `d` decimals; a value that rounds to zero prints unsigned. */
+function signedPct(x: number | null | undefined, d: number): string {
   if (!ok(x)) return MISSING;
-  const d = Math.abs(x) >= 100 ? 0 : 2;
   const s = Math.abs(x).toFixed(d);
   if (Number(s) === 0) return `${s}%`;
   return `${x < 0 ? "-" : "+"}${s}%`;
 }
 
+/** Signed percent (input already in percent): 2 decimals, 0 when |x| ≥ 100. */
+export function fmtPct(x: number | null | undefined): string {
+  return signedPct(x, ok(x) && Math.abs(x) >= 100 ? 0 : 2);
+}
+
 /** Distance percent (→STOP, →LIQ, ticket distances): signed, 1 decimal. */
 export function fmtDist(x: number | null | undefined): string {
-  if (!ok(x)) return MISSING;
-  const s = Math.abs(x).toFixed(1);
-  if (Number(s) === 0) return `${s}%`;
-  return `${x < 0 ? "-" : "+"}${s}%`;
+  return signedPct(x, 1);
 }
 
 /** Hourly funding (fraction): 4-decimal percent, signed only when negative. */
@@ -101,10 +102,7 @@ export function fmtFundingH(hourly: number | null | undefined): string {
 
 /** APR percent (input in percent): signed, 1 decimal. */
 export function fmtApr(pct: number | null | undefined): string {
-  if (!ok(pct)) return MISSING;
-  const s = Math.abs(pct).toFixed(1);
-  if (Number(s) === 0) return `${s}%`;
-  return `${pct < 0 ? "-" : "+"}${s}%`;
+  return signedPct(pct, 1);
 }
 
 /** Hourly funding fraction → APR percent. */

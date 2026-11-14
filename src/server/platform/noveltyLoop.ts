@@ -22,7 +22,7 @@ const HISTORY_DAYS = 400;
 const FUNDING_PAGES = 6;
 const ENSURE_CAP_MS = 20_000;
 
-export const barOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const barOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 export interface RawInputs {
   bars: Array<{ t: number; c: number; v: number }>;

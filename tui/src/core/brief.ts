@@ -6,7 +6,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { MarketStateDataSchema, SectorsDataSchema } from "../../../src/shared/schemas.js";
 
-export interface BriefSector {
+interface BriefSector {
   name: string;
   /** mindshare_score, 0..1. */
   score: number;

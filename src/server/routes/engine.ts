@@ -15,7 +15,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 // Any HTTP response from the core, including its own 4xx/5xx and
 // { error, field } bodies, passes through verbatim.
 
-export const TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = 10_000;
 
 /** Path after the /engine mount, whether the router runs standalone or under /api. */
 function restOf(pathname: string): string {

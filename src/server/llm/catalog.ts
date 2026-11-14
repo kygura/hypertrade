@@ -8,9 +8,7 @@ import {
   type AnalystEnv,
   type ProviderId,
 } from "./provider.js";
-import { PRESETS, parseModelList, type CatalogModel, type Tier } from "./presets.js";
-
-export type { CatalogModel, Tier };
+import { PRESETS, parseModelList, type CatalogModel } from "./presets.js";
 
 // The analyst's model/provider catalog (GET /api/analyst/models). Lists
 // what a client may pick for POST /api/analyst/query's optional
@@ -23,7 +21,7 @@ export type { CatalogModel, Tier };
 // deployment names via ANALYST_MODELS/DESK_ANALYST_MODEL, since an arbitrary
 // endpoint's models are not knowable ahead of time.
 
-export interface ProviderCatalogEntry {
+interface ProviderCatalogEntry {
   id: ProviderId;
   label: string;
   /** Short line under the provider name in the picker. */

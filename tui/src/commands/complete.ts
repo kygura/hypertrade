@@ -1,7 +1,7 @@
 // Tab completion for the prompt line. Pure; the UI owns selection state.
 import { ALIASES, COMMAND_NAMES, SORT_KEYS } from "./parse.js";
 
-export interface CompleteCtx {
+interface CompleteCtx {
   /** Coin symbols, already ordered by OI desc. */
   coins: string[];
   oids?: number[];

@@ -14,7 +14,7 @@ export { atr };
 // manager, and every action passes the governor in service.ts. The
 // orchestration tools (consult_specialists, spawn_agent) live in agents.ts.
 
-export const MAX_TOOL_CHARS = 14_000;
+const MAX_TOOL_CHARS = 14_000;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
@@ -43,7 +43,7 @@ export interface DeskTool {
 }
 
 export const MAX_PROPOSALS_PER_RUN = 3;
-export const MAX_ALERTS_PER_RUN = 3;
+const MAX_ALERTS_PER_RUN = 3;
 
 function clip(v: unknown): string {
   const s = JSON.stringify(v);
@@ -80,7 +80,7 @@ export function ema(values: number[], period: number): number | null {
 }
 
 /** FRED ids the collector stores (collectors/fred.ts) plus its two derived series. */
-export const MACRO_SERIES: Array<{ id: string; label: string }> = [
+const MACRO_SERIES: Array<{ id: string; label: string }> = [
   { id: "fred.net_liquidity", label: "Fed net liquidity (WALCL − TGA − RRP)" },
   { id: "fred.WALCL", label: "Fed balance sheet" },
   { id: "fred.WTREGEN", label: "Treasury General Account" },
@@ -338,7 +338,7 @@ export const READ_TOOLS: DeskTool[] = [
 
 /** The analyst's read tools (briefing, sectors, metrics, series, HL markets, intel and platform reads), reused as-is. */
 const REUSED = new Set(["get_marketstate", "get_sectors", "get_metrics_summary", "get_series", "get_hl_markets", "web_search", "get_opportunities", "get_alerts", "get_intel_brief", "get_exposure", "get_theses"]);
-export const ANALYST_TOOLS: DeskTool[] = ANALYST_SPECS.filter((s) => REUSED.has(s.name)).map((spec) => ({
+const ANALYST_TOOLS: DeskTool[] = ANALYST_SPECS.filter((s) => REUSED.has(s.name)).map((spec) => ({
   spec,
   kind: "read" as const,
   run: (input, ctx) => runAnalystTool(spec.name, input, ctx.analystDeps ?? defaultToolDeps),

@@ -22,14 +22,14 @@ const Iso = z.string().datetime({ offset: true });
 const Num = z.number().finite();
 const Count = z.number().int().nonnegative();
 
-export const LayerStateSchema = z.object({
+const LayerStateSchema = z.object({
   state: z.enum(["ok", "partial", "unavailable"]),
   reason: z.string().nullable(),
 });
 export type LayerState = z.infer<typeof LayerStateSchema>;
 
 /** `BTC`, `ETH`, `ETHX` (ETH ex-BTC) or `sector:<id>` (equal-weight basket ex-majors). */
-export const FactorMoveSchema = z.object({
+const FactorMoveSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   pct: Num,
@@ -38,7 +38,7 @@ export const FactorMoveSchema = z.object({
 });
 export type FactorMove = z.infer<typeof FactorMoveSchema>;
 
-export const BetaFitSchema = z.object({
+const BetaFitSchema = z.object({
   factor: z.enum(["BTC", "ETH", "SECTOR"]),
   beta: Num.nullable(),
   contributionPct: Num.nullable(),
@@ -77,8 +77,8 @@ export const AttributionSchema = z.object({
 });
 export type Attribution = z.infer<typeof AttributionSchema>;
 
-export const CROWDING_KEYS = ["funding_z", "funding_apr", "oi_build", "premium"] as const;
-export const CrowdingCheckSchema = z.object({
+const CROWDING_KEYS = ["funding_z", "funding_apr", "oi_build", "premium"] as const;
+const CrowdingCheckSchema = z.object({
   key: z.enum(CROWDING_KEYS),
   side: z.enum(["long", "short"]),
   value: Num.nullable(),
@@ -135,7 +135,7 @@ export const AttentionSchema = z.object({
 });
 export type Attention = z.infer<typeof AttentionSchema>;
 
-export const SetupCheckSchema = z.object({
+const SetupCheckSchema = z.object({
   key: z.string().min(1),
   label: z.string().min(1),
   value: z.union([Num, z.string()]).nullable(),
@@ -196,7 +196,7 @@ export const MovesResponseSchema = z.object({
 });
 export type MovesResponse = z.infer<typeof MovesResponseSchema>;
 
-export const MoveSeriesPointSchema = z.object({
+const MoveSeriesPointSchema = z.object({
   /** Bar open, epoch ms. */
   t: z.number().int(),
   cumTotalPct: Num,
@@ -207,7 +207,7 @@ export const MoveSeriesPointSchema = z.object({
 });
 export type MoveSeriesPoint = z.infer<typeof MoveSeriesPointSchema>;
 
-export const MoveHeadlineSchema = z.object({
+const MoveHeadlineSchema = z.object({
   title: z.string(),
   firstSeen: Iso,
   url: z.string().nullable(),

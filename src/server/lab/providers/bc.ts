@@ -5,7 +5,7 @@ import { clip, getJson, requestTimeout, toDaily, type CollectableProvider, type 
 // blockchain.com charts (keyless): Bitcoin network history, daily since 2009.
 // Global metrics: they describe the Bitcoin network whatever asset trades.
 
-export const BC_BASE = "https://api.blockchain.info/charts/";
+const BC_BASE = "https://api.blockchain.info/charts/";
 /** Before the first block: asking from here means the whole history. */
 const BC_GENESIS = Date.UTC(2009, 0, 3);
 

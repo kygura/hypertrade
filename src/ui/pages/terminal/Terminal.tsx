@@ -46,7 +46,7 @@ import { errorMessage } from '../../lib/poll'
 const WHAT_CHANGED_ANCHOR = 'terminal-what-changed'
 
 /** Held assets by summed notional, desc (ExposurePanel order, §3.8). */
-export function heldByNotional(p: PositionsResponse | null): string[] | null {
+function heldByNotional(p: PositionsResponse | null): string[] | null {
   if (!p) return null
   const sum = new Map<string, number>()
   for (const x of p.positions) sum.set(x.asset, (sum.get(x.asset) ?? 0) + Math.abs(x.notionalUsd))
@@ -54,7 +54,7 @@ export function heldByNotional(p: PositionsResponse | null): string[] | null {
 }
 
 /** Soonest upcoming catalyst on held ∪ watched (§3.3 NEXT). */
-export function nextExposedCatalyst(list: Catalyst[] | null, heldWatched: Set<string>, now = Date.now()): Catalyst | undefined {
+function nextExposedCatalyst(list: Catalyst[] | null, heldWatched: Set<string>, now = Date.now()): Catalyst | undefined {
   if (!list) return undefined
   return upcomingCatalysts(list, now).find((c) => new Date(c.scheduledAt).getTime() >= now &&(c.exposed.length > 0 || c.assets.some((a) => heldWatched.has(a))))
 }

@@ -21,7 +21,7 @@ import { makeSplit, MIN_TRAIN_ROWS, walkForwardScore, walkForwardSegments, type 
 // walk-forward objective and only then scored on the holdout.
 
 export const MAX_FEATURES = 600;
-export const MIN_PRICE_DAYS = 365;
+const MIN_PRICE_DAYS = 365;
 /** Rules blended per fold when scoring a trial. */
 const BLEND = 3;
 /** Final candidates scored walk-forward (cost bound). */

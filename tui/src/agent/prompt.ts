@@ -2,7 +2,7 @@
 // the network/trading status are current.
 import type { Config } from "../core/types.js";
 
-export interface PromptOptions {
+interface PromptOptions {
   config: Pick<Config, "network" | "canTrade" | "account" | "maxNotionalUsd" | "demo">;
   now: Date;
   /** The provider hosts a web search tool. */

@@ -39,7 +39,7 @@ export function relPct(r: Pick<AgentRecord, "direction" | "inputs">, px: number,
 }
 
 /** The first closed bar at or after creation and before the horizon whose range reaches the falsifier level. */
-export function falsifyingBar(r: Pick<AgentRecord, "createdAt" | "horizonHours" | "falsifier">, bars: Bar[], now: number): Bar | null {
+function falsifyingBar(r: Pick<AgentRecord, "createdAt" | "horizonHours" | "falsifier">, bars: Bar[], now: number): Bar | null {
   const f = r.falsifier;
   if (!f) return null;
   const t0 = Date.parse(r.createdAt);

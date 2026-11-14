@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { changeOver, evaluateTriggers, tick, WATCH_KEY, type WatchState } from "./watch.js";
+import { changeOver, evaluateTriggers } from "./triggers.js";
+import { tick, WATCH_KEY, type WatchState } from "./watch.js";
 import { MemoryIntelStore } from "../intel/store.js";
 import { watchedAssets } from "../intel/positions.js";
 import { ctx, makeService, ScriptedProvider } from "./testkit.js";

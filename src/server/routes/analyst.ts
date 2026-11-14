@@ -45,8 +45,8 @@ import type { SimBranchOutcome, SimIntent } from "../../shared/intent.js";
 // { error: "analyst not configured" }. An explicit but invalid/unavailable
 // provider, model or effort choice → 400 { error, field }.
 
-export const TIMEOUT_MS = 90_000;
-export const MAX_TOOL_ROUNDS = 8;
+const TIMEOUT_MS = 90_000;
+const MAX_TOOL_ROUNDS = 8;
 
 const QueryBody = z.object({
   question: z.string().trim().min(1).max(4000),

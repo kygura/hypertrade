@@ -48,7 +48,7 @@ export function validateParams(specs: ParamSpec[], values: ParamValues): ParamEr
   return errors;
 }
 
-export function validateParam(spec: ParamSpec, v: unknown): string | null {
+function validateParam(spec: ParamSpec, v: unknown): string | null {
   switch (spec.type) {
     case "number": {
       if (typeof v !== "number" || Number.isNaN(v)) return "must be a number";

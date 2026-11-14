@@ -34,7 +34,7 @@ export const DEFAULT_THRESHOLDS: Record<LiquidityTier, Thresholds> = {
 export type Setup = { setupKind: string; direction: Side; stopPx: number; targetPx: number; invalidationPx: number; tags: string[] };
 
 /** Scanner features (computeFeatures keys) plus `funding`, the raw hourly rate from the inputs. */
-export const REFS = ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "fundingPctile24h", "volRatio1hZ", "rvExpansion", "liqPressure", "spreadBps", "depthUsd", "funding"] as const;
+const REFS = ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "fundingPctile24h", "volRatio1hZ", "rvExpansion", "liqPressure", "spreadBps", "depthUsd", "funding"] as const;
 const THRESHOLD_KEYS = ["fundingZ", "oiZ", "retZ", "rvExpansion", "volZ", "flatZ"] as const satisfies readonly (keyof Thresholds)[];
 const Ref = z.enum(REFS);
 const Tags = z.array(z.string().min(1));
@@ -181,7 +181,7 @@ export function nearMiss(coin: string, fv: FeatureVector, tier: LiquidityTier, t
 }
 
 /** One predicate for all setups: feature vector and tier in, the setups that fire (with levels) out. */
-export function compile(schemas: SetupSchema[]): (fv: FeatureVector, tier: LiquidityTier, thresholds?: Record<LiquidityTier, Thresholds>) => Setup[] {
+function compile(schemas: SetupSchema[]): (fv: FeatureVector, tier: LiquidityTier, thresholds?: Record<LiquidityTier, Thresholds>) => Setup[] {
   return (fv, tier, thresholds = DEFAULT_THRESHOLDS) => {
     const lv = levels(fv);
     if (!lv) return [];

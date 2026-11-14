@@ -27,9 +27,9 @@ import { iso, round } from "./util.js";
 // contexts, events) — evaluateCheck is pure — and a recheck never calls the
 // model again.
 
-export const THESIS_PROMPT_VERSION = "thesis.v1";
+const THESIS_PROMPT_VERSION = "thesis.v1";
 /** A current reading older than this does not decide a check (shown, status unknown). */
-export const MAX_READING_AGE_MS = 24 * 3600_000;
+const MAX_READING_AGE_MS = 24 * 3600_000;
 const EVENTS_LIMIT = 500;
 
 export interface ThesisDeps {
@@ -47,14 +47,14 @@ export interface ThesisDeps {
 
 export const HISTORY_CAP = 365;
 
-export type CheckStatus = ThesisClaim["status"];
+type CheckStatus = ThesisClaim["status"];
 export interface CheckResult {
   status: CheckStatus;
   evidence?: ThesisEvidence;
 }
 
 /** Current price/funding/OI for an asset, from a live context or the latest snapshot. */
-export interface Reading {
+interface Reading {
   price: number;
   funding: number | null;
   oiUsd: number | null;
@@ -218,7 +218,7 @@ export async function loadCheckData(deps: ThesisDeps, checks: ThesisCheck[]): Pr
 type ThesisBody = Pick<Thesis, "claims" | "invalidation">;
 
 /** Re-evaluates every claim and invalidation check; text and kinds are kept. */
-export async function evaluateThesis(deps: ThesisDeps, t: ThesisBody): Promise<ThesisBody> {
+async function evaluateThesis(deps: ThesisDeps, t: ThesisBody): Promise<ThesisBody> {
   const checks = [...t.claims.map((c) => c.check), ...t.invalidation.flatMap((i) => (i.check ? [i.check] : []))];
   const data = await loadCheckData(deps, checks);
   const claims = t.claims.map(({ evidence: _e, ...c }) => {
@@ -237,7 +237,7 @@ export async function evaluateThesis(deps: ThesisDeps, t: ThesisBody): Promise<T
 
 const ExtractedClaimSchema = z.object({ kind: z.enum(["claim", "assumption"]), text: z.string().trim().min(1).max(600), check: ThesisCheckSchema }).strict();
 /** What the model returns. wrongIf stays raw so validateLines can drop bad lines instead of failing the call (I0.7). */
-export const ThesisExtractionSchema = z
+const ThesisExtractionSchema = z
   .object({
     assets: z.array(AssetSchema).max(20),
     claims: z.array(ExtractedClaimSchema).min(1).max(20),
@@ -245,7 +245,7 @@ export const ThesisExtractionSchema = z
     wrongIf: z.array(z.unknown()).max(10),
   })
   .strict();
-export type ThesisExtraction = z.infer<typeof ThesisExtractionSchema>;
+type ThesisExtraction = z.infer<typeof ThesisExtractionSchema>;
 
 const cmpOp = { type: "string", enum: [">", ">=", "<", "<="] };
 const assetJson = { type: "string", maxLength: 24, pattern: "^([A-Za-z0-9]+:)?[A-Za-z0-9]+$" };
@@ -257,7 +257,7 @@ const obj = (kind: string, properties: Record<string, unknown>, required: string
   additionalProperties: false,
 });
 /** JSON schema mirror of ThesisCheckSchema. */
-export const thesisCheckJsonSchema = {
+const thesisCheckJsonSchema = {
   anyOf: [
     obj("metric_threshold", { series: { type: "string", maxLength: 80, pattern: "^[A-Za-z0-9_.:-]+$" }, op: cmpOp, value: { type: "number" } }, ["series", "op", "value"]),
     obj("price_vs_level", { asset: assetJson, op: cmpOp, level: { type: "number", exclusiveMinimum: 0 } }, ["asset", "op", "level"]),
@@ -299,7 +299,7 @@ const extractionJsonSchema = {
   additionalProperties: false,
 };
 
-export const THESIS_SYSTEM = `You extract the testable structure of a trading thesis written by the operator. You do not judge it, predict direction, set price targets or give advice. Code evaluates everything you return against stored market data.
+const THESIS_SYSTEM = `You extract the testable structure of a trading thesis written by the operator. You do not judge it, predict direction, set price targets or give advice. Code evaluates everything you return against stored market data.
 
 Return:
 - assets: the Hyperliquid perp coin names the thesis is about (BTC, ETH, SOL, HYPE, kPEPE …).

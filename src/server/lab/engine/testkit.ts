@@ -49,7 +49,7 @@ export function synthetic(o: SyntheticOptions): LabDataset {
 }
 
 /** Jaccard of two in-zone day sets. */
-export function zoneJaccard(a: ArrayLike<boolean | number>, b: ArrayLike<boolean | number>): number {
+function zoneJaccard(a: ArrayLike<boolean | number>, b: ArrayLike<boolean | number>): number {
   let both = 0;
   let any = 0;
   for (let i = 0; i < a.length; i++) {

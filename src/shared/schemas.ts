@@ -27,7 +27,7 @@ export const AllocationSchema = z
     message: "stablecoins cannot be short or levered",
   });
 
-export const DcaSchema = z
+const DcaSchema = z
   .object({
     coin: CoinSchema,
     amountUsd: z.number().finite().positive(),
@@ -52,7 +52,7 @@ export const ScenarioSchema = z
   })
   .strict();
 
-export const RebalanceSchema = z.enum(["none", "monthly", "weekly", "threshold5pct"]);
+const RebalanceSchema = z.enum(["none", "monthly", "weekly", "threshold5pct"]);
 
 export const BranchConfigSchema = z.object({
   description: z.string().optional(),
@@ -123,7 +123,7 @@ export const SectorsDataSchema = z.object({
 // nullable for delisted/thin markets, so the schema is the parse boundary —
 // callers work with the numeric AssetCtx/Candle types in ./types.ts instead.
 
-export const HlUniverseAssetSchema = z.object({
+const HlUniverseAssetSchema = z.object({
   szDecimals: z.number(),
   name: z.string(),
   maxLeverage: z.number(),
@@ -152,7 +152,6 @@ export const HlAssetCtxSchema = z.object({
 // aligned to universe by array index (not by name).
 export const HlMetaAndAssetCtxsResponseSchema = z.tuple([HlPerpMetaSchema, z.array(HlAssetCtxSchema)]);
 
-export const HlAllMidsSchema = z.record(z.string(), z.string());
 
 export const HlCandleSchema = z.object({
   t: z.number(),

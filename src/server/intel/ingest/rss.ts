@@ -5,7 +5,7 @@ import { decodeEntities, fetchText, fresh, hashKey, headlineEvent, hostLabel, me
 // CDATA, decodes entities and strips markup. Feeds come from INTEL_RSS_FEEDS
 // (comma list) or the keyless defaults below.
 
-export const DEFAULT_RSS_FEEDS = [
+const DEFAULT_RSS_FEEDS = [
   "https://www.coindesk.com/arc/outboundfeeds/rss/",
   "https://cointelegraph.com/rss",
   "https://www.theblock.co/rss.xml",

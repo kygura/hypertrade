@@ -43,7 +43,7 @@ export type CandlesDeps = {
   oi: (coin: string, from: number, to: number) => Promise<{ t: number; v: number }[]>;
 };
 
-export const defaultCandlesDeps: CandlesDeps = {
+const defaultCandlesDeps: CandlesDeps = {
   now: () => Date.now(),
   hasDb: () => Boolean(db.databaseUrl()),
   async livePage(coin, tf, before, limit) {

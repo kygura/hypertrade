@@ -20,9 +20,9 @@ export type Point = { t: number; v: number };
 
 const HOUR_MS = 3_600_000;
 export const WINDOW_MS = 7 * 24 * HOUR_MS;
-export const MIN_SAMPLES = 24;
+const MIN_SAMPLES = 24;
 /** Floor on h: a baseline minutes old would otherwise blow a tick of noise up into a large z. */
-export const MIN_H = 0.25;
+const MIN_H = 0.25;
 
 export type MetricFamily = "return" | "level" | "ratio";
 
@@ -33,7 +33,7 @@ export function metricFamily(metric: SnapshotMetric): MetricFamily {
 }
 
 /** Points in the 7 days up to and including `t`, finite values only, ascending. */
-export function inWindow(points: Point[], t: number): Point[] {
+function inWindow(points: Point[], t: number): Point[] {
   return points.filter((p) => p.t <= t && p.t >= t - WINDOW_MS && Number.isFinite(p.v)).sort((a, b) => a.t - b.t);
 }
 

@@ -8,7 +8,7 @@ import { fmtHold, fmtR, fmtSigned, fmtUsdSigned, signClass } from './format'
 // `?tag=` and scrolls to TRADES. EXP is signed R when stops are known, else
 // signed USD per trade.
 
-export const FEW_TRADES = 5
+const FEW_TRADES = 5
 
 function Exp({ s }: { s: TagStats }) {
   if (s.expectancyR != null) return <span className={signClass(s.expectancyR)}>{fmtR(s.expectancyR, 2)}</span>

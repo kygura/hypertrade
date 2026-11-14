@@ -5,11 +5,11 @@ import { pgStore } from "./store.js";
 
 // pgStore trial log against a real Postgres. Runs only with INTEL_PG_TEST_URL set:
 //   INTEL_PG_TEST_URL=postgres://postgres@127.0.0.1:5433/hypertrade bun test src/server/lab/store.pg.test.ts
-// Applies 014_lab_trials.sql into a throwaway schema and drops it after.
+// Applies the lab_trials migrations into a throwaway schema and drops it after.
 
 const PG_URL = process.env.INTEL_PG_TEST_URL;
 const SCHEMA = `lab_test_${process.pid}_${Date.now()}`;
-const MIGRATION = new URL("../../../db/migrations/014_lab_trials.sql", import.meta.url);
+const MIGRATIONS = ["014_lab_trials.sql", "018_lab_trials_rule.sql"].map((f) => new URL(`../../../db/migrations/${f}`, import.meta.url));
 
 describe.skipIf(!PG_URL)("pgStore trials (real Postgres)", () => {
   const saved = process.env.DATABASE_URL;
@@ -22,7 +22,7 @@ describe.skipIf(!PG_URL)("pgStore trials (real Postgres)", () => {
     await releaseConnection();
     await sql().unsafe(`create schema "${SCHEMA}"`);
     await usePath();
-    await sql().unsafe(readFileSync(MIGRATION, "utf8"));
+    for (const m of MIGRATIONS) await sql().unsafe(readFileSync(m, "utf8"));
   });
 
   beforeEach(async () => {

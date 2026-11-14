@@ -9,7 +9,7 @@ import type { IntelStore } from "./store.js";
 // 1h candle that contains first_seen, with oiPct null (candles carry no OI).
 // "Now" = the latest snapshot, else the latest candle close.
 
-export const MAX_GAP_MS = 2 * 3_600_000;
+const MAX_GAP_MS = 2 * 3_600_000;
 const HOUR_MS = 3_600_000;
 
 type Point = { price: number; oiUsd: number | null };

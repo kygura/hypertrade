@@ -1,6 +1,6 @@
 import { bucketBounds, bucketIndex, type Coverage, type LiqBucket, type Position } from "../../shared/platform.js";
 
-export interface Cluster { priceLo: number; priceHi: number; distancePct: number; notionalUsd: number }
+interface Cluster { priceLo: number; priceHi: number; distancePct: number; notionalUsd: number }
 export interface Aggregate { buckets: LiqBucket[]; nearestClusters: { long: Cluster | null; short: Cluster | null } }
 
 const MIN_CLUSTER_USD = 250_000;

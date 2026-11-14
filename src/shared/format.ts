@@ -53,30 +53,6 @@ export function fmtPrice(n: number, decimals?: number): string {
   });
 }
 
-export function fmtDate(ms: number): string {
-  return new Date(ms).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-export function fmtDateShort(ms: number): string {
-  return new Date(ms).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-export function fmtDateTime(ms: number): string {
-  return new Date(ms).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 export function classForPnl(n: number): string {
   if (n > 0) return "text-green";
   if (n < 0) return "text-red-text";

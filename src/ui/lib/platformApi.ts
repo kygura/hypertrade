@@ -25,7 +25,7 @@ import {
 const P = '/platform'
 
 /** No response, or the server answered 503 platform_offline (runtime absent): render OfflineBlock. */
-export const isPlatformOffline = (err: unknown) => err instanceof NetworkError || (err instanceof ApiError && err.status === 503 && err.message === 'platform_offline')
+const isPlatformOffline = (err: unknown) => err instanceof NetworkError || (err instanceof ApiError && err.status === 503 && err.message === 'platform_offline')
 /** usePoll options every platform poller shares (offline = OfflineBlock, not ErrorBlock). */
 export const PLATFORM_POLL = { isOffline: isPlatformOffline, offlineFallback: 'platform API unreachable' } as const
 const nullOn = async <T>(p: Promise<T>, status: number, code?: string): Promise<T | null> => {

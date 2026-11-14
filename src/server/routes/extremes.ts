@@ -31,8 +31,8 @@ import { body, failure, invalid } from "./intel/http.js";
 //                                 approved only with the operator's cookie on /api/platform) and pushes once.
 
 /** Answer by now with what ran: the job is a few store reads, at most one wake (10 s timeout) and three pushes. */
-export const EXTREMES_HARD_STOP_MS = 120_000;
-export const EXTREMES_LEASE_MS = EXTREMES_HARD_STOP_MS + 60_000;
+const EXTREMES_HARD_STOP_MS = 120_000;
+const EXTREMES_LEASE_MS = EXTREMES_HARD_STOP_MS + 60_000;
 
 export interface CronExtremesDeps {
   hasDb: () => boolean;
@@ -124,7 +124,7 @@ export async function freshMid(ctx: PlatformContext, coin: string, now: number):
   return age != null && age <= MAX_MID_AGE_SEC && mid != null && mid > 0 ? mid : null;
 }
 
-export const defaultExtremesDeps = (): ExtremesRouteDeps => ({
+const defaultExtremesDeps = (): ExtremesRouteDeps => ({
   store: () => (db.databaseUrl() ? store() : null),
   mark: (coin) => {
     const ctx = getPlatformContext() ?? (dbCtx ??= dbPlatformContext(store()));
@@ -141,7 +141,7 @@ const DAY = 86_400_000;
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err)) || "unknown error";
 
 /** The `take` push: one per verdict (the store writes a verdict once). Says where to approve when the take became an opportunity. */
-export function takeAlert(r: ExtremeRecord, appUrl: string | null, mark: number, approvable: { ttlH: number } | null = null): Alert {
+function takeAlert(r: ExtremeRecord, appUrl: string | null, mark: number, approvable: { ttlH: number } | null = null): Alert {
   const v = r.verdict!;
   const base = appUrl?.trim().replace(/\/+$/, "");
   const approve = approvable ? `\nApprove or reject on the coin page; expires in ${approvable.ttlH} h.` : "";

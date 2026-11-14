@@ -1,5 +1,5 @@
 import type { MarketRef } from "./governor.js";
-import type { Sizing, RiskOrder, AccountState, Position, Side } from "./types.js";
+import type { Sizing, RiskOrder, AccountState, Position } from "./types.js";
 import type { DeskStore, PaperFill, PaperPosition } from "./store.js";
 
 // The paper broker: fills at the live mark plus slippage and the taker fee,
@@ -38,9 +38,9 @@ interface PaperBook {
   dayAnchor?: { date: string; equity: number };
 }
 
-export const PAPER_STATE_KEY = "paper_book";
+const PAPER_STATE_KEY = "paper_book";
 
-export function unrealized(p: Pick<PaperPosition, "side" | "size" | "entryPx">, mark: number): number {
+function unrealized(p: Pick<PaperPosition, "side" | "size" | "entryPx">, mark: number): number {
   return (p.side === "long" ? mark - p.entryPx : p.entryPx - mark) * p.size;
 }
 
@@ -152,5 +152,3 @@ export class PaperBroker implements Broker {
     await this.store.setState(PAPER_STATE_KEY, { balance: this.opts.startingEquity });
   }
 }
-
-export const sideToOrder = (s: Side): "buy" | "sell" => (s === "long" ? "buy" : "sell");

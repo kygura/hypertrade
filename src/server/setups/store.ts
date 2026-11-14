@@ -18,7 +18,7 @@ export interface SetupStore {
 }
 
 /** Parses each row and keeps the last one per id, in first-seen order. */
-export function prepare(setups: Setup[]): Setup[] {
+function prepare(setups: Setup[]): Setup[] {
   const last = new Map<string, Setup>();
   for (const s of setups) last.set(s.id, SetupSchema.parse(s));
   return [...last.values()];

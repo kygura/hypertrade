@@ -69,7 +69,7 @@ export const engine = {
 }
 
 /** True for the proxy's own "engine not configured" (503) / "engine unreachable" (502) answers. */
-export function isEngineOffline(err: unknown): boolean {
+function isEngineOffline(err: unknown): boolean {
   if (err instanceof NetworkError) return true
   return err instanceof ApiError && (err.status === 502 || err.status === 503)
 }
@@ -78,7 +78,7 @@ export { errorMessage }
 
 export type EngineState<T> = PollState<T>
 
-export const ENGINE_POLL_MS = 5_000
+const ENGINE_POLL_MS = 5_000
 
 // useEngine — usePoll (lib/poll.ts) with the engine defaults: 5 s cadence,
 // and the proxy's 502/503 answers read as offline. Pass `enabled=false` to

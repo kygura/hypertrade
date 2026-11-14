@@ -28,7 +28,7 @@ const RING_MS = 24 * 60 * MIN;
 /** scan_snapshots cadence: the 1-min ring is persisted every 5 min. */
 export const PERSIST_MS = 5 * MIN;
 /** Reference size for costs: min(absorbableUsd, this). Governor-free: the scanner has no account, the governor sizes at approval. */
-export const REF_SIZE_USD = 10_000;
+const REF_SIZE_USD = 10_000;
 /** Holding time funding is charged over. ponytail: fixed 4 h (the middle outcome horizon); per-setup holds when the ledger says they differ. */
 export const HOLD_HOURS = 4;
 const LIQ_NEAR = 0.02;
@@ -176,13 +176,14 @@ export function createScanner(deps: ScannerDeps) {
       return setups.map((setup) => ({ ctx: byName.get(coin)!, fv, tier, setup, score: scoreOpportunity(fv) }));
     }).sort((a, b) => b.score - a.score);
 
-    const books = new Map<string, Book | null>();
-    for (const c of cands.slice(0, topN)) if (!books.has(c.ctx.name)) books.set(c.ctx.name, await bookOf(c.ctx.name));
+    const bookCoins = [...new Set(cands.slice(0, topN).map((c) => c.ctx.name))];
+    const books = new Map(await Promise.all(bookCoins.map(async (coin) => [coin, await bookOf(coin)] as const)));
 
     // Ledger mean net return per setup kind, from the 4 h group (the HOLD_HOURS the costs are charged over).
     const best = new Map<string, LedgerStats>();
     try {
-      for (const g of groupStats(await store.outcomeRows({}))) if (g.horizon === "4h") best.set(g.setupKind, g);
+      // Only candidates read it: a scan with none skips the full outcome read.
+      if (cands.length) for (const g of groupStats(await store.outcomeRows({}))) if (g.horizon === "4h") best.set(g.setupKind, g);
     } catch (err) {
       console.error("[scanner] ledger stats failed:", err instanceof Error ? err.message : err);
     }

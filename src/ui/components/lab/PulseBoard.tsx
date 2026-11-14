@@ -27,7 +27,7 @@ function Count({ label, active, total }: { label: string; active: number; total:
   )
 }
 
-export function PulseAssetRow({ asset: a, entries, metrics }: { asset: PulseAsset; entries: CatalogueListEntry[]; metrics: readonly MetricDef[] }) {
+function PulseAssetRow({ asset: a, entries, metrics }: { asset: PulseAsset; entries: CatalogueListEntry[]; metrics: readonly MetricDef[] }) {
   const [open, setOpen] = useState(false)
   const listId = `pulse-${a.asset}`
   const leanTone = a.lean > 0 ? 'text-green' : a.lean < 0 ? 'text-red-text' : 'text-text-secondary'

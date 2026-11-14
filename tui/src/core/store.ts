@@ -12,7 +12,7 @@ export interface SocketLike {
   onState(cb: (s: HlSocketState) => void): () => void;
 }
 
-export interface StoreOptions {
+interface StoreOptions {
   config: Config;
   info: InfoSource;
   /** Builds the WS client for a URL. Default: HlSocket. Never called in demo mode. */

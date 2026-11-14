@@ -14,7 +14,7 @@ import { FlowHeatmap } from './FlowHeatmap'
 
 const Z_FIXED = (w: string) => `Δ over ${w} — z against the trailing 30-day distribution of ${w} changes`
 
-export const FLOW_WINDOWS: readonly SegmentOption<HeatmapWindow>[] = [
+const FLOW_WINDOWS: readonly SegmentOption<HeatmapWindow>[] = [
   { value: 'review', label: 'REV', title: 'since your last review — z against the 7-day history (SPEC I0.4)' },
   { value: '1h', label: '1H', title: Z_FIXED('1h') },
   { value: '6h', label: '6H', title: Z_FIXED('6h') },

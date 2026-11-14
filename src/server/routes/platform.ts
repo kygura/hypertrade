@@ -13,24 +13,23 @@ import type { OperatorOrder } from "../desk/types.js";
 import { researchDailyLimit, researchDeps, runResearch, RESEARCH_PROMPT_VERSION, utcDayStart } from "../intel/research.js";
 import { aggregate, coverage } from "../platform/liqmap.js";
 import { extremesReadyTtlMin } from "../platform/opportunity.js";
-import { approveBlockOf, dbPlatformContext, getPlatformContext, placedBy, placing, type PlatformContext } from "../platform/context.js";
+import { approveBlockOf, placedBy, placing, type PlatformContext } from "../platform/context.js";
 import { Z_KEYS } from "../platform/score.js";
-import { databaseUrl } from "../db.js";
-import { PgPlatformStore } from "../platform/store-pg.js";
 import { evidenceLine, groupStats, setupLedgerStats } from "../platform/stats.js";
 import { defaultDeskService } from "./desk.js";
 import { defaultIntelDeps } from "./intel/index.js";
 import { body, failure, invalid } from "./intel/http.js";
+import { platformContext } from "./research.js";
 
 // /api/platform (docs/SPEC.md § Platform P2). Cookie auth; GETs also take the read bearer (READ_PATH in auth.ts).
 // Every route answers 503 {error:"platform_offline"} while no PlatformContext is set (no worker and no database URL, see databaseUrl in db.ts).
 // Approval reaches the book only through the desk's governor: placeOperatorOrder (preview + submit under one lock).
 // After approval the idea ends open (filled) or failed (system); a lost transition stays approved for reconcile.ts.
 
-export type RiskVerdict = z.infer<typeof RiskVerdictSchema>;
+type RiskVerdict = z.infer<typeof RiskVerdictSchema>;
 /** What an opportunity asks the governor to size and place; sizing is the governor's, never ours. */
 export interface Ticket { coin: string; side: Side; stopPx: number; targetPx: number | null }
-export interface Placement { status: string; reasons: string[]; proposalId: string }
+interface Placement { status: string; reasons: string[]; proposalId: string }
 
 export interface RiskGate {
   /** Read-only: the portfolio before and the governor's verdict on adding the ticket. */
@@ -78,11 +77,9 @@ export function deskRisk(get: () => DeskService): RiskGate {
   };
 }
 
-let dbCtx: PlatformContext | null = null;
-
 export function defaultPlatformDeps(): PlatformDeps {
   return {
-    context: () => getPlatformContext() ?? (databaseUrl() ? (dbCtx ??= dbPlatformContext(new PgPlatformStore())) : null),
+    context: platformContext,
     risk: deskRisk(defaultDeskService),
     research: {
       async run(q) {
@@ -174,7 +171,14 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       const { opp, res } = await load(c);
       if (!opp) return res;
       const store = c.var.ctx.store;
-      const entries = await store.ledgerFor(opp.id);
+      const ticket = ticketOf(opp);
+      // Independent reads: one round trip's wait, not four.
+      const [entries, outcomes, risk, approveBlockedReason] = await Promise.all([
+        store.ledgerFor(opp.id),
+        store.outcomeRows({ setupKind: opp.setupKind }),
+        ticket ? deps.risk.assess(ticket).catch((err) => (console.error("[platform] risk preview failed", err), null)) : null,
+        approveBlockOf(c.var.ctx, opp.coin, deps.now().getTime()),
+      ]);
       const fv = created(entries)?.payload.features ?? { features: {}, inputs: {} };
       const signals = Object.entries(fv.features).map(([name, value]) => {
         if (!(Z_KEYS as readonly string[]).includes(name)) return { name, value, z: null };
@@ -183,14 +187,10 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       });
       // An extremes take is scored by severity under its own version: it has no scanner ledger record to quote.
       const extreme = isExtremesOpportunity(opp);
-      const stats = extreme ? null : setupLedgerStats(opp.setupKind, await store.outcomeRows({ setupKind: opp.setupKind }));
-      const ticket = ticketOf(opp);
-      let risk: { before: RiskVerdict; after: RiskVerdict } | null = null;
-      if (ticket) risk = await deps.risk.assess(ticket).catch((err) => (console.error("[platform] risk preview failed", err), null));
+      const stats = extreme ? null : setupLedgerStats(opp.setupKind, outcomes);
       const rid = entries.filter((e): e is Extract<LedgerEntry, { kind: "research" }> => e.kind === "research").at(-1)?.payload.researchId;
       const research = rid ? await deps.research.get(rid, opp.coin).catch(() => null) : null;
       const size = risk?.after.sizing;
-      const approveBlockedReason = await approveBlockOf(c.var.ctx, opp.coin, deps.now().getTime());
       return c.json({
         opportunity: opp,
         signals,
@@ -293,9 +293,8 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       const ctx = c.var.ctx;
       const out = await cached(`liqmap|${coin}|${range}|${bucketBps}`, async () => {
         const now = deps.now();
-        const { mark, oiUsd } = await marketFor(ctx, coin, now);
+        const [{ mark, oiUsd }, positions] = await Promise.all([marketFor(ctx, coin, now), ctx.store.listPositions(coin)]);
         if (mark == null || !(mark > 0)) return null;
-        const positions = await ctx.store.listPositions(coin);
         const { buckets, nearestClusters } = aggregate(positions, { mark, bucketBps, rangePct: range });
         return { coin, ts: now.toISOString(), mark, bucketBps, buckets, nearestClusters, coverage: coverageOf(positions, oiUsd, now) };
       });
@@ -310,9 +309,14 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         const now = deps.now();
         // Latest scan inputs per coin (mark, OI); before the first snapshot, the coins the crawler holds positions in.
         const snaps = new Map<string, Record<string, unknown>>();
-        for (const s of await ctx.store.scanSnapshotsSince(new Date(now.getTime() - 3_600_000).toISOString())) snaps.set(s.coin, s.inputs);
+        const [scans, held] = await Promise.all([ctx.store.scanSnapshotsSince(new Date(now.getTime() - 3_600_000).toISOString()), ctx.store.listPositions()]);
+        for (const s of scans) snaps.set(s.coin, s.inputs);
         const byCoin = new Map<string, Position[]>();
-        for (const p of await ctx.store.listPositions()) byCoin.set(p.coin, [...(byCoin.get(p.coin) ?? []), p]);
+        for (const p of held) {
+          const list = byCoin.get(p.coin);
+          if (list) list.push(p);
+          else byCoin.set(p.coin, [p]);
+        }
         const oi = (coin: string) => num(snaps.get(coin)?.oiUsd);
         const tracked = (coin: string) => (byCoin.get(coin) ?? []).reduce((a, p) => a + p.positionValue, 0);
         const coins = snaps.size

@@ -12,7 +12,7 @@ import { useAction } from './useAction'
 // Remount per trade (`key={trade.id}`) so a draft never leaks across rows.
 
 export const NOTE_MAX = 280
-export const SAVED_MS = 3000
+const SAVED_MS = 3000
 
 type SaveFn = (tradeId: string, note: string) => Promise<TradeNote>
 

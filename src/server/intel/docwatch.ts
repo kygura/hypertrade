@@ -30,21 +30,21 @@ export type PinnedAddress = { address: string; family: number };
 export type PinnedFetchFn = (url: string, init: { redirect: "manual"; signal: AbortSignal; headers: Record<string, string> }, pinned: PinnedAddress[]) => Promise<Response>;
 const defaultLookup: LookupFn = (host) => dnsLookup(host, { all: true, verbatim: true });
 
-export const FETCH_TIMEOUT_MS = 10_000;
+const FETCH_TIMEOUT_MS = 10_000;
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
-export const MAX_REDIRECTS = 3;
-export const SNAPSHOT_MAX_CHARS = 200_000;
-export const DIFF_MAX_CHARS = 20_000;
-export const RECHECK_AFTER_MS = 55 * 60_000;
-export const WATCH_CONCURRENCY = 3;
-export const DOCWATCH_PROMPT_VERSION = "docwatch.v2";
+const MAX_REDIRECTS = 3;
+const SNAPSHOT_MAX_CHARS = 200_000;
+const DIFF_MAX_CHARS = 20_000;
+const RECHECK_AFTER_MS = 55 * 60_000;
+const WATCH_CONCURRENCY = 3;
+const DOCWATCH_PROMPT_VERSION = "docwatch.v2";
 const ALLOWED_TYPES = ["text/html", "text/plain", "application/json"];
 
 export const EIP1967_IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 export const EIP1967_ADMIN_SLOT = "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103";
 
 /** Public RPC per chain; `INTEL_RPC_<CHAIN>` overrides. Never taken from user input. */
-export const DEFAULT_RPC: Record<Chain, string> = {
+const DEFAULT_RPC: Record<Chain, string> = {
   ethereum: "https://ethereum-rpc.publicnode.com",
   arbitrum: "https://arb1.arbitrum.io/rpc",
   base: "https://mainnet.base.org",
@@ -283,7 +283,7 @@ const collapse = (s: string) =>
     .join("\n");
 
 /** Fetched body → the text that gets hashed and diffed. */
-export function normalizeBody(text: string, contentType: string): string {
+function normalizeBody(text: string, contentType: string): string {
   if (contentType === "text/html") return htmlToText(text);
   if (contentType === "application/json") {
     try {
@@ -399,7 +399,7 @@ interface Classified {
 }
 
 /** Pure: previous vs current snapshot → code-written facts, event type and magnitude. */
-export function classifyChange(kind: Watch["kind"], prev: unknown, next: unknown): Classified {
+function classifyChange(kind: Watch["kind"], prev: unknown, next: unknown): Classified {
   if (kind === "url") {
     const d = lineDiff(typeof prev === "string" ? prev : "", typeof next === "string" ? next : "");
     const note = d.added || d.removed ? "" : " (change beyond the stored first 200 KB)";

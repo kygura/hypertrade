@@ -45,7 +45,7 @@ export interface TelegramOptions {
 }
 
 /** /digest narration bound; past it (or over the LLM cap) the reply carries the ranked raw-number items. */
-export const DIGEST_NARRATION_MS = 20_000;
+const DIGEST_NARRATION_MS = 20_000;
 
 const shortId = (id: string) => id.slice(0, 8);
 

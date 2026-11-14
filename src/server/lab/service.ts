@@ -70,9 +70,9 @@ export interface LabServiceDeps {
   hasDb?: () => boolean;
 }
 
-export const DEFAULT_WINDOWS = [7, 30, 90];
+const DEFAULT_WINDOWS = [7, 30, 90];
 /** Slippage for live (post-save) performance. */
-export const LIVE_SLIPPAGE_BPS = 10;
+const LIVE_SLIPPAGE_BPS = 10;
 const LOAD_CONCURRENCY = 4;
 const DECAY_MIN_LIVE_DAYS = 30;
 const DECAY_HOLDOUT_SHARE = 0.25;
@@ -87,7 +87,7 @@ export const SEARCH_FINISH_MS = 5_000;
 export type CallBudget = Pick<ToolContext, "deadlineMs">;
 const underDeadline = (ctx?: CallBudget) => (ctx?.deadlineMs != null ? { deadline: true } : {});
 
-export type CatalogueFlag = "decayed" | "overlap";
+type CatalogueFlag = "decayed" | "overlap";
 /** `idea #n of N` (docs/FEATURES.md § 5): n = first trial recorded for the rule, N = the global trial count. */
 export type IdeaNumber = { n: number; of: number };
 export type CatalogueListEntry = CatalogueEntry & { live: PerfStats | null; flags: CatalogueFlag[]; idea: IdeaNumber | null };
@@ -391,7 +391,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
           price: config.price,
           from: config.from,
           to: config.to,
-          ...(ctx.deadlineMs != null && { deadline: true }),
+          ...underDeadline(ctx),
         });
         // The deadline covers the whole call: data loading spends part of it,
         // and the refit after the last trial needs the rest.
@@ -433,8 +433,8 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     },
 
     async catalogueList(input: { asset?: string; direction?: Direction; live?: boolean } = {}, ctx?: CallBudget): Promise<{ entries: CatalogueListEntry[] }> {
-      const all = (await deps.store.listCatalogue()).map(withEntryVerdict);
-      const trials = await deps.store.listTrials();
+      const [catalogue, trials] = await Promise.all([deps.store.listCatalogue(), deps.store.listTrials()]);
+      const all = catalogue.map(withEntryVerdict);
       const firstTrial = new Map<string, number>();
       for (const t of trials) if (!firstTrial.has(t.ruleId)) firstTrial.set(t.ruleId, t.n);
       const idea = (id: string): IdeaNumber | null => (firstTrial.has(id) ? { n: firstTrial.get(id)!, of: trials.length } : null);
@@ -536,8 +536,9 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       const eventListTotal = result.eventList.length;
       result.eventList = result.eventList.slice(-EVENT_LIST_MAX);
       const t = await deps.store.appendTrial({ ruleId: ruleId(rule), intent: "lab_event_study", verdict: result.verdict, rule });
-      const catalogueId = (await deps.store.getCatalogueEntry(t.ruleId))?.id ?? null; // the catalogue key is the rule hash, as on save
-      return { ...result, eventListTotal, warnings, idea: { n: t.n, of: (await deps.store.listTrials()).length }, catalogueId };
+      // The catalogue key is the rule hash, as on save.
+      const [entry, trials] = await Promise.all([deps.store.getCatalogueEntry(t.ruleId), deps.store.listTrials()]);
+      return { ...result, eventListTotal, warnings, idea: { n: t.n, of: trials.length }, catalogueId: entry?.id ?? null };
     },
 
     async catalogueSave(input: SaveInput, ctx?: CallBudget): Promise<CatalogueEntry> {

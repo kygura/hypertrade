@@ -67,7 +67,7 @@ export const NOVELTY_TABLE: Record<string, NoveltyMap> = {
   vol_x: { feature: "ht:volume|ma_ratio|20", toLab: (x) => (19 * (x - 1)) / (19 + x), step: 0.5, signed: false, label: (x) => `volume ${x.toFixed(1)}x 20d mean` },
 };
 /** Hold of a novelty rule: the detector's longest lookback that maps (7 days). */
-export const NOVELTY_HORIZON_DAYS = 7;
+const NOVELTY_HORIZON_DAYS = 7;
 
 /**
  * One Lab condition from a novelty value: the sign picks the side, the threshold is rounded toward zero to the step
@@ -172,10 +172,10 @@ export function opportunitySignal(o: Opportunity, ledger: readonly LedgerStats[]
 }
 
 /** Scorecard horizon a radar call's evidence reads: the longest graded one (the kill-watch window). */
-export const SCORECARD_HORIZON_DAYS = Math.max(...RADAR_HORIZONS);
+const SCORECARD_HORIZON_DAYS = Math.max(...RADAR_HORIZONS);
 
 /** The call's stance in the radar scorecard at SCORECARD_HORIZON_DAYS; null without a row (no graded call yet). */
-export function scorecardEvidence(c: Pick<RadarCall, "stance">, rows: readonly RadarScoreRow[]): ScorecardEvidence | null {
+function scorecardEvidence(c: Pick<RadarCall, "stance">, rows: readonly RadarScoreRow[]): ScorecardEvidence | null {
   const r = rows.find((x) => x.stance === c.stance && x.horizonDays === SCORECARD_HORIZON_DAYS);
   return r ? { kind: "scorecard", stance: r.stance, horizonDays: r.horizonDays, n: r.n, meanPct: r.meanPct, hitRate: r.hits / r.n } : null;
 }

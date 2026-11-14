@@ -17,13 +17,13 @@ export interface CatalystDraft {
 }
 
 /** `datetime-local` value (no zone) read as UTC → ISO, or null when unparseable. */
-export function utcFromLocalInput(v: string): string | null {
+function utcFromLocalInput(v: string): string | null {
   if (!v) return null
   const d = new Date(`${v.length === 16 ? `${v}:00` : v}Z`)
   return Number.isNaN(d.getTime()) ? null : d.toISOString()
 }
 
-export function validateCatalyst(d: CatalystDraft, now = Date.now()): string | null {
+function validateCatalyst(d: CatalystDraft, now = Date.now()): string | null {
   const iso = utcFromLocalInput(d.when)
   if (!d.title.trim() || !iso) return 'title and time required'
   if (new Date(iso).getTime() <= now) return 'time must be in the future'

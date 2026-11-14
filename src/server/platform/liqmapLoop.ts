@@ -8,9 +8,9 @@ import type { PlatformStore } from "./store.js";
 // Liqmap snapshot loop (SPEC P0.4 liqmap, P0.7): every 15 min, the top PLATFORM_LIQMAP_COINS by
 // OI notional get one bucketed snapshot on the fixed log grid.
 
-export const LIQMAP_BUCKET_BPS = 25;
+const LIQMAP_BUCKET_BPS = 25;
 /** Half-width of the stored grid around mark. The live route and history view slice it narrower. */
-export const LIQMAP_RANGE = 0.3;
+const LIQMAP_RANGE = 0.3;
 
 export function createLiqmapLoop(deps: { store: PlatformStore; info?: Info; now?: () => number; coins?: number }) {
   const { store } = deps;

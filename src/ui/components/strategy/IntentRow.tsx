@@ -1,7 +1,7 @@
 import { Button } from '../Button'
 import type { Intent, Verdict } from '../../../shared/strategy-protocol'
 import { VerdictBadge } from './VerdictBadge'
-import { ACTION_LABEL, actionClass, fmtProb, fmtTsSec, fmtUsdSigned } from './format'
+import { ACTION_LABEL, actionClass, fmtProb, fmtTsSec } from './format'
 
 // IntentRow — one intent with its verdict timeline beneath. Approve/reject
 // buttons appear only while the latest verdict is `proposed` and the record

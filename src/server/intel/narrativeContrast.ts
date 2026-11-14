@@ -22,8 +22,8 @@ import { round } from "./util.js";
 // run counter (INTEL_NARRATIVE_DAILY, default 10).
 
 export const CONTRAST_DEADLINE_MS = 90_000;
-export const CONTRAST_MAX_SEARCHES = 10;
-export const CONTRAST_PROMPT_VERSION = "narrative-contrast-v1";
+const CONTRAST_MAX_SEARCHES = 10;
+const CONTRAST_PROMPT_VERSION = "narrative-contrast-v1";
 export const CONTRASTS_SETTING = "narrative_contrasts";
 export const CONTRAST_RUNS_SETTING = "narrative_contrast_runs";
 export const VIEWS_SETTING = "narrative_views";

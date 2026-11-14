@@ -82,13 +82,13 @@ const jsonSchema: ToolSpec["input_schema"] = {
   },
   required: ["tags"],
 };
-export const SECTOR_PROMPT_VERSION = "sectors-1";
+const SECTOR_PROMPT_VERSION = "sectors-1";
 /** Zod is the trust boundary: one unknown sector rejects the whole answer (the repair round gets one retry). */
 export const sectorAnswerSchema = z.object({ tags: z.array(z.object({ coin: z.string(), sectors: z.array(SectorSchema).min(1).max(3) }).strict()) }).strict();
 
 let defaultLlm: Promise<LlmDeps> | undefined;
 /** Same construction as the lab service's lazy LLM deps. Dynamic import: the Intel/Desk graph imports the lab tools (cycle). */
-export const defaultLlmDeps = (): Promise<LlmDeps> =>
+const defaultLlmDeps = (): Promise<LlmDeps> =>
   (defaultLlm ??= Promise.all([import("../intel/llm.js"), import("../routine/llm.js")]).then(
     ([{ intelProviderFactory }, { MemoryLlmCache }]): LlmDeps => ({ makeProvider: intelProviderFactory(), cache: new MemoryLlmCache(), now: () => new Date(), dailyCap: 100 }),
   ));

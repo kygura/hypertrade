@@ -5,7 +5,6 @@ import { appendSnapshot, boardUniverse, buildBoard, flowQuadrant, positioning, t
 const H = 3_600_000;
 const DAY = 24 * H;
 const NOW = Date.parse("2026-10-23T12:00:00Z"); // a Friday
-const T0 = Date.parse("2026-01-01T00:00:00Z");
 
 /** Daily candles ending at the last full day before NOW; high/low ±1% around the close. */
 function daily(closes: number[], vol = (_: number) => 100): Candle[] {

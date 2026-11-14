@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { closestCoins } from "../core/coin.js";
 import { demoAccountAddress, DemoInfo } from "../core/demo.js";
 import type { Exchange } from "../core/exchange.js";
 import type { Alert, AppState, Config, MarketRow, SendResult, Ticket } from "../core/types.js";
 import { testConfig } from "../agent/testkit.js";
 import { fetchPulse } from "../core/lab.js";
-import { agentOutcomeNote, ARM_DELAY_MS, closestCoins, Controller, sendOutcome, sortMarkets, type AgentEventsLike, type AgentLike, type StoreLike, type Timers } from "./controller.js";
+import { agentOutcomeNote, ARM_DELAY_MS, Controller, sendOutcome, sortMarkets, type AgentEventsLike, type AgentLike, type StoreLike, type Timers } from "./controller.js";
 import type { Entry } from "./model.js";
 
 const NOW = 1_792_329_069_607;

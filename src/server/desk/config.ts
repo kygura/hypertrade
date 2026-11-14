@@ -5,10 +5,10 @@ import type { Confidence } from "./types.js";
 // limit has a conservative default so an unconfigured deployment trades
 // paper only, with small risk, and always behind the governor.
 
-export type Approval = "manual" | "auto";
-export type Venue = "paper" | "hl-testnet";
+type Approval = "manual" | "auto";
+type Venue = "paper" | "hl-testnet";
 
-export interface HlVenueConfig {
+interface HlVenueConfig {
   /** API (agent) wallet private key. Server-side only; never serialized. */
   secretKey: string;
   /** Master account the agent wallet trades for. */

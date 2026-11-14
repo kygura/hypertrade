@@ -23,7 +23,7 @@ import {
 // results). One search at a time; STOP WAITING aborts only the client's wait
 // — the server run still finishes and lands in RUNS (§10.9 busy state).
 
-export interface Landed {
+interface Landed {
   runId: string | null
   createdAt: string
   config: SearchConfig | null

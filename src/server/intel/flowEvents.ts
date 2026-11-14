@@ -3,7 +3,7 @@ import type { Alert, EventSource, FlowFlag, FlowMetric, HeatmapMetric, IntelEven
 import type { CatalystDeps } from "./catalysts.js";
 import { confluenceK, materiality as materialityOf, noteSource, type SignalSource } from "./diff.js";
 import { DELEV_OI_PCT, detectFlows } from "./flows.js";
-import { assetExposure, deepLink, loadContext, routeFor } from "./mapper.js";
+import { assetExposure, deepLink, loadContext, routeFor, type AssetExposure } from "./mapper.js";
 import { feedbackActions, sendIntel } from "./notify.js";
 import type { IntelStore } from "./store.js";
 import { computeWindows, LOOKBACK, parseThresholds, regimeFlags, seriesFromRows, type Series, type Threshold, type WindowResult } from "./windows.js";
@@ -22,7 +22,7 @@ import { computeWindows, LOOKBACK, parseThresholds, regimeFlags, seriesFromRows,
 // No INTEL_MIN_Z gate: the detector's own conditions are the gate.
 
 export const FLOW_ACTIVE_SETTING = "flow_active";
-export const FLOW_PROVIDER = "coinalyze";
+const FLOW_PROVIDER = "coinalyze";
 const DAY_MS = 86_400_000;
 
 /** One episode per (name, asset); a flip also carries its direction (sign of `to`), so a flip back inside the window alerts again. */
@@ -82,7 +82,7 @@ export function assetFlags(asset: string, f: AssetFlow, now: Date, o: FlowOption
 }
 
 /** The provider of the data a flag read: HL snapshots, or the flow venue(s). */
-export function flagSource(flag: FlowFlag, venues: AssetFlow["venues"]): EventSource {
+function flagSource(flag: FlowFlag, venues: AssetFlow["venues"]): EventSource {
   const metrics = flag.kind === "crossing" ? [flag.name.split(/[<>]/)[0] as HeatmapMetric] : (FLOW_INPUTS[flag.name] ?? []);
   const used = [...new Set(metrics.flatMap((m) => venues[m] ?? []))].sort();
   return used.length ? { label: `${FLOW_PROVIDER}:${used.join("+")}`, url: `/asset/${flag.asset}` } : { label: "snapshot", url: `/markets/${flag.asset}` };
@@ -91,7 +91,7 @@ export function flagSource(flag: FlowFlag, venues: AssetFlow["venues"]): EventSo
 const num = (v: number) => String(Number(v.toPrecision(3)));
 
 /** Code-written line: "Long BTC: crowded long (24h) · funding_z 2.41, oi_z_24h 1.3". */
-export function flagText(label: string, f: FlowFlag): string {
+function flagText(label: string, f: FlowFlag): string {
   const nums = Object.entries(f.numbers).map(([k, v]) => `${k} ${num(v)}`).join(", ");
   return `${label}: ${f.name.replace(/_/g, " ")} (${f.window})${nums ? ` · ${nums}` : ""}`.slice(0, 600);
 }
@@ -136,12 +136,14 @@ export async function flowAlerts(deps: FlowDeps, now: Date, o: { signal?: AbortS
       const classOf = (f: FlowFlag): SignalSource => (f.kind === "detector" ? "flow" : "regime");
       // Every class firing now is known before any alert is routed, so siblings get the same k in any order.
       for (const [k, f] of best) if (!prev[k]) noteSource(ctx.sources, asset, classOf(f));
+      // Read once per asset, and only when an episode is new.
+      let exp: AssetExposure | undefined;
       for (const [k, f] of best) {
         if (prev[k]) {
           active[k] = prev[k];
           continue;
         }
-        const exp = await assetExposure(deps, ctx, asset);
+        exp ??= await assetExposure(deps, ctx, asset);
         const source = flagSource(f, flow.venues);
         const text = flagText(exp.label, f);
         const [event] = await deps.store.upsertEvents([

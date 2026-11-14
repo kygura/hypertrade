@@ -18,8 +18,8 @@ import type { CollectorResult } from "./types.js";
 const COLLECTOR = "elfa";
 const SKIPPED_NO_KEY = "skipped:no-key";
 const SKIPPED_THROTTLED = "skipped:throttled";
-export const ELFA_BASE_URL = "https://api.elfa.ai";
-export const DEFAULT_INTERVAL_HOURS = 8;
+const ELFA_BASE_URL = "https://api.elfa.ai";
+const DEFAULT_INTERVAL_HOURS = 8;
 /** A cron run this close to the interval still fetches; cron timing drifts by minutes. */
 const SLACK_MS = 10 * 60_000;
 /** Counts are mentions in the trailing 24h, so samples taken hours apart stay comparable. */

@@ -57,13 +57,13 @@ export const FRED_MACRO = {
 } as const satisfies Record<string, { cadence: Cadence; unit: string; staleDays?: number }>;
 export type FredMacroId = keyof typeof FRED_MACRO;
 
-export const YAHOO_MACRO = ["^TNX", "DX-Y.NYB", "^VIX", "^MOVE"] as const;
-export type YahooMacroSymbol = (typeof YAHOO_MACRO)[number];
+const YAHOO_MACRO = ["^TNX", "DX-Y.NYB", "^VIX", "^MOVE"] as const;
+type YahooMacroSymbol = (typeof YAHOO_MACRO)[number];
 
 const TGA_CLOSING = "Treasury General Account (TGA) Closing Balance";
-export const DTS_TGA_URL = `https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/operating_cash_balance?sort=-record_date&page%5Bsize%5D=10&fields=record_date,account_type,open_today_bal&filter=account_type:eq:${encodeURIComponent(TGA_CLOSING)}`;
+const DTS_TGA_URL = `https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/operating_cash_balance?sort=-record_date&page%5Bsize%5D=10&fields=record_date,account_type,open_today_bal&filter=account_type:eq:${encodeURIComponent(TGA_CLOSING)}`;
 /** Open fed-rates events ending on or after the FOMC, soonest first: without the floor, year-end events crowd it out. */
-export const polymarketFedUrl = (fomcDate: string) =>
+const polymarketFedUrl = (fomcDate: string) =>
   `https://gamma-api.polymarket.com/events?limit=20&closed=false&tag_slug=fed-rates&order=endDate&ascending=true&end_date_min=${fomcDate}`;
 
 export interface Point {
@@ -71,7 +71,7 @@ export interface Point {
   value: number;
 }
 
-export interface MacroGap {
+interface MacroGap {
   source: string;
   reason: string;
 }
@@ -116,7 +116,7 @@ export const errDetail = (e: unknown): string => {
   return (e instanceof Error ? e.message : String(e)).replace(/[^\w .:/()-]/g, "").slice(0, 120);
 };
 
-export async function fetchText(f: typeof fetch, url: string, init: RequestInit = {}, timeoutMs: number = MACRO.timeoutMs): Promise<string> {
+async function fetchText(f: typeof fetch, url: string, init: RequestInit = {}, timeoutMs: number = MACRO.timeoutMs): Promise<string> {
   const res = await f(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
   const text = await res.text();
   if (!res.ok) throw new FetchError(res.status, `HTTP ${res.status}`);
@@ -213,7 +213,7 @@ export function parseDtsTga(json: unknown): Point[] {
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
-export type OddsLabel = "hold" | "+25bp" | "+50bp" | "-25bp" | "-50bp";
+type OddsLabel = "hold" | "+25bp" | "+50bp" | "-25bp" | "-50bp";
 const ODDS_LABELS: Array<[RegExp, OddsLabel]> = [
   [/^no change$/i, "hold"],
   [/^25 ?bps? increase$/i, "+25bp"],
@@ -275,7 +275,7 @@ export function parseFedOdds(json: unknown, fomcDate: string): FedOdds | null {
 // ─── derivations (pure) ───
 
 /** The last point on or before `date` (series ascending). */
-export function valueAt(series: Point[], date: string): Point | null {
+function valueAt(series: Point[], date: string): Point | null {
   let out: Point | null = null;
   for (const p of series) {
     if (p.date > date) break;
@@ -289,11 +289,11 @@ const baseOf = (series: Point[], days: number) => {
   return last ? valueAt(series, addDays(last.date, -days)) : null;
 };
 /** Last value minus the value `days` before the series' own last date (on or before); null without that history. */
-export function change(series: Point[], days: number): number | null {
+function change(series: Point[], days: number): number | null {
   const base = baseOf(series, days);
   return base ? series.at(-1)!.value - base.value : null;
 }
-export function pctChange(series: Point[], days: number): number | null {
+function pctChange(series: Point[], days: number): number | null {
   const base = baseOf(series, days);
   return base && base.value ? (series.at(-1)!.value / base.value - 1) * 100 : null;
 }
@@ -365,7 +365,7 @@ export interface MacroData {
 }
 
 /** FOMC, CPI and NFP releases from the start of today (UTC), so a print earlier today still shows. */
-export function macroCalendar(now: Date): Array<{ kind: MacroKind; date: string; at: string }> {
+function macroCalendar(now: Date): Array<{ kind: MacroKind; date: string; at: string }> {
   return calendarEvents(now, new Date(`${day(now.getTime())}T00:00:00Z`)).flatMap((e) => {
     const [, kind, date] = e.key.split(":");
     return e.scheduledAt && kind && date ? [{ kind: kind as MacroKind, date, at: e.scheduledAt }] : [];

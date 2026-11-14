@@ -210,7 +210,7 @@ export function agentStore(): PlatformStore | null {
  * database the call counter is the Intel cache table, so the spend is shared with Intel and shown in health; without
  * one an in-process MemoryLlmCache. Plus MOVES_AGENT_DAILY, counted from the platform store.
  */
-export function defaultAgentDeps(env: Record<string, string | undefined> = process.env): Omit<AgentDeps, "store"> {
+function defaultAgentDeps(env: Record<string, string | undefined> = process.env): Omit<AgentDeps, "store"> {
   const llm: LlmDeps = {
     makeProvider: intelProviderFactory(env),
     cache: databaseUrl(env) ? new PgIntelStore() : new MemoryLlmCache(),

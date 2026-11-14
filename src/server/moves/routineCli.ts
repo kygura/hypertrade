@@ -20,7 +20,7 @@ export function routineConfig(env: Record<string, string | undefined>): RoutineC
   return { base, headers: { accept: "application/json", authorization: `Bearer ${token}` } };
 }
 
-export function apiRequest(cfg: RoutineConfig, method: "GET" | "POST", path: string, body?: unknown): { url: string; init: RequestInit } {
+function apiRequest(cfg: RoutineConfig, method: "GET" | "POST", path: string, body?: unknown): { url: string; init: RequestInit } {
   const headers = body === undefined ? cfg.headers : { ...cfg.headers, "content-type": "application/json" };
   return { url: `${cfg.base}/api${path}`, init: { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) } };
 }

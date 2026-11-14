@@ -61,7 +61,7 @@ export interface ResearchRouteDeps {
 const ReplayQuerySchema = z.object({ source: z.enum(REPLAY_SOURCES).default("candles") });
 
 /** The shipped definitions as the UI reads them. */
-export const definitionsResponse = (): DefinitionsResponse => ({
+const definitionsResponse = (): DefinitionsResponse => ({
   definitions: DEFINITIONS.map((d) => {
     const rule = definitionRule(d);
     return { id: d.id, name: d.name, thesis: d.thesis, rule, ruleText: ruleText(rule), intradayKinds: d.intradayKinds };
@@ -170,7 +170,7 @@ let scanner: DefinitionScanner | null = null;
 /** One definition scanner per process (signals/runtime.ts), scanned at most once per closed daily bar. */
 const definitionScanner = (env: Record<string, string | undefined>): DefinitionScanner => (scanner ??= processDefinitionScanner(env));
 
-export function defaultBoardDeps(env: Record<string, string | undefined> = process.env): Omit<BoardDeps, "cache"> {
+function defaultBoardDeps(env: Record<string, string | undefined> = process.env): Omit<BoardDeps, "cache"> {
   return {
     now: Date.now,
     pulse: () =>
@@ -229,7 +229,7 @@ const defaultReplay = (source: ReplaySource) => replayAnswer(source, () => platf
 
 let shared: { cache: ResearchRouteDeps["cache"]; runStudy: StudyRunner } | null = null;
 /** One study cache and runner per process, the cache in front of the Lab store (so studies survive a restart). */
-export function researchRuntime() {
+function researchRuntime() {
   if (!shared) {
     const store = () => getLabService().deps.store; // resolved on first use, not at import
     const cache = createStudyCache(Date.now, STUDY_CACHE_MAX, { getStudies: (k) => store().getStudies(k), putStudy: (k, v, at) => store().putStudy(k, v, at) });

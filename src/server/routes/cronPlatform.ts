@@ -13,13 +13,13 @@ import type { LabLease } from "./cron.js";
 // daily bars) is excluded and left to its own job, POST /api/cron/novelty below.
 
 /** No step starts after this. Vercel's limit is maxDuration (300 s, api/index.ts). */
-export const PLATFORM_TICK_BUDGET_MS = 200_000;
+const PLATFORM_TICK_BUDGET_MS = 200_000;
 /** Answer by now with what ran, even if a step hangs (a DB write can take the 30 s query timeout). */
-export const PLATFORM_TICK_HARD_STOP_MS = PLATFORM_TICK_BUDGET_MS + 40_000;
+const PLATFORM_TICK_HARD_STOP_MS = PLATFORM_TICK_BUDGET_MS + 40_000;
 /** The lease outlives the budget by a minute: a killed run frees it after that. */
 export const PLATFORM_TICK_LEASE_MS = PLATFORM_TICK_BUDGET_MS + 60_000;
 /** Budget a step needs left to start: one scan is an HL call, up to 25 books and a write per candidate. */
-export const PLATFORM_TICK_RESERVE_MS: Partial<Record<TickStep, number>> = { scanner: 60_000, outcomes: 30_000, prune: 15_000 };
+const PLATFORM_TICK_RESERVE_MS: Partial<Record<TickStep, number>> = { scanner: 60_000, outcomes: 30_000, prune: 15_000 };
 const NOVELTY_EXCLUDED = "excluded over HTTP: the daily-bar pass takes ~14 min; it runs in its own job, POST /api/cron/novelty";
 
 export interface CronPlatformDeps {
@@ -74,10 +74,10 @@ export async function runPlatformTickJob(deps: CronPlatformDeps): Promise<{ stat
 // (createNoveltyLoop), under its own lease so it never blocks the tick.
 
 /** No coin starts after this. */
-export const NOVELTY_BUDGET_MS = 200_000;
+const NOVELTY_BUDGET_MS = 200_000;
 /** Budget a coin needs left to start: ensureHistory and the funding sync are capped at 20 s each, plus the reads. */
-export const NOVELTY_RESERVE_MS = 45_000;
-export const NOVELTY_HARD_STOP_MS = NOVELTY_BUDGET_MS + 40_000;
+const NOVELTY_RESERVE_MS = 45_000;
+const NOVELTY_HARD_STOP_MS = NOVELTY_BUDGET_MS + 40_000;
 export const NOVELTY_LEASE_MS = NOVELTY_BUDGET_MS + 60_000;
 
 export interface CronNoveltyDeps {

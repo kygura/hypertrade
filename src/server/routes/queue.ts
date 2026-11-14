@@ -44,7 +44,7 @@ export interface QueueRouteDeps {
   timeoutMs?: number;
 }
 
-export const SOURCE_TIMEOUT_MS = 3_000;
+const SOURCE_TIMEOUT_MS = 3_000;
 const NO_STORE = "needs the always-on server or a database (the queue lives in the platform store)";
 const why = (e: unknown) => (e instanceof Error ? e.message : String(e)) || "unavailable";
 

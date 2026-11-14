@@ -104,7 +104,7 @@ export async function loadHistory(coin: CycleCoin, deps: CyclesDeps): Promise<Da
   return [...byDay.values()].sort((a, b) => a.t - b.t);
 }
 
-export function buildCycles(coin: CycleCoin, history: DailyBar[], now: number, tf: "1d" | "1w"): CyclesResponse {
+function buildCycles(coin: CycleCoin, history: DailyBar[], now: number, tf: "1d" | "1w"): CyclesResponse {
   const points = computeCycle(history, now);
   const forecasts = { breakout: forecastNextRun(points, { kind: "breakout" }), euphoria: forecastNextRun(points, { kind: "euphoria" }) };
   // Bands draw the smoothed phases; the forecast above used the model's own.

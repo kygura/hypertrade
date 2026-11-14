@@ -19,7 +19,7 @@ export type Book = { bids: Level[]; asks: Level[] };
  */
 export const DEFAULT_TAKER_FEE_BPS = 4.5;
 /** Depth band for absorbableUsd and the depthUsd feature. */
-export const DEPTH_BAND_BPS = 50;
+const DEPTH_BAND_BPS = 50;
 export const ABSORB_SHARE = 0.1;
 
 const clean = (rows: Level[]) => rows.filter((l) => Number.isFinite(l.px) && Number.isFinite(l.sz) && l.px > 0 && l.sz > 0);

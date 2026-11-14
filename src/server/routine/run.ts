@@ -76,7 +76,7 @@ export interface RunResult {
 
 const TELEGRAM_LIMIT = 3900;
 /** An --input run refuses a saved collection older than this: its board no longer describes the market. */
-export const MAX_CONTEXT_AGE_MS = 2 * 3_600_000;
+const MAX_CONTEXT_AGE_MS = 2 * 3_600_000;
 const jsonText = (x: unknown) => `${JSON.stringify(x, null, 2)}\n`;
 
 /** data/board/latest.json: what the last scan saw and said, for the next run's deltas. */
@@ -177,7 +177,7 @@ async function notifyTelegram(env: RunDeps["env"], text: string, f: typeof fetch
   }
 }
 
-export function packSummary(pack: ContextPack, htf: Record<string, HtfFeatures | null>, board: Board, tripwires: { hits: TripwireRead[]; near: TripwireRead[] }): string {
+function packSummary(pack: ContextPack, htf: Record<string, HtfFeatures | null>, board: Board, tripwires: { hits: TripwireRead[]; near: TripwireRead[] }): string {
   const lines = [`context pack @ ${pack.asOf}`];
   lines.push(`  hyperliquid: ${pack.hl ? `${pack.hl.universeSize} live symbols` : "missing"} · board ${board.rows.length} markets · OI history ${board.history.snapshots} snapshots`);
   lines.push(`  tripwires: ${tripwires.hits.length} hits (${tripwires.hits.map((t) => `${t.asset} ${t.setup_id} ${t.direction}`).join(", ") || "none"}), ${tripwires.near.length} near`);

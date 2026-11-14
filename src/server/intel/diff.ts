@@ -17,12 +17,12 @@ import { atr as atrOf } from "../desk/tools.js";
 
 export const WATCH_FLOOR = 0.05;
 /** A level/ratio z already past minZ at the baseline clears only if it moved at least this much. */
-export const LEVEL_Z_MOVE = 1;
+const LEVEL_Z_MOVE = 1;
 
 /** The independent signal classes an asset can show at once (docs/SPEC.md § Scout S0.6). */
 export type SignalSource = "snapshot" | "flow" | "regime" | "news";
-export const CONFLUENCE_WINDOW_MS = 6 * 3_600_000;
-export const CONFLUENCE_CAP = 1.5;
+const CONFLUENCE_WINDOW_MS = 6 * 3_600_000;
+const CONFLUENCE_CAP = 1.5;
 
 /** 1 for a lone signal, +0.25 per further independent source, capped at 1.5. k counts the item's own source too. */
 export const confluence = (k: number): number => Math.min(CONFLUENCE_CAP, 1 + 0.25 * (Math.max(1, k) - 1));

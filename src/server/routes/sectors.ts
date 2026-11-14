@@ -5,7 +5,7 @@ import { latestObservations } from "../db.js";
 import type { AssetCtx } from "../../shared/types.js";
 import { getCtxs } from "./hl.js";
 
-export interface SectorTokenRow {
+interface SectorTokenRow {
   coin: string;
   markPx: number;
   dayChangePct: number;

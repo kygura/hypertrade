@@ -6,7 +6,7 @@ import candlesBtc1hFx from "./fixtures/candles-BTC-1h.json";
 import fundingBtcFx from "./fixtures/funding-BTC.json";
 import metaFx from "./fixtures/meta.json";
 import predictedFx from "./fixtures/predicted.json";
-import { accountFromRaw, bookViewFromRaw, HlInfo, infoBase, marketsFromRaw, type FetchFn } from "./info.js";
+import { accountFromRaw, bookViewFromRaw, HlInfo, marketsFromRaw, type FetchFn } from "./info.js";
 
 const meta = metaFx as unknown as [{ universe: Array<{ name: string }> }, Array<Record<string, string>>];
 
@@ -26,13 +26,6 @@ function fakeFetch(routes: Record<string, Handler>) {
 }
 
 const ok = (x: unknown): Handler => () => x;
-
-describe("infoBase", () => {
-  test("maps network to host", () => {
-    expect(infoBase("mainnet")).toBe("https://api.hyperliquid.xyz");
-    expect(infoBase("testnet")).toBe("https://api.hyperliquid-testnet.xyz");
-  });
-});
 
 describe("marketsFromRaw", () => {
   const rows = marketsFromRaw(metaFx, predictedFx, ["ETH"]);

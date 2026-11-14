@@ -13,12 +13,12 @@ const Count = z.number().int().nonnegative();
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "invalid day");
 
 export const QUEUE_SOURCES = ["moves", "opportunity", "radar"] as const;
-export const QueueSourceSchema = z.enum(QUEUE_SOURCES);
+const QueueSourceSchema = z.enum(QUEUE_SOURCES);
 export type QueueSource = z.infer<typeof QueueSourceSchema>;
 
 /** `new`: not yet handled. `acted`: the operator decided a part today (an opportunity approved or rejected). `dismissed`: hidden for the day. */
-export const QUEUE_STATES = ["new", "acted", "dismissed"] as const;
-export const QueueStateSchema = z.enum(QUEUE_STATES);
+const QUEUE_STATES = ["new", "acted", "dismissed"] as const;
+const QueueStateSchema = z.enum(QUEUE_STATES);
 export type QueueState = z.infer<typeof QueueStateSchema>;
 
 /** `${day}:${coin}`: the shape of a triage item id, so a queue dismissal and the coin's triage item share a key. */
@@ -33,7 +33,7 @@ export function parseQueueItemId(id: string): { day: string; coin: string } | nu
 }
 
 /** One source's reason for the coin to be in the queue. */
-export const QueuePartSchema = z.object({
+const QueuePartSchema = z.object({
   source: QueueSourceSchema,
   /** The source object's own id: triage item id, opportunity uuid, radar call id. */
   ref: z.string().min(1),
@@ -77,7 +77,7 @@ export const QueueItemSchema = z.object({
 });
 export type QueueItem = z.infer<typeof QueueItemSchema>;
 
-export const QueueSourceStatusSchema = z.object({
+const QueueSourceStatusSchema = z.object({
   state: z.enum(["ok", "unavailable"]),
   reason: z.string().nullable(),
   /** Coins this source contributed before the cap. */
@@ -86,8 +86,7 @@ export const QueueSourceStatusSchema = z.object({
 export type QueueSourceStatus = z.infer<typeof QueueSourceStatusSchema>;
 
 /** When a moves-pipeline input was produced, and whether it is past twice its job's interval. */
-export const QueueFreshnessSchema = z.object({ at: Iso, stale: z.boolean() });
-export type QueueFreshness = z.infer<typeof QueueFreshnessSchema>;
+const QueueFreshnessSchema = z.object({ at: Iso, stale: z.boolean() });
 
 export const QueueResponseSchema = z.object({
   asOf: Iso,

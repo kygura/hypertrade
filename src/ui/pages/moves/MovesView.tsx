@@ -4,15 +4,15 @@ import { CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine, Responsive
 import { AgeStamp, AsyncBody, Badge, Button, DataTable, EmptyBlock, HowToRead, MetricStat, PageContainer, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, StatCell, StatusDot, type Column } from '../../components'
 import { ClaimAge } from '../../components/intel'
 import { sourceHref, SourceLink } from '../../components/intel/SourceLink'
-import type { AgentRecord, AgentStatsResponse, TriageResponse } from '../../../shared/agentRecords'
+import type { AgentStatsResponse, TriageResponse } from '../../../shared/agentRecords'
 import { MOVE_WINDOWS, WINDOW_HOURS, type MoveDetail, type MoveRow, type MovesResponse, type MoveWindow } from '../../../shared/moves'
 import type { DefinitionsResponse } from '../../../shared/research'
 import { fmtAge, fmtPx, fmtUsdCompact, signClass } from '../../lib/format'
 import { coverageTreatment } from '../cockpit/logic'
 import {
-  attributionCell, attributionSegments, barScale, barWidth, BUCKET_LABEL, bestChecklist, betaPct, budgetLine, CHECK_LABEL, checkValue, checklistText, chartData, coverageCopy, crowdText, DASH,
+  attributionCell, attributionSegments, barScale, barWidth, BUCKET_LABEL, bestChecklist, betaPct, CHECK_LABEL, checkValue, checklistText, chartData, coverageCopy, crowdText, DASH,
   droppedTitle, falsifierLine, fmtMove, fmtPct, fmtZ, fundingZText, gradeLine, headerLine, investigateGate, isFactorCoin, layerChips, layerNote, liqSigmaText, metMark, NOT_A_FORECAST,
-  outboundLinks, overBudgetLine, recordView, SORT_KEYS, SORT_LABEL, staleLine, studyLinkFor, tagText, trackLine, triageEmptyLabel, visibleItems, zWarn, type SortKey,
+  outboundLinks, SORT_KEYS, SORT_LABEL, staleLine, studyLinkFor, tagText, trackLine, zWarn, type SortKey,
 } from './logic'
 import { ATTENTION_TERMS, ATTRIBUTION_TERMS, CHECKLIST_TERMS, FACTOR_TERMS, GUIDE, LIQ_TERMS, movesTakeaway, moveTakeaway, PAGE_TERMS, POSITIONING_TERMS, RECORD_TERMS, TABLE_TERMS } from './guide'
 
@@ -56,7 +56,6 @@ export interface MovesViewProps {
   showList: boolean
   showDetail: boolean
   now: number
-  onDismiss: (id: string) => void
   onInvestigate: (coin: string) => void
   /** Coins with an investigation in flight, and the last failure's words. */
   busy: readonly string[]
@@ -133,7 +132,7 @@ export function MovesHeader({ moves, window, onWindow }: { moves: Feed<MovesResp
 }
 
 /** The takeaway of the shown rows (facts only) and the page's reading guide. */
-export function MovesLead({ moves, rows, window }: { moves: Feed<MovesResponse>; rows: readonly MoveRow[]; window: MoveWindow }) {
+function MovesLead({ moves, rows, window }: { moves: Feed<MovesResponse>; rows: readonly MoveRow[]; window: MoveWindow }) {
   const takeaway = moves.data?.state === 'ok' ? movesTakeaway(rows, window) : null
   return (
     <div className="flex flex-col gap-1 min-w-0">
@@ -198,103 +197,6 @@ export function FactorsPanel({ moves, sector, onSector }: { moves: Feed<MovesRes
         )}
       </AsyncBody>
     </Panel>
-  )
-}
-
-// ─── B · Triage ───
-
-export function TriagePanel(p: {
-  triage: Feed<TriageResponse>
-  selected: string | null
-  onOpen: (coin: string) => void
-  onDismiss: (id: string) => void
-  onInvestigate: (coin: string) => void
-  busy: readonly string[]
-  error: { coin: string; message: string } | null
-  now: number
-}) {
-  const t = p.triage.data
-  return (
-    <Panel>
-      <PanelHeader title={t && t.state === 'ok' ? `TRIAGE · ${budgetLine(t)}` : 'TRIAGE'}>
-        {t && t.state === 'ok' && (
-          <span className="text-xs tabular text-text-secondary" title="coins scanned in the latest run · agent investigations run today of the daily cap">
-            {t.watched} watched · agents {t.agentRuns}/{t.agentCap}
-          </span>
-        )}
-      </PanelHeader>
-      <AsyncBody loading={p.triage.loading} data={t} error={p.triage.error} offline={p.triage.offline} onRetry={p.triage.refetch} rows={3}>
-        {(d) => {
-          if (d.state === 'unavailable') return <EmptyBlock label={d.reason ?? 'triage unavailable'} />
-          const items = visibleItems(d.items)
-          const over = overBudgetLine(d.overBudget)
-          const blocked = d.agentBlockedReason
-          return (
-            <>
-              {items.length === 0 ? (
-                <EmptyBlock label={triageEmptyLabel(d)} />
-              ) : (
-                <ul>
-                  {items.map((i) => {
-                    const busy = p.busy.includes(i.coin)
-                    const rv = recordView(i.record, busy)
-                    const gate = investigateGate(blocked, busy)
-                    return (
-                      <li key={i.id} className={`flex flex-wrap items-start gap-x-3 gap-y-1.5 px-3 py-2 border-b border-border-subtle min-w-0 ${p.selected === i.coin ? 'bg-selected' : ''}`}>
-                        <div className="flex-1 min-w-[12rem] flex flex-col gap-1">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                            <span className="text-sm font-semibold text-text-primary">{i.coin}</span>
-                            <span className="text-xs tabular text-text-secondary">{fmtAge(i.surfacedAt, p.now)}</span>
-                          </div>
-                          <p className="text-sm text-text-secondary break-words">{i.reason}</p>
-                          <TriageRecord view={rv} record={i.record} />
-                          {p.error?.coin === i.coin && (
-                            <p role="alert" className="text-xs text-red-text">
-                              {p.error.message}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <Button tier="ghost" className="min-h-[var(--tap-min)]" onClick={() => p.onOpen(i.coin)}>
-                            OPEN
-                          </Button>
-                          <Button tier="ghost" className="min-h-[var(--tap-min)]" title="hide for today; it still counts against the budget" onClick={() => p.onDismiss(i.id)}>
-                            DISMISS
-                          </Button>
-                          {i.record == null && (
-                            <Button tier="ghost" className="min-h-[var(--tap-min)]" disabled={gate.disabled} title={gate.title} onClick={() => p.onInvestigate(i.coin)}>
-                              INVESTIGATE
-                            </Button>
-                          )}
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-              {blocked && items.some((i) => i.record == null) && <p className="px-3 py-1.5 text-xs text-text-secondary">INVESTIGATE off: {blocked}</p>}
-              {over && <p className="px-3 py-1.5 text-xs tabular text-text-secondary">{over}</p>}
-            </>
-          )
-        }}
-      </AsyncBody>
-    </Panel>
-  )
-}
-
-function TriageRecord({ view, record }: { view: ReturnType<typeof recordView>; record: AgentRecord | null }) {
-  if (view.kind === 'absent') return null
-  if (view.kind === 'investigating') return <span className="text-xs text-info pulse-label">{view.text}</span>
-  if (view.kind !== 'claim' || !record) return <span className="text-xs text-text-secondary">{view.text}</span>
-  return (
-    <div className={`${infoRule} pl-2 flex flex-col gap-0.5`}>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-        <Badge tone="info">HYPOTHESIS</Badge>
-        <Badge tone="info">{record.layer.replace('_', ' ').toUpperCase()}</Badge>
-      </div>
-      <p className="text-sm text-text-primary break-words">{record.claim}</p>
-      {record.falsifier && <p className="text-xs text-text-secondary break-words">falsifier: {record.falsifier.text}</p>}
-    </div>
   )
 }
 
@@ -437,7 +339,7 @@ export function MovesTablePanel(p: { moves: Feed<MovesResponse>; rows: MoveRow[]
 
 // ─── D · Detail ───
 
-export function ActionBar({ row, defs }: { row: Pick<MoveRow, 'coin' | 'opportunityId' | 'setups'>; defs: DefinitionsResponse | null }) {
+function ActionBar({ row, defs }: { row: Pick<MoveRow, 'coin' | 'opportunityId' | 'setups'>; defs: DefinitionsResponse | null }) {
   return (
     <nav
       aria-label={`${row.coin} links`}

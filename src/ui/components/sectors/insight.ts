@@ -7,7 +7,7 @@ import { fmtSigned } from '../../lib/format'
 // mindshare and momentum), and the line says which.
 
 /** Momentum at or past this reads as rising/falling (MomentumBadge and the grid's colour ramp use the same edge). */
-export const MOMENTUM_EDGE = 0.15
+const MOMENTUM_EDGE = 0.15
 
 const STAGE_ORDER: readonly NarrativeStage[] = ['crowded', 'expanding', 'emerging', 'fading', 'quiet', 'unknown']
 

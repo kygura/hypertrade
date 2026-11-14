@@ -1,10 +1,8 @@
 import type { z } from "zod";
 import type {
   AllocationSchema,
-  ScenarioAssumptionSchema,
   ScenarioSchema,
   BranchConfigSchema,
-  MarketStateSignalSchema,
   MarketStateDomainSchema,
   MarketStateThesisSchema,
   MarketStateDataSchema,
@@ -12,16 +10,12 @@ import type {
   RotationSchema,
   SectorsDataSchema,
   HlPerpMetaSchema,
-  HlAssetCtxSchema,
-  HlCandleSchema,
 } from "./schemas.js";
 
 export type Allocation = z.infer<typeof AllocationSchema>;
-export type ScenarioAssumption = z.infer<typeof ScenarioAssumptionSchema>;
 export type Scenario = z.infer<typeof ScenarioSchema>;
 export type BranchConfig = z.infer<typeof BranchConfigSchema>;
 
-export type MarketStateSignal = z.infer<typeof MarketStateSignalSchema>;
 export type MarketStateDomain = z.infer<typeof MarketStateDomainSchema>;
 export type MarketStateThesis = z.infer<typeof MarketStateThesisSchema>;
 export type MarketStateData = z.infer<typeof MarketStateDataSchema>;
@@ -31,14 +25,6 @@ export type Rotation = z.infer<typeof RotationSchema>;
 export type SectorsData = z.infer<typeof SectorsDataSchema>;
 
 export type HlRawPerpMeta = z.infer<typeof HlPerpMetaSchema>;
-export type HlRawAssetCtx = z.infer<typeof HlAssetCtxSchema>;
-export type HlRawCandle = z.infer<typeof HlCandleSchema>;
-
-/** {ts, value} pair used throughout stats.ts / baseline math. */
-export interface Observation {
-  ts: number;
-  value: number;
-}
 
 /** Computed (numeric, post-parse) per-asset Hyperliquid context. */
 export interface AssetCtx {
@@ -73,4 +59,3 @@ export interface Candle {
   v: number;
 }
 
-export type AllMids = Record<string, string>;

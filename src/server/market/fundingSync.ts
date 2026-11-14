@@ -18,7 +18,7 @@ export interface FundingDeps {
   saveState(s: db.SyncState): Promise<void>;
 }
 
-export const defaultFundingDeps: FundingDeps = {
+const defaultFundingDeps: FundingDeps = {
   now: () => Date.now(),
   page: (coin, start, end) => fetchFundingPage(coin, start, end),
   async bounds(coin) {

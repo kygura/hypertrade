@@ -38,7 +38,7 @@ const sgn = (x: number, d = 1) => `${x >= 0 ? "+" : ""}${x.toFixed(d)}`;
 const orEmpty = async <T>(p: Promise<T[]>): Promise<T[]> => p.catch(() => []);
 
 /** Short human lines from one RallyDiagnostics: the read, the heaviest trap components, then the inputs behind them. */
-export function diagnosticLines(d: RallyDiagnostics): string[] {
+function diagnosticLines(d: RallyDiagnostics): string[] {
   const lines = [`${d.windowHours}h ${d.direction} ${sgn(d.priceChangePct)}%: ${d.label}${d.direction === "flat" ? "" : ` (trap score ${d.trapScore}/100)`}`, ...d.notes];
   for (const c of [...d.components].filter((x) => x.points > 0).sort((a, b) => b.points - a.points).slice(0, 3)) {
     lines.push(`${c.name} ${c.points}/${c.max}: ${c.note}`);

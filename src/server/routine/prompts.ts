@@ -92,7 +92,7 @@ export function numbersBlock(pack: ContextPack, htf: Record<string, HtfFeatures 
 }
 
 /** Context from outside sources (hl-cycles, the Lab, gap details), fenced as data. */
-export function textBlock(pack: ContextPack): string {
+function textBlock(pack: ContextPack): string {
   const parts: Record<string, unknown> = {};
   const c = pack.hlCycles;
   if (c) parts.hl_cycles = { note: `BTC regime dashboard, as_of ${c.asOf}${c.stale ? `, STALE: last refresh ${c.lastRefreshAgeH} h ago` : ""}`, ...c };
@@ -103,7 +103,7 @@ export function textBlock(pack: ContextPack): string {
 }
 
 /** The board, one market per line, plus tripwires; all measured by code. */
-export function boardBlock(board: Board, tripwires: { hits: TripwireRead[]; near: TripwireRead[] }): string {
+function boardBlock(board: Board, tripwires: { hits: TripwireRead[]; near: TripwireRead[] }): string {
   const lines = [`board as_of ${board.asOf}: ${board.rows.length} markets; OI history ${board.history.snapshots} snapshots since ${board.history.oldest ?? "none"} (OI changes are null until it reaches back)`];
   for (const r of board.rows) lines.push(`${r.coin}: ${json({ mark: r.mark, tf: r.tf, pos: r.pos, rs: r.rs, xs: r.xs, levels: r.levels })}`);
   lines.push("", `tripwire hits (${tripwires.hits.length}):`, ...(tripwires.hits.length ? tripwires.hits.map((t) => `- ${formatTripwire(t)}`) : ["- none"]));

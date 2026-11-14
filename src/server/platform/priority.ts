@@ -11,7 +11,7 @@ import { fin } from "../intel/util.js";
 
 export type Candidate = Pick<AddressRow, "address" | "lastSeenAt" | "polledAt" | "notionalUsd" | "positionCount" | "minLiqDistance">;
 
-export const DEFAULT_IDLE_INTERVAL_MIN = 60;
+const DEFAULT_IDLE_INTERVAL_MIN = 60;
 /** proximity = 1 / clamp(minLiqDistance, MIN_DIST, 1): a 1% distance scores 100, a 30% one 3.3. No liquidation price scores 1. */
 const MIN_DIST = 0.01;
 

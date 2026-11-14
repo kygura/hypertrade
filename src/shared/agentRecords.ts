@@ -17,9 +17,8 @@ export type MoveWindow = z.infer<typeof MoveWindowSchema>;
 export const WINDOW_HOURS: Record<MoveWindow, 4 | 24 | 72> = { "4h": 4, "24h": 24, "72h": 72 };
 
 /** The layer a record blames for the move. The model's proposal, shown as a hypothesis beside code's attribution. */
-export const AGENT_LAYERS = ["beta", "forced_flow", "microstructure", "narrative", "unexplained"] as const;
+const AGENT_LAYERS = ["beta", "forced_flow", "microstructure", "narrative", "unexplained"] as const;
 export const AgentLayerSchema = z.enum(AGENT_LAYERS);
-export type AgentLayer = z.infer<typeof AgentLayerSchema>;
 
 /**
  * `open`: written, waiting for its horizon. `falsified`: price crossed the falsifier level before the horizon.
@@ -27,7 +26,7 @@ export type AgentLayer = z.infer<typeof AgentLayerSchema>;
  * model call or its validation failed. `capped`: a daily cap was reached before the provider call.
  */
 export const AGENT_RECORD_STATUSES = ["open", "falsified", "graded", "no_cause", "failed", "capped"] as const;
-export const AgentRecordStatusSchema = z.enum(AGENT_RECORD_STATUSES);
+const AgentRecordStatusSchema = z.enum(AGENT_RECORD_STATUSES);
 export type AgentRecordStatus = z.infer<typeof AgentRecordStatusSchema>;
 
 export const AgentSourceSchema = z.object({
@@ -40,7 +39,7 @@ export const AgentSourceSchema = z.object({
 });
 export type AgentSource = z.infer<typeof AgentSourceSchema>;
 
-export const AgentFalsifierSchema = z.object({
+const AgentFalsifierSchema = z.object({
   level: Pos,
   /** The record is falsified when price trades on this side of `level`. */
   side: z.enum(["below", "above"]),
@@ -48,7 +47,7 @@ export const AgentFalsifierSchema = z.object({
 });
 export type AgentFalsifier = z.infer<typeof AgentFalsifierSchema>;
 
-export const AgentGradeSchema = z.object({
+const AgentGradeSchema = z.object({
   /** Hours from creation to the grade (the horizon, or earlier when falsified). */
   atHours: Num,
   px: Pos,
@@ -156,10 +155,9 @@ export const TriageResponseSchema = z.object({
 export type TriageResponse = z.infer<typeof TriageResponseSchema>;
 
 export const AgentRecordsResponseSchema = z.object({ records: z.array(AgentRecordSchema) });
-export type AgentRecordsResponse = z.infer<typeof AgentRecordsResponseSchema>;
 
 /** groupStats over graded records: null numbers under 5 clusters, as the ledger. */
-export const AgentStatsRowSchema = z.object({
+const AgentStatsRowSchema = z.object({
   key: z.string().min(1),
   n: Count,
   clusters: Count,

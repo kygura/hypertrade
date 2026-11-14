@@ -11,7 +11,7 @@
 // against the bars it would sit under before trusting it (the seam check).
 import type { Timeframe } from "../../shared/timeframes.js";
 
-export type SourceId = "binance" | "bitstamp";
+type SourceId = "binance" | "bitstamp";
 
 export interface ExtBar {
   t: number;
@@ -23,7 +23,7 @@ export interface ExtBar {
 }
 
 /** Result of one backward page. `unsupported`: the venue has no such market. */
-export type ExtPage = { kind: "ok"; bars: ExtBar[] } | { kind: "unsupported" };
+type ExtPage = { kind: "ok"; bars: ExtBar[] } | { kind: "unsupported" };
 
 export interface ExternalSource {
   id: SourceId;

@@ -49,5 +49,3 @@ export function TerminalTabs() {
     />
   )
 }
-
-export const TradeTabs = TerminalTabs

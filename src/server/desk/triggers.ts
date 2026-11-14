@@ -33,7 +33,7 @@ export function changeOver(hist: Array<[number, number]>, now: number, ms: numbe
   return base > 0 ? ((last - base) / base) * 100 : null;
 }
 
-export interface TriggerInput {
+interface TriggerInput {
   now: number;
   coins: string[];
   ctxs: AssetCtx[];

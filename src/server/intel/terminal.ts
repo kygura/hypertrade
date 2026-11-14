@@ -23,6 +23,7 @@ import type { Notifier } from "../desk/notify.js";
 import { claimsJsonSchema, validateLines } from "./claims.js";
 import { activeSources, buildDiffItems, rankDiffs, type AssetDiffInput, type Bar } from "./diff.js";
 import { completeStructured, intelProviderFactory, type LlmDeps } from "./llm.js";
+import { deepLink } from "./mapper.js";
 import { hasSamples, WINDOW_MS, type Point } from "./normalize.js";
 import { sendIntel } from "./notify.js";
 import { loadExposure, watchedAssets } from "./positions.js";
@@ -45,7 +46,7 @@ const CATALYST_AHEAD_MS = 24 * HOUR_MS;
 /** A stored snapshot this fresh lends its book depth/spread to the live row (books are only fetched by collect). */
 const BOOK_FRESH_MS = 30 * 60_000;
 const ATR_LOOKBACK_MS = 48 * HOUR_MS;
-export const BRIEF_PROMPT_VERSION = "terminal-brief-v2";
+const BRIEF_PROMPT_VERSION = "terminal-brief-v2";
 const MAX_LINES = 5;
 
 export interface Thresholds {
@@ -248,8 +249,7 @@ async function narrate(
 
 export async function buildBrief(deps: TerminalDeps, o: BriefOptions): Promise<Brief> {
   const now = deps.now();
-  const since = await baselineFor(deps, o.surface, now);
-  const ctxs = await deps.ctxs();
+  const [since, ctxs] = await Promise.all([baselineFor(deps, o.surface, now), deps.ctxs()]);
   const marks = Object.fromEntries(ctxs.map((c) => [c.name, c.markPx]));
   const empty: PositionsResponse = { positions: [], sources: [], totalNotionalUsd: 0 };
   const [exposure, watched, ingest] = await Promise.all([
@@ -260,16 +260,19 @@ export async function buildBrief(deps: TerminalDeps, o: BriefOptions): Promise<B
   const focus = new Set([...exposure.positions.map((p) => p.asset), ...watched]);
   const byName = new Map(ctxs.filter((c) => !c.isDelisted).map((c) => [c.name, c]));
 
-  const inputs = await Promise.all(
-    [...focus].flatMap((asset) => {
-      const ctx = byName.get(asset);
-      return ctx ? [assetInput(deps, ctx, exposure.positions.filter((p) => p.asset === asset), since, now)] : [];
-    }),
-  );
+  const [inputs, sources] = await Promise.all([
+    Promise.all(
+      [...focus].flatMap((asset) => {
+        const ctx = byName.get(asset);
+        return ctx ? [assetInput(deps, ctx, exposure.positions.filter((p) => p.asset === asset), since, now)] : [];
+      }),
+    ),
+    activeSources(deps.store, now).catch(() => new Map()),
+  ]);
   const { items: all, diffed } = buildDiffItems(
     inputs.filter((i): i is AssetDiffInput => i != null),
     exposure.totalNotionalUsd,
-    await activeSources(deps.store, now).catch(() => new Map()),
+    sources,
   );
   const items = rankDiffs(all, deps.thresholds);
 
@@ -355,9 +358,8 @@ export async function runIntelBrief(
     if (brief.silent) return { ...base, sent: [], ...narrationError };
     const n = brief.items.length + brief.alerts.length;
     const lines = briefLines(brief);
-    const link = deps.appUrl ? `${deps.appUrl.replace(/\/+$/, "")}/terminal?review=1` : undefined;
     const title = n === 1 ? "1 thing changed that touches your positions" : `${n} things changed that touch your positions`;
-    const sent = await sendIntel(deps.notifier, { title, lines, link });
+    const sent = await sendIntel(deps.notifier, { title, lines, link: deepLink(deps.appUrl) });
     return { ...base, sent, ...narrationError };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -365,7 +367,7 @@ export async function runIntelBrief(
 }
 
 /** Latest run per `intel:<source>` collector. */
-export async function loadIngestHealth(): Promise<IngestHealth[]> {
+async function loadIngestHealth(): Promise<IngestHealth[]> {
   const rows = await db.sql()<{ collector: string; started_at: Date; ok: boolean; error: string | null }[]>`
     select distinct on (collector) collector, started_at, ok, error from collector_runs
     where collector like 'intel:%' order by collector, started_at desc

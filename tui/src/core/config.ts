@@ -13,7 +13,7 @@ import type { Config, GovernorEnvLimits, Network } from "./types.js";
 
 type Env = Record<string, string | undefined>;
 
-export interface LoadedConfig {
+interface LoadedConfig {
   config: Config;
   /** 0x-prefixed private key, or null (read-only). Hand it only to createExchange. */
   agentKey: string | null;
