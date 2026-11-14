@@ -16,6 +16,7 @@ import { extremesReadyTtlMin } from "../platform/opportunity.js";
 import { approveBlockOf, placedBy, placing, type PlatformContext } from "../platform/context.js";
 import { Z_KEYS } from "../platform/score.js";
 import { evidenceLine, groupStats, setupLedgerStats } from "../platform/stats.js";
+import { tradeHints } from "../extremes/pricing.js";
 import { defaultDeskService } from "./desk.js";
 import { defaultIntelDeps } from "./intel/index.js";
 import { body, failure, invalid } from "./intel/http.js";
@@ -28,7 +29,8 @@ import { platformContext } from "./research.js";
 
 type RiskVerdict = z.infer<typeof RiskVerdictSchema>;
 /** What an opportunity asks the governor to size and place; sizing is the governor's, never ours. */
-export interface Ticket { coin: string; side: Side; stopPx: number; targetPx: number | null }
+/** What an approval sends to the desk. `confidence` and `leverage` come from the opportunity's tags (an extremes take): they pick the venue's leverage, never the size. */
+export interface Ticket { coin: string; side: Side; stopPx: number; targetPx: number | null; confidence?: "low" | "medium" | "high"; leverage?: number }
 interface Placement { status: string; reasons: string[]; proposalId: string }
 
 export interface RiskGate {
@@ -55,7 +57,8 @@ const CACHE_MS = 10_000;
 const TICKET_RISK_PCT = 0.5;
 
 const order = (t: Ticket, maxRiskPct: number): OperatorOrder => ({
-  coin: t.coin, side: t.side, stop: t.stopPx, ...(t.targetPx != null ? { target: t.targetPx } : {}), riskPct: Math.max(0.05, Math.min(TICKET_RISK_PCT, maxRiskPct)), source: "copilot",
+  coin: t.coin, side: t.side, stop: t.stopPx, ...(t.targetPx != null ? { target: t.targetPx } : {}), riskPct: Math.max(0.05, Math.min(TICKET_RISK_PCT, maxRiskPct)),
+  ...(t.confidence ? { confidence: t.confidence } : {}), ...(t.leverage != null ? { leverage: t.leverage } : {}), source: "copilot",
 });
 
 export function deskRisk(get: () => DeskService): RiskGate {
@@ -130,7 +133,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
   const coverageOf = (positions: Position[], oiUsd: number | null, now: Date) =>
     coverage(positions.reduce((s, p) => s + p.positionValue, 0), oiUsd ?? null, new Set(positions.map((p) => p.address)).size, positions.map((p) => seenAge(p.updatedAt, now)));
 
-  const ticketOf = (o: Opportunity): Ticket | null => (o.stopPx == null ? null : { coin: o.coin, side: o.direction, stopPx: o.stopPx, targetPx: o.targetPx });
+  const ticketOf = (o: Opportunity): Ticket | null => (o.stopPx == null ? null : { coin: o.coin, side: o.direction, stopPx: o.stopPx, targetPx: o.targetPx, ...tradeHints(o.tags) });
   const created = (entries: Awaited<ReturnType<PlatformContext["store"]["ledgerFor"]>>) => entries.find((e) => e.kind === "created");
   /** What the operator saw when deciding (P0.12). */
   const seenOf = (o: Opportunity, e: ReturnType<typeof created>): LedgerPayload<"decision">["seen"] => ({

@@ -14,7 +14,7 @@ import { reconcileOnce } from "../platform/reconcile.js";
 import { SCORE_VERSION } from "../platform/score.js";
 import { setHealthExtras } from "../platform/runtime.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
-import { createPlatformRoutes, defaultPlatformDeps, deskRisk, type PlatformDeps, type RiskGate } from "./platform.js";
+import { createPlatformRoutes, defaultPlatformDeps, deskRisk, type PlatformDeps, type RiskGate, type Ticket } from "./platform.js";
 
 const NOW = new Date("2026-10-16T12:00:00Z");
 const ADDR = `0x${"a".repeat(40)}`;
@@ -290,6 +290,21 @@ describe("approve", () => {
     expect((await store.getOpportunity(o.id))?.status).toBe("approved");
     release();
     expect(await (await pending).json()).toMatchObject({ opportunity: { status: "open" }, proposalId: "p9" });
+  });
+
+  test("a priced extremes take hands its target, conviction and leverage to the desk", async () => {
+    const tickets: Ticket[] = [];
+    deps.risk = gate({ assess: async (t) => (tickets.push(t), { before: { approved: true, reasons: [], warnings: [] }, after: approvedVerdict }), place: async (t) => (tickets.push(t), { status: "executed", reasons: [], proposalId: "p1" }) });
+    const rec: ExtremeRecord = {
+      event: { key: "oi_flush|ETH|long", kind: "oi_flush", coin: "ETH", side: "long", ts: "2026-10-16T11:45:00.000Z", window: "4h", mark: 3950, severity: 4.2, facts: { oiChg: -0.2 }, line: "ETH OI -20% in 4h" },
+      delivery: "woken", verdict: { key: "oi_flush|ETH|long", stance: "take", direction: "long", killPx: 3800, cause: "Forced unwind.", sources: [], confidence: "high", leverage: 3 },
+      verdictAt: NOW.toISOString(), verdictMark: 4000, opportunityId: null,
+    };
+    const levels = { atr1h: 40, hi24h: 4200, lo24h: 3820, range72h: null };
+    const { opportunity: o } = await openExtremeOpportunity(store, rec, NOW.getTime(), undefined, { priced: true, setup: "flush_reversion", entry: 4000, stop: 3790, target: 4400, zone: 3820, rr: 1.9, structuralStop: 3790, levels });
+    expect(o).toMatchObject({ stopPx: 3790, targetPx: 4400, tags: ["extreme", "oi_flush", "tier:unknown", "flush_reversion", "conviction:high", "leverage:3"] });
+    expect((await post(`/opportunities/${o.id}/approve`)).status).toBe(200);
+    expect(tickets.at(-1)).toEqual({ coin: "ETH", side: "long", stopPx: 3790, targetPx: 4400, confidence: "high", leverage: 3 });
   });
 
   test("a placement that throws ends failed with ref null and 502", async () => {

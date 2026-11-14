@@ -259,7 +259,7 @@ export class DeskService {
 
   /** Operator order sizing at the venue's current mark: the order's risk (from notional or leverage) through the governor. */
   private async operatorVerdict(order: OperatorOrder): Promise<{ ctx: GovernorContext; risk: RiskOrder; verdict: Verdict }> {
-    const ctx = await this.governorContext(order.coin, order.leverage);
+    const ctx = await this.governorContext(order.coin, order.leverage, order.confidence);
     const { order: risk, warnings } = operatorRiskOrder(order, ctx);
     const v = evaluateRisk(risk, ctx);
     return { ctx, risk, verdict: { ...v, warnings: [...ctx.venueWarnings, ...warnings, ...v.warnings] } };

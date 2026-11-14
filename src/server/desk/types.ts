@@ -53,15 +53,18 @@ const RiskOrderSchema = z
     entryLimit: price.optional(),
     /** The trade's leverage. On the Propr venue: the cross leverage set before the entry and the coin's notional ceiling. */
     leverage: z.number().positive().max(50).optional(),
+    /** The signal's conviction. On the Propr venue it picks the leverage when the order sets none (PROPR_LEVERAGE_BY_CONFIDENCE). Never sizes. */
+    confidence: ConfidenceSchema.optional(),
   })
   .strict();
 export type RiskOrder = z.infer<typeof RiskOrderSchema>;
 
 /**
- * An order the operator confirms through the copilot (preview, then submit).
- * Sized by notionalUsd, else leverage × equity, else riskPct; the governor
- * clips it either way. `leverage` sizes the order (× equity) when no notional is given; on the Propr venue it is
- * also the cross leverage the trade runs at.
+ * An order the operator confirms through the copilot (preview, then submit),
+ * or a platform ticket. Sized by notionalUsd, else riskPct, else leverage ×
+ * equity; the governor clips it either way. `leverage` sizes the order (×
+ * equity) only when neither is given; on the Propr venue it is always the
+ * cross leverage the trade runs at.
  */
 export const OperatorOrderSchema = RiskOrderSchema.extend({
   riskPct: RiskOrderSchema.shape.riskPct.optional(),

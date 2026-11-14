@@ -8,6 +8,7 @@ import { createAlerts } from "../platform/alerts.js";
 import { Bus } from "../platform/bus.js";
 import type { PlatformContext } from "../platform/context.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
+import type { Candle } from "../../shared/types.js";
 import { cronExtremesRoutes, extremesRoutes, freshMid, runExtremesCron, type CronExtremesDeps, type ExtremesRouteDeps } from "./extremes.js";
 
 const NOW = new Date("2026-11-14T12:30:00.000Z");
@@ -30,7 +31,11 @@ async function snapshots(store: MemoryPlatformStore, markAt: (t: number) => numb
   await store.insertScanSnapshots(rows);
 }
 
-async function setup(mark: number | null = 100, opts: { store?: MemoryPlatformStore; publish?: ExtremesRouteDeps["publish"]; now?: Date } = {}) {
+/** 80 flat 1h bars at 110 (ATR 2), a 97 low 20 bars back and a 120 high 22 bars back: a flush long from 100 targets 108.5 off a 96 stop. */
+const flushBars = (): Candle[] =>
+  Array.from({ length: 80 }, (_, i) => ({ t: NOW.getTime() - (80 - i) * HOUR, T: NOW.getTime() - (79 - i) * HOUR - 1, o: 110, c: 110, h: 80 - i === 22 ? 120 : 111, l: 80 - i === 20 ? 97 : 109, v: 1 }));
+
+async function setup(mark: number | null = 100, opts: { store?: MemoryPlatformStore; publish?: ExtremesRouteDeps["publish"]; now?: Date; candles?: ExtremesRouteDeps["candles"]; env?: Record<string, string> } = {}) {
   const store = opts.store ?? new MemoryPlatformStore();
   await store.insertExtremeEvent({ event: ev("SOL"), delivery: "woken", verdict: null, verdictAt: null, verdictMark: null, opportunityId: null });
   await store.insertExtremeEvent({ event: ev("ETH", { ts: "2026-11-01T00:00:00.000Z" }), delivery: "pushed", verdict: null, verdictAt: null, verdictMark: null, opportunityId: null });
@@ -43,7 +48,8 @@ async function setup(mark: number | null = 100, opts: { store?: MemoryPlatformSt
     appUrl: () => "https://app.example",
     now: () => opts.now ?? NOW,
     publish: opts.publish,
-    env: {},
+    candles: opts.candles,
+    env: opts.env ?? {},
   });
   const post = (b: unknown) => app.request("/verdict", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) });
   return { store, sent, marks, app, post };
@@ -123,6 +129,61 @@ describe("POST /extremes/verdict", () => {
     expect((await post(take)).status).toBe(409);
     expect(sent.length).toBe(1);
     expect(store.opportunities.size).toBe(1);
+  });
+
+  test("a priced take: code sets the stop and target, tags the conviction and leverage, and the push carries the levels", async () => {
+    const asked: Array<[string, number]> = [];
+    const { post, store, sent } = await setup(100, { candles: async (coin, now) => (asked.push([coin, now]), flushBars()) });
+    await snapshots(store);
+    const res = await post({ ...take, killPx: 97.5, confidence: "high", leverage: 5 });
+    const body = (await res.json()) as { opportunity: { id: string; status: string }; opportunityReason: string | null; pricing: unknown };
+    expect(asked).toEqual([["SOL", NOW.getTime()]]);
+    expect(body.opportunityReason).toBeNull();
+    expect(body.pricing).toEqual({ priced: true, setup: "flush_reversion", stop: 96, target: 108.5, rr: 2.13, minRr: 2 });
+    const o = (await store.getOpportunity(body.opportunity.id))!;
+    expect(o.invalidation).toBe("Below 96 (stop; kill 97.5, flush_reversion to 108.5 at 2.13:1). Liquidation cascade after an exchange outage; no lasting news.");
+    expect(o).toMatchObject({ status: "ready", entryPx: 100, stopPx: 96, targetPx: 108.5, invalidationPx: 96, score: 4, tags: ["extreme", "oi_flush", "flush_reversion", "conviction:high", "leverage:5"] });
+    const first = (await store.ledgerFor(o.id))[0]!;
+    const inputs = first.kind === "created" ? first.payload.features.inputs : null;
+    expect(inputs).toMatchObject({ killPx: 97.5, conviction: "high", leverage: 5, pricing: { setup: "flush_reversion", stopPx: 96, targetPx: 108.5, rr: 2.13, structuralStop: 96, atr1h: 2, hi24h: 120, lo24h: 97 } });
+    expect(sent[0]!.body).toBe(
+      "SOL OI -20% in 4h\nLiquidation cascade after an exchange outage; no lasting news.\nKill 97.5 (mark 100)\nStop 96, target 108.5 (flush_reversion), R:R 2.13:1, high conviction, 5x.\nApprove or reject on the coin page; expires in 4 h.",
+    );
+  });
+
+  test("without a conviction from the verdict, the R:R gives one", async () => {
+    const { post, store } = await setup(100, { candles: async () => flushBars() });
+    await snapshots(store);
+    const body = (await (await post({ ...take, killPx: 97.5 })).json()) as { opportunity: { id: string } };
+    expect((await store.getOpportunity(body.opportunity.id))!.tags).toEqual(["extreme", "oi_flush", "flush_reversion", "conviction:low"]);
+  });
+
+  test("a priced take under the R:R floor: the verdict is stored, nothing opens, the push says why", async () => {
+    const { post, store, sent } = await setup(100, { candles: async () => flushBars() });
+    await snapshots(store);
+    const body = (await (await post(take)).json()) as { record: ExtremeRecord; opportunity: unknown; opportunityReason: string; pricing: unknown };
+    expect(body).toMatchObject({ opportunity: null, opportunityReason: "R:R 1.06 is under the 2 floor (EXTREMES_MIN_RR)", pricing: { priced: true, stop: 92, target: 108.5, rr: 1.06 } });
+    expect(body.record).toMatchObject({ verdict: { stance: "take" }, opportunityId: null });
+    expect(store.opportunities.size).toBe(0);
+    expect(sent).toEqual([{
+      level: "warn", title: "Take: long SOL", click: "https://app.example/coin/SOL",
+      body: `${TAKE_BODY}\nStop 92, target 108.5 (flush_reversion), R:R 1.06:1: under the 2:1 floor, so no opportunity was opened.`,
+    }]);
+  });
+
+  test("EXTREMES_MIN_RR moves the floor", async () => {
+    const { post, store } = await setup(100, { candles: async () => flushBars(), env: { EXTREMES_MIN_RR: "1" } });
+    await snapshots(store);
+    expect(await (await post(take)).json()).toMatchObject({ opportunity: { status: "ready" }, pricing: { rr: 1.06, minRr: 1 } });
+  });
+
+  test("candles that fail leave the take unpriced: it opens as before, with no target, and the push says so", async () => {
+    const { post, store, sent } = await setup(100, { candles: async () => { throw new Error("hl down"); } });
+    await snapshots(store);
+    const body = (await (await post(take)).json()) as { opportunity: { id: string }; pricing: unknown };
+    expect(body.pricing).toEqual({ priced: false, reason: "candles unavailable" });
+    expect(await store.getOpportunity(body.opportunity.id)).toMatchObject({ status: "ready", stopPx: 92, targetPx: null, tags: ["extreme", "oi_flush"] });
+    expect(sent[0]!.body).toBe(`${TAKE_BODY}\nNo target: candles unavailable.\nApprove or reject on the coin page; expires in 4 h.`);
   });
 
   test("take with a live row on the same coin|direction|kind: the verdict is kept and reports that row; no second row", async () => {

@@ -85,7 +85,7 @@ export class ProprBroker implements Broker {
     // The whole ladder's notional must fit the trade's leverage (the governor caps it there, so this holds unless
     // equity fell since); without a choice, the smallest whole leverage that carries it.
     // An agent's proposal carries its confidence, which can pick the leverage (PROPR_LEVERAGE_BY_CONFIDENCE).
-    const lev = tradeLeverage(this.cfg, plan.coin, p.leverage, (p as RiskOrder & { confidence?: Confidence }).confidence);
+    const lev = tradeLeverage(this.cfg, plan.coin, p.leverage, p.confidence);
     const needed = Math.max(1, Math.ceil(plan.notionalUsd / Math.max(1e-9, snapshot.equity)));
     const leverage = lev.leverage ?? needed;
     if (leverage > lev.max) out.push(`the ladder needs ${needed}x on ${plan.coin}, Propr allows ${lev.max}x`);
