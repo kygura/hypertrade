@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { EXTREMES_SCORE_VERSION, type ExtremeEvent } from "../../shared/extremes.js";
 import type { Alert } from "../desk/notify.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
+import { appliedThresholds, resetResult, withMultiplier } from "./calibrate.js";
+import { DEFAULT_EXTREME_THRESHOLDS } from "./detect.js";
 import { extremeAlert, runExtremesJob, type Detect, type ExtremesJobDeps } from "./job.js";
 
 const HOUR = 3_600_000;
@@ -25,10 +27,10 @@ async function storeWith(coins: string[], at = NOW, s = new MemoryPlatformStore(
 function harness(store: MemoryPlatformStore, opts: { fire?: Record<string, ExtremeEvent[]>; wake?: boolean | "throw"; channels?: string[]; env?: Record<string, string>; now?: number } = {}) {
   const sent: Alert[] = [];
   const woken: ExtremeEvent[][] = [];
-  const seen: Array<{ coin: string; n: number; btc: number | null }> = [];
-  const detect: Detect = ({ coin, points, btc }) => (seen.push({ coin, n: points.length, btc: btc?.length ?? null }), opts.fire?.[coin] ?? []);
+  const seen: Array<{ coin: string; n: number; btc: number | null; th: unknown }> = [];
+  const detect: Detect = ({ coin, points, btc }, th) => (seen.push({ coin, n: points.length, btc: btc?.length ?? null, th }), opts.fire?.[coin] ?? []);
   const deps: ExtremesJobDeps = {
-    store, detect, lookbackMs: 30 * 24 * HOUR,
+    store, detect, thresholds: () => appliedThresholds(store, () => {}), lookbackMs: 30 * 24 * HOUR,
     wake: async (events) => {
       woken.push(events);
       if (opts.wake === "throw") throw new Error("boom");
@@ -49,7 +51,31 @@ describe("runExtremesJob", () => {
     const r = await runExtremesJob(h.deps);
     expect(h.seen.map((x) => x.coin)).toEqual(["ETH", "SOL", "BTC"]);
     expect(h.seen.every((x) => x.n === 12 && x.btc === 12)).toBe(true);
-    expect(r).toEqual({ coins: 3, evaluated: 3, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired: 0, lines: [] });
+    expect(r).toEqual({ coins: 3, evaluated: 3, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired: 0, calibration: "defaults", lines: [] });
+    expect(h.seen.every((x) => x.th === DEFAULT_EXTREME_THRESHOLDS)).toBe(true);
+  });
+
+  test("thresholds: the latest applied calibration (a proposal is ignored); a row that does not parse falls back to the defaults", async () => {
+    const store = await storeWith(["SOL", "BTC"]);
+    const run = (thresholds: unknown, applied: boolean, h: number) => ({
+      ranAt: iso(NOW - h * HOUR), from: null, to: null, coins: ["SOL"], result: resetResult({ perWeek: 1, min: 0.5, max: 1.5 }, NOW), thresholds: thresholds as typeof DEFAULT_EXTREME_THRESHOLDS, applied,
+    });
+    const strict = withMultiplier(DEFAULT_EXTREME_THRESHOLDS, "oi_flush", 1.25);
+    const saved = await store.insertExtremeCalibration(run(strict, true, 3));
+    await store.insertExtremeCalibration(run(withMultiplier(DEFAULT_EXTREME_THRESHOLDS, "oi_flush", 0.5), false, 1));
+    let h = harness(store);
+    expect((await runExtremesJob(h.deps)).calibration).toEqual({ id: saved.id, ranAt: saved.ranAt });
+    expect(h.seen.map((x) => x.th)).toEqual([strict, strict]);
+    // a newer applied row whose thresholds no longer parse (written by hand, or by an older schema): the code defaults
+    store.calibrations.push({ ...saved, id: 99, ranAt: iso(NOW - HOUR), thresholds: { price: "nope" } });
+    const logs: string[] = [];
+    h = harness(store);
+    h.deps.thresholds = () => appliedThresholds(store, (m) => logs.push(m));
+    expect((await runExtremesJob(h.deps)).calibration).toBe("defaults");
+    expect(h.seen.every((x) => x.th === DEFAULT_EXTREME_THRESHOLDS)).toBe(true);
+    await runExtremesJob(h.deps);
+    expect(logs.length).toBe(1); // logged once
+    expect(logs[0]).toMatch(/calibration 99 .* code defaults/);
   });
 
   test("nothing new: no wake, no push, nothing stored", async () => {

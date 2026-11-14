@@ -3,14 +3,16 @@ import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, 
 import { LIVE_STATUSES, PRE_DECISION_STATUSES, TERMINAL_STATUSES } from "../../shared/platform.js";
 import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/agentRecords.js";
 import type { MovesResponse, MoveWindow } from "../../shared/moves.js";
-import type { ExtremeRecord, ExtremeVerdict } from "../../shared/extremes.js";
+import type { ExtremeRecord, ExtremeVerdict, NewExtremeCalibration, StoredExtremeCalibration } from "../../shared/extremes.js";
 import { sql } from "../db.js";
 import {
+  byCalibrationNewest,
   byExtremeNewest,
   byNewest,
   byCoin,
   byScore,
   parseAgentRecord,
+  parseExtremeCalibration,
   parseExtremeRecord,
   parseExtremeVerdict,
   parseVerdictMark,
@@ -97,6 +99,10 @@ const toExtreme = (r: any): ExtremeRecord => ({
   verdictMark: r.verdict_mark == null ? null : Number(r.verdict_mark), opportunityId: r.opportunity_id ?? null,
 });
 const EXTREME_COLS = "event, delivery, verdict, verdict_at, verdict_mark, opportunity_id";
+const toCalibration = (r: any): StoredExtremeCalibration => ({
+  id: Number(r.id), ranAt: iso(r.ran_at), from: isoOrNull(r.window_from), to: isoOrNull(r.window_to), coins: r.coins, result: r.result, thresholds: r.thresholds, applied: r.applied,
+});
+const CALIBRATION_COLS = "id, ran_at, window_from, window_to, coins, result, thresholds, applied";
 
 const toEntry = (r: any): LedgerEntry =>
   ({ id: Number(r.id), opportunityId: r.opportunity_id, kind: r.kind, payload: r.payload, createdAt: iso(r.created_at) }) as LedgerEntry;
@@ -115,6 +121,26 @@ async function insertEntries(db: Db, entries: NewLedgerEntry[], skipDuplicates =
 /** PlatformStore over Postgres (011_platform.sql). Every projection move and its ledger entry share a transaction. */
 export class PgPlatformStore implements PlatformStore {
   constructor(private readonly db: Db = pgDb()) {}
+
+  async insertExtremeCalibration(run: NewExtremeCalibration) {
+    const r = parseExtremeCalibration(run);
+    const [row] = await this.db.query<any>(
+      `insert into extreme_calibrations (ran_at, window_from, window_to, coins, result, thresholds, applied)
+       values ($1::timestamptz, $2::timestamptz, $3::timestamptz, $4::text::jsonb, $5::text::jsonb, $6::text::jsonb, $7::boolean) returning ${CALIBRATION_COLS}`,
+      [r.ranAt, r.from, r.to, J(r.coins), J(r.result), J(r.thresholds), r.applied],
+    );
+    return toCalibration(row);
+  }
+
+  async latestAppliedExtremeCalibration() {
+    const [r] = await this.db.query<any>(`select ${CALIBRATION_COLS} from extreme_calibrations where applied order by ran_at desc, id desc limit 1`);
+    return r ? toCalibration(r) : null;
+  }
+
+  async listExtremeCalibrations(limit: number) {
+    const rows = await this.db.query<any>(`select ${CALIBRATION_COLS} from extreme_calibrations order by ran_at desc, id desc limit $1::int`, [limit]);
+    return rows.map(toCalibration).sort(byCalibrationNewest);
+  }
 
   async insertExtremeEvent(r: ExtremeRecord) {
     const row = parseExtremeRecord(r);

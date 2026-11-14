@@ -1,4 +1,4 @@
-import { isExtremesOpportunity, type ExtremeEvent, type ExtremeRecord } from "../../shared/extremes.js";
+import { isExtremesOpportunity, type ExtremeEvent, type ExtremeRecord, type ExtremeThresholds } from "../../shared/extremes.js";
 import type { Alert } from "../desk/notify.js";
 import type { RingPoint } from "../platform/features.js";
 import { extremesReadyTtlMin, readyTtlMinFor, shouldExpire } from "../platform/opportunity.js";
@@ -10,7 +10,9 @@ import { selectUniverse } from "../platform/universe.js";
 // volume (plus BTC), reads their stored 15-min history (scan_snapshots), runs the detectors, drops keys inside the
 // cooldown, keeps a hard daily cap on what goes out, stores every new event and delivers the ones under the cap: one
 // wake of the research session for the batch, or, when no wake target is set or the wake fails, one push per event
-// through the desk notifier. It also expires extremes takes past EXTREMES_READY_TTL_H. Pure orchestration: store, detector, wake, notifier and clock are injected.
+// through the desk notifier. It also expires extremes takes past EXTREMES_READY_TTL_H. The detector runs under the
+// latest applied calibration's thresholds (calibrate.ts appliedThresholds; the code defaults when none is applied or
+// the row does not parse). Pure orchestration: store, detector, thresholds, wake, notifier and clock are injected.
 
 type Env = Record<string, string | undefined>;
 const MIN = 60_000;
@@ -26,18 +28,22 @@ const posInt = (v: string | undefined, d: number) => {
   const n = Number(v?.trim());
   return v?.trim() && Number.isInteger(n) && n >= 0 ? n : d;
 };
-const extremesParams = (env: Env = process.env) => ({
+export const extremesParams = (env: Env = process.env) => ({
   top: posInt(env.EXTREMES_TOP, DEFAULT_EXTREMES_TOP) || DEFAULT_EXTREMES_TOP,
   cooldownMs: posInt(env.EXTREMES_COOLDOWN_H, DEFAULT_EXTREMES_COOLDOWN_H) * HOUR,
   dailyCap: posInt(env.EXTREMES_DAILY_CAP, DEFAULT_EXTREMES_DAILY_CAP),
 });
 
 /** The detector's input (src/server/extremes/detect.ts DetectInput), stated here so the job does not import the detector. */
-export type Detect = (input: { coin: string; points: RingPoint[]; btc: RingPoint[] | null; now: number }) => ExtremeEvent[];
+export type Detect = (input: { coin: string; points: RingPoint[]; btc: RingPoint[] | null; now: number }, thresholds: ExtremeThresholds) => ExtremeEvent[];
+/** Which thresholds a run used: a stored calibration (029) or the code defaults. */
+export type ThresholdsSource = { id: number; ranAt: string } | "defaults";
 
 export interface ExtremesJobDeps {
   store: Pick<PlatformStore, "scanSnapshotsSince" | "latestExtreme" | "extremesDeliveredSince" | "insertExtremeEvent" | "listOpportunities" | "transitionOpportunity">;
   detect: Detect;
+  /** The thresholds to detect with and where they came from (calibrate.ts appliedThresholds). */
+  thresholds: () => Promise<{ thresholds: ExtremeThresholds; source: ThresholdsSource }>;
   /** History each coin's detector reads (EXTREME_LOOKBACK_MS). */
   lookbackMs: number;
   wake: (events: ExtremeEvent[]) => Promise<boolean>;
@@ -59,6 +65,8 @@ export interface ExtremesJobReport {
   undelivered: number;
   /** Extremes takes moved ready -> expired past EXTREMES_READY_TTL_H (the scanner does the same where it runs). */
   expired: number;
+  /** The calibration whose thresholds the detector ran with, or "defaults". */
+  calibration: ThresholdsSource;
   lines: string[];
 }
 
@@ -113,13 +121,14 @@ export async function runExtremesJob(deps: ExtremesJobDeps): Promise<ExtremesJob
   const btcPoints = coins.includes("BTC") ? await history("BTC") : [];
   const btc = btcPoints.length ? btcPoints : null;
 
-  const report: ExtremesJobReport = { coins: coins.length, evaluated: 0, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired, lines: [] };
+  const { thresholds, source } = await deps.thresholds();
+  const report: ExtremesJobReport = { coins: coins.length, evaluated: 0, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired, calibration: source, lines: [] };
   const fired: ExtremeEvent[] = [];
   for (const coin of coins) {
     const points = coin === "BTC" ? btcPoints : await history(coin);
     if (!points.length) continue;
     report.evaluated++;
-    fired.push(...deps.detect({ coin, points, btc, now }));
+    fired.push(...deps.detect({ coin, points, btc, now }, thresholds));
   }
   report.fired = fired.length;
 

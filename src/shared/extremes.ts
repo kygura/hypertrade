@@ -79,6 +79,103 @@ export const EXTREMES_SCORE_VERSION = "extremes-1";
 export const isExtremesOpportunity = (o: { scoreVersion: string; setupKind: string }) =>
   o.scoreVersion === EXTREMES_SCORE_VERSION && (EXTREME_KINDS as readonly string[]).includes(o.setupKind);
 
+// ─── Thresholds and calibration (src/server/extremes/detect.ts, calibrate.ts; docs/EXTREMES.md § Calibration pipeline) ───
+
+const Cut = z.number().finite().nonnegative();
+const Frac = z.number().finite().min(0).max(1);
+/** The detectors' cuts. A stored calibration row is a trust boundary: its thresholds are parsed with this on the way out. */
+export const ExtremeThresholdsSchema = z.strictObject({
+  price: z.strictObject({
+    /** |own z| at least, per window: short windows have fatter tails, so one cut would fire almost only on 4 h. */
+    z: z.strictObject({ "4h": Cut, "24h": Cut, "72h": Cut }),
+    /** |BTC-residual z| at least, same sign as the move (non-BTC coins), per window. */
+    zResid: z.strictObject({ "4h": Cut, "24h": Cut, "72h": Cut }),
+    /** |return| at least, per window (fraction): a quiet coin's big z is not an extreme price. */
+    minMove: z.strictObject({ "4h": Cut, "24h": Cut, "72h": Cut }),
+  }),
+  oiFlush: z.strictObject({
+    /** OI contracts change z at most −this, per window (as price: shorter windows have fatter tails). */
+    z: z.strictObject({ "1h": Cut, "4h": Cut, "24h": Cut }),
+    /** OI contracts drop at least, per window (fraction). */
+    minDrop: z.strictObject({ "1h": Frac, "4h": Frac, "24h": Frac }),
+    /** |price z| over the same window at least. */
+    zPrice: Cut,
+  }),
+  crowded: z.strictObject({
+    /** Funding level robust z at least (sign of the crowd). */
+    zFunding: Cut,
+    /** Funding percentile at least (longs crowded) or at most 1 − this (shorts crowded). */
+    pctile: Frac,
+    /** |funding apr %| at least. */
+    minAprPct: Cut,
+    /** OI contracts percentile over the lookback at least. */
+    oiPctile: Frac,
+    /** 24 h price z in the crowd's direction at most (flat or against it). */
+    maxFollowZ: z.number().finite(),
+  }),
+});
+export type ExtremeThresholds = z.infer<typeof ExtremeThresholdsSchema>;
+
+const Rate = z.number().finite().nonnegative().nullable();
+const Stat = z.strictObject({ n: z.number().int().nonnegative(), hitRate: z.number().finite().nullable(), median: z.number().finite().nullable() });
+/** Forward fade-side returns of a kind's events, for information only: never part of the calibration objective. */
+const ForwardSchema = z.array(z.strictObject({ horizon: z.string(), abs: Stat }));
+export const CALIBRATION_UNCHANGED = ["in_band", "not_evaluable", "clamped"] as const;
+export const ExtremeCalibrationKindSchema = z.strictObject({
+  kind: ExtremeKindSchema,
+  evaluable: z.boolean(),
+  reason: z.string().nullable(),
+  /** The one parameter family the multiplier scales (detect.ts thresholds path names). */
+  knob: z.string(),
+  eventsBefore: z.number().int().nonnegative(),
+  /** Events a week with each coin's contribution capped (calibrate.ts perCoinCap); null when not evaluable. */
+  rateBefore: Rate,
+  /** Events of the busiest coin before (the cap's reason to exist). */
+  topCoinBefore: z.strictObject({ coin: z.string(), events: z.number().int().nonnegative() }).nullable(),
+  /** Cumulative multiplier of the code defaults' knob, before and after this run. */
+  multiplierBefore: z.number().finite().nonnegative(),
+  multiplier: z.number().finite().nonnegative(),
+  eventsAfter: z.number().int().nonnegative(),
+  rateAfter: Rate,
+  changed: z.boolean(),
+  /** Why the kind kept its thresholds; null when changed. */
+  unchanged: z.enum(CALIBRATION_UNCHANGED).nullable(),
+  /** A changed multiplier stopped at the per-run step or the cumulative clamp. */
+  limited: z.enum(["step", "clamp"]).nullable(),
+  forwardBefore: ForwardSchema,
+  forwardAfter: ForwardSchema,
+});
+export type ExtremeCalibrationKind = z.infer<typeof ExtremeCalibrationKindSchema>;
+export const ExtremeCalibrationResultSchema = z.strictObject({
+  /** First and last replayed step (ISO); null when nothing was replayed. */
+  from: z.string().nullable(),
+  to: z.string().nullable(),
+  weeks: z.number().finite().nonnegative(),
+  /** Days of dense history ending at the last step (calibrate.ts denseDays). */
+  denseDays: z.number().int().nonnegative(),
+  coins: z.array(z.string()),
+  target: z.strictObject({ perWeek: z.number().positive(), min: z.number().nonnegative(), max: z.number().positive() }),
+  /** True for a `--reset` row: the code defaults, applied as is. */
+  reset: z.boolean(),
+  kinds: z.array(ExtremeCalibrationKindSchema),
+  thresholds: ExtremeThresholdsSchema,
+});
+export type ExtremeCalibrationResult = z.infer<typeof ExtremeCalibrationResultSchema>;
+
+/** A row to store (029 extreme_calibrations). */
+export const NewExtremeCalibrationSchema = z.strictObject({
+  ranAt: z.string().datetime(),
+  from: z.string().datetime().nullable(),
+  to: z.string().datetime().nullable(),
+  coins: z.array(z.string().min(1)),
+  result: ExtremeCalibrationResultSchema,
+  thresholds: ExtremeThresholdsSchema,
+  applied: z.boolean(),
+});
+export type NewExtremeCalibration = z.infer<typeof NewExtremeCalibrationSchema>;
+/** A stored row as read back: result and thresholds unparsed (readers parse them; a bad row falls back to the defaults). */
+export type StoredExtremeCalibration = Omit<NewExtremeCalibration, "result" | "thresholds"> & { id: number; result: unknown; thresholds: unknown };
+
 // ─── Grading (src/server/extremes/grade.ts; GET /api/extremes) ───
 
 export const EXTREME_GRADE_HORIZONS = ["4h", "24h", "72h"] as const;

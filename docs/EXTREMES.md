@@ -47,15 +47,79 @@ first and paste it into the routine.
 replays the detectors with the job's cooldown and grades the fade side at 4h, 24h and 72h,
 absolute and against BTC. `bun run extremes` scans now. Both are keyless on candles.
 
-Thresholds (`DEFAULT_EXTREME_THRESHOLDS`) are tuned for frequency, not for returns. On
+The code defaults (`DEFAULT_EXTREME_THRESHOLDS`) were tuned once for frequency, not for returns. On
 2026-11-14, top 30 coins, about 5.4 weeks of 15-minute candles: `price_dislocation` fired 10
 times (1.84 a week), 7 of them on one coin whose volatility regime broke. Ten events say
-nothing about edge.
+nothing about edge. Hyperliquid publishes no OI history, so `oi_flush` and `crowded_asymmetry`
+are not evaluable on candles; the calibration pipeline below tunes all three on stored
+snapshots. Live funding is the predicted rate and is noisier than the settled funding the
+candle replay reads.
 
-Not yet validated: Hyperliquid publishes no OI history, so `oi_flush` and `crowded_asymmetry`
-are not evaluable on candles and their thresholds are set by analogy to the price scale.
-Re-tune them with `--source snapshots` once `scan_snapshots` holds 14 days or more. Live
-funding is the predicted rate and is noisier than the settled funding the candle replay reads.
+`scan`, `show` and `replay` detect with the latest applied calibration when `DATABASE_URL` is
+set, else the code defaults, and print which.
+
+## Calibration pipeline
+
+`src/server/extremes/calibrate.ts` (pure), `bun run extremes calibrate`, weekly workflow
+`.github/workflows/extremes-calibrate.yml`, table `extreme_calibrations` (029).
+
+- **Frequency only.** Each kind is tuned so it fires at a target rate across the job's
+  universe. Forward fade-side returns (hit rate and median at 4h/24h/72h, before and after)
+  are stored next to the result for information and never enter the objective.
+- **Targets.** Per kind `EXTREMES_CALIBRATION_TARGET_WK` (1.0) events a week, band
+  `EXTREMES_CALIBRATION_MIN_WK`..`EXTREMES_CALIBRATION_MAX_WK` (0.5..1.5): about 2 to 4 a week
+  in total. An inconsistent band falls back to the defaults.
+- **One knob per kind.** A multiplier `k` of the code defaults' sigma cuts: `price_dislocation`
+  scales `price.z` and `price.zResid` (every window); `oi_flush` scales `oiFlush.z` (every
+  window) and `oiFlush.zPrice`; `crowded_asymmetry` scales `crowded.minAprPct`. Not
+  `zFunding`: funding sits at HL's default most of the time, its MAD is tiny and the level z
+  runs to tens, so any z cut in the clamp range passes the same readings. Not the percentile:
+  30 days of hourly samples leave 7 above the 99th, so it moves in coarse steps and saturates
+  on ties at the default rate. The apr bar is the one continuous cut that gates. Hard floors
+  (`minMove`, `minDrop`) are never touched. A larger `k` never fires more.
+- **Search.** For each step and coin in the universe the readings are taken once under the
+  loosest thresholds any candidate can reach; only readings that could fire are kept. Each
+  candidate re-thresholds them (`rethreshold`, `eventsOf`) with the job's per-key cooldown
+  (`EXTREMES_COOLDOWN_H`): 25 multipliers per kind on a geometric grid between the run's
+  bounds, nearest the target wins, ties go to the multiplier closest to the applied one. A test
+  proves this fast path yields exactly `replayExtremes`' events. No look-ahead: readings use
+  `ts <= step` only, and the universe at each step is the job's (top `EXTREMES_TOP` by the
+  latest 24 h volume stored in the hour before the step, plus BTC).
+- **Per-coin cap.** The rate counts at most `EXTREMES_CALIBRATION_PER_COIN_CAP` (2) events per
+  coin per kind in the window, so one coin in a broken regime cannot carry the estimate. The
+  busiest coin is reported.
+- **Guard rails.** Not evaluable (the run keeps the current thresholds): fewer than
+  `EXTREMES_CALIBRATION_MIN_DAYS` (14) days of dense history (24 h windows with at least 48
+  snapshot times, counted back from the last step), fewer than
+  `EXTREMES_CALIBRATION_MIN_REPLAY_DAYS` (7) days of replayed steps (the detectors need 14
+  days of history before the first step, so this needs about 21 days stored), or a kind whose
+  input is missing (OI kinds without OI). Per run `k` moves at most
+  `EXTREMES_CALIBRATION_MAX_STEP` (±25%) from the applied multiplier, and stays within
+  `EXTREMES_CALIBRATION_MULT_MIN`..`EXTREMES_CALIBRATION_MULT_MAX` (0.5..2.5) of the code
+  defaults. A kind already in its band keeps its thresholds (no weekly jitter). Out of band
+  with no candidate doing better within those bounds: unchanged, reported `clamped`. A changed
+  kind that stopped at a bound while still out of band reports `limited` (`step` or `clamp`).
+- **Where the thresholds live.** Every run stores one row in `extreme_calibrations`: `ran_at`,
+  the replayed window, the coins, the result (jsonb) and the proposed thresholds (jsonb),
+  `applied`. The live job (`runExtremesJob`) detects with the thresholds of the newest
+  applied row, parsed with `ExtremeThresholdsSchema`; no applied row, a row that fails to
+  parse (logged once) or a failed read means the code defaults. The job's JSON report says
+  which (`calibration`: `{id, ranAt}` or `"defaults"`). `GET /api/extremes/calibration` (same
+  auth as `GET /api/extremes`) returns the applied thresholds and their source, the code
+  defaults and the last 10 runs.
+- **By hand.** `bun run extremes calibrate [--days 30] [--top N] [--apply] [--json]` (needs
+  `DATABASE_URL`). Without `--apply` the run is stored as a proposal (`applied` false). With
+  `--apply` it is stored applied when at least one kind changed, and one `info` push goes out
+  through the desk notifier (`Extremes recalibrated: oi_flush ×0.80 (0.2 → 0.9/wk), ...`, the
+  multiplier relative to the code defaults). No push when nothing changed. `--top` defaults to
+  `EXTREMES_TOP`. `--json` prints `{id, applied, thresholdsBefore, result, markdown}`.
+- **Workflow.** Sunday 03:17 UTC and `workflow_dispatch` (`apply`, default true; `days`,
+  default 30); one run at a time. Secrets: `DATABASE_URL` (skips with a notice without it),
+  optional `NTFY_TOPIC`, `NTFY_SERVER`, `NTFY_TOKEN` for the push. The table goes to the step
+  summary.
+- **Roll back.** `bun run extremes calibrate --reset` stores an applied row equal to the code
+  defaults; the next job run uses them. When the code defaults change, run it too: applied
+  rows hold full thresholds, so they keep the old ones until the next applied run.
 
 ## Approve
 

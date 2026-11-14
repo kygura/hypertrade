@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";
-import { ExtremeVerdictSchema, type ExtremeRecord } from "../../shared/extremes.js";
+import { ExtremeCalibrationResultSchema, ExtremeVerdictSchema, type ExtremeRecord } from "../../shared/extremes.js";
 import type { Opportunity } from "../../shared/platform.js";
 import { requireCronToken } from "../auth.js";
 import * as db from "../db.js";
 import { createNotifier, type Alert } from "../desk/notify.js";
-import { EXTREME_LOOKBACK_MS, detectExtremes } from "../extremes/detect.js";
+import { appliedThresholds, thresholdsOfRun } from "../extremes/calibrate.js";
+import { DEFAULT_EXTREME_THRESHOLDS, EXTREME_LOOKBACK_MS, detectExtremes } from "../extremes/detect.js";
 import { gradedExtremes } from "../extremes/grade.js";
 import { runExtremesJob, type ExtremesJobDeps } from "../extremes/job.js";
 import { openExtremeOpportunity } from "../extremes/opportunity.js";
@@ -24,6 +25,8 @@ import { body, failure, invalid } from "./intel/http.js";
 //                                 lease (sync_state '_extremes'/'job'); 503 without a database, 200 {skipped} when leased.
 //   GET  /api/extremes?days=7     stored events with delivery, verdict and grade (extremes/grade.ts), newest first, plus
 //                                 a summary by stance and by kind (cookie, or the read bearer).
+//   GET  /api/extremes/calibration  the thresholds the job applies (latest applied calibration, else the code defaults),
+//                                 the code defaults and the last 10 calibration runs (extremes/calibrate.ts; same auth).
 //   POST /api/extremes/verdict    the research session's answer (cookie or the LAB_API_TOKEN bearer, auth.ts). Parsed
 //                                 with ExtremeVerdictSchema; 404 unknown key, 409 already answered. Every stance stamps
 //                                 the live mark when fresh (verdictMark). `take` needs it (503 without, 422 when killPx is
@@ -55,6 +58,7 @@ const defaultCronDeps = (): CronExtremesDeps => ({
   job: () => ({
     store: store(),
     detect: detectExtremes,
+    thresholds: () => appliedThresholds(store()),
     lookbackMs: EXTREME_LOOKBACK_MS,
     wake: createWaker().wake,
     notifier: createNotifier(),
@@ -100,7 +104,8 @@ export function cronExtremesRoutes(deps: () => CronExtremesDeps = defaultCronDep
 
 export type ExtremesRouteStore = Pick<
   PlatformStore,
-  "listExtremes" | "latestExtreme" | "setExtremeVerdict" | "setExtremeOpportunity" | "scanSnapshotsSince" | "listOpportunities" | "upsertOpportunity" | "transitionOpportunity"
+  | "listExtremes" | "latestExtreme" | "setExtremeVerdict" | "setExtremeOpportunity" | "scanSnapshotsSince" | "listOpportunities" | "upsertOpportunity" | "transitionOpportunity"
+  | "latestAppliedExtremeCalibration" | "listExtremeCalibrations"
 >;
 
 export interface ExtremesRouteDeps {
@@ -166,6 +171,17 @@ export function extremesRoutes(deps: ExtremesRouteDeps = defaultExtremesDeps()) 
       const now = deps.now().getTime();
       const since = new Date(now - q.data.days * DAY).toISOString();
       return c.json({ since, ...(await gradedExtremes(s, await s.listExtremes({ since, limit: 500 }), now)) });
+    })
+    .get("/calibration", async (c) => {
+      const s = deps.store();
+      if (!s) return c.json({ error: "unavailable", reason: "needs a database (DATABASE_URL unset)" }, 503);
+      const applied = thresholdsOfRun(await s.latestAppliedExtremeCalibration());
+      // Stored rows are parsed on the way out; one that does not parse shows result null.
+      const runs = (await s.listExtremeCalibrations(10)).map((r) => {
+        const result = ExtremeCalibrationResultSchema.safeParse(r.result);
+        return { id: r.id, ranAt: r.ranAt, from: r.from, to: r.to, coins: r.coins.length, applied: r.applied, result: result.success ? result.data : null };
+      });
+      return c.json({ applied: { source: applied.source, thresholds: applied.thresholds }, defaults: DEFAULT_EXTREME_THRESHOLDS, runs });
     })
     .post("/verdict", async (c) => {
       const v = ExtremeVerdictSchema.safeParse(await body(c));
