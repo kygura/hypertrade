@@ -6,7 +6,7 @@ import {
 
 const row = (over: Partial<FeedRow>): FeedRow => ({
   id: "00000000-0000-4000-8000-000000000001", coin: "HYPE", direction: "long", setupKind: "oi-accel", tradeType: "directional",
-  status: "ready", score: 0.8, netEdgeBps: 38, edgeBasis: "unvalidated", tags: [], liquidityTier: 1,
+  status: "ready", score: 0.8, scoreVersion: "score-v2", netEdgeBps: 38, edgeBasis: "unvalidated", tags: [], liquidityTier: 1,
   createdAt: "2026-10-16T00:00:00Z", updatedAt: "2026-10-16T00:00:00Z", snoozedUntil: null, ...over,
 });
 
@@ -182,6 +182,11 @@ describe("feedInsight", () => {
       row({ coin: "BTC", status: "rejected", score: 9, netEdgeBps: -50 }),
     ];
     expect(feedInsight(rows)).toBe("3 ideas awaiting a decision, 1 READY; highest score 3.41 on SOL short; estimated costs exceed the edge on 1.");
+  });
+  test("an extremes take's severity never counts as the highest score", () => {
+    const take = row({ coin: "WIF", setupKind: "oi_flush", scoreVersion: "extremes-1", score: 7.5, netEdgeBps: null });
+    expect(feedInsight([take, row({ coin: "HYPE", score: 2.4 })])).toBe("2 ideas awaiting a decision, 2 READY; highest score 2.40 on HYPE long; estimated costs exceed the edge on 0.");
+    expect(feedInsight([take])).toBe("1 idea awaiting a decision, 1 READY; estimated costs exceed the edge on 0.");
   });
   test("null when nothing awaits a decision", () => {
     expect(feedInsight([row({ status: "closed" })])).toBeNull();

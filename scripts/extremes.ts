@@ -2,6 +2,8 @@
 //   bun run extremes [--top 30]                  scan now: detectExtremes at the last closed 15-min bar, top N coins by 24 h volume
 //   bun run extremes show <COIN>                 that coin's readings for all three detectors, with each threshold
 //   bun run extremes replay [--top 30] [--days N] [--events] [--source candles|snapshots]
+//   bun run extremes score [--days 30]           stored events graded from scan_snapshots (needs DATABASE_URL): the
+//                                                GET /api/extremes summary by stance and by kind
 // candles (default): HL 15-min candles (the latest 5000, about 52 days) + hourly funding through the setup replay's loader
 // (platform/replaySource.ts, memoised HL fetchers under the weight guard, about 3 coins a minute). Candles carry no OI,
 // so oi_flush and crowded_asymmetry are not evaluable on them. snapshots: stored scan_snapshots (needs DATABASE_URL).
@@ -11,6 +13,7 @@ import { databaseUrl, releaseConnection } from "../src/server/db";
 import {
   BTC_COIN, DEFAULT_EXTREME_THRESHOLDS, detectExtremes, EXTREME_LOOKBACK_MS, EXTREME_MIN_HISTORY_MS, readExtremes,
 } from "../src/server/extremes/detect";
+import { gradedExtremes, type ExtremeSummaryRow } from "../src/server/extremes/grade";
 import { replayExtremes, type ReturnStats } from "../src/server/extremes/replay";
 import type { RingPoint } from "../src/server/platform/features";
 import { candleStream, defaultCandleDeps, GRID_MS, SNAPSHOT_GRADE_TOLERANCE_MS, snapshotStreams } from "../src/server/platform/replaySource";
@@ -135,6 +138,35 @@ async function replay(top: number) {
   }
 }
 
+/** The graded summary as a table: one row per group, raw and stopped per horizon (stopped differs only for takes). */
+function scoreTable(rows: ExtremeSummaryRow[]): string[] {
+  const short = (st: ReturnStats) => (st.n ? `n${st.n} ${Math.round(st.hitRate! * 100)}% med ${pct(st.median)} mean ${pct(st.mean)}` : "-");
+  const lines = [`${"group".padEnd(24)} ${"n".padStart(3)} ${"grd".padStart(3)} ${"kill".padStart(5)}  ${["4h", "24h", "72h"].map((h) => h.padEnd(34)).join(" ")}`];
+  for (const r of rows) {
+    if (!r.n) continue;
+    const kill = r.killHitRate == null ? "-" : `${Math.round(r.killHitRate * 100)}%`;
+    lines.push(`${`${r.by}:${r.group}`.padEnd(24)} ${String(r.n).padStart(3)} ${String(r.graded).padStart(3)} ${kill.padStart(5)}  ${r.horizons.map((h) => short(h.raw).padEnd(34)).join(" ")}`);
+    if (r.killHitRate != null) lines.push(`${"  stopped at kill".padEnd(24)} ${"".padStart(3)} ${"".padStart(3)} ${"".padStart(5)}  ${r.horizons.map((h) => short(h.stopped).padEnd(34)).join(" ")}`);
+  }
+  return lines;
+}
+
+async function score() {
+  const days = posInt("--days", 30);
+  if (!databaseUrl()) {
+    console.error("extremes score reads stored events and scan_snapshots: set DATABASE_URL (or POSTGRES_URL) and rerun.");
+    process.exitCode = 1;
+    return;
+  }
+  const store = new PgPlatformStore();
+  const now = Date.now();
+  const since = new Date(now - Math.min(days, scanRetentionDays()) * DAY).toISOString();
+  const { records, summary } = await gradedExtremes(store, await store.listExtremes({ since, limit: 500 }), now);
+  console.log(`extremes score · events since ${since} · ${records.length} records · signed return in the graded direction from the verdict mark (else the event mark), gross`);
+  if (!records.length) return console.log("no stored events in the window");
+  for (const l of scoreTable(summary)) console.log(l);
+}
+
 async function main() {
   const cmd = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : "scan";
   const top = posInt("--top", 30);
@@ -144,7 +176,8 @@ async function main() {
     if (!coin || coin.startsWith("--")) throw new Error("usage: bun run extremes show <COIN>");
     await show(coin);
   } else if (cmd === "replay") await replay(top);
-  else throw new Error(`unknown command ${cmd} (scan | show <COIN> | replay)`);
+  else if (cmd === "score") await score();
+  else throw new Error(`unknown command ${cmd} (scan | show <COIN> | replay | score)`);
 }
 
 try {

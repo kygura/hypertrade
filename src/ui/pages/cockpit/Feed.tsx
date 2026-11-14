@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
 import { Badge, DataTable, ErrorBlock, HowToRead, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column, type Term } from '../../components'
 import { fmtAge } from '../../components/strategy/format'
+import { isExtremesOpportunity } from '../../../shared/extremes'
 import type { FeedRow as Row, OpportunityStatus } from '../../../shared/platform'
 import { edgeWord, STATUS_WORD, type StatusFilter, type TierFilter } from './logic'
 
@@ -9,7 +10,7 @@ import { edgeWord, STATUS_WORD, type StatusFilter, type TierFilter } from './log
 
 const TERMS: readonly Term[] = [
   ['Row, left to right', 'Coin, direction, score, edge, status, and the time since the idea was raised. The second line holds up to three tags from the setup, the liquidity tier, and the trade type when it is not a plain directional trade.'],
-  ['Score', 'How unusual the move is, not how profitable. It is the largest z-score among five features (15-minute return, price acceleration, 1-hour open interest change, funding against its last 24 hours, 1-hour volume ratio), multiplied by 1.25 when two kinds of signal fire together and 1.5 when three do. The feed is sorted by it.'],
+  ['Score', 'How unusual the move is, not how profitable. It is the largest z-score among five features (15-minute return, price acceleration, 1-hour open interest change, funding against its last 24 hours, 1-hour volume ratio), multiplied by 1.25 when two kinds of signal fire together and 1.5 when three do. The feed is sorted by it. SEV marks an extremes take instead: the detector\'s severity in its own sigmas, a different number that sorts in the same column.'],
   ['Edge (bp)', 'Estimated profit after costs, in basis points (100bp = 1%): gross edge minus fees on entry and exit, slippage and funding. A dash means no cost model exists for that trade type. Score and edge are separate numbers and are never combined.'],
   ['COSTS EXCEED EDGE', 'The estimated costs are larger than the gross edge, so the net is negative.'],
   ['UNVALIDATED', 'The gross edge is only the distance from stop to target, because this setup has fewer than 30 resolved outcomes on record.'],
@@ -51,16 +52,25 @@ function snoozeLeft(until: string, now: number): string {
   return m < 60 ? `${m}M` : `${Math.floor(m / 60)}H${m % 60 ? ` ${m % 60}M` : ''}`
 }
 
-function rowColumns(now: number, readyTtlMin: number): Column<Row>[] {
+/** An extremes take shows its severity, labelled: a different number from the scanner score, never read as one. */
+export function scoreCell(r: Pick<Row, 'score' | 'scoreVersion' | 'setupKind'>): { text: string; title: string } {
+  return isExtremesOpportunity(r)
+    ? { text: `sev ${r.score.toFixed(2)}`, title: `severity: the extremes detector's sigmas (${r.scoreVersion}), not the scanner score` }
+    : { text: r.score.toFixed(2), title: 'score: how unusual the move is (largest z-score, raised when signals coincide)' }
+}
+
+function rowColumns(now: number, readyTtlMin: number, extremesReadyTtlMin: number): Column<Row>[] {
   return [
     {
       key: 'row',
       label: <span className="sr-only">opportunity</span>,
       priority: 1,
       render: (r) => {
-        // A ready row expires readyTtlMin after it became ready (statusChangedAt).
+        // A ready row expires readyTtlMin (an extremes take: extremesReadyTtlMin) after it became ready (statusChangedAt).
         const readyMin = r.statusChangedAt ? (now - Date.parse(r.statusChangedAt)) / 60_000 : null
-        const nearExpiry = r.status === 'ready' && readyMin != null && readyMin >= readyTtlMin - 10
+        const ttl = isExtremesOpportunity(r) ? extremesReadyTtlMin : readyTtlMin
+        const nearExpiry = r.status === 'ready' && readyMin != null && readyMin >= ttl - 10
+        const score = scoreCell(r)
         const tags = r.tags.slice(0, 3)
         const snoozed = r.snoozedUntil && Date.parse(r.snoozedUntil) > now
         return (
@@ -68,7 +78,7 @@ function rowColumns(now: number, readyTtlMin: number): Column<Row>[] {
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span className="text-md text-text-primary w-14 truncate">{r.coin}</span>
               <span className="w-10">{r.direction.toUpperCase()}</span>
-              <span className="tabular text-text-primary" title="score: how unusual the move is (largest z-score, raised when signals coincide)">{r.score.toFixed(2)}</span>
+              <span className="tabular text-text-primary" title={score.title}>{score.text}</span>
               <EdgeCell row={r} />
               <StatusPill status={r.status} />
               {snoozed && <Badge tone="gray">SNOOZED {snoozeLeft(r.snoozedUntil!, now)}</Badge>}
@@ -141,6 +151,7 @@ export function OpportunityFeed({
   insight,
   now,
   readyTtlMin,
+  extremesReadyTtlMin = 240,
   emptySlot,
   snoozedOpen,
   onToggleSnoozed,
@@ -164,6 +175,8 @@ export function OpportunityFeed({
   now: number
   /** PLATFORM_READY_TTL_MIN from the feed response. */
   readyTtlMin: number
+  /** EXTREMES_READY_TTL_H in minutes from the feed response (the TTL of an extremes take). */
+  extremesReadyTtlMin?: number
   /** Rendered under the empty line when no row matches (the liquidation board, C2 gate amendment). */
   emptySlot?: ReactNode
   snoozedOpen: boolean
@@ -172,7 +185,7 @@ export function OpportunityFeed({
   onFilter: (f: { status?: StatusFilter; tier?: TierFilter }) => void
   onRetry: () => void
 }) {
-  const columns = useMemo(() => rowColumns(now, readyTtlMin), [now, readyTtlMin])
+  const columns = useMemo(() => rowColumns(now, readyTtlMin, extremesReadyTtlMin), [now, readyTtlMin, extremesReadyTtlMin])
   const count = ranked.length + snoozed.length
   const filterWord = [status !== 'all' ? status.toUpperCase() : null, tier !== 'all' ? `T${tier}` : null].filter(Boolean).join(' ') || 'ALL'
   let body

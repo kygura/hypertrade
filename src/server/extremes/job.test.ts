@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { ExtremeEvent } from "../../shared/extremes.js";
+import { EXTREMES_SCORE_VERSION, type ExtremeEvent } from "../../shared/extremes.js";
 import type { Alert } from "../desk/notify.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
 import { extremeAlert, runExtremesJob, type Detect, type ExtremesJobDeps } from "./job.js";
@@ -49,7 +49,7 @@ describe("runExtremesJob", () => {
     const r = await runExtremesJob(h.deps);
     expect(h.seen.map((x) => x.coin)).toEqual(["ETH", "SOL", "BTC"]);
     expect(h.seen.every((x) => x.n === 12 && x.btc === 12)).toBe(true);
-    expect(r).toEqual({ coins: 3, evaluated: 3, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, lines: [] });
+    expect(r).toEqual({ coins: 3, evaluated: 3, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired: 0, lines: [] });
   });
 
   test("nothing new: no wake, no push, nothing stored", async () => {
@@ -124,6 +124,27 @@ describe("runExtremesJob", () => {
     expect(await runExtremesJob(more.deps)).toMatchObject({ new: 1, capped: 1, woken: 0, pushed: 0 });
     expect(more.woken).toEqual([]);
     expect(more.sent).toEqual([]);
+  });
+
+  test("expiry: a ready extremes take past EXTREMES_READY_TTL_H expires (the serverless runtime has no scanner); scanner rows are left alone", async () => {
+    const store = await storeWith(["SOL"]);
+    const mk = async (setupKind: string, scoreVersion: string, coin = "SOL") => {
+      const { opportunity: o } = await store.upsertOpportunity(
+        { coin, direction: "long", setupKind, tradeType: "directional", score: 5, scoreVersion, tags: [], liquidityTier: 1, regime: "unknown", invalidation: "x", entryPx: 10, stopPx: 9, targetPx: null, invalidationPx: 9 },
+        { features: { features: {}, inputs: {} }, market: {}, score: 5, scoreVersion },
+      );
+      await store.transitionOpportunity(o.id, "new", "calculated", "system");
+      await store.transitionOpportunity(o.id, "calculated", "ready", "system");
+      store.opportunities.get(o.id)!.statusChangedAt = iso(NOW - 3 * HOUR);
+      return o.id;
+    };
+    const take = await mk("oi_flush", EXTREMES_SCORE_VERSION);
+    const scanner = await mk("crowded_long", "score-v2");
+    expect((await runExtremesJob(harness(store).deps)).expired).toBe(0); // 3 h < the 4 h default
+    const r = await runExtremesJob(harness(store, { env: { EXTREMES_READY_TTL_H: "2" } }).deps);
+    expect(r.expired).toBe(1);
+    expect((await store.getOpportunity(take))!.status).toBe("expired");
+    expect((await store.getOpportunity(scanner))!.status).toBe("ready"); // past the scanner's 60 min, but not ours to expire
   });
 
   test("extremeAlert without APP_URL has no link", () => {

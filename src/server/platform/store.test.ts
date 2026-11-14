@@ -365,7 +365,7 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
     key: `oi_flush|${coin}|long`, kind: "oi_flush", coin, side: "long", ts: t(h), window: "4h", mark: 100 + h, severity: 3.5,
     facts: { oiChg: -0.18, ret: -0.06, fundingApr: null }, line: `${coin} OI -18% in 4h`, ...over,
   });
-  const xrec = (e: ExtremeEvent, delivery: ExtremeRecord["delivery"]): ExtremeRecord => ({ event: e, delivery, verdict: null, verdictAt: null });
+  const xrec = (e: ExtremeEvent, delivery: ExtremeRecord["delivery"]): ExtremeRecord => ({ event: e, delivery, verdict: null, verdictAt: null, verdictMark: null, opportunityId: null });
   expect(await s.latestExtreme("oi_flush|SOL|long")).toBeNull();
   expect(await s.insertExtremeEvent(xrec(ev("SOL", 1), "woken"))).toBe(true);
   expect(await s.insertExtremeEvent(xrec(ev("SOL", 1), "pushed"))).toBe(false); // same (key, ts): kept as first stored
@@ -383,12 +383,28 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((out["extremes.list"] as ExtremeRecord[])[2]!.event.ts).toBe(t(2)); // ts normalized to ISO
   expect((await s.listExtremes({ since: t(0), limit: 2 })).length).toBe(2);
   const take = { key: "oi_flush|SOL|long", stance: "take" as const, direction: "long" as const, killPx: 95, cause: "Forced long unwind after a listing.", sources: ["https://example.com/a"] };
-  put("extremes.verdict", await s.setExtremeVerdict("oi_flush|SOL|long", t(3), take, t(4)));
-  expect(out["extremes.verdict"]).toEqual({ ...xrec(ev("SOL", 3), "pushed"), verdict: take, verdictAt: t(4) });
-  expect(await s.setExtremeVerdict("oi_flush|SOL|long", t(3), { ...take, stance: "pass" }, t(5))).toBeNull(); // written once
-  expect(await s.setExtremeVerdict("oi_flush|SOL|long", t(9), take, t(5))).toBeNull(); // no such row
-  await expect(s.setExtremeVerdict("oi_flush|SOL|long", t(1), { ...take, killPx: undefined }, t(5))).rejects.toThrow(); // take needs a kill level
+  // an inserted record never carries a verdict, its mark or an opportunity, whatever it was given (028)
+  expect(await s.insertExtremeEvent({ ...xrec(ev("ADA", 1, { key: "oi_flush|ADA|long" }), "none"), verdictMark: 5, opportunityId: "00000000-0000-4000-8000-000000000009" })).toBe(true);
+  expect(await s.latestExtreme("oi_flush|ADA|long")).toMatchObject({ verdictMark: null, opportunityId: null });
+  expect(await s.setExtremeOpportunity("oi_flush|SOL|long", t(3), "00000000-0000-4000-8000-000000000001")).toBeNull(); // no verdict yet
+  put("extremes.verdict", await s.setExtremeVerdict("oi_flush|SOL|long", t(3), take, t(4), 101.25));
+  expect(out["extremes.verdict"]).toEqual({ ...xrec(ev("SOL", 3), "pushed"), verdict: take, verdictAt: t(4), verdictMark: 101.25 });
+  expect(await s.setExtremeVerdict("oi_flush|SOL|long", t(3), { ...take, stance: "pass" }, t(5), null)).toBeNull(); // written once
+  expect(await s.setExtremeVerdict("oi_flush|SOL|long", t(9), take, t(5), null)).toBeNull(); // no such row
+  await expect(s.setExtremeVerdict("oi_flush|SOL|long", t(1), { ...take, killPx: undefined }, t(5), null)).rejects.toThrow(); // take needs a kill level
+  await expect(s.setExtremeVerdict("oi_flush|SOL|long", t(1), take, t(5), -1)).rejects.toThrow(); // a mark is positive
   expect((await s.latestExtreme("oi_flush|SOL|long"))!.verdict).toEqual(take);
+  // a watch without a fresh mark stores null
+  put("extremes.watch", await s.setExtremeVerdict("oi_flush|ETH|long", t(3), { key: "oi_flush|ETH|long", stance: "watch", cause: "Unlock.", sources: [] }, t(4), null));
+  expect((out["extremes.watch"] as ExtremeRecord).verdictMark).toBeNull();
+  // the opportunity link is written once, only after a verdict, and must be a uuid
+  await expect(s.setExtremeOpportunity("oi_flush|SOL|long", t(3), "nope")).rejects.toThrow();
+  const linked = await s.setExtremeOpportunity("oi_flush|SOL|long", t(3), "00000000-0000-4000-8000-0000000000AB");
+  expect(linked?.opportunityId).toBe("00000000-0000-4000-8000-0000000000ab");
+  put("extremes.opportunity", linked);
+  expect(await s.setExtremeOpportunity("oi_flush|SOL|long", t(3), "00000000-0000-4000-8000-000000000002")).toBeNull();
+  expect(await s.setExtremeOpportunity("oi_flush|SOL|long", t(9), "00000000-0000-4000-8000-000000000002")).toBeNull();
+  expect((await s.listExtremes({ since: t(3), limit: 10 })).find((r) => r.event.key === "oi_flush|SOL|long")).toMatchObject({ verdictMark: 101.25, opportunityId: "00000000-0000-4000-8000-0000000000ab" });
   return out;
 }
 

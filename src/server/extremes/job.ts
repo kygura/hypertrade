@@ -1,15 +1,16 @@
-import type { ExtremeEvent, ExtremeRecord } from "../../shared/extremes.js";
+import { isExtremesOpportunity, type ExtremeEvent, type ExtremeRecord } from "../../shared/extremes.js";
 import type { Alert } from "../desk/notify.js";
 import type { RingPoint } from "../platform/features.js";
+import { extremesReadyTtlMin, readyTtlMinFor, shouldExpire } from "../platform/opportunity.js";
 import { snapshotStreams } from "../platform/replaySource.js";
-import type { PlatformStore } from "../platform/store.js";
+import type { PlatformStore, ScanSnapshot } from "../platform/store.js";
 import { selectUniverse } from "../platform/universe.js";
 
 // The 15-min extremes job (docs/EXTREMES.md; POST /api/cron/extremes): ranks the top coins by their latest stored 24 h
 // volume (plus BTC), reads their stored 15-min history (scan_snapshots), runs the detectors, drops keys inside the
 // cooldown, keeps a hard daily cap on what goes out, stores every new event and delivers the ones under the cap: one
 // wake of the research session for the batch, or, when no wake target is set or the wake fails, one push per event
-// through the desk notifier. Pure orchestration: store, detector, wake, notifier and clock are injected.
+// through the desk notifier. It also expires extremes takes past EXTREMES_READY_TTL_H. Pure orchestration: store, detector, wake, notifier and clock are injected.
 
 type Env = Record<string, string | undefined>;
 const MIN = 60_000;
@@ -19,7 +20,7 @@ const DEFAULT_EXTREMES_TOP = 30;
 const DEFAULT_EXTREMES_COOLDOWN_H = 24;
 const DEFAULT_EXTREMES_DAILY_CAP = 3;
 /** Snapshots read to rank coins by their latest 24 h volume (the tick persists one every 5 min). */
-const RANK_WINDOW_MS = HOUR;
+export const RANK_WINDOW_MS = HOUR;
 
 const posInt = (v: string | undefined, d: number) => {
   const n = Number(v?.trim());
@@ -35,7 +36,7 @@ const extremesParams = (env: Env = process.env) => ({
 export type Detect = (input: { coin: string; points: RingPoint[]; btc: RingPoint[] | null; now: number }) => ExtremeEvent[];
 
 export interface ExtremesJobDeps {
-  store: Pick<PlatformStore, "scanSnapshotsSince" | "latestExtreme" | "extremesDeliveredSince" | "insertExtremeEvent">;
+  store: Pick<PlatformStore, "scanSnapshotsSince" | "latestExtreme" | "extremesDeliveredSince" | "insertExtremeEvent" | "listOpportunities" | "transitionOpportunity">;
   detect: Detect;
   /** History each coin's detector reads (EXTREME_LOOKBACK_MS). */
   lookbackMs: number;
@@ -56,6 +57,8 @@ export interface ExtremesJobReport {
   capped: number;
   /** Delivery attempted and nothing went out (every push channel failed or none is configured). */
   undelivered: number;
+  /** Extremes takes moved ready -> expired past EXTREMES_READY_TTL_H (the scanner does the same where it runs). */
+  expired: number;
   lines: string[];
 }
 
@@ -65,23 +68,44 @@ export function extremeAlert(e: ExtremeEvent, appUrl: string | null): Alert {
   return { level: "info", title: `Extreme: ${e.coin} ${e.kind}`, body: e.line, ...(base ? { click: `${base}/coin/${encodeURIComponent(e.coin)}` } : {}) };
 }
 
+/** Each coin's latest snapshot with a finite 24 h volume (ranking, liquidity tiers): its time, volume and inputs. */
+export function latestVolumes(snaps: ScanSnapshot[]): Map<string, { ts: number; dayNtlVlm: number; inputs: Record<string, unknown> }> {
+  const vol = new Map<string, { ts: number; dayNtlVlm: number; inputs: Record<string, unknown> }>();
+  for (const s of snaps) {
+    const v = (s.inputs as Record<string, unknown>).dayNtlVlm;
+    const ts = Date.parse(s.ts);
+    if (typeof v === "number" && Number.isFinite(v) && ts >= (vol.get(s.coin)?.ts ?? -Infinity)) vol.set(s.coin, { ts, dayNtlVlm: v, inputs: s.inputs });
+  }
+  return vol;
+}
+
 const utcDayStart = (t: number) => {
   const d = new Date(t);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString();
 };
 
+/**
+ * Expires extremes takes past their ready TTL (platform/opportunity.ts readyTtlMinFor). Here as well as in the scanner
+ * because the serverless API has no scanner; both are compare-and-set moves, so two runners never double-expire.
+ */
+export async function expireExtremeTakes(store: Pick<PlatformStore, "listOpportunities" | "transitionOpportunity">, now: number, env?: Env): Promise<number> {
+  const ttl = { scannerMin: Infinity, extremesMin: extremesReadyTtlMin(env) };
+  let n = 0;
+  for (const o of await store.listOpportunities({ statuses: ["ready"], limit: 500 })) {
+    if (!isExtremesOpportunity(o) || !shouldExpire(o, new Date(now), readyTtlMinFor(o, ttl))) continue;
+    if (await store.transitionOpportunity(o.id, "ready", "expired", "system")) n++;
+  }
+  return n;
+}
+
 export async function runExtremesJob(deps: ExtremesJobDeps): Promise<ExtremesJobReport> {
   const now = deps.now();
   const p = extremesParams(deps.env);
   const iso = (t: number) => new Date(t).toISOString();
+  const expired = await expireExtremeTakes(deps.store, now, deps.env).catch((err) => (console.error("[extremes] expiry:", err instanceof Error ? err.message : err), 0));
 
   // Universe: the top N by the latest stored 24 h volume, plus BTC (the detectors' market reference).
-  const vol = new Map<string, { ts: number; dayNtlVlm: number }>();
-  for (const s of await deps.store.scanSnapshotsSince(iso(now - RANK_WINDOW_MS))) {
-    const v = (s.inputs as Record<string, unknown>).dayNtlVlm;
-    const ts = Date.parse(s.ts);
-    if (typeof v === "number" && Number.isFinite(v) && ts >= (vol.get(s.coin)?.ts ?? -Infinity)) vol.set(s.coin, { ts, dayNtlVlm: v });
-  }
+  const vol = latestVolumes(await deps.store.scanSnapshotsSince(iso(now - RANK_WINDOW_MS)));
   const coins = selectUniverse([...vol].map(([coin, x]) => ({ coin, dayNtlVlm: x.dayNtlVlm })), { top: p.top, mine: ["BTC"] }).map((c) => c.coin);
   // One coin's history at a time (30 days of snapshots per coin), so the read never holds the whole universe at once.
   const since = iso(now - deps.lookbackMs);
@@ -89,7 +113,7 @@ export async function runExtremesJob(deps: ExtremesJobDeps): Promise<ExtremesJob
   const btcPoints = coins.includes("BTC") ? await history("BTC") : [];
   const btc = btcPoints.length ? btcPoints : null;
 
-  const report: ExtremesJobReport = { coins: coins.length, evaluated: 0, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, lines: [] };
+  const report: ExtremesJobReport = { coins: coins.length, evaluated: 0, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired, lines: [] };
   const fired: ExtremeEvent[] = [];
   for (const coin of coins) {
     const points = coin === "BTC" ? btcPoints : await history(coin);
@@ -136,7 +160,7 @@ export async function runExtremesJob(deps: ExtremesJobDeps): Promise<ExtremesJob
   }
 
   for (const e of fresh) {
-    await deps.store.insertExtremeEvent({ event: e, delivery: delivery.get(e)!, verdict: null, verdictAt: null });
+    await deps.store.insertExtremeEvent({ event: e, delivery: delivery.get(e)!, verdict: null, verdictAt: null, verdictMark: null, opportunityId: null });
     report.lines.push(e.line);
   }
   return report;

@@ -306,7 +306,7 @@ export const SnoozeBodySchema = z.object({ minutes: z.number().int().min(1).max(
 // ─── /api/platform responses ───
 
 export const FeedRowSchema = OpportunitySchema.pick({
-  id: true, coin: true, direction: true, setupKind: true, tradeType: true, status: true, score: true,
+  id: true, coin: true, direction: true, setupKind: true, tradeType: true, status: true, score: true, scoreVersion: true,
   netEdgeBps: true, edgeBasis: true, tags: true, liquidityTier: true, createdAt: true, updatedAt: true, snoozedUntil: true,
 }).extend({ statusChangedAt: Iso.optional() });
 export type FeedRow = z.infer<typeof FeedRowSchema>;
@@ -316,6 +316,8 @@ export const FeedResponseSchema = z.object({
   scanAgeSec: NonNeg.nullable(),
   /** PLATFORM_READY_TTL_MIN: a ready row expires this long after statusChangedAt. */
   readyTtlMin: Pos.optional(),
+  /** EXTREMES_READY_TTL_H in minutes: the ready TTL of an extremes take (its scoreVersion is extremes-1) instead. */
+  extremesReadyTtlMin: Pos.optional(),
 });
 export type FeedResponse = z.infer<typeof FeedResponseSchema>;
 

@@ -29,6 +29,9 @@ const MOVES_WRITES = [
 ];
 for (const p of [...MOVES_READS, ...MOVES_WRITES, "/moves/SOL/proposal", "/movesx", "/queuex"]) testApp.all(p, (c) => c.json({ reached: p }));
 for (const p of ["/extremes", "/extremes/verdict", "/extremes/verdictx", "/extremes/x", "/extremesx"]) testApp.all(p, (c) => c.json({ reached: p }));
+/** An extremes take's opportunity (extremes/opportunity.ts): approved only with the operator's cookie. */
+const TAKE_APPROVE = "/platform/opportunities/00000000-0000-4000-8000-000000000001/approve";
+testApp.all(TAKE_APPROVE, (c) => c.json({ reached: TAKE_APPROVE }));
 
 describe("session token", () => {
   test("signs and verifies a roundtrip", () => {
@@ -312,6 +315,13 @@ describe("lab bearer (LAB_API_TOKEN)", () => {
       for (const method of ["PUT", "DELETE", "PATCH"]) expect((await req("/extremes/verdict", bearer("tok-one"), method)).status).toBe(401);
       for (const path of ["/extremes", "/extremes/verdictx", "/extremes/x"]) expect((await req(path, bearer("tok-one"), "POST")).status).toBe(401);
       expect((await req("/extremesx", bearer("tok-one"))).status).toBe(401);
+    }));
+
+  test("extremes: the research bearer cannot approve the opportunity a take becomes; the cookie can", () =>
+    withTokens("tok-one", async () => {
+      for (const method of ["POST", "PUT", "PATCH"]) expect({ method, status: (await req(TAKE_APPROVE, bearer("tok-one"), method)).status }).toEqual({ method, status: 401 });
+      const cookie = (await postLogin("correct-horse")).headers.get("set-cookie")!.split(";")[0];
+      expect((await req(TAKE_APPROVE, { cookie }, "POST")).status).toBe(200);
     }));
 
   test("empty entries never match an empty or blank bearer", () =>

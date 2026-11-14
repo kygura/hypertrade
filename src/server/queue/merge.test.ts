@@ -41,6 +41,19 @@ const input = (over: Partial<MergeInput> = {}): MergeInput => ({
 });
 
 describe("mergeQueue", () => {
+  test("a ready extremes take (no costs, no target, no net edge, its own kind and score version) is listed like any ready opportunity; its severity does not outrank", () => {
+    const take = opp("WIF", 5, {
+      setupKind: "oi_flush", scoreVersion: "extremes-1", score: 9.5, netEdgeBps: null, grossEdgeBps: null, costs: null, targetPx: null, regime: "unknown",
+      tags: ["extreme", "oi_flush"], liquidityTier: 3, dedupeKey: "WIF|long|oi_flush",
+    });
+    const q = QueueResponseSchema.omit({ agentRuns: true, agentCap: true, agentBlockedReason: true, watched: true, freshness: true }).parse(
+      mergeQueue(input({ triage: { ok: [triage("SOL", 3, { score: 1.5 })] }, opportunities: { ok: [take] } })),
+    );
+    expect(q.items.map((i) => i.coin)).toEqual(["SOL", "WIF"]);
+    expect(q.items[1]!.parts).toEqual([{ source: "opportunity", ref: take.id, direction: "long", reason: "oi_flush long · ready", score: 1, at: t(5), actedAt: null, href: `/feed?id=${take.id}` }]);
+    expect(q.sources.opportunity).toEqual({ state: "ok", reason: null, count: 1 });
+  });
+
   test("three sources on one coin make one item with three parts, ranked above weaker single-source items", () => {
     const q = mergeQueue(input({
       triage: { ok: [triage("SOL", 3), triage("WIF", 1, { score: 1.1 })] },

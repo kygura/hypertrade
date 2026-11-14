@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { EXTREMES_SCORE_VERSION } from "../../shared/extremes.js";
 import type { Opportunity } from "../../shared/platform.js";
 import { createAlerts } from "./alerts.js";
 import { Bus } from "./bus.js";
@@ -29,6 +30,14 @@ describe("ready push", () => {
     expect(sent).toHaveLength(2);
     expect(sent[0]!.body).toEndWith("https://app.example.com/coin/SOL");
     expect(sent[0]!.body).not.toContain("terminal");
+  });
+
+  test("an extremes take reaching ready is not pushed again (its verdict route sent the Take push)", async () => {
+    const { sent, bus } = setup();
+    bus.publish("opportunity", { opportunity: opp({ id: "x", setupKind: "oi_flush", scoreVersion: EXTREMES_SCORE_VERSION, score: 9 }), change: "status" });
+    bus.publish("opportunity", { opportunity: opp({ id: "y", setupKind: "oi_flush", scoreVersion: SCORE_VERSION }), change: "status" }); // a scanner row with that name still is
+    await Bun.sleep(0);
+    expect(sent).toHaveLength(1);
   });
 });
 
