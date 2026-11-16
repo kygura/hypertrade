@@ -1,12 +1,15 @@
 import { createHash } from "node:crypto";
+import type { ActiveLocks, DeskCooldownResponse, DeskPlanInput, DeskPlanSubmitResponse, PlanCheck, PlanPlacement, StopOutRef } from "../../shared/deskPlan.js";
 import { fmtPx } from "../../shared/format.js";
 import type { AssetCtx } from "../../shared/types.js";
 import type { DeskConfig } from "./config.js";
+import { activeLocks, COOLDOWN_KEY, parseCooldownState, recordStopOut } from "./cooldown.js";
 import type { MarketData } from "./data.js";
-import { evaluateExit, evaluateOpen, evaluateRisk, operatorRiskOrder, type GovernorContext, type MarketRef } from "./governor.js";
+import { evaluateExit, evaluateOpen, evaluateRisk, floorToDecimals, notionalCap, operatorRiskOrder, type GovernorContext, type MarketRef } from "./governor.js";
 import type { Alert, AlertAction, Notifier } from "./notify.js";
 import { HlBroker } from "./hl/broker.js";
-import { PaperBroker, type Broker } from "./paper.js";
+import { PaperBroker, type Broker, type ExecutionResult } from "./paper.js";
+import { checkPlan, type PlanContext } from "./plan.js";
 import { ProprBroker } from "./propr/broker.js";
 import type { DeskStore } from "./store.js";
 import {
@@ -16,6 +19,7 @@ import {
   type ExitProposal,
   type OperatorOrder,
   type OperatorOrderRecord,
+  type PlanOrderRecord,
   type ProposalRecord,
   type RiskOrder,
   type Sizing,
@@ -45,6 +49,10 @@ export const OPERATOR_PREVIEW_KEY = "operator_preview";
 /** A preview can be submitted for this long, while the mark stays within OPERATOR_MAX_MOVE of it. */
 const OPERATOR_PREVIEW_TTL_MS = 60_000;
 const OPERATOR_MAX_MOVE = 0.005;
+/** A one-rung plan on a venue that only fills at the mark: the rung must be this close to it. */
+const PLAN_MARK_TOLERANCE = 0.005;
+const COPILOT_NO_TARGET = "no target: a copilot order needs a stop and a target (the desk places planned trades only)";
+const r2 = (x: number) => Math.round(x * 100) / 100;
 
 export interface OperatorPreview {
   verdict: Verdict;
@@ -197,7 +205,156 @@ export class DeskService {
     const market = this.broker.market ? await this.broker.market(coin) : DeskService.findMarket(ctxs, coin);
     const lev = this.broker.tradeLeverage?.(market?.coin ?? coin, leverage, confidence);
     const limits = lev ? { ...this.config.limits, maxCoinLeverage: lev.leverage ?? Math.min(this.config.limits.maxCoinLeverage, lev.max) } : this.config.limits;
-    return { limits, account, market, killSwitch: (await this.killSwitch()).on, now: this.now(), venueWarnings: lev?.warning ? [lev.warning] : [] };
+    return { limits, account, market, killSwitch: (await this.killSwitch()).on, locks: await this.locks(), now: this.now(), venueWarnings: lev?.warning ? [lev.warning] : [] };
+  }
+
+  // ------------------------------------------------------------ cooldown
+
+  /** Stop-out locks in force now (cooldown.ts). */
+  async locks(): Promise<ActiveLocks> {
+    return activeLocks(parseCooldownState(await this.store.getState(COOLDOWN_KEY)), this.now(), this.config.plan);
+  }
+
+  /** Records a stop-out (the watch tick calls this) and returns the locks in force after it. */
+  async recordStopOut(coin: string, at: Date, ref: Omit<StopOutRef, "planId">): Promise<ActiveLocks> {
+    const planId = ref.proposalId ? await this.planIdForProposal(ref.proposalId) : null;
+    const state = parseCooldownState(await this.store.getState(COOLDOWN_KEY));
+    await this.store.setState(COOLDOWN_KEY, recordStopOut(state, { coin, at, ref: { ...ref, planId } }, this.config.plan));
+    return this.locks();
+  }
+
+  /** GET /desk/cooldown: the locks, each with the plan behind the loss when the desk can tie it to one. */
+  async cooldown(): Promise<DeskCooldownResponse> {
+    const locks = await this.locks();
+    const coins = await Promise.all(locks.coins.map(async (l) => ({ ...l, plan: l.ref.planId ? await this.store.getPlan(l.ref.planId) : null })));
+    return { ...locks, coins };
+  }
+
+  /** The plan journaled for a desk proposal: a plan's own link, else a copilot order's journal entry. */
+  private async planIdForProposal(proposalId: string): Promise<string | null> {
+    const p = await this.store.getProposal(proposalId);
+    if (p && "source" in p.proposal && p.proposal.source === "plan") return p.proposal.planId;
+    return (await this.store.listPlans(200)).find((x) => x.placement?.proposalId === proposalId)?.id ?? null;
+  }
+
+  /** The newest executed entry on a coin (a live stop-out names the proposal it most likely closed). */
+  async lastEntryProposalId(coin: string): Promise<string | null> {
+    const c = coin.toUpperCase();
+    return (await this.store.listProposals({ status: "executed", limit: 100 })).find((p) => p.kind === "open" && (p.proposal as { coin: string }).coin.toUpperCase() === c)?.id ?? null;
+  }
+
+  // ------------------------------------------------------------ plans
+
+  private planContext(ctx: GovernorContext): PlanContext {
+    return { account: ctx.account, limits: ctx.limits, rules: this.config.plan, locks: ctx.locks, drawdownBaseUsd: this.config.propr?.startingBalance, markPx: ctx.market?.markPx ?? null };
+  }
+
+  /**
+   * The plan rules (plan.ts checkPlan), the venue's limits and the governor's verdict on the plan at the live mark.
+   * Writes nothing. The governor is asked to risk exactly the plan's loss at its stop; a plan it would shrink (the
+   * per-trade, open-risk or leverage limits) is blocked, never placed smaller.
+   */
+  checkPlan(input: DeskPlanInput): Promise<PlanCheck> {
+    return this.planCheckNow(input).then((c) => c.check);
+  }
+
+  private async planCheckNow(input: DeskPlanInput): Promise<{ check: PlanCheck; plan: DeskPlanInput; risk: RiskOrder | null; verdict: Verdict | null; sizing: Sizing | null }> {
+    const ctx = await this.governorContext(input.coin);
+    const plan = ctx.market ? { ...input, coin: ctx.market.coin } : input;
+    const base = checkPlan(plan, this.planContext(ctx));
+    const blockers = [...base.blockers];
+    const warnings = [...ctx.venueWarnings, ...base.warnings];
+    const add = (r: string) => void (blockers.includes(r) || blockers.push(r));
+    const { market, account, limits } = ctx;
+    const venue = this.broker.venue;
+    if (!market) add(`${plan.coin} is not a listed Hyperliquid perp`);
+    else {
+      const step = 10 ** -market.szDecimals;
+      const minRung = this.config.propr?.ladder.minRungUsd ?? this.config.limits.minNotionalUsd;
+      for (const r of plan.rungs) {
+        if (Math.abs(floorToDecimals(r.size, market.szDecimals) - r.size) > step * 1e-6) add(`rung size ${r.size} is not a multiple of ${plan.coin}'s size step ${step}`);
+        if (r.px * r.size < minRung) add(`rung ${r.size} ${plan.coin} @ ${r.px} is ${r2(r.px * r.size)} USD, under the ${minRung} USD order minimum`);
+      }
+      // A venue without resting ladders fills one entry at the mark: anything else would place a different trade.
+      if (!this.broker.openLadder) {
+        if (plan.rungs.length > 1) add(`${venue} fills one entry at the mark and cannot rest a ${plan.rungs.length}-rung ladder: write one rung at the mark (${fmtPx(market.markPx)})`);
+        else {
+          const away = Math.abs(plan.rungs[0]!.px / market.markPx - 1);
+          if (away > PLAN_MARK_TOLERANCE) add(`${venue} fills at the mark ${fmtPx(market.markPx)} and cannot rest a limit: the rung at ${fmtPx(plan.rungs[0]!.px)} is ${r2(away * 100)}% away (limit ${PLAN_MARK_TOLERANCE * 100}%)`);
+        }
+      }
+    }
+    const loss = base.metrics.lossAtStopUsd;
+    let risk: RiskOrder | null = null;
+    let verdict: Verdict | null = null;
+    let sizing: Sizing | null = null;
+    if (market && plan.stopPx != null && loss != null && loss > 0 && account.equityUsd > 0) {
+      risk = { coin: plan.coin, side: plan.side, stop: plan.stopPx, ...(plan.targetPx != null ? { target: plan.targetPx } : {}), riskPct: (loss / account.equityUsd) * 100 };
+      verdict = evaluateRisk(risk, ctx);
+      const hasDaily = blockers.some((b) => b.startsWith("today's possible loss"));
+      for (const r of verdict.reasons) if (!(hasDaily && r.startsWith("today's possible loss"))) add(r);
+      warnings.push(...verdict.warnings.filter((w) => !w.startsWith("no target") && !w.includes("clipped")));
+      const g = verdict.sizing;
+      if (g) {
+        const capped = blockers.some((b) => b.startsWith("loss at stop"));
+        const slack = 10 ** -market.szDecimals * Math.abs(market.markPx - plan.stopPx) + 0.01;
+        if (!capped && g.riskUsd < loss - slack) add(`the governor would risk at most ${g.riskUsd} USD here, the plan's stop loses ${loss} USD (${verdict.warnings.join("; ") || "risk limits"})`);
+        const cap = notionalCap(limits, account);
+        if (base.metrics.notionalUsd > cap + 0.01) add(`the plan's ${base.metrics.notionalUsd} USD notional is over the ${r2(Math.max(0, cap))} USD the leverage limits allow (gross ${limits.maxGrossLeverage}x, per coin ${limits.maxCoinLeverage}x)`);
+        // What the venue is sent: a one-rung plan fills its own size at the mark; a ladder carries the plan's totals.
+        const size = floorToDecimals(base.metrics.totalSize, market.szDecimals);
+        const atMark = this.broker.openLadder ? null : size * Math.abs(market.markPx - plan.stopPx);
+        sizing = { ...g, size, notionalUsd: r2(this.broker.openLadder ? base.metrics.notionalUsd : size * market.markPx), riskUsd: r2(atMark ?? loss), rr: base.metrics.rrFull };
+      }
+    }
+    return { check: { metrics: base.metrics, blockers, warnings }, plan, risk, verdict, sizing };
+  }
+
+  /**
+   * Journals a plan and, with `place` and no blockers, places it: one proposal record decided by `by`, sent to the
+   * venue under the operator lock (no other operator order lands between the check and the send). The operator's
+   * submit is the approval, so the approval mode does not apply. A one-rung plan fills at the mark on paper and
+   * testnet; Propr rests every rung as a limit with its own stop and target.
+   */
+  submitPlan(input: DeskPlanInput, opts: { place: boolean; by: string }): Promise<DeskPlanSubmitResponse> {
+    return this.serial(() => this.submitPlanNow(input, opts));
+  }
+
+  private async submitPlanNow(input: DeskPlanInput, opts: { place: boolean; by: string }): Promise<DeskPlanSubmitResponse> {
+    const c = await this.planCheckNow(input);
+    const { check } = c;
+    const record = await this.store.insertPlan({
+      createdAt: this.now().toISOString(), source: "plan", venue: this.broker.venue, input: c.plan,
+      metrics: check.metrics, blockers: check.blockers, warnings: check.warnings, placed: false, placement: null,
+    });
+    if (!opts.place || check.blockers.length || !c.risk || !c.verdict?.approved || !c.sizing) return { record, check, placed: false };
+    const risk = c.risk;
+    const proposal: PlanOrderRecord = { ...risk, source: "plan", planId: record.id, rungs: c.plan.rungs, resolvedRiskPct: Math.round(risk.riskPct * 1e4) / 1e4 };
+    const rec = await this.store.insertProposal({ runId: null, kind: "open", venue: this.broker.venue, proposal, verdict: c.verdict, execution: null, status: "pending", expiresAt: null, decidedBy: opts.by });
+    const sizing = c.sizing;
+    const ladder = this.broker.openLadder?.bind(this.broker);
+    const send = ladder ? () => ladder(risk, c.plan.rungs, sizing, rec.id, this.now()) : undefined;
+    const out = await this.fillOpen(rec, risk, c.verdict, sizing, opts.by, `plan ${record.id}${c.plan.note ? `: ${c.plan.note}` : ""}`, send);
+    const placed = out.status === "executed";
+    const placement = placementOf(out);
+    const updated = await this.store.updatePlan(record.id, { placed, placement }).catch((err) => (console.error(`[desk] plan ${record.id} placement not recorded`, err), null));
+    return { record: updated ?? { ...record, placed, placement }, check, placed };
+  }
+
+  /** A copilot-confirmed order in the plan journal: a one-rung plan at the mark, with what blocked it or what the venue did. */
+  private async journalOperatorOrder(order: OperatorOrder, ctx: GovernorContext, rec: ProposalRecord): Promise<void> {
+    const mark = ctx.market?.markPx;
+    const size = rec.verdict.sizing?.size || (mark && order.notionalUsd ? order.notionalUsd / mark : 0);
+    if (!mark || !(size > 0)) return;
+    const input: DeskPlanInput = { coin: ctx.market!.coin, side: order.side, rungs: [{ px: mark, size }], stopPx: order.stop, targetPx: order.target ?? null, note: "copilot order" };
+    const { metrics } = checkPlan(input, this.planContext(ctx));
+    await this.store
+      .insertPlan({
+        createdAt: this.now().toISOString(), source: "copilot", venue: this.broker.venue, input, metrics,
+        blockers: rec.status === "blocked" ? rec.verdict.reasons : [], warnings: rec.verdict.warnings,
+        placed: rec.status === "executed", placement: rec.status === "blocked" ? null : placementOf(rec),
+      })
+      .catch((err) => console.error(`[desk] copilot order ${rec.id} not journaled`, err));
   }
 
   private static withWarnings(v: Verdict, extra: string[]): Verdict {
@@ -258,11 +415,13 @@ export class DeskService {
   }
 
   /** Operator order sizing at the venue's current mark: the order's risk (from notional or leverage) through the governor. */
-  private async operatorVerdict(order: OperatorOrder): Promise<{ ctx: GovernorContext; risk: RiskOrder; verdict: Verdict }> {
+  private async operatorVerdict(order: OperatorOrder, requireTarget = false): Promise<{ ctx: GovernorContext; risk: RiskOrder; verdict: Verdict }> {
     const ctx = await this.governorContext(order.coin, order.leverage, order.confidence);
     const { order: risk, warnings } = operatorRiskOrder(order, ctx);
     const v = evaluateRisk(risk, ctx);
-    return { ctx, risk, verdict: { ...v, warnings: [...ctx.venueWarnings, ...warnings, ...v.warnings] } };
+    // The copilot places planned trades only: no target, no order (the platform's tickets keep their own rules).
+    const reasons = requireTarget && order.target == null ? [COPILOT_NO_TARGET, ...v.reasons] : v.reasons;
+    return { ctx, risk, verdict: { ...v, approved: reasons.length === 0, reasons, warnings: [...ctx.venueWarnings, ...warnings, ...v.warnings] } };
   }
 
   /** Read-only governor verdict for an operator order plus the account it was sized against. Writes nothing (no preview key, no lock), so a caller's pending preview stays valid. */
@@ -273,12 +432,12 @@ export class DeskService {
 
   /** What the governor would do with an operator order right now. Executes nothing. Under the operator lock: a preview never lands inside another caller's preview → submit. */
   previewOperatorOrder(input: OperatorOrder): Promise<OperatorPreview> {
-    return this.serial(() => this.previewOperatorOrderNow(input));
+    return this.serial(() => this.previewOperatorOrderNow(input, true));
   }
 
-  private async previewOperatorOrderNow(input: OperatorOrder): Promise<OperatorPreview> {
+  private async previewOperatorOrderNow(input: OperatorOrder, copilot: boolean): Promise<OperatorPreview> {
     const order = parseOperatorOrder(input);
-    const { ctx, verdict } = await this.operatorVerdict(order);
+    const { ctx, verdict } = await this.operatorVerdict(order, copilot);
     const at = this.now();
     const markPx = ctx.market?.markPx ?? null;
     const preview: StoredPreview = { hash: operatorPreviewHash(order, markPx, at.getTime()), markPx, at: at.toISOString() };
@@ -294,7 +453,7 @@ export class DeskService {
    * the operator who confirmed; it is recorded as the decision.
    */
   submitOperatorOrder(input: OperatorOrder, confirm: { previewHash: string }, by: string): Promise<ProposalRecord> {
-    return this.serial(() => this.submitOperatorOrderNow(input, confirm, by));
+    return this.serial(() => this.submitOperatorOrderNow(input, confirm, by, true));
   }
 
   /**
@@ -303,7 +462,7 @@ export class DeskService {
    * the proposal from insert on (decidedBy), so a caller can find its proposal by it.
    */
   placeOperatorOrder(input: OperatorOrder, by: string): Promise<ProposalRecord> {
-    return this.serial(async () => this.submitOperatorOrderNow(input, { previewHash: (await this.previewOperatorOrderNow(input)).previewHash }, by));
+    return this.serial(async () => this.submitOperatorOrderNow(input, { previewHash: (await this.previewOperatorOrderNow(input, false)).previewHash }, by, false));
   }
 
   private serial<T>(fn: () => Promise<T>): Promise<T> {
@@ -312,7 +471,8 @@ export class DeskService {
     return run;
   }
 
-  private async submitOperatorOrderNow(input: OperatorOrder, confirm: { previewHash: string }, by: string): Promise<ProposalRecord> {
+  /** `copilot`: the /order copilot's confirm (a target is required, and the order is journaled as a plan). */
+  private async submitOperatorOrderNow(input: OperatorOrder, confirm: { previewHash: string }, by: string, copilot: boolean): Promise<ProposalRecord> {
     const order = parseOperatorOrder(input);
     const mismatch = () => new DeskError(409, "order does not match the latest preview: preview it again");
     const latest = await this.store.getState<StoredPreview>(OPERATOR_PREVIEW_KEY);
@@ -322,7 +482,7 @@ export class DeskService {
     if (!stored) throw mismatch();
     const ageMs = this.now().getTime() - Date.parse(stored.at);
     if (ageMs > OPERATOR_PREVIEW_TTL_MS) throw new DeskError(409, `preview is ${Math.round(ageMs / 1000)} s old, over the ${OPERATOR_PREVIEW_TTL_MS / 1000} s limit: preview it again`);
-    const { ctx, risk, verdict } = await this.operatorVerdict(order);
+    const { ctx, risk, verdict } = await this.operatorVerdict(order, copilot);
     const mark = ctx.market?.markPx;
     if (mark != null && (stored.markPx == null || Math.abs(mark / stored.markPx - 1) > OPERATOR_MAX_MOVE)) {
       throw new DeskError(409, `mark moved from ${stored.markPx == null ? "none" : fmtPx(stored.markPx)} to ${fmtPx(mark)} since the preview (limit ${OPERATOR_MAX_MOVE * 100}%): preview it again`);
@@ -332,10 +492,13 @@ export class DeskService {
     if (!verdict.approved || !verdict.sizing) {
       const rec = await this.store.insertProposal({ ...base, status: "blocked", expiresAt: null, decidedBy: `governor (at ${by})` });
       await this.alert("info", `Blocked: ${risk.side} ${risk.coin} (copilot)`, verdict.reasons.join("\n"));
+      if (copilot) await this.journalOperatorOrder(order, ctx, rec);
       return rec;
     }
     const rec = await this.store.insertProposal({ ...base, status: "pending", expiresAt: null, decidedBy: by });
-    return this.fillOpen(rec, risk, verdict, verdict.sizing, by, "operator order (copilot)");
+    const out = await this.fillOpen(rec, risk, verdict, verdict.sizing, by, "operator order (copilot)");
+    if (copilot) await this.journalOperatorOrder(order, ctx, out);
+    return out;
   }
 
   async approve(id: string, by: string): Promise<ProposalRecord> {
@@ -380,9 +543,9 @@ export class DeskService {
    * throws: a failed record or alert write is logged and the in-memory record returned, so a caller never reads
    * "failed" while a position is open.
    */
-  private async fillOpen(rec: ProposalRecord, p: RiskOrder, verdict: Verdict, sizing: Sizing, by: string, note: string): Promise<ProposalRecord> {
+  private async fillOpen(rec: ProposalRecord, p: RiskOrder, verdict: Verdict, sizing: Sizing, by: string, note: string, send?: () => Promise<ExecutionResult>): Promise<ProposalRecord> {
     const decidedAt = this.now().toISOString();
-    const result = await this.broker.open(p, sizing, rec.id, this.now());
+    const result = send ? await send() : await this.broker.open(p, sizing, rec.id, this.now());
     const patch = { status: result.ok ? ("executed" as const) : ("failed" as const), verdict, execution: result, decidedBy: by, decidedAt };
     const out = await this.store.updateProposal(rec.id, patch).catch((err) => (console.error(`[desk] proposal ${rec.id} ${patch.status} but not recorded`, err), null));
     const fill = result.fills[0];
@@ -443,6 +606,11 @@ export class DeskError extends Error {
 }
 
 export { fmtPx };
+
+function placementOf(rec: ProposalRecord): PlanPlacement {
+  const x = rec.execution as ExecutionResult | null;
+  return { proposalId: rec.id, status: rec.status, error: x && !x.ok ? (x.error ?? null) : null, dryRun: !!x?.dryRun, note: x?.note ?? null };
+}
 
 function describeOpen(p: TradeProposal, v: Verdict, appUrl?: string): string {
   const s = v.sizing!;

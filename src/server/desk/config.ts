@@ -88,6 +88,18 @@ export interface GovernorLimits {
   takerFee: number;
 }
 
+/** The calm-desk plan rules (src/server/desk/plan.ts, cooldown.ts). */
+export interface PlanRules {
+  /** DESK_PLAN_MAX_RISK_PCT: a plan's loss at its stop, percent of equity (the governor's DESK_MAX_RISK_PCT also applies). */
+  maxRiskPct: number;
+  /** DESK_MAX_DRAWDOWN_PCT for paper and testnet; on Propr the firm's PROPR_MAX_DRAWDOWN_PCT. */
+  maxDrawdownPct: number;
+  /** DESK_COOLDOWN_HOURS: a stop-out locks new entries on that coin this long. */
+  cooldownHours: number;
+  /** DESK_MAX_STOP_OUTS_PER_DAY: this many stop-outs in one UTC day lock every new entry until 00:00 UTC. */
+  maxStopOutsPerDay: number;
+}
+
 export interface DeskConfig {
   venue: Venue;
   /** Set when venue is hl-testnet. */
@@ -98,6 +110,7 @@ export interface DeskConfig {
   venueNote?: string;
   approval: Approval;
   limits: GovernorLimits;
+  plan: PlanRules;
   paperStartingEquity: number;
   /** Paper fills cross this much slippage, fraction. */
   paperSlippage: number;
@@ -160,6 +173,12 @@ export function loadDeskConfig(env: Env = process.env): DeskConfig {
       minConfidence: conf === "low" || conf === "high" ? conf : "medium",
       minNotionalUsd: 10,
       takerFee: 0.00045,
+    },
+    plan: {
+      maxRiskPct: num(env, "DESK_PLAN_MAX_RISK_PCT", 1, 0.05, 5),
+      maxDrawdownPct: venue.propr ? venue.propr.firm.maxDrawdownPct : num(env, "DESK_MAX_DRAWDOWN_PCT", 10, 1, 50),
+      cooldownHours: num(env, "DESK_COOLDOWN_HOURS", 4, 0, 72),
+      maxStopOutsPerDay: clampInt(num(env, "DESK_MAX_STOP_OUTS_PER_DAY", 2, 1, 10), 1, 10),
     },
     paperStartingEquity: num(env, "DESK_PAPER_EQUITY", 10_000, 100, 1e9),
     paperSlippage: 0.0005,

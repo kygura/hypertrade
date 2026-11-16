@@ -77,6 +77,8 @@ export const OperatorOrderSchema = RiskOrderSchema.extend({
 export type OperatorOrder = z.infer<typeof OperatorOrderSchema>;
 /** An operator order as recorded: the order as confirmed plus the risk percent the governor sized it at. */
 export type OperatorOrderRecord = OperatorOrder & { resolvedRiskPct: number };
+/** An entry placed from a written plan (DeskService.submitPlan): the risk order the governor checked, the plan's rungs and journal id. */
+export type PlanOrderRecord = RiskOrder & { source: "plan"; planId: string; rungs: Array<{ px: number; size: number }>; resolvedRiskPct: number };
 
 /** What an agent submits through propose_exit. */
 export const ExitProposalSchema = z
@@ -141,7 +143,7 @@ export interface ProposalRecord {
   kind: "open" | "exit";
   status: ProposalStatus;
   venue: string;
-  proposal: TradeProposal | ExitProposal | OperatorOrderRecord;
+  proposal: TradeProposal | ExitProposal | OperatorOrderRecord | PlanOrderRecord;
   verdict: Verdict;
   execution: unknown;
   decidedBy: string | null;

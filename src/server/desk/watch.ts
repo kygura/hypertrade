@@ -1,3 +1,4 @@
+import type { ActiveLocks } from "../../shared/deskPlan.js";
 import { fmtPx } from "../../shared/format.js";
 import { runDesk, type ProviderFactory } from "./agents.js";
 import { HOUR, evaluateTriggers, type Trigger } from "./triggers.js";
@@ -9,6 +10,8 @@ import type { DeskService } from "./service.js";
 //
 //   1. expire stale approvals
 //   2. settle paper stops/targets against the bars since the last tick
+//      (a stop-out locks new entries: cooldown.ts; live venues: a position gone
+//      on a tick whose range touched its stop counts as one)
 //   3. check the day-loss limit
 //   4. evaluate triggers (fast moves, funding extremes, OI surges, positions
 //      near their stop, breadth shocks); each fires an alert, with a per-key
@@ -30,6 +33,8 @@ export interface WatchState {
   /** Recent marks per coin, [epoch ms, price], oldest first. */
   marks?: Record<string, Array<[number, number]>>;
   dayLossAlerted?: string;
+  /** Live venues: positions with a stop at the last readable tick, to spot a stop-out by the position vanishing. */
+  livePositions?: Array<{ coin: string; side: "long" | "short"; size: number; stopPx: number }>;
   /** Venue upkeep conditions already alerted: key → when (epoch ms). A key gone from a tick is dropped, so it alerts again if it returns. */
   upkeep?: Record<string, number>;
 }
@@ -83,7 +88,15 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
     for (const s of await service.broker.settle(ranges, now)) {
       const fill = s.result.fills[0];
       result.settled.push({ coin: s.coin, kind: s.kind, pnl: fill?.pnl ?? 0 });
-      await service.alert(s.kind === "stop" ? "warn" : "info", `${s.coin} ${s.kind === "stop" ? "stopped out" : "hit target"}`, `${fill?.size} @ ${fmtPx(fill?.px ?? 0)} · PnL $${(fill?.pnl ?? 0).toFixed(2)}`);
+      const locks =
+        s.kind === "stop" && s.result.ok
+          ? await service.recordStopOut(s.coin, now, { source: "paper", proposalId: s.proposalId, fill: fill ? { side: s.side, size: fill.size, px: fill.px, pnl: fill.pnl } : null })
+          : null;
+      await service.alert(
+        s.kind === "stop" ? "warn" : "info",
+        `${s.coin} ${s.kind === "stop" ? "stopped out" : "hit target"}`,
+        `${fill?.size} @ ${fmtPx(fill?.px ?? 0)} · PnL $${(fill?.pnl ?? 0).toFixed(2)}${locks ? lockLine(locks, s.coin) : ""}`,
+      );
     }
   }
 
@@ -109,6 +122,26 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
   }
 
   const account = await service.broker.account(marks, now);
+  // Live venues hold stops on the exchange, so the desk sees a stop-out only as the position gone. A position that had
+  // a stop at the last readable tick and is gone now, while the bars since touched that stop, counts as a stop-out.
+  // An unreadable account changes nothing (it would read as every position gone).
+  if (!service.broker.settle && account.available) {
+    const before = state.livePositions ?? [];
+    const since = Math.max(state.lastTick ? new Date(state.lastTick).getTime() : t - 15 * MIN, t - 24 * HOUR) - 5 * MIN;
+    for (const p of before) {
+      if (account.positions.some((x) => x.coin === p.coin && x.side === p.side)) continue;
+      const bars = await service.data.candles(p.coin, "5m", since, t).catch(() => []);
+      const mark = marks.get(p.coin);
+      const lows = [...bars.map((b) => b.l), ...(mark ? [mark] : [])];
+      const highs = [...bars.map((b) => b.h), ...(mark ? [mark] : [])];
+      if (!lows.length || !(p.side === "long" ? Math.min(...lows) <= p.stopPx : Math.max(...highs) >= p.stopPx)) continue;
+      const proposalId = await service.lastEntryProposalId(p.coin);
+      const locks = await service.recordStopOut(p.coin, now, { source: "watch", proposalId, fill: { side: p.side, size: p.size, px: p.stopPx, pnl: null } });
+      result.settled.push({ coin: p.coin, kind: "stop", pnl: 0 });
+      await service.alert("warn", `${p.coin} stopped out`, `${p.side} ${p.size} gone from ${service.broker.venue}; the bars since the last tick touched its stop ${fmtPx(p.stopPx)}${lockLine(locks, p.coin)}`);
+    }
+    state.livePositions = account.positions.filter((x) => x.stopPx != null).map((x) => ({ coin: x.coin, side: x.side, size: x.size, stopPx: x.stopPx! }));
+  }
   const dayLossPct = account.equityUsd > 0 ? (-account.dayPnlUsd / account.equityUsd) * 100 : 0;
   const today = now.toISOString().slice(0, 10);
   if (dayLossPct >= service.config.limits.dailyLossLimitPct && state.dayLossAlerted !== today) {
@@ -191,4 +224,11 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
   }
   await service.store.setState(WATCH_KEY, state);
   return result;
+}
+
+/** The lock a stop-out started, for its alert. */
+function lockLine(locks: ActiveLocks, coin: string): string {
+  const c = locks.coins.find((l) => l.coin.toUpperCase() === coin.toUpperCase());
+  const lines = [c ? `New ${c.coin} entries locked until ${c.until.slice(11, 16)} UTC.` : null, locks.all ? `${locks.all.reason}.` : null].filter(Boolean);
+  return lines.length ? `\n${lines.join(" ")}` : "";
 }

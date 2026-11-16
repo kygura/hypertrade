@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { DeskPlanCheckRequestSchema, DeskPlanSubmitRequestSchema } from "../../shared/deskPlan.js";
 import { safeEqual } from "../auth.js";
 import { deskProviderFactory, runDesk, type ProviderFactory } from "../desk/agents.js";
 import { loadDeskConfig } from "../desk/config.js";
@@ -32,6 +33,10 @@ import { body } from "./intel/http.js";
 // POST /desk/exit {coin, fraction, reason} · /desk/kill {on, reason}
 // PUT  /desk/approval {approval} · PUT /desk/settings {reviewEveryHours}
 //      · POST /desk/paper/reset {confirm: true}
+// POST /desk/plans/check {plan} → PlanCheck (nothing saved)
+// POST /desk/plans {plan, place} → {record, check, placed} (journaled either way)
+// GET  /desk/plans?limit → {plans} newest first · GET /desk/cooldown → locks
+//      (shapes: src/shared/deskPlan.ts)
 // POST /desk/tick {runCycle?, forceReview?} (x-cron-token)
 // POST /desk/telegram (X-Telegram-Bot-Api-Secret-Token)
 
@@ -233,6 +238,39 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
         if (!b.reset) return c.json({ error: `the ${b.venue} venue has no paper book to reset` }, 409);
         await b.reset();
         return c.json({ ok: true });
+      } catch (err) {
+        return deskError(c, err);
+      }
+    })
+    .post("/plans/check", async (c) => {
+      const parsed = DeskPlanCheckRequestSchema.safeParse(await body(c));
+      if (!parsed.success) return c.json({ error: "invalid plan", field: parsed.error.issues[0]?.path.join(".") }, 400);
+      try {
+        return c.json(await service().checkPlan(parsed.data.plan));
+      } catch (err) {
+        return deskError(c, err);
+      }
+    })
+    .post("/plans", async (c) => {
+      const parsed = DeskPlanSubmitRequestSchema.safeParse(await body(c));
+      if (!parsed.success) return c.json({ error: "invalid plan", field: parsed.error.issues[0]?.path.join(".") }, 400);
+      try {
+        return c.json(await service().submitPlan(parsed.data.plan, { place: parsed.data.place, by: "operator:plan" }));
+      } catch (err) {
+        return deskError(c, err);
+      }
+    })
+    .get("/plans", async (c) => {
+      const limit = Math.min(200, Math.max(1, Number(c.req.query("limit") ?? 50) || 50));
+      try {
+        return c.json({ plans: await service().store.listPlans(limit) });
+      } catch (err) {
+        return deskError(c, err);
+      }
+    })
+    .get("/cooldown", async (c) => {
+      try {
+        return c.json(await service().cooldown());
       } catch (err) {
         return deskError(c, err);
       }
