@@ -28,7 +28,7 @@ const HEADER_TERMS: readonly Term[] = [
   ['Nx MAX', 'Highest leverage allowed on this perp.'],
   ['Oracle · premium', 'Oracle is the reference spot price. Premium is how far the perp trades from it, in basis points (1bp = 0.01%). Positive means the perp is above spot.'],
   ['Funding 1h', 'The rate longs pay shorts each hour, as a percent of position size. Negative means shorts pay longs. APR is that rate times the 8,760 hours in a year. The neutral rate is +0.00125% per hour (about 11% a year).'],
-  ['Next funding', 'Time to the next hourly settlement.'],
+  ['Funding at', 'Time of the next hourly settlement, in UTC.'],
   ['Open interest', 'USD value of all open contracts, with its change over 24 hours from stored snapshots. Before snapshots exist it shows the size in coins.'],
   ['OI 7d', 'Change in open interest over 7 days. "collecting snapshots" means there is not yet a stored reading from 7 days ago.'],
   ['24h volume', 'Notional traded over the last 24 hours, in USD.'],
@@ -39,7 +39,7 @@ const HEADER_TERMS: readonly Term[] = [
 const FUNDING_TERMS: readonly Term[] = [
   ['PREDICTED', 'The rate each venue is expected to charge at its next settlement, with that venue\'s settlement interval after the slash (1h on Hyperliquid). Positive means longs pay shorts.'],
   ['APR', 'The predicted rate scaled to a year (rate × 8,760 ÷ interval hours), so venues with different intervals compare.'],
-  ['NEXT', 'Time to that venue\'s next settlement.'],
+  ['FUNDING AT', 'Time of that venue\'s next settlement, in UTC.'],
   ['Avg 24h · 7d · 30d', 'Mean of Hyperliquid\'s realized hourly funding over each window, annualized. "syncing history" means the funding history for that window is not stored yet.'],
 ]
 
@@ -88,14 +88,10 @@ export function usePerpStats(coin: string) {
   return { ...res, ctx, live: live != null, updatedAt }
 }
 
-function countdown(ms: number): string {
-  if (ms <= 0) return '00:00'
-  const s = Math.floor(ms / 1000)
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  const ss = s % 60
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return h > 0 ? `${h}:${pad(m)}:${pad(ss)}` : `${pad(m)}:${pad(ss)}`
+/** A settlement time as a calm, static clock: `14:00 UTC` (no ticking countdown). */
+function fundingAt(t: number): string {
+  const d = new Date(t)
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} UTC`
 }
 
 const aprStr = (hourly: number | null) => (hourly == null ? '--' : `${fmtPct(fundingApr(hourly), { decimals: 1, sign: true })} APR`)
@@ -103,7 +99,8 @@ const bp = (frac: number) => `${(frac * 1e4).toFixed(1)}bp`
 
 /** Title row + stats grid for the drill-in header panel. */
 export function PerpHeader({ coin, stats }: { coin: string; stats: ReturnType<typeof usePerpStats> }) {
-  const now = useNow(1000)
+  // Only picks the next top of the hour when no prediction is loaded; nothing on screen ticks.
+  const now = useNow(60_000)
   const { ctx, data } = stats
   const hlNext = data?.predicted.find((p) => p.venue === 'HlPerp')?.nextFundingTime ?? null
   // HL settles on the hour; without a prediction, the next top of the hour.
@@ -142,7 +139,7 @@ export function PerpHeader({ coin, stats }: { coin: string; stats: ReturnType<ty
             delta={aprStr(ctx.funding)}
             deltaPositive={ctx.funding === 0 ? null : ctx.funding > 0}
           />
-          <MetricStat label="Next funding" value={countdown(nextFunding - now)} delta="settles hourly" deltaPositive={null} />
+          <MetricStat label="Funding at" value={fundingAt(nextFunding)} delta="settles hourly" deltaPositive={null} />
           <MetricStat
             label="Open interest"
             value={fmtUsd(ctx.openInterestUsd, { compact: true })}
@@ -177,7 +174,6 @@ const VENUE: Record<string, string> = { HlPerp: 'HYPERLIQUID', BinPerp: 'BINANCE
 
 /** Predicted funding across venues + trailing averages. */
 export function FundingPanel({ stats }: { stats: ReturnType<typeof usePerpStats> }) {
-  const now = useNow(1000)
   const data = stats.data
   const avg = data?.fundingAvg
   return (
@@ -196,7 +192,7 @@ export function FundingPanel({ stats }: { stats: ReturnType<typeof usePerpStats>
                 <th className="px-3 py-1.5 font-normal">VENUE</th>
                 <th className="px-3 py-1.5 font-normal text-right">PREDICTED</th>
                 <th className="px-3 py-1.5 font-normal text-right">APR</th>
-                <th className="px-3 py-1.5 font-normal text-right">NEXT</th>
+                <th className="px-3 py-1.5 font-normal text-right">FUNDING AT</th>
               </tr>
             </thead>
             <tbody>
@@ -217,7 +213,7 @@ export function FundingPanel({ stats }: { stats: ReturnType<typeof usePerpStats>
                       </td>
                       <td className={`px-3 py-1.5 text-right ${classForPnl(apr)}`}>{fmtPct(apr, { decimals: 1, sign: true })}</td>
                       <td className="px-3 py-1.5 text-right text-text-secondary">
-                        {p.nextFundingTime == null ? '--' : countdown(p.nextFundingTime - now)}
+                        {p.nextFundingTime == null ? '--' : fundingAt(p.nextFundingTime)}
                       </td>
                     </tr>
                   )

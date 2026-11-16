@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { AsyncBody, Badge, Button, ConfirmDialog, ErrorBlock, HowToRead, OfflineBlock, Panel, PanelBody, PanelHeader, Segmented, SkeletonRows, DataTable, type Column } from '../components'
+import { AsyncBody, Badge, Button, ConfirmDialog, ErrorBlock, EasedValue, HowToRead, OfflineBlock, Panel, PanelBody, PanelHeader, PlanProgress, RevealPnl, Segmented, SkeletonRows, DataTable, type Column } from '../components'
 import { Markdown } from '../components/analyst/Markdown'
 import { KillSwitchDialog } from '../components/KillSwitchDialog'
 import { api, ApiError, NetworkError } from '../lib/api'
@@ -33,9 +33,9 @@ import type { Term } from '../components'
 
 type Turn = { role: 'user' | 'assistant'; content: string }
 
-const STATUS_TONE: Record<string, 'green' | 'red' | 'amber' | 'info' | 'gray'> = {
+const STATUS_TONE: Record<string, 'green' | 'red' | 'amber' | 'info' | 'gray' | 'neutral'> = {
   executed: 'green',
-  pending: 'amber',
+  pending: 'neutral',
   blocked: 'red',
   failed: 'red',
   rejected: 'gray',
@@ -124,7 +124,7 @@ function deskTerms(limits: DeskStatus['limits'] | undefined): Term[] {
   return [
     ['PAPER / HL-TESTNET / PROPR', 'Where orders go. Paper is a simulated book filled at the live Hyperliquid mark plus slippage and the taker fee. HL-TESTNET sends real orders to the Hyperliquid test network. PROPR trades a Propr challenge or funded account (Hyperliquid mainnet through Propr) as laddered entries, every entry waiting for your approval; it is a dry run that sends nothing unless PROPR_LIVE is on. Direct mainnet is not supported.'],
     ['EQUITY', 'Account value in USD: cash plus unrealized profit or loss on open positions.'],
-    ['DAY PNL', 'Change in equity since 00:00 UTC, realized plus unrealized, in USD.'],
+    ['DAY PNL', 'Change in equity since 00:00 UTC, realized plus unrealized, in USD. Hidden until you press or hover it, then hidden again after a few seconds.'],
     ['MODEL', 'The language model that runs the portfolio manager, then the one for the specialists if it differs.'],
     ['APPROVE EACH / AUTO', 'Approve each: an entry that passes the governor waits for your approval. Auto: it fills at once. Exits never wait, they only reduce risk.'],
     ['4H … 48H / OFF', 'How often the team runs a full review of the book on its own. OFF stops scheduled reviews; price and risk alerts can still start one.'],
@@ -165,7 +165,9 @@ const BOOK_TERMS: Term[] = [
   ['SIZE', 'Position size in coins.'],
   ['ENTRY', 'Average entry price.'],
   ['STOP', 'Stop price. A dash means the position has no stop.'],
-  ['UPNL', 'Unrealized profit or loss at the current mark, in USD, before exit fees.'],
+  ['PLAN', 'Where the mark sits between the stop (left end) and the target (right end), with a faint tick at entry. Without a target: the distance from mark to stop.'],
+  ['R', 'Move from entry to mark in units of the planned risk (entry to stop), signed for the side: +1.0R is one risk unit in favour, −1.0R is at the stop.'],
+  ['$ ···', 'Unrealized profit or loss at the current mark, in USD, before exit fees. Hidden until you press or hover it.'],
   ['Amount beside the title', 'That account\'s equity in USD.'],
   ['WATCHED HYPERLIQUID ACCOUNT', 'A real Hyperliquid account the desk reads but never trades. It is shown for context and cannot be closed from here.'],
   ['RECENT FILLS', 'Latest desk fills: time, buy or sell, size, coin, fill price, why it filled (entry, stop, target or an exit reason) and the realized profit or loss in USD before fees.'],
@@ -200,8 +202,12 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
           <Badge tone={status?.live ? 'amber' : 'info'}>{(status?.venue ?? 'paper').toUpperCase()}</Badge>
           {kill && <Badge tone="red">KILL SWITCH</Badge>}
         </div>
-        <Stat label="EQUITY" title="cash plus unrealized profit or loss, in USD" value={desk ? fmtUsd(desk.equityUsd) : '—'} />
-        <Stat label="DAY PNL" title="change in equity since 00:00 UTC, realized plus unrealized" value={desk ? fmtUsd(desk.dayPnlUsd) : '—'} tone={desk ? (desk.dayPnlUsd >= 0 ? 'text-green' : 'text-red-text') : undefined} />
+        <Stat label="EQUITY" title="cash plus unrealized profit or loss, in USD" value={desk ? <EasedValue value={fmtUsd(desk.equityUsd)} /> : '—'} />
+        <Stat
+          label="DAY PNL"
+          title="change in equity since 00:00 UTC, realized plus unrealized; press or hover to show"
+          value={desk ? <RevealPnl value={fmtUsd(desk.dayPnlUsd)} label="day P&L" className={desk.dayPnlUsd >= 0 ? 'text-green' : 'text-red-text'} /> : '—'}
+        />
         <Stat label="POSITIONS" value={desk ? String(desk.positions.length) : '—'} />
         <Stat label="MODEL" title="model running the portfolio manager / the specialists" value={status?.model ? `${status.model.pm}${status.model.scouts !== status.model.pm ? ` / ${status.model.scouts}` : ''}` : 'not configured'} />
         <div className="flex items-center gap-2 ml-auto">
@@ -290,7 +296,7 @@ function ReviewIntervalControl({ status, onChange }: { status: DeskStatus | null
   )
 }
 
-function Stat({ label, value, tone, title }: { label: string; value: string; tone?: string; title?: string }) {
+function Stat({ label, value, tone, title }: { label: string; value: ReactNode; tone?: string; title?: string }) {
   return (
     <div className="flex flex-col min-w-0" title={title}>
       <span className="label text-2xs">{label}</span>
@@ -530,7 +536,7 @@ function ApprovalsPanel({ limits, proposals, loading, error, offline, onRetry, o
 
   return (
     <Panel>
-      <PanelHeader title="PROPOSALS">{pending.length > 0 && <Badge tone="amber">{pending.length} PENDING</Badge>}</PanelHeader>
+      <PanelHeader title="PROPOSALS">{pending.length > 0 && <Badge tone="gray">{pending.length} PENDING</Badge>}</PanelHeader>
       <PanelBody className="flex flex-col">
         <HowToRead className="px-3 pt-2" terms={proposalTerms(limits)}>
           Entries and exits the agents or the ORDER tab submitted, newest pending first, then the last 8 decided. Each shows the size and risk the governor
@@ -679,11 +685,17 @@ const BOOK_COLUMNS: Column<DeskPosition>[] = [
   { key: 'entry', label: 'ENTRY', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.entryPx)}</span> },
   { key: 'stop', label: 'STOP', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.stopPx)}</span> },
   {
+    // Plan first, money on request: the bar and R describe the plan, the dollar figure stays behind a reveal.
     key: 'upnl',
-    label: <span title="unrealized profit or loss at the current mark, in USD">UPNL</span>,
+    label: <span title="where the mark sits between stop and target, R so far, and unrealized P&L on request">PLAN · UPNL</span>,
     priority: 1,
     align: 'right',
-    render: (p) => <span className={p.unrealizedPnl >= 0 ? 'text-green' : 'text-red-text'}>{fmtUsd(p.unrealizedPnl)}</span>,
+    render: (p) => (
+      <span className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+        <PlanProgress side={p.side} entry={p.entryPx} mark={p.markPx} stop={p.stopPx} target={p.tpPx} />
+        <RevealPnl value={fmtUsd(p.unrealizedPnl)} label={`${p.coin} unrealized P&L`} className={p.unrealizedPnl >= 0 ? 'text-green' : 'text-red-text'} />
+      </span>
+    ),
   },
 ]
 
@@ -718,7 +730,7 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
         <span className="text-xs text-text-secondary tabular ml-auto">{acc.available ? fmtUsd(acc.equityUsd) : (acc.note ?? 'unavailable')}</span>
       </div>
       {acc.positions.length === 0 ? (
-        <span className="px-3 py-2 text-xs text-text-secondary">no open positions</span>
+        <span className="px-3 py-2 text-xs text-text-secondary">{closable ? 'No plan open. Nothing to do.' : 'No open positions.'}</span>
       ) : (
         <DataTable columns={closable ? [...BOOK_COLUMNS, closeColumn] : BOOK_COLUMNS} rows={acc.positions} rowKey={(p) => p.coin} />
       )}

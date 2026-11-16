@@ -40,19 +40,21 @@
   --color-on-primary: #ffffff;
 
   /* ── Semantic ────────────────────────────────────────────────────── */
-  --color-green: #5cc09b; /* fg-green (green-7) */
-  --color-green-text: #5cc09b;
-  --color-green-bg: rgba(92, 192, 155, 0.14);
-  --color-red: #d44b62; /* fg-red (rose-7) — fills, candles, dots */
-  --color-red-text: #da6479; /* rose-6: fg-red is 4.3:1 on panel, rose-6 is 5.2:1 */
-  --color-red-bg: rgba(212, 75, 98, 0.14);
+  /* Up/down muted to the Hyperion rules (calm desk): sage and clay at low
+     saturation instead of Hyperdash's green-7 / rose-7. */
+  --color-green: #7cab90; /* 6.9:1 on panel, 6.0:1 on hover */
+  --color-green-text: #7cab90;
+  --color-green-bg: rgba(124, 171, 144, 0.14);
+  --color-red: #ad6a66; /* fills, candles, dots: 4.3:1 on panel */
+  --color-red-text: #cc8f89; /* 6.7:1 on panel, 5.8:1 on hover */
+  --color-red-bg: rgba(173, 106, 102, 0.14);
   --color-red-accent: #fd4612;
   --color-amber: #ffd230; /* fg-yellow (yellow-7) */
   --color-amber-bg: rgba(255, 210, 48, 0.1);
   --color-info: #5897d7; /* fg-blue (blue-7) */
   --color-info-bg: rgba(88, 151, 215, 0.12);
-  --color-flash-up: rgba(92, 192, 155, 0.18);
-  --color-flash-down: rgba(212, 75, 98, 0.18);
+  --color-flash-up: rgba(124, 171, 144, 0.18);
+  --color-flash-down: rgba(173, 106, 102, 0.18);
 
   /* ── Overlay / focus / scrollbar ─────────────────────────────────── */
   --color-scrim: rgba(0, 0, 0, 0.72); /* modal-scrim black-alpha-13 */
@@ -64,11 +66,12 @@
   --color-src-hl: #3dcdb1; /* teal-7 */
 
   /* ── Momentum ramp (chart-heatmap scale; text on it stays white) ─── */
-  --color-mom-neg2: #841d2e; /* rose-11 */
-  --color-mom-neg1: #51141e; /* rose-13 */
+  /* Muted clay / sage steps; white text on each ≥ 7.6:1. */
+  --color-mom-neg2: #5a3a38;
+  --color-mom-neg1: #3a2826;
   --color-mom-zero: #262422; /* gray-13 */
-  --color-mom-pos1: #1c4837; /* green-13 */
-  --color-mom-pos2: #297558; /* green-11 */
+  --color-mom-pos1: #2a3a30;
+  --color-mom-pos2: #3d5a48;
 
   /* ── Chart series (projections stay blue, never green/red) ──────── */
   --color-proj-line: #5897d7; /* fg-blue */
@@ -76,8 +79,8 @@
   --color-bench-btc: #efbb00; /* chart-yellow (yellow-9) */
   --color-bench-usdc: #928d86;
   --color-equity: #ffffff;
-  --color-drawdown-fill: rgba(212, 75, 98, 0.16);
-  --color-drawdown-line: #d44b62;
+  --color-drawdown-fill: rgba(173, 106, 102, 0.16);
+  --color-drawdown-line: #ad6a66;
 
   /* ── Type ────────────────────────────────────────────────────────── */
   /* One sans family for text, numbers (tnum) and controls: no monospace in
@@ -190,7 +193,7 @@
   padding-bottom: 0;
   color: var(--color-text-secondary);
   border-bottom: 0;
-  transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: color 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 :root[data-theme='hyperdash'] .app-nav-link:hover {
   color: var(--color-text-muted);
@@ -248,11 +251,11 @@
   padding-left: 12px;
   padding-right: 12px;
   transition:
-    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    background-color 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 :root[data-theme='hyperdash'] .btn:active:not(:disabled) {
   transform: scale(0.98);
@@ -342,7 +345,7 @@
   padding-right: 12px;
 }
 :root[data-theme='hyperdash'] .dt tbody tr {
-  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Provenance tag: mono caps chip, rounded like Hyperdash's "TX"/"LIVE" tags. */
@@ -371,8 +374,8 @@
   font-size: 13px;
   padding: 0 10px;
   transition:
-    color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    color 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 :root[data-theme='hyperdash'] .seg-item:hover:not(:disabled):not([aria-checked='true']) {
   color: var(--color-text-muted);

@@ -65,7 +65,7 @@ export function SignalCard({
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={onKeyDown}
-      className={`flex flex-col gap-1.5 px-3 py-2.5 border-b border-border-subtle cursor-pointer transition-colors duration-100 ${selected ? 'bg-selected' : 'hover:bg-hover'}`}
+      className={`flex flex-col gap-1.5 px-3 py-2.5 border-b border-border-subtle cursor-pointer transition-colors duration-300 ease-out ${selected ? 'bg-selected' : 'hover:bg-hover'}`}
       style={selected ? { boxShadow: 'inset 2px 0 0 var(--color-red-accent)' } : undefined}
     >
       <div className="flex items-start gap-2">

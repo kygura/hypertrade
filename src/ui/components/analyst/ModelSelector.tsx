@@ -4,7 +4,7 @@ import { Segmented } from '../Segmented'
 import type { AnalystCatalog, AnalystCatalogModel, AnalystChoice, AnalystEffort, AnalystProviderId } from '../../lib/analyst'
 
 // ModelSelector — Analyst page header control (docs/design/README.md language: dark,
-// Geist Mono, zero border-radius, hairline borders, 220ms motion, no
+// Geist Mono, zero border-radius, hairline borders, 300ms eased motion, no
 // spinners). Trigger is a pill "PROVIDER · Model" with an availability dot
 // (state colours §6) and a tier tag. Clicking opens a popover on desktop /
 // bottom sheet on mobile (§4) listing providers as group headers and models
@@ -221,7 +221,7 @@ export function ModelSelector({ catalog, value, onChange, open: openProp, onOpen
         aria-label="Analyst model selector"
         onClick={() => setOpen(!open)}
         onKeyDown={onTriggerKeyDown}
-        className="flex md:inline-flex items-center gap-1.5 w-full md:w-auto min-w-0 h-[var(--control-md)] px-2 border border-border bg-elevated text-xs uppercase tracking-wider text-text-primary hover:bg-hover transition-colors duration-100 whitespace-nowrap"
+        className="flex md:inline-flex items-center gap-1.5 w-full md:w-auto min-w-0 h-[var(--control-md)] px-2 border border-border bg-elevated text-xs uppercase tracking-wider text-text-primary hover:bg-hover transition-colors duration-300 ease-out whitespace-nowrap"
       >
         <StatusDot status={selected ? 'ok' : 'down'} />
         {selected ? (

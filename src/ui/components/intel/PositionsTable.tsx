@@ -4,6 +4,8 @@ import type { ExposurePosition } from '../../../shared/intel'
 import { Badge } from '../Badge'
 import { Button } from '../Button'
 import { DataTable, type Column } from '../DataTable'
+import { fmtR, rMultiple, stopDistPct } from '../PlanProgress'
+import { RevealPnl } from '../RevealPnl'
 import { SrcTag } from '../SrcTag'
 import { fmtLeverage, fmtStopDist, MINUS } from './format'
 
@@ -12,11 +14,9 @@ import { fmtLeverage, fmtStopDist, MINUS } from './format'
 // manual rows carry EDIT (HL/DESK rows are read-only). No stop → amber
 // NO STOP: stop proximity drives materiality, so it outranks PnL.
 
-/** Distance from mark to stop in percent (absolute), or null without a stop. */
-export function stopDistPct(p: Pick<ExposurePosition, 'markPx' | 'stopPx'>): number | null {
-  if (p.stopPx == null || !(p.markPx > 0)) return null
-  return (Math.abs(p.markPx - p.stopPx) / p.markPx) * 100
-}
+export { stopDistPct }
+
+const rOf = (p: ExposurePosition) => rMultiple(p.side, p.entryPx, p.markPx, p.stopPx)
 
 function fmtSignedUsd(n: number): string {
   return `${n > 0 ? '+' : n < 0 ? MINUS : ''}${fmtUsd(Math.abs(n), { compact: Math.abs(n) >= 10_000 })}`
@@ -74,12 +74,18 @@ function positionColumns(onEdit: (p: ExposurePosition) => void): Column<Exposure
       },
     },
     {
+      // R so far is always shown; the dollar figure stays behind a reveal (no ticking money).
       key: 'upnl',
-      label: 'UPNL',
+      label: <span title="R so far (move from entry in units of entry-to-stop risk) and unrealized P&L, shown on request">R · UPNL</span>,
       priority: 3,
       align: 'right',
-      sortValue: (p) => p.unrealizedPnl ?? 0,
-      render: (p) => (p.unrealizedPnl == null ? '—' : <span className={classForPnl(p.unrealizedPnl)}>{fmtSignedUsd(p.unrealizedPnl)}</span>),
+      sortValue: (p) => rOf(p) ?? -Infinity,
+      render: (p) => (
+        <span className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+          <span className="text-text-muted">{fmtR(rOf(p))}</span>
+          {p.unrealizedPnl == null ? '—' : <RevealPnl value={fmtSignedUsd(p.unrealizedPnl)} label={`${p.asset} unrealized P&L`} className={classForPnl(p.unrealizedPnl)} />}
+        </span>
+      ),
     },
     { key: 'size', label: 'SIZE', priority: 3, align: 'right', render: (p) => p.size.toLocaleString(undefined, { maximumFractionDigits: 6 }) },
     { key: 'entry', label: 'ENTRY', priority: 3, align: 'right', render: (p) => fmtPrice(p.entryPx) },

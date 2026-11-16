@@ -1,12 +1,11 @@
 import type { Brief, Catalyst, PositionSourceStatus } from '../../../shared/intel'
-import { AnimatedDigits } from '../AnimatedDigits'
 import { Badge, StatusDot, type DotStatus } from '../Badge'
 import { Button } from '../Button'
 import { Panel } from '../Panel'
 import { ErrorBlock, OfflineBlock, SkeletonRows } from '../state'
 import { fmtTs } from '../strategy/format'
 import { claimAgeText } from './ClaimAge'
-import { fmtCountdown, hoursSince, hoursUntil } from './format'
+import { fmtUntil, hoursSince } from './format'
 import { briefSnapshotTs, noNarrationReason } from './WhatChangedPanel'
 
 // ReviewStrip — DESIGN-terminal §3.3. A Panel without a title header (the
@@ -92,7 +91,7 @@ export function ReviewStrip({
           <div className="flex flex-col gap-2 px-3 py-2.5">
             <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1.5 ${superseded ? 'opacity-70' : ''}`}>
               <span className="inline-flex items-baseline gap-2">
-                <AnimatedDigits text={String(silent ? 0 : brief.items.length)} className="text-xl tabular text-text-primary" />
+                <span className="text-xl tabular text-text-primary">{silent ? 0 : brief.items.length}</span>
                 <span className="label">{silent ? 'NOTHING CLEARED THE THRESHOLD' : brief.items.length === 1 ? 'THING CHANGED' : 'THINGS CHANGED'}</span>
               </span>
               {superseded ? (
@@ -115,11 +114,11 @@ export function ReviewStrip({
               {nextCatalyst && (
                 <button
                   type="button"
-                  className={`label hover:!text-text-primary ${hoursUntil(nextCatalyst.scheduledAt) < 24 ? '!text-amber' : ''}`}
+                  className="label hover:!text-text-primary"
                   title={fmtTs(nextCatalyst.scheduledAt)}
                   onClick={() => jump(CATALYSTS_ANCHOR)}
                 >
-                  NEXT {nextCatalyst.title} {fmtCountdown(nextCatalyst.scheduledAt)}
+                  NEXT {nextCatalyst.title} {fmtUntil(nextCatalyst.scheduledAt)}
                 </button>
               )}
               {fromTelegram && <Badge tone="gray">FROM TELEGRAM</Badge>}

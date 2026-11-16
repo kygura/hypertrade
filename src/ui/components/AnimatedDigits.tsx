@@ -36,7 +36,7 @@ function AnimatedChar({ ch, width, height }: { ch: string; width: string; height
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
       setStack((prev) => prev.slice(-1))
-    }, 240)
+    }, 340)
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
     }

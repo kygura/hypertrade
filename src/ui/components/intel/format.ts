@@ -76,18 +76,21 @@ export function fmtStopDist(pct: number | null | undefined, atr?: number | null)
   return atr != null && Number.isFinite(atr) ? `${head} · ${atr.toFixed(1)}×ATR` : head
 }
 
-/** Countdown to `ts`: `T−1D 04H`, `T−4H 12M`, `T−42M`; just past reads `T+12M`. */
-export function fmtCountdown(ts: string, now = Date.now()): string {
+/**
+ * Plain time to `ts`, calm rather than a countdown: `in 1d 4h`, `in 4h 12m`, `in 42m`; just past reads
+ * `12m ago`. Minute resolution, so it never ticks by the second.
+ */
+export function fmtUntil(ts: string, now = Date.now()): string {
   const ms = new Date(ts).getTime() - now
   if (!Number.isFinite(ms)) return '—'
   const mins = Math.floor(Math.abs(ms) / 60_000)
-  if (ms < 0) return `T+${mins}M`
+  if (ms < 0) return `${mins}m ago`
   const d = Math.floor(mins / 1440)
   const h = Math.floor((mins % 1440) / 60)
   const m = mins % 60
-  if (d > 0) return `T${MINUS}${d}D ${String(h).padStart(2, '0')}H`
-  if (h > 0) return `T${MINUS}${h}H ${String(m).padStart(2, '0')}M`
-  return `T${MINUS}${m}M`
+  if (d > 0) return h > 0 ? `in ${d}d ${h}h` : `in ${d}d`
+  if (h > 0) return m > 0 ? `in ${h}h ${m}m` : `in ${h}h`
+  return `in ${m}m`
 }
 
 export function hoursUntil(ts: string, now = Date.now()): number {

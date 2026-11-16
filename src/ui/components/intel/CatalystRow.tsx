@@ -2,7 +2,7 @@ import type { Catalyst } from '../../../shared/intel'
 import { Badge } from '../Badge'
 import { Button } from '../Button'
 import { fmtTs } from '../strategy/format'
-import { fmtCountdown, hoursUntil } from './format'
+import { fmtUntil } from './format'
 import { SourceLink } from './SourceLink'
 
 // CatalystRow — DESIGN-terminal §3.6. Countdown (amber < 24 h, title = UTC),
@@ -32,15 +32,14 @@ export function CatalystRow({
   now: number
   onDelete?: () => void
 }) {
-  const soon = hoursUntil(catalyst.scheduledAt, now) < 24
   const dir = catalyst.catalyst?.directionHypothesis
   const size = catalyst.catalyst?.size
   const source = catalyst.sources[0]
 
   return (
     <li className="flex items-start gap-3 px-3 py-2 border-b border-border-subtle last:border-b-0">
-      <span className={`w-[9ch] flex-shrink-0 text-md tabular ${soon ? 'text-amber' : 'text-text-primary'}`} title={fmtTs(catalyst.scheduledAt)}>
-        {fmtCountdown(catalyst.scheduledAt, now)}
+      <span className="w-[10ch] flex-shrink-0 text-md tabular text-text-primary" title={fmtTs(catalyst.scheduledAt)}>
+        {fmtUntil(catalyst.scheduledAt, now)}
       </span>
       <div className="min-w-0 flex-1 flex flex-col gap-1">
         <span className="text-md text-text-primary break-words">{catalyst.title}</span>
