@@ -93,6 +93,17 @@ describe("runIntent", () => {
     expect(b.warnings.some((w) => w.includes("no funding"))).toBe(true);
   });
 
+  test("bootstrap scenario kept for a perp branch; costs silence the fee caveat", async () => {
+    const r = await run(
+      intent(cfg({ scenario: { ...scenario, method: "bootstrap" }, costs: { feeBps: 5, fundingAprPct: 10 }, allocations: [{ coin: "BTC", weightPct: 100, side: "short" }] })),
+    );
+    const b = r.branches[0]!;
+    expect(b.result!.montecarlo!.summary!.method).toBe("bootstrap");
+    expect(b.warnings.some((w) => w.includes("projection skipped"))).toBe(false);
+    expect(b.warnings.some((w) => w.includes("no funding"))).toBe(false);
+    expect(b.result!.stats.fundingUsd).toBeLessThan(0); // the short receives a positive rate
+  });
+
   test("one bad branch does not sink the others", async () => {
     const r = await run(intent(cfg({ allocations: [{ coin: "NOPE", weightPct: 100 }] }), cfg()));
     expect(r.branches[0]!.error).toContain("NOPE");

@@ -3,8 +3,8 @@
 import * as db from "../db.js";
 import type { BranchConfig } from "../../shared/types.js";
 import type { SimResult } from "../../shared/intent.js";
-import { simulate, type DailyClose } from "./engine.js";
-import { runMonteCarlo } from "./montecarlo.js";
+import { simulateFull, type DailyClose } from "./engine.js";
+import { MIN_BOOTSTRAP_DAYS, runMonteCarlo } from "./montecarlo.js";
 import { backfillBranch } from "./backfill.js";
 import { STABLES } from "../../shared/schemas.js";
 
@@ -29,9 +29,14 @@ export const realDeps: RunDeps = {
 
 /** Pure step: simulate + Monte Carlo (when a scenario is set) on already-loaded candles. May throw NoPriceDataError. */
 export function simulateLoaded(config: BranchConfig, candles: CandlesByCoin, now: number): SimResult {
-  const result = simulate(config, candles);
-  if (!config.scenario) return result;
-  return { ...result, montecarlo: runMonteCarlo(config.scenario, config.allocations, result.stats.finalValue, now) };
+  const { result, dailyReturns } = simulateFull(config, candles);
+  const scenario = config.scenario;
+  if (!scenario) return result;
+  if (scenario.method === "bootstrap" && dailyReturns.length < MIN_BOOTSTRAP_DAYS) {
+    return { ...result, notes: [`projection skipped: resampling history needs at least ${MIN_BOOTSTRAP_DAYS} days, the branch has ${dailyReturns.length}`] };
+  }
+  const montecarlo = runMonteCarlo(scenario, config.allocations, result.stats.finalValue, now, 1, { history: dailyReturns, cashflow: config.cashflow });
+  return { ...result, montecarlo };
 }
 
 export async function runBranchConfig(config: BranchConfig, deps: RunDeps = realDeps): Promise<SimResult> {

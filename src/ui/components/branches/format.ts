@@ -85,7 +85,11 @@ const pct1 = (x: number) => `${Math.abs(x).toFixed(1)}%`
  * it ended against holding BTC over the same days. Facts about a historical simulation; null without an equity curve.
  */
 export function branchLine(
-  result: { equity: EquityPoint[]; benchmarks: { btc: EquityPoint[] }; stats: { finalValue: number; maxDrawdownPct: number; vsBtcPct: number } },
+  result: {
+    equity: EquityPoint[]
+    benchmarks: { btc: EquityPoint[] }
+    stats: { finalValue: number; maxDrawdownPct: number; vsBtcPct: number; twrPct?: number; netFlowUsd?: number }
+  },
   initialCapitalUsd: number,
 ): string | null {
   const first = result.equity[0]
@@ -93,9 +97,45 @@ export function branchLine(
   if (!first || !last || !(initialCapitalUsd > 0)) return null
   const day = (ts: number) => new Date(ts).toISOString().slice(0, 10)
   const days = Math.round((last.ts - first.ts) / 86_400_000)
-  const ret = (result.stats.finalValue / initialCapitalUsd - 1) * 100
+  const ret = branchReturnPct(result, initialCapitalUsd)
+  const flow = result.stats.netFlowUsd ?? 0
+  const flowText = Math.abs(flow) >= 0.5 ? `, with ${usd0(Math.abs(flow))} net ${flow > 0 ? 'added' : 'withdrawn'} along the way` : ''
+  const retText = Math.abs(flow) >= 0.5 ? 'time-weighted' : ''
   const btc = result.benchmarks.btc.at(-1)?.value
   const vs = result.stats.vsBtcPct
-  const btcText = btc == null ? '' : ` Holding BTC over the same days ended at ${usd0(btc)}: the branch ended ${Math.abs(vs) < 0.05 ? 'level with' : `${pct1(vs)} ${vs > 0 ? 'above' : 'below'}`} that.`
-  return `${usd0(initialCapitalUsd)} on ${day(first.ts)} became ${usd0(result.stats.finalValue)} by ${day(last.ts)} (${ret >= 0 ? '+' : '−'}${pct1(ret)} over ${days} days). Deepest fall from a peak: ${pct1(result.stats.maxDrawdownPct)}.${btcText}`
+  const btcText = btc == null ? '' : ` Holding BTC over the same days${flowText ? ', with the same cash flows,' : ''} ended at ${usd0(btc)}: the branch ended ${Math.abs(vs) < 0.05 ? 'level with' : `${pct1(vs)} ${vs > 0 ? 'above' : 'below'}`} that.`
+  return `${usd0(initialCapitalUsd)} on ${day(first.ts)} became ${usd0(result.stats.finalValue)} by ${day(last.ts)}${flowText} (${ret >= 0 ? '+' : '−'}${pct1(ret)}${retText ? ` ${retText}` : ''} over ${days} days). Deepest fall from a peak: ${pct1(result.stats.maxDrawdownPct)}.${btcText}`
+}
+
+/**
+ * Return of a simulated branch in percent. Time-weighted when the engine reports it (it takes deposits and
+ * withdrawals out); results cached before that field existed fall back to end value over starting capital.
+ */
+export function branchReturnPct(result: { stats: { finalValue: number; twrPct?: number } }, initialCapitalUsd: number): number {
+  if (result.stats.twrPct != null) return result.stats.twrPct
+  return initialCapitalUsd > 0 ? (result.stats.finalValue / initialCapitalUsd - 1) * 100 : 0
+}
+
+export interface MonthlyRow {
+  year: number
+  months: (number | null)[] // 12 slots, Jan..Dec, null when the year has no such month in the run
+  totalPct: number // compounded over the months present
+}
+
+/** Calendar grid of monthly returns: one row per year, newest first. */
+export function monthlyGrid(monthly: { month: string; returnPct: number }[]): MonthlyRow[] {
+  const byYear = new Map<number, (number | null)[]>()
+  for (const m of monthly) {
+    const year = Number(m.month.slice(0, 4))
+    const idx = Number(m.month.slice(5, 7)) - 1
+    if (!byYear.has(year)) byYear.set(year, Array(12).fill(null))
+    byYear.get(year)![idx] = m.returnPct
+  }
+  return [...byYear.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([year, months]) => ({
+      year,
+      months,
+      totalPct: (months.reduce<number>((g, r) => (r == null ? g : g * (1 + r / 100)), 1) - 1) * 100,
+    }))
 }

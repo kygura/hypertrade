@@ -14,7 +14,8 @@ export interface IntentDeps extends RunDeps {
   resolveCoin?(coin: string): string | undefined;
 }
 
-const PERP_CAVEAT = "perp legs: no funding, no fees, liquidation on daily lows/highs only";
+const PERP_CAVEAT = "perp legs: liquidation on daily lows/highs only, at 100% margin loss";
+const COST_CAVEAT = "no fees, no funding charged (set costs to include them)";
 const fmt = (n: number) => String(Math.round(n * 100) / 100);
 
 async function runBranch(
@@ -82,9 +83,10 @@ async function runBranch(
     const perp = config.allocations.some(isPerp);
     if (perp) {
       warnings.push(PERP_CAVEAT);
-      if (config.scenario) {
+      if (!config.costs) warnings.push(COST_CAVEAT);
+      if (config.scenario && config.scenario.method !== "bootstrap") {
         delete config.scenario;
-        warnings.push("projection skipped — Monte Carlo models unlevered long-only portfolios");
+        warnings.push("projection skipped — the assumption (gbm) projection models unlevered long-only portfolios; use method bootstrap for perp legs");
       }
     }
     return { name, config, result: simulateLoaded(config, candles, deps.now()), warnings };

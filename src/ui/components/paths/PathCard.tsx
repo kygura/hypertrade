@@ -6,7 +6,8 @@ import { fmtPct, fmtUsd } from '../../../shared/format'
 import type { SimResultEvent } from '../../lib/analyst'
 import { Badge, Button, DataTable, ErrorBlock, LabWarnings, SkeletonRows, StatCell, type Column } from '..'
 import { DrawdownChart } from '../branches/DrawdownChart'
-import { maxDdClass, rebalanceLabel, signClass } from '../branches/format'
+import { ProjectionOdds } from '../branches/BacktestPanels'
+import { branchReturnPct, maxDdClass, rebalanceLabel, signClass } from '../branches/format'
 import { EquityChart } from '../charts/EquityChart'
 import { ProjectionAssumptions } from '../charts/FanChart'
 import { SaveBranchButton } from './SaveBranchButton'
@@ -16,7 +17,7 @@ import { SaveBranchButton } from './SaveBranchButton'
 
 const LETTERS = 'ABCD'
 const pct1 = (n: number, sign = true) => fmtPct(n / 100, { decimals: 1, sign })
-const returnPct = (r: SimResult, cfg: BranchConfig) => (r.stats.finalValue / cfg.initialCapitalUsd - 1) * 100
+const returnPct = (r: SimResult, cfg: BranchConfig) => branchReturnPct(r, cfg.initialCapitalUsd)
 const fmtLev = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
 
 function PathLegs({ config }: { config: BranchConfig }) {
@@ -102,12 +103,24 @@ function PathBranch({
         <>
           <PathStats result={result} config={config} />
           <EquityChart equity={result.equity} btc={result.benchmarks.btc} usdc={result.benchmarks.usdc} projection={result.montecarlo} height={220} />
-          {result.montecarlo && config.scenario && <ProjectionAssumptions scenario={config.scenario} />}
+          {result.montecarlo && config.scenario && <ProjectionAssumptions scenario={config.scenario} cashflow={config.cashflow} />}
+          {result.montecarlo?.summary && config.scenario && (
+            <ProjectionOdds summary={result.montecarlo.summary} horizonDays={config.scenario.horizonDays} targetUsd={config.scenario.targetUsd} />
+          )}
+          {result.notes && <LabWarnings warnings={result.notes} />}
+          {result.rolling && (
+            <div className="text-sm text-text-secondary tabular" title="the same recipe started on many past dates, each held for the window">
+              {result.rolling.summary.n} STARTS × {result.rolling.windowDays}D · MEDIAN{' '}
+              <span className={signClass(result.rolling.summary.median)}>{pct1(result.rolling.summary.median)}</span> · WORST{' '}
+              <span className={signClass(result.rolling.summary.worst)}>{pct1(result.rolling.summary.worst)}</span> · BEAT BTC{' '}
+              {pct1(result.rolling.summary.beatBtcPct, false)}
+            </div>
+          )}
           <div className="flex items-baseline justify-between">
             <span className="label">DRAWDOWN</span>
             <span className={`text-sm tabular ${maxDdClass(result.stats.maxDrawdownPct)}`}>MAX DD {pct1(-Math.abs(result.stats.maxDrawdownPct), false)}</span>
           </div>
-          <DrawdownChart equity={result.equity} height={90} />
+          <DrawdownChart equity={result.twr ?? result.equity} height={90} />
         </>
       )}
     </div>
