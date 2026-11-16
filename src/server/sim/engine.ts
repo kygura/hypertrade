@@ -20,12 +20,54 @@ interface BranchStats {
   maxDrawdownPct: number;
   vsBtcPct: number;
   vsUsdcPct: number;
+  /** Time-weighted return: growth with external cash flows taken out. */
+  twrPct: number;
+  /** Annualized (365 d) volatility of daily time-weighted returns. */
+  volPct: number;
+  /** Annualized mean / stdev of daily returns, zero risk-free rate. */
+  sharpe: number;
+  sortino: number;
+  /** CAGR / max drawdown; 0 when there was no drawdown. */
+  calmar: number;
+  /** Longest stretch below a previous high, in days (open at the end counts). */
+  longestDrawdownDays: number;
+  feesUsd: number;
+  /** Funding paid by perp legs (negative = received). */
+  fundingUsd: number;
+  /** External cash in minus cash out over the run. */
+  netFlowUsd: number;
+}
+
+export interface MonthlyReturn {
+  month: string; // YYYY-MM
+  returnPct: number;
+}
+
+/** The same strategy started on many past dates and held for windowDays each. */
+export interface RollingResult {
+  windowDays: number;
+  stepDays: number;
+  points: { ts: number; returnPct: number; vsBtcPct: number; maxDrawdownPct: number }[];
+  summary: {
+    n: number;
+    positivePct: number;
+    beatBtcPct: number;
+    p10: number;
+    median: number;
+    p90: number;
+    worst: number;
+    best: number;
+  };
 }
 
 export interface BranchResult {
   equity: EquityPoint[];
   benchmarks: { btc: EquityPoint[]; usdc: EquityPoint[] };
   stats: BranchStats;
+  /** Growth of the starting capital with cash flows taken out; only present with a cashflow. */
+  twr?: EquityPoint[];
+  monthly: MonthlyReturn[];
+  rolling?: RollingResult;
 }
 
 const DAY_MS = 86400000;
@@ -88,7 +130,9 @@ function buildGrid(candlesByCoin: Record<string, DailyClose[]>, startMs: number)
   return btc.map((c) => c.ts).filter((ts) => ts >= startMs);
 }
 
-function shouldRebalance(mode: BranchConfig["rebalance"], prevTs: number, ts: number): boolean {
+/** True when ts starts a new weekly/monthly bucket after prevTs. Shared by rebalancing, DCA,
+ * cash flows and the forward projection's cash flows. */
+export function shouldRebalance(mode: BranchConfig["rebalance"], prevTs: number, ts: number): boolean {
   if (mode === "monthly") {
     const a = new Date(prevTs), b = new Date(ts);
     return a.getUTCFullYear() !== b.getUTCFullYear() || a.getUTCMonth() !== b.getUTCMonth();
@@ -104,10 +148,26 @@ function shouldRebalance(mode: BranchConfig["rebalance"], prevTs: number, ts: nu
   return false; // "none" and "threshold5pct" are handled by their own triggers
 }
 
+interface RunOptions {
+  costs?: BranchConfig["costs"];
+  cashflow?: BranchConfig["cashflow"];
+}
+
+interface PortfolioRun {
+  equity: EquityPoint[];
+  /** Time-weighted unit index: 1 at the start (less the entry fee), cash flows taken out. */
+  index: number[];
+  feesUsd: number;
+  fundingUsd: number;
+  netFlowUsd: number;
+}
+
 /**
  * Runs one portfolio (a set of weighted coin allocations) forward over the
- * grid, applying `rebalance` and `dca`. Reused for both the branch's own
- * allocations and single-asset benchmark curves (weight 100%, rebalance "none").
+ * grid, applying `rebalance`, `dca`, costs and external cash flows. Reused for
+ * the branch's own allocations and single-asset benchmark curves (weight 100%,
+ * rebalance "none"). With no costs and no cashflow the arithmetic is exactly
+ * the cost-free engine's.
  */
 function runPortfolio(
   allocations: Allocation[],
@@ -116,19 +176,30 @@ function runPortfolio(
   grid: number[],
   candlesByCoin: Record<string, DailyClose[]>,
   dca: NonNullable<BranchConfig["dca"]> = [],
-): EquityPoint[] {
-  if (grid.length === 0) return [];
+  opts: RunOptions = {},
+): PortfolioRun {
+  const out: PortfolioRun = { equity: [], index: [], feesUsd: 0, fundingUsd: 0, netFlowUsd: 0 };
+  if (grid.length === 0) return out;
   const price = (coin: string, ts: number) => priceAt(coin, ts, candlesByCoin[coin]);
   const t0 = grid[0]!;
+  const feeRate = (opts.costs?.feeBps ?? 0) / 10000;
+  const fundingPerDay = (opts.costs?.fundingAprPct ?? 0) / 100 / 365;
+  const cashflow = opts.cashflow;
+  // Traded notional per $ of capital put to work at the target weights (stables are cash, not a trade).
+  const exposure = allocations.reduce((s, a) => s + (STABLES.has(a.coin) ? 0 : (a.weightPct / 100) * (a.leverage ?? 1)), 0);
+
+  const entryFee = feeRate > 0 ? feeRate * exposure * initialCapitalUsd : 0;
+  const capital = initialCapitalUsd - entryFee;
+  out.feesUsd += entryFee;
 
   // qty[coin] in units of the asset for spot legs; USD is tracked as a "coin" priced at 1.
   const qty = new Map(
-    allocations.filter((a) => !isPerp(a)).map((a) => [a.coin, ((a.weightPct / 100) * initialCapitalUsd) / price(a.coin, t0)]),
+    allocations.filter((a) => !isPerp(a)).map((a) => [a.coin, ((a.weightPct / 100) * capital) / price(a.coin, t0)]),
   );
   // Perp leg state, parallel to `allocations` (null = spot leg).
   const legs: (PerpLeg | null)[] = allocations.map((a) =>
     isPerp(a)
-      ? { margin: (a.weightPct / 100) * initialCapitalUsd, entryPx: price(a.coin, t0), sign: a.side === "short" ? -1 : 1, lev: a.leverage ?? 1 }
+      ? { margin: (a.weightPct / 100) * capital, entryPx: price(a.coin, t0), sign: a.side === "short" ? -1 : 1, lev: a.leverage ?? 1 }
       : null,
   );
   // DCA targets not already held as spot: held as spot from their first buy.
@@ -139,15 +210,32 @@ function runPortfolio(
     const leg = legs[i], coin = allocations[i]!.coin;
     return leg ? Math.max(0, legEquity(leg, price(coin, ts))) : qty.get(coin)! * price(coin, ts);
   };
+  // Current notional of a leg (what a trade back to target is measured against).
+  const notional = (i: number, ts: number) => {
+    const leg = legs[i], coin = allocations[i]!.coin;
+    if (STABLES.has(coin)) return 0;
+    if (!leg) return qty.get(coin)! * price(coin, ts);
+    return legEquity(leg, price(coin, ts)) > 0 ? leg.margin * leg.lev * (price(coin, ts) / leg.entryPx) : 0;
+  };
 
-  const equity: EquityPoint[] = [];
   let prevTs = t0;
+  let prevValue = 0;
   for (const ts of grid) {
-    // Liquidation on the day's adverse extreme (low for longs, high for
-    // shorts) when the candle has it, else the close. Skipped on day 0: the
-    // legs enter at that day's close, after its low/high happened. A zeroed
-    // margin keeps the leg at 0 until a rebalance re-funds it.
     if (ts !== t0) {
+      // Funding accrues on the open notional for the days since the last grid point; it comes out of margin.
+      if (fundingPerDay !== 0) {
+        const days = (ts - prevTs) / DAY_MS;
+        legs.forEach((leg, i) => {
+          if (!leg || leg.margin <= 0) return;
+          const cost = leg.sign * notional(i, ts) * fundingPerDay * days;
+          leg.margin -= cost;
+          out.fundingUsd += cost;
+        });
+      }
+      // Liquidation on the day's adverse extreme (low for longs, high for
+      // shorts) when the candle has it, else the close. Skipped on day 0: the
+      // legs enter at that day's close, after its low/high happened. A zeroed
+      // margin keeps the leg at 0 until a rebalance re-funds it.
       legs.forEach((leg, i) => {
         if (!leg) return;
         const c = candleAt(ts, candlesByCoin[allocations[i]!.coin]);
@@ -170,13 +258,25 @@ function runPortfolio(
       allocations.some((a, i) => Math.abs(holding(i, ts) / base - a.weightPct / 100) > 0.05);
 
     if (drifted || thresholdBreached) {
+      // Fee on the notional actually traded back to target, then the targets are set on what is left.
+      let target = base;
+      if (feeRate > 0) {
+        let turnover = 0;
+        allocations.forEach((a, i) => {
+          if (!STABLES.has(a.coin)) turnover += Math.abs((a.weightPct / 100) * base * (a.leverage ?? 1) - notional(i, ts));
+        });
+        const fee = Math.min(base, feeRate * turnover);
+        target = base - fee;
+        value -= fee;
+        out.feesUsd += fee;
+      }
       // Perp legs realize their PnL into the total and re-enter at today's price.
       allocations.forEach((a, i) => {
         const leg = legs[i];
         if (leg) {
-          leg.margin = (a.weightPct / 100) * base;
+          leg.margin = (a.weightPct / 100) * target;
           leg.entryPx = price(a.coin, ts);
-        } else qty.set(a.coin, ((a.weightPct / 100) * base) / price(a.coin, ts));
+        } else qty.set(a.coin, ((a.weightPct / 100) * target) / price(a.coin, ts));
       });
     }
 
@@ -194,13 +294,58 @@ function runPortfolio(
         qty.set(s, qty.get(s)! - take);
         spent += take;
       }
-      qty.set(d.coin, qty.get(d.coin)! + spent / price(d.coin, ts));
+      const fee = feeRate * spent;
+      if (fee > 0) {
+        value -= fee;
+        out.feesUsd += fee;
+      }
+      qty.set(d.coin, qty.get(d.coin)! + (spent - fee) / price(d.coin, ts));
     }
 
-    equity.push({ ts, value });
+    // External cash: a contribution is invested at the target weights (perp legs realize and re-enter,
+    // like a rebalance); a withdrawal sells the same fraction of every holding. Fees come out of the flow.
+    let flow = 0;
+    if (cashflow && shouldRebalance(cashflow.every, prevTs, ts)) {
+      if (cashflow.amountUsd > 0) {
+        const fee = feeRate * exposure * cashflow.amountUsd;
+        const net = cashflow.amountUsd - fee;
+        allocations.forEach((a, i) => {
+          const leg = legs[i];
+          const add = (a.weightPct / 100) * net;
+          if (leg) {
+            const px = price(a.coin, ts);
+            leg.margin = Math.max(0, legEquity(leg, px)) + add;
+            leg.entryPx = px;
+          } else qty.set(a.coin, qty.get(a.coin)! + add / price(a.coin, ts));
+        });
+        flow = cashflow.amountUsd;
+        value += net;
+        out.feesUsd += fee;
+      } else if (value > 0) {
+        const gross = Math.min(-cashflow.amountUsd, value);
+        const f = gross / value;
+        let sold = 0;
+        allocations.forEach((_, i) => (sold += notional(i, ts) * f));
+        for (const c of dcaOnly) sold += qty.get(c)! * price(c, ts) * f;
+        const fee = Math.min(gross, feeRate * sold);
+        for (const [c, q] of qty) qty.set(c, q * (1 - f));
+        for (const leg of legs) if (leg) leg.margin *= 1 - f;
+        flow = -(gross - fee);
+        value -= gross;
+        out.feesUsd += fee;
+      }
+      out.netFlowUsd += flow;
+    }
+
+    out.equity.push({ ts, value });
+    const prevIndex = out.index.at(-1);
+    out.index.push(
+      prevIndex === undefined ? capital / initialCapitalUsd : prevValue > 0 ? prevIndex * ((value - flow) / prevValue) : prevIndex,
+    );
+    prevValue = value;
     prevTs = ts;
   }
-  return equity;
+  return out;
 }
 
 function maxDrawdownPct(equity: EquityPoint[]): number {
@@ -219,7 +364,120 @@ function cagrPct(initial: number, final: number, firstTs: number, lastTs: number
   return ((final / initial) ** (365 / days) - 1) * 100;
 }
 
-export function simulate(config: BranchConfig, candlesByCoin: Record<string, DailyClose[]>): BranchResult {
+/** Simple returns between consecutive index points. */
+export function indexReturns(index: number[]): number[] {
+  const out: number[] = [];
+  for (let i = 1; i < index.length; i++) out.push(index[i - 1]! > 0 ? index[i]! / index[i - 1]! - 1 : 0);
+  return out;
+}
+
+/** Annualized vol, Sharpe and Sortino of daily returns (365-day year, zero risk-free rate). */
+export function riskStats(returns: number[]): { volPct: number; sharpe: number; sortino: number } {
+  const n = returns.length;
+  if (n < 2) return { volPct: 0, sharpe: 0, sortino: 0 };
+  const mean = returns.reduce((s, r) => s + r, 0) / n;
+  const sd = Math.sqrt(returns.reduce((s, r) => s + (r - mean) ** 2, 0) / (n - 1));
+  const down = Math.sqrt(returns.reduce((s, r) => s + Math.min(0, r) ** 2, 0) / n);
+  const ann = Math.sqrt(365);
+  return { volPct: sd * ann * 100, sharpe: sd > 0 ? (mean / sd) * ann : 0, sortino: down > 0 ? (mean / down) * ann : 0 };
+}
+
+/** Longest run, in days, from a high until the value first gets back to it (or the end). */
+export function longestDrawdownDays(points: EquityPoint[]): number {
+  let peak = -Infinity;
+  let peakTs = points[0]?.ts ?? 0;
+  let longest = 0;
+  for (const p of points) {
+    if (p.value >= peak) {
+      peak = p.value;
+      peakTs = p.ts;
+    } else longest = Math.max(longest, (p.ts - peakTs) / DAY_MS);
+  }
+  return Math.round(longest);
+}
+
+/** Calendar-month returns (UTC) of a value index; the first month runs from the first point. */
+export function monthlyReturns(points: EquityPoint[]): MonthlyReturn[] {
+  const out: MonthlyReturn[] = [];
+  let open = points[0]?.value;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]!;
+    const month = new Date(p.ts).toISOString().slice(0, 7);
+    const next = points[i + 1];
+    if (next && new Date(next.ts).toISOString().slice(0, 7) === month) continue;
+    out.push({ month, returnPct: open && open > 0 ? (p.value / open - 1) * 100 : 0 });
+    open = p.value;
+  }
+  return out;
+}
+
+function quantile(sorted: number[], p: number): number {
+  return sorted[Math.floor(p * (sorted.length - 1))]!;
+}
+
+/** Window length when the config does not set one: the longest of 365/90/30 days that fits twice in the history. */
+export function defaultRollingWindow(spanDays: number): number {
+  return [365, 90, 30].find((w) => spanDays >= 2 * w) ?? 0;
+}
+
+const MAX_ROLLING_STARTS = 260;
+
+/**
+ * Re-runs the strategy from every stepDays-th day of the grid, each held windowDays, and reports
+ * the time-weighted return of each start against holding BTC over the same window. Windows overlap,
+ * so the starts are not independent samples.
+ */
+function rollingWindows(config: BranchConfig, candlesByCoin: Record<string, DailyClose[]>, grid: number[], windowDays: number): RollingResult | undefined {
+  if (windowDays <= 0 || grid.length < 2) return undefined;
+  const last = grid.at(-1)!;
+  const window = windowDays * DAY_MS;
+  const starts = grid.filter((ts) => ts + window <= last);
+  if (starts.length < 2) return undefined;
+  const step = Math.max(7, Math.ceil(starts.length / MAX_ROLLING_STARTS));
+  const btc = (ts: number) => priceAt("BTC", ts, candlesByCoin.BTC);
+  const points: RollingResult["points"] = [];
+  let end = 0;
+  for (let i = 0; i < starts.length; i += step) {
+    const from = starts[i]!;
+    while (end + 1 < grid.length && grid[end + 1]! <= from + window) end++;
+    const slice = grid.slice(i, end + 1); // starts is a prefix of grid, so index i is `from`
+    const run = runPortfolio(config.allocations, config.rebalance, config.initialCapitalUsd, slice, candlesByCoin, config.dca, config);
+    const growth = run.index.at(-1)!;
+    const btcGrowth = btc(slice.at(-1)!) / btc(from);
+    const indexCurve = run.index.map((v, k) => ({ ts: slice[k]!, value: v }));
+    points.push({
+      ts: from,
+      returnPct: (growth - 1) * 100,
+      vsBtcPct: btcGrowth > 0 ? (growth / btcGrowth - 1) * 100 : 0,
+      maxDrawdownPct: maxDrawdownPct(indexCurve),
+    });
+  }
+  const sorted = points.map((p) => p.returnPct).sort((a, b) => a - b);
+  const n = points.length;
+  return {
+    windowDays,
+    stepDays: step,
+    points,
+    summary: {
+      n,
+      positivePct: (points.filter((p) => p.returnPct > 0).length / n) * 100,
+      beatBtcPct: (points.filter((p) => p.vsBtcPct > 0).length / n) * 100,
+      p10: quantile(sorted, 0.1),
+      median: quantile(sorted, 0.5),
+      p90: quantile(sorted, 0.9),
+      worst: sorted[0]!,
+      best: sorted.at(-1)!,
+    },
+  };
+}
+
+export interface FullSimulation {
+  result: BranchResult;
+  /** Daily time-weighted returns of the branch: the history a bootstrap projection resamples. */
+  dailyReturns: number[];
+}
+
+export function simulateFull(config: BranchConfig, candlesByCoin: Record<string, DailyClose[]>): FullSimulation {
   for (const coin of [...config.allocations.map((a) => a.coin), ...(config.dca ?? []).map((d) => d.coin)]) {
     if (STABLES.has(coin)) continue;
     if (!candlesByCoin[coin] || candlesByCoin[coin]!.length === 0) throw new NoPriceDataError(coin);
@@ -229,23 +487,53 @@ export function simulate(config: BranchConfig, candlesByCoin: Record<string, Dai
   const grid = buildGrid(candlesByCoin, startMs);
   if (grid.length === 0) throw new NoPriceDataError("BTC", "no price history in range");
 
-  const equity = runPortfolio(config.allocations, config.rebalance, config.initialCapitalUsd, grid, candlesByCoin, config.dca);
-  const btc = runPortfolio([{ coin: "BTC", weightPct: 100 }], "none", config.initialCapitalUsd, grid, candlesByCoin);
-  const usdc = runPortfolio([{ coin: "USDC", weightPct: 100 }], "none", config.initialCapitalUsd, grid, candlesByCoin);
+  const cap = config.initialCapitalUsd;
+  const opts: RunOptions = { costs: config.costs, cashflow: config.cashflow };
+  // Benchmarks pay the same fees and get the same cash flows, so "vs BTC" compares like with like.
+  const benchOpts: RunOptions = { costs: config.costs && { feeBps: config.costs.feeBps }, cashflow: config.cashflow };
+  const run = runPortfolio(config.allocations, config.rebalance, cap, grid, candlesByCoin, config.dca, opts);
+  const btc = runPortfolio([{ coin: "BTC", weightPct: 100 }], "none", cap, grid, candlesByCoin, [], benchOpts).equity;
+  const usdc = runPortfolio([{ coin: "USDC", weightPct: 100 }], "none", cap, grid, candlesByCoin, [], benchOpts).equity;
+  const equity = run.equity;
 
-  const finalValue = equity.at(-1)?.value ?? config.initialCapitalUsd;
-  const btcFinal = btc.at(-1)?.value ?? config.initialCapitalUsd;
-  const usdcFinal = usdc.at(-1)?.value ?? config.initialCapitalUsd;
+  const finalValue = equity.at(-1)?.value ?? cap;
+  const btcFinal = btc.at(-1)?.value ?? cap;
+  const usdcFinal = usdc.at(-1)?.value ?? cap;
+  // With external cash the curve mixes performance and deposits: growth stats come from the time-weighted index.
+  const twr = config.cashflow ? run.index.map((v, i) => ({ ts: grid[i]!, value: v * cap })) : undefined;
+  const growth = twr ?? equity;
+  const returns = indexReturns(run.index);
+  const finalIndex = run.index.at(-1) ?? 1;
+  const cagr =
+    grid.length < 2 ? 0 : twr ? cagrPct(1, finalIndex, grid[0]!, grid.at(-1)!) : cagrPct(cap, finalValue, grid[0]!, grid.at(-1)!);
+  const maxDd = maxDrawdownPct(growth);
+  const spanDays = grid.length > 1 ? (grid.at(-1)! - grid[0]!) / DAY_MS : 0;
 
-  return {
+  const result: BranchResult = {
     equity,
     benchmarks: { btc, usdc },
     stats: {
       finalValue,
-      cagrPct: grid.length > 1 ? cagrPct(config.initialCapitalUsd, finalValue, grid[0]!, grid.at(-1)!) : 0,
-      maxDrawdownPct: maxDrawdownPct(equity),
+      cagrPct: cagr,
+      maxDrawdownPct: maxDd,
       vsBtcPct: btcFinal > 0 ? (finalValue / btcFinal - 1) * 100 : 0,
       vsUsdcPct: usdcFinal > 0 ? (finalValue / usdcFinal - 1) * 100 : 0,
+      twrPct: (finalIndex - 1) * 100,
+      ...riskStats(returns),
+      calmar: maxDd > 0 ? cagr / maxDd : 0,
+      longestDrawdownDays: longestDrawdownDays(growth),
+      feesUsd: run.feesUsd,
+      fundingUsd: run.fundingUsd,
+      netFlowUsd: run.netFlowUsd,
     },
+    monthly: monthlyReturns(growth),
+    ...(twr && { twr }),
   };
+  const rolling = rollingWindows(config, candlesByCoin, grid, config.rollingWindowDays ?? defaultRollingWindow(spanDays));
+  if (rolling) result.rolling = rolling;
+  return { result, dailyReturns: returns };
+}
+
+export function simulate(config: BranchConfig, candlesByCoin: Record<string, DailyClose[]>): BranchResult {
+  return simulateFull(config, candlesByCoin).result;
 }

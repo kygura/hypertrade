@@ -24,11 +24,51 @@ interface Pt {
   value: number;
 }
 
+// Fields added after the first release are optional: cached results written before them still load.
+export interface SimStats {
+  finalValue: number;
+  cagrPct: number;
+  maxDrawdownPct: number;
+  vsBtcPct: number;
+  vsUsdcPct: number;
+  twrPct?: number;
+  volPct?: number;
+  sharpe?: number;
+  sortino?: number;
+  calmar?: number;
+  longestDrawdownDays?: number;
+  feesUsd?: number;
+  fundingUsd?: number;
+  netFlowUsd?: number;
+}
+
+export interface SimRolling {
+  windowDays: number;
+  stepDays: number;
+  points: { ts: number; returnPct: number; vsBtcPct: number; maxDrawdownPct: number }[];
+  summary: { n: number; positivePct: number; beatBtcPct: number; p10: number; median: number; p90: number; worst: number; best: number };
+}
+
+export interface SimProjectionSummary {
+  method: "gbm" | "bootstrap";
+  investedUsd: number;
+  finalP10: number;
+  finalMedian: number;
+  finalP90: number;
+  lossPct: number;
+  targetPct?: number;
+  depletedPct?: number;
+}
+
 export interface SimResult {
   equity: Pt[];
   benchmarks: { btc: Pt[]; usdc: Pt[] };
-  stats: { finalValue: number; cagrPct: number; maxDrawdownPct: number; vsBtcPct: number; vsUsdcPct: number };
-  montecarlo?: { median: Pt[]; p10: Pt[]; p90: Pt[] };
+  stats: SimStats;
+  twr?: Pt[];
+  monthly?: { month: string; returnPct: number }[];
+  rolling?: SimRolling;
+  montecarlo?: { median: Pt[]; p10: Pt[]; p90: Pt[]; p25?: Pt[]; p75?: Pt[]; summary?: SimProjectionSummary };
+  notes?: string[];
 }
 
 export interface SimBranchOutcome {

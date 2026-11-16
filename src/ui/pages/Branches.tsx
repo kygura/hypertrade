@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { AsyncBody, Button, DataTable, EmptyBlock, HowToRead, SkeletonRows, type Column, type Term } from '../components'
 import { api, useApi } from '../lib/api'
 import type { Branch } from '../components/branches/types'
-import { allocationSummary, defaultBranchConfig, maxDdClass, rebalanceLabel, signClass } from '../components/branches/format'
+import { allocationSummary, branchReturnPct, defaultBranchConfig, maxDdClass, rebalanceLabel, signClass } from '../components/branches/format'
 import { fmtPct } from '../../shared/format'
 
 // /branches — docs/design/README.md §10.3. List + create; delete lives only in the
@@ -14,7 +14,7 @@ import { fmtPct } from '../../shared/format'
 /** The list's columns; each number is the branch's last simulation (src/server/sim/engine.ts). */
 const BRANCH_TERMS: readonly Term[] = [
   ['NAME', 'the branch and, under it, its mix: percent of capital per coin (SHORT and 3× mark perp legs), "+ DCA" when it buys on a schedule, then the rebalance rule.'],
-  ['RETURN%', 'end value against the starting capital in the last simulation, from the branch\'s start date to the latest daily close.'],
+  ['RETURN%', 'growth in the last simulation, from the branch\'s start date to the latest daily close, with deposits and withdrawals taken out (time-weighted).'],
   ['MAX DD', 'max drawdown: the deepest fall of the portfolio from an earlier high along the way. Red from 20%.'],
   ['VS BTC', 'how much higher or lower the branch ended than the same capital simply held in BTC over the same days, as a percent of the BTC result.'],
   ['NO REBAL / MONTHLY / WEEKLY / 5% BAND', 'when the weights are reset to target: never, on the first day of each month, once a week, or whenever any weight is more than 5 percentage points off target.'],
@@ -53,13 +53,13 @@ export function Branches() {
     },
     {
       key: 'return',
-      label: <span title="end value against starting capital in the last simulation">RETURN%</span>,
+      label: <span title="time-weighted growth in the last simulation">RETURN%</span>,
       priority: 1,
       align: 'right',
       render: (b) =>
         b.result ? (
-          <span className={signClass((b.result.stats.finalValue / b.config.initialCapitalUsd - 1) * 100)}>
-            {fmtPct(b.result.stats.finalValue / b.config.initialCapitalUsd - 1, { decimals: 1, sign: true })}
+          <span className={signClass(branchReturnPct(b.result, b.config.initialCapitalUsd))}>
+            {fmtPct(branchReturnPct(b.result, b.config.initialCapitalUsd) / 100, { decimals: 1, sign: true })}
           </span>
         ) : (
           <span className="text-text-secondary">—</span>
@@ -116,7 +116,7 @@ export function Branches() {
         </div>
         <HowToRead terms={BRANCH_TERMS} className="px-3 py-2 border-b border-border-subtle">
           A branch is a what-if portfolio replayed on daily prices from its start date: this much capital, split this way, rebalanced like this. The table shows where each one
-          ended up. These are simulations of the past with no fees or funding, not forecasts.
+          ended up. These are simulations of the past (with fees and funding only where a branch sets costs), not forecasts.
         </HowToRead>
         <div className="panel-body">
           <AsyncBody

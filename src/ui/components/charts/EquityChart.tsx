@@ -18,14 +18,14 @@ const LEGEND = [
 
 const EQUITY_TERMS: readonly Term[] = [
   ['BRANCH line', 'the simulated value of the portfolio in USD on each daily close, with its rebalance and DCA rules applied.'],
-  ['HODL BTC line', 'the same starting capital put into BTC on the start date and left alone.'],
-  ['USDC dashed line', 'the same starting capital left in USDC.'],
+  ['HODL BTC line', 'the same starting capital put into BTC on the start date and left alone (with the same deposits or withdrawals, when the branch has them).'],
+  ['USDC dashed line', 'the same capital, and the same cash flows, left in USDC.'],
   ['vertical axis', 'value in USD.'],
   ['horizontal axis', 'date, as month/day.'],
 ]
 const PROJECTION_TERMS: readonly Term[] = [
   ['TODAY dotted line', 'where the history ends and the projection starts.'],
-  ['shaded band', 'the middle 80% of the simulated paths: on each day, from the 10th to the 90th percentile.'],
+  ['shaded band', 'the middle 80% of the simulated paths: on each day, from the 10th to the 90th percentile. The darker core is the middle 50% (25th to 75th).'],
   ['dashed line in the band', 'the median path: half the simulated paths are above it, half below.'],
   ['P90 / P50 / P10', 'the value at the end of the projection at the 90th percentile, the median and the 10th percentile of the paths.'],
 ]
@@ -35,7 +35,7 @@ export function EquityGuide({ projection, className }: { projection: boolean; cl
   return (
     <HowToRead terms={projection ? [...EQUITY_TERMS, ...PROJECTION_TERMS] : EQUITY_TERMS} className={className}>
       The branch's simulated value over time against two yardsticks: the same capital held in BTC, and left in USDC. Everything up to today is replayed history on daily closes.
-      {projection ? ' The fan after TODAY is a spread of random paths drawn from the return and volatility you typed in: an illustration of those assumptions, not a forecast.' : ''}
+      {projection ? ' The fan after TODAY is a spread of random paths, drawn either from the return and volatility you typed in or from this branch\'s own past days: an illustration of those inputs, not a forecast.' : ''}
     </HowToRead>
   )
 }
@@ -119,6 +119,12 @@ export function EquityChart({
                 fill="var(--color-proj-band)"
                 isAnimationActive={false}
               />
+              {band[0]?.innerHeight != null && (
+                <>
+                  <Area dataKey="p25" data={band} stackId="inner" stroke="none" fill="transparent" isAnimationActive={false} />
+                  <Area dataKey="innerHeight" data={band} stackId="inner" stroke="none" fill="var(--color-proj-band)" isAnimationActive={false} />
+                </>
+              )}
               <Line
                 dataKey="median"
                 data={band}

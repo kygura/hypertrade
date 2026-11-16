@@ -28,7 +28,7 @@ const allocation = {
 export const SIM_TOOL_SPEC: ToolSpec = {
   name: "simulate_paths",
   description:
-    "Run 1-4 historical portfolio simulations (branches) and compare them. Spot or perp legs, optional rebalancing, DCA and Monte Carlo scenario. Results are historical, ignore funding and fees. Returns per-branch stats; the full curves are shown to the user separately.",
+    "Run 1-4 historical portfolio simulations (branches) and compare them. Spot or perp legs, optional rebalancing, DCA, trading costs, recurring deposits/withdrawals and a forward Monte Carlo scenario. Results are historical; fees and funding are only charged when costs is set. Returns per-branch stats, rolling start-date windows and the projection summary; the full curves are shown to the user separately.",
   input_schema: {
     type: "object",
     additionalProperties: false,
@@ -76,14 +76,32 @@ export const SIM_TOOL_SPEC: ToolSpec = {
                     },
                   },
                 },
+                costs: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["feeBps"],
+                  description: "Trading costs. feeBps is charged on every traded notional (entry, rebalance, DCA, deposits, withdrawals); fundingAprPct is charged daily on perp notional (longs pay a positive rate, shorts receive it).",
+                  properties: { feeBps: { type: "number", minimum: 0, maximum: 500 }, fundingAprPct: { type: "number", minimum: -200, maximum: 200 } },
+                },
+                cashflow: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["amountUsd", "every"],
+                  description: "External money on a schedule: positive adds cash at the target weights, negative withdraws pro rata. Continues into the projection. Return stats are then time-weighted.",
+                  properties: { amountUsd: { type: "number" }, every: { type: "string", enum: ["weekly", "monthly"] } },
+                },
+                rollingWindowDays: { type: "integer", minimum: 0, maximum: 1825, description: "Length of the rolling start-date windows (the same strategy started on many past dates). Default: 365/90/30 days, whichever fits twice in the history; 0 turns it off." },
                 scenario: {
                   type: "object",
                   additionalProperties: false,
                   required: ["horizonDays", "assumptions", "paths"],
-                  description: "Forward Monte Carlo fan; only for unlevered long-only branches (dropped otherwise).",
+                  description: "Forward Monte Carlo fan from today. method gbm (default) uses the typed assumptions and only fits unlevered long-only branches (dropped otherwise); method bootstrap resamples blocks of the branch's own simulated daily returns (assumptions may be []) and works for perp legs.",
                   properties: {
                     horizonDays: { type: "integer", minimum: 1, maximum: 3650 },
                     paths: { type: "integer", minimum: 1 },
+                    method: { type: "string", enum: ["gbm", "bootstrap"] },
+                    blockDays: { type: "integer", minimum: 1, maximum: 90, description: "bootstrap block length, default 10" },
+                    targetUsd: { type: "number", exclusiveMinimum: 0, description: "Reports the share of paths ending at or above it." },
                     assumptions: {
                       type: "array",
                       items: {
@@ -123,7 +141,10 @@ Simulation rules:
 - Weights are percent of starting capital and should sum to 100. A perp leg's weight is its margin; leverage multiplies the notional. DCA is self-financed from the USDC sleeve, so give USDC a weight large enough to fund it.
 - startDate is an ISO date. The question carries [current time ...]; resolve "since January" or "last year" against it. A start earlier than a coin's first candle is moved forward and reported in warnings.
 - Earlier assistant turns may end with a "[paths]" trailer holding each path's normalized config. For follow-ups ("same but 5x", "without the DCA"), modify those configs instead of re-guessing.
-- Perp legs ignore funding and fees and liquidate on daily lows/highs; the tool's warnings say so. Report them.
+- Perp legs liquidate on daily lows/highs and, without costs, ignore funding and fees; the tool's warnings say so. Report them. When the user asks about realistic or net results, set costs (Hyperliquid taker fees are about 4.5 bps).
+- Wealth questions ("if I add $500 a month", "can I withdraw $2k a month") use cashflow. With a cashflow, quote twrPct/cagrPct for performance and finalValue/netFlowUsd for wealth; they answer different questions.
+- "rolling" says how the same strategy did from every past start date over a fixed window: quote its median and worst, and the share of starts that beat BTC, when timing luck matters.
+- For "what could happen" questions add a scenario. Prefer method bootstrap (it replays the branch's own history, including perp legs and costs); use gbm only when the user gives return and volatility assumptions. Quote the projection summary as a spread (p10/median/p90, lossPct, targetPct), never a single number.
 - Be dense and specific: short paragraphs or tight bullets, numbers with units.
 
 Tools:
@@ -148,18 +169,49 @@ export async function realSimDeps(load = getCtxs, ms = 5000): Promise<IntentDeps
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
+const opt = (n: number | undefined) => (n === undefined ? undefined : round(n));
+
 function compact(b: SimBranchOutcome) {
-  const s = b.result?.stats;
+  const r = b.result;
+  const s = r?.stats;
   const cap = b.config.initialCapitalUsd;
+  const roll = r?.rolling;
+  const proj = r?.montecarlo?.summary;
   return {
     name: b.name,
     finalValue: s && round(s.finalValue),
     totalReturnPct: s && cap > 0 ? round((s.finalValue / cap - 1) * 100) : undefined,
+    twrPct: opt(s?.twrPct),
     cagrPct: s && round(s.cagrPct),
     maxDrawdownPct: s && round(s.maxDrawdownPct),
     vsBtcPct: s && round(s.vsBtcPct),
+    volPct: opt(s?.volPct),
+    sharpe: opt(s?.sharpe),
+    feesUsd: s?.feesUsd ? round(s.feesUsd) : undefined,
+    fundingUsd: s?.fundingUsd ? round(s.fundingUsd) : undefined,
+    netFlowUsd: s?.netFlowUsd ? round(s.netFlowUsd) : undefined,
+    rolling: roll && {
+      windowDays: roll.windowDays,
+      starts: roll.summary.n,
+      medianPct: round(roll.summary.median),
+      worstPct: round(roll.summary.worst),
+      bestPct: round(roll.summary.best),
+      positivePct: round(roll.summary.positivePct),
+      beatBtcPct: round(roll.summary.beatBtcPct),
+    },
+    projection: proj && {
+      method: proj.method,
+      horizonDays: b.config.scenario?.horizonDays,
+      investedUsd: round(proj.investedUsd),
+      p10: round(proj.finalP10),
+      median: round(proj.finalMedian),
+      p90: round(proj.finalP90),
+      lossPct: round(proj.lossPct),
+      targetPct: opt(proj.targetPct),
+      depletedPct: opt(proj.depletedPct),
+    },
     startDate: b.config.startDate,
-    warnings: b.warnings,
+    warnings: [...b.warnings, ...(r?.notes ?? [])],
     error: b.error,
   };
 }

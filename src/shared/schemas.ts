@@ -44,11 +44,33 @@ export const ScenarioAssumptionSchema = z
   .strict();
 
 // horizonDays is capped because runMonteCarlo is synchronous: no deadline can interrupt it.
+// method "gbm" (default) draws from the typed assumptions; "bootstrap" resamples blocks of the
+// branch's own simulated daily returns, so it also covers short and levered legs.
 export const ScenarioSchema = z
   .object({
     horizonDays: z.number().int().min(1).max(3650),
     assumptions: z.array(ScenarioAssumptionSchema),
     paths: z.number().int().min(1),
+    method: z.enum(["gbm", "bootstrap"]).optional(),
+    blockDays: z.number().int().min(1).max(90).optional(),
+    targetUsd: z.number().finite().positive().max(1e13).optional(),
+  })
+  .strict();
+
+/** Trading costs: feeBps on every traded notional (entry, rebalance, DCA, cash flows); fundingAprPct
+ * charged daily on perp notional (longs pay a positive rate, shorts receive it). */
+export const CostsSchema = z
+  .object({
+    feeBps: z.number().finite().min(0).max(500),
+    fundingAprPct: z.number().finite().min(-200).max(200).optional(),
+  })
+  .strict();
+
+/** External cash on a schedule: positive adds money at the target weights, negative withdraws pro rata. */
+export const CashflowSchema = z
+  .object({
+    amountUsd: z.number().finite().refine((n) => n !== 0, { message: "amount must not be 0" }),
+    every: z.enum(["weekly", "monthly"]),
   })
   .strict();
 
@@ -62,6 +84,10 @@ export const BranchConfigSchema = z.object({
   rebalance: RebalanceSchema,
   scenario: ScenarioSchema.optional(),
   dca: z.array(DcaSchema).max(8).optional(),
+  costs: CostsSchema.optional(),
+  cashflow: CashflowSchema.optional(),
+  /** Length of the rolling start-date windows; default 365, 0 turns them off. */
+  rollingWindowDays: z.number().int().min(0).max(1825).optional(),
 });
 
 // ─── Routine contract (docs/SPEC.md "Routine Contract") ───

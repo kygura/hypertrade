@@ -20,7 +20,8 @@ import type { BranchDetail as BranchDetailData, BranchResult } from '../componen
 import { EquityChart, EquityGuide } from '../components/charts/EquityChart'
 import { ProjectionAssumptions } from '../components/charts/FanChart'
 import { DrawdownChart, DrawdownGuide } from '../components/branches/DrawdownChart'
-import { branchLine, maxDdClass, signClass, sumWeights } from '../components/branches/format'
+import { MonthlyTable, ProjectionOdds, RollingPanel } from '../components/branches/BacktestPanels'
+import { branchLine, branchReturnPct, maxDdClass, signClass, sumWeights } from '../components/branches/format'
 import { fmtPct, fmtUsd } from '../../shared/format'
 
 // /branches/:id — docs/design/README.md §10.4. Editor (left, 4 cols) + results (right,
@@ -29,6 +30,8 @@ import { fmtPct, fmtUsd } from '../../shared/format'
 // config → drawdown → stats.
 
 type Dca = NonNullable<BranchConfig['dca']>[number]
+type Costs = NonNullable<BranchConfig['costs']>
+type Cashflow = NonNullable<BranchConfig['cashflow']>
 
 type Busy = 'idle' | 'saving' | 'running'
 
@@ -41,7 +44,28 @@ interface FormState {
   rebalance: BranchConfig['rebalance']
   scenario: Scenario | null
   dca: Dca[]
+  costs: Costs | null
+  cashflow: Cashflow | null
+  rollingWindowDays: number | undefined
 }
+
+const ROLLING_OPTIONS: { value: number; label: string }[] = [
+  { value: -1, label: 'AUTO' },
+  { value: 30, label: '30D' },
+  { value: 90, label: '90D' },
+  { value: 365, label: '1Y' },
+  { value: 0, label: 'OFF' },
+]
+
+const METHOD_OPTIONS: { value: 'bootstrap' | 'gbm'; label: string }[] = [
+  { value: 'bootstrap', label: 'HISTORY' },
+  { value: 'gbm', label: 'ASSUMED' },
+]
+
+const FLOW_SIGN_OPTIONS: { value: 1 | -1; label: string }[] = [
+  { value: 1, label: 'ADD' },
+  { value: -1, label: 'WITHDRAW' },
+]
 
 const SIDE_OPTIONS: { value: 'long' | 'short'; label: string; short: string }[] = [
   { value: 'long', label: 'LONG', short: 'L' },
@@ -71,17 +95,28 @@ const CONFIG_TERMS: readonly Term[] = [
   ['LEV', 'leverage of a perp leg, 1 to 50: the weight is its margin and the position is margin × leverage. A leg is wiped out when its loss reaches its whole margin, checked on the daily low or high.'],
   ['DCA', 'a scheduled buy: each week or month the amount moves from the USDC/USDT part into the coin at that day\'s close, until the stablecoins run out.'],
   ['REBALANCE', 'when the weights are reset to target: never, on the first day of each month, once a week, or (5% BAND) whenever any weight is more than 5 percentage points off target.'],
-  ['SCENARIO', 'an optional projection past today, for portfolios without perp legs. DAYS is how far ahead, PATHS how many random futures are drawn.'],
-  ['% RET / % VOL', 'the yearly return and yearly volatility you assume for each coin. The projection is built from these numbers only, with coins treated as uncorrelated, so it shows your assumptions, not a forecast.'],
+  ['COSTS', 'FEE BPS is charged on every trade (entry, rebalance, DCA, deposits, withdrawals; 4.5 bps is about a Hyperliquid taker fill). FUNDING % is a yearly rate charged daily on perp positions: longs pay a positive rate, shorts receive it.'],
+  ['CASH FLOW', 'money added or taken out every week or month. Added money is invested at the target weights; a withdrawal sells the same share of everything. Returns are then time-weighted so deposits do not count as gains.'],
+  ['ROLLING', 'how long each window is when the same recipe is replayed from many past start dates. AUTO picks 1Y, 90D or 30D, whichever fits twice in the history.'],
+  ['SCENARIO', 'an optional projection past today. DAYS is how far ahead, PATHS how many random futures are drawn, TARGET an end value whose odds are reported. The cash flow keeps going in the projection.'],
+  ['HISTORY', 'builds each future from random blocks of this branch\'s own past days (BLOCK days long), fees, funding and perp legs included. It cannot show anything the history did not contain.'],
+  ['% RET / % VOL', 'ASSUMED only: the yearly return and volatility you assume for each coin, coins treated as uncorrelated, no perp legs. It shows your assumptions, not a forecast.'],
   ['amber square', 'the form has unsaved changes. RUN SIMULATION replays the saved branch; SAVE stores the form and then runs it.'],
 ]
 
 const STATS_TERMS: readonly Term[] = [
-  ['CAGR', 'the growth from start to end expressed per year.'],
-  ['MAX DD', 'max drawdown: the deepest fall of the portfolio from an earlier high. Red from 20%.'],
+  ['RETURN', 'time-weighted return: the growth of the strategy with deposits and withdrawals taken out.'],
+  ['CAGR', 'that growth expressed per year.'],
+  ['MAX DD', 'max drawdown: the deepest fall of the strategy from an earlier high (deposits and withdrawals taken out). Red from 20%.'],
   ['FINAL', 'the portfolio\'s value on the latest daily close.'],
-  ['VS BTC', 'how much higher or lower the branch ended than the same capital held in BTC over the same days, as a percent of the BTC result.'],
+  ['VS BTC', 'how much higher or lower the branch ended than the same capital (and cash flows) held in BTC over the same days, as a percent of the BTC result.'],
   ['VS USDC', 'the same against capital left in USDC.'],
+  ['VOL', 'how much the daily returns swing, scaled to a year.'],
+  ['SHARPE / SORTINO', 'average daily return over its swing (Sortino counts only the down days), scaled to a year, with no risk-free rate. Above 1 is uncommon for long stretches.'],
+  ['CALMAR', 'CAGR divided by max drawdown: yearly growth per unit of the worst fall.'],
+  ['LONGEST DD', 'the most days spent below an earlier high before getting back to it.'],
+  ['FEES / FUNDING', 'what trading and perp funding cost over the run (negative funding was received).'],
+  ['NET IN', 'deposits minus withdrawals over the run.'],
 ]
 
 export function BranchDetail() {
@@ -110,6 +145,9 @@ export function BranchDetail() {
         rebalance: data.config.rebalance,
         scenario: data.config.scenario ?? null,
         dca: data.config.dca ?? [],
+        costs: data.config.costs ?? null,
+        cashflow: data.config.cashflow ?? null,
+        rollingWindowDays: data.config.rollingWindowDays,
       })
       setResult(data.result)
     }
@@ -129,6 +167,7 @@ export function BranchDetail() {
 
   const resolvedScenario: Scenario | null = form?.scenario
     ? {
+        ...form.scenario,
         horizonDays: form.scenario.horizonDays,
         paths: form.scenario.paths,
         assumptions: nonStableCoins.map(
@@ -152,6 +191,9 @@ export function BranchDetail() {
         rebalance: form.rebalance,
         scenario: resolvedScenario ?? undefined,
         dca: form.dca.length ? form.dca.map((d) => ({ ...d, coin: d.coin.trim() })) : undefined,
+        costs: form.costs ?? undefined,
+        cashflow: form.cashflow ?? undefined,
+        rollingWindowDays: form.rollingWindowDays,
       }
     : null
 
@@ -161,8 +203,9 @@ export function BranchDetail() {
   const levValid = !form || form.allocations.every((a) => (a.leverage ?? 1) >= 1 && (a.leverage ?? 1) <= 50)
   const dcaValid = !form || form.dca.every((d) => d.coin.trim() !== '' && d.amountUsd > 0)
   const perp = !!form && form.allocations.some(isPerp)
-  const perpConflict = perp && !!form?.scenario
-  const editorOk = levValid && dcaValid && !perpConflict
+  const perpConflict = perp && !!form?.scenario && form.scenario.method !== 'bootstrap'
+  const flowValid = !form?.cashflow || (Number.isFinite(form.cashflow.amountUsd) && form.cashflow.amountUsd !== 0)
+  const editorOk = levValid && dcaValid && flowValid && !perpConflict
   const canSubmit = weightsValid && editorOk && !!parsedConfig?.success && busy === 'idle'
 
   // --- actions ----------------------------------------------------------
@@ -287,8 +330,8 @@ export function BranchDetail() {
                     </span>
                   </div>
                   <div className="text-md tabular mb-3">
-                    <span className={signClass(result.stats.finalValue / form.initialCapitalUsd - 1)}>
-                      {fmtPct(result.stats.finalValue / form.initialCapitalUsd - 1, { decimals: 1, sign: true })}
+                    <span className={signClass(branchReturnPct(result, form.initialCapitalUsd))}>
+                      {fmtPct(branchReturnPct(result, form.initialCapitalUsd) / 100, { decimals: 1, sign: true })}
                     </span>{' '}
                     · CAGR {fmtPct(result.stats.cagrPct / 100, { decimals: 1, sign: true })} · vs BTC{' '}
                     <span className={signClass(result.stats.vsBtcPct)}>
@@ -302,10 +345,18 @@ export function BranchDetail() {
                     projection={result.montecarlo}
                   />
                   {result.montecarlo && resolvedScenario && (
-                    <div className="mt-2">
-                      <ProjectionAssumptions scenario={resolvedScenario} />
+                    <div className="mt-2 flex flex-col gap-2">
+                      <ProjectionAssumptions scenario={resolvedScenario} cashflow={form.cashflow ?? undefined} />
+                      {result.montecarlo.summary && (
+                        <ProjectionOdds summary={result.montecarlo.summary} horizonDays={resolvedScenario.horizonDays} targetUsd={resolvedScenario.targetUsd} />
+                      )}
                     </div>
                   )}
+                  {result.notes?.map((n) => (
+                    <div key={n} className="text-xs text-amber mt-2">
+                      {n}
+                    </div>
+                  ))}
                   <EquityGuide projection={result.montecarlo != null} className="mt-2" />
                 </div>
               )}
@@ -318,7 +369,7 @@ export function BranchDetail() {
           </div>
 
           {/* CONFIG */}
-          <div className="order-2 lg:order-none lg:col-start-1 lg:col-span-4 lg:row-start-1 lg:row-span-3 panel">
+          <div className="order-2 lg:order-none lg:col-start-1 lg:col-span-4 lg:row-start-1 lg:row-span-5 panel">
             <div className="panel-header">
               <span className="flex items-center gap-1.5">
                 <span className="panel-title">CONFIG</span>
@@ -531,16 +582,112 @@ export function BranchDetail() {
               </div>
 
               <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
+                <span className="label">COSTS</span>
+                {!form.costs ? (
+                  <Button tier="ghost" className="self-start" onClick={() => patch({ costs: { feeBps: 4.5 } })}>
+                    + ADD COSTS
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <label className="flex items-center gap-1">
+                      <span className="text-xs text-text-secondary">FEE BPS</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={500}
+                        step={0.5}
+                        className="w-[7ch]"
+                        value={form.costs.feeBps}
+                        onChange={(e) => patch({ costs: { ...form.costs!, feeBps: Number(e.target.value) } })}
+                        aria-label="fee in basis points"
+                      />
+                    </label>
+                    <label className="flex items-center gap-1" title="yearly funding rate on perp positions; longs pay a positive rate">
+                      <span className="text-xs text-text-secondary">FUNDING %/Y</span>
+                      <input
+                        type="number"
+                        min={-200}
+                        max={200}
+                        className="w-[7ch]"
+                        value={form.costs.fundingAprPct ?? 0}
+                        onChange={(e) => {
+                          const v = Number(e.target.value)
+                          const { fundingAprPct: _drop, ...rest } = form.costs!
+                          patch({ costs: v ? { ...rest, fundingAprPct: v } : rest })
+                        }}
+                        aria-label="funding rate percent per year"
+                      />
+                    </label>
+                    <Button tier="danger" className="!px-1.5" onClick={() => patch({ costs: null })}>
+                      ✕
+                    </Button>
+                  </div>
+                )}
+                {!form.costs && <span className="text-xs text-text-secondary">no fees or funding charged</span>}
+              </div>
+
+              <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
+                <span className="label" title="money added or withdrawn on a schedule">CASH FLOW</span>
+                {!form.cashflow ? (
+                  <Button tier="ghost" className="self-start" onClick={() => patch({ cashflow: { amountUsd: 500, every: 'monthly' } })}>
+                    + ADD CASH FLOW
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Segmented
+                      label="cash flow direction"
+                      options={FLOW_SIGN_OPTIONS}
+                      value={form.cashflow.amountUsd < 0 ? -1 : 1}
+                      onChange={(sign) => patch({ cashflow: { ...form.cashflow!, amountUsd: sign * Math.abs(form.cashflow!.amountUsd) } })}
+                    />
+                    <span className="text-text-secondary text-sm">$</span>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-[8ch]"
+                      value={Math.abs(form.cashflow.amountUsd)}
+                      onChange={(e) =>
+                        patch({ cashflow: { ...form.cashflow!, amountUsd: (form.cashflow!.amountUsd < 0 ? -1 : 1) * Number(e.target.value) } })
+                      }
+                      aria-label="cash flow amount USD"
+                    />
+                    <Segmented
+                      label="cash flow every"
+                      options={DCA_EVERY_OPTIONS}
+                      value={form.cashflow.every}
+                      onChange={(every) => patch({ cashflow: { ...form.cashflow!, every } })}
+                    />
+                    <Button tier="danger" className="!px-1.5" onClick={() => patch({ cashflow: null })}>
+                      ✕
+                    </Button>
+                  </div>
+                )}
+                {!flowValid && <span className="text-sm text-red-text">the cash flow needs an amount above $0</span>}
+              </div>
+
+              <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
+                <span className="label" title="window length for replaying the recipe from many past start dates">ROLLING</span>
+                <Segmented
+                  label="rolling window"
+                  options={ROLLING_OPTIONS}
+                  value={form.rollingWindowDays ?? -1}
+                  onChange={(v) => patch({ rollingWindowDays: v < 0 ? undefined : v })}
+                  className="self-start"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
                 <span className="label">SCENARIO</span>
                 {!form.scenario && (
                   <Button
                     tier="ghost"
-                    disabled={perp}
+                    className="self-start"
                     onClick={() =>
                       patch({
                         scenario: {
-                          horizonDays: 180,
-                          paths: 200,
+                          horizonDays: 365,
+                          paths: 300,
+                          method: 'bootstrap',
                           assumptions: nonStableCoins.map((coin) => ({ coin, annualReturnPct: 30, annualVolPct: 60 })),
                         },
                       })
@@ -549,22 +696,27 @@ export function BranchDetail() {
                     + ADD PROJECTION
                   </Button>
                 )}
-                {perp && (
-                  <span className={perpConflict ? 'text-sm text-red-text' : 'text-xs text-text-secondary'}>
-                    {perpConflict ? 'remove the projection or the perp leg' : 'projection unavailable'}: the projection only
-                    models portfolios with no short or leveraged leg
+                {perpConflict && (
+                  <span className="text-sm text-red-text">
+                    ASSUMED only models portfolios with no short or leveraged leg: switch to HISTORY or remove the perp leg
                   </span>
                 )}
                 {form.scenario && (
                   <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-1.5">
+                    <Segmented
+                      label="projection method"
+                      options={METHOD_OPTIONS}
+                      value={form.scenario.method ?? 'gbm'}
+                      onChange={(method) => patch({ scenario: { ...form.scenario!, method } })}
+                      className="self-start"
+                    />
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <label className="flex items-center gap-1">
                         <span className="text-xs text-text-secondary">DAYS</span>
                         <input
                           type="number"
                           min={1}
-                          className="w-[6ch]"
-                          disabled={perp}
+                          className="w-[8ch]"
                           value={form.scenario.horizonDays}
                           onChange={(e) => patch({ scenario: { ...form.scenario!, horizonDays: Number(e.target.value) } })}
                         />
@@ -574,20 +726,46 @@ export function BranchDetail() {
                         <input
                           type="number"
                           min={1}
-                          className="w-[6ch]"
-                          disabled={perp}
+                          className="w-[8ch]"
                           value={form.scenario.paths}
                           onChange={(e) => patch({ scenario: { ...form.scenario!, paths: Number(e.target.value) } })}
                         />
                       </label>
+                      {form.scenario.method === 'bootstrap' && (
+                        <label className="flex items-center gap-1" title="length of each block of consecutive past days stitched into a path">
+                          <span className="text-xs text-text-secondary">BLOCK</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={90}
+                            className="w-[5ch]"
+                            value={form.scenario.blockDays ?? 10}
+                            onChange={(e) => patch({ scenario: { ...form.scenario!, blockDays: Number(e.target.value) } })}
+                          />
+                        </label>
+                      )}
+                      <label className="flex items-center gap-1" title="the projection reports the share of paths that end at or above this value">
+                        <span className="text-xs text-text-secondary">TARGET $</span>
+                        <input
+                          type="number"
+                          min={0}
+                          className="w-[11ch]"
+                          value={form.scenario.targetUsd ?? ''}
+                          placeholder="—"
+                          onChange={(e) => {
+                            const v = Number(e.target.value)
+                            const { targetUsd: _drop, ...rest } = form.scenario!
+                            patch({ scenario: v > 0 ? { ...rest, targetUsd: v } : rest })
+                          }}
+                        />
+                      </label>
                     </div>
-                    {(resolvedScenario?.assumptions ?? []).map((a) => (
+                    {form.scenario.method !== 'bootstrap' && (resolvedScenario?.assumptions ?? []).map((a) => (
                       <div key={a.coin} className="flex items-center gap-1.5 text-sm">
                         <span className="w-[5ch] text-text-secondary">{a.coin}</span>
                         <input
                           type="number"
                           className="w-[6ch]"
-                          disabled={perp}
                           value={a.annualReturnPct}
                           onChange={(e) => updateAssumption(a.coin, { annualReturnPct: Number(e.target.value) })}
                         />
@@ -595,7 +773,6 @@ export function BranchDetail() {
                         <input
                           type="number"
                           className="w-[6ch]"
-                          disabled={perp}
                           value={a.annualVolPct}
                           onChange={(e) => updateAssumption(a.coin, { annualVolPct: Number(e.target.value) })}
                         />
@@ -642,7 +819,7 @@ export function BranchDetail() {
             </div>
             <div className="panel-body p-3">
               {!result && <EmptyBlock label="not simulated yet: how far the branch fell below its own highs shows here after a run" />}
-              {result && <DrawdownChart equity={result.equity} />}
+              {result && <DrawdownChart equity={result.twr ?? result.equity} />}
               {result && <DrawdownGuide className="mt-2" />}
             </div>
           </div>
@@ -657,9 +834,12 @@ export function BranchDetail() {
               {result && (
                 <>
                   <HowToRead terms={STATS_TERMS} className="mb-3">
-                    The simulation summed up in five numbers, each over the whole period from the start date to the latest daily close.
+                    The simulation summed up, each number over the whole period from the start date to the latest daily close.
                   </HowToRead>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <StatCell label="RETURN" className={signClass(branchReturnPct(result, form.initialCapitalUsd))}>
+                      {fmtPct(branchReturnPct(result, form.initialCapitalUsd) / 100, { decimals: 1, sign: true })}
+                    </StatCell>
                     <StatCell label="CAGR" className={signClass(result.stats.cagrPct)}>
                       {fmtPct(result.stats.cagrPct / 100, { decimals: 1, sign: true })}
                     </StatCell>
@@ -673,11 +853,53 @@ export function BranchDetail() {
                     <StatCell label="VS USDC" className={signClass(result.stats.vsUsdcPct)}>
                       {fmtPct(result.stats.vsUsdcPct / 100, { decimals: 1, sign: true })}
                     </StatCell>
+                    {result.stats.volPct != null && (
+                      <>
+                        <StatCell label="VOL">{fmtPct(result.stats.volPct / 100, { decimals: 1 })}</StatCell>
+                        <StatCell label="SHARPE / SORTINO">
+                          {result.stats.sharpe!.toFixed(2)} / {result.stats.sortino!.toFixed(2)}
+                        </StatCell>
+                        <StatCell label="CALMAR">{result.stats.calmar!.toFixed(2)}</StatCell>
+                        <StatCell label="LONGEST DD">{result.stats.longestDrawdownDays}D</StatCell>
+                        <StatCell label="FEES">{fmtUsd(result.stats.feesUsd ?? 0, { decimals: 0 })}</StatCell>
+                        <StatCell label="FUNDING">{fmtUsd(result.stats.fundingUsd ?? 0, { decimals: 0 })}</StatCell>
+                        {!!result.stats.netFlowUsd && <StatCell label="NET IN">{fmtUsd(result.stats.netFlowUsd, { decimals: 0 })}</StatCell>}
+                      </>
+                    )}
                   </div>
                   <div className="text-xs text-text-secondary mt-3">
-                    historical simulation on daily closes · no fees, slippage or funding are charged · a perp leg is liquidated only when its whole margin is lost
+                    historical simulation on daily closes · {form.costs ? `fees ${form.costs.feeBps} bps${form.costs.fundingAprPct ? `, funding ${form.costs.fundingAprPct}%/y on perp legs` : ''}` : 'no fees or funding charged'} · no slippage · a perp leg is liquidated only when its whole margin is lost
                   </div>
                 </>
+              )}
+            </div>
+          </div>
+
+          {/* ROLLING STARTS */}
+          <div className="order-5 lg:order-none lg:col-start-5 lg:col-span-8 lg:row-start-4 panel">
+            <div className="panel-header">
+              <span className="panel-title">ROLLING STARTS</span>
+              {result?.rolling && <span className="text-sm text-text-secondary tabular">{result.rolling.windowDays}D WINDOWS</span>}
+            </div>
+            <div className="panel-body p-3">
+              {!result && <EmptyBlock label="not simulated yet: the same recipe replayed from many past start dates shows here after a run" />}
+              {result && !result.rolling && (
+                <EmptyBlock label={form.rollingWindowDays === 0 ? 'rolling starts are off (ROLLING in the config)' : 'history too short: rolling starts need at least twice the window (60 days for 30D)'} />
+              )}
+              {result?.rolling && <RollingPanel rolling={result.rolling} />}
+            </div>
+          </div>
+
+          {/* MONTHLY */}
+          <div className="order-6 lg:order-none lg:col-start-5 lg:col-span-8 lg:row-start-5 panel">
+            <div className="panel-header">
+              <span className="panel-title">MONTHLY RETURNS</span>
+            </div>
+            <div className="panel-body p-3">
+              {!result?.monthly?.length ? (
+                <EmptyBlock label="not simulated yet: the return of each calendar month, in percent, shows here after a run" />
+              ) : (
+                <MonthlyTable monthly={result.monthly} />
               )}
             </div>
           </div>

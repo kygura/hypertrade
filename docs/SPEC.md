@@ -81,15 +81,29 @@ Series naming: `hl.total_oi_usd`, `hl.funding_skew`, `hl.premium.<coin>`, `hl.oi
   "initialCapitalUsd": 10000,
   "allocations": [{ "coin": "ETH", "weightPct": 60 }, { "coin": "USDC", "weightPct": 40 }],
   "rebalance": "none" | "monthly" | "weekly" | "threshold5pct",
+  "costs": { "feeBps": 4.5, "fundingAprPct": 10 },   // optional; fee on every traded notional, funding daily on perp notional
+  "cashflow": { "amountUsd": 500, "every": "monthly" }, // optional; negative = withdrawal
+  "rollingWindowDays": 365,           // optional; default 365/90/30 (longest that fits twice), 0 = off
   "scenario": {                       // optional forward projection
     "horizonDays": 180,
     "assumptions": [{ "coin": "ETH", "annualReturnPct": 40, "annualVolPct": 70 }],
-    "paths": 200                      // monte carlo paths; medians + p10/p90 band reported
+    "paths": 200,                     // monte carlo paths; median, p10/p90 and p25/p75 bands reported
+    "method": "gbm" | "bootstrap",    // optional, default gbm
+    "blockDays": 10,                  // bootstrap block length
+    "targetUsd": 50000                // optional; share of paths ending at or above it
   }
 }
 ```
 
-Simulation engine (`src/server/sim/`): daily resolution over `candles` (backfilled on demand by the chart sync engine, `src/server/market/candleSync.ts`: Hyperliquid daily bars, then Binance spot and Bitstamp below HL's listing), computes equity curve, max drawdown, CAGR, vs-HODL-BTC and vs-100%-USDC benchmarks; forward monte-carlo (GBM per assumptions) when `scenario` present. Results cached in `branch_results`, recomputed on config change or explicit refresh. USDC/USDT are constant-$1 assets.
+Simulation engine (`src/server/sim/`): daily resolution over `candles` (backfilled on demand by the chart sync engine, `src/server/market/candleSync.ts`: Hyperliquid daily bars, then Binance spot and Bitstamp below HL's listing), computes equity curve, max drawdown, CAGR, vs-HODL-BTC and vs-100%-USDC benchmarks; forward monte-carlo when `scenario` present. Results cached in `branch_results`, recomputed on config change or explicit refresh. USDC/USDT are constant-$1 assets.
+
+Backtest and wealth additions (all optional; a config without them simulates exactly as before):
+
+- **Costs.** `feeBps` is charged on traded notional: the entry, the turnover back to target on a rebalance, each DCA buy, the invested part of a deposit and what a withdrawal sells (stables are cash, never a trade). `fundingAprPct` accrues daily on each perp leg's open notional out of its margin (longs pay a positive rate, shorts receive). No slippage model.
+- **Cash flows.** `cashflow` adds money at the target weights (perp legs realize and re-enter) or withdraws the same fraction of every holding, on the rebalance bucket boundaries; a withdrawal larger than the pot empties it. The BTC/USDC benchmarks get the same flows and fee rate, so VS BTC compares like with like.
+- **Stats.** Growth stats are time-weighted (a unit index with flows taken out): `twrPct`, CAGR, max drawdown, vol, Sharpe, Sortino (365-day year, zero risk-free rate), Calmar, longest drawdown in days, plus `feesUsd`, `fundingUsd`, `netFlowUsd`, calendar-month returns, and `twr` (the index scaled to starting capital, only with a cashflow). Without a cashflow, CAGR and max drawdown are the same numbers as before.
+- **Rolling starts.** The same config re-run from every 7th day of the grid (wider when more than 260 starts), each held `rollingWindowDays`; per start the time-weighted return, VS BTC and max drawdown, and a summary (median, p10/p90, worst, best, share positive, share beating BTC). Windows overlap, so starts are not independent.
+- **Projection.** `gbm` blends the typed assumptions into one asset (unlevered long-only only). `bootstrap` strings together random `blockDays` blocks of the branch's own simulated daily returns, so fees, funding and perp legs carry over; it needs 60 days of history, else the projection is skipped with a `notes` entry. Both continue the cashflow (no fees forward) and report a summary: put in by the horizon, p10/median/p90 end values, share ending below what was put in, share at or above `targetUsd`, share that ran out (withdrawals).
 
 ## Routine Contract (summary; the full ROUTINE.md runbook was removed on 2026-11-14)
 
@@ -145,7 +159,7 @@ App-side: `data/**/*.json` files are bundled at build time via static imports �
 - `/moves` **MOVES** (QUEUE · MOVES, the second tab of the first family; § Moves) — the factor strip, the moves table ranked by |residual z| and the selected coin's attribution, agent record, positioning, liquidation proximity, attention and condition checks. `?window=4h|24h|72h`, `?coin=`, `?sector=`. Explained after the fact; nothing on it approves or places an order.
 - **QUEUE** family (`MarketTabs`: QUEUE, MOVES, HTF; MARKETS, SECTORS, STATE and CYCLES are hidden from the row since 2026-11-11, routes kept) — `/queue`, `/coin/:coin`, `/moves`, `/markets`, `/sectors`, `/state`, `/cycles`, `/htf` and their drills, one shell cell, the first and the landing. ASK is not a cell: a header button opens a drawer over the current screen (docs/RESEARCH.md "Nav"); it knows the coin in view and, when that coin is in the queue, the item's facts, and shares the `/analyst` ASK thread.
 - **RESEARCH** family (`LabTabs`, workflow order: BOARD, STUDY, RULES (the catalogue), BRANCHES; SEARCH, RUNS and PULSE are hidden from the row, routes kept, SEARCH and RUNS linked from the RULES page) — `/board`, `/lab/*` and `/branches`, one shell cell.
-- `/branches` — list + create; `/branches/:id` — back link `← BRANCHES`; editor (allocation table, rebalance, scenario) + equity curve vs benchmarks + drawdown + forward projection fan chart
+- `/branches` — list + create; `/branches/:id` — back link `← BRANCHES`; editor (allocation table, DCA, rebalance, costs, cash flow, rolling window, scenario) + equity curve vs benchmarks + forward projection fan with its odds + drawdown (time-weighted) + stats + rolling starts + monthly returns
 - `/sectors` — mindshare treemap/grid of routine-defined sectors sized by mindshare, colored by momentum; rotations list; per-sector drill-in with token-level OI/funding. One selection drives both the narratives panel and the sector drill-in
 - `/state` — full MarketState briefing (domains, thesis with Observe/Infer/Forecast, risks) + history browser + trigger button
 - `/markets` — hidden from the nav, still renders: Hyperliquid universe table (price, 24h, OI, funding). `/markets/:coin` is a redirect to `/coin/:coin?chart=price` (plus `&tf=` when given); the live perp context, the multi-timeframe chart (1m–1M, stitched deep history, funding/OI/premium panes) and cross-venue funding are the coin page's PRICE view.
@@ -228,7 +242,7 @@ SAVE AS BRANCH (user click) ──► existing POST /api/branches
    - clamps leverage to the coin's Hyperliquid max leverage when `maxLeverage` is provided (warn), else the schema's 50;
    - forces `rebalance: "none"` when `dca` is present (warn);
    - **listing clamp**: moves `startDate` to the latest first-candle date across the branch's non-stable coins when the requested start precedes it (warn) — the engine's flat backward extrapolation would otherwise flatter CAGR;
-   - drops `scenario` for branches with any perp leg (warn: "projection skipped — Monte Carlo models unlevered long-only portfolios"); otherwise runs `runMonteCarlo` exactly as `/branches/:id/run` does;
+   - drops a `gbm` `scenario` for branches with any perp leg (warn: "projection skipped …"); a `bootstrap` scenario is kept; otherwise runs `runMonteCarlo` exactly as `/branches/:id/run` does;
    - attaches engine-generated caveats (perp legs → "no funding, no fees, liquidation on daily lows/highs only"); the LLM never authors these.
    - Output per branch: `{ name, config (normalized), result?: BranchResult & { montecarlo? }, warnings: string[], error?: string }`.
    - The simulate step is shared with the branches route: `src/server/sim/run.ts` `runBranchConfig(config, deps)` (backfill → load candles incl. l/h → simulate → montecarlo) replaces the inline code in `routes/branches.ts` `POST /:id/run` (same responses, same caching).
@@ -750,7 +764,7 @@ A dismissed coin keeps its slot in the day's budget. Only today's items can be d
 
 - The ENGINE pages only proxy operator actions to the Hyperion core, which owns its own governor and venues.
 - LLM calls anywhere except the Analyst (incl. its SIMULATE mode), the Desk and Intel (§ Intel). Multi-user/accounts. Telegram delivery outside the Desk notifier and Intel alerts. The terminal client in `tui/` (Ink, `bun run tui`) is a separate package with its own `tui/SPEC.md`.
-- Paths v1: the Desk/paper bridge, per-position open/close dates, funding and fee modelling, Monte Carlo for levered or short branches.
+- Paths v1: the Desk/paper bridge, per-position open/close dates, slippage, historical (per-day) funding rates instead of a flat APR, per-coin correlated GBM.
 
 ## Glossary — five kinds of "rule"
 
