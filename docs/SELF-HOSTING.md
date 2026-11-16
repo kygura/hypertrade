@@ -100,12 +100,12 @@ The container needs only Docker and the env file; the database is outside it. On
 
 ```bash
 git clone https://github.com/kygura/hypertrade && cd hypertrade
-cp .env.example deploy/.env          # paste the values (section 4); never commit it
-DOMAIN=hypertrade.example.com docker compose -f deploy/compose.yml --profile tls up -d --build
+cp .env.example deploy/.env          # paste the values (section 4), plus DOMAIN=hypertrade.example.com; never commit it
+docker compose -f deploy/compose.yml --profile tls up -d --build
 docker compose -f deploy/compose.yml logs -f app   # [cron] lines at the next quarter hour
 ```
 
-`deploy/compose.yml` runs the app on `127.0.0.1:8787` and, with profile `tls`, Caddy on 80/443 with an automatic certificate for `$DOMAIN` (`deploy/Caddyfile`). Without the profile, put your own proxy in front of 8787. Then:
+`deploy/compose.yml` runs the app on `127.0.0.1:8787` and, with profile `tls`, Caddy on 80/443 with an automatic certificate for `DOMAIN` (`deploy/Caddyfile`). Keep `DOMAIN` in `deploy/.env`: compose reads it from there on every command, `logs` and `down` included, and stops with an error when it is missing. Without the profile, put your own proxy in front of 8787. Then:
 
 1. Stop the old container first (only one host should run the jobs).
 2. Move the DNS record to the new IP. With TTL 300 the switch takes minutes.
