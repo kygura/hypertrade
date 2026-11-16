@@ -2,13 +2,12 @@ import { Area, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip,
 import type { EquityPoint, MonteCarloResult } from '../branches/types'
 import { fmtChartDate, fmtUsdCompact } from '../branches/format'
 import { fmtUsd } from '../../../shared/format'
-import { buildBandData, ProjectionReadout } from './FanChart'
+import { buildChartRows, ProjectionReadout } from './FanChart'
 import { HowToRead, type Term } from '../HowToRead'
 
 // Equity curve vs benchmarks — docs/design/README.md §9.1 (+ §9.3 forward fan on the
-// same chart). One ComposedChart; each series carries its own `data` so
-// history/benchmarks (dense) and projection (sparser, continues past
-// history) don't need to be pre-merged into one array.
+// same chart). One ComposedChart over one merged array (buildChartRows): history rows carry
+// value/btc/usdc, projection rows carry band/inner/median, and each line breaks where its key is absent.
 
 const LEGEND = [
   { glyph: '—', label: 'BRANCH', color: 'var(--color-equity)' },
@@ -40,8 +39,9 @@ export function EquityGuide({ projection, className }: { projection: boolean; cl
   )
 }
 
-function tooltipFormatter(value: number) {
-  return fmtUsd(value, { decimals: 0 })
+function tooltipFormatter(value: number | [number, number]) {
+  const usd = (v: number) => fmtUsd(v, { decimals: 0 })
+  return Array.isArray(value) ? `${usd(value[0])} – ${usd(value[1])}` : usd(value)
 }
 
 export function EquityChart({
@@ -57,8 +57,9 @@ export function EquityChart({
   projection?: MonteCarloResult
   height?: number
 }) {
-  const band = projection ? buildBandData(projection) : []
-  const todayTs = band[0]?.ts
+  const rows = buildChartRows(equity, btc, usdc, projection)
+  const todayTs = projection?.median[0]?.ts
+  const hasInner = rows.some((r) => r.inner)
 
   return (
     <div>
@@ -70,7 +71,7 @@ export function EquityChart({
         ))}
       </div>
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={equity} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+        <ComposedChart data={rows} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
           <XAxis
             dataKey="ts"
             type="number"
@@ -96,11 +97,11 @@ export function EquityChart({
             }}
           />
 
-          <Line dataKey="value" data={equity} stroke="var(--color-equity)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-          <Line dataKey="value" data={btc} stroke="var(--color-bench-btc)" strokeWidth={1} dot={false} isAnimationActive={false} />
+          <Line dataKey="value" name="BRANCH" stroke="var(--color-equity)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+          <Line dataKey="btc" name="HODL BTC" stroke="var(--color-bench-btc)" strokeWidth={1} dot={false} isAnimationActive={false} />
           <Line
-            dataKey="value"
-            data={usdc}
+            dataKey="usdc"
+            name="USDC"
             stroke="var(--color-bench-usdc)"
             strokeWidth={1}
             strokeDasharray="4 3"
@@ -110,24 +111,11 @@ export function EquityChart({
 
           {projection && (
             <>
-              <Area dataKey="p10" data={band} stackId="band" stroke="none" fill="transparent" isAnimationActive={false} />
-              <Area
-                dataKey="bandHeight"
-                data={band}
-                stackId="band"
-                stroke="none"
-                fill="var(--color-proj-band)"
-                isAnimationActive={false}
-              />
-              {band[0]?.innerHeight != null && (
-                <>
-                  <Area dataKey="p25" data={band} stackId="inner" stroke="none" fill="transparent" isAnimationActive={false} />
-                  <Area dataKey="innerHeight" data={band} stackId="inner" stroke="none" fill="var(--color-proj-band)" isAnimationActive={false} />
-                </>
-              )}
+              <Area dataKey="band" name="P10 – P90" stroke="none" fill="var(--color-proj-band)" isAnimationActive={false} />
+              {hasInner && <Area dataKey="inner" name="P25 – P75" stroke="none" fill="var(--color-proj-band)" isAnimationActive={false} />}
               <Line
                 dataKey="median"
-                data={band}
+                name="MEDIAN"
                 stroke="var(--color-proj-line)"
                 strokeWidth={1.5}
                 strokeDasharray="6 3"

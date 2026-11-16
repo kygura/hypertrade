@@ -1,31 +1,49 @@
 import type { BranchConfig } from '../../../shared/types'
-import type { MonteCarloResult } from '../branches/types'
+import type { EquityPoint, MonteCarloResult } from '../branches/types'
 import { fmtUsdCompact } from '../branches/format'
 
-// Monte-carlo fan — docs/design/README.md §9.3. `buildBandData` is the data prep for the
-// band+median recipe EquityChart draws inline on its own combined chart.
+// Monte-carlo fan — docs/design/README.md §9.3. `buildChartRows` is the data prep for the
+// combined history + fan chart EquityChart draws.
 
-export interface FanPoint {
+export interface ChartRow {
   ts: number
-  p10: number
-  bandHeight: number // p90 - p10, stacked on top of p10 to draw the range
-  median: number
-  p25?: number // inner band (p25..p75), absent on results cached before it existed
-  innerHeight?: number
+  value?: number // branch equity
+  btc?: number
+  usdc?: number
+  band?: [number, number] // p10..p90
+  inner?: [number, number] // p25..p75, absent on results cached before it existed
+  median?: number
 }
 
-export function buildBandData(projection: MonteCarloResult): FanPoint[] {
-  return projection.median.map((m, i) => {
+/**
+ * One array for the whole chart, keyed by day. Recharts computes the x domain and any stacking from
+ * a single data set, so series with their own `data` drew no fan and cut the axis at the last
+ * history day; ranged areas ([low, high] per row) need no stacking at all.
+ */
+export function buildChartRows(
+  equity: EquityPoint[],
+  btc: EquityPoint[],
+  usdc: EquityPoint[],
+  projection?: MonteCarloResult,
+): ChartRow[] {
+  const rows = new Map<number, ChartRow>()
+  const row = (ts: number) => {
+    let r = rows.get(ts)
+    if (!r) rows.set(ts, (r = { ts }))
+    return r
+  }
+  for (const p of equity) row(p.ts).value = p.value
+  for (const p of btc) row(p.ts).btc = p.value
+  for (const p of usdc) row(p.ts).usdc = p.value
+  projection?.median.forEach((m, i) => {
+    const r = row(m.ts)
+    r.median = m.value
+    r.band = [projection.p10[i]?.value ?? m.value, projection.p90[i]?.value ?? m.value]
     const p25 = projection.p25?.[i]?.value
     const p75 = projection.p75?.[i]?.value
-    return {
-      ts: m.ts,
-      p10: projection.p10[i]?.value ?? m.value,
-      bandHeight: (projection.p90[i]?.value ?? m.value) - (projection.p10[i]?.value ?? m.value),
-      median: m.value,
-      ...(p25 != null && p75 != null && { p25, innerHeight: p75 - p25 }),
-    }
+    if (p25 != null && p75 != null) r.inner = [p25, p75]
   })
+  return [...rows.values()].sort((a, b) => a.ts - b.ts)
 }
 
 // Terminal readout — plain text, not chart labels (docs/design/README.md §9.3).
