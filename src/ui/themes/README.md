@@ -46,12 +46,16 @@ reproduce Hyperion exactly.
 | `--color-green`, `--color-green-text`, `--color-green-bg` | up / positive |
 | `--color-red`, `--color-red-text`, `--color-red-bg`, `--color-red-accent` | down / negative / danger |
 | `--color-amber`, `--color-amber-bg`, `--color-info`, `--color-info-bg` | warning, informational; info also marks model inference (HYP claims, LLM-proposed edges) |
-| `--color-flash-up`, `--color-flash-down` | tick flash |
+| `--color-flash-up`, `--color-flash-down` | reserved; nothing flashes (docs/design/desk-calm.md) |
 | `--color-scrim`, `--color-focus`, `--shadow-overlay` | modal scrim, focus ring, overlay shadow |
 | `--color-scrollbar`, `--color-scrollbar-hover` | scrollbar thumb |
 | `--color-src-hl` | Hyperliquid provenance tag |
 | `--color-mom-neg2 … --color-mom-pos2` | sector momentum ramp (5 buckets) |
 | `--color-proj-line`, `--color-proj-band`, `--color-bench-btc`, `--color-bench-usdc`, `--color-equity`, `--color-drawdown-fill`, `--color-drawdown-line` | chart series |
+
+**Calm-desk rules** (docs/design/desk-calm.md §4): up/down tokens are muted and
+low-saturation; text tokens ≥ 4.5:1 on panel, elevated and hover; fills ≥ 3:1. No
+infinite animation; motion ≥ 300 ms eased, enforced by `src/ui/motion.test.ts`.
 
 **Type:** `--font-sans` (UI text), `--font-mono` (numbers, tables, inputs),
 `--font-display` (wordmark), `--font-control` (buttons, tabs, badges);

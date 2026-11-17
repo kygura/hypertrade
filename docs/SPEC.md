@@ -179,6 +179,8 @@ Design language: dark-only, zero radius, dense terminal aesthetic, driven by tok
 
 ## Desk (phase 3)
 
+**Calm desk.** docs/design/desk-calm.md wins over this section where they disagree: orders come only from a written plan (`/api/desk/plans`), live dollar P&L is hidden until asked for, and a stop-out locks entries (`/api/desk/cooldown`).
+
 An agentic portfolio desk inside the app: a PM agent runs a roster of specialist agents (flows, macro/fiscal, news, on-chain, risk, narratives) and can spawn ad-hoc ones, answers operator questions ("is this rally a bull trap or genuine flow, does macro and fiscal policy support it"), and in autonomous cycles proposes entries, exits and alerts. Code: `src/server/desk/`, `src/server/routes/desk.ts`, `src/ui/pages/Desk.tsx`, `scripts/desk-worker.ts`; README.md "Desk" has the detail.
 
 - **Models**: Anthropic-first. With an Anthropic key the PM runs Claude Opus 5.5 and scouts Claude Sonnet 5.5 (Claude models in `DESK_ANALYST_MODEL` / `DESK_SCOUT_MODEL` override), regardless of `ANALYST_PROVIDER` / `DESK_SCOUT_PROVIDER`; `DESK_ANTHROPIC_FIRST=false` turns this off. Without an Anthropic key the PM (and `/analyst`) run on `DESK_ANALYST_MODEL` (any vendor) and scouts on the same provider unless `DESK_SCOUT_PROVIDER` / `DESK_SCOUT_MODEL` override them. PM effort high, scouts medium.
