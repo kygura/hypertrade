@@ -209,6 +209,34 @@ export function presetCredentials(preset: Preset, env: AnalystEnv) {
 }
 
 /**
+ * The model to run on `provider`, given a DESK_ANALYST_MODEL / DESK_SCOUT_MODEL
+ * value that was written for `writtenFor` (by default the configured
+ * ANALYST_PROVIDER). Those env vars are plain strings, so when the default or
+ * a fallback lands on a different vendor, a model meant for another one
+ * ("kimi-k3") must not be sent there:
+ *   - anthropic only takes claude-* ids;
+ *   - the provider the value was written for takes it as is (presets such as
+ *     OpenRouter accept ids beyond the curated list), as does openai-compatible;
+ *   - any other preset takes it only when it is in that preset's catalog.
+ * Otherwise the provider's own default model.
+ */
+export function modelFor(
+  provider: ProviderId,
+  requested: string | undefined,
+  env: AnalystEnv,
+  writtenFor: ProviderId | "unknown" = rawProviderKind(env),
+): string | undefined {
+  const want = requested?.trim() || undefined;
+  if (provider === "anthropic") return want?.startsWith("claude-") ? want : DEFAULT_MODEL;
+  if (want && (provider === writtenFor || provider === "openai-compatible")) return want;
+  if (provider === "openai-compatible") return want;
+  const preset = presetById(provider);
+  if (!preset) return want;
+  const models = presetConfig(preset, env).models;
+  return want && models.some((m) => m.id === want) ? want : models[0]?.id;
+}
+
+/**
  * Builds the server-default provider, or null when it is not configured
  * (no key, or openai-compatible without a base URL, or an unrecognised
  * ANALYST_PROVIDER). Keys stay server-side: they are read here and never
@@ -221,7 +249,7 @@ export function resolveProvider(env: AnalystEnv = process.env as AnalystEnv): LL
   if (raw === "anthropic") {
     const { apiKey, baseURL, workspaceId } = anthropicCredentials(env);
     if (!apiKey) return null;
-    const model = env.DESK_ANALYST_MODEL?.trim() || DEFAULT_MODEL;
+    const model = modelFor("anthropic", env.DESK_ANALYST_MODEL, env)!;
     return new AnthropicProvider({ apiKey, model, baseURL, workspaceId, effort: parseEffort(env.ANALYST_EFFORT) });
   }
   if (raw === "openai-compatible") {
@@ -231,9 +259,7 @@ export function resolveProvider(env: AnalystEnv = process.env as AnalystEnv): LL
     return new OpenAICompatibleProvider({ apiKey, model, baseURL });
   }
   if (raw !== "unknown") {
-    const preset = presetById(raw)!;
-    const cfg = presetCredentials(preset, env);
-    const model = env.DESK_ANALYST_MODEL?.trim() || cfg.models[0]?.id;
+    const model = modelFor(raw, env.DESK_ANALYST_MODEL, env);
     if (!model) return null;
     return resolveChosenProvider(env, { provider: raw, model, effort: env.ANALYST_EFFORT ? parseEffort(env.ANALYST_EFFORT) : undefined });
   }

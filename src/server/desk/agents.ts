@@ -5,6 +5,7 @@ import { providerError } from "../llm/providerError.js";
 import {
   DEFAULT_MODEL,
   isProviderId,
+  modelFor,
   resolveChosenProvider,
   resolveProvider,
   type AnalystEnv,
@@ -108,7 +109,9 @@ export function deskProviderFactory(env: AnalystEnv = process.env as AnalystEnv)
         console.warn(`[desk] DESK_SCOUT_PROVIDER=${scoutProviderId} could not resolve (unknown provider, no key, or unknown model) — scouts fall back to the analyst's provider`);
       }
     }
-    return resolveChosenProvider(env, { provider: base.id, model: scoutModel || base.model, effort }) ?? base;
+    // DESK_SCOUT_MODEL may name another vendor's model (it was written for DESK_SCOUT_PROVIDER): only reuse it on the base provider when it belongs there.
+    const fallbackModel = scoutModel && modelFor(base.id, scoutModel, env, scoutProviderId && isProviderId(scoutProviderId) ? scoutProviderId : undefined) === scoutModel ? scoutModel : base.model;
+    return resolveChosenProvider(env, { provider: base.id, model: fallbackModel, effort }) ?? base;
   };
 }
 
