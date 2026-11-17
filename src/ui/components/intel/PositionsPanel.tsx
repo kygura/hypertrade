@@ -82,7 +82,7 @@ export function PositionsPanel({
               <ErrorBlock key={s.source} message={`${SOURCE_LABEL[s.source]} — ${s.error ?? 'failed'}`} onRetry={positions.refetch} />
             ))}
             {allOkEmpty && !form.open ? (
-              <EmptyBlock label="no positions — add one, or set DESK_WATCH_ADDRESS" action={{ label: 'ADD POSITION', onClick: openAdd }} />
+              <EmptyBlock label="No plan open. Nothing to do. Add a position, or set DESK_WATCH_ADDRESS to read an account." action={{ label: 'ADD POSITION', onClick: openAdd }} />
             ) : (
               data.positions.length > 0 && <PositionsTable positions={data.positions} onEdit={openEdit} />
             )}

@@ -197,7 +197,7 @@ function deps(provider: LLMProvider | null = null) {
   return { ...kit, deps: d };
 }
 
-const ETH_ORDER: OrderIntent = { asset: "eth", side: "long", leverage: 3, size: { usd: 800 }, entry: { type: "market" }, stop: { type: "pct", pct: 5 } };
+const ETH_ORDER: OrderIntent = { asset: "eth", side: "long", leverage: 3, size: { usd: 800 }, entry: { type: "market" }, stop: { type: "pct", pct: 5 }, target: 4500 };
 const httpStatus = (p: Promise<unknown>) =>
   p.then(
     () => 0,

@@ -1,4 +1,6 @@
+import type { ActiveLocks } from "../../shared/deskPlan.js";
 import { confidenceAtLeast, type GovernorLimits } from "./config.js";
+import { lockReasons } from "./cooldown.js";
 import type { AccountState, ExitProposal, OperatorOrder, RiskOrder, Sizing, TradeProposal, Verdict } from "./types.js";
 
 // The governor: deterministic risk rules between the agents and the book.
@@ -19,6 +21,8 @@ export interface GovernorContext {
   account: AccountState;
   market: MarketRef | null;
   killSwitch: boolean;
+  /** Stop-out cooldowns in force (cooldown.ts activeLocks): a locked coin, or all coins, refuses every new entry. */
+  locks: ActiveLocks;
   now: Date;
 }
 
@@ -34,6 +38,24 @@ export function floorToDecimals(x: number, decimals: number): number {
 export function openRiskUsd(p: AccountState["positions"][number]): number {
   if (p.stopPx == null) return p.notionalUsd; // unprotected: the whole notional is at risk
   return Math.max(0, p.side === "long" ? (p.markPx - p.stopPx) * p.size : (p.stopPx - p.markPx) * p.size);
+}
+
+/** Today's possible loss: what is already lost today (negative day PnL), every open position's stop risk, and the new trade's. */
+export function dailyPossibleLossReason(account: AccountState, addUsd: number, limits: Pick<GovernorLimits, "dailyLossLimitPct">): string | null {
+  const equity = account.equityUsd;
+  if (!(equity > 0)) return null;
+  const lost = Math.max(0, -account.dayPnlUsd);
+  const open = account.positions.reduce((a, x) => a + openRiskUsd(x), 0);
+  const limit = (limits.dailyLossLimitPct / 100) * equity;
+  const possible = lost + open + addUsd;
+  if (possible <= limit + 1e-9) return null;
+  return `today's possible loss ${r2(possible)} USD (lost ${r2(lost)} + open stop risk ${r2(open)} + this trade ${r2(addUsd)}) would pass the ${limits.dailyLossLimitPct}% daily limit (${r2(limit)} USD)`;
+}
+
+/** Most notional a new position may carry: the gross-leverage room left and the per-coin leverage cap. */
+export function notionalCap(limits: Pick<GovernorLimits, "maxGrossLeverage" | "maxCoinLeverage">, account: AccountState): number {
+  const gross = account.positions.reduce((a, x) => a + x.notionalUsd, 0);
+  return Math.min(limits.maxGrossLeverage * account.equityUsd - gross, limits.maxCoinLeverage * account.equityUsd);
 }
 
 /** A trade proposal: its proposal-only check (confidence), then every risk check. */
@@ -66,6 +88,7 @@ function assess(p: RiskOrder, ctx: GovernorContext, proposalReasons: string[]): 
   });
 
   if (ctx.killSwitch) reasons.push("kill switch is on: no new entries");
+  reasons.push(...lockReasons(ctx.locks, market?.coin ?? p.coin));
   if (!account.available) reasons.push(`account unavailable${account.note ? `: ${account.note}` : ""}`);
   if (!(equity > 0)) reasons.push("no equity");
   if (!market) {
@@ -111,9 +134,7 @@ function assess(p: RiskOrder, ctx: GovernorContext, proposalReasons: string[]): 
 
   let notional = riskUsd / (stopDistPct / 100);
   const gross = account.positions.reduce((a, x) => a + x.notionalUsd, 0);
-  const grossRoom = limits.maxGrossLeverage * equity - gross;
-  const coinCap = limits.maxCoinLeverage * equity;
-  const cap = Math.min(grossRoom, coinCap);
+  const cap = notionalCap(limits, account);
   if (notional > cap) {
     warnings.push(`notional capped at ${r2(Math.max(0, cap))} USD by leverage limits (gross ${limits.maxGrossLeverage}x, per coin ${limits.maxCoinLeverage}x)`);
     notional = Math.max(0, cap);
@@ -122,6 +143,8 @@ function assess(p: RiskOrder, ctx: GovernorContext, proposalReasons: string[]): 
   notional = size * mark;
   riskUsd = notional * (stopDistPct / 100);
   if (notional < limits.minNotionalUsd) reasons.push(`order would be ${r2(notional)} USD, under the ${limits.minNotionalUsd} USD minimum`);
+  const daily = dailyPossibleLossReason(account, riskUsd, limits);
+  if (daily) reasons.push(daily);
 
   const feeUsd = notional * limits.takerFee * 2;
   if (riskUsd > 0 && feeUsd / riskUsd > 0.15) warnings.push(`round-trip fees are ${r2((feeUsd / riskUsd) * 100)}% of the risk`);

@@ -1,5 +1,6 @@
 import { evaluateRisk, floorToDecimals, type GovernorContext, type MarketRef } from "../../../src/server/desk/governor.js";
 import type { AccountState, RiskOrder } from "../../../src/server/desk/types.js";
+import { NO_LOCKS } from "../../../src/server/desk/cooldown.js";
 import { roundPerpPx } from "../../../src/server/desk/hl/wire.js";
 import { resolveOrder, type OrderMarket } from "../../../src/server/intel/order-resolve.js";
 import { walkBook } from "../../../src/server/platform/costs.js";
@@ -313,13 +314,14 @@ async function buildOpen(action: OpenTicketAction, deps: TicketDeps, now: Date):
   if (resting.length) t.notes.push(`${resting.length} resting entry order(s) counted as exposure by the governor (without a visible stop, their whole notional counts as risk)`);
 
   const ref: MarketRef = { coin: m.coin, markPx: entryPx, szDecimals: m.szDecimals, isDelisted: m.isDelisted };
-  const ctx: GovernorContext = { limits: governorLimits(config.limits), account: toAccountState(account, config.network), market: ref, killSwitch: false, now };
+  const ctx: GovernorContext = { limits: governorLimits(config.limits), account: toAccountState(account, config.network), market: ref, killSwitch: false, now, locks: NO_LOCKS };
   // Full-precision risk percent: the resolver's rounded one could make the governor floor one size step lower.
   const resolvedRiskPct = ((r.resolved.size * Math.abs(entryPx - stopPx)) / account.equityUsd) * 100;
   const order: RiskOrder = { coin: m.coin, side: intent.side, stop: stopPx, riskPct: resolvedRiskPct, ...(rounded.target != null ? { target: rounded.target } : {}) };
   const verdict = evaluateRisk(order, ctx);
   t.verdict = verdict;
   t.notes.push("governor daily-loss limit not checked: day PnL is not available from the account snapshot");
+  t.notes.push("desk stop-out cooldown not checked: it lives in the desk server's store, which the terminal client does not read");
   for (const reason of verdict.reasons) if (!t.blockers.includes(reason)) t.blockers.push(reason);
 
   let qty = r.resolved.size;

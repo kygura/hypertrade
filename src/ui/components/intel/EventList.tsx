@@ -8,7 +8,7 @@ import { NoNarrationRow } from './AlertItem'
 import { eventKey } from './AssetTimeline'
 import { ClaimLine } from './ClaimLine'
 import { flagWord, numbersLine } from './flow'
-import { fmtCountdown, fmtMdHm } from './format'
+import { fmtMdHm, fmtUntil } from './format'
 import { STATUS_TONE, STATUS_WORD } from './research'
 import { RESEARCH_ANCHOR } from './ResearchPanel'
 import { ResearchCard } from './ResearchCard'
@@ -65,7 +65,7 @@ export function EventList({
       {upcoming.map((c) => (
         <li key={c.eventId} className="flex items-start gap-3 px-3 py-1.5 border-b border-border-subtle text-md">
           <span className="w-[11ch] flex-shrink-0 text-xs tabular text-text-primary" title={fmtTs(c.scheduledAt)}>
-            {fmtCountdown(c.scheduledAt, now)}
+            {fmtUntil(c.scheduledAt, now)}
           </span>
           <span className="flex flex-wrap items-center gap-2 min-w-0">
             <Badge tone="gray">OBS</Badge>

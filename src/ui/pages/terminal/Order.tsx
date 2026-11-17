@@ -49,7 +49,7 @@ const ORDER_TERMS: Term[] = [
   ['GOVERNOR', 'The desk\'s fixed risk rules run on this order. PASS: within every limit. CLIPPED: allowed at a smaller size, stated beside the badge. REJECTED: not allowed, with the reasons; adjust and preview again.'],
   ['HOW IT RESOLVED', 'How each number was derived from your words and from market data.'],
   ['ASSUMED BY THE PARSER', 'Fields your text left out and the model filled with a default. HYP marks a line as the model\'s assumption, not an observed fact.'],
-  ['VALID 0:42 / STALE', 'A preview can be confirmed for 60 seconds. After that, after an edit, or once the mark has moved more than 0.5%, it is stale and must be previewed again.'],
+  ['VALID UNTIL / STALE', 'A preview can be confirmed for 60 seconds, until the time shown. After that, after an edit, or once the mark has moved more than 0.5%, it is stale and must be previewed again.'],
   ['ADJUST', 'Edit the resolved fields directly instead of rewriting the text. Any edit makes the preview stale.'],
 ]
 

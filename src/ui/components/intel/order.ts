@@ -25,25 +25,30 @@ export function venueWord(v: DeskVenue | null): string {
 
 export const VENUE_UNKNOWN = 'venue unknown — open DESK to check'
 const PREVIEW_TTL_MS = 60_000
-export const PREVIEW_AMBER_MS = 15_000
 export const STALE_TEXT = 'preview stale — marks moved or 60 s passed; re-preview before confirming'
 /** Gap (DESIGN-terminal §7.4 names the state, not its copy): ADJUST edits mark the card stale. */
 export const EDITED_TEXT = 'preview stale — order edited; re-preview before confirming'
 
-/** Milliseconds left on a preview: 60 s from receipt, never past the server's expiresAt. */
-export function previewRemainingMs(expiresAt: string, receivedAt: number, now: number): number {
+/** When a preview stops being confirmable (ms epoch): 60 s from receipt, never past the server's expiresAt. */
+export function previewValidUntil(expiresAt: string, receivedAt: number): number {
   const local = receivedAt + PREVIEW_TTL_MS
   const server = Date.parse(expiresAt)
   // The server clock can drift from ours; only trust expiresAt when it is earlier than receipt + TTL
   // by less than the TTL itself (a wildly skewed clock would otherwise expire every preview at once).
-  const end = Number.isFinite(server) && server < local && server > receivedAt ? server : local
-  return Math.max(0, end - now)
+  return Number.isFinite(server) && server < local && server > receivedAt ? server : local
 }
 
-/** Preview validity clock `0:42` (tabular, whole seconds, rounded up so 0:00 means expired). */
-export function fmtPreviewClock(ms: number): string {
-  const s = Math.max(0, Math.ceil(ms / 1000))
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+/** Milliseconds left on a preview (0 once expired). */
+export function previewRemainingMs(expiresAt: string, receivedAt: number, now: number): number {
+  return Math.max(0, previewValidUntil(expiresAt, receivedAt) - now)
+}
+
+/**
+ * Calm, static validity copy: `valid until 14:05:42` (local clock). No ticking countdown: the
+ * window is 60 s, so seconds are kept to say exactly when it ends.
+ */
+export function fmtPreviewUntil(endMs: number): string {
+  return `valid until ${new Date(endMs).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`
 }
 
 export function confirmLabel(venue: DeskVenue | null): string {

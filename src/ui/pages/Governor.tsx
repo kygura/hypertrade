@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AsyncBody, Badge, Button, ConfirmDialog, DataTable, ErrorBlock, HowToRead, Segmented, SkeletonRows, type Column } from '../components'
+import { AsyncBody, Badge, Button, ConfirmDialog, DataTable, ErrorBlock, HowToRead, RevealPnl, Segmented, SkeletonRows, type Column } from '../components'
 import { engine, errorMessage, useEngine } from '../lib/engine'
 import type { GovernorMode, GovernorSettings, VenueStatus } from '../../shared/strategy-protocol'
 import { GovernorLimitFields, governorLimitErrors } from '../components/strategy/GovernorLimits'
@@ -57,11 +57,17 @@ const POSITION_COLUMNS: Column<VenueStatus['positions'][number]>[] = [
     label: 'UPNL',
     priority: 1,
     align: 'right',
-    render: (p) => (
-      <span className={p.upnl_usd == null ? 'text-text-secondary' : p.upnl_usd < 0 ? 'text-red-text' : p.upnl_usd > 0 ? 'text-green' : 'text-text-muted'}>
-        {fmtUsdSigned(p.upnl_usd)}
-      </span>
-    ),
+    // Live dollar P&L stays behind a reveal: no ticking money on the screen.
+    render: (p) =>
+      p.upnl_usd == null ? (
+        <span className="text-text-secondary">{fmtUsdSigned(p.upnl_usd)}</span>
+      ) : (
+        <RevealPnl
+          value={fmtUsdSigned(p.upnl_usd)}
+          label={`${p.market} unrealized P&L`}
+          className={p.upnl_usd < 0 ? 'text-red-text' : p.upnl_usd > 0 ? 'text-green' : 'text-text-muted'}
+        />
+      ),
   },
 ]
 

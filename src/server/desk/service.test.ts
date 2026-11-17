@@ -193,13 +193,38 @@ describe("operator orders (copilot)", () => {
     expect((await service.submitOperatorOrder(order, pv, "operator:test")).decidedBy).toBe("operator:test");
   });
 
-  test("an order without a target fills with no take-profit", async () => {
+  test("a copilot order without a target is refused at preview and confirm, and journaled as a blocked plan", async () => {
     const { service, store } = makeService();
     const { target: _t, ...noTarget } = order;
     const pv = await service.previewOperatorOrder(noTarget);
-    expect(pv.verdict.warnings).toContain("no target: reward:risk not checked");
-    expect((await service.submitOperatorOrder(noTarget, pv, BY)).status).toBe("executed");
-    expect(await store.paperPositions()).toMatchObject([{ coin: "ETH", tpPx: null }]);
+    expect(pv.verdict.approved).toBe(false);
+    expect(pv.verdict.reasons[0]).toContain("no target");
+    const rec = await service.submitOperatorOrder(noTarget, pv, BY);
+    expect(rec.status).toBe("blocked");
+    expect(await store.paperPositions()).toHaveLength(0);
+    const [plan] = await store.listPlans(5);
+    expect(plan).toMatchObject({ source: "copilot", placed: false, placement: null, input: { coin: "ETH", stopPx: 3800, targetPx: null } });
+    expect(plan!.blockers[0]).toContain("no target");
+  });
+
+  test("a confirmed copilot order is journaled as a one-rung plan at the mark", async () => {
+    const { service, store } = makeService();
+    const pv = await service.previewOperatorOrder(order);
+    const rec = await service.submitOperatorOrder(order, pv, BY);
+    const [plan] = await store.listPlans(5);
+    expect(plan).toMatchObject({
+      source: "copilot", placed: true, blockers: [],
+      input: { coin: "ETH", side: "long", rungs: [{ px: 4000, size: 0.2 }], stopPx: 3800, targetPx: 4500 },
+      metrics: { lossAtStopUsd: 40, rrFull: 2.5 },
+      placement: { proposalId: rec.id, status: "executed", error: null },
+    });
+  });
+
+  test("the platform's placeOperatorOrder keeps working without a target (only the copilot requires one) and journals nothing", async () => {
+    const { service, store } = makeService();
+    const { target: _t, ...noTarget } = order;
+    expect((await service.placeOperatorOrder(noTarget, "platform:test")).status).toBe("executed");
+    expect(await store.listPlans(5)).toHaveLength(0);
   });
 
   test("409 on a wrong hash, an order changed after the preview, or a preview over 60 s old", async () => {

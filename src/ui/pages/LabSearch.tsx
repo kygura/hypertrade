@@ -247,7 +247,7 @@ export function LabSearch() {
             />
           </Panel>
         </div>
-        <div ref={resultsRef} className={`lg:col-span-8 flex flex-col gap-3 scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+44px)] transition-opacity duration-200 ${busy && result ? 'opacity-70' : ''}`}>
+        <div ref={resultsRef} className={`lg:col-span-8 flex flex-col gap-3 scroll-mt-[calc(var(--topbar-h)+var(--subnav-h)+44px)] transition-opacity duration-300 ease-out ${busy && result ? 'opacity-70' : ''}`}>
           {body}
         </div>
       </div>

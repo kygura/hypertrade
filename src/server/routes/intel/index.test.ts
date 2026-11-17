@@ -19,7 +19,7 @@ import { createIntelRoutes, type IntelDeps } from "./index.js";
 
 const NOW = new Date("2026-10-13T12:00:00Z");
 const env = { DESK_WATCHLIST: "BTC,ETH" };
-const intent: OrderIntent = { asset: "ETH", side: "long", leverage: 3, size: { usd: 800 }, entry: { type: "market" }, stop: { type: "pct", pct: 5 } };
+const intent: OrderIntent = { asset: "ETH", side: "long", leverage: 3, size: { usd: 800 }, entry: { type: "market" }, stop: { type: "pct", pct: 5 }, target: 4500 };
 const thesisEmit = {
   assets: ["SOL"],
   claims: [{ kind: "claim", text: "Funding stays positive", check: { kind: "funding_sign", asset: "SOL", sign: "positive" } }],

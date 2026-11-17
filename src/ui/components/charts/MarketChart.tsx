@@ -174,8 +174,8 @@ export function MarketChart({ coin, tf, onTfChange }: { coin: string; tf: Timefr
     if (!el || !hasBars) return
     const text = css('--color-text-secondary', '#928d86')
     const border = css('--color-border', 'rgba(255,255,255,0.08)')
-    const up = css('--color-green', '#38a67c')
-    const down = css('--color-red', '#bc263e')
+    const up = css('--color-green', '#78a68a')
+    const down = css('--color-red', '#a6605b')
     const info = css('--color-info', '#6ea8d8')
     const amber = css('--color-amber', '#ffb800')
     const font = css('--font-mono', 'ui-monospace, monospace')

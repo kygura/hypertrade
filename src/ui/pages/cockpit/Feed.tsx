@@ -16,7 +16,7 @@ const TERMS: readonly Term[] = [
   ['UNVALIDATED', 'The gross edge is only the distance from stop to target, because this setup has fewer than 30 resolved outcomes on record.'],
   ['Status', 'NEW: just raised. INVESTIGATING: research is running. CALC: costs are attached. READY: can be approved. APPROVED, OPEN, CLOSED: the order was sent, is in the market, is finished. REJECTED: you declined it. EXPIRED: it stayed READY past its time limit. FAILED: the order could not be placed after approval.'],
   ['tier T1 · T2 · T3', 'Liquidity tier by 24-hour volume: T1 is the most traded third of all perps, T3 the least.'],
-  ['Age', 'Time since the idea was raised. Amber when a READY idea is within 10 minutes of expiring.'],
+  ['Age', 'Time since the idea was raised. Hover it on a READY idea to see whether it expires within 10 minutes.'],
   ['LIVE · READY · DECIDED', 'Filters. LIVE is everything not yet decided; DECIDED is approved, open or finished.'],
   ['SNOOZED', 'Ideas you hid for a set time. They stay below the list until the timer runs out.'],
 ]
@@ -82,7 +82,7 @@ function rowColumns(now: number, readyTtlMin: number, extremesReadyTtlMin: numbe
               <EdgeCell row={r} />
               <StatusPill status={r.status} />
               {snoozed && <Badge tone="gray">SNOOZED {snoozeLeft(r.snoozedUntil!, now)}</Badge>}
-              <span className={`ml-auto tabular text-xs ${nearExpiry ? 'text-amber' : 'text-text-secondary'}`} title={nearExpiry ? 'READY expires within 10 minutes' : 'time since the idea was raised'}>
+              <span className="ml-auto tabular text-xs text-text-secondary" title={nearExpiry ? 'READY expires within 10 minutes' : 'time since the idea was raised'}>
                 {fmtAge(r.createdAt)}
               </span>
             </div>

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import type { OrderPreview } from "../../../shared/intel";
 import { PreviewCard } from "./PreviewCard";
-import { confirmBlock, confirmBody, createSingleFlight, fmtPreviewClock, previewRemainingMs, previewTakeaway, STALE_TEXT, venueOf } from "./order";
+import { confirmBlock, confirmBody, createSingleFlight, fmtPreviewUntil, previewRemainingMs, previewTakeaway, previewValidUntil, STALE_TEXT, venueOf } from "./order";
 
 // Render-check (react-dom/server, no jsdom), the ClaimLine.test.tsx approach:
 // DESIGN-terminal §7.3/§7.4 markup, plus the pure confirm gates.
@@ -35,10 +35,12 @@ const render = (p: OrderPreview, receivedAt: number, extra: Partial<Parameters<t
 const confirmButton = (html: string) => html.match(/<button[^>]*>(?:(?!<\/button>).)*CONFIRM PAPER ORDER(?:(?!<\/button>).)*<\/button>/)?.[0] ?? null;
 
 describe("PreviewCard", () => {
-  test("fresh preview: countdown, resolved numbers, notes, assumptions as HYP, enabled CONFIRM", () => {
+  test("fresh preview: static valid-until time (no countdown, no amber), resolved numbers, notes, assumptions as HYP, enabled CONFIRM", () => {
     const at = Date.now();
     const html = render(preview({}, at), at);
-    expect(html).toMatch(/VALID 1:00|VALID 0:59/);
+    expect(html).toContain(fmtPreviewUntil(at + 60_000));
+    expect(html).not.toMatch(/VALID \d:\d\d/);
+    expect(html).not.toContain("text-amber");
     expect(html).toContain("0.8%");
     expect(html).toContain("RISK OF BOOK");
     expect(html).toContain("$78.90");
@@ -60,7 +62,7 @@ describe("PreviewCard", () => {
     expect(html).toContain(STALE_TEXT);
     expect(html).toContain("opacity-70");
     expect(html).toContain(">STALE<");
-    expect(html).not.toContain("VALID ");
+    expect(html).not.toContain("valid until");
     expect(confirmButton(html)).toBeNull();
     expect(html).toContain("RE-PREVIEW");
   });
@@ -98,15 +100,15 @@ describe("PreviewCard", () => {
 });
 
 describe("order gates", () => {
-  test("countdown runs 60 s from receipt and never past the server expiry", () => {
+  test("the validity window runs 60 s from receipt and never past the server expiry", () => {
     const at = 1_000_000;
     const exp = new Date(at + 60_000).toISOString();
     expect(previewRemainingMs(exp, at, at)).toBe(60_000);
     expect(previewRemainingMs(exp, at, at + 45_500)).toBe(14_500);
     expect(previewRemainingMs(exp, at, at + 61_000)).toBe(0);
     expect(previewRemainingMs(new Date(at + 30_000).toISOString(), at, at + 31_000)).toBe(0);
-    expect(fmtPreviewClock(42_000)).toBe("0:42");
-    expect(fmtPreviewClock(0)).toBe("0:00");
+    expect(previewValidUntil(exp, at)).toBe(at + 60_000);
+    expect(fmtPreviewUntil(Date.UTC(2026, 10, 16, 14, 5, 42))).toMatch(/^valid until \d\d:\d\d:\d\d$/);
   });
 
   test("venue mapping and confirm block", () => {

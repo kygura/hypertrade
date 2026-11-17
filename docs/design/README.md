@@ -7,7 +7,7 @@ on visuals, this document wins; on data/API shape, docs/SPEC.md wins.
 
 HYPERTRADE iterates on the Hyperion Terminal design language
 (`../hyperion/dashboard/DESIGN.md`): dark-only, hairline borders, dense
-tabular data, one motion rhythm (220ms), no spinners, a single named state
+tabular data, slow eased motion (≥ 300 ms, docs/design/desk-calm.md), no spinners, a single named state
 vocabulary. It is NOT a new language.
 
 **Default look.** The default theme is **Hyperdash** (`DEFAULT_THEME` in
@@ -125,26 +125,26 @@ scroll (§4.1).
   --color-text-primary: #ffffff;
   --color-text-secondary: #928d86;
   --color-text-muted: #d5d1cd;
-  --color-green: #38a67c;
-  --color-red: #bc263e;
+  --color-green: #78a68a;  /* muted, desk-calm §4 */
+  --color-red: #a6605b;    /* fills only */
   --color-red-accent: #ed3602;
   --color-amber: #ffb800;
 
   /* ── Hyperion additive layer, verbatim (meanings preserved) ──── */
-  --color-green-text: #38a67c;
-  --color-red-text: #e8677d;
+  --color-green-text: #78a68a;
+  --color-red-text: #c98a84;
   --color-info: #6ea8d8;                   /* also marks model inference (HYP claims, LLM-proposed edges) */
   --color-text-disabled: #5c5751;
   --color-active: rgba(255, 255, 255, 0.08);
   --color-selected: rgba(255, 255, 255, 0.06);
   --color-scrim: rgba(0, 0, 0, 0.55);
   --color-focus: rgba(255, 255, 255, 0.9);
-  --color-green-bg: rgba(56, 166, 124, 0.12);
-  --color-red-bg: rgba(188, 38, 62, 0.12);
+  --color-green-bg: rgba(120, 166, 138, 0.12);
+  --color-red-bg: rgba(166, 96, 91, 0.12);
   --color-amber-bg: rgba(255, 184, 0, 0.1);
   --color-info-bg: rgba(110, 168, 216, 0.1);
-  --color-flash-up: rgba(56, 166, 124, 0.22);
-  --color-flash-down: rgba(188, 38, 62, 0.22);
+  --color-flash-up: rgba(120, 166, 138, 0.18);   /* reserved; nothing flashes */
+  --color-flash-down: rgba(166, 96, 91, 0.18);
   --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.6);
 
   /* ── HYPERTRADE additions ────────────────────────────────────── */
@@ -171,7 +171,7 @@ scroll (§4.1).
   --color-bench-usdc: #928d86;             /* 100%-USDC benchmark line */
   --color-equity: #ffffff;                 /* the branch's own curve */
   --color-drawdown-fill: rgba(188, 38, 62, 0.18);
-  --color-drawdown-line: #bc263e;
+  --color-drawdown-line: #a6605b;
 
   /* ── Type scale (Hyperion §2.4, closed set, unchanged) ───────── */
   --text-2xs: 11px;
@@ -322,24 +322,18 @@ input:focus, select:focus, textarea:focus {
 }
 .src-tag--hl { color: var(--color-src-hl); border-color: rgba(88, 184, 154, 0.25); }
 
-/* AnimatedDigits, tick flash, pulse — Hyperion verbatim */
+/* AnimatedDigits and the busy fade (calm desk: ≥ 300 ms, nothing infinite, no tick flash) */
 .digit-cell { position: relative; display: inline-block; overflow: hidden; vertical-align: baseline; line-height: 1em; }
 .digit-slot { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; will-change: transform, opacity; }
 @keyframes digit-enter { from { transform: translateY(-85%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes digit-exit { from { transform: translateY(0); opacity: 1; } to { transform: translateY(85%); opacity: 0; } }
-.digit-in { animation: digit-enter 220ms ease-out both; }
-.digit-out { animation: digit-exit 220ms ease-out both; }
+.digit-in { animation: digit-enter 320ms ease-out both; }
+.digit-out { animation: digit-exit 320ms ease-out both; }
 
-@keyframes flash-up { from { background-color: var(--color-flash-up); } to { background-color: transparent; } }
-@keyframes flash-down { from { background-color: var(--color-flash-down); } to { background-color: transparent; } }
-.flash-up { animation: flash-up 220ms linear; }
-.flash-down { animation: flash-down 220ms linear; }
-
-@keyframes pulse-opacity { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-.pulse-label { animation: pulse-opacity 1s ease-in-out infinite; }
+/* .pulse-label: one finite 600 ms fade to 0.6 (see src/ui/index.css) */
 
 @media (prefers-reduced-motion: reduce) {
-  .digit-in, .digit-out, .flash-up, .flash-down, .pulse-label {
+  .digit-in, .digit-out, .pulse-label {
     animation: none !important;
   }
 }
@@ -350,9 +344,10 @@ input:focus, select:focus, textarea:focus {
 - `#928d86` (`text-secondary`) is ≈4.3:1 on panel — labels, table headers,
   metadata, timestamps only. Never for values the user reasons from, error
   text, or briefing body copy. Those use `text-primary` or `text-muted`.
-- Error text is `--color-red-text` (#e8677d) on `--color-red-bg`. `#bc263e`
+- Error text is `--color-red-text` (#c98a84) on `--color-red-bg`. `#a6605b`
   is fills/borders/chart-strokes only, never body text.
-- Green `#38a67c` may be text at 11px+.
+- Green `#78a68a` may be text at 11px+. Up/down stay muted and
+  low-saturation in every theme (docs/design/desk-calm.md §4).
 - Color is never the sole signal: signed numbers always print their `+`/`−`;
   momentum cells print the number; direction words accompany hue.
 - The momentum ramp backgrounds (§2 tokens) all keep white text ≥ 7:1 —
@@ -515,7 +510,7 @@ Mobile chart adaptations, uniform across all charts:
 
 ### 4.6 What never changes across breakpoints
 
-Type scale, color tokens, state vocabulary, panel anatomy, 220ms motion,
+Type scale, color tokens, state vocabulary, panel anatomy, slow motion (§8),
 zero radius. A phone user sees the same product, denser surfaces triaged —
 not a different product.
 
@@ -758,24 +753,25 @@ Not a Level 2 — it costs a routine run, not data.
 
 ## 8. Interaction and motion
 
-Hyperion §8 carried over whole, minus grid-drag and sockets:
+Superseded on motion by docs/design/desk-calm.md §4 (the calm desk):
 
-- **One rhythm**: 220ms. Digit animation, tick flash (Markets live prices),
-  fades. Nothing longer than 250ms.
+- **Slow and eased**: every transition or animation is ≥ 300 ms and eased
+  (digits 320 ms, value settle 400 ms, hover 300 ms). Nothing is infinite.
+  `src/ui/motion.test.ts` enforces it.
 - **AnimatedDigits**: only on the per-view xl value. Tables never.
-- **Tick flash**: `/markets` live mid updates only; coalesce to ≤ 2
-  flashes/sec/cell.
-- **Hover**: `--color-hover` bg, 100ms background-color transition only.
+- **No tick flash.** Live prices ease into place (`EasedValue`), sampled every
+  few seconds, never per tick.
+- **Hover**: `--color-hover` bg, 300 ms background-color transition only.
   Pressed: `--color-active`. On touch, hover styles must not stick: gate
   hover rules behind `@media (hover: hover)`.
-- **The one indeterminate indicator**: the 1Hz `.pulse-label` opacity pulse
-  (skeleton bars; a button label while its request is in flight, e.g.
+- **The one busy indicator**: `.pulse-label`, a single finite fade to 0.6
+  opacity (skeleton bars; a button label while its request is in flight, e.g.
   `RUNNING…`). No spinners exist.
 - **Forbidden**: spring/bounce easing, scale/translate on hover,
   layout-shifting animation, shimmer, animated gradients, chart data
-  animation, badge pulsing, parallax.
-- **`prefers-reduced-motion`**: flashes and digit swaps become instant; the
-  pulse becomes a static `…` suffix. One global media query.
+  animation, badge pulsing, counting badges, parallax, sounds.
+- **`prefers-reduced-motion`**: digit swaps become instant; the busy fade is
+  static. One global media query.
 - **Keyboard**: `Esc` closes topmost dialog; dialogs trap and restore focus;
   table rows focusable (`tabindex=0`), Enter activates the row's drill-in.
   No command palette — the cells and their sub-tabs are the map.
@@ -1169,7 +1165,7 @@ snapshot stays on screen (no skeleton flash).
 ### 10.7 `/markets` — Hyperliquid universe + candle drill-in
 
 Purpose: the raw market surface. Live-ish (short-cache pass-through), the
-only view with tick flash.
+prices ease into place (no tick flash, §8).
 
 Desktop: full-width panel, table per §4.4 (COIN, PRICE, 24H%, OI, FUNDING 1H,
 VOLUME), sortable headers, default sort OI desc. Header: `MARKETS` +
@@ -1184,8 +1180,8 @@ classes with no markets are hidden. Columns add DEX (`HL` for the main dex,
 else the dex prefix, secondary) and MAX LEV; COIN shows the bare ticker. A
 dex whose snapshot failed is named in one amber xs line above the table.
 
-- PRICE: tabular, tick-flash on refetch delta (poll `GET /api/hl/markets`
-  every 15s; flash cells whose value changed, §8 coalescing).
+- PRICE: tabular, eased on refetch (poll `GET /api/hl/markets` every 15s;
+  changed cells settle via `EasedValue`, no flash, §8).
 - 24H%: signed, colored, glyph.
 - FUNDING 1H: signed, colored. Hyperliquid funding is an hourly fraction, so
   the header carries its unit; |funding| ≥ 0.1%/8h (0.0125%/h, about 110%

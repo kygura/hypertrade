@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { loadDeskConfig } from "./config.js";
+import { activeLocks, NO_LOCKS, recordStopOut } from "./cooldown.js";
 import { evaluateExit, evaluateOpen, evaluateRisk, floorToDecimals, operatorRiskOrder, type GovernorContext } from "./governor.js";
 import type { AccountState, OperatorOrder, RiskOrder, TradeProposal } from "./types.js";
 
@@ -11,7 +12,7 @@ function account(over: Partial<AccountState> = {}): AccountState {
 }
 
 function gctx(over: Partial<GovernorContext> = {}): GovernorContext {
-  return { limits, account: account(), market: { coin: "ETH", markPx: 4000, szDecimals: 4, isDelisted: false }, killSwitch: false, now: NOW, ...over };
+  return { limits, account: account(), market: { coin: "ETH", markPx: 4000, szDecimals: 4, isDelisted: false }, killSwitch: false, locks: NO_LOCKS, now: NOW, ...over };
 }
 
 const long: TradeProposal = {
@@ -178,4 +179,40 @@ test("floorToDecimals never rounds up", () => {
   expect(floorToDecimals(0.123456, 4)).toBe(0.1234);
   expect(floorToDecimals(0.29999999999, 2)).toBe(0.3);
   expect(floorToDecimals(12.9, 0)).toBe(12);
+});
+
+describe("cooldown and today's possible loss (every entry path goes through assess)", () => {
+  const cd = { cooldownHours: 4, maxStopOutsPerDay: 2 };
+  const ref = { source: "paper" as const, proposalId: null, planId: null, fill: null };
+  const order: RiskOrder = { coin: "ETH", side: "long", stop: 3800, target: 4500, riskPct: 0.5 };
+
+  test("a stop-out cooldown on the coin refuses agent proposals and operator orders; other coins pass", () => {
+    const locks = activeLocks(recordStopOut({ stopOuts: [] }, { coin: "ETH", at: new Date("2026-10-05T10:00:00Z"), ref }, cd), NOW, cd);
+    expect(evaluateOpen(long, gctx({ locks })).reasons.join()).toContain("cooldown: ETH stopped out");
+    expect(evaluateRisk(order, gctx({ locks })).approved).toBe(false);
+    const btc = { coin: "BTC", markPx: 100_000, szDecimals: 5, isDelisted: false };
+    expect(evaluateRisk({ ...order, coin: "BTC", stop: 95_000, target: 112_000 }, gctx({ locks, market: btc })).approved).toBe(true);
+    // Exits stay allowed.
+    const pos = { coin: "ETH", side: "long" as const, size: 0.1, entryPx: 3900, markPx: 4000, stopPx: 3700, tpPx: null, unrealizedPnl: 10, notionalUsd: 400 };
+    expect(evaluateExit({ coin: "ETH", fraction: 1, reason: "close it" }, gctx({ locks, account: account({ positions: [pos] }) })).approved).toBe(true);
+  });
+
+  test("two stop-outs today refuse every coin until 00:00 UTC", () => {
+    let s = recordStopOut({ stopOuts: [] }, { coin: "SOL", at: new Date("2026-10-05T08:00:00Z"), ref }, cd);
+    s = recordStopOut(s, { coin: "BTC", at: new Date("2026-10-05T09:00:00Z"), ref }, cd);
+    const v = evaluateRisk(order, gctx({ locks: activeLocks(s, NOW, cd) }));
+    expect(v.reasons.join()).toContain("2 stop-outs today (SOL, BTC)");
+  });
+
+  test("today's possible loss over the daily limit refuses; the per-trade clip still applies below it", () => {
+    // 2% of 10k = 200. Lost 160 today + this trade's 50 → 210.
+    const v = evaluateRisk(order, gctx({ account: account({ dayPnlUsd: -160 }) }));
+    expect(v.approved).toBe(false);
+    expect(v.reasons.join()).toContain("today's possible loss 210 USD");
+    // Lost 100 + 50 = 150: fine, and a 2% ask is still clipped to 0.5% with a warning.
+    const ok = evaluateRisk({ ...order, riskPct: 2 }, gctx({ account: account({ dayPnlUsd: -100 }) }));
+    expect(ok.approved).toBe(true);
+    expect(ok.sizing!.riskUsd).toBe(50);
+    expect(ok.warnings.join()).toContain("clipped");
+  });
 });

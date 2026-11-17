@@ -10,12 +10,12 @@ import {
   confirmBlock,
   confirmLabel,
   distFromEntry,
-  fmtPreviewClock,
+  fmtPreviewUntil,
   fmtPrice,
   fmtSize,
   fmtUsd2,
-  PREVIEW_AMBER_MS,
   previewRemainingMs,
+  previewValidUntil,
   previewTakeaway,
   STALE_TEXT,
   stopResolution,
@@ -78,13 +78,12 @@ export function PreviewCard({
   const expired = remaining <= 0
   const isStale = stale != null || expired
 
-  // Countdown is content (it ticks under reduced motion too); not a live region.
+  // No ticking countdown: the card shows a static "valid until" time and wakes once, at expiry, to go stale.
   useEffect(() => {
     if (isStale) return
-    setNow(Date.now())
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [isStale, receivedAt])
+    const t = setTimeout(() => setNow(Date.now()), Math.max(0, remaining) + 50)
+    return () => clearTimeout(t)
+  }, [isStale, receivedAt, remaining])
 
   const expiredFor = useRef<number | null>(null)
   useEffect(() => {
@@ -108,8 +107,8 @@ export function PreviewCard({
         {isStale ? (
           <span className="text-xs tabular text-amber">STALE</span>
         ) : (
-          <span className={`text-xs tabular ${remaining < PREVIEW_AMBER_MS ? 'text-amber' : 'text-text-secondary'}`} title="confirm is refused after 60 s">
-            VALID {fmtPreviewClock(remaining)}
+          <span className="text-xs tabular text-text-secondary" title="confirm is refused after 60 s">
+            {fmtPreviewUntil(previewValidUntil(preview.expiresAt, receivedAt))}
           </span>
         )}
       </PanelHeader>

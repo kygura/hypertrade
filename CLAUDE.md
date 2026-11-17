@@ -79,6 +79,7 @@ under `docs/`.
 | `docs/SPEC.md` | Product contract: pillars, routes, Intel/Flow/Scout/Platform sections. Wins on data and API shape. |
 | `docs/design/README.md` | Visual language, tokens, states, per-view briefs. Wins on visuals. |
 | `docs/design/terminal.md`, `docs/design/chat.md` | Binding briefs for the Intel Terminal/Cockpit and the Paths chat; extend the main design doc. |
+| `docs/design/desk-calm.md` | Calm desk: plans before orders, hidden live P&L, stop-out cooldown, slow motion, muted palette. Wins over the other design docs. |
 | `docs/FEATURES.md` | Signal-evidence ideas (phase 9) and what is in scope. |
 | `docs/LAB.md` | Lab research engine contract: rules, validation, tools, MCP. |
 | `docs/EXTREMES.md` | Extremes alerts: detectors, the 15-min job, the research wake and verdict, calibration. |

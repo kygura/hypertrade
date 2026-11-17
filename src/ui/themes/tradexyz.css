@@ -56,19 +56,21 @@
   --color-on-primary: #151b23;
 
   /* ── Semantic ───────────────────────────────────────────────────────── */
-  --color-green: #00bc7d; /* green-500: bids, candles, fills, Long */
-  --color-green-text: #00d492; /* green-400: +Δ text (9.4:1) */
-  --color-green-bg: rgba(0, 212, 146, 0.1);
-  --color-red: #ff637e; /* red-400: asks, candles, Short */
-  --color-red-text: #ff637e; /* 6.4:1 on panel */
-  --color-red-bg: rgba(255, 99, 126, 0.1);
+  /* Up/down muted (calm desk): low-saturation sea-green and dusty rose in
+     place of the app's emerald-500 / red-400, same hues, same roles. */
+  --color-green: #76a898; /* bids, candles, fills, Long: 6.8:1 on panel */
+  --color-green-text: #76a898;
+  --color-green-bg: rgba(118, 168, 152, 0.12);
+  --color-red: #a86b74; /* asks, candles, Short (fills): 4.4:1 on panel */
+  --color-red-text: #cc929b; /* 7.1:1 on panel */
+  --color-red-bg: rgba(168, 107, 116, 0.12);
   --color-red-accent: #ff2056; /* flash-ask hue — destructive emphasis */
   --color-amber: #f99c00; /* amber-500 — warnings (kept off the gold accent) */
   --color-amber-bg: rgba(249, 156, 0, 0.1);
   --color-info: #96b0b9; /* brand dusk-400 — neutral info, projections */
   --color-info-bg: rgba(150, 176, 185, 0.1);
-  --color-flash-up: rgba(0, 188, 125, 0.2); /* flash-green 20% keyframe */
-  --color-flash-down: rgba(255, 32, 86, 0.2); /* flash-red 20% keyframe */
+  --color-flash-up: rgba(118, 168, 152, 0.18);
+  --color-flash-down: rgba(168, 107, 116, 0.18);
 
   --color-scrim: rgba(0, 0, 0, 0.5); /* bg-black/50 */
   --color-focus: #ffce55; /* focus-visible:ring-brand-yellow-400 */
@@ -78,13 +80,13 @@
   --color-scrollbar-hover: #35414f; /* slate-600 */
   --color-src-hl: #5ee9b5; /* green-300 — Hyperliquid provenance */
 
-  /* Momentum ramp — rose/emerald washes; zero = slate-900. Primary text on
+  /* Momentum ramp — muted rose/sea-green washes; zero = slate-900. Primary text on
      every bucket ≥ 6.4:1. */
-  --color-mom-neg2: rgba(255, 99, 126, 0.45);
-  --color-mom-neg1: rgba(255, 99, 126, 0.22);
+  --color-mom-neg2: rgba(168, 107, 116, 0.45);
+  --color-mom-neg1: rgba(168, 107, 116, 0.22);
   --color-mom-zero: #151b23;
-  --color-mom-pos1: rgba(0, 188, 125, 0.22);
-  --color-mom-pos2: rgba(0, 188, 125, 0.45);
+  --color-mom-pos1: rgba(118, 168, 152, 0.22);
+  --color-mom-pos2: rgba(118, 168, 152, 0.45);
 
   /* Chart series. Projections wear dusk (never green/red); the BTC
      benchmark takes the gold of the outcome chart's lead line. */
@@ -93,8 +95,8 @@
   --color-bench-btc: #ffce55;
   --color-bench-usdc: #68717b; /* slate-400 — the outcome chart's grey line */
   --color-equity: #efece7;
-  --color-drawdown-fill: rgba(255, 99, 126, 0.16);
-  --color-drawdown-line: #ff637e;
+  --color-drawdown-fill: rgba(168, 107, 116, 0.16);
+  --color-drawdown-line: #a86b74;
 
   /* ── Type ───────────────────────────────────────────────────────────── */
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
@@ -247,7 +249,7 @@
   padding-bottom: 0;
   border-bottom: 0;
   color: var(--color-text-primary);
-  transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: color 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 :root[data-theme='tradexyz'] .app-nav-link::first-letter {
   text-transform: uppercase;
@@ -306,9 +308,9 @@
   padding-left: 14px;
   padding-right: 14px;
   transition:
-    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    background-color 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    color 300ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 /* Ghost = "Transfer / Withdraw": input-tinted outline, slate-700 on hover. */
 :root[data-theme='tradexyz'] .btn--ghost {
@@ -348,11 +350,11 @@
   padding: 2px 5px;
 }
 :root[data-theme='tradexyz'] .badge--green {
-  color: #5ee9b5;
-  background-color: rgba(94, 233, 181, 0.2); /* green-300/20 */
+  color: #9cc7b6; /* muted green-300: 7.2:1 on its tint */
+  background-color: rgba(156, 199, 182, 0.16);
 }
 :root[data-theme='tradexyz'] .badge--red {
-  background-color: rgba(255, 99, 126, 0.2);
+  background-color: rgba(168, 107, 116, 0.2);
 }
 :root[data-theme='tradexyz'] .badge--gray {
   color: var(--color-text-muted);

@@ -5,7 +5,7 @@ import type { AccountState, Confidence, RiskOrder, Sizing } from "../types.js";
 import { filledQty, fillPx, isEntry, isOpen, readSnapshot, toAccountState, type ProprPosition, type ProprSnapshot } from "./account.js";
 import { ProprClient, scrub, type ProprOrderRequest, type Row } from "./client.js";
 import { isLadderId, ulid, ulidTime } from "./ids.js";
-import { firmReasons, ladderRequests, planLadder, tradeLeverage, type LadderPlan, type LadderRequest } from "./ladder.js";
+import { explicitLadder, firmReasons, ladderRequests, planLadder, tradeLeverage, type LadderPlan, type LadderRequest } from "./ladder.js";
 
 // The Propr venue: a challenge or funded account on Hyperliquid mainnet, reached only through Propr's API. Entries go
 // out as a ladder of rungs from the mark toward the stop, each rung with its own reduce-only stop (and take-profit),
@@ -75,10 +75,11 @@ export class ProprBroker implements Broker {
    * The ladder the desk would send for a governor-approved order, the cross leverage it runs at, the desk's leftover
    * stops and targets on the coin to clear first, and the firm's reasons to refuse it.
    */
-  async plan(p: RiskOrder, sizing: Sizing, now: Date): Promise<{ plan?: LadderPlan; snapshot?: ProprSnapshot; leverage?: number; leftovers?: Row[]; reasons: string[] }> {
+  async plan(p: RiskOrder, sizing: Sizing, now: Date, rungs?: Array<{ px: number; size: number }>): Promise<{ plan?: LadderPlan; snapshot?: ProprSnapshot; leverage?: number; leftovers?: Row[]; reasons: string[] }> {
     const m = await this.#market(p.coin);
     if (!m) return { reasons: [`${p.coin} is not listed on Hyperliquid`] };
-    const { plan, reasons } = planLadder(p, sizing, m.szDecimals, this.cfg.ladder);
+    // A written plan's own rungs, else the desk's ladder from the mark toward the stop.
+    const { plan, reasons } = rungs ? explicitLadder(p, rungs, m.szDecimals, this.cfg.ladder) : planLadder(p, sizing, m.szDecimals, this.cfg.ladder);
     if (!plan) return { reasons };
     const snapshot = await this.snapshot(now);
     const out = firmReasons(snapshot, plan, this.cfg.firm);
@@ -98,10 +99,15 @@ export class ProprBroker implements Broker {
     return { plan, snapshot, leverage, leftovers, reasons: out };
   }
 
-  async open(p: RiskOrder, sizing: Sizing, proposalId: string, now: Date): Promise<ProprExecutionResult> {
+  /** A written plan's rungs, each a resting limit with its own stop and target, behind the same firm rules. */
+  openLadder(p: RiskOrder, rungs: Array<{ px: number; size: number }>, sizing: Sizing, proposalId: string, now: Date): Promise<ProprExecutionResult> {
+    return this.open(p, sizing, proposalId, now, rungs);
+  }
+
+  async open(p: RiskOrder, sizing: Sizing, proposalId: string, now: Date, rungs?: Array<{ px: number; size: number }>): Promise<ProprExecutionResult> {
     let planned: Awaited<ReturnType<ProprBroker["plan"]>>;
     try {
-      planned = await this.plan(p, sizing, now);
+      planned = await this.plan(p, sizing, now, rungs);
     } catch (e) {
       return { ok: false, venue: this.venue, fills: [], error: `Propr: ${errText(e)}` };
     }

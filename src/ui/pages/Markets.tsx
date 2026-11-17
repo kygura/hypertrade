@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Panel, PanelHeader, PanelBody, SrcTag, DataTable, Segmented, HowToRead, type Column, type Term } from '../components'
+import { Panel, PanelHeader, PanelBody, SrcTag, DataTable, Segmented, HowToRead, EasedValue, type Column, type Term } from '../components'
 import { AsyncBody, StaleBanner } from '../components/state'
 import { useApi } from '../lib/api'
 import type { MarketRow, MarketsResponse } from '../../server/routes/hl'
@@ -9,7 +9,7 @@ import { ASSET_CLASSES, tickerOf, type AssetClass } from '../../shared/assetClas
 import { median } from '../../shared/signalMath'
 
 // Markets — docs/design/README.md §10.7. HL universe table, live-ish (poll every 15s),
-// tick flash on price change, funding crowded-trade flag, filter + sort. Covers
+// prices ease into place on change (no flash), funding crowded-trade flag, filter + sort. Covers
 // the main dex and every HIP-3 builder dex (GET /hl/markets?scope=all), split by
 // asset class.
 
@@ -56,7 +56,7 @@ const CLASS_SHORT: Partial<Record<AssetClass, string>> = { commodity: 'CMDTY' }
 
 const TERMS: readonly Term[] = [
   ['COIN · DEX', 'The perp and where it trades. HL is the main Hyperliquid dex; any other name is a builder-deployed dex (HIP-3).'],
-  ['PRICE', 'Mark price in USD, the price Hyperliquid uses for margin and liquidations. It flashes when it changes between refreshes.'],
+  ['PRICE', 'Mark price in USD, the price Hyperliquid uses for margin and liquidations. A new price eases in quietly when it changes between refreshes.'],
   ['24H%', 'Mark price against Hyperliquid\'s previous-day price, about 24 hours ago.'],
   ['OI', 'Open interest in USD: all open contracts times the mark price. It counts positions held, not volume traded.'],
   ['FUNDING 1H', 'The rate longs pay shorts each hour, as a percent of position size. Negative means shorts pay longs. The neutral rate on Hyperliquid is +0.00125% per hour. Amber from 0.0125% per hour in either direction (0.1% per 8 hours, about 110% a year): one side is paying heavily to hold.'],
@@ -72,28 +72,10 @@ export function Markets() {
   const [filter, setFilter] = useState('')
   const [cls, setCls] = useState<ClassFilter>('all')
 
-  const prevPx = useRef<Map<string, number>>(new Map())
-  const [flash, setFlash] = useState<Map<string, 'up' | 'down'>>(new Map())
-
   useEffect(() => {
     const id = setInterval(() => document.visibilityState !== 'hidden' && refetch(), POLL_MS)
     return () => clearInterval(id)
   }, [refetch])
-
-  useEffect(() => {
-    if (!markets) return
-    const next = new Map<string, 'up' | 'down'>()
-    for (const row of markets) {
-      const prev = prevPx.current.get(row.coin)
-      if (prev != null && prev !== row.markPx) next.set(row.coin, row.markPx > prev ? 'up' : 'down')
-      prevPx.current.set(row.coin, row.markPx)
-    }
-    if (next.size > 0) {
-      setFlash(next)
-      const t = setTimeout(() => setFlash(new Map()), 220)
-      return () => clearTimeout(t)
-    }
-  }, [markets])
 
   const counts = useMemo(() => {
     const m = new Map<ClassFilter, number>([['all', markets?.length ?? 0]])
@@ -130,11 +112,7 @@ export function Markets() {
       priority: 1,
       align: 'right',
       sortValue: (r) => r.markPx,
-      render: (r) => (
-        <span className={flash.get(r.coin) === 'up' ? 'flash-up' : flash.get(r.coin) === 'down' ? 'flash-down' : ''}>
-          {fmtPrice(r.markPx)}
-        </span>
-      ),
+      render: (r) => <EasedValue value={fmtPrice(r.markPx)} />,
     },
     {
       key: 'chg',

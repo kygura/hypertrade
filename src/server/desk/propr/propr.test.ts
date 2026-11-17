@@ -414,6 +414,37 @@ describe("DeskService on the Propr venue", () => {
     expect(await leverageOf({ ...ticket, confidence: "high", leverage: 3 })).toEqual({ leverage: 3, riskPct: 0.5 });
   });
 
+  test("a written plan's own rungs go out as resting limits, each with its stop and target (dry run, then live)", async () => {
+    const ladder = { coin: "ETH", side: "long" as const, rungs: [{ px: 4000, size: 0.05 }, { px: 3950, size: 0.05 }, { px: 3900, size: 0.1 }], stopPx: 3800, targetPx: 4500 };
+    const dry = build();
+    const c = await dry.service.checkPlan(ladder);
+    expect(c.blockers).toEqual([]);
+    expect(c.metrics).toMatchObject({ lossAtStopUsd: 27.5, avgEntryPx: 3937.5, topRungPx: 4000 });
+    const out = await dry.service.submitPlan(ladder, { place: true, by: "op" });
+    expect(out).toMatchObject({ placed: false, record: { placed: false, placement: { status: "failed", dryRun: true, error: expect.stringContaining("Propr dry run: 3 rung requests built") } } });
+    const rec = (await dry.service.store.getProposal(out.record.placement!.proposalId))!;
+    const reqs = (rec.execution as { requests: Array<{ orders?: Array<Record<string, unknown>> }> }).requests;
+    expect(reqs.slice(1).map((r) => r.orders!.map((o) => [o.type, o.price ?? o.triggerPrice, o.quantity]))).toEqual([
+      [["limit", "4000", "0.05"], ["stop_market", "3800", "0.05"], ["take_profit_market", "4500", "0.05"]],
+      [["limit", "3950", "0.05"], ["stop_market", "3800", "0.05"], ["take_profit_market", "4500", "0.05"]],
+      [["limit", "3900", "0.1"], ["stop_market", "3800", "0.1"], ["take_profit_market", "4500", "0.1"]],
+    ]);
+    expect(dry.api.posts()).toEqual([]);
+
+    const live = build({ PROPR_LIVE: "true" });
+    const placed = await live.service.submitPlan(ladder, { place: true, by: "op" });
+    expect(placed).toMatchObject({ placed: true, record: { placement: { status: "executed", note: expect.stringContaining("3 of 3 rungs working") } } });
+    expect(live.api.posts().filter((p) => p.url.endsWith("/orders"))).toHaveLength(3);
+  });
+
+  test("a plan rung under Propr's order minimum is refused before anything is sent", async () => {
+    const { service, api } = build({ PROPR_LIVE: "true" });
+    const out = await service.submitPlan({ coin: "ETH", side: "long", rungs: [{ px: 4000, size: 0.01 }, { px: 1000, size: 0.01 }], stopPx: 900, targetPx: 4500 }, { place: true, by: "op" });
+    expect(out).toMatchObject({ placed: false, record: { placement: null } });
+    expect(out.check.blockers).toContain("rung 0.01 ETH @ 1000 is 10 USD, under the 11 USD order minimum");
+    expect(api.posts()).toEqual([]);
+  });
+
   test("an agent's exit waits for approval; the operator's close does not", async () => {
     const { service } = build({}, { positions: [{ base: "ETH", positionSide: "long", quantity: "0.2", entryPrice: "3990", markPrice: "4000" }] });
     expect(await service.submitExit({ coin: "ETH", fraction: 1, reason: "thesis broke" }, "run1")).toMatchObject({ status: "pending" });

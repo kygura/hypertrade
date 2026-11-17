@@ -13,8 +13,14 @@ that SPEC I2 does not name yet.
 three themes work without edits. Two meanings are assigned to existing tokens:
 `--color-info` / `--color-info-bg` mark **model inference** (hypotheses, LLM
 edges), extending principle 6 ("speculation is info-blue, never green/red");
-`--color-amber` marks **time pressure** (catalyst inside 24 h, preview about to
-expire) in addition to staleness.
+`--color-amber` marks staleness only.
+
+**Calm desk overrides** (docs/design/desk-calm.md wins): ticking countdowns and
+amber time pressure are gone. Catalysts print `in 4h 12m`, the order preview
+prints `valid until HH:MM:SS`, funding prints `Funding at HH:MM UTC`; none tick
+or turn amber. Live dollar P&L sits behind `RevealPnl`; positions show
+`PlanProgress` (stop → target bar, R so far). Wireframes below that still show
+`T−1D 04H` or `VALID 0:42` are historical.
 
 **Reused as-is:** `Panel`/`PanelHeader`/`PanelBody`, `Button` (ghost, neutral,
 danger), `Badge`, `StatusDot`, `Segmented`, `DataTable` (incl. `isSelected`),
@@ -161,7 +167,7 @@ never dimmed except the 70% "superseded" precedents (§1.5, §6, §7.4).
 | Journal report | `createdAt` | > 7 days | — |
 | Thesis detail | `checkedAt` | > 24 h | — |
 | Watch row | `checked_at` | > 2 h | > 6 h (row Badge `STALE`, amber) |
-| Order preview | preview receipt | `VALID` countdown < 15 s (amber) | expired at 60 s → stale state |
+| Order preview | preview receipt | static `valid until HH:MM:SS` | expired at 60 s → stale state |
 
 `AgeStamp` prints whole hours, too coarse for 30 min; Intel uses **ClaimAge**
 (§2.3) for age text. `StaleBanner` is used as-is.

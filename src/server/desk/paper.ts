@@ -1,5 +1,5 @@
 import type { MarketRef } from "./governor.js";
-import type { Sizing, RiskOrder, AccountState, Position, Confidence } from "./types.js";
+import type { Sizing, RiskOrder, AccountState, Position, Confidence, Side } from "./types.js";
 import type { DeskStore, PaperFill, PaperPosition } from "./store.js";
 
 // The paper broker: fills at the live mark plus slippage and the taker fee,
@@ -37,7 +37,12 @@ export interface Broker {
   open(p: RiskOrder, sizing: Sizing, proposalId: string, now: Date): Promise<ExecutionResult>;
   exit(coin: string, size: number, markPx: number, reason: string, proposalId: string | null, now: Date): Promise<ExecutionResult>;
   /** Paper only: settle stops/targets locally (a live venue holds them on the exchange). */
-  settle?(ranges: Map<string, { low: number; high: number }>, now: Date): Promise<Array<{ coin: string; kind: "stop" | "target"; result: ExecutionResult }>>;
+  settle?(ranges: Map<string, { low: number; high: number }>, now: Date): Promise<Settled[]>;
+  /**
+   * Venues that rest a ladder of limit entries (Propr): places exactly these rungs, each with its own stop (and
+   * target). Venues without it fill one entry at the mark, so a plan with several rungs is refused there.
+   */
+  openLadder?(p: RiskOrder, rungs: Array<{ px: number; size: number }>, sizing: Sizing, proposalId: string, now: Date): Promise<ExecutionResult>;
   /** Paper only. */
   reset?(): Promise<void>;
   /** Venue upkeep on each watch tick (Propr: cancel stale or finished ladder rungs, flag unprotected positions). */
@@ -52,6 +57,14 @@ export interface Broker {
   holds?(coin: string, side: "long" | "short", now: Date): Promise<boolean | null>;
   /** Entries always wait for the operator on this venue (real money), whatever the approval mode says. */
   readonly manualOnly?: boolean;
+}
+
+export interface Settled {
+  coin: string;
+  kind: "stop" | "target";
+  side: Side;
+  proposalId: string | null;
+  result: ExecutionResult;
 }
 
 interface PaperBook {
@@ -157,15 +170,15 @@ export class PaperBroker implements Broker {
   }
 
   /** Settles stops/targets for every position against each coin's range since the last tick. */
-  async settle(ranges: Map<string, { low: number; high: number }>, now: Date): Promise<Array<{ coin: string; kind: "stop" | "target"; result: ExecutionResult }>> {
-    const out: Array<{ coin: string; kind: "stop" | "target"; result: ExecutionResult }> = [];
+  async settle(ranges: Map<string, { low: number; high: number }>, now: Date): Promise<Settled[]> {
+    const out: Settled[] = [];
     for (const pos of await this.store.paperPositions()) {
       const range = ranges.get(pos.coin);
       if (!range) continue;
       const hit = protectiveHit(pos, range.low, range.high);
       if (!hit) continue;
       const result = await this.exit(pos.coin, pos.size, hit.px, hit.kind, pos.proposalId, now, true);
-      out.push({ coin: pos.coin, kind: hit.kind, result });
+      out.push({ coin: pos.coin, kind: hit.kind, side: pos.side, proposalId: pos.proposalId, result });
     }
     return out;
   }

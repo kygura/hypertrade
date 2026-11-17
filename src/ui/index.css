@@ -37,26 +37,29 @@
   --color-text-primary: #ffffff;
   --color-text-secondary: #928d86;
   --color-text-muted: #d5d1cd;
-  --color-green: #38a67c;
-  --color-red: #bc263e;
+  /* Up/down are muted and low-saturation (calm desk): sage and clay, not
+     signal green/red. Text tokens clear 4.5:1 on every dark surface. */
+  --color-green: #78a68a; /* 6.5:1 on elevated */
+  --color-red: #a6605b; /* fills only (bars, dots, candles): 3.8:1 on elevated */
   --color-red-accent: #ed3602;
   --color-amber: #ffb800;
 
   /* ── Hyperion additive layer, verbatim (meanings preserved) ──── */
-  --color-green-text: #38a67c;
-  --color-red-text: #e8677d;
+  --color-green-text: #78a68a; /* 6.9:1 on panel */
+  --color-red-text: #c98a84; /* 6.7:1 on panel */
   --color-info: #6ea8d8;
   --color-text-disabled: #5c5751;
   --color-active: rgba(255, 255, 255, 0.08);
   --color-selected: rgba(255, 255, 255, 0.06);
   --color-scrim: rgba(0, 0, 0, 0.55);
   --color-focus: rgba(255, 255, 255, 0.9);
-  --color-green-bg: rgba(56, 166, 124, 0.12);
-  --color-red-bg: rgba(188, 38, 62, 0.12);
+  --color-green-bg: rgba(120, 166, 138, 0.12);
+  --color-red-bg: rgba(166, 96, 91, 0.12);
   --color-amber-bg: rgba(255, 184, 0, 0.1);
   --color-info-bg: rgba(110, 168, 216, 0.1);
-  --color-flash-up: rgba(56, 166, 124, 0.22);
-  --color-flash-down: rgba(188, 38, 62, 0.22);
+  /* Kept for the theme contract; no component flashes on a tick any more. */
+  --color-flash-up: rgba(120, 166, 138, 0.18);
+  --color-flash-down: rgba(166, 96, 91, 0.18);
   --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.6);
 
   /* ── HYPERTRADE additions ────────────────────────────────────── */
@@ -69,11 +72,11 @@
      Cell BACKGROUNDS for the mindshare grid; text on them is always
      text-primary and every cell carries the signed number (color is never
      the sole signal). Bucket edges: -0.5, -0.15, +0.15, +0.5. */
-  --color-mom-neg2: rgba(188, 38, 62, 0.45);
-  --color-mom-neg1: rgba(188, 38, 62, 0.22);
+  --color-mom-neg2: rgba(166, 96, 91, 0.45);
+  --color-mom-neg1: rgba(166, 96, 91, 0.22);
   --color-mom-zero: #191613; /* = elevated */
-  --color-mom-pos1: rgba(56, 166, 124, 0.22);
-  --color-mom-pos2: rgba(56, 166, 124, 0.45);
+  --color-mom-pos1: rgba(120, 166, 138, 0.22);
+  --color-mom-pos2: rgba(120, 166, 138, 0.45);
 
   /* Projection / benchmark chart colors (§9.3). Projections are info-blue
      so speculation never wears the green/red of realized PnL. */
@@ -82,8 +85,8 @@
   --color-bench-btc: #ffb800; /* HODL-BTC benchmark line */
   --color-bench-usdc: #928d86; /* 100%-USDC benchmark line */
   --color-equity: #ffffff; /* the branch's own curve */
-  --color-drawdown-fill: rgba(188, 38, 62, 0.18);
-  --color-drawdown-line: #bc263e;
+  --color-drawdown-fill: rgba(166, 96, 91, 0.18);
+  --color-drawdown-line: #a6605b;
 
   /* Cycle phases (/cycles, ported from hl-cycles), in cycle order around a
      hue wheel: blue, green, gold, orange, violet, crimson. Any two can share
@@ -388,8 +391,8 @@ textarea:focus {
   border: 0;
   border-radius: max(0px, calc(var(--seg-radius) - var(--seg-pad) - 1px));
   transition:
-    color 100ms,
-    background-color 100ms;
+    color 300ms ease-out,
+    background-color 300ms ease-out;
 }
 .seg--md .seg-item {
   --seg-h: var(--control-md);
@@ -437,7 +440,9 @@ textarea:focus {
   border-color: rgba(88, 184, 154, 0.25);
 }
 
-/* AnimatedDigits, tick flash, pulse — Hyperion verbatim */
+/* AnimatedDigits, value ease, busy fade. Calm desk: nothing blinks or flashes on a
+   price move, every transition is >= 300 ms eased, nothing loops forever
+   (src/ui/motion.test.ts enforces it). */
 .digit-cell {
   position: relative;
   display: inline-block;
@@ -474,54 +479,47 @@ textarea:focus {
   }
 }
 .digit-in {
-  animation: digit-enter 220ms ease-out both;
+  animation: digit-enter 320ms ease-out both;
 }
 .digit-out {
-  animation: digit-exit 220ms ease-out both;
+  animation: digit-exit 320ms ease-out both;
 }
 
-@keyframes flash-up {
+/* A refreshed value eases in (EasedValue): a short opacity settle, no colour. */
+@keyframes value-settle {
   from {
-    background-color: var(--color-flash-up);
+    opacity: 0.45;
   }
   to {
-    background-color: transparent;
-  }
-}
-@keyframes flash-down {
-  from {
-    background-color: var(--color-flash-down);
-  }
-  to {
-    background-color: transparent;
-  }
-}
-.flash-up {
-  animation: flash-up 220ms linear;
-}
-.flash-down {
-  animation: flash-down 220ms linear;
-}
-
-@keyframes pulse-opacity {
-  0%,
-  100% {
     opacity: 1;
   }
-  50% {
-    opacity: 0.5;
+}
+.value-ease {
+  animation: value-settle 400ms ease-out both;
+}
+
+/* Busy / loading marker: one finite fade to a muted rest, never a loop. The
+   class name is historical; it no longer pulses. */
+@keyframes busy-settle {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.6;
   }
 }
 .pulse-label {
-  animation: pulse-opacity 1s ease-in-out infinite;
+  animation: busy-settle 600ms ease-out 1 both;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .digit-in,
   .digit-out,
-  .flash-up,
-  .flash-down,
+  .value-ease {
+    animation: none !important;
+  }
   .pulse-label {
     animation: none !important;
+    opacity: 0.6;
   }
 }

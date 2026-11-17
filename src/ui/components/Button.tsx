@@ -15,7 +15,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const BASE =
   'btn inline-flex items-center justify-center gap-1.5 rounded-control ' +
   'font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)] font-[number:var(--control-weight)] ' +
-  'transition-colors duration-100 disabled:cursor-not-allowed'
+  'transition-colors duration-300 ease-out disabled:cursor-not-allowed'
 
 const TIER_CLASS: Record<ButtonTier, string> = {
   ghost:

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { requireAuth } from "../auth.js";
 import { makeService, ScriptedProvider } from "../desk/testkit.js";
 import { createDeskRoutes } from "./desk.js";
+import { DeskCooldownResponseSchema, DeskPlanListResponseSchema, DeskPlanSubmitResponseSchema, PlanCheckSchema } from "../../shared/deskPlan.js";
 
 function app(opts: { provider?: ScriptedProvider | null; env?: Record<string, string> } = {}) {
   const kit = makeService();
@@ -129,5 +130,47 @@ describe("auth gate", () => {
       process.env.CRON_TOKEN = prev.CRON_TOKEN;
       process.env.CRON_SECRET = prev.CRON_SECRET;
     }
+  });
+});
+
+describe("/desk plans and cooldown", () => {
+  const plan = { coin: "ETH", side: "long", rungs: [{ px: 4000, size: 0.1 }], stopPx: 3800, targetPx: 4500 };
+
+  test("check answers a PlanCheck and saves nothing; a bad body is 400", async () => {
+    const { app: a, store } = app();
+    const res = await a.request("/desk/plans/check", json({ plan }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(PlanCheckSchema.parse(body)).toMatchObject({ blockers: [], metrics: { lossAtStopUsd: 20, rrFull: 2.5 } });
+    expect(await store.listPlans(5)).toEqual([]);
+    expect((await a.request("/desk/plans/check", json({ plan: { ...plan, rungs: [] } }))).status).toBe(400);
+    expect((await a.request("/desk/plans/check", json({ plan: { ...plan, extra: 1 } }))).status).toBe(400);
+  });
+
+  test("a plan with no stop can be checked (and is blocked)", async () => {
+    const res = await app().app.request("/desk/plans/check", json({ plan: { ...plan, stopPx: null } }));
+    expect((await res.json()).blockers).toContain("no stop: every plan needs one");
+  });
+
+  test("submit journals and places; list is newest first; place needs to be explicit", async () => {
+    const { app: a, store } = app();
+    expect((await a.request("/desk/plans", json({ plan }))).status).toBe(400);
+    const saved = DeskPlanSubmitResponseSchema.parse(await (await a.request("/desk/plans", json({ plan, place: false }))).json());
+    expect(saved).toMatchObject({ placed: false, record: { placed: false } });
+    const placed = DeskPlanSubmitResponseSchema.parse(await (await a.request("/desk/plans", json({ plan, place: true }))).json());
+    expect(placed).toMatchObject({ placed: true, record: { placed: true, placement: { status: "executed" } } });
+    expect((await store.listProposals({ limit: 5 }))[0]).toMatchObject({ decidedBy: "operator:plan", status: "executed" });
+    const list = DeskPlanListResponseSchema.parse(await (await a.request("/desk/plans?limit=10")).json());
+    expect(list.plans.map((p) => p.id)).toEqual([placed.record.id, saved.record.id]);
+  });
+
+  test("cooldown lists each lock with its journal entry", async () => {
+    const { app: a, service } = app();
+    expect(DeskCooldownResponseSchema.parse(await (await a.request("/desk/cooldown")).json())).toEqual({ coins: [], all: null, stopOutsToday: 0 });
+    await service.recordStopOut("ETH", new Date("2026-10-05T11:30:00Z"), { source: "paper", proposalId: null, fill: { side: "long", size: 0.1, px: 3800, pnl: -20 } });
+    const body = DeskCooldownResponseSchema.parse(await (await a.request("/desk/cooldown")).json());
+    expect(body).toMatchObject({ all: null, stopOutsToday: 1, coins: [{ coin: "ETH", until: "2026-10-05T15:30:00.000Z", stopOutAt: "2026-10-05T11:30:00.000Z", plan: null, ref: { fill: { pnl: -20 } } }] });
+    const check = await (await a.request("/desk/plans/check", json({ plan }))).json();
+    expect(check.blockers.join()).toContain("cooldown: ETH stopped out");
   });
 });

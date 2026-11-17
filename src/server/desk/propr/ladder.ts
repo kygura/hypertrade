@@ -111,6 +111,26 @@ export function planLadder(order: RiskOrder, sizing: Sizing, szDecimals: number,
   return { plan: { coin: order.coin, side: order.side, stop, target, rungs, qty, notionalUsd: r2(notionalUsd), riskUsd: r2(riskUsd), avgEntry: roundPerpPx(avgEntry, szDecimals) }, reasons: [] };
 }
 
+/**
+ * A ladder of the operator's own rungs (a written plan), each a resting GTC limit at its price: sizes floored to the
+ * size step, prices rounded to Hyperliquid's rules. Refused (reasons) when a rung rounds to zero or under the order
+ * minimum. Nothing is moved or resized beyond that rounding.
+ */
+export function explicitLadder(order: RiskOrder, rungs: Array<{ px: number; size: number }>, szDecimals: number, cfg: ProprVenueConfig["ladder"]): { plan?: LadderPlan; reasons: string[] } {
+  const stop = roundPerpPx(order.stop, szDecimals);
+  const target = order.target != null ? roundPerpPx(order.target, szDecimals) : null;
+  const out: Rung[] = rungs.map((r) => ({ px: roundPerpPx(r.px, szDecimals), qty: floorToDecimals(r.size, szDecimals), market: false }));
+  const reasons = out.filter((r) => !(r.qty > 0) || r.qty * r.px < cfg.minRungUsd).map((r) => `rung ${r.qty} ${order.coin} @ ${r.px} is under the $${cfg.minRungUsd} order minimum`);
+  if (reasons.length) return { reasons };
+  const qty = out.reduce((a, r) => a + r.qty, 0);
+  const notionalUsd = out.reduce((a, r) => a + r.qty * r.px, 0);
+  const riskUsd = out.reduce((a, r) => a + r.qty * Math.abs(r.px - stop), 0);
+  return {
+    plan: { coin: order.coin, side: order.side, stop, target, rungs: out, qty: floorToDecimals(qty, szDecimals), notionalUsd: r2(notionalUsd), riskUsd: r2(riskUsd), avgEntry: roundPerpPx(notionalUsd / qty, szDecimals) },
+    reasons: [],
+  };
+}
+
 export const dailyFloor = (s: ProprSnapshot, f: ProprVenueConfig["firm"]) => s.dayStartBalance * (1 - f.dailyLossPct / 100);
 export const drawdownFloor = (s: ProprSnapshot, f: ProprVenueConfig["firm"]) => s.startingBalance * (1 - f.maxDrawdownPct / 100);
 

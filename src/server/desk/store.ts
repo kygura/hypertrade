@@ -1,3 +1,5 @@
+import type postgres from "postgres";
+import type { DeskPlanRecord, PlanPlacement } from "../../shared/deskPlan.js";
 import { sql } from "../db.js";
 import type { AlertLevel, ProposalRecord, ProposalStatus, Side } from "./types.js";
 
@@ -61,6 +63,9 @@ export interface AlertRow {
   channels: string[];
 }
 
+/** A journal entry before the store assigns its id. createdAt comes from the service clock. */
+export type NewPlan = Omit<DeskPlanRecord, "id">;
+
 export type NewProposal = Omit<ProposalRecord, "id" | "createdAt" | "decidedBy" | "decidedAt"> & { decidedBy?: string | null };
 
 export interface DeskStore {
@@ -86,6 +91,13 @@ export interface DeskStore {
 
   insertAlert(a: AlertRow): Promise<void>;
   listAlerts(limit: number): Promise<AlertRow[]>;
+
+  /** The plan journal (030_desk_plans.sql): every plan, placed or not. */
+  insertPlan(p: NewPlan): Promise<DeskPlanRecord>;
+  updatePlan(id: string, patch: { placed: boolean; placement: PlanPlacement | null }): Promise<DeskPlanRecord | null>;
+  getPlan(id: string): Promise<DeskPlanRecord | null>;
+  /** Newest first. */
+  listPlans(limit: number): Promise<DeskPlanRecord[]>;
 
   getState<T>(key: string): Promise<T | null>;
   setState(key: string, value: unknown): Promise<void>;
@@ -114,6 +126,21 @@ function toProposal(r: any): ProposalRecord {
   };
 }
 
+function toPlan(r: any): DeskPlanRecord {
+  return {
+    id: r.id,
+    createdAt: iso(r.created_at)!,
+    source: r.source,
+    venue: r.venue,
+    input: r.input,
+    metrics: r.metrics,
+    blockers: r.blockers ?? [],
+    warnings: r.warnings ?? [],
+    placed: r.placed,
+    placement: r.placement ?? null,
+  };
+}
+
 function toRun(r: any): RunRow {
   return {
     id: r.id,
@@ -131,37 +158,39 @@ function toRun(r: any): RunRow {
 }
 
 export class PgStore implements DeskStore {
+  /** `db` is the postgres.js client: a seam so the store suite runs this twin on PGlite (testing/pglite.ts pgliteSql). */
+  constructor(private readonly db: () => postgres.Sql = sql) {}
   async createRun(kind: RunRow["kind"], question: string, trigger: unknown) {
-    const [row] = await sql()`insert into desk_runs (kind, question, trigger) values (${kind}, ${question}, ${sql().json((trigger ?? null) as any)}) returning id`;
+    const [row] = await this.db()`insert into desk_runs (kind, question, trigger) values (${kind}, ${question}, ${this.db().json((trigger ?? null) as any)}) returning id`;
     return row!.id as string;
   }
   async appendEvents(runId: string, events: Array<{ seq: number; agent: string; type: string; data: unknown }>) {
     if (!events.length) return;
-    const rows = events.map((e) => ({ run_id: runId, seq: e.seq, agent: e.agent, type: e.type, data: sql().json(e.data as any) }));
-    await sql()`insert into desk_events ${sql()(rows, "run_id", "seq", "agent", "type", "data")} on conflict do nothing`;
+    const rows = events.map((e) => ({ run_id: runId, seq: e.seq, agent: e.agent, type: e.type, data: this.db().json(e.data as any) }));
+    await this.db()`insert into desk_events ${this.db()(rows, "run_id", "seq", "agent", "type", "data")} on conflict do nothing`;
   }
   async finishRun(id: string, f: { status: "done" | "error" | "timeout"; answer: string | null; usage: unknown; costUsd: number | null; error: string | null }) {
-    await sql()`update desk_runs set status = ${f.status}, answer = ${f.answer}, usage = ${sql().json((f.usage ?? null) as any)},
+    await this.db()`update desk_runs set status = ${f.status}, answer = ${f.answer}, usage = ${this.db().json((f.usage ?? null) as any)},
       cost_usd = ${f.costUsd}, error = ${f.error}, finished_at = now() where id = ${id}`;
   }
   async listRuns(limit: number) {
-    const rows = await sql()`select * from desk_runs order by started_at desc limit ${limit}`;
+    const rows = await this.db()`select * from desk_runs order by started_at desc limit ${limit}`;
     return rows.map(toRun);
   }
   async getRun(id: string) {
-    const [row] = await sql()`select * from desk_runs where id = ${id}`;
+    const [row] = await this.db()`select * from desk_runs where id = ${id}`;
     if (!row) return null;
-    const events = await sql()`select seq, ts, agent, type, data from desk_events where run_id = ${id} order by seq`;
+    const events = await this.db()`select seq, ts, agent, type, data from desk_events where run_id = ${id} order by seq`;
     return { ...toRun(row), events: events.map((e: any) => ({ seq: e.seq, ts: iso(e.ts)!, agent: e.agent, type: e.type, data: e.data })) };
   }
   async countRunsSince(kind: RunRow["kind"], since: Date) {
-    const [row] = await sql()`select count(*)::int as n from desk_runs where kind = ${kind} and started_at >= ${since}`;
+    const [row] = await this.db()`select count(*)::int as n from desk_runs where kind = ${kind} and started_at >= ${since}`;
     return row!.n as number;
   }
   async insertProposal(p: NewProposal) {
-    const [row] = await sql()`insert into desk_proposals (run_id, kind, status, venue, proposal, verdict, execution, decided_by, decided_at, expires_at)
-      values (${p.runId}, ${p.kind}, ${p.status}, ${p.venue}, ${sql().json(p.proposal as any)}, ${sql().json(p.verdict as any)},
-        ${sql().json((p.execution ?? null) as any)}, ${p.decidedBy ?? null}, ${p.decidedBy ? new Date() : null}, ${p.expiresAt})
+    const [row] = await this.db()`insert into desk_proposals (run_id, kind, status, venue, proposal, verdict, execution, decided_by, decided_at, expires_at)
+      values (${p.runId}, ${p.kind}, ${p.status}, ${p.venue}, ${this.db().json(p.proposal as any)}, ${this.db().json(p.verdict as any)},
+        ${this.db().json((p.execution ?? null) as any)}, ${p.decidedBy ?? null}, ${p.decidedBy ? new Date() : null}, ${p.expiresAt})
       returning *`;
     return toProposal(row);
   }
@@ -169,28 +198,28 @@ export class PgStore implements DeskStore {
     const cur = await this.getProposal(id);
     if (!cur) return null;
     const next = { ...cur, ...patch };
-    const [row] = await sql()`update desk_proposals set status = ${next.status}, verdict = ${sql().json(next.verdict as any)},
-      execution = ${sql().json((next.execution ?? null) as any)}, decided_by = ${next.decidedBy}, decided_at = ${next.decidedAt}
+    const [row] = await this.db()`update desk_proposals set status = ${next.status}, verdict = ${this.db().json(next.verdict as any)},
+      execution = ${this.db().json((next.execution ?? null) as any)}, decided_by = ${next.decidedBy}, decided_at = ${next.decidedAt}
       where id = ${id} returning *`;
     return row ? toProposal(row) : null;
   }
   async claimProposal(id: string, by: string, at: string) {
-    const [row] = await sql()`update desk_proposals set decided_by = ${by}, decided_at = ${at}
+    const [row] = await this.db()`update desk_proposals set decided_by = ${by}, decided_at = ${at}
       where id = ${id} and status = 'pending' and decided_by is null returning *`;
     return row ? toProposal(row) : null;
   }
   async getProposal(id: string) {
-    const [row] = await sql()`select * from desk_proposals where id = ${id}`;
+    const [row] = await this.db()`select * from desk_proposals where id = ${id}`;
     return row ? toProposal(row) : null;
   }
   async listProposals(opts: { status?: ProposalStatus; limit: number }) {
     const rows = opts.status
-      ? await sql()`select * from desk_proposals where status = ${opts.status} order by created_at desc limit ${opts.limit}`
-      : await sql()`select * from desk_proposals order by created_at desc limit ${opts.limit}`;
+      ? await this.db()`select * from desk_proposals where status = ${opts.status} order by created_at desc limit ${opts.limit}`
+      : await this.db()`select * from desk_proposals order by created_at desc limit ${opts.limit}`;
     return rows.map(toProposal);
   }
   async paperPositions() {
-    const rows = await sql()`select * from desk_paper_positions order by opened_at`;
+    const rows = await this.db()`select * from desk_paper_positions order by opened_at`;
     return rows.map((r: any) => ({
       coin: r.coin,
       side: r.side,
@@ -203,20 +232,20 @@ export class PgStore implements DeskStore {
     }));
   }
   async savePaperPosition(p: PaperPosition) {
-    await sql()`insert into desk_paper_positions (coin, side, size, entry_px, stop_px, tp_px, proposal_id, opened_at)
+    await this.db()`insert into desk_paper_positions (coin, side, size, entry_px, stop_px, tp_px, proposal_id, opened_at)
       values (${p.coin}, ${p.side}, ${p.size}, ${p.entryPx}, ${p.stopPx}, ${p.tpPx}, ${p.proposalId}, ${p.openedAt})
       on conflict (coin) do update set side = excluded.side, size = excluded.size, entry_px = excluded.entry_px,
         stop_px = excluded.stop_px, tp_px = excluded.tp_px, proposal_id = excluded.proposal_id`;
   }
   async deletePaperPosition(coin: string) {
-    await sql()`delete from desk_paper_positions where coin = ${coin}`;
+    await this.db()`delete from desk_paper_positions where coin = ${coin}`;
   }
   async insertFill(f: PaperFill) {
-    await sql()`insert into desk_paper_fills (ts, coin, side, size, px, fee, pnl, reason, proposal_id)
+    await this.db()`insert into desk_paper_fills (ts, coin, side, size, px, fee, pnl, reason, proposal_id)
       values (${f.ts}, ${f.coin}, ${f.side}, ${f.size}, ${f.px}, ${f.fee}, ${f.pnl}, ${f.reason}, ${f.proposalId})`;
   }
   async listFills(limit: number) {
-    const rows = await sql()`select * from desk_paper_fills order by ts desc limit ${limit}`;
+    const rows = await this.db()`select * from desk_paper_fills order by ts desc limit ${limit}`;
     return rows.map((r: any) => ({
       id: Number(r.id),
       ts: iso(r.ts)!,
@@ -231,23 +260,45 @@ export class PgStore implements DeskStore {
     }));
   }
   async insertAlert(a: AlertRow) {
-    await sql()`insert into desk_alerts (ts, level, title, body, run_id, channels)
-      values (${a.ts}, ${a.level}, ${a.title}, ${a.body}, ${a.runId}, ${sql().json(a.channels)})`;
+    await this.db()`insert into desk_alerts (ts, level, title, body, run_id, channels)
+      values (${a.ts}, ${a.level}, ${a.title}, ${a.body}, ${a.runId}, ${this.db().json(a.channels)})`;
   }
   async listAlerts(limit: number) {
-    const rows = await sql()`select * from desk_alerts order by ts desc limit ${limit}`;
+    const rows = await this.db()`select * from desk_alerts order by ts desc limit ${limit}`;
     return rows.map((r: any) => ({ id: Number(r.id), ts: iso(r.ts)!, level: r.level, title: r.title, body: r.body, runId: r.run_id, channels: r.channels }));
   }
+  async insertPlan(p: NewPlan) {
+    const db = this.db();
+    const [row] = await db`insert into desk_plans (created_at, source, venue, coin, input, metrics, blockers, warnings, placed, placement)
+      values (${p.createdAt}, ${p.source}, ${p.venue}, ${p.input.coin}, ${db.json(p.input as any)}, ${db.json(p.metrics as any)},
+        ${db.json(p.blockers)}, ${db.json(p.warnings)}, ${p.placed}, ${p.placement ? db.json(p.placement as any) : null})
+      returning *`;
+    return toPlan(row);
+  }
+  async updatePlan(id: string, patch: { placed: boolean; placement: PlanPlacement | null }) {
+    const db = this.db();
+    const [row] = await db`update desk_plans set placed = ${patch.placed}, placement = ${patch.placement ? db.json(patch.placement as any) : null}
+      where id = ${id} returning *`;
+    return row ? toPlan(row) : null;
+  }
+  async getPlan(id: string) {
+    const [row] = await this.db()`select * from desk_plans where id = ${id}`;
+    return row ? toPlan(row) : null;
+  }
+  async listPlans(limit: number) {
+    const rows = await this.db()`select * from desk_plans order by created_at desc, seq desc limit ${limit}`;
+    return rows.map(toPlan);
+  }
   async getState<T>(key: string) {
-    const [row] = await sql()`select value from desk_state where key = ${key}`;
+    const [row] = await this.db()`select value from desk_state where key = ${key}`;
     return row ? (row.value as T) : null;
   }
   async setState(key: string, value: unknown) {
-    await sql()`insert into desk_state (key, value, updated_at) values (${key}, ${sql().json(value as any)}, now())
+    await this.db()`insert into desk_state (key, value, updated_at) values (${key}, ${this.db().json(value as any)}, now())
       on conflict (key) do update set value = excluded.value, updated_at = now()`;
   }
   async takeState<T extends { hash: string }>(key: string, hash: string) {
-    const [row] = await sql()`delete from desk_state where key = ${key} and value->>'hash' = ${hash} returning value`;
+    const [row] = await this.db()`delete from desk_state where key = ${key} and value->>'hash' = ${hash} returning value`;
     return row ? (row.value as T) : null;
   }
 }
@@ -262,6 +313,7 @@ export class MemoryStore implements DeskStore {
   fills: PaperFill[] = [];
   alerts: AlertRow[] = [];
   state = new Map<string, unknown>();
+  plans: DeskPlanRecord[] = [];
   private n = 0;
   constructor(private readonly clock: () => Date = () => new Date()) {}
   private id() {
@@ -359,6 +411,29 @@ export class MemoryStore implements DeskStore {
   }
   async listAlerts(limit: number) {
     return [...this.alerts].reverse().slice(0, limit);
+  }
+  async insertPlan(p: NewPlan) {
+    const rec: DeskPlanRecord = structuredClone({ ...p, id: this.id() });
+    this.plans.push(rec);
+    return structuredClone(rec);
+  }
+  async updatePlan(id: string, patch: { placed: boolean; placement: PlanPlacement | null }) {
+    const i = this.plans.findIndex((x) => x.id === id);
+    if (i < 0) return null;
+    this.plans[i] = { ...this.plans[i]!, placed: patch.placed, placement: patch.placement ? structuredClone(patch.placement) : null };
+    return structuredClone(this.plans[i]!);
+  }
+  async getPlan(id: string) {
+    const rec = this.plans.find((x) => x.id === id);
+    return rec ? structuredClone(rec) : null;
+  }
+  async listPlans(limit: number) {
+    // Newest first by createdAt; insertion order breaks ties (pg: seq).
+    return this.plans
+      .map((x, i) => [x, i] as const)
+      .sort((a, b) => b[0].createdAt.localeCompare(a[0].createdAt) || b[1] - a[1])
+      .slice(0, limit)
+      .map(([x]) => structuredClone(x));
   }
   async getState<T>(key: string) {
     return (this.state.has(key) ? (this.state.get(key) as T) : null) as T | null;

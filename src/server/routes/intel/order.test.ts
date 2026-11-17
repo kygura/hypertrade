@@ -3,7 +3,7 @@ import type { OrderIntent } from "../../../shared/intel.js";
 import { makeService } from "../../desk/testkit.js";
 import { createOrderRoutes } from "./order.js";
 
-const intent: OrderIntent = { asset: "ETH", side: "long", leverage: 3, size: { usd: 800 }, entry: { type: "market" }, stop: { type: "pct", pct: 5 } };
+const intent: OrderIntent = { asset: "ETH", side: "long", leverage: 3, size: { usd: 800 }, entry: { type: "market" }, stop: { type: "pct", pct: 5 }, target: 4500 };
 
 function app() {
   const kit = makeService();
