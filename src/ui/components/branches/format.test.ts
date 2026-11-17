@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { branchLine, branchReturnPct, monthlyGrid } from './format'
+import { branchLine, branchReturnPct, monthlyGrid, moveLines } from './format'
 import { allocationSummary } from './format'
 import { isPerp } from '../../../shared/schemas'
 
@@ -52,4 +52,15 @@ describe('monthlyGrid', () => {
     expect(rows[0]!.totalPct).toBeCloseTo(-1, 9)
     expect(rows[1]!.months[11]).toBe(5)
   })
+})
+
+test('move lines show the fill date, the hindsight window and the holdings after', () => {
+  const schedule = [
+    { date: '2025-03-01', until: '2025-04-30', note: 'buy the low', allocations: [{ coin: 'BTC', weightPct: 50, leverage: 3 }, { coin: 'USDC', weightPct: 50 }] },
+    { date: '2025-09-15', allocations: [{ coin: 'USDC', weightPct: 100 }] },
+  ]
+  expect(moveLines(schedule, [{ step: 0, date: '2025-04-08' }])).toEqual([
+    { when: '2025-04-08', window: 'LOW OF BTC 2025-03-01 → 2025-04-30', note: 'buy the low', holdings: '50 BTC 3× / 50 USDC' },
+    { when: '2025-09-15', window: undefined, note: undefined, holdings: '100 USDC' },
+  ])
 })

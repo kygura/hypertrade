@@ -76,9 +76,28 @@ export const CashflowSchema = z
 
 const RebalanceSchema = z.enum(["none", "monthly", "weekly", "threshold5pct"]);
 
+const DateSchema = z.string().refine((s) => !Number.isNaN(Date.parse(s)), { message: "invalid date" });
+
+/** A dated move: at that day's close the whole portfolio is closed (perp legs realize) and re-opened at
+ * `allocations`, weights as percent of the value at that moment. With `until`, the move fills instead on the day
+ * between `date` and `until` where `ref` (default BTC) closes lowest (`at` "low", the default) or highest: hindsight
+ * timing, an upper bound on what a real entry or exit would get. */
+export const ScheduleStepSchema = z
+  .object({
+    date: DateSchema,
+    until: DateSchema.optional(),
+    at: z.enum(["low", "high"]).optional(),
+    ref: CoinSchema.optional(),
+    allocations: z.array(AllocationSchema).min(1).max(10),
+    note: z.string().max(120).optional(),
+  })
+  .strict();
+
 export const BranchConfigSchema = z.object({
   description: z.string().optional(),
-  startDate: z.string().refine((s) => !Number.isNaN(Date.parse(s)), { message: "invalid date" }),
+  startDate: DateSchema,
+  /** Last day of the replay; default today. */
+  endDate: DateSchema.optional(),
   initialCapitalUsd: z.number().finite().positive().max(1e12),
   allocations: z.array(AllocationSchema).max(10),
   rebalance: RebalanceSchema,
@@ -88,7 +107,23 @@ export const BranchConfigSchema = z.object({
   cashflow: CashflowSchema.optional(),
   /** Length of the rolling start-date windows; default 365, 0 turns them off. */
   rollingWindowDays: z.number().int().min(0).max(1825).optional(),
+  /** Dated moves after the start, applied in date order. */
+  schedule: z.array(ScheduleStepSchema).max(12).optional(),
 });
+
+/** Every coin a branch touches (allocations, DCA, scheduled moves and their reference coins), uppercased as stored. */
+export function branchCoins(config: {
+  allocations: { coin: string }[];
+  dca?: { coin: string }[];
+  schedule?: { allocations: { coin: string }[]; ref?: string; until?: string }[];
+}): string[] {
+  const coins = [...config.allocations, ...(config.dca ?? [])].map((a) => a.coin);
+  for (const s of config.schedule ?? []) {
+    coins.push(...s.allocations.map((a) => a.coin));
+    if (s.until) coins.push(s.ref ?? "BTC");
+  }
+  return [...new Set(coins)];
+}
 
 // ─── Routine contract (docs/SPEC.md "Routine Contract") ───
 

@@ -1,6 +1,6 @@
 // Pure branch simulation engine — no I/O. See docs/SPEC.md "Branch model".
 import type { Allocation, BranchConfig } from "../../shared/types.js";
-import { isPerp, STABLES } from "../../shared/schemas.js";
+import { branchCoins, isPerp, STABLES } from "../../shared/schemas.js";
 
 export interface DailyClose {
   ts: number; // ms epoch
@@ -60,6 +60,14 @@ export interface RollingResult {
   };
 }
 
+/** A scheduled move as it was filled: the day it happened and the portfolio value right after it. */
+export interface ExecutedMove {
+  /** Index into config.schedule. */
+  step: number;
+  date: string; // YYYY-MM-DD
+  valueUsd: number;
+}
+
 export interface BranchResult {
   equity: EquityPoint[];
   benchmarks: { btc: EquityPoint[]; usdc: EquityPoint[] };
@@ -68,6 +76,8 @@ export interface BranchResult {
   twr?: EquityPoint[];
   monthly: MonthlyReturn[];
   rolling?: RollingResult;
+  /** Scheduled moves that fell inside the replay, in the order they were filled. */
+  moves?: ExecutedMove[];
 }
 
 const DAY_MS = 86400000;
@@ -124,10 +134,10 @@ function legEquity(leg: PerpLeg, px: number): number {
 }
 
 /** Builds the daily grid the simulation runs on: BTC's own candle timestamps
- * (BTC is always fetched for the benchmark) filtered to >= startDate. */
-function buildGrid(candlesByCoin: Record<string, DailyClose[]>, startMs: number): number[] {
+ * (BTC is always fetched for the benchmark) filtered to startDate..endDate. */
+function buildGrid(candlesByCoin: Record<string, DailyClose[]>, startMs: number, endMs = Infinity): number[] {
   const btc = candlesByCoin.BTC ?? [];
-  return btc.map((c) => c.ts).filter((ts) => ts >= startMs);
+  return btc.map((c) => c.ts).filter((ts) => ts >= startMs && ts <= endMs);
 }
 
 /** True when ts starts a new weekly/monthly bucket after prevTs. Shared by rebalancing, DCA,
@@ -151,6 +161,8 @@ export function shouldRebalance(mode: BranchConfig["rebalance"], prevTs: number,
 interface RunOptions {
   costs?: BranchConfig["costs"];
   cashflow?: BranchConfig["cashflow"];
+  /** Replaces the default entry fee (fee rate x the whole target notional): a scheduled move pays only on what changes. */
+  entryFeeUsd?: number;
 }
 
 interface PortfolioRun {
@@ -160,6 +172,8 @@ interface PortfolioRun {
   feesUsd: number;
   fundingUsd: number;
   netFlowUsd: number;
+  /** Signed notional per coin on the last day (spot and longs positive, shorts negative); stables left out. */
+  exposure: Map<string, number>;
 }
 
 /**
@@ -178,7 +192,7 @@ function runPortfolio(
   dca: NonNullable<BranchConfig["dca"]> = [],
   opts: RunOptions = {},
 ): PortfolioRun {
-  const out: PortfolioRun = { equity: [], index: [], feesUsd: 0, fundingUsd: 0, netFlowUsd: 0 };
+  const out: PortfolioRun = { equity: [], index: [], feesUsd: 0, fundingUsd: 0, netFlowUsd: 0, exposure: new Map() };
   if (grid.length === 0) return out;
   const price = (coin: string, ts: number) => priceAt(coin, ts, candlesByCoin[coin]);
   const t0 = grid[0]!;
@@ -188,7 +202,7 @@ function runPortfolio(
   // Traded notional per $ of capital put to work at the target weights (stables are cash, not a trade).
   const exposure = allocations.reduce((s, a) => s + (STABLES.has(a.coin) ? 0 : (a.weightPct / 100) * (a.leverage ?? 1)), 0);
 
-  const entryFee = feeRate > 0 ? feeRate * exposure * initialCapitalUsd : 0;
+  const entryFee = opts.entryFeeUsd ?? (feeRate > 0 ? feeRate * exposure * initialCapitalUsd : 0);
   const capital = initialCapitalUsd - entryFee;
   out.feesUsd += entryFee;
 
@@ -345,7 +359,120 @@ function runPortfolio(
     prevValue = value;
     prevTs = ts;
   }
+  const last = grid.at(-1)!;
+  const add = (coin: string, n: number) => out.exposure.set(coin, (out.exposure.get(coin) ?? 0) + n);
+  allocations.forEach((a, i) => {
+    if (!STABLES.has(a.coin)) add(a.coin, (legs[i]?.sign ?? 1) * notional(i, last));
+  });
+  for (const c of dcaOnly) add(c, qty.get(c)! * price(c, last));
   return out;
+}
+
+/** The grid index each scheduled step fills on, or undefined when its window has no day in the grid.
+ * A plain step fills on the first grid day at or after `date`; a step with `until` on the lowest (or highest)
+ * close of `ref` between `date` and `until`, the earliest such day on a tie. */
+export function resolveSchedule(
+  schedule: NonNullable<BranchConfig["schedule"]>,
+  candlesByCoin: Record<string, DailyClose[]>,
+  grid: number[],
+): (number | undefined)[] {
+  return schedule.map((s) => {
+    const from = Date.parse(s.date);
+    if (!s.until) {
+      const i = grid.findIndex((ts) => ts >= from);
+      return i < 0 ? undefined : i;
+    }
+    const to = Date.parse(s.until);
+    const ref = s.ref ?? "BTC";
+    const sign = s.at === "high" ? -1 : 1;
+    let best: number | undefined;
+    let bestPx = Infinity;
+    grid.forEach((ts, i) => {
+      if (ts < from || ts > to) return;
+      const px = sign * priceAt(ref, ts, candlesByCoin[ref]);
+      if (px < bestPx) {
+        bestPx = px;
+        best = i;
+      }
+    });
+    return best;
+  });
+}
+
+interface Phase {
+  from: number; // grid index the allocations take over on
+  allocations: Allocation[];
+  step?: number;
+}
+
+/** Scheduled moves in fill order. A move on day 0 replaces the starting allocations; of two on one day the later step wins. */
+function phasesOf(config: BranchConfig, filled: (number | undefined)[]): Phase[] {
+  const phases: Phase[] = [{ from: 0, allocations: config.allocations }];
+  const order = filled
+    .map((from, step) => ({ from, step }))
+    .filter((p): p is { from: number; step: number } => p.from !== undefined)
+    .sort((a, b) => a.from - b.from || a.step - b.step);
+  for (const { from, step } of order) {
+    const p = { from, allocations: config.schedule![step]!.allocations, step };
+    if (phases.at(-1)!.from === from) phases[phases.length - 1] = p;
+    else phases.push(p);
+  }
+  return phases;
+}
+
+/**
+ * Runs each phase on its slice of the grid and stitches them: a phase runs up to and including the day of the next
+ * move, so that day's close values the old holdings, and the next phase starts from that value. A move pays the fee
+ * rate on the change in signed notional per coin (keeping a position open costs nothing).
+ */
+function runPhased(config: BranchConfig, phases: Phase[], grid: number[], candlesByCoin: Record<string, DailyClose[]>, opts: RunOptions) {
+  const out: PortfolioRun = { equity: [], index: [], feesUsd: 0, fundingUsd: 0, netFlowUsd: 0, exposure: new Map() };
+  const moves: ExecutedMove[] = [];
+  const feeRate = (opts.costs?.feeBps ?? 0) / 10000;
+  let capital = config.initialCapitalUsd;
+  let scale = 1; // the stitched index on the day the phase starts, before the move
+  let prevExposure: Map<string, number> | undefined;
+  for (let k = 0; k < phases.length; k++) {
+    const ph = phases[k]!;
+    const end = phases[k + 1]?.from ?? grid.length - 1;
+    const slice = grid.slice(ph.from, end + 1);
+    if (capital <= 0) {
+      // Wiped out: nothing left to move. The slice's first day is the previous phase's last point.
+      for (const ts of slice.slice(1)) {
+        out.equity.push({ ts, value: 0 });
+        out.index.push(0);
+      }
+      continue;
+    }
+    let entryFeeUsd: number | undefined;
+    if (prevExposure) {
+      const target = new Map<string, number>();
+      for (const a of ph.allocations) {
+        if (STABLES.has(a.coin)) continue;
+        const n = (a.side === "short" ? -1 : 1) * (a.weightPct / 100) * capital * (a.leverage ?? 1);
+        target.set(a.coin, (target.get(a.coin) ?? 0) + n);
+      }
+      let turnover = 0;
+      for (const c of new Set([...target.keys(), ...prevExposure.keys()])) turnover += Math.abs((target.get(c) ?? 0) - (prevExposure.get(c) ?? 0));
+      entryFeeUsd = Math.min(capital, feeRate * turnover);
+    }
+    const run = runPortfolio(ph.allocations, config.rebalance, capital, slice, candlesByCoin, config.dca, { ...opts, entryFeeUsd });
+    if (k > 0) {
+      // The move day's close was the previous phase's last point: replace it with the value after the move.
+      out.equity.pop();
+      out.index.pop();
+    }
+    if (ph.step !== undefined) moves.push({ step: ph.step, date: new Date(slice[0]!).toISOString().slice(0, 10), valueUsd: run.equity[0]!.value });
+    out.equity.push(...run.equity);
+    out.index.push(...run.index.map((v) => v * scale));
+    out.feesUsd += run.feesUsd;
+    out.fundingUsd += run.fundingUsd;
+    out.netFlowUsd += run.netFlowUsd;
+    capital = run.equity.at(-1)!.value;
+    scale = out.index.at(-1)!;
+    prevExposure = run.exposure;
+  }
+  return { run: out, moves };
 }
 
 function maxDrawdownPct(equity: EquityPoint[]): number {
@@ -478,20 +605,23 @@ export interface FullSimulation {
 }
 
 export function simulateFull(config: BranchConfig, candlesByCoin: Record<string, DailyClose[]>): FullSimulation {
-  for (const coin of [...config.allocations.map((a) => a.coin), ...(config.dca ?? []).map((d) => d.coin)]) {
+  for (const coin of branchCoins(config)) {
     if (STABLES.has(coin)) continue;
     if (!candlesByCoin[coin] || candlesByCoin[coin]!.length === 0) throw new NoPriceDataError(coin);
   }
 
   const startMs = Date.parse(config.startDate);
-  const grid = buildGrid(candlesByCoin, startMs);
+  const grid = buildGrid(candlesByCoin, startMs, config.endDate ? Date.parse(config.endDate) : Infinity);
   if (grid.length === 0) throw new NoPriceDataError("BTC", "no price history in range");
 
   const cap = config.initialCapitalUsd;
   const opts: RunOptions = { costs: config.costs, cashflow: config.cashflow };
   // Benchmarks pay the same fees and get the same cash flows, so "vs BTC" compares like with like.
   const benchOpts: RunOptions = { costs: config.costs && { feeBps: config.costs.feeBps }, cashflow: config.cashflow };
-  const run = runPortfolio(config.allocations, config.rebalance, cap, grid, candlesByCoin, config.dca, opts);
+  const scheduled = config.schedule?.length
+    ? runPhased(config, phasesOf(config, resolveSchedule(config.schedule, candlesByCoin, grid)), grid, candlesByCoin, opts)
+    : undefined;
+  const run = scheduled?.run ?? runPortfolio(config.allocations, config.rebalance, cap, grid, candlesByCoin, config.dca, opts);
   const btc = runPortfolio([{ coin: "BTC", weightPct: 100 }], "none", cap, grid, candlesByCoin, [], benchOpts).equity;
   const usdc = runPortfolio([{ coin: "USDC", weightPct: 100 }], "none", cap, grid, candlesByCoin, [], benchOpts).equity;
   const equity = run.equity;
@@ -528,7 +658,10 @@ export function simulateFull(config: BranchConfig, candlesByCoin: Record<string,
     },
     monthly: monthlyReturns(growth),
     ...(twr && { twr }),
+    ...(scheduled && { moves: scheduled.moves }),
   };
+  // Scheduled moves sit on fixed dates, so replaying the config from other start dates means nothing.
+  if (scheduled) return { result, dailyReturns: returns };
   const rolling = rollingWindows(config, candlesByCoin, grid, config.rollingWindowDays ?? defaultRollingWindow(spanDays));
   if (rolling) result.rolling = rolling;
   return { result, dailyReturns: returns };

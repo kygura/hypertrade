@@ -78,12 +78,18 @@ Series naming: `hl.total_oi_usd`, `hl.funding_skew`, `hl.premium.<coin>`, `hl.oi
 {
   "description": "optional prose",
   "startDate": "2024-01-01",
+  "endDate": "2025-12-31",            // optional; last day of the replay, default today
   "initialCapitalUsd": 10000,
   "allocations": [{ "coin": "ETH", "weightPct": 60 }, { "coin": "USDC", "weightPct": 40 }],
   "rebalance": "none" | "monthly" | "weekly" | "threshold5pct",
   "costs": { "feeBps": 4.5, "fundingAprPct": 10 },   // optional; fee on every traded notional, funding daily on perp notional
   "cashflow": { "amountUsd": 500, "every": "monthly" }, // optional; negative = withdrawal
   "rollingWindowDays": 365,           // optional; default 365/90/30 (longest that fits twice), 0 = off
+  "schedule": [                       // optional dated moves, applied in date order (max 12)
+    { "date": "2025-03-01", "until": "2025-04-30", "at": "low", "ref": "BTC", "note": "buy the low",
+      "allocations": [{ "coin": "BTC", "weightPct": 40, "leverage": 3 }, { "coin": "USDC", "weightPct": 60 }] },
+    { "date": "2025-09-15", "allocations": [{ "coin": "USDC", "weightPct": 100 }] }
+  ],
   "scenario": {                       // optional forward projection
     "horizonDays": 180,
     "assumptions": [{ "coin": "ETH", "annualReturnPct": 40, "annualVolPct": 70 }],
@@ -103,6 +109,7 @@ Backtest and wealth additions (all optional; a config without them simulates exa
 - **Cash flows.** `cashflow` adds money at the target weights (perp legs realize and re-enter) or withdraws the same fraction of every holding, on the rebalance bucket boundaries; a withdrawal larger than the pot empties it. The BTC/USDC benchmarks get the same flows and fee rate, so VS BTC compares like with like.
 - **Stats.** Growth stats are time-weighted (a unit index with flows taken out): `twrPct`, CAGR, max drawdown, vol, Sharpe, Sortino (365-day year, zero risk-free rate), Calmar, longest drawdown in days, plus `feesUsd`, `fundingUsd`, `netFlowUsd`, calendar-month returns, and `twr` (the index scaled to starting capital, only with a cashflow). Without a cashflow, CAGR and max drawdown are the same numbers as before.
 - **Rolling starts.** The same config re-run from every 7th day of the grid (wider when more than 260 starts), each held `rollingWindowDays`; per start the time-weighted return, VS BTC and max drawdown, and a summary (median, p10/p90, worst, best, share positive, share beating BTC). Windows overlap, so starts are not independent.
+- **Scheduled moves.** At a move's daily close the whole portfolio is closed (perp legs realize) and re-opened at its `allocations`, weights as percent of the value at that moment; `allocations` hold from `startDate` until the first move. A plain move fills on the first day at or after `date`; with `until` it fills on the day in the window where `ref` (default BTC) closes lowest (`at` "low", default) or highest: hindsight timing, reported as such in the warnings. A move pays `feeBps` on the change in signed notional per coin, so keeping a position costs nothing. Rebalance and DCA keep running between moves. Rolling starts are off for a scheduled branch (its dates are fixed); `gbm` uses the last move's allocations, `bootstrap` resamples the whole history. The result carries `moves` (step, fill date, value after). `endDate` stops the replay; a move after it is not filled.
 - **Projection.** `gbm` blends the typed assumptions into one asset (unlevered long-only only). `bootstrap` strings together random `blockDays` blocks of the branch's own simulated daily returns, so fees, funding and perp legs carry over; it needs 60 days of history, else the projection is skipped with a `notes` entry. Both continue the cashflow (no fees forward) and report a summary: put in by the horizon, p10/median/p90 end values, share ending below what was put in, share at or above `targetUsd`, share that ran out (withdrawals).
 
 ## Routine Contract (summary; the full ROUTINE.md runbook was removed on 2026-11-14)
@@ -202,7 +209,7 @@ Pillar: find simple, human-readable trading rules ("when `cm:CapMVRVCur` z(90) <
 
 ## Paths — semantic simulation chat (phase 4)
 
-The operator types a loose intention in chat — "what if I'd put 30% of my stack into SOL perps at 3x and DCA'd ETH weekly since January", "hedge my ETH with a short BTC position", "compare 60/40 ETH/USDC against 100% BTC since 2023" — and gets back simulated wealth paths: one or more branches, each with an equity curve against the BTC/USDC benchmarks, a drawdown, stats, and (for unlevered long-only branches with a scenario) a Monte Carlo fan. Any path can be saved as a regular branch with one click, or forked by a follow-up message. It is a **mode of the Analyst** (`/analyst`, toggle `ASK | SIMULATE`), not a new page; split it out only if it grows.
+The operator types a loose intention in chat — "what if I'd put 30% of my stack into SOL perps at 3x and DCA'd ETH weekly since January", "start with $2.5M in cash in 2025, buy BTC/ETH/HYPE at the March–April bottom with 2–3x, scale out over the summer and into October", "hedge my ETH with a short BTC position", "compare 60/40 ETH/USDC against 100% BTC since 2023" — and gets back simulated wealth paths: one or more branches, each with an equity curve against the BTC/USDC benchmarks, a drawdown, stats, and (for unlevered long-only branches with a scenario) a Monte Carlo fan. Any path can be saved as a regular branch with one click, or forked by a follow-up message. It is a **mode of the Analyst** (`/analyst`, toggle `ASK | SIMULATE`), not a new page; split it out only if it grows.
 
 ### Flow
 

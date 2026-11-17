@@ -246,8 +246,9 @@ export function backfillCoins(branchConfigs: unknown[], requested?: string, rece
   if (requested) return [...new Set(requested.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))];
   const coins = new Set(CORE_COINS);
   for (const config of branchConfigs) {
-    const c = config as { allocations?: { coin?: unknown }[]; dca?: { coin?: unknown }[] } | null;
-    for (const a of [...(c?.allocations ?? []), ...(c?.dca ?? [])]) if (typeof a.coin === "string") coins.add(a.coin.toUpperCase());
+    const c = config as { allocations?: { coin?: unknown }[]; dca?: { coin?: unknown }[]; schedule?: { allocations?: { coin?: unknown }[] }[] } | null;
+    const legs = [...(c?.allocations ?? []), ...(c?.dca ?? []), ...(c?.schedule ?? []).flatMap((s) => s?.allocations ?? [])];
+    for (const a of legs) if (typeof a?.coin === "string") coins.add(a.coin.toUpperCase());
   }
   for (const c of [...recent, ...intel]) coins.add(c);
   return [...coins].filter((c) => !STABLES.has(c));

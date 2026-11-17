@@ -37,6 +37,20 @@ const REBALANCE_LABEL: Record<BranchConfig['rebalance'], string> = {
   weekly: 'WEEKLY',
   threshold5pct: '5% BAND',
 }
+/** One line per scheduled move: when it filled (or was asked for), the window it was picked from, and the holdings after it. */
+export function moveLines(
+  schedule: NonNullable<BranchConfig['schedule']>,
+  filled: { step: number; date: string }[] = [],
+): { when: string; window?: string; note?: string; holdings: string }[] {
+  const at = new Map(filled.map((m) => [m.step, m.date]))
+  return schedule.map((s, i) => ({
+    when: at.get(i) ?? s.date,
+    window: s.until ? `${s.at === 'high' ? 'HIGH' : 'LOW'} OF ${s.ref ?? 'BTC'} ${s.date} → ${s.until}` : undefined,
+    note: s.note,
+    holdings: allocationSummary(s.allocations),
+  }))
+}
+
 export function rebalanceLabel(mode: BranchConfig['rebalance']): string {
   return REBALANCE_LABEL[mode]
 }

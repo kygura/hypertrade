@@ -20,6 +20,7 @@ import type { BranchDetail as BranchDetailData, BranchResult } from '../componen
 import { EquityChart, EquityGuide } from '../components/charts/EquityChart'
 import { ProjectionAssumptions } from '../components/charts/FanChart'
 import { DrawdownChart, DrawdownGuide } from '../components/branches/DrawdownChart'
+import { ScheduleList } from '../components/branches/ScheduleList'
 import { MonthlyTable, ProjectionOdds, RollingPanel } from '../components/branches/BacktestPanels'
 import { branchLine, branchReturnPct, maxDdClass, signClass, sumWeights } from '../components/branches/format'
 import { fmtPct, fmtUsd } from '../../shared/format'
@@ -39,6 +40,7 @@ interface FormState {
   name: string
   description: string
   startDate: string
+  endDate: string
   initialCapitalUsd: number
   allocations: Allocation[]
   rebalance: BranchConfig['rebalance']
@@ -47,6 +49,7 @@ interface FormState {
   costs: Costs | null
   cashflow: Cashflow | null
   rollingWindowDays: number | undefined
+  schedule: NonNullable<BranchConfig['schedule']>
 }
 
 const ROLLING_OPTIONS: { value: number; label: string }[] = [
@@ -140,6 +143,7 @@ export function BranchDetail() {
         name: data.name,
         description: data.config.description ?? '',
         startDate: data.config.startDate,
+        endDate: data.config.endDate ?? '',
         initialCapitalUsd: data.config.initialCapitalUsd,
         allocations: data.config.allocations,
         rebalance: data.config.rebalance,
@@ -148,6 +152,7 @@ export function BranchDetail() {
         costs: data.config.costs ?? null,
         cashflow: data.config.cashflow ?? null,
         rollingWindowDays: data.config.rollingWindowDays,
+        schedule: data.config.schedule ?? [],
       })
       setResult(data.result)
     }
@@ -181,6 +186,7 @@ export function BranchDetail() {
     ? {
         description: form.description || undefined,
         startDate: form.startDate,
+        endDate: form.endDate || undefined,
         initialCapitalUsd: form.initialCapitalUsd,
         // long / 1x are the defaults: omit them so legacy branches save unchanged.
         allocations: form.allocations.map(({ side, leverage, ...a }) => ({
@@ -194,6 +200,7 @@ export function BranchDetail() {
         costs: form.costs ?? undefined,
         cashflow: form.cashflow ?? undefined,
         rollingWindowDays: form.rollingWindowDays,
+        schedule: form.schedule.length ? form.schedule : undefined,
       }
     : null
 
@@ -401,6 +408,20 @@ export function BranchDetail() {
                   className="w-full"
                 />
               </label>
+              <label className="flex flex-col gap-1">
+                <span className="label">END (EMPTY = TODAY)</span>
+                <input type="date" value={form.endDate} onChange={(e) => patch({ endDate: e.target.value })} className="w-full" />
+              </label>
+              {form.schedule.length > 0 && (
+                <div className="flex flex-col gap-1.5 pt-1 border-t border-border-subtle">
+                  <span className="label">MOVES (FILLED AT THE DAY'S CLOSE; ALLOCATIONS HOLD UNTIL THE FIRST)</span>
+                  <ScheduleList
+                    schedule={form.schedule}
+                    filled={dirty ? undefined : result?.moves}
+                    onRemove={(i) => patch({ schedule: form.schedule.filter((_, idx) => idx !== i) })}
+                  />
+                </div>
+              )}
               <label className="flex flex-col gap-1">
                 <span className="label">CAPITAL</span>
                 <input
@@ -884,7 +905,7 @@ export function BranchDetail() {
             <div className="panel-body p-3">
               {!result && <EmptyBlock label="not simulated yet: the same recipe replayed from many past start dates shows here after a run" />}
               {result && !result.rolling && (
-                <EmptyBlock label={form.rollingWindowDays === 0 ? 'rolling starts are off (ROLLING in the config)' : 'history too short: rolling starts need at least twice the window (60 days for 30D)'} />
+                <EmptyBlock label={form.schedule.length ? 'rolling starts are off: scheduled moves sit on fixed dates' : form.rollingWindowDays === 0 ? 'rolling starts are off (ROLLING in the config)' : 'history too short: rolling starts need at least twice the window (60 days for 30D)'} />
               )}
               {result?.rolling && <RollingPanel rolling={result.rolling} />}
             </div>

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { runIntent, type IntentDeps } from "./intent.js";
 import type { DailyClose } from "./engine.js";
+import { branchCoins } from "../../shared/schemas.js";
 
 const DAY = 86400000;
 const t0 = Date.parse("2024-01-01");
@@ -16,7 +17,7 @@ const deps = (over: Partial<IntentDeps> = {}): IntentDeps => ({
   backfill: async () => {},
   loadCandles: async (c) => {
     const out: Record<string, DailyClose[]> = { BTC: data.BTC! };
-    for (const a of [...c.allocations, ...(c.dca ?? [])]) if (data[a.coin]) out[a.coin] = data[a.coin]!;
+    for (const coin of branchCoins(c)) if (data[coin]) out[coin] = data[coin]!;
     return out;
   },
   now: () => t0,
@@ -213,5 +214,61 @@ describe("runIntent", () => {
   test("deterministic: same intent and clock give deep-equal results", async () => {
     const i = intent(cfg({ allocations: [{ coin: "BTC", weightPct: 60 }, { coin: "ETH", weightPct: 40 }], scenario }));
     expect(await run(i)).toEqual(await run(i));
+  });
+
+  describe("schedule", () => {
+    const USDC = [{ coin: "USDC", weightPct: 100 }];
+    test("normalizes, sorts and clamps each move; reports hindsight fills", async () => {
+      const r = await run(
+        intent(
+          cfg({
+            allocations: USDC,
+            schedule: [
+              { date: "2024-03-01", allocations: USDC, note: "exit" },
+              { date: "2024-01-05", until: "2024-01-20", note: "buy the low", allocations: [{ coin: "eth", weightPct: 30, leverage: 20 }, { coin: "btc", weightPct: 30 }] },
+            ],
+          }),
+        ),
+        deps({ maxLeverage: () => 5 }),
+      );
+      const b = r.branches[0]!;
+      expect(b.error).toBeUndefined();
+      const [buy, exit] = b.config.schedule!;
+      expect(buy!.allocations).toEqual([{ coin: "ETH", weightPct: 50, leverage: 5 }, { coin: "BTC", weightPct: 50 }]);
+      expect(exit!.note).toBe("exit");
+      for (const w of ["sorted", "normalized", "clamped", '"buy the low" filled 2024-01-05, the lowest BTC close']) {
+        expect(b.warnings.some((x) => x.includes(w))).toBe(true);
+      }
+      expect(b.result!.moves!.map((m) => m.date)).toEqual(["2024-01-05", "2024-03-01"]);
+    });
+
+    test("a move before a coin's listing is moved to it; a window that ends before it fails the branch", async () => {
+      const sol = (until?: string) => cfg({ allocations: USDC, schedule: [{ date: "2024-01-10", ...(until && { until }), allocations: [{ coin: "SOL", weightPct: 100 }] }] });
+      const r = await run(intent(sol(), sol("2024-01-20")));
+      const listed = new Date(t0 + 30 * DAY).toISOString().slice(0, 10);
+      expect(r.branches[0]!.config.schedule![0]!.date).toBe(listed);
+      expect(r.branches[0]!.warnings.some((w) => w.includes(`moved to ${listed}`))).toBe(true);
+      expect(r.branches[1]!.error).toContain("no price data before");
+    });
+
+    test("bad windows and end dates fail only that branch", async () => {
+      const r = await run(
+        intent(
+          cfg({ schedule: [{ date: "2024-02-01", until: "2024-01-01", allocations: USDC }] }),
+          cfg({ endDate: "2023-12-01" }),
+          cfg({ schedule: [{ date: "2024-02-01", allocations: [{ coin: "BTC", weightPct: 50 }, { coin: "BTC", weightPct: 50 }] }] }),
+          cfg(),
+        ),
+      );
+      expect(r.branches.map((b) => !!b.error)).toEqual([true, true, true, false]);
+      expect(r.branches[2]!.error).toContain("duplicate coin BTC (move on 2024-02-01)");
+    });
+
+    test("a levered move gets the perp caveat and a gbm projection is dropped", async () => {
+      const r = await run(intent(cfg({ allocations: USDC, scenario, schedule: [{ date: "2024-02-01", allocations: [{ coin: "BTC", weightPct: 100, leverage: 3 }] }] })));
+      const b = r.branches[0]!;
+      expect(b.warnings.some((w) => w.includes("perp legs"))).toBe(true);
+      expect(b.config.scenario).toBeUndefined();
+    });
   });
 });
