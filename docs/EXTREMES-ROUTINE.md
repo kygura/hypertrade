@@ -31,7 +31,7 @@ The three kinds, and what `side` means (the fade side, not a recommendation):
 ## Setup
 
 ```bash
-export APP_URL="${APP_URL:-https://hypertrade-ten.vercel.app}"
+export APP_URL="${APP_URL:-https://hypertrade-bay.vercel.app}"
 test -n "$LAB_API_TOKEN" && echo token ok
 ```
 
