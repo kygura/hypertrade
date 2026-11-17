@@ -18,7 +18,7 @@ impulsive action slower than the planned one. Every rule below enforces that.
   quiet bar, plus R so far (`+0.6R`): `PlanProgress`
   (`src/ui/components/PlanProgress.tsx`). With no target it shows distance to the
   stop and R.
-- Applies to the desk book (PLAN · UPNL), the desk's DAY PNL, the Intel
+- Applies to the desk book (PLAN · MARK, P&L hidden under the mark), the desk's DAY PNL, the Intel
   positions table (R · UPNL, sorted by R) and the Governor page. Realized P&L in
   the journal is history and stays visible.
 - Desk marks come from the HL websocket, sampled at most every few seconds and

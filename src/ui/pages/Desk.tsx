@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { AsyncBody, Badge, Button, ConfirmDialog, ErrorBlock, EasedValue, HowToRead, OfflineBlock, Panel, PanelBody, PanelHeader, PlanProgress, RevealPnl, Segmented, SkeletonRows, DataTable, type Column } from '../components'
 import { Markdown } from '../components/analyst/Markdown'
 import { KillSwitchDialog } from '../components/KillSwitchDialog'
+import { PlanForm } from '../components/desk/PlanForm'
+import { PlanJournal } from '../components/desk/PlanJournal'
+import type { DeskCooldownResponse, DeskPlanRecord } from '../lib/deskPlan'
+import { pickMark, upnlAt, useLiveMarks, type MarkSample } from '../lib/liveMarks'
 import { api, ApiError, NetworkError } from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { fmtPx, fmtUsd } from '../lib/format'
@@ -65,6 +69,9 @@ export function Desk() {
   const proposals = useDeskPoll<{ proposals: ProposalRecord[] }>('/desk/proposals?limit=30')
   const alerts = useDeskPoll<{ alerts: AlertRow[] }>('/desk/alerts?limit=30')
   const runs = useDeskPoll<{ runs: RunRow[] }>('/desk/runs?limit=15')
+  // Cooldown locks and the plan journal change slowly: once a minute, and after every plan submit.
+  const cooldown = usePoll(() => api.get<DeskCooldownResponse>('/desk/cooldown'), [], { intervalMs: 60_000 })
+  const plans = usePoll(() => api.get<{ plans: DeskPlanRecord[] }>('/desk/plans?limit=10'), [], { intervalMs: 60_000 })
 
   const refreshBook = useCallback(() => {
     portfolio.refetch()
@@ -72,6 +79,11 @@ export function Desk() {
     alerts.refetch()
     runs.refetch()
   }, [portfolio, proposals, alerts, runs])
+  const afterPlan = useCallback(() => {
+    cooldown.refetch()
+    plans.refetch()
+    refreshBook()
+  }, [cooldown, plans, refreshBook])
 
   if (status.offline || status.error) {
     return (
@@ -104,12 +116,14 @@ export function Desk() {
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 min-w-0">
         <div className="xl:col-span-2 flex flex-col gap-3 min-w-0">
+          <PlanForm venue={status.data?.venue ?? 'paper'} cooldown={cooldown.data} onSubmitted={afterPlan} />
           <AskPanel status={status.data} onRunFinished={refreshBook} />
           <RunsPanel schedule={status.data?.schedule} runs={runs.data?.runs} loading={runs.loading} error={runs.error} offline={runs.offline} onRetry={runs.refetch} />
         </div>
         <div className="flex flex-col gap-3 min-w-0">
           <ApprovalsPanel limits={limits} proposals={proposals.data?.proposals} loading={proposals.loading} error={proposals.error} offline={proposals.offline} onRetry={proposals.refetch} onChange={refreshBook} />
-          <PositionsPanel portfolio={portfolio.data} loading={portfolio.loading} onChange={refreshBook} />
+          <PositionsPanel portfolio={portfolio.data} loading={portfolio.loading} venue={status.data?.venue ?? null} onChange={refreshBook} />
+          <PlanJournal plans={plans.data?.plans} loading={plans.loading} error={plans.error} offline={plans.offline != null} onRetry={plans.refetch} />
           <AlertsPanel alerts={alerts.data?.alerts} loading={alerts.loading} error={alerts.error} offline={alerts.offline} onRetry={alerts.refetch} />
         </div>
       </div>
@@ -165,6 +179,7 @@ const BOOK_TERMS: Term[] = [
   ['SIZE', 'Position size in coins.'],
   ['ENTRY', 'Average entry price.'],
   ['STOP', 'Stop price. A dash means the position has no stop.'],
+  ['MARK', 'Current price, under the plan bar. On paper and Propr it is the live Hyperliquid mid, sampled every few seconds and eased into place; otherwise, or while the live feed is down, the mark from the last portfolio read (every 30 s).'],
   ['PLAN', 'Where the mark sits between the stop (left end) and the target (right end), with a faint tick at entry. Without a target: the distance from mark to stop.'],
   ['R', 'Move from entry to mark in units of the planned risk (entry to stop), signed for the side: +1.0R is one risk unit in favour, −1.0R is at the stop.'],
   ['$ ···', 'Unrealized profit or loss at the current mark, in USD, before exit fees. Hidden until you press or hover it.'],
@@ -670,36 +685,63 @@ function CoinLink({ coin, className = 'hover:underline' }: { coin: string; class
 
 type DeskPosition = Portfolio['desk']['positions'][number]
 
-const BOOK_COLUMNS: Column<DeskPosition>[] = [
-  {
-    key: 'coin',
-    label: 'COIN',
-    priority: 1,
-    render: (p) => (
-      <span className={p.side === 'long' ? 'text-green' : 'text-red-text'}>
-        {p.side === 'long' ? '▲' : '▼'} <CoinLink coin={p.coin} />
-      </span>
-    ),
-  },
-  { key: 'size', label: 'SIZE', priority: 1, align: 'right', render: (p) => p.size },
-  { key: 'entry', label: 'ENTRY', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.entryPx)}</span> },
-  { key: 'stop', label: 'STOP', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.stopPx)}</span> },
-  {
-    // Plan first, money on request: the bar and R describe the plan, the dollar figure stays behind a reveal.
-    key: 'upnl',
-    label: <span title="where the mark sits between stop and target, R so far, and unrealized P&L on request">PLAN · UPNL</span>,
-    priority: 1,
-    align: 'right',
-    render: (p) => (
-      <span className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
-        <PlanProgress side={p.side} entry={p.entryPx} mark={p.markPx} stop={p.stopPx} target={p.tpPx} />
-        <RevealPnl value={fmtUsd(p.unrealizedPnl)} label={`${p.coin} unrealized P&L`} className={p.unrealizedPnl >= 0 ? 'text-green' : 'text-red-text'} />
-      </span>
-    ),
-  },
-]
+/** The mark a row shows: a fresh live sample (lib/liveMarks.ts) or the polled one. */
+type MarkOf = (p: DeskPosition) => { px: number; live: boolean }
+const polledMark: MarkOf = (p) => ({ px: p.markPx, live: false })
 
-function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio | null; loading: boolean; onChange: () => void }) {
+function bookColumns(markOf: MarkOf): Column<DeskPosition>[] {
+  return [
+    {
+      key: 'coin',
+      label: 'COIN',
+      priority: 1,
+      render: (p) => (
+        <span className={p.side === 'long' ? 'text-green' : 'text-red-text'}>
+          {p.side === 'long' ? '▲' : '▼'} <CoinLink coin={p.coin} />
+        </span>
+      ),
+    },
+    { key: 'size', label: 'SIZE', priority: 1, align: 'right', render: (p) => p.size },
+    { key: 'entry', label: 'ENTRY', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.entryPx)}</span> },
+    { key: 'stop', label: 'STOP', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.stopPx)}</span> },
+    {
+      // Plan first, money on request: the bar and R describe the plan, the dollar figure stays behind a reveal.
+      key: 'upnl',
+      label: <span title="where the mark sits between stop and target, R so far, the mark, and unrealized P&L on request">PLAN · MARK</span>,
+      priority: 1,
+      align: 'right',
+      render: (p) => {
+        const m = markOf(p)
+        const upnl = m.live ? upnlAt(p, m.px) : p.unrealizedPnl
+        return (
+          // Stacked so the book fits its panel: plan bar and R on top, the eased mark and hidden P&L below.
+          <span className="inline-flex flex-col items-end gap-0.5 whitespace-nowrap">
+            <PlanProgress side={p.side} entry={p.entryPx} mark={m.px} stop={p.stopPx} target={p.tpPx} />
+            <span className="inline-flex items-center gap-2">
+              <span title={m.live ? 'mark: live mid, sampled every few seconds' : 'mark from the last portfolio read'}>
+                <EasedValue value={fmtPx(m.px)} className="text-text-secondary" />
+              </span>
+              <RevealPnl value={fmtUsd(upnl)} label={`${p.coin} unrealized P&L`} className={upnl >= 0 ? 'text-green' : 'text-red-text'} />
+            </span>
+          </span>
+        )
+      },
+    },
+  ]
+}
+
+const liveMarkOf =
+  (live: Record<string, MarkSample>): MarkOf =>
+  (p) =>
+    pickMark(live[p.coin], p.markPx, Date.now())
+
+function PositionsPanel({ portfolio, loading, venue, onChange }: { portfolio: Portfolio | null; loading: boolean; venue: string | null; onChange: () => void }) {
+  // Live mids come from Hyperliquid mainnet: right for paper (marked at the mainnet mark) and Propr, wrong for
+  // hl-testnet, whose book keeps the polled mark. A stale or missing sample falls back to the polled mark.
+  const deskPositions = portfolio?.desk.positions
+  const coins = useMemo(() => [...new Set(deskPositions?.map((p) => p.coin) ?? [])], [deskPositions])
+  const live = useLiveMarks(coins, venue != null && venue !== 'hl-testnet')
+  const liveMark = useMemo<MarkOf>(() => liveMarkOf(live), [live])
   const [closing, setClosing] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const close = async (coin: string) => {
@@ -732,7 +774,9 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
       {acc.positions.length === 0 ? (
         <span className="px-3 py-2 text-xs text-text-secondary">{closable ? 'No plan open. Nothing to do.' : 'No open positions.'}</span>
       ) : (
-        <DataTable columns={closable ? [...BOOK_COLUMNS, closeColumn] : BOOK_COLUMNS} rows={acc.positions} rowKey={(p) => p.coin} />
+        <div className="overflow-x-auto min-w-0">
+          <DataTable columns={closable ? [...bookColumns(liveMark), closeColumn] : bookColumns(polledMark)} rows={acc.positions} rowKey={(p) => p.coin} />
+        </div>
       )}
     </div>
   )
