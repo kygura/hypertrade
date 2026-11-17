@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createAnalystRoutes } from "../routes/analyst.js";
 import { SIM_TOOL_SPEC, buildSimSystemPrompt, realSimDeps, runSimTool } from "./sim.js";
 import { SimIntentSchema } from "../../shared/intent.js";
-import { AllocationSchema } from "../../shared/schemas.js";
+import { AllocationSchema, BranchConfigSchema, ScheduleStepSchema } from "../../shared/schemas.js";
 import type { Conversation, LLMProvider, StepResult, ToolOutcome, ToolSpec } from "./provider.js";
 import type { IntentDeps } from "../sim/intent.js";
 import type { DailyClose } from "../sim/engine.js";
@@ -131,5 +131,17 @@ describe("analyst sim mode", () => {
     expect(Object.keys(props).sort()).toEqual(Object.keys(SimIntentSchema.shape).sort());
     const alloc = props.branches.items.properties.config.properties.allocations.items.properties;
     expect(Object.keys(alloc).sort()).toEqual(Object.keys(AllocationSchema._def.schema.shape).sort());
+    const config = props.branches.items.properties.config.properties;
+    expect(Object.keys(config).sort()).toEqual(Object.keys(BranchConfigSchema.shape).sort());
+    expect(Object.keys(config.schedule.items.properties).sort()).toEqual(Object.keys(ScheduleStepSchema.shape).sort());
+  });
+
+  test("scheduled moves reach the model with their fill dates and monthly returns", async () => {
+    const cfg = valid.branches[0]!.config;
+    const timed = { ...valid, branches: [{ name: "timed", config: { ...cfg, allocations: [{ coin: "USDC", weightPct: 100 }], schedule: [{ date: cfg.startDate, note: "in", allocations: cfg.allocations }] } }] };
+    const run = await runSimTool({ id: "c1", input: timed }, simDeps, () => {});
+    const b = JSON.parse(run.content).branches[0];
+    expect(b.moves).toEqual([expect.objectContaining({ note: "in", date: expect.any(String) })]);
+    expect(b.monthly.length).toBeGreaterThan(0);
   });
 });

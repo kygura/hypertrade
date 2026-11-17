@@ -69,6 +69,8 @@ export interface SimResult {
   rolling?: SimRolling;
   montecarlo?: { median: Pt[]; p10: Pt[]; p90: Pt[]; p25?: Pt[]; p75?: Pt[]; summary?: SimProjectionSummary };
   notes?: string[];
+  /** Scheduled moves as filled: index into config.schedule, the day, the value right after. */
+  moves?: { step: number; date: string; valueUsd: number }[];
 }
 
 export interface SimBranchOutcome {

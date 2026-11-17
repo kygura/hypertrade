@@ -28,7 +28,7 @@ const allocation = {
 export const SIM_TOOL_SPEC: ToolSpec = {
   name: "simulate_paths",
   description:
-    "Run 1-4 historical portfolio simulations (branches) and compare them. Spot or perp legs, optional rebalancing, DCA, trading costs, recurring deposits/withdrawals and a forward Monte Carlo scenario. Results are historical; fees and funding are only charged when costs is set. Returns per-branch stats, rolling start-date windows and the projection summary; the full curves are shown to the user separately.",
+    "Run 1-4 historical portfolio simulations (branches) and compare them. Spot or perp legs, dated entries and exits (schedule), optional rebalancing, DCA, trading costs, recurring deposits/withdrawals and a forward Monte Carlo scenario. Results are historical; fees and funding are only charged when costs is set. Returns per-branch stats, rolling start-date windows and the projection summary; the full curves are shown to the user separately.",
   input_schema: {
     type: "object",
     additionalProperties: false,
@@ -58,8 +58,28 @@ export const SIM_TOOL_SPEC: ToolSpec = {
               properties: {
                 description: { type: "string" },
                 startDate: { type: "string", description: "ISO date, e.g. 2025-01-01. Moved forward if a coin has no earlier price data." },
+                endDate: { type: "string", description: "ISO date the replay stops on. Default today. Set it when the question is about a period (\"in 2025\")." },
                 initialCapitalUsd: { type: "number", exclusiveMinimum: 0, maximum: 1e12, description: "Default 10000 when the user states no amount." },
-                allocations: { type: "array", maxItems: 10, items: allocation },
+                allocations: { type: "array", maxItems: 10, items: allocation, description: "Holdings from startDate until the first scheduled move. Use USDC 100 to start in cash." },
+                schedule: {
+                  type: "array",
+                  maxItems: 12,
+                  description:
+                    "Dated moves. At the move's daily close the whole portfolio is closed (perp legs realize their PnL) and re-opened at its allocations, weights as percent of the value at that moment. An exit is a move to USDC; a partial exit keeps part of a coin and puts the rest in USDC. Rebalance and DCA keep applying between moves.",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["date", "allocations"],
+                    properties: {
+                      date: { type: "string", description: "ISO date of the move, or the start of its window when until is set." },
+                      until: { type: "string", description: "End of a window: the move fills on the day in [date, until] where ref closes lowest (at low) or highest (at high). Hindsight timing, a best case." },
+                      at: { type: "string", enum: ["low", "high"], description: "Default low. Use low for buying a bottom, high for selling a top." },
+                      ref: { type: "string", maxLength: 24, description: "Coin whose close picks the day in a window. Default BTC." },
+                      allocations: { type: "array", minItems: 1, maxItems: 10, items: allocation },
+                      note: { type: "string", maxLength: 120, description: "Short label, e.g. \"buy the April low\"." },
+                    },
+                  },
+                },
                 rebalance: { type: "string", enum: ["none", "monthly", "weekly", "threshold5pct"], description: "Forced to none when dca is present." },
                 dca: {
                   type: "array",
@@ -142,6 +162,7 @@ Simulation rules:
 - startDate is an ISO date. The question carries [current time ...]; resolve "since January" or "last year" against it. A start earlier than a coin's first candle is moved forward and reported in warnings.
 - Earlier assistant turns may end with a "[paths]" trailer holding each path's normalized config. For follow-ups ("same but 5x", "without the DCA"), modify those configs instead of re-guessing.
 - Perp legs liquidate on daily lows/highs and, without costs, ignore funding and fees; the tool's warnings say so. Report them. When the user asks about realistic or net results, set costs (Hyperliquid taker fees are about 4.5 bps).
+- Timed positioning ("buy the April bottom, sell in September") uses schedule: start in USDC (or the holdings before the first move), then one move per entry or exit. "Buy the bottom" of a period is a window (date..until, at low); "sell the top" is at high; a plain date otherwise. Scale out with several moves (e.g. 2/3 coins then 1/3 then all USDC). Window fills are hindsight timing: say so, and when it helps add a branch with plain mid-window dates as the realistic case. Set endDate when the question is about a period. "Reasonable leverage" defaults to 2-3x on BTC and ETH and 1-2x on smaller coins such as HYPE; state it in assumptions.
 - Wealth questions ("if I add $500 a month", "can I withdraw $2k a month") use cashflow. With a cashflow, quote twrPct/cagrPct for performance and finalValue/netFlowUsd for wealth; they answer different questions.
 - "rolling" says how the same strategy did from every past start date over a fixed window: quote its median and worst, and the share of starts that beat BTC, when timing luck matters.
 - For "what could happen" questions add a scenario. Prefer method bootstrap (it replays the branch's own history, including perp legs and costs); use gbm only when the user gives return and volatility assumptions. Quote the projection summary as a spread (p10/median/p90, lossPct, targetPct), never a single number.
@@ -211,6 +232,10 @@ function compact(b: SimBranchOutcome) {
       depletedPct: opt(proj.depletedPct),
     },
     startDate: b.config.startDate,
+    endDate: b.config.endDate,
+    moves: r?.moves?.map((m) => ({ note: b.config.schedule?.[m.step]?.note, date: m.date, valueUsd: round(m.valueUsd) })),
+    longestDrawdownDays: s?.longestDrawdownDays,
+    monthly: b.config.schedule?.length ? r?.monthly?.map((m) => `${m.month} ${round(m.returnPct)}%`) : undefined,
     warnings: [...b.warnings, ...(r?.notes ?? [])],
     error: b.error,
   };

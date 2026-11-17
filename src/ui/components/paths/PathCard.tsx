@@ -6,6 +6,7 @@ import { fmtPct, fmtUsd } from '../../../shared/format'
 import type { SimResultEvent } from '../../lib/analyst'
 import { Badge, Button, DataTable, ErrorBlock, LabWarnings, SkeletonRows, StatCell, type Column } from '..'
 import { DrawdownChart } from '../branches/DrawdownChart'
+import { ScheduleList } from '../branches/ScheduleList'
 import { ProjectionOdds } from '../branches/BacktestPanels'
 import { branchReturnPct, maxDdClass, rebalanceLabel, signClass } from '../branches/format'
 import { EquityChart } from '../charts/EquityChart'
@@ -20,7 +21,7 @@ const pct1 = (n: number, sign = true) => fmtPct(n / 100, { decimals: 1, sign })
 const returnPct = (r: SimResult, cfg: BranchConfig) => branchReturnPct(r, cfg.initialCapitalUsd)
 const fmtLev = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
 
-function PathLegs({ config }: { config: BranchConfig }) {
+function PathLegs({ config, moves }: { config: BranchConfig; moves?: SimResult['moves'] }) {
   const leg = (a: Allocation) => {
     const lev = a.leverage ?? 1
     const perp = isPerp(a)
@@ -45,8 +46,10 @@ function PathLegs({ config }: { config: BranchConfig }) {
           DCA {config.dca.map((d) => `${fmtUsd(d.amountUsd, { decimals: 0 })} → ${d.coin} ${d.every.toUpperCase()}`).join(' · ')}
         </div>
       )}
+      {config.schedule && config.schedule.length > 0 && <ScheduleList schedule={config.schedule} filled={moves} />}
       <div className="text-xs text-text-secondary">
-        FROM {config.startDate} · {fmtUsd(config.initialCapitalUsd, { decimals: 0 })} · {rebalanceLabel(config.rebalance)}
+        FROM {config.startDate}
+        {config.endDate && ` TO ${config.endDate}`} · {fmtUsd(config.initialCapitalUsd, { decimals: 0 })} · {rebalanceLabel(config.rebalance)}
       </div>
     </div>
   )
@@ -96,7 +99,7 @@ function PathBranch({
           FORK
         </Button>
       </div>
-      <PathLegs config={config} />
+      <PathLegs config={config} moves={result?.moves} />
       <LabWarnings warnings={branch.warnings} />
       {branch.error && <ErrorBlock message={branch.error} />}
       {result && !branch.error && (
