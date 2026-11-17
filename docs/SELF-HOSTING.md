@@ -68,7 +68,7 @@ Copy the values from the Vercel project (Settings > Environment Variables, or `v
 - `DESK_TELEGRAM_WEBHOOK_SECRET`: unset, the Telegram loop long-polls and needs no public webhook. Set, polling stays off and Telegram keeps calling the old Vercel URL.
 - `MIGRATE_ON_BOOT`: only for a fresh database, and only with the owner role.
 
-Note: `DESK_CYCLES_URL` and the collector's hl-cycles source point at `hl-cycles.vercel.app`. While that Vercel team is paused they answer nothing; the desk says the cycle context is unavailable and the collector records a gap. Nothing breaks.
+Note: `DESK_CYCLES_URL` and the collector's hl-cycles source point at `hl-cycles-one.vercel.app`. When that deployment is down they answer nothing; the desk says the cycle context is unavailable and the collector records a gap. Nothing breaks.
 
 ## 5. Cutover
 

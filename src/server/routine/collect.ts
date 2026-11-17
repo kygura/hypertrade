@@ -285,8 +285,8 @@ export async function collect(opts: CollectOptions): Promise<ContextPack> {
     })),
   );
   const hlcP = Promise.all([
-    source(gaps, "hl-cycles.vector", () => fetchJson(f, "https://hl-cycles.vercel.app/api/vector.json")),
-    source(gaps, "hl-cycles.health", () => fetchJson(f, "https://hl-cycles.vercel.app/api/health.json")),
+    source(gaps, "hl-cycles.vector", () => fetchJson(f, "https://hl-cycles-one.vercel.app/api/vector.json")),
+    source(gaps, "hl-cycles.health", () => fetchJson(f, "https://hl-cycles-one.vercel.app/api/health.json")),
   ]);
   const fredP = Promise.all((full ? FRED_IDS : []).map(async (id) => ({ id, points: await source(gaps, `fred.${id}`, () => fred(f, id, now)) })));
   const yahooP = Promise.all((full ? YAHOO_SYMBOLS : []).map(async (sym) => ({ sym, data: await source(gaps, `yahoo.${sym}`, () => yahoo(f, sym)) })));
