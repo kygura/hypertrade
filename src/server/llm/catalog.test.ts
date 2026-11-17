@@ -154,3 +154,28 @@ describe("vendor presets", () => {
     expect(buildCatalog({ ANALYST_PROVIDER: "openai-platform", OPENAI_API_KEY: "k" }).default).toEqual({ provider: "openai", model: "gpt-6-astra" });
   });
 });
+
+describe("default provider fallback", () => {
+  // The deployed config: models written for Moonshot, but only an Anthropic key.
+  const env = { ANTHROPIC_API_KEY: "k", DESK_SCOUT_PROVIDER: "moonshot", DESK_ANALYST_MODEL: "kimi-k3", DESK_SCOUT_MODEL: "kimi-k2.6" };
+
+  test("a non-Claude DESK_ANALYST_MODEL is not sent to Anthropic", () => {
+    const p = resolveProvider(env)!;
+    expect(p.id).toBe("anthropic");
+    expect(p.model).toBe(DEFAULT_MODEL);
+    expect(buildCatalog(env).default).toEqual({ provider: "anthropic", model: DEFAULT_MODEL });
+  });
+
+  test("a Claude DESK_ANALYST_MODEL is still honoured", () => {
+    expect(resolveProvider({ ANTHROPIC_API_KEY: "k", DESK_ANALYST_MODEL: "claude-haiku-4-5" })!.model).toBe("claude-haiku-4-5");
+  });
+
+  test("an ANALYST_PROVIDER without a key falls back to Anthropic, with a Claude model", () => {
+    const cat = buildCatalog({ ...env, ANALYST_PROVIDER: "moonshot" });
+    expect(cat.default).toEqual({ provider: "anthropic", model: DEFAULT_MODEL });
+  });
+
+  test("a configured provider with its key keeps its model as written", () => {
+    expect(buildCatalog({ ...env, ANALYST_PROVIDER: "moonshot", MOONSHOT_API_KEY: "mk" }).default).toEqual({ provider: "moonshot", model: "kimi-k3" });
+  });
+});

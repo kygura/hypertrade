@@ -1,10 +1,11 @@
 import type { Effort } from "./provider.js";
 import {
-  DEFAULT_MODEL,
   anthropicCredentials,
+  modelFor,
   openaiCredentials,
   presetCredentials,
   rawProviderKind,
+  resolveProvider,
   type AnalystEnv,
   type ProviderId,
 } from "./provider.js";
@@ -160,10 +161,17 @@ export function buildCatalog(env: AnalystEnv): AnalystCatalog {
     },
   ];
 
-  const defaultProvider = catalogDefaultProvider(env);
-  const entry = providers.find((p) => p.id === defaultProvider)!;
+  // The configured default when it is ready; otherwise Anthropic, then the first ready provider (the same
+  // order the analyst route falls back in), so the picker never preselects a provider with no key.
+  const configured = catalogDefaultProvider(env);
+  const ready = (id: ProviderId) => providers.find((p) => p.id === id && p.available && p.models.length > 0);
+  const keep = resolveProvider(env) !== null || !!ready(configured);
+  const entry = (keep ? providers.find((p) => p.id === configured) : undefined) ?? ready("anthropic") ?? providers.find((p) => p.available && p.models.length > 0) ?? providers.find((p) => p.id === configured)!;
+  const defaultProvider = entry.id;
   const defaultModel =
-    defaultProvider === "anthropic" ? env.DESK_ANALYST_MODEL?.trim() || DEFAULT_MODEL : env.DESK_ANALYST_MODEL?.trim() || entry.models[0]?.id || "";
+    defaultProvider === "openai-compatible"
+      ? env.DESK_ANALYST_MODEL?.trim() || entry.models[0]?.id || ""
+      : modelFor(defaultProvider, env.DESK_ANALYST_MODEL, env) ?? entry.models[0]?.id ?? "";
 
   return { default: { provider: defaultProvider, model: defaultModel }, providers };
 }

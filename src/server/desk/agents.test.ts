@@ -177,6 +177,20 @@ describe("runDesk", () => {
 });
 
 describe("deskProviderFactory", () => {
+  test("scouts without a Moonshot key fall back to Anthropic with a Claude model, not kimi-*", () => {
+    const factory = deskProviderFactory({
+      ANTHROPIC_API_KEY: "k",
+      DESK_SCOUT_PROVIDER: "moonshot",
+      DESK_ANALYST_MODEL: "kimi-k3",
+      DESK_SCOUT_MODEL: "kimi-k2.6",
+      DESK_ANTHROPIC_FIRST: "false",
+    });
+    expect(factory("pm")!.id).toBe("anthropic");
+    expect(factory("pm")!.model).toBe(DEFAULT_MODEL);
+    expect(factory("specialist")!.id).toBe("anthropic");
+    expect(factory("specialist")!.model).toBe(DEFAULT_MODEL);
+  });
+
   test("an Anthropic key puts the PM on Claude Opus 5.5 at high effort and scouts on Sonnet 5.5 at medium, whatever ANALYST_PROVIDER says", () => {
     const factory = deskProviderFactory({ ANTHROPIC_API_KEY: "k", ANALYST_PROVIDER: "openrouter", OPENROUTER_API_KEY: "ork", DESK_ANALYST_MODEL: "x/y" });
     const pm = factory("pm")!;
