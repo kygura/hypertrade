@@ -54,7 +54,7 @@ function LensTile({ lens }: { lens: Lens }) {
     <details className="group border-b border-border-subtle">
       <summary className="list-none cursor-pointer flex flex-col gap-1 px-3 py-[var(--cell-y)] min-h-[var(--tap-min)] hover:bg-hover">
         <span className="flex flex-wrap items-baseline gap-x-2">
-          <span className="text-base text-text-primary flex-1 min-w-0 truncate">{lens.label}</span>
+          <span className="text-base text-text-primary flex-1 min-w-0 break-words md:truncate">{lens.label}</span>
           <span className="text-base tabular" style={{ color }}>
             {has ? fmtInt(lens.score) : '—'}
           </span>

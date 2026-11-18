@@ -234,7 +234,7 @@ function QueueParts({ item, coin, now }: { item: QueueItem | null | undefined; c
               {l.direction && <span className="text-text-secondary">{l.direction}</span>}
               <span className="text-text-primary break-words min-w-0">{l.reason}</span>
               {l.to && (
-                <Link to={l.to} className={LINK}>
+                <Link to={l.to} className={`${LINK} inline-flex items-center justify-center min-h-[var(--tap-min)] min-w-[var(--tap-min)]`}>
                   →
                 </Link>
               )}

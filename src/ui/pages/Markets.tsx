@@ -196,7 +196,7 @@ export function Markets() {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="FILTER"
-            className="!h-[var(--control-sm)] !py-0 !px-2 !text-xs w-24 md:w-40 uppercase placeholder:text-text-secondary"
+            className="!h-[var(--control-sm)] !min-h-[var(--tap-min)] !py-0 !px-2 !text-xs w-24 md:w-40 uppercase placeholder:text-text-secondary"
           />
         </PanelHeader>
         <div className="px-3 pt-2">

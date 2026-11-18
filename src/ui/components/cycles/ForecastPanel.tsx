@@ -171,8 +171,8 @@ export function EpisodesTable({ episodes, kind }: { episodes: BullEpisode[]; kin
     { key: 'onset', label: 'Euphoria', priority: 2, render: (e) => date(e.start, kind === 'euphoria') },
     { key: 'onsetPx', label: 'Price', priority: 4, align: 'right', render: (e) => fmtUsdPx(e.startPrice) },
     { key: 'top', label: 'Top', priority: 1, render: (e) => <span className="whitespace-nowrap">{fmtDay(e.top.t)}</span> },
-    { key: 'topPx', label: 'Top price', priority: 2, align: 'right', render: (e) => fmtUsdPx(e.top.price) },
-    { key: 'len', label: 'Start→top', priority: 2, align: 'right', render: (e) => fmtDays(Math.round((e.top.t - runStart(e, kind)) / DAY_MS)) },
+    { key: 'topPx', label: 'Top price', priority: 3, align: 'right', render: (e) => fmtUsdPx(e.top.price) },
+    { key: 'len', label: 'Start→top', priority: 3, align: 'right', render: (e) => fmtDays(Math.round((e.top.t - runStart(e, kind)) / DAY_MS)) },
     {
       key: 'low',
       label: 'Bear low',
@@ -203,9 +203,9 @@ export function CoolingHighsTable({ highs }: { highs: CoolingHigh[] }) {
     { key: 'date', label: 'High', priority: 1, render: (h) => <span className="text-text-primary whitespace-nowrap">{fmtDay(h.t)}</span> },
     { key: 'price', label: 'Close', priority: 1, align: 'right', render: (h) => fmtUsdPx(h.price) },
     { key: 'heat', label: 'Heat', priority: 1, align: 'right', render: (h) => h.heat.toFixed(2) },
-    { key: 'prev', label: 'Previous high', priority: 2, render: (h) => <span className="whitespace-nowrap">{fmtDay(h.prev.t)}</span> },
+    { key: 'prev', label: 'Previous high', priority: 3, render: (h) => <span className="whitespace-nowrap">{fmtDay(h.prev.t)}</span> },
     { key: 'prevPrice', label: 'Close', priority: 3, align: 'right', render: (h) => fmtUsdPx(h.prev.price) },
-    { key: 'prevHeat', label: 'Heat', priority: 2, align: 'right', render: (h) => h.prev.heat.toFixed(2) },
+    { key: 'prevHeat', label: 'Heat', priority: 3, align: 'right', render: (h) => h.prev.heat.toFixed(2) },
     {
       key: 'delta',
       label: 'Price / heat',
