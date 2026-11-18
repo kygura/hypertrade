@@ -25,7 +25,9 @@ export async function applySchedule(db: Db, env: Record<string, string | undefin
   await db.exec(`create extension if not exists supabase_vault`);
   await setSecret(db, "hypertrade_app_url", appUrl);
   await setSecret(db, "hypertrade_cron_token", token);
-  await db.exec(schedule); // its own transaction (begin … commit)
+  // The file wraps itself in begin … commit for the SQL editor. The driver refuses a bare BEGIN on a pooled
+  // connection, so those two lines are dropped and the file runs in one driver transaction instead.
+  await db.tx((tx) => tx.exec(schedule.replace(/^(begin|commit);[ \t]*$/gim, "")));
   return null;
 }
 
