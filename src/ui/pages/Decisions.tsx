@@ -8,7 +8,7 @@ import { EngineTabs } from '../components/strategy/EngineTabs'
 import { EngineOffline, OfflineStrip } from '../components/strategy/EngineOffline'
 import { VerdictBadge } from '../components/strategy/VerdictBadge'
 import { latestVerdict } from '../components/strategy/IntentRow'
-import { fmtAge, fmtTsSec } from '../components/strategy/format'
+import { fmtAge, fmtTsSec } from '../lib/format'
 import { summarizeDecision } from '../components/strategy/summarize'
 
 // /decisions — newest first, filter by strategy (?strategy=id, so the

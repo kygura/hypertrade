@@ -3,9 +3,7 @@ import { Link } from 'react-router'
 import { Badge, Button, DialogShell, EmptyBlock, ErrorBlock, HowToRead, MetricStat, OfflineBlock, Panel, SkeletonRows, StaleStrip, type Term } from '../../components'
 import { VenueBadge } from '../../components/intel/VenueBadge'
 import { venueWord, type DeskVenue } from '../../components/intel/order'
-import { fmtUsdCompact } from '../../components/branches/format'
-import { fmtAge } from '../../components/strategy/format'
-import { fmtPx, fmtUsd } from '../../lib/format'
+import { fmtAge, fmtPx, fmtUsd, fmtUsdCompact } from '../../lib/format'
 import { isExtremesOpportunity } from '../../../shared/extremes'
 import type { OpportunityDetail as Detail, LedgerStats, OpportunityStatus } from '../../../shared/platform'
 import { boardHref } from '../../lib/research'
@@ -361,7 +359,7 @@ const SNOOZES = [
   { minutes: 240, label: '4H', key: '3' },
 ] as const
 
-export function SnoozeMenu({ onSnooze, onClose }: { onSnooze: (minutes: number) => void; onClose: () => void }) {
+function SnoozeMenu({ onSnooze, onClose }: { onSnooze: (minutes: number) => void; onClose: () => void }) {
   const first = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null

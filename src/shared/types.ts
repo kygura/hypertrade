@@ -3,7 +3,6 @@ import type {
   AllocationSchema,
   ScenarioSchema,
   BranchConfigSchema,
-  ScheduleStepSchema,
   MarketStateDomainSchema,
   MarketStateThesisSchema,
   MarketStateDataSchema,
@@ -16,7 +15,6 @@ import type {
 export type Allocation = z.infer<typeof AllocationSchema>;
 export type Scenario = z.infer<typeof ScenarioSchema>;
 export type BranchConfig = z.infer<typeof BranchConfigSchema>;
-export type ScheduleStep = z.infer<typeof ScheduleStepSchema>;
 
 export type MarketStateDomain = z.infer<typeof MarketStateDomainSchema>;
 export type MarketStateThesis = z.infer<typeof MarketStateThesisSchema>;

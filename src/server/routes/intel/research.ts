@@ -29,30 +29,23 @@ export function createResearchRoutes(deps: ResearchRouteDeps) {
   const limit = researchDailyLimit(env);
 
   return new Hono()
+    .onError((err, c) => failure(c, err, "intel:research", "research unavailable"))
     .post("/research", async (c) => {
       const parsed = RequestSchema.safeParse(await body(c));
       if (!parsed.success) return invalid(c, parsed.error, "research request");
       const { question, flagId } = parsed.data;
-      try {
-        const now = deps.now();
-        if ((await store.researchCountSince(utcDayStart(now), "manual")) >= limit) return c.json({ error: `daily research limit reached (${limit})` }, 429);
-        const flag = flagId ? (await store.getEventByKey(`flow:${flagId}`))?.flag : undefined;
-        if (flagId && !flag) return c.json({ error: "unknown flag", field: "flagId" }, 404);
-        const result = await runResearch(researchDeps(deps), { question, asset: parsed.data.asset ?? flag?.asset ?? null, trigger: "manual", flag });
-        return result ? c.json(result) : c.json({ error: "a research run is already in flight" }, 409);
-      } catch (err) {
-        return failure(c, err, "intel:research", "research unavailable");
-      }
+      const now = deps.now();
+      if ((await store.researchCountSince(utcDayStart(now), "manual")) >= limit) return c.json({ error: `daily research limit reached (${limit})` }, 429);
+      const flag = flagId ? (await store.getEventByKey(`flow:${flagId}`))?.flag : undefined;
+      if (flagId && !flag) return c.json({ error: "unknown flag", field: "flagId" }, 404);
+      const result = await runResearch(researchDeps(deps), { question, asset: parsed.data.asset ?? flag?.asset ?? null, trigger: "manual", flag });
+      return result ? c.json(result) : c.json({ error: "a research run is already in flight" }, 409);
     })
     .get("/research", async (c) => {
       const q = ListQuerySchema.safeParse({ asset: c.req.query("asset"), limit: c.req.query("limit") });
       if (!q.success) return invalid(c, q.error, "query");
-      try {
-        const [items, usedToday] = await Promise.all([store.listResearch(q.data), store.researchCountSince(utcDayStart(deps.now()), "manual")]);
-        const res: { items: ResearchResult[]; usedToday: number; limit: number } = { items, usedToday, limit };
-        return c.json(res);
-      } catch (err) {
-        return failure(c, err, "intel:research", "research unavailable");
-      }
+      const [items, usedToday] = await Promise.all([store.listResearch(q.data), store.researchCountSince(utcDayStart(deps.now()), "manual")]);
+      const res: { items: ResearchResult[]; usedToday: number; limit: number } = { items, usedToday, limit };
+      return c.json(res);
     });
 }

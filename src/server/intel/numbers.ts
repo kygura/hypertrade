@@ -26,7 +26,7 @@ const EXEMPT = [
 
 // A digit run not glued to a word, a decimal point, or a "letter-"/"letter:" prefix (EIP-1967, desk:BTC:1).
 const NUMBER = /(?<![\w.]|[A-Za-z][-:])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:\s?(%|bps?\b|thousand\b|million\b|billion\b|trillion\b)|(bn|mn|[kmb])(?![A-Za-z]))?/gi;
-const SCALE: Record<string, number> = { k: 1e3, thousand: 1e3, m: 1e6, mn: 1e6, million: 1e6, b: 1e9, bn: 1e9, billion: 1e9, trillion: 1e12 };
+export const SCALE: Record<string, number> = { k: 1e3, thousand: 1e3, m: 1e6, mn: 1e6, million: 1e6, b: 1e9, bn: 1e9, billion: 1e9, trillion: 1e12 };
 
 /** `text` with the exempt spans (dates, times, list markers) blanked out, length preserved. */
 export function stripExempt(text: string): string {

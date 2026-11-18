@@ -35,7 +35,6 @@ export interface SearchOptions {
   /** Stop starting trials once this much time has passed; still returns. */
   deadlineMs?: number;
   now?: () => number;
-  onProgress?: (trialsDone: number) => void;
 }
 
 interface TrainSet {
@@ -215,7 +214,6 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
     const rec: TrialRecord = { trial: i, params, score: Number.isFinite(score) ? score : 0, rules };
     trials.push(rec);
     if (!best || rec.score > best.score) best = rec;
-    opts.onProgress?.(i + 1);
   }
 
   // Refit the best parameters on the whole search region, then rank its

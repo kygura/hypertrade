@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { AsyncBody, DataTable, EmptyBlock, ErrorBlock, HowToRead, SkeletonRows, type Column } from '../components'
-import { engine, errorMessage, useEngine } from '../lib/engine'
+import { engine, useEngine } from '../lib/engine'
+import { errorMessage } from '../lib/poll'
 import type { DecisionRecord, StrategyStatus } from '../../shared/strategy-protocol'
 import { EngineTabs } from '../components/strategy/EngineTabs'
 import { EngineOffline, OfflineStrip } from '../components/strategy/EngineOffline'
-import { fmtAge, fmtTs } from '../components/strategy/format'
+import { fmtAge, fmtTs } from '../lib/format'
 import { summarizeDecision } from '../components/strategy/summarize'
 
 // /strategies — manifests × configs. Columns (docs/design/README.md §4.4 drop order):

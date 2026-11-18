@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AsyncBody, Badge, Button, ConfirmDialog, DataTable, ErrorBlock, HowToRead, Segmented, SkeletonRows, type Column } from '../components'
-import { engine, errorMessage, useEngine } from '../lib/engine'
+import { engine, useEngine } from '../lib/engine'
+import { errorMessage } from '../lib/poll'
 import type { GovernorMode, GovernorSettings, VenueStatus } from '../../shared/strategy-protocol'
 import { GovernorLimitFields, governorLimitErrors } from '../components/strategy/GovernorLimits'
 import { EngineTabs } from '../components/strategy/EngineTabs'
 import { EngineOffline, OfflineStrip } from '../components/strategy/EngineOffline'
-import { fmtUsdSigned } from '../components/strategy/format'
+import { fmtUsdSigned } from '../lib/format'
 
 // /governor — global mode, limits, and the kill switch. Mode chips + three
 // numeric limits save through PUT /governor (Level 1, verbatim ErrorBlock).

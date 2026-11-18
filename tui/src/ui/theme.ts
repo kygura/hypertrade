@@ -40,7 +40,7 @@ const TOKENS: Record<Tone, ToneProps> = {
 
 type Env = Record<string, string | undefined>;
 
-export function colorEnabled(env: Env = process.env, isTTY: boolean = !!process.stdout.isTTY): boolean {
+function colorEnabled(env: Env = process.env, isTTY: boolean = !!process.stdout.isTTY): boolean {
   if (env.NO_COLOR != null && env.NO_COLOR !== "") return false;
   if (env.FORCE_COLOR === "0") return false;
   return isTTY;

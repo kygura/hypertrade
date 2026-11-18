@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { HttpsUrlSchema, type FlowFlag, type PositionsResponse, type ResearchEvidence, type ResearchResult } from "../../shared/intel.js";
 import { alertSource } from "./diff.js";
-import { completeStructured, untrusted, usageCost, UNTRUSTED_RULE, webSearchAvailable, type LlmDeps } from "./llm.js";
-import { lineVerdict, payloadNumbers, stripExempt } from "./numbers.js";
+import { completeStructured, untrusted, usageCost, UNTRUSTED_RULE, webSearchAvailable, type CompleteStructuredArgs, type LlmDeps } from "./llm.js";
+import { lineVerdict, payloadNumbers, SCALE, stripExempt } from "./numbers.js";
 import type { IntelStore, NewResearch } from "./store.js";
+import { intEnv } from "./util.js";
 
 // Scout research engine (docs/SPEC.md § Scout S0.2): one strong-tier call with
 // hosted web search, then provenance checked in code. The model's claims are
@@ -22,18 +23,29 @@ const NO_SUMMARY = "See the evidence below; the model's own summary did not pass
 const HEADLINE_HOURS = 24;
 const MAX_HEADLINES = 15;
 
+/** One evidence item as the model emits it (research and narrative contrast). */
+export const EvidenceSchema = z.object({
+  claim: z.string().min(1).max(500),
+  url: z.string().max(2000).nullable().optional(),
+  ts: z.string().max(40).nullable().optional(),
+  type: z.enum(["observed", "hypothesis"]),
+});
+/** JSON schema for EvidenceSchema (an `emit` tool property item). */
+export const evidenceItemJson = {
+  type: "object",
+  properties: {
+    claim: { type: "string", description: "One factual statement; copy numbers exactly as the source prints them" },
+    url: { type: ["string", "null"], description: "https URL of the search result that states it" },
+    ts: { type: ["string", "null"], description: "ISO time of the source or event, if known" },
+    type: { type: "string", enum: ["observed", "hypothesis"] },
+  },
+  required: ["claim", "url", "ts", "type"],
+  additionalProperties: false,
+};
+
 const OutputSchema = z.object({
   explanation: z.string().max(3000),
-  evidence: z
-    .array(
-      z.object({
-        claim: z.string().min(1).max(500),
-        url: z.string().max(2000).nullable().optional(),
-        ts: z.string().max(40).nullable().optional(),
-        type: z.enum(["observed", "hypothesis"]),
-      }),
-    )
-    .max(RESEARCH_MAX_SEARCHES * 2),
+  evidence: z.array(EvidenceSchema).max(RESEARCH_MAX_SEARCHES * 2),
   confidence: z.enum(["low", "medium", "high"]),
   openQuestions: z.array(z.string().max(300)).max(5),
 });
@@ -42,20 +54,7 @@ const jsonSchema = {
   type: "object" as const,
   properties: {
     explanation: { type: "string", description: "Short plain-language cause, or empty when no public cause was found" },
-    evidence: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          claim: { type: "string", description: "One factual statement; copy numbers exactly as the source prints them" },
-          url: { type: ["string", "null"], description: "https URL of the search result that states it" },
-          ts: { type: ["string", "null"], description: "ISO time of the source or event, if known" },
-          type: { type: "string", enum: ["observed", "hypothesis"] },
-        },
-        required: ["claim", "url", "ts", "type"],
-        additionalProperties: false,
-      },
-    },
+    evidence: { type: "array", items: evidenceItemJson },
     confidence: { type: "string", enum: ["low", "medium", "high"] },
     openQuestions: { type: "array", items: { type: "string" } },
   },
@@ -94,7 +93,7 @@ export interface ResearchInput {
 
 /** What the provider exposed per result URL. Bodies are encrypted, so `cited` (citation texts) is the only readable excerpt. */
 export type Seen = Map<string, { title: string; cited: string[] }>;
-const urlKey = (u: string) => {
+export const urlKey = (u: string) => {
   try {
     return new URL(u).href;
   } catch {
@@ -102,12 +101,27 @@ const urlKey = (u: string) => {
   }
 };
 
+/** completeStructured hooks that fill `seen` from the provider's hosted search results and citations. */
+export function seenHooks(seen: Seen): CompleteStructuredArgs<unknown>["hooks"] {
+  return {
+    onSearchResults: (rs) => {
+      for (const r of rs) {
+        const k = urlKey(r.url);
+        seen.set(k, seen.get(k) ?? { title: r.title ?? "", cited: [] });
+      }
+    },
+    // Cited text only attaches to URLs the provider returned: a citation for any other URL is ignored.
+    onCitation: (c) => {
+      if (c.cited_text) seen.get(urlKey(c.url))?.cited.push(c.cited_text);
+    },
+  };
+}
+
 const STOP = new Set(
   "the and for with that this from have has had was were are been will would could should about into over after before than then them they their there which while when what who whom its not but also more most some such only other any all can may per via our out off new".split(" "),
 );
 const words = (text: string) => new Set((text.toLowerCase().match(/[a-z]{3,}/g) ?? []).filter((w) => !STOP.has(w)));
 
-const SCALE: Record<string, number> = { k: 1e3, thousand: 1e3, m: 1e6, mn: 1e6, million: 1e6, b: 1e9, bn: 1e9, billion: 1e9, trillion: 1e12 };
 const TOKEN = /(?<![\w.])([+\-−–]?)(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?:\s?(%|bps?\b|thousand\b|million\b|billion\b|trillion\b|bn\b|mn\b|[kmb](?![A-Za-z])))?/gi;
 
 /**
@@ -256,18 +270,7 @@ export async function runResearch(deps: ResearchDeps, input: ResearchInput): Pro
       signal,
       deadlineMs: Math.max(1, RESEARCH_DEADLINE_MS - (Date.now() - t0)),
       deps: deps.llm,
-      hooks: {
-        onSearchResults: (rs) => {
-          for (const r of rs) {
-            const k = urlKey(r.url);
-            seen.set(k, seen.get(k) ?? { title: r.title ?? "", cited: [] });
-          }
-        },
-        // Cited text only attaches to URLs the provider returned: a citation for any other URL is ignored.
-        onCitation: (c) => {
-          if (c.cited_text) seen.get(urlKey(c.url))?.cited.push(c.cited_text);
-        },
-      },
+      hooks: seenHooks(seen),
     });
     spent.searches = res.trace.searches;
     spent.model = res.trace.model ?? "";
@@ -305,7 +308,6 @@ export async function runResearch(deps: ResearchDeps, input: ResearchInput): Pro
 
 // ─── Limits, wiring and the automatic stage (docs/SPEC.md § Scout S0.3) ───
 
-const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : def);
 /** INTEL_RESEARCH_DAILY (10): manual runs per UTC day. */
 export const researchDailyLimit = (env: Record<string, string | undefined>) => intEnv(env.INTEL_RESEARCH_DAILY, 10);
 /** INTEL_RESEARCH_AUTO_DAILY (3): automatic (flag) runs per UTC day. */

@@ -2,10 +2,10 @@ import { z } from "zod";
 import type { NarrativeContrast, NarrativeFlow, NarrativeLean, NarrativeView, ResearchEvidence } from "../../shared/intel.js";
 import { completeStructured, untrusted, usageCost, UNTRUSTED_RULE, webSearchAvailable, type LlmDeps } from "./llm.js";
 import { lineVerdict, payloadNumbers } from "./numbers.js";
-import { vetResearch, type Seen } from "./research.js";
+import { EvidenceSchema, evidenceItemJson, seenHooks, vetResearch, type Seen } from "./research.js";
 import { narrativeHeadlines } from "./narratives.js";
 import type { IntelStore } from "./store.js";
-import { round } from "./util.js";
+import { intEnv, round } from "./util.js";
 
 // Narrative contrast (docs/SPEC.md § Narratives). One strong-tier call with
 // hosted web search builds the strongest continuation case and the strongest
@@ -31,17 +31,10 @@ export const VIEWS_SETTING = "narrative_views";
 export const HEADLINE_HOURS = 72;
 const MAX_HEADLINES = 20;
 
-const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : def);
 /** INTEL_NARRATIVE_DAILY (10): contrast runs per UTC day. */
 export const contrastDailyLimit = (env: Record<string, string | undefined>) => intEnv(env.INTEL_NARRATIVE_DAILY, 10);
 
-const Evidence = z.object({
-  claim: z.string().min(1).max(500),
-  url: z.string().max(2000).nullable().optional(),
-  ts: z.string().max(40).nullable().optional(),
-  type: z.enum(["observed", "hypothesis"]),
-});
-const Case = z.object({ case: z.string().max(2000), evidence: z.array(Evidence).max(CONTRAST_MAX_SEARCHES * 2) });
+const Case = z.object({ case: z.string().max(2000), evidence: z.array(EvidenceSchema).max(CONTRAST_MAX_SEARCHES * 2) });
 const OutputSchema = z.object({
   summary: z.string().max(1500),
   favours: z.enum(["continuation", "fade", "unclear"]),
@@ -55,23 +48,9 @@ const OutputSchema = z.object({
 });
 type Output = z.infer<typeof OutputSchema>;
 
-const evidenceJson = {
-  type: "array",
-  items: {
-    type: "object",
-    properties: {
-      claim: { type: "string", description: "One factual statement; copy numbers exactly as the source prints them" },
-      url: { type: ["string", "null"], description: "https URL of the search result that states it" },
-      ts: { type: ["string", "null"], description: "ISO time of the source or event, if known" },
-      type: { type: "string", enum: ["observed", "hypothesis"] },
-    },
-    required: ["claim", "url", "ts", "type"],
-    additionalProperties: false,
-  },
-};
 const caseJson = {
   type: "object",
-  properties: { case: { type: "string", description: "The strongest honest version of this case, in plain prose" }, evidence: evidenceJson },
+  properties: { case: { type: "string", description: "The strongest honest version of this case, in plain prose" }, evidence: { type: "array", items: evidenceItemJson } },
   required: ["case", "evidence"],
   additionalProperties: false,
 };
@@ -182,14 +161,6 @@ export function vetContrast(out: Output, seen: Seen, payload: unknown, view: Nar
   };
 }
 
-const urlKey = (u: string) => {
-  try {
-    return new URL(u).href;
-  } catch {
-    return u;
-  }
-};
-
 /** Runs one contrast. Never throws: a failure comes back as status "failed" (or "capped"), with the spend so far. */
 export async function runContrast(deps: ContrastDeps, input: ContrastInput): Promise<NarrativeContrast> {
   const now = deps.now();
@@ -233,17 +204,7 @@ export async function runContrast(deps: ContrastDeps, input: ContrastInput): Pro
       signal,
       deadlineMs: Math.max(1, CONTRAST_DEADLINE_MS - (Date.now() - t0)),
       deps: deps.llm,
-      hooks: {
-        onSearchResults: (rs) => {
-          for (const r of rs) {
-            const k = urlKey(r.url);
-            seen.set(k, seen.get(k) ?? { title: r.title ?? "", cited: [] });
-          }
-        },
-        onCitation: (c) => {
-          if (c.cited_text) seen.get(urlKey(c.url))?.cited.push(c.cited_text);
-        },
-      },
+      hooks: seenHooks(seen),
     });
     const spent = {
       searches: res.trace.searches,

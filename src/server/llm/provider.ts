@@ -228,8 +228,7 @@ export function modelFor(
 ): string | undefined {
   const want = requested?.trim() || undefined;
   if (provider === "anthropic") return want?.startsWith("claude-") ? want : DEFAULT_MODEL;
-  if (want && (provider === writtenFor || provider === "openai-compatible")) return want;
-  if (provider === "openai-compatible") return want;
+  if (provider === "openai-compatible" || (want && provider === writtenFor)) return want;
   const preset = presetById(provider);
   if (!preset) return want;
   const models = presetConfig(preset, env).models;

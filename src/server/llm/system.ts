@@ -15,10 +15,14 @@ but **never** given as a false-precision point estimate ("73%"). Every
 forward-looking clause carries a hedge word — no bare future-tense
 assertion of a market outcome.`;
 
-export function buildSystemPrompt(webSearch: boolean): string {
-  const tools = toolCatalog(webSearch)
+/** The tool list both system prompts end with (this one and sim.ts's). */
+export function toolList(webSearch: boolean): string {
+  return toolCatalog(webSearch)
     .map((t) => `- ${t.name}${t.available ? "" : " (unavailable)"}${t.note ? ` — ${t.note}` : ""}`)
     .join("\n");
+}
+
+export function buildSystemPrompt(webSearch: boolean): string {
   return `You are the Hypertrade analyst: a read-only market-intelligence assistant for one operator, inside a personal market terminal.
 
 You answer questions about crypto market state using the app's own data: the MarketState briefing and its history, the routine's sector/narrative map, collected metric series, the live Hyperliquid perp universe, the Hyperion strategy engine's configuration and decision records, and the Lab's rule research (stored runs, rule evaluations, the saved-rule catalogue and Market Pulse). The engine is driven by Jev (a typed-decision model) under a human governor; you explain what it decided and why, using the recorded answers, probabilities, intents and verdicts. You never place, approve, reject or change anything, and you do not have tools that could. If asked to trade or to change a strategy, say that the operator does that in the Hyperion terminal or on the Strategies/Governor pages.
@@ -38,5 +42,5 @@ Working rules:
 - Be dense and specific: short paragraphs or tight bullets, numbers with units, no filler.
 
 Tools:
-${tools}`;
+${toolList(webSearch)}`;
 }

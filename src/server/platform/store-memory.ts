@@ -140,7 +140,6 @@ export class MemoryPlatformStore implements PlatformStore {
 
   async movesRunAt(window: MoveWindow) {
     const r = this.movesRuns.get(window);
-    const iso = (t: string) => new Date(t).toISOString();
     return r ? { asOf: iso(r.asOf!), computedAt: iso(r.computedAt) } : null;
   }
 

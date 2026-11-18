@@ -3,8 +3,8 @@
 // stablecoin cap, Deribit BTC DVOL. Per-source try/catch so one dead API never
 // discards the others (docs/SPEC.md: never fail the whole run over one tool).
 import { z } from "zod";
-import { ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db.js";
-import type { CollectorResult } from "./types.js";
+import type { Observation, SeriesDef } from "../db.js";
+import { collectorDb, type CollectorDbDeps, type CollectorResult } from "./types.js";
 
 const COLLECTOR = "crypto-context";
 
@@ -74,11 +74,7 @@ async function getJson(url: string, fetchFn: typeof fetch): Promise<unknown> {
   return res.json();
 }
 
-/** db.ts calls, injectable so tests never need a live DATABASE_URL. */
-export type CryptoContextDbDeps = { ensureSeries: typeof ensureSeries; upsertObservations: typeof upsertObservations; recordCollectorRun: typeof recordCollectorRun };
-const defaultDeps: CryptoContextDbDeps = { ensureSeries, upsertObservations, recordCollectorRun };
-
-export async function collectCryptoContext(fetchFn: typeof fetch = fetch, deps: CryptoContextDbDeps = defaultDeps): Promise<CollectorResult> {
+export async function collectCryptoContext(fetchFn: typeof fetch = fetch, deps: CollectorDbDeps = collectorDb): Promise<CollectorResult> {
   const startedAt = new Date();
   const settled = await Promise.allSettled(
     Object.entries(SOURCES).map(async ([name, src]) => {

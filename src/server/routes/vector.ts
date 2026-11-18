@@ -6,8 +6,6 @@ import { buildVector } from "../../shared/vectorModel.js";
 import { errDetail } from "../radar/macro.js";
 import { createVectorLoaders, defaultVectorIo, mergeSeries, type Loader, type SeriesMap, type SourceData } from "../vector/sources.js";
 
-export type { VectorResponse };
-
 // GET /vector
 //
 // The BTC Vector (ported from hl-cycles, docs/MODEL.md §8 there): the four-state

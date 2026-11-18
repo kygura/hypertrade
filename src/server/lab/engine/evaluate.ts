@@ -52,11 +52,6 @@ export function evaluateInCtx(ctx: EvalCtx, rule: Rule, o: EvalInCtxOptions): Ru
   const holdout = hasHoldout ? perfStats(t, [simulate(ctx.pr, pos, split.searchEnd, n, o.slippageBps)]) : null;
   const benchHoldout = hasHoldout ? perfStats(t, [simulate(ctx.pr, bench, split.searchEnd, n, o.slippageBps)]) : null;
 
-  const values: Record<string, number | null> = {};
-  for (const c of rule.conditions) {
-    const x = ctx.col(c.feature)[n - 1]!;
-    values[c.feature] = Number.isFinite(x) ? x : null;
-  }
   const wf = o.walkForward && split.folds.length ? walkForwardSegments(ctx, zoneConditions(rule), split, dirSign, o.slippageBps, o.refitThresholds ?? true) : null;
 
   const out: RuleEvaluation = {
@@ -73,7 +68,7 @@ export function evaluateInCtx(ctx: EvalCtx, rule: Rule, o: EvalInCtxOptions): Ru
     holdout,
     benchmark: { inSample: perfStats(t, [inBench]), holdout: benchHoldout },
     firingNow: sig[n - 1] === 1,
-    latest: { date: isoDate(t[n - 1]!), values },
+    latest: latestValues(ctx, rule),
   };
   if (o.windows) {
     out.sensitivity = sensitivity(ctx, rule, { basisEnd: split.basisEnd, evalEnd: split.searchEnd, windows: o.windows, slippageBps: o.slippageBps });
@@ -83,6 +78,16 @@ export function evaluateInCtx(ctx: EvalCtx, rule: Rule, o: EvalInCtxOptions): Ru
   }
   out.verdict = verdictOf(out);
   return out;
+}
+
+/** Each condition feature's value on the last day of the context (null when not finite). */
+function latestValues(ctx: EvalCtx, rule: Rule): RuleEvaluation["latest"] {
+  const values: Record<string, number | null> = {};
+  for (const c of rule.conditions) {
+    const x = ctx.col(c.feature)[ctx.n - 1]!;
+    values[c.feature] = Number.isFinite(x) ? x : null;
+  }
+  return { date: isoDate(ctx.t[ctx.n - 1]!), values };
 }
 
 export interface EvaluateRuleOptions {
@@ -156,12 +161,7 @@ export function ruleFiresAt(input: Rule, data: LabDataset): { firing: boolean; l
   const ctx = makeCtx(data);
   const n = ctx.n;
   const sig = ctx.signal(zoneConditions(rule), n - 1, n);
-  const values: Record<string, number | null> = {};
-  for (const c of rule.conditions) {
-    const x = ctx.col(c.feature)[n - 1]!;
-    values[c.feature] = Number.isFinite(x) ? x : null;
-  }
-  return { firing: sig[n - 1] === 1, latest: { date: isoDate(ctx.t[n - 1]!), values } };
+  return { firing: sig[n - 1] === 1, latest: latestValues(ctx, rule) };
 }
 
 /** In-zone flag per day of data.t (for overlap / Jaccard). */

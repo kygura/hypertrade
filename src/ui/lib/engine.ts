@@ -1,5 +1,5 @@
 import { api, ApiError, NetworkError, parseWith } from './api'
-import { errorMessage, usePoll, type PollState } from './poll'
+import { usePoll, type PollState } from './poll'
 import {
   DecisionRecordSchema,
   DecisionsResponseSchema,
@@ -74,10 +74,6 @@ function isEngineOffline(err: unknown): boolean {
   return err instanceof ApiError && (err.status === 502 || err.status === 503)
 }
 
-export { errorMessage }
-
-export type EngineState<T> = PollState<T>
-
 const ENGINE_POLL_MS = 5_000
 
 // useEngine — usePoll (lib/poll.ts) with the engine defaults: 5 s cadence,
@@ -87,7 +83,7 @@ export function useEngine<T>(
   fetcher: () => Promise<T>,
   deps: unknown[],
   opts: { intervalMs?: number | null; enabled?: boolean } = {},
-): EngineState<T> {
+): PollState<T> {
   const { intervalMs = ENGINE_POLL_MS, enabled = true } = opts
   return usePoll(fetcher, deps, { intervalMs, enabled, isOffline: isEngineOffline, offlineFallback: 'engine unreachable' })
 }

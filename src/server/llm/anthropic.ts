@@ -207,5 +207,3 @@ function summarizeWebSearch(content: Anthropic.Beta.BetaWebSearchToolResultBlock
     .filter(Boolean);
   return { ok: true, summary: `${content.length} results${titles.length ? `: ${titles.join(" · ")}` : ""}` };
 }
-
-export type { Citation };

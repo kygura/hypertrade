@@ -12,7 +12,7 @@ import { AssetSchema, HttpsUrlSchema } from "../../shared/intel.js";
 import type { MoveDetail } from "../../shared/moves.js";
 import { completeStructured, untrusted, UNTRUSTED_RULE, webSearchAvailable, type LlmDeps } from "../intel/llm.js";
 import { lineVerdict, payloadNumbers } from "../intel/numbers.js";
-import { RESEARCH_DEADLINE_MS, RESEARCH_MAX_SEARCHES, type Seen } from "../intel/research.js";
+import { RESEARCH_DEADLINE_MS, RESEARCH_MAX_SEARCHES, urlKey, type Seen } from "../intel/research.js";
 import type { PlatformStore } from "../platform/store.js";
 import { utcDayStart } from "./triage.js";
 
@@ -106,13 +106,6 @@ export interface InvestigateInput {
 
 const sig = (x: number) => Number(x.toPrecision(6));
 const r2 = (x: number | null) => (x == null ? null : Math.round(x * 100) / 100);
-const urlKey = (u: string) => {
-  try {
-    return new URL(u).href;
-  } catch {
-    return u;
-  }
-};
 
 /** Price band a falsifier must sit in for each direction, from σ24h (null without one). */
 export function falsifierBand(mark: number, sigma24hPct: number | null): { long: [number, number]; short: [number, number] } | null {
@@ -240,7 +233,7 @@ interface RecordBase {
  * inputs (window, residual, z, total, marks, asOf) and the horizon; a proposal is vetted by vetOutput against the
  * payload and headlines. Without a proposal: the empty open record written before a provider call. Pure.
  */
-export function buildAgentRecord(b: RecordBase, proposal?: { out: AgentOutput; seen: Seen }): AgentRecord {
+function buildAgentRecord(b: RecordBase, proposal?: { out: AgentOutput; seen: Seen }): AgentRecord {
   const d = b.detail;
   const a = d.attribution;
   const base: AgentRecord = {

@@ -12,8 +12,8 @@
 // Degrades to skipped:no-key like fred.ts when ELFA_API_KEY is unset.
 import { z } from "zod";
 import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
-import { ensureSeries, lastCollectorFetch, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db.js";
-import type { CollectorResult } from "./types.js";
+import { lastCollectorFetch, type Observation, type SeriesDef } from "../db.js";
+import { collectorDb, type CollectorDbDeps, type CollectorResult } from "./types.js";
 
 const COLLECTOR = "elfa";
 const SKIPPED_NO_KEY = "skipped:no-key";
@@ -108,10 +108,7 @@ export function buildElfaObservations(rows: TrendingRow[], universe: Set<string>
   return { seriesDefs, observations, matched: byCoin.size, rows: rows.length };
 }
 
-export type ElfaDeps = {
-  ensureSeries: typeof ensureSeries;
-  upsertObservations: typeof upsertObservations;
-  recordCollectorRun: typeof recordCollectorRun;
+export type ElfaDeps = CollectorDbDeps & {
   lastFetch: () => Promise<Date | null>;
   /** Live, non-delisted HL perp symbols. */
   universe: (fetchFn: typeof fetch) => Promise<string[]>;
@@ -119,9 +116,7 @@ export type ElfaDeps = {
 };
 
 export const defaultElfaDeps: ElfaDeps = {
-  ensureSeries,
-  upsertObservations,
-  recordCollectorRun,
+  ...collectorDb,
   lastFetch: () => lastCollectorFetch(COLLECTOR),
   universe: async (fetchFn) => (await fetchPerpMetaAndCtxs(fetchFn)).ctxs.filter((c) => !c.isDelisted).map((c) => c.name),
   now: () => Date.now(),

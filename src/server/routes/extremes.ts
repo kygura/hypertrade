@@ -18,7 +18,7 @@ import { dbPlatformContext, getPlatformContext, MAX_MID_AGE_SEC, type PlatformCo
 import { extremesReadyTtlMin } from "../platform/opportunity.js";
 import type { PlatformStore } from "../platform/store.js";
 import { PgPlatformStore } from "../platform/store-pg.js";
-import type { LabLease } from "./cron.js";
+import { capped, type LabLease } from "./cron.js";
 import { body, failure, invalid } from "./intel/http.js";
 import { fetchCandles } from "../../shared/hl-client.js";
 import type { Candle } from "../../shared/types.js";
@@ -90,10 +90,7 @@ export async function runExtremesCron(deps: CronExtremesDeps): Promise<{ status:
     }
   })().catch((err) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
   const hardStopMs = deps.hardStopMs ?? EXTREMES_HARD_STOP_MS;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const hardStop = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), hardStopMs)));
-  const done = await Promise.race([work, hardStop]);
-  clearTimeout(timer);
+  const done = await capped<Record<string, unknown> | null>(work, hardStopMs, null);
   if (done) return { status: done.ok ? 200 : 500, body: done };
   console.error(`[extremes] hard stop after ${Math.round(hardStopMs / 1000)}s`);
   return { status: 500, body: { ok: false, timedOut: true, error: `still running after ${Math.round(hardStopMs / 1000)}s` } };
@@ -108,7 +105,7 @@ export function cronExtremesRoutes(deps: () => CronExtremesDeps = defaultCronDep
 
 // ---------------------------------------------------------------- read and verdict
 
-export type ExtremesRouteStore = Pick<
+type ExtremesRouteStore = Pick<
   PlatformStore,
   | "listExtremes" | "latestExtreme" | "setExtremeVerdict" | "setExtremeOpportunity" | "scanSnapshotsSince" | "listOpportunities" | "upsertOpportunity" | "transitionOpportunity"
   | "latestAppliedExtremeCalibration" | "listExtremeCalibrations"

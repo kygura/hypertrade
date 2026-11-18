@@ -12,8 +12,8 @@ import {
   syncHead,
   type Bar,
   type SyncDeps,
-  type SyncState,
 } from "./candleSync.js";
+import type { SyncState } from "../db.js";
 import type { ExtBar, ExternalSource } from "./sources.js";
 
 const H = 3_600_000;

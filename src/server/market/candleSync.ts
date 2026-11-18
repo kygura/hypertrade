@@ -16,6 +16,7 @@
 import { fetchCandles as fetchHlCandles } from "../../shared/hl-client.js";
 import { TF_MS, type Timeframe } from "../../shared/timeframes.js";
 import * as db from "../db.js";
+import type { ExtLayerState, SyncState } from "../db.js";
 import { EXTERNAL_SOURCES, type ExternalSource, type ExtBar } from "./sources.js";
 
 const DAY = 86_400_000;
@@ -29,9 +30,6 @@ export interface Bar {
   v: number;
   src: string;
 }
-
-type LayerState = db.ExtLayerState;
-export type SyncState = db.SyncState;
 
 /** Everything the engine touches, injectable so tests never hit a network or DB. */
 export interface SyncDeps {
@@ -349,7 +347,7 @@ async function fillExternal(
   let upper = state.hlFloor!; // external bars sit strictly below the layer above
   for (const src of deps.sources) {
     if (!src.supports(tf)) continue;
-    const layer: LayerState = state.ext[src.id] ?? { status: "ok", floor: null, exhausted: false };
+    const layer: ExtLayerState = state.ext[src.id] ?? { status: "ok", floor: null, exhausted: false };
     // First contact overlaps the layer above by a few bars for the seam check.
     let firstContact = state.ext[src.id] == null;
     if (layer.status === "none") continue;
@@ -405,7 +403,7 @@ async function fillResampled(
   deps: SyncDeps,
   budget: FillBudget,
 ): Promise<FillResult> {
-  const layer: LayerState = state.ext.resample ?? { status: "ok", floor: null, exhausted: false };
+  const layer: ExtLayerState = state.ext.resample ?? { status: "ok", floor: null, exhausted: false };
   const upper = state.hlFloor!;
   const span = need * TF_MS[tf] + 2 * TF_MS[tf];
   const from = cursor - span;

@@ -43,12 +43,12 @@ const WEEK = 7 * DAY;
 type Env = Record<string, string | undefined>;
 
 /** A 24 h window counts as dense with at least this many distinct snapshot times (half the 15-min grid). */
-export const DENSE_TICKS_PER_DAY = 48;
+const DENSE_TICKS_PER_DAY = 48;
 const HORIZONS_MS = [4 * HOUR, 24 * HOUR, 72 * HOUR];
 /** Candidates tried per kind and run, geometric between the run's bounds (plus the current multiplier). */
 const CANDIDATES = 25;
 
-export const CALIBRATION_KNOBS: Record<ExtremeKind, string> = {
+const CALIBRATION_KNOBS: Record<ExtremeKind, string> = {
   price_dislocation: "price.z, price.zResid",
   oi_flush: "oiFlush.z, oiFlush.zPrice",
   crowded_asymmetry: "crowded.minAprPct",

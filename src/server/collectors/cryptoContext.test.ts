@@ -3,7 +3,8 @@ import coingeckoFixture from "../../shared/fixtures/coingecko-global.json" with 
 import fngFixture from "../../shared/fixtures/fng.json" with { type: "json" };
 import defillamaFixture from "../../shared/fixtures/defillama-stablecoins.json" with { type: "json" };
 import deribitFixture from "../../shared/fixtures/deribit-dvol.json" with { type: "json" };
-import { parseCoinGecko, parseDeribit, parseFng, parseStablecoins, collectCryptoContext, type CryptoContextDbDeps } from "./cryptoContext.js";
+import { parseCoinGecko, parseDeribit, parseFng, parseStablecoins, collectCryptoContext } from "./cryptoContext.js";
+import type { CollectorDbDeps } from "./types.js";
 import type { Observation } from "../db.js";
 
 describe("parseCoinGecko", () => {
@@ -49,7 +50,7 @@ describe("parseDeribit", () => {
 describe("collectCryptoContext orchestration", () => {
   function fakeDeps() {
     const written: Observation[] = [];
-    const deps: CryptoContextDbDeps = {
+    const deps: CollectorDbDeps = {
       ensureSeries: async () => {},
       upsertObservations: async (rows) => {
         written.push(...rows);

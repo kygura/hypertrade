@@ -22,7 +22,8 @@ import { ProjectionAssumptions } from '../components/charts/FanChart'
 import { DrawdownChart, DrawdownGuide } from '../components/branches/DrawdownChart'
 import { ScheduleList } from '../components/branches/ScheduleList'
 import { MonthlyTable, ProjectionOdds, RollingPanel } from '../components/branches/BacktestPanels'
-import { branchLine, branchReturnPct, maxDdClass, signClass, sumWeights } from '../components/branches/format'
+import { branchLine, branchReturnPct, maxDdClass, sumWeights } from '../components/branches/format'
+import { signClass } from '../lib/format'
 import { fmtPct, fmtUsd } from '../../shared/format'
 
 // /branches/:id — docs/design/README.md §10.4. Editor (left, 4 cols) + results (right,
@@ -173,8 +174,6 @@ export function BranchDetail() {
   const resolvedScenario: Scenario | null = form?.scenario
     ? {
         ...form.scenario,
-        horizonDays: form.scenario.horizonDays,
-        paths: form.scenario.paths,
         assumptions: nonStableCoins.map(
           (coin) =>
             form.scenario!.assumptions.find((a) => a.coin === coin) ?? { coin, annualReturnPct: 30, annualVolPct: 60 },

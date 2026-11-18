@@ -229,11 +229,9 @@ describe("runSearch", () => {
   test("deadline: stops starting trials, warns, still returns rules", () => {
     const data = synthetic({ seed: 2, drift: 0.01, days: 1200 });
     let clock = 0;
-    const progress: number[] = [];
-    const res = runSearch(cfg(data, { trials: 16 }), data, { deadlineMs: 2500, now: () => (clock += 1000), onProgress: (k) => progress.push(k) });
+    const res = runSearch(cfg(data, { trials: 16 }), data, { deadlineMs: 2500, now: () => (clock += 1000) });
     expect(res.trialsRun).toBe(3);
     expect(res.trialsRun).toBeLessThan(res.config.trials);
-    expect(progress).toEqual([1, 2, 3]);
     expect(res.warnings.some((w) => /deadline/.test(w))).toBe(true);
     expect(res.bestTrial).not.toBeNull();
   });

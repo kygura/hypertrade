@@ -117,6 +117,9 @@ export function Desk() {
   )
 }
 
+const when = (iso: string) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+
 const lim = (limits: DeskStatus['limits'] | undefined, key: string, unit = '') => (limits?.[key] != null ? `${limits[key]}${unit}` : 'not loaded')
 
 /** Header strip and governor limits, with the limit values the server reports. */
@@ -588,7 +591,7 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
         <CoinLink coin={(entry ?? exit)?.coin ?? ''} className={`text-md hover:underline ${entry?.side === 'short' ? 'text-red-text' : 'text-green'}`} />
         <button className="flex flex-1 items-center gap-2 text-left min-w-0" onClick={() => setOpen((o) => !o)}>
           <span className="text-xs text-text-secondary truncate">{op ? 'operator order (copilot)' : (open_?.setup ?? exit?.reason)}</span>
-          <span className="text-xs text-text-secondary ml-auto shrink-0 tabular">{new Date(p.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+          <span className="text-xs text-text-secondary ml-auto shrink-0 tabular">{when(p.createdAt)}</span>
         </button>
       </div>
       {s && (
@@ -646,7 +649,7 @@ function ProposalCard({ p, busy, onDecide }: { p: ProposalRecord; busy: boolean;
           <Button tier="ghost" onClick={() => onDecide('reject')} disabled={busy}>
             REJECT
           </Button>
-          {p.expiresAt && <span className="text-xs text-text-secondary self-center ml-auto">expires {new Date(p.expiresAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>}
+          {p.expiresAt && <span className="text-xs text-text-secondary self-center ml-auto">expires {clock(p.expiresAt)}</span>}
         </div>
       )}
     </div>
@@ -739,7 +742,7 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
             <span className="label text-2xs">RECENT FILLS</span>
             {portfolio.fills.slice(0, 6).map((f) => (
               <span key={f.id} className="text-xs text-text-secondary tabular">
-                {new Date(f.ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} {f.side} {f.size} <CoinLink coin={f.coin} /> @ {fmtPx(f.px)} · {f.reason}
+                {when(f.ts)} {f.side} {f.size} <CoinLink coin={f.coin} /> @ {fmtPx(f.px)} · {f.reason}
                 {f.pnl !== 0 ? ` · ${fmtUsd(f.pnl)}` : ''}
               </span>
             ))}
@@ -785,7 +788,7 @@ function AlertsPanel({ alerts, loading, error, offline, onRetry }: { alerts: Ale
                 <div className="flex items-center gap-2">
                   <Badge tone={a.level === 'critical' ? 'red' : a.level === 'warn' ? 'amber' : 'info'}>{a.level.toUpperCase()}</Badge>
                   <span className="text-sm text-text-primary truncate">{a.title}</span>
-                  <span className="text-xs text-text-secondary ml-auto shrink-0 tabular">{new Date(a.ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span className="text-xs text-text-secondary ml-auto shrink-0 tabular">{clock(a.ts)}</span>
                 </div>
                 <span className="text-xs text-text-secondary whitespace-pre-wrap break-words line-clamp-4">{a.body}</span>
               </div>
@@ -845,7 +848,7 @@ function RunsPanel({ schedule, runs, loading, error, offline, onRetry }: { sched
                   <Badge tone={r.status === 'done' ? 'green' : r.status === 'running' ? 'amber' : 'red'}>{r.kind.toUpperCase()}</Badge>
                   <span className="text-sm text-text-primary truncate">{r.question}</span>
                   <span className="text-xs text-text-secondary ml-auto shrink-0 tabular">
-                    {new Date(r.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {when(r.startedAt)}
                     {r.costUsd != null ? ` · $${r.costUsd.toFixed(2)}` : ''}
                   </span>
                 </button>

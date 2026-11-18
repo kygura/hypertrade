@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { candlesRoute, type CandlesDeps, type CandlesResponse } from "./candles.js";
+import type { CandlesResponse } from "../../shared/market.js";
+import { candlesRoute, type CandlesDeps } from "./candles.js";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2024, 0, 1);

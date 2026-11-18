@@ -16,11 +16,12 @@ import fundingEthFx from "./fixtures/funding-ETH.json";
 import metaFx from "./fixtures/meta.json";
 import oiCapFx from "./fixtures/oicap.json";
 import predictedFx from "./fixtures/predicted.json";
+import { DEMO_ACCOUNT } from "./config.js";
 import { accountFromRaw, bookViewFromRaw, marketsFromRaw } from "./info.js";
 import type { AccountSnapshot, BookView, Candle, FundingPoint, InfoSource, MarketRow } from "./types.js";
 
 /** Syntactically valid placeholder address; the demo source answers for any address. */
-export const demoAccountAddress = "0xde30de30de30de30de30de30de30de30de30de30";
+export const demoAccountAddress = DEMO_ACCOUNT;
 
 const HOUR = 3_600_000;
 const INTERVAL_MS = { "1h": HOUR, "4h": 4 * HOUR, "1d": 24 * HOUR } as const;

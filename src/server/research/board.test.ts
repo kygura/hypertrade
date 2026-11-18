@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { NoveltyEntry, Opportunity } from "../../shared/platform.js";
 import type { RadarCall } from "../../shared/radar.js";
-import { BoardResponseSchema, STUDY_DEFAULTS, studyEvidence, UNIVERSE_ASSET } from "../../shared/research.js";
+import { BoardResponseSchema, boardStudy, STUDY_DEFAULTS, studyEvidence, UNIVERSE_ASSET } from "../../shared/research.js";
 import { memoryStore } from "../lab/store.js";
 import type { CatalogueEntry, MarketPulse, Rule } from "../lab/types.js";
 import { DEFINITIONS, definitionRule } from "../signals/definitions.js";
-import { boardStudy, buildBoard, scannerNote, SourceUnavailable, type BoardDeps } from "./board.js";
+import { buildBoard, scannerNote, SourceUnavailable, type BoardDeps } from "./board.js";
 import { noveltyRule } from "./signals.js";
 import { createStudyCache, studyKey, studySummary } from "./study.js";
 import { fakeStudy } from "./testkit.js";

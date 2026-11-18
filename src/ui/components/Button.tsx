@@ -6,7 +6,7 @@ import { forwardRef, type ButtonHTMLAttributes } from 'react'
 //   neutral — primary submits: login, save/create branch, run simulation,
 //             trigger routine
 //   danger  — delete branch, remove allocation row (confirmed per §7)
-export type ButtonTier = 'ghost' | 'neutral' | 'danger'
+type ButtonTier = 'ghost' | 'neutral' | 'danger'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   tier: ButtonTier

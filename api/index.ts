@@ -1,7 +1,6 @@
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
 import { handle } from "hono/vercel";
-import { COOKIE_NAME, requireAuth, verifySession } from "../src/server/auth.js";
+import { hasSession, requireAuth } from "../src/server/auth.js";
 import { mcpRoutes } from "../src/server/mcp/http.js";
 import { labRegistry } from "../src/server/mcp/lab.js";
 import { getHealthExtras } from "../src/server/platform/runtime.js";
@@ -54,7 +53,7 @@ app.get("/health", async (c) => {
   const base = { ok: true, ts: new Date().toISOString() };
   try {
     const extras = await getHealthExtras()?.();
-    if (!extras || verifySession(getCookie(c, COOKIE_NAME))) return c.json({ ...base, ...extras });
+    if (!extras || hasSession(c)) return c.json({ ...base, ...extras });
     return c.json({ ...base, ...(extras.loops ? { loops: extras.loops.map(({ name, ok }) => ({ name, ok })) } : {}), ...(extras.ws ? { ws: extras.ws } : {}) });
   } catch (err) {
     console.error("[health] extras failed:", err);

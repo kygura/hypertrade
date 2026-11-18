@@ -13,7 +13,6 @@ import { body, failure, invalid } from "./http.js";
 const ID = /^[0-9a-f-]{36}$/i;
 const CHANGES_LIMIT = 50;
 
-/** 500 detail goes to the log only: store errors can carry connection strings or SQL. */
 /** A watch as the API returns it: the stored snapshot (up to 200 KB of page text) is never sent. */
 function view(w: Watch): Omit<Watch, "lastSnapshot"> {
   const { lastSnapshot: _snapshot, ...rest } = w;
@@ -22,52 +21,32 @@ function view(w: Watch): Omit<Watch, "lastSnapshot"> {
 
 export function createWatchRoutes(deps: DocwatchDeps) {
   return new Hono()
-    .get("/watches", async (c) => {
-      try {
-        return c.json({ watches: (await deps.store.listWatches()).map(view) });
-      } catch (err) {
-        return failure(c, err, "intel:watches", "watches error");
-      }
-    })
+    // 500 detail goes to the log only: store errors can carry connection strings or SQL.
+    .onError((err, c) => failure(c, err, "intel:watches", "watches error"))
+    .get("/watches", async (c) => c.json({ watches: (await deps.store.listWatches()).map(view) }))
     .post("/watches", async (c) => {
       const parsed = WatchInputSchema.safeParse(await body(c));
       if (!parsed.success) return invalid(c, parsed.error);
-      try {
-        return c.json(view(await deps.store.insertWatch(parsed.data)), 201);
-      } catch (err) {
-        return failure(c, err, "intel:watches", "watches error");
-      }
+      return c.json(view(await deps.store.insertWatch(parsed.data)), 201);
     })
     .delete("/watches/:id", async (c) => {
       const id = c.req.param("id");
       if (!ID.test(id)) return c.json({ error: "invalid id", field: "id" }, 400);
-      try {
-        return (await deps.store.deleteWatch(id)) ? c.json({ ok: true }) : c.json({ error: "watch not found" }, 404);
-      } catch (err) {
-        return failure(c, err, "intel:watches", "watches error");
-      }
+      return (await deps.store.deleteWatch(id)) ? c.json({ ok: true }) : c.json({ error: "watch not found" }, 404);
     })
     .get("/watches/:id/changes", async (c) => {
       const id = c.req.param("id");
       if (!ID.test(id)) return c.json({ error: "invalid id", field: "id" }, 400);
-      try {
-        if (!(await deps.store.getWatch(id))) return c.json({ error: "watch not found" }, 404);
-        return c.json({ changes: await deps.store.listWatchChanges(id, CHANGES_LIMIT) });
-      } catch (err) {
-        return failure(c, err, "intel:watches", "watches error");
-      }
+      if (!(await deps.store.getWatch(id))) return c.json({ error: "watch not found" }, 404);
+      return c.json({ changes: await deps.store.listWatchChanges(id, CHANGES_LIMIT) });
     })
     .post("/watches/:id/check", async (c) => {
       const id = c.req.param("id");
       if (!ID.test(id)) return c.json({ error: "invalid id", field: "id" }, 400);
-      try {
-        const watch = await deps.store.getWatch(id);
-        if (!watch) return c.json({ error: "watch not found" }, 404);
-        const result = await checkWatch(deps, watch);
-        const after = await deps.store.getWatch(id);
-        return c.json({ result, watch: after && view(after) });
-      } catch (err) {
-        return failure(c, err, "intel:watches", "watches error");
-      }
+      const watch = await deps.store.getWatch(id);
+      if (!watch) return c.json({ error: "watch not found" }, 404);
+      const result = await checkWatch(deps, watch);
+      const after = await deps.store.getWatch(id);
+      return c.json({ result, watch: after && view(after) });
     });
 }

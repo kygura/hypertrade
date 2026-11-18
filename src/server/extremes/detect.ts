@@ -71,7 +71,7 @@ export interface DetectInput {
   now: number;
 }
 
-export type PriceReading = {
+type PriceReading = {
   window: PriceWindow;
   ret: number;
   z: number | null;
@@ -83,7 +83,7 @@ export type PriceReading = {
   oiChg: number | null;
   fires: boolean;
 };
-export type OiReading = {
+type OiReading = {
   window: OiWindow;
   oiChg: number;
   z: number | null;
@@ -93,7 +93,7 @@ export type OiReading = {
   fundingAfter: number | null;
   fires: boolean;
 };
-export type CrowdedReading = {
+type CrowdedReading = {
   funding: number;
   fundingAprPct: number;
   fundingPctile: number;
@@ -196,18 +196,18 @@ const pctileOf = (xs: number[], v: number) => xs.filter((x) => x <= v).length / 
 // The threshold tests. Each reads only the reading's own numbers, so stored readings can be re-thresholded
 // (rethreshold below; the calibration's fast path) with exactly the result readExtremes gives.
 /** price_dislocation at one window: own z and move past the window's cuts, and (non-BTC) the BTC residual extreme the same way. */
-export function priceFires(p: Omit<PriceReading, "fires">, th: ExtremeThresholds, isBtc: boolean): boolean {
+function priceFires(p: Omit<PriceReading, "fires">, th: ExtremeThresholds, isBtc: boolean): boolean {
   const c = th.price;
   const residOk = isBtc || (p.zResid != null && Math.sign(p.zResid) === Math.sign(p.ret) && Math.abs(p.zResid) >= c.zResid[p.window]);
   return p.z != null && Math.abs(p.z) >= c.z[p.window] && Math.abs(p.ret) >= c.minMove[p.window] && residOk;
 }
 /** oi_flush at one window: OI contracts down hard (z and fraction) with a price move of at least zPrice. */
-export function oiFires(o: Omit<OiReading, "fires">, th: ExtremeThresholds): boolean {
+function oiFires(o: Omit<OiReading, "fires">, th: ExtremeThresholds): boolean {
   const c = th.oiFlush;
   return o.z != null && o.z <= -c.z[o.window] && o.oiChg <= -c.minDrop[o.window] && o.zPrice != null && o.ret !== 0 && Math.abs(o.zPrice) >= c.zPrice;
 }
 /** crowded_asymmetry: funding extreme (percentile and z), apr bar, OI near its high, 24 h price flat or against the crowd. */
-export function crowdedFires(r: Omit<CrowdedReading, "fires">, th: ExtremeThresholds): boolean {
+function crowdedFires(r: Omit<CrowdedReading, "fires">, th: ExtremeThresholds): boolean {
   const c = th.crowded;
   const d = Math.sign(r.funding);
   const extreme = d > 0 ? r.fundingPctile >= c.pctile && r.fundingZ != null && r.fundingZ >= c.zFunding : r.fundingPctile <= 1 - c.pctile && r.fundingZ != null && r.fundingZ <= -c.zFunding;

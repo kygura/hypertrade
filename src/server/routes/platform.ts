@@ -5,8 +5,7 @@ import {
   type Costs, type LedgerEntry, type LedgerPayload, type LiqBoardResponse, type NearMissResponse, type Opportunity, type Position, type RiskVerdictSchema, type SectorsResponse,
 } from "../../shared/platform.js";
 import { isExtremesOpportunity } from "../../shared/extremes.js";
-import type { Side } from "../../shared/intel.js";
-import type { ResearchResult } from "../../shared/intel.js";
+import type { ResearchResult, Side } from "../../shared/intel.js";
 import { evaluateRisk, operatorRiskOrder } from "../desk/governor.js";
 import { DeskService } from "../desk/service.js";
 import type { OperatorOrder } from "../desk/types.js";
@@ -102,11 +101,10 @@ export function defaultPlatformDeps(): PlatformDeps {
 
 const IdSchema = z.string().uuid();
 /** The evidence line of an extremes take: what its score is, and where it is graded (no scanner ledger, no costs). */
-export const extremesEvidence = (o: Pick<Opportunity, "score" | "scoreVersion">) =>
+const extremesEvidence = (o: Pick<Opportunity, "score" | "scoreVersion">) =>
   `extremes take: severity ${o.score.toFixed(2)} (${o.scoreVersion}, detector sigmas, not the scanner score) \u00b7 no cost breakdown \u00b7 graded in /api/extremes`;
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const seenAge = (iso: string, now: Date) => Math.max(0, (now.getTime() - Date.parse(iso)) / 1000);
-// score.ts keeps its Z_KEYS private; the name pattern stands in until it exports Z_FEATURE_KEYS.
 /** z-feature → the raw input it standardises (features.ts); z-features without one show no value. */
 const RAW_OF: Partial<Record<(typeof Z_KEYS)[number], string>> = { ret15mZ: "ret15mPct", oiChg1hZ: "oiChg1hPct", fundingZ24h: "fundingApr" };
 const BOARD_BUCKET_BPS = 25;

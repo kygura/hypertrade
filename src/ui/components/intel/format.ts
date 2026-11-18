@@ -1,19 +1,17 @@
 import { useCallback, useRef, useState, type KeyboardEvent } from 'react'
 import { classForPnl, fmtPct, fmtPrice, fmtUsd } from '../../../shared/format'
 import type { DiffItem, SnapshotMetric } from '../../../shared/intel'
+import { MINUS, fmtSigned as fmtSignedUnit } from '../../lib/format'
 
 // Small helpers shared by the TERMINAL panels (DESIGN-terminal §3). Signs use
 // U+2212 for minus, like the spec's examples; every computed number prints
 // its sign (§11 "color never alone").
 
-export const MINUS = '−'
+export { MINUS }
 
 /** The one signed-number formatter: `+1.4`, `−0.38%`; a value that rounds to zero prints unsigned (`0.0`); null/NaN → `—`. */
 export function fmtSigned(n: number | null | undefined, decimals = 1, suffix = ''): string {
-  if (n == null || !Number.isFinite(n)) return '—'
-  const body = Math.abs(n).toFixed(decimals)
-  const sign = Number(body) === 0 ? '' : n > 0 ? '+' : MINUS
-  return `${sign}${body}${suffix}`
+  return fmtSignedUnit(n, suffix, decimals)
 }
 
 /** lg breakpoint (Tailwind `lg:`, 1024px): desktop layouts in the TERMINAL family. */

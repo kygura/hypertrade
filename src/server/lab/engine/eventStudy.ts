@@ -1,4 +1,4 @@
-import { atrAt as atrAtBar } from "../../../shared/signalMath.js";
+import { atrAt as atrAtBar, mean, sdSample } from "../../../shared/signalMath.js";
 import { DAY_MS, RuleSchema, type EventVerdict, type LabDataset, type Level, type Rule } from "../types.js";
 import { makeCtx } from "./context.js";
 import { funnel, inZoneDays, type FunnelStep } from "./evaluate.js";
@@ -117,11 +117,10 @@ export function screenOf(events: StudyEvent[]): Screen {
     const k = isoWeek(e.date);
     weeks.set(k, [...(weeks.get(k) ?? []), e.r]);
   }
-  const ms = [...weeks.values()].map((rs) => rs.reduce((a, b) => a + b, 0) / rs.length);
+  const ms = [...weeks.values()].map(mean);
   const w = ms.length;
-  const mean = w ? ms.reduce((a, b) => a + b, 0) / w : NaN;
-  const sd = Math.sqrt(ms.reduce((a, x) => a + (x - mean) ** 2, 0) / (w - 1));
-  return { events: events.length, weeks: w, expectancy: fin(mean), upper95: fin(mean + (t95(w - 1) * sd) / Math.sqrt(w)) };
+  const m = mean(ms);
+  return { events: events.length, weeks: w, expectancy: fin(m), upper95: fin(m + (t95(w - 1) * sdSample(ms)) / Math.sqrt(w)) };
 }
 
 export function verdictOfScreen(s: Screen): EventVerdict {

@@ -7,8 +7,6 @@ import * as db from "../db.js";
 import { nextBarT, readPage, type Bar, type Page } from "../market/candleSync.js";
 import { syncFunding, type FundingSyncResult } from "../market/fundingSync.js";
 import { joinOverlays, type ChartBar } from "../market/overlay.js";
-
-export type { CandlesResponse };
 import { resolveCoin } from "./hl.js";
 
 // GET /candles/:coin?tf=1h&before=<ms>&limit=1500

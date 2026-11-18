@@ -19,3 +19,6 @@ export { median } from "../../shared/signalMath.js";
 
 /** The number if finite, else null. */
 export const fin = (n: number | null | undefined): number | null => (n != null && Number.isFinite(n) ? n : null);
+
+/** A non-negative integer from an env value (floored), or `def` when unset or not a number. */
+export const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : def);

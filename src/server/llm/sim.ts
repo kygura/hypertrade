@@ -1,5 +1,5 @@
-import { FORECAST_RULE, HEDGE_VOCABULARY } from "./system.js";
-import { toolCatalog, withDeadline, type ToolRun } from "./tools.js";
+import { FORECAST_RULE, HEDGE_VOCABULARY, toolList } from "./system.js";
+import { withDeadline, type ToolRun } from "./tools.js";
 import type { ToolSpec } from "./provider.js";
 import { getCtxs } from "../routes/hl.js";
 import { runIntent, type IntentDeps } from "../sim/intent.js";
@@ -143,9 +143,6 @@ export const SIM_TOOL_SPEC: ToolSpec = {
 };
 
 export function buildSimSystemPrompt(webSearch: boolean): string {
-  const tools = toolCatalog(webSearch)
-    .map((t) => `- ${t.name}${t.available ? "" : " (unavailable)"}${t.note ? ` — ${t.note}` : ""}`)
-    .join("\n");
   return `You are the Hypertrade simulation assistant: you turn a loose portfolio idea into historical simulations for one operator, inside a personal market terminal. You can read the app's market data but never place, approve or change anything.
 
 ${HEDGE_VOCABULARY}
@@ -169,7 +166,7 @@ Simulation rules:
 - Be dense and specific: short paragraphs or tight bullets, numbers with units.
 
 Tools:
-${tools}
+${toolList(webSearch)}
 - simulate_paths — historical portfolio simulation (1-4 branches)`;
 }
 

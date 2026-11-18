@@ -5,7 +5,7 @@ import * as db from "../db.js";
 import type { NoveltyRunOpts, NoveltyRunReport } from "../platform/noveltyLoop.js";
 import { PgPlatformStore } from "../platform/store-pg.js";
 import { emptyReport, noveltyLease, pgNovelty, pgTickDeps, platformLease, runPlatformTick, type PlatformTickDeps, type TickStep } from "../platform/tick.js";
-import type { LabLease } from "./cron.js";
+import { capped, type LabLease } from "./cron.js";
 
 // POST /api/cron/platform-tick: one platform tick over HTTP, for a database-side timer every 10–15 min (no
 // always-on server). Mounted at /cron after cronRoutes in api/index.ts, so requireAuth's cron-token gate and
@@ -55,12 +55,7 @@ export async function runPlatformTickJob(deps: CronPlatformDeps): Promise<{ stat
       await deps.lease.release(holder).catch((err) => console.error("[platform-tick] lease release:", err));
     }
   })().catch((err) => ({ ...report, ok: false, error: err instanceof Error ? err.message : String(err) }));
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const hardStop = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), hardStopMs);
-  });
-  const done = await Promise.race([work, hardStop]);
-  clearTimeout(timer);
+  const done = await capped<Awaited<typeof work> | null>(work, hardStopMs, null);
   if (done) return { status: done.ok ? 200 : 500, body: { ...done } };
   const running = (["scanner", "outcomes", "prune"] as const).find((s) => !report.steps.some((r) => r.name === s));
   console.error(`[platform-tick] hard stop after ${Math.round(hardStopMs / 1000)}s in ${running}`);
@@ -120,12 +115,7 @@ export async function runNoveltyJob(deps: CronNoveltyDeps): Promise<{ status: 20
       await deps.lease.release(holder).catch((err) => console.error("[novelty] lease release:", err));
     }
   })().catch((err) => ({ ok: false, error: err instanceof Error ? err.message : String(err), ms: deps.now() - started }));
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const hardStop = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), hardStopMs);
-  });
-  const done = await Promise.race([work, hardStop]);
-  clearTimeout(timer);
+  const done = await capped<Record<string, unknown> | null>(work, hardStopMs, null);
   if (done) return { status: done.ok ? 200 : 500, body: done };
   console.error(`[novelty] hard stop after ${Math.round(hardStopMs / 1000)}s`);
   return { status: 500, body: { ok: false, timedOut: true, ms: deps.now() - started, error: `still running after ${Math.round(hardStopMs / 1000)}s; progress is stored when the call ends` } };

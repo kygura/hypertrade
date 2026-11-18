@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router'
 import { AsyncBody, Badge, Button, HowToRead, PageContainer, Panel, Segmented, SkeletonRows } from '../../components'
 import { FundingPanel, PerpHeader, usePerpStats } from '../../components/market/PerpPanels'
 import type { AgentStatsResponse } from '../../../shared/agentRecords'
-import { MOVE_WINDOWS, type MoveWindow } from '../../../shared/moves'
+import type { MoveWindow } from '../../../shared/moves'
 import type { QueueItem } from '../../../shared/queue'
 import type { DefinitionsResponse } from '../../../shared/research'
 import { isTimeframe, type Timeframe } from '../../../shared/timeframes'
@@ -14,7 +14,7 @@ import { moves } from '../../lib/moves'
 import { usePoll } from '../../lib/poll'
 import { research } from '../../lib/research'
 import { investigateGate, parseWindow } from '../moves/logic'
-import { AttentionBlock, AttributionBlock, ChecklistBlock, LiqBlock, PositioningBlock, RecordBlock, type Feed } from '../moves/MovesView'
+import { AttentionBlock, AttributionBlock, ChecklistBlock, LiqBlock, LINK, LINK_BTN, PositioningBlock, RecordBlock, WINDOW_OPTIONS, type Feed } from '../moves/MovesView'
 import { useInvestigate, type ActionError } from '../moves/useInvestigate'
 import {
   COIN_TERMS, coinActions, detailOutcome, hip3Reason, isHip3, NOT_QUEUED_NOTE, opportunityId, parseChart, queueHeadline, queuePartsLine, rejectedDetail, type ChartView, type DetailOutcome,
@@ -98,10 +98,6 @@ export function CoinDecision({ coin, item, blocked = null, layout = 'page' }: Co
   )
 }
 
-const LINK = 'text-xs text-text-secondary hover:text-text-primary underline-offset-2 hover:underline'
-const LINK_BTN =
-  'btn inline-flex items-center min-h-[var(--tap-min)] h-[var(--control-md)] px-2.5 text-xs border border-border text-text-secondary hover:text-text-primary hover:bg-hover rounded-control font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)]'
-const WINDOW_OPTIONS = MOVE_WINDOWS.map((w) => ({ value: w, label: w.toUpperCase() }))
 const CHART_OPTIONS: { value: ChartView; label: string }[] = [
   { value: 'move', label: 'MOVE' },
   { value: 'price', label: 'PRICE' },

@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router'
 import { AsyncBody, Button, DataTable, EmptyBlock, HowToRead, SkeletonRows, type Column, type Term } from '../components'
 import { api, useApi } from '../lib/api'
 import type { Branch } from '../components/branches/types'
-import { allocationSummary, branchReturnPct, defaultBranchConfig, maxDdClass, rebalanceLabel, signClass } from '../components/branches/format'
+import { allocationSummary, branchReturnPct, defaultBranchConfig, maxDdClass, rebalanceLabel } from '../components/branches/format'
+import { signClass } from '../lib/format'
 import { fmtPct } from '../../shared/format'
 
 // /branches — docs/design/README.md §10.3. List + create; delete lives only in the

@@ -12,7 +12,7 @@ import { coverageTreatment } from '../cockpit/logic'
 import {
   attributionCell, attributionSegments, barScale, barWidth, BUCKET_LABEL, bestChecklist, betaPct, CHECK_LABEL, checkValue, checklistText, chartData, coverageCopy, crowdText, DASH,
   droppedTitle, falsifierLine, fmtMove, fmtPct, fmtZ, fundingZText, gradeLine, headerLine, investigateGate, isFactorCoin, layerChips, layerNote, liqSigmaText, metMark, NOT_A_FORECAST,
-  outboundLinks, SORT_KEYS, SORT_LABEL, staleLine, studyLinkFor, tagText, trackLine, zWarn, type SortKey,
+  outboundLinks, sectorOfFactor, SORT_KEYS, SORT_LABEL, staleLine, studyLinkFor, tagText, trackLine, zWarn, type SortKey,
 } from './logic'
 import { ATTENTION_TERMS, ATTRIBUTION_TERMS, CHECKLIST_TERMS, FACTOR_TERMS, GUIDE, LIQ_TERMS, movesTakeaway, moveTakeaway, PAGE_TERMS, POSITIONING_TERMS, RECORD_TERMS, TABLE_TERMS } from './guide'
 
@@ -29,10 +29,10 @@ export interface Feed<T> {
   refetch: () => void
 }
 
-const LINK = 'text-xs text-text-secondary hover:text-text-primary underline-offset-2 hover:underline'
-const LINK_BTN =
+export const LINK = 'text-xs text-text-secondary hover:text-text-primary underline-offset-2 hover:underline'
+export const LINK_BTN =
   'btn inline-flex items-center min-h-[var(--tap-min)] h-[var(--control-md)] px-2.5 text-xs border border-border text-text-secondary hover:text-text-primary hover:bg-hover rounded-control font-control [text-transform:var(--control-case)] tracking-[var(--control-tracking)]'
-const WINDOW_OPTIONS = MOVE_WINDOWS.map((w) => ({ value: w, label: w.toUpperCase() }))
+export const WINDOW_OPTIONS = MOVE_WINDOWS.map((w) => ({ value: w, label: w.toUpperCase() }))
 const SORT_OPTIONS = SORT_KEYS.map((k) => ({ value: k, label: SORT_LABEL[k] }))
 const infoRule = 'border-l-2 border-info'
 
@@ -174,7 +174,7 @@ export function FactorsPanel({ moves, sector, onSector }: { moves: Feed<MovesRes
         {(d) => (
           <ul className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 p-3">
             {d.factors.map((f) => {
-              const id = f.id.startsWith('sector:') ? f.id.slice('sector:'.length) : null
+              const id = sectorOfFactor(f.id)
               const active = id != null && id === sector
               const cell = (
                 <StatCell label={f.label} className={signClass(f.pct)}>

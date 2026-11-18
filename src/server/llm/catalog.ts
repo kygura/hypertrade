@@ -1,4 +1,3 @@
-import type { Effort } from "./provider.js";
 import {
   anthropicCredentials,
   modelFor,
@@ -9,7 +8,7 @@ import {
   type AnalystEnv,
   type ProviderId,
 } from "./provider.js";
-import { PRESETS, parseModelList, type CatalogModel } from "./presets.js";
+import { ALL, PRESETS, parseModelList, type CatalogModel } from "./presets.js";
 
 // The analyst's model/provider catalog (GET /api/analyst/models). Lists
 // what a client may pick for POST /api/analyst/query's optional
@@ -39,8 +38,6 @@ export interface AnalystCatalog {
   default: { provider: ProviderId; model: string };
   providers: ProviderCatalogEntry[];
 }
-
-const ALL: Effort[] = ["low", "medium", "high", "xhigh", "max"];
 
 /**
  * The current Claude lineup, checked against the claude-api skill's model

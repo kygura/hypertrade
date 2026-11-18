@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { BranchConfig } from "../../shared/types";
 import { compactSim, downsample, type AnalystCatalog, type SimResultEvent } from "../lib/analyst";
-import { applyEvent, resolveChoice, toHistory, type TurnState } from "./Analyst";
+import { resolveChoice } from "./Analyst";
+import { applyEvent, toHistory, type TurnState } from "../components/analyst/useAnalystThread";
 
 const turn = (): TurnState => ({
   id: 1,

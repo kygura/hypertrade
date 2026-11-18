@@ -16,7 +16,7 @@ type Cell = HeatmapResponse['cells'][number]
 
 const assetHref = (coin: string, metric?: HeatmapMetric) => `/asset/${encodeURIComponent(coin)}${metric ? `?metric=${metric}` : ''}`
 
-export function HeatCell({
+function HeatCell({
   asset,
   metric,
   window,

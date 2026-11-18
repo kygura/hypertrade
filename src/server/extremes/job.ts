@@ -37,7 +37,7 @@ export const extremesParams = (env: Env = process.env) => ({
 /** The detector's input (src/server/extremes/detect.ts DetectInput), stated here so the job does not import the detector. */
 export type Detect = (input: { coin: string; points: RingPoint[]; btc: RingPoint[] | null; now: number }, thresholds: ExtremeThresholds) => ExtremeEvent[];
 /** Which thresholds a run used: a stored calibration (029) or the code defaults. */
-export type ThresholdsSource = { id: number; ranAt: string } | "defaults";
+type ThresholdsSource = { id: number; ranAt: string } | "defaults";
 
 export interface ExtremesJobDeps {
   store: Pick<PlatformStore, "scanSnapshotsSince" | "latestExtreme" | "extremesDeliveredSince" | "insertExtremeEvent" | "listOpportunities" | "transitionOpportunity">;
@@ -96,7 +96,7 @@ const utcDayStart = (t: number) => {
  * Expires extremes takes past their ready TTL (platform/opportunity.ts readyTtlMinFor). Here as well as in the scanner
  * because the serverless API has no scanner; both are compare-and-set moves, so two runners never double-expire.
  */
-export async function expireExtremeTakes(store: Pick<PlatformStore, "listOpportunities" | "transitionOpportunity">, now: number, env?: Env): Promise<number> {
+async function expireExtremeTakes(store: Pick<PlatformStore, "listOpportunities" | "transitionOpportunity">, now: number, env?: Env): Promise<number> {
   const ttl = { scannerMin: Infinity, extremesMin: extremesReadyTtlMin(env) };
   let n = 0;
   for (const o of await store.listOpportunities({ statuses: ["ready"], limit: 500 })) {

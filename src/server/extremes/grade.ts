@@ -20,7 +20,7 @@ export const GRADE_TOLERANCE_MS = SNAPSHOT_GRADE_TOLERANCE_MS;
 const LAST_MS = Math.max(...EXTREME_GRADE_HORIZONS.map(horizonMs));
 
 /** Where grading starts: the verdict when its mark was stamped, else the event bar. */
-export function gradeStart(r: ExtremeRecord): { t: number; px: number; basis: ExtremeGrade["entryBasis"] } {
+function gradeStart(r: ExtremeRecord): { t: number; px: number; basis: ExtremeGrade["entryBasis"] } {
   return r.verdictMark != null && r.verdictAt ? { t: Date.parse(r.verdictAt), px: r.verdictMark, basis: "verdict" } : { t: Date.parse(r.event.ts), px: r.event.mark, basis: "event" };
 }
 

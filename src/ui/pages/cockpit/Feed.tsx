@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react'
 import { Badge, DataTable, ErrorBlock, HowToRead, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column, type Term } from '../../components'
-import { fmtAge } from '../../components/strategy/format'
+import { fmtAge } from '../../lib/format'
 import { isExtremesOpportunity } from '../../../shared/extremes'
 import type { FeedRow as Row, OpportunityStatus } from '../../../shared/platform'
 import { edgeWord, STATUS_WORD, type StatusFilter, type TierFilter } from './logic'
@@ -128,7 +128,7 @@ const TIER_OPTS = [
   { value: 3, label: 'T3' },
 ] as const
 
-export function FeedFilters({ status, tier, onFilter }: { status: StatusFilter; tier: TierFilter; onFilter: (f: { status?: StatusFilter; tier?: TierFilter }) => void }) {
+function FeedFilters({ status, tier, onFilter }: { status: StatusFilter; tier: TierFilter; onFilter: (f: { status?: StatusFilter; tier?: TierFilter }) => void }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Segmented label="status filter" size="sm" options={STATUS_OPTS} value={status} onChange={(v) => onFilter({ status: v })} />

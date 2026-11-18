@@ -11,7 +11,7 @@ import { ErrorBlock } from '../state'
 
 export type JournalDays = 7 | 30 | 90
 
-export const JOURNAL_WINDOWS: readonly SegmentOption<JournalDays>[] = [
+const JOURNAL_WINDOWS: readonly SegmentOption<JournalDays>[] = [
   { value: 7, label: '7D' },
   { value: 30, label: '30D' },
   { value: 90, label: '90D' },

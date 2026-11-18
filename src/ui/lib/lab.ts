@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, failFrom, NetworkError } from './api'
 import { fmtUsd } from '../../shared/format'
-import { fmtAge, fmtUtcStamp, signClass } from './format'
+import { fmtAge, fmtSigned as fmtSignedUnit, fmtUtcStamp, MINUS, signClass } from './format'
 import type {
   CatalogueEntry,
   CatalogueHealth,
@@ -214,8 +214,6 @@ export function writeLocal(key: string, value: unknown): void {
 
 // ------------------------------------------------------------------ number formatting
 
-const MINUS = '−'
-
 /** Typeset minus for display (U+2212). */
 function typeset(s: string): string {
   return s.startsWith('-') ? MINUS + s.slice(1) : s
@@ -228,12 +226,7 @@ export function fmtSig(n: number): string {
 }
 
 /** Signed fixed: +1.42 / −0.97 / 0.00. */
-export function fmtSigned(n: number | null | undefined, decimals = 2): string {
-  if (n == null || !Number.isFinite(n)) return '—'
-  const body = Math.abs(n).toFixed(decimals)
-  if (Number(body) === 0) return (0).toFixed(decimals)
-  return (n > 0 ? '+' : MINUS) + body
-}
+export const fmtSigned = (n: number | null | undefined, decimals = 2): string => fmtSignedUnit(n, '', decimals)
 
 /** Fraction → signed percent; ≥100% drops the decimal (+212%, +4.2%, −18.4%). */
 export function fmtPctSigned(frac: number | null | undefined): string {
@@ -266,7 +259,7 @@ export const relTime = (iso: string, now = Date.now()) => fmtAge(iso, now)
 
 /** Age of a YYYY-MM-DD (or ISO) date over `days` (default 2) → stale. */
 export function isStaleDate(date: string, now = Date.now(), days = 2): boolean {
-  const t = Date.parse(date.length === 10 ? `${date}T00:00:00Z` : date)
+  const t = Date.parse(dateIso(date))
   return Number.isFinite(t) && now - t > days * 86_400_000
 }
 

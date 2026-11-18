@@ -7,7 +7,7 @@ import { agentStore, liveMark, sharedAgentDeps } from "../moves/agentRoutes.js";
 import { defaultMovesJob, MOVES_AGENT_JOB_BUDGET_MS, runMovesAgentJob } from "../moves/jobs.js";
 import { getMovesService } from "../moves/service.js";
 import { triageBudget } from "../moves/triage.js";
-import type { LabLease } from "./cron.js";
+import { capped, type LabLease } from "./cron.js";
 
 // Moves jobs for a database-side timer (docs/SPEC.md § Moves M3, M4), mounted under /api/cron next to cron.ts and
 // behind the same cron token (`x-cron-token: $CRON_TOKEN` or `Authorization: Bearer $CRON_SECRET`; requireAuth
@@ -57,10 +57,7 @@ export async function runMovesCron(job: MovesCronJob, deps: CronMovesDeps): Prom
     }
   })();
   const hardStopMs = deps.hardStopMs ?? MOVES_CRON_HARD_STOP_MS;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const hardStop = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), hardStopMs)));
-  const done = await Promise.race([work, hardStop]);
-  clearTimeout(timer);
+  const done = await capped<Awaited<typeof work> | null>(work, hardStopMs, null);
   if (done) return done;
   console.error(`[cron:${job}] hard stop after ${Math.round(hardStopMs / 1000)}s`);
   return { status: 500, body: { job, ok: false, timedOut: true, error: `still running after ${Math.round(hardStopMs / 1000)}s` } };

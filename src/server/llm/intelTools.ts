@@ -66,18 +66,20 @@ function need(): IntelReadDeps {
   return registered;
 }
 
-export interface IntelToolRun {
+/** One tool call's result, for every analyst tool (tools.ts re-exports it). */
+export interface ToolRun {
   content: string;
   summary: string;
   isError: boolean;
 }
 
-const MAX_CHARS = 12_000;
-const clip = (v: unknown): string => {
+export const MAX_TOOL_CHARS = 12_000;
+/** Compact JSON, capped so a tool round stays cheap. Shared with tools.ts (which imports this module, so it lives here). */
+export const clip = (v: unknown): string => {
   const s = JSON.stringify(v);
-  return s.length <= MAX_CHARS ? s : `${s.slice(0, MAX_CHARS)}…[truncated ${s.length - MAX_CHARS} chars]`;
+  return s.length <= MAX_TOOL_CHARS ? s : `${s.slice(0, MAX_TOOL_CHARS)}…[truncated ${s.length - MAX_TOOL_CHARS} chars]`;
 };
-const ok = (v: unknown, summary: string): IntelToolRun => ({ content: clip(v), summary, isError: false });
+const ok = (v: unknown, summary: string): ToolRun => ({ content: clip(v), summary, isError: false });
 
 export const INTEL_TOOL_SPECS: ToolSpec[] = [
   {
@@ -151,7 +153,7 @@ const alertRow = (a: Alert) => ({
 });
 
 /** Runs one intel tool on already-parsed input. Throws on a data failure; runTool in tools.ts turns that into an error result. */
-export async function runIntelTool(name: IntelToolName, input: z.infer<(typeof intelInputs)[IntelToolName]>, deps: IntelReadDeps): Promise<IntelToolRun> {
+export async function runIntelTool(name: IntelToolName, input: z.infer<(typeof intelInputs)[IntelToolName]>, deps: IntelReadDeps): Promise<ToolRun> {
   switch (name) {
     case "get_opportunities": {
       const i = input as z.infer<typeof intelInputs.get_opportunities>;
