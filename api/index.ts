@@ -12,6 +12,7 @@ import { cronRoutes } from "../src/server/routes/cron.js";
 import { cronMovesRoutes } from "../src/server/routes/cronMoves.js";
 import { cronPlatformRoutes } from "../src/server/routes/cronPlatform.js";
 import { cronExtremesRoutes, extremesRoutes } from "../src/server/routes/extremes.js";
+import { cronSeedRoutes } from "../src/server/routes/cronSeed.js";
 import { cyclesRoutes } from "../src/server/routes/cycles.js";
 import { createDeskRoutes } from "../src/server/routes/desk.js";
 import { engineRoutes } from "../src/server/routes/engine.js";
@@ -71,6 +72,7 @@ app.route("/cron", cronRoutes);
 app.route("/cron", cronPlatformRoutes());
 app.route("/cron", cronMovesRoutes());
 app.route("/cron", cronExtremesRoutes());
+app.route("/cron", cronSeedRoutes());
 app.route("/cycles", cyclesRoutes);
 app.route("/vector", vectorRoutes);
 // Intel is injected here: routes/desk.ts importing intel/index.ts would cycle (intel/index → desk).

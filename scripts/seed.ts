@@ -1,4 +1,5 @@
 // bun run seed:snapshots [--dry-run] [--top N] [COIN ...]
+// The scheduled job (POST /api/cron/seed-snapshots) does this every 15 min; this is the same run by hand, over the full span.
 // Fills the gaps of scan_snapshots on the 15-min grid from Hyperliquid candles, funding and Coinalyze open interest
 // (src/server/platform/seed.ts), about 15 to 20 days back: what the scanner ring, the extremes job and the snapshot
 // replay read. Needs DATABASE_URL and COINALYZE_API_KEY. Idempotent: a slot that holds a row is never rewritten.

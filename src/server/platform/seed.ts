@@ -18,6 +18,10 @@ import type { PlatformStore, ScanSnapshot } from "./store.js";
 // Gaps only: a grid slot that already holds a stored row is left alone. Before writing, a coin's seeded OI is compared
 // with its stored rows where both exist; a coin whose levels disagree is skipped, so a unit or symbol mismatch cannot
 // reach the detectors. Seeded rows carry `seeded: "coinalyze"` in `inputs`; readers ignore the extra key.
+// Cheap when there is nothing to do: a coin's stored rows are read first, a coin with no empty slot in the window costs
+// no request, and one with a gap is fetched only from its first empty slot on. A run stops starting coins at its
+// deadline and reports the rest. Scheduled by POST /api/cron/seed-snapshots (routes/cronSeed.ts, db/cron/schedule.sql):
+// a 6 h window every 15 min for missed ticks, a 14-day window once a day for long outages and the first backfill.
 
 const DAY = 86_400_000;
 /** Requested span: past Coinalyze's intraday retention, so a run takes everything it keeps. */
@@ -91,19 +95,45 @@ export interface SnapshotSeedDeps {
   now: () => number;
   /** Plan and report only: nothing is written. */
   dryRun: boolean;
+  /** Days back the run looks for gaps; default SEED_DAYS. */
+  days?: number;
+  /** No coin is started at or after this time (ms); absent: every coin runs. */
+  deadline?: number;
   log?: (msg: string) => void;
 }
 
 export interface SeedCoinReport { coin: string; written: number; planned: number; overlap: number; oiRatio: number | null; skipped: string | null }
 
+/** The first grid slot in (from, end] that holds no stored row; null when every slot is filled. */
+export function firstGap(stored: ScanSnapshot[], from: number, end: number): number | null {
+  const have = new Set(stored.map((s) => slot(Date.parse(s.ts))));
+  for (let t = from + GRID_MS; t <= end; t += GRID_MS) if (!have.has(t)) return t;
+  return null;
+}
+
+/** Why a coin was not started: the run's deadline. The next run takes it. */
+export const SEED_DEADLINE = "not started before the deadline";
+
 /** Seeds every coin in turn; one coin's failure is reported and the rest go on. */
 export async function runSnapshotSeed(d: SnapshotSeedDeps): Promise<SeedCoinReport[]> {
   const end = Math.floor(d.now() / GRID_MS) * GRID_MS; // last closed candle boundary
-  const start = end - SEED_DAYS * DAY;
+  const span = end - Math.round((d.days ?? SEED_DAYS) * DAY / GRID_MS) * GRID_MS;
   const out: SeedCoinReport[] = [];
   for (const coin of await d.coins()) {
     const r: SeedCoinReport = { coin, written: 0, planned: 0, overlap: 0, oiRatio: null, skipped: null };
+    if (d.deadline != null && d.now() >= d.deadline) {
+      out.push({ ...r, skipped: SEED_DEADLINE });
+      continue;
+    }
     try {
+      const stored = await d.store.scanSnapshotsSince(new Date(span).toISOString(), [coin]);
+      const gap = firstGap(stored, span, end);
+      if (gap == null) {
+        out.push(r); // every slot is filled: no request
+        continue;
+      }
+      // Bars are keyed by their close: the bar closing at `gap` opens one step before it.
+      const start = gap - GRID_MS;
       const oi = await d.oi(coin, start, end);
       if (!oi) r.skipped = "no Hyperliquid perp on Coinalyze";
       else if (!oi.size) r.skipped = "Coinalyze returned no OI bars";
@@ -111,7 +141,7 @@ export async function runSnapshotSeed(d: SnapshotSeedDeps): Promise<SeedCoinRepo
         // One more day of candles in front: the 24 h volume needs a full day behind the first seeded point.
         const [cs, fs] = [await d.candles(coin, start - DAY, end - 1), await d.funding(coin, start - DAY, end)];
         const stream = candleStream(cs.filter((c) => c.t + GRID_MS <= end), fs);
-        const plan = seedPlan(coin, stream, oi, await d.store.scanSnapshotsSince(new Date(start).toISOString(), [coin]));
+        const plan = seedPlan(coin, stream, oi, stored);
         Object.assign(r, { planned: plan.rows.length, overlap: plan.overlap, oiRatio: plan.oiRatio });
         if (!plan.consistent) r.skipped = `seeded OI is ${plan.oiRatio!.toFixed(2)}x the stored OI over ${plan.overlap} shared slots`;
         else if (!d.dryRun) r.written = await d.store.insertScanSnapshots(plan.rows);

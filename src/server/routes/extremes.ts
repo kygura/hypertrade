@@ -74,27 +74,29 @@ const defaultCronDeps = (): CronExtremesDeps => ({
 });
 
 /** One leased, hard-stopped job run. Never throws: 503 without a database, 200 `skipped` when leased, 500 on an error or hard stop. */
-export async function runExtremesCron(deps: CronExtremesDeps): Promise<{ status: 200 | 500 | 503; body: Record<string, unknown> }> {
-  if (!deps.hasDb()) return { status: 503, body: { ok: false, error: "no database: DATABASE_URL is not set" } };
+export async function runLeasedJob(o: { tag: string; hasDb: () => boolean; lease: LabLease; leaseMs: number; hardStopMs: number; job: () => Promise<Record<string, unknown>> }): Promise<{ status: 200 | 500 | 503; body: Record<string, unknown> }> {
+  if (!o.hasDb()) return { status: 503, body: { ok: false, error: "no database: DATABASE_URL is not set" } };
   const holder = randomUUID();
   try {
-    if (!(await deps.lease.acquire(holder, EXTREMES_LEASE_MS))) return { status: 200, body: { ok: true, skipped: "leased" } };
+    if (!(await o.lease.acquire(holder, o.leaseMs))) return { status: 200, body: { ok: true, skipped: "leased" } };
   } catch (err) {
     return { status: 500, body: { ok: false, error: `lease: ${err instanceof Error ? err.message : String(err)}` } };
   }
   const work = (async (): Promise<Record<string, unknown>> => {
     try {
-      return { ok: true, ...(await runExtremesJob(deps.job())) };
+      return { ok: true, ...(await o.job()) };
     } finally {
-      await deps.lease.release(holder).catch((err) => console.error("[extremes] lease release:", err));
+      await o.lease.release(holder).catch((err) => console.error(`[${o.tag}] lease release:`, err));
     }
   })().catch((err) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
-  const hardStopMs = deps.hardStopMs ?? EXTREMES_HARD_STOP_MS;
-  const done = await capped<Record<string, unknown> | null>(work, hardStopMs, null);
+  const done = await capped<Record<string, unknown> | null>(work, o.hardStopMs, null);
   if (done) return { status: done.ok ? 200 : 500, body: done };
-  console.error(`[extremes] hard stop after ${Math.round(hardStopMs / 1000)}s`);
-  return { status: 500, body: { ok: false, timedOut: true, error: `still running after ${Math.round(hardStopMs / 1000)}s` } };
+  console.error(`[${o.tag}] hard stop after ${Math.round(o.hardStopMs / 1000)}s`);
+  return { status: 500, body: { ok: false, timedOut: true, error: `still running after ${Math.round(o.hardStopMs / 1000)}s` } };
 }
+
+export const runExtremesCron = (deps: CronExtremesDeps) =>
+  runLeasedJob({ tag: "extremes", hasDb: deps.hasDb, lease: deps.lease, leaseMs: EXTREMES_LEASE_MS, hardStopMs: deps.hardStopMs ?? EXTREMES_HARD_STOP_MS, job: async () => ({ ...(await runExtremesJob(deps.job())) }) });
 
 export function cronExtremesRoutes(deps: () => CronExtremesDeps = defaultCronDeps) {
   return new Hono().post("/extremes", requireCronToken, async (c) => {

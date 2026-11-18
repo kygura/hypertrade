@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Candle } from "../../shared/types.js";
 import { FEATURE_MIN_TICKS_24H } from "./features.js";
 import { candleStream, GRID_MS, snapshotDensity, snapshotStreams } from "./replaySource.js";
-import { parseIntradayOi, runSnapshotSeed, SEED_DAYS, seedPlan, type SnapshotSeedDeps } from "./seed.js";
+import { firstGap, parseIntradayOi, runSnapshotSeed, SEED_DAYS, SEED_DEADLINE, seedPlan, type SnapshotSeedDeps } from "./seed.js";
 import { MemoryPlatformStore } from "./store-memory.js";
 
 const DAY = 86_400_000;
@@ -66,8 +66,34 @@ describe("snapshot seed", () => {
     // The scanner's own parse reads every seeded row: OI is present on each.
     expect(snapshotStreams(rows).get("SOL")!.length).toBe(SEED_DAYS * 96);
 
-    const [again] = await runSnapshotSeed(deps(store));
-    expect(again).toMatchObject({ planned: 0, written: 0, overlap: SEED_DAYS * 96, oiRatio: 1 });
+    // Nothing empty: the second run makes no request at all.
+    let calls = 0;
+    const count = { oi: async () => (calls++, oi(SEED_DAYS)), candles: async () => (calls++, []) };
+    const [again] = await runSnapshotSeed(deps(store, count));
+    expect(again).toMatchObject({ planned: 0, written: 0, skipped: null });
+    expect(calls).toBe(0);
+  });
+
+  test("a gap is fetched from its first empty slot on, and only it is written", async () => {
+    const store = new MemoryPlatformStore();
+    await runSnapshotSeed(deps(store));
+    const all = await store.scanSnapshotsSince(iso(0));
+    const hole = [END - 3 * GRID_MS, END - 2 * GRID_MS];
+    const kept = new MemoryPlatformStore();
+    await kept.insertScanSnapshots(all.filter((r) => !hole.includes(Date.parse(r.ts))));
+    const asked: number[] = [];
+    const [r] = await runSnapshotSeed(deps(kept, { days: 0.25, oi: async (_c, s) => (asked.push(s), oi(SEED_DAYS)) }));
+    // The bar that closes at the first empty slot opens one step earlier.
+    expect(asked).toEqual([hole[0]! - GRID_MS]);
+    expect(r).toMatchObject({ written: 2, overlap: 3, oiRatio: 1 });
+    expect(firstGap(await kept.scanSnapshotsSince(iso(0)), END - 6 * 3_600_000, END)).toBeNull();
+  });
+
+  test("no coin is started at or after the deadline; it is reported, not failed", async () => {
+    const store = new MemoryPlatformStore();
+    let t = NOW;
+    const out = await runSnapshotSeed(deps(store, { coins: async () => ["SOL", "ETH"], now: () => t, deadline: NOW + 1, oi: async () => ((t = NOW + 5), oi(SEED_DAYS)) }));
+    expect(out.map((r) => [r.coin, r.skipped])).toEqual([["SOL", null], ["ETH", SEED_DEADLINE]]);
   });
 
   test("one coin failing or unlisted does not stop the others", async () => {

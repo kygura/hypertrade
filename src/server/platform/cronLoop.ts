@@ -11,6 +11,7 @@ export type CronJob = { name: string; minutes: readonly number[]; path: string; 
 export const IN_PROCESS_JOBS: readonly CronJob[] = [
   { name: "hypertrade-collect", minutes: [0, 15, 30, 45], path: "/api/cron/collect" },
   { name: "hypertrade-backfill", minutes: [2, 17, 32, 47], path: "/api/cron/backfill" },
+  { name: "hypertrade-seed-snapshots", minutes: [6, 21, 36, 51], path: "/api/cron/seed-snapshots" },
   { name: "hypertrade-extremes", minutes: [8, 23, 38, 53], path: "/api/cron/extremes" },
   { name: "hypertrade-intel-ingest", minutes: [12, 27, 42, 57], path: "/api/cron/intel/ingest", intel: true },
   { name: "hypertrade-intel-brief", minutes: [14], path: "/api/cron/intel/brief", intel: true },
@@ -26,6 +27,7 @@ export const COVERED_BY_LOOPS: readonly string[] = [
   "hypertrade-moves-agent", // moves-agent loop
   "hypertrade-novelty", // novelty loop
   "hypertrade-desk-tick", // desk loop
+  "hypertrade-seed-deep", // scanner loop writes a row every 5 min; what a restart misses is inside the 15-min seed's 6 h window
 ];
 
 export interface CronLoopDeps {
