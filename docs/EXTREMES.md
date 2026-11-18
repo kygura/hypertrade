@@ -40,6 +40,8 @@ says `take`. Contracts: `src/shared/extremes.ts`.
 
 ## Research session
 
+Since 2026-11-18 the research runs inside the hourly routine "Hypertrade queue digest", which polls `GET /api/extremes`
+for events without a verdict instead of being woken (a verdict can come up to an hour after the event).
 The routine's full prompt is `docs/EXTREMES-ROUTINE.md`: input format, the steps per event, the
 take/watch/pass rules and the verdict call. The routine stores a copy of it, so edit the file
 first and paste it into the routine.
