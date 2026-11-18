@@ -24,12 +24,12 @@ describe("applySchedule", () => {
 
   test("creates the secrets (origin without a trailing slash), then runs the schedule; values go as parameters only", async () => {
     const { db, calls } = fake();
-    expect(await applySchedule(db, ENV, "begin; select 'schedule'; commit;")).toBeNull();
+    expect(await applySchedule(db, ENV, "begin;\nselect 'schedule';\ncommit;\nselect 2;")).toBeNull();
     expect(calls.map(([t]) => t)).toEqual([
       "create extension if not exists supabase_vault",
       "select id from vault.secrets where name = $1", "select vault.create_secret($1, $2)",
       "select id from vault.secrets where name = $1", "select vault.create_secret($1, $2)",
-      "begin; select 'schedule'; commit;",
+      "\nselect 'schedule';\n\nselect 2;", // the file's own begin/commit lines are dropped: it runs in the driver's transaction
     ]);
     expect(calls[2]![1]).toEqual(["https://app.example", "hypertrade_app_url"]);
     expect(calls[4]![1]).toEqual(["tok-secret", "hypertrade_cron_token"]);
