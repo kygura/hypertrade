@@ -68,15 +68,36 @@ export function parseWakeHeaders(raw: string | undefined): Record<string, string
   return {};
 }
 
+/**
+ * One POST of `{ text }` to a Claude Code routine's fire endpoint. Never retried (the endpoint has no idempotency: a
+ * retry starts a second session). The token is never logged.
+ */
+export function fireRoutine(url: string, token: string, text: string, env: Env = process.env, fetchFn: typeof fetch = fetch): Promise<Response> {
+  return fetchFn(url, {
+    method: "POST",
+    headers: { ...DEFAULT_WAKE_HEADERS, ...parseWakeHeaders(env.EXTREMES_WAKE_HEADERS), "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify({ text: text.slice(0, WAKE_TEXT_MAX) }),
+    signal: AbortSignal.timeout(WAKE_TIMEOUT_MS),
+  });
+}
+
+/** The routine every alert and wake goes to unless a channel names its own: CLAUDE_ROUTINE_URL + CLAUDE_ROUTINE_TOKEN. */
+export function routineTarget(env: Env): { url: string; token: string } | null {
+  const url = env.CLAUDE_ROUTINE_URL?.trim();
+  const token = env.CLAUDE_ROUTINE_TOKEN?.trim();
+  return url && token ? { url, token } : null;
+}
+
 export interface Waker {
   /** True when the session was started (2xx). False without a URL (no network call), on a timeout or any error. */
   wake(events: ExtremeEvent[]): Promise<boolean>;
 }
 
 export function createWaker(env: Env = process.env, fetchFn: typeof fetch = fetch): Waker {
-  const url = env.EXTREMES_WAKE_URL?.trim();
-  const token = env.EXTREMES_WAKE_TOKEN?.trim();
-  const extra = parseWakeHeaders(env.EXTREMES_WAKE_HEADERS);
+  // EXTREMES_WAKE_* when set (a routine of its own), else the shared alert routine.
+  const own = env.EXTREMES_WAKE_URL?.trim();
+  const url = own || routineTarget(env)?.url;
+  const token = own ? env.EXTREMES_WAKE_TOKEN?.trim() : routineTarget(env)?.token;
   return {
     async wake(events) {
       if (!url || !events.length) return false;
@@ -85,12 +106,7 @@ export function createWaker(env: Env = process.env, fetchFn: typeof fetch = fetc
         return false;
       }
       try {
-        const r = await fetchFn(url, {
-          method: "POST",
-          headers: { ...DEFAULT_WAKE_HEADERS, ...extra, "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify({ text: wakeText(events, env.APP_URL ?? null) }),
-          signal: AbortSignal.timeout(WAKE_TIMEOUT_MS),
-        });
+        const r = await fireRoutine(url, token, wakeText(events, env.APP_URL ?? null), env, fetchFn);
         if (!r.ok) {
           console.error(`[extremes] wake failed: HTTP ${r.status}`);
           return false;

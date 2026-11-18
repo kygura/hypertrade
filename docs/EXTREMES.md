@@ -40,12 +40,10 @@ says `take`. Contracts: `src/shared/extremes.ts`.
 
 ## Research session
 
-The app's push channels (ntfy, Telegram) are not in use since 2026-11-18. With none configured the notifier sends
-nothing, so the pushes this file describes (an event's facts, a take) do not go out; the hourly routine's final
-message is the notification.
-
-Since 2026-11-18 the research runs inside the hourly routine "Hypertrade queue digest", which polls `GET /api/extremes`
-for events without a verdict instead of being woken (a verdict can come up to an hour after the event).
+Since 2026-11-18 one routine, "Hypertrade alerts", does both the research and the delivery. The job wakes it with
+`CLAUDE_ROUTINE_URL` and `CLAUDE_ROUTINE_TOKEN` (or `EXTREMES_WAKE_URL` and `EXTREMES_WAKE_TOKEN` when set), and the
+notifier's `claude` channel fires the same routine for every alert, a take included, so each reaches the phone when it
+happens. ntfy and Telegram are not in use.
 The routine's full prompt is `docs/EXTREMES-ROUTINE.md`: input format, the steps per event, the
 take/watch/pass rules and the verdict call. The routine stores a copy of it, so edit the file
 first and paste it into the routine.
