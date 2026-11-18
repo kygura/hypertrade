@@ -283,15 +283,21 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* Controls drop under the title on a phone instead of running off-screen. */
-  flex-wrap: wrap;
-  row-gap: 6px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-panel-header);
   flex-shrink: 0;
   /* follow the panel's corner inside its 1px border */
   border-radius: max(0px, calc(var(--radius-panel) - 1px)) max(0px, calc(var(--radius-panel) - 1px)) 0 0;
+}
+
+/* Controls drop under the title on a phone instead of running off-screen. From
+   md the header stays one row, as before (a long control shrinks, not wraps). */
+@media (max-width: 767px) {
+  .panel-header {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
 }
 
 .panel-title {
@@ -455,6 +461,12 @@ textarea:focus {
   /* Short tags (HL, CG) never break; a long source title wraps instead of
      pushing the page wider than a phone. */
   overflow-wrap: break-word;
+}
+/* From md a tag stays on one line, as before. */
+@media (min-width: 768px) {
+  .src-tag {
+    white-space: nowrap;
+  }
 }
 .src-tag--hl {
   color: var(--color-src-hl);
