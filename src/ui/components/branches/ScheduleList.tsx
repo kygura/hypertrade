@@ -20,7 +20,7 @@ export function ScheduleList({
           <span className="text-text-primary">→ {m.holdings}</span>
           {m.window && <span className="text-xs text-text-muted">{m.window}</span>}
           {onRemove && (
-            <button type="button" className="text-xs text-text-muted hover:text-text-primary" onClick={() => onRemove(i)} aria-label={`remove move ${i + 1}`}>
+            <button type="button" className="inline-flex items-center min-h-[var(--tap-min)] text-xs text-text-muted hover:text-text-primary" onClick={() => onRemove(i)} aria-label={`remove move ${i + 1}`}>
               REMOVE
             </button>
           )}

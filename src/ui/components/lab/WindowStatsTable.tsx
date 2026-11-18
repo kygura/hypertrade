@@ -51,15 +51,15 @@ const ROWS: Array<{ label: string; cell: (s: PerfStats) => ReactNode }> = [
   {
     label: 'RANGE',
     cell: (s) => (
-      <span className="text-xs whitespace-nowrap">
-        {s.from} → {s.to}
+      <span className="text-xs">
+        <span className="inline-block">{s.from}</span> → <span className="inline-block">{s.to}</span>
       </span>
     ),
   },
 ]
 
 const STICKY = 'sticky left-0 z-[1] bg-panel'
-const ROW_TH = `${STICKY} px-2 text-left text-xs text-text-secondary font-normal whitespace-nowrap`
+const ROW_TH = `${STICKY} px-2 text-left text-xs text-text-secondary font-normal min-w-[84px] max-w-[112px] md:max-w-none md:whitespace-nowrap`
 
 /** Per-fold walk-forward Sharpes: a bar sparkline (decoration) beside the printed values (the signal); a null fold is `untested` and a gap. */
 function FoldSharpes({ folds }: { folds: readonly (number | null)[] }) {
@@ -67,14 +67,14 @@ function FoldSharpes({ folds }: { folds: readonly (number | null)[] }) {
   const H = 14
   const { zeroY, bars } = foldBars(folds, W, H)
   return (
-    <span className="inline-flex items-center gap-2 whitespace-nowrap" title="Sharpe of each walk-forward test block, oldest first — reported, not ranked">
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5" title="Sharpe of each walk-forward test block, oldest first — reported, not ranked">
       <svg width={W} height={H} aria-hidden="true" className="flex-shrink-0">
         <line x1={0} x2={W} y1={zeroY} y2={zeroY} stroke="var(--color-border)" strokeWidth={1} />
         {bars.map((b) => (
           <rect key={b.i} x={b.x} y={b.y} width={b.width} height={b.height} fill={b.positive ? 'var(--color-green)' : 'var(--color-red)'} />
         ))}
       </svg>
-      <span className="inline-flex gap-1.5">
+      <span className="inline-flex flex-wrap gap-1.5">
         {folds.map((f, i) => {
           const c = foldCell(f)
           return (

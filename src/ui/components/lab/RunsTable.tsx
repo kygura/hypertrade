@@ -13,7 +13,11 @@ export function RunsTable({ runs, onOpen }: { runs: RunSummary[]; onOpen: (r: Ru
       key: 'started',
       label: 'STARTED',
       priority: 1,
-      render: (r) => <span title={r.createdAt}>{relTime(r.createdAt)}</span>,
+      render: (r) => (
+        <span className="whitespace-nowrap" title={r.createdAt}>
+          {relTime(r.createdAt)}
+        </span>
+      ),
     },
     {
       key: 'asset',

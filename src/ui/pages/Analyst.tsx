@@ -274,11 +274,11 @@ export function Turn({
             {t.done && t.done.stop !== 'end' && <span className="text-amber">stop: {t.done.stop}</span>}
             <span className="flex-1" />
             {t.answer && (
-              <button type="button" onClick={copy} className="uppercase tracking-wider hover:text-text-primary">
+              <button type="button" onClick={copy} className="inline-flex items-center min-h-[var(--tap-min)] uppercase tracking-wider hover:text-text-primary">
                 {copied ? 'Copied' : 'Copy'}
               </button>
             )}
-            <button type="button" disabled={busy} onClick={() => onRetry(t.question)} className="uppercase tracking-wider hover:text-text-primary disabled:text-text-disabled">
+            <button type="button" disabled={busy} onClick={() => onRetry(t.question)} className="inline-flex items-center min-h-[var(--tap-min)] uppercase tracking-wider hover:text-text-primary disabled:text-text-disabled">
               Ask again
             </button>
           </div>
@@ -423,7 +423,7 @@ function Rail({
             <div key={g.group} className="flex flex-col gap-1">
               <span className="text-xs uppercase tracking-wider text-text-secondary">{g.group}</span>
               {g.items.map((q) => (
-                <button key={q} type="button" disabled={busy} onClick={() => onAsk(q)} className="text-left text-sm text-text-muted hover:text-text-primary disabled:text-text-disabled">
+                <button key={q} type="button" disabled={busy} onClick={() => onAsk(q)} className="text-left text-sm min-h-[var(--tap-min)] py-1 text-text-muted hover:text-text-primary disabled:text-text-disabled">
                   {q}
                 </button>
               ))}
@@ -620,7 +620,7 @@ export function Analyst() {
           </span>
           <div className="flex flex-col items-start gap-2 w-full md:w-auto md:flex-row md:items-center">
             {catalogError ? (
-              <button type="button" onClick={loadCatalog} className="text-xs uppercase tracking-wider text-red-text underline underline-offset-2">
+              <button type="button" onClick={loadCatalog} className="inline-flex items-center min-h-[var(--tap-min)] text-xs uppercase tracking-wider text-red-text underline underline-offset-2">
                 model list unreachable — retry
               </button>
             ) : (

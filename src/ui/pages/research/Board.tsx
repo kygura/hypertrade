@@ -131,7 +131,7 @@ export interface BoardViewProps {
   onSignIn: () => void
 }
 
-const LINK = 'text-xs text-text-secondary hover:text-text-primary underline-offset-2 hover:underline'
+const LINK = 'inline-flex items-center min-h-[var(--tap-min)] text-xs text-text-secondary hover:text-text-primary underline-offset-2 hover:underline'
 const GUIDE = 'px-3 py-2 border-b border-border-subtle'
 
 /** Every badge, word and number a signal row can print (docs/RESEARCH.md "Board"; the cut-offs are the engine's). */
@@ -313,9 +313,9 @@ function SignalRow(p: BoardViewProps & { s: BoardSignal }) {
       className={`flex flex-wrap items-start gap-x-3 gap-y-1 px-3 py-2 min-w-0 ${href ? 'cursor-pointer' : ''} ${selected ? 'bg-hover' : 'hover:bg-hover'}`}
     >
       <div className="flex-1 min-w-[12rem] flex flex-col gap-0.5">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 -my-1">
           {href ? (
-            <Link to={href} className="text-sm font-semibold text-text-primary hover:underline" title={s.source === 'opportunity' ? 'open the event study of the daily version of this thesis' : 'open the event study'}>
+            <Link to={href} className="inline-flex items-center min-h-[var(--tap-min)] text-sm font-semibold text-text-primary hover:underline" title={s.source === 'opportunity' ? 'open the event study of the daily version of this thesis' : 'open the event study'}>
               {s.coin}
             </Link>
           ) : (
@@ -537,7 +537,7 @@ function RadarBody({ r, onNote }: { r: RadarResponse; onNote: () => void }) {
         <ul className="flex flex-col gap-1">
           {calls.map((c) => (
             <li key={c.id} className="text-xs tabular text-text-primary flex flex-wrap gap-x-2 min-w-0">
-              <Link to={`/moves?coin=${encodeURIComponent(c.market)}`} className="font-semibold hover:underline" title={`why ${c.market} moved`}>
+              <Link to={`/moves?coin=${encodeURIComponent(c.market)}`} className="inline-flex items-center min-h-[var(--tap-min)] font-semibold hover:underline" title={`why ${c.market} moved`}>
                 {c.market}
               </Link>
               <span>

@@ -73,15 +73,15 @@ export function MetricPicker({
           {selected.map((id) => {
             const m = byId.get(id)
             return (
-              <li key={id} className="inline-flex items-center gap-1 h-[var(--control-sm)] pl-1.5 border border-border-subtle bg-elevated text-xs">
-                <span className="text-text-primary">{m?.name ?? id}</span>
+              <li key={id} className="inline-flex items-center gap-1 min-h-[var(--control-sm)] max-w-full pl-1.5 border border-border-subtle bg-elevated text-xs">
+                <span className="text-text-primary min-w-0 break-words py-0.5">{m?.name ?? id}</span>
                 <ProviderTag provider={m?.provider ?? id.split(':')[0] ?? ''} />
                 <button
                   type="button"
                   aria-label={`remove ${m?.name ?? id}`}
                   disabled={disabled}
                   onClick={() => remove(id)}
-                  className="h-full min-w-[var(--tap-min)] px-1 text-text-secondary hover:text-text-primary"
+                  className="self-stretch min-w-[var(--tap-min)] px-1 text-text-secondary hover:text-text-primary"
                 >
                   ✕
                 </button>

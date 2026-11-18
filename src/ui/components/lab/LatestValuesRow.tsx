@@ -14,7 +14,7 @@ export function LatestValuesRow({ ev, metrics }: { ev: RuleEvaluation; metrics: 
           const word = met == null ? 'no data' : met ? 'MET' : 'NOT MET'
           return (
             <tr key={i} className={`border-b border-border-subtle ${met == null ? 'text-text-secondary' : ''}`} style={{ height: 'var(--row-h)' }}>
-              <th scope="row" className="px-3 text-left font-normal">
+              <th scope="row" className="px-3 text-left font-normal min-w-0 [overflow-wrap:anywhere]">
                 {fmtFeature(c.feature, metrics)}
               </th>
               <td className="px-1 text-right text-text-primary" title="value on the latest daily bar">

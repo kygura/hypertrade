@@ -67,7 +67,7 @@ function PulseAssetRow({ asset: a, entries, metrics }: { asset: PulseAsset; entr
               <li key={r.id}>
                 <Link
                   to={`/lab/rules/${encodeURIComponent(r.id)}?from=pulse`}
-                  className="grid grid-cols-[auto_minmax(0,auto)_auto_minmax(0,1fr)] items-center gap-2 pl-6 pr-3 min-h-[var(--row-h)] hover:bg-hover"
+                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] md:grid-cols-[auto_minmax(0,auto)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5 pl-6 pr-3 py-1 min-h-[var(--row-h)] hover:bg-hover"
                 >
                   <span className={r.firing ? 'text-green' : 'text-text-secondary'} title={r.firing ? 'firing' : 'flat'}>
                     <span aria-hidden="true">{r.firing ? '●' : '○'}</span>
@@ -76,9 +76,9 @@ function PulseAssetRow({ asset: a, entries, metrics }: { asset: PulseAsset; entr
                   <span className="text-sm text-text-primary truncate">{r.name}</span>
                   <DirectionWord direction={r.direction} className="text-xs" />
                   {rule ? (
-                    <RuleText rule={rule} metrics={metrics} size="xs" className="text-text-secondary block line-clamp-2 break-words" />
+                    <RuleText rule={rule} metrics={metrics} size="xs" className="col-start-2 col-span-2 md:col-start-auto md:col-span-1 text-text-secondary line-clamp-2 break-words" />
                   ) : (
-                    <span className="text-xs text-text-secondary truncate">{r.text}</span>
+                    <span className="col-start-2 col-span-2 md:col-start-auto md:col-span-1 text-xs text-text-secondary truncate">{r.text}</span>
                   )}
                 </Link>
               </li>

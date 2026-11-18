@@ -13,7 +13,7 @@ import { catalogueLine, dateIso, EVAL_TERMS as T, lab, LIVE_MIN_DAYS, useLab, VE
 // search's key). SEARCH and RUNS are off the tab row (docs/TASKS.md 2026-11-11); the line under the
 // header is their entry point, since they are how a rule gets here.
 
-const LINK = 'text-text-secondary hover:text-text-primary underline-offset-2 hover:underline'
+const LINK = 'inline-flex items-center min-h-[var(--tap-min)] px-1 text-text-secondary hover:text-text-primary underline-offset-2 hover:underline'
 
 /**
  * The table's columns and the health strip. The decay and overlap cut-offs are the server's (DECAY_MIN_LIVE_DAYS,
@@ -54,7 +54,7 @@ export function LabCatalogue() {
         The rules you saved, each with how it has done on the days since. Live Sharpe is the one number here that was not available when the rule was chosen; walk-forward and holdout
         show what it looked like then. All of it is past performance.
       </HowToRead>
-      <p className="px-3 py-1.5 text-xs text-text-secondary border-b border-border-subtle">
+      <p className="px-3 py-0.5 text-xs text-text-secondary border-b border-border-subtle">
         add a rule:{' '}
         <Link to="/lab/search" className={LINK}>
           SEARCH

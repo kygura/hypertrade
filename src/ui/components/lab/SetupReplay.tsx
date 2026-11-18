@@ -109,7 +109,7 @@ function ReplayOk({ d, defs, horizon, onHorizon }: { d: SetupReplayResponse; def
                   <span className="text-sm font-semibold text-text-primary break-words">{kindLabel(r.kind)}</span>
                   <DirectionWord direction={r.side} className="text-xs" />
                   {def && (
-                    <Link to={studyHref(def.rule)} className="text-xs text-text-secondary hover:text-text-primary underline-offset-2 hover:underline" title="the daily definition of this thesis: its event study over the top-20 universe (runs on load, a trial)">
+                    <Link to={studyHref(def.rule)} className="inline-flex items-center min-h-[var(--tap-min)] text-xs text-text-secondary hover:text-text-primary underline-offset-2 hover:underline" title="the daily definition of this thesis: its event study over the top-20 universe (runs on load, a trial)">
                       daily: {def.name} →
                     </Link>
                   )}

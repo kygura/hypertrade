@@ -42,12 +42,12 @@ export function CatalogueTable({
       priority: 1,
       sortValue: (e) => e.name.toLowerCase(),
       render: (e) => (
-        <div className="flex flex-col py-1 min-w-0 max-w-[112px] md:max-w-[48ch]">
+        <div className="flex flex-col py-1 min-w-0 max-w-[104px] md:max-w-[48ch]">
           <span className="flex items-center gap-1.5 min-w-0 flex-wrap">
             <span className="text-sm text-text-primary truncate min-w-0">{e.name}</span>
             <VerdictBadge ev={e.saved} />
           </span>
-          <RuleText rule={e.rule} metrics={metrics} size="xs" className="text-text-secondary block line-clamp-3 break-words" />
+          <RuleText rule={e.rule} metrics={metrics} size="xs" className="text-text-secondary line-clamp-3 break-words" />
         </div>
       ),
     },
