@@ -40,6 +40,10 @@ says `take`. Contracts: `src/shared/extremes.ts`.
 
 ## Research session
 
+The app's push channels (ntfy, Telegram) are not in use since 2026-11-18. With none configured the notifier sends
+nothing, so the pushes this file describes (an event's facts, a take) do not go out; the hourly routine's final
+message is the notification.
+
 Since 2026-11-18 the research runs inside the hourly routine "Hypertrade queue digest", which polls `GET /api/extremes`
 for events without a verdict instead of being woken (a verdict can come up to an hour after the event).
 The routine's full prompt is `docs/EXTREMES-ROUTINE.md`: input format, the steps per event, the

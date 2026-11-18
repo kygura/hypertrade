@@ -8,8 +8,10 @@ the Claude app.
 It replaces "Hypertrade extremes research" (2026-11-18), which the extremes job woke through
 `EXTREMES_WAKE_URL`. This routine polls instead: each run reads `GET /api/extremes` and answers
 the events of the last 3 hours that have no verdict, so a verdict can come up to an hour after
-the event. With `EXTREMES_WAKE_URL` unset (or pointing at the old routine) the job also pushes
-each event's facts through the desk notifier at once.
+the event. The app's own push channels (ntfy, Telegram) are not in use since 2026-11-18: with none
+configured the desk notifier sends nothing, so this routine's final message is the only
+notification for an event, a take or a ready setup. `EXTREMES_WAKE_URL` and `EXTREMES_WAKE_TOKEN`
+can be unset.
 
 This file is the source: the routine runs without a repository checkout, so its stored prompt is
 a copy of everything below the line. Change the text here first, then paste it into the routine
@@ -93,7 +95,7 @@ At most 4 web searches per event and 10 per run.
    - `cause`: 1 to 600 characters. `sources`: up to 5 URLs you actually read.
    - Optional on `take`: `confidence` (`low`, `medium` or `high`), how sure you are of the thesis after steps 1 to 4; and `leverage` (whole number 1 to 10), only when you have a reason for a specific one. Leave both out when unsure: the app then takes the conviction from the priced R:R, and the conviction picks the leverage on Propr.
    - No other fields. You never set an entry, a target or a size: the app prices the stop and target from candles and keeps the farther of its stop and your `killPx`.
-   - 200: stored. On `take` the app pushes it to his phone itself and, when the priced R:R clears the floor (2:1 by default), it becomes a setup he can approve or reject on the coin page; it expires after `EXTREMES_READY_TTL_H` (4 h by default). Under the floor the push says so and nothing opens: that is the app's call, not an error. Do not notify him another way.
+   - 200: stored. The answer carries `pricing` (`priced`, and when priced `stop`, `target`, `rr`, `minRr`), `opportunity` (`id`, `status`) or null, and `opportunityReason`. On `take`, when the priced R:R clears the floor (2:1 by default), it becomes a setup he can approve or reject on the coin page; it expires after `EXTREMES_READY_TTL_H` (4 h by default). Under the floor nothing opens: that is the app's call, not an error. The app sends no push of its own (its ntfy and Telegram channels are not in use): your final message is the only notification, so every take must be in it.
    - 422: `killPx` is on the wrong side of the live mark. Correct it once from step 2, or downgrade to `watch`.
    - 409: the key already has a verdict. Leave it.
    - 404: unknown key. Copy the key exactly as the record gives it.
@@ -116,11 +118,11 @@ A ready setup matters most: a part with `source` `opportunity`, `actedAt` null, 
 
 ## Final message
 
-If Part A sent no verdict and Part B found nothing, end with exactly one line: "Hypertrade: nothing new." Add nothing else.
+A `pass` verdict is not news: send it, but leave it out of the message. If Part A sent no `take` or `watch` and Part B found nothing, end with exactly one line: "Hypertrade: nothing new." Add nothing else.
 
 Otherwise at most 110 words, in English:
 - First line: "Hypertrade: N new" (N = lines that follow).
-- Verdicts first, one line per event: `COIN · kind · stance · direction and kill level for a take · the cause in a few words`.
+- Takes and watches first, one line per event: `COIN · kind · stance · the cause in a few words`. For a take add the direction, your kill level and, from the answer's `pricing`, the stop, target and R:R. When `opportunity` is not null add "ready, decide at <APP_URL>/coin/<COIN>"; when it is null say "no setup opened" with `opportunityReason`.
 - Then queue items, one line each, at most 5, ready setups first, then by `score`, then by `ideas`: `COIN · side · sources · the reason text of its strongest part`. Side is the parts' direction, `mixed` if they disagree, omitted if none states one. Sources use the labels MOVES, SETUP, RADAR, NOVEL, RULE, DEF. For a ready setup add "ready, decide at <APP_URL>/coin/<COIN>".
 - If more than 5 queue items qualify, say how many were left out.
 - If a queue source is `unavailable`, or a part of this run was unreachable, add one last line naming it and its reason, only when something else is being reported.
