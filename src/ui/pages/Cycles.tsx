@@ -149,7 +149,7 @@ export function Cycles() {
       </div>
 
       <Panel className="lg:col-span-12">
-        <PanelHeader title={`NEXT ${shownCoin} BULL RUN · ESTIMATE`} className="flex-wrap gap-y-1.5">
+        <PanelHeader title={`NEXT ${shownCoin} BULL RUN · ESTIMATE`}>
           <span className={`hidden md:inline text-xs text-text-secondary tabular ${loading ? 'pulse-label' : ''}`}>as of {fmtDay(body.asOf)}</span>
           {coinSwitch}
           <Segmented label="Run start" options={KIND_OPTIONS} value={kind} onChange={setKind} />

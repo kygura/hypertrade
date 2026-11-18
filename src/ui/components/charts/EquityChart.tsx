@@ -130,7 +130,7 @@ export function EquityChart({
               x={todayTs}
               stroke="var(--color-text-secondary)"
               strokeDasharray="1 3"
-              label={{ value: 'TODAY', position: 'insideTopRight', fontSize: 12, fill: 'var(--color-text-secondary)' }}
+              label={{ value: 'TODAY', position: 'insideTopLeft', fontSize: 12, fill: 'var(--color-text-secondary)' }}
             />
           )}
         </ComposedChart>

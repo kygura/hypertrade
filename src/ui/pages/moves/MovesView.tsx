@@ -554,9 +554,7 @@ export function RecordBlock({ d, stats, busy, onInvestigate, error, blocked }: {
             <ul className="flex flex-col gap-1">
               {r.sources.map((s) => (
                 <li key={s.url} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
-                  <span className="min-w-0 max-w-full break-words [&_.src-tag]:whitespace-normal!">
-                    <SourceLink source={{ label: s.title || new URL(s.url).hostname, url: s.url }} />
-                  </span>
+                  <SourceLink source={{ label: s.title || new URL(s.url).hostname, url: s.url }} />
                   {s.ts && <ClaimAge ts={s.ts} />}
                   {!s.observed && <span className="text-xs text-amber" title="the provider's citations do not print this source">unverified</span>}
                 </li>

@@ -31,7 +31,7 @@ export function PanelHeader({
   return (
     <div className={`panel-header ${className}`}>
       <span className="panel-title">{title}</span>
-      {children && <div className="flex items-center gap-2">{children}</div>}
+      {children && <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">{children}</div>}
     </div>
   )
 }
