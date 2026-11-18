@@ -178,6 +178,8 @@ export interface IntelStore {
 
   getSetting<T>(key: string): Promise<T | null>;
   setSetting(key: string, value: unknown): Promise<void>;
+  /** Merges `patch`'s keys into the object stored at `key` in one atomic write (a missing or non-object value starts empty). */
+  mergeSetting(key: string, patch: Record<string, unknown>): Promise<void>;
 
   cacheGet(key: string, promptVersion: string): Promise<unknown | null>;
   cachePut(key: string, promptVersion: string, output: unknown, usage: unknown, model?: string): Promise<void>;
@@ -843,6 +845,12 @@ export class PgIntelStore implements IntelStore {
     await sql()`insert into intel_settings (key, value, updated_at) values (${key}, ${json(value)}, now())
       on conflict (key) do update set value = excluded.value, updated_at = now()`;
   }
+  async mergeSetting(key: string, patch: Record<string, unknown>) {
+    await sql()`insert into intel_settings (key, value, updated_at) values (${key}, ${json(patch)}, now())
+      on conflict (key) do update set
+        value = (case when jsonb_typeof(intel_settings.value) = 'object' then intel_settings.value else '{}'::jsonb end) || excluded.value,
+        updated_at = now()`;
+  }
 
   async cacheGet(key: string, promptVersion: string) {
     const [row] = await sql()`select output from intel_llm_cache where key = ${key} and prompt_version = ${promptVersion}`;
@@ -1292,6 +1300,11 @@ export class MemoryIntelStore implements IntelStore {
   }
   async setSetting(key: string, value: unknown) {
     this.settings.set(key, clone(value));
+  }
+  async mergeSetting(key: string, patch: Record<string, unknown>) {
+    const prev = this.settings.get(key);
+    const base = prev && typeof prev === "object" && !Array.isArray(prev) ? prev : {};
+    this.settings.set(key, clone({ ...base, ...patch }));
   }
 
   async cacheGet(key: string, promptVersion: string) {

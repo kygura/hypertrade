@@ -285,6 +285,12 @@ async function scenario(store: IntelStore): Promise<Record<string, unknown>> {
   await s.setSetting("z", 42);
   await s.setSetting("x", { n: 2 });
   put("set.get", [await s.getSetting("x"), await s.getSetting("y"), await s.getSetting("z")]);
+  // mergeSetting: one key into the stored object; a missing or non-object value starts empty; two at once both land
+  await s.mergeSetting("m", { a: { n: 1 } });
+  await Promise.all([s.mergeSetting("m", { b: { n: 2 } }), s.mergeSetting("m", { c: { n: 3 } })]);
+  await s.mergeSetting("m", { a: { n: 4 } });
+  await s.mergeSetting("y", { k: 1 });
+  put("set.merge", [await s.getSetting("m"), await s.getSetting("y")]);
 
   // LLM cache
   put("cache.none", await s.cacheGet("k", "v1"));

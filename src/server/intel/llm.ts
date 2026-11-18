@@ -137,14 +137,8 @@ export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Pr
     if (!provider) return fail("llm not configured");
     trace.model = provider.model;
 
-    const now = deps.now();
-    const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    if ((await race(deps.cache.callsSince(dayStart))) >= deps.dailyCap) return fail("LLM cap reached");
-    if (deps.cache.usageSince) {
-      const limit = deps.dailyUsd ?? 2;
-      const spent = (await race(deps.cache.usageSince(dayStart))).reduce<number>((s, u) => s + usageCost(u), 0);
-      if (spent >= limit) return fail(`LLM cap reached ($${spent.toFixed(2)} / $${limit.toFixed(2)})`);
-    }
+    const capped = await race(llmCapError(deps));
+    if (capped) return fail(capped);
 
     const emit: ToolSpec = { name: EMIT_TOOL, description: "Emit the final structured answer. Call exactly once.", input_schema: jsonSchema };
     let lastError = "";
@@ -189,11 +183,32 @@ export async function completeStructured<T>(args: CompleteStructuredArgs<T>): Pr
     return fail(signal.aborted ? (timeout.aborted ? "deadline exceeded" : "aborted") : e instanceof Error ? e.message : String(e));
   } finally {
     if (!billed && trace.model && trace.attempts > 0) {
-      await deps.cache.cachePut(`nocache:${crypto.randomUUID()}`, promptVersion, {}, { ...trace.usage, searches: trace.searches }, trace.model).catch((e) =>
-        console.warn(`[intel] llm usage write failed: ${e instanceof Error ? e.message : String(e)}`),
-      );
+      await recordLlmUsage(deps.cache, promptVersion, { ...trace.usage, searches: trace.searches }, trace.model);
     }
   }
+}
+
+/** The daily caps and the counter they read; every LLM entry point checks them (llmCapError) and bills its calls (recordLlmUsage). */
+export type LlmCaps = Pick<LlmDeps, "cache" | "now" | "dailyCap" | "dailyUsd">;
+
+/** "LLM cap reached ..." when today's (UTC) calls or dollars are at the cap, else null. Checked before any provider call. */
+export async function llmCapError(deps: LlmCaps): Promise<string | null> {
+  const now = deps.now();
+  const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if ((await deps.cache.callsSince(dayStart)) >= deps.dailyCap) return "LLM cap reached";
+  if (deps.cache.usageSince) {
+    const limit = deps.dailyUsd ?? 2;
+    const spent = (await deps.cache.usageSince(dayStart)).reduce<number>((s, u) => s + usageCost(u), 0);
+    if (spent >= limit) return `LLM cap reached ($${spent.toFixed(2)} / $${limit.toFixed(2)})`;
+  }
+  return null;
+}
+
+/** Bills provider calls that left no cache row: one usage-only row, counted by the caps and the health spend. Never throws. */
+export async function recordLlmUsage(cache: LlmCacheStore, promptVersion: string, usage: Usage & { searches?: number }, model: string): Promise<void> {
+  await cache.cachePut(`nocache:${crypto.randomUUID()}`, promptVersion, {}, usage, model).catch((e) =>
+    console.warn(`[intel] llm usage write failed: ${e instanceof Error ? e.message : String(e)}`),
+  );
 }
 
 /** A fenced ```json block, else the outermost {...} in the text; undefined when neither parses. */

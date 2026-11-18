@@ -33,7 +33,8 @@ Approval is always manual on Propr: `DESK_APPROVAL=auto` is ignored and switchin
 page is refused. Every entry waits for approve or reject, and so does an exit an agent proposes
 (the operator's own exits go straight through). Approve and reject claim the proposal atomically in
 the store, so a double click or two tabs cannot send the same ladder twice; the second gets
-`proposal is already being decided`.
+`proposal is already being decided`. An approval whose re-check cannot read market data or the
+account is recorded `failed` with `not sent`, and nothing goes to Propr.
 
 ## Leverage
 

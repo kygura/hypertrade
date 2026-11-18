@@ -661,7 +661,11 @@ export const cronRoutes = new Hono()
   })
   // Lab history on its own route: a long first backfill must not hold up (or
   // be retried with) the 15-minute collection. Leased: one run at a time.
-  .on(["GET", "POST"], "/lab-collect", requireCronToken, async (c) => c.json(await runLabCollect()))
+  .on(["GET", "POST"], "/lab-collect", requireCronToken, async (c) => {
+    // A failed or timed-out collect is a failed job (red workflow, health error); busy is ok.
+    const r = await runLabCollect();
+    return c.json(r, r.ok ? 200 : 500);
+  })
   .on(["GET", "POST"], "/backfill", requireCronToken, backfillRoute())
   .on(["GET", "POST"], "/intel/ingest", requireCronToken, intelCronRoute("ingest"))
   .on(["GET", "POST"], "/intel/brief", requireCronToken, intelCronRoute("brief"))

@@ -27,10 +27,10 @@ export const realDeps: RunDeps = {
   now: () => Date.now(),
 };
 
-/** What the branch holds at the end of the replay: the last scheduled move's allocations, else the starting ones. */
-export function finalAllocations(config: BranchConfig): BranchConfig["allocations"] {
-  const last = [...(config.schedule ?? [])].sort((a, b) => Date.parse(a.date) - Date.parse(b.date)).at(-1);
-  return last?.allocations ?? config.allocations;
+/** What the branch holds at the end of the replay: the last filled move's allocations, else the starting ones. */
+export function finalAllocations(config: BranchConfig, moves: SimResult["moves"]): BranchConfig["allocations"] {
+  const last = moves?.at(-1);
+  return (last && config.schedule?.[last.step]?.allocations) ?? config.allocations;
 }
 
 /** Pure step: simulate + Monte Carlo (when a scenario is set) on already-loaded candles. May throw NoPriceDataError. */
@@ -41,7 +41,7 @@ export function simulateLoaded(config: BranchConfig, candles: CandlesByCoin, now
   if (scenario.method === "bootstrap" && dailyReturns.length < MIN_BOOTSTRAP_DAYS) {
     return { ...result, notes: [`projection skipped: resampling history needs at least ${MIN_BOOTSTRAP_DAYS} days, the branch has ${dailyReturns.length}`] };
   }
-  const montecarlo = runMonteCarlo(scenario, finalAllocations(config), result.stats.finalValue, now, 1, { history: dailyReturns, cashflow: config.cashflow });
+  const montecarlo = runMonteCarlo(scenario, finalAllocations(config, result.moves), result.stats.finalValue, now, 1, { history: dailyReturns, cashflow: config.cashflow });
   return { ...result, montecarlo };
 }
 

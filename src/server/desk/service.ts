@@ -6,7 +6,7 @@ import type { MarketData } from "./data.js";
 import { evaluateExit, evaluateOpen, evaluateRisk, operatorRiskOrder, type GovernorContext, type MarketRef } from "./governor.js";
 import type { Alert, AlertAction, Notifier } from "./notify.js";
 import { HlBroker } from "./hl/broker.js";
-import { PaperBroker, type Broker } from "./paper.js";
+import { PaperBroker, type Broker, type ExecutionResult } from "./paper.js";
 import { ProprBroker } from "./propr/broker.js";
 import type { DeskStore } from "./store.js";
 import {
@@ -364,8 +364,13 @@ export class DeskService {
   /** Re-checks against the live mark, then fills. */
   private async executeOpen(rec: ProposalRecord, by: string): Promise<ProposalRecord> {
     const p = rec.proposal as TradeProposal;
-    const ctx = await this.governorContext(p.coin, p.leverage, p.confidence);
-    const verdict = DeskService.withWarnings(evaluateOpen(p, ctx), ctx.venueWarnings);
+    let verdict: Verdict;
+    try {
+      const ctx = await this.governorContext(p.coin, p.leverage, p.confidence);
+      verdict = DeskService.withWarnings(evaluateOpen(p, ctx), ctx.venueWarnings);
+    } catch (err) {
+      return this.failUnsent(rec, p.coin, by, err);
+    }
     const decidedAt = this.now().toISOString();
     if (!verdict.approved || !verdict.sizing) {
       const out = await this.store.updateProposal(rec.id, { status: "blocked", verdict, decidedBy: `governor (at ${by})`, decidedAt });
@@ -399,14 +404,20 @@ export class DeskService {
 
   private async executeExit(rec: ProposalRecord, by: string): Promise<ProposalRecord> {
     const p = rec.proposal as ExitProposal;
-    const ctx = await this.governorContext(p.coin);
-    const verdict = evaluateExit(p, ctx);
+    let verdict: Verdict;
+    try {
+      verdict = evaluateExit(p, await this.governorContext(p.coin));
+    } catch (err) {
+      return this.failUnsent(rec, p.coin, by, err);
+    }
     const decidedAt = this.now().toISOString();
     if (!verdict.approved || !verdict.sizing) {
       return (await this.store.updateProposal(rec.id, { status: "blocked", verdict, decidedBy: `governor (at ${by})`, decidedAt }))!;
     }
+    // Once the venue has answered nothing here throws, as in fillOpen: a caller never reads "failed" while a close went out.
     const result = await this.broker.exit(p.coin, verdict.sizing.size, verdict.sizing.markPx, "exit", rec.id, this.now());
-    const out = await this.store.updateProposal(rec.id, { status: result.ok ? "executed" : "failed", verdict, execution: result, decidedBy: by, decidedAt });
+    const patch = { status: result.ok ? ("executed" as const) : ("failed" as const), verdict, execution: result, decidedBy: by, decidedAt };
+    const out = await this.store.updateProposal(rec.id, patch).catch((err) => (console.error(`[desk] proposal ${rec.id} ${patch.status} but not recorded`, err), null));
     const fill = result.fills[0];
     await this.alert(
       "info",
@@ -415,7 +426,21 @@ export class DeskService {
         ? `${fill ? `@ ${fmtPx(fill.px)} · PnL $${fill.pnl.toFixed(2)}\n` : ""}${result.note ? `${result.note}\n` : ""}${p.reason}`
         : (result.error ?? "unknown error"),
       rec.runId,
-    );
+    ).catch((err) => console.error(`[desk] alert for proposal ${rec.id} failed`, err));
+    return out ?? { ...rec, ...patch };
+  }
+
+  /**
+   * A claimed proposal whose re-check threw (market data or account unreadable) before the venue was called: nothing
+   * was sent, so it is recorded as failed. Left pending it would stay claimed for good: expirePending skips it and every
+   * approve answers "already being decided".
+   */
+  private async failUnsent(rec: ProposalRecord, coin: string, by: string, err: unknown): Promise<ProposalRecord> {
+    // ponytail: a throw from broker.open/exit itself leaves the row claimed and pending (an order may have gone out); add an "unknown" outcome if a venue ever throws there.
+    const error = `not sent: ${err instanceof Error ? err.message : String(err)}`;
+    const execution: ExecutionResult = { ok: false, venue: this.broker.venue, fills: [], error };
+    const out = await this.store.updateProposal(rec.id, { status: "failed", execution, decidedBy: by, decidedAt: this.now().toISOString() });
+    await this.alert("warn", `${rec.kind === "open" ? "Open" : "Exit"} failed: ${coin}`, error, rec.runId).catch((e) => console.error(`[desk] alert for proposal ${rec.id} failed`, e));
     return out!;
   }
 

@@ -305,13 +305,13 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_catalogue_save",
       title: "Save a rule to My Catalogue",
       description:
-        `Saves a rule to the catalogue under its stable id (the same id as in search results). A new rule is evaluated on current data and that evaluation is stored; live tracking starts now. Saving an existing rule only updates its name/note: it keeps its original evaluation and savedAt. An unknown runId is rejected. With a runId the rule is evaluated over the run's from/to and slippage (so the holdout is the run's), the stored walk-forward, walkForwardFolds and deflatedSharpe are the run's (deflated by its effectiveTrials) and the verdict is recomputed on them. Returns CatalogueEntry. Save only rules with ${BAR} (from the search that found them). ${CANDIDATE} Agents: pass origin "agent" and the runId.`,
+        `Saves a rule to the catalogue under its stable id (the same id as in search results). A new rule is evaluated on current data and that evaluation is stored; live tracking starts now. Saving an existing rule only updates its name/note: it keeps its original evaluation and savedAt. An unknown runId is rejected. With a runId the rule is evaluated over the run's from/to and slippage (so the holdout is the run's), the stored walk-forward, walkForwardFolds and deflatedSharpe are the run's (deflated by its effectiveTrials) and the verdict is recomputed on them. Returns CatalogueEntry. Save only rules with ${BAR} (from the search that found them). ${CANDIDATE} A save below that bar, or of a candidate without a note, is refused. Agents: pass origin "agent" and the runId; an agent or MCP save without a runId is refused (for a rule no run returned, pass a lab_search run on the same asset).`,
       inputSchema: obj(
         {
           rule: ruleSchema,
           name: { type: "string", minLength: 1, maxLength: 120, description: "Short human name, e.g. \"BTC MVRV washout\"." },
           note: { type: "string", maxLength: 2000, description: "Why it was saved: the evidence and caveats." },
-          runId: { type: "string", description: "The lab_search run the rule came from (uuid)." },
+          runId: { type: "string", description: "The lab_search run the rule came from (uuid). Required for origin \"agent\" and over MCP." },
           origin: { type: "string", enum: ["user", "agent", "seed"], description: "Who saved it. Default user." },
         },
         ["rule", "name"],
@@ -325,7 +325,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_author_rule",
       title: "Author a rule from an idea",
       description:
-        "Turns a trading idea in words into 1–3 candidate Lab rules. An LLM writes them over the metric catalogue only; each is validated (unknown metric or feature ids are repaired once, then the call fails), evaluated like lab_evaluate_rule and recorded as the next trial in the global trial log. Returns { candidates: [{ id, rule, text, evaluation, idea: { n, of } }], trialCount }: \"idea #n of N\" says how many ideas have been tried in total, so judge a good-looking result by it. Writes nothing to the catalogue: save with lab_catalogue_save. Calls an LLM and fetches data: tens of seconds. " +
+        "Turns a trading idea in words into 1–3 candidate Lab rules. An LLM writes them over the metric catalogue only; each is validated (unknown metric or feature ids are repaired once, then the call fails), evaluated like lab_evaluate_rule and recorded as the next trial in the global trial log. Returns { candidates: [{ id, rule, text, evaluation, idea: { n, of } }], trialCount }: \"idea #n of N\" says how many ideas have been tried in total, so judge a good-looking result by it. Writes nothing to the catalogue: save with lab_catalogue_save (an agent or MCP save needs the runId of a lab_search run on the same asset). Calls an LLM and fetches data: tens of seconds. " +
         HONESTY,
       inputSchema: obj(
         {

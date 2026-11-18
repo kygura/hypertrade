@@ -26,6 +26,12 @@ const MOVES_CRON_HARD_STOP_MS = 240_000;
 export const MOVES_CRON_LEASE_MS = MOVES_CRON_HARD_STOP_MS + 60_000;
 export const NO_DATABASE = "needs a database (DATABASE_URL unset): moves jobs store their results";
 
+/** The job's lease; the always-on server's moves loops (scripts/server.ts) take the same one. */
+export const movesLease = (job: MovesCronJob): LabLease => ({
+  acquire: (holder, ttlMs) => db.acquireLease(MOVES_LEASE_COIN, job, holder, ttlMs),
+  release: (holder) => db.releaseLease(MOVES_LEASE_COIN, job, holder),
+});
+
 export interface CronMovesDeps {
   hasDb(): boolean;
   lease(job: MovesCronJob): LabLease;
@@ -66,10 +72,7 @@ export async function runMovesCron(job: MovesCronJob, deps: CronMovesDeps): Prom
 function defaultCronMovesDeps(): CronMovesDeps {
   return {
     hasDb: () => !!db.databaseUrl() && agentStore() !== null,
-    lease: (job) => ({
-      acquire: (holder, ttlMs) => db.acquireLease(MOVES_LEASE_COIN, job, holder, ttlMs),
-      release: (holder) => db.releaseLease(MOVES_LEASE_COIN, job, holder),
-    }),
+    lease: movesLease,
     now: Date.now,
     run: {
       moves: (start) => defaultMovesJob(agentStore()!, start),

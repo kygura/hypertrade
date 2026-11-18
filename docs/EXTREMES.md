@@ -19,7 +19,8 @@ says `take`. Contracts: `src/shared/extremes.ts`.
    :53). Top `EXTREMES_TOP` (30) coins by stored 24h volume plus BTC, read from
    `scan_snapshots`. A key (`kind|coin|side`) is silent for `EXTREMES_COOLDOWN_H` (24) after
    it fires. At most `EXTREMES_DAILY_CAP` (3) events go out per UTC day; the rest are stored
-   with delivery `none`.
+   with delivery `none`. Every event is stored before it is sent, and a failed send is not
+   retried: a lost alert is preferred to a repeat.
 3. **Wake** (`src/server/extremes/wake.ts`). One POST per run to `EXTREMES_WAKE_URL` (a Claude
    Code routine's fire endpoint) with `EXTREMES_WAKE_TOKEN`. Never retried: the endpoint has no
    idempotency and a retry starts a second session. With no target, or on any failure, each

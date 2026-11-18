@@ -123,6 +123,15 @@ describe("parseInput: orders", () => {
     ["/long BTC stop 2% tp 1R tp 2R", "tp", /twice/],
     ["/long BTC stop 2% 500", "500", /unknown token "500"/],
     ["/long BTC stop 2% banana", "banana", /unknown token "banana"/],
+    // A comma is only a thousands separator in groups of three: "1,5" is never 15.
+    ["/long BTC stop 1,5%", "1,5%", /stop percent/],
+    ["/long BTC stop 60,00", "60,00", /bad stop value/],
+    ["/long BTC $1,00 stop 2%", "$1,00", /bad size/],
+    ["/long BTC stop 2% @1,5", "@1,5", /bad limit/],
+    ["/long BTC stop 2% tp 1,5R", "1,5R", /bad tp value/],
+    ["/long BTC risk 0,5% stop 2%", "0,5%", /risk needs a percent/],
+    ["/long BTC stop 2% @,500", "@,500", /bad limit/],
+    ["/long BTC stop 2% @1000,000", "@1000,000", /bad limit/],
   ])("error %j", (input, token, msg) => expectErr(input, token, msg));
 });
 
@@ -138,6 +147,7 @@ describe("parseInput: close / cancel / stop", () => {
     ["/cancel 12345 btc", { kind: "cancel", target: 12345, coin: "BTC" }],
     ["/stop btc 60000", { kind: "stop", coin: "BTC", px: 60000 }],
     ["/stop ETH 3.5k", { kind: "stop", coin: "ETH", px: 3500 }],
+    ["/stop BTC 1,060,000.5", { kind: "stop", coin: "BTC", px: 1060000.5 }],
   ])("%j", (input, want) => expect(parseInput(input)).toEqual(want));
 
   test.each<[string, string | undefined, RegExp]>([
@@ -146,6 +156,8 @@ describe("parseInput: close / cancel / stop", () => {
     ["/close BTC 101", "101", /close percent/],
     ["/close BTC -5", "-5", /close percent/],
     ["/close BTC abc", "abc", /close percent/],
+    ["/close BTC 1,5", "1,5", /close percent/],
+    ["/stop BTC 60,00", "60,00", /bad stop price/],
     ["/close BTC 50 x", "x", /unexpected/],
     ["/cancel", undefined, /usage/],
     ["/cancel abc", "abc", /not an order id/],

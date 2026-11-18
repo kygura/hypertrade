@@ -334,7 +334,12 @@ export function sweepPlan(orders: Row[], positions: ProprPosition[], now: number
   const out: Array<{ ladder: string; coin: string; victims: Row[]; why: string }> = [];
   for (const [key, list] of ladders) {
     const coin = key.split(":")[1]!;
-    const side = list[0]?.positionSide;
+    // The ladder's side from any row's positionSide, else its entry's side (buy is long), as in holds(). Unknown: sweep
+    // nothing, since without it an open position's stop and take-profit would read as leftovers.
+    const tagged = list.find((o) => o.positionSide === "long" || o.positionSide === "short")?.positionSide;
+    const entrySide = list.find(isEntry)?.side;
+    const side = tagged ?? (entrySide === "buy" ? "long" : entrySide === "sell" ? "short" : null);
+    if (!side) continue;
     const hasPos = positions.some((p) => p.coin === coin && p.side === side);
     const anyFilled = list.some((o) => isEntry(o) && (o.status === "filled" || filledQty(o) > 0));
     const ageH = (now - ulidTime(key.slice(0, 10))) / 3_600_000;

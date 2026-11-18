@@ -24,7 +24,7 @@ const FLOW_CACHE_MS = 120_000;
 const HEADLINES_PER_ROW = 5;
 
 export interface NarrativeRouteDeps {
-  store: Pick<IntelStore, "snapshotRange" | "listEvents" | "getSetting" | "setSetting">;
+  store: Pick<IntelStore, "snapshotRange" | "listEvents" | "getSetting" | "setSetting" | "mergeSetting">;
   llm: LlmDeps;
   now(): Date;
   env?: Record<string, string | undefined>;
@@ -99,7 +99,8 @@ export function createNarrativeRoutes(deps: NarrativeRouteDeps) {
         const result = await runContrast({ store, llm: deps.llm, now: deps.now }, { flow, rationale: sector.rationale, view: (await views())[id] ?? null });
         // A run that reached no provider costs nothing and does not count.
         if (result.status !== "no_web_search") await store.setSetting(CONTRAST_RUNS_SETTING, { day, n: used + 1 } satisfies Runs);
-        if (result.status === "done") await store.setSetting(CONTRASTS_SETTING, { ...(await contrasts()), [id]: result });
+        // A merge of this one id: a cron auto-contrast storing another id at the same time is kept.
+        if (result.status === "done") await store.mergeSetting(CONTRASTS_SETTING, { [id]: result });
         return c.json(result);
       } catch (err) {
         return failure(c, err, "intel:narratives", "narratives unavailable");

@@ -541,8 +541,19 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       return { ...result, eventListTotal, warnings, idea: { n: t.n, of: trials.length }, catalogueId: entry?.id ?? null };
     },
 
-    async catalogueSave(input: SaveInput, ctx?: CallBudget): Promise<CatalogueEntry> {
+    /**
+     * The save bar (docs/LAB.md "Verdict"): only `robust`, or a `candidate` with a note; never `fragile`, `weak` or
+     * `fails_holdout`. An agent (origin "agent" or an MCP call) must name a run, so the deflated Sharpe uses the
+     * run's trial count instead of N = 1. The operator UI, CLI and REST may save without one.
+     */
+    async catalogueSave(input: SaveInput, ctx?: CallBudget & Partial<Pick<ToolContext, "source">>): Promise<CatalogueEntry> {
       const rule = parseInput(RuleSchema, input.rule, "rule");
+      if (!input.runId && (input.origin === "agent" || ctx?.source === "mcp")) {
+        throw new ToolInputError(
+          "an agent or MCP save needs a runId: pass the runId of the lab_search run the rule came from, or for a rule no run returned (e.g. from lab_author_rule) a lab_search run on the same asset, whose range and trial count the rule is then evaluated and deflated against",
+          "runId",
+        );
+      }
       const run = input.runId ? await deps.store.getRun(input.runId) : null;
       if (input.runId && !run) throw new ToolInputError(`unknown run ${input.runId} (lab_list_runs lists them)`, "runId");
       const id = ruleId(rule);
@@ -556,6 +567,13 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       const saved =
         existing?.saved ??
         withSearchWalkForward(await evaluate({ rule, sensitivity: true, trials: runTrials(run?.result), ...range }, ctx), run?.result?.rules.find((r) => r.id === id));
+      const verdict = ensureVerdict(saved).verdict!;
+      if (verdict.level !== "robust" && verdict.level !== "candidate") {
+        throw new ToolInputError(`verdict "${verdict.level}" (${verdict.reasons.join("; ")}) is below the save bar: save only "robust", or a "candidate" with a note`, "rule");
+      }
+      if (verdict.level === "candidate" && !input.note?.trim()) {
+        throw new ToolInputError(`verdict "candidate" (${verdict.reasons.join("; ")}): saving it needs a note explaining why it is worth tracking`, "note");
+      }
       return withEntryVerdict(await deps.store.saveCatalogueEntry({
         id,
         name: input.name,

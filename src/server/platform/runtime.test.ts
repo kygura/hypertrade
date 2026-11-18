@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseWorkerLoops, startLoops } from "./runtime";
+import { leased, parseWorkerLoops, startLoops, type RunLease } from "./runtime";
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -58,5 +58,56 @@ describe("startLoops", () => {
     expect(loops.health()[0]!.ok).toBe(true);
     t = 31_000;
     expect(loops.health()[0]!.ok).toBe(false);
+  });
+});
+
+describe("leased", () => {
+  /** An in-memory lease with the db.ts semantics: one holder until it releases or its TTL runs out. */
+  function fakeLease(clock: { t: number }) {
+    let held: { holder: string; until: number } | null = null;
+    const lease: RunLease = {
+      acquire: async (holder, ttlMs) => {
+        if (held && held.until > clock.t) return false;
+        held = { holder, until: clock.t + ttlMs };
+        return true;
+      },
+      release: async (holder) => void (held?.holder === holder && (held.until = clock.t)),
+    };
+    return { lease, take: (ttlMs: number) => lease.acquire("cron", ttlMs) };
+  }
+
+  test("skips the tick while the cron route holds the lease, runs once it is released or expired", async () => {
+    const clock = { t: 0 };
+    const { lease, take } = fakeLease(clock);
+    let runs = 0;
+    const def = leased({ name: "novelty", intervalSec: 3600, run: async () => void runs++ }, lease, 1_000);
+    expect(await take(5_000)).toBe(true);
+    await def.run();
+    expect(runs).toBe(0);
+    clock.t = 5_000; // the cron holder crashed: its lease runs out, the loop is not blocked for good
+    await def.run();
+    expect(runs).toBe(1);
+    expect(await take(5_000)).toBe(true); // released after the run
+  });
+
+  test("two overlapping runs: the second skips; the lease is released when the run throws", async () => {
+    const clock = { t: 0 };
+    const { lease, take } = fakeLease(clock);
+    let runs = 0;
+    let fail = false;
+    let open!: () => void;
+    const def = leased({ name: "scanner", intervalSec: 60, run: async () => {
+      runs++;
+      if (fail) throw new Error("boom");
+      await new Promise<void>((r) => (open = r));
+    } }, lease, 60_000);
+    const first = def.run();
+    await def.run();
+    expect(runs).toBe(1);
+    open();
+    await first;
+    fail = true;
+    await expect(def.run()).rejects.toThrow("boom");
+    expect(await take(1)).toBe(true);
   });
 });

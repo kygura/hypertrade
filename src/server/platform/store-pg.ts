@@ -161,6 +161,14 @@ export class PgPlatformStore implements PlatformStore {
     return Number(r?.n ?? 0);
   }
 
+  async setExtremeDelivery(key: string, ts: string, delivery: "woken" | "pushed") {
+    const out = await this.db.query(
+      `update extreme_events set delivery = $3 where key = $1 and ts = $2::timestamptz and delivery = 'none' returning key`,
+      [key, iso(ts), delivery],
+    );
+    return out.length > 0;
+  }
+
   async listExtremes({ since, limit }: { since: string; limit: number }) {
     const rows = await this.db.query<any>(
       `select ${EXTREME_COLS} from extreme_events where ts >= $1::timestamptz order by ts desc, key collate "C" limit $2::int`,
@@ -317,9 +325,8 @@ export class PgPlatformStore implements PlatformStore {
   }
 
   async savePoll(address: string, polledAt: string, positions: PolledPosition[]) {
-    address = address.toLowerCase();
     const ts = iso(polledAt);
-    positions = parsePoll(positions);
+    ({ address, positions } = parsePoll(address, positions));
     const s = pollSummary(positions);
     return this.db.tx(async (db) => {
       await db.query(
@@ -548,7 +555,7 @@ export class PgPlatformStore implements PlatformStore {
     return this.db.tx(async (db) => {
       const [r] = await db.query(
         `update opportunities set costs = $2::text::jsonb, gross_edge_bps = $3::float8, net_edge_bps = $4::float8, edge_basis = $5, updated_at = now()
-         where id = $1::uuid and status in (${PRE_SQL}) returning *`,
+         where id = $1::uuid and status in (${PRE_SQL}) and costs is null returning *`,
         [id, J(costs), grossEdgeBps, netEdgeBps, edgeBasis],
       );
       if (!r) return null;

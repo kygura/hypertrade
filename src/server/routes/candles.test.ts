@@ -41,6 +41,16 @@ describe("GET /candles/:coin", () => {
     expect(await res.json()).toEqual({ error: "invalid query" });
   });
 
+  test("404s on a coin the universe lacks, without touching sync access", async () => {
+    const touched: string[] = [];
+    const d = deps({ resolveCoin: async () => null, touch: async (coin) => void touched.push(coin) });
+    const res = await app(d).request("/candles/AAAA1?tf=1h");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "unknown coin" });
+    expect(touched).toEqual([]);
+    expect(d.pages).toEqual([]);
+  });
+
   test("400s on a bad before / limit", async () => {
     expect((await app(deps()).request("/candles/BTC?before=abc")).status).toBe(400);
     expect((await app(deps()).request("/candles/BTC?limit=999999")).status).toBe(400);

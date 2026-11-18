@@ -181,6 +181,8 @@ export type DefinitionsResponse = z.infer<typeof DefinitionsResponseSchema>;
 export const STUDY_DEFAULTS = { stopAtr: 1.5, targetAtr: 3 } as const;
 /** Largest exits a study takes, in ATR (lab_event_study's own bounds). */
 export const STUDY_EXIT_MAX = { stopAtr: 20, targetAtr: 50 } as const;
+/** Smallest exit a study takes, in ATR: the 0.1 step the exits are quantized to. */
+export const STUDY_EXIT_MIN = 0.1;
 
 /**
  * The study a board row opens, as the POST /research/study body: its rule, on its coin only for `coin` scope,
@@ -191,14 +193,14 @@ export const boardStudy = (s: Pick<ResearchSignal, "rule" | "coin" | "scope">) =
 
 /**
  * POST /api/research/study. `coin` scopes the study to that market; without it, the Lab's default universe (top 20).
- * stopAtr/targetAtr are rounded to 0.1 before the run and the cache key.
+ * stopAtr/targetAtr are rounded to 0.1 before the run and the cache key, so the smallest exit is that 0.1 (less rounds to 0).
  */
 export const StudyRequestSchema = z
   .object({
     rule: RuleSchema,
     coin: z.string().regex(ASSET_PATTERN, "expected a ticker of 1–20 letters or digits, e.g. BTC").optional(),
-    stopAtr: z.number().positive().max(STUDY_EXIT_MAX.stopAtr).default(STUDY_DEFAULTS.stopAtr),
-    targetAtr: z.number().positive().max(STUDY_EXIT_MAX.targetAtr).default(STUDY_DEFAULTS.targetAtr),
+    stopAtr: z.number().min(STUDY_EXIT_MIN).max(STUDY_EXIT_MAX.stopAtr).default(STUDY_DEFAULTS.stopAtr),
+    targetAtr: z.number().min(STUDY_EXIT_MIN).max(STUDY_EXIT_MAX.targetAtr).default(STUDY_DEFAULTS.targetAtr),
   })
   .strict();
 export type StudyRequest = z.output<typeof StudyRequestSchema>;

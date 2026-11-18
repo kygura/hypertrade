@@ -90,6 +90,21 @@ describe("POST /cron/lab-collect", () => {
     expect((await app.request("/cron/lab-collect", { method: "POST" })).status).toBe(401);
     expect((await app.request("/cron/lab-collect")).status).toBe(401);
   });
+
+  test("a failed collect answers 500 with its result", async () => {
+    // No database: the lease cannot be taken, so the run fails without collecting.
+    const saved = { url: process.env.DATABASE_URL, pg: process.env.DATABASE_POSTGRES_URL, pooled: process.env.POSTGRES_URL };
+    delete process.env.DATABASE_URL;
+    delete process.env.DATABASE_POSTGRES_URL;
+    delete process.env.POSTGRES_URL;
+    try {
+      const res = await app.request("/cron/lab-collect", { method: "POST", headers: { "x-cron-token": "test-cron-token" } });
+      expect(res.status).toBe(500);
+      expect(await res.json()).toMatchObject({ ok: false, written: 0 });
+    } finally {
+      for (const [k, v] of [["DATABASE_URL", saved.url], ["DATABASE_POSTGRES_URL", saved.pg], ["POSTGRES_URL", saved.pooled]] as const) if (v !== undefined) process.env[k] = v;
+    }
+  });
 });
 
 describe("POST /cron/backfill", () => {

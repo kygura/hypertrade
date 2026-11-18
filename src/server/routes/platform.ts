@@ -12,6 +12,7 @@ import type { OperatorOrder } from "../desk/types.js";
 import { researchDailyLimit, researchDeps, runResearch, RESEARCH_PROMPT_VERSION, utcDayStart } from "../intel/research.js";
 import { aggregate, coverage } from "../platform/liqmap.js";
 import { extremesReadyTtlMin } from "../platform/opportunity.js";
+import { DEFAULT_READY_TTL_MIN, envNum } from "../platform/scanner.js";
 import { approveBlockOf, placedBy, placing, type PlatformContext } from "../platform/context.js";
 import { Z_KEYS } from "../platform/score.js";
 import { evidenceLine, groupStats, setupLedgerStats } from "../platform/stats.js";
@@ -166,7 +167,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
       return c.json({
         opportunities: rows.map((r) => FeedRowSchema.parse(r)),
         scanAgeSec: last ? seenAge(last.toISOString(), deps.now()) : null,
-        readyTtlMin: Number(process.env.PLATFORM_READY_TTL_MIN) || 60,
+        readyTtlMin: envNum("PLATFORM_READY_TTL_MIN", DEFAULT_READY_TTL_MIN), // the scanner's own reading
         extremesReadyTtlMin: extremesReadyTtlMin(),
       });
     })

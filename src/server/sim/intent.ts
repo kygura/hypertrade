@@ -124,10 +124,10 @@ async function runBranch(
         warnings.push("projection skipped — the assumption (gbm) projection models unlevered long-only portfolios; use method bootstrap for perp legs");
       }
     }
-    if (perp && config.scenario && !finalAllocations(config).some(isPerp) && config.scenario.method === "bootstrap") {
+    const result = simulateLoaded(config, candles, deps.now());
+    if (perp && config.scenario && !finalAllocations(config, result.moves).some(isPerp) && config.scenario.method === "bootstrap") {
       warnings.push("projection resamples the whole history, including the levered phases, though the branch ends without a perp leg");
     }
-    const result = simulateLoaded(config, candles, deps.now());
     const filled = new Map((result.moves ?? []).map((m) => [m.step, m.date]));
     config.schedule?.forEach((s, i) => {
       const at = filled.get(i);

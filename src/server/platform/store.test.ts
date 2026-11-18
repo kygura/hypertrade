@@ -93,6 +93,9 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   await expect(s.savePoll(A2, t(2), [eth(1, 2000), eth(2, 2000)])).rejects.toThrow(/duplicate/);
   await expect(s.savePoll(A2, t(2), [{ ...eth(1, 2000), entryPx: -1 }])).rejects.toThrow();
   await expect(s.savePoll(A2, t(2), [{ ...eth(1, 2000), szi: 0 }])).rejects.toThrow();
+  // A malformed address is refused the same way in both twins, before anything is written.
+  await expect(s.savePoll("0xnope", t(2), [eth(1, 2000)])).rejects.toThrow(/invalid address/);
+  expect(await s.getAddress("0xnope")).toBeNull();
   await expect(s.savePoll(A2, t(2), [{ ...eth(1, 2000), liquidationPx: Number.NaN }])).rejects.toThrow();
   expect((await s.getAddress(A2))!.polledAt).toBeNull();
   put("changes", await s.positionChanges(A1));
@@ -207,6 +210,10 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
 
   put("opp.costs", await s.setOpportunityCosts(o2, costs));
   expect((await s.getOpportunity(o2))!).toMatchObject({ costs: { feeBps: 4.5, slippageBps: 2, fundingBps: 1, absorbableUsd: 50000 }, grossEdgeBps: 30, netEdgeBps: 18 });
+  // Costs freeze at the first write: a second writer (cron tick and always-on scanner) gets null and appends no entry.
+  expect(await s.setOpportunityCosts(o2, { ...costs, feeBps: 9 })).toBeNull();
+  expect((await s.getOpportunity(o2))!.costs).toMatchObject({ feeBps: 4.5 });
+  expect((await s.ledgerFor(o2)).filter((e) => e.kind === "costs").length).toBe(1);
   expect(await s.setOpportunityCosts(crypto.randomUUID(), costs)).toBeNull();
   await expect(s.setOpportunityCosts(o2, { ...costs, feeBps: -1 })).rejects.toThrow();
   expect((await s.snoozeOpportunity(o2, t(6)))!.snoozedUntil).toBe(t(6));
@@ -380,6 +387,11 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((out["extremes.latest"] as ExtremeRecord).delivery).toBe("pushed");
   expect(await s.extremesDeliveredSince(t(0))).toBe(3); // ETH went out with delivery none
   expect(await s.extremesDeliveredSince(t(2))).toBe(2);
+  // delivery is written after the send, once, from none (the job stores the record first)
+  expect(await s.setExtremeDelivery("oi_flush|ETH|long", t(3), "woken")).toBe(true);
+  expect(await s.setExtremeDelivery("oi_flush|ETH|long", t(3), "pushed")).toBe(false); // already sent
+  expect(await s.setExtremeDelivery("oi_flush|ETH|long", t(9), "woken")).toBe(false); // no such row
+  expect(await s.extremesDeliveredSince(t(2))).toBe(3);
   put("extremes.list", await s.listExtremes({ since: t(2), limit: 10 }));
   expect((out["extremes.list"] as ExtremeRecord[]).map((r) => r.event.key)).toEqual(["oi_flush|ETH|long", "oi_flush|SOL|long", "oi_flush|WIF|long"]);
   expect((out["extremes.list"] as ExtremeRecord[])[2]!.event.ts).toBe(t(2)); // ts normalized to ISO

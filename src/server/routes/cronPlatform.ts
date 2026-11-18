@@ -71,9 +71,12 @@ export async function runPlatformTickJob(deps: CronPlatformDeps): Promise<{ stat
 /** No coin starts after this. */
 const NOVELTY_BUDGET_MS = 200_000;
 /** Budget a coin needs left to start: ensureHistory and the funding sync are capped at 20 s each, plus the reads. */
-const NOVELTY_RESERVE_MS = 45_000;
+export const NOVELTY_RESERVE_MS = 45_000;
 const NOVELTY_HARD_STOP_MS = NOVELTY_BUDGET_MS + 40_000;
 export const NOVELTY_LEASE_MS = NOVELTY_BUDGET_MS + 60_000;
+/** The always-on loop's beat (scripts/server.ts) takes the same lease for longer: one beat checks a whole day (~14 min). */
+export const NOVELTY_LOOP_BUDGET_MS = 25 * 60_000;
+export const NOVELTY_LOOP_LEASE_MS = NOVELTY_LOOP_BUDGET_MS + 5 * 60_000;
 
 export interface CronNoveltyDeps {
   hasDb: () => boolean;

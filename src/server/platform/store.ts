@@ -154,7 +154,7 @@ export interface PlatformStore {
   ): Promise<Opportunity | null>;
   /** Cooldown (P0.11): latest statusChangedAt among the key's rejected, expired, failed or closed rows; null when none. */
   lastTerminalAt(dedupeKey: string): Promise<Date | null>;
-  /** Sets costs and edge on a pre-decision opportunity and appends the `costs` entry. Null when malformed, missing or past the decision. */
+  /** Sets costs and edge once on a pre-decision opportunity and appends the `costs` entry in the same write. Null (nothing written) when malformed, missing, past the decision or already costed. */
   setOpportunityCosts(id: string, c: LedgerPayload<"costs">): Promise<Opportunity | null>;
   /** Projection only: snooze is a field, not a state. Null when missing. */
   snoozeOpportunity(id: string, until: string | null): Promise<Opportunity | null>;
@@ -232,6 +232,8 @@ export interface PlatformStore {
   latestExtreme(key: string): Promise<ExtremeRecord | null>;
   /** Records with event ts >= since whose delivery went out (woken or pushed): the daily cap's count. */
   extremesDeliveredSince(since: string): Promise<number>;
+  /** Marks a stored record as sent (the job stores it with delivery none first). False when (key, ts) is missing or already sent. */
+  setExtremeDelivery(key: string, ts: string, delivery: "woken" | "pushed"): Promise<boolean>;
   /** Newest event ts first (then key, code units). `since` is inclusive. */
   listExtremes(q: { since: string; limit: number }): Promise<ExtremeRecord[]>;
   /** Writes the verdict and the mark stamped with it once (zod-parsed first). Null when (key, ts) is missing or already has a verdict. */
@@ -412,13 +414,14 @@ export function pollSummary(positions: PolledPosition[]): Pick<AddressRow, "noti
   return { notionalUsd: positions.reduce((s, p) => s + p.positionValue, 0), positionCount: positions.length, minLiqDistance: min };
 }
 
-/** Validates one poll (zod, then one position per coin: HL returns one, two would silently drop one). Returns the parsed list. */
-export function parsePoll(positions: PolledPosition[]): PolledPosition[] {
+/** Validates one poll (the lowercased address, zod, then one position per coin: HL returns one, two would silently drop one). Returns them parsed. */
+export function parsePoll(address: string, positions: PolledPosition[]): { address: string; positions: PolledPosition[] } {
+  address = AddressSchema.parse(address.toLowerCase());
   const parsed = PolledPositionSchema.array().parse(positions);
   const seen = new Set<string>();
   for (const p of parsed) {
     if (seen.has(p.coin)) throw new Error(`duplicate position for ${p.coin}`);
     seen.add(p.coin);
   }
-  return parsed;
+  return { address, positions: parsed };
 }

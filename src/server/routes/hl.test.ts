@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
 import fixture from "../../shared/fixtures/hyperliquid.json" with { type: "json" };
-import { hlRoutes, toMarketRows } from "./hl.js";
+import { hlRoutes, resolveCoin, toMarketRows } from "./hl.js";
 
 function mockFetch(body: unknown): typeof fetch {
   return (async () => new Response(JSON.stringify(body), { status: 200 })) as unknown as typeof fetch;
@@ -67,5 +67,20 @@ describe("GET /markets?scope=all", () => {
     expect(body.markets.find((m) => m.coin === "xyz:GOLD")!.assetClass).toBe("commodity");
     expect(body.markets.find((m) => m.coin === "BTC")).toMatchObject({ dex: "", assetClass: "crypto" });
     expect(body.failedDexes).toEqual(["bad"]);
+  });
+
+  test("resolveCoin: canonical name; null for a name the universe lacks; uppercase when its dex could not be read", async () => {
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { type: string; dex?: string };
+      if (body.type === "perpDexs") return new Response(JSON.stringify([null, { name: "xyz", fullName: "XYZ" }, { name: "bad", fullName: "Bad" }]));
+      if (body.dex === "xyz") return new Response(JSON.stringify(xyz));
+      if (body.dex === "bad") return new Response("{}", { status: 400 });
+      return new Response(JSON.stringify(fixture));
+    }) as unknown as typeof fetch;
+    expect(await resolveCoin("btc")).toBe("BTC");
+    expect(await resolveCoin("AAAA1")).toBeNull();
+    expect(await resolveCoin("XYZ:nvda")).toBe("xyz:NVDA");
+    expect(await resolveCoin("xyz:NOPE")).toBeNull();
+    expect(await resolveCoin("bad:foo")).toBe("BAD:FOO");
   });
 });

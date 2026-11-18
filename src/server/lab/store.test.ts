@@ -258,6 +258,19 @@ describe("fileStore persistence", () => {
     }
   });
 
+  test("two stores on one file (two processes): each mutation applies to what is on disk, none is lost", async () => {
+    const path = join(await tmp(), "lab.json");
+    const a = fileStore(path);
+    const b = fileStore(path);
+    expect([await a.listTrials(), await b.listTrials()]).toEqual([[], []]); // both loaded before either writes
+    expect((await a.appendTrial({ ruleId: "r1", intent: "a", verdict: null })).n).toBe(1);
+    expect((await b.appendTrial({ ruleId: "r2", intent: "b", verdict: null })).n).toBe(2);
+    await a.saveCatalogueEntry(entry("x"));
+    expect((await b.listTrials()).map((t) => t.ruleId)).toEqual(["r1", "r2"]);
+    expect((await fileStore(path).listTrials()).map((t) => t.n)).toEqual([1, 2]);
+    expect((await fileStore(path).listCatalogue()).map((e) => e.id)).toEqual(["x"]);
+  });
+
   test("concurrent writes all land", async () => {
     const path = join(await tmp(), "lab.json");
     const s = fileStore(path);

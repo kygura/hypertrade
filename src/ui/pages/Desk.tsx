@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { AsyncBody, Badge, Button, ConfirmDialog, ErrorBlock, HowToRead, OfflineBlock, Panel, PanelBody, PanelHeader, Segmented, SkeletonRows, DataTable, type Column } from '../components'
 import { Markdown } from '../components/analyst/Markdown'
 import { KillSwitchDialog } from '../components/KillSwitchDialog'
-import { api, ApiError, NetworkError } from '../lib/api'
+import { api, ApiError, NetworkError, makeSequencer } from '../lib/api'
 import { usePoll } from '../lib/poll'
 import { fmtPx, fmtUsd } from '../lib/format'
 import { useDeskKill } from '../lib/useDeskKill'
@@ -191,8 +191,14 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
   const killSwitch = useDeskKill(kill, onChange)
   const desk = portfolio?.desk
 
+  const [approvalErr, setApprovalErr] = useState<string | null>(null)
   const setApproval = async (approval: 'manual' | 'auto') => {
-    await api.put('/desk/approval', { approval }).catch(() => undefined)
+    setApprovalErr(null)
+    try {
+      await api.put('/desk/approval', { approval })
+    } catch (e) {
+      setApprovalErr(e instanceof Error ? e.message : 'failed')
+    }
     onChange()
   }
   return (
@@ -220,6 +226,7 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
               ]}
             />
           )}
+          {approvalErr && <span className="text-xs text-red-text">{approvalErr}</span>}
           <ReviewIntervalControl status={status} onChange={onChange} />
           <Button tier="danger" onClick={killSwitch.arm} disabled={!status}>
             {kill ? 'RESUME' : 'KILL'}
@@ -804,21 +811,24 @@ function RunsPanel({ schedule, runs, loading, error, offline, onRetry }: { sched
   const [openId, setOpenId] = useState<string | null>(null)
   const [view, setView] = useState<RunView | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const runSeq = useRef(makeSequencer())
 
   const openRun = async (r: RunRow) => {
+    const ticket = runSeq.current.next()
     if (openId === r.id) return setOpenId(null)
     setOpenId(r.id)
     setView(null)
     setErr(null)
     try {
       const full = await api.get<RunRow & { events: Array<{ type: string; agent: string; data: Record<string, unknown> }> }>(`/desk/runs/${r.id}`)
+      if (!runSeq.current.isCurrent(ticket)) return
       let v = emptyRun(r.kind, r.question)
       for (const e of full.events) v = reduceRun(v, { type: e.type, ...e.data } as DeskEvent)
       // The PM's final answer is stored on the run (deltas are not persisted).
       v = { ...v, agents: v.agents.map((a) => (a.id === 'pm' && full.answer ? { ...a, text: full.answer } : a)) }
       setView(v)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'failed')
+      if (runSeq.current.isCurrent(ticket)) setErr(e instanceof Error ? e.message : 'failed')
     }
   }
 

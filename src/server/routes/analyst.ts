@@ -22,6 +22,10 @@ import { TOOL_SPECS, defaultToolDeps, hasWebSearch, runTool, toolCatalog, type T
 import { SIM_TOOL_SPEC, buildSimSystemPrompt, realSimDeps, runSimTool } from "../llm/sim.js";
 import type { IntentDeps } from "../sim/intent.js";
 import type { SimBranchOutcome, SimIntent } from "../../shared/intent.js";
+import { databaseUrl } from "../db.js";
+import { llmCapError, recordLlmUsage, type LlmCaps } from "../intel/llm.js";
+import { PgIntelStore } from "../intel/store.js";
+import { MemoryLlmCache } from "../routine/llm.js";
 
 // /analyst — the classic-LLM analyst (docs/SPEC.md "Analyst"). Read-only: it
 // reads the app's data through tools/tools.ts and never places orders; Jev
@@ -194,6 +198,34 @@ export interface AnalystRouteOptions {
   simDeps?: IntentDeps;
   timeoutMs?: number;
   maxRounds?: number;
+  /** Daily LLM caps and counter. Default: Intel's (defaultLlmCaps). */
+  llm?: LlmCaps;
+}
+
+const envNum = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Number(v)) : def);
+let sharedCaps: LlmCaps | null = null;
+
+/**
+ * Intel's daily caps (INTEL_LLM_DAILY_CAP, INTEL_LLM_DAILY_USD) for the chat routes (/analyst, /desk). With a database
+ * the counter is the Intel cache table, so the spend is shared with Intel and shown in health; else one in-process cache.
+ */
+export function defaultLlmCaps(env: Record<string, string | undefined> = process.env): LlmCaps {
+  return (sharedCaps ??= {
+    cache: databaseUrl(env) ? new PgIntelStore() : new MemoryLlmCache(),
+    now: () => new Date(),
+    dailyCap: Math.round(envNum(env.INTEL_LLM_DAILY_CAP, 200)),
+    dailyUsd: envNum(env.INTEL_LLM_DAILY_USD, 2),
+  });
+}
+
+/** 429 {error} at the cap (as the Intel routes answer), 502 when the counter cannot be read; null when a call may run. */
+export async function capRefusal(caps: LlmCaps): Promise<{ error: string; status: 429 | 502 } | null> {
+  try {
+    const capped = await llmCapError(caps);
+    return capped ? { error: capped, status: 429 } : null;
+  } catch (e) {
+    return { error: `LLM cap check failed: ${e instanceof Error ? e.message : String(e)}`, status: 502 };
+  }
 }
 
 export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
@@ -259,13 +291,20 @@ export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
         provider = resolve();
         if (!provider) return c.json({ error: "analyst not configured" }, 503);
       }
+      const caps = o.llm ?? defaultLlmCaps();
+      const refused = await capRefusal(caps);
+      if (refused) return c.json({ error: refused.error }, refused.status);
 
       c.header("cache-control", "no-store");
       c.header("x-accel-buffering", "no");
       return streamSSE(c, async (stream) => {
         const disconnect = new AbortController();
         stream.onAbort(() => disconnect.abort());
+        const bill: { usage: Usage | null; searches: number } = { usage: null, searches: 0 };
         const emit = async (e: AnalystEvent) => {
+          // Billing sees every event, streamed or not. Server tool calls are billed as web searches.
+          if (e.type === "tool_call" && e.server) bill.searches++;
+          if (e.type === "done") bill.usage = e.usage;
           if (disconnect.signal.aborted) return;
           const { type, ...data } = e;
           await stream.writeSSE({ event: type, data: JSON.stringify(data) });
@@ -293,6 +332,8 @@ export function createAnalystRoutes(o: AnalystRouteOptions = {}) {
           },
           emit,
         );
+        // ponytail: a step cut off by the timeout or a disconnect bills 0 tokens; add completeStructured's in-flight estimate if that spend shows.
+        if (bill.usage) await recordLlmUsage(caps.cache, "analyst", { ...bill.usage, searches: bill.searches }, provider.model);
       });
     });
 }

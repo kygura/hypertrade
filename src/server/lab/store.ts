@@ -266,24 +266,24 @@ const emptyState = (): State => ({ runs: [], rules: [], trials: [], studies: [] 
 const entryOf = ({ archivedAt: _a, ...e }: StoredRule): CatalogueEntry => structuredClone(e);
 
 /**
- * The shared in-process implementation. `load` resolves the state (lazily for
- * the file store); `persist` runs after every mutation.
+ * The shared in-process implementation. `load` resolves the state for reads (lazily for
+ * the file store); every mutation runs through `mutate`, which hands `fn` the state to change and stores it.
  */
 function localStore(
   kind: "memory" | "file",
   load: () => Promise<State>,
-  persist: (s: State) => Promise<void>,
+  mutate: <T>(fn: (s: State) => T) => Promise<T>,
   clock: () => Date,
 ): LabStore {
   return {
     kind,
     async saveRun(r) {
-      const s = await load();
-      const run: StoredRun = structuredClone({ ...r, id: crypto.randomUUID(), createdAt: clock().toISOString() });
-      s.runs.push(run);
-      if (s.runs.length > LOCAL_RUN_CAP) s.runs.splice(0, s.runs.length - LOCAL_RUN_CAP);
-      await persist(s);
-      return structuredClone(run);
+      return mutate((s) => {
+        const run: StoredRun = structuredClone({ ...r, id: crypto.randomUUID(), createdAt: clock().toISOString() });
+        s.runs.push(run);
+        if (s.runs.length > LOCAL_RUN_CAP) s.runs.splice(0, s.runs.length - LOCAL_RUN_CAP);
+        return structuredClone(run);
+      });
     },
     async getRun(id) {
       if (!isUuid(id)) return null;
@@ -309,34 +309,34 @@ function localStore(
     },
     async saveCatalogueEntry(e) {
       checkEntry(e);
-      const s = await load();
-      const cur = s.rules.find((r) => r.id === e.id);
-      let out: StoredRule;
-      if (cur) {
-        Object.assign(cur, { name: e.name, note: e.note, archivedAt: null });
-        out = cur;
-      } else {
-        const { savedAt, ...rest } = e;
-        out = structuredClone({ ...rest, savedAt: new Date(savedAt ?? clock()).toISOString(), archivedAt: null });
-        s.rules.push(out);
-      }
-      await persist(s);
-      return entryOf(out);
+      return mutate((s) => {
+        const cur = s.rules.find((r) => r.id === e.id);
+        let out: StoredRule;
+        if (cur) {
+          Object.assign(cur, { name: e.name, note: e.note, archivedAt: null });
+          out = cur;
+        } else {
+          const { savedAt, ...rest } = e;
+          out = structuredClone({ ...rest, savedAt: new Date(savedAt ?? clock()).toISOString(), archivedAt: null });
+          s.rules.push(out);
+        }
+        return entryOf(out);
+      });
     },
     async archiveCatalogueEntry(id) {
-      const s = await load();
-      const cur = s.rules.find((r) => r.id === id && !r.archivedAt);
-      if (!cur) return false;
-      cur.archivedAt = clock().toISOString();
-      await persist(s);
-      return true;
+      return mutate((s) => {
+        const cur = s.rules.find((r) => r.id === id && !r.archivedAt);
+        if (!cur) return false;
+        cur.archivedAt = clock().toISOString();
+        return true;
+      });
     },
     async appendTrial(t) {
-      const s = await load();
-      const trial: Trial = { ...t, n: (s.trials.at(-1)?.n ?? 0) + 1, at: clock().toISOString() };
-      s.trials.push(trial);
-      await persist(s);
-      return { ...trial };
+      return mutate((s) => {
+        const trial: Trial = { ...t, n: (s.trials.at(-1)?.n ?? 0) + 1, at: clock().toISOString() };
+        s.trials.push(trial);
+        return { ...trial };
+      });
     },
     async listTrials() {
       return structuredClone((await load()).trials);
@@ -348,18 +348,18 @@ function localStore(
       return out;
     },
     async putStudy(key, v, at) {
-      const s = await load();
-      const cutoff = at.getTime() - STUDY_KEEP_DAYS * DAY_MS;
-      s.studies = s.studies.filter((r) => r.key !== key && Date.parse(r.at) >= cutoff);
-      s.studies.push(structuredClone({ key, at: at.toISOString(), summary: v.summary, study: v.study }));
-      await persist(s);
+      await mutate((s) => {
+        const cutoff = at.getTime() - STUDY_KEEP_DAYS * DAY_MS;
+        s.studies = s.studies.filter((r) => r.key !== key && Date.parse(r.at) >= cutoff);
+        s.studies.push(structuredClone({ key, at: at.toISOString(), summary: v.summary, study: v.study }));
+      });
     },
   };
 }
 
 export function memoryStore(clock: () => Date = () => new Date()): LabStore {
   const state = emptyState();
-  return localStore("memory", async () => state, async () => {}, clock);
+  return localStore("memory", async () => state, async (fn) => fn(state), clock);
 }
 
 function parseState(text: string): State | null {
@@ -376,46 +376,55 @@ function parseState(text: string): State | null {
 }
 
 /**
- * Memory store backed by a JSON file. Loaded on first use; a missing file
- * starts empty, a corrupt one makes every call throw and is left untouched. Every mutation rewrites the file atomically (tmp + rename).
+ * Memory store backed by a JSON file. Reads use the state loaded on first use (refreshed by each mutation); a
+ * missing file starts empty, a corrupt one makes every call throw and is left untouched. Every mutation re-reads
+ * the file, applies its change to what is on disk (another process may have written since) and rewrites the file
+ * atomically (tmp + rename).
  */
 export function fileStore(path: string, clock: () => Date = () => new Date()): LabStore {
   let loading: Promise<State> | null = null;
-  let writing: Promise<void> = Promise.resolve();
+  let writing: Promise<unknown> = Promise.resolve();
+
+  const read = async (): Promise<State> => {
+    let text: string;
+    try {
+      text = await readFile(path, "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return emptyState();
+      throw err;
+    }
+    const state = parseState(text);
+    if (state) return state;
+    // Never start empty over a damaged file: that would reset the trial counter (docs/FEATURES.md § 5).
+    throw new Error(`lab store file ${path} is corrupt; fix or remove it by hand (the store will not start empty)`);
+  };
 
   const load = () =>
-    (loading ??= (async () => {
-      let text: string;
-      try {
-        text = await readFile(path, "utf8");
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return emptyState();
-        throw err;
-      }
-      const state = parseState(text);
-      if (state) return state;
-      // Never start empty over a damaged file: that would reset the trial counter (docs/FEATURES.md § 5).
-      throw new Error(`lab store file ${path} is corrupt; fix or remove it by hand (the store will not start empty)`);
-    })().catch((err) => {
+    (loading ??= read().catch((err) => {
       loading = null; // retry on the next call
       throw err;
     }));
 
-  const persist = (s: State) => {
-    const body = JSON.stringify({ version: 1, runs: s.runs, rules: s.rules, trials: s.trials, studies: s.studies });
-    const tmp = `${path}.${process.pid}.tmp`;
-    // Chained so concurrent mutations never interleave their tmp writes.
-    writing = writing
+  // Chained so concurrent mutations in this process never interleave; each one reads, changes and writes in turn.
+  // ponytail: no cross-process lock, so two processes writing at the same instant can still lose one change; add a lockfile if two writers become normal.
+  const mutate = <T>(fn: (s: State) => T): Promise<T> => {
+    const next = writing
       .catch(() => {})
       .then(async () => {
+        const s = await read();
+        const out = fn(s);
+        const tmp = `${path}.${process.pid}.tmp`;
         await mkdir(dirname(path), { recursive: true });
-        await writeFile(tmp, body);
+        await writeFile(tmp, JSON.stringify({ version: 1, runs: s.runs, rules: s.rules, trials: s.trials, studies: s.studies }));
         await rename(tmp, path);
+        loading = Promise.resolve(s);
+        return out;
       });
-    return writing;
+    writing = next;
+    return next;
   };
 
-  return localStore("file", load, persist, clock);
+  return localStore("file", load, mutate, clock);
 }
 
 // ---------------------------------------------------------------- selection

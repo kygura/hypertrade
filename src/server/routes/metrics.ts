@@ -8,7 +8,7 @@ const summaryQuery = z.object({ ids: z.string().min(1) });
 const seriesQuery = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
-  buckets: z.coerce.number().int().positive().optional(),
+  buckets: z.coerce.number().int().positive().max(2000).optional(),
 });
 
 export const metricsRoutes = new Hono()

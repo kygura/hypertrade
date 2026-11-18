@@ -44,7 +44,10 @@ import { PgIntelStore } from "../src/server/intel/store";
 import { usageCost } from "../src/server/intel/llm";
 import { createReconcileLoop } from "../src/server/platform/reconcile";
 import { createScanner } from "../src/server/platform/scanner";
-import { setHealthExtras, parseWorkerLoops, startLoops, type LoopDef, type Loops } from "../src/server/platform/runtime";
+import { leased, setHealthExtras, parseWorkerLoops, startLoops, type LoopDef, type Loops, type RunLease } from "../src/server/platform/runtime";
+import { noveltyLease, platformLease } from "../src/server/platform/tick";
+import { MOVES_CRON_LEASE_MS, movesLease } from "../src/server/routes/cronMoves";
+import { NOVELTY_LOOP_BUDGET_MS, NOVELTY_LOOP_LEASE_MS, NOVELTY_RESERVE_MS, PLATFORM_TICK_LEASE_MS } from "../src/server/routes/cronPlatform";
 import { MemoryPlatformStore } from "../src/server/platform/store-memory";
 import { PgPlatformStore, pgDb } from "../src/server/platform/store-pg";
 import { retentionDays as retentionDays_, scanRetentionDays, type PlatformStore } from "../src/server/platform/store";
@@ -121,6 +124,11 @@ function cached<T>(ttlMs: number, fn: () => Promise<T>, fallback: T): () => Prom
   };
 }
 
+function noveltyDef(loop: ReturnType<typeof createNoveltyLoop>): LoopDef {
+  const run = async () => void (await loop.run({ deadline: Date.now() + NOVELTY_LOOP_BUDGET_MS, reserveMs: NOVELTY_RESERVE_MS }));
+  return leased({ ...loop.def, run }, noveltyLease, NOVELTY_LOOP_LEASE_MS);
+}
+
 async function boot() {
   setLongRunning(true);
   const dbUrl = databaseUrl();
@@ -168,20 +176,29 @@ async function boot() {
   });
   const alerts = createAlerts({ store, notifier: createNotifier(), wsAgeSec: () => ws.lastMessageAgeSec(), appUrl: (process.env.APP_URL ?? process.env.DESK_APP_URL)?.trim() });
 
+  // With a database the cron routes (platform-tick, novelty, moves, moves-agent) can run the same work at the same moment:
+  // each of these loops takes its route's lease and skips a beat while the route holds it. Memory mode has no routes' lease.
+  const withLease = (def: LoopDef, lease: RunLease, ttlMs: number) => (dbUrl ? leased(def, lease, ttlMs) : def);
+  // ponytail: the moves-agent beat has no deadline; an investigation that outlasts MOVES_CRON_LEASE_MS can overlap the cron job. Add one if that shows up.
   const defs: LoopDef[] = [
     // ws.tick opens/maintains the socket and refreshes the universe hourly; throws if the feed goes silent.
     { name: "ws", intervalSec: 30, run: () => ws.tick() },
     { name: "prune", intervalSec: 3600, run: async () => void (await store.pruneHistory(new Date(Date.now() - retentionDays * 86_400_000).toISOString(), new Date(Date.now() - scanDays * 86_400_000).toISOString())) },
-    scanner.def,
+    withLease(scanner.def, platformLease, PLATFORM_TICK_LEASE_MS),
     crawler.def,
     liqmap.def,
     outcomes.def,
     alerts.def,
-    movesAgent.def,
+    withLease(movesAgent.def, movesLease("moves-agent"), MOVES_CRON_LEASE_MS),
     // The in-process moves runs, stored as the hourly moves job stores them (026), so the serverless API reads the same.
-    { name: "moves-runs", intervalSec: 600, run: async () => void (await runMovesJob({ service: getMovesService(), store, now: Date.now, deadline: Date.now() + MOVES_JOB_BUDGET_MS })) },
-    // Daily inputs live in Postgres (candles, funding, observations): no database, no novelty loop.
-    ...(dbUrl ? [createNoveltyLoop({ store, notify: alerts.novel, nearMiss: scanner.nearMiss }).def] : []),
+    withLease(
+      { name: "moves-runs", intervalSec: 600, run: async () => void (await runMovesJob({ service: getMovesService(), store, now: Date.now, deadline: Date.now() + MOVES_JOB_BUDGET_MS })) },
+      movesLease("moves"),
+      MOVES_CRON_LEASE_MS,
+    ),
+    // Daily inputs live in Postgres (candles, funding, observations): no database, no novelty loop. A beat stops starting
+    // coins at its deadline, inside its lease, and the next beat (or POST /api/cron/novelty) resumes from stored progress.
+    ...(dbUrl ? [noveltyDef(createNoveltyLoop({ store, notify: alerts.novel, nearMiss: scanner.nearMiss }))] : []),
     // The Supabase pg_cron HTTP jobs the loops above do not cover (collect, backfill, extremes, lab, intel), in process.
     ...(process.env.CRON_IN_PROCESS === "1"
       ? [createCronLoop({ fetch: app.fetch, token: process.env.CRON_TOKEN?.trim() ?? "", intel: process.env.INTEL_ENABLED?.trim() !== "false" }).def]

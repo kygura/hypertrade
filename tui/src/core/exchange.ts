@@ -317,8 +317,14 @@ export function createExchange(config: Config, agentKey: string | null, opts: Ex
       const notional = Math.max(capNotionalUsd(t.size, limit ? t.entryPx : null, mark, config.slippage), t.notionalUsd ?? 0);
       if (!(notional <= config.maxNotionalUsd)) return `notional $${notional.toFixed(2)} exceeds HT_MAX_NOTIONAL_USD $${config.maxNotionalUsd}`;
       const long = t.side === "long";
+      // normalTpsl children wait for the entry to fill before they trigger, so a limit entry's stop
+      // and TP are checked against its limit (where it fills). The stop must also clear the mark:
+      // a limit through the mark fills there at once.
+      const ref = limit ? t.entryPx! : mark;
+      const refName = limit ? `limit entry ${fmtPx(ref)}` : `mark ${fmtPx(mark)}`;
       if (long ? !(t.stopPx < mark) : !(t.stopPx > mark)) return `stop ${fmtPx(t.stopPx)} is on the wrong side of the mark ${fmtPx(mark)}`;
-      if (t.tpPx != null && (long ? !(t.tpPx > mark) : !(t.tpPx < mark))) return `take-profit ${fmtPx(t.tpPx)} is on the wrong side of the mark ${fmtPx(mark)}`;
+      if (long ? !(t.stopPx < ref) : !(t.stopPx > ref)) return `stop ${fmtPx(t.stopPx)} is on the wrong side of the ${refName}`;
+      if (t.tpPx != null && (long ? !(t.tpPx > ref) : !(t.tpPx < ref))) return `take-profit ${fmtPx(t.tpPx)} is on the wrong side of the ${refName}`;
     }
     if (t.action.kind === "stop") {
       const long = t.side === "long";

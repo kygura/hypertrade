@@ -20,6 +20,7 @@ import {
   type StageStates,
 } from "./narrativeWatch.js";
 import { AUTO_RESEARCH_MARGIN_MS } from "./research.js";
+import type { IntelStore } from "./store.js";
 
 const NOW = new Date("2026-10-27T12:00:00Z");
 const ISO = NOW.toISOString();
@@ -269,6 +270,28 @@ class Provider implements LLMProvider {
   }
 }
 
+/** Another writer stores `other` in CONTRASTS_SETTING right after this run first touches it (between its read and its write). */
+function contrastRace(store: IntelStore, other: Record<string, unknown>) {
+  const get = store.getSetting.bind(store);
+  const merge = store.mergeSetting.bind(store);
+  let raced = false;
+  const race = async () => {
+    if (raced) return;
+    raced = true;
+    await merge(CONTRASTS_SETTING, other);
+  };
+  store.getSetting = (async (key: string) => {
+    const v = await get(key);
+    if (key === CONTRASTS_SETTING) await race();
+    return v;
+  }) as typeof store.getSetting;
+  store.mergeSetting = async (key, patch) => {
+    if (key === CONTRASTS_SETTING) await race();
+    return merge(key, patch);
+  };
+}
+
+
 describe("narrativeAutoContrast", () => {
   const AGAINST = flowOf({ alignment: "against" });
   const ENOUGH = CONTRAST_DEADLINE_MS + AUTO_RESEARCH_MARGIN_MS;
@@ -296,6 +319,16 @@ describe("narrativeAutoContrast", () => {
     expect(await store.getSetting<unknown>(AUTO_SETTING)).toEqual({ day: "2026-10-27T00:00:00.000Z", n: 1, ids: ["privacy"] });
     expect(await run(deps)).toMatchObject({ ran: 0, stopped: "none" });
     expect(provider.prompts).toHaveLength(1);
+  });
+
+  test("a contrast an operator stores for another narrative at the same time is kept", async () => {
+    const { deps, store } = setup({ provider: new Provider(), flows: [AGAINST] });
+    await store.setSetting(VIEWS_SETTING, { privacy: view("continuation") });
+    contrastRace(store, { ai: { id: "operator-run" } });
+    expect(await run(deps)).toMatchObject({ ran: 1, statuses: { done: 1 } });
+    const stored = (await store.getSetting<Record<string, { id: string }>>(CONTRASTS_SETTING))!;
+    expect(Object.keys(stored).sort()).toEqual(["ai", "privacy"]);
+    expect(stored.ai!.id).toBe("operator-run");
   });
 
   test("the same read the next day is stored again but not pinged again; a changed read is", async () => {

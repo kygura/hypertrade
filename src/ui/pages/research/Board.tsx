@@ -4,7 +4,7 @@ import { AsyncBody, Badge, Button, DialogShell, EmptyBlock, ErrorBlock, HowToRea
 import { LabTabs } from '../../components/lab/LabTabs'
 import { StudyVerdictBadge } from '../../components/lab/StudyVerdictBadge'
 import { rememberReturnPath, useApi } from '../../lib/api'
-import { fmtAge } from '../../lib/format'
+import { fmtAge, fmtSigned } from '../../lib/format'
 import { useNow, useQueryPatch } from '../../lib/hooks'
 import { usePoll, type PollState } from '../../lib/poll'
 import {
@@ -569,7 +569,7 @@ function RadarBody({ r, onNote }: { r: RadarResponse; onNote: () => void }) {
                   <td>{row.stance}</td>
                   <td className="text-right">{row.horizonDays}d</td>
                   <td className="text-right">{row.n}</td>
-                  <td className="text-right">{`${row.meanPct >= 0 ? '+' : '−'}${Math.abs(row.meanPct).toFixed(1)}%`}</td>
+                  <td className="text-right">{fmtSigned(row.meanPct, '%', 1)}</td>
                   <td className="text-right">
                     {row.hits}/{row.n}
                   </td>

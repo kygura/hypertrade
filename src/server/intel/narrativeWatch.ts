@@ -285,9 +285,9 @@ export async function narrativeAutoContrast(deps: NarrativeWatchDeps, o: { left(
       out.ran++;
       out.statuses[res.status]++;
       if (res.status !== "done") continue;
-      const stored = await contrastsOf(deps);
-      const before = stored[flow.id];
-      await deps.store.setSetting(CONTRASTS_SETTING, { ...stored, [flow.id]: res });
+      const before = (await contrastsOf(deps))[flow.id];
+      // A merge of this one id: an operator contrast stored at the same time is kept.
+      await deps.store.mergeSetting(CONTRASTS_SETTING, { [flow.id]: res });
       // The same read as last time is stored, not pinged again.
       if (before && before.favours === res.favours && before.view.agreement === res.view.agreement) continue;
       try {

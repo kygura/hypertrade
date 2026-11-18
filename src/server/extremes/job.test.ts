@@ -135,6 +135,40 @@ describe("runExtremesJob", () => {
     expect((await runExtremesJob(later.deps)).new).toBe(1);
   });
 
+  test("records are stored before anything is sent: an event whose store write fails is not sent, and no event is sent twice", async () => {
+    const coins = ["A", "B", "C"];
+    const store = await storeWith(coins);
+    const fire = Object.fromEntries(coins.map((c, i) => [c, [ev(c, 10 - i)]]));
+    const insert = store.insertExtremeEvent.bind(store);
+    store.insertExtremeEvent = async (r) => {
+      if (r.event.coin === "B") throw new Error("db down");
+      return insert(r);
+    };
+    const first = harness(store, { fire });
+    const r = await runExtremesJob(first.deps);
+    expect(first.sent.map((a) => a.title)).toEqual(["Extreme: A oi_flush", "Extreme: C oi_flush"]);
+    expect(r).toMatchObject({ fired: 3, new: 2, pushed: 2 });
+    expect((await store.latestExtreme("oi_flush|A|long"))!.delivery).toBe("pushed");
+    expect(await store.latestExtreme("oi_flush|B|long")).toBeNull();
+
+    // The store is back: B goes out once, A and C stay inside their cooldown.
+    store.insertExtremeEvent = insert;
+    const next = harness(store, { fire });
+    await runExtremesJob(next.deps);
+    expect(next.sent.map((a) => a.title)).toEqual(["Extreme: B oi_flush"]);
+  });
+
+  test("two overlapping runs: the stored record is the claim, so each event goes out once", async () => {
+    const store = await storeWith(["SOL", "ETH"]);
+    const fire = { SOL: [ev("SOL", 4)], ETH: [ev("ETH", 5)] };
+    const a = harness(store, { fire });
+    const b = harness(store, { fire });
+    const [ra, rb] = await Promise.all([runExtremesJob(a.deps), runExtremesJob(b.deps)]);
+    expect([...a.sent, ...b.sent].map((x) => x.title).sort()).toEqual(["Extreme: ETH oi_flush", "Extreme: SOL oi_flush"]);
+    expect(ra.new + rb.new).toBe(2);
+    expect(store.extremes.size).toBe(2);
+  });
+
   test("daily cap: at most EXTREMES_DAILY_CAP delivered per UTC day; the rest stored with delivery none and nothing sent", async () => {
     const coins = ["A", "B", "C", "D"];
     const store = await storeWith(coins);

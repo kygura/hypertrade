@@ -315,7 +315,7 @@ export const FeedResponseSchema = z.object({
   opportunities: z.array(FeedRowSchema),
   scanAgeSec: NonNeg.nullable(),
   /** PLATFORM_READY_TTL_MIN: a ready row expires this long after statusChangedAt. */
-  readyTtlMin: Pos.optional(),
+  readyTtlMin: NonNeg.optional(),
   /** EXTREMES_READY_TTL_H in minutes: the ready TTL of an extremes take (its scoreVersion is extremes-1) instead. */
   extremesReadyTtlMin: Pos.optional(),
 });
