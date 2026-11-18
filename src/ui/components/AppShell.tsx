@@ -7,7 +7,7 @@ import { isDbUnavailable } from '../lib/dbUnavailable'
 import { isTerminalPath } from './intel/TerminalTabs'
 import { isMarketPath } from './market/MarketTabs'
 import { isResearchPath } from './lab/LabTabs'
-import { ThemeSwitcher } from './ThemeSwitcher'
+import { ThemeCycle, ThemeSwitcher } from './ThemeSwitcher'
 // The drawer pulls in the analyst thread and composer: its own chunk, fetched on the first open.
 const AskDrawer = lazy(() => import('./ask/AskDrawer').then((m) => ({ default: m.AskDrawer })))
 
@@ -80,7 +80,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh flex flex-col">
       <header className="app-topbar sticky top-0 z-40 h-[var(--topbar-h)] flex items-center justify-between px-3 border-b border-border bg-topbar">
-        <Link to="/queue" className="app-wordmark flex items-center gap-1.5 text-sm uppercase font-semibold tracking-wider font-display">
+        <Link to="/queue" className="app-wordmark shrink-0 flex items-center gap-1.5 text-sm uppercase font-semibold tracking-wider font-display">
           HYPERTRADE
           <span className="app-wordmark-dot inline-block w-1.5 h-1.5 bg-accent" />
         </Link>
@@ -105,9 +105,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Button tier="ghost" aria-expanded={ask} onClick={() => setAsk((v) => !v)} title="ask the analyst">
             ASK
           </Button>
-          {/* Under 360px the bar holds the wordmark, ASK and LOGIN only; the theme choice persists from a wider screen. */}
-          <span className="max-[359px]:hidden">
+          {/* Phones get a one-button theme cycle (the segmented toggle needs 412px+ beside LOGOUT). Under 360px the
+              bar holds the wordmark, ASK and LOGIN/LOGOUT only; the theme choice persists from a wider screen. */}
+          <span className="hidden sm:inline-flex">
             <ThemeSwitcher />
+          </span>
+          <span className="sm:hidden max-[359px]:hidden">
+            <ThemeCycle />
           </span>
           <span className="hidden md:flex items-center gap-1.5" title={freshness.title ?? 'last collector run (hl.total_oi_usd)'}>
             <StatusDot status={freshness.status} />

@@ -231,7 +231,7 @@ export function CycleChart({
   return (
     <div className="flex flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 px-[var(--panel-pad)] py-1.5">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Segmented label="Timeframe" options={TF_OPTIONS} value={tf} onChange={onTfChange} />
           <Segmented label="Range" options={RANGE_OPTIONS} value={range} onChange={setRange} />
           <div className="seg seg--sm" role="group" aria-label="Layers">
@@ -253,7 +253,7 @@ export function CycleChart({
         <PhaseLegend />
       </div>
 
-      <div className="px-[var(--panel-pad)] pb-1 min-h-[16px] text-xs tabular text-text-secondary truncate">
+      <div className="px-[var(--panel-pad)] pb-1 min-h-[16px] text-xs tabular text-text-secondary md:truncate">
         {shown ? (
           <>
             {fmtDay(shown.t)} · close <span className="text-text-primary">{fmtUsdPx(shown.c)}</span>
