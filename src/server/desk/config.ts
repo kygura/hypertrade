@@ -77,12 +77,17 @@ export interface GovernorLimits {
   /** Max one coin's notional / equity. */
   maxCoinLeverage: number;
   maxPositions: number;
+  /** Hard floor: reward:risk under this blocks the entry. Between it and fullSizeRewardRisk the size fades linearly toward 0. */
   minRewardRisk: number;
+  /** Reward:risk at and above which the order gets its full risk. */
+  fullSizeRewardRisk: number;
   minStopPct: number;
   maxStopPct: number;
   /** Day loss (percent of equity) that blocks new entries until 00:00 UTC. */
   dailyLossLimitPct: number;
   minConfidence: Confidence;
+  /** Risk multiplier by the order's confidence (0..1), applied after the per-trade clip; an order without one gets 1. */
+  sizeByConfidence: Record<Confidence, number>;
   minNotionalUsd: number;
   /** Taker fee per side, fraction (HL base tier 0.045%). */
   takerFee: number;
@@ -153,11 +158,17 @@ export function loadDeskConfig(env: Env = process.env): DeskConfig {
       maxGrossLeverage: num(env, "DESK_MAX_GROSS_LEVERAGE", 2, 0.1, 10),
       maxCoinLeverage: num(env, "DESK_MAX_COIN_LEVERAGE", 1, 0.05, 5),
       maxPositions: num(env, "DESK_MAX_POSITIONS", 4, 1, 20),
-      minRewardRisk: num(env, "DESK_MIN_RR", 1.5, 0.5, 10),
+      minRewardRisk: num(env, "DESK_MIN_RR", 1.2, 0.5, 10),
+      fullSizeRewardRisk: Math.max(num(env, "DESK_MIN_RR", 1.2, 0.5, 10), num(env, "DESK_FULL_SIZE_RR", 2, 0.5, 10)),
       minStopPct: num(env, "DESK_MIN_STOP_PCT", 0.5, 0.05, 10),
       maxStopPct: num(env, "DESK_MAX_STOP_PCT", 15, 1, 50),
       dailyLossLimitPct: num(env, "DESK_DAILY_LOSS_PCT", 2, 0.1, 20),
       minConfidence: conf === "low" || conf === "high" ? conf : "medium",
+      sizeByConfidence: {
+        low: num(env, "DESK_SIZE_LOW_CONFIDENCE", 0.5, 0, 1),
+        medium: num(env, "DESK_SIZE_MEDIUM_CONFIDENCE", 1, 0, 1),
+        high: num(env, "DESK_SIZE_HIGH_CONFIDENCE", 1, 0, 1),
+      },
       minNotionalUsd: 10,
       takerFee: 0.00045,
     },
