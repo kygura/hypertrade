@@ -1,5 +1,5 @@
 import { confidenceAtLeast, type GovernorLimits } from "./config.js";
-import type { AccountState, ExitProposal, OperatorOrder, RiskOrder, Sizing, TradeProposal, Verdict } from "./types.js";
+import type { AccountState, Confidence, ExitProposal, OperatorOrder, RiskOrder, Sizing, TradeProposal, Verdict } from "./types.js";
 
 // The governor: deterministic risk rules between the agents and the book.
 // No model output reaches an order without passing here, and the governor
@@ -34,6 +34,18 @@ export function floorToDecimals(x: number, decimals: number): number {
 export function openRiskUsd(p: AccountState["positions"][number]): number {
   if (p.stopPx == null) return p.notionalUsd; // unprotected: the whole notional is at risk
   return Math.max(0, p.side === "long" ? (p.markPx - p.stopPx) * p.size : (p.stopPx - p.markPx) * p.size);
+}
+
+/**
+ * Soft sizing: the share of the requested risk an order gets, 0..1. Reward:risk fades the size linearly from 0 at the
+ * hard floor (minRewardRisk) to 1 at fullSizeRewardRisk, so a 1.98 against a 2.0 target costs ~2% of size, never the
+ * trade; confidence multiplies on top. Hard limits (per-trade, open risk, leverage, daily loss) still cap the result.
+ */
+export function sizeMultiplier(rr: number | null, confidence: Confidence | undefined, limits: Pick<GovernorLimits, "minRewardRisk" | "fullSizeRewardRisk" | "sizeByConfidence">): { rr: number; confidence: number } {
+  const span = limits.fullSizeRewardRisk - limits.minRewardRisk;
+  const rrMult = rr == null || span <= 0 ? 1 : Math.min(1, Math.max(0, (rr - limits.minRewardRisk) / span));
+  const confMult = confidence ? Math.min(1, Math.max(0, limits.sizeByConfidence[confidence] ?? 1)) : 1;
+  return { rr: rrMult, confidence: confMult };
 }
 
 /** A trade proposal: its proposal-only check (confidence), then every risk check. */
@@ -104,6 +116,12 @@ function assess(p: RiskOrder, ctx: GovernorContext, proposalReasons: string[]): 
     warnings.push(`risk ${riskPct}% clipped to the ${limits.maxRiskPct}% per-trade limit`);
     riskPct = limits.maxRiskPct;
   }
+  const mult = sizeMultiplier(rr, p.confidence, limits);
+  if (mult.rr < 1 && rr != null && rr >= limits.minRewardRisk) {
+    warnings.push(`size ${r2(mult.rr * 100)}% at reward:risk ${r2(rr)} (full size from ${limits.fullSizeRewardRisk})`);
+  }
+  if (mult.confidence < 1) warnings.push(`size ${r2(mult.confidence * 100)}% for ${p.confidence} confidence`);
+  riskPct *= mult.rr * mult.confidence;
   const openRisk = account.positions.reduce((a, x) => a + openRiskUsd(x), 0);
   const riskRoom = (limits.maxOpenRiskPct / 100) * equity - openRisk;
   let riskUsd = Math.min((riskPct / 100) * equity, Math.max(0, riskRoom));

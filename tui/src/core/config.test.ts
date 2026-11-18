@@ -25,7 +25,7 @@ describe("loadConfig", () => {
       maxNotionalUsd: 1000,
       slippage: 0.01,
       watch: ["BTC", "ETH", "SOL", "HYPE"],
-      limits: { maxRiskPct: 0.5, maxOpenRiskPct: 2, maxGrossLeverage: 5, maxCoinLeverage: 3, maxPositions: 4, minRewardRisk: 1.5 },
+      limits: { maxRiskPct: 0.5, maxOpenRiskPct: 2, maxGrossLeverage: 5, maxCoinLeverage: 3, maxPositions: 4, minRewardRisk: 1.2 },
       defaultLeverage: 3,
       lab: null,
       demo: false,

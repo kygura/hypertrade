@@ -150,7 +150,7 @@ function proposalTerms(limits: DeskStatus['limits'] | undefined): Term[] {
     ['LONG / SHORT / EXIT 50%', 'An entry and its direction, or an exit and the share of the position it closes.'],
     ['mark', 'Venue mark price when the governor last checked.'],
     ['stop (x%)', 'Stop price, and its distance from the mark in percent.'],
-    ['R:R', `Reward to risk at the current mark: distance to target divided by distance to stop. Entries under ${lim(limits, 'minRewardRisk')} are blocked. n/a means no target was given.`],
+    ['R:R', `Reward to risk at the current mark: distance to target divided by distance to stop. Entries under ${lim(limits, 'minRewardRisk')} are blocked; from there the size grows linearly to full at ${lim(limits, 'fullSizeRewardRisk')}. n/a means no target was given.`],
     ['risk', 'USD lost if the stop fills at its price: notional times stop distance. Fees and slippage are extra.'],
     ['size', 'Order size in coins, with its USD notional. The governor sets it from the risk and the stop distance, then caps it by the leverage limits.'],
     ['confidence', `The proposing agent's own rating: low, medium or high. Entries below ${lim(limits, 'minConfidence')} are blocked.`],

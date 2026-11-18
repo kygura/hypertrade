@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { loadDeskConfig } from "./config.js";
-import { evaluateExit, evaluateOpen, evaluateRisk, floorToDecimals, operatorRiskOrder, type GovernorContext } from "./governor.js";
+import { evaluateExit, evaluateOpen, evaluateRisk, floorToDecimals, operatorRiskOrder, sizeMultiplier, type GovernorContext } from "./governor.js";
 import type { AccountState, OperatorOrder, RiskOrder, TradeProposal } from "./types.js";
 
 const limits = loadDeskConfig({}).limits;
@@ -68,6 +68,36 @@ describe("evaluateOpen", () => {
     expect(v.reasons.join(" | ")).toContain(reason);
   });
 
+  test("reward:risk under full size scales the risk down instead of blocking", () => {
+    // stop 3800 (5%), target 4396 → rr 1.98; floor 1.2, full 2 → 97.5% of 50 USD
+    const near = evaluateOpen({ ...long, target: 4396 }, gctx());
+    expect(near.approved).toBe(true);
+    expect(near.sizing!.riskUsd).toBeCloseTo(48.75, 0);
+    expect(near.warnings.join()).toContain("reward:risk 1.98");
+    // rr 1.5 → 37.5%
+    expect(evaluateOpen({ ...long, target: 4300 }, gctx()).sizing!.riskUsd).toBeCloseTo(18.75, 0);
+    // under the hard floor still blocks
+    expect(evaluateOpen({ ...long, target: 4200 }, gctx()).approved).toBe(false);
+  });
+
+  test("confidence multiplies size; hard caps still bind", () => {
+    const lim = { ...limits, minConfidence: "low" as const };
+    const low = evaluateOpen({ ...long, confidence: "low" }, gctx({ limits: lim }));
+    expect(low.approved).toBe(true);
+    expect(low.sizing!.riskUsd).toBe(25);
+    expect(low.warnings.join()).toContain("low confidence");
+    expect(evaluateOpen({ ...long, riskPct: 2, confidence: "high" }, gctx()).sizing!.riskUsd).toBe(50);
+  });
+
+  test("sizeMultiplier is continuous across the full-size line", () => {
+    const m = (rr: number | null) => sizeMultiplier(rr, undefined, limits).rr;
+    expect(m(1.2)).toBe(0);
+    expect(m(1.98)).toBeCloseTo(0.975, 3);
+    expect(m(2)).toBe(1);
+    expect(m(5)).toBe(1);
+    expect(m(null)).toBe(1);
+  });
+
   test("blocks under the kill switch, after the day-loss limit, and for unknown coins", () => {
     expect(evaluateOpen(long, gctx({ killSwitch: true })).reasons.join()).toContain("kill switch");
     expect(evaluateOpen(long, gctx({ account: account({ dayPnlUsd: -250 }) })).reasons.join()).toContain("day loss");
@@ -117,6 +147,36 @@ describe("evaluateRisk", () => {
     expect(v.approved).toBe(true);
     expect(v.warnings).toContain("no target: reward:risk not checked");
     expect(v.sizing).toMatchObject({ size: 0.25, notionalUsd: 1000, riskUsd: 50, rr: null });
+  });
+
+  test("reward:risk under full size scales the risk down instead of blocking", () => {
+    // stop 3800 (5%), target 4396 → rr 1.98; floor 1.2, full 2 → 97.5% of 50 USD
+    const near = evaluateOpen({ ...long, target: 4396 }, gctx());
+    expect(near.approved).toBe(true);
+    expect(near.sizing!.riskUsd).toBeCloseTo(48.75, 0);
+    expect(near.warnings.join()).toContain("reward:risk 1.98");
+    // rr 1.5 → 37.5%
+    expect(evaluateOpen({ ...long, target: 4300 }, gctx()).sizing!.riskUsd).toBeCloseTo(18.75, 0);
+    // under the hard floor still blocks
+    expect(evaluateOpen({ ...long, target: 4200 }, gctx()).approved).toBe(false);
+  });
+
+  test("confidence multiplies size; hard caps still bind", () => {
+    const lim = { ...limits, minConfidence: "low" as const };
+    const low = evaluateOpen({ ...long, confidence: "low" }, gctx({ limits: lim }));
+    expect(low.approved).toBe(true);
+    expect(low.sizing!.riskUsd).toBe(25);
+    expect(low.warnings.join()).toContain("low confidence");
+    expect(evaluateOpen({ ...long, riskPct: 2, confidence: "high" }, gctx()).sizing!.riskUsd).toBe(50);
+  });
+
+  test("sizeMultiplier is continuous across the full-size line", () => {
+    const m = (rr: number | null) => sizeMultiplier(rr, undefined, limits).rr;
+    expect(m(1.2)).toBe(0);
+    expect(m(1.98)).toBeCloseTo(0.975, 3);
+    expect(m(2)).toBe(1);
+    expect(m(5)).toBe(1);
+    expect(m(null)).toBe(1);
   });
 
   test("blocks under the kill switch and for a stop on the wrong side", () => {
