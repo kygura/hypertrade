@@ -58,7 +58,7 @@ export function DialogShell({
         role="dialog"
         aria-modal="true"
         aria-labelledby={id}
-        className={`panel w-full outline-none ${className}`}
+        className={`panel w-full max-h-full overflow-y-auto outline-none ${className}`}
         style={{ boxShadow: 'var(--shadow-overlay)' }}
       >
         <div className="panel-header">
@@ -66,7 +66,7 @@ export function DialogShell({
             {title}
           </span>
         </div>
-        <div className="p-3 flex flex-col gap-3">{children}</div>
+        <div className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-3 flex flex-col gap-3">{children}</div>
       </div>
     </div>
   )

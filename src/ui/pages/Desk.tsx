@@ -213,7 +213,7 @@ function HeaderStrip({ status, portfolio, onChange }: { status: DeskStatus | nul
         <Stat label="DAY PNL" title="change in equity since 00:00 UTC, realized plus unrealized" value={desk ? fmtUsd(desk.dayPnlUsd) : '—'} tone={desk ? (desk.dayPnlUsd >= 0 ? 'text-green' : 'text-red-text') : undefined} />
         <Stat label="POSITIONS" value={desk ? String(desk.positions.length) : '—'} />
         <Stat label="MODEL" title="model running the portfolio manager / the specialists" value={status?.model ? `${status.model.pm}${status.model.scouts !== status.model.pm ? ` / ${status.model.scouts}` : ''}` : 'not configured'} />
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex flex-wrap items-center gap-2 ml-auto min-w-0">
           {status && (
             <Segmented
               label="approval"
@@ -276,7 +276,7 @@ function ReviewIntervalControl({ status, onChange }: { status: DeskStatus | null
   }
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
       <Segmented
         label="scheduled review interval"
         size="sm"
@@ -680,20 +680,20 @@ const BOOK_COLUMNS: Column<DeskPosition>[] = [
     label: 'COIN',
     priority: 1,
     render: (p) => (
-      <span className={p.side === 'long' ? 'text-green' : 'text-red-text'}>
+      <span className={`whitespace-nowrap ${p.side === 'long' ? 'text-green' : 'text-red-text'}`}>
         {p.side === 'long' ? '▲' : '▼'} <CoinLink coin={p.coin} />
       </span>
     ),
   },
-  { key: 'size', label: 'SIZE', priority: 1, align: 'right', render: (p) => p.size },
-  { key: 'entry', label: 'ENTRY', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.entryPx)}</span> },
+  { key: 'size', label: 'SIZE', priority: 3, align: 'right', render: (p) => p.size },
+  { key: 'entry', label: 'ENTRY', priority: 3, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.entryPx)}</span> },
   { key: 'stop', label: 'STOP', priority: 1, align: 'right', render: (p) => <span className="text-text-muted">{fmtPx(p.stopPx)}</span> },
   {
     key: 'upnl',
     label: <span title="unrealized profit or loss at the current mark, in USD">UPNL</span>,
     priority: 1,
     align: 'right',
-    render: (p) => <span className={p.unrealizedPnl >= 0 ? 'text-green' : 'text-red-text'}>{fmtUsd(p.unrealizedPnl)}</span>,
+    render: (p) => <span className={`whitespace-nowrap ${p.unrealizedPnl >= 0 ? 'text-green' : 'text-red-text'}`}>{fmtUsd(p.unrealizedPnl)}</span>,
   },
 ]
 
@@ -716,7 +716,7 @@ function PositionsPanel({ portfolio, loading, onChange }: { portfolio: Portfolio
     priority: 1,
     align: 'right',
     render: (p) => (
-      <Button tier="ghost" className="!h-5 !px-1.5" onClick={() => setClosing(p.coin)}>
+      <Button tier="ghost" className="!h-[var(--control-sm)] !px-1.5" onClick={() => setClosing(p.coin)}>
         CLOSE
       </Button>
     ),

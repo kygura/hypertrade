@@ -21,7 +21,8 @@ export function ProbBar({
   return (
     <div className="flex items-center gap-2 min-h-[var(--tap-min)] md:min-h-0" title={hint}>
       <span
-        className={`w-[11ch] md:w-[14ch] flex-shrink-0 truncate text-sm ${chosen ? 'text-text-primary' : 'text-text-muted'}`}
+        title={label}
+        className={`w-[11ch] md:w-[14ch] flex-shrink-0 break-words leading-tight md:truncate md:leading-normal text-sm ${chosen ? 'text-text-primary' : 'text-text-muted'}`}
       >
         {chosen ? '▸ ' : '  '}
         {label}

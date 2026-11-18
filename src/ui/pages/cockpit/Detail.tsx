@@ -367,7 +367,7 @@ function SnoozeMenu({ onSnooze, onClose }: { onSnooze: (minutes: number) => void
     return () => opener?.focus?.()
   }, [])
   return (
-    <div role="menu" aria-label="snooze for" className="panel absolute z-20 left-0 top-full mt-1 flex flex-col min-w-[120px]" style={{ boxShadow: 'var(--shadow-overlay)' }} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && onClose()}>
+    <div role="menu" aria-label="snooze for" className="panel absolute z-20 left-0 bottom-full mb-1 lg:bottom-auto lg:top-full lg:mb-0 lg:mt-1 flex flex-col min-w-[120px]" style={{ boxShadow: 'var(--shadow-overlay)' }} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && onClose()}>
       {SNOOZES.map((s, i) => (
         <button
           key={s.minutes}

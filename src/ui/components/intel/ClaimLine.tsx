@@ -41,15 +41,15 @@ export function ClaimLine({ claim, as: Tag = 'div' }: { claim: LineClaim; as?: '
       {observed ? (
         <span className="min-w-0 flex-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
           <span className="basis-full md:basis-auto min-w-0 break-words text-text-primary">{claim.text}</span>
-          <span className="inline-flex items-center gap-1 whitespace-nowrap">
+          <span className="inline-flex items-center gap-1 min-w-0 max-w-full">
             <SourceLink source={claim.source} />
             {claim.ts && (
-              <>
+              <span className="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap">
                 <span aria-hidden="true" className="text-xs text-text-secondary">
                   ·
                 </span>
                 <ClaimAge ts={claim.ts} />
-              </>
+              </span>
             )}
           </span>
         </span>

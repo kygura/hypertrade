@@ -52,18 +52,18 @@ export function AskDrawerView(p: AskDrawerViewProps) {
         <div className="panel-header gap-2">
           <span className="panel-title">ASK</span>
           <span className="flex-1" />
-          <Link to="/analyst" onClick={p.onClose} className="text-xs uppercase tracking-wider text-text-secondary hover:text-text-primary">
+          <Link to="/analyst" onClick={p.onClose} className="inline-flex items-center min-h-[var(--tap-min)] text-xs uppercase tracking-wider text-text-secondary hover:text-text-primary">
             OPEN FULL PAGE →
           </Link>
-          <button type="button" onClick={p.onClose} aria-label="Close" className="text-text-secondary hover:text-text-primary px-1">
+          <button type="button" onClick={p.onClose} aria-label="Close" className="inline-flex items-center justify-center min-w-[var(--tap-min)] min-h-[var(--tap-min)] text-text-secondary hover:text-text-primary">
             ✕
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border-subtle">
           {p.coin && (
-            <span className="inline-flex items-center gap-1 h-[22px] px-2 border border-border bg-elevated text-sm text-text-primary" data-context-chip>
+            <span className="inline-flex items-center gap-1 h-[var(--control-sm)] pl-2 pr-0 border border-border bg-elevated text-sm text-text-primary" data-context-chip>
               <span className="text-text-secondary">ABOUT</span> {p.coin}
-              <button type="button" onClick={p.onDropChip} aria-label={`Drop ${p.coin} context`} className="text-text-secondary hover:text-text-primary ml-1">
+              <button type="button" onClick={p.onDropChip} aria-label={`Drop ${p.coin} context`} className="text-text-secondary hover:text-text-primary self-stretch px-2">
                 ✕
               </button>
             </span>

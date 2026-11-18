@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { AsyncBody, Badge, DataTable, EmptyBlock, ErrorBlock, HowToRead, OfflineBlock, Panel, PanelHeader, Segmented, SkeletonRows, StaleStrip, type Column, type Term } from '../../components'
+import { AsyncBody, Badge, DataTable, EmptyBlock, ErrorBlock, HowToRead, OfflineBlock, Panel, Segmented, SkeletonRows, StaleStrip, type Column, type Term } from '../../components'
 import { fmtAge, fmtDur, fmtPx, fmtUsdCompact } from '../../lib/format'
 import { platform, PLATFORM_POLL } from '../../lib/platformApi'
 import { usePoll, type PollState } from '../../lib/poll'
@@ -104,26 +104,29 @@ export function LiqMapView({
   const partial = data ? ['partial', 'none'].includes(coverageTreatment(data.coverage.ratio)) : false
   return (
     <Panel className="min-w-0">
-      <PanelHeader title={`LIQUIDATIONS · ${coin}`}>
-        <select aria-label="liquidation coin" value={coin} onChange={(e) => onCoin(e.target.value)} className="text-xs min-h-[var(--tap-min)] md:min-h-0">
-          {(coins.includes(coin) ? coins : [coin, ...coins]).map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <Segmented<HistWindow>
-          label="history window"
-          size="sm"
-          value={window}
-          onChange={onWindow}
-          options={[
-            { value: 6, label: '6H' },
-            { value: 24, label: '24H' },
-            { value: 72, label: '72H' },
-          ]}
-        />
-      </PanelHeader>
+      <div className="panel-header flex-wrap gap-x-2 gap-y-1">
+        <span className="panel-title min-w-0 break-words">{`LIQUIDATIONS · ${coin}`}</span>
+        <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
+          <select aria-label="liquidation coin" value={coin} onChange={(e) => onCoin(e.target.value)} className="text-xs min-h-[var(--tap-min)] md:min-h-0">
+            {(coins.includes(coin) ? coins : [coin, ...coins]).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <Segmented<HistWindow>
+            label="history window"
+            size="sm"
+            value={window}
+            onChange={onWindow}
+            options={[
+              { value: 6, label: '6H' },
+              { value: 24, label: '24H' },
+              { value: 72, label: '72H' },
+            ]}
+          />
+        </div>
+      </div>
       <HowToRead className="px-3 py-2 border-b border-border-subtle" terms={MAP_TERMS}>
         Prices where tracked positions on {coin} would be force-closed: longs below the current price, shorts above. It only sees addresses
         the crawler has found, so read the coverage line before the clusters.

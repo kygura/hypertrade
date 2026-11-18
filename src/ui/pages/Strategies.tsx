@@ -51,12 +51,16 @@ export function Strategies() {
       label: 'ID',
       priority: 1,
       render: (s) => (
-        <div className="flex flex-col gap-0.5 py-1 min-w-0">
-          <span className="text-text-primary">{s.config.id}</span>
-          <span className="text-xs text-text-secondary truncate">
+        <div className="flex flex-col gap-0.5 py-1 min-w-0 max-w-[18ch] sm:max-w-[40ch] lg:max-w-none">
+          <span className="text-text-primary break-words">{s.config.id}</span>
+          <span className="text-xs text-text-secondary truncate" title={s.manifest.name}>
             {s.manifest.name} · v{s.manifest.version}
           </span>
-          {s.last_error && <span className="text-xs text-red-text truncate">{s.last_error}</span>}
+          {s.last_error && (
+            <span className="text-xs text-red-text truncate" title={s.last_error}>
+              {s.last_error}
+            </span>
+          )}
         </div>
       ),
     },

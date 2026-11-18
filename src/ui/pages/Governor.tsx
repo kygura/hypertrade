@@ -47,7 +47,7 @@ const POSITION_COLUMNS: Column<VenueStatus['positions'][number]>[] = [
     align: 'right',
     render: (p) => (
       <span className={p.size_usd < 0 ? 'text-red-text' : 'text-green'}>
-        {fmtUsdSigned(p.size_usd)} {p.size_usd < 0 ? 'SHORT' : 'LONG'}
+        <span className="whitespace-nowrap">{fmtUsdSigned(p.size_usd)}</span> {p.size_usd < 0 ? 'SHORT' : 'LONG'}
       </span>
     ),
   },
@@ -59,7 +59,7 @@ const POSITION_COLUMNS: Column<VenueStatus['positions'][number]>[] = [
     priority: 1,
     align: 'right',
     render: (p) => (
-      <span className={p.upnl_usd == null ? 'text-text-secondary' : p.upnl_usd < 0 ? 'text-red-text' : p.upnl_usd > 0 ? 'text-green' : 'text-text-muted'}>
+      <span className={`whitespace-nowrap ${p.upnl_usd == null ? 'text-text-secondary' : p.upnl_usd < 0 ? 'text-red-text' : p.upnl_usd > 0 ? 'text-green' : 'text-text-muted'}`}>
         {fmtUsdSigned(p.upnl_usd)}
       </span>
     ),

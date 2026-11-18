@@ -312,6 +312,9 @@ body {
 /* Wide-content escape hatch: any table wider than its panel scrolls inside
    this wrapper, never the page (§4.4). */
 .table-scroll {
+  /* Containing block for absolutely positioned descendants (sr-only text),
+     so they cannot leak past the scroller and widen the page. */
+  position: relative;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }

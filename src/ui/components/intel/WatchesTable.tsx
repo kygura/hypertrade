@@ -47,7 +47,7 @@ export function WatchesTable({ watches, selectedId, onSelect }: { watches: Watch
       priority: 1,
       render: (w) => (
         <div className="flex flex-col min-w-0 py-1">
-          <span className="text-text-primary truncate max-w-[22ch] md:max-w-[32ch]" title={w.target}>
+          <span className="text-text-primary truncate max-w-[10ch] sm:max-w-[22ch] md:max-w-[32ch]" title={w.target}>
             {w.label || shortTarget(w.kind, w.target)}
           </span>
           {w.error && <span className="hidden lg:block text-xs text-red-text break-words">{w.error}</span>}
