@@ -361,10 +361,17 @@ const SNOOZES = [
 
 function SnoozeMenu({ onSnooze, onClose }: { onSnooze: (minutes: number) => void; onClose: () => void }) {
   const first = useRef<HTMLButtonElement>(null)
+  // The opener is read at first render, before focus moves into the menu.
+  const opener = useRef(typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null))
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null
-    first.current?.focus()
-    return () => opener?.focus?.()
+    const item = first.current
+    item?.focus()
+    // Return focus only once the menu is gone. StrictMode re-runs this effect
+    // with the menu still mounted; refocusing the opener then blurred the menu
+    // and its onBlur closed it straight after a click.
+    return () => {
+      if (!item?.isConnected) opener.current?.focus?.()
+    }
   }, [])
   return (
     <div role="menu" aria-label="snooze for" className="panel absolute z-20 left-0 bottom-full mb-1 lg:bottom-auto lg:top-full lg:mb-0 lg:mt-1 flex flex-col min-w-[120px]" style={{ boxShadow: 'var(--shadow-overlay)' }} onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && onClose()}>

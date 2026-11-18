@@ -16,7 +16,7 @@ export function HowToRead({ children, terms, className = '' }: { children: React
       <p className="m-0 max-w-[90ch]">{children}</p>
       {terms && terms.length > 0 && (
         <details className="mt-1 max-w-[90ch]">
-          <summary className="cursor-pointer select-none text-text-secondary hover:text-text-primary w-fit">What the terms mean</summary>
+          <summary className="cursor-pointer select-none text-text-secondary hover:text-text-primary w-fit pointer-coarse:py-3 pointer-coarse:-my-3">What the terms mean</summary>
           <dl className="mt-2 mb-0 grid grid-cols-1 sm:grid-cols-[max-content_1fr] gap-x-4 gap-y-1">
             {terms.map(([term, meaning]) => (
               <div key={term} className="contents">

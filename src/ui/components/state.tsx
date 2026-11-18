@@ -87,7 +87,8 @@ export function ErrorBlock({ message, onRetry }: { message: string; onRetry?: ()
       role="alert"
       className="flex items-center justify-between gap-3 px-3 py-2 text-md text-red-text bg-red-bg"
     >
-      <span className="text-left">{message}</span>
+      {/* Server strings can hold unbroken tokens (URLs, ids); let them break, never clip. */}
+      <span className="text-left min-w-0 [overflow-wrap:anywhere]">{message}</span>
       {onRetry && (
         <Button tier="ghost" onClick={onRetry} className="flex-shrink-0">
           RETRY
