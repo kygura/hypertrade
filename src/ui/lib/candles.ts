@@ -129,7 +129,7 @@ export function useCandlePages(coin: string, tf: Timeframe) {
       .catch(() => {})
   }, [coin, tf, key])
 
-  /** Folds a streamed candle in; returns true when it opened a new bar. */
+  /** Folds a streamed candle into the last bar, or appends it as a new bar. */
   const applyLive = useCallback((bar: Pick<ChartBar, 't' | 'o' | 'h' | 'l' | 'c' | 'v'>) => {
     setState((s) => {
       const last = s.bars[s.bars.length - 1]

@@ -5,10 +5,10 @@
 // prod never had, so every fred.* series stayed empty). The CSV carries history, so
 // the first run backfills FRED_HISTORY_DAYS and later runs re-read a short window,
 // at most once per FRED_MIN_INTERVAL_HOURS (FRED publishes once a day).
-import { lastCollectorFetch, ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db.js";
+import { lastCollectorFetch, type Observation, type SeriesDef } from "../db.js";
 import { mapLimit } from "../lab/util.js";
 import { errDetail, fetchFred, type Point } from "../radar/macro.js";
-import type { CollectorResult } from "./types.js";
+import { collectorDb, type CollectorDbDeps, type CollectorResult } from "./types.js";
 
 export const FRED_SERIES = [
   "WALCL",
@@ -85,14 +85,11 @@ export function deriveHistory(points: Partial<Record<FredSeriesId, Point[]>>): R
 }
 
 /** db.ts calls, injectable so tests never need a live DATABASE_URL. `lastFetch` is the latest real (non-skipped) run. */
-export type FredDbDeps = {
-  ensureSeries: typeof ensureSeries;
-  upsertObservations: typeof upsertObservations;
-  recordCollectorRun: typeof recordCollectorRun;
+export type FredDbDeps = CollectorDbDeps & {
   lastFetch: () => Promise<Date | null>;
   now: () => number;
 };
-export const defaultFredDeps: FredDbDeps = { ensureSeries, upsertObservations, recordCollectorRun, lastFetch: () => lastCollectorFetch(COLLECTOR), now: () => Date.now() };
+export const defaultFredDeps: FredDbDeps = { ...collectorDb, lastFetch: () => lastCollectorFetch(COLLECTOR), now: () => Date.now() };
 
 export async function collectFred(fetchFn: typeof fetch = fetch, deps: FredDbDeps = defaultFredDeps): Promise<CollectorResult> {
   const now = new Date(deps.now());

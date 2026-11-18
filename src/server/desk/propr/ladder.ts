@@ -10,7 +10,7 @@ import { ladderId } from "./ids.js";
 // planOrder, ladderRequests), with one change: the governor has already sized the order, so the ladder never exceeds
 // the governor's risk or its notional. Spreading the same notional over better prices only lowers the risk.
 
-export interface Rung {
+interface Rung {
   px: number;
   qty: number;
   market: boolean;
@@ -41,7 +41,7 @@ export function ladderEdge(side: "long" | "short", entry: number, stop: number, 
 }
 
 /** Rung prices from the entry to the edge, evenly spaced, rounded to Hyperliquid's price rules. */
-export function ladderPrices(entry: number, edge: number, n: number, szDecimals: number): number[] {
+function ladderPrices(entry: number, edge: number, n: number, szDecimals: number): number[] {
   if (n <= 1 || entry === edge) return [entry];
   const out: number[] = [];
   for (let i = 0; i < n; i++) {
@@ -51,7 +51,7 @@ export function ladderPrices(entry: number, edge: number, n: number, szDecimals:
   return out;
 }
 
-export const rungsFor = (cfg: ProprVenueConfig["ladder"], coin: string) => cfg.rungsByCoin[coin] ?? cfg.rungs;
+const rungsFor = (cfg: ProprVenueConfig["ladder"], coin: string) => cfg.rungsByCoin[coin] ?? cfg.rungs;
 
 /** Propr's rulebook: up to 10x on BTC, ETH and SOL, 2x on other crypto perps. PROPR_LEVERAGE_BY_COIN overrides a coin. */
 const MAJORS = new Set(["BTC", "ETH", "SOL"]);
@@ -111,11 +111,11 @@ export function planLadder(order: RiskOrder, sizing: Sizing, szDecimals: number,
   return { plan: { coin: order.coin, side: order.side, stop, target, rungs, qty, notionalUsd: r2(notionalUsd), riskUsd: r2(riskUsd), avgEntry: roundPerpPx(avgEntry, szDecimals) }, reasons: [] };
 }
 
-export const dailyFloor = (s: ProprSnapshot, f: ProprVenueConfig["firm"]) => s.dayStartBalance * (1 - f.dailyLossPct / 100);
-export const drawdownFloor = (s: ProprSnapshot, f: ProprVenueConfig["firm"]) => s.startingBalance * (1 - f.maxDrawdownPct / 100);
+const dailyFloor = (s: ProprSnapshot, f: ProprVenueConfig["firm"]) => s.dayStartBalance * (1 - f.dailyLossPct / 100);
+const drawdownFloor = (s: ProprSnapshot, f: ProprVenueConfig["firm"]) => s.startingBalance * (1 - f.maxDrawdownPct / 100);
 
 /** What every open position can still lose at its stop (an unprotected one blocks trading in firmReasons). */
-export function openStopRisk(s: ProprSnapshot): number {
+function openStopRisk(s: ProprSnapshot): number {
   return s.positions.reduce((a, p) => a + (p.stop == null ? 0 : Math.max(0, p.side === "long" ? (p.mark - p.stop) * p.qty : (p.stop - p.mark) * p.qty)), 0);
 }
 

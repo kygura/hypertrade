@@ -38,7 +38,7 @@ let lastActive = 0
  * Past this the query fails with QueryTimeoutError and the client is dropped,
  * so the next query opens a fresh connection.
  */
-export const DEFAULT_QUERY_TIMEOUT_MS = 30_000
+const DEFAULT_QUERY_TIMEOUT_MS = 30_000
 /** Matches postgres.js idle_timeout below (s → ms). */
 const IDLE_MS = 20_000
 /**
@@ -61,7 +61,7 @@ const queryTimeoutMs = () => Number(process.env.DB_QUERY_TIMEOUT_MS) || DEFAULT_
  * (no advisory locks, no SET), so a few connections are safe behind the pooler.
  * Six, because one page load fans out: the queue alone starts eight reads at once.
  */
-export const DEFAULT_POOL_MAX = 6
+const DEFAULT_POOL_MAX = 6
 const poolMax = () => Math.max(1, Math.floor(Number(process.env.DB_POOL_MAX)) || DEFAULT_POOL_MAX)
 
 /**
@@ -610,7 +610,7 @@ export async function fundingCoverage(coin: string): Promise<{ min: Date; max: D
 
 // -------------------------------------------------------------- branches
 
-export type BranchListRow = Branch & { result: unknown }
+type BranchListRow = Branch & { result: unknown }
 
 export async function listBranches(): Promise<BranchListRow[]> {
   const rows = await sql()<any[]>`

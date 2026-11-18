@@ -56,25 +56,63 @@ export function pollInitial<T = never>(enabled: boolean, cacheKey?: string): Omi
   return { data: null, loading: enabled, error: null, offline: null, fetchedAt: null }
 }
 
+/**
+ * Single-flight gate for `load`. A plain start while a load is in flight is a
+ * no-op (interval ticks). A forced start (refetch after a write) marks the
+ * in-flight result stale and queues exactly one more load, run when `end` says so.
+ */
+export function makeLoadGate(seq = makeSequencer()) {
+  let inflight: number | null = null
+  let queued = false
+  return {
+    seq,
+    start(force = false): number | null {
+      if (inflight != null) {
+        if (force) {
+          seq.next()
+          queued = true
+        }
+        return null
+      }
+      inflight = seq.next()
+      return inflight
+    },
+    /** Settle a load. True when a queued refetch should run now. */
+    end(ticket: number): boolean {
+      if (inflight !== ticket) return false
+      inflight = null
+      const q = queued
+      queued = false
+      return q
+    },
+    /** New deps or unmount: drop the in-flight result and any queued load. */
+    reset() {
+      seq.next()
+      inflight = null
+      queued = false
+    },
+  }
+}
+
 const isNetworkError = (err: unknown) => err instanceof NetworkError
 
 export function usePoll<T>(fetcher: () => Promise<T>, deps: unknown[], opts: PollOptions = {}): PollState<T> {
   const { intervalMs = null, enabled = true, isOffline = isNetworkError, offlineFallback = 'api unreachable', cacheKey } = opts
   const [state, setState] = useState<Omit<PollState<T>, 'refetch' | 'setData'>>(() => pollInitial<T>(enabled, cacheKey))
-  const seq = useRef(makeSequencer())
+  const gate = useRef(makeLoadGate())
+  const seq = { current: gate.current.seq }
   const fetcherRef = useRef(fetcher)
   fetcherRef.current = fetcher
   const isOfflineRef = useRef(isOffline)
   isOfflineRef.current = isOffline
-  const inflight = useRef<number | null>(null)
   const lastOk = useRef<number | null>(null)
   const cacheKeyRef = useRef(cacheKey)
   cacheKeyRef.current = cacheKey
 
-  const load = useCallback(async () => {
-    if (!enabled || inflight.current != null) return
-    const ticket = seq.current.next()
-    inflight.current = ticket
+  const load = useCallback(async (force = false) => {
+    if (!enabled) return
+    const ticket = gate.current.start(force)
+    if (ticket == null) return
     try {
       const data = await fetcherRef.current()
       if (!seq.current.isCurrent(ticket)) return
@@ -92,7 +130,7 @@ export function usePoll<T>(fetcher: () => Promise<T>, deps: unknown[], opts: Pol
         offline: off ? errorMessage(err, offlineFallback) : null,
       }))
     } finally {
-      if (inflight.current === ticket) inflight.current = null
+      if (gate.current.end(ticket)) void load(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, offlineFallback, ...deps])
@@ -100,8 +138,7 @@ export function usePoll<T>(fetcher: () => Promise<T>, deps: unknown[], opts: Pol
   // New key/deps: drop the old response and everything it produced. Keyed on the
   // caller's deps only, so flipping `enabled` keeps the data (no skeleton flash).
   useEffect(() => {
-    seq.current.next()
-    inflight.current = null
+    gate.current.reset()
     lastOk.current = null
     setState(pollInitial<T>(enabled, cacheKeyRef.current))
   }, deps) // eslint-disable-line react-hooks/exhaustive-deps
@@ -135,9 +172,12 @@ export function usePoll<T>(fetcher: () => Promise<T>, deps: unknown[], opts: Pol
     }
   }, [load, enabled, intervalMs])
 
+  // Unmounted callers never poll: drop the in-flight result and any queued refetch.
+  useEffect(() => () => gate.current.reset(), [])
+
   const refetch = useCallback(() => {
     setState((s) => ({ ...s, loading: s.data == null, error: null, offline: null }))
-    void load()
+    void load(true)
   }, [load])
 
   const setData = useCallback((data: T) => {

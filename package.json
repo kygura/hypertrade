@@ -23,6 +23,7 @@
     "signals:scan": "bun run scripts/signal-defs.ts scan",
     "signals:study": "bun run scripts/signal-defs.ts study",
     "signals:replay": "bun run scripts/signals-replay.ts",
+    "seed:snapshots": "bun run scripts/seed.ts",
     "setups:export": "bun run scripts/setups-export.ts",
     "review:postmortem": "bun run scripts/review.ts postmortem",
     "review:journal": "bun run scripts/review.ts journal",

@@ -1,4 +1,5 @@
 // Normal distribution helpers and the deflated Sharpe ratio (docs/LAB.md §7).
+import { mean } from "../../../shared/signalMath.js";
 
 /** Standard normal CDF (Abramowitz & Stegun 7.1.26 via erf; |error| < 1.5e-7). */
 export function normCdf(x: number): number {
@@ -58,9 +59,7 @@ export function deflatedSharpe(sr: number, n: number, skew: number, kurt: number
 export function moments(x: ArrayLike<number>): { skew: number; kurt: number } {
   const n = x.length;
   if (n < 4) return { skew: 0, kurt: 3 };
-  let sum = 0;
-  for (let i = 0; i < n; i++) sum += x[i]!;
-  const m = sum / n;
+  const m = mean(x);
   let m2 = 0;
   let m3 = 0;
   let m4 = 0;
@@ -86,13 +85,16 @@ export function moments(x: ArrayLike<number>): { skew: number; kurt: number } {
 export function deflatedSharpeOf(ret: ArrayLike<number>, trials: number): number | null {
   const T = ret.length;
   if (T < 4) return null;
-  let s = 0;
-  for (let i = 0; i < T; i++) s += ret[i]!;
-  const m = s / T;
-  let ss = 0;
-  for (let i = 0; i < T; i++) ss += (ret[i]! - m) ** 2;
-  const sd = Math.sqrt(ss / (T - 1));
+  const { m, sd } = meanSd(ret);
   const sr = sd > 1e-12 ? m / sd : 0;
   const { skew, kurt } = moments(ret);
   return deflatedSharpe(sr, T, skew, kurt, Math.max(1, trials), 1 / (T - 1));
+}
+
+/** Mean and sample (n − 1) standard deviation; sd is NaN below two values. */
+export function meanSd(x: ArrayLike<number>): { m: number; sd: number } {
+  const m = mean(x);
+  let ss = 0;
+  for (let i = 0; i < x.length; i++) ss += (x[i]! - m) ** 2;
+  return { m, sd: Math.sqrt(ss / (x.length - 1)) };
 }

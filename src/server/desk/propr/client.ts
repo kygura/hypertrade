@@ -3,10 +3,10 @@
 // Propr's own hosts, and scrubbed from every error message.
 
 const HOSTS = new Set(["api.propr.xyz", "api.beta.propr.xyz"]);
-export const PROPR_LIVE_URL = "https://api.propr.xyz/v1";
+const PROPR_LIVE_URL = "https://api.propr.xyz/v1";
 const TIMEOUT_MS = 15_000;
 
-export class ProprError extends Error {
+class ProprError extends Error {
   constructor(
     readonly status: number,
     readonly code: number | null,

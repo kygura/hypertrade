@@ -97,6 +97,19 @@ describe("feed and detail", () => {
     expect(FeedResponseSchema.parse(await (await req("/opportunities?tier=2")).json()).opportunities).toHaveLength(0);
   });
 
+  test("readyTtlMin is the scanner's reading of PLATFORM_READY_TTL_MIN, 0 included", async () => {
+    const saved = process.env.PLATFORM_READY_TTL_MIN;
+    try {
+      process.env.PLATFORM_READY_TTL_MIN = "0";
+      expect(((await (await req("/opportunities")).json()) as { readyTtlMin: number }).readyTtlMin).toBe(0);
+      process.env.PLATFORM_READY_TTL_MIN = "45";
+      expect(((await (await req("/opportunities")).json()) as { readyTtlMin: number }).readyTtlMin).toBe(45);
+    } finally {
+      if (saved === undefined) delete process.env.PLATFORM_READY_TTL_MIN;
+      else process.env.PLATFORM_READY_TTL_MIN = saved;
+    }
+  });
+
   test("bad query → 400 naming the field", async () => {
     const res = await req("/opportunities?status=bogus");
     expect(res.status).toBe(400);

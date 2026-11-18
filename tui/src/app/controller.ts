@@ -3,9 +3,10 @@
 // Everything it talks to is injected. Nothing throws out of it: failures become
 // `error` entries in the transcript. Nothing here ever sends an order without a
 // human `y` on the pending ticket.
+import type { AgentEvents } from "../agent/loop.js";
 import { complete } from "../commands/complete.js";
 import { orderToIntent } from "../commands/intent.js";
-import { parseInput, type Command, type OrderCommand, type SortKey } from "../commands/parse.js";
+import { ALIASES, parseInput, type Command, type OrderCommand, type SortKey } from "../commands/parse.js";
 import type { Brief } from "../core/brief.js";
 import { buildCoinView, closestCoins } from "../core/coin.js";
 import type { Exchange } from "../core/exchange.js";
@@ -23,7 +24,6 @@ import type {
   MarketsOverlay,
   Mode,
   Overlay,
-  PendingTicket,
   Snapshot,
   TicketOutcome,
   TicketSource,
@@ -41,12 +41,7 @@ export interface StoreLike {
   refreshAccount(): Promise<void>;
 }
 
-export interface AgentEventsLike {
-  onText(delta: string): void;
-  onToolStart(name: string, inputSummary: string): void;
-  onToolEnd(name: string, ok: boolean, summary: string): void;
-  onServerTool?(name: string, summary: string): void;
-}
+export type AgentEventsLike = AgentEvents;
 
 export interface AgentLike {
   ask(question: string, ev: AgentEventsLike, signal?: AbortSignal): Promise<{ text: string; stop: string }>;
@@ -517,16 +512,11 @@ export class Controller {
     if (!m) return this.unknownCoin(cmd.coin, "order");
     // Risk sizing (explicit or default) goes through buildTicket's riskPct, which works
     // for every stop type; the intent's size is a placeholder that riskPct overrides.
-    const riskSized = !cmd.size || "riskPct" in cmd.size;
+    const fixedSize = cmd.size && !("riskPct" in cmd.size) ? cmd.size : null;
     const riskPct = cmd.size && "riskPct" in cmd.size ? cmd.size.riskPct : this.cfg.limits.maxRiskPct;
-    const r = orderToIntent(riskSized ? { ...cmd, size: { usd: 1 } } : cmd, {
-      markPx: livePx(m),
-      equityUsd: st.account?.equityUsd ?? 0,
-      defaultLeverage: this.cfg.defaultLeverage,
-      defaultRiskPct: riskPct,
-    });
+    const r = orderToIntent({ ...cmd, size: fixedSize ?? { usd: 1 } }, { markPx: livePx(m), defaultLeverage: this.cfg.defaultLeverage });
     if (!r.ok) return this.error("order", r.error);
-    const action: TicketRequest = riskSized ? { kind: "open", intent: r.intent, riskPct } : { kind: "open", intent: r.intent };
+    const action: TicketRequest = fixedSize ? { kind: "open", intent: r.intent } : { kind: "open", intent: r.intent, riskPct };
     await this.quote(action, "command", r.notes);
   }
 
@@ -587,10 +577,6 @@ export class Controller {
     }
   }
 
-  private setPending(p: PendingTicket | null): void {
-    this.set({ pending: p });
-  }
-
   /** An order the human confirmed whose send has not returned yet (main awaits it on exit). */
   inFlight(): Promise<InFlight> | null {
     return this.inflight;
@@ -608,27 +594,27 @@ export class Controller {
     // After every await: the human may have quit, or the ticket may be gone.
     const stale = () => this.quitting || this.view.pending?.ticket.id !== ticket.id;
 
-    this.setPending({ ticket, ui: { ...ui, phase: "requoting" } });
+    this.set({ pending: { ticket, ui: { ...ui, phase: "requoting" } } });
     let rq;
     try {
       rq = await requote(ticket, this.ticketDeps());
     } catch (e) {
       if (stale()) return;
-      this.setPending({ ticket, ui: { ...ui, phase: "awaiting" } });
+      this.set({ pending: { ticket, ui: { ...ui, phase: "awaiting" } } });
       return this.error("requote", errMsg(e));
     }
     if (stale()) return;
     const next = this.withIntentNotes(rq.ticket);
     if (rq.kind === "changed") {
       this.armedAt = this.now();
-      this.setPending({ ticket: next, ui: { ...ui, phase: "awaiting", changedWhy: rq.why, previous: ticket } });
+      this.set({ pending: { ticket: next, ui: { ...ui, phase: "awaiting", changedWhy: rq.why, previous: ticket } } });
       return;
     }
     if (!next.canSend) {
-      this.setPending({ ticket: next, ui: { ...ui, phase: "awaiting" } });
+      this.set({ pending: { ticket: next, ui: { ...ui, phase: "awaiting" } } });
       return;
     }
-    this.setPending({ ticket: next, ui: { ...ui, phase: "sending" } });
+    this.set({ pending: { ticket: next, ui: { ...ui, phase: "sending" } } });
     const markets = this.state().markets;
     const sending: Promise<InFlight> = exchange.send(next, markets).then(
       (result) => ({ ticket: next, result, outcome: sendOutcome(result) }),
@@ -994,8 +980,7 @@ export class Controller {
   }
 }
 
-const ALIAS_OF: Record<string, string> = { p: "pos", m: "markets", b: "book", q: "quit", h: "help", buy: "long", sell: "short" };
-const aliasTarget = (label: string) => ALIAS_OF[label.slice(1)] ?? label.slice(1);
+const aliasTarget = (label: string) => ALIASES[label.slice(1)] ?? label.slice(1);
 
 /** Drops control characters (escape sequences, newlines) from typed or pasted text. */
 const clean = (s: string) => s.replace(/[\u0000-\u001f\u007f]/g, "");

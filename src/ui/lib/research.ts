@@ -5,6 +5,7 @@ import {
 import { CI_MIN_CLUSTERS } from '../../shared/platform'
 import type { RadarCall } from '../../shared/radar'
 import { ApiError, api, parseWith } from './api'
+import { errorMessage } from './poll'
 import { fmtSigned } from './lab'
 import { DEFAULT_TOP, studyHref } from './study'
 
@@ -124,7 +125,7 @@ export const rowStudyKey = (id: string, now: number) => `${id}|${new Date(now).t
 /** What a failed study run leaves in the cell: a 401 means sign in (the redirect is in flight), else the error verbatim. */
 export function studyFailed(err: unknown): RowStudy {
   if (err instanceof ApiError && err.status === 401) return { state: 'sign-in' }
-  return { state: 'error', message: err instanceof Error && err.message ? err.message : 'request failed' }
+  return { state: 'error', message: errorMessage(err) }
 }
 
 export type CellState =

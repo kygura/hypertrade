@@ -76,9 +76,6 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
-/** Defined in the shared contract so the UI POSTs exactly the body the board's cache is keyed on. */
-export { boardStudy };
-
 /** Today's cached study of the signal's rule in its scope, if any. */
 const evidenceFor = (cache: StudyCache, s: Pick<ResearchSignal, "rule" | "coin" | "scope">, now: number) => {
   const q = boardStudy(s);

@@ -9,6 +9,7 @@ import { CONTRAST_DEADLINE_MS, CONTRASTS_SETTING, runContrast, VIEWS_SETTING } f
 import { loadNarrativeFlows, rankNarratives, strongestMove } from "./narratives.js";
 import { feedbackActions, sendIntel } from "./notify.js";
 import { AUTO_RESEARCH_MARGIN_MS, utcDayStart } from "./research.js";
+import { intEnv } from "./util.js";
 
 // Narrative watch (docs/SPEC.md § Narratives N3.2–N3.4): two code-only stages of
 // the ingest cron, both reading the same narrative flows.
@@ -52,7 +53,6 @@ const AUTO_CONTRAST_Z = 2.5;
 const sectorPath = (id: string) => `/moves?sector=${encodeURIComponent(id)}`;
 const sourceOf = (id: string): EventSource => ({ label: "snapshot", url: sectorPath(id) });
 
-const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : def);
 /** INTEL_NARRATIVE_AUTO_DAILY (2): automatic contrast runs per UTC day. */
 const narrativeAutoLimit = (env: Record<string, string | undefined>) => intEnv(env.INTEL_NARRATIVE_AUTO_DAILY, 2);
 
@@ -285,9 +285,9 @@ export async function narrativeAutoContrast(deps: NarrativeWatchDeps, o: { left(
       out.ran++;
       out.statuses[res.status]++;
       if (res.status !== "done") continue;
-      const stored = await contrastsOf(deps);
-      const before = stored[flow.id];
-      await deps.store.setSetting(CONTRASTS_SETTING, { ...stored, [flow.id]: res });
+      const before = (await contrastsOf(deps))[flow.id];
+      // A merge of this one id: an operator contrast stored at the same time is kept.
+      await deps.store.mergeSetting(CONTRASTS_SETTING, { [flow.id]: res });
       // The same read as last time is stored, not pinged again.
       if (before && before.favours === res.favours && before.view.agreement === res.view.agreement) continue;
       try {

@@ -1,4 +1,4 @@
-import { isExtremesOpportunity, type ExtremeEvent, type ExtremeRecord, type ExtremeThresholds } from "../../shared/extremes.js";
+import { isExtremesOpportunity, type ExtremeEvent, type ExtremeThresholds } from "../../shared/extremes.js";
 import type { Alert } from "../desk/notify.js";
 import type { RingPoint } from "../platform/features.js";
 import { extremesReadyTtlMin, readyTtlMinFor, shouldExpire } from "../platform/opportunity.js";
@@ -8,7 +8,7 @@ import { selectUniverse } from "../platform/universe.js";
 
 // The 15-min extremes job (docs/EXTREMES.md; POST /api/cron/extremes): ranks the top coins by their latest stored 24 h
 // volume (plus BTC), reads their stored 15-min history (scan_snapshots), runs the detectors, drops keys inside the
-// cooldown, keeps a hard daily cap on what goes out, stores every new event and delivers the ones under the cap: one
+// cooldown, keeps a hard daily cap on what goes out, stores every new event first and then delivers the ones under the cap: one
 // wake of the research session for the batch, or, when no wake target is set or the wake fails, one push per event
 // through the desk notifier. It also expires extremes takes past EXTREMES_READY_TTL_H. The detector runs under the
 // latest applied calibration's thresholds (calibrate.ts appliedThresholds; the code defaults when none is applied or
@@ -37,10 +37,10 @@ export const extremesParams = (env: Env = process.env) => ({
 /** The detector's input (src/server/extremes/detect.ts DetectInput), stated here so the job does not import the detector. */
 export type Detect = (input: { coin: string; points: RingPoint[]; btc: RingPoint[] | null; now: number }, thresholds: ExtremeThresholds) => ExtremeEvent[];
 /** Which thresholds a run used: a stored calibration (029) or the code defaults. */
-export type ThresholdsSource = { id: number; ranAt: string } | "defaults";
+type ThresholdsSource = { id: number; ranAt: string } | "defaults";
 
 export interface ExtremesJobDeps {
-  store: Pick<PlatformStore, "scanSnapshotsSince" | "latestExtreme" | "extremesDeliveredSince" | "insertExtremeEvent" | "listOpportunities" | "transitionOpportunity">;
+  store: Pick<PlatformStore, "scanSnapshotsSince" | "latestExtreme" | "extremesDeliveredSince" | "insertExtremeEvent" | "setExtremeDelivery" | "listOpportunities" | "transitionOpportunity">;
   detect: Detect;
   /** The thresholds to detect with and where they came from (calibrate.ts appliedThresholds). */
   thresholds: () => Promise<{ thresholds: ExtremeThresholds; source: ThresholdsSource }>;
@@ -96,7 +96,7 @@ const utcDayStart = (t: number) => {
  * Expires extremes takes past their ready TTL (platform/opportunity.ts readyTtlMinFor). Here as well as in the scanner
  * because the serverless API has no scanner; both are compare-and-set moves, so two runners never double-expire.
  */
-export async function expireExtremeTakes(store: Pick<PlatformStore, "listOpportunities" | "transitionOpportunity">, now: number, env?: Env): Promise<number> {
+async function expireExtremeTakes(store: Pick<PlatformStore, "listOpportunities" | "transitionOpportunity">, now: number, env?: Env): Promise<number> {
   const ttl = { scannerMin: Infinity, extremesMin: extremesReadyTtlMin(env) };
   let n = 0;
   for (const o of await store.listOpportunities({ statuses: ["ready"], limit: 500 })) {
@@ -142,35 +142,44 @@ export async function runExtremesJob(deps: ExtremesJobDeps): Promise<ExtremesJob
     if (last && Date.parse(e.ts) < Date.parse(last.event.ts) + p.cooldownMs) continue;
     fresh.push(e);
   }
-  report.new = fresh.length;
   if (!fresh.length) return report;
 
   // Hard daily cap (UTC day, bar time): over it an event is stored with delivery none and nothing is sent.
   const room = Math.max(0, p.dailyCap - (await deps.store.extremesDeliveredSince(utcDayStart(now))));
-  const send = fresh.slice(0, room);
-  const delivery = new Map<ExtremeEvent, ExtremeRecord["delivery"]>(fresh.map((e) => [e, "none"]));
-  report.capped = fresh.length - send.length;
-
-  if (send.length) {
-    const woke = await deps.wake(send).catch(() => false);
-    for (const e of send) {
-      if (woke) {
-        delivery.set(e, "woken");
-        report.woken++;
-        continue;
-      }
-      // Fallback: one push per event. Sent before the record is stored, and the stored record is what stops a repeat.
-      const channels = await deps.notifier.send(extremeAlert(e, deps.appUrl)).catch((err) => (console.error("[extremes] push:", err instanceof Error ? err.message : err), [] as string[]));
-      if (channels.length) {
-        delivery.set(e, "pushed");
-        report.pushed++;
-      } else report.undelivered++;
-    }
-  }
-
+  // The record is stored before anything is sent and is the claim: (key, ts) is the primary key, so of two overlapping
+  // runs only one stores a given event and only that one sends it. An event whose write fails is not sent (a lost alert
+  // over a repeat); the next run's cooldown check finds it unstored and tries again.
+  // ponytail: runs that see different bar ts for one key would both claim; the route's lease (routes/extremes.ts, the only caller) keeps runs apart unless one outlives it. Add a per-key claim if that shows up.
+  const claimed: ExtremeEvent[] = [];
   for (const e of fresh) {
-    await deps.store.insertExtremeEvent({ event: e, delivery: delivery.get(e)!, verdict: null, verdictAt: null, verdictMark: null, opportunityId: null });
+    const stored = await deps.store
+      .insertExtremeEvent({ event: e, delivery: "none", verdict: null, verdictAt: null, verdictMark: null, opportunityId: null })
+      .catch((err) => (console.error("[extremes] store:", err instanceof Error ? err.message : err), false));
+    if (!stored) continue;
+    claimed.push(e);
     report.lines.push(e.line);
+  }
+  report.new = claimed.length;
+  const send = claimed.slice(0, room);
+  report.capped = claimed.length - send.length;
+  if (!send.length) return report;
+
+  // Delivery is written after the send. A failed send or write leaves the record at none: never retried, the cooldown holds.
+  const mark = (e: ExtremeEvent, delivery: "woken" | "pushed") =>
+    deps.store.setExtremeDelivery(e.key, e.ts, delivery).catch((err) => (console.error("[extremes] delivery:", err instanceof Error ? err.message : err), false));
+  const woke = await deps.wake(send).catch(() => false);
+  for (const e of send) {
+    if (woke) {
+      await mark(e, "woken");
+      report.woken++;
+      continue;
+    }
+    // Fallback: one push per event.
+    const channels = await deps.notifier.send(extremeAlert(e, deps.appUrl)).catch((err) => (console.error("[extremes] push:", err instanceof Error ? err.message : err), [] as string[]));
+    if (channels.length) {
+      await mark(e, "pushed");
+      report.pushed++;
+    } else report.undelivered++;
   }
   return report;
 }

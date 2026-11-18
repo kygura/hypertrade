@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import type { CycleCoin, DailyBar } from "../../shared/cycles.js";
-import { cyclesRoute, loadHistory, type CyclesDeps, type CyclesResponse } from "./cycles.js";
+import type { CycleCoin, CyclesResponse, DailyBar } from "../../shared/cycles.js";
+import { cyclesRoute, loadHistory, type CyclesDeps } from "./cycles.js";
 
 const DAY = 86_400_000;
 const START = Date.UTC(2011, 7, 18);

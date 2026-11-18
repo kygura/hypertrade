@@ -345,6 +345,19 @@ describe("ProprBroker", () => {
     expect(await down.holds("ETH", "long", NOW)).toBeNull();
   });
 
+  test("sweepPlan without positionSide: the entry's side keeps a held position's stop and take-profit; no side sweeps nothing", () => {
+    const t = NOW.getTime() - 3_600_000;
+    const bare = [
+      { orderId: "e0", intentId: ladderId(t, "p", 0, "entry"), type: "market", side: "buy", base: "ETH", status: "filled", quantity: "0.12", cumulativeQuantity: "0.12" },
+      { orderId: "e1", intentId: ladderId(t, "p", 1, "entry"), type: "limit", side: "buy", base: "ETH", status: "open", quantity: "0.12", price: "3950" },
+      { orderId: "s0", intentId: ladderId(t, "p", 0, "stop"), type: "stop_market", side: "sell", base: "ETH", reduceOnly: true, status: "open", quantity: "0.12", triggerPrice: "3800" },
+      { orderId: "t0", intentId: ladderId(t, "p", 0, "tp"), type: "take_profit_market", side: "sell", base: "ETH", reduceOnly: true, status: "open", quantity: "0.12", triggerPrice: "4500" },
+    ];
+    const ethLong = [{ coin: "ETH", side: "long" as const, qty: 0.12, entry: 4000, mark: 4000, stop: 3800, tp: 4500 }];
+    expect(sweepPlan(bare, ethLong, NOW.getTime(), 8)).toEqual([]);
+    expect(sweepPlan(bare.map(({ side, ...o }) => o), [], NOW.getTime(), 8)).toEqual([]);
+  });
+
   test("housekeeping: live cancels a stale desk ladder, never other orders; a dry run cancels nothing; unprotected positions are critical", async () => {
     const old = NOW.getTime() - 9 * 3_600_000;
     const orders = [
@@ -412,6 +425,46 @@ describe("DeskService on the Propr venue", () => {
     };
     expect(await leverageOf({ ...ticket, confidence: "high" })).toEqual({ leverage: 4, riskPct: 0.5 });
     expect(await leverageOf({ ...ticket, confidence: "high", leverage: 3 })).toEqual({ leverage: 3, riskPct: 0.5 });
+  });
+
+  test("a claimed approval whose re-check throws (market data down) is recorded failed and not sent, never left claimed", async () => {
+    const flat = build();
+    const held = build({}, { positions: [{ base: "ETH", positionSide: "long", quantity: "0.2", entryPrice: "3990", markPrice: "4000" }] });
+    const cases = [
+      { ...flat, rec: await flat.service.submitOpen(proposal, null), title: "Open failed: ETH" },
+      { ...held, rec: await held.service.submitExit({ coin: "ETH", fraction: 1, reason: "thesis broke" }, "run1"), title: "Exit failed: ETH" },
+    ];
+    for (const { api, notifier, service, rec, title } of cases) {
+      expect(rec.status).toBe("pending");
+      (service.data as FakeData).ctxs = async () => {
+        throw new Error("info API down");
+      };
+      expect(await service.approve(rec.id, "op")).toMatchObject({ status: "failed", decidedBy: "op", execution: { ok: false, error: "not sent: info API down" } });
+      await expect(service.approve(rec.id, "op")).rejects.toThrow("proposal is failed");
+      expect(notifier.sent.at(-1)).toMatchObject({ level: "warn", title });
+      expect(api.posts()).toEqual([]);
+    }
+  });
+
+  test("a live close whose record and alert writes throw still returns executed (never failed with the close sent)", async () => {
+    const { api, service } = build({ PROPR_LIVE: "true" }, { positions: [{ base: "ETH", positionSide: "long", quantity: "0.2", entryPrice: "3990", markPrice: "4000" }], statuses: [["filled"]] });
+    const rec = await service.submitExit({ coin: "ETH", fraction: 1, reason: "thesis broke" }, "run1");
+    const store = service.store as MemoryStore;
+    const orig = store.updateProposal.bind(store);
+    store.updateProposal = async () => {
+      throw new Error("db down");
+    };
+    store.insertAlert = async () => {
+      throw new Error("db down");
+    };
+    const err = console.error;
+    console.error = () => {};
+    const out = await service.approve(rec.id, "op").finally(() => {
+      console.error = err;
+      store.updateProposal = orig;
+    });
+    expect(out).toMatchObject({ status: "executed", decidedBy: "op", execution: { ok: true, fills: [{ side: "sell", size: 0.2 }] } });
+    expect(api.posts().filter((c) => c.url.endsWith("/orders"))).toHaveLength(1);
   });
 
   test("an agent's exit waits for approval; the operator's close does not", async () => {

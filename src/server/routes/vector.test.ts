@@ -3,7 +3,8 @@ import { Hono } from "hono";
 import type { DailyBar } from "../../shared/cycles.js";
 import type { Row } from "../../shared/vectorCompass.js";
 import type { Loader, SourceData } from "../vector/sources.js";
-import { FAIL_RETRY_MS, SOURCE_TTL_MS, vectorRoute, type VectorDeps, type VectorResponse } from "./vector.js";
+import type { VectorResponse } from "../../shared/vector.js";
+import { FAIL_RETRY_MS, SOURCE_TTL_MS, vectorRoute, type VectorDeps } from "./vector.js";
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2023, 0, 1);

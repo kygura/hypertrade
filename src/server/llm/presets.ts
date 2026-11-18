@@ -12,7 +12,7 @@
 
 import type { Effort } from "./provider.js";
 
-export type Tier = "frontier" | "balanced" | "fast";
+type Tier = "frontier" | "balanced" | "fast";
 
 export interface CatalogModel {
   id: string;
@@ -55,7 +55,7 @@ export interface Preset {
   replayReasoning: boolean;
 }
 
-const ALL: Effort[] = ["low", "medium", "high", "xhigh", "max"];
+export const ALL: Effort[] = ["low", "medium", "high", "xhigh", "max"];
 const LOW_HIGH_MAX: Effort[] = ["low", "high", "max"];
 const LOW_MED_HIGH: Effort[] = ["low", "medium", "high"];
 

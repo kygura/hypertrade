@@ -46,82 +46,53 @@ const id = (c: Context): string | null => {
 export function createAlertsRoutes(deps: AlertsRouteDeps) {
   const now = deps.now ?? (() => new Date());
   return new Hono()
+    .onError((err, c) => failure(c, err, "intel:alerts"))
     .get("/alerts", async (c) => {
       const q = AlertsQuerySchema.safeParse({ since: c.req.query("since"), kind: c.req.query("kind") });
       if (!q.success) return invalid(c, q.error, "query");
-      try {
-        const alerts = await deps.store.listAlerts({ since: q.data.since ? new Date(q.data.since) : undefined, kind: q.data.kind, limit: LIST_LIMIT });
-        return c.json({ alerts });
-      } catch (err) {
-        return failure(c, err, "intel:alerts");
-      }
+      const alerts = await deps.store.listAlerts({ since: q.data.since ? new Date(q.data.since) : undefined, kind: q.data.kind, limit: LIST_LIMIT });
+      return c.json({ alerts });
     })
     .post("/alerts/:id/feedback", async (c) => {
       const alertId = id(c);
       if (!alertId) return c.json({ error: "invalid id", field: "id" }, 400);
       const parsed = AlertFeedbackInputSchema.safeParse(await body(c));
       if (!parsed.success) return invalid(c, parsed.error, "feedback");
-      try {
-        const alert = await deps.store.setAlertFeedback(alertId, parsed.data.vote);
-        return alert ? c.json({ alert }) : c.json({ error: "alert not found" }, 404);
-      } catch (err) {
-        return failure(c, err, "intel:alerts");
-      }
+      const alert = await deps.store.setAlertFeedback(alertId, parsed.data.vote);
+      return alert ? c.json({ alert }) : c.json({ error: "alert not found" }, 404);
     })
     .get("/events", async (c) => {
       const q = EventsQuerySchema.safeParse({ since: c.req.query("since"), type: c.req.query("type") });
       if (!q.success) return invalid(c, q.error, "query");
-      try {
-        const events = await deps.store.listEvents({ since: q.data.since ? new Date(q.data.since) : undefined, type: q.data.type, limit: LIST_LIMIT });
-        return c.json({ events });
-      } catch (err) {
-        return failure(c, err, "intel:alerts");
-      }
+      const events = await deps.store.listEvents({ since: q.data.since ? new Date(q.data.since) : undefined, type: q.data.type, limit: LIST_LIMIT });
+      return c.json({ events });
     })
     .get("/catalysts", async (c) => {
       const q = CatalystsDaysSchema.safeParse({ days: c.req.query("days") });
       if (!q.success) return invalid(c, q.error, "query");
-      try {
-        const t = now().getTime();
-        const [events, targets] = await Promise.all([
-          deps.store.listCatalysts(new Date(t - RECENT_PAST_MS), new Date(t + q.data.days * 86_400_000)),
-          deps.targets(),
-        ]);
-        const focus = new Set(targets);
-        return c.json({ catalysts: events.map((e) => toCatalyst(e, focus)) });
-      } catch (err) {
-        return failure(c, err, "intel:alerts");
-      }
+      const t = now().getTime();
+      const [events, targets] = await Promise.all([
+        deps.store.listCatalysts(new Date(t - RECENT_PAST_MS), new Date(t + q.data.days * 86_400_000)),
+        deps.targets(),
+      ]);
+      const focus = new Set(targets);
+      return c.json({ catalysts: events.map((e) => toCatalyst(e, focus)) });
     })
     .post("/catalysts", async (c) => {
       const parsed = ManualCatalystInputSchema.safeParse(await body(c));
       if (!parsed.success) return invalid(c, parsed.error, "catalyst");
       const at = now();
       if (Date.parse(parsed.data.scheduledAt) <= at.getTime()) return c.json({ error: "scheduledAt must be in the future", field: "scheduledAt" }, 400);
-      try {
-        const [event, targets] = await Promise.all([addManualCatalyst(deps.store, parsed.data, at), deps.targets()]);
-        return c.json({ catalyst: toCatalyst(event, new Set(targets)) }, 201);
-      } catch (err) {
-        return failure(c, err, "intel:alerts");
-      }
+      const [event, targets] = await Promise.all([addManualCatalyst(deps.store, parsed.data, at), deps.targets()]);
+      return c.json({ catalyst: toCatalyst(event, new Set(targets)) }, 201);
     })
     .delete("/catalysts/:id", async (c) => {
       const eventId = id(c);
       if (!eventId) return c.json({ error: "invalid id", field: "id" }, 400);
-      try {
-        const r = await deleteManualCatalyst(deps.store, eventId);
-        if (r === "not_found") return c.json({ error: "catalyst not found" }, 404);
-        if (r === "not_manual") return c.json({ error: "only manual catalysts can be deleted", field: "id" }, 400);
-        return c.json({ deleted: true });
-      } catch (err) {
-        return failure(c, err, "intel:alerts");
-      }
+      const r = await deleteManualCatalyst(deps.store, eventId);
+      if (r === "not_found") return c.json({ error: "catalyst not found" }, 404);
+      if (r === "not_manual") return c.json({ error: "only manual catalysts can be deleted", field: "id" }, 400);
+      return c.json({ deleted: true });
     })
-    .get("/feedback/report/latest", async (c) => {
-      try {
-        return c.json({ report: await deps.store.latestReport("feedback_weekly") });
-      } catch (err) {
-        return failure(c, err, "intel:alerts");
-      }
-    });
+    .get("/feedback/report/latest", async (c) => c.json({ report: await deps.store.latestReport("feedback_weekly") }));
 }

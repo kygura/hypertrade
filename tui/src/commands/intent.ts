@@ -4,16 +4,16 @@ import type { OrderCommand } from "./parse.js";
 
 interface IntentCtx {
   markPx: number;
-  equityUsd: number;
   defaultLeverage: number;
-  defaultRiskPct: number;
 }
 type IntentResult = { ok: true; intent: OrderIntent; notes: string[] } | { ok: false; error: string };
+/** Risk sizing ("risk N%", or no size) is resolved by the ticket (buildTicket's riskPct); the caller passes a usd or pctBook size. */
+export type SizedOrder = Omit<OrderCommand, "size"> & { size: OrderIntent["size"] };
 
 const fail = (error: string): IntentResult => ({ ok: false, error });
 const px6 = (x: number) => Number(x.toPrecision(6));
 
-export function orderToIntent(cmd: OrderCommand, ctx: IntentCtx): IntentResult {
+export function orderToIntent(cmd: SizedOrder, ctx: IntentCtx): IntentResult {
   if (!(ctx.markPx > 0)) return fail(`no mark price for ${cmd.coin}`);
   const long = cmd.side === "long";
   const entry = cmd.limitPx ?? ctx.markPx;
@@ -27,18 +27,6 @@ export function orderToIntent(cmd: OrderCommand, ctx: IntentCtx): IntentResult {
     dist = Math.abs(entry - cmd.stop.px);
   } else if (cmd.stop.type === "pct") {
     dist = (entry * cmd.stop.pct) / 100;
-  }
-
-  let size: OrderIntent["size"];
-  if (cmd.size && !("riskPct" in cmd.size)) {
-    size = cmd.size;
-  } else {
-    const riskPct = cmd.size ? cmd.size.riskPct : ctx.defaultRiskPct;
-    if (dist === null) return fail("risk sizing needs a price or % stop; use $ or % book with atr/pdl/pdh");
-    if (!(ctx.equityUsd > 0)) return fail("risk sizing needs account equity, which is unknown; use $ or % book");
-    const usd = Math.round(((ctx.equityUsd * riskPct) / 100 / (dist / entry)) * 100) / 100;
-    size = { usd };
-    notes.push(`${cmd.size ? "" : "size defaulted to "}risk ${riskPct}% of $${Math.round(ctx.equityUsd)} equity at ${((dist / entry) * 100).toFixed(2)}% stop = $${usd} notional`);
   }
 
   let target: number | undefined;
@@ -60,7 +48,7 @@ export function orderToIntent(cmd: OrderCommand, ctx: IntentCtx): IntentResult {
     asset: cmd.coin,
     side: cmd.side,
     leverage: cmd.leverage ?? ctx.defaultLeverage,
-    size,
+    size: cmd.size,
     entry: cmd.limitPx ? { type: "limit", px: cmd.limitPx } : { type: "market" },
     stop: cmd.stop,
     ...(target !== undefined && { target }),

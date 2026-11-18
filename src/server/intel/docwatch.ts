@@ -102,20 +102,24 @@ const short = (h: string) => `${h.slice(0, 10)}…`;
 
 // ─── Safe fetch ───
 
-/** True for addresses a server-side fetch must never reach (loopback, private, link-local, ULA, CGNAT, unspecified, multicast/reserved, and IPv4 embedded in IPv6). Unparseable → true. */
+/** True for addresses a server-side fetch must never reach (loopback, private, link-local, ULA, CGNAT, benchmarking, IETF protocol, unspecified, multicast/reserved, and IPv4 embedded in IPv6, 6to4 included). Unparseable → true. */
 export function isNonPublicIp(ip: string): boolean {
   if (isIP(ip) === 4) {
-    const [a, b] = ip.split(".").map(Number) as [number, number];
-    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224;
+    const [a, b, c] = ip.split(".").map(Number) as [number, number, number];
+    return (
+      a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) || (a === 192 && b === 0 && c === 0) || (a === 198 && (b === 18 || b === 19)) || a >= 224
+    );
   }
   if (isIP(ip) !== 6) return true;
   const w = v6Words(ip);
   if (!w) return true;
-  const v4 = () => isNonPublicIp(`${w[6]! >> 8}.${w[6]! & 255}.${w[7]! >> 8}.${w[7]! & 255}`);
+  const v4 = (i = 6) => isNonPublicIp(`${w[i]! >> 8}.${w[i]! & 255}.${w[i + 1]! >> 8}.${w[i + 1]! & 255}`);
   const zeroTo = (n: number) => w.slice(0, n).every((x) => x === 0);
   if (zeroTo(6)) return true; // ::, ::1 and deprecated IPv4-compatible ::a.b.c.d
   if (zeroTo(5) && w[5] === 0xffff) return v4(); // IPv4-mapped ::ffff:a.b.c.d
   if (w[0] === 0x64 && w[1] === 0xff9b && w.slice(2, 6).every((x) => x === 0)) return v4(); // NAT64 64:ff9b::/96
+  if (w[0] === 0x2002) return v4(1); // 6to4 2002:a.b.c.d::/48
   return (w[0]! & 0xffc0) === 0xfe80 || (w[0]! & 0xfe00) === 0xfc00 || (w[0]! & 0xff00) === 0xff00;
 }
 

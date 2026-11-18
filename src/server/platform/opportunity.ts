@@ -2,7 +2,7 @@ import { isExtremesOpportunity } from "../../shared/extremes.js";
 import type { Costs, Opportunity, OpportunityStatus } from "../../shared/platform.js";
 
 /** EXTREMES_READY_TTL_H default: an extremes `take` stays approvable this long after it became ready. */
-export const DEFAULT_EXTREMES_READY_TTL_H = 4;
+const DEFAULT_EXTREMES_READY_TTL_H = 4;
 /** EXTREMES_READY_TTL_H in minutes (a positive number of hours, else the default). */
 export function extremesReadyTtlMin(env: Record<string, string | undefined> = process.env): number {
   const h = Number(env.EXTREMES_READY_TTL_H?.trim());

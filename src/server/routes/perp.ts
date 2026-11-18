@@ -53,6 +53,7 @@ export function changeSince(points: { t: number; v: number }[], ago: number, tol
 
 export const perpRoutes = new Hono().get("/:coin", async (c) => {
   const coin = await resolveCoin(c.req.param("coin"));
+  if (!coin) return c.json({ error: "unknown coin" }, 404);
   const now = Date.now();
 
   const [ctxRes, pred, cap] = await Promise.all([

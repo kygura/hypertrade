@@ -31,13 +31,9 @@ const STATUS_VALUES: readonly StatusFilter[] = ['live', 'ready', 'decided', 'all
 const LG = '(min-width: 1024px)'
 const DEFAULT_COIN = 'BTC'
 
-export function Cockpit() {
-  return <CockpitPage />
-}
-
 type DialogKind = 'approve' | 'reject' | 'help' | null
 
-function CockpitPage() {
+export function Cockpit() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const desktop = useMedia(LG)

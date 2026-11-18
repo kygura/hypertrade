@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { StudySummarySchema, type StudyRequest } from "../../shared/research.js";
+import { StudyRequestSchema, StudySummarySchema, type StudyRequest } from "../../shared/research.js";
 import { ruleId } from "../lab/engine/rules.js";
 import type { Rule } from "../lab/types.js";
 import { UpstreamError } from "../mcp/types.js";
@@ -29,6 +29,13 @@ describe("study cache", () => {
     expect(studyKey({ ...q, stopAtr: 1.51, targetAtr: 2.96 }, T)).toBe(studyKey(q, T));
     expect(studyKey({ ...q, targetAtr: 2 }, T)).not.toBe(studyKey(q, T));
     expect(quantize({ ...q, stopAtr: 1.04999, targetAtr: 0.25 })).toMatchObject({ stopAtr: 1, targetAtr: 0.3 });
+  });
+
+  test("the request schema accepts only exits that quantize to a positive 0.1 ATR", () => {
+    for (const stopAtr of [0.04, 0.09]) expect(StudyRequestSchema.safeParse({ rule, stopAtr }).success).toBe(false);
+    expect(StudyRequestSchema.safeParse({ rule, targetAtr: 0.04 }).success).toBe(false);
+    const min = StudyRequestSchema.parse({ rule, stopAtr: 0.1, targetAtr: 0.1 });
+    expect(quantize(min)).toMatchObject({ stopAtr: 0.1, targetAtr: 0.1 });
   });
 
   test("an entry lives until the UTC day turns", () => {

@@ -228,6 +228,13 @@ describe("MemoryIntelStore graph, events, cache", () => {
     expect(await s.lastReview()).toMatchObject({ via: "ui", briefId: ui.id });
     await s.setSetting("x", { n: 1 });
     expect(await s.getSetting<{ n: number }>("x")).toEqual({ n: 1 });
+    await s.mergeSetting("m", { a: 1 });
+    await Promise.all([s.mergeSetting("m", { b: 2 }), s.mergeSetting("m", { c: 3 })]);
+    await s.mergeSetting("m", { a: 4 });
+    expect(await s.getSetting<unknown>("m")).toEqual({ a: 4, b: 2, c: 3 });
+    await s.setSetting("y", ["not", "an", "object"]);
+    await s.mergeSetting("y", { k: 1 });
+    expect(await s.getSetting<unknown>("y")).toEqual({ k: 1 });
     const w = await s.insertWatch({ kind: "evm_wallet", target: "0x" + "b".repeat(40), chain: "base", label: "treasury" });
     const ch = await s.insertWatchChange({ watchId: w.id, fromHash: null, toHash: "h1", diff: null, facts: ["nonce 1 → 2"], detail: null, lines: [] });
     expect(ch.alertedAssets).toEqual([]);

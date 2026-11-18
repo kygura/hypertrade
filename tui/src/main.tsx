@@ -12,13 +12,10 @@ import { fetchPulse } from "./core/lab.js";
 import { Store } from "./core/store.js";
 import type { InfoSource } from "./core/types.js";
 import { App } from "./ui/App.js";
-import { configureTheme, colorEnabled } from "./ui/theme.js";
 
 const IN_FLIGHT_WAIT_MS = 10_000;
 
 async function main(): Promise<void> {
-  configureTheme({ color: colorEnabled(process.env, !!process.stdout.isTTY), ascii: process.env.HT_ASCII === "1" });
-
   const loaded = loadConfig(process.env, process.argv.slice(2));
   let { config } = loaded;
   const { agentKey } = loaded;

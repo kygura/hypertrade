@@ -7,8 +7,6 @@ import * as db from "../db.js";
 import { nextBarT, readPage, type Bar, type Page } from "../market/candleSync.js";
 import { syncFunding, type FundingSyncResult } from "../market/fundingSync.js";
 import { joinOverlays, type ChartBar } from "../market/overlay.js";
-
-export type { CandlesResponse };
 import { resolveCoin } from "./hl.js";
 
 // GET /candles/:coin?tf=1h&before=<ms>&limit=1500
@@ -35,7 +33,8 @@ export type CandlesDeps = {
   hasDb: () => boolean;
   /** No database: `limit` bars ending before `before` (latest when omitted), straight from Hyperliquid, ascending. */
   livePage: (coin: string, tf: Timeframe, before: number | undefined, limit: number) => Promise<Bar[]>;
-  resolveCoin: (param: string) => Promise<string>;
+  /** Null: the universe was read and has no such coin (404, no sync bookkeeping). */
+  resolveCoin: (param: string) => Promise<string | null>;
   touch: (coin: string, tf: Timeframe) => Promise<void>;
   readPage: (coin: string, tf: Timeframe, opts: { before?: number; limit: number }) => Promise<Page>;
   syncFunding: (coin: string, from: number) => Promise<FundingSyncResult>;
@@ -98,6 +97,8 @@ export function candlesRoute(deps: CandlesDeps = defaultCandlesDeps) {
     const tf = parsed.data.tf ?? "1d";
     const limit = parsed.data.limit ?? DEFAULT_PAGE_BARS;
     const coin = await deps.resolveCoin(c.req.param("coin"));
+    // An unknown name never reaches touch: it would join the backfill's recently charted coins.
+    if (!coin) return c.json({ error: "unknown coin" }, 404);
     if (!deps.hasDb()) return c.json(await livePageBody(coin, tf, parsed.data.before, limit));
 
     const touched = deps.touch(coin, tf).catch(() => {}); // bookkeeping only; never fails or delays the chart

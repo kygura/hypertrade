@@ -22,13 +22,13 @@ export function ulid(timeMs: number, seed: string): string {
   return time + rand;
 }
 
-export const isUlid = (s: string) => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(s);
+const isUlid = (s: string) => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(s);
 
 /** The desk's own ladder orders: the ladder's creation time, then the tag "PRD", then the rung, so housekeeping can
  * find every order of a ladder, its age and its rung from the intentId alone. perp-radar's executor tags its own
  * ladders "PRX"; the desk never touches those and refuses to trade while any are on the account. */
-export const LADDER_TAG = "PRD";
-export const PERP_RADAR_TAG = "PRX";
+const LADDER_TAG = "PRD";
+const PERP_RADAR_TAG = "PRX";
 export function ladderId(ladderTimeMs: number, seed: string, rung: number, role: "entry" | "stop" | "tp" | "group" | "close"): string {
   const base = ulid(ladderTimeMs, `${seed}:${rung}:${role}`);
   return base.slice(0, 10) + LADDER_TAG + ALPHABET[rung % 32] + base.slice(14);

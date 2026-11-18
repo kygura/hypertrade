@@ -297,6 +297,46 @@ describe("requote", () => {
     if (r.kind === "changed") expect(r.why).toContain("now blocked");
   });
 
+  test("a market entry's size drift from a mark move inside 0.5% is not a change; the size sent never exceeds the confirmed one", async () => {
+    // /long ETH risk 0.5% stop 2%: $2,500 notional → 0.625 ETH at 4000.
+    const t = await buildTicket({ kind: "open", intent: intent(), riskPct: 0.5 }, deps());
+    expect(t.size).toBe(0.625);
+    // +0.0125%: 0.6249 ETH. Smaller, sent as re-quoted.
+    const up = await requote(t, deps({ markets: markets(4000.5) }));
+    expect(up.kind).toBe("same");
+    expect(up.ticket.size).toBe(0.6249);
+    // -0.25%: the re-quote gives 0.6265 ETH; held at the confirmed 0.625.
+    const down = await requote(t, deps({ markets: markets(3990) }));
+    expect(down.kind).toBe("same");
+    expect(down.ticket.size).toBe(0.625);
+    expect(down.ticket.notionalUsd).toBe(2493.75);
+    expect(down.ticket.riskUsd).toBeLessThanOrEqual(t.riskUsd!);
+    expect(down.ticket.notes.join(" ")).toContain("size held at 0.625 ETH (re-quote at the moved mark gave 0.6265)");
+  });
+
+  test("a $-sized market entry at a fixed stop is held to the confirmed risk when the mark moves away from the stop", async () => {
+    // $500 stop 3850 at 4000: 0.125 ETH, $18.75 at risk. At 4019 (+0.475%) $500 buys 0.1244 ETH but risks $21.02.
+    const t = await buildTicket({ kind: "open", intent: intent({ size: { usd: 500 }, stop: { type: "price", px: 3850 }, target: 5000 }) }, deps());
+    expect(t).toMatchObject({ size: 0.125, riskUsd: 18.75, canSend: true });
+    const r = await requote(t, deps({ markets: markets(4019) }));
+    expect(r.kind).toBe("same");
+    expect(r.ticket.size).toBe(0.1109);
+    expect(r.ticket.riskUsd).toBeLessThanOrEqual(18.75);
+  });
+
+  test("a size change from anything but the mark still forces a re-confirm", async () => {
+    const t = await buildTicket({ kind: "open", intent: intent(), riskPct: 0.5 }, deps());
+    // Equity 10,000 → 10,010 with a tiny mark move: at the confirmed mark the size would be 0.6256, not 0.625.
+    const r = await requote(t, deps({ markets: markets(4000.5), account: account({ equity: 10_010 }) }));
+    expect(r.kind).toBe("changed");
+    if (r.kind === "changed") expect(r.why).toContain("size 0.625 → 0.62");
+    // A limit entry's size does not move with the mark: compared exactly.
+    const lim = await buildTicket({ kind: "open", intent: intent({ entry: { type: "limit", px: 3990 } }), riskPct: 0.5 }, deps());
+    const l = await requote(lim, deps({ account: account({ equity: 10_010 }) }));
+    expect(l.kind).toBe("changed");
+    if (l.kind === "changed") expect(l.why).toContain("size");
+  });
+
   test("requote recaptures stop oids from the fresh account", async () => {
     const acc = account({ positions: [ethLong()], orders: [order(11, "sl", 3800)] });
     const t = await buildTicket({ kind: "stop", coin: "ETH", px: 3900 }, deps({ account: acc }));

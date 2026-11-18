@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '../Button'
 import { EmptyBlock } from '../state'
 
@@ -9,13 +9,17 @@ import { EmptyBlock } from '../state'
 
 export function SqlBlock({ sql, params, stale }: { sql: string | null; params: (string | number)[] | null; stale: boolean }) {
   const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const t = setTimeout(() => setCopied(false), 1500)
+    return () => clearTimeout(t)
+  }, [copied])
   if (!sql) return <EmptyBlock label="ask a question, or paste a DSL" />
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(sql)
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
     } catch {
       // clipboard blocked: the text stays selectable
     }

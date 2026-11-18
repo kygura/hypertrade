@@ -5,6 +5,7 @@ import type { JsonValue, LedgerStats, NearMiss, Opportunity } from "../../shared
 import { bus as defaultBus, type Bus } from "./bus.js";
 import { ABSORB_SHARE, bookFromL2, costs as costsFor, depthWithin, midOf, netEdge, type Book } from "./costs.js";
 import type { RingPoint } from "./features.js";
+import { RING_MS } from "./replay.js";
 import { evaluateTick, nearMiss } from "./setups.js";
 import { extremesReadyTtlMin, nextAutoStatus, readyTtlMinFor, shouldExpire } from "./opportunity.js";
 import { SCORE_VERSION, scoreOpportunity } from "./score.js";
@@ -24,7 +25,6 @@ export const envNum = (name: string, def: number): number => {
 };
 
 const MIN = 60_000;
-const RING_MS = 24 * 60 * MIN;
 /** scan_snapshots cadence: the 1-min ring is persisted every 5 min. */
 export const PERSIST_MS = 5 * MIN;
 /** Reference size for costs: min(absorbableUsd, this). Governor-free: the scanner has no account, the governor sizes at approval. */

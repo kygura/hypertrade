@@ -94,14 +94,19 @@ export async function getCtxs(): Promise<{ fetchedAt: number; ctxs: AssetCtx[] }
 
 /**
  * Canonical HL coin name for a URL param. Names are case-sensitive upstream
- * ("kPEPE"), so a case-insensitive match against the universe wins; unknown
- * names (or HL unreachable) fall back to uppercase.
+ * ("kPEPE"), so a case-insensitive match against the universe wins. Null when
+ * the universe was read and has no such coin (callers 404); when it could not
+ * be read (HL unreachable, or the coin's HIP-3 dex failed) the name falls back
+ * to uppercase, so an outage never turns real coins into 404s.
  */
-export async function resolveCoin(param: string): Promise<string> {
+export async function resolveCoin(param: string): Promise<string | null> {
   try {
-    const { ctxs } = await (param.includes(":") ? getAllCtxs() : getCtxs());
-    const hit = ctxs.find((c) => c.name.toLowerCase() === param.toLowerCase());
+    const all = param.includes(":");
+    const snap = await (all ? refreshAll() : refresh());
+    const hit = snap.ctxs.find((c) => c.name.toLowerCase() === param.toLowerCase());
     if (hit) return hit.name;
+    const dex = dexOf(param).toLowerCase();
+    if (!all || !(snap as AllSnapshot).failedDexes.some((d) => d.toLowerCase() === dex)) return null;
   } catch {
     // HL unreachable: best effort below
   }

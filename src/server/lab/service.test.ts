@@ -251,6 +251,30 @@ describe("lab service: catalogue", () => {
     expect(loads).toEqual([]);
   });
 
+  test("save bar: below candidate is refused naming the verdict; a candidate needs a note; an agent needs its runId", async () => {
+    const { service, store } = kit();
+    const losing: Rule = { ...planted, direction: "short" };
+    const level = evaluateRule(losing, base, { slippageBps: 10, windows: [20, 30, 40] }).verdict!.level;
+    expect(["fragile", "weak", "fails_holdout"]).toContain(level);
+    const refused = await inputError(service.catalogueSave({ rule: losing, name: "losing", note: "n" }));
+    expect(refused.field).toBe("rule");
+    expect(refused.message).toContain(`"${level}"`);
+
+    // A run of many trials deflates the planted rule to a candidate; without a run it would read robust (N = 1).
+    const { result } = await service.search(searchCfg, { source: "api" });
+    const wide = await store.saveRun({ source: "api", config: result.config, status: "ok", error: null, result: { ...result, rules: [], effectiveTrials: 1e12 }, durationMs: 1 });
+    expect((await inputError(service.catalogueSave({ rule: planted, name: "p", runId: wide.id }))).field).toBe("note");
+    expect((await inputError(service.catalogueSave({ rule: planted, name: "p", note: " ", runId: wide.id }))).field).toBe("note");
+    const agentBare = await inputError(service.catalogueSave({ rule: planted, name: "p", origin: "agent" }));
+    expect(agentBare.field).toBe("runId");
+    expect((await inputError(service.catalogueSave({ rule: planted, name: "p" }, { source: "mcp" }))).field).toBe("runId");
+    expect((await service.catalogueList({ live: false })).entries).toEqual([]);
+    const kept = await service.catalogueSave({ rule: planted, name: "p", note: "planted signal, tracked to watch decay", origin: "agent", runId: wide.id }, { source: "mcp" });
+    expect(kept.saved.verdict!.level).toBe("candidate");
+    // The operator path (no origin "agent", not MCP) may still save without a run.
+    expect((await kit().service.catalogueSave({ rule: planted, name: "p" }, { source: "ui" })).saved.verdict!.level).toBe("robust");
+  }, 20_000);
+
   test("save with a known runId links it; re-saving skips re-evaluation and keeps the original", async () => {
     const { service, loads } = kit();
     const { runId } = await service.search(searchCfg, { source: "api" });

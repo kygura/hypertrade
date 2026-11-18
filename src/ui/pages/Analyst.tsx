@@ -4,7 +4,7 @@ import { Badge, Button, ErrorBlock, OfflineBlock, Segmented, SkeletonRows, Statu
 import { Markdown } from '../components/analyst/Markdown'
 import { ModelSelector } from '../components/analyst/ModelSelector'
 import { PathCard, PathPending } from '../components/paths/PathCard'
-import { applyEvent, offlineFrom, toHistory, useAnalystThread, type Offline, type TraceItem, type TurnState } from '../components/analyst/useAnalystThread'
+import { offlineFrom, useAnalystThread, type Offline, type TraceItem, type TurnState } from '../components/analyst/useAnalystThread'
 import {
   getAnalystModels,
   getAnalystStatus,
@@ -497,10 +497,6 @@ function Rail({
 
 // ─── page ───
 
-// Re-exported: the thread logic lives in useAnalystThread (shared with the ASK drawer).
-export { applyEvent, toHistory }
-export type { TurnState }
-
 function modeFromParam(v: string | null): AnalystMode | null {
   return v === 'sim' || v === 'ask' ? v : null
 }
@@ -550,8 +546,6 @@ export function Analyst() {
       el?.setSelectionRange(el.value.length, el.value.length)
     })
   }
-
-  const onSaved = markSaved
 
   const probe = useCallback(() => {
     setStatusLoading(true)
@@ -650,7 +644,7 @@ export function Analyst() {
           {offline && <OfflineBlock title={offline.title} message={offline.message} onRetry={probe} />}
           {!offline && turns.length === 0 && status && <EmptyThread onAsk={(q) => void ask(q)} disabled={busy} mode={mode} />}
           {turns.map((t) => (
-            <Turn key={t.id} t={t} busy={busy} onRetry={(q) => void ask(q)} labelFor={labelFor} onSaved={onSaved} onFork={fork} />
+            <Turn key={t.id} t={t} busy={busy} onRetry={(q) => void ask(q)} labelFor={labelFor} onSaved={markSaved} onFork={fork} />
           ))}
           <div ref={endRef} />
         </div>

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { PlatformHealth } from "../../shared/platform.js";
 
 // Loop supervisor (SPEC P0.4). Each loop runs in its own try/catch chain: a
@@ -17,6 +18,31 @@ type LoopHealth = PlatformHealth["loops"][number];
 export interface Loops {
   health(): LoopHealth[];
   stop(graceMs?: number): Promise<void>;
+}
+
+/** A run lease on a sync_state row (db.ts acquireLease/releaseLease): one holder until it releases or ttlMs passes. */
+export interface RunLease {
+  acquire(holder: string, ttlMs: number): Promise<boolean>;
+  release(holder: string): Promise<void>;
+}
+
+/**
+ * The loop under the lease its cron route takes, so the always-on loop and the HTTP job never run at once: a beat that
+ * finds the lease held does nothing. The lease expires after ttlMs, so a crashed holder blocks the loop that long at most.
+ */
+export function leased(def: LoopDef, lease: RunLease, ttlMs: number): LoopDef {
+  return {
+    ...def,
+    run: async () => {
+      const holder = randomUUID();
+      if (!(await lease.acquire(holder, ttlMs))) return;
+      try {
+        await def.run();
+      } finally {
+        await lease.release(holder).catch((err) => console.error(`[loop:${def.name}] lease release:`, err));
+      }
+    },
+  };
 }
 
 /** WORKER_LOOPS: unset or "all" -> every loop; "off" or "" -> none; otherwise a comma list. */

@@ -3,7 +3,8 @@ import { resolveChosenProvider, resolveProvider, DEFAULT_MODEL, type StepHooks }
 import { AnthropicProvider } from "./anthropic.js";
 import { OpenAICompatibleProvider, postWithRetry429 } from "./openai.js";
 import { FORECAST_RULE, HEDGE_VOCABULARY, buildSystemPrompt } from "./system.js";
-import { LAB_DEADLINE_MS, MAX_TOOL_CHARS, TOOL_SPECS, exaSearch, runLabTool, runTool, type ToolDeps } from "./tools.js";
+import { MAX_TOOL_CHARS } from "./intelTools.js";
+import { LAB_DEADLINE_MS, TOOL_SPECS, exaSearch, runLabTool, runTool, type ToolDeps } from "./tools.js";
 import { labTools } from "../lab/tools.js";
 import { createLabService } from "../lab/service.js";
 import { memoryStore } from "../lab/store.js";

@@ -3,8 +3,8 @@
 // re-porting marketstate's fetch/parse — same wire call, one parser.
 import { fetchPerpMetaAndCtxs } from "../../shared/hl-client.js";
 import type { AssetCtx } from "../../shared/types.js";
-import { ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db.js";
-import type { CollectorResult } from "./types.js";
+import type { Observation, SeriesDef } from "../db.js";
+import { collectorDb, type CollectorDbDeps, type CollectorResult } from "./types.js";
 
 const TOP_N = 20;
 const COLLECTOR = "hyperliquid";
@@ -65,13 +65,9 @@ export function buildHyperliquidObservations(ctxs: AssetCtx[], ts: Date, extraOi
   return { seriesDefs, observations, totalOiUsd, fundingSkew, topCoins: top.map((c) => c.name) };
 }
 
-/** db.ts calls, injectable so tests never need a live DATABASE_URL. */
-export type HlDbDeps = { ensureSeries: typeof ensureSeries; upsertObservations: typeof upsertObservations; recordCollectorRun: typeof recordCollectorRun };
-const defaultDeps: HlDbDeps = { ensureSeries, upsertObservations, recordCollectorRun };
-
 export async function collectHyperliquid(
   fetchFn: typeof fetch = fetch,
-  deps: HlDbDeps = defaultDeps,
+  deps: CollectorDbDeps = collectorDb,
   extraOiCoins: string[] = [],
   /** Handed the parsed contexts (Intel snapshots reuse this fetch). Called synchronously; must not throw. */
   onCtxs?: (ctxs: AssetCtx[], ts: Date) => void,

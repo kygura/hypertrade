@@ -96,6 +96,13 @@ describe("bgeometrics", () => {
     expect(err).not.toContain("s3cret");
   });
 
+  test("memory store read returns only the keys asked for, as the Postgres twin does", async () => {
+    const store = memoryVectorStore();
+    await store.write("bg", { a: [{ t: DAY, v: 1 }], b: [{ t: DAY, v: 2 }] }, 5, null);
+    expect(await store.read("bg", ["a", "missing"])).toEqual({ series: { a: [{ t: DAY, v: 1 }] }, fetchedAt: 5 });
+    expect(await store.read("bg", [])).toEqual({ series: {}, fetchedAt: 5 });
+  });
+
   test("loader fetches once per UTC day, then serves what it stored; a failed fetch falls back to stored rows", async () => {
     const store = memoryVectorStore();
     let calls = 0;

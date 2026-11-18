@@ -24,7 +24,7 @@ export type Resolution = { ok: true; proposal: ResolvedProposal; notes: string[]
 const DAY = 86_400_000;
 
 /** Weekly trend (daily when the market is too young for one) against the setup's direction. */
-export function alignment(row: BoardRow, direction: "long" | "short"): "with" | "counter" {
+function alignment(row: BoardRow, direction: "long" | "short"): "with" | "counter" {
   const trend = row.tf["1w"]?.trend ?? row.tf["1d"]?.trend ?? null;
   return (direction === "long" && trend === "down") || (direction === "short" && trend === "up") ? "counter" : "with";
 }

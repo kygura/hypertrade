@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { orderToIntent } from "./intent.js";
-import { parseInput, type OrderCommand } from "./parse.js";
+import { orderToIntent, type SizedOrder } from "./intent.js";
+import { parseInput } from "./parse.js";
 
-const ctx = { markPx: 60000, equityUsd: 10000, defaultLeverage: 3, defaultRiskPct: 0.5 };
-function order(text: string): OrderCommand {
+const ctx = { markPx: 60000, defaultLeverage: 3 };
+function order(text: string): SizedOrder {
   const c = parseInput(text);
-  if (c.kind !== "order") throw new Error(`not an order: ${text} -> ${JSON.stringify(c)}`);
-  return c;
+  if (c.kind !== "order" || !c.size || "riskPct" in c.size) throw new Error(`not a $ or % book order: ${text} -> ${JSON.stringify(c)}`);
+  return { ...c, size: c.size };
 }
 function ok(text: string, c = ctx) {
   const r = orderToIntent(order(text), c);
@@ -20,28 +20,6 @@ function bad(text: string, c = ctx) {
 }
 
 describe("orderToIntent: sizing", () => {
-  test("risk % with pct stop", () => {
-    // 10000 * 0.5% / 2% = 2500
-    const r = ok("/long BTC risk 0.5% stop 2%");
-    expect(r.intent).toEqual({ asset: "BTC", side: "long", leverage: 3, size: { usd: 2500 }, entry: { type: "market" }, stop: { type: "pct", pct: 2 } });
-    expect(r.notes[0]).toContain("$2500 notional");
-  });
-  test("risk % with price stop uses mark", () => {
-    // stop 58800 = 2% below 60000 -> 2500
-    expect(ok("/long BTC risk 0.5% stop 58800").intent.size).toEqual({ usd: 2500 });
-  });
-  test("risk % with price stop uses limit when given", () => {
-    // entry 50000, stop 49000 = 2% -> 10000*1%/2% = 5000
-    expect(ok("/long BTC risk 1% stop 49000 @50000").intent.size).toEqual({ usd: 5000 });
-  });
-  test("short side price stop", () => {
-    expect(ok("/short BTC risk 0.5% stop 61200").intent.size).toEqual({ usd: 2500 });
-  });
-  test("size null defaults to defaultRiskPct and says so", () => {
-    const r = ok("/long BTC stop 2%");
-    expect(r.intent.size).toEqual({ usd: 2500 });
-    expect(r.notes[0]).toContain("size defaulted to risk 0.5%");
-  });
   test("usd and pctBook pass through", () => {
     expect(ok("/long BTC $750 stop 2%").intent.size).toEqual({ usd: 750 });
     expect(ok("/long BTC 5% book stop 2%").intent.size).toEqual({ pctBook: 5 });
@@ -50,13 +28,6 @@ describe("orderToIntent: sizing", () => {
     expect(ok("/long BTC $500 stop 1.5atr").intent.stop).toEqual({ type: "atr_mult", mult: 1.5 });
     expect(ok("/long BTC 5% book stop pdl").intent.stop).toEqual({ type: "prev_day_low" });
     expect(ok("/short BTC 5% book stop pdh").intent.stop).toEqual({ type: "prev_day_high" });
-  });
-  test.each(["/long BTC risk 1% stop 2atr", "/long BTC stop pdl", "/short BTC stop pdh"])("risk sizing refuses %j", (t) => {
-    expect(bad(t)).toBe("risk sizing needs a price or % stop; use $ or % book with atr/pdl/pdh");
-  });
-  test("risk sizing without equity", () => {
-    expect(bad("/long BTC risk 1% stop 2%", { ...ctx, equityUsd: 0 })).toMatch(/equity/);
-    expect(ok("/long BTC $500 stop 2%", { ...ctx, equityUsd: 0 }).intent.size).toEqual({ usd: 500 });
   });
 });
 

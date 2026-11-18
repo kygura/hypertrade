@@ -1,3 +1,4 @@
+import { fireRoutine, routineTarget } from "../extremes/wake.js";
 import type { AlertLevel } from "./types.js";
 
 // Alert delivery. Every alert is stored (desk_alerts) by the caller; this
@@ -6,6 +7,9 @@ import type { AlertLevel } from "./types.js";
 //   Discord   DESK_DISCORD_WEBHOOK_URL
 //   Webhook   DESK_ALERT_WEBHOOK_URL (POST JSON {level, title, body, actions, ts})
 //   ntfy      NTFY_TOPIC (NTFY_SERVER defaults to https://ntfy.sh; NTFY_TOKEN optional)
+//   claude    CLAUDE_ROUTINE_URL + CLAUDE_ROUTINE_TOKEN: fires a Claude Code routine (its API trigger) with the alert
+//             as text; the routine relays it and the Claude app pushes it to the phone (docs/EXTREMES-ROUTINE.md).
+//             One session per alert, never retried, 30 fires an hour at most on the endpoint.
 // A channel failing never fails the caller: the result lists what went out.
 
 export interface AlertAction {
@@ -32,6 +36,11 @@ type Env = Record<string, string | undefined>;
 
 const ICON: Record<AlertLevel, string> = { info: "🔹", warn: "🟠", critical: "🔴" };
 const NTFY_PRIORITY: Record<AlertLevel, string> = { info: "3", warn: "4", critical: "5" };
+/** The alert as the routine's payload: a marker line the routine keys on, then the alert as data. */
+export function routineAlertText(a: Alert): string {
+  return [`hypertrade alert`, `level: ${a.level}`, `title: ${a.title}`, ...(a.click ? [`link: ${a.click}`] : []), "", a.body].join("\n");
+}
+
 /** HTTP header values must be printable ASCII; fetch throws on anything else. */
 const asciiHeader = (s: string) => s.replace(/[^\x20-\x7e]/g, "").slice(0, 250);
 
@@ -72,7 +81,8 @@ export function createNotifier(
   const ntfy = env.NTFY_TOPIC?.trim();
   const ntfyServer = env.NTFY_SERVER?.trim() || "https://ntfy.sh";
   const ntfyToken = env.NTFY_TOKEN?.trim();
-  const channels = [tgToken && tgChat ? "telegram" : null, discord ? "discord" : null, hook ? "webhook" : null, ntfy ? "ntfy" : null].filter((x): x is string => !!x);
+  const routine = routineTarget(env);
+  const channels = [tgToken && tgChat ? "telegram" : null, discord ? "discord" : null, hook ? "webhook" : null, ntfy ? "ntfy" : null, routine ? "claude" : null].filter((x): x is string => !!x);
 
   const post = async (name: string, f: () => Promise<Response>) => {
     try {
@@ -134,6 +144,7 @@ export function createNotifier(
           }),
         );
       }
+      if (routine) jobs.push(post("claude", () => fireRoutine(routine.url, routine.token, routineAlertText(a), env, fetchFn)));
       return (await Promise.all(jobs)).filter((x): x is string => !!x);
     },
   };

@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import coingeckoFixture from "../../shared/fixtures/coingecko-global.json" with { type: "json" };
 import fngFixture from "../../shared/fixtures/fng.json" with { type: "json" };
 import defillamaFixture from "../../shared/fixtures/defillama-stablecoins.json" with { type: "json" };
 import deribitFixture from "../../shared/fixtures/deribit-dvol.json" with { type: "json" };
-import { parseCoinGecko, parseDeribit, parseFng, parseStablecoins, collectCryptoContext, type CryptoContextDbDeps } from "./cryptoContext.js";
+import { parseCoinGecko, parseDeribit, parseFng, parseStablecoins, collectCryptoContext } from "./cryptoContext.js";
+import type { CollectorDbDeps } from "./types.js";
 import type { Observation } from "../db.js";
 
 describe("parseCoinGecko", () => {
@@ -49,7 +50,7 @@ describe("parseDeribit", () => {
 describe("collectCryptoContext orchestration", () => {
   function fakeDeps() {
     const written: Observation[] = [];
-    const deps: CryptoContextDbDeps = {
+    const deps: CollectorDbDeps = {
       ensureSeries: async () => {},
       upsertObservations: async (rows) => {
         written.push(...rows);
@@ -88,6 +89,33 @@ describe("collectCryptoContext orchestration", () => {
     expect(written.map((o) => o.seriesId)).toContain("cg.total_mcap_usd");
     expect(written.map((o) => o.seriesId)).toContain("llama.stablecoin_cap_usd");
     expect(written.map((o) => o.seriesId)).toContain("deribit.btc_dvol");
+  });
+
+  test("the Deribit window is computed per collect, not at module load", async () => {
+    const { deps } = fakeDeps();
+    const later = Date.now() + 5 * 3_600_000;
+    let deribitUrl = "";
+    const fetchFn = fetchByUrl({
+      "api.coingecko.com": async () => new Response(JSON.stringify(coingeckoFixture)),
+      "alternative.me": async () => new Response(JSON.stringify(fngFixture)),
+      "stablecoins.llama.fi": async () => new Response(JSON.stringify(defillamaFixture)),
+      "deribit.com": async () => new Response(JSON.stringify(deribitFixture)),
+    });
+    const spy = (async (url: string, init?: RequestInit) => {
+      if (url.includes("deribit.com")) deribitUrl = url;
+      return fetchFn(url, init);
+    }) as unknown as typeof fetch;
+
+    setSystemTime(new Date(later));
+    try {
+      await collectCryptoContext(spy, deps);
+    } finally {
+      setSystemTime();
+    }
+
+    const q = new URL(deribitUrl).searchParams;
+    expect(Number(q.get("end_timestamp"))).toBe(later);
+    expect(Number(q.get("start_timestamp"))).toBe(later - 2 * 3_600_000);
   });
 
   test("all sources failing returns an error status and writes nothing", async () => {

@@ -7,7 +7,7 @@ import { engineFetch, type EngineResult } from "../routes/engine.js";
 import { getMarkets, type MarketRow } from "../routes/hl.js";
 import { getSectorsPayload } from "../routes/sectors.js";
 import { labTools } from "../lab/tools.js";
-import { INTEL_TOOL_SPECS, intelInputs, isIntelTool, registeredIntelReadDeps, runIntelTool, type IntelReadDeps } from "./intelTools.js";
+import { clip, INTEL_TOOL_SPECS, intelInputs, isIntelTool, registeredIntelReadDeps, runIntelTool, type IntelReadDeps, type ToolRun } from "./intelTools.js";
 import { ToolInputError, UpstreamError, type ToolDef } from "../mcp/types.js";
 import type { ToolSpec } from "./provider.js";
 
@@ -15,8 +15,6 @@ import type { ToolSpec } from "./provider.js";
 // Every tool maps onto an existing server function; none writes, and none
 // reaches the engine's approve/reject/kill/config endpoints. Results are
 // compact JSON (capped) so a tool round stays cheap.
-
-export const MAX_TOOL_CHARS = 12_000;
 
 /** The metric strip's series (Overview) — the default for get_metrics_summary. */
 const DEFAULT_METRIC_IDS = [
@@ -260,16 +258,7 @@ const inputs = {
 
 type ToolName = keyof typeof inputs;
 
-export interface ToolRun {
-  content: string;
-  summary: string;
-  isError: boolean;
-}
-
-function clip(v: unknown): string {
-  const s = JSON.stringify(v);
-  return s.length <= MAX_TOOL_CHARS ? s : `${s.slice(0, MAX_TOOL_CHARS)}…[truncated ${s.length - MAX_TOOL_CHARS} chars]`;
-}
+export type { ToolRun };
 
 function fail(summary: string, detail: Record<string, unknown> = {}): ToolRun {
   return { content: JSON.stringify({ error: summary, ...detail }), summary, isError: true };

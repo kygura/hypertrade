@@ -18,7 +18,7 @@ import { createDefinitionScanner, SCAN_DEADLINE_MS, type DefinitionScanner } fro
  * a coin on the first scan, then only the new settlements: the ht provider keeps them in process), OI from OKX.
  * The first scan takes minutes, so coins get this long instead of SCAN_DEADLINE_MS.
  */
-export const LIVE_SCAN_DEADLINE_MS = 45 * 60_000;
+const LIVE_SCAN_DEADLINE_MS = 45 * 60_000;
 
 /** The Lab's default universe (top STUDY_MAX_COINS by day volume) plus the monitoring watchlist. */
 export async function definitionScanCoins(env: Record<string, string | undefined> = process.env): Promise<string[]> {

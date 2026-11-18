@@ -22,47 +22,36 @@ const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLow
 export function createGraphRoutes(deps: GraphRouteDeps) {
   const now = deps.now ?? (() => new Date());
   return new Hono()
+    .onError((err, c) => failure(c, err, "intel:graph"))
     .get("/graph", async (c) => {
       const parsed = GraphQuerySchema.safeParse({ asset: c.req.query("asset") });
       if (!parsed.success) return c.json({ error: "invalid asset", field: "asset" }, 400);
       const { asset } = parsed.data;
-      try {
-        const [edges, targets] = await Promise.all([deps.store.listEdges(), deps.targets()]);
-        const res: GraphResponse = {
-          asset,
-          edges: edges.filter((e) => same(e.src, asset) || same(e.dst, asset)),
-          paths: walk(edges, [asset], targets),
-        };
-        return c.json(res);
-      } catch (err) {
-        return failure(c, err, "intel:graph");
-      }
+      const [edges, targets] = await Promise.all([deps.store.listEdges(), deps.targets()]);
+      const res: GraphResponse = {
+        asset,
+        edges: edges.filter((e) => same(e.src, asset) || same(e.dst, asset)),
+        paths: walk(edges, [asset], targets),
+      };
+      return c.json(res);
     })
     .post("/graph/edges", async (c) => {
       const parsed = UserEdgeInputSchema.safeParse(await body(c));
       if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid edge", field: parsed.error.issues[0]?.path.join(".") }, 400);
       const e = parsed.data;
       if (!e.source) return c.json({ error: "an https source URL is required", field: "source" }, 400);
-      try {
-        const row: NewEdge = { src: e.src, dst: e.dst, type: e.type, weight: e.weight ?? EDGE_TYPE_WEIGHT[e.type], source: e.source, lastVerified: now().toISOString(), origin: "user" };
-        await deps.store.upsertEdges([row]);
-        const saved = (await deps.store.listEdges()).find((x: Edge) => x.src === e.src && x.dst === e.dst && x.type === e.type);
-        return saved ? c.json(saved, 201) : c.json({ error: "edge not stored" }, 500);
-      } catch (err) {
-        return failure(c, err, "intel:graph");
-      }
+      const row: NewEdge = { src: e.src, dst: e.dst, type: e.type, weight: e.weight ?? EDGE_TYPE_WEIGHT[e.type], source: e.source, lastVerified: now().toISOString(), origin: "user" };
+      await deps.store.upsertEdges([row]);
+      const saved = (await deps.store.listEdges()).find((x: Edge) => x.src === e.src && x.dst === e.dst && x.type === e.type);
+      return saved ? c.json(saved, 201) : c.json({ error: "edge not stored" }, 500);
     })
     .delete("/graph/edges", async (c) => {
       const parsed = EdgeKeySchema.safeParse(await body(c));
       if (!parsed.success) return c.json({ error: "invalid edge key", field: parsed.error.issues[0]?.path.join(".") }, 400);
       const k = parsed.data;
-      try {
-        if (await deps.store.deleteUserEdge(k)) return c.json({ deleted: true });
-        const existing = (await deps.store.listEdges()).find((x) => x.src === k.src && x.dst === k.dst && x.type === k.type);
-        if (existing) return c.json({ error: `${existing.origin} edges cannot be deleted; only user edges`, field: "type" }, 400);
-        return c.json({ error: "edge not found" }, 404);
-      } catch (err) {
-        return failure(c, err, "intel:graph");
-      }
+      if (await deps.store.deleteUserEdge(k)) return c.json({ deleted: true });
+      const existing = (await deps.store.listEdges()).find((x) => x.src === k.src && x.dst === k.dst && x.type === k.type);
+      if (existing) return c.json({ error: `${existing.origin} edges cannot be deleted; only user edges`, field: "type" }, 400);
+      return c.json({ error: "edge not found" }, 404);
     });
 }

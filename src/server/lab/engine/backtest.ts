@@ -1,4 +1,5 @@
 import type { Objective, PerfStats } from "../types.js";
+import { meanSd } from "./stats.js";
 import { isoDate } from "./util.js";
 
 // Strategy scoring (docs/LAB.md §6). Day indices: pos[i] is the position decided
@@ -94,14 +95,8 @@ export function zoneActivity(sig: Uint8Array, a: number, b: number): { exposure:
 }
 
 export function sharpeOf(ret: ArrayLike<number>): number {
-  const k = ret.length;
-  if (k < 2) return 0;
-  let s = 0;
-  for (let i = 0; i < k; i++) s += ret[i]!;
-  const m = s / k;
-  let ss = 0;
-  for (let i = 0; i < k; i++) ss += (ret[i]! - m) ** 2;
-  const sd = Math.sqrt(ss / (k - 1));
+  if (ret.length < 2) return 0;
+  const { m, sd } = meanSd(ret);
   return sd > 1e-9 ? (m / sd) * Math.sqrt(365) : 0;
 }
 

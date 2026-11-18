@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { candlesRoute, type CandlesDeps, type CandlesResponse } from "./candles.js";
+import type { CandlesResponse } from "../../shared/market.js";
+import { candlesRoute, type CandlesDeps } from "./candles.js";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2024, 0, 1);
@@ -38,6 +39,16 @@ describe("GET /candles/:coin", () => {
     const res = await app(deps()).request("/candles/BTC?tf=3d");
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid query" });
+  });
+
+  test("404s on a coin the universe lacks, without touching sync access", async () => {
+    const touched: string[] = [];
+    const d = deps({ resolveCoin: async () => null, touch: async (coin) => void touched.push(coin) });
+    const res = await app(d).request("/candles/AAAA1?tf=1h");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "unknown coin" });
+    expect(touched).toEqual([]);
+    expect(d.pages).toEqual([]);
   });
 
   test("400s on a bad before / limit", async () => {

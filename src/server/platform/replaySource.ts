@@ -283,7 +283,7 @@ const fundingMemo = memoSeries(liveFunding);
  * Stored funding (the `funding` table) when a database is configured and it covers at least 95% of the span's hours,
  * else HL fundingHistory (memoised in process).
  */
-async function fundingFor(coin: string, startMs: number, endMs: number): Promise<FundingPoint[]> {
+export async function fundingFor(coin: string, startMs: number, endMs: number): Promise<FundingPoint[]> {
   if (databaseUrl()) {
     try {
       const rows = (await getFunding(coin, new Date(startMs), new Date(endMs))).map((r) => ({ t: new Date(r.ts).getTime(), rate: Number(r.rate), premium: Number(r.premium) }));

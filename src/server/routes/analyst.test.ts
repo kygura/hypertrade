@@ -3,6 +3,7 @@ import { createAnalystRoutes, runAnalyst, type AnalystEvent } from "./analyst.js
 import type { AnalystCatalog } from "../llm/catalog.js";
 import type { Conversation, Effort, LLMProvider, ProviderId, StepHooks, StepOptions, StepResult, ToolOutcome, ToolSpec, Turn } from "../llm/provider.js";
 import type { ToolDeps } from "../llm/tools.js";
+import { MemoryLlmCache } from "../routine/llm.js";
 
 // A scripted provider: each step() runs the next script entry, which can
 // stream text, call server-tool hooks, and return tool calls.
@@ -391,5 +392,44 @@ describe("default provider fallback", () => {
     const status = await app.request("/status");
     expect(status.status).toBe(200);
     expect(picked[0]).toEqual({ provider: "anthropic", model: "claude-sonnet-5", effort: undefined });
+  });
+});
+
+describe("daily LLM cap", () => {
+  const now = () => new Date("2026-11-18T12:00:00Z");
+
+  test("at the cap the query is refused with 429 before any provider call", async () => {
+    const cache = new MemoryLlmCache();
+    await cache.cachePut("nocache:x", "v", {}, { input_tokens: 1, output_tokens: 1 }, "claude-opus-5-5");
+    let calls = 0;
+    const provider = new FakeProvider([() => (calls++, { stop: "end", toolCalls: [], usage })]);
+    const app = createAnalystRoutes({ resolve: () => provider, deps, llm: { cache, now, dailyCap: 1, dailyUsd: 2 } });
+    const res = await post(app, { question: "hi" });
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({ error: "LLM cap reached" });
+    expect(calls).toBe(0);
+  });
+
+  test("over the dollar cap the query is refused with 429", async () => {
+    const cache = new MemoryLlmCache();
+    await cache.cachePut("nocache:x", "v", {}, { input_tokens: 1_000_000, output_tokens: 0 }, "unknown-model");
+    const app = createAnalystRoutes({ resolve: () => new FakeProvider([]), deps, llm: { cache, now, dailyCap: 200, dailyUsd: 2 } });
+    const res = await post(app, { question: "hi" });
+    expect(res.status).toBe(429);
+    expect((await res.json()).error).toStartWith("LLM cap reached ($");
+  });
+
+  test("a query records its usage, all rounds and server searches, in the shared counter", async () => {
+    const cache = new MemoryLlmCache();
+    const provider = new FakeProvider([
+      (hooks) => {
+        hooks.onServerToolCall?.({ id: "srv_1", name: "web_search", input: { query: "q" } });
+        return { stop: "tool_use", toolCalls: [{ id: "tu_1", name: "get_sectors", input: {} }], usage };
+      },
+      () => ({ stop: "end", toolCalls: [], usage }),
+    ]);
+    const app = createAnalystRoutes({ resolve: () => provider, deps, llm: { cache, now, dailyCap: 200, dailyUsd: 2 } });
+    await (await post(app, { question: "hi" })).text();
+    expect(cache.usage).toEqual([{ input_tokens: 20, output_tokens: 10, searches: 1, model: "fake-model" }]);
   });
 });

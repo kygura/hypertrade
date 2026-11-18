@@ -92,7 +92,7 @@ export const ScanRecordSchema = z.object({
   unanswered: z.array(z.string()),
   brief: z.string(),
 });
-export type ScanRecord = z.infer<typeof ScanRecordSchema>;
+type ScanRecord = z.infer<typeof ScanRecordSchema>;
 
 const SavedContextSchema = z.object({ version: z.literal(1), pack: z.object({ asOf: z.string() }).passthrough(), board: z.object({ asOf: z.string(), rows: z.array(z.unknown()) }).passthrough() });
 

@@ -50,9 +50,12 @@ const RESERVED = new Set(["risk", "stop", "tp", "book", "atr", "pdl", "pdh", "al
 
 const err = (message: string, token?: string): ErrorCommand => (token === undefined ? { kind: "error", message } : { kind: "error", message, token });
 
-/** "1,000", "60k", "1.2m", optional leading "$". Null when not a plain positive-format number. */
+/**
+ * "1,000", "60k", "1.2m", optional leading "$". Null when not a plain positive-format number.
+ * A comma is only a thousands separator in groups of three: "1,5" is refused, never read as 15.
+ */
 function num(tok: string, suffix = true): number | null {
-  const m = /^\$?(\d[\d,]*(?:\.\d+)?|\.\d+)([km])?$/i.exec(tok);
+  const m = /^\$?((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)([km])?$/i.exec(tok);
   if (!m || (m[2] && !suffix)) return null;
   const n = Number(m[1]!.replace(/,/g, "")) * (m[2] ? (m[2].toLowerCase() === "k" ? 1e3 : 1e6) : 1);
   return Number.isFinite(n) ? n : null;

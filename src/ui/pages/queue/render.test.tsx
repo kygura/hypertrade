@@ -72,7 +72,7 @@ describe('QueueView', () => {
   })
 
   test('an unavailable source is a chip with its reason and one quiet line, not a card', () => {
-    const q = queueResponse({ sources: { moves: { state: 'unavailable', reason: 'needs the always-on server; or run `bun start`', count: 0 }, opportunity: { state: 'ok', reason: null, count: 0 }, radar: { state: 'unavailable', reason: 'sign in required', count: 0 } } })
+    const q = queueResponse({ sources: { moves: { state: 'unavailable', reason: 'needs the always-on server; or run `bun start`', count: 0 }, opportunity: { state: 'ok', reason: null, count: 0 }, radar: { state: 'unavailable', reason: 'sign in required', count: 0 }, novelty: { state: 'ok', reason: null, count: 0 }, rule: { state: 'ok', reason: null, count: 0 }, definition: { state: 'ok', reason: null, count: 0 } } })
     const out = html(props(feed(q)))
     expect(out).toContain('data-source="moves" data-state="off"')
     expect(out).toContain('title="sign in required"')

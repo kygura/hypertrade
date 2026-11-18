@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { Badge, Button, ErrorBlock, Segmented, SkeletonRows } from '../components'
-import { engine, errorMessage, useEngine } from '../lib/engine'
+import { engine, useEngine } from '../lib/engine'
+import { errorMessage } from '../lib/poll'
 import { ApiError } from '../lib/api'
 import type { DecisionRecord, GovernorMode, GovernorOverride, StrategyConfig, StrategyStatus } from '../../shared/strategy-protocol'
 import { defaultParams, validateParams, type ParamValues } from '../../shared/strategy-params'
@@ -10,7 +11,7 @@ import { EngineTabs } from '../components/strategy/EngineTabs'
 import { EngineOffline, OfflineStrip } from '../components/strategy/EngineOffline'
 import { ParamForm } from '../components/strategy/ParamForm'
 import { DecisionMeta, DecisionView } from '../components/strategy/DecisionView'
-import { fmtAge, fmtTs } from '../components/strategy/format'
+import { fmtAge, fmtTs } from '../lib/format'
 
 const ENABLED_OPTIONS = [
   { value: true, label: 'ON', tone: 'green' as const },

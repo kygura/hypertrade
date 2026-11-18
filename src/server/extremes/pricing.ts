@@ -17,11 +17,11 @@ import type { Candle } from "../../shared/types.js";
 // judges the thesis.
 
 /** Stops closer than this many 1h ATRs get widened, so a tight stop cannot inflate the R:R (perp-radar's value). */
-export const MIN_STOP_ATR = 0.75;
+const MIN_STOP_ATR = 0.75;
 /** The 72h range needs this many prior 1h bars (perp-radar's floor). */
 const MIN_RANGE_BARS = 48;
 /** Default R:R floor for a priced take (EXTREMES_MIN_RR). */
-export const DEFAULT_EXTREMES_MIN_RR = 2;
+const DEFAULT_EXTREMES_MIN_RR = 2;
 /** 1h candles a pricing read asks for: the 72h range, its current bar and slack for gaps. */
 export const PRICING_LOOKBACK_MS = 80 * 3_600_000;
 

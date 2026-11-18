@@ -3,11 +3,13 @@ import { Hono } from "hono";
 import { requireAuth } from "../auth.js";
 import { makeService, ScriptedProvider } from "../desk/testkit.js";
 import { createDeskRoutes } from "./desk.js";
+import type { LlmCaps } from "../intel/llm.js";
+import { MemoryLlmCache } from "../routine/llm.js";
 
-function app(opts: { provider?: ScriptedProvider | null; env?: Record<string, string> } = {}) {
+function app(opts: { provider?: ScriptedProvider | null; env?: Record<string, string>; llm?: LlmCaps } = {}) {
   const kit = makeService();
   const provider = opts.provider === undefined ? new ScriptedProvider("claude-opus-5-5", () => [{ text: "**Verdict:** mixed, low confidence." }]) : opts.provider;
-  const routes = createDeskRoutes({ service: () => kit.service, makeProvider: () => provider, env: opts.env ?? {} });
+  const routes = createDeskRoutes({ service: () => kit.service, makeProvider: () => provider, env: opts.env ?? {}, llm: opts.llm });
   return { ...kit, app: new Hono().route("/desk", routes) };
 }
 
@@ -51,6 +53,22 @@ describe("/desk routes", () => {
     expect(text).toContain("event: done");
     const runs = await store.listRuns(5);
     expect(runs[0]).toMatchObject({ kind: "ask", status: "done" });
+  });
+
+  test("ask and review at the daily LLM cap are 429 with no run; a run records its usage", async () => {
+    const now = () => new Date("2026-11-18T12:00:00Z");
+    const cache = new MemoryLlmCache();
+    const kit = app({ llm: { cache, now, dailyCap: 1, dailyUsd: 2 } });
+    await (await kit.app.request("/desk/ask", json({ question: "Is the current rally a bull trap?" }))).text();
+    expect(cache.usage).toHaveLength(1);
+    expect(cache.usage[0]).toMatchObject({ model: "claude-opus-5-5", searches: 0 });
+    expect((cache.usage[0] as { input_tokens: number }).input_tokens).toBeGreaterThan(0);
+    for (const [path, init] of [["/desk/ask", json({ question: "again" })], ["/desk/review", { method: "POST" }]] as const) {
+      const res = await kit.app.request(path, init);
+      expect(res.status).toBe(429);
+      expect(await res.json()).toEqual({ error: "LLM cap reached" });
+    }
+    expect(await kit.store.listRuns(5)).toHaveLength(1);
   });
 
   test("ask without a model is 503; a bad body is 400", async () => {

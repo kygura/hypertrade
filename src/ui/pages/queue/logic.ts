@@ -9,7 +9,7 @@ import { DASH } from '../moves/logic'
 // the source chips (a source problem is one quiet line, never a card), row labels, the default selection and the
 // record chip. Facts only; nothing here judges an item.
 
-export const PART_LABEL: Record<QueueSource, string> = { moves: 'MOVES', opportunity: 'SETUP', radar: 'RADAR' }
+export const PART_LABEL: Record<QueueSource, string> = { moves: 'MOVES', opportunity: 'SETUP', radar: 'RADAR', novelty: 'NOVEL', rule: 'RULE', definition: 'DEF' }
 
 /** `QUEUE · 5 listed of 8 · 2 weaker over cap`. */
 export function headerLine(q: Pick<QueueResponse, 'items' | 'cap' | 'overCap'>): string {
@@ -62,6 +62,9 @@ export function emptyLine(watched: number | null): string {
 
 /** `MOVES·SETUP`. */
 export const partsLabel = (i: Pick<QueueItem, 'parts'>): string => i.parts.map((p) => PART_LABEL[p.source]).join('·')
+
+/** `2 ideas` when parts share a thesis (a setup and its daily definition are one idea); null when every part is its own. */
+export const ideasText = (i: Pick<QueueItem, 'parts' | 'ideas'>): string | null => (i.ideas < i.parts.length ? `${i.ideas} ${i.ideas === 1 ? 'idea' : 'ideas'}` : null)
 
 /** The parts' side: one side, `mixed` when they disagree, a dash when none states one (a moves part). */
 export function directionOf(i: Pick<QueueItem, 'parts'>): string {
@@ -125,7 +128,7 @@ export function queueTakeaway(q: Pick<QueueResponse, 'items'>): string | null {
 
 /** What puts a coin in the queue, for the empty list; says so when no moves scan has run yet. */
 export function emptyWhy(q: Pick<QueueResponse, 'watched' | 'sources'>): string {
-  const bar = `A coin is listed when the moves scan measures an unusual 24h move (residual z of ${GUIDE.queueZ} or more with a move of at least ${GUIDE.queueMinMovePct}%) or a fully met ENTER or FADE checklist, when the scanner has a ready setup, or when the radar lands a call.`
+  const bar = `A coin is listed when the moves scan measures an unusual 24h move (residual z of ${GUIDE.queueZ} or more with a move of at least ${GUIDE.queueMinMovePct}%) or a fully met ENTER or FADE checklist, when the scanner has a ready setup, when the radar lands a call, or when the novelty detector pushes a new extreme. A rule or definition in zone is shown on a listed coin and lists none by itself.`
   return q.sources.moves.state === 'ok' && q.watched === 0 ? `${bar} No moves scan is stored yet, so MOVES has ranked nothing.` : bar
 }
 
@@ -141,11 +144,15 @@ export const REASON_TERMS: readonly Term[] = [
 ]
 
 export const QUEUE_TERMS: readonly Term[] = [
-  ['listed of N', 'Coins on today’s list out of the daily cap. One cap covers all three sources; the day is the UTC day.'],
+  ['listed of N', 'Coins on today’s list out of the daily cap. One cap covers every source; the day is the UTC day.'],
   ['weaker over cap', 'Coins that crossed a bar but ranked below the listed ones. Counted, not shown.'],
   ['MOVES', `Flagged by the moves scan: on the 24h window its residual z is ${GUIDE.queueZ} or more in size with a total move of at least ${GUIDE.queueMinMovePct}%, or an ENTER or FADE checklist has all ${GUIDE.queueMinChecks} conditions met.`],
   ['SETUP', 'The scanner has a setup for this coin that is ready, or one that was decided today.'],
   ['RADAR', 'The twice-daily radar routine landed a call on this market today or yesterday, and its close price has not been reached.'],
+  ['NOVEL', 'The novelty detector found a daily feature beyond the coin’s own history. A pushed new extreme lists the coin; a joint extreme, or one held back by the cooldown or the run budget, is shown only on a coin another source listed.'],
+  ['RULE', 'A saved catalogue rule is in zone on the latest daily data. Shown on a listed coin; it lists none by itself.'],
+  ['DEF', 'A shipped signal definition is in zone on the latest closed daily bar. Shown on a listed coin; it lists none by itself.'],
+  ['2 ideas', 'Sources that state the same thesis count once: a scanner setup and the daily definition of the same thesis are one idea seen twice.'],
   ['Source counts', 'Coins each source flagged today, before the cap. A source without a count could not be read; its reason is printed below.'],
   ['agents 2/6 today', 'Agent investigations run today out of the daily cap. An investigation is one LLM run that writes a hypothesis for a move.'],
   ['long · short · mixed · —', 'The side the sources state. MOVES states none (the sign is in its residual). Mixed: two sources disagree.'],
@@ -155,7 +162,7 @@ export const QUEUE_TERMS: readonly Term[] = [
   ['graded · hit / miss', 'The hypothesis reached its horizon. Hit: the coin beat BTC in the stated direction. Miss: it did not.'],
   ['falsified', 'Price reached the level the hypothesis named as proving it wrong.'],
   ['no cause found', 'The agent investigated and found no public cause for the move.'],
-  ['Order of rows', 'Strongest first: the highest score (1 means the source’s bar was just crossed), then more sources agreeing, then the earlier flag.'],
+  ['Order of rows', 'Strongest first: the highest score (1 means the source’s bar was just crossed), then more distinct ideas on the coin, then the earlier flag.'],
   ['DISMISS', 'Hides the coin for today. It keeps its slot in the cap, and it is listed again if a source flags it afterwards with new facts.'],
   ['dismissed / acted', 'Coins dismissed today, and coins whose setup was decided today.'],
 ]

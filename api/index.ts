@@ -1,7 +1,6 @@
 import { Hono } from "hono";
-import { getCookie } from "hono/cookie";
 import { handle } from "hono/vercel";
-import { COOKIE_NAME, requireAuth, verifySession } from "../src/server/auth.js";
+import { hasSession, requireAuth } from "../src/server/auth.js";
 import { mcpRoutes } from "../src/server/mcp/http.js";
 import { labRegistry } from "../src/server/mcp/lab.js";
 import { getHealthExtras } from "../src/server/platform/runtime.js";
@@ -13,6 +12,7 @@ import { cronRoutes } from "../src/server/routes/cron.js";
 import { cronMovesRoutes } from "../src/server/routes/cronMoves.js";
 import { cronPlatformRoutes } from "../src/server/routes/cronPlatform.js";
 import { cronExtremesRoutes, extremesRoutes } from "../src/server/routes/extremes.js";
+import { cronSeedRoutes } from "../src/server/routes/cronSeed.js";
 import { cyclesRoutes } from "../src/server/routes/cycles.js";
 import { createDeskRoutes } from "../src/server/routes/desk.js";
 import { engineRoutes } from "../src/server/routes/engine.js";
@@ -54,7 +54,7 @@ app.get("/health", async (c) => {
   const base = { ok: true, ts: new Date().toISOString() };
   try {
     const extras = await getHealthExtras()?.();
-    if (!extras || verifySession(getCookie(c, COOKIE_NAME))) return c.json({ ...base, ...extras });
+    if (!extras || hasSession(c)) return c.json({ ...base, ...extras });
     return c.json({ ...base, ...(extras.loops ? { loops: extras.loops.map(({ name, ok }) => ({ name, ok })) } : {}), ...(extras.ws ? { ws: extras.ws } : {}) });
   } catch (err) {
     console.error("[health] extras failed:", err);
@@ -72,6 +72,7 @@ app.route("/cron", cronRoutes);
 app.route("/cron", cronPlatformRoutes());
 app.route("/cron", cronMovesRoutes());
 app.route("/cron", cronExtremesRoutes());
+app.route("/cron", cronSeedRoutes());
 app.route("/cycles", cyclesRoutes);
 app.route("/vector", vectorRoutes);
 // Intel is injected here: routes/desk.ts importing intel/index.ts would cycle (intel/index → desk).

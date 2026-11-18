@@ -18,7 +18,7 @@ import { storedUniverse } from "./stored.js";
 /** The moves job's budget inside Vercel's 300 s (api/index.ts maxDuration); the route hard-stops at +40 s. */
 export const MOVES_JOB_BUDGET_MS = 200_000;
 /** Time kept after the last coin fetch starts: one share wait plus the three windows' answers. */
-export const MOVES_WINDOWS_RESERVE_MS = 50_000;
+const MOVES_WINDOWS_RESERVE_MS = 50_000;
 /** The moves-agent job's budget; an investigation starts only with its own deadline plus a margin left. */
 export const MOVES_AGENT_JOB_BUDGET_MS = 200_000;
 const INVESTIGATE_MARGIN_MS = 15_000;

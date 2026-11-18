@@ -4,7 +4,7 @@ import type { NarrativeContrast, NarrativesResponse } from "../../../shared/inte
 import type { SectorsData } from "../../../shared/types.js";
 import { EmitProvider, llmDeps } from "../../intel/fixtures/emit-provider.js";
 import { CONTRASTS_SETTING } from "../../intel/narrativeContrast.js";
-import { MemoryIntelStore } from "../../intel/store.js";
+import { MemoryIntelStore, type IntelStore } from "../../intel/store.js";
 import { createNarrativeRoutes } from "./narratives.js";
 
 const NOW = new Date("2026-10-27T12:00:00Z");
@@ -24,6 +24,27 @@ const OUT = {
   invalidates: [],
   openQuestions: [],
 };
+
+/** Another writer stores `other` in CONTRASTS_SETTING right after this run first touches it (between its read and its write). */
+function contrastRace(store: IntelStore, other: Record<string, unknown>) {
+  const get = store.getSetting.bind(store);
+  const merge = store.mergeSetting.bind(store);
+  let raced = false;
+  const race = async () => {
+    if (raced) return;
+    raced = true;
+    await merge(CONTRASTS_SETTING, other);
+  };
+  store.getSetting = (async (key: string) => {
+    const v = await get(key);
+    if (key === CONTRASTS_SETTING) await race();
+    return v;
+  }) as typeof store.getSetting;
+  store.mergeSetting = async (key, patch) => {
+    if (key === CONTRASTS_SETTING) await race();
+    return merge(key, patch);
+  };
+}
 
 function setup(env: Record<string, string> = {}) {
   const store = new MemoryIntelStore(() => NOW);
@@ -91,5 +112,15 @@ describe("/narratives", () => {
     expect(get.narratives[0]!.contrast!.id).toBe(c.id);
     expect((await call("POST", "/narratives/ai/contrast")).status).toBe(429);
     expect((await call("POST", "/narratives/nope/contrast")).status).toBe(404);
+  });
+
+  test("POST contrast keeps a contrast another run stores for another narrative at the same time", async () => {
+    const { call, store } = setup();
+    contrastRace(store, { privacy: { id: "cron-run" } });
+    const res = await call("POST", "/narratives/ai/contrast");
+    expect(res.status).toBe(200);
+    const stored = (await store.getSetting<Record<string, { id: string }>>(CONTRASTS_SETTING))!;
+    expect(Object.keys(stored).sort()).toEqual(["ai", "privacy"]);
+    expect(stored.privacy!.id).toBe("cron-run");
   });
 });

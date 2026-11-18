@@ -27,6 +27,11 @@ describe("GET /metrics/series/:id", () => {
     const res = await app.request("/metrics/series/hl.total_oi_usd?buckets=0");
     expect(res.status).toBe(400);
   });
+
+  test("400s on a buckets param over 2000 (Postgres width_bucket overflows)", async () => {
+    const res = await app.request("/metrics/series/hl.total_oi_usd?buckets=2001");
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("without a database", () => {

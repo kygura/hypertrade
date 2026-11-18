@@ -19,7 +19,8 @@ says `take`. Contracts: `src/shared/extremes.ts`.
    :53). Top `EXTREMES_TOP` (30) coins by stored 24h volume plus BTC, read from
    `scan_snapshots`. A key (`kind|coin|side`) is silent for `EXTREMES_COOLDOWN_H` (24) after
    it fires. At most `EXTREMES_DAILY_CAP` (3) events go out per UTC day; the rest are stored
-   with delivery `none`.
+   with delivery `none`. Every event is stored before it is sent, and a failed send is not
+   retried: a lost alert is preferred to a repeat.
 3. **Wake** (`src/server/extremes/wake.ts`). One POST per run to `EXTREMES_WAKE_URL` (a Claude
    Code routine's fire endpoint) with `EXTREMES_WAKE_TOKEN`. Never retried: the endpoint has no
    idempotency and a retry starts a second session. With no target, or on any failure, each
@@ -39,6 +40,10 @@ says `take`. Contracts: `src/shared/extremes.ts`.
 
 ## Research session
 
+Since 2026-11-18 one routine, "Hypertrade alerts", does both the research and the delivery. The job wakes it with
+`CLAUDE_ROUTINE_URL` and `CLAUDE_ROUTINE_TOKEN` (or `EXTREMES_WAKE_URL` and `EXTREMES_WAKE_TOKEN` when set), and the
+notifier's `claude` channel fires the same routine for every alert, a take included, so each reaches the phone when it
+happens. ntfy and Telegram are not in use.
 The routine's full prompt is `docs/EXTREMES-ROUTINE.md`: input format, the steps per event, the
 take/watch/pass rules and the verdict call. The routine stores a copy of it, so edit the file
 first and paste it into the routine.

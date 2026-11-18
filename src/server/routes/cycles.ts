@@ -7,8 +7,6 @@ import { cmProvider } from "../lab/providers/cm.js";
 import { ensureHistory } from "../market/candleSync.js";
 import { bitstamp } from "../market/sources.js";
 
-export type { CyclesResponse };
-
 // GET /cycles?coin=BTC|ETH&tf=1d|1w
 //
 // The cycle view (ported from hl-cycles): full daily history run through the

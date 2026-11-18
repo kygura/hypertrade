@@ -86,6 +86,13 @@ export class MemoryPlatformStore implements PlatformStore {
     return [...this.extremes.values()].filter((r) => r.delivery !== "none" && Date.parse(r.event.ts) >= lo).length;
   }
 
+  async setExtremeDelivery(key: string, ts: string, delivery: "woken" | "pushed") {
+    const r = this.extremes.get(`${key}|${iso(ts)}`);
+    if (!r || r.delivery !== "none") return false;
+    r.delivery = delivery;
+    return true;
+  }
+
   async listExtremes({ since, limit }: { since: string; limit: number }) {
     const lo = Date.parse(since);
     return [...this.extremes.values()].filter((r) => Date.parse(r.event.ts) >= lo).sort(byExtremeNewest).slice(0, limit).map(clone);
@@ -140,7 +147,6 @@ export class MemoryPlatformStore implements PlatformStore {
 
   async movesRunAt(window: MoveWindow) {
     const r = this.movesRuns.get(window);
-    const iso = (t: string) => new Date(t).toISOString();
     return r ? { asOf: iso(r.asOf!), computedAt: iso(r.computedAt) } : null;
   }
 
@@ -230,9 +236,8 @@ export class MemoryPlatformStore implements PlatformStore {
   }
 
   async savePoll(address: string, polledAt: string, positions: PolledPosition[]): Promise<PositionChange[]> {
-    address = address.toLowerCase();
     const ts = iso(polledAt);
-    positions = parsePoll(positions);
+    ({ address, positions } = parsePoll(address, positions));
     if (!this.addresses.has(address)) await this.recordAddresses([{ address, seenAt: ts }]);
     const a = this.addresses.get(address);
     if (!a) throw new Error(`invalid address ${address}`);
@@ -394,7 +399,7 @@ export class MemoryPlatformStore implements PlatformStore {
     if (!UUID.test(id)) return null;
     const entry = parseEntry({ opportunityId: id, kind: "costs", payload: c });
     const o = this.opportunities.get(id);
-    if (!o || !isPreDecision(o.status)) return null;
+    if (!o || !isPreDecision(o.status) || o.costs !== null) return null;
     const { grossEdgeBps, netEdgeBps, edgeBasis, ...costs } = c;
     Object.assign(o, { costs, grossEdgeBps, netEdgeBps, edgeBasis, updatedAt: new Date().toISOString() });
     this.push(entry);

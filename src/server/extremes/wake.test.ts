@@ -60,6 +60,18 @@ describe("createWaker", () => {
     });
   });
 
+  test("without EXTREMES_WAKE_URL the shared routine (CLAUDE_ROUTINE_URL and its token) is woken; its own URL wins when set", async () => {
+    const shared = { CLAUDE_ROUTINE_URL: "https://api.example/routines/shared/fire", CLAUDE_ROUTINE_TOKEN: "sk-shared" };
+    const a = fakeFetch(ok);
+    expect(await createWaker(shared, a.f).wake([ev("SOL")])).toBe(true);
+    expect(a.calls[0]!.url).toBe(shared.CLAUDE_ROUTINE_URL);
+    expect((a.calls[0]!.init.headers as Record<string, string>).authorization).toBe("Bearer sk-shared");
+    const b = fakeFetch(ok);
+    await createWaker({ ...shared, ...ENV }, b.f).wake([ev("SOL")]);
+    expect(b.calls[0]!.url).toBe(ENV.EXTREMES_WAKE_URL);
+    expect((b.calls[0]!.init.headers as Record<string, string>).authorization).toBe("Bearer sk-secret");
+  });
+
   test("invalid EXTREMES_WAKE_HEADERS is ignored", async () => {
     expect(parseWakeHeaders("{not json")).toEqual({});
     expect(parseWakeHeaders("[1]")).toEqual({});

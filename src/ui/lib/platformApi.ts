@@ -1,4 +1,5 @@
 import { api, ApiError, NetworkError } from './api'
+import { errorMessage } from './poll'
 import {
   FeedResponseSchema,
   LedgerStatsResponseSchema,
@@ -41,7 +42,7 @@ export function actionFailure(err: unknown): { stale: string | null; message: st
   const body = err instanceof ApiError && err.body && typeof err.body === 'object' ? (err.body as { error?: string; message?: string; reasons?: string[] }) : null
   if (body?.error === 'stale_feed') return { stale: body.message ?? 'stale_feed', message: body.message ?? 'stale_feed' }
   if (body?.error === 'governor_blocked' && Array.isArray(body.reasons)) return { stale: null, message: `governor_blocked: ${body.reasons.join('; ')}` }
-  return { stale: null, message: err instanceof Error && err.message ? err.message : 'request failed' }
+  return { stale: null, message: errorMessage(err) }
 }
 const id = (s: string) => encodeURIComponent(s)
 

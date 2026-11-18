@@ -25,7 +25,7 @@ export const API_BASE: Record<Network, string> = {
   testnet: "https://api.hyperliquid-testnet.xyz",
 };
 
-/** Account the demo fixtures are read for (same placeholder as demo.ts; the demo source answers for any address). */
+/** Account the demo fixtures are read for (demo.ts exports it as demoAccountAddress; the demo source answers for any address). */
 export const DEMO_ACCOUNT = "0xde30de30de30de30de30de30de30de30de30de30";
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;

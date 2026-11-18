@@ -504,6 +504,46 @@ setup features need one per 15 min (96 a day; the always-on server scans every m
 24 h funding features need 48 points) does it add ": too few for any setup to fire"; one missed run near the need
 claims nothing.
 
+### Seed — `src/server/platform/seed.ts`, `bun run seed:snapshots`
+
+`scan_snapshots` is the only stored intraday series with OI, and only the always-on scanner writes it. A deployment
+that scans from a cron has too few rows for the features, so the three OI setups never fire or replay and the extremes
+job has no history. The seed fills the gaps on the 15-min grid:
+
+- mark and 24 h volume from Hyperliquid 15-min candles (`candleStream`, as the candle replay reads them);
+- funding = the latest hourly settlement at or before the point (a live row holds the predicted rate);
+- `oiUsd` = Coinalyze open interest of the Hyperliquid perp in coins times the candle close, the unit of a live row
+  (`openInterest × markPx`).
+
+Coinalyze keeps 1500 to 2000 intraday bars, so one run reaches about 15 to 20 days back (`SEED_DAYS` 21 asks for all
+of it). Older gaps cannot be filled from this source. Gaps only: a grid slot that holds a stored row is left alone. A
+coin's stored rows are read first: with no empty slot in the window it costs no request, with one it is fetched from
+its first empty slot on.
+Before a coin is written its seeded OI is compared with its stored rows where both exist; at 8 or more shared slots a
+median more than 10% from 1 skips the coin with the ratio in the report, so a unit or symbol mismatch never reaches
+the detectors. `--dry-run` prints the plan and the ratios and writes nothing. Seeded rows carry
+`seeded: "coinalyze"` in `inputs`.
+
+Scheduled (`src/server/routes/cronSeed.ts`, `db/cron/schedule.sql`), so no always-on server is needed:
+
+- `POST /api/cron/seed-snapshots`, every 15 min at :06, :21, :36, :51: gaps of the last 6 h, for the top
+  `PLATFORM_SEED_TOP` (30) coins by 24 h volume plus BTC. It runs after the platform tick (:04) and before the extremes
+  job (:08). Where the tick stored its row, the slot is filled and the seed does nothing.
+- `POST /api/cron/seed-snapshots/deep`, daily at 03:41 UTC: gaps of the last 14 days (long outages, and the first
+  backfill of a new database).
+
+Both take one lease, answer `skipped` without `COINALYZE_API_KEY`, start no coin after 150 s and list the rest as
+`remaining` (the coin order rotates daily), and answer 500 only when every coin that needed rows failed. The schedule
+file is applied by hand (README "Scheduling"); until it is re-applied the jobs do not exist.
+
+Seeded rows feed everything that reads `scan_snapshots`: the scanner's ring starts warm, the extremes job can fire on
+the seeded history, and `signals:replay --source snapshots` and `extremes calibrate` have OI to read.
+
+### Queue
+
+Novelty, catalogue rules and definitions also reach the queue as parts (docs/SPEC.md § Queue Q0): a pushed novelty
+extreme lists its coin, the rest are witnesses on a coin another source listed. The board stays the full list.
+
 ### Not in this change
 
 The three OI setups stay unreplayable until intraday OI is stored at a 15-min or finer cadence (an always-on

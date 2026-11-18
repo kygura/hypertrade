@@ -1,6 +1,7 @@
 // Pure branch simulation engine — no I/O. See docs/SPEC.md "Branch model".
 import type { Allocation, BranchConfig } from "../../shared/types.js";
 import { branchCoins, isPerp, STABLES } from "../../shared/schemas.js";
+import { mean, sdSample } from "../../shared/signalMath.js";
 
 export interface DailyClose {
   ts: number; // ms epoch
@@ -44,7 +45,7 @@ export interface MonthlyReturn {
 }
 
 /** The same strategy started on many past dates and held for windowDays each. */
-export interface RollingResult {
+interface RollingResult {
   windowDays: number;
   stepDays: number;
   points: { ts: number; returnPct: number; vsBtcPct: number; maxDrawdownPct: number }[];
@@ -61,7 +62,7 @@ export interface RollingResult {
 }
 
 /** A scheduled move as it was filled: the day it happened and the portfolio value right after it. */
-export interface ExecutedMove {
+interface ExecutedMove {
   /** Index into config.schedule. */
   step: number;
   date: string; // YYYY-MM-DD
@@ -117,8 +118,8 @@ function candleAt(ts: number, series: DailyClose[] | undefined): DailyClose | un
 }
 
 // ponytail: perp legs are a deliberately thin model — no maintenance margin
-// (liquidation only at 100% margin loss), no funding payments, no fees or
-// slippage, and liquidation is checked on daily low/high (or close) only, not
+// (liquidation only at 100% margin loss), funding and fees only as the flat
+// rates in `costs` (zero when omitted), no slippage, and liquidation is checked on daily low/high (or close) only, not
 // intraday paths. Add these if the simulated paths are ever traded on.
 interface PerpLeg {
   margin: number;
@@ -126,7 +127,6 @@ interface PerpLeg {
   sign: 1 | -1; // +1 long, -1 short
   lev: number;
 }
-
 
 /** margin + pnl; can go negative (the leg is then liquidated / floored at 0). */
 function legEquity(leg: PerpLeg, px: number): number {
@@ -492,7 +492,7 @@ function cagrPct(initial: number, final: number, firstTs: number, lastTs: number
 }
 
 /** Simple returns between consecutive index points. */
-export function indexReturns(index: number[]): number[] {
+function indexReturns(index: number[]): number[] {
   const out: number[] = [];
   for (let i = 1; i < index.length; i++) out.push(index[i - 1]! > 0 ? index[i]! / index[i - 1]! - 1 : 0);
   return out;
@@ -502,11 +502,11 @@ export function indexReturns(index: number[]): number[] {
 export function riskStats(returns: number[]): { volPct: number; sharpe: number; sortino: number } {
   const n = returns.length;
   if (n < 2) return { volPct: 0, sharpe: 0, sortino: 0 };
-  const mean = returns.reduce((s, r) => s + r, 0) / n;
-  const sd = Math.sqrt(returns.reduce((s, r) => s + (r - mean) ** 2, 0) / (n - 1));
+  const m = mean(returns);
+  const sd = sdSample(returns);
   const down = Math.sqrt(returns.reduce((s, r) => s + Math.min(0, r) ** 2, 0) / n);
   const ann = Math.sqrt(365);
-  return { volPct: sd * ann * 100, sharpe: sd > 0 ? (mean / sd) * ann : 0, sortino: down > 0 ? (mean / down) * ann : 0 };
+  return { volPct: sd * ann * 100, sharpe: sd > 0 ? (m / sd) * ann : 0, sortino: down > 0 ? (m / down) * ann : 0 };
 }
 
 /** Longest run, in days, from a high until the value first gets back to it (or the end). */
@@ -538,12 +538,13 @@ export function monthlyReturns(points: EquityPoint[]): MonthlyReturn[] {
   return out;
 }
 
-function quantile(sorted: number[], p: number): number {
+/** Nearest-rank (floored) quantile of an ascending array; no interpolation. */
+export function quantileFloor(sorted: number[], p: number): number {
   return sorted[Math.floor(p * (sorted.length - 1))]!;
 }
 
 /** Window length when the config does not set one: the longest of 365/90/30 days that fits twice in the history. */
-export function defaultRollingWindow(spanDays: number): number {
+function defaultRollingWindow(spanDays: number): number {
   return [365, 90, 30].find((w) => spanDays >= 2 * w) ?? 0;
 }
 
@@ -589,9 +590,9 @@ function rollingWindows(config: BranchConfig, candlesByCoin: Record<string, Dail
       n,
       positivePct: (points.filter((p) => p.returnPct > 0).length / n) * 100,
       beatBtcPct: (points.filter((p) => p.vsBtcPct > 0).length / n) * 100,
-      p10: quantile(sorted, 0.1),
-      median: quantile(sorted, 0.5),
-      p90: quantile(sorted, 0.9),
+      p10: quantileFloor(sorted, 0.1),
+      median: quantileFloor(sorted, 0.5),
+      p90: quantileFloor(sorted, 0.9),
       worst: sorted[0]!,
       best: sorted.at(-1)!,
     },

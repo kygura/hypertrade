@@ -3,8 +3,8 @@
 // stablecoin cap, Deribit BTC DVOL. Per-source try/catch so one dead API never
 // discards the others (docs/SPEC.md: never fail the whole run over one tool).
 import { z } from "zod";
-import { ensureSeries, recordCollectorRun, upsertObservations, type Observation, type SeriesDef } from "../db.js";
-import type { CollectorResult } from "./types.js";
+import type { Observation, SeriesDef } from "../db.js";
+import { collectorDb, type CollectorDbDeps, type CollectorResult } from "./types.js";
 
 const COLLECTOR = "crypto-context";
 
@@ -58,12 +58,14 @@ export function parseDeribit(json: unknown): SeriesPoint[] {
   return [{ seriesId: "deribit.btc_dvol", value: close, units: "index", description: "BTC implied volatility index (Deribit DVOL)" }];
 }
 
-const SOURCES: Record<string, { url: string; parse: (json: unknown) => SeriesPoint[] }> = {
-  coingecko: { url: "https://api.coingecko.com/api/v3/global", parse: parseCoinGecko },
-  fng: { url: "https://api.alternative.me/fng/?limit=1", parse: parseFng },
-  defillama: { url: "https://stablecoins.llama.fi/stablecoins?includePrices=false", parse: parseStablecoins },
+// URLs are built per collect: the always-on server must not reuse a boot-time window.
+const SOURCES: Record<string, { url: (nowMs: number) => string; parse: (json: unknown) => SeriesPoint[] }> = {
+  coingecko: { url: () => "https://api.coingecko.com/api/v3/global", parse: parseCoinGecko },
+  fng: { url: () => "https://api.alternative.me/fng/?limit=1", parse: parseFng },
+  defillama: { url: () => "https://stablecoins.llama.fi/stablecoins?includePrices=false", parse: parseStablecoins },
   deribit: {
-    url: `https://www.deribit.com/api/v2/public/get_volatility_index_data?currency=BTC&resolution=3600&start_timestamp=${Date.now() - 2 * 3_600_000}&end_timestamp=${Date.now()}`,
+    url: (nowMs) =>
+      `https://www.deribit.com/api/v2/public/get_volatility_index_data?currency=BTC&resolution=3600&start_timestamp=${nowMs - 2 * 3_600_000}&end_timestamp=${nowMs}`,
     parse: parseDeribit,
   },
 };
@@ -74,16 +76,12 @@ async function getJson(url: string, fetchFn: typeof fetch): Promise<unknown> {
   return res.json();
 }
 
-/** db.ts calls, injectable so tests never need a live DATABASE_URL. */
-export type CryptoContextDbDeps = { ensureSeries: typeof ensureSeries; upsertObservations: typeof upsertObservations; recordCollectorRun: typeof recordCollectorRun };
-const defaultDeps: CryptoContextDbDeps = { ensureSeries, upsertObservations, recordCollectorRun };
-
-export async function collectCryptoContext(fetchFn: typeof fetch = fetch, deps: CryptoContextDbDeps = defaultDeps): Promise<CollectorResult> {
+export async function collectCryptoContext(fetchFn: typeof fetch = fetch, deps: CollectorDbDeps = collectorDb): Promise<CollectorResult> {
   const startedAt = new Date();
   const settled = await Promise.allSettled(
     Object.entries(SOURCES).map(async ([name, src]) => {
       try {
-        return src.parse(await getJson(src.url, fetchFn));
+        return src.parse(await getJson(src.url(startedAt.getTime()), fetchFn));
       } catch (err) {
         throw new Error(`${name}: ${err instanceof Error ? err.message : String(err)}`);
       }

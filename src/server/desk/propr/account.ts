@@ -77,7 +77,7 @@ export function estimateDayStart(balance: number, acct: Row, trades: Row[], now:
   return Math.max(balance, balance - realizedToday, field ?? 0);
 }
 
-export function readPositions(rawPos: Row[], rawOrders: Row[]): ProprPosition[] {
+function readPositions(rawPos: Row[], rawOrders: Row[]): ProprPosition[] {
   const reduce = rawOrders.filter((o) => o.reduceOnly === true && isOpen(o));
   return rawPos
     .filter((p) => (num(p.quantity) ?? 0) !== 0 && p.status !== "closed")

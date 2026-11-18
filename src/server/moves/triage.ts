@@ -1,5 +1,6 @@
 import type { AgentRecord, TriageItem } from "../../shared/agentRecords.js";
 import { simplePct, type MoveRow } from "../../shared/moves.js";
+import { intEnv } from "../intel/util.js";
 
 // Triage queue (docs/SPEC.md § Moves, plan §3.6). Pure: same rows and same stored items give the same queue.
 // Agents widen what is watched; this ranks what reaches the human, under a daily attention budget.
@@ -17,7 +18,6 @@ const DEFAULT_TRIAGE_DAILY = 8;
 /** MOVES_AGENT_DAILY default. */
 const DEFAULT_AGENT_DAILY = 6;
 
-const intEnv = (v: string | undefined, def: number) => (v?.trim() && Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : def);
 export const triageBudget = (env: Record<string, string | undefined> = process.env) => intEnv(env.MOVES_TRIAGE_DAILY, DEFAULT_TRIAGE_DAILY);
 export const agentDailyCap = (env: Record<string, string | undefined> = process.env) => intEnv(env.MOVES_AGENT_DAILY, DEFAULT_AGENT_DAILY);
 

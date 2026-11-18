@@ -22,7 +22,7 @@ const px = (n: number) => Number(n.toPrecision(6));
 const NEXT: Partial<Record<OpportunityStatus, OpportunityStatus>> = { new: "calculated", calculated: "ready" };
 
 /** What the store knows about the coin at verdict time. */
-export interface ExtremeMarket {
+interface ExtremeMarket {
   tier: LiquidityTier | null;
   regime: string | null;
   dayNtlVlm: number | null;
@@ -30,7 +30,7 @@ export interface ExtremeMarket {
 }
 
 /** The opportunity and its `created` ledger payload for a take (pure). Throws for a record that is not a take with a stamped mark. */
-export function extremeOpportunityInput(r: ExtremeRecord, m: ExtremeMarket, pricing: ExtremePricing | null = null): { input: OpportunityInput; created: LedgerPayload<"created"> } {
+function extremeOpportunityInput(r: ExtremeRecord, m: ExtremeMarket, pricing: ExtremePricing | null = null): { input: OpportunityInput; created: LedgerPayload<"created"> } {
   const v = r.verdict;
   if (v?.stance !== "take" || !v.direction || v.killPx == null || r.verdictMark == null) throw new Error("only a take with a stamped mark becomes an opportunity");
   const e = r.event;
@@ -72,7 +72,7 @@ const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : n
  * latest OI and volume, and the regime of its last 24 h of snapshots (features.ts, as the scanner labels it).
  * Null where the store holds nothing for the coin.
  */
-export async function extremeMarket(store: Pick<PlatformStore, "scanSnapshotsSince">, coin: string, now: number): Promise<ExtremeMarket> {
+async function extremeMarket(store: Pick<PlatformStore, "scanSnapshotsSince">, coin: string, now: number): Promise<ExtremeMarket> {
   const vol = latestVolumes(await store.scanSnapshotsSince(new Date(now - RANK_WINDOW_MS).toISOString()));
   const tier = vol.has(coin) ? (liquidityTiers([...vol].map(([c, x]) => ({ coin: c, dayNtlVlm: x.dayNtlVlm })))[coin] ?? null) : null;
   const latest = vol.get(coin)?.inputs ?? {};

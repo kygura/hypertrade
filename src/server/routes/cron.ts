@@ -181,7 +181,7 @@ const FLUSH_BUDGET_MS = 25_000;
 const SPILL_ALARM_MS = 6 * 3_600_000;
 
 /** `p`, or `fallback` once `ms` pass (p keeps running; its late result or error is dropped). */
-function capped<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+export function capped<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([p.catch(() => fallback), new Promise<T>((ok) => (timer = setTimeout(() => ok(fallback), ms)))]).finally(() => clearTimeout(timer));
 }
@@ -383,12 +383,7 @@ export async function runLabCollect(
       await release();
     }
   })();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const hardStop = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), hardStopMs);
-  });
-  const done = await Promise.race([work, hardStop]);
-  clearTimeout(timer);
+  const done = await capped<LabCollectResult | null>(work, hardStopMs, null);
   if (done) return done;
   console.error(`[lab-collect] hard stop; last: ${inFlight}`);
   const error = `still running after ${Math.round(hardStopMs / 1000)}s; last: ${inFlight}`;
@@ -465,12 +460,7 @@ async function runIntelJob(job: IntelJob, deps: IntelCronDeps): Promise<{ status
       await release();
     }
   })();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const hardStop = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), hardStopMs);
-  });
-  const done = await Promise.race([work, hardStop]);
-  clearTimeout(timer);
+  const done = await capped<Awaited<typeof work> | null>(work, hardStopMs, null);
   if (done) return done;
   abort.abort();
   console.error(`[intel:${job}] hard stop after ${Math.round(hardStopMs / 1000)}s`);
@@ -671,7 +661,11 @@ export const cronRoutes = new Hono()
   })
   // Lab history on its own route: a long first backfill must not hold up (or
   // be retried with) the 15-minute collection. Leased: one run at a time.
-  .on(["GET", "POST"], "/lab-collect", requireCronToken, async (c) => c.json(await runLabCollect()))
+  .on(["GET", "POST"], "/lab-collect", requireCronToken, async (c) => {
+    // A failed or timed-out collect is a failed job (red workflow, health error); busy is ok.
+    const r = await runLabCollect();
+    return c.json(r, r.ok ? 200 : 500);
+  })
   .on(["GET", "POST"], "/backfill", requireCronToken, backfillRoute())
   .on(["GET", "POST"], "/intel/ingest", requireCronToken, intelCronRoute("ingest"))
   .on(["GET", "POST"], "/intel/brief", requireCronToken, intelCronRoute("brief"))

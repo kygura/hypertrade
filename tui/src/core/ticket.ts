@@ -538,9 +538,44 @@ function fixedPrices(t: Ticket): { entry: boolean; stop: boolean } {
 }
 
 /**
+ * A market entry's size follows the mark (fixed USD, or risk at a stop that moves
+ * with it), so a mark move inside the 0.5% band alone changes it by a step or two.
+ * True when the size differs only for that reason: re-quoting with everything
+ * fresh except the mark (held at the confirmed one) reproduces the confirmed size,
+ * so equity, stop, limit or governor changes still force a re-confirm. `next` is
+ * then the ticket sent, its size capped so it never exceeds the confirmed size nor
+ * puts more at risk than the confirmed risk at the new entry and stop (smaller is
+ * safe; larger was never confirmed). False (compare exactly) otherwise.
+ */
+async function holdMarkOnlySize(t: Ticket, next: Ticket, deps: TicketDeps, account: AccountSnapshot | null): Promise<boolean> {
+  const a = t.action;
+  if (a.kind !== "open" || a.intent.entry.type !== "market" || t.size === next.size) return false;
+  if (t.size == null || next.size == null || t.markPx == null || next.markPx == null || Math.abs(next.markPx / t.markPx - 1) > REQUOTE_MOVE) return false;
+  if (t.entryPx == null || t.stopPx == null || next.entryPx == null || next.stopPx == null || !account || !(account.equityUsd > 0)) return false;
+  const m = findMarket(deps.markets, t.coin);
+  if (!m) return false;
+  const atConfirmedMark = deps.markets.map((x) => (x === m ? { ...x, markPx: t.markPx!, midPx: null } : x));
+  const control = await buildTicket(baseAction(a), { ...deps, markets: atConfirmedMark, account, id: () => t.id });
+  if (control.size !== t.size) return false;
+  const perUnit = Math.abs(next.entryPx - next.stopPx);
+  const riskCap = (t.size * Math.abs(t.entryPx - t.stopPx)) / perUnit;
+  const size = floorToDecimals(Math.min(t.size, next.size, riskCap), m.szDecimals);
+  if (!(size > 0)) return false;
+  if (size !== next.size) {
+    next.notes.push(`size held at ${size} ${next.coin} (re-quote at the moved mark gave ${next.size}): never more size or risk than confirmed`);
+    next.size = size;
+    next.notionalUsd = r2(size * next.entryPx);
+    next.riskUsd = r2(size * perUnit);
+    next.riskPct = Math.round(((size * perUnit) / account.equityUsd) * 100 * 1e4) / 1e4;
+  }
+  return true;
+}
+
+/**
  * Re-quotes a ticket at confirm time (same id), on a freshly fetched account
  * (falling back to deps.account with a warning when the fetch fails).
- * "changed" when the mark moved more than 0.5%; the size, leverage, TP, a fixed
+ * "changed" when the mark moved more than 0.5%; the size (except a market entry's
+ * mark-only drift, see holdMarkOnlySize), leverage, TP, a fixed
  * entry or stop price changed; sendability or the governor verdict flipped; or
  * the blockers differ. The UI must then ask for another `y`.
  */
@@ -565,7 +600,7 @@ export async function requote(t: Ticket, deps: TicketDeps): Promise<Requote> {
   const diff = (label: string, a: number | null, b: number | null) => {
     if (a !== b) why.push(`${label} ${a ?? "—"} → ${b ?? "—"}`);
   };
-  diff("size", t.size, next.size);
+  if (!(await holdMarkOnlySize(t, next, deps, account))) diff("size", t.size, next.size);
   diff("leverage", t.leverage, next.leverage);
   diff("tp", t.tpPx, next.tpPx);
   if (fixed.entry) diff("entry", t.entryPx, next.entryPx);

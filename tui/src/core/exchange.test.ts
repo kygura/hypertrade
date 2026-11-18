@@ -334,6 +334,21 @@ describe("send refuses before signing", () => {
     expect(await refuse({ ...t, tpPx: 3990 })).toContain("take-profit 3,990 is on the wrong side");
   });
 
+  test("a limit entry's stop and take-profit are checked against the limit, not the mark", async () => {
+    // Mark 4000, /long ETH $500 stop 3850 tp 3990 @3900: the TP waits for the fill at 3900, so it is on the right side.
+    const t = await buildTicket({ kind: "open", intent: intent({ size: { usd: 500 }, entry: { type: "limit", px: 3900 }, stop: { type: "price", px: 3850 }, target: 3990 }) }, deps());
+    expect(t.canSend).toBe(true);
+    const fx = fakeExchange([okDefault, orderOk({ resting: { oid: 1 } }, "waitingForFill", "waitingForFill")]);
+    const r = await createExchange(cfg(), KEY, { fetchFn: fx.fetchFn, now: clock() })!.send(t, MARKETS);
+    expect(r.errors).toEqual([]);
+    expect(r.ok).toBe(true);
+    expect(fx.posted.map((p) => p.body.action.type)).toEqual(["updateLeverage", "order"]);
+    // Still refused when on the wrong side of the limit, and a stop must also clear the mark.
+    expect(await refuse({ ...t, id: "t-y", tpPx: 3890 })).toContain("take-profit 3,890 is on the wrong side of the limit entry 3,900");
+    expect(await refuse({ ...t, id: "t-y", stopPx: 3910 })).toContain("stop 3,910 is on the wrong side of the limit entry 3,900");
+    expect(await refuse({ ...t, id: "t-y", entryPx: 4030, stopPx: 4010, tpPx: 4100 })).toContain("stop 4,010 is on the wrong side of the mark 4,000");
+  });
+
   test("network mismatch, stale ticket, mark drift, wrong-side stop", async () => {
     const t = await openTicket();
     expect(await refuse(t, { config: cfg({ HT_NETWORK: "mainnet" }) })).toContain("quoted on testnet");

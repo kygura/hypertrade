@@ -1,8 +1,9 @@
 // Pure forward Monte Carlo projection — no I/O. See docs/SPEC.md "Branch model".
 import type { BranchConfig } from "../../shared/types.js";
-import { shouldRebalance, type EquityPoint } from "./engine.js";
+import { mulberry32 } from "../lab/engine/rng.js";
+import { quantileFloor, shouldRebalance, type EquityPoint } from "./engine.js";
 
-export interface ProjectionSummary {
+interface ProjectionSummary {
   method: "gbm" | "bootstrap";
   /** Value now plus every projected cash flow: what has been put in by the horizon. */
   investedUsd: number;
@@ -39,27 +40,11 @@ export const MIN_BOOTSTRAP_DAYS = 60;
 const DAY_MS = 86400000;
 const MAX_PATHS = 500;
 
-/** mulberry32 seeded PRNG — deterministic, ~10 lines, no dependency. */
-function mulberry32(seed: number) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /** Box-Muller standard normal sample from a uniform(0,1) generator. */
 function nextGaussian(rand: () => number): number {
   const u1 = Math.max(rand(), Number.EPSILON);
   const u2 = rand();
   return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-}
-
-function percentile(sorted: number[], p: number): number {
-  const idx = Math.floor(p * (sorted.length - 1));
-  return sorted[idx]!;
 }
 
 /**
@@ -154,11 +139,11 @@ export function runMonteCarlo(
   for (let d = 0; d <= scenario.horizonDays; d++) {
     const ts = startTs + d * DAY_MS;
     const sorted = values[d]!.sort((a, b) => a - b);
-    median.push({ ts, value: percentile(sorted, 0.5) });
-    p10.push({ ts, value: percentile(sorted, 0.1) });
-    p90.push({ ts, value: percentile(sorted, 0.9) });
-    p25.push({ ts, value: percentile(sorted, 0.25) });
-    p75.push({ ts, value: percentile(sorted, 0.75) });
+    median.push({ ts, value: quantileFloor(sorted, 0.5) });
+    p10.push({ ts, value: quantileFloor(sorted, 0.1) });
+    p90.push({ ts, value: quantileFloor(sorted, 0.9) });
+    p25.push({ ts, value: quantileFloor(sorted, 0.25) });
+    p75.push({ ts, value: quantileFloor(sorted, 0.75) });
   }
   const finals = values.at(-1)!;
   const share = (pred: (v: number) => boolean) => (finals.filter(pred).length / paths) * 100;
@@ -171,9 +156,9 @@ export function runMonteCarlo(
     summary: {
       method,
       investedUsd,
-      finalP10: percentile(finals, 0.1),
-      finalMedian: percentile(finals, 0.5),
-      finalP90: percentile(finals, 0.9),
+      finalP10: quantileFloor(finals, 0.1),
+      finalMedian: quantileFloor(finals, 0.5),
+      finalP90: quantileFloor(finals, 0.9),
       lossPct: share((v) => v < investedUsd),
       ...(scenario.targetUsd !== undefined && { targetPct: share((v) => v >= scenario.targetUsd!) }),
       ...(opts.cashflow && opts.cashflow.amountUsd < 0 && { depletedPct: (depleted / paths) * 100 }),

@@ -47,87 +47,48 @@ export function createTerminalRoutes(deps: TerminalRouteDeps) {
   const watchlist = async (): Promise<WatchlistResponse> => monitoringWatchlist(await store.getWatchlist(), env);
 
   return new Hono()
-    .get("/positions", async (c) => {
-      try {
-        return c.json(await deps.exposure());
-      } catch (err) {
-        return failure(c, err, "intel");
-      }
-    })
+    .onError((err, c) => failure(c, err, "intel"))
+    .get("/positions", async (c) => c.json(await deps.exposure()))
     .post("/positions", async (c) => {
       const parsed = ManualPositionInputSchema.safeParse(await body(c));
       if (!parsed.success) return invalid(c, parsed.error, "position");
-      try {
-        return c.json(await store.createManualPosition(parsed.data), 201);
-      } catch (err) {
-        return failure(c, err, "intel");
-      }
+      return c.json(await store.createManualPosition(parsed.data), 201);
     })
     .put("/positions/:id", async (c) => {
       const id = manualId(c);
       if (typeof id !== "string") return id;
       const parsed = ManualPositionInputSchema.safeParse(await body(c));
       if (!parsed.success) return invalid(c, parsed.error, "position");
-      try {
-        const row = await store.updateManualPosition(id, parsed.data);
-        return row ? c.json(row) : c.json({ error: "position not found" }, 404);
-      } catch (err) {
-        return failure(c, err, "intel");
-      }
+      const row = await store.updateManualPosition(id, parsed.data);
+      return row ? c.json(row) : c.json({ error: "position not found" }, 404);
     })
     .delete("/positions/:id", async (c) => {
       const id = manualId(c);
       if (typeof id !== "string") return id;
-      try {
-        return (await store.deleteManualPosition(id)) ? c.json({ ok: true }) : c.json({ error: "position not found" }, 404);
-      } catch (err) {
-        return failure(c, err, "intel");
-      }
+      return (await store.deleteManualPosition(id)) ? c.json({ ok: true }) : c.json({ error: "position not found" }, 404);
     })
-    .get("/watchlist", async (c) => {
-      try {
-        return c.json(await watchlist());
-      } catch (err) {
-        return failure(c, err, "intel");
-      }
-    })
+    .get("/watchlist", async (c) => c.json(await watchlist()))
     .put("/watchlist", async (c) => {
       const parsed = WatchlistPutSchema.safeParse(await body(c));
       if (!parsed.success) return invalid(c, parsed.error, "watchlist");
-      try {
-        await store.putWatchlist(parsed.data.items);
-        return c.json(await watchlist());
-      } catch (err) {
-        return failure(c, err, "intel");
-      }
+      await store.putWatchlist(parsed.data.items);
+      return c.json(await watchlist());
     })
     .post("/brief", async (c) => {
       // An empty body is a plain UI open. No request signal: a brief the
       // operator navigates away from still finishes and is stored.
       const parsed = BriefRequestSchema.safeParse((await body(c)) ?? {});
       if (!parsed.success) return invalid(c, parsed.error, "brief request");
-      try {
-        return c.json(await buildBrief(deps, { surface: "ui", via: parsed.data.via }));
-      } catch (err) {
-        return failure(c, err, "intel");
-      }
+      return c.json(await buildBrief(deps, { surface: "ui", via: parsed.data.via }));
     })
     .get("/brief/latest", async (c) => {
       const parsed = BriefLatestQuerySchema.safeParse(c.req.query());
       if (!parsed.success) return invalid(c, parsed.error, "query");
-      try {
-        return c.json({ brief: await store.latestBrief(parsed.data.surface) });
-      } catch (err) {
-        return failure(c, err, "intel");
-      }
+      return c.json({ brief: await store.latestBrief(parsed.data.surface) });
     })
     .get("/reviews", async (c) => {
       const parsed = ReviewsQuerySchema.safeParse(c.req.query());
       if (!parsed.success) return invalid(c, parsed.error, "query");
-      try {
-        return c.json({ reviews: await store.listReviews(parsed.data.limit) });
-      } catch (err) {
-        return failure(c, err, "intel");
-      }
+      return c.json({ reviews: await store.listReviews(parsed.data.limit) });
     });
 }

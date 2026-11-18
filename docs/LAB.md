@@ -137,7 +137,11 @@ without buying a key.
    sensitivity grid is attached) → `candidate` (deflated Sharpe missing,
    undefined — reason "deflated Sharpe undefined (extreme skew/kurtosis)" —
    or < 0.9) → `robust`. **The save bar is `robust`.** A `candidate` may be
-   saved only with a note explaining why. The search can return only rules at
+   saved only with a note explaining why. `catalogueSave` enforces both: a
+   verdict below `candidate` is refused, and so is a `candidate` without a
+   note. An agent or MCP save also needs a `runId`, so the deflated Sharpe
+   uses that run's trial count; for a rule no run returned (for example from
+   `lab_author_rule`), pass a `lab_search` run on the same asset. The search can return only rules at
    or above `minVerdict`; it filters the selected top K after the fact and
    never reaches deeper candidates, so the holdout still selects nothing.
    Catalogue entries and runs stored before verdicts existed get one
@@ -277,7 +281,7 @@ tool is defined once with one JSON schema and one handler.
 | `lab_evaluate_rule` | `{ rule: Rule, from?, to?, slippageBps? = 10, includeEquity? = false, sensitivity? = false, windows?, trials? = 1 }` | `RuleEvaluation` |
 | `lab_sensitivity` | `{ rule: Rule, windows?, slippageBps? }` | `Sensitivity` |
 | `lab_catalogue_list` | `{ asset?, direction?, live? = true }` | `{ entries: Array<CatalogueEntry & { live: PerfStats \| null; flags: Array<"decayed" \| "overlap"> }> }` |
-| `lab_catalogue_save` | `{ rule: Rule, name, note?, runId?, origin? = "user" }` | `CatalogueEntry` |
+| `lab_catalogue_save` | `{ rule: Rule, name, note?, runId?, origin? = "user" }` (`runId` required for origin `"agent"` and over MCP) | `CatalogueEntry` |
 | `lab_catalogue_remove` | `{ id }` | `{ removed: boolean }` |
 | `lab_catalogue_health` | `{}` | `CatalogueHealth` |
 | `lab_market_pulse` | `{ asset? }` | `MarketPulse` |

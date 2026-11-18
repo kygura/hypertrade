@@ -261,9 +261,12 @@ export interface VectorStore {
 export function memoryVectorStore(): VectorStore {
   const held = new Map<string, { series: SeriesMap; fetchedAt: number }>();
   return {
-    async read(name) {
+    async read(name, keys) {
       const h = held.get(name);
-      return h ? { series: h.series, fetchedAt: h.fetchedAt } : { series: {}, fetchedAt: null };
+      if (!h) return { series: {}, fetchedAt: null };
+      const series: SeriesMap = {};
+      for (const k of keys) if (h.series[k]?.length) series[k] = h.series[k]!;
+      return { series, fetchedAt: h.fetchedAt };
     },
     async write(name, series, at) {
       held.set(name, { series: mergeSeries(held.get(name)?.series ?? {}, series), fetchedAt: at });

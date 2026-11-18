@@ -14,7 +14,9 @@ import { tick } from "../desk/watch.js";
 import { ExitProposalSchema } from "../desk/types.js";
 import { watchedAssets } from "../intel/positions.js";
 import { PgIntelStore } from "../intel/store.js";
+import { recordLlmUsage, type LlmCaps } from "../intel/llm.js";
 import { hasWebSearch } from "../llm/tools.js";
+import { capRefusal, defaultLlmCaps } from "./analyst.js";
 import { body } from "./intel/http.js";
 
 // /desk — the agentic portfolio desk (docs/SPEC.md "Desk"). Session-cookie
@@ -53,6 +55,8 @@ export interface DeskRouteOptions {
   env?: Record<string, string | undefined>;
   /** Intel /digest + 👍/👎 for the Telegram webhook (SPEC F0.6); absent → Desk-only. */
   intel?: () => TelegramIntel;
+  /** Daily LLM caps and counter for /ask and /review. Default: Intel's (defaultLlmCaps). */
+  llm?: LlmCaps;
 }
 
 let shared: DeskService | null = null;
@@ -77,8 +81,12 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
   const makeProvider = o.makeProvider ?? deskProviderFactory(env);
   const timeoutMs = o.timeoutMs ?? RUN_TIMEOUT_MS;
 
-  const stream = (c: Context, kind: "ask" | "cycle", input: string, act: boolean, history?: Array<{ role: "user" | "assistant"; content: string }>) => {
-    if (!makeProvider("pm")) return c.json({ error: "desk not configured: no model provider (set an analyst provider key)" }, 503);
+  const stream = async (c: Context, kind: "ask" | "cycle", input: string, act: boolean, history?: Array<{ role: "user" | "assistant"; content: string }>) => {
+    const pm = makeProvider("pm");
+    if (!pm) return c.json({ error: "desk not configured: no model provider (set an analyst provider key)" }, 503);
+    const caps = o.llm ?? defaultLlmCaps(env);
+    const refused = await capRefusal(caps);
+    if (refused) return c.json({ error: refused.error }, refused.status);
     c.header("cache-control", "no-store");
     c.header("x-accel-buffering", "no");
     return streamSSE(c, async (s) => {
@@ -86,8 +94,12 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
       s.onAbort(() => disconnect.abort());
       // A run the operator walks away from still finishes and is recorded;
       // only the stream stops.
+      const bill: { usage: { input_tokens: number; output_tokens: number } | null; searches: number } = { usage: null, searches: 0 };
       try {
         await runDesk({ service: service(), kind, input, act, history, makeProvider, timeoutMs, trigger: kind === "cycle" ? { by: "operator" } : undefined }, (e) => {
+          // Billing sees every event, streamed or not. Server tool calls are billed as web searches.
+          if (e.type === "tool_call" && e.server) bill.searches++;
+          if (e.type === "done") bill.usage = e.usage;
           if (disconnect.signal.aborted) return;
           const { type, ...data } = e;
           void s.writeSSE({ event: type, data: JSON.stringify(data) }).catch(() => undefined);
@@ -95,6 +107,8 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
       } catch (err) {
         await s.writeSSE({ event: "error", data: JSON.stringify({ agent: "desk", error: err instanceof Error ? err.message : String(err) }) });
       }
+      // ponytail: done carries the run total only, billed at the PM model's price (scouts run the same or a cheaper model); bill per model if runDesk exposes it.
+      if (bill.usage) await recordLlmUsage(caps.cache, "desk", { ...bill.usage, searches: bill.searches }, pm.model);
     });
   };
 
