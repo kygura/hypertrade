@@ -504,6 +504,29 @@ setup features need one per 15 min (96 a day; the always-on server scans every m
 24 h funding features need 48 points) does it add ": too few for any setup to fire"; one missed run near the need
 claims nothing.
 
+### Seed — `src/server/platform/seed.ts`, `bun run seed:snapshots`
+
+`scan_snapshots` is the only stored intraday series with OI, and only the always-on scanner writes it. A deployment
+that scans from a cron has too few rows for the features, so the three OI setups never fire or replay and the extremes
+job has no history. The seed fills the gaps on the 15-min grid:
+
+- mark and 24 h volume from Hyperliquid 15-min candles (`candleStream`, as the candle replay reads them);
+- funding = the latest hourly settlement at or before the point (a live row holds the predicted rate);
+- `oiUsd` = Coinalyze open interest of the Hyperliquid perp in coins times the candle close, the unit of a live row
+  (`openInterest × markPx`).
+
+Coinalyze keeps 1500 to 2000 intraday bars, so one run reaches about 15 to 20 days back (`SEED_DAYS` 21 asks for all
+of it). Older gaps cannot be filled from this source. Gaps only: a grid slot that holds a stored row is left alone, so
+a re-run inserts only what is new, and running it on a schedule keeps the series dense without the always-on server.
+Before a coin is written its seeded OI is compared with its stored rows where both exist; at 8 or more shared slots a
+median more than 10% from 1 skips the coin with the ratio in the report, so a unit or symbol mismatch never reaches
+the detectors. `--dry-run` prints the plan and the ratios and writes nothing. Seeded rows carry
+`seeded: "coinalyze"` in `inputs`.
+
+Seeded rows feed everything that reads `scan_snapshots`: after a seed the scanner's ring starts warm, the extremes job
+can fire on the seeded history, and `signals:replay --source snapshots` and `extremes calibrate` have OI to read. The
+command is manual; nothing schedules it.
+
 ### Queue
 
 Novelty, catalogue rules and definitions also reach the queue as parts (docs/SPEC.md § Queue Q0): a pushed novelty

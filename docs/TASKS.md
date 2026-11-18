@@ -116,6 +116,8 @@ Signals v2 follow-ups (docs/RESEARCH.md "Signals v2"):
 - [x] OI definitions could not be studied (`ht:oi` is weeks deep): they read `okx:oi` (2026-11-11).
 - [x] A partial day of funding is not detected by the scan: the ht provider leaves out a last day without its
   23:00 UTC settlement (2026-11-11).
+- [ ] `bun run seed:snapshots` (docs/RESEARCH.md "Seed") has not been run against a real Coinalyze key and database:
+  check the `--dry-run` OI ratios first. Not scheduled; decide whether the collect cron should run it.
 - [ ] `okx:oi` is OKX's book, not Hyperliquid's. Replace it with `ht:oi` once the collector holds a year of daily
   OI for the universe (needs ≥ 30 event-weeks per definition), or compare the two over the overlap first.
 - [ ] Event-study results of the definitions (`bun run signals:study`) are not yet read into thresholds; they stay

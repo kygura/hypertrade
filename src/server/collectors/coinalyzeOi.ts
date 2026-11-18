@@ -69,22 +69,27 @@ export interface OiBackfillDeps {
 export class OiRateLimited extends Error {}
 const MAP_RETRY_MS = 3_600_000;
 
-/** Returns backfill(coin) -> rows inserted. Skips (0, no API call) without a key or when the coin already has the novelty minimum of OI days. Throws on HTTP errors. */
-export function createOiBackfill(deps: OiBackfillDeps) {
-  const key = deps.env.COINALYZE_API_KEY?.trim();
+/** One Coinalyze GET at a time, CALL_GAP_MS apart (40 calls/min per key). 429 throws OiRateLimited. */
+export function coinalyzeGet(key: string, deps: Pick<OiBackfillDeps, "fetch" | "now" | "sleep">) {
   let last = 0;
-  let symbols: Map<string, string> | undefined;
-  /** A failed (or empty) symbol-map fetch is not retried for MAP_RETRY_MS: every coin would otherwise repeat the slow calls. */
-  let mapFailedAt = -Infinity;
-  const get = async (path: string, params: Record<string, string> = {}): Promise<unknown> => {
+  return async (path: string, params: Record<string, string> = {}): Promise<unknown> => {
     const wait = last + CALL_GAP_MS - deps.now();
     if (wait > 0) await deps.sleep(wait);
     last = deps.now();
-    const res = await deps.fetch(`${COINALYZE_BASE_URL}/${path}?${new URLSearchParams(params)}`, { headers: { api_key: key!, accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
+    const res = await deps.fetch(`${COINALYZE_BASE_URL}/${path}?${new URLSearchParams(params)}`, { headers: { api_key: key, accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
     if (res.status === 429) throw new OiRateLimited(`coinalyze ${path}: rate limited (429)`);
     if (!res.ok) throw new Error(`coinalyze ${path}: HTTP ${res.status}`);
     return res.json();
   };
+}
+
+/** Returns backfill(coin) -> rows inserted. Skips (0, no API call) without a key or when the coin already has the novelty minimum of OI days. Throws on HTTP errors. */
+export function createOiBackfill(deps: OiBackfillDeps) {
+  const key = deps.env.COINALYZE_API_KEY?.trim();
+  let symbols: Map<string, string> | undefined;
+  /** A failed (or empty) symbol-map fetch is not retried for MAP_RETRY_MS: every coin would otherwise repeat the slow calls. */
+  let mapFailedAt = -Infinity;
+  const get = coinalyzeGet(key ?? "", deps);
   return async (coin: string): Promise<number> => {
     if (!key) return 0;
     const have = new Set((await deps.stored(coin)).map((p) => dayStart(p.t)));
