@@ -76,8 +76,8 @@ function rowColumns(now: number, readyTtlMin: number, extremesReadyTtlMin: numbe
         return (
           <div className="flex flex-col gap-0.5 py-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span className="text-md text-text-primary w-14 truncate">{r.coin}</span>
-              <span className="w-10">{r.direction.toUpperCase()}</span>
+              <span className="text-md text-text-primary w-[11ch] truncate" title={r.coin}>{r.coin}</span>
+              <span className="w-[6ch]">{r.direction.toUpperCase()}</span>
               <span className="tabular text-text-primary" title={score.title}>{score.text}</span>
               <EdgeCell row={r} />
               <StatusPill status={r.status} />

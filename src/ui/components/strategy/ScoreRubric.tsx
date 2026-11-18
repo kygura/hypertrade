@@ -63,7 +63,8 @@ export function ScoreRubric({
               } ${i === 0 ? '' : i === n - 1 ? '-translate-x-full' : '-translate-x-1/2'}`}
               style={{ left: `${(i / span) * 100}%` }}
             >
-              {k} {labelFor(i)}
+              {k}
+              <span className="hidden md:inline"> {labelFor(i)}</span>
             </span>
           ))}
         </div>

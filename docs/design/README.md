@@ -621,8 +621,11 @@ Sticky (`position: sticky; top: 0; z-index: 40`), height
 
 ### 5.2 Mobile (<768px): bottom tab bar + slim top strip
 
-Top strip (`--topbar-h`, sticky): wordmark left, ASK + ThemeSwitcher + LOGOUT
-right (the freshness cluster is desktop-only). Route links move to a
+Top strip (`--topbar-h`, sticky): wordmark left, ASK + theme + LOGOUT right
+(the freshness cluster is desktop-only). Below `sm:` the theme control is
+`ThemeCycle`, one ghost button with the current short code (`HD`) that moves to
+the next theme on tap: the three-segment toggle is 138px at touch sizes and the
+logged-in strip only fits it from 412px. Under 360px the theme control is hidden. Route links move to a
 **bottom tab bar**, one cell per NAV entry:
 
 ```

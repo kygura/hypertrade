@@ -172,7 +172,7 @@ export function AssetTimeline({
     />
   )
   const y = (fmt: (v: number) => string, id?: string) => (
-    <YAxis {...yAxisIdProp(id)} tickFormatter={fmt} tick={TICK} stroke="var(--color-border)" width={44} />
+    <YAxis {...yAxisIdProp(id)} tickFormatter={fmt} tick={TICK} stroke="var(--color-border)" width={52} />
   )
   const chart = { data: rows, syncId: 'asset', syncMethod: 'value' as const, margin: MARGIN }
   const small = 'h-[90px] lg:h-[120px]'

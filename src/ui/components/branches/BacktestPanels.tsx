@@ -81,28 +81,28 @@ export function MonthlyTable({ monthly }: { monthly: { month: string; returnPct:
   const rows = monthlyGrid(monthly)
   return (
     <div className="table-scroll">
-      <table className="w-full text-sm tabular min-w-max">
+      <table className="w-full text-xs md:text-sm tabular min-w-max">
         <thead>
           <tr className="label">
-            <th className="text-left font-normal pr-2">YEAR</th>
+            <th className="text-left font-normal pr-1 md:pr-2">YEAR</th>
             {MONTHS.map((m, i) => (
-              <th key={i} className="text-right font-normal px-1">
+              <th key={i} className="text-right font-normal px-0.5 md:px-1">
                 {m}
               </th>
             ))}
-            <th className="text-right font-normal pl-2">YEAR</th>
+            <th className="text-right font-normal pl-1 md:pl-2">YEAR</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.year} className="border-t border-border-subtle">
-              <td className="text-text-secondary pr-2 py-0.5">{r.year}</td>
+              <td className="text-text-secondary pr-1 md:pr-2 py-0.5">{r.year}</td>
               {r.months.map((v, i) => (
-                <td key={i} className={`text-right px-1 ${v == null ? 'text-text-secondary' : signClass(v)}`}>
+                <td key={i} className={`text-right px-0.5 md:px-1 ${v == null ? 'text-text-secondary' : signClass(v)}`}>
                   {v == null ? '·' : v.toFixed(1)}
                 </td>
               ))}
-              <td className={`text-right pl-2 ${signClass(r.totalPct)}`}>{pct(r.totalPct)}</td>
+              <td className={`text-right pl-1 md:pl-2 ${signClass(r.totalPct)}`}>{pct(r.totalPct)}</td>
             </tr>
           ))}
         </tbody>

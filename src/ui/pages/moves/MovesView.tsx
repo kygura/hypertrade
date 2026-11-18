@@ -471,7 +471,7 @@ export function AttributionBlock({ d }: { d: MoveDetail }) {
                   <th className="px-2 py-1 label text-left">FACTOR</th>
                   <th className="px-2 py-1 label text-right" title="how much the coin moves per 1% move of the factor">BETA</th>
                   <th className="px-2 py-1 label text-right" title="beta × the factor's move over the window">CONTRIBUTION</th>
-                  <th className="px-2 py-1 label text-right" title="hourly bars the fit used">BARS</th>
+                  <th className="hidden md:table-cell px-2 py-1 label text-right" title="hourly bars the fit used">BARS</th>
                 </tr>
               </thead>
               <tbody>
@@ -480,7 +480,7 @@ export function AttributionBlock({ d }: { d: MoveDetail }) {
                     <td className="px-2 py-1">{b.factor}</td>
                     <td className="px-2 py-1 text-right">{b.beta == null ? DASH : b.beta.toFixed(2)}</td>
                     <td className={`px-2 py-1 text-right ${signClass(b.contributionPct)}`}>{fmtMove(b.contributionPct)}</td>
-                    <td className="px-2 py-1 text-right">{b.n}</td>
+                    <td className="hidden md:table-cell px-2 py-1 text-right">{b.n}</td>
                   </tr>
                 ))}
               </tbody>

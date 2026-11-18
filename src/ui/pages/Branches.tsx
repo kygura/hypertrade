@@ -97,7 +97,7 @@ export function Branches() {
     {
       key: 'updated',
       label: 'UPDATED',
-      priority: 3,
+      priority: 4,
       align: 'right',
       render: (b) => <span className="tabular text-text-secondary">{new Date(b.updatedAt).toISOString().slice(0, 10)}</span>,
     },
@@ -108,7 +108,7 @@ export function Branches() {
       <div className="panel">
         <div className="panel-header">
           <span className="panel-title">BRANCHES</span>
-          <Link to="/analyst?mode=sim" className="text-xs uppercase tracking-wider text-text-secondary hover:text-text-primary ml-auto mr-3">
+          <Link to="/analyst?mode=sim" className="inline-flex items-center min-h-[var(--tap-min)] text-xs uppercase tracking-wider text-text-secondary hover:text-text-primary ml-auto mr-3">
             SIMULATE →
           </Link>
           <Button tier="neutral" onClick={createBranch} disabled={creating}>

@@ -430,14 +430,14 @@ function StudySkeleton() {
 
 const screenCols: Column<{ k: string; s: Screen }>[] = [
   { key: 'k', label: 'WINDOW', priority: 1, render: (x) => x.k },
-  { key: 'events', label: 'EVENTS', priority: 1, align: 'right', render: (x) => x.s.events },
+  { key: 'events', label: 'EVENTS', priority: 3, align: 'right', render: (x) => x.s.events },
   { key: 'weeks', label: 'WEEKS', priority: 1, align: 'right', render: (x) => x.s.weeks },
   { key: 'exp', label: 'EXPECTANCY', priority: 1, align: 'right', render: (x) => <span className={x.s.expectancy == null ? '' : signTone(x.s.expectancy)}>{fmtR(x.s.expectancy)}</span> },
   { key: 'up', label: 'UPPER 95%', priority: 2, align: 'right', render: (x) => fmtR(x.s.upper95) },
 ]
 
 const coinCols: Column<CoinRow>[] = [
-  { key: 'coin', label: 'COIN', priority: 1, render: (c) => c.coin, sortValue: (c) => c.coin },
+  { key: 'coin', label: 'COIN', priority: 1, render: (c) => <span className="inline-block max-w-[14ch] break-all align-middle">{c.coin}</span>, sortValue: (c) => c.coin },
   { key: 'events', label: 'EVENTS', priority: 1, align: 'right', render: (c) => c.events, sortValue: (c) => c.events },
   {
     key: 'status',

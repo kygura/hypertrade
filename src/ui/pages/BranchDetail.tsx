@@ -81,8 +81,8 @@ const DCA_EVERY_OPTIONS: { value: Dca['every']; label: string; short: string }[]
   { value: 'monthly', label: 'MONTHLY', short: 'MO' },
 ]
 
-const ALLOC_GRID = 'grid grid-cols-[7ch_9ch_auto_8ch_auto] items-center gap-1.5'
-const DCA_GRID = 'grid grid-cols-[7ch_10ch_auto_auto] items-center gap-1.5'
+const ALLOC_GRID = 'grid grid-cols-[9ch_7ch_auto_6ch_auto] items-center gap-1.5'
+const DCA_GRID = 'grid grid-cols-[9ch_9ch_auto_auto] items-center gap-1.5'
 
 const REBALANCE_OPTIONS: { value: BranchConfig['rebalance']; label: string }[] = [
   { value: 'none', label: 'NONE' },

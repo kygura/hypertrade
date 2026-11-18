@@ -196,11 +196,12 @@ export function Markets() {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="FILTER"
-            className="!h-[var(--control-sm)] !py-0 !px-2 !text-xs w-24 md:w-40 uppercase placeholder:text-text-secondary"
+            className="!h-[var(--control-sm)] !min-h-[var(--tap-min)] !py-0 !px-2 !text-xs w-24 md:w-40 uppercase placeholder:text-text-secondary"
           />
         </PanelHeader>
-        <div className="px-3 pt-2 overflow-x-auto">
-          <Segmented options={classOptions} value={cls} onChange={setCls} label="Asset class" />
+        <div className="px-3 pt-2">
+          {/* Wraps on phones: a scrolled filter row hides asset classes off-screen. */}
+          <Segmented options={classOptions} value={cls} onChange={setCls} label="Asset class" className="flex-wrap" />
         </div>
         <PanelBody>
           {filtered.length > 0 && <p className="text-md text-text-primary mb-1 max-w-[110ch]">{marketsInsight(filtered)}</p>}

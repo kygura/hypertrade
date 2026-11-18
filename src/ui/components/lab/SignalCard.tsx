@@ -68,10 +68,10 @@ export function SignalCard({
       className={`flex flex-col gap-1.5 px-3 py-2.5 border-b border-border-subtle cursor-pointer transition-colors duration-100 ${selected ? 'bg-selected' : 'hover:bg-hover'}`}
       style={selected ? { boxShadow: 'inset 2px 0 0 var(--color-red-accent)' } : undefined}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex flex-wrap items-start gap-x-2 gap-y-1.5">
         <span className="text-xs text-text-secondary tabular pt-1">#{rank}</span>
-        <RuleText rule={ev.rule} metrics={metrics} size="lg" className="flex-1 min-w-0 text-text-primary break-words" />
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <RuleText rule={ev.rule} metrics={metrics} size="lg" className="flex-1 basis-[12rem] min-w-0 text-text-primary break-words" />
+        <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
           <FiringBadge firing={ev.firingNow} />
           <Button
             tier="ghost"

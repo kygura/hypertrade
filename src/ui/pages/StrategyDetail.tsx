@@ -196,7 +196,7 @@ export function StrategyDetail() {
                 <span className="text-xs text-text-secondary tabular">
                   v{manifest.version} · {manifest.cadence || '—'} · {manifest.markets.join(', ') || 'no default markets'}
                 </span>
-                <p className="text-base text-text-muted">{manifest.description || 'no description'}</p>
+                <p className="text-base text-text-muted break-words">{manifest.description || 'no description'}</p>
                 {data.last_error && <ErrorBlock message={data.last_error} />}
               </div>
 

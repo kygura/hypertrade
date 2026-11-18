@@ -283,6 +283,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Controls drop under the title on a phone instead of running off-screen. */
+  flex-wrap: wrap;
+  row-gap: 6px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-panel-header);
@@ -309,6 +312,9 @@ body {
 /* Wide-content escape hatch: any table wider than its panel scrolls inside
    this wrapper, never the page (§4.4). */
 .table-scroll {
+  /* Containing block for absolutely positioned descendants (sr-only text),
+     so they cannot leak past the scroller and widen the page. */
+  position: relative;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -394,6 +400,22 @@ textarea:focus {
 .seg--md .seg-item {
   --seg-h: var(--control-md);
 }
+/* Touch: segments keep their drawn height (--control-sm/md) but the hit area
+   grows to --tap-min vertically, so a 26-34px segment is a 44px target. */
+@media (pointer: coarse) {
+  .seg-item {
+    position: relative;
+  }
+  .seg-item::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: max(100%, var(--tap-min));
+    transform: translateY(-50%);
+  }
+}
 .seg-item + .seg-item {
   box-shadow: -1px 0 0 var(--seg-divider);
 }
@@ -430,7 +452,9 @@ textarea:focus {
   letter-spacing: 0.1em;
   border: 1px solid var(--color-border-subtle);
   padding: 1px 5px;
-  white-space: nowrap;
+  /* Short tags (HL, CG) never break; a long source title wraps instead of
+     pushing the page wider than a phone. */
+  overflow-wrap: break-word;
 }
 .src-tag--hl {
   color: var(--color-src-hl);
