@@ -1,15 +1,25 @@
 import type { AgentRecord, TriageItem } from "../../shared/agentRecords.js";
 import { AssetSchema } from "../../shared/intel.js";
-import type { Opportunity } from "../../shared/platform.js";
+import type { NoveltyEntry, Opportunity } from "../../shared/platform.js";
 import type { RadarCall } from "../../shared/radar.js";
 import { QUEUE_SOURCES, queueItemId, QueueResponseSchema, type QueueItem, type QueuePart, type QueueResponse, type QueueSource, type QueueSourceStatus, type QueueState } from "../../shared/queue.js";
+import type { CatalogueEntry } from "../lab/types.js";
 import type { QueueDismissal } from "../platform/store.js";
+import { definitionSignal, noveltySignal, ruleSignal } from "../research/signals.js";
+import { definitionForKind } from "../signals/definitions.js";
+import type { DefinitionHit } from "../signals/scan.js";
 
 // The queue merge (docs/SPEC.md § Queue). Pure: the same sources give the same queue.
 // - One item per coin per UTC day, at most one part per source (opportunity: a ready one over a decided one, then
-//   newest; radar: newest call; moves: the day's triage item). Scores: 1 = crossed the source's own bar.
+//   newest; radar: newest call; moves: the day's triage item; novelty: a pushed entry over one that was not, then
+//   newest). Scores: 1 = crossed the source's own bar.
+// - Witnesses (score 0): a catalogue rule or a signal definition in zone, and a novelty hit that was not pushed. They
+//   fire daily on many coins, so they never list a coin and never re-open a dismissed one; they join a coin a
+//   bar-crossing part listed, and count toward its ideas.
+// - Ideas: parts that share a `thesis` (a setup and its daily definition) count once; every other part counts for
+//   itself. No cross-source weighting: the sources' own numbers stay in their reasons.
 // - One attention budget (`cap`, MOVES_TRIAGE_DAILY) across sources, strongest first: all the day's items by score,
-//   then agreeing sources, then earlier firstAt, then coin; the first `cap` are listed, the rest only counted
+//   then ideas, then earlier firstAt, then coin; the first `cap` are listed, the rest only counted
 //   (`overCap`). A stronger arrival displaces the weakest listed item. Dismissed and acted items still count and compete.
 // - State: acted (an opportunity decided today) > dismissed (every part at or before the dismissal) > new.
 // - Display: new, acted, dismissed; then the same strength order as the slots.
@@ -34,7 +44,7 @@ const prevDay = (day: string) => isoOf(ms(`${day}T00:00:00Z`) - 86_400_000).slic
 
 export function movesPart(t: TriageItem): QueuePart {
   return {
-    source: "moves", ref: t.id, direction: null, reason: clip(t.reason), score: Math.max(0, t.score),
+    source: "moves", ref: t.id, direction: null, reason: clip(t.reason), score: Math.max(0, t.score), thesis: null,
     at: isoOf(ms(t.surfacedAt)), actedAt: null, href: `/moves?coin=${encodeURIComponent(t.coin)}`,
   };
 }
@@ -46,6 +56,7 @@ export function opportunityPart(o: Opportunity, dayStart: Date): QueuePart | nul
   const net = o.netEdgeBps == null ? "" : ` · net ${o.netEdgeBps.toFixed(0)} bps`;
   return {
     source: "opportunity", ref: o.id, direction: o.direction, reason: clip(`${o.setupKind} ${o.direction} · ${o.status}${net}`), score: 1,
+    thesis: definitionForKind(o.setupKind, o.direction)?.id ?? null,
     at: isoOf(ms(o.createdAt)), actedAt: decided ? isoOf(ms(o.statusChangedAt)) : null, href: `/feed?id=${encodeURIComponent(o.id)}`,
   };
 }
@@ -54,10 +65,34 @@ export function opportunityPart(o: Opportunity, dayStart: Date): QueuePart | nul
 export function radarPart(c: RadarCall): QueuePart {
   const at = Number.isFinite(ms(c.at)) ? ms(c.at) : ms(`${c.date}T00:00:00Z`);
   return {
-    source: "radar", ref: c.id, direction: c.direction, reason: clip(`${c.stance} ${c.direction} · ${c.kind} · kill ${px(c.kill_price)}`), score: 1,
+    source: "radar", ref: c.id, direction: c.direction, reason: clip(`${c.stance} ${c.direction} · ${c.kind} · kill ${px(c.kill_price)}`), score: 1, thesis: null,
     at: isoOf(at), actedAt: null, href: `/board?coin=${encodeURIComponent(c.market)}`,
   };
 }
+
+const boardHref = (coin: string) => `/board?coin=${encodeURIComponent(coin)}`;
+
+/** A novelty hit as the board states it. A pushed one (a new extreme past the detector's cooldown and run budget) crossed the bar; the rest are witnesses. */
+export function noveltyPart(e: NoveltyEntry): QueuePart {
+  const s = noveltySignal(e);
+  return { source: "novelty", ref: e.id, direction: null, reason: clip(s.headline), score: e.pushed ? 1 : 0, thesis: null, at: isoOf(s.at), actedAt: null, href: boardHref(e.coin) };
+}
+
+/** A catalogue rule in zone on the pulse's latest data: a witness. */
+export function rulePart(e: CatalogueEntry, at: number): QueuePart {
+  const s = ruleSignal(e, at);
+  return { source: "rule", ref: e.id, direction: s.direction, reason: clip(s.headline), score: 0, thesis: null, at: isoOf(at), actedAt: null, href: s.href };
+}
+
+/** A signal definition in zone on the latest closed daily bar: a witness, with its definition as the thesis. */
+export function definitionPart(h: DefinitionHit): QueuePart {
+  const s = definitionSignal(h);
+  return { source: "definition", ref: `${h.coin}:${h.definition.id}`, direction: s.direction, reason: clip(s.headline), score: 0, thesis: h.definition.id, at: isoOf(s.at), actedAt: null, href: boardHref(h.coin) };
+}
+
+/** Parts that share a thesis count once; every other part counts for itself. */
+export const ideaCount = (parts: readonly Pick<QueuePart, "thesis">[]): number =>
+  new Set(parts.flatMap((p) => p.thesis ?? [])).size + parts.filter((p) => p.thesis === null).length;
 
 export interface MergeInput {
   day: string;
@@ -72,6 +107,12 @@ export interface MergeInput {
   /** Ready opportunities and those decided today. */
   opportunities: SourceInput<Opportunity>;
   radar: SourceInput<RadarCall>;
+  /** Novelty journal entries of recent bars (the merge keeps yesterday's and today's bars). */
+  novelty: SourceInput<NoveltyEntry>;
+  /** Catalogue rules firing on the latest pulse, each with the pulse's asOf (ms). */
+  rules: SourceInput<{ entry: CatalogueEntry; at: number }>;
+  /** Signal definitions in zone on the latest closed daily bar. */
+  definitions: SourceInput<DefinitionHit>;
   /** Today's queue dismissals. */
   dismissals: QueueDismissal[];
 }
@@ -115,7 +156,13 @@ export function mergeQueue(q: MergeInput): MergedQueue {
       .filter((c) => c.killed_at === null && c.date >= yesterday && c.date <= q.day && validCoin(c.market))
       .map((c) => ({ coin: c.market, part: radarPart(c), rank: 0 })),
   );
-  const bySource: Record<QueueSource, Map<string, QueuePart>> = { moves, opportunity: opps, radar };
+  const rows = <T>(src: SourceInput<T>) => ("ok" in src ? src.ok : []);
+  const novelty = bestPerCoin(
+    rows(q.novelty).filter((e) => e.barDate >= yesterday && e.barDate <= q.day && validCoin(e.coin)).map((e) => ({ coin: e.coin, part: noveltyPart(e), rank: e.pushed ? 0 : 1 })),
+  );
+  const rule = bestPerCoin(rows(q.rules).filter((r) => validCoin(r.entry.rule.asset)).map((r) => ({ coin: r.entry.rule.asset, part: rulePart(r.entry, r.at), rank: 0 })));
+  const definition = bestPerCoin(rows(q.definitions).filter((h) => validCoin(h.coin)).map((h) => ({ coin: h.coin, part: definitionPart(h), rank: 0 })));
+  const bySource: Record<QueueSource, Map<string, QueuePart>> = { moves, opportunity: opps, radar, novelty, rule, definition };
 
   const triageByCoin = new Map(triage.map((t) => [t.coin, t]));
   const dismissedByCoin = new Map(q.dismissals.filter((d) => d.day === q.day).map((d) => [d.coin, ms(d.dismissedAt)]));
@@ -127,11 +174,12 @@ export function mergeQueue(q: MergeInput): MergedQueue {
     if (!prev || ms(r.createdAt) > ms(prev.createdAt) || (r.createdAt === prev.createdAt && r.id < prev.id)) newestRecord.set(r.coin, r);
   }
 
-  const coins = new Set(QUEUE_SOURCES.flatMap((s) => [...bySource[s].keys()]));
+  // A coin is listed by a part that crossed its source's bar; witnesses alone list nothing.
+  const coins = new Set(QUEUE_SOURCES.flatMap((s) => [...bySource[s]].flatMap(([coin, p]) => (p.score > 0 ? [coin] : []))));
   const items: QueueItem[] = [...coins].map((coin) => {
     const parts = QUEUE_SOURCES.flatMap((s) => bySource[s].get(coin) ?? [])
       .sort((x, y) => y.score - x.score || SOURCE_ORDER.get(x.source)! - SOURCE_ORDER.get(y.source)!);
-    const ats = parts.map((p) => ms(p.at));
+    const ats = parts.filter((p) => p.score > 0).map((p) => ms(p.at));
     const t = triageByCoin.get(coin);
     const dismissals = [dismissedByCoin.get(coin), t?.dismissedAt ? ms(t.dismissedAt) : undefined].filter((x): x is number => x !== undefined);
     const dismissedAt = dismissals.length ? Math.max(...dismissals) : null;
@@ -142,16 +190,16 @@ export function mergeQueue(q: MergeInput): MergedQueue {
         : "new";
     const linked = t?.recordId ? recordsById.get(t.recordId) : undefined;
     return {
-      id: queueItemId(q.day, coin), day: q.day, coin, reason: parts[0]!.reason, score: Math.max(...parts.map((p) => p.score)),
+      id: queueItemId(q.day, coin), day: q.day, coin, reason: parts[0]!.reason, score: Math.max(...parts.map((p) => p.score)), ideas: ideaCount(parts),
       firstAt: isoOf(Math.min(...ats)), lastAt: isoOf(Math.max(...ats)), state, dismissedAt: dismissedAt === null ? null : isoOf(dismissedAt),
       parts, record: q.guest ? null : (linked ?? newestRecord.get(coin) ?? null), href: coinHref(coin),
     };
   });
 
-  // Slots: strongest first (score, agreeing sources, earlier firstAt, coin); display: state, then the same order.
+  // Slots: strongest first (score, ideas, earlier firstAt, coin); display: state, then the same order.
   const cap = Math.max(0, Math.floor(q.cap));
   const strength = (x: QueueItem, y: QueueItem) =>
-    y.score - x.score || y.parts.length - x.parts.length || ms(x.firstAt) - ms(y.firstAt) || cmp(x.coin, y.coin);
+    y.score - x.score || y.ideas - x.ideas || ms(x.firstAt) - ms(y.firstAt) || cmp(x.coin, y.coin);
   const slotted = [...items].sort(strength);
   const listed = slotted.slice(0, cap).sort((x, y) => STATE_ORDER[x.state] - STATE_ORDER[y.state] || strength(x, y));
 
@@ -160,7 +208,9 @@ export function mergeQueue(q: MergeInput): MergedQueue {
     day: q.day,
     cap,
     overCap: slotted.length - listed.length,
-    sources: { moves: status(q.triage, moves.size), opportunity: status(q.opportunities, opps.size), radar: status(radarIn, radar.size) },
+    sources: { moves: status(q.triage, moves.size), opportunity: status(q.opportunities, opps.size), radar: status(radarIn, radar.size),
+      novelty: status(q.novelty, novelty.size), rule: status(q.rules, rule.size), definition: status(q.definitions, definition.size),
+    },
     items: listed,
   });
 }

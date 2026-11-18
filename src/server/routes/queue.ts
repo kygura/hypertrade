@@ -1,22 +1,28 @@
 import { Hono, type Context } from "hono";
 import type { AgentRecord, TriageItem } from "../../shared/agentRecords.js";
-import type { Opportunity } from "../../shared/platform.js";
+import type { NoveltyEntry, Opportunity } from "../../shared/platform.js";
 import { parseQueueItemId, QueueDismissResponseSchema, QueueResponseSchema, type QueueResponse } from "../../shared/queue.js";
 import type { RadarCall } from "../../shared/radar.js";
 import { isGuest } from "../auth.js";
 import type { AgentDeps } from "../moves/agent.js";
 import { latestTriageScan, type TriageScan } from "../moves/agentLoop.js";
 import { MOVES_STALE_MS, readTriageScan, TRIAGE_STALE_MS, triageNote } from "../moves/stored.js";
+import type { CatalogueEntry } from "../lab/types.js";
 import { agentBlockedReason, agentStore, sharedAgentDeps } from "../moves/agentRoutes.js";
 import { triageBudget, triageId, utcDay, utcDayStart } from "../moves/triage.js";
 import type { PlatformStore, QueueDismissal } from "../platform/store.js";
 import { mergeQueue, RECORD_WINDOW_MS, type SourceInput } from "../queue/merge.js";
 import { readRadar } from "../research/radar.js";
+import { firingEntries } from "../research/signals.js";
 import { bounded } from "../research/study.js";
-import { platformContext, RADAR_DIR } from "./research.js";
+import type { DefinitionHit } from "../signals/scan.js";
+import { defaultBoardDeps, platformContext, RADAR_DIR } from "./research.js";
 
 // /api/queue (docs/SPEC.md § Queue): one short list of what deserves a look, merged from the moves triage queue,
-// ready platform opportunities and landed radar calls under one daily budget (MOVES_TRIAGE_DAILY).
+// ready platform opportunities, landed radar calls and pushed novelty extremes under one daily budget
+// (MOVES_TRIAGE_DAILY); catalogue rules and signal definitions in zone join a listed coin as witnesses. The three
+// research sources are the board's own loaders (their memos), bounded like every source here: a first load slower
+// than the bound answers `unavailable` once and is there on a later poll.
 //   GET  /               → QueueResponse. Guest-readable in PUBLIC_MODE: a guest gets no radar and no agent record.
 //   POST /:id/dismiss    → QueueDismissResponse: hides the coin for the UTC day and dismisses its triage item too.
 //                          400 {error, field: "id"} for a bad id or another day; 503 {error, reason} without a store.
@@ -35,6 +41,12 @@ export interface QueueRouteDeps {
   opportunities(dayStart: Date): Promise<Opportunity[]>;
   /** Landed radar calls; throws with the reason when the files are unavailable. */
   radar(): Promise<RadarCall[]>;
+  /** Novelty journal entries from bar `sinceBar` on; throws with the reason without the novelty loop's inputs. */
+  novelty(sinceBar: string): Promise<NoveltyEntry[]>;
+  /** Catalogue rules firing on the latest Market Pulse, each with the pulse's asOf (ms). */
+  rules(): Promise<{ entry: CatalogueEntry; at: number }[]>;
+  /** Signal definitions in zone on the latest closed daily bar; throws with the reason where no scan can run. */
+  definitions(): Promise<DefinitionHit[]>;
   /** The latest triage pass, stored by the moves-agent job or loop (its `watched` count, as /api/moves/triage reads it). */
   scan(): TriageScan | null | Promise<TriageScan | null>;
   /** The agent's deps less the store (daily cap, LLM wiring). */
@@ -68,6 +80,8 @@ export function queueRoutes(d: QueueRouteDeps) {
       const store = d.store();
       const off = d.movesUnavailable();
       const none = <T>(reason: string): Promise<SourceInput<T>> => Promise.resolve({ unavailable: reason });
+      const yesterday = utcDay(new Date(dayStart.getTime() - 86_400_000));
+      const [novelty, rules, definitions] = await Promise.all([load("novelty", () => d.novelty(yesterday), ms), load("rules", () => d.rules(), ms), load("definitions", () => d.definitions(), ms)]);
       const [triage, opportunities, radar, records, dismissals, runs, scan, run] = await Promise.all([
         off ? none<TriageItem>(off) : store ? load("triage", () => store.listTriage(day), ms) : none<TriageItem>(NO_STORE),
         store ? load("opportunities", () => d.opportunities(dayStart), ms) : none<Opportunity>(NO_STORE),
@@ -81,7 +95,7 @@ export function queueRoutes(d: QueueRouteDeps) {
         off || !store ? null : bounded(store.movesRunAt("24h"), null, ms, "queue moves run"),
       ]);
       const merged = mergeQueue({
-        day, now, cap: d.cap, guest: hide, triage, opportunities, radar,
+        day, now, cap: d.cap, guest: hide, triage, opportunities, radar, novelty, rules, definitions,
         records: "ok" in records ? records.ok : [],
         dismissals: "ok" in dismissals ? dismissals.ok : [],
       });
@@ -111,8 +125,17 @@ export function queueRoutes(d: QueueRouteDeps) {
 /** Decided opportunities read per poll (score order; filtered to today in code: the store has no since filter). */
 const DECIDED_SCAN_LIMIT = 200;
 
-export const defaultQueueDeps = (): QueueRouteDeps => ({
+export const defaultQueueDeps = (): QueueRouteDeps => {
+  const board = defaultBoardDeps();
+  return {
   now: () => new Date(),
+  novelty: board.novelty,
+  rules: async () => {
+    const r = await board.pulse();
+    const at = Date.parse(r.pulse.asOf);
+    return firingEntries(r.pulse, r.catalogue).map((entry) => ({ entry, at }));
+  },
+  definitions: async () => (await board.definitions()).hits,
   cap: triageBudget(),
   store: agentStore,
   movesUnavailable: () => null,
@@ -132,4 +155,5 @@ export const defaultQueueDeps = (): QueueRouteDeps => ({
   },
   scan: () => readTriageScan(agentStore(), latestTriageScan),
   agent: sharedAgentDeps,
-});
+  };
+};

@@ -2,7 +2,7 @@ import { AsyncBody, Badge, Button, HowToRead, PageContainer, Panel, PanelHeader,
 import type { QueueItem, QueueResponse } from '../../../shared/queue'
 import { CoinDecision } from '../coin/CoinDecision'
 import type { Feed } from '../moves/MovesView'
-import { agentLine, ageText, directionOf, emptyLine, emptyWhy, headerLine, partsLabel, QUEUE_TERMS, queueTakeaway, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
+import { agentLine, ageText, directionOf, emptyLine, emptyWhy, headerLine, ideasText, partsLabel, QUEUE_TERMS, queueTakeaway, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
 
 // QUEUE view (PLAN2 §2.1/§2.2). Presentational: Queue.tsx owns the poll, the URL selection, the keyboard and
 // DISMISS. The list is the page: a header line (plus one quiet staleness line when the moves list is old), the source chips (a source problem is one quiet line), the new
@@ -135,6 +135,11 @@ function QueueRow({ i, ...p }: QueueViewProps & { i: QueueItem }) {
             <span className="text-xs text-text-secondary" title="the sources that flagged this coin today">
               {partsLabel(i)}
             </span>
+            {ideasText(i) && (
+              <span data-ideas className="text-xs tabular text-text-secondary" title="sources that state the same thesis count once">
+                {ideasText(i)}
+              </span>
+            )}
             <span className="text-xs text-text-secondary" title="the side the sources state; a dash when none does">
               {directionOf(i)}
             </span>

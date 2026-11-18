@@ -3,8 +3,10 @@ import { AgentRecordSchema } from "./agentRecords.js";
 import { AssetSchema } from "./intel.js";
 
 // Queue contract (docs/SPEC.md § Queue): one short list of what deserves the trader's look, merged from the moves
-// triage queue, ready platform opportunities and landed radar calls; one item per coin per UTC day, under one daily
-// attention budget (MOVES_TRIAGE_DAILY) shared by every source. Facts only, never a verdict. Server
+// triage queue, ready platform opportunities, landed radar calls and pushed novelty extremes; one item per coin per
+// UTC day, under one daily attention budget (MOVES_TRIAGE_DAILY) shared by every source. A catalogue rule or a signal
+// definition in zone, and a novelty hit that was not pushed, never list a coin: they join a listed coin as witnesses
+// (score 0). Facts only, never a verdict. Server
 // (src/server/queue/merge.ts, src/server/routes/queue.ts) and UI (src/ui/lib/queue.ts) both import this file.
 
 const Iso = z.string().datetime({ offset: true });
@@ -12,7 +14,7 @@ const Num = z.number().finite();
 const Count = z.number().int().nonnegative();
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "invalid day");
 
-export const QUEUE_SOURCES = ["moves", "opportunity", "radar"] as const;
+export const QUEUE_SOURCES = ["moves", "opportunity", "radar", "novelty", "rule", "definition"] as const;
 const QueueSourceSchema = z.enum(QUEUE_SOURCES);
 export type QueueSource = z.infer<typeof QueueSourceSchema>;
 
@@ -41,8 +43,14 @@ const QueuePartSchema = z.object({
   direction: z.enum(["long", "short"]).nullable(),
   /** Facts only, e.g. `residual +6.2% · z +3.1 · 24h · no news in window`, `crowded_short long · ready · net 42 bps`. */
   reason: z.string().min(1).max(200),
-  /** 1 = crossed the source's own bar: the triage score (≥ 1 by construction); a ready opportunity or a landed radar call is 1. */
+  /**
+   * 1 = crossed the source's own bar: the triage score (≥ 1 by construction); a ready opportunity, a landed radar call
+   * or a pushed novelty extreme is 1. 0 = a witness: it fired on the coin but does not list it (a rule or definition in
+   * zone, a novelty hit that was not pushed).
+   */
   score: Num.nonnegative(),
+  /** The signal definition this part states (src/server/signals/definitions.ts), so a setup and its daily definition count as one idea; null when none. */
+  thesis: z.string().min(1).nullable(),
   /** When the source surfaced it (triage surfacedAt, opportunity createdAt, radar call at). */
   at: Iso,
   /** When the operator decided the source object today (opportunity approved or rejected); null otherwise. */
@@ -61,9 +69,11 @@ export const QueueItemSchema = z.object({
   reason: z.string().min(1).max(200),
   /** Max of the parts' scores. */
   score: Num.nonnegative(),
-  /** Earliest part `at`: the tie-break for the day's budget (strongest first, then earlier); the UI's age reads from it. */
+  /** Distinct ideas among the parts: parts that share a `thesis` count once, every other part counts for itself. */
+  ideas: Count,
+  /** Earliest `at` of the parts that list the coin (score > 0): the tie-break for the day's budget (strongest first, then earlier); the UI's age reads from it. */
   firstAt: Iso,
-  /** Latest part `at`. */
+  /** Latest `at` of the parts that list the coin. */
   lastAt: Iso,
   state: QueueStateSchema,
   /** Latest of the queue dismissal and the coin's triage dismissal; null when neither. */
@@ -95,7 +105,10 @@ export const QueueResponseSchema = z.object({
   cap: Count,
   /** Weaker items past the cap: counted, not listed. */
   overCap: Count,
-  sources: z.object({ moves: QueueSourceStatusSchema, opportunity: QueueSourceStatusSchema, radar: QueueSourceStatusSchema }),
+  sources: z.object({
+    moves: QueueSourceStatusSchema, opportunity: QueueSourceStatusSchema, radar: QueueSourceStatusSchema,
+    novelty: QueueSourceStatusSchema, rule: QueueSourceStatusSchema, definition: QueueSourceStatusSchema,
+  }),
   /** Agent investigations run today, the daily cap (MOVES_AGENT_DAILY) and why one cannot run now (null when it can). */
   agentRuns: Count,
   agentCap: Count,
@@ -108,7 +121,7 @@ export const QueueResponseSchema = z.object({
    * stale ones, as one line in the queue header.
    */
   freshness: z.object({ movesRun: QueueFreshnessSchema.nullable(), triage: QueueFreshnessSchema.nullable() }),
-  /** Listed items in display order: new, acted, dismissed; then by strength (score, agreeing sources, earlier firstAt, coin). */
+  /** Listed items in display order: new, acted, dismissed; then by strength (score, ideas, earlier firstAt, coin). */
   items: z.array(QueueItemSchema),
 });
 export type QueueResponse = z.infer<typeof QueueResponseSchema>;

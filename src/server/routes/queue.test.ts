@@ -26,6 +26,9 @@ function setup(o: Partial<QueueRouteDeps> & { guest?: boolean; noStore?: boolean
     movesUnavailable: () => null,
     opportunities: async () => [],
     radar: async () => [],
+    novelty: async () => [],
+    rules: async () => [],
+    definitions: async () => [],
     scan: () => ({ day, at: iso(T0), state: "ok", reason: null, watched: 31, overBudget: 0 }),
     agent: () => agent,
     isGuest: () => o.guest ?? false,
@@ -41,6 +44,24 @@ const triage = (coin: string, over = {}) => ({
 });
 
 describe("GET /api/queue", () => {
+  test("research sources: a pushed novelty extreme lists its coin, a slow or failing loader is unavailable with its reason", async () => {
+    const entry = {
+      id: `${day}:SOL`, detectedAt: iso(T0 - 3_600_000), barDate: day, coin: "SOL", kind: "new_extreme" as const, families: ["funding" as const],
+      features: [{ id: "funding_z90", value: 4.2, histMin: -3, histMax: 3.9, p1: -2.5, p99: 3.1, bars: 400, pctRank: 100 }],
+      nearSetups: [], marketWide: false, pushed: true, notified: [],
+    };
+    const { req } = setup({
+      novelty: async () => [entry],
+      rules: () => new Promise(() => {}),
+      definitions: async () => { throw new Error("first scan in progress"); },
+    });
+    const body = QueueResponseSchema.parse(await (await req("/")).json());
+    expect(body.items.map((i) => [i.coin, i.parts[0]!.source, i.ideas])).toEqual([["SOL", "novelty", 1]]);
+    expect(body.sources.novelty).toEqual({ state: "ok", reason: null, count: 1 });
+    expect(body.sources.rule).toEqual({ state: "unavailable", reason: "no answer within 0.05 s", count: 0 });
+    expect(body.sources.definition).toEqual({ state: "unavailable", reason: "first scan in progress", count: 0 });
+  });
+
   test("merges the day's triage with records and agent counts; the answer parses", async () => {
     const { store, req } = setup();
     await store.insertAgentRecord(record({ id: "r1", createdAt: iso(T0 - 1_800_000) }));

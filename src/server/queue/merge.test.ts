@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentRecord, TriageItem } from "../../shared/agentRecords.js";
-import type { Opportunity } from "../../shared/platform.js";
+import type { NoveltyEntry, Opportunity } from "../../shared/platform.js";
 import { QueueResponseSchema } from "../../shared/queue.js";
 import type { RadarCall } from "../../shared/radar.js";
-import { mergeQueue, movesPart, opportunityPart, radarPart, type MergeInput } from "./merge.js";
+import type { CatalogueEntry } from "../lab/types.js";
+import { DEFINITIONS, definitionForKind } from "../signals/definitions.js";
+import type { DefinitionHit } from "../signals/scan.js";
+import { ideaCount, mergeQueue, movesPart, opportunityPart, radarPart, type MergeInput } from "./merge.js";
 
 const DAY = "2026-11-11";
 const t = (h: number, m = 0) => new Date(Date.UTC(2026, 10, 11, h, m)).toISOString();
@@ -36,9 +39,23 @@ const record = (id: string, coin: string, h: number): AgentRecord => ({
   falsifier: null, sources: [], status: "open", grade: null, model: "m", promptVersion: "moves-agent-v1", dropped: 0, error: null,
 });
 
-const input = (over: Partial<MergeInput> = {}): MergeInput => ({
-  day: DAY, now: NOW, cap: 8, guest: false, triage: { ok: [] }, records: [], opportunities: { ok: [] }, radar: { ok: [] }, dismissals: [], ...over,
+const novel = (coin: string, h: number, over: Partial<NoveltyEntry> = {}): NoveltyEntry => ({
+  id: `2026-11-10:${coin}`, detectedAt: t(h), barDate: "2026-11-10", coin, kind: "new_extreme", families: ["funding"],
+  features: [{ id: "funding_z90", value: 4.2, histMin: -3, histMax: 3.9, p1: -2.5, p99: 3.1, bars: 400, pctRank: 100 }],
+  nearSetups: [], marketWide: false, pushed: true, notified: [], ...over,
 });
+const fade = definitionForKind("crowded_long", "short")!;
+const hit = (coin: string, definition = fade): DefinitionHit => ({ definition, coin, date: "2026-11-10", values: {} });
+const firing = (coin: string) => ({
+  entry: { id: `r-${coin}`, name: "funding fade", rule: { asset: coin, direction: "short", horizonDays: 7, conditions: [{ feature: "ht:funding|z|90", op: ">=", threshold: 2 }] } } as unknown as CatalogueEntry,
+  at: Date.parse(t(11)),
+});
+
+const input = (over: Partial<MergeInput> = {}): MergeInput => ({
+  day: DAY, now: NOW, cap: 8, guest: false, triage: { ok: [] }, records: [], opportunities: { ok: [] }, radar: { ok: [] }, novelty: { ok: [] }, rules: { ok: [] }, definitions: { ok: [] }, dismissals: [], ...over,
+});
+
+const none = { state: "ok", reason: null, count: 0 } as const;
 
 describe("mergeQueue", () => {
   test("a ready extremes take (no costs, no target, no net edge, its own kind and score version) is listed like any ready opportunity; its severity does not outrank", () => {
@@ -50,7 +67,7 @@ describe("mergeQueue", () => {
       mergeQueue(input({ triage: { ok: [triage("SOL", 3, { score: 1.5 })] }, opportunities: { ok: [take] } })),
     );
     expect(q.items.map((i) => i.coin)).toEqual(["SOL", "WIF"]);
-    expect(q.items[1]!.parts).toEqual([{ source: "opportunity", ref: take.id, direction: "long", reason: "oi_flush long · ready", score: 1, at: t(5), actedAt: null, href: `/feed?id=${take.id}` }]);
+    expect(q.items[1]!.parts).toEqual([{ source: "opportunity", ref: take.id, direction: "long", reason: "oi_flush long · ready", score: 1, thesis: null, at: t(5), actedAt: null, href: `/feed?id=${take.id}` }]);
     expect(q.sources.opportunity).toEqual({ state: "ok", reason: null, count: 1 });
   });
 
@@ -66,7 +83,7 @@ describe("mergeQueue", () => {
     expect(sol).toMatchObject({ id: `${DAY}:SOL`, state: "new", score: 1.24, firstAt: t(2), lastAt: t(4), href: "/coin/SOL", reason: triage("SOL", 3).reason });
     expect(sol.parts[1]).toMatchObject({ reason: "crowded_short long · ready · net 42 bps", score: 1, actedAt: null });
     expect(sol.parts[2]).toMatchObject({ reason: "ride long · catalyst · kill 31.2", direction: "long" });
-    expect(q.sources).toEqual({ moves: { state: "ok", reason: null, count: 2 }, opportunity: { state: "ok", reason: null, count: 1 }, radar: { state: "ok", reason: null, count: 1 } });
+    expect(q.sources).toEqual({ moves: { state: "ok", reason: null, count: 2 }, opportunity: { state: "ok", reason: null, count: 1 }, radar: { state: "ok", reason: null, count: 1 }, novelty: none, rule: none, definition: none });
   });
 
   test("cap lists the strongest regardless of arrival order; the weakest is over the cap", () => {
@@ -185,5 +202,49 @@ describe("parts", () => {
     expect(opportunityPart(opp("SOL", 1, { status: "expired" }), dayStart)).toBeNull();
     expect(opportunityPart(opp("SOL", 1), dayStart)!.href).toStartWith("/feed?id=");
     expect(radarPart(call("SOL", 2)).at).toBe(t(2));
+  });
+
+  test("a pushed novelty extreme lists its coin; one that was not pushed, a rule and a definition in zone list nothing", () => {
+    const q = mergeQueue(input({
+      novelty: { ok: [novel("SOL", 6), novel("WIF", 6, { kind: "joint_extreme", pushed: false }), novel("ETH", 6, { pushed: false, suppressed: "run_cap" }), novel("OLD", 6, { barDate: "2026-11-08" })] },
+      rules: { ok: [firing("BTC")] },
+      definitions: { ok: [hit("DOGE")] },
+    }));
+    expect(q.items.map((i) => i.coin)).toEqual(["SOL"]);
+    expect(q.items[0]!.parts).toEqual([{ source: "novelty", ref: "2026-11-10:SOL", direction: null, reason: "new extreme 2026-11-10: funding z90 +4.2", score: 1, thesis: null, at: t(6), actedAt: null, href: "/board?coin=SOL" }]);
+    // Counts are coins the source fired on, before the cap, listed or not.
+    expect(q.sources).toMatchObject({ novelty: { count: 3 }, rule: { count: 1 }, definition: { count: 1 } });
+    expect(q.overCap).toBe(0);
+  });
+
+  test("witnesses join a listed coin, order by ideas, and never re-open a dismissal or move its age", () => {
+    const base = { triage: { ok: [triage("SOL", 3), triage("WIF", 1)] }, rules: { ok: [firing("SOL")] }, definitions: { ok: [hit("SOL")] } };
+    const q = mergeQueue(input(base));
+    // Same score: SOL has three ideas, WIF one, although WIF was flagged first.
+    expect(q.items.map((i) => [i.coin, i.ideas])).toEqual([["SOL", 3], ["WIF", 1]]);
+    const sol = q.items[0]!;
+    expect(sol.parts.map((p) => [p.source, p.score])).toEqual([["moves", 1.24], ["rule", 0], ["definition", 0]]);
+    expect(sol).toMatchObject({ score: 1.24, firstAt: t(3), lastAt: t(3), reason: triage("SOL", 3).reason });
+    expect(sol.parts[2]).toMatchObject({ thesis: fade.id, direction: "short" });
+    // The rule's `at` (the pulse, 11:00) is after the 05:00 dismissal: the item stays dismissed.
+    const dismissed = mergeQueue(input({ ...base, dismissals: [{ day: DAY, coin: "SOL", dismissedAt: t(5) }] }));
+    expect(dismissed.items.find((i) => i.coin === "SOL")!.state).toBe("dismissed");
+  });
+
+  test("a setup and the daily definition of the same thesis are one idea; another definition is a second", () => {
+    const setup = opp("SOL", 4, { setupKind: "crowded_long", direction: "short", dedupeKey: "SOL|short|crowded_long" });
+    const same = mergeQueue(input({ opportunities: { ok: [setup] }, definitions: { ok: [hit("SOL")] } })).items[0]!;
+    expect(same.parts.map((p) => p.thesis)).toEqual([fade.id, fade.id]);
+    expect(same.ideas).toBe(1);
+    const other = DEFINITIONS.find((d) => d.id !== fade.id)!;
+    expect(mergeQueue(input({ opportunities: { ok: [setup] }, definitions: { ok: [hit("SOL", other)] } })).items[0]!.ideas).toBe(2);
+    expect(ideaCount([{ thesis: "a" }, { thesis: "a" }, { thesis: null }, { thesis: null }])).toBe(3);
+  });
+
+  test("an unavailable research source is reported and the rest still merge", () => {
+    const q = mergeQueue(input({ triage: { ok: [triage("SOL", 3)] }, rules: { unavailable: "no answer within 3 s" }, definitions: { unavailable: "first scan in progress" } }));
+    expect(q.items.map((i) => i.coin)).toEqual(["SOL"]);
+    expect(q.sources.rule).toEqual({ state: "unavailable", reason: "no answer within 3 s", count: 0 });
+    expect(q.sources.definition.reason).toBe("first scan in progress");
   });
 });

@@ -504,6 +504,11 @@ setup features need one per 15 min (96 a day; the always-on server scans every m
 24 h funding features need 48 points) does it add ": too few for any setup to fire"; one missed run near the need
 claims nothing.
 
+### Queue
+
+Novelty, catalogue rules and definitions also reach the queue as parts (docs/SPEC.md § Queue Q0): a pushed novelty
+extreme lists its coin, the rest are witnesses on a coin another source listed. The board stays the full list.
+
 ### Not in this change
 
 The three OI setups stay unreplayable until intraday OI is stored at a 15-min or finer cadence (an always-on

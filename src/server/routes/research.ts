@@ -170,7 +170,7 @@ let scanner: DefinitionScanner | null = null;
 /** One definition scanner per process (signals/runtime.ts), scanned at most once per closed daily bar. */
 const definitionScanner = (env: Record<string, string | undefined>): DefinitionScanner => (scanner ??= processDefinitionScanner(env));
 
-function defaultBoardDeps(env: Record<string, string | undefined> = process.env): Omit<BoardDeps, "cache"> {
+export function defaultBoardDeps(env: Record<string, string | undefined> = process.env): Omit<BoardDeps, "cache"> {
   return {
     now: Date.now,
     pulse: () =>

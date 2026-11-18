@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { record } from '../moves/fixtures'
 import { item, NOW, queueResponse, setupPart } from './fixtures'
-import { agentLine, ageText, defaultSelection, directionOf, emptyLine, emptyWhy, headerLine, queueTakeaway, PART_LABEL, partsLabel, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
+import { agentLine, ageText, defaultSelection, directionOf, ideasText, emptyLine, emptyWhy, headerLine, queueTakeaway, PART_LABEL, partsLabel, recordChip, sourceChips, sourceProblemLine, splitItems, staleLine } from './logic'
 
 describe('queue logic', () => {
   test('headerLine: listed of cap, over cap only when some wait', () => {
@@ -10,11 +10,14 @@ describe('queue logic', () => {
   })
 
   test('source chips: counts when ok, the reason as hover and as one quiet line when unavailable', () => {
-    const q = queueResponse({ sources: { moves: { state: 'ok', reason: null, count: 3 }, opportunity: { state: 'ok', reason: null, count: 1 }, radar: { state: 'unavailable', reason: 'sign in required', count: 0 } } })
+    const q = queueResponse({ sources: { moves: { state: 'ok', reason: null, count: 3 }, opportunity: { state: 'ok', reason: null, count: 1 }, radar: { state: 'unavailable', reason: 'sign in required', count: 0 }, novelty: { state: 'ok', reason: null, count: 0 }, rule: { state: 'ok', reason: null, count: 0 }, definition: { state: 'ok', reason: null, count: 0 } } })
     expect(sourceChips(q).map((c) => [c.label, c.ok, c.count, c.title])).toEqual([
       ['MOVES', true, 3, '3 coins today, before the cap'],
       ['SETUP', true, 1, '1 coin today, before the cap'],
       ['RADAR', false, 0, 'sign in required'],
+      ['NOVEL', true, 0, '0 coins today, before the cap'],
+      ['RULE', true, 0, '0 coins today, before the cap'],
+      ['DEF', true, 0, '0 coins today, before the cap'],
     ])
     expect(sourceProblemLine(q)).toBe('RADAR off: sign in required')
     expect(sourceProblemLine(queueResponse())).toBeNull()
@@ -34,6 +37,8 @@ describe('queue logic', () => {
     expect(partsLabel(both)).toBe('MOVES·SETUP')
     expect(directionOf(both)).toBe('long')
     expect(directionOf(item('WIF'))).toBe('—')
+    expect(ideasText(both)).toBe('1 idea')
+    expect(ideasText({ ...both, ideas: 2 })).toBeNull()
     expect(directionOf({ parts: [setupPart('SOL'), { ...setupPart('SOL'), direction: 'short' }] })).toBe('mixed')
   })
 
@@ -56,7 +61,7 @@ describe('queue logic', () => {
 
   test('emptyWhy: the bars that list a coin; says when no moves scan is stored', () => {
     expect(emptyWhy(queueResponse({ watched: 38 }))).toBe(
-      'A coin is listed when the moves scan measures an unusual 24h move (residual z of 2.5 or more with a move of at least 1%) or a fully met ENTER or FADE checklist, when the scanner has a ready setup, or when the radar lands a call.',
+      'A coin is listed when the moves scan measures an unusual 24h move (residual z of 2.5 or more with a move of at least 1%) or a fully met ENTER or FADE checklist, when the scanner has a ready setup, when the radar lands a call, or when the novelty detector pushes a new extreme. A rule or definition in zone is shown on a listed coin and lists none by itself.',
     )
     expect(emptyWhy(queueResponse({ watched: 0 }))).toEndWith('No moves scan is stored yet, so MOVES has ranked nothing.')
     const off = { ...queueResponse().sources, moves: { state: 'unavailable' as const, reason: 'no store', count: 0 } }
