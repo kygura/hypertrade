@@ -30,6 +30,7 @@
     "build": "bun run typecheck && vite build",
     "test": "bun test ./src",
     "db:migrate": "bun run db/migrate.ts",
+    "db:schedule": "bun run db/cron/apply.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "check:api": "sh scripts/check-api-esm.sh",
     "check:type-scale": "sh scripts/check-type-scale.sh"

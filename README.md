@@ -87,7 +87,9 @@ The jobs run from the Supabase database, not GitHub Actions: pg_cron fires, pg_n
 
 Every HTTP job has its own minute. pg_net sends the requests queued together side by side and waits for the whole batch before it takes the next, so jobs on different minutes run one after another and never share the Vercel instance's DB pool. The request timeout is 310 s, past Vercel's 300 s limit, so the real answer (or Vercel's 504) is recorded. `bun test src/server/routes/cronSchedule.test.ts` fails if a scheduled path is not a mounted cron route, a name repeats, an expression does not parse or two jobs share a minute.
 
-Apply, as `postgres` in the Supabase SQL editor:
+On Vercel the production build applies it: after the migrations it runs `bun run db:schedule` (`db/cron/apply.ts`), which sets the two Vault secrets from `APP_URL` and `CRON_TOKEN` and runs `db/cron/schedule.sql`. Without either variable it does nothing and says so in the build log; a failure is logged and does not fail the build. So a new database, a rotated `CRON_TOKEN` or an edited schedule needs only a redeploy.
+
+By hand, as `postgres` in the Supabase SQL editor:
 
 1. Create the two Vault secrets once (placeholders: the deployed origin without a trailing slash, and the app's `CRON_TOKEN`):
 
