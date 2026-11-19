@@ -22,6 +22,7 @@ import { createJournalRoutes } from "./journal.js";
 import { createNarrativeRoutes } from "./narratives.js";
 import { createOrderRoutes } from "./order.js";
 import { createQueryRoutes } from "./query.js";
+import { createRegimeRoutes, type RegimeRouteDeps } from "./regime.js";
 import { createResearchRoutes } from "./research.js";
 import { createTerminalRoutes, type TerminalRouteDeps } from "./terminal.js";
 import { createThesesRoutes } from "./theses.js";
@@ -35,7 +36,7 @@ import { createWatchRoutes } from "./watch.js";
 // does no I/O when built: stores and clients connect on first query, and the
 // Desk service is only constructed when a request first needs it.
 
-export interface IntelDeps extends TerminalRouteDeps {
+export interface IntelDeps extends TerminalRouteDeps, RegimeRouteDeps {
   /** Built on first use (the Desk store is only opened when a journal request needs it). */
   journal: () => JournalDeps;
   thesis: ThesisDeps;
@@ -59,6 +60,7 @@ export function createIntelRoutes(deps: IntelDeps) {
     .route("/", createGraphRoutes({ store: deps.store, targets, now: deps.now }))
     .route("/", createFlowRoutes(deps))
     .route("/", createResearchRoutes(deps))
+    .route("/", createRegimeRoutes(deps))
     .route("/", createNarrativeRoutes(deps))
     .route("/", createJournalRoutes(deps.journal))
     .route("/", createThesesRoutes(deps.thesis))
