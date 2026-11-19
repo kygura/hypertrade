@@ -5,9 +5,36 @@
 //               Ghost sitemap, then this and last ISO week's URL guessed from the slug)
 //   feeds       REGIME_FEEDS: more RSS/Atom feeds, comma-separated (recent items, summary only)
 //   notion      a notes page (REGIME_NOTION_PAGE_ID with NOTION_TOKEN), counted as one light source
-//   market      one data snapshot per source: Deribit DVOL and options OI, Fear & Greed, DefiLlama stablecoin supply,
-//               CoinGecko dominance, Coinbase vs Hyperliquid BTC price, Hyperliquid funding/OI
+//   market      one data snapshot per source, for the numbers Glassnode's reports quote (docs/REGIME.md has the table):
+//                 already in this repo: Hyperliquid funding/OI (routes/hl.ts), the macro radar (radar/macro.ts: Fed
+//                 policy, yields, net liquidity, HY OAS, VIX/MOVE, DXY, Polymarket Fed odds), FOMC/CPI/NFP dates
+//                 (intel/calendar.ts), the hl-cycles dashboard (as in routine/collect.ts), Deribit, Fear & Greed,
+//                 DefiLlama, CoinGecko, Coinbase
+//                 added: STH/LTH cost basis, STH-SOPR, NUPL, ETF flows (bitcoin-data.com, BGEOMETRICS_TOKEN optional);
+//                 realized price, MVRV, exchange flows (CoinMetrics community, as lab/providers/cm.ts); Deribit skew;
+//                 funding on Binance/Bybit/OKX, OI change (Binance), OKX liquidations; BTC book depth (Coinbase, HL);
+//                 the week's US calendar with forecasts (ForexFactory)
+import { hlInfo } from "../../shared/hl-client.js";
 import type { AssetCtx } from "../../shared/types.js";
+import {
+  bgRows,
+  bookDepth,
+  cmValuation,
+  depthLine,
+  exchangeFlowRead,
+  ONCHAIN_METRICS,
+  onchainRead,
+  optionSkew,
+  valuationRead,
+  type Level,
+  type OnchainMetric,
+  type OptionSummary,
+  type Row,
+} from "../../shared/regime/metrics.js";
+import { calendarEvents } from "../intel/calendar.js";
+import { CM_BASE } from "../lab/providers/cm.js";
+import { collectMacro, macroLines } from "../radar/macro.js";
+import { condenseHlCycles } from "../routine/collect.js";
 import { urlKey } from "../../shared/regime/build.js";
 import { hostOf, sourceFor } from "../../shared/regime/sources.js";
 import { articleText, cleanUrl, pageTitle, parseFeed, sitemapUrls, weekOnchainSlug, type FeedItem } from "../../shared/regime/text.js";
@@ -229,7 +256,7 @@ async function deribit(fetchFn: Fetch, now: number): Promise<Snap> {
   const base = "https://www.deribit.com/api/v2/public";
   const [dvol, book] = await Promise.all([
     getJson<{ result: { data: [number, number, number, number, number][] } }>(`${base}/get_volatility_index_data?currency=BTC&start_timestamp=${now - 9 * DAY}&end_timestamp=${now}&resolution=86400`, {}, fetchFn),
-    getJson<{ result: { instrument_name: string; open_interest: number }[] }>(`${base}/get_book_summary_by_currency?currency=BTC&kind=option`, {}, fetchFn),
+    getJson<{ result: (OptionSummary & { instrument_name: string; open_interest: number })[] }>(`${base}/get_book_summary_by_currency?currency=BTC&kind=option`, {}, fetchFn),
   ]);
   const d = dvol.result.data;
   const last = d.at(-1)?.[4] ?? null;
@@ -247,13 +274,14 @@ async function deribit(fetchFn: Fetch, now: number): Promise<Snap> {
   }
   const top = [...byStrike.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${Number(k.slice(0, -1)) / 1000}K ${k.endsWith("P") ? "puts" : "calls"} ${Math.round(v).toLocaleString("en-US")} BTC`);
   const pc = calls > 0 ? r2(puts / calls) : null;
+  const skew = optionSkew(book.result, now);
   return {
     source: "deribit",
     kind: "derivatives",
-    title: "Deribit BTC options: DVOL and open interest",
+    title: "Deribit BTC options: DVOL, open interest and skew",
     url: null,
-    text: `BTC DVOL ${last ?? "n/a"}${weekAgo != null && last != null ? ` (a week ago ${weekAgo})` : ""}. Option open interest put/call ${pc ?? "n/a"} (${Math.round(puts).toLocaleString("en-US")} BTC puts, ${Math.round(calls).toLocaleString("en-US")} BTC calls). Largest strikes: ${top.join("; ") || "n/a"}.`,
-    data: { dvol: last, dvol_week_ago: weekAgo, put_call_oi: pc, put_oi_btc: Math.round(puts), call_oi_btc: Math.round(calls) },
+    text: `BTC DVOL ${last ?? "n/a"}${weekAgo != null && last != null ? ` (a week ago ${weekAgo})` : ""}. Option open interest put/call ${pc ?? "n/a"} (${Math.round(puts).toLocaleString("en-US")} BTC puts, ${Math.round(calls).toLocaleString("en-US")} BTC calls). Largest strikes: ${top.join("; ") || "n/a"}.${skew ? ` Skew: ${skew.text}` : ""}`,
+    data: { dvol: last, dvol_week_ago: weekAgo, put_call_oi: pc, put_oi_btc: Math.round(puts), call_oi_btc: Math.round(calls), ...(skew?.data ?? {}) },
   };
 }
 
@@ -318,6 +346,238 @@ async function coinbasePremium(fetchFn: Fetch, hlBtc: number | null): Promise<Sn
   };
 }
 
+// ---- The metrics Glassnode quotes ---------------------------------------------------------------------------------
+
+const BG_BASE = "https://bitcoin-data.com/v1";
+
+/** STH/LTH cost basis, STH-SOPR, NUPL and ETF flows. Keyless quota is small (about 15 calls a day); a token lifts it. */
+async function onchain(fetchFn: Fetch, env: Env, price: number | null): Promise<{ snap: Snap | null; notes: string[] }> {
+  const token = env.BGEOMETRICS_TOKEN?.trim();
+  const series: Partial<Record<OnchainMetric, Row[]>> = {};
+  const notes: string[] = [];
+  for (let i = 0; i < ONCHAIN_METRICS.length; i++) {
+    const m = ONCHAIN_METRICS[i]!;
+    let r: Response;
+    try {
+      r = await fetchFn(`${BG_BASE}/${m}${token ? `?token=${encodeURIComponent(token)}` : ""}`, { signal: AbortSignal.timeout(15_000) });
+    } catch (e) {
+      notes.push(`bitcoin-data ${m} failed (${e instanceof Error ? e.message : String(e)}).`);
+      continue;
+    }
+    if (r.status === 429) {
+      notes.push(`bitcoin-data rate limited; missing ${ONCHAIN_METRICS.slice(i).join(", ")}.`);
+      break;
+    }
+    if (!r.ok) {
+      notes.push(`bitcoin-data ${m} ${r.status}.`);
+      continue;
+    }
+    const rows = bgRows(await r.json());
+    if (rows.length) series[m] = rows;
+    else notes.push(`bitcoin-data ${m}: no rows.`);
+  }
+  const read = onchainRead(series, price);
+  if (!read.text) return { snap: null, notes: notes.length ? notes : ["bitcoin-data returned nothing."] };
+  return { snap: { source: "bitcoin-data", kind: "onchain_research", title: "On-chain cost basis: STH/LTH realized price, STH-SOPR, NUPL, ETF flows", url: null, text: read.text, data: read.data }, notes };
+}
+
+const CM = `${CM_BASE}?assets=btc&frequency=1d&page_size=45&paging_from=end`;
+
+async function coinmetrics(fetchFn: Fetch): Promise<{ snap: Snap | null; notes: string[] }> {
+  const notes: string[] = [];
+  const [val, flow] = await Promise.all([
+    settle(getJson<unknown>(`${CM}&metrics=PriceUSD,CapMrktCurUSD,CapMVRVCur`, {}, fetchFn)),
+    settle(getJson<unknown>(`${CM}&metrics=FlowInExNtv,FlowOutExNtv`, {}, fetchFn)),
+  ]);
+  const v = val.ok ? valuationRead(cmValuation(val.value).rows) : null;
+  if (!val.ok) notes.push(`CoinMetrics valuation failed (${val.error}).`);
+  const f = flow.ok ? exchangeFlowRead(flow.value) : null;
+  if (!f) notes.push(`CoinMetrics exchange flows unavailable${flow.ok ? "" : ` (${flow.error})`}; exchange flows come from web search only.`);
+  if (!v?.text && !f) return { snap: null, notes };
+  return {
+    snap: { source: "coinmetrics", kind: "onchain_research", title: "Realized price, MVRV and exchange flows (CoinMetrics community)", url: null, text: [v?.text, f?.text].filter(Boolean).join(" "), data: { ...(v?.data ?? {}), ...(f?.data ?? {}) } },
+    notes,
+  };
+}
+
+const POSITIONING_COINS = ["BTC", "ETH"] as const;
+const apr = (rate: number, hours: number) => (rate / hours) * 24 * 365 * 100;
+
+async function binanceFunding(fetchFn: Fetch): Promise<Map<string, number>> {
+  const [prem, info] = await Promise.all([
+    getJson<Array<{ symbol: string; lastFundingRate: string }>>("https://fapi.binance.com/fapi/v1/premiumIndex", {}, fetchFn),
+    getJson<Array<{ symbol: string; fundingIntervalHours: number }>>("https://fapi.binance.com/fapi/v1/fundingInfo", {}, fetchFn).catch(() => []),
+  ]);
+  const hours = new Map(info.map((x) => [x.symbol, x.fundingIntervalHours]));
+  return new Map(prem.filter((p) => Number.isFinite(Number(p.lastFundingRate))).map((p) => [p.symbol, apr(Number(p.lastFundingRate), hours.get(p.symbol) ?? 8)]));
+}
+
+async function bybitFunding(fetchFn: Fetch): Promise<Map<string, number>> {
+  const j = await getJson<{ result: { list: Array<{ symbol: string; fundingRate: string; fundingIntervalHour?: string }> } }>("https://api.bybit.com/v5/market/tickers?category=linear", {}, fetchFn);
+  return new Map(j.result.list.filter((t) => t.fundingRate && Number.isFinite(Number(t.fundingRate))).map((t) => [t.symbol, apr(Number(t.fundingRate), Number(t.fundingIntervalHour) || 8)]));
+}
+
+type OkxWrap<T> = { code: string; msg?: string; data: T };
+async function okx<T>(path: string, fetchFn: Fetch): Promise<T> {
+  const r = await getJson<OkxWrap<T>>(`https://www.okx.com${path}`, {}, fetchFn);
+  if (r.code !== "0") throw new Error(`okx ${r.code} ${r.msg ?? ""}`.trim());
+  return r.data;
+}
+
+async function okxFunding(coin: string, fetchFn: Fetch): Promise<number> {
+  const [d] = await okx<Array<{ fundingRate: string; fundingTime: string; nextFundingTime: string }>>(`/api/v5/public/funding-rate?instId=${coin}-USDT-SWAP`, fetchFn);
+  if (!d) throw new Error("okx: no funding");
+  return apr(Number(d.fundingRate), Math.round((Number(d.nextFundingTime) - Number(d.fundingTime)) / 3_600_000) || 8);
+}
+
+/** Filled liquidations OKX publishes for the coin's USDT swap over the last 24 h (or the span the feed covers). */
+async function okxLiquidations(coin: string, mark: number, fetchFn: Fetch, now: number): Promise<{ hours: number; longUsd: number; shortUsd: number }> {
+  const [inst, rows] = await Promise.all([
+    okx<Array<{ ctVal: string }>>(`/api/v5/public/instruments?instType=SWAP&instId=${coin}-USDT-SWAP`, fetchFn),
+    okx<Array<{ details: Array<{ posSide: string; side: string; sz: string; bkPx: string; ts: string }> }>>(`/api/v5/public/liquidation-orders?instType=SWAP&uly=${coin}-USDT&state=filled`, fetchFn),
+  ]);
+  const ctVal = Number(inst[0]?.ctVal) || 0;
+  let longUsd = 0;
+  let shortUsd = 0;
+  let oldest = now;
+  for (const d of rows)
+    for (const x of d.details) {
+      const ts = Number(x.ts);
+      if (ts < now - DAY) continue;
+      const usd = Number(x.sz) * ctVal * (Number(x.bkPx) || mark);
+      // A liquidated long is closed by a sell.
+      if (x.posSide === "long" || (x.posSide === "net" && x.side === "sell")) longUsd += usd;
+      else shortUsd += usd;
+      oldest = Math.min(oldest, ts);
+    }
+  return { hours: r2((now - oldest) / 3_600_000), longUsd, shortUsd };
+}
+
+/** OI change over `hours` from Binance's hourly history: the last point against the nearest one at or before. */
+export function oiChangeFrom(points: Row[], hours: number): number | null {
+  const last = points.at(-1);
+  if (!last) return null;
+  const target = last.t - hours * 3_600_000;
+  const ref = [...points].reverse().find((p) => p.t <= target + 5 * 60_000);
+  if (!ref || last.t - ref.t < hours * 3_600_000 * 0.8 || !ref.v) return null;
+  return last.v / ref.v - 1;
+}
+
+async function binanceOi(coin: string, fetchFn: Fetch): Promise<Row[]> {
+  const rows = await getJson<Array<{ sumOpenInterest: string; timestamp: number }>>(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${coin}USDT&period=1h&limit=170`, {}, fetchFn);
+  return rows.map((r) => ({ t: r.timestamp, v: Number(r.sumOpenInterest) })).filter((p) => p.v > 0).sort((a, b) => a.t - b.t);
+}
+
+/** Funding by venue, OI change, liquidations for BTC and ETH. Binance and Bybit refuse some regions; each gap is skipped. */
+async function positioning(fetchFn: Fetch, ctxs: AssetCtx[], now: number): Promise<Snap> {
+  const [bin, byb] = await Promise.all([settle(binanceFunding(fetchFn)), settle(bybitFunding(fetchFn))]);
+  const lines: string[] = [];
+  const data: Record<string, number | null> = {};
+  const pct = (x: number | null) => (x == null ? "n/a" : `${r2(x * 100)}%`);
+  for (const coin of POSITIONING_COINS) {
+    const ctx = ctxs.find((c) => c.name === coin);
+    const [okf, liq, oi] = await Promise.all([settle(okxFunding(coin, fetchFn)), ctx ? settle(okxLiquidations(coin, ctx.markPx, fetchFn, now)) : Promise.resolve(null), settle(binanceOi(coin, fetchFn))]);
+    const quotes: [string, number][] = [];
+    if (ctx) quotes.push(["hyperliquid", ctx.funding * 24 * 365 * 100]);
+    const b = bin.ok ? bin.value.get(`${coin}USDT`) : undefined;
+    if (b != null) quotes.push(["binance", b]);
+    const y = byb.ok ? byb.value.get(`${coin}USDT`) : undefined;
+    if (y != null) quotes.push(["bybit", y]);
+    if (okf.ok) quotes.push(["okx", okf.value]);
+    const d1 = oi.ok ? oiChangeFrom(oi.value, 24) : null;
+    const d7 = oi.ok ? oiChangeFrom(oi.value, 7 * 24 - 2) : null;
+    const parts = [`funding ${quotes.map(([v, a]) => `${v} ${r2(a)}%`).join(", ") || "n/a"} APR`];
+    if (d1 != null || d7 != null) parts.push(`OI ${pct(d1)} over 24 h, ${pct(d7)} over 7 days (binance)`);
+    if (liq?.ok) parts.push(`OKX liquidations ${Math.round(liq.value.hours)} h: longs $${r2(liq.value.longUsd / 1e6)}M, shorts $${r2(liq.value.shortUsd / 1e6)}M`);
+    lines.push(`${coin}: ${parts.join("; ")}`);
+    const lc = coin.toLowerCase();
+    data[`${lc}_funding_apr_mean`] = quotes.length ? r2(quotes.reduce((s, [, a]) => s + a, 0) / quotes.length) : null;
+    data[`${lc}_oi_chg_24h_pct`] = d1 != null ? r2(d1 * 100) : null;
+    data[`${lc}_oi_chg_7d_pct`] = d7 != null ? r2(d7 * 100) : null;
+    data[`${lc}_liq_long_usd_m`] = liq?.ok ? r2(liq.value.longUsd / 1e6) : null;
+    data[`${lc}_liq_short_usd_m`] = liq?.ok ? r2(liq.value.shortUsd / 1e6) : null;
+  }
+  return { source: "perp-positioning", kind: "derivatives", title: "Perp positioning: funding by venue, OI change, liquidations", url: null, text: `${lines.join(". ")}.`, data };
+}
+
+async function orderBooks(fetchFn: Fetch): Promise<Snap> {
+  const [cb, hl] = await Promise.all([
+    settle(getJson<{ bids: [string, string, number][]; asks: [string, string, number][] }>("https://api.exchange.coinbase.com/products/BTC-USD/book?level=2", {}, fetchFn)),
+    settle(hlInfo<{ levels: [{ px: string; sz: string }[], { px: string; sz: string }[]] }>({ type: "l2Book", coin: "BTC", nSigFigs: 3 }, fetchFn)),
+  ]);
+  const lv = (rows: Array<[string, string, ...unknown[]]>): Level[] => rows.map((r) => [Number(r[0]), Number(r[1])] as Level).filter(([p, q]) => p > 0 && q > 0);
+  const parts: string[] = [];
+  const data: Record<string, number | null> = {};
+  if (cb.ok) {
+    const d = bookDepth(lv(cb.value.bids), lv(cb.value.asks));
+    if (d) {
+      parts.push(depthLine("Coinbase BTC-USD", d));
+      for (const b of d.bands) data[`coinbase_bid_share_${b.pct}pct`] = b.bidShare;
+      data.coinbase_bids_2pct_usd_m = r2(d.bands[1]!.bidUsd / 1e6);
+    }
+  }
+  if (hl.ok) {
+    const side = (x: { px: string; sz: string }[]): Level[] => x.map((l) => [Number(l.px), Number(l.sz)] as Level);
+    const d = bookDepth(side(hl.value.levels[0]), side(hl.value.levels[1]), [0.01, 0.02]);
+    if (d) {
+      parts.push(depthLine("Hyperliquid BTC perp (20 levels, $100 buckets)", d));
+      data.hl_bid_share_2pct = d.bands[1]!.bidShare;
+    }
+  }
+  if (!parts.length) throw new Error(`no book (${[cb, hl].map((r) => (r.ok ? "empty" : r.error)).join("; ")})`);
+  return { source: "orderbook", kind: "flows", title: "BTC order book depth near the mid (Coinbase, Hyperliquid)", url: null, text: `${parts.join(". ")}.`, data };
+}
+
+/** The macro radar's digest, as the routine reads it: one line per topic, each value dated, failed sources named. */
+async function macroRadar(fetchFn: Fetch, now: number): Promise<Snap> {
+  const m = await collectMacro(fetchFn, new Date(now));
+  const lines = macroLines(m, new Date(now));
+  const got = Object.keys(m.fred).length + Object.keys(m.yahoo).length + (m.tga ? 1 : 0) + (m.odds ? 1 : 0);
+  if (!got) throw new Error(`every macro source failed (${m.gaps.length})`);
+  return { source: "macro-radar", kind: "macro", title: "Macro radar: Fed policy, yields, liquidity, credit, volatility, the dollar, Fed odds", url: null, text: lines.join("\n") };
+}
+
+/** FOMC, CPI and NFP over the next three weeks from this repo's schedule, plus this week's US calendar with forecasts. */
+async function macroCalendar(fetchFn: Fetch, now: number): Promise<Snap> {
+  const own = calendarEvents(new Date(now), new Date(now))
+    .filter((e) => e.scheduledAt && Date.parse(e.scheduledAt) < now + 21 * DAY)
+    .map((e) => `${e.scheduledAt!.slice(0, 16).replace("T", " ")} UTC ${e.title}`);
+  const ff = await settle(getJson<Array<{ title: string; country: string; date: string; impact: string; forecast?: string; previous?: string }>>("https://nfs.faireconomy.media/ff_calendar_thisweek.json", {}, fetchFn));
+  const week = ff.ok
+    ? ff.value
+        .filter((r) => r.country === "USD" && (r.impact === "High" || r.impact === "Medium"))
+        .map((r) => ({ ...r, t: Date.parse(r.date) }))
+        .filter((r) => Number.isFinite(r.t))
+        .sort((a, b) => a.t - b.t)
+        .slice(0, 14)
+        .map((r) => `${new Date(r.t).toISOString().slice(0, 16).replace("T", " ")} UTC ${r.title} (${r.impact}${r.forecast ? `, forecast ${r.forecast}` : ""}${r.previous ? `, previous ${r.previous}` : ""})${r.t < now ? " [out]" : ""}`)
+    : [];
+  if (!own.length && !week.length) throw new Error(`no events${ff.ok ? "" : ` (${ff.error})`}`);
+  const text = [own.length ? `Scheduled: ${own.join("; ")}.` : "", week.length ? `This week (US, high and medium impact): ${week.join("; ")}.` : ""].filter(Boolean).join(" ");
+  return { source: "macro-calendar", kind: "macro", title: "US macro calendar", url: null, text };
+}
+
+export const HL_CYCLES_BASE = "https://hl-cycles-one.vercel.app/api";
+
+/** The hl-cycles BTC regime dashboard the routine reads: regime state, cycle levels, compass. */
+async function hlCycles(fetchFn: Fetch, now: number): Promise<Snap> {
+  const [vector, health] = await Promise.all([getJson<unknown>(`${HL_CYCLES_BASE}/vector.json`, {}, fetchFn), getJson<unknown>(`${HL_CYCLES_BASE}/health.json`, {}, fetchFn).catch(() => null)]);
+  const c = condenseHlCycles(vector, health, new Date(now));
+  const parts: string[] = [];
+  if (c.regime) parts.push(`Regime ${c.regime.state}${c.regime.since ? ` since ${c.regime.since}` : ""}${c.regime.allocation != null ? `, allocation ${c.regime.allocation}` : ""}`);
+  if (c.levels.length) parts.push(`Levels: ${c.levels.map((l) => `${l.label} ${l.value}${l.distancePct != null ? ` (${r2(l.distancePct)}% away)` : ""}${l.status ? ` ${l.status}` : ""}`).join("; ")}`);
+  if (c.compass) parts.push(`Compass ${c.compass.score ?? "n/a"} (${c.compass.band ?? "n/a"}; 7 d ${c.compass.d7 ?? "n/a"}, 30 d ${c.compass.d30 ?? "n/a"})`);
+  if (!parts.length) throw new Error("empty vector");
+  return {
+    source: "hl-cycles",
+    kind: "onchain_research",
+    title: "hl-cycles BTC regime dashboard",
+    url: null,
+    text: `${parts.join(". ")}. As of ${c.asOf ?? "n/a"}${c.stale ? ` (STALE, last refresh ${c.lastRefreshAgeH} h ago)` : ""}.`,
+    data: { regime: c.regime?.state ?? null, compass: c.compass?.score ?? null, as_of: c.asOf, stale: c.stale ? "yes" : "no" },
+  };
+}
+
 function hyperliquid(ctxs: AssetCtx[]): Snap {
   const want = new Set<string>(REGIME_COINS);
   const lines = ctxs
@@ -341,14 +601,26 @@ export async function collectMarket(deps: CollectDeps): Promise<CollectResult> {
     ["DefiLlama", stablecoins(fetchFn)],
     ["CoinGecko", coingecko(fetchFn)],
     ["Coinbase", coinbasePremium(fetchFn, hlBtc)],
+    ["Order books", orderBooks(fetchFn)],
+    ["Macro radar", macroRadar(fetchFn, deps.now)],
+    ["Macro calendar", macroCalendar(fetchFn, deps.now)],
+    ["hl-cycles", hlCycles(fetchFn, deps.now)],
+    ...(hl.ok ? [["Perp positioning", positioning(fetchFn, hl.value, deps.now)] as [string, Promise<Snap>]] : []),
   ];
+  // Settle every job now, so none rejects unobserved while an earlier one is awaited.
+  const settled = jobs.map(([name, p]) => [name, settle(p)] as const);
+  const metricJobs = Promise.all([onchain(fetchFn, deps.env, hlBtc), coinmetrics(fetchFn)]);
   const snaps: Snap[] = [];
   if (hl.ok) snaps.push(hyperliquid(hl.value));
   else notes.push(`Hyperliquid failed (${hl.error}).`);
-  for (const [name, p] of jobs) {
-    const r = await settle(p);
+  for (const [name, p] of settled) {
+    const r = await p;
     if (r.ok) snaps.push(r.value);
     else notes.push(`${name} failed (${r.error}).`);
+  }
+  for (const m of await metricJobs) {
+    if (m.snap) snaps.push(m.snap);
+    notes.push(...m.notes);
   }
   return { evidence: snaps.map((s) => ({ ...s, id: evidenceId(s.source, null, collected), published: collected, collected })), notes };
 }

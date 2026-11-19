@@ -8,7 +8,7 @@ import { createRegimeRoutes } from "../routes/intel/regime.js";
 import { RegimeFeedSchema } from "../../shared/regime/schema.js";
 import type { Evidence } from "../../shared/regime/types.js";
 import type { AssetCtx } from "../../shared/types.js";
-import { collectGlassnode, collectMarket, collectNotion } from "./collect.js";
+import { collectGlassnode, collectMarket, collectNotion, oiChangeFrom } from "./collect.js";
 import { seedRegime, updateRegime, type RegimeDeps, type SeedFile } from "./run.js";
 import { REGIME_LOCK_STALE_MS, defaultRegimeStore, fileRegimeStore, memoryRegimeStore, type RegimeStore } from "./store.js";
 
@@ -253,11 +253,56 @@ describe("collectors", () => {
     const ctxs = async () => [{ name: "BTC", markPx: 62700, prevDayPx: 63000, funding: 0.00001, openInterest: 1000 } as AssetCtx];
     const r = await collectMarket({ env: {}, now, fetchFn: f, ctxs });
     const by = Object.fromEntries(r.evidence.map((e) => [e.source, e]));
-    expect(Object.keys(by).sort()).toEqual(["coinbase-premium", "coingecko", "deribit", "fear-greed", "hyperliquid"]);
+    expect(Object.keys(by).sort()).toEqual(["coinbase-premium", "coingecko", "deribit", "fear-greed", "hyperliquid", "macro-calendar", "perp-positioning"]);
+    expect(by["perp-positioning"]!.text).toContain("BTC: funding hyperliquid 8.76% APR");
     expect(by.deribit!.data).toMatchObject({ dvol: 58, put_call_oi: 1.5 });
     expect(by.hyperliquid!.text).toContain("BTC 62700");
     expect(by["coinbase-premium"]!.data).toMatchObject({ premium_pct: -0.08 });
     expect(r.notes.join(" ")).toContain("DefiLlama failed");
+  });
+
+  test("market snapshot: the metrics Glassnode quotes, from free sources", async () => {
+    const day = (i: number) => Date.UTC(2026, 9, 1) + i * 86_400_000;
+    const bg = (key: string, v: (i: number) => number) => Array.from({ length: 40 }, (_, i) => ({ d: new Date(day(i)).toISOString().slice(0, 10), unixTs: String(day(i) / 1000), [key]: String(v(i)) }));
+    const cm = (rows: Record<string, string>[]) => ({ data: rows.map((r, i) => ({ asset: "btc", time: new Date(day(i)).toISOString(), ...r })) });
+    const hour = (i: number) => now - (169 - i) * 3_600_000;
+    const f = fakeFetch({
+      "https://bitcoin-data.com/v1/sth-realized-price": bg("sthRealizedPrice", () => 74100),
+      "https://bitcoin-data.com/v1/lth-realized-price": bg("lthRealizedPrice", () => 38000),
+      "https://bitcoin-data.com/v1/sth-sopr": bg("sthSopr", (i) => (i === 39 ? 0.97 : 1.01)),
+      "https://bitcoin-data.com/v1/nupl": bg("nupl", () => 0.31),
+      "https://bitcoin-data.com/v1/etf-flow-btc": bg("etfFlow", () => -500),
+      "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&frequency=1d&page_size=45&paging_from=end&metrics=PriceUSD": cm(Array.from({ length: 40 }, () => ({ PriceUSD: "62000", CapMrktCurUSD: "1240000000000", CapMVRVCur: "1.24" }))),
+      "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&frequency=1d&page_size=45&paging_from=end&metrics=FlowIn": 403,
+      "https://api.exchange.coinbase.com/products/BTC-USD/book": { bids: [["62000", "10", 1], ["61000", "20", 1]], asks: [["62010", "5", 1], ["64000", "50", 1]] },
+      "https://api.hyperliquid.xyz/info": { coin: "BTC", time: now, levels: [[{ px: "61900", sz: "30", n: 3 }], [{ px: "62100", sz: "10", n: 1 }]] },
+      "https://fapi.binance.com/fapi/v1/premiumIndex": [{ symbol: "BTCUSDT", lastFundingRate: "0.0001" }],
+      "https://fapi.binance.com/futures/data/openInterestHist": Array.from({ length: 170 }, (_, i) => ({ timestamp: hour(i), sumOpenInterest: i === 169 ? "110" : "100" })),
+      "https://www.okx.com/api/v5/public/funding-rate": { code: "0", data: [{ fundingRate: "0.0002", fundingTime: String(now), nextFundingTime: String(now + 8 * 3_600_000) }] },
+      "https://www.okx.com/api/v5/public/instruments": { code: "0", data: [{ ctVal: "0.01" }] },
+      "https://www.okx.com/api/v5/public/liquidation-orders": { code: "0", data: [{ details: [{ posSide: "long", side: "sell", sz: "100", bkPx: "62000", ts: String(now - 3_600_000) }, { posSide: "short", side: "buy", sz: "50", bkPx: "62000", ts: String(now - 1_800_000) }] }] },
+      "https://hl-cycles-one.vercel.app/api/vector.json": { asOf: now - 3_600_000, regime: { state: "bear_range", since: Date.UTC(2026, 9, 10), allocation: 0.3 }, levels: [{ key: "sth", label: "STH cost basis", value: 74100, distancePct: -16.3, status: "below" }], compass: { headline: { score: -0.4, band: "bearish", d7: -0.1, d30: -0.3 } } },
+      "https://nfs.faireconomy.media/ff_calendar_thisweek.json": [{ title: "Core PCE Price Index m/m", country: "USD", date: "2026-11-25T08:30:00-05:00", impact: "High", forecast: "0.2%", previous: "0.3%" }, { title: "German Ifo", country: "EUR", date: "2026-11-24T04:00:00-05:00", impact: "High" }],
+    });
+    const ctxs = async () => [{ name: "BTC", markPx: 62000, prevDayPx: 63000, funding: 0.00001, openInterest: 1000 } as AssetCtx];
+    const r = await collectMarket({ env: {}, now, fetchFn: f, ctxs });
+    const by = Object.fromEntries(r.evidence.map((e) => [e.source, e]));
+    expect(by["bitcoin-data"]!.data).toMatchObject({ sth_realized_price: 74100, lth_realized_price: 38000, sth_sopr: 0.97, nupl: 0.31, etf_flow_btc_7d: -3500 });
+    expect(by.coinmetrics!.data).toMatchObject({ realized_price: 50000, mvrv: 1.24 });
+    expect(r.notes.join(" ")).toContain("exchange flows unavailable");
+    expect(by.orderbook!.data).toMatchObject({ coinbase_bids_2pct_usd_m: 1.84, hl_bid_share_2pct: 0.75 });
+    expect(by["perp-positioning"]!.data).toMatchObject({ btc_oi_chg_24h_pct: 10, btc_oi_chg_7d_pct: 10, btc_liq_long_usd_m: 0.06, btc_liq_short_usd_m: 0.03 });
+    expect(by["perp-positioning"]!.text).toContain("BTC: funding hyperliquid 8.76%, binance 10.95%, okx 21.9% APR");
+    expect(by["hl-cycles"]!.text).toContain("Regime bear_range since 2026-10-10");
+    expect(by["macro-calendar"]!.text).toContain("Core PCE Price Index m/m (High, forecast 0.2%, previous 0.3%)");
+    expect(by["macro-calendar"]!.text).not.toContain("Ifo");
+    expect(r.notes.join(" ")).toContain("Macro radar failed");
+  });
+
+  test("OI change: the last point against the nearest one a window back", () => {
+    const rows = Array.from({ length: 30 }, (_, i) => ({ t: i * 3_600_000, v: i === 29 ? 120 : 100 }));
+    expect(oiChangeFrom(rows, 24)).toBeCloseTo(0.2);
+    expect(oiChangeFrom(rows.slice(-10), 24)).toBeNull();
   });
 
   test("Notion: off without a token; the page's text when shared", async () => {

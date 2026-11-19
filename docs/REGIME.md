@@ -32,8 +32,22 @@ with `.js` imports.
    - **feeds**: `REGIME_FEEDS`, more RSS/Atom feeds (recent items, summaries).
    - **notion**: one notes page (`REGIME_NOTION_PAGE_ID` with `NOTION_TOKEN`), counted as one light source
      (`own_notes`, weight 0.3) so it never stands in for the sources it summarizes.
-   - **market**: Deribit DVOL and option open interest, Fear & Greed, DefiLlama stablecoin supply, CoinGecko
-     dominance, Coinbase vs Hyperliquid BTC, Hyperliquid funding and open interest for BTC, ETH, SOL and HYPE.
+   - **market**: one snapshot per source, so the model can check the figures reports quote against live numbers.
+     The table below has which metric comes from where, and which client was already in the repo.
+
+     | Metric | Source (snapshot id) | Client |
+     | --- | --- | --- |
+     | STH and LTH realized price (cost basis), STH-SOPR, NUPL, spot ETF flows | bitcoin-data.com (`bitcoin-data`) | new; `BGEOMETRICS_TOKEN` optional, keyless quota is about 15 calls a day |
+     | Realized price, MVRV, realized cap change | CoinMetrics community (`coinmetrics`) | new call, same API as `lab/providers/cm.ts` |
+     | Exchange inflow and outflow | CoinMetrics community, when the free tier serves it | new; otherwise web search only |
+     | Funding by venue, OI change 24 h and 7 d, liquidations | Hyperliquid, Binance, Bybit, OKX (`perp-positioning`, `hyperliquid`) | HL contexts existing; the rest new (Binance and Bybit refuse some regions, a gap is skipped) |
+     | Liquidation clusters | web search | none keyless (CoinGlass needs a paid key) |
+     | Options skew, ATM IV, DVOL, put/call OI, largest strikes | Deribit (`deribit`) | existing, skew added |
+     | Bid and ask depth within 1, 2 and 5% of the mid | Coinbase level 2, Hyperliquid l2Book (`orderbook`) | new (Coinbase) and `hlInfo` (existing) |
+     | Fed policy, 2y/10y and real yields, net liquidity, HY OAS, VIX/MOVE, DXY, Fed odds | FRED, Treasury DTS, Yahoo, Polymarket (`macro-radar`) | existing (`radar/macro.ts`) |
+     | FOMC, CPI, NFP dates; the week's US calendar with forecasts | `intel/calendar.ts`, ForexFactory (`macro-calendar`) | existing schedule, ForexFactory new |
+     | BTC regime, cycle levels, compass | hl-cycles (`hl-cycles`) | existing read (`routine/collect.ts`) |
+     | Sentiment, stablecoin supply, dominance, Coinbase premium | Fear & Greed, DefiLlama, CoinGecko, Coinbase | existing |
 3. Reports and notes count as new once (`regime_seen`); snapshots are read fresh every run. `--if-new` stops here when
    the thesis already exists and nothing is new.
 4. One `completeStructured` call on the strong tier (the Desk's PM model) with hosted web search (12 searches,

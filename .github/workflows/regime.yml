@@ -38,6 +38,7 @@ jobs:
       REGIME_FEEDS: ${{ vars.REGIME_FEEDS }}
       NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
       REGIME_NOTION_PAGE_ID: ${{ secrets.REGIME_NOTION_PAGE_ID }}
+      BGEOMETRICS_TOKEN: ${{ secrets.BGEOMETRICS_TOKEN }}
     steps:
       - name: Check secrets
         id: cfg

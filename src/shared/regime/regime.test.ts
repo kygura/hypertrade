@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { buildThesis, urlKey } from "./build.js";
 import { consensus, labelFor } from "./consensus.js";
+import { bookDepth, optionSkew } from "./metrics.js";
 import { renderThesis } from "./render.js";
 import { RegimeDraftSchema, RegimeThesisSchema } from "./schema.js";
 import { sourceFor, weightFor } from "./sources.js";
@@ -161,5 +162,24 @@ describe("zod contracts", () => {
     const r = RegimeThesisSchema.safeParse(t);
     expect(r.success).toBe(true);
     expect(RegimeThesisSchema.safeParse({ ...t, consensus: { ...t.consensus, agreement: "maybe" } }).success).toBe(false);
+  });
+});
+
+describe("metrics", () => {
+  test("options skew: the expiry nearest 30 days, 10% out of the money each side", () => {
+    const u = 62000;
+    const rows = [
+      { instrument_name: "BTC-27NOV26-56000-P", mark_iv: 70, underlying_price: u },
+      { instrument_name: "BTC-25DEC26-56000-P", mark_iv: 58, underlying_price: u },
+      { instrument_name: "BTC-25DEC26-62000-P", mark_iv: 50, underlying_price: u },
+      { instrument_name: "BTC-25DEC26-62000-C", mark_iv: 48, underlying_price: u },
+      { instrument_name: "BTC-25DEC26-68000-C", mark_iv: 46, underlying_price: u },
+    ];
+    expect(optionSkew(rows, Date.UTC(2026, 10, 19))!.data).toMatchObject({ skew_expiry: "2026-12-25", skew_days: 36, atm_iv: 49, skew_put_minus_call: 12 });
+  });
+
+  test("book depth: notional within each band of the mid", () => {
+    const d = bookDepth([[99, 1], [97, 1], [90, 1]], [[101, 2], [104, 1]]);
+    expect(d!.bands.map((b) => [b.pct, b.bidUsd, b.askUsd])).toEqual([[1, 99, 202], [2, 99, 202], [5, 196, 306]]);
   });
 });
