@@ -156,7 +156,7 @@ Three cells, one per job (2026-11-11; `NAV` in `src/ui/components/AppShell.tsx`)
 |---|---|---|---|
 | **QUEUE** (landing) | what deserves a look today | `/queue` | QUEUE `/queue` · MOVES `/moves` |
 | **RESEARCH** | is there an edge | `/board` | BOARD `/board` · STUDY `/lab/study` · RULES `/lab/catalogue` (the catalogue, with its count) · BRANCHES `/branches` |
-| **TRADE** | what did I do and was I right | `/desk` | DESK `/desk` · ORDER `/order` · JOURNAL `/journal` |
+| **TRADE** | what did I do and was I right | `/desk` | DESK `/desk` · ORDER `/order` · JOURNAL `/journal` · REGIME `/regime` |
 
 ASK is not a cell: one `ASK` button in the top bar (or the `ht:ask` window event, sent by the coin page's ASK action) opens a drawer over the current screen. The drawer carries the coin in view and, when that coin is in today's queue, the item's facts; it shares the `/analyst` ASK thread, is read-only, and its "open full page" link goes to `/analyst`. The portfolio simulation (SIMULATE, which saves into BRANCHES) is reached from BRANCHES and from the coin page's SIMULATE action, not from the drawer. ENGINE (`/strategies`, `/decisions`, `/governor`) has no entry point.
 

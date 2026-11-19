@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { RegimeFeedSchema, type RegimeFeed } from '../../shared/regime/schema'
 import { api, ApiError, parseWith } from './api'
 import { usePoll, type PollState } from './poll'
 import { fmtUsdSigned } from './format'
@@ -198,6 +199,8 @@ export const intel = {
     parseWith(ResearchListResponseSchema, 'intel')(await api.get(`${base}/research${qs(q)}`)),
   /** Synchronous up to ~45 s. 409 = a run in flight, 429 = daily limit (the researchGate reducer in components/intel/research.ts); over the $ cap → 200 `capped`. */
   ask: async (input: ResearchAskInput): Promise<ResearchResult> => parseWith(ResearchResultSchema, 'intel')(await api.post(`${base}/research`, input)),
+  // ── regime thesis (docs/REGIME.md): read only, written by `bun run regime update` ──
+  regime: async (): Promise<RegimeFeed> => parseWith(RegimeFeedSchema, 'intel')(await api.get(`${base}/regime`)),
 }
 
 /** 409 from `POST /order/confirm`: marks moved > 0.5% or > 60 s (docs/design/terminal.md §7.4). */

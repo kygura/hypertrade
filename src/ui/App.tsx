@@ -55,6 +55,7 @@ const Cockpit = page(() => import('./pages/cockpit/Cockpit').then((m) => ({ defa
 const Terminal = page(() => import('./pages/terminal/Terminal').then((m) => ({ default: m.Terminal })))
 const Journal = page(() => import('./pages/terminal/Journal').then((m) => ({ default: m.Journal })))
 const Theses = page(() => import('./pages/terminal/Theses').then((m) => ({ default: m.Theses })))
+const Regime = page(() => import('./pages/terminal/Regime').then((m) => ({ default: m.Regime })))
 const Query = page(() => import('./pages/terminal/Query').then((m) => ({ default: m.Query })))
 const Order = page(() => import('./pages/terminal/Order').then((m) => ({ default: m.Order })))
 const Watch = page(() => import('./pages/terminal/Watch').then((m) => ({ default: m.Watch })))
@@ -79,6 +80,7 @@ const TOP_PAGES = [
   { path: '/feed', Page: Cockpit },
   { path: '/terminal', Page: Terminal },
   { path: '/journal', Page: Journal },
+  { path: '/regime', Page: Regime },
   { path: '/theses', Page: Theses },
   { path: '/query', Page: Query },
   { path: '/order', Page: Order },
