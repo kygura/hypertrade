@@ -85,7 +85,7 @@ describe("tripwires", () => {
     const pdl: SweepRead = {
       level: { px: 97, side: "low", source: "pdl", touches: 1, key: "1d.pdl" }, tf: "4h", side: "low", t: 0, wick: 96, depthAtr: 0.25, reclaimed: true, wickShare: 0.4,
     };
-    const cleared = { clearedUsd: 6_000_000, shareOfSide: 0.3, coverageRatio: 0.2 };
+    const cleared = { clearedUsd: 6_000_000, shareOfSide: 0.3, coverageRatio: 0.2, stopsUsd: null };
     const swept = (sweep: SweepRead, c: typeof cleared | null, oiChg24hPct = -2) =>
       evaluateTripwires([row("BTC", { tf: { "4h": { liqSweep: sweep, cleared: c } }, pos: { oiUsd: 4_000_000_000, oiChg24hPct } })]);
 

@@ -255,6 +255,14 @@ const LiqMapHistorySchema = z.object({
 });
 export type LiqMapHistory = z.infer<typeof LiqMapHistorySchema>;
 
+/**
+ * A 15-min stopmap_snapshots row (platform/stopmapLoop.ts): resting reduce-only stop orders of the polled wallets on
+ * the liqmap grid. longUsd = stops closing longs (sell triggers below mark), shortUsd = stops closing shorts (buy
+ * triggers above). `wallets` = polled wallets holding the coin: a row with empty buckets means none had a stop.
+ */
+const StopMapSnapshotSchema = LiqMapSnapshotSchema.extend({ wallets: z.number().int().nonnegative() });
+export type StopMapSnapshot = z.infer<typeof StopMapSnapshotSchema>;
+
 // ─── Health ───
 
 const LoopHealthSchema = z.object({ name: Text(32), lastBeatAt: Iso.nullable(), expectedIntervalSec: Pos, ok: z.boolean(), error: z.string().nullable() });
@@ -354,6 +362,12 @@ export const LiqBoardResponseSchema = z.object({
   asOf: Iso,
 });
 export type LiqBoardResponse = z.infer<typeof LiqBoardResponseSchema>;
+/** GET /stopmap/board: as /liqmap/board over the latest stop snapshot per coin; coverage is the liqmap's (the same crawled wallets). */
+export const StopBoardResponseSchema = z.object({
+  rows: z.array(z.object({ coin: AssetSchema, mark: Pos, ts: Iso, wallets: z.number().int().nonnegative(), nearestLong: ClusterSchema.nullable(), nearestShort: ClusterSchema.nullable(), coverage: CoverageSchema })),
+  asOf: Iso,
+});
+export type StopBoardResponse = z.infer<typeof StopBoardResponseSchema>;
 /** GET /liqmap/history. */
 export const LiqMapHistoryResponseSchema = LiqMapHistorySchema;
 /** GET /ledger/stats. */

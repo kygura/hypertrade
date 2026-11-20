@@ -1,4 +1,4 @@
-import { bucketBounds, type LiqMapSnapshot } from "../../shared/platform.js";
+import { bucketBounds, type LiqCell, type LiqMapSnapshot } from "../../shared/platform.js";
 import type { Candle } from "../../shared/types.js";
 import type { LevelKey } from "./board.js";
 
@@ -42,6 +42,11 @@ export interface ClearedLiquidity {
   shareOfSide: number;
   /** Tracked over OI (liqmap coverage); null = unknown. clearedUsd is a lower bound by this ratio. */
   coverageRatio: number | null;
+  /**
+   * Resting stops of the crawled wallets in the same zone, from the stop map snapshot before the bar (stopmap_snapshots):
+   * long stops for a low sweep, short stops for a high one. Null = no stop snapshot (unknown, not 0). Same wallets, same coverage.
+   */
+  stopsUsd: number | null;
 }
 
 export const LIQUIDITY = {
@@ -190,25 +195,41 @@ export function snapshotBefore(snaps: LiqMapSnapshot[], t: number): LiqMapSnapsh
   return best;
 }
 
+/** Notional of one side's cells inside [lo, hi]; a cell partly inside counts in proportion. */
+function zoneUsd(cells: LiqCell[], bucketBps: number, key: "longUsd" | "shortUsd", lo: number, hi: number): number {
+  let usd = 0;
+  for (const cell of cells) {
+    const b = bucketBounds(cell.idx, bucketBps);
+    const overlap = Math.min(hi, b.priceHi) - Math.max(lo, b.priceLo);
+    if (overlap > 0) usd += (cell[key] * overlap) / (b.priceHi - b.priceLo);
+  }
+  return usd;
+}
+
 /**
  * Liquidation notional the sweep cleared: longs between the wick low and the level for a low sweep, shorts between
  * the level and the wick high for a high sweep, read from `pre` (the snapshot before the bar: after it those
- * positions are gone). A cell partly inside the zone counts in proportion. Null without a snapshot: unknown, not 0.
+ * positions are gone), and the resting stops in the same zone from `preStops`. Null without a liqmap snapshot:
+ * unknown, not 0.
  */
-export function clearedLiquidity(i: { pre: LiqMapSnapshot | null; sweep: Pick<SweepRead, "side" | "level">; wickExtreme: number; coverageRatio: number | null }): ClearedLiquidity | null {
+export function clearedLiquidity(i: {
+  pre: LiqMapSnapshot | null;
+  preStops?: Pick<LiqMapSnapshot, "bucketBps" | "buckets"> | null;
+  sweep: Pick<SweepRead, "side" | "level">;
+  wickExtreme: number;
+  coverageRatio: number | null;
+}): ClearedLiquidity | null {
   const { pre, sweep } = i;
   if (!pre) return null;
   const low = sweep.side === "low";
   const [lo, hi] = low ? [i.wickExtreme, sweep.level.px] : [sweep.level.px, i.wickExtreme];
   const key = low ? "longUsd" : "shortUsd";
-  let cleared = 0;
+  const cleared = zoneUsd(pre.buckets, pre.bucketBps, key, lo, hi);
   let total = 0;
   for (const cell of pre.buckets) {
     const b = bucketBounds(cell.idx, pre.bucketBps);
-    const overlap = Math.min(hi, b.priceHi) - Math.max(lo, b.priceLo);
-    if (overlap > 0) cleared += (cell[key] * overlap) / (b.priceHi - b.priceLo);
-    const mid = (b.priceLo + b.priceHi) / 2;
-    if (Math.abs(mid / pre.mark - 1) <= LIQUIDITY.shareRange) total += cell[key];
+    if (Math.abs((b.priceLo + b.priceHi) / 2 / pre.mark - 1) <= LIQUIDITY.shareRange) total += cell[key];
   }
-  return { clearedUsd: Math.round(cleared), shareOfSide: total > 0 ? r2(cleared / total) : 0, coverageRatio: i.coverageRatio };
+  const stops = i.preStops ? Math.round(zoneUsd(i.preStops.buckets, i.preStops.bucketBps, key, lo, hi)) : null;
+  return { clearedUsd: Math.round(cleared), shareOfSide: total > 0 ? r2(cleared / total) : 0, coverageRatio: i.coverageRatio, stopsUsd: stops };
 }

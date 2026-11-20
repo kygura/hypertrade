@@ -1,6 +1,6 @@
 import { fmtPx, fmtUsd } from "../../shared/format.js";
 import { fetchCandles, hlInfo, parseMetaAndCtxs } from "../../shared/hl-client.js";
-import type { LiqMapSnapshot } from "../../shared/platform.js";
+import type { LiqMapSnapshot, StopMapSnapshot } from "../../shared/platform.js";
 import type { Candle } from "../../shared/types.js";
 import { liquiditySweep } from "../routine/board.js";
 import type { ClearedLiquidity, LiqLevel, SweepRead } from "../routine/liquidity.js";
@@ -12,7 +12,7 @@ import type { PlatformStore } from "./store.js";
 
 // Liquidity sweep alert (docs/fallback-routine.md § Tripwires, liquidity_sweep): at each 4h close (+60 s) the top
 // PLATFORM_LIQMAP_COINS by OI notional are read through the board's own composition (routine/board.ts
-// liquiditySweep: candles → liquidityLevels → sweepOf → clearedLiquidity against liqmap_snapshots). A reclaimed sweep
+// liquiditySweep: candles → liquidityLevels → sweepOf → clearedLiquidity against liqmap_snapshots and stopmap_snapshots). A reclaimed sweep
 // whose cleared notional reaches the tripwire's limit is pushed at info level, facts only. Deduped on
 // coin|level|bar, one per coin per 4h. In-memory state: a restart inside the evaluation window can repeat one push.
 
@@ -55,6 +55,7 @@ export function sweepAlert(e: SweepEval): { key: string; title: string; body: st
   const lines = [
     `${sweep.tf} bar swept the ${levelLabel(sweep.level)} at ${fmtPx(sweep.level.px)} by ${sweep.depthAtr} ATR (wick to ${fmtPx(sweep.wick)}, ${pct(sweep.wickShare)} of the bar) and closed back inside.`,
     `Cleared ${usd(cleared.clearedUsd)} of tracked ${side} liquidations, ${pct(cleared.shareOfSide)} of tracked ${side}s within ±20%; coverage ${cleared.coverageRatio == null ? "n/a" : pct(cleared.coverageRatio)} of OI.`,
+    `Resting ${side} stops in that zone before the bar: ${cleared.stopsUsd == null ? "n/a" : usd(cleared.stopsUsd)} (same tracked wallets).`,
     `OI over the bar ${e.oiChgPct == null ? "n/a" : `${e.oiChgPct > 0 ? "+" : ""}${e.oiChgPct.toFixed(1)}%`}.`,
   ];
   return { key: `${e.coin}|${sweep.level.key}|${sweep.t}`, title: `Sweep: ${e.coin} ${sweep.tf} ${levelLabel(sweep.level)} ${fmtPx(sweep.level.px)}`, body: lines.join("\n") };
@@ -85,7 +86,7 @@ export function evaluateCoin(i: {
   c4h: Candle[];
   c1d: Candle[];
   now: number;
-  liqmap: { snapshots: LiqMapSnapshot[]; coverageRatio: number | null };
+  liqmap: { snapshots: LiqMapSnapshot[]; coverageRatio: number | null; stops?: StopMapSnapshot[] };
   oiUsd: number;
   samples: Array<{ ts: string; inputs: Record<string, unknown> }>;
 }): SweepEval[] {
@@ -99,7 +100,7 @@ export function evaluateCoin(i: {
 }
 
 export function createSweepLoop(deps: {
-  store: Pick<PlatformStore, "listPositions" | "liqmapHistory" | "scanSnapshotsSince">;
+  store: Pick<PlatformStore, "listPositions" | "liqmapHistory" | "stopmapHistory" | "scanSnapshotsSince">;
   notify: (title: string, body: string, path: string) => Promise<unknown>;
   info?: Info;
   candles?: (coin: string, interval: "4h" | "1d", start: number, end: number) => Promise<Candle[]>;
@@ -131,16 +132,18 @@ export function createSweepLoop(deps: {
       const coin = ctx.name;
       const oiUsd = ctx.openInterest * ctx.markPx;
       try {
-        const [c4h, c1d, snapshots, positions, samples] = await Promise.all([
+        const since = new Date(close - 2 * DAY).toISOString();
+        const [c4h, c1d, snapshots, stops, positions, samples] = await Promise.all([
           candles(coin, "4h", t - LOOKBACK["4h"], t),
           candles(coin, "1d", t - LOOKBACK["1d"], t),
-          store.liqmapHistory(coin, new Date(close - 2 * DAY).toISOString()),
+          store.liqmapHistory(coin, since),
+          store.stopmapHistory(coin, since),
           store.listPositions(coin),
           store.scanSnapshotsSince(new Date(close - DAY - H4).toISOString(), [coin]),
         ]);
         const tracked = positions.reduce((a, p) => a + p.positionValue, 0);
         const coverageRatio = coverage(tracked, oiUsd, new Set(positions.map((p) => p.address)).size, []).ratio;
-        for (const e of evaluateCoin({ coin, c4h, c1d, now: t, liqmap: { snapshots, coverageRatio }, oiUsd, samples })) {
+        for (const e of evaluateCoin({ coin, c4h, c1d, now: t, liqmap: { snapshots, coverageRatio, stops }, oiUsd, samples })) {
           out.push(e);
           const a = sweepAlert(e);
           if (!a || sent.has(a.key) || (lastPush.get(coin) ?? -Infinity) > t - H4) continue;

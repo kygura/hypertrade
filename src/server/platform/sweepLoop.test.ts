@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bucketIndex, type LiqMapSnapshot } from "../../shared/platform.js";
+import { bucketIndex, type LiqMapSnapshot, type StopMapSnapshot } from "../../shared/platform.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
 import { buildBoard } from "../routine/board.js";
 import { evaluateTripwires } from "../routine/tripwires.js";
@@ -30,6 +30,8 @@ const cell = (px: number, longUsd: number) => ({ idx: bucketIndex(px, 25), longU
 const pre: LiqMapSnapshot = { coin: "SOL", ts: new Date(CLOSE - H4 - 10 * 60_000).toISOString(), mark: 100, bucketBps: 25, buckets: [cell(97.8, 3_000_000), cell(96, 1_000_000)] };
 const post: LiqMapSnapshot = { ...pre, ts: new Date(CLOSE + 60_000).toISOString(), buckets: [cell(96, 1_000_000)] };
 const snapshots = [pre, post];
+/** Resting long stops just under the 98 level before the bar (crawled wallets' sell stops). */
+const stops: StopMapSnapshot[] = [{ coin: "SOL", ts: new Date(CLOSE - H4 - 5 * 60_000).toISOString(), mark: 100, bucketBps: 25, buckets: [cell(97.85, 750_000)], wallets: 4 }];
 const OI_USD = 400_000_000; // limit = 0.25% = $1M
 const samples = [
   { ts: new Date(CLOSE - H4 - 5 * 60_000).toISOString(), inputs: { oiUsd: 400_000_000, mark: 100 } },
@@ -38,9 +40,9 @@ const samples = [
 const ctx = { name: "SOL", markPx: 100, openInterest: OI_USD / 100, funding: 0.0000125, premium: 0, dayNtlVlm: 1e9, dayChange: 0, isDelisted: false } as AssetCtx;
 
 describe("sweep loop ↔ board tripwire parity", () => {
-  const board = buildBoard([{ ctx, c4h, c1d, funding: null, cexHourly: [], liqmap: { snapshots, coverageRatio: 0 } }], null, new Date(NOW));
+  const board = buildBoard([{ ctx, c4h, c1d, funding: null, cexHourly: [], liqmap: { snapshots, coverageRatio: 0, stops } }], null, new Date(NOW));
   const row = board.rows[0]!;
-  const evals = evaluateCoin({ coin: "SOL", c4h, c1d, now: NOW, liqmap: { snapshots, coverageRatio: 0 }, oiUsd: OI_USD, samples });
+  const evals = evaluateCoin({ coin: "SOL", c4h, c1d, now: NOW, liqmap: { snapshots, coverageRatio: 0, stops }, oiUsd: OI_USD, samples });
 
   test("both paths find the same reclaimed sweep of the PDL zone and the same cleared notional", () => {
     expect(evals).toHaveLength(1);
@@ -51,6 +53,7 @@ describe("sweep loop ↔ board tripwire parity", () => {
     expect([e.sweep.level.px, e.sweep.side, e.sweep.reclaimed, e.sweep.wick]).toEqual([98, "low", true, 97.6]);
     expect(e.cleared!.clearedUsd).toBeGreaterThan(1_000_000); // the post-bar snapshot (longs gone) is not read
     expect(e.oiChgPct).toBe(-5);
+    expect(e.cleared!.stopsUsd).toBe(750_000); // the stop cell lies inside [97.6, 98]
   });
 
   test("the loop pushes exactly when the tripwire's sweep, reclaim and cleared-$ conditions pass", () => {
@@ -78,7 +81,7 @@ describe("sweep loop", () => {
   function loop(now: () => number) {
     const pushes: Array<[string, string, string]> = [];
     const l = createSweepLoop({
-      store: { listPositions: async () => [], liqmapHistory: async () => snapshots, scanSnapshotsSince: async () => samples.map((s) => ({ coin: "SOL", ...s })) },
+      store: { listPositions: async () => [], liqmapHistory: async () => snapshots, stopmapHistory: async () => stops, scanSnapshotsSince: async () => samples.map((s) => ({ coin: "SOL", ...s })) },
       notify: async (...a) => void pushes.push(a),
       info: (async () => raw) as never,
       candles: async (_coin, interval) => (interval === "4h" ? c4h : c1d),
@@ -101,6 +104,7 @@ describe("sweep loop", () => {
     expect(title).toMatch(/^Sweep: SOL 4h /);
     expect(body).toContain("closed back inside");
     expect(body).toContain("OI over the bar -5.0%");
+    expect(body).toContain("Resting long stops in that zone before the bar: $750.00K");
     expect(body).not.toMatch(/\b(buy|sell|long now|short now|should)\b/i);
     expect(path).toBe("/coin/SOL");
   });

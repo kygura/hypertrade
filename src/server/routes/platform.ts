@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import {
+  bucketBounds,
   FeedQuerySchema, FeedRowSchema, LedgerStatsQuerySchema, LiqBoardQuerySchema, NoveltyQuerySchema, LiqMapHistoryQuerySchema, LiqMapQuerySchema, RejectBodySchema, SECTORS, SnoozeBodySchema,
-  type Costs, type LedgerEntry, type LedgerPayload, type LiqBoardResponse, type NearMissResponse, type Opportunity, type Position, type RiskVerdictSchema, type SectorsResponse,
+  type Costs, type LedgerEntry, type LedgerPayload, type LiqBoardResponse, type NearMissResponse, type StopBoardResponse, type Opportunity, type Position, type RiskVerdictSchema, type SectorsResponse,
 } from "../../shared/platform.js";
 import { isExtremesOpportunity } from "../../shared/extremes.js";
 import type { ResearchResult, Side } from "../../shared/intel.js";
@@ -10,7 +11,7 @@ import { evaluateRisk, operatorRiskOrder } from "../desk/governor.js";
 import { DeskService } from "../desk/service.js";
 import type { OperatorOrder } from "../desk/types.js";
 import { researchDailyLimit, researchDeps, runResearch, RESEARCH_PROMPT_VERSION, utcDayStart } from "../intel/research.js";
-import { aggregate, coverage } from "../platform/liqmap.js";
+import { aggregate, coverage, nearestClusters } from "../platform/liqmap.js";
 import { extremesReadyTtlMin } from "../platform/opportunity.js";
 import { DEFAULT_READY_TTL_MIN, envNum } from "../platform/scanner.js";
 import { approveBlockOf, placedBy, placing, type PlatformContext } from "../platform/context.js";
@@ -336,6 +337,32 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         }
         const near = (r: LiqBoardResponse["rows"][number]) => Math.min(r.nearestLong?.distancePct ?? Infinity, r.nearestShort?.distancePct ?? Infinity);
         rows.sort((a, b) => near(a) - near(b) || a.coin.localeCompare(b.coin));
+        return { rows, asOf: now.toISOString() };
+      }));
+    })
+    .get("/stopmap/board", async (c) => {
+      const q = LiqBoardQuerySchema.safeParse(c.req.query());
+      if (!q.success) return invalid(c, q.error, "query");
+      const limit = q.data.limit ?? (Number(process.env.PLATFORM_LIQMAP_COINS) || 30);
+      const ctx = c.var.ctx;
+      return c.json(await cached(`stopboard|${limit}`, async (): Promise<StopBoardResponse> => {
+        const now = deps.now();
+        const since = (ms: number) => new Date(now.getTime() - ms).toISOString();
+        const [snaps, scans, held] = await Promise.all([ctx.store.stopmapLatest(since(3_600_000)), ctx.store.scanSnapshotsSince(since(3_600_000)), ctx.store.listPositions()]);
+        const oi = new Map<string, number | null>();
+        for (const s of scans) oi.set(s.coin, num(s.inputs.oiUsd));
+        const rows: StopBoardResponse["rows"] = snaps
+          .sort((a, b) => (oi.get(b.coin) ?? 0) - (oi.get(a.coin) ?? 0))
+          .slice(0, limit)
+          .map((s) => {
+            // Clusters against the snapshot's own mark: its sides (long stops below, short stops above) were cut there.
+            const buckets = s.buckets.map((b) => ({ ...b, ...bucketBounds(b.idx, s.bucketBps) }));
+            const near = nearestClusters(buckets, s.mark);
+            const positions = held.filter((p) => p.coin === s.coin);
+            return { coin: s.coin, mark: s.mark, ts: s.ts, wallets: s.wallets, nearestLong: near.long, nearestShort: near.short, coverage: coverageOf(positions, oi.get(s.coin) ?? null, now) };
+          });
+        const nearer = (r: StopBoardResponse["rows"][number]) => Math.min(r.nearestLong?.distancePct ?? Infinity, r.nearestShort?.distancePct ?? Infinity);
+        rows.sort((a, b) => nearer(a) - nearer(b) || a.coin.localeCompare(b.coin));
         return { rows, asOf: now.toISOString() };
       }));
     })

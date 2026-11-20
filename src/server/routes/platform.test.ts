@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import {
-  FeedResponseSchema, LedgerEntriesResponseSchema, LedgerStatsResponseSchema, LiqBoardResponseSchema, LiqMapHistoryResponseSchema, LiqMapResponseSchema, NearMissResponseSchema, NoveltyResponseSchema, type NearMiss, OpportunityDetailSchema,
+  FeedResponseSchema, LedgerEntriesResponseSchema, LedgerStatsResponseSchema, LiqBoardResponseSchema, StopBoardResponseSchema, bucketIndex, LiqMapHistoryResponseSchema, LiqMapResponseSchema, NearMissResponseSchema, NoveltyResponseSchema, type NearMiss, OpportunityDetailSchema,
   type LedgerPayload, type Opportunity,
 } from "../../shared/platform.js";
 import { app as apiApp } from "../../../api/index.js";
@@ -75,7 +75,7 @@ describe("offline", () => {
   test("every route answers 503 platform_offline without a context", async () => {
     online = false;
     const id = crypto.randomUUID();
-    for (const [method, path] of [["GET", "/opportunities"], ["GET", `/opportunities/${id}`], ["POST", `/opportunities/${id}/approve`], ["POST", `/opportunities/${id}/reject`], ["POST", `/opportunities/${id}/snooze`], ["POST", `/opportunities/${id}/research`], ["GET", "/liqmap?coin=ETH"], ["GET", "/liqmap/board"], ["GET", "/liqmap/history?coin=ETH"], ["GET", "/novelty"], ["GET", "/near-miss"], ["GET", "/ledger/stats"], ["GET", `/ledger/${id}`]] as const) {
+    for (const [method, path] of [["GET", "/opportunities"], ["GET", `/opportunities/${id}`], ["POST", `/opportunities/${id}/approve`], ["POST", `/opportunities/${id}/reject`], ["POST", `/opportunities/${id}/snooze`], ["POST", `/opportunities/${id}/research`], ["GET", "/liqmap?coin=ETH"], ["GET", "/liqmap/board"], ["GET", "/liqmap/history?coin=ETH"], ["GET", "/stopmap/board"], ["GET", "/novelty"], ["GET", "/near-miss"], ["GET", "/ledger/stats"], ["GET", `/ledger/${id}`]] as const) {
       const res = await req(path, { method });
       expect([method, path, res.status]).toEqual([method, path, 503]);
       expect(await res.json()).toEqual({ error: "platform_offline" });
@@ -501,6 +501,22 @@ describe("liqmap and ledger", () => {
     expect(b.rows[1]!.mark).toBe(4000); // live mid wins over the snapshot
     expect(LiqBoardResponseSchema.parse(await (await req("/liqmap/board?limit=1")).json()).rows.map((r) => r.coin)).toEqual(["BTC"]);
     expect((await req("/liqmap/board?limit=0")).status).toBe(400);
+  });
+
+  test("stopmap board: the latest stop snapshot per coin, nearest stop clusters against its mark, liqmap coverage", async () => {
+    await store.savePoll(ADDR, NOW.toISOString(), [{ coin: "ETH", szi: 100, entryPx: 3900, positionValue: 400_000, liquidationPx: 3600, leverage: 10 }]);
+    const ts = new Date(NOW.getTime() - 10 * 60_000).toISOString();
+    await store.insertScanSnapshots([{ coin: "ETH", ts, inputs: { mark: 3990, oiUsd: 3_000_000 } }]);
+    const cell = (px: number, longUsd: number, shortUsd: number) => ({ idx: bucketIndex(px, 25), longUsd, shortUsd });
+    await store.insertStopmapSnapshots([
+      { coin: "ETH", ts: new Date(NOW.getTime() - 40 * 60_000).toISOString(), mark: 4000, bucketBps: 25, buckets: [], wallets: 1 },
+      { coin: "ETH", ts, mark: 4000, bucketBps: 25, buckets: [cell(3900, 500_000, 0), cell(4100, 0, 100_000)], wallets: 2 },
+      { coin: "SOL", ts: new Date(NOW.getTime() - 2 * 3_600_000).toISOString(), mark: 150, bucketBps: 25, buckets: [], wallets: 1 }, // older than an hour
+    ]);
+    const b = StopBoardResponseSchema.parse(await (await req("/stopmap/board")).json());
+    expect(b.rows.map((r) => r.coin)).toEqual(["ETH"]);
+    expect(b.rows[0]).toMatchObject({ mark: 4000, ts, wallets: 2, nearestLong: { notionalUsd: 500_000 }, nearestShort: null, coverage: { addresses: 1, oiNotional: 3_000_000 } });
+    expect((await req("/stopmap/board?limit=0")).status).toBe(400);
   });
 
   test("liqmap: no mark anywhere → 503 no_mark; history parses", async () => {

@@ -28,6 +28,14 @@ export function aggregate(
     cells.set(idx, c);
   }
   const buckets = [...cells].sort((a, b) => a[0] - b[0]).map(([idx, c]) => ({ idx, ...bucketBounds(idx, bucketBps), ...c }));
+  return { buckets, nearestClusters: nearestClusters(buckets, mark) };
+}
+
+/**
+ * The bucket nearest the mark holding a material share (≥ 1% of the side, ≥ $250k) of each side. `buckets` sorted
+ * by idx, longs below the mark and shorts above it. Shared by the liquidation map and the stop map (stopmap.ts).
+ */
+export function nearestClusters(buckets: LiqBucket[], mark: number): Aggregate["nearestClusters"] {
   const side = (key: "longUsd" | "shortUsd"): Cluster | null => {
     const total = buckets.reduce((a, b) => a + b[key], 0);
     const min = Math.max(total * 0.01, MIN_CLUSTER_USD);
@@ -37,7 +45,7 @@ export function aggregate(
     const edge = key === "longUsd" ? b.priceHi : b.priceLo; // edge facing the mark
     return { priceLo: b.priceLo, priceHi: b.priceHi, distancePct: (Math.abs(mark - edge) / mark) * 100, notionalUsd: b[key] };
   };
-  return { buckets, nearestClusters: { long: side("longUsd"), short: side("shortUsd") } };
+  return { long: side("longUsd"), short: side("shortUsd") };
 }
 
 /** Nearest-rank percentile of a sorted array. */

@@ -1,5 +1,5 @@
 import type postgres from "postgres";
-import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
+import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag, StopMapSnapshot } from "../../shared/platform.js";
 import { LIVE_STATUSES, PRE_DECISION_STATUSES, TERMINAL_STATUSES } from "../../shared/platform.js";
 import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/agentRecords.js";
 import type { MovesResponse, MoveWindow } from "../../shared/moves.js";
@@ -119,6 +119,8 @@ async function insertEntries(db: Db, entries: NewLedgerEntry[], skipDuplicates =
 }
 
 /** PlatformStore over Postgres (011_platform.sql). Every projection move and its ledger entry share a transaction. */
+const toStopmap = (r: any): StopMapSnapshot => ({ coin: r.coin, ts: iso(r.ts), mark: r.mark, bucketBps: r.bucket_bps, buckets: r.buckets, wallets: Number(r.wallets) });
+
 export class PgPlatformStore implements PlatformStore {
   constructor(private readonly db: Db = pgDb()) {}
 
@@ -396,6 +398,25 @@ export class PgPlatformStore implements PlatformStore {
     return rows.map((r): LiqMapSnapshot => ({ coin: r.coin, ts: iso(r.ts), mark: r.mark, bucketBps: r.bucket_bps, buckets: r.buckets }));
   }
 
+  async insertStopmapSnapshots(rows: StopMapSnapshot[]) {
+    if (!rows.length) return 0;
+    await this.db.query(
+      `insert into stopmap_snapshots (coin, ts, mark, bucket_bps, buckets, wallets)
+       select x.coin, x.ts, x.mark, x.bucket_bps, x.buckets, x.wallets from jsonb_to_recordset($1::text::jsonb) as x(coin text, ts timestamptz, mark float8, bucket_bps float8, buckets jsonb, wallets int)
+       on conflict (coin, ts) do update set mark = excluded.mark, bucket_bps = excluded.bucket_bps, buckets = excluded.buckets, wallets = excluded.wallets`,
+      [J(rows.map((r) => ({ coin: r.coin, ts: iso(r.ts), mark: r.mark, bucket_bps: r.bucketBps, buckets: r.buckets, wallets: r.wallets })))],
+    );
+    return rows.length;
+  }
+
+  async stopmapHistory(coin: string, since: string) {
+    return (await this.db.query<any>(`select * from stopmap_snapshots where coin = $1 and ts >= $2::timestamptz order by ts`, [coin, iso(since)])).map(toStopmap);
+  }
+
+  async stopmapLatest(since: string) {
+    return (await this.db.query<any>(`select distinct on (coin) * from stopmap_snapshots where ts >= $1::timestamptz order by coin, ts desc`, [iso(since)])).map(toStopmap);
+  }
+
   async insertScanSnapshots(rows: ScanSnapshot[]) {
     if (!rows.length) return 0;
     await this.db.query(
@@ -480,8 +501,9 @@ export class PgPlatformStore implements PlatformStore {
     const [r] = await this.db.query<{ n: number }>(
       `with a as (delete from liqmap_snapshots where ts < $1::timestamptz returning 1),
             b as (delete from scan_snapshots where ts < $2::timestamptz returning 1),
-            c as (delete from hl_position_changes where ts < $1::timestamptz returning 1)
-       select ((select count(*) from a) + (select count(*) from b) + (select count(*) from c))::int as n`,
+            c as (delete from hl_position_changes where ts < $1::timestamptz returning 1),
+            d as (delete from stopmap_snapshots where ts < $1::timestamptz returning 1)
+       select ((select count(*) from a) + (select count(*) from b) + (select count(*) from c) + (select count(*) from d))::int as n`,
       [iso(before), iso(scansBefore)],
     );
     return r!.n;

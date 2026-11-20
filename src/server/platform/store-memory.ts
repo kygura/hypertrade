@@ -1,4 +1,4 @@
-import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag } from "../../shared/platform.js";
+import type { AddressRow, LedgerEntry, LedgerPayload, LiqMapSnapshot, NearMiss, NewLedgerEntry, NoveltyEntry, Opportunity, Position, SectorTag, StopMapSnapshot } from "../../shared/platform.js";
 import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/agentRecords.js";
 import type { MovesResponse, MoveWindow } from "../../shared/moves.js";
 import type { ExtremeRecord, ExtremeVerdict, NewExtremeCalibration, StoredExtremeCalibration } from "../../shared/extremes.js";
@@ -53,6 +53,7 @@ export class MemoryPlatformStore implements PlatformStore {
   positions = new Map<string, Position>();
   changes: PositionChange[] = [];
   liqmaps = new Map<string, LiqMapSnapshot>();
+  stopmaps = new Map<string, StopMapSnapshot>();
   scans = new Map<string, ScanSnapshot>();
   novelty = new Map<string, NoveltyEntry>();
   sectors = new Map<string, SectorTag>();
@@ -280,6 +281,23 @@ export class MemoryPlatformStore implements PlatformStore {
     return [...this.liqmaps.values()].filter((r) => r.coin === coin && r.ts >= lo).sort(byTs).map(clone);
   }
 
+  async insertStopmapSnapshots(rows: StopMapSnapshot[]) {
+    for (const r of rows) this.stopmaps.set(`${r.coin}|${iso(r.ts)}`, { ...clone(r), ts: iso(r.ts) });
+    return rows.length;
+  }
+
+  async stopmapHistory(coin: string, since: string) {
+    const lo = iso(since);
+    return [...this.stopmaps.values()].filter((r) => r.coin === coin && r.ts >= lo).sort(byTs).map(clone);
+  }
+
+  async stopmapLatest(since: string) {
+    const lo = iso(since);
+    const last = new Map<string, StopMapSnapshot>();
+    for (const r of this.stopmaps.values()) if (r.ts >= lo && (!last.has(r.coin) || r.ts > last.get(r.coin)!.ts)) last.set(r.coin, r);
+    return [...last.values()].sort((a, b) => a.coin.localeCompare(b.coin)).map(clone);
+  }
+
   async insertScanSnapshots(rows: ScanSnapshot[]) {
     for (const r of rows) this.scans.set(`${r.coin}|${iso(r.ts)}`, { ...clone(r), ts: iso(r.ts) });
     return rows.length;
@@ -336,7 +354,7 @@ export class MemoryPlatformStore implements PlatformStore {
   async pruneHistory(before: string, scansBefore = before) {
     const hi = iso(before);
     let n = 0;
-    for (const [m, cut] of [[this.liqmaps, hi], [this.scans, iso(scansBefore)]] as const) for (const [k, r] of m) if (r.ts < cut) (m.delete(k), n++);
+    for (const [m, cut] of [[this.liqmaps, hi], [this.stopmaps, hi], [this.scans, iso(scansBefore)]] as const) for (const [k, r] of m) if (r.ts < cut) (m.delete(k), n++);
     const kept = this.changes.filter((c) => c.ts >= hi);
     n += this.changes.length - kept.length;
     this.changes = kept;

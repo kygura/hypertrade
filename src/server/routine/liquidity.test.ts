@@ -87,6 +87,13 @@ describe("clearedLiquidity", () => {
     expect(clearedLiquidity({ pre: snapshotBefore([post], t), sweep, wickExtreme: 96.5, coverageRatio: 0.2 })).toBeNull();
   });
 
+  test("stops in the zone from the stop snapshot before the bar; no stop snapshot is null, not 0", () => {
+    const sweep = { side: "low" as const, level: lvl(97, "low", "pdl", "1d.pdl") };
+    const preStops = { bucketBps: 25, buckets: [cell(96.8, 600_000), cell(99, 900_000)] };
+    expect(clearedLiquidity({ pre, preStops, sweep, wickExtreme: 96.5, coverageRatio: null })!.stopsUsd).toBe(600_000);
+    expect(clearedLiquidity({ pre, preStops: null, sweep, wickExtreme: 96.5, coverageRatio: null })!.stopsUsd).toBeNull();
+  });
+
   test("a high sweep sums shorts between the level and the wick high", () => {
     const c = clearedLiquidity({ pre, sweep: { side: "high", level: lvl(104.5, "high", "pwh", "1w.pwh") }, wickExtreme: 106, coverageRatio: null })!;
     expect(c.clearedUsd).toBe(9_000_000);

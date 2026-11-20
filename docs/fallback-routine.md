@@ -106,7 +106,8 @@ red.
    0.1 ATR by priority (equal > pwh/pwl > pdh/pdl > range > round):
    `tf.*.liqSweep` (level, depth in ATR, reclaimed, wick share) and, where
    liqmap snapshots exist, `tf.*.cleared` (tracked liquidation notional
-   between the level and the wick before the bar; null = unknown).
+   between the level and the wick before the bar, plus `stopsUsd`, the
+   crawled wallets' resting stops there from the stop map; null = unknown).
 4. **Tripwires** (`tripwires.ts`, pure): commonplace setups as data, each a
    list of hard conditions over a board row. `funding_fade` (short),
    `negative_funding_build` (long), `post_liquidation_reclaim` (long),

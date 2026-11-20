@@ -166,11 +166,13 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `DB_POOL_MAX` (1) | Connection pool size. Use 4. |
    | `DB_QUERY_TIMEOUT_MS` (30000) | Per-query timeout. |
    | `MIGRATE_ON_BOOT` (unset) | `1` runs migrations before serving. Needs `DATABASE_URL`. |
-   | `WORKER_LOOPS` (`all`) | `all`, `off`, or a comma list of `ws`, `scanner`, `crawler`, `liqmap`, `sweep`, `outcomes`, `alerts`, `prune`, `novelty`, `reconcile`, `desk`, `telegram`. `novelty` and `reconcile` need `DATABASE_URL`. |
+   | `WORKER_LOOPS` (`all`) | `all`, `off`, or a comma list of `ws`, `scanner`, `crawler`, `liqmap`, `stopmap`, `sweep`, `outcomes`, `alerts`, `prune`, `novelty`, `reconcile`, `desk`, `telegram`. `novelty` and `reconcile` need `DATABASE_URL`. |
    | `PLATFORM_SCAN_INTERVAL_SEC` (60) | Universe scan period. |
    | `PLATFORM_COST_TOP_N` (25) | Coins costed from `l2Book` per scan. |
    | `PLATFORM_LIQMAP_COINS` (30) | Coins in each 15-minute liquidation snapshot. |
    | `PLATFORM_CRAWL_WEIGHT_PER_MIN` (800) | Hyperliquid weight budget for the crawler. |
+   | `PLATFORM_STOPMAP_WALLETS` (100) | Crawled wallets whose open stop orders the 15-minute stop map polls (largest positions in the liqmap coins first). |
+   | `PLATFORM_STOPMAP_WEIGHT_PER_MIN` (150) | Hyperliquid weight budget for the stop map (20 per wallet). |
    | `PLATFORM_CRAWL_MAX_AGE_MIN` (30) | Max age of a poll for addresses with open positions. |
    | `PLATFORM_RETENTION_DAYS` (14) | Pruning window for liquidation snapshots and position history. The ledger is never pruned. |
    | `PLATFORM_SCAN_RETENTION_DAYS` (30) | Pruning window for `scan_snapshots`, the only stored intraday OI (read by the `snapshots` setup replay). Never shorter than `PLATFORM_RETENTION_DAYS`. At the always-on cadence that is one row per coin every 5 minutes, about 288 × coins rows a day. |

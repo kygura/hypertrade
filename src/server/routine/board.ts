@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { FundingPoint } from "../../shared/hl-client.js";
-import type { LiqMapSnapshot } from "../../shared/platform.js";
+import type { LiqMapSnapshot, StopMapSnapshot } from "../../shared/platform.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
 import { atr as meanTrueRange, median, robustSigma } from "../../shared/signalMath.js";
 import { sma } from "./htf.js";
@@ -133,7 +133,7 @@ export interface BoardInput {
   /** Predicted hourly funding on other venues (Binance, Bybit), as fractions. */
   cexHourly: number[];
   /** Liqmap snapshots (liqmap_snapshots) and coverage, where a crawler runs: fills TfRead.cleared. Absent = unknown. */
-  liqmap?: { snapshots: LiqMapSnapshot[]; coverageRatio: number | null } | null;
+  liqmap?: { snapshots: LiqMapSnapshot[]; coverageRatio: number | null; stops?: StopMapSnapshot[] } | null;
 }
 
 export interface Board {
@@ -340,7 +340,11 @@ export function liquiditySweep(i: { c4h: Candle[] | null; c1d: Candle[] | null; 
   if (self?.low) levels[`${i.tf}.low20`] = self.low;
   const liq = liquidityLevels({ mark: bar.o, c4h, c1d, levels, atr1d: tf["1d"]?.atr ?? null, now: at });
   const sweep = sweepOf(bar, liq, meanTrueRange(done, 14), i.tf);
-  const cleared = sweep && i.liqmap ? clearedLiquidity({ pre: snapshotBefore(i.liqmap.snapshots, bar.t), sweep, wickExtreme: sweep.wick, coverageRatio: i.liqmap.coverageRatio }) : null;
+  const lm = i.liqmap;
+  const cleared =
+    sweep && lm
+      ? clearedLiquidity({ pre: snapshotBefore(lm.snapshots, bar.t), preStops: lm.stops ? snapshotBefore(lm.stops, bar.t) : null, sweep, wickExtreme: sweep.wick, coverageRatio: lm.coverageRatio })
+      : null;
   return { sweep, cleared };
 }
 
