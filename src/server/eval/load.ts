@@ -86,10 +86,11 @@ export function snapshotOf(panels: readonly EvalPanel[]): Snapshot {
   for (const p of panels) {
     const a = p.asset.toLowerCase();
     put(a, p, p.price);
-    if (p.ivSource === "dvol") put(`${a}_dvol`, p, p.iv);
+    // A mixed column is written whole (stand-in days included) so it reloads with the same values.
+    if (p.ivSource !== "realized") put(`${a}_dvol`, p, p.iv);
     put(`${a}_fund`, p, p.funding);
     put(`${a}_mvrv`, p, p.mvrv);
-    if (p.sthSource === "stored") put(`${a}_sth_rp`, p, p.sthRp);
+    if (p.sthSource !== "proxy") put(`${a}_sth_rp`, p, p.sthRp);
     put("fng", p, p.fng);
   }
   return snap;
