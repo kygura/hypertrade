@@ -4,6 +4,7 @@ import { gauss, mulberry32 } from "../lab/engine/rng.js";
 import { isoDate } from "../lab/engine/util.js";
 import type { LoadDatasetFn } from "../lab/service.js";
 import { DAY_MS, type LabDataset } from "../lab/types.js";
+import { dailySweepSeries } from "../routine/board.js";
 import { DEFINITIONS, definitionRule } from "./definitions.js";
 import { createDefinitionScanner, definitionMetrics, inZoneNow, metricLookbackDays, SCAN_LOOKBACK_DAYS, SCAN_RETRY_MS, scanDataset } from "./scan.js";
 
@@ -35,14 +36,18 @@ function fixture(n = 420, seed = 11, asset = "FIX"): LabDataset {
     vol.push(1e7 * Math.exp(0.3 * gauss(rng)) * (rng() < 0.15 ? 2.5 : 1));
   }
   const op = c.map((_, i) => c[Math.max(0, i - 1)]!);
+  const hi = c.map((x, i) => Math.max(x, op[i]!) * 1.01);
+  const lo = c.map((x, i) => Math.min(x, op[i]!) * 0.99);
+  const t = c.map((_, i) => T0 + i * DAY_MS);
   return {
     asset,
-    t: c.map((_, i) => T0 + i * DAY_MS),
+    t,
     price: c,
     metrics: {
       [OPEN]: op,
-      [HIGH]: c.map((x, i) => Math.max(x, op[i]!) * 1.01),
-      [LOW]: c.map((x, i) => Math.min(x, op[i]!) * 0.99),
+      [HIGH]: hi,
+      [LOW]: lo,
+      "ht:sweep": dailySweepSeries(t.map((x, i) => ({ t: x, o: op[i]!, h: hi[i]!, l: lo[i]!, c: c[i]! }))),
       [FUNDING]: f,
       "ht:price": c,
       "okx:oi": oi,

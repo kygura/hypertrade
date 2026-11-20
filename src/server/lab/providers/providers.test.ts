@@ -8,6 +8,7 @@ import bcFixture from "./fixtures/bc-hash-rate.json" with { type: "json" };
 import dvolFixture from "./fixtures/deribit-dvol.json" with { type: "json" };
 import okxBtcFixture from "./fixtures/okx-oi-btc.json" with { type: "json" };
 import okxUnknownFixture from "./fixtures/okx-oi-unknown.json" with { type: "json" };
+import { dailySweepSeries } from "../../routine/board.js";
 import { bcUrl, createBcProvider, parseBlockchainChart } from "./bc.js";
 import { createDeribitProvider, dvolUrls, parseDvolHistory } from "./deribit.js";
 import { cmAsset, createCmProvider, parseCmPage } from "./cm.js";
@@ -170,6 +171,19 @@ describe("ht", () => {
     expect((await p.fetch("range", "BTC", ...R)).v).toEqual([0.2, 10 / 102]);
     expect(d.calls.filter((c) => c === "ensure:BTC")).toHaveLength(1); // memoized per coin
     expect(d.calls).toContain("cap:10000");
+  });
+
+  test("sweep reads 140 days of candles before the range and matches dailySweepSeries on the full history", async () => {
+    // 60 flat days (99–101), the second-to-last dipping to 98 (its low is the last day's PDL), the last wicking to 97.5 and closing at 100.
+    const bars = Array.from({ length: 60 }, (_, i) => ({ t: D0 + i * DAY, o: 100, h: 101, l: i === 58 ? 98 : i === 59 ? 97.5 : 99, c: 100, v: 1 }));
+    const froms: number[] = [];
+    const p = createHtProvider(deps({ candles: async (_c, from) => (froms.push(from), bars) }));
+    const last = D0 + 59 * DAY;
+    const out = await p.fetch("sweep", "BTC", last - DAY, last);
+    expect(froms[0]).toBe(last - DAY - 140 * DAY);
+    expect(out.t).toEqual([last - DAY, last]);
+    expect(out.v).toEqual(dailySweepSeries(bars).slice(-2));
+    expect(out.v[1]).toBeGreaterThan(0); // the PDL swept and reclaimed: +depth
   });
 
   test("open/high/low/price reuse one candle fetch per coin and range", async () => {

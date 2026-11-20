@@ -36,6 +36,7 @@ import { setPlatformContext } from "../src/server/platform/context";
 import { createCrawler } from "../src/server/platform/crawler";
 import { createCronLoop } from "../src/server/platform/cronLoop";
 import { createLiqmapLoop } from "../src/server/platform/liqmapLoop";
+import { createSweepLoop } from "../src/server/platform/sweepLoop";
 import { createNoveltyLoop } from "../src/server/platform/noveltyLoop";
 import { createOutcomesLoop, skipped as outcomesSkipped } from "../src/server/platform/outcomesLoop";
 import { databaseUrl, sql, setLongRunning } from "../src/server/db";
@@ -187,6 +188,8 @@ async function boot() {
     withLease(scanner.def, platformLease, PLATFORM_TICK_LEASE_MS),
     crawler.def,
     liqmap.def,
+    // Liquidity sweeps at each 4h close against the liqmap snapshots above (docs/fallback-routine.md § liquidity_sweep).
+    createSweepLoop({ store, notify: alerts.info }).def,
     outcomes.def,
     alerts.def,
     withLease(movesAgent.def, movesLease("moves-agent"), MOVES_CRON_LEASE_MS),

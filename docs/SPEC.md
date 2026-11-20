@@ -464,6 +464,7 @@ Phase 1 of the Trading Intelligence Platform spec (2026-10-15). Code scans the w
    - `scanner`: every `PLATFORM_SCAN_INTERVAL_SEC` (60). One `metaAndAssetCtxs` call, features per asset, ranking, opportunity upsert, costs for the top `PLATFORM_COST_TOP_N` (25) via `l2Book`.
    - `crawler`: polls `clearinghouseState` for the highest-priority addresses within its weight budget (P0.6).
    - `liqmap`: every 15 min, stores a bucketed liquidation snapshot for the top `PLATFORM_LIQMAP_COINS` (30) coins by OI.
+   - `sweep`: at each 4h close (+60 s), the top `PLATFORM_LIQMAP_COINS` coins' last 4h bar (and 1d bar at 00:00 UTC) are read for a sweep of a liquidity level (`routine/liquidity.ts`); a reclaimed sweep whose cleared liquidation notional, read from the liqmap snapshot before the bar, reaches the `liquidity_sweep` tripwire limit is pushed at info level with facts only (level, depth in ATR, cleared $, coverage, OI over the bar). Deduped per coin, level and bar; one per coin per 4h.
    - `outcomes`: every minute, marks opportunities to market at each horizon that has come due.
    - `alerts`: every 10 s, Telegram/ntfy alerts for `ready` opportunities and WS silence (P0.15, P0.16).
    - `novelty` (hourly) and `reconcile` (stuck approvals, open→closed): both need Postgres.

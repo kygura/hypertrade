@@ -84,6 +84,8 @@ export function createAlerts(deps: {
       if (channels.length) novelSent.add(e.id);
       return channels;
     },
+    /** An informational push with a cockpit link (the sweep loop's facts). A failing channel never throws. */
+    info: (title: string, body: string, path?: string) => send("info", title, body, path),
     check,
     def: { name: "alerts", intervalSec: 10, run: check } satisfies LoopDef,
   };

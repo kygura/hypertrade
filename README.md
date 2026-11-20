@@ -166,7 +166,7 @@ One Bun process (`scripts/server.ts`) serves the API, the built UI and the platf
    | `DB_POOL_MAX` (1) | Connection pool size. Use 4. |
    | `DB_QUERY_TIMEOUT_MS` (30000) | Per-query timeout. |
    | `MIGRATE_ON_BOOT` (unset) | `1` runs migrations before serving. Needs `DATABASE_URL`. |
-   | `WORKER_LOOPS` (`all`) | `all`, `off`, or a comma list of `ws`, `scanner`, `crawler`, `liqmap`, `outcomes`, `alerts`, `prune`, `novelty`, `reconcile`, `desk`, `telegram`. `novelty` and `reconcile` need `DATABASE_URL`. |
+   | `WORKER_LOOPS` (`all`) | `all`, `off`, or a comma list of `ws`, `scanner`, `crawler`, `liqmap`, `sweep`, `outcomes`, `alerts`, `prune`, `novelty`, `reconcile`, `desk`, `telegram`. `novelty` and `reconcile` need `DATABASE_URL`. |
    | `PLATFORM_SCAN_INTERVAL_SEC` (60) | Universe scan period. |
    | `PLATFORM_COST_TOP_N` (25) | Coins costed from `l2Book` per scan. |
    | `PLATFORM_LIQMAP_COINS` (30) | Coins in each 15-minute liquidation snapshot. |

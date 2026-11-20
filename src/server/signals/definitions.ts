@@ -156,6 +156,22 @@ export const DEFINITIONS: SignalDefinition[] = [
     // The short side of the intraday vol_expansion_breakout.
     intradayKinds: ["vol_expansion_breakout"],
   },
+  ...(["long", "short"] as const).map(
+    (direction): SignalDefinition => ({
+      id: `liquidity_sweep_${direction}`,
+      name: `Liquidity sweep (${direction})`,
+      thesis: `The daily bar traded through a ${direction === "long" ? "low" : "high"} liquidity level (previous day or week, 20-day range, 12-week extreme, round number) by at least 0.1 ATR and closed back inside it: the stops there are spent, ${direction} the reclaim. Grades the sweep and reclaim alone: the cleared-liquidation condition of the board tripwire needs liqmap snapshots, which only exist from when the liqmap loop started.`,
+      rule: {
+        direction,
+        horizonDays: 5,
+        // ht:sweep is +depth in ATR for a reclaimed low sweep, −depth for a high one, 0 otherwise (board.ts dailySweepSeries).
+        conditions: [direction === "long" ? { feature: "ht:sweep|raw|0", op: ">=", threshold: 0.1 } : { feature: "ht:sweep|raw|0", op: "<", threshold: -0.1 }],
+        // Beyond the wick: the 2-bar extreme (the sweep bar's) plus a quarter ATR.
+        stop: direction === "long" ? { ref: "low", n: 2, atr: -0.25 } : { ref: "high", n: 2, atr: 0.25 },
+      },
+      intradayKinds: [],
+    }),
+  ),
 ];
 
 /** The definition's rule on an asset (for a coin's own data, or UNIVERSE_ASSET for a universe study). */

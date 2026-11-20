@@ -1,5 +1,5 @@
 import type { SetupId } from "../../shared/setups.js";
-import { BOARD, type BoardRow } from "./board.js";
+import { BOARD, type BoardRow, type TfRead } from "./board.js";
 
 // Tripwires: the commonplace setups as hard, one-dimensional thresholds over a
 // board row (docs/fallback-routine.md § Tripwires). Pure. A hit is a fact
@@ -27,7 +27,15 @@ export const TRIPWIRES = {
   pullbackAtr: 0.75,
   /** A near-miss's one failing condition sits within this many limit-widths of its limit (max(|limit|, 1)). */
   maxNearGap: 1,
+  /** Liquidation notional a sweep must have cleared, capped here for the majors... */
+  sweepClearedUsd: 5_000_000,
+  /** ...and this % of the coin's OI notional below that, so the threshold is not BTC-only. */
+  sweepClearedOiPct: 0.25,
 } as const;
+
+/** The cleared-$ limit for a coin with `oiUsd` of open interest: min(sweepClearedUsd, sweepClearedOiPct% of OI). */
+export const sweepClearedLimit = (oiUsd: number): number =>
+  oiUsd > 0 ? Math.round(Math.min(TRIPWIRES.sweepClearedUsd, (TRIPWIRES.sweepClearedOiPct / 100) * oiUsd)) : TRIPWIRES.sweepClearedUsd;
 
 interface Condition {
   label: string;
@@ -47,7 +55,8 @@ export interface TripwireRead {
   gap: number | null;
 }
 
-type Spec = [label: string, value: number | string | null, op: Condition["op"], limit: number | string];
+/** `unknownIsNear`: a null value on this condition is a near-miss (a fact not available here, e.g. cleared $ on Actions). */
+type Spec = [label: string, value: number | string | null, op: Condition["op"], limit: number | string, unknownIsNear?: true];
 
 function cond([label, value, op, limit]: Spec): Condition {
   let pass = false;
@@ -129,6 +138,27 @@ const TEMPLATES: Template[] = [
   ),
   ...(["long", "short"] as const).map(
     (direction): Template => ({
+      id: "liquidity_sweep",
+      direction,
+      specs: (r) => {
+        // Long = a low swept, short = a high swept. Of the 1d and 4h reads on that side: a reclaimed one, then one
+        // whose cleared $ is known, then the 1d bar.
+        const want = direction === "long" ? "low" : "high";
+        const rank = (x: TfRead) => Number(x.liqSweep!.reclaimed) * 2 + Number(x.cleared != null);
+        const tf = [r.tf["1d"], r.tf["4h"]].filter((x): x is TfRead => x?.liqSweep?.side === want).sort((a, b) => rank(b) - rank(a))[0] ?? null;
+        const sweep = tf?.liqSweep ?? null;
+        const cleared = tf?.cleared ?? null;
+        return [
+          ["sweep of a liquidity level (4h or 1d)", sweep ? sweep.level.source : null, "≠", "none"],
+          ["reclaimed", sweep ? (sweep.reclaimed ? "yes" : "no") : null, "=", "yes"],
+          ["cleared liq $", cleared?.clearedUsd ?? null, ">=", sweepClearedLimit(r.pos.oiUsd), true],
+          ["OI 24h %", r.pos.oiChg24hPct, "<=", 0],
+        ];
+      },
+    }),
+  ),
+  ...(["long", "short"] as const).map(
+    (direction): Template => ({
       id: "htf_pullback",
       direction,
       specs: (r) => {
@@ -151,14 +181,17 @@ export function evaluateTripwires(rows: BoardRow[], maxNear = 8): { hits: Tripwi
   const near: TripwireRead[] = [];
   for (const r of rows) {
     for (const t of TEMPLATES) {
-      const conditions = t.specs(r).map(cond);
+      const specs = t.specs(r);
+      const conditions = specs.map(cond);
       const failing = conditions.filter((c) => !c.pass);
       const base = { setup_id: t.id, asset: r.coin, direction: t.direction, conditions };
       if (!failing.length) hits.push({ ...base, status: "hit", gap: null });
       else if (failing.length === 1) {
         const f = failing[0]!;
+        // An unknown the template marks as such is near at the widest gap: it surfaces, last.
+        if (f.value === null && specs[conditions.indexOf(f)]![4]) near.push({ ...base, status: "near", gap: T.maxNearGap });
         // Only a numeric miss is "near": a breakout that did not happen is not almost a breakout.
-        if (typeof f.value === "number" && typeof f.limit === "number") {
+        else if (typeof f.value === "number" && typeof f.limit === "number") {
           const gap = Math.round((Math.abs(f.value - f.limit) / Math.max(Math.abs(f.limit), 1)) * 100) / 100;
           if (gap <= T.maxNearGap) near.push({ ...base, status: "near", gap });
         }
