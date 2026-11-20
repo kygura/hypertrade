@@ -16,6 +16,7 @@ import { cronSeedRoutes } from "../src/server/routes/cronSeed.js";
 import { cyclesRoutes } from "../src/server/routes/cycles.js";
 import { createDeskRoutes } from "../src/server/routes/desk.js";
 import { engineRoutes } from "../src/server/routes/engine.js";
+import { evalRoutes } from "../src/server/routes/eval.js";
 import { hlRoutes } from "../src/server/routes/hl.js";
 import { createIntelRoutes, defaultIntelDeps, telegramIntel } from "../src/server/routes/intel/index.js";
 import { labRoutes } from "../src/server/routes/lab.js";
@@ -78,6 +79,7 @@ app.route("/vector", vectorRoutes);
 // Intel is injected here: routes/desk.ts importing intel/index.ts would cycle (intel/index → desk).
 app.route("/desk", createDeskRoutes({ intel: () => telegramIntel() }));
 app.route("/engine", engineRoutes);
+app.route("/eval", evalRoutes);
 app.route("/extremes", extremesRoutes());
 app.route("/hl", hlRoutes);
 app.route("/intel", createIntelRoutes(defaultIntelDeps()));

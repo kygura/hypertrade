@@ -42,6 +42,7 @@ const Cycles = page(() => import('./pages/Cycles').then((m) => ({ default: m.Cyc
 const Vector = page(() => import('./pages/Vector').then((m) => ({ default: m.Vector })))
 // Lab (docs/design/README.md §10.9): research view, loaded with its routes.
 const Lab = page(() => import('./pages/Lab').then((m) => ({ default: m.Lab })))
+const Eval = page(() => import('./pages/Eval').then((m) => ({ default: m.Eval })))
 const LabRule = page(() => import('./pages/LabRule').then((m) => ({ default: m.LabRule })))
 const LAB_TAB_PATHS = ['/lab/study', '/lab/search', '/lab/runs', '/lab/runs/:runId', '/lab/catalogue', '/lab/pulse']
 // Research board (docs/RESEARCH.md "Board") at `/board`. `/` is no page: Root sends it to the landing
@@ -330,6 +331,14 @@ export default function App() {
           element={
             <Shell>
               <LabRule />
+            </Shell>
+          }
+        />
+        <Route
+          path="/eval"
+          element={
+            <Shell>
+              <Eval />
             </Shell>
           }
         />
