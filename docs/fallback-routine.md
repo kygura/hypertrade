@@ -99,12 +99,25 @@ red.
    The **level menu** per market: `mark`, `4h.high20/low20/sma20`,
    `1d.pdh/pdl/high20/low20/sma20/sma50/sma200`,
    `1w.pwh/pwl/high12/low12/sma20`. A setup may use no other price.
+   **Liquidity sweeps** (`liquidity.ts`, pure): on 4h and 1d, the last
+   completed bar is read against the liquidity levels in force at its open
+   (the menu's highs and lows, equal highs/lows from 4h fractal swings of
+   the last 30 days, the nearest round number each side), deduped within
+   0.1 ATR by priority (equal > pwh/pwl > pdh/pdl > range > round):
+   `tf.*.liqSweep` (level, depth in ATR, reclaimed, wick share) and, where
+   liqmap snapshots exist, `tf.*.cleared` (tracked liquidation notional
+   between the level and the wick before the bar, plus `stopsUsd`, the
+   crawled wallets' resting stops there from the stop map; null = unknown).
 4. **Tripwires** (`tripwires.ts`, pure): commonplace setups as data, each a
    list of hard conditions over a board row. `funding_fade` (short),
    `negative_funding_build` (long), `post_liquidation_reclaim` (long),
-   `range_breakout`, `failed_breakout` and `htf_pullback` (both sides).
-   All conditions met = a hit; all but one numeric condition, within one
-   limit-width of its limit = a near-miss. Missing data fails a condition.
+   `range_breakout`, `failed_breakout`, `liquidity_sweep` and
+   `htf_pullback` (both sides). All conditions met = a hit; all but one
+   numeric condition, within one limit-width of its limit = a near-miss.
+   Missing data fails a condition; `liquidity_sweep`'s cleared $ is the one
+   unknown that still counts as near (Actions has no crawler, so a reclaimed
+   sweep surfaces as a near-miss there). The cleared-$ limit is
+   min($5M, 0.25% of the coin's OI notional).
    Thresholds live in `TRIPWIRES`; they are starting points for the ledger
    and the Lab event study to grade, not claims of an edge.
 5. **Update open setups** (`ledger.ts`, pure, unit-tested) against the

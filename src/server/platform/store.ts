@@ -12,6 +12,7 @@ import {
   type LedgerEntry,
   type LedgerPayload,
   type LiqMapSnapshot,
+  type StopMapSnapshot,
   type LiquidityTier,
   type NewLedgerEntry,
   type NearMiss,
@@ -118,13 +119,19 @@ export interface PlatformStore {
   /** ts >= since, ascending. */
   liqmapHistory(coin: string, since: string): Promise<LiqMapSnapshot[]>;
   /** Upsert on (coin, ts). Returns rows written. */
+  insertStopmapSnapshots(rows: StopMapSnapshot[]): Promise<number>;
+  /** ts >= since, ascending. */
+  stopmapHistory(coin: string, since: string): Promise<StopMapSnapshot[]>;
+  /** The newest row per coin with ts >= since, by coin. */
+  stopmapLatest(since: string): Promise<StopMapSnapshot[]>;
+  /** Upsert on (coin, ts). Returns rows written. */
   insertScanSnapshots(rows: ScanSnapshot[]): Promise<number>;
   /** ts >= since, ascending by ts then coin; only `coins` when given (an empty list reads nothing). */
   scanSnapshotsSince(since: string, coins?: readonly string[]): Promise<ScanSnapshot[]>;
   /** Distinct scan timestamps with ts >= since: scanner ticks persisted (at most one per 5 min). */
   scanTickCount(since: string): Promise<number>;
   /**
-   * Retention (P0.4 prune): deletes liqmap snapshots and position changes with ts < before, and scan snapshots with
+   * Retention (P0.4 prune): deletes liqmap and stopmap snapshots and position changes with ts < before, and scan snapshots with
    * ts < scansBefore (default `before`; PLATFORM_SCAN_RETENTION_DAYS keeps them longer for replays). Never the ledger.
    */
   pruneHistory(before: string, scansBefore?: string): Promise<number>;

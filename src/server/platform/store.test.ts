@@ -245,6 +245,21 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect((await s.ledgerFor(o1)).length).toBe(6);
   put("changes.after", await s.positionChanges(A1));
 
+  // stop map: upsert on (coin, ts), history, newest per coin, pruned with the liqmap
+  const stops = [{ idx: 10, longUsd: 7, shortUsd: 0 }];
+  expect(await s.insertStopmapSnapshots([
+    { coin: "BTC", ts: t(4), mark: 60000, bucketBps: 25, buckets: stops, wallets: 3 },
+    { coin: "BTC", ts: t(5), mark: 61000, bucketBps: 25, buckets: [], wallets: 2 },
+    { coin: "ETH", ts: t(4), mark: 3000, bucketBps: 25, buckets: stops, wallets: 1 },
+  ])).toBe(3);
+  expect(await s.insertStopmapSnapshots([{ coin: "BTC", ts: t(5), mark: 61500, bucketBps: 25, buckets: stops, wallets: 4 }])).toBe(1);
+  put("stopmap.history", await s.stopmapHistory("BTC", t(4)));
+  expect(await s.stopmapHistory("BTC", t(5))).toEqual([{ coin: "BTC", ts: t(5), mark: 61500, bucketBps: 25, buckets: stops, wallets: 4 }]);
+  put("stopmap.latest", await s.stopmapLatest(t(0)));
+  expect((await s.stopmapLatest(t(0))).map((r) => [r.coin, r.ts])).toEqual([["BTC", t(5)], ["ETH", t(4)]]);
+  await s.pruneHistory(t(5));
+  expect((await s.stopmapLatest(t(0))).map((r) => [r.coin, r.ts])).toEqual([["BTC", t(5)]]); // the t4 stop rows pruned
+
   // novelty journal: upsert by id (a delivery stamp replaces the entry), range read, bar-date prune
   const nov = (barDate: string, coin: string): NoveltyEntry => ({
     id: `${barDate}:${coin}`, detectedAt: t(0), barDate, coin, kind: "new_extreme", families: ["funding"], nearSetups: [], marketWide: false, pushed: true, notified: [],

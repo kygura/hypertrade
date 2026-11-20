@@ -1,8 +1,10 @@
 import { z } from "zod";
 import type { FundingPoint } from "../../shared/hl-client.js";
+import type { LiqMapSnapshot, StopMapSnapshot } from "../../shared/platform.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
 import { atr as meanTrueRange, median, robustSigma } from "../../shared/signalMath.js";
 import { sma } from "./htf.js";
+import { clearedLiquidity, liquidityLevels, snapshotBefore, sweepOf, type ClearedLiquidity, type SweepRead } from "./liquidity.js";
 
 // The board (docs/fallback-routine.md § Board): the top-N Hyperliquid perps,
 // each read on its 4h, 1d and 1w bars plus positioning, measured here. Pure.
@@ -75,6 +77,10 @@ export interface TfRead {
   volRatio: number | null;
   /** ATR5 / ATR20: below ~0.7 reads as compression, above ~1.3 as expansion. */
   atrRatio: number | null;
+  /** 4h and 1d only: the last completed bar's trade through a liquidity level (liquidity.ts), against the levels in force at its open. */
+  liqSweep?: SweepRead | null;
+  /** Liquidation notional that sweep cleared, from the liqmap snapshot before the bar. Null = unknown (no snapshot, e.g. on Actions), never 0. */
+  cleared?: ClearedLiquidity | null;
 }
 
 export type Flow = "new_longs" | "short_covering" | "new_shorts" | "long_liquidation" | "oi_build_flat" | "oi_unwind_flat" | "price_only" | "quiet";
@@ -126,6 +132,8 @@ export interface BoardInput {
   funding: FundingPoint[] | null;
   /** Predicted hourly funding on other venues (Binance, Bybit), as fractions. */
   cexHourly: number[];
+  /** Liqmap snapshots (liqmap_snapshots) and coverage, where a crawler runs: fills TfRead.cleared. Absent = unknown. */
+  liqmap?: { snapshots: LiqMapSnapshot[]; coverageRatio: number | null; stops?: StopMapSnapshot[] } | null;
 }
 
 export interface Board {
@@ -277,7 +285,7 @@ export function positioning(input: BoardInput, history: BoardHistory | null, now
   };
 }
 
-function levelMenu(mark: number, tf: Record<BoardTf, TfRead | null>, c1d: Candle[] | null, now: number): Partial<Record<LevelKey, number>> {
+export function levelMenu(mark: number, tf: Record<BoardTf, TfRead | null>, c1d: Candle[] | null, now: number): Partial<Record<LevelKey, number>> {
   const out: Partial<Record<LevelKey, number>> = { mark: sig(mark) };
   const set = (k: LevelKey, v: number | null | undefined) => {
     if (v !== null && v !== undefined && Number.isFinite(v) && v > 0) out[k] = sig(v);
@@ -302,6 +310,59 @@ function levelMenu(mark: number, tf: Record<BoardTf, TfRead | null>, c1d: Candle
   return out;
 }
 
+/**
+ * The last completed `tf` bar's sweep of a liquidity level, read against the levels in force at the bar's open (the
+ * menu from bars closed before it, its own timeframe's range over the 20 bars before it), and what it cleared when
+ * liqmap snapshots are given. One composition for the board and the live loop (platform/sweepLoop.ts).
+ */
+export function liquiditySweep(i: { c4h: Candle[] | null; c1d: Candle[] | null; tf: "4h" | "1d"; now: number; liqmap?: BoardInput["liqmap"] }): {
+  sweep: SweepRead | null;
+  cleared: ClearedLiquidity | null;
+} {
+  const c4h = i.c4h ?? [];
+  const c1d = i.c1d ?? [];
+  const own = i.tf === "4h" ? c4h : c1d;
+  const done = own.filter((c) => c.T < i.now).sort((a, b) => a.t - b.t);
+  const bar = done.at(-1);
+  if (!bar) return { sweep: null, cleared: null };
+  const at = bar.t;
+  const tf: Record<BoardTf, TfRead | null> = {
+    "4h": tfRead(c4h, BOARD.window["4h"], bar.o, at),
+    "1d": tfRead(c1d, BOARD.window["1d"], bar.o, at),
+    "1w": tfRead(weeklyFromDaily(c1d), BOARD.window["1w"], bar.o, at),
+  };
+  const levels = levelMenu(bar.o, tf, c1d, at);
+  // The bar's own range level is the 20 bars right before it (tfRead's prior window with the bar as the last one).
+  const self = tfRead(own, BOARD.window[i.tf], bar.o, bar.T + 1);
+  delete levels[`${i.tf}.high20`];
+  delete levels[`${i.tf}.low20`];
+  if (self?.high) levels[`${i.tf}.high20`] = self.high;
+  if (self?.low) levels[`${i.tf}.low20`] = self.low;
+  const liq = liquidityLevels({ mark: bar.o, c4h, c1d, levels, atr1d: tf["1d"]?.atr ?? null, now: at });
+  const sweep = sweepOf(bar, liq, meanTrueRange(done, 14), i.tf);
+  const lm = i.liqmap;
+  const cleared =
+    sweep && lm
+      ? clearedLiquidity({ pre: snapshotBefore(lm.snapshots, bar.t), preStops: lm.stops ? snapshotBefore(lm.stops, bar.t) : null, sweep, wickExtreme: sweep.wick, coverageRatio: lm.coverageRatio })
+      : null;
+  return { sweep, cleared };
+}
+
+/**
+ * The Lab metric ht:sweep, one value per daily bar (oldest first): +depthAtr when the bar swept a low liquidity level
+ * and closed back inside it, −depthAtr for a high, 0 otherwise; NaN before the 1d window fills. Read the same way as
+ * the board's 1d liqSweep (liquiditySweep), on daily bars only: there are no 4h bars in the Lab, so no 4h range or
+ * equal highs/lows, and no cleared $ (liqmap snapshots only exist from when the liqmap loop started).
+ */
+export function dailySweepSeries(bars: ReadonlyArray<{ t: number; o: number; h: number; l: number; c: number }>): number[] {
+  const c1d: Candle[] = bars.map((b) => ({ t: b.t, T: b.t + DAY - 1, o: b.o, h: b.h, l: b.l, c: b.c, v: 0 }));
+  return c1d.map((b, j) => {
+    if (j < BOARD.window["1d"] + 2) return NaN;
+    const { sweep } = liquiditySweep({ c4h: null, c1d: c1d.slice(Math.max(0, j - 130), j + 1), tf: "1d", now: b.T + 1 });
+    return !sweep?.reclaimed ? 0 : sweep.side === "low" ? sweep.depthAtr : -sweep.depthAtr;
+  });
+}
+
 /** Robust z of each value against the others (median/MAD, with a floor so a flat board does not blow up). */
 function crossZ(values: Array<number | null>, floor: number): Array<number | null> {
   const xs = values.filter((v): v is number => v !== null);
@@ -320,6 +381,13 @@ export function buildBoard(inputs: BoardInput[], history: BoardHistory | null, n
       "1d": input.c1d ? tfRead(input.c1d, BOARD.window["1d"], mark, t) : null,
       "1w": input.c1d ? tfRead(weeklyFromDaily(input.c1d), BOARD.window["1w"], mark, t) : null,
     };
+    for (const k of ["4h", "1d"] as const) {
+      const read = tf[k];
+      if (!read) continue;
+      const { sweep, cleared } = liquiditySweep({ c4h: input.c4h, c1d: input.c1d, tf: k, now: t, liqmap: input.liqmap });
+      read.liqSweep = sweep;
+      read.cleared = cleared;
+    }
     return {
       coin: input.ctx.name,
       mark: sig(mark),

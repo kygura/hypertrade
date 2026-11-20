@@ -8,7 +8,7 @@ import { z } from "zod";
 const Price = z.number().finite().positive();
 
 /** Setup definitions of the candidate catalogue. A setup with `setup_id: null` came from a model proposal, not a definition. */
-export const SETUP_IDS = ["funding_fade", "post_liquidation_reclaim", "sector_continuation", "negative_funding_build", "htf_pullback", "range_breakout", "failed_breakout"] as const;
+export const SETUP_IDS = ["funding_fade", "post_liquidation_reclaim", "sector_continuation", "negative_funding_build", "htf_pullback", "range_breakout", "failed_breakout", "liquidity_sweep"] as const;
 export const SetupIdSchema = z.enum(SETUP_IDS);
 export type SetupId = z.infer<typeof SetupIdSchema>;
 

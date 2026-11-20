@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BoardRow, Positioning, TfRead } from "./board.js";
-import { evaluateTripwires, formatTripwire, tripwireKey } from "./tripwires.js";
+import type { SweepRead } from "./liquidity.js";
+import { evaluateTripwires, formatTripwire, sweepClearedLimit, tripwireKey } from "./tripwires.js";
 
 export function tf(over: Partial<TfRead> = {}): TfRead {
   return {
@@ -78,5 +79,38 @@ describe("tripwires", () => {
   test("missing data fails a condition, it never passes one", () => {
     const { hits } = evaluateTripwires([row("NEW", { pos: { fundingAnnPct: 41, oiChg24hPct: null }, tf: { "1d": { rangePos: 0.9 } } })]);
     expect(hits).toEqual([]);
+  });
+
+  describe("liquidity_sweep", () => {
+    const pdl: SweepRead = {
+      level: { px: 97, side: "low", source: "pdl", touches: 1, key: "1d.pdl" }, tf: "4h", side: "low", t: 0, wick: 96, depthAtr: 0.25, atr: 4, reclaimed: true, wickShare: 0.4,
+    };
+    const cleared = { clearedUsd: 6_000_000, shareOfSide: 0.3, coverageRatio: 0.2, stopsUsd: null };
+    const swept = (sweep: SweepRead, c: typeof cleared | null, oiChg24hPct = -2) =>
+      evaluateTripwires([row("BTC", { tf: { "4h": { liqSweep: sweep, cleared: c } }, pos: { oiUsd: 4_000_000_000, oiChg24hPct } })]);
+
+    test("a reclaimed pdl sweep that cleared enough longs, with OI down, is a long hit", () => {
+      const { hits } = swept(pdl, cleared);
+      expect(hits.map(tripwireKey)).toEqual(["BTC|liquidity_sweep|long"]);
+      expect(hits[0]!.conditions.map((c) => [c.value, c.pass])).toEqual([["pdl", true], ["yes", true], [6_000_000, true], [-2, true]]);
+    });
+
+    test("cleared $ unknown (no crawler): one missing condition, a near-miss ranked last", () => {
+      const { hits, near } = swept(pdl, null);
+      expect(hits).toEqual([]);
+      expect(near.map((n) => [tripwireKey(n), n.gap])).toEqual([["BTC|liquidity_sweep|long", 1]]);
+      expect(formatTripwire(near[0]!)).toContain("cleared liq $ n/a >= 5000000 ✗");
+    });
+
+    test("a close beyond the level is no hit and no near-miss", () => {
+      const { hits, near } = swept({ ...pdl, reclaimed: false }, cleared);
+      expect([hits, near]).toEqual([[], []]);
+    });
+
+    test("the cleared-$ limit scales with OI below the majors' cap", () => {
+      expect(sweepClearedLimit(4_000_000_000)).toBe(5_000_000);
+      expect(sweepClearedLimit(200_000_000)).toBe(500_000);
+      expect(sweepClearedLimit(0)).toBe(5_000_000);
+    });
   });
 });

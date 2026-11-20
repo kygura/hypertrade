@@ -18,6 +18,7 @@
 //   PLATFORM_SCAN_INTERVAL_SEC        scanner cadence
 //   PLATFORM_CRAWL_WEIGHT_PER_MIN (500), PLATFORM_CRAWL_MAX_AGE_MIN   crawler budget / freshness
 //   PLATFORM_LIQMAP_COINS             liquidation-map coins
+//   PLATFORM_STOPMAP_WALLETS (100), PLATFORM_STOPMAP_WEIGHT_PER_MIN (150)   stop-map wallets / weight budget
 //   PLATFORM_OUTCOME_HORIZONS         outcome marking horizons
 //   PLATFORM_READY_TTL_MIN, PLATFORM_COOLDOWN_MIN, PLATFORM_EDGE_MIN_N   opportunity lifecycle
 //   PLATFORM_RESEARCH_SCORE, PLATFORM_PUSH_SCORE   score thresholds (research feed / Telegram push)
@@ -36,6 +37,8 @@ import { setPlatformContext } from "../src/server/platform/context";
 import { createCrawler } from "../src/server/platform/crawler";
 import { createCronLoop } from "../src/server/platform/cronLoop";
 import { createLiqmapLoop } from "../src/server/platform/liqmapLoop";
+import { createStopmapLoop } from "../src/server/platform/stopmapLoop";
+import { createSweepLoop } from "../src/server/platform/sweepLoop";
 import { createNoveltyLoop } from "../src/server/platform/noveltyLoop";
 import { createOutcomesLoop, skipped as outcomesSkipped } from "../src/server/platform/outcomesLoop";
 import { databaseUrl, sql, setLongRunning } from "../src/server/db";
@@ -187,6 +190,10 @@ async function boot() {
     withLease(scanner.def, platformLease, PLATFORM_TICK_LEASE_MS),
     crawler.def,
     liqmap.def,
+    // Crawled wallets' resting stop orders on the liqmap grid, every 15 min under its own weight share.
+    createStopmapLoop({ store }).def,
+    // Liquidity sweeps at each 4h close against the liqmap snapshots above (docs/fallback-routine.md § liquidity_sweep).
+    createSweepLoop({ store, notify: alerts.info }).def,
     outcomes.def,
     alerts.def,
     withLease(movesAgent.def, movesLease("moves-agent"), MOVES_CRON_LEASE_MS),

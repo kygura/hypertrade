@@ -2,6 +2,7 @@ import { fetchCandles, fetchFundingPage, HL_FUNDING_PAGE, HL_MAX_CANDLES, type F
 import { FRED_SERIES } from "../../collectors/fred.js";
 import { databaseUrl, getCandles, getFunding, seriesRange } from "../../db.js";
 import { ensureHistory } from "../../market/candleSync.js";
+import { dailySweepSeries } from "../../routine/board.js";
 import { DAY_MS, type DailySeries, type LabProvider, type MetricCategory } from "../types.js";
 import { clip, toDaily, type Agg, type LabMetricDef } from "./series.js";
 
@@ -118,6 +119,7 @@ const ASSET_DEFS: Def[] = [
   ["low", "Low", "price", "USD", "Daily low, from the same candles as price."],
   ["volume", "Volume", "price", "USD", "Daily volume × close (approximate USD notional)."],
   ["range", "Daily range", "price", "fraction", "(high − low) / close."],
+  ["sweep", "Liquidity sweep", "price", "ATR", "Daily bar that traded through a liquidity level (prior day/week, 20-day range, 12-week extreme, round number) and closed back inside: +depth in ATR for a low, −depth for a high, 0 otherwise (routine/board.ts dailySweepSeries)."],
   ["funding", "Funding (daily)", "derivatives", "fraction/day", "Sum of the day's hourly Hyperliquid funding rates."],
   ["premium", "Premium", "derivatives", "fraction", "Daily mean of Hyperliquid's sampled mark/oracle premium."],
   ["oi", "Open interest", "derivatives", "USD", "Hyperliquid open interest (collector snapshots, last per day)."],
@@ -179,7 +181,9 @@ const METRICS: LabMetricDef[] = [
     ...hints(key),
   })),
 ];
-const CANDLE_KEYS = new Set(["price", "open", "high", "low", "volume", "range"]);
+/** Daily bars ht:sweep needs before a bar for its levels (dailySweepSeries reads the last 130). */
+const SWEEP_HISTORY_DAYS = 140;
+const CANDLE_KEYS = new Set(["price", "open", "high", "low", "volume", "range", "sweep"]);
 const GLOBAL_SERIES = new Map(GLOBAL.map((g) => [g[0], g[5]]));
 
 /** HL coin names are uppercase except the k-prefixed thousands (kPEPE). */
@@ -279,11 +283,14 @@ export function createHtProvider(deps: HtDeps = defaultHtDeps): LabProvider {
       if (global) out = await stored(global, fromMs, toMs, "last");
       else if (ASSET_SERIES[key]) out = await stored(ASSET_SERIES[key](coin), fromMs, toMs, "last");
       else if (CANDLE_KEYS.has(key)) {
-        const bars = await candles(coin, fromMs, toMs, opts?.deadline ? ENSURE_DEADLINE_MS : ENSURE_MS);
+        // ht:sweep reads the levels of up to SWEEP_HISTORY_DAYS before each bar: load them, then clip to the range.
+        const start = key === "sweep" ? fromMs - SWEEP_HISTORY_DAYS * DAY_MS : fromMs;
+        const bars = await candles(coin, start, toMs, opts?.deadline ? ENSURE_DEADLINE_MS : ENSURE_MS);
         const value = (b: Ohlcv) =>
           key === "price" ? b.c : key === "open" ? b.o : key === "high" ? b.h : key === "low" ? b.l : key === "volume" ? b.v * b.c : b.c > 0 ? (b.h - b.l) / b.c : NaN;
+        const sweep = key === "sweep" ? dailySweepSeries(bars) : null;
         out = toDaily(
-          bars.map((b) => ({ t: b.t, v: value(b) })),
+          bars.map((b, i) => ({ t: b.t, v: sweep ? sweep[i]! : value(b) })),
           "last",
         );
       } else if (key === "funding" || key === "premium") {
