@@ -70,6 +70,18 @@ const EventStudyArgs = z
   })
   .strict();
 const RemoveArgs = z.object({ id: z.string().min(1).max(128) }).strict();
+const TICKER = z.string().regex(ASSET_PATTERN, "expected a ticker of 1–20 letters or digits, e.g. BTC");
+const StanceArgs = z.object({ asset: TICKER, rules: z.array(RuleSchema).min(1).max(40).optional(), slippageBps: SLIPPAGE, price: z.string().min(3).optional() }).strict();
+const ProjectArgs = z
+  .object({
+    asset: TICKER,
+    horizonDays: z.number().int().min(2).max(365).default(30),
+    paths: z.number().int().min(100).max(2000).default(1000),
+    blockDays: z.number().int().min(1).max(60).default(10),
+    seed: z.number().int().default(42),
+    price: z.string().min(3).optional(),
+  })
+  .strict();
 const PulseArgs = z.object({ asset: z.string().min(1).max(20).optional() }).strict();
 
 // ---------------------------------------------------------------- arguments (JSON Schema)
@@ -384,6 +396,48 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       async run(args, ctx) {
         parseInput(Empty, args);
         return service.catalogueHealth(ctx);
+      },
+    },
+    {
+      name: "lab_stance",
+      title: "Long or short now",
+      description:
+        "Does it pay to be long or short on the asset now? Reads the rules given (or the catalogue's rules for the asset), scores each walk-forward with its thresholds fixed, and counts only rules that fire on the latest bar, have fitness > 0 and at least 30 in-market days in today's trend regime (up | range | down). Returns Stance: side (long | short | flat), per side the days-weighted net mean daily return in bps those rules earned in this regime, each firing rule with its numbers, and reasons. flat means no firing rule with a positive edge here, not a bearish read. Fetches data: seconds. " +
+        HONESTY,
+      inputSchema: obj(
+        {
+          asset: { type: "string", pattern: ASSET_PATTERN.source, description: "Asset symbol, e.g. BTC." },
+          rules: { type: "array", minItems: 1, maxItems: 40, items: ruleSchema, description: "Rules to read instead of the catalogue, all for this asset." },
+          slippageBps: slippageSchema,
+          price: { type: "string", description: "Price metric for the trend regime. Default ht:price (falls back to cm:PriceUSD)." },
+        },
+        ["asset"],
+      ),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      async run(args, ctx) {
+        return service.stance(parseInput(StanceArgs, args), ctx);
+      },
+    },
+    {
+      name: "lab_project",
+      title: "Project price timelines",
+      description:
+        "Hypothetical future price paths for the asset and how likely each kind is: a block bootstrap of its own daily returns, started on past days in today's trend regime, each next block starting in the regime the last one ended in. Returns Projection: fan (p10/p25/p50/p75/p90 per day, as multiples of today's price), five timelines (sharp drop … sharp rally, bands at ±1/3 and ±1 sigma of the horizon move) each with likelihood and its median path, pUp, medianReturn, medianMaxDrawdown, analogDays and conditioned (false = too few past days in this regime, drawn from all history). It replays history: it cannot show a move the asset never made. Seeded: same inputs, same paths. " +
+        HONESTY,
+      inputSchema: obj(
+        {
+          asset: { type: "string", pattern: ASSET_PATTERN.source, description: "Asset symbol, e.g. BTC." },
+          horizonDays: { type: "integer", minimum: 2, maximum: 365, description: "Days ahead. Default 30." },
+          paths: { type: "integer", minimum: 100, maximum: 2000, description: "Simulated paths. Default 1000." },
+          blockDays: { type: "integer", minimum: 1, maximum: 60, description: "Consecutive days replayed per block. Default 10." },
+          seed: { type: "integer", description: "PRNG seed. Default 42." },
+          price: { type: "string", description: "Price metric. Default ht:price (falls back to cm:PriceUSD)." },
+        },
+        ["asset"],
+      ),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      async run(args, ctx) {
+        return service.project(parseInput(ProjectArgs, args), ctx);
       },
     },
     {

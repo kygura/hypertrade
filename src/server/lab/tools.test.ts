@@ -60,7 +60,7 @@ async function fieldOf(name: string, args: unknown): Promise<string | undefined>
 }
 
 describe("lab tools: definitions", () => {
-  test("the fourteen contract tools, in order", () => {
+  test("the sixteen contract tools, in order", () => {
     expect(tools.map((t) => t.name)).toEqual([
       "lab_list_providers",
       "lab_list_metrics",
@@ -75,6 +75,8 @@ describe("lab tools: definitions", () => {
       "lab_event_study",
       "lab_catalogue_remove",
       "lab_catalogue_health",
+      "lab_stance",
+      "lab_project",
       "lab_market_pulse",
     ]);
   });
@@ -95,6 +97,8 @@ describe("lab tools: definitions", () => {
       lab_catalogue_remove: ["id"],
       lab_event_study: ["rule", "stopAtr", "targetAtr"],
       lab_list_runs: [],
+      lab_stance: ["asset"],
+      lab_project: ["asset"],
       lab_market_pulse: [],
     });
     expect(Object.keys(tool("lab_search").inputSchema.properties).sort()).toEqual(
@@ -109,7 +113,7 @@ describe("lab tools: definitions", () => {
   test("annotations: read-only vs writing tools", () => {
     const readOnly = tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name);
     expect(readOnly.sort()).toEqual(
-      ["lab_list_providers", "lab_list_metrics", "lab_get_run", "lab_list_runs", "lab_evaluate_rule", "lab_sensitivity", "lab_catalogue_list", "lab_catalogue_health", "lab_market_pulse"].sort(),
+      ["lab_list_providers", "lab_list_metrics", "lab_get_run", "lab_list_runs", "lab_evaluate_rule", "lab_sensitivity", "lab_catalogue_list", "lab_catalogue_health", "lab_stance", "lab_project", "lab_market_pulse"].sort(),
     );
     expect(tool("lab_search").annotations).toMatchObject({ readOnlyHint: false, openWorldHint: true });
     expect(tool("lab_catalogue_save").annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
@@ -186,7 +190,7 @@ describe("lab tools: end to end", () => {
     expect(await bad.json()).toMatchObject({ ok: false, field: "windows.0" });
 
     const listed = (await (await app.request("/lab/tools")).json()) as { tools: Array<{ name: string }> };
-    expect(listed.tools.length).toBe(14);
+    expect(listed.tools.length).toBe(16);
   }, 20_000);
 
   test("autoresearch prompt and instructions", async () => {

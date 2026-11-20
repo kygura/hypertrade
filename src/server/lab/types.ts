@@ -246,6 +246,87 @@ export interface RuleEvaluation {
   equity?: Array<{ t: number; strategy: number; benchmark: number }>;
   /** Save-bar verdict; absent on evaluations stored before it existed (the service recomputes it on read). */
   verdict?: { level: VerdictLevel; reasons: string[] };
+  /** Fitness of the walk-forward returns (docs/AUTORESEARCH.md); absent without walk-forward and on older evaluations. */
+  fitness?: Fitness;
+}
+
+// ------------------------------------------------------------------ fitness, stance, projection (docs/AUTORESEARCH.md)
+
+/** A rule's net returns on the days it was in the market while the trend regime was `trend`. */
+export interface RegimeStat {
+  trend: Trend;
+  days: number;
+  meanDaily: number; // fraction
+  /** Annualised over those days only. */
+  sharpe: number;
+  hitRate: number;
+}
+
+export interface Fitness {
+  /** sharpe − penalties; 0 when untested. */
+  score: number;
+  sharpe: number;
+  maxDrawdown: number; // fraction, ≤ 0
+  /** Annualised volatility of the rule's own daily returns. */
+  vol: number;
+  penalties: { drawdown: number; vol: number; regime: number };
+  days: number;
+  regimes: RegimeStat[];
+  untested?: boolean;
+}
+
+export interface SideEdge {
+  /** Rules read for this side, firing or not. */
+  total: number;
+  firing: number;
+  /** Firing rules with positive fitness and enough days in today's regime. */
+  counted: number;
+  /** In-market days of the counted rules in today's regime (walk-forward). */
+  days: number;
+  /** Days-weighted net mean daily return of the counted rules in today's regime; null with none. */
+  meanDailyBps: number | null;
+  rules: Array<{ id: string; text: string; fitness: number | null; regimeDays: number; regimeMeanDailyBps: number | null; counted: boolean }>;
+}
+
+export interface Stance {
+  asset: string;
+  asOf: string; // YYYY-MM-DD of the latest bar
+  trend: Trend | null;
+  side: "long" | "short" | "flat";
+  long: SideEdge;
+  short: SideEdge;
+  reasons: string[];
+}
+
+export interface ProjectionTimeline {
+  label: "sharp drop" | "drift lower" | "sideways" | "drift higher" | "sharp rally";
+  /** Band edges as horizon returns (±1/3 and ±1 sigma of the horizon move); null = open. */
+  fromReturn: number | null;
+  toReturn: number | null;
+  /** Share of paths ending in the band. */
+  likelihood: number;
+  medianReturn: number | null;
+  /** The band's median path, as multiples of today's price, day 0..horizon; [] when no path ended here. */
+  path: number[];
+}
+
+export interface Projection {
+  horizonDays: number;
+  paths: number;
+  blockDays: number;
+  /** The state today is in (the trend regime), or null when unknown. */
+  state: string | null;
+  /** Past days in that state a path can start from. */
+  analogDays: number;
+  /** False when analogDays was too few and blocks were drawn from the whole history. */
+  conditioned: boolean;
+  historyDays: number;
+  /** Quantiles per day as multiples of today's price. */
+  fan: Array<{ day: number; p10: number; p25: number; p50: number; p75: number; p90: number }>;
+  timelines: ProjectionTimeline[];
+  pUp: number;
+  medianReturn: number;
+  medianMaxDrawdown: number;
 }
 
 // ------------------------------------------------------------------ search

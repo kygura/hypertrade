@@ -11,6 +11,7 @@
     "propr:check": "bun run scripts/propr-check.ts",
     "lab": "bun run scripts/lab-cli.ts",
     "lab:mcp": "bun run scripts/lab-mcp.ts",
+    "autoresearch": "bun run scripts/autoresearch.ts",
     "tui": "bun run --cwd tui start",
     "routine": "bun run scripts/routine.ts",
     "moves": "bun run scripts/moves.ts",

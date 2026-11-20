@@ -267,6 +267,8 @@ tool is defined once with one JSON schema and one handler.
 | `lab_catalogue_list` / `lab_catalogue_save` / `lab_catalogue_remove` | My Catalogue |
 | `lab_catalogue_health` | decay, overlap, gaps |
 | `lab_market_pulse` | which catalogued rules fire now, per-asset lean |
+| `lab_stance` | long, short or flat on an asset now, from firing rules in today's regime (docs/AUTORESEARCH.md) |
+| `lab_project` | hypothetical price timelines from today and their likelihood (docs/AUTORESEARCH.md) |
 
 **Tool contract** (args → result; shapes from `src/server/lab/types.ts` and
 `src/server/lab/store.ts`). Every client, including the UI, depends on this.
@@ -285,6 +287,8 @@ tool is defined once with one JSON schema and one handler.
 | `lab_catalogue_remove` | `{ id }` | `{ removed: boolean }` |
 | `lab_catalogue_health` | `{}` | `CatalogueHealth` |
 | `lab_market_pulse` | `{ asset? }` | `MarketPulse` |
+| `lab_stance` | `{ asset, rules?: Rule[] (≤ 40; default: the catalogue's for the asset), slippageBps? = 10, price? }` | `Stance & { warnings }` |
+| `lab_project` | `{ asset, horizonDays? = 30, paths? = 1000, blockDays? = 10, seed? = 42, price? }` | `Projection & { asset, asOf, price }` |
 
 The rule id is `RuleEvaluation.id` (a stable hash of the rule), so the same rule
 has the same id in a run, in the catalogue and in a URL.
