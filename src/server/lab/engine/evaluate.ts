@@ -2,6 +2,8 @@ import { RuleSchema, type LabDataset, type PerfStats, type Rule, type RuleEvalua
 import { concatReturns, equityCurve, perfStats, sharpeOf, simulate } from "./backtest.js";
 import { checkDataset, makeCtx, rangeIndices, type EvalCtx } from "./context.js";
 import { makeLabels } from "./labels.js";
+import { trendSeries } from "./features.js";
+import { fitnessOf } from "./fitness.js";
 import { ruleId, ruleText, zoneConditions } from "./rules.js";
 import { deflatedSharpeOf } from "./stats.js";
 import { verdictOf } from "./verdict.js";
@@ -76,6 +78,7 @@ export function evaluateInCtx(ctx: EvalCtx, rule: Rule, o: EvalInCtxOptions): Ru
   if (o.includeEquity) {
     out.equity = equityCurve(t, simulate(ctx.pr, pos, 1, n, o.slippageBps), simulate(ctx.pr, bench, 1, n, o.slippageBps));
   }
+  if (wf) out.fitness = fitnessOf(wf, trendSeries(ctx.price));
   out.verdict = verdictOf(out);
   return out;
 }

@@ -8,12 +8,16 @@ import {
   livePerf,
   MAX_FEATURES,
   parseFeatureId,
+  priceReturns,
+  project as projectOn,
   ruleFiresAt,
   ruleId,
   ruleText,
   runSearch,
   SearchRefused,
+  stanceOf,
   STUDY_METRICS,
+  trendSeries,
   withVerdict,
   type EventStudyResult,
 } from "./engine/index.js";
@@ -38,11 +42,13 @@ import {
   type MetricCategory,
   type MetricDef,
   type PerfStats,
+  type Projection,
   type PulseAsset,
   type Rule,
   type RuleEvaluation,
   type SearchResult,
   type Sensitivity,
+  type Stance,
 } from "./types.js";
 import { mapLimit, msg } from "./util.js";
 
@@ -126,6 +132,9 @@ export interface EventStudyInput {
   targetAtr: number;
   slippageBps?: number;
 }
+
+/** What loading a rule's data needs of a catalogue entry. */
+type EntryRef = Pick<CatalogueEntry, "id" | "name" | "rule">;
 
 export interface SaveInput {
   rule: Rule;
@@ -241,8 +250,8 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
    * with the union of their metrics. Entries that cannot be served are left
    * out with a warning; nothing throws.
    */
-  async function loadEntries(entries: CatalogueEntry[], warnings: string[], ctx?: CallBudget): Promise<Map<string, LabDataset>> {
-    const groups = new Map<string, { asset: string; price?: string; metrics: Set<string>; entries: Array<{ e: CatalogueEntry; metrics: string[] }> }>();
+  async function loadEntries(entries: EntryRef[], warnings: string[], ctx?: CallBudget): Promise<Map<string, LabDataset>> {
+    const groups = new Map<string, { asset: string; price?: string; metrics: Set<string>; entries: Array<{ e: EntryRef; metrics: string[] }> }>();
     for (const e of entries) {
       let metrics: string[];
       try {
@@ -591,6 +600,62 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
 
     async catalogueHealth(ctx?: CallBudget): Promise<CatalogueHealth> {
       return analyse(await deps.store.listCatalogue(), ctx);
+    },
+
+    /**
+     * Does it pay to be long or short on the asset now (docs/AUTORESEARCH.md "Stance")? Reads the rules given, or the
+     * catalogue's rules for the asset: each is scored walk-forward with fixed thresholds and only firing ones count.
+     */
+    async stance(input: { asset: string; rules?: Rule[]; slippageBps?: number; price?: string }, ctx?: CallBudget): Promise<Stance & { warnings: string[] }> {
+      const same = (a: string) => a.toUpperCase() === input.asset.toUpperCase();
+      const entries: EntryRef[] = input.rules
+        ? input.rules.map((r, i) => {
+            const rule = parseInput(RuleSchema, r, `rules.${i}`);
+            if (!same(rule.asset)) throw new ToolInputError(`rule is for ${rule.asset}, not ${input.asset}`, `rules.${i}.asset`);
+            return { id: ruleId(rule), name: ruleText(rule), rule };
+          })
+        : (await deps.store.listCatalogue()).filter((e) => same(e.rule.asset));
+      const warnings: string[] = [];
+      let base: LabDataset;
+      try {
+        base = (await deps.loadDataset({ asset: input.asset, metrics: [], price: input.price, ...underDeadline(ctx) })).dataset;
+      } catch (err) {
+        throw new UpstreamError(`no price for ${input.asset}: ${msg(err)}`);
+      }
+      if (!base.t.length) throw new UpstreamError(`no price for ${input.asset}`);
+      const data = await loadEntries(entries, warnings, ctx);
+      const evals: RuleEvaluation[] = [];
+      for (const e of entries) {
+        const ds = data.get(e.id);
+        if (!ds) continue;
+        try {
+          evals.push(evaluateRuleOn(e.rule, ds, { slippageBps: input.slippageBps ?? 10 }));
+        } catch (err) {
+          warnings.push(`${e.name} (${e.id}): ${msg(err)}`);
+        }
+      }
+      const trend = trendSeries(base.price).at(-1) ?? null;
+      return { ...stanceOf(input.asset, new Date(base.t.at(-1)!).toISOString().slice(0, 10), trend, evals), warnings };
+    },
+
+    /** Hypothetical price timelines for the asset from today, with their likelihood (docs/AUTORESEARCH.md "Projection"). */
+    async project(
+      input: { asset: string; horizonDays?: number; paths?: number; blockDays?: number; seed?: number; price?: string },
+      ctx?: CallBudget,
+    ): Promise<Projection & { asset: string; asOf: string; price: number }> {
+      let ds: LabDataset;
+      try {
+        ds = (await deps.loadDataset({ asset: input.asset, metrics: [], price: input.price, ...underDeadline(ctx) })).dataset;
+      } catch (err) {
+        throw new UpstreamError(`no price for ${input.asset}: ${msg(err)}`);
+      }
+      if (!ds.t.length) throw new UpstreamError(`no price for ${input.asset}`);
+      try {
+        const p = projectOn(priceReturns(ds.price), trendSeries(ds.price), { horizonDays: input.horizonDays ?? 30, paths: input.paths, blockDays: input.blockDays, seed: input.seed });
+        return { asset: input.asset, asOf: new Date(ds.t.at(-1)!).toISOString().slice(0, 10), price: ds.price.at(-1)!, ...p };
+      } catch (err) {
+        throw new ToolInputError(msg(err), "asset");
+      }
     },
 
     async marketPulse(input: { asset?: string } = {}, ctx?: CallBudget): Promise<MarketPulse> {

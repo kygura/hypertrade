@@ -185,7 +185,8 @@ describe("backward compatibility (PS-B4): old-shape rules evaluate byte-identica
     const out = rules.map((r) => ({
       id: ruleId(r),
       text: ruleText(r),
-      evaluation: evaluateRule(r, d, { slippageBps: 10, windows: [7, 30, 90] }),
+      // fitness came after the golden was stored: an added field, compared in fitness.test.ts.
+      evaluation: { ...evaluateRule(r, d, { slippageBps: 10, windows: [7, 30, 90] }), fitness: undefined },
       fires: ruleFiresAt(r, d),
       live: livePerf(r, d, { slippageBps: 10, from: "2019-06-01" }),
       funnel: funnel(r, d),

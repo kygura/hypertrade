@@ -786,7 +786,7 @@ flagged non-stationary, so searches skip their raw values.
 | `LAB_ASSETS` | assets the cron collector stores `cm` history for, default `BTC,ETH` |
 | `LAB_ALLOWED_ORIGINS` | extra browser origins allowed on `/api/mcp` (besides `APP_URL` and localhost) |
 
-The same 14 tools (`lab_search`, `lab_evaluate_rule`, `lab_catalogue_*`,
+The same 16 tools (`lab_search`, `lab_evaluate_rule`, `lab_catalogue_*`,
 `lab_market_pulse`, …) are served over every surface, plus an `autoresearch`
 MCP prompt that runs the research loop.
 

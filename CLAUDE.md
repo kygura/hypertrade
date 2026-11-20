@@ -81,6 +81,7 @@ under `docs/`.
 | `docs/design/terminal.md`, `docs/design/chat.md` | Binding briefs for the Intel Terminal/Cockpit and the Paths chat; extend the main design doc. |
 | `docs/FEATURES.md` | Signal-evidence ideas (phase 9) and what is in scope. |
 | `docs/LAB.md` | Lab research engine contract: rules, validation, tools, MCP. |
+| `docs/AUTORESEARCH.md` | Lab extension: the fitness function, the agent research loop (`bun run autoresearch`), `lab_stance` and `lab_project`. |
 | `docs/EXTREMES.md` | Extremes alerts: detectors, the 15-min job, the research wake and verdict, calibration. |
 | `docs/EXTREMES-ROUTINE.md` | The alert routine's stored prompt: relays every alert to the phone and researches extremes, fired by API (source of truth; the routine holds a copy). |
 | `docs/PROPR.md` | Propr desk venue: dry run by default, ladders, firm rules, housekeeping, env. |
