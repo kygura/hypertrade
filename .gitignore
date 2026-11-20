@@ -5,3 +5,6 @@ dist
 .vercel
 *.local
 *.tsbuildinfo
+
+# eval lab runs and reports (bun run eval)
+.eval/
