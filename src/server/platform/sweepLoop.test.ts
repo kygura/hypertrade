@@ -109,6 +109,26 @@ describe("sweep loop", () => {
     expect(path).toBe("/coin/SOL");
   });
 
+  test("the push carries the book's walls near the swept level, read at the aggregation that spans 2 ATR", async () => {
+    const asked: unknown[] = [];
+    const lv = (px: string, sz: string) => ({ px, sz, n: 1 });
+    const l = createSweepLoop({
+      store: { listPositions: async () => [], liqmapHistory: async () => snapshots, stopmapHistory: async () => stops, scanSnapshotsSince: async () => samples.map((s) => ({ coin: "SOL", ...s })) },
+      notify: async (_t, body) => void asked.push(body),
+      info: (async (b: { type: string }) => {
+        if (b.type !== "l2Book") return raw;
+        asked.push(b);
+        return { levels: [[lv("99.9", "10"), lv("99", "10"), lv("98.1", "90"), lv("97", "10")], [lv("100.1", "10"), lv("101", "10"), lv("102", "10")]] };
+      }) as never,
+      candles: async (_coin, interval) => (interval === "4h" ? c4h : c1d),
+      now: () => NOW,
+      coins: 1,
+    });
+    await l.tick();
+    expect(asked[0]).toMatchObject({ type: "l2Book", coin: "SOL", nSigFigs: 2 }); // 4h ATR ≈ 1.1 at ~98: steps of 1 span ±2 ATR
+    expect(asked[1]).toContain("Book now (a snapshot; walls can be pulled): bid $8.83K at 98.100");
+  });
+
   test("a close first seen after the evaluation window is skipped, not evaluated late", async () => {
     const { l, pushes } = loop(() => CLOSE + 20 * 60_000);
     expect(await l.tick()).toEqual([]);

@@ -83,7 +83,7 @@ describe("tripwires", () => {
 
   describe("liquidity_sweep", () => {
     const pdl: SweepRead = {
-      level: { px: 97, side: "low", source: "pdl", touches: 1, key: "1d.pdl" }, tf: "4h", side: "low", t: 0, wick: 96, depthAtr: 0.25, reclaimed: true, wickShare: 0.4,
+      level: { px: 97, side: "low", source: "pdl", touches: 1, key: "1d.pdl" }, tf: "4h", side: "low", t: 0, wick: 96, depthAtr: 0.25, atr: 4, reclaimed: true, wickShare: 0.4,
     };
     const cleared = { clearedUsd: 6_000_000, shareOfSide: 0.3, coverageRatio: 0.2, stopsUsd: null };
     const swept = (sweep: SweepRead, c: typeof cleared | null, oiChg24hPct = -2) =>

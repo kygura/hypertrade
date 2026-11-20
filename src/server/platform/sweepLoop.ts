@@ -5,6 +5,8 @@ import type { Candle } from "../../shared/types.js";
 import { liquiditySweep } from "../routine/board.js";
 import type { ClearedLiquidity, LiqLevel, SweepRead } from "../routine/liquidity.js";
 import { sweepClearedLimit } from "../routine/tripwires.js";
+import { bookWalls, sigFigsFor, type BookWall } from "./bookDepth.js";
+import { bookFromL2 } from "./costs.js";
 import { coverage } from "./liqmap.js";
 import type { LoopDef } from "./runtime.js";
 import { envNum, type Info } from "./scanner.js";
@@ -13,7 +15,8 @@ import type { PlatformStore } from "./store.js";
 // Liquidity sweep alert (docs/fallback-routine.md § Tripwires, liquidity_sweep): at each 4h close (+60 s) the top
 // PLATFORM_LIQMAP_COINS by OI notional are read through the board's own composition (routine/board.ts
 // liquiditySweep: candles → liquidityLevels → sweepOf → clearedLiquidity against liqmap_snapshots and stopmap_snapshots). A reclaimed sweep
-// whose cleared notional reaches the tripwire's limit is pushed at info level, facts only. Deduped on
+// whose cleared notional reaches the tripwire's limit is pushed at info level, facts only, with any book wall near
+// the level as context (bookDepth.ts). Deduped on
 // coin|level|bar, one per coin per 4h. In-memory state: a restart inside the evaluation window can repeat one push.
 
 const H4 = 4 * 3_600_000;
@@ -31,6 +34,8 @@ export interface SweepEval {
   oiUsd: number;
   /** OI in contracts over the swept bar, %, from scan snapshots; null when they do not cover it. */
   oiChgPct: number | null;
+  /** Book walls near the swept level at evaluation time (bookDepth.ts): context, not a condition. Absent = not read. */
+  walls?: BookWall[];
 }
 
 const LABEL: Record<LiqLevel["source"], (side: LiqLevel["side"]) => string> = {
@@ -57,6 +62,9 @@ export function sweepAlert(e: SweepEval): { key: string; title: string; body: st
     `Cleared ${usd(cleared.clearedUsd)} of tracked ${side} liquidations, ${pct(cleared.shareOfSide)} of tracked ${side}s within ±20%; coverage ${cleared.coverageRatio == null ? "n/a" : pct(cleared.coverageRatio)} of OI.`,
     `Resting ${side} stops in that zone before the bar: ${cleared.stopsUsd == null ? "n/a" : usd(cleared.stopsUsd)} (same tracked wallets).`,
     `OI over the bar ${e.oiChgPct == null ? "n/a" : `${e.oiChgPct > 0 ? "+" : ""}${e.oiChgPct.toFixed(1)}%`}.`,
+    ...(e.walls?.length
+      ? [`Book now (a snapshot; walls can be pulled): ${e.walls.slice(0, 2).map((w) => `${w.side} ${usd(w.usd)} at ${fmtPx(w.px)} (${w.multiple}× the median level, ${w.distAtr} ATR from the level)`).join("; ")}.`]
+      : []),
   ];
   return { key: `${e.coin}|${sweep.level.key}|${sweep.t}`, title: `Sweep: ${e.coin} ${sweep.tf} ${levelLabel(sweep.level)} ${fmtPx(sweep.level.px)}`, body: lines.join("\n") };
 }
@@ -145,8 +153,12 @@ export function createSweepLoop(deps: {
         const coverageRatio = coverage(tracked, oiUsd, new Set(positions.map((p) => p.address)).size, []).ratio;
         for (const e of evaluateCoin({ coin, c4h, c1d, now: t, liqmap: { snapshots, coverageRatio, stops }, oiUsd, samples })) {
           out.push(e);
-          const a = sweepAlert(e);
-          if (!a || sent.has(a.key) || (lastPush.get(coin) ?? -Infinity) > t - H4) continue;
+          const due = sweepAlert(e);
+          if (!due || sent.has(due.key) || (lastPush.get(coin) ?? -Infinity) > t - H4) continue;
+          // Only for a push: the book at the level, aggregated so its 20 levels a side span about ±2 ATR (weight 2).
+          const book = await info<unknown>({ type: "l2Book", coin, nSigFigs: sigFigsFor(e.sweep.level.px, e.sweep.atr) }).then(bookFromL2, () => null);
+          if (book) e.walls = bookWalls(book, [e.sweep.level], e.sweep.atr);
+          const a = sweepAlert(e)!;
           sent.add(a.key);
           lastPush.set(coin, t);
           await deps.notify(a.title, a.body, `/coin/${encodeURIComponent(coin)}`);

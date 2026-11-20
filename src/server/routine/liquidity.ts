@@ -29,6 +29,8 @@ export interface SweepRead {
   wick: number;
   /** Wick beyond the level, in that timeframe's ATR. */
   depthAtr: number;
+  /** That ATR (14 completed bars of the timeframe, the swept bar included). */
+  atr: number;
   /** Closed back inside the level. A bar that traded through and closed beyond is a breakout: reclaimed false. */
   reclaimed: boolean;
   /** Beyond-level wick over the bar's range. */
@@ -179,7 +181,7 @@ export function sweepOf(bar: Candle, levels: LiqLevel[], atr: number | null, tf:
     const pool = hit.some(inside) ? hit.filter(inside) : hit;
     const level = pool.reduce((a, b) => (hi ? (b.px > a.px ? b : a) : b.px < a.px ? b : a));
     const beyond = Math.abs(wick - level.px);
-    reads.push({ level, tf, side, t: bar.t, wick, depthAtr: r2(beyond / atr), reclaimed: inside(level), wickShare: range > 0 ? r2(beyond / range) : 0 });
+    reads.push({ level, tf, side, t: bar.t, wick, depthAtr: r2(beyond / atr), atr: Number(atr.toPrecision(6)), reclaimed: inside(level), wickShare: range > 0 ? r2(beyond / range) : 0 });
   }
   if (!reads.length) return null;
   return reads.sort((a, b) => Number(b.reclaimed) - Number(a.reclaimed) || b.wickShare - a.wickShare)[0]!;
