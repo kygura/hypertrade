@@ -190,9 +190,18 @@ export const ExtremeGradeSchema = z.strictObject({
   /** verdictMark when stamped, else the event mark. */
   entryPx: z.number().positive(),
   entryBasis: z.enum(["verdict", "event"]),
-  /** Signed return in `direction` from entryPx; null before the horizon or with no stored mark near it. `stopped` caps a take at killPx once crossed (equal to raw otherwise). */
+  /**
+   * Signed return in `direction` from entryPx; null before the horizon or with no stored mark near it. `raw` holds to
+   * the horizon. `stopped` is the trade as placed: the return at `exit` once it happened by the horizon, raw otherwise.
+   */
   horizons: z.array(z.strictObject({ horizon: z.enum(EXTREME_GRADE_HORIZONS), raw: Ret, stopped: Ret })),
   /** Takes only: the mark crossed killPx between the verdict and now (or the last horizon); null for watch/pass. */
   killHit: z.boolean().nullable(),
+  /** Takes only: where stopPx and targetPx come from. `opportunity` = the take's opportunity (the priced stop and target, or stop = killPx and no target when unpriced); `kill` = no opportunity to read, stop = killPx. */
+  levels: z.enum(["opportunity", "kill"]).nullable(),
+  stopPx: z.number().positive().nullable(),
+  targetPx: z.number().positive().nullable(),
+  /** The first stored mark at or beyond the stop or the target (stop first), up to 72 h; null when neither was seen. Stored marks only: a wick between two snapshots is not seen. */
+  exit: z.strictObject({ kind: z.enum(["stop", "target"]), px: z.number().positive(), at: z.string() }).nullable(),
 });
 export type ExtremeGrade = z.infer<typeof ExtremeGradeSchema>;

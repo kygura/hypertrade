@@ -38,9 +38,19 @@ describe("gradeEvent", () => {
     expect(gradeEvent(ev({}), streams, 30 * MIN)).toBeNull(); // no point exactly there
   });
 
-  test("returnStats", () => {
-    expect(returnStats([])).toEqual({ n: 0, hitRate: null, median: null, mean: null });
-    expect(returnStats([0.02, -0.01, 0.05])).toEqual({ n: 3, hitRate: 2 / 3, median: 0.02, mean: 0.02 });
+  test("returnStats: n, clusters and an interval that is null under 5 clusters; one day's events are one cluster", () => {
+    const DAY = 24 * HOUR;
+    expect(returnStats([], HOUR)).toEqual({ n: 0, clusters: 0, hitRate: null, median: null, mean: null, ci95: null });
+    const three = returnStats([0.02, -0.01, 0.05].map((x, i) => ({ x, atMs: i * DAY })), HOUR);
+    expect(three).toMatchObject({ n: 3, clusters: 3, hitRate: 2 / 3, median: 0.02, ci95: null });
+    expect(three.mean).toBeCloseTo(0.02, 12);
+    // 20 events of one day (a market-wide move): n 20 but one cluster, so no interval.
+    expect(returnStats(Array.from({ length: 20 }, (_, i) => ({ x: 0.01, atMs: i * 60_000 })), HOUR)).toMatchObject({ n: 20, clusters: 1, ci95: null });
+    const five = returnStats([0.01, 0.02, 0.03, 0.04, 0.05].map((x, i) => ({ x, atMs: i * DAY })), HOUR);
+    expect(five.clusters).toBe(5);
+    expect(five.ci95![1]).toBeCloseTo(0.03 + 0.01963, 4); // the ledger's t-interval (stats.test.ts)
+    // A 72 h horizon buckets 3 days together.
+    expect(returnStats([0.01, 0.02, 0.03].map((x, i) => ({ x, atMs: i * DAY })), 72 * HOUR).clusters).toBe(1);
   });
 });
 
