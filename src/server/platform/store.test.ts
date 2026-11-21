@@ -242,6 +242,11 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(await s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { ...outcome(o2).payload, horizon: "72h", trade } })).toMatchObject({ payload: { trade } });
   await expect(s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { ...outcome(o2).payload, horizon: "4h", trade: { ...trade, exit: "liquidated" as never } } })).rejects.toThrow();
   expect((await s.outcomeRows({})).map((r) => [r.opportunityId, r.horizon, r.trade])).toEqual([[o1, "1h", undefined], [o2, "72h", trade]]);
+  // A horizon given up on is an outcome entry too: one per horizon like any other, read back with its reason and no return.
+  expect(await s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { horizon: "24h", ungraded: "no_candles" } })).toMatchObject({ kind: "outcome", payload: { horizon: "24h", ungraded: "no_candles" } });
+  expect(await s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { ...outcome(o2).payload, horizon: "24h" } })).toBeNull();
+  await expect(s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { horizon: "12h", ungraded: "bored" as never } })).rejects.toThrow();
+  expect((await s.outcomeRows({ tier: 2 })).map((r) => [r.horizon, r.ungraded, r.netReturn])).toEqual([["72h", undefined, 0.0091], ["24h", "no_candles", NaN]]);
 
   // retention: BTC t0 + ETH t0 liqmaps, BTC t0 scan; changes are all at t2+. The ledger is untouched.
   expect(await s.pruneHistory(t(1))).toBe(3);

@@ -37,20 +37,24 @@ export const clusterBucket = (atMs: number, horizonMs: number) => Math.floor(atM
  * By regime, only rows scored under the current SCORE_VERSION count: the regime label changed meaning between versions (score.ts).
  * Outcomes of one signal-time bucket floor(createdAtMs / max(1 day, horizon)) are one cluster (clusterStats).
  * The fixed-horizon numbers (n, hitRate, meanNet, ci95) are hold-to-horizon, whatever the stop and target. `trade` is the
- * separate stat of the stop/target trades among the group's rows (they sit on the longest horizon), in R. */
+ * separate stat of the stop/target trades among the group's rows (they sit on the longest horizon), in R.
+ * `ungraded` counts the group's rows that were given up on, never priced (OutcomeRow.ungraded): they are in no number,
+ * and a group with only those has n 0 and null numbers. */
 export function groupStats(rows: OutcomeRow[], by: { regime?: boolean; tier?: boolean } = {}): LedgerStats[] {
   const groups = new Map<string, { key: Pick<LedgerStats, "setupKind" | "horizon" | "regime" | "tier">; rows: OutcomeRow[] }>();
   for (const r of rows) {
-    if (!Number.isFinite(r.netReturn) || r.hasCosts === false || (by.regime && r.scoreVersion !== SCORE_VERSION)) continue;
+    if ((!r.ungraded && !Number.isFinite(r.netReturn)) || r.hasCosts === false || (by.regime && r.scoreVersion !== SCORE_VERSION)) continue;
     const key = { setupKind: r.setupKind, horizon: r.horizon, regime: by.regime ? r.regime : null, tier: by.tier ? r.liquidityTier : null };
     const k = JSON.stringify(key);
     const g = groups.get(k) ?? { key, rows: [] };
     g.rows.push(r);
     groups.set(k, g);
   }
-  return [...groups.values()].map(({ key, rows: rs }) => {
+  return [...groups.values()].map(({ key, rows: all }) => {
     const bucket = (r: OutcomeRow) => clusterBucket(r.createdAtMs, horizonMs(r.horizon));
-    const s = clusterStats(rs.map((r) => ({ x: r.netReturn, bucket: bucket(r) })))!;
+    const rs = all.filter((r) => !r.ungraded);
+    const s = clusterStats(rs.map((r) => ({ x: r.netReturn, bucket: bucket(r) })));
+    const ungraded = all.length - rs.length;
     const traded = rs.filter((r) => r.trade && Number.isFinite(r.trade.r) && Number.isFinite(r.trade.netReturn));
     const tr = clusterStats(traded.map((r) => ({ x: r.trade!.r, bucket: bucket(r) })));
     const count = (exit: string) => traded.filter((r) => r.trade!.exit === exit).length;
@@ -59,7 +63,7 @@ export function groupStats(rows: OutcomeRow[], by: { regime?: boolean; tier?: bo
       meanNet: clusterStats(traded.map((r) => ({ x: r.trade!.netReturn, bucket: bucket(r) })))!.mean,
       stops: count("stop"), targets: count("target"), timeouts: count("horizon"), ambiguous: traded.filter((r) => r.trade!.ambiguous).length,
     };
-    return { ...key, n: s.n, clusters: s.clusters, hitRate: s.hitRate, meanNet: s.mean, ci95: s.ci95, trade };
+    return { ...key, n: s?.n ?? 0, clusters: s?.clusters ?? 0, hitRate: s?.hitRate ?? null, meanNet: s?.mean ?? null, ci95: s?.ci95 ?? null, ungraded, trade };
   });
 }
 
@@ -87,12 +91,13 @@ const signedR = (x: number, d: number) => `${x < 0 ? "\u2212" : "+"}${Math.abs(x
 /**
  * Facts-only evidence line (FEATURES 5), naming what it quotes:
  * `ledger 24h hold (no stop/target): n 37 \u00b7 11 clusters \u00b7 +0.42% (\u22120.3\u2026+1.1) \u00b7 edge unvalidated`.
- * Null stats = empty ledger; the interval is omitted below 5 clusters. With `trade` (setupTradeStats) a second line
+ * Null stats = empty ledger; the interval is omitted below 5 clusters; `· 3 ungraded` follows when horizons were given up on. With `trade` (setupTradeStats) a second line
  * quotes the trade as ticketed: `ledger stop/target (72h max): n 12 \u00b7 6 clusters \u00b7 +0.31R (\u22120.2\u2026+0.8) \u00b7 7 stop / 3 target / 2 time`.
  */
 export function evidenceLine(s: LedgerStats | null, basis: string, horizon = "24h", trade: ReturnType<typeof setupTradeStats> = null): string {
   const parts = [`n ${s?.n ?? 0}`, `${s?.clusters ?? 0} clusters`];
   if (s?.meanNet != null) parts.push(`${pct(s.meanNet, 2)}%${s.ci95 ? ` (${pct(s.ci95[0], 1)}\u2026${pct(s.ci95[1], 1)})` : ""}`);
+  if (s?.ungraded) parts.push(`${s.ungraded} ungraded`);
   const hold = `ledger ${horizon} hold (no stop/target): ${parts.join(" \u00b7 ")} \u00b7 edge ${basis}`;
   if (!trade) return hold;
   const t = trade.trade;

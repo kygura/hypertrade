@@ -70,6 +70,15 @@ describe("groupStats", () => {
     expect(groupStats(rows).map((s) => s.n)).toEqual([3]);
     expect(groupStats(rows, { tier: true }).map((s) => s.n)).toEqual([3]);
   });
+  test("ungraded rows are counted beside the numbers, never in them; a group of only those has n 0 and null numbers", () => {
+    const lost = (o: Partial<OutcomeRow> = {}) => row(NaN, { ungraded: "no_candles", ...o });
+    const [s, only] = groupStats([row(0.01), row(0.03), lost(), lost({ hasCosts: false }), lost({ horizon: "4h" })]);
+    expect(s).toMatchObject({ n: 2, ungraded: 1, hitRate: 1 });
+    expect(s!.meanNet).toBeCloseTo(0.02, 12);
+    expect(only).toMatchObject({ horizon: "4h", n: 0, clusters: 0, ungraded: 1, hitRate: null, meanNet: null, ci95: null, trade: null });
+    expect(evidenceLine(s!, "unvalidated", "1h")).toBe("ledger 1h hold (no stop/target): n 2 \u00b7 2 clusters \u00b7 +2.00% \u00b7 1 ungraded \u00b7 edge unvalidated");
+    expect(evidenceLine(only!, "unvalidated", "4h")).toBe("ledger 4h hold (no stop/target): n 0 \u00b7 0 clusters \u00b7 1 ungraded \u00b7 edge unvalidated");
+  });
   test("non-finite returns are skipped; empty input is empty", () => {
     expect(groupStats([row(NaN)])).toEqual([]);
     expect(groupStats([])).toEqual([]);

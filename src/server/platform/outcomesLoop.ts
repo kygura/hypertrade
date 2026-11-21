@@ -1,6 +1,6 @@
 import { fetchCandles, HL_MAX_CANDLES } from "../../shared/hl-client.js";
 import type { Candle } from "../../shared/types.js";
-import type { Opportunity, TradeOutcome } from "../../shared/platform.js";
+import type { Opportunity, TradeOutcome, UngradedReason } from "../../shared/platform.js";
 import { DEFAULT_TAKER_FEE_BPS } from "./costs.js";
 import { dueHorizons, horizonMs, netReturn, parseHorizons, tradeExit } from "./outcomes.js";
 import type { LoopDef } from "./runtime.js";
@@ -9,6 +9,8 @@ import type { PlatformStore } from "./store.js";
 
 // Outcomes loop (SPEC P0.4 outcomes, P0.13): marks every idea to market at each horizon that has
 // come due, including rejected and expired ones. Append-only: one `outcome` entry per (idea, horizon).
+// A horizon that can never be priced (past HL's 1-min candle range, three empty candle answers, no entry price) is
+// written as an `ungraded` outcome with its reason, so the stats show how many ideas their numbers do not cover.
 // The fixed-horizon return is hold-to-horizon, whatever the stop and target. The longest horizon's entry also carries
 // `trade`: the trade as ticketed (stop, target), resolved on the 1-min candles from the entry to that horizon
 // (outcomes.ts tradeExit). No trade when the idea has no stop or target, the levels do not bracket the entry, or the
@@ -24,15 +26,21 @@ const PATH_EDGE_MS = 15 * 60_000;
 
 /** Candle fetches per tick (late horizons and trade paths): a long outage must not burst a backlog through the weight guard. */
 const MAX_LATE_PER_TICK = 10;
-/** Empty candle answers for one horizon before it is given up on (counted in skipped()). */
+/** Empty candle answers for one horizon before it is given up on (an `ungraded` entry, counted in skipped()). */
 const MAX_EMPTY = 3;
 class NoCandles extends Error {}
 
 /** PLATFORM_OUTCOME_HORIZONS default. */
 export const DEFAULT_OUTCOME_HORIZONS = "1h,4h,24h,72h";
 
+/** Ideas past every horizon's candle range that get their missing horizons written as ungraded per tick (the first tick after a long outage). */
+const MAX_SETTLE_PER_TICK = 200;
+
 let skippedN = 0;
-/** Horizons too old for HL's candle history, never marked. Counted once per process; health shows it as outcomesSkipped. */
+/**
+ * Horizons given up on by this process: each is written to the ledger as an `ungraded` outcome (the reason in its
+ * payload), so the ledger stats count it. Health shows this counter as outcomesSkipped.
+ */
 export const skipped = () => skippedN;
 
 export interface OutcomesDeps {
@@ -58,15 +66,35 @@ export function createOutcomesLoop(deps: OutcomesDeps) {
   /** Horizons already marked, per opportunity; loaded from the ledger the first time one comes due. */
   const marked = new Map<string, Set<string>>();
   const empties = new Map<string, number>();
+  /** Ideas past the candle range whose horizons are all in the ledger (priced or ungraded): nothing left to do. */
+  const settled = new Set<string>();
+  /** Horizons in the ledger per idea, read once (one outcomeRows read) the first time an unsettled old idea is seen. */
+  let ledgerMarks: Map<string, Set<string>> | null = null;
+
+  /** Gives a horizon up for good: an explicit ledger entry, never a silent drop. */
+  async function ungraded(o: Opportunity, horizon: string, reason: UngradedReason) {
+    if (await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: { horizon, ungraded: reason } })) skippedN++;
+  }
 
   async function tick() {
     const t = now();
     const cutoff = t - maxMs - CANDLE_RANGE_MS;
     let lateFetches = 0;
+    let settles = 0;
     // ponytail: scans up to 5000 rows a minute; add a createdAt filter to listOpportunities when the table outgrows it.
     for (const o of await store.listOpportunities({ limit: 5000 })) {
       if (Date.parse(o.createdAt) < cutoff) {
-        marked.delete(o.id); // every horizon is past the candle range: nothing left to mark, so drop the cache entry
+        // Every horizon is past the candle range. Whatever was never marked (the process was down) becomes ungraded, once.
+        if (settled.has(o.id) || settles++ >= MAX_SETTLE_PER_TICK) continue;
+        if (!ledgerMarks) {
+          ledgerMarks = new Map();
+          for (const r of await store.outcomeRows({})) ledgerMarks.set(r.opportunityId, (ledgerMarks.get(r.opportunityId) ?? new Set()).add(r.horizon));
+        }
+        const have = marked.get(o.id) ?? ledgerMarks.get(o.id);
+        for (const h of horizons) if (!have?.has(h)) await ungraded(o, h, o.entryPx == null ? "no_entry_price" : "past_candle_range");
+        settled.add(o.id);
+        marked.delete(o.id);
+        ledgerMarks.delete(o.id);
         continue;
       }
       let due = dueHorizons(o.createdAt, horizons, marked.has(o.id) ? [...marked.get(o.id)!] : [], new Date(t));
@@ -82,7 +110,7 @@ export function createOutcomesLoop(deps: OutcomesDeps) {
           // The trade path is read once, with the longest horizon, while HL still has the candle at the entry.
           const path = horizonMs(h) === maxMs && o.entryPx != null && o.stopPx != null && o.targetPx != null && t - Date.parse(o.createdAt) <= CANDLE_RANGE_MS;
           const fetches = (late ? 1 : 0) + (path ? 1 : 0);
-          if (t - dueAt > CANDLE_RANGE_MS) skippedN++;
+          if (t - dueAt > CANDLE_RANGE_MS) await ungraded(o, h, o.entryPx == null ? "no_entry_price" : "past_candle_range");
           else if (late && o.entryPx == null) continue; // nothing to price against: don't burn a fetch slot
           else if (fetches && lateFetches + fetches > MAX_LATE_PER_TICK) continue; // next tick
           else (lateFetches += fetches), await mark(o, h, dueAt, late, path);
@@ -91,8 +119,11 @@ export function createOutcomesLoop(deps: OutcomesDeps) {
           if (err instanceof NoCandles) {
             const key = `${o.id}|${h}`;
             const n = (empties.get(key) ?? 0) + 1;
-            if (n >= MAX_EMPTY) (empties.delete(key), skippedN++, marked.get(o.id)!.add(h));
-            else empties.set(key, n);
+            if (n >= MAX_EMPTY) {
+              empties.delete(key);
+              await ungraded(o, h, "no_candles").catch((e) => console.error(`[outcomes] ${o.coin} ${h}:`, e instanceof Error ? e.message : e));
+              marked.get(o.id)!.add(h);
+            } else empties.set(key, n);
           }
           console.error(`[outcomes] ${o.coin} ${h}:`, err instanceof Error ? err.message : err);
         }
