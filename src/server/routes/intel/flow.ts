@@ -15,7 +15,7 @@ import { type AssetFlow, assetFlags, episodeKey, FLOW_ACTIVE_SETTING, flowOption
 import { walk } from "../../intel/graph.js";
 import { assetExposure, graphEdges, type RoutingContext } from "../../intel/mapper.js";
 import { FALLBACK_BASELINE_MS, toCatalyst } from "../../intel/terminal.js";
-import { computeWindows, LOOKBACK, pickWindow, seriesFromRows, spanResult } from "../../intel/windows.js";
+import { changePoints, computeWindows, LOOKBACK, pickWindow, seriesFromRows, spanResult } from "../../intel/windows.js";
 import { mapLimit } from "../../lab/util.js";
 import { failure, invalid } from "./http.js";
 import type { TerminalRouteDeps } from "./terminal.js";
@@ -105,7 +105,7 @@ export function createFlowRoutes(deps: FlowRouteDeps) {
           }
           const own = assetFlags(asset, flow, now, o);
           const mine = HEATMAP_METRICS.map((metric) => {
-            const r = span != null ? spanResult(metric, flow.series[metric], t, span) : pickWindow(flow.windows, metric, window as Exclude<typeof window, "review">)!;
+            const r = span != null ? spanResult(metric, changePoints(flow.series, metric), t, span) : pickWindow(flow.windows, metric, window as Exclude<typeof window, "review">)!;
             return { asset, metric, z: r.z, delta: r.delta };
           });
           const exp = await assetExposure(deps, ctx, asset);

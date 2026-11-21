@@ -455,7 +455,7 @@ Vercel Cron fallback: every intel job stays behind `INTEL_ENABLED`.
 | `bun scripts/backfill-oi.ts [COIN ...]` | one-off Coinalyze daily OI backfill into `hl.oi.<COIN>` (needs `COINALYZE_API_KEY`, `DATABASE_URL`); idempotent, the novelty loop also runs it once per coin per process |
 | `INTEL_FLOW_MAX_COINS` | held ∪ watched coins the flow collector covers (by notional, then watch order), 1–20, default 8 |
 | `INTEL_THRESHOLDS` | threshold-crossing events, comma list of `metric>value` / `metric<value`; default `funding>0.0000625` (0.05%/8 h, hourly) |
-| `INTEL_DELEV_OI_PCT` | deleveraging detector's OI 6 h drop, in %, default 8 |
+| `INTEL_DELEV_OI_PCT` | deleveraging detector's OI 6 h drop (of contracts, not USD notional), in %, default 8 |
 | repo var `INTEL_ENABLED` | `true` turns on the workflow's `intel` job |
 
 ### How the Terminal works

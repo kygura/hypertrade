@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { FlowRow, SnapshotRow } from "../../shared/intel.js";
 import type { Point } from "./normalize.js";
 import {
+  changePoints,
   computeWindows,
   DEFAULT_THRESHOLDS,
   parseThresholds,
@@ -222,6 +223,26 @@ describe("regimeFlags", () => {
     expect(windowResult("oi_usd", held.oi_usd, NOW, "1h").z!).toBeGreaterThanOrEqual(1); // the condition holds now…
     expect(windowResult("price", held.price, NOW, "1h").z!).toBeLessThanOrEqual(-1);
     expect(regimeFlags("BTC", held, NOW, []).filter((x) => x.name === "oi_up_price_down" && x.window === "1h")).toEqual([]);
+  });
+
+  test("OI up while price down reads contracts: a dump with flat contracts is no flag, flat USD notional on a dump is", () => {
+    const price = walk(10 * D, 100, -3, 1);
+    const scaled = (contracts: Point[]) => contracts.map((c, i) => ({ t: c.t, v: c.v * price[i]!.v }));
+    const flags = (oi_usd: Point[]) => regimeFlags("BTC", { price, oi_usd }, NOW, []).filter((x) => x.name === "oi_up_price_down" && x.window === "1h");
+    // Contracts constant: the USD notional falls with the price, positioning did not move.
+    expect(flags(scaled(price.map((p) => ({ t: p.t, v: 1e7 }))))).toEqual([]);
+    // Contracts +3 % into the −3 % hour: the USD notional is flat, and that is the build.
+    const built = flags(scaled(walk(10 * D, 1e7, 3, 2)));
+    expect(built.length).toBe(1);
+    expect(built[0]!.numbers.oi_pct!).toBeGreaterThan(2);
+  });
+
+  test("changePoints: oi_usd becomes contracts at the same timestamp, unknown without a price; other metrics pass through", () => {
+    const s = { price: [{ t: 1, v: 2 }, { t: 3, v: 4 }], oi_usd: [{ t: 1, v: 10 }, { t: 2, v: 10 }, { t: 3, v: 10 }], funding: [{ t: 1, v: 1e-5 }] };
+    expect(changePoints(s, "oi_usd")).toEqual([{ t: 1, v: 5 }, { t: 2, v: NaN }, { t: 3, v: 2.5 }]);
+    expect(changePoints(s, "funding")).toBe(s.funding);
+    expect(changePoints({ oi_usd: s.oi_usd }, "oi_usd")!.every((p) => Number.isNaN(p.v))).toBe(true);
+    expect(windowResult("oi_usd", changePoints({ oi_usd: walk(10 * D, 1e9) }, "oi_usd"), NOW, "1h")).toMatchObject({ delta: null, z: null });
   });
 
   test("no series → no flags", () => {

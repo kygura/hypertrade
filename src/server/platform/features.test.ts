@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { classifyRegime } from "../desk/analytics.js";
 import { computeFeatures, FEATURE_MIN_TICKS_24H, liquidityTiers, type RingPoint } from "./features.js";
-import { DEFAULT_THRESHOLDS, setupsFor } from "./setups.js";
+import { DEFAULT_THRESHOLDS, explain, SETUPS, setupsFor } from "./setups.js";
 
 const MIN = 60_000;
 const NOW = Date.UTC(2026, 9, 15, 12);
@@ -100,9 +100,12 @@ describe("computeFeatures", () => {
 
 describe("platform regime (1 h change, non-flat at 1 σ of the coin's own hourly vol)", () => {
   const N = 24 * 60;
-  /** 24 h of 1-min points on a ±0.05 % zig-zag (sigma1h ≈ 0.77 %); `px` / `oi` multiply minute i (NOW at N − 1). */
+  /** 24 h of 1-min points on a ±0.05 % zig-zag (sigma1h ≈ 0.77 %); `px` multiplies the mark and `oi` the contracts of minute i (NOW at N − 1). */
   const path = (px: (i: number) => number, oi: (i: number) => number): RingPoint[] =>
-    Array.from({ length: N }, (_, i) => ({ ts: NOW - (N - 1 - i) * MIN, mark: 100 * (i % 2 ? 0.9995 : 1.0005) * px(i), oiUsd: 1e8 * oi(i), funding: 1e-5, dayNtlVlm: 5e8 }));
+    Array.from({ length: N }, (_, i) => {
+      const mark = 100 * (i % 2 ? 0.9995 : 1.0005) * px(i);
+      return { ts: NOW - (N - 1 - i) * MIN, mark, oiUsd: 1e6 * oi(i) * mark, funding: 1e-5, dayNtlVlm: 5e8 };
+    });
   const lastHour = (i: number) => Math.max(0, i - (N - 61)) / 60;
   const prevHour = (i: number) => Math.min(1, Math.max(0, i - (N - 121)) / 60);
   // `v1` is what the same 1 h inputs read on the desk's fixed 1.5 % / 3 % (score-v1).
@@ -114,6 +117,42 @@ describe("platform regime (1 h change, non-flat at 1 σ of the coin's own hourly
     const fv = computeFeatures([...h], NOW);
     expect(fv.inputs.regime).toBe(regime);
     expect(classifyRegime(fv.inputs.ret1hPct as number, fv.inputs.oiChg1hPct as number, fv.features.fundingZ24h ?? null, fv.inputs.fundingApr as number)).toBe(v1);
+  });
+
+  // OI in USD = contracts × mark: on the USD notional a 6 % dump with nobody closing read oiChg1hPct −5.8 and fired the washout.
+  describe("OI change is the change in contracts, not in USD notional", () => {
+    const last15 = (i: number) => Math.max(0, i - (N - 16)) / 15;
+    const dump = (i: number) => 1 - 0.06 * last15(i);
+    const fired = (h: RingPoint[]) => setupsFor(computeFeatures(h, NOW), 1).map((s) => s.setupKind);
+
+    test("constant contracts through a 6 % dump: OI change 0, deleveraging_washout does not fire", () => {
+      const fv = computeFeatures(path(dump, () => 1), NOW);
+      expect(fv.inputs.ret1hPct as number).toBeLessThan(-5);
+      expect(fv.inputs.oiChg1hPct as number).toBeCloseTo(0, 9);
+      expect(fv.features.oiChg1hZ!).toBeCloseTo(0, 6);
+      expect(fv.inputs.oiUsd as number).toBeCloseTo(1e6 * (fv.inputs.mark as number), 3); // the level stays USD
+      // Every other washout leg holds: only the OI leg keeps it quiet.
+      const washout = SETUPS.find((s) => s.kind === "deleveraging_washout")!;
+      expect(explain(washout, fv, 1).map((r) => r.pass)).toEqual([false, true, true]);
+      expect(fired(path(dump, () => 1))).not.toContain("deleveraging_washout");
+    });
+
+    test("contracts −6 % on the same dump: fires", () => {
+      const h = path(dump, (i) => 1 - 0.06 * last15(i));
+      expect(computeFeatures(h, NOW).inputs.oiChg1hPct as number).toBeCloseTo(-6, 6);
+      expect(fired(h)).toContain("deleveraging_washout");
+    });
+
+    test("contracts −6 % at a flat price: the OI leg reads the drop as before", () => {
+      const fv = computeFeatures(path(() => 1, (i) => 1 - 0.06 * last15(i)), NOW);
+      expect(fv.inputs.oiChg1hPct as number).toBeCloseTo(-6, 6);
+      expect(fv.features.oiChg1hZ!).toBeLessThan(-DEFAULT_THRESHOLDS[3].oiZ);
+    });
+
+    test("a pump with flat contracts is not an OI build", () => {
+      const fv = computeFeatures(path((i) => 1 + 0.06 * last15(i), () => 1), NOW);
+      expect(fv.features.oiChg1hZ!).toBeCloseTo(0, 6);
+    });
   });
 
   test("no sigma (warm-up or a flat ring) reads range", () => {
@@ -134,7 +173,7 @@ describe("platform regime (1 h change, non-flat at 1 σ of the coin's own hourly
     const h: RingPoint[] = Array.from({ length: len }, (_, i) => {
       mark *= Math.exp(0.0006 * gauss()); // ~0.46 % per hour
       oi *= Math.exp(0.0003 * gauss());
-      return { ts: NOW - (len - 1 - i) * MIN, mark, oiUsd: oi, funding: 1e-5, dayNtlVlm: 5e8 };
+      return { ts: NOW - (len - 1 - i) * MIN, mark, oiUsd: (oi / 100) * mark, funding: 1e-5, dayNtlVlm: 5e8 }; // contracts walk independently of the mark
     });
     let now = 0, v1 = 0, n = 0;
     for (let t = NOW - 3 * N * MIN; t <= NOW; t += 60 * MIN) {
