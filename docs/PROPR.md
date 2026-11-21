@@ -129,6 +129,14 @@ hourly:
 - **warn**: with the kill switch on in a dry run, entry rungs that would be cancelled;
 - **info**: rungs swept (live only).
 
+## Reading the account
+
+Every Propr answer is parsed with zod (`propr/schemas.ts`). A 200 in a shape the desk does not know
+(a list that is neither an array nor `{ data: [...] }`, an order without `status` or `type`, a
+position without coin, side or quantity) is an error, never an empty list: the account reads as
+unavailable, the governor blocks new entries, and housekeeping raises the `account unreadable`
+warning and cancels nothing until the read works again. Extra fields are ignored.
+
 ## Known limits
 
 - The two-minute wait before a filled ladder's leftovers are swept is kept in the process's memory. Where every tick

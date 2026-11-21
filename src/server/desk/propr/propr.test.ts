@@ -8,7 +8,7 @@ import type { OperatorOrder, RiskOrder, Sizing, TradeProposal } from "../types.j
 import { tick } from "../watch.js";
 import { countEntriesToday, estimateDayStart, pendingLadderRisk, snapshotFrom, type ProprSnapshot } from "./account.js";
 import { FLAT_GRACE_MS, ProprBroker, sweepPlan } from "./broker.js";
-import { proprBaseUrl, scrub } from "./client.js";
+import { ProprClient, proprBaseUrl, scrub } from "./client.js";
 import { isLadderId, isPerpRadarId, ladderId, ulid, ulidTime } from "./ids.js";
 import { coinMaxLeverage, firmReasons, ladderEdge, ladderRequests, planLadder, tradeLeverage } from "./ladder.js";
 
@@ -487,6 +487,105 @@ describe("housekeeping never strips a live position's stops", () => {
     const api = fakePropr({ orders, cancelFails: true });
     await new ProprBroker({ config: cfgOf({ PROPR_LIVE: "true" }), market, fetchFn: api.fetchFn }).housekeep(NOW);
     expect(cancels(api)).toEqual(["e1"]);
+  });
+});
+
+describe("Propr answers are parsed and fail closed", () => {
+  const client = (api: ReturnType<typeof fakePropr>) => new ProprClient(KEY, BASE, api.fetchFn);
+
+  test("a 200 in an unknown envelope is an error, never an empty list", async () => {
+    for (const body of [{ items: [] }, { data: "none" }, { data: [1, 2] }, "ok", null]) {
+      const api = fakePropr({ raw: { "/accounts/acc1/orders": body, "/accounts/acc1/positions": body } });
+      await expect(client(api).orders("acc1")).rejects.toThrow("not in a shape the desk knows");
+      await expect(client(api).positions("acc1")).rejects.toThrow("not in a shape the desk knows");
+    }
+    expect(await client(fakePropr({ raw: { "/accounts/acc1/orders": [] } })).orders("acc1")).toEqual([]);
+  });
+
+  test("rows missing what the guards read are refused; extra fields pass through", async () => {
+    const orders = (rows: unknown[]) => client(fakePropr({ orders: rows })).orders("acc1");
+    await expect(orders([{ type: "limit", base: "ETH" }])).rejects.toThrow("row 0: answer not in a shape the desk knows (status");
+    await expect(orders([{ status: "open", type: "limit", quantity: "lots" }])).rejects.toThrow("quantity");
+    expect(await orders([{ status: "open", type: "limit", novel: { a: 1 } }])).toEqual([{ status: "open", type: "limit", novel: { a: 1 } }]);
+    const positions = (rows: unknown[]) => client(fakePropr({ positions: rows })).positions("acc1");
+    await expect(positions([{ base: "ETH", positionSide: "long" }])).rejects.toThrow("quantity");
+    await expect(positions([{ base: "ETH", quantity: "1" }])).rejects.toThrow("positionSide");
+    await expect(positions([{ positionSide: "long", quantity: "1" }])).rejects.toThrow("no coin");
+    await expect(client(fakePropr({ raw: { "/accounts/acc1": { equity: "1" } } })).account("acc1")).rejects.toThrow("balance");
+  });
+
+  test("an unrecognised list makes the account unavailable, housekeeping says so, and the governor blocks the entry", async () => {
+    const api = fakePropr({ raw: { "/accounts/acc1/orders": { result: { orders: [] } } } });
+    const broker = new ProprBroker({ config: cfgOf({ PROPR_LIVE: "true" }), market, fetchFn: api.fetchFn });
+    expect(await broker.account(new Map(), NOW)).toMatchObject({ available: false, note: expect.stringContaining("not in a shape the desk knows") });
+    expect((await broker.housekeep(NOW))[0]).toMatchObject({ key: "unreadable" });
+    const service = new DeskService({ config: loadDeskConfig(env({ PROPR_LIVE: "true" })), store: new MemoryStore(() => NOW), data: new FakeData([ctx("ETH", 4000)]), notifier: new RecordingNotifier(), now: () => NOW, broker });
+    const rec = await service.submitOpen({ coin: "ETH", side: "long", stop: 3800, target: 4500, riskPct: 0.5, setup: "s", thesis: "t", invalidation: "i", horizon: "swing", confidence: "medium" } as TradeProposal, null);
+    expect(rec).toMatchObject({ status: "blocked", verdict: { reasons: expect.arrayContaining([expect.stringContaining("account unavailable")]) } });
+    expect(api.posts()).toEqual([]);
+  });
+
+  test("a create-orders answer that cannot be read stops the ladder", async () => {
+    const calls: string[] = [];
+    const inner = fakePropr();
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && String(url).endsWith("/orders")) {
+        calls.push(String(url));
+        return new Response(JSON.stringify({ accepted: true }), { status: 200 });
+      }
+      return inner.fetchFn(url, init);
+    }) as typeof fetch;
+    const res = await new ProprBroker({ config: cfgOf({ PROPR_LIVE: "true" }), market, fetchFn }).open(order, sizing, "p1", NOW);
+    expect(res).toMatchObject({ ok: false, error: expect.stringContaining("the orders may have been placed") });
+    expect(calls).toHaveLength(1);
+  });
+
+  describe("pagination", () => {
+    const page = (n: number, from = 0, extra: (i: number) => Record<string, unknown> = () => ({})) => Array.from({ length: n }, (_, i) => ({ orderId: String(from + i), status: "open", type: "limit", ...extra(from + i) }));
+    function paged(answer: (offset: number) => unknown) {
+      const offsets: number[] = [];
+      const fetchFn = (async (url: string) => {
+        const u = new URL(String(url));
+        offsets.push(Number(u.searchParams.get("offset")));
+        expect(u.searchParams.get("limit")).toBe("100");
+        return new Response(JSON.stringify(answer(Number(u.searchParams.get("offset")))), { status: 200 });
+      }) as unknown as typeof fetch;
+      return { offsets, client: new ProprClient(KEY, BASE, fetchFn) };
+    }
+
+    test("a short page ends the list", async () => {
+      const p = paged((o) => ({ data: o === 0 ? page(100) : page(30, 100) }));
+      expect(await p.client.orders("acc1")).toHaveLength(130);
+      expect(p.offsets).toEqual([0, 100]);
+    });
+
+    test("the reported total ends the list without another request", async () => {
+      const p = paged((o) => ({ data: page(100, o), total: 200 }));
+      expect(await p.client.orders("acc1")).toHaveLength(200);
+      expect(p.offsets).toEqual([0, 100]);
+    });
+
+    test("full pages with no total stop at ten pages", async () => {
+      const p = paged((o) => page(100, o));
+      expect(await p.client.orders("acc1")).toHaveLength(1000);
+      expect(p.offsets).toEqual([0, 100, 200, 300, 400, 500, 600, 700, 800, 900]);
+    });
+
+    test("trades stop at the first page whose last row is older than `since`", async () => {
+      const since = Date.parse("2026-10-05T00:00:00Z");
+      const at = (i: number) => ({ executedAt: new Date(since + 3_600_000 - i * 60_000).toISOString() });
+      const p = paged((o) => ({ data: page(100, o, at) }));
+      expect(await p.client.trades("acc1", since)).toHaveLength(100);
+      expect(p.offsets).toEqual([0]);
+      const fresh = paged((o) => ({ data: o === 0 ? page(100, 0, () => ({ executedAt: new Date(since + 1).toISOString() })) : page(100, 100, at) }));
+      expect(await fresh.client.trades("acc1", since)).toHaveLength(200);
+      expect(fresh.offsets).toEqual([0, 100]);
+    });
+
+    test("a later page in an unknown shape fails the whole read", async () => {
+      const p = paged((o) => (o === 0 ? { data: page(100) } : { error: "rate limited" }));
+      await expect(p.client.orders("acc1")).rejects.toThrow("not in a shape the desk knows");
+    });
   });
 });
 
