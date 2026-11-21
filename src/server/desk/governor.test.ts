@@ -119,6 +119,21 @@ describe("evaluateOpen", () => {
     expect(v.sizing!.riskUsd).toBeLessThanOrEqual(20);
   });
 
+  test("the daily loss limit holds after a stop-out: today's loss, open stops and the new stop fit inside it", () => {
+    // 2% of 10k = 200 USD a day. 180 lost today leaves 20 for the new stop, not the full 50.
+    const near = evaluateOpen(long, gctx({ account: account({ dayPnlUsd: -180 }) }));
+    expect(near.approved).toBe(true);
+    expect(near.sizing!.riskUsd).toBeLessThanOrEqual(20);
+    expect(near.warnings.join()).toContain("daily loss limit");
+    // 120 lost and 80 of open stop risk use the whole 200: nothing left.
+    const pos = { coin: "SOL", side: "long" as const, size: 10, entryPx: 200, markPx: 200, stopPx: 192, tpPx: null, unrealizedPnl: 0, notionalUsd: 2000 };
+    const full = evaluateOpen(long, gctx({ account: account({ dayPnlUsd: -120, positions: [pos] }) }));
+    expect(full.approved).toBe(false);
+    expect(full.reasons.join()).toContain("daily loss limit");
+    // A green day adds no room past the limit.
+    expect(evaluateOpen(long, gctx({ account: account({ dayPnlUsd: 500 }) })).sizing!.riskUsd).toBe(50);
+  });
+
   test("short side mirrors the checks", () => {
     const v = evaluateOpen({ ...long, side: "short", stop: 4200, target: 3500 }, gctx());
     expect(v.approved).toBe(true);

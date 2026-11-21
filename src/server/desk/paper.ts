@@ -164,7 +164,8 @@ export class PaperBroker implements Broker {
       if (!range) continue;
       const hit = protectiveHit(pos, range.low, range.high);
       if (!hit) continue;
-      const result = await this.exit(pos.coin, pos.size, hit.px, hit.kind, pos.proposalId, now, true);
+      // A triggered stop is a market order: it fills with slippage like any other exit. A target fills at its price.
+      const result = await this.exit(pos.coin, pos.size, hit.px, hit.kind, pos.proposalId, now, hit.kind === "target");
       out.push({ coin: pos.coin, kind: hit.kind, result });
     }
     return out;

@@ -126,6 +126,14 @@ function assess(p: RiskOrder, ctx: GovernorContext, proposalReasons: string[]): 
   const riskRoom = (limits.maxOpenRiskPct / 100) * equity - openRisk;
   let riskUsd = Math.min((riskPct / 100) * equity, Math.max(0, riskRoom));
   if (riskUsd < (riskPct / 100) * equity) warnings.push(`risk reduced to ${r2(riskUsd)} USD by the ${limits.maxOpenRiskPct}% open-risk budget`);
+  // The daily loss limit holds after a stop-out too: today's loss so far, every open stop and this trade's stop
+  // together stay inside it. Without this, a day just short of the limit still took a full-size trade.
+  const dayRoom = (limits.dailyLossLimitPct / 100) * equity + Math.min(0, account.dayPnlUsd) - openRisk;
+  if (riskUsd > dayRoom && dayLossPct < limits.dailyLossLimitPct) {
+    if (dayRoom > 0) warnings.push(`risk reduced to ${r2(dayRoom)} USD so a stop-out stays inside the ${limits.dailyLossLimitPct}% daily loss limit`);
+    else reasons.push(`today's loss plus open stops already use the ${limits.dailyLossLimitPct}% daily loss limit`);
+    riskUsd = Math.max(0, dayRoom);
+  }
 
   let notional = riskUsd / (stopDistPct / 100);
   const gross = account.positions.reduce((a, x) => a + x.notionalUsd, 0);

@@ -69,6 +69,9 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
   // Live venues hold stops on the exchange; only the paper book settles here.
   const held = service.broker.settle ? await service.store.paperPositions() : [];
   if (held.length && service.broker.settle) {
+    // Read the account first: on a new UTC day this anchors the day's starting equity before any stop settles, so a
+    // stop-out settled on the day's first tick counts against today's loss limit instead of vanishing into the anchor.
+    await service.broker.account(marks, now);
     const since = Math.max(state.lastTick ? new Date(state.lastTick).getTime() : t - 15 * MIN, t - 24 * HOUR) - 5 * MIN;
     const ranges = new Map<string, { low: number; high: number }>();
     await Promise.all(
