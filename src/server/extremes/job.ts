@@ -1,4 +1,4 @@
-import { isExtremesOpportunity, type ExtremeEvent, type ExtremeThresholds } from "../../shared/extremes.js";
+import { isExtremesOpportunity, pastCut, type ExtremeEvent, type ExtremeThresholds } from "../../shared/extremes.js";
 import type { Alert } from "../desk/notify.js";
 import type { RingPoint } from "../platform/features.js";
 import { extremesReadyTtlMin, readyTtlMinFor, shouldExpire } from "../platform/opportunity.js";
@@ -132,10 +132,14 @@ export async function runExtremesJob(deps: ExtremesJobDeps): Promise<ExtremesJob
   }
   report.fired = fired.length;
 
-  // Strongest first; one event per key per run; a key inside its cooldown (measured between bar times) is dropped.
+  // Strongest first, by how far each event is past its own kind's cut (shared/extremes.ts pastCut): raw severities are z-scores
+  // of different quantities against different cuts, so sorting on them let crowded_asymmetry take the daily cap.
+  // One event per key per run; a key inside its cooldown (measured between bar times) is dropped.
   const fresh: ExtremeEvent[] = [];
   const seen = new Set<string>();
-  for (const e of [...fired].sort((a, b) => b.severity - a.severity || (a.key < b.key ? -1 : 1))) {
+  const rank = new Map(fired.map((e) => [e, pastCut(e, thresholds)]));
+  const strength = (e: ExtremeEvent) => (Number.isFinite(rank.get(e)) ? rank.get(e)! : 0);
+  for (const e of [...fired].sort((a, b) => strength(b) - strength(a) || (a.key < b.key ? -1 : 1))) {
     if (seen.has(e.key)) continue;
     seen.add(e.key);
     const last = await deps.store.latestExtreme(e.key);

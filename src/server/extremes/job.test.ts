@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { EXTREMES_SCORE_VERSION, type ExtremeEvent } from "../../shared/extremes.js";
+import { EXTREMES_SCORE_VERSION, pastCut, type ExtremeEvent } from "../../shared/extremes.js";
 import type { Alert } from "../desk/notify.js";
 import { MemoryPlatformStore } from "../platform/store-memory.js";
 import { appliedThresholds, resetResult, withMultiplier } from "./calibrate.js";
@@ -85,6 +85,26 @@ describe("runExtremesJob", () => {
     expect(h.woken).toEqual([]);
     expect(h.sent).toEqual([]);
     expect(store.extremes.size).toBe(0);
+  });
+
+  test("the daily cap fills by distance past each kind's own cut, not raw severity: an inflated funding z does not take every slot", async () => {
+    const coins = ["A", "B", "C", "D"];
+    const store = await storeWith(coins);
+    const crowded = (c: string, z: number, aprPct: number) => ev(c, z, { key: `crowded_asymmetry|${c}|short`, kind: "crowded_asymmetry", side: "short", window: "24h", facts: { fundingZ: z, fundingAprPct: aprPct } });
+    const fire = {
+      A: [crowded("A", 40, 80)], // z 40 / 5 = 8, but 80% apr against the 75% bar: 1.07 past its cut
+      B: [crowded("B", 30, 78)], // 1.04
+      C: [ev("C", 12, { key: "price_dislocation|C|short", kind: "price_dislocation", side: "short", window: "24h" })], // 12 / 7.5 = 1.6
+      D: [ev("D", 10, { window: "4h" })], // oi_flush 10 / 8 = 1.25
+    };
+    const h = harness(store, { fire, env: { EXTREMES_DAILY_CAP: "2" } });
+    const r = await runExtremesJob(h.deps);
+    expect(r).toMatchObject({ new: 4, pushed: 2, capped: 2 });
+    expect(h.sent.map((a) => a.title)).toEqual(["Extreme: C price_dislocation", "Extreme: D oi_flush"]); // by raw severity: A and B
+    // The stored severity is the detector's own number, unchanged.
+    expect((await store.latestExtreme("crowded_asymmetry|A|short"))!.event.severity).toBe(40);
+    expect(pastCut(fire.C[0]!, DEFAULT_EXTREME_THRESHOLDS)).toBeCloseTo(1.6, 9);
+    expect(pastCut(crowded("X", 6, 300), DEFAULT_EXTREME_THRESHOLDS)).toBeCloseTo(1.2, 9); // the z leg binds when it is the smaller
   });
 
   test("a woken batch: one wake for every new event, stored as woken, no push", async () => {

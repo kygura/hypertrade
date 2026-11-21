@@ -120,6 +120,21 @@ export const ExtremeThresholdsSchema = z.strictObject({
 });
 export type ExtremeThresholds = z.infer<typeof ExtremeThresholdsSchema>;
 
+/**
+ * How far past its own cut an event is, as a ratio (1 = at the cut): the one number comparable across kinds, since
+ * `severity` is |price z| against cuts of 6 to 11, |OI z| against 6 to 10, or |funding level z| against 5 (and that z
+ * runs to tens on a flat-funding history). price and OI: |z| / the window's cut, the ratio detect.ts eventsOf ranks windows by.
+ * crowded: the smaller of |funding z| / its cut and |funding apr| / the apr bar, since the apr bar is the gate that
+ * binds when the z is inflated. Ranks events for the job's daily cap; the stored severity is not touched.
+ */
+export function pastCut(e: ExtremeEvent, th: ExtremeThresholds): number {
+  if (e.kind === "price_dislocation") return e.severity / th.price.z[e.window as keyof typeof th.price.z];
+  if (e.kind === "oi_flush") return e.severity / th.oiFlush.z[e.window as keyof typeof th.oiFlush.z];
+  const z = e.severity / th.crowded.zFunding;
+  const apr = e.facts.fundingAprPct;
+  return apr == null ? z : Math.min(z, Math.abs(apr) / th.crowded.minAprPct);
+}
+
 const Rate = z.number().finite().nonnegative().nullable();
 const Stat = z.strictObject({ n: z.number().int().nonnegative(), hitRate: z.number().finite().nullable(), median: z.number().finite().nullable() });
 /** Forward fade-side returns of a kind's events, for information only: never part of the calibration objective. */

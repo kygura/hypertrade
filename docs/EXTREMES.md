@@ -19,7 +19,12 @@ says `take`. Contracts: `src/shared/extremes.ts`.
    :53). Top `EXTREMES_TOP` (30) coins by stored 24h volume plus BTC, read from
    `scan_snapshots`. A key (`kind|coin|side`) is silent for `EXTREMES_COOLDOWN_H` (24) after
    it fires. At most `EXTREMES_DAILY_CAP` (3) events go out per UTC day; the rest are stored
-   with delivery `none`. Every event is stored before it is sent, and a failed send is not
+   with delivery `none`. A run's events take the cap in order of how far each is past its own
+   kind's cut (`pastCut` in `src/shared/extremes.ts`: |z| over the window's cut for price and
+   OI; for crowded the smaller of |funding z| over its cut and |funding apr| over the apr bar),
+   not by raw `severity`: severities are z-scores of different quantities against different
+   cuts, and the funding z runs to tens. The stored `severity` and the take's `score` are
+   unchanged. Every event is stored before it is sent, and a failed send is not
    retried: a lost alert is preferred to a repeat.
 3. **Wake** (`src/server/extremes/wake.ts`). One POST per run to `EXTREMES_WAKE_URL` (a Claude
    Code routine's fire endpoint) with `EXTREMES_WAKE_TOKEN`. Never retried: the endpoint has no
