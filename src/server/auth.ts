@@ -162,8 +162,26 @@ function publicMode(): boolean {
   return /^(1|true)$/i.test(process.env.PUBLIC_MODE ?? "");
 }
 
+/**
+ * A guest's path as anything behind the gate could come to read it: percent-decoded until nothing is left to decode,
+ * lower-cased. null when it cannot be decoded, or is still encoded after three passes: a guest has no use for such a path.
+ */
+export function guestPath(path: string): string | null {
+  let p = path;
+  for (let i = 0; i < 3 && p.includes("%"); i++) {
+    try {
+      p = decodeURIComponent(p);
+    } catch {
+      return null;
+    }
+  }
+  return p.includes("%") ? null : p.toLowerCase();
+}
+
 function guestReadable(c: Context, path: string): boolean {
-  return publicMode() && (c.req.method === "GET" || c.req.method === "HEAD") && !GUEST_DENIED.test(path);
+  if (!publicMode() || (c.req.method !== "GET" && c.req.method !== "HEAD")) return false;
+  const p = guestPath(path);
+  return p != null && !GUEST_DENIED.test(p);
 }
 
 /** A PUBLIC_MODE visitor: no session cookie and no read bearer. */
@@ -181,7 +199,9 @@ export function hasSession(c: Context): boolean {
  * modules added later are protected by default without touching this file.
  */
 export const requireAuth: MiddlewareHandler = async (c, next) => {
-  const path = new URL(c.req.url).pathname.replace(/^\/api/, "") || "/";
+  // The path Hono routes on (percent-decoded), not the raw one: matching the raw pathname let /api/%72adar past the
+  // rules written for /api/radar while the router still served it.
+  const path = c.req.path.replace(/^\/api/, "") || "/";
 
   if (PUBLIC_PATHS.has(path)) return next();
   if (path.startsWith("/cron/") || path === "/desk/tick") return requireCronToken(c, next);

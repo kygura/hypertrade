@@ -2,7 +2,7 @@ import type { ProprVenueConfig } from "../config.js";
 import { floorToDecimals } from "../governor.js";
 import { roundPerpPx } from "../hl/wire.js";
 import type { Confidence, RiskOrder, Sizing } from "../types.js";
-import type { ProprSnapshot } from "./account.js";
+import { sameCoin, type ProprSnapshot } from "./account.js";
 import type { ProprOrderRequest } from "./client.js";
 import { ladderId } from "./ids.js";
 
@@ -129,7 +129,7 @@ export function firmReasons(s: ProprSnapshot, plan: LadderPlan, f: ProprVenueCon
   if (s.perpRadarOrders > 0) out.push(`perp-radar's executor has ${s.perpRadarOrders} open order${s.perpRadarOrders === 1 ? "" : "s"} on this account: one executor per account`);
   if (s.positions.some((p) => p.stop == null)) out.push("an open position has no full stop: no new trades until it does");
   if (s.pendingRisk === Infinity) out.push("a resting ladder rung has no stop");
-  if (s.working.includes(plan.coin)) out.push(`entry orders on ${plan.coin} are already resting`);
+  if (s.working.some((c) => sameCoin(c, plan.coin))) out.push(`entry orders on ${plan.coin} are already resting`);
   if (s.entriesToday >= f.maxEntriesPerDay) out.push(`${s.entriesToday} entries today, limit ${f.maxEntriesPerDay}`);
   const limitUsd = s.dayStartBalance * (f.dailyLossPct / 100);
   const usedUsd = s.dayStartBalance - s.equity;

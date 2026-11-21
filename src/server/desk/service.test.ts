@@ -316,3 +316,57 @@ describe("operator orders (copilot)", () => {
     expect(await store.listFills(10)).toHaveLength(1);
   });
 });
+
+describe("a proposal is never left claimed, expired under an approve, or sent to another venue", () => {
+  test("a venue that throws from open or exit records the proposal failed, outcome unknown, not claimed and pending for good", async () => {
+    const { service, store, notifier } = makeService({ env: { DESK_APPROVAL: "manual" } });
+    const pending = await service.submitOpen(proposal, null);
+    const open = service.broker.open.bind(service.broker);
+    service.broker.open = async () => {
+      throw new Error("socket hang up");
+    };
+    const rec = await service.approve(pending.id, "operator");
+    expect(rec).toMatchObject({ status: "failed", decidedBy: "operator", execution: { ok: false, error: expect.stringContaining("an order may have been sent") } });
+    expect((await store.getProposal(pending.id))?.status).toBe("failed");
+    expect(notifier.sent.at(-1)).toMatchObject({ level: "warn", title: "Open failed: ETH", body: expect.stringContaining("socket hang up") });
+    expect(await store.listProposals({ status: "pending", limit: 10 })).toEqual([]);
+
+    service.broker.open = open;
+    await service.approve((await service.submitOpen(proposal, null)).id, "operator");
+    service.broker.exit = async () => {
+      throw new Error("timeout");
+    };
+    expect(await service.submitExit({ coin: "ETH", fraction: 1, reason: "test" }, null)).toMatchObject({ status: "failed", execution: { error: expect.stringContaining("outcome is unknown") } });
+  });
+
+  test("expiry does not overwrite a proposal an approve has claimed (both the sweep and a late approve)", async () => {
+    const clock = { now: new Date("2026-10-05T12:00:00Z") };
+    const { service, store } = makeService({ now: () => clock.now, env: { DESK_APPROVAL: "manual" } });
+    const rec = await service.submitOpen(proposal, null);
+    clock.now = new Date("2026-10-07T14:00:00Z");
+    // An approve claimed it just before the deadline and is still sending.
+    expect(await store.claimProposal(rec.id, "operator", "2026-10-05T12:10:00Z")).not.toBeNull();
+    expect(await store.expireProposal(rec.id, clock.now.toISOString())).toBeNull();
+    expect(await service.expirePending()).toBe(0);
+    await expect(service.approve(rec.id, "second")).rejects.toThrow("proposal expired");
+    expect(await store.getProposal(rec.id)).toMatchObject({ status: "pending", decidedBy: "operator" });
+    // Unclaimed and past its deadline: expired once.
+    const other = await service.submitOpen({ ...proposal, coin: "SOL", stop: 190, target: 230 }, null);
+    clock.now = new Date("2026-10-09T16:00:00Z");
+    expect(await service.expirePending()).toBe(1);
+    expect(await store.getProposal(other.id)).toMatchObject({ status: "expired", decidedBy: "clock" });
+    expect(await store.expireProposal(other.id, clock.now.toISOString())).toBeNull();
+  });
+
+  test("approve refuses a proposal made for another venue and leaves it pending", async () => {
+    const { service, store } = makeService({ env: { DESK_APPROVAL: "manual" } });
+    const rec = await service.submitOpen(proposal, null);
+    store.proposals.set(rec.id, { ...rec, venue: "propr" });
+    const err = await service.approve(rec.id, "operator").catch((e) => e);
+    expect(err).toBeInstanceOf(DeskError);
+    expect(err).toMatchObject({ status: 409, message: expect.stringContaining("made for the propr venue; the desk now runs on paper") });
+    expect(await store.getProposal(rec.id)).toMatchObject({ status: "pending", decidedBy: null });
+    expect(await store.paperPositions()).toEqual([]);
+    expect((await service.reject(rec.id, "operator")).status).toBe("rejected");
+  });
+});

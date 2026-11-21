@@ -2,7 +2,7 @@ import type { ProprVenueConfig } from "../config.js";
 import type { MarketRef } from "../governor.js";
 import type { Broker, ExecutionResult, UpkeepNote } from "../paper.js";
 import type { AccountState, Confidence, RiskOrder, Sizing } from "../types.js";
-import { filledQty, fillPx, isEntry, isOpen, readSnapshot, toAccountState, type ProprPosition, type ProprSnapshot } from "./account.js";
+import { coinOf, filledQty, fillPx, isEntry, isOpen, readSnapshot, sameCoin, toAccountState, type ProprPosition, type ProprSnapshot } from "./account.js";
 import { ProprClient, scrub, type ProprOrderRequest, type Row } from "./client.js";
 import { isLadderId, ulid, ulidTime } from "./ids.js";
 import { firmReasons, ladderRequests, planLadder, tradeLeverage, type LadderPlan, type LadderRequest } from "./ladder.js";
@@ -29,6 +29,12 @@ const num = (x: unknown): number | null => {
 };
 const errText = (e: unknown) => scrub(e instanceof Error ? e.message : String(e));
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+/**
+ * How long "a rung filled, no position" must last, across housekeeping runs, before it reads as a closed trade. A fill
+ * can show on the order before its position row does (the two are read in parallel); without the wait that one read
+ * would cancel the stops of a position that is open.
+ */
+export const FLAT_GRACE_MS = 2 * 60_000;
 
 export class ProprBroker implements Broker {
   readonly venue = "propr";
@@ -40,6 +46,8 @@ export class ProprBroker implements Broker {
   /** Everything but the key, which only the client holds. */
   private readonly cfg: Omit<ProprVenueConfig, "apiKey">;
   readonly #market: ProprBrokerOptions["market"];
+  /** Ladders seen filled with no position, and when first: sweepPlan's memory between housekeeping runs (this process). */
+  private readonly flat = new Map<string, number>();
 
   constructor(o: ProprBrokerOptions) {
     const { apiKey, ...cfg } = o.config;
@@ -92,9 +100,9 @@ export class ProprBroker implements Broker {
     else if (needed > leverage) out.push(`the ladder's ${plan.notionalUsd} USD needs ${needed}x, the trade runs at ${leverage}x`);
     // A position on the coin is the governor's refusal too. With none, the desk's old stops and targets there protect
     // nothing and would read as the new position's stop, so they are cancelled before the new ladder goes out.
-    const hasPos = snapshot.positions.some((x) => x.coin === plan.coin);
+    const hasPos = snapshot.positions.some((x) => sameCoin(x.coin, plan.coin));
     if (hasPos) out.push(`a ${plan.coin} position is already open`);
-    const leftovers = hasPos ? [] : snapshot.orders.filter((o) => isLadderId(o.intentId) && isOpen(o) && !isEntry(o) && String(o.base ?? o.asset) === plan.coin);
+    const leftovers = hasPos ? [] : snapshot.orders.filter((o) => isLadderId(o.intentId) && isOpen(o) && !isEntry(o) && sameCoin(coinOf(o), plan.coin));
     return { plan, snapshot, leverage, leftovers, reasons: out };
   }
 
@@ -225,7 +233,7 @@ export class ProprBroker implements Broker {
     } catch (e) {
       return { ok: false, venue: this.venue, fills: [], error: `Propr: ${errText(e)}` };
     }
-    const pos = s.positions.find((p) => p.coin === coin);
+    const pos = s.positions.find((p) => sameCoin(p.coin, coin));
     if (!pos) return { ok: false, venue: this.venue, fills: [], error: `Propr: no open ${coin} position` };
     const qty = Math.min(size, pos.qty);
     const whole = qty >= pos.qty * 0.999;
@@ -259,7 +267,7 @@ export class ProprBroker implements Broker {
 
   /** After a full close, the desk's own resting orders on that coin (unfilled rungs, their stops and targets) go too. */
   private async cancelLeftovers(orders: Row[], coin: string): Promise<string[]> {
-    const mine = orders.filter((o) => isLadderId(o.intentId) && isOpen(o) && String(o.base ?? o.asset) === coin);
+    const mine = orders.filter((o) => isLadderId(o.intentId) && isOpen(o) && sameCoin(coinOf(o), coin));
     let n = 0;
     const out: string[] = [];
     for (const o of mine) {
@@ -273,13 +281,6 @@ export class ProprBroker implements Broker {
     return out;
   }
 
-  /**
-   * Upkeep on each watch tick. Flags any position on the account without a full stop (critical) and perp-radar's
-   * orders on the account. Live, it cancels the desk's own ladder orders (tag PRD) when the trade is over (a rung filled
-   * and the position is gone) or the ladder is older than its TTL; once the position is gone its leftover stops and
-   * targets go too. Orders the desk did not place, perp-radar's included, are never cancelled. A dry run sent nothing,
-   * so it has nothing to clean up. Each note carries a key, so the watch alerts a condition once.
-   */
   async holds(coin: string, side: "long" | "short", now: Date): Promise<boolean | null> {
     let s: ProprSnapshot;
     try {
@@ -287,66 +288,126 @@ export class ProprBroker implements Broker {
     } catch {
       return null;
     }
-    const c = coin.toUpperCase();
-    if (s.positions.some((p) => p.coin.toUpperCase() === c && p.side === side)) return true;
+    if (s.positions.some((p) => sameCoin(p.coin, coin) && p.side === side)) return true;
     const entrySide = side === "long" ? "buy" : "sell";
     const sideOf = (o: Row) => (o.positionSide === "long" || o.positionSide === "short" ? o.positionSide === side : o.side === entrySide);
-    return s.orders.some((o) => isLadderId(o.intentId) && isEntry(o) && isOpen(o) && String(o.base ?? o.asset).toUpperCase() === c && sideOf(o));
+    return s.orders.some((o) => isLadderId(o.intentId) && isEntry(o) && isOpen(o) && sameCoin(coinOf(o), coin) && sideOf(o));
   }
 
-  async housekeep(now: Date): Promise<UpkeepNote[]> {
+  /**
+   * Upkeep on each watch tick. Flags any position on the account without a full stop (critical) and perp-radar's
+   * orders on the account. Live, it cancels the desk's own ladder orders (tag PRD): unfilled entry rungs when the trade
+   * is over (a rung filled and the position has been gone for FLAT_GRACE_MS), the ladder is older than its TTL, or the
+   * kill switch is on; the leftover stops and targets only once no position is left to protect. Orders the desk did not
+   * place, perp-radar's included, are never cancelled. A dry run sends nothing: with the kill switch on it reports the
+   * entry rungs it would cancel. Each note carries a key, so the watch alerts a condition once.
+   */
+  async housekeep(now: Date, ctx: { killSwitch?: boolean } = {}): Promise<UpkeepNote[]> {
     let s: ProprSnapshot;
     try {
       s = await this.snapshot(now);
     } catch (e) {
-      return [{ level: "warn", key: "unreadable", text: `Propr account unreadable: ${errText(e)}` }];
+      return [{ level: "warn", key: "unreadable", text: `Propr account unreadable: ${errText(e)}${ctx.killSwitch ? "; with the kill switch on, the desk's resting entry rungs could not be checked" : ""}` }];
     }
     const notes: UpkeepNote[] = s.positions
       .filter((p) => p.stop == null)
       .map((p) => ({ level: "critical" as const, key: `unprotected:${p.coin}:${p.side}`, text: `${p.coin} ${p.side} ${p.qty} has no full stop on Propr: set one by hand; the desk takes no new trades until it does` }));
     if (s.perpRadarOrders) notes.push({ level: "warn", key: "perp-radar", text: `perp-radar's executor has ${plural(s.perpRadarOrders, "open order")} on this account: the desk takes no new trades here (one executor per account)` });
-    if (!this.live) return notes;
-    for (const x of sweepPlan(s.orders, s.positions, now.getTime(), this.cfg.ladder.ttlHours)) {
+    return [...notes, ...(await this.sweep(s, now, !!ctx.killSwitch))];
+  }
+
+  /**
+   * The kill switch's own action: the desk's unfilled entry rungs are cancelled now (housekeeping repeats it on every
+   * tick while the switch is on, so a cancel that failed is retried). Stops and take-profits of open positions stay.
+   */
+  async cancelEntries(now: Date): Promise<UpkeepNote[]> {
+    let s: ProprSnapshot;
+    try {
+      s = await this.snapshot(now);
+    } catch (e) {
+      return [{ level: "warn", key: "unreadable", text: `Propr account unreadable, the desk's resting entry rungs could not be checked: ${errText(e)}` }];
+    }
+    return this.sweep(s, now, true);
+  }
+
+  private async sweep(s: ProprSnapshot, now: Date, kill: boolean): Promise<UpkeepNote[]> {
+    const notes: UpkeepNote[] = [];
+    const plan = sweepPlan(s.orders, s.positions, now.getTime(), this.cfg.ladder.ttlHours, { kill, flat: this.flat });
+    if (!this.live) {
+      // A dry run placed nothing, so only rungs from an earlier live run can rest here: under the kill switch they are named.
+      if (!kill) return notes;
+      for (const x of plan) {
+        const n = x.victims.filter(isEntry).length;
+        if (n) notes.push({ level: "warn", key: `kill-dry:${x.ladder}`, text: `${x.coin}: ${plural(n, "resting entry rung")} would be cancelled (${x.why}), but this is a dry run (PROPR_LIVE is not true) and nothing was sent: cancel ${n === 1 ? "it" : "them"} on Propr by hand` });
+      }
+      return notes;
+    }
+    for (const x of plan) {
       let n = 0;
+      let entriesGone = true;
       const failed: string[] = [];
-      for (const o of x.victims) {
+      // Entries first. One that could not be cancelled may have filled since the read, so the ladder's stops and
+      // targets are left for the next run to judge.
+      for (const o of [...x.victims.filter(isEntry), ...x.victims.filter((v) => !isEntry(v))]) {
+        if (!isEntry(o) && !entriesGone) continue;
         try {
           if (await this.client.cancelOrder(this.accountId, String(o.orderId))) n++;
+          else if (isEntry(o)) entriesGone = false;
         } catch (e) {
+          if (isEntry(o)) entriesGone = false;
           failed.push(`could not cancel a ${x.coin} ${String(o.type)} order (${errText(e)})`);
         }
       }
       if (n) notes.push({ level: "info", key: `swept:${x.ladder}:${n}`, text: `${x.coin}: ${plural(n, "resting order")} cancelled, ${x.why}` });
-      if (failed.length) notes.push({ level: "warn", key: `sweep-failed:${x.ladder}`, text: failed.join("; ") });
+      if (failed.length) notes.push({ level: "warn", key: `sweep-failed:${x.ladder}`, text: `${failed.join("; ")}; it is tried again on the next tick` });
     }
     return notes;
   }
 }
 
-/** Which of the desk's ladder orders housekeeping cancels, and why. Pure. */
-export function sweepPlan(orders: Row[], positions: ProprPosition[], now: number, ttlHours: number): Array<{ ladder: string; coin: string; victims: Row[]; why: string }> {
+/**
+ * Which of the desk's ladder orders housekeeping cancels, and why. Unfilled entry rungs go when the trade is closed,
+ * the ladder is past its TTL, or `kill` is set. Stops and take-profits go only when no position is left for them to
+ * protect: no rung filled, or "filled, no position" has lasted FLAT_GRACE_MS. That wait is counted in `flat` (ladder →
+ * first seen so), which the caller keeps between runs and this updates; without it a filled ladder's stops always stay.
+ */
+export function sweepPlan(
+  orders: Row[],
+  positions: ProprPosition[],
+  now: number,
+  ttlHours: number,
+  opts: { kill?: boolean; flat?: Map<string, number> } = {},
+): Array<{ ladder: string; coin: string; victims: Row[]; why: string }> {
   const ladders = new Map<string, Row[]>();
   for (const o of orders) {
     if (!isLadderId(o.intentId)) continue;
-    const key = `${String(o.intentId).slice(0, 10)}:${String(o.base ?? o.asset)}`;
+    const key = `${String(o.intentId).slice(0, 10)}:${coinOf(o).toUpperCase()}`;
     ladders.set(key, [...(ladders.get(key) ?? []), o]);
   }
+  for (const key of [...(opts.flat?.keys() ?? [])]) if (!ladders.has(key)) opts.flat!.delete(key);
   const out: Array<{ ladder: string; coin: string; victims: Row[]; why: string }> = [];
   for (const [key, list] of ladders) {
-    const coin = key.split(":")[1]!;
+    const coin = coinOf(list[0]!);
     // The ladder's side from any row's positionSide, else its entry's side (buy is long), as in holds(). Unknown: sweep
     // nothing, since without it an open position's stop and take-profit would read as leftovers.
     const tagged = list.find((o) => o.positionSide === "long" || o.positionSide === "short")?.positionSide;
     const entrySide = list.find(isEntry)?.side;
     const side = tagged ?? (entrySide === "buy" ? "long" : entrySide === "sell" ? "short" : null);
     if (!side) continue;
-    const hasPos = positions.some((p) => p.coin === coin && p.side === side);
+    const hasPos = positions.some((p) => sameCoin(p.coin, coin) && p.side === side);
     const anyFilled = list.some((o) => isEntry(o) && (o.status === "filled" || filledQty(o) > 0));
+    if (anyFilled && !hasPos) {
+      if (!opts.flat?.has(key)) opts.flat?.set(key, now);
+    } else opts.flat?.delete(key);
+    const flatSince = opts.flat?.get(key);
+    // Nothing left to protect: no rung ever filled, or the fill's position has stayed gone past the grace period.
+    const gone = !hasPos && (!anyFilled || (flatSince != null && now - flatSince >= FLAT_GRACE_MS));
     const ageH = (now - ulidTime(key.slice(0, 10))) / 3_600_000;
-    const done = anyFilled && !hasPos;
-    if (!done && ageH < ttlHours) continue;
-    const victims = list.filter((o) => isOpen(o) && (isEntry(o) || !hasPos));
-    if (victims.length) out.push({ ladder: key, coin, victims, why: done ? "the trade is closed" : `the ladder is ${ageH.toFixed(1)}h old` });
+    const done = anyFilled && gone;
+    const stale = ageH >= ttlHours;
+    if (!done && !stale && !opts.kill) continue;
+    const victims = list.filter((o) => isOpen(o) && (isEntry(o) || gone));
+    if (victims.length) out.push({ ladder: key, coin, victims, why: done ? "the trade is closed" : stale ? `the ladder is ${ageH.toFixed(1)}h old` : "the kill switch is on" });
   }
   return out;
 }

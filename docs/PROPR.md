@@ -14,7 +14,7 @@ one executor trades an account at a time.
 | `PROPR_API_KEY` | API key. Held only by the client, sent only in the `X-API-Key` header to `api.propr.xyz` or `api.beta.propr.xyz` (redirects are refused), scrubbed from every error, alert and record. |
 | `PROPR_ACCOUNT_ID` | The challenge or funded account (status active, passed or funded). Anything else is refused at read time. |
 | `PROPR_LIVE` | Orders are sent only when this is exactly `true`. Anything else is a **dry run**. |
-| `PROPR_KILL` | `true` falls back to paper: nothing reaches Propr. Resting rungs already on Propr are then no longer managed by the desk. |
+| `PROPR_KILL` | `true` falls back to paper: nothing reaches Propr, not even a cancel. Resting rungs already on Propr are then no longer managed by the desk and can still fill: cancel them on Propr by hand, or use the desk's kill switch (below) first. |
 | `PROPR_API_URL` | `https://api.propr.xyz/v1` (default) or the beta host. Any other host falls back to paper. |
 | `PROPR_STARTING_BALANCE` | Only if the account does not report its starting balance; the higher of the two is used. |
 
@@ -34,7 +34,11 @@ page is refused. Every entry waits for approve or reject, and so does an exit an
 (the operator's own exits go straight through). Approve and reject claim the proposal atomically in
 the store, so a double click or two tabs cannot send the same ladder twice; the second gets
 `proposal is already being decided`. An approval whose re-check cannot read market data or the
-account is recorded `failed` with `not sent`, and nothing goes to Propr.
+account is recorded `failed` with `not sent`, and nothing goes to Propr. A venue call that throws
+instead of answering is recorded `failed` with `the outcome is unknown, an order may have been sent`:
+check the venue by hand. A proposal is approved only on the venue it was made for (after a switch
+between paper, testnet and Propr the approve answers 409: reject it and propose again), and expiry
+never overwrites a proposal an approve has already claimed.
 
 ## Leverage
 
@@ -64,7 +68,9 @@ new entry while a position on the coin is open. Only cross margin is supported.
 The default. The venue reads the account (GET only), runs the governor and the firm rules, builds
 the exact requests (the margin config, then one per rung) and records them on the proposal
 (`execution.requests`) with `dryRun: true`. The alert is informational: `Dry run: {side} {coin}
-built, not sent`. Housekeeping only reports what it sees; it cancels nothing.
+built, not sent`. Housekeeping only reports what it sees; it cancels nothing. With the kill switch
+on it names the desk's resting entry rungs it would cancel (left from an earlier live run) and asks
+for them to be cancelled by hand.
 
 ## An entry
 
@@ -107,15 +113,39 @@ An exit is a reduce-only market close. A close with no reported fill is reported
 Leftover orders on that coin are cancelled only once the whole position is confirmed closed.
 
 Each watch tick cancels unfilled desk rungs once the trade is over or the ladder is older than its
-TTL, and the desk's leftover stops and targets once the position is gone. Orders the desk did not
-place are never cancelled. The tick also raises account alerts, deduplicated so each repeats at most
+TTL, and the desk's leftover stops and targets once the position is gone. "Gone" needs time: a rung
+that filled with no position in the same read is left alone until that has held for two minutes
+across ticks of one process (a fill can show before its position row does), and coins are matched
+without case. Entries are cancelled before stops; if an entry cannot be cancelled (it may have just
+filled) its ladder's stops stay for the next tick. Orders the desk did not place are never cancelled.
+
+**Kill switch** (Desk page, Telegram, `POST /api/desk/kill`): blocks every new entry and cancels the
+desk's unfilled entry rungs on Propr, at once and again on every tick while it is on, so a cancel
+that failed is retried. Stops and take-profits of open positions stay, and positions are not closed.
+The `Kill switch ON` alert lists what was cancelled or could not be. Switching it off restores
+nothing: cancelled rungs are not re-placed.
+
+The tick also raises account alerts, deduplicated so each repeats at most
 hourly:
 
 - **critical**: a position with no stop covering it;
 - **warn**: perp-radar orders on the account, an account that cannot be read, or a sweep that failed;
+- **warn**: with the kill switch on in a dry run, entry rungs that would be cancelled;
 - **info**: rungs swept (live only).
 
+## Reading the account
+
+Every Propr answer is parsed with zod (`propr/schemas.ts`). A 200 in a shape the desk does not know
+(a list that is neither an array nor `{ data: [...] }`, an order without `status` or `type`, a
+position without coin, side or quantity) is an error, never an empty list: the account reads as
+unavailable, the governor blocks new entries, and housekeeping raises the `account unreadable`
+warning and cancels nothing until the read works again. Extra fields are ignored.
+
 ## Known limits
+
+- The two-minute wait before a filled ladder's leftovers are swept is kept in the process's memory. Where every tick
+  is a fresh process (serverless cron only), those leftover stops are not swept by housekeeping; a full close from the
+  desk and the next ladder on the coin still clear them.
 
 - Propr's two-step trailing drawdown is not modeled; the static floor from the starting balance is.
 - `X-API-Key` auth and the balance fields of `GET /accounts/{id}` follow Propr's docs but are only
