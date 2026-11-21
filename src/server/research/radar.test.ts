@@ -19,7 +19,7 @@ const memFs = (files: Record<string, string>): RadarFs => ({
 
 describe("readRadar", () => {
   test("fixture dir: latest dated note, calls graded in memory against state.json, scorecard rows", async () => {
-    const r = RadarResponseSchema.parse(await readRadar(RADAR_FIXTURE));
+    const r = RadarResponseSchema.parse(await readRadar(RADAR_FIXTURE, undefined, "2026-11-05"));
     expect(r.state).toBe("ok");
     expect(r.latestNote).toEqual({ date: "2026-11-01", markdown: "# Radar 2026-11-01\nlatest note\n", truncated: false });
     expect(r.calls.map((c) => [c.id, c.rel])).toEqual([
@@ -27,8 +27,14 @@ describe("readRadar", () => {
       ["2026-11-01-2-SOL", { "3": -1.5 }], // already graded: kept
     ]);
     expect(r.scorecard).toEqual([
-      { stance: "ride", horizonDays: 3, n: 1, meanPct: 8.91, hits: 1 },
-      { stance: "fade", horizonDays: 3, n: 1, meanPct: -1.5, hits: 0 },
+      { stance: "ride", horizonDays: 3, n: 1, clusters: 1, meanPct: 8.91, ci95: null, hits: 1, ungraded: 0 },
+      { stance: "fade", horizonDays: 3, n: 1, clusters: 1, meanPct: -1.5, ci95: null, hits: 0, ungraded: 0 },
+    ]);
+    // Once the +7d grading window has closed with no snapshot, those calls are reported as ungraded, not dropped.
+    const later = RadarResponseSchema.parse(await readRadar(RADAR_FIXTURE, undefined, "2026-11-20"));
+    expect(later.scorecard.filter((x) => x.horizonDays === 7)).toEqual([
+      { stance: "ride", horizonDays: 7, n: 0, clusters: 0, meanPct: null, ci95: null, hits: 0, ungraded: 1 },
+      { stance: "fade", horizonDays: 7, n: 0, clusters: 0, meanPct: null, ci95: null, hits: 0, ungraded: 1 },
     ]);
   });
 
@@ -51,9 +57,9 @@ describe("readRadar", () => {
     const r = RadarResponseSchema.parse(await readRadar("/d", memFs({
       "/d/calls.json": JSON.stringify({ calls: Array.from({ length: 60 }, (_, i) => call(i)) }),
       "/d/notes/2026-11-02.md": "x".repeat(25_000),
-    })));
+    }), "2026-11-05"));
     expect(r.calls.map((c) => c.id)).toEqual(Array.from({ length: 50 }, (_, i) => `c${i + 10}`));
-    expect(r.scorecard).toEqual([{ stance: "ride", horizonDays: 3, n: 60, meanPct: 1, hits: 60 }]);
+    expect(r.scorecard).toEqual([{ stance: "ride", horizonDays: 3, n: 60, clusters: 1, meanPct: 1, ci95: null, hits: 60, ungraded: 0 }]); // 60 calls of one day: one cluster, no interval
     expect(r.latestNote).toMatchObject({ date: "2026-11-02", truncated: true });
     expect(r.latestNote!.markdown).toHaveLength(20_000);
   });

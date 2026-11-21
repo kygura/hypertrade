@@ -234,11 +234,18 @@ export type StudyResponse = z.infer<typeof StudyResponseSchema>;
 const RadarScoreRowSchema = z.object({
   stance: z.enum(["ride", "fade"]),
   horizonDays: z.number().int().positive(),
-  n: z.number().int().positive(),
-  /** Mean move vs BTC, %, signed by direction. */
-  meanPct: Num,
+  /** Graded calls; 0 when the row only reports ungraded ones. */
+  n: Count,
+  /** Signal-time buckets floor(call date / max(1 day, horizon)) among the graded calls (platform/stats.ts clusterStats). */
+  clusters: Count,
+  /** Mean move vs BTC over cluster means, %, signed by direction; null with no graded call. */
+  meanPct: Num.nullable(),
+  /** 95% t-interval of that mean over clusters, %; null under 5 clusters. */
+  ci95: z.tuple([Num, Num]).nullable(),
   /** Calls that went the called way. */
   hits: Count,
+  /** Calls whose horizon passed with no snapshot inside its grading window: never graded, counted here instead of dropped. */
+  ungraded: Count,
 });
 export type RadarScoreRow = z.infer<typeof RadarScoreRowSchema>;
 
