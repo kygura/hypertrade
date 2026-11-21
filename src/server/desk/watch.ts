@@ -87,10 +87,12 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
     }
   }
 
-  // Venue upkeep (Propr: stale or finished ladder rungs are cancelled, unprotected positions flagged). Never fatal to
+  // Venue upkeep (Propr: stale or finished ladder rungs are cancelled, every unfilled entry rung while the kill switch
+  // is on, unprotected positions flagged). Never fatal to
   // the tick. Each condition alerts once (a critical one again every hour while it lasts), not every minute.
   if (service.broker.housekeep) {
-    const notes = await service.broker.housekeep(now).catch((err): UpkeepNote[] => [{ level: "warn", key: "upkeep-failed", text: `housekeeping failed: ${err instanceof Error ? err.message : String(err)}` }]);
+    const kill = await service.killSwitch();
+    const notes = await service.broker.housekeep(now, { killSwitch: kill.on }).catch((err): UpkeepNote[] => [{ level: "warn", key: "upkeep-failed", text: `housekeeping failed: ${err instanceof Error ? err.message : String(err)}` }]);
     const seen = state.upkeep ?? {};
     const next: Record<string, number> = {};
     const due: UpkeepNote[] = [];

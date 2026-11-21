@@ -90,7 +90,7 @@ function assess(p: RiskOrder, ctx: GovernorContext, proposalReasons: string[]): 
   const dayLossPct = equity > 0 ? (-account.dayPnlUsd / equity) * 100 : 0;
   if (dayLossPct >= limits.dailyLossLimitPct) reasons.push(`day loss ${r2(dayLossPct)}% has hit the ${limits.dailyLossLimitPct}% limit`);
 
-  const existing = account.positions.find((x) => x.coin === p.coin);
+  const existing = account.positions.find((x) => x.coin.toUpperCase() === p.coin.toUpperCase());
   if (existing) reasons.push(`already ${existing.side} ${p.coin}: exit or adjust it instead of adding`);
   if (account.positions.length >= limits.maxPositions) reasons.push(`${account.positions.length} positions open, limit ${limits.maxPositions}`);
 

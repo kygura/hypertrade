@@ -62,6 +62,10 @@ export const utcMidnight = (now: number) => {
 const OPEN = ["open", "pending", "partially_filled"];
 export const isEntry = (o: Row) => (o.type === "market" || o.type === "limit") && o.reduceOnly !== true;
 export const isOpen = (o: Row) => OPEN.includes(String(o.status));
+/** The coin of an order or position row: `base`, else `asset`. One reading for both, so a ladder's orders and its position meet. */
+export const coinOf = (o: Row): string => String(o.base || o.asset || "?");
+/** Coins compare without case: Propr and Hyperliquid need not agree on it ("kPEPE"). */
+export const sameCoin = (a: string, b: string) => a.toUpperCase() === b.toUpperCase();
 
 /** Propr publishes no start-of-day balance in its API docs. Use the field if the account carries one, otherwise rebuild
  * it from today's realized P&L and fees. Take the highest candidate: a higher anchor means a higher floor, less room. */
@@ -84,8 +88,8 @@ function readPositions(rawPos: Row[], rawOrders: Row[]): ProprPosition[] {
     .map((p) => {
       const qty = Math.abs(num(p.quantity) ?? 0);
       const side = p.positionSide === "short" ? "short" : "long";
-      const coin = String(p.base || p.asset || "?");
-      const mine = reduce.filter((o) => (o.positionId && o.positionId === p.positionId) || (o.base === coin && o.positionSide === side));
+      const coin = coinOf(p);
+      const mine = reduce.filter((o) => (o.positionId && o.positionId === p.positionId) || (sameCoin(coinOf(o), coin) && o.positionSide === side));
       const stops = mine.filter((o) => o.type === "stop_market" || o.type === "stop_limit");
       const covered = stops.reduce((s, o) => s + Math.abs(num(o.quantity) ?? 0), 0);
       // Ladder rungs each carry a stop for their own quantity, so together they cover the merged position.
@@ -119,7 +123,7 @@ export function countEntriesToday(orders: Row[], now: number): number {
   let manual = 0;
   for (const o of orders) {
     if (!isEntry(o) || o.status === "rejected" || !(Date.parse(String(o.createdAt ?? "")) >= since)) continue;
-    if (isLadderId(o.intentId)) ladders.add(`${String(o.intentId).slice(0, 10)}:${String(o.base)}`);
+    if (isLadderId(o.intentId)) ladders.add(`${String(o.intentId).slice(0, 10)}:${coinOf(o).toUpperCase()}`);
     else manual++;
   }
   return manual + ladders.size;
@@ -147,7 +151,7 @@ export function snapshotFrom(input: { accountId: string; attempt: Row; account: 
     positions: readPositions(input.positions, input.orders),
     entriesToday: countEntriesToday(input.orders, input.now),
     pendingRisk: pendingLadderRisk(input.orders),
-    working: [...new Set(input.orders.filter((o) => isEntry(o) && isOpen(o)).map((o) => String(o.base ?? o.asset)))],
+    working: [...new Set(input.orders.filter((o) => isEntry(o) && isOpen(o)).map(coinOf))],
     perpRadarOrders: input.orders.filter((o) => isOpen(o) && isPerpRadarId(o.intentId)).length,
     orders: input.orders,
   };

@@ -7,7 +7,7 @@ import { FakeData, RecordingNotifier, ctx } from "../testkit.js";
 import type { OperatorOrder, RiskOrder, Sizing, TradeProposal } from "../types.js";
 import { tick } from "../watch.js";
 import { countEntriesToday, estimateDayStart, pendingLadderRisk, snapshotFrom, type ProprSnapshot } from "./account.js";
-import { ProprBroker, sweepPlan } from "./broker.js";
+import { FLAT_GRACE_MS, ProprBroker, sweepPlan } from "./broker.js";
 import { proprBaseUrl, scrub } from "./client.js";
 import { isLadderId, isPerpRadarId, ladderId, ulid, ulidTime } from "./ids.js";
 import { coinMaxLeverage, firmReasons, ladderEdge, ladderRequests, planLadder, tradeLeverage } from "./ladder.js";
@@ -34,7 +34,7 @@ const perpRadarId = (t: number) => {
 type Call = { method: string; url: string; headers: Record<string, string>; body: any; redirect?: string };
 
 /** A fake Propr API: records every call, answers GETs from state and POSTed orders from a script of statuses. */
-function fakePropr(opts: { positions?: unknown[]; orders?: unknown[]; account?: Record<string, string>; statuses?: string[][]; cancelFails?: boolean; unfilled?: boolean } = {}) {
+function fakePropr(opts: { positions?: unknown[]; orders?: unknown[]; account?: Record<string, string>; statuses?: string[][]; cancelFails?: boolean; cancelDown?: boolean; unfilled?: boolean; raw?: Record<string, unknown> } = {}) {
   const calls: Call[] = [];
   const statuses = [...(opts.statuses ?? [])];
   let oid = 100;
@@ -45,6 +45,8 @@ function fakePropr(opts: { positions?: unknown[]; orders?: unknown[]; account?: 
     calls.push({ method, url: String(url), headers: (init?.headers ?? {}) as Record<string, string>, body, redirect: init?.redirect });
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status });
     const p = u.pathname.replace("/v1", "");
+    if (method === "GET" && opts.raw && p in opts.raw) return json(opts.raw[p]);
+    if (p.endsWith("/cancel") && opts.cancelDown) return json({ message: "upstream down" }, 502);
     if (p === "/challenge-attempts") return json({ data: [{ accountId: "old", status: "failed", initialBalance: "25000" }, { accountId: "acc1", status: "active", initialBalance: "25000" }] });
     if (p === "/accounts/acc1") return json(opts.account ?? { balance: "25000", marginBalance: "25000", totalUnrealizedPnl: "0" });
     if (p === "/accounts/acc1/positions") return json({ data: opts.positions ?? [] });
@@ -374,6 +376,117 @@ describe("ProprBroker", () => {
     expect(notes.find((n) => n.level === "critical")).toMatchObject({ key: "unprotected:BTC:short", text: expect.stringContaining("no full stop") });
     expect(notes.find((n) => n.level === "info")?.text).toContain("ETH: 1 resting order cancelled");
     expect(live.posts().map((c) => c.url)).toEqual([`${BASE}/accounts/acc1/orders/o1/cancel`]);
+  });
+});
+
+/** A one-hour-old ETH long ladder: the market rung filled (its stop and target working), two limit rungs resting with their stops. */
+function liveLadder(coin = "ETH") {
+  const t = NOW.getTime() - 3_600_000;
+  const row = (i: number, kind: "entry" | "stop" | "tp", o: Record<string, unknown>) => ({ orderId: `${kind[0]}${i}`, intentId: ladderId(t, "p", i, kind), orderGroupId: `g${i}`, base: coin, positionSide: "long", quantity: "0.1", status: "open", ...o });
+  return [
+    row(0, "entry", { type: "market", side: "buy", status: "filled", cumulativeQuantity: "0.1" }),
+    row(0, "stop", { type: "stop_market", side: "sell", reduceOnly: true, triggerPrice: "3800" }),
+    row(0, "tp", { type: "take_profit_market", side: "sell", reduceOnly: true, triggerPrice: "4500" }),
+    row(1, "entry", { type: "limit", side: "buy", price: "3950", cumulativeQuantity: "0" }),
+    row(1, "stop", { type: "stop_market", side: "sell", reduceOnly: true, triggerPrice: "3800" }),
+    row(2, "entry", { type: "limit", side: "buy", price: "3900", cumulativeQuantity: "0" }),
+    row(2, "stop", { type: "stop_market", side: "sell", reduceOnly: true, triggerPrice: "3800" }),
+  ];
+}
+const ethPos = (base = "ETH") => ({ base, positionSide: "long", quantity: "0.1", entryPrice: "4000", markPrice: "4000" });
+const cancels = (api: ReturnType<typeof fakePropr>) => api.posts().map((c) => c.url.match(/orders\/(\w+)\/cancel$/)?.[1]);
+
+describe("kill switch on Propr", () => {
+  const liveBroker = (api: ReturnType<typeof fakePropr>, over: Record<string, string> = { PROPR_LIVE: "true" }) => new ProprBroker({ config: cfgOf(over), market, fetchFn: api.fetchFn });
+
+  test("housekeeping under the kill switch cancels the resting entry rungs and keeps every stop and target; without it nothing is sent", async () => {
+    const calm = fakePropr({ orders: liveLadder(), positions: [ethPos()] });
+    expect(await liveBroker(calm).housekeep(NOW)).toEqual([]);
+    expect(calm.posts()).toEqual([]);
+    const api = fakePropr({ orders: liveLadder(), positions: [ethPos()] });
+    const notes = await liveBroker(api).housekeep(NOW, { killSwitch: true });
+    expect(cancels(api)).toEqual(["e1", "e2"]);
+    expect(notes).toEqual([{ level: "info", key: expect.stringContaining("swept:"), text: "ETH: 2 resting orders cancelled, the kill switch is on" }]);
+  });
+
+  test("a dry run under the kill switch sends nothing and names what it would cancel", async () => {
+    const api = fakePropr({ orders: liveLadder(), positions: [ethPos()] });
+    const notes = await liveBroker(api, {}).housekeep(NOW, { killSwitch: true });
+    expect(api.posts()).toEqual([]);
+    expect(notes).toEqual([{ level: "warn", key: expect.stringContaining("kill-dry:"), text: expect.stringContaining("2 resting entry rungs would be cancelled") }]);
+    expect(await liveBroker(api, {}).housekeep(NOW)).toEqual([]);
+  });
+
+  test("the kill action itself cancels the rungs, says so in its alert, and every tick retries a cancel that failed", async () => {
+    const opts: Parameters<typeof fakePropr>[0] = { orders: liveLadder(), positions: [ethPos()], cancelDown: true };
+    const api = fakePropr(opts);
+    const config = loadDeskConfig(env({ PROPR_LIVE: "true", DESK_REVIEW_HOURS: "0" }));
+    const notifier = new RecordingNotifier();
+    const service = new DeskService({ config, store: new MemoryStore(() => NOW), data: new FakeData([ctx("ETH", 4000)]), notifier, now: () => NOW, broker: liveBroker(api) });
+    await service.setKillSwitch(true, "halt", "operator");
+    expect((await service.killSwitch()).on).toBe(true);
+    expect(cancels(api)).toEqual(["e1", "e2"]);
+    expect(notifier.sent.at(-1)).toMatchObject({ title: "Kill switch ON", body: expect.stringContaining("could not cancel a ETH limit order") });
+    opts.cancelDown = false;
+    await tick(service, { runCycle: false });
+    expect(cancels(api)).toEqual(["e1", "e2", "e1", "e2"]);
+    expect(notifier.sent.at(-1)?.body).toContain("ETH: 2 resting orders cancelled, the kill switch is on");
+    // Switching it off cancels nothing.
+    await service.setKillSwitch(false, "resume", "operator");
+    expect(api.posts()).toHaveLength(4);
+  });
+});
+
+describe("housekeeping never strips a live position's stops", () => {
+  test("a filled rung whose position row is not in the read yet: stops stay; only once it has stayed gone past the grace period are they swept", async () => {
+    const opts: Parameters<typeof fakePropr>[0] = { orders: liveLadder(), positions: [] };
+    const api = fakePropr(opts);
+    const broker = new ProprBroker({ config: cfgOf({ PROPR_LIVE: "true" }), market, fetchFn: api.fetchFn });
+    expect(await broker.housekeep(NOW)).toEqual([]);
+    expect(api.posts()).toEqual([]);
+    // The position shows up on the next read: the wait starts over.
+    opts.positions = [ethPos()];
+    expect(await broker.housekeep(new Date(NOW.getTime() + FLAT_GRACE_MS))).toEqual([]);
+    opts.positions = [];
+    await broker.housekeep(new Date(NOW.getTime() + 2 * FLAT_GRACE_MS));
+    await broker.housekeep(new Date(NOW.getTime() + 2 * FLAT_GRACE_MS + 60_000));
+    expect(api.posts()).toEqual([]);
+    const notes = await broker.housekeep(new Date(NOW.getTime() + 3 * FLAT_GRACE_MS));
+    expect(notes).toEqual([{ level: "info", key: expect.stringContaining("swept:"), text: "ETH: 6 resting orders cancelled, the trade is closed" }]);
+    expect(cancels(api)).toEqual(["e1", "e2", "s0", "t0", "s1", "s2"]);
+  });
+
+  test("sweepPlan: one sighting of 'filled, no position' cancels nothing, with or without a memory", () => {
+    const flat = new Map<string, number>();
+    expect(sweepPlan(liveLadder(), [], NOW.getTime(), 8, { flat })).toEqual([]);
+    expect(sweepPlan(liveLadder(), [], NOW.getTime(), 8)).toEqual([]);
+    expect(sweepPlan(liveLadder(), [], NOW.getTime() + FLAT_GRACE_MS, 8, { flat })[0]?.victims).toHaveLength(6);
+  });
+
+  test("a position whose coin differs only in case (or sits in `asset`) still holds its ladder's stops, past the TTL too", async () => {
+    const pos = [{ coin: "eth", side: "long" as const, qty: 0.1, entry: 4000, mark: 4000, stop: 3800, tp: 4500 }];
+    const late = NOW.getTime() + 10 * 3_600_000;
+    const flat = new Map([[`${ladderId(NOW.getTime() - 3_600_000, "p", 0, "entry").slice(0, 10)}:ETH`, 0]]);
+    expect(sweepPlan(liveLadder(), pos, late, 8, { flat }).map((x) => x.victims.map((o) => o.orderId))).toEqual([["e1", "e2"]]);
+    const api = fakePropr({ orders: liveLadder(), positions: [{ asset: "eth", positionSide: "long", quantity: "0.1", entryPrice: "4000", markPrice: "4000" }] });
+    const broker = new ProprBroker({ config: cfgOf({ PROPR_LIVE: "true" }), market, fetchFn: api.fetchFn });
+    await broker.housekeep(new Date(late));
+    await broker.housekeep(new Date(late + FLAT_GRACE_MS));
+    expect(cancels(api)).toEqual(["e1", "e2", "e1", "e2"]);
+    // The lower-case position is protected by the upper-case ladder's stops, and the governor's one-position-per-coin check sees it.
+    expect((await broker.snapshot(NOW)).positions[0]).toMatchObject({ coin: "eth", stop: 3800 });
+    expect(await broker.holds("ETH", "long", NOW)).toBe(true);
+  });
+
+  test("an entry that cannot be cancelled may have just filled: its ladder's stops are left alone", async () => {
+    const t = NOW.getTime() - 9 * 3_600_000;
+    const orders = [
+      { orderId: "e1", intentId: ladderId(t, "p", 1, "entry"), type: "limit", side: "buy", base: "ETH", positionSide: "long", status: "open", quantity: "0.1", price: "3950" },
+      { orderId: "s1", intentId: ladderId(t, "p", 1, "stop"), type: "stop_market", side: "sell", base: "ETH", positionSide: "long", reduceOnly: true, status: "open", quantity: "0.1", triggerPrice: "3800" },
+    ];
+    const api = fakePropr({ orders, cancelFails: true });
+    await new ProprBroker({ config: cfgOf({ PROPR_LIVE: "true" }), market, fetchFn: api.fetchFn }).housekeep(NOW);
+    expect(cancels(api)).toEqual(["e1"]);
   });
 });
 

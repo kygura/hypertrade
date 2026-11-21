@@ -35,8 +35,10 @@ import {
 //                        marks → execute. The confirm is the operator's
 //                        approval, so the approval mode does not apply.
 //
-// The kill switch blocks every new entry (exits stay allowed). Every
-// decision, fill and failure raises a stored alert.
+// The kill switch blocks every new entry (exits stay allowed) and cancels the
+// desk's entry orders still resting on the venue (Propr's unfilled ladder
+// rungs); protective stops stay. Every decision, fill and failure raises a
+// stored alert.
 
 const KILL_KEY = "kill_switch";
 const APPROVAL_KEY = "approval_override";
@@ -135,7 +137,16 @@ export class DeskService {
 
   async setKillSwitch(on: boolean, reason: string, by: string): Promise<void> {
     await this.store.setState(KILL_KEY, { on, reason, at: this.now().toISOString(), by });
-    await this.alert(on ? "critical" : "info", on ? "Kill switch ON" : "Kill switch off", `${reason} (by ${by})`);
+    // Entries already resting on the venue would still fill: cancel them now. The switch is stored first, so whatever
+    // fails here is retried by housekeeping on every watch tick while it stays on.
+    const venue =
+      on && this.broker.cancelEntries
+        ? await this.broker.cancelEntries(this.now()).then(
+            (notes) => notes.map((n) => n.text),
+            (err) => [`resting entry orders on ${this.broker.venue} could not be cancelled (${err instanceof Error ? err.message : String(err)}); housekeeping retries on the next tick`],
+          )
+        : [];
+    await this.alert(on ? "critical" : "info", on ? "Kill switch ON" : "Kill switch off", [`${reason} (by ${by})`, ...venue].join("\n"));
   }
 
   /** Approval in force: manual on a venue that requires it (Propr), else an operator override from the UI, else the env default. */
