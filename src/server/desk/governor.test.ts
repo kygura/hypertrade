@@ -232,6 +232,17 @@ describe("evaluateExit", () => {
   test("no position, no exit", () => {
     expect(evaluateExit({ coin: "ETH", fraction: 1, reason: "close it" }, gctx()).reasons.join()).toContain("no open ETH");
   });
+  test("the coin matches without case, as the entry checks do (Propr's base need not match HL's name)", () => {
+    const acct = account({ positions: [{ ...pos, coin: "eth" }] });
+    expect(evaluateExit({ coin: "ETH", fraction: 1, reason: "close it" }, gctx({ account: acct }))).toMatchObject({ approved: true, sizing: { size: 0.3333 } });
+    expect(evaluateRisk({ coin: "ETH", side: "long", stop: 3800, riskPct: 0.5 }, gctx({ account: acct })).reasons.join()).toContain("already long ETH");
+  });
+  test("an account read only in part: a position it lists can be closed, one it does not is refused as unavailable", () => {
+    const acct = account({ available: false, note: "partly unreadable", positions: [pos] });
+    expect(evaluateExit({ coin: "ETH", fraction: 1, reason: "close it" }, gctx({ account: acct })).approved).toBe(true);
+    expect(evaluateExit({ coin: "SOL", fraction: 1, reason: "close it" }, gctx({ account: acct })).reasons).toEqual(["account unavailable: partly unreadable"]);
+    expect(evaluateExit({ coin: "ETH", fraction: 1, reason: "close it" }, gctx({ account: account({ available: false }) })).reasons).toEqual(["account unavailable"]);
+  });
 });
 
 test("floorToDecimals never rounds up", () => {

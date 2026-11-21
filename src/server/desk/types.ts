@@ -128,7 +128,7 @@ export interface AccountState {
   /** Realized + unrealized PnL since 00:00 UTC, in USD. */
   dayPnlUsd: number;
   positions: Position[];
-  /** False when the account could not be read (no address configured, upstream error). */
+  /** False when the account could not be read (no address configured, upstream error), or only in part: `positions` then lists the ones that were read, which can still be closed. */
   available: boolean;
   note?: string;
 }

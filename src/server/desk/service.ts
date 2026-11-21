@@ -7,7 +7,7 @@ import { evaluateExit, evaluateOpen, evaluateRisk, operatorRiskOrder, type Gover
 import type { Alert, AlertAction, Notifier } from "./notify.js";
 import { HlBroker } from "./hl/broker.js";
 import { PaperBroker, type Broker, type ExecutionResult } from "./paper.js";
-import { ProprBroker } from "./propr/broker.js";
+import { PROPR_UPKEEP_KEY, ProprBroker, type ProprUpkeepState } from "./propr/broker.js";
 import type { DeskStore } from "./store.js";
 import type { LlmCaps } from "../intel/llm.js";
 import {
@@ -124,7 +124,11 @@ export class DeskService {
       (d.config.venue === "hl-testnet" && d.config.hl
         ? new HlBroker({ ...d.config.hl, takerFee: d.config.limits.takerFee })
         : d.config.venue === "propr" && d.config.propr
-          ? new ProprBroker({ config: d.config.propr, market: async (coin) => DeskService.findMarket(await d.data.ctxs(), coin) })
+          ? new ProprBroker({
+              config: d.config.propr,
+              market: async (coin) => DeskService.findMarket(await d.data.ctxs(), coin),
+              state: { get: () => d.store.getState<ProprUpkeepState>(PROPR_UPKEEP_KEY), set: (v) => d.store.setState(PROPR_UPKEEP_KEY, v) },
+            })
           : new PaperBroker(d.store, {
             startingEquity: d.config.paperStartingEquity,
             slippage: d.config.paperSlippage,

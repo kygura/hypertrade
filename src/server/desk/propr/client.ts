@@ -1,10 +1,12 @@
 // Propr REST client (docs: propr.xyz/developers, propr.xyz/openapi.json), ported from perp-radar's executor.
 // The key comes only from PROPR_API_KEY. It is held in a private field, sent only in the X-API-Key header to
 // Propr's own hosts, and scrubbed from every error message. Every answer is parsed with zod (schemas.ts): a shape the
-// desk does not know throws, it never reads as an empty list.
+// desk does not know throws, it never reads as an empty list. Rows are parsed one by one: a row that cannot be read
+// and cannot be live is dropped; one that may be live throws, unless the caller passes a `skipped` list (the reads
+// behind exits, the kill switch and housekeeping), which then names it and the rest of the list is returned.
 
 import type { z } from "zod";
-import { AccountSchema, AttemptRowSchema, ListSchema, MarginConfigSchema, OrderRowSchema, PositionRowSchema, RowSchema, TradeRowSchema, type Row } from "./schemas.js";
+import { AccountSchema, AttemptRowSchema, ListSchema, MarginConfigSchema, OrderRowSchema, PositionRowSchema, RowSchema, TradeRowSchema, orderIsOver, positionIsFlat, type Row } from "./schemas.js";
 
 export type { Row };
 
@@ -52,18 +54,35 @@ export type ProprOrderRequest = {
   closePosition: boolean;
 };
 
+const unknownShape = (what: string, e: z.ZodError) => {
+  const i = e.issues[0];
+  return scrub(`${what}: answer not in a shape the desk knows (${i ? `${i.path.join(".") || "body"}: ${i.message}` : "invalid"})`);
+};
 /** Parses an answer, or throws naming the request and the first thing that did not fit. */
 function parse<S extends z.ZodTypeAny>(schema: S, value: unknown, what: string): z.infer<S> {
   const r = schema.safeParse(value);
   if (r.success) return r.data;
-  const i = r.error.issues[0];
-  throw new ProprError(200, null, scrub(`${what}: answer not in a shape the desk knows (${i ? `${i.path.join(".") || "body"}: ${i.message}` : "invalid"})`));
+  throw new ProprError(200, null, unknownShape(what, r.error));
 }
-/** The rows of a list answer and the total it reports, each row parsed. */
-function list<S extends z.ZodTypeAny>(body: unknown, row: S, what: string): { rows: Array<z.infer<S>>; total: number | null } {
+/** How a list's rows are read: `over` says an unreadable row cannot matter (dropped); `skipped` collects the others instead of throwing. */
+interface RowRead {
+  over?: (r: Row) => boolean;
+  skipped?: string[];
+}
+/** The rows of a list answer and the total it reports. The envelope must be a list; each row is parsed on its own. */
+function list<S extends z.ZodTypeAny>(body: unknown, row: S, what: string, read: RowRead = {}): { rows: Array<z.infer<S>>; total: number | null } {
   const b = parse(ListSchema, body, what);
   const raw = Array.isArray(b) ? b : b.data;
-  return { rows: raw.map((r, i) => parse(row, r, `${what} row ${i}`)), total: Array.isArray(b) ? null : (b.total ?? null) };
+  const rows: Array<z.infer<S>> = [];
+  for (const [i, r] of raw.entries()) {
+    const p = row.safeParse(r);
+    if (p.success) rows.push(p.data);
+    else if (read.over?.(r)) continue;
+    else if (read.skipped) read.skipped.push(unknownShape(`${what} row ${i}`, p.error));
+    else throw new ProprError(200, null, unknownShape(`${what} row ${i}`, p.error));
+  }
+  const t = Array.isArray(b) ? null : typeof b.total === "string" && b.total.trim() !== "" ? Number(b.total) : b.total;
+  return { rows, total: typeof t === "number" && Number.isFinite(t) ? t : null };
 }
 const PAGE = 100;
 const MAX_PAGES = 10;
@@ -118,35 +137,39 @@ export class ProprClient {
    * Every page of a list (limit/offset, Propr's default page is 20): until a short page, the reported total, or
    * `until` says the rest is older than needed (lists come newest first). At most ten pages of a hundred.
    */
-  private async all<S extends z.ZodTypeAny>(path: string, row: S, params: Record<string, string | number | undefined> = {}, until?: (r: z.infer<S>) => boolean): Promise<Array<z.infer<S>>> {
+  private async all<S extends z.ZodTypeAny>(path: string, row: S, read: RowRead = {}, params: Record<string, string | number | undefined> = {}, until?: (r: z.infer<S>) => boolean): Promise<Array<z.infer<S>>> {
     const out: Array<z.infer<S>> = [];
     for (let page = 0; page < MAX_PAGES; page++) {
-      const { rows: got, total } = list(await this.req("GET", path, { params: { ...params, limit: PAGE, offset: page * PAGE } }), row, `GET ${path}`);
+      // Paging counts the rows Propr sent, dropped and skipped ones included.
+      const body = await this.req("GET", path, { params: { ...params, limit: PAGE, offset: page * PAGE } });
+      const sent = Array.isArray(body) ? body.length : Array.isArray((body as { data?: unknown } | null)?.data) ? (body as { data: unknown[] }).data.length : 0;
+      const { rows: got, total } = list(body, row, `GET ${path}`, read);
       out.push(...got);
-      if (got.length < PAGE || (total != null && out.length >= total) || (until && got.length && until(got[got.length - 1]!))) break;
+      if (sent < PAGE || (total != null && (page + 1) * PAGE >= total) || (until && got.length && until(got[got.length - 1]!))) break;
     }
     return out;
   }
 
   /** Challenge attempts that can trade (active, or passed and funded). */
-  async attempts(): Promise<Row[]> {
-    return (await this.all("/challenge-attempts", AttemptRowSchema)).filter((a) => TRADABLE.has(String(a.status)));
+  async attempts(skipped?: string[]): Promise<Row[]> {
+    return (await this.all("/challenge-attempts", AttemptRowSchema, { skipped })).filter((a) => TRADABLE.has(String(a.status)));
   }
   /** Balance, margin balance, unrealized P&L (the SDK's get_account). */
   async account(accountId: string): Promise<Row> {
     const path = `/accounts/${encodeURIComponent(accountId)}`;
     return parse(AccountSchema, await this.req("GET", path), `GET ${path}`);
   }
-  positions(accountId: string): Promise<Row[]> {
-    return this.all(`/accounts/${encodeURIComponent(accountId)}/positions`, PositionRowSchema, { status: "open" });
+  /** Open positions. A row that cannot be read and is not flat throws, or goes to `skipped` when given. */
+  positions(accountId: string, skipped?: string[]): Promise<Row[]> {
+    return this.all(`/accounts/${encodeURIComponent(accountId)}/positions`, PositionRowSchema, { over: positionIsFlat, skipped }, { status: "open" });
   }
-  /** Every order (open ones can be days old: a held position's stop), up to a thousand. */
-  orders(accountId: string): Promise<Row[]> {
-    return this.all(`/accounts/${encodeURIComponent(accountId)}/orders`, OrderRowSchema);
+  /** Every order (open ones can be days old: a held position's stop), up to a thousand. A row that cannot be read and is not over throws, or goes to `skipped` when given. */
+  orders(accountId: string, skipped?: string[]): Promise<Row[]> {
+    return this.all(`/accounts/${encodeURIComponent(accountId)}/orders`, OrderRowSchema, { over: orderIsOver, skipped });
   }
   /** Trades back to `since` (the day's realized P&L). */
-  trades(accountId: string, since: number): Promise<Row[]> {
-    return this.all(`/accounts/${encodeURIComponent(accountId)}/trades`, TradeRowSchema, {}, (r) => Date.parse(String(r.executedAt ?? r.createdAt ?? "")) < since);
+  trades(accountId: string, since: number, skipped?: string[]): Promise<Row[]> {
+    return this.all(`/accounts/${encodeURIComponent(accountId)}/trades`, TradeRowSchema, { skipped }, {}, (r) => Date.parse(String(r.executedAt ?? r.createdAt ?? "")) < since);
   }
   async marginConfig(accountId: string, asset: string) {
     const path = `/accounts/${encodeURIComponent(accountId)}/margin-config/${encodeURIComponent(asset)}`;

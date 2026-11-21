@@ -36,10 +36,16 @@ export interface ProprSnapshot {
   /** Open orders perp-radar's executor placed: the desk does not trade an account another executor is working. */
   perpRadarOrders: number;
   orders: Row[];
+  /**
+   * Rows Propr sent that could not be read and may be live. Always empty on the strict read (it throws instead); the
+   * tolerant read behind exits, the kill switch and housekeeping lists them: `live` are orders and positions, `other`
+   * trades and attempts. While any is listed the account takes no new entries.
+   */
+  unreadable: { live: string[]; other: string[] };
 }
 
 const num = (x: unknown): number | null => {
-  const v = typeof x === "string" ? Number(x) : typeof x === "number" ? x : NaN;
+  const v = typeof x === "string" && x.trim() !== "" ? Number(x) : typeof x === "number" ? x : NaN;
   return Number.isFinite(v) ? v : null;
 };
 const firstNum = (o: Row | undefined, keys: string[]) => {
@@ -81,15 +87,26 @@ export function estimateDayStart(balance: number, acct: Row, trades: Row[], now:
   return Math.max(balance, balance - realizedToday, field ?? 0);
 }
 
+const idOf = (x: unknown) => (x == null || x === "" ? null : String(x));
+
 function readPositions(rawPos: Row[], rawOrders: Row[]): ProprPosition[] {
   const reduce = rawOrders.filter((o) => o.reduceOnly === true && isOpen(o));
+  // The position a stop or target belongs to: its own positionId, else the one its rung's entry (same order group) carries.
+  const entryOf = new Map(rawOrders.filter((o) => isEntry(o) && idOf(o.orderGroupId)).map((o) => [idOf(o.orderGroupId)!, o]));
+  const ownerOf = (o: Row) => idOf(o.positionId) ?? idOf(entryOf.get(idOf(o.orderGroupId) ?? "")?.positionId);
   return rawPos
     .filter((p) => (num(p.quantity) ?? 0) !== 0 && p.status !== "closed")
     .map((p) => {
       const qty = Math.abs(num(p.quantity) ?? 0);
       const side = p.positionSide === "short" ? "short" : "long";
       const coin = coinOf(p);
-      const mine = reduce.filter((o) => (o.positionId && o.positionId === p.positionId) || (sameCoin(coinOf(o), coin) && o.positionSide === side));
+      const pid = idOf(p.positionId);
+      // A stop that names another position (a closed trade's leftover) protects nothing here. Coin and side decide only
+      // when either row carries no id.
+      const mine = reduce.filter((o) => {
+        const owner = ownerOf(o);
+        return owner != null && pid != null ? owner === pid : sameCoin(coinOf(o), coin) && o.positionSide === side;
+      });
       const stops = mine.filter((o) => o.type === "stop_market" || o.type === "stop_limit");
       const covered = stops.reduce((s, o) => s + Math.abs(num(o.quantity) ?? 0), 0);
       // Ladder rungs each carry a stop for their own quantity, so together they cover the merged position.
@@ -130,7 +147,7 @@ export function countEntriesToday(orders: Row[], now: number): number {
 }
 
 /** Builds the snapshot from raw rows. Throws when the account cannot be trusted (no balance, no starting balance). */
-export function snapshotFrom(input: { accountId: string; attempt: Row; account: Row; positions: Row[]; orders: Row[]; trades: Row[]; startingBalanceEnv?: number; now: number }): ProprSnapshot {
+export function snapshotFrom(input: { accountId: string; attempt: Row; account: Row; positions: Row[]; orders: Row[]; trades: Row[]; startingBalanceEnv?: number; now: number; unreadable?: ProprSnapshot["unreadable"] }): ProprSnapshot {
   const { account: acct, attempt } = input;
   const balance = firstNum(acct, ["balance"]);
   if (balance == null) throw new Error("account balance missing from Propr's answer");
@@ -154,22 +171,29 @@ export function snapshotFrom(input: { accountId: string; attempt: Row; account: 
     working: [...new Set(input.orders.filter((o) => isEntry(o) && isOpen(o)).map(coinOf))],
     perpRadarOrders: input.orders.filter((o) => isOpen(o) && isPerpRadarId(o.intentId)).length,
     orders: input.orders,
+    unreadable: input.unreadable ?? { live: [], other: [] },
   };
 }
 
-/** One read of the configured account; it must be an active challenge or a passed (funded) one. */
-export async function readSnapshot(client: ProprClient, accountId: string, startingBalanceEnv: number | undefined, now: number): Promise<ProprSnapshot> {
-  const attempts = await client.attempts();
+/**
+ * One read of the configured account; it must be an active challenge or a passed (funded) one. Strict by default: a row
+ * that may be live and cannot be read throws, so nothing is sized or sent against a partial account. `tolerant` (exits,
+ * the kill switch, housekeeping) returns what could be read and lists the rest in `unreadable`.
+ */
+export async function readSnapshot(client: ProprClient, accountId: string, startingBalanceEnv: number | undefined, now: number, opts: { tolerant?: boolean } = {}): Promise<ProprSnapshot> {
+  const live: string[] | undefined = opts.tolerant ? [] : undefined;
+  const other: string[] | undefined = opts.tolerant ? [] : undefined;
+  const attempts = await client.attempts(other);
   const attempt = attempts.find((a) => a.accountId === accountId);
   if (!attempt) throw new Error("PROPR_ACCOUNT_ID is not an active challenge or funded account");
-  const [account, positions, orders, trades] = await Promise.all([client.account(accountId), client.positions(accountId), client.orders(accountId), client.trades(accountId, utcMidnight(now))]);
-  return snapshotFrom({ accountId, attempt, account, positions, orders, trades, startingBalanceEnv, now });
+  const [account, positions, orders, trades] = await Promise.all([client.account(accountId), client.positions(accountId, live), client.orders(accountId, live), client.trades(accountId, utcMidnight(now), other)]);
+  return snapshotFrom({ accountId, attempt, account, positions, orders, trades, startingBalanceEnv, now, unreadable: { live: live ?? [], other: other ?? [] } });
 }
 
 /** The desk's view of the account. Marks come from Hyperliquid mainnet, which is where Propr routes. */
 export function toAccountState(s: ProprSnapshot, marks: Map<string, number>, venue: string, note?: string): AccountState {
   const positions: Position[] = s.positions.map((p) => {
-    const mark = marks.get(p.coin) ?? p.mark;
+    const mark = marks.get(p.coin) ?? [...marks].find(([k]) => sameCoin(k, p.coin))?.[1] ?? p.mark;
     const unrealizedPnl = (p.side === "long" ? mark - p.entry : p.entry - mark) * p.qty;
     return { coin: p.coin, side: p.side, size: p.qty, entryPx: p.entry, markPx: mark, stopPx: p.stop, tpPx: p.tp, unrealizedPnl, notionalUsd: p.qty * mark };
   });

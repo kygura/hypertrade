@@ -1,4 +1,5 @@
 import { confidenceAtLeast, type GovernorLimits } from "./config.js";
+import { sameCoin } from "./propr/account.js";
 import type { AccountState, Confidence, ExitProposal, OperatorOrder, RiskOrder, Sizing, TradeProposal, Verdict } from "./types.js";
 
 // The governor: deterministic risk rules between the agents and the book.
@@ -185,9 +186,10 @@ export function operatorRiskOrder(o: OperatorOrder, ctx: GovernorContext): { ord
 /** Exits only reduce risk, so the only checks are that the position exists and the size rounds. */
 export function evaluateExit(p: ExitProposal, ctx: GovernorContext): Verdict {
   const reasons: string[] = [];
-  const pos = ctx.account.positions.find((x) => x.coin === p.coin);
-  if (!ctx.account.available) reasons.push("account unavailable");
-  if (!pos) reasons.push(`no open ${p.coin} position`);
+  // Coins compare without case, as every entry check and the Propr broker do (Propr's `base` need not match HL's name).
+  const pos = ctx.account.positions.find((x) => sameCoin(x.coin, p.coin));
+  // An account that could not be read in full still lists the positions it did read: closing one of those is allowed.
+  if (!pos) reasons.push(ctx.account.available ? `no open ${p.coin} position` : `account unavailable${ctx.account.note ? `: ${ctx.account.note}` : ""}`);
   let sizing: Sizing | undefined;
   if (pos && ctx.market) {
     const size = p.fraction >= 1 ? pos.size : floorToDecimals(pos.size * p.fraction, ctx.market.szDecimals);
