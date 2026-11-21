@@ -89,6 +89,26 @@ describe("windowResult", () => {
     expect(r.z).toBeCloseTo(2, 6); // MAD of past Δs is 0 → σ = floor
   });
 
+  test("OI in contracts with a flat history: no z (the floor would read +0.3 % as 30 σ and +1 % as 99.5); a history that moves keeps its robust z", () => {
+    for (const move of [0.003, 0.01]) {
+      const flat = series(10 * D, (t) => (t > NOW - 30 * MIN ? 1000 * (1 + move) : 1000));
+      const r = windowResult("oi_usd", flat, NOW, "1h");
+      expect(r.delta).toBeCloseTo(move * 100, 9);
+      expect(r.z).toBeNull();
+      // Price keeps its floor: only OI treats a dead history as unknown.
+      expect(windowResult("price", flat, NOW, "1h").z!).toBeGreaterThan(20);
+    }
+    // Hourly noise of ~0.1 %: +1 % is large but it is a number, taken on the history's own MAD.
+    const live = series(10 * D, (t, i) => 1000 * (1 + 0.001 * rnd(Math.floor(i / 4))) * (t > NOW - 30 * MIN ? 1.01 : 1));
+    const z = windowResult("oi_usd", live, NOW, "1h").z!;
+    expect(z).toBeGreaterThan(3);
+    expect(z).toBeLessThan(50);
+    // The Flow path (contracts from USD and price) reads the same: constant contracts, price moving, then +1 % contracts.
+    const price = series(10 * D, (_, i) => 100 * (1 + 0.002 * rnd(i)));
+    const usd = price.map((p) => ({ t: p.t, v: 5000 * p.v * (p.t > NOW - 30 * MIN ? 1.01 : 1) }));
+    expect(pickWindow(computeWindows({ price, oi_usd: usd }, NOW), "oi_usd", "1h")).toMatchObject({ z: null });
+  });
+
   test("per-interval flows: delta is the window total, z on log(1 + total)", () => {
     const liq = series(10 * D, (t) => (t > NOW - H ? 100_000 : 1_000 * (1 + 0.1 * rnd(t / MIN))));
     const r = windowResult("liq_usd", liq, NOW, "1h");

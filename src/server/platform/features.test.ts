@@ -6,12 +6,15 @@ import { DEFAULT_THRESHOLDS, explain, SETUPS, setupsFor } from "./setups.js";
 const MIN = 60_000;
 const NOW = Date.UTC(2026, 9, 15, 12);
 
-/** n 1-min points ending at NOW: deterministic ±0.05% zig-zag in price, flat OI/volume/funding unless overridden. */
+/** Positioning that lives: contracts step ±0.05 % from hour to hour (a flat OI history gives no z, see windows.ts). */
+const oiWobble = (i: number) => 1 + 0.0005 * [0, 1, 0, -1][Math.floor(i / 60) % 4]!;
+
+/** n 1-min points ending at NOW: deterministic ±0.05% zig-zag in price, near-flat OI/volume/funding unless overridden. */
 function ring(n: number, over: (i: number, p: RingPoint) => Partial<RingPoint> = () => ({})): RingPoint[] {
   let mark = 100;
   return Array.from({ length: n }, (_, i) => {
     mark *= Math.exp(i % 2 ? -0.0005 : 0.0005 + (i % 7 === 0 ? 0.0002 : 0));
-    const p = { ts: NOW - (n - 1 - i) * MIN, mark, oiUsd: 1e8 + (i % 5) * 1e5, funding: 1e-5 + (i % 3) * 1e-6, dayNtlVlm: 5e8 + (i % 11) * 1e6 };
+    const p = { ts: NOW - (n - 1 - i) * MIN, mark, oiUsd: (1e8 + (i % 5) * 1e5) * oiWobble(i), funding: 1e-5 + (i % 3) * 1e-6, dayNtlVlm: 5e8 + (i % 11) * 1e6 };
     return { ...p, ...over(i, p) };
   });
 }
@@ -100,11 +103,16 @@ describe("computeFeatures", () => {
 
 describe("platform regime (1 h change, non-flat at 1 σ of the coin's own hourly vol)", () => {
   const N = 24 * 60;
-  /** 24 h of 1-min points on a ±0.05 % zig-zag (sigma1h ≈ 0.77 %); `px` multiplies the mark and `oi` the contracts of minute i (NOW at N − 1). */
-  const path = (px: (i: number) => number, oi: (i: number) => number): RingPoint[] =>
+  /**
+   * 24 h of 1-min points on a ±0.05 % zig-zag (sigma1h ≈ 0.77 %); `px` multiplies the mark and `oi` the contracts of
+   * minute i (NOW at N − 1). Contracts step ±0.05 % between the earlier hours (median hourly change 0) and hold still
+   * over the last two, so `oi` alone moves them there. `still` drops the steps: an OI history with no variation.
+   */
+  const path = (px: (i: number) => number, oi: (i: number) => number, still = false): RingPoint[] =>
     Array.from({ length: N }, (_, i) => {
       const mark = 100 * (i % 2 ? 0.9995 : 1.0005) * px(i);
-      return { ts: NOW - (N - 1 - i) * MIN, mark, oiUsd: 1e6 * oi(i) * mark, funding: 1e-5, dayNtlVlm: 5e8 };
+      const base = still || i >= N - 120 ? 1 : oiWobble(i);
+      return { ts: NOW - (N - 1 - i) * MIN, mark, oiUsd: 1e6 * base * oi(i) * mark, funding: 1e-5, dayNtlVlm: 5e8 };
     });
   const lastHour = (i: number) => Math.max(0, i - (N - 61)) / 60;
   const prevHour = (i: number) => Math.min(1, Math.max(0, i - (N - 121)) / 60);
@@ -152,6 +160,22 @@ describe("platform regime (1 h change, non-flat at 1 σ of the coin's own hourly
     test("a pump with flat contracts is not an OI build", () => {
       const fv = computeFeatures(path((i) => 1 + 0.06 * last15(i), () => 1), NOW);
       expect(fv.features.oiChg1hZ!).toBeCloseTo(0, 6);
+    });
+
+    // In contracts a quiet coin's OI history can be perfectly flat; the σ floor (0.01 %) then made +0.3 % read z 30 and
+    // +1 % z 99.5, so illiquid coins topped surprise, passed the oiZ gates and set the regime's OI leg.
+    test("an OI history with no variation gives no z, whatever the last hour did: unknown, not extreme", () => {
+      for (const move of [0.003, 0.01, -0.06]) {
+        const h = path(() => 1, (i) => 1 + move * lastHour(i), true);
+        const fv = computeFeatures(h, NOW);
+        expect(fv.inputs.oiChg1hPct as number).toBeCloseTo(move * 100, 6);
+        expect(fv.features.oiChg1hZ).toBeNull();
+        // The OI leg of every setup reads unknown, so none fires on it, and the regime has no OI move to name.
+        expect(fired(h)).toEqual([]);
+        expect(fv.inputs.regime).toBe("range");
+      }
+      // The same +1 % against a history that moves is a number again.
+      expect(computeFeatures(path(() => 1, (i) => 1 + 0.01 * lastHour(i)), NOW).features.oiChg1hZ!).toBeGreaterThan(5);
     });
   });
 

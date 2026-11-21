@@ -12,7 +12,10 @@ import { median, robustSigma, zRobust } from "../../shared/signalMath.js";
 //   z = (Δ − median) / σ against the trailing non-overlapping Δs of the same
 //   length (stride = window, so samples are independent); σ = MAD × 1.4826,
 //   floored per metric (METRIC_RULES) so a flat series cannot explode z; sum
-//   metrics also need ≥ 5 nonzero history windows (else z null).
+//   metrics also need ≥ 5 nonzero history windows (else z null). OI is the
+//   exception to the floor: its history in contracts can be flat for hours on
+//   an illiquid coin, and a σ at or under the floor is no information, so z
+//   is null there instead of (move / floor).
 //   An endpoint counts when a sample sits within ±20 min of the grid point.
 //   Lookback 30 d for 1 h / 6 h (≥ 48 / 20 Δs), 90 d for 24 h (≥ 30); fewer → z null.
 // Flips and crossings fire on the transition only: state at the window's
@@ -41,9 +44,11 @@ const MIN_NONZERO_SUMS = 5;
 
 export type DeltaKind = "log" | "diff" | "sum";
 /** How each metric's Δ is taken and the floor on its σ, in Δ units (log points, raw units, or log(1 + USD)). */
-export const METRIC_RULES: Record<HeatmapMetric, { kind: DeltaKind; floor: number }> = {
+export const METRIC_RULES: Record<HeatmapMetric, { kind: DeltaKind; floor: number; flatIsUnknown?: boolean }> = {
   price: { kind: "log", floor: 1e-4 }, // 0.01%
-  oi_usd: { kind: "log", floor: 1e-4 },
+  // In contracts a quiet coin's OI does not move at all (in USD the price moved it), so the floor would bind: a +0.3%
+  // change against a flat history is 30 "sigmas". A history whose σ does not clear the floor gives no z.
+  oi_usd: { kind: "log", floor: 1e-4, flatIsUnknown: true },
   funding: { kind: "diff", floor: 1e-6 }, // hourly rate (SPEC F0.2)
   basis: { kind: "diff", floor: 1e-5 }, // 0.1 bp
   premium: { kind: "diff", floor: 1e-5 },
@@ -184,7 +189,10 @@ export function spanResult(
     if (s) hist.push(s.stat);
   }
   if (METRIC_RULES[metric].kind === "sum" && hist.filter((x) => x > 0).length < MIN_NONZERO_SUMS) return out;
-  if (hist.length >= min) out.z = (cur.stat - median(hist)) / robustSigma(hist, METRIC_RULES[metric].floor);
+  if (hist.length < min) return out;
+  const rule = METRIC_RULES[metric];
+  if (rule.flatIsUnknown && !(robustSigma(hist, 0) > rule.floor)) return out;
+  out.z = (cur.stat - median(hist)) / robustSigma(hist, rule.floor);
   return out;
 }
 
