@@ -731,7 +731,7 @@ Limits:
 
 `/lab` and its tools search a metric universe for simple, human-readable
 trading rules ("when `cm:CapMVRVCur` z(90) < −1.1 and `ht:funding` ≥ 0, go long
-BTC"), score them as strategies net of slippage, validate them walk-forward and
+BTC"), score them as strategies net of fee, slippage and funding, validate them walk-forward and
 on a holdout, and track the ones you save in a catalogue with live
 performance, health checks and a Market Pulse. It rebuilds the methodology
 Glassnode published for Alpha Lab over keyless data. Full spec and the tool

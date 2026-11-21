@@ -927,18 +927,19 @@ export const LIVE_MIN_DAYS = 30
 
 /** What each server verdict level requires, in plain words (the checks of engine/verdict.ts, in its order). */
 export const VERDICT_MEANING: Record<VerdictLevel, string> = {
-  robust: `passes every check: holdout Sharpe above 0 with at least one trade, walk-forward Sharpe above ${MIN_WALK_FORWARD_SHARPE}, stability at least ${MIN_STABILITY} when it was measured, deflated Sharpe at least ${MIN_DEFLATED_SHARPE}. This is the save bar`,
-  candidate: `passes holdout, walk-forward and stability, but the deflated Sharpe is below ${MIN_DEFLATED_SHARPE}, undefined or not computed: it could be the luckiest of the many variants tried`,
+  robust: `passes every check: holdout Sharpe above 0 with at least one trade, walk-forward Sharpe above ${MIN_WALK_FORWARD_SHARPE}, both also in excess of holding the asset for the same share of days, stability at least ${MIN_STABILITY} when it was measured, deflated Sharpe at least ${MIN_DEFLATED_SHARPE}. This is the save bar`,
+  candidate: `passes holdout, walk-forward and stability, but the deflated Sharpe is below ${MIN_DEFLATED_SHARPE}, undefined or not computed (it could be the luckiest of the many variants tried), or the rule was evaluated before its excess over holding the asset was measured`,
   fragile: `passes holdout and walk-forward, but stability is below ${MIN_STABILITY}: the result does not survive small changes to a threshold or window`,
-  weak: `passes holdout, but the walk-forward Sharpe is ${MIN_WALK_FORWARD_SHARPE} or lower, or there is no walk-forward`,
-  fails_holdout: 'the holdout Sharpe is 0 or lower, the holdout holds no trade, or there is no holdout. Checked first',
+  weak: `passes holdout, but the walk-forward Sharpe, or its excess over holding the asset, is ${MIN_WALK_FORWARD_SHARPE} or lower, or there is no walk-forward`,
+  fails_holdout: 'the holdout Sharpe, or its excess over holding the asset, is 0 or lower, the holdout holds no trade, or there is no holdout. Checked first',
 }
 
 /** x for an "x of bar" miss: 3 decimals when 2 would round it up to the bar (as the server's reasons do). */
 const belowBar = (x: number, bar: number) => (Number(x.toFixed(2)) >= bar ? x.toFixed(3) : x.toFixed(2))
 
 export type BarCheck = {
-  key: 'holdout' | 'walkForward' | 'stability' | 'deflatedSharpe'
+  /** `excess` appears only when the stats carry no excess over the benchmark (evaluated before that check existed). */
+  key: 'holdout' | 'walkForward' | 'stability' | 'deflatedSharpe' | 'excess'
   /** true = passes, false = misses, null = not measured (stability without a sensitivity grid). */
   pass: boolean | null
   /** The check with its number when it misses, e.g. `deflated Sharpe (0.71 of 0.9)`. */
@@ -955,18 +956,24 @@ export function saveBarChecks(ev: Pick<RuleEvaluation, 'holdout' | 'walkForward'
   const wf = ev.walkForward
   const st = ev.sensitivity?.stability
   const dsr = ev.deflatedSharpe
+  /** A window's own Sharpe passed: does its excess over holding the asset for the same share of days (absent on old stats: not checked here)? */
+  const excess = (key: 'holdout' | 'walkForward', name: string, s: PerfStats, bar: number): BarCheck =>
+    s.excessSharpe == null || s.excessSharpe > bar
+      ? { key, pass: true, text: name }
+      : { key, pass: false, text: `${name} (excess over holding the asset: Sharpe ${fmtSigned(s.excessSharpe)}, needs above ${bar})` }
+  const unmeasured = (ho && !ho.untested && ho.excessSharpe == null) || (wf && wf.excessSharpe == null)
   return [
     !ho
       ? { key: 'holdout', pass: false, text: 'holdout (none)' }
       : ho.untested
         ? { key: 'holdout', pass: false, text: 'holdout (no trade)' }
         : ho.sharpe > 0
-          ? { key: 'holdout', pass: true, text: 'holdout' }
+          ? excess('holdout', 'holdout', ho, 0)
           : { key: 'holdout', pass: false, text: `holdout (Sharpe ${fmtSigned(ho.sharpe)}, needs above 0)` },
     !wf
       ? { key: 'walkForward', pass: false, text: 'walk-forward (none)' }
       : wf.sharpe > MIN_WALK_FORWARD_SHARPE
-        ? { key: 'walkForward', pass: true, text: 'walk-forward' }
+        ? excess('walkForward', 'walk-forward', wf, MIN_WALK_FORWARD_SHARPE)
         : { key: 'walkForward', pass: false, text: `walk-forward (Sharpe ${fmtSigned(wf.sharpe)}, needs above ${MIN_WALK_FORWARD_SHARPE})` },
     st == null
       ? { key: 'stability', pass: null, text: 'stability' }
@@ -978,6 +985,7 @@ export function saveBarChecks(ev: Pick<RuleEvaluation, 'holdout' | 'walkForward'
       : dsr >= MIN_DEFLATED_SHARPE
         ? { key: 'deflatedSharpe', pass: true, text: 'deflated Sharpe' }
         : { key: 'deflatedSharpe', pass: false, text: `deflated Sharpe (${belowBar(dsr, MIN_DEFLATED_SHARPE)} of ${MIN_DEFLATED_SHARPE})` },
+    ...(unmeasured ? [{ key: 'excess' as const, pass: false, text: 'excess over holding the asset (not measured: evaluated before that check)' }] : []),
   ]
 }
 
@@ -1065,10 +1073,10 @@ export const VERDICT_TERMS: readonly TermPair[] = (Object.keys(VERDICT_BADGE) as
 export const EVAL_TERMS = {
   sharpe: ['Sharpe', 'return per unit of risk: the mean daily return divided by its standard deviation, scaled to a year. Around 0 is noise, negative lost money, above 1 is a steady result. It does not say how large the gain was.'],
   inSample: ['in-sample', 'the first 80% of the history, the part a search could see. It flatters the rule by construction.'],
-  walkForward: ['walk-forward', 'the first 80% of the history cut into blocks in date order. Each block is scored using only what came before it, and the blocks are joined into one track. Rules are ranked by this.'],
+  walkForward: ['walk-forward', 'the first 80% of the history cut into blocks in date order. Each block is scored using only what came before it, and the blocks are joined into one track. Rules are ranked by this, in excess of holding the asset for the same share of days.'],
   holdout: ['holdout', 'the most recent 20% of the history, set aside before any search and never used to pick or rank a rule. A one-time check on data the rule has not seen.'],
   holdoutGap: ['HOLDOUT GAP', 'the holdout Sharpe has the opposite sign to the walk-forward Sharpe, or is under half of it: a sign the rule fitted the past better than it carried forward.'],
-  dsr: ['deflated Sharpe', `a probability from 0 to 1 that the walk-forward Sharpe beats the best result luck alone would give across everything the search tried. ${MIN_DEFLATED_SHARPE} or more passes the save bar; near 0.5 it is as likely luck as not. A rule that came from no search is not corrected and reads higher.`],
+  dsr: ['deflated Sharpe', `a probability from 0 to 1 that the walk-forward Sharpe, taken in excess of holding the asset for the same share of days, beats the best result luck alone would give across everything the search tried. ${MIN_DEFLATED_SHARPE} or more passes the save bar; near 0.5 it is as likely luck as not. A rule that came from no search is not corrected and reads higher.`],
   trialsN: ['N≈', 'effective trials: how many meaningfully different rule variants the search scored. Variants that are in the market on mostly the same days count once. The deflated Sharpe is corrected for this many tries.'],
   stability: ['stability', `the share of nudged copies of the rule that keep the sign of its Sharpe and at least half its size. Each threshold is moved a little and each window swapped for its neighbour. ${MIN_STABILITY} or more passes; the word reads STABLE from 0.75, SOFT from ${MIN_STABILITY}, FRAGILE below.`],
   hit: ['hit rate', 'share of closed trades that ended with a net gain. A trade is one unbroken run of days in the market.'],
@@ -1080,6 +1088,6 @@ export const EVAL_TERMS = {
   precision: ['precision', 'of those in-zone days, the share followed by a good outcome: for a long, a forward return over the hold that is positive and in the top 30% of the history (bottom 30% and negative for a short). 30% is the default label quantile.'],
   firing: ['FIRING / FLAT', 'whether every condition is true on the latest daily bar. Firing is a condition met, not a call.'],
   untested: ['untested', 'the rule made no trade in that window, so there is no result. It is not the same as a Sharpe of 0.'],
-  slippage: ['net of slippage', 'every entry and exit is charged the slippage shown under the table (in basis points; 10 bps is 0.10%). No other cost is modelled here.'],
+  slippage: ['net of costs', 'every entry and exit is charged the slippage shown under the table (in basis points; 10 bps is 0.10%) plus a 4.5 bps taker fee, and every day in the market pays that day\'s funding (a short receives it) where the asset has a funding history. Evaluations stored before fee and funding were charged are net of slippage only.'],
   then: ['AT SEARCH / AT SAVE / NOW', 'AT SEARCH (or AT SAVE) are the numbers from when the rule was found (or saved); NOW is the same rule re-run on today\'s data. They can differ: days have been added, and a search re-fits the thresholds inside each walk-forward block while a re-run keeps them fixed.'],
 } as const satisfies Record<string, TermPair>

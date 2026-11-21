@@ -28,7 +28,7 @@ function testService() {
     store: memoryStore(),
     providers: [synProvider],
     async loadDataset(cfg) {
-      const metrics = Object.fromEntries(cfg.metrics.map((m) => [m, base.metrics[m]!]));
+      const metrics = Object.fromEntries(cfg.metrics.filter((m) => base.metrics[m]).map((m) => [m, base.metrics[m]!])); // ht:funding (asked for by every backtest) has no data here
       return { dataset: { ...base, asset: cfg.asset, metrics }, warnings: [] };
     },
   });
@@ -198,7 +198,7 @@ describe("lab tools: end to end", () => {
     expect(text).toContain("Goal: fade euphoria.");
     expect(text).toContain('"direction": "short"');
     // The save bar is the robust verdict, with the calibrated deflated-Sharpe cut-off.
-    const bar = `verdict.level "robust": walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), stability ≥ 0.5 and deflatedSharpe ≥ ${MIN_DEFLATED_SHARPE}`;
+    const bar = `verdict.level "robust": walk-forward Sharpe > 1, holdout Sharpe > 0 (not untested), both also on excessSharpe (the excess over holding the asset for the same share of days, so being long a rising asset earns nothing), stability ≥ 0.5 and deflatedSharpe ≥ ${MIN_DEFLATED_SHARPE}`;
     expect(text).toContain(bar);
     expect(text).toContain('A "candidate"');
     expect(text).toContain("only with a note explaining why");

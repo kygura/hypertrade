@@ -152,7 +152,7 @@ export function RuleDrillHeader({
       </p>
 
       <HowToRead terms={HEADER_TERMS}>
-        The rule scored as a daily strategy on history: in the market on every day after its conditions were true, flat otherwise, net of slippage. The line at the top states the
+        The rule scored as a daily strategy on history: in the market on every day after its conditions were true, flat otherwise, net of fee, slippage and funding. The line at the top states the
         result and which checks of the save bar it passes. The badge is the server's verdict. This is a backtest, not a forecast.
       </HowToRead>
 

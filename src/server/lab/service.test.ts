@@ -101,7 +101,8 @@ describe("lab service: search", () => {
   test("loads the dataset as configured, merges loader warnings, persists an ok run", async () => {
     const { service, store, loads } = kit();
     const { runId, result } = await service.search({ ...searchCfg, from: "2018-01-01", to: "2024-01-01" }, { source: "cli" });
-    expect(loads[0]).toEqual({ asset: "SYN", metrics: ["syn:a", "syn:b", "syn:e"], price: undefined, from: "2018-01-01", to: "2024-01-01" });
+    // The backtest charges funding on held days: every load asks for it beside the caller's metrics.
+    expect(loads[0]).toEqual({ asset: "SYN", metrics: ["syn:a", "syn:b", "syn:e", "ht:funding"], price: undefined, from: "2018-01-01", to: "2024-01-01" });
     expect(result.warnings[0]).toBe("syn:e: no data for SYN in range; dropped");
     expect(result.warnings).toContain("metric syn:e has no data for SYN; skipped");
     expect(result.rules.length).toBeGreaterThan(0);
@@ -186,7 +187,7 @@ describe("lab service: evaluate and sensitivity", () => {
   test("loads the rule's metrics over full history and scores it", async () => {
     const { service, loads } = kit();
     const ev = await service.evaluateRule({ rule: planted, includeEquity: true, sensitivity: true, to: "2024-06-01" });
-    expect(loads[0]).toEqual({ asset: "SYN", metrics: ["syn:a", "syn:b"], price: undefined, to: "2024-06-01" });
+    expect(loads[0]).toEqual({ asset: "SYN", metrics: ["syn:a", "syn:b", "ht:funding"], price: undefined, to: "2024-06-01" });
     expect(ev.id).toBe(ruleId(planted));
     expect(ev.inSample.sharpe).toBeGreaterThan(1);
     expect(ev.equity!.length).toBeGreaterThan(2000);

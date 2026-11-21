@@ -1,5 +1,6 @@
 import { atrAt as atrAtBar, mean, sdSample } from "../../../shared/signalMath.js";
 import { DAY_MS, RuleSchema, type EventVerdict, type LabDataset, type Level, type Rule } from "../types.js";
+import { FUNDING, TAKER_FEE_BPS } from "./backtest.js";
 import { makeCtx } from "./context.js";
 import { funnel, inZoneDays, type FunnelStep } from "./evaluate.js";
 import { parseFeatureId } from "./features.js";
@@ -16,11 +17,12 @@ import { isoDate } from "./util.js";
 export const OPEN = "ht:open";
 export const HIGH = "ht:high";
 export const LOW = "ht:low";
-export const FUNDING = "ht:funding";
+export { FUNDING };
 /** Metrics every coin's dataset needs besides the rule's own (close is dataset.price, ht:price). */
 export const STUDY_METRICS = [OPEN, HIGH, LOW, FUNDING];
 
-const FEE_ROUND_TRIP_PCT = 0.09;
+/** Two taker fills, in percent of notional: the fee the backtest charges per position change (backtest.ts), twice. */
+const FEE_ROUND_TRIP_PCT = (2 * TAKER_FEE_BPS) / 100;
 const DEFAULT_SLIPPAGE_BPS = 5; // per side
 export const ATR_WINDOW = 14;
 /** A coin needs this many bars with a close and funding to be studied. */

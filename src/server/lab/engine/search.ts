@@ -1,5 +1,5 @@
 import { SearchConfigSchema, type Condition, type LabDataset, type Rule, type SearchConfig, type SearchResult, type TrialRecord } from "../types.js";
-import { concatReturns, objectiveOf, quickScore, simulate, zoneActivity } from "./backtest.js";
+import { excessReturns, objectiveOf, quickScore, simulate, zoneActivity } from "./backtest.js";
 import { checkDataset, makeCtx, rangeIndices } from "./context.js";
 import { evaluateInCtx } from "./evaluate.js";
 import { featureId, featureSpecs } from "./features.js";
@@ -11,14 +11,15 @@ import { effectiveTrials, zoneBits, type ZoneBits } from "./trials.js";
 import { verdictRank } from "./verdict.js";
 import { binFeatures, growForest, type Binned, type TreeParams } from "./tree.js";
 import { isoDate, SearchRefused } from "./util.js";
-import { makeSplit, MIN_TRAIN_ROWS, walkForwardScore, walkForwardSegments, type Split } from "./validate.js";
+import { benchmarkSegments, makeSplit, MIN_TRAIN_ROWS, walkForwardSegments, type Split } from "./validate.js";
 
 // The heuristic search (docs/LAB.md §4–7). Each trial grows a forest per
 // walk-forward fold on the purged training rows, takes the best rules by
 // training objective, trades them on the fold's test block, and is scored on
 // the concatenated test blocks. The best trial's parameters are refitted on
-// the whole search region; its rules are ranked by quantile-matched
-// walk-forward objective and only then scored on the holdout.
+// the whole search region; its rules are ranked by the quantile-matched
+// walk-forward objective of their excess over the exposure-matched benchmark
+// and only then scored on the holdout.
 
 export const MAX_FEATURES = 600;
 const MIN_PRICE_DAYS = 365;
@@ -217,7 +218,7 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
   }
 
   // Refit the best parameters on the whole search region, then rank its
-  // rules by quantile-matched walk-forward objective (never by holdout).
+  // rules by quantile-matched walk-forward excess objective (never by holdout).
   // At least 100 trees: more trees only widen the candidate pool, and a
   // planted two-condition rule was often missing from a 30-tree refit.
   const forest = growForest(final.binned, labels, final.rows, { ...best!.params, trees: Math.max(100, best!.params.trees) }, mulberry32((config.seed ^ 0x5bd1e995) >>> 0));
@@ -230,7 +231,11 @@ export function runSearch(input: SearchConfig, data: LabDataset, opts: SearchOpt
   const candidates = pool
     .map((c) => {
       const segs = walkForwardSegments(ctx, c.conds, split, dirSign, bps);
-      return { ...c, wf: walkForwardScore(segs, objective), dsr: deflatedSharpeOf(concatReturns(segs), effTrials) };
+      // Deflated on the excess over the exposure-matched benchmark, as the verdict reads it (evaluate.ts).
+      // Ranked and deflated on the excess over the exposure-matched benchmark, as the verdict reads it (evaluate.ts):
+      // on a drifting asset the raw objective ranks by time in the market and crowds a real rule out of the top K.
+      const excess = excessReturns(segs, benchmarkSegments(ctx, segs, dirSign, bps));
+      return { ...c, wf: objectiveOf(excess, objective), dsr: deflatedSharpeOf(excess, effTrials) };
     })
     .filter((c) => minDsr == null || (c.dsr ?? 0) >= minDsr)
     .sort((a, b) => b.wf - a.wf || a.conds.length - b.conds.length || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));

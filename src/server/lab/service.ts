@@ -4,6 +4,7 @@ import {
   evaluateRule as evaluateRuleOn,
   eventStudy as eventStudyOn,
   featureSpecs,
+  FUNDING,
   inZoneDays,
   livePerf,
   MAX_FEATURES,
@@ -175,6 +176,9 @@ function runTrials(result: SearchResult | null | undefined): number | undefined 
   return result ? (result.effectiveTrials ?? result.variantsScored) : undefined;
 }
 
+/** Metrics to load for a backtest: the caller's plus the funding the engine charges on held days (not charged where the asset has none). */
+const withFunding = (metrics: string[]): string[] => [...new Set([...metrics, FUNDING])];
+
 /** Entries and run results stored before verdicts existed get one computed on read. */
 function ensureVerdict<T extends RuleEvaluation>(ev: T): T {
   return ev.verdict ? ev : withVerdict(ev);
@@ -261,7 +265,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     await mapLimit([...groups.values()], LOAD_CONCURRENCY, async (g) => {
       let loaded: Awaited<ReturnType<LoadDatasetFn>>;
       try {
-        loaded = await deps.loadDataset({ asset: g.asset, metrics: [...g.metrics], price: g.price, ...underDeadline(ctx) });
+        loaded = await deps.loadDataset({ asset: g.asset, metrics: withFunding([...g.metrics]), price: g.price, ...underDeadline(ctx) });
       } catch (err) {
         for (const { e } of g.entries) warnings.push(`${e.name} (${e.id}): ${msg(err)}`);
         return;
@@ -342,7 +346,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     const rule = parseInput(RuleSchema, input.rule, "rule");
     const metrics = ruleMetrics(rule);
     // Full history up to `to`: rolling features need warm-up before `from`.
-    const { dataset, warnings } = await deps.loadDataset({ asset: rule.asset, metrics, price: rule.price, to: input.to, ...underDeadline(ctx) });
+    const { dataset, warnings } = await deps.loadDataset({ asset: rule.asset, metrics: withFunding(metrics), price: rule.price, to: input.to, ...underDeadline(ctx) });
     const missing = metrics.filter((m) => !dataset.metrics[m]);
     if (missing.length) throw new UpstreamError(`no data for ${missing.join(", ")} on ${rule.asset}${warnings.length ? ` (${warnings.join("; ")})` : ""}`);
     try {
@@ -387,7 +391,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
       try {
         const loaded = await deps.loadDataset({
           asset: config.asset,
-          metrics: config.metrics,
+          metrics: withFunding(config.metrics),
           price: config.price,
           from: config.from,
           to: config.to,
