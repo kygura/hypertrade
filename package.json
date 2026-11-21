@@ -18,6 +18,7 @@
     "moves:propose": "bun run scripts/moves-routine.ts propose",
     "radar": "bun run scripts/radar.ts",
     "extremes": "bun run scripts/extremes.ts",
+    "regime": "bun run scripts/regime.ts",
     "signals:collect": "bun run scripts/signals.ts collect",
     "signals:notify": "bun run scripts/signals.ts notify",
     "signals:scan": "bun run scripts/signal-defs.ts scan",

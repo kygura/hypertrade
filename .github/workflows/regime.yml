@@ -1,0 +1,74 @@
+name: Regime thesis
+
+# The living regime thesis (docs/REGIME.md): `bun run regime update` collects (Glassnode's weekly report as the
+# reference, other feeds, an optional notes page, market data), asks the Desk's PM tier with web search for the next
+# version and stores it in regime_theses (db/migrations/030_regime_thesis.sql). Daily, plus Tuesday and Wednesday
+# evenings when Glassnode's report usually lands (--if-new: only when a report is new). This repo is public, so the
+# log carries one status line and never the thesis text; read it at /api/intel/regime or the REGIME tab.
+# Without DATABASE_URL or a model key it prints a notice and exits 0.
+
+on:
+  schedule:
+    - cron: "53 6 * * *" # daily 06:53 UTC
+    - cron: "23 18 * * 2,3" # Tue and Wed 18:23 UTC, only when a report is new
+  workflow_dispatch:
+    inputs:
+      if_new:
+        description: "Only rewrite when a report or note is new"
+        type: boolean
+        default: false
+
+concurrency:
+  group: regime
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_POOL_MAX: "2"
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DESK_ANALYST_MODEL: ${{ vars.DESK_ANALYST_MODEL }}
+      REGIME_MAX_USD: ${{ vars.REGIME_MAX_USD }}
+      REGIME_FEEDS: ${{ vars.REGIME_FEEDS }}
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      REGIME_NOTION_PAGE_ID: ${{ secrets.REGIME_NOTION_PAGE_ID }}
+      BGEOMETRICS_TOKEN: ${{ secrets.BGEOMETRICS_TOKEN }}
+    steps:
+      - name: Check secrets
+        id: cfg
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::notice::DATABASE_URL or ANTHROPIC_API_KEY is not set; skipping the regime thesis."
+          else
+            echo "set=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.cfg.outputs.set == '1'
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+        if: steps.cfg.outputs.set == '1'
+
+      - name: Install
+        if: steps.cfg.outputs.set == '1'
+        run: bun install --frozen-lockfile
+
+      - name: Update
+        if: steps.cfg.outputs.set == '1'
+        env:
+          # The Tue/Wed evening schedule only rewrites on a new report; a manual run follows its input.
+          IF_NEW: ${{ (github.event_name == 'schedule' && github.event.schedule == '23 18 * * 2,3') || (github.event_name == 'workflow_dispatch' && inputs.if_new) }}
+        run: |
+          flag=""
+          if [ "$IF_NEW" = "true" ]; then flag="--if-new"; fi
+          # stdout is one line (the version written, or why not); collector notes go to stderr and name hosts only.
+          bun scripts/regime.ts update $flag
+          bun scripts/regime.ts status
