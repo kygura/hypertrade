@@ -43,11 +43,12 @@ describe("buildCoinView", () => {
     expect((await buildCoinView(demo, markets[2]!, account, NOW)).position).toBeNull();
   });
 
-  test("an OI history makes the regime use OI", async () => {
+  test("an OI history makes the regime use OI, in contracts", async () => {
     const day = 3_600_000 * 24;
+    // USD notional +10% while the demo price rises ~0.5%: contracts are up ~9.5%, not 10%.
     const oi = [{ t: NOW - day, v: 1_000 }, { t: NOW, v: 1_100 }];
     const v = await buildCoinView(demo, markets[0]!, null, NOW, oi);
-    expect(v.diagnostics.join("\n")).toContain("OI +10.0%");
+    expect(v.diagnostics.join("\n")).toContain("OI +9.5%");
   });
 
   test("a coin without candles degrades to a funding/price regime and says so", async () => {
