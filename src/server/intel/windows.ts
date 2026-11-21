@@ -17,6 +17,9 @@ import { median, robustSigma, zRobust } from "../../shared/signalMath.js";
 //   Lookback 30 d for 1 h / 6 h (≥ 48 / 20 Δs), 90 d for 24 h (≥ 30); fewer → z null.
 // Flips and crossings fire on the transition only: state at the window's
 // start vs now, both known.
+// OI changes are taken on contracts (oiContracts, changePoints), never on the
+// stored USD notional: OI in USD = contracts × price, so with flat positioning
+// its change is the price change. The oi_usd level stays USD.
 
 const MIN_MS = 60_000;
 const HOUR_MS = 60 * MIN_MS;
@@ -58,7 +61,7 @@ export type Series = Partial<Record<HeatmapMetric, Point[]>>;
 export type WindowResult = {
   metric: HeatmapMetric;
   window: FixedWindow;
-  /** pct change (log kind), raw difference (diff), window total (sum); null without both endpoints. */
+  /** pct change (log kind; oi_usd: of contracts, see changePoints), raw difference (diff), window total (sum); null without both endpoints. */
   delta: number | null;
   z: number | null;
 };
@@ -96,6 +99,24 @@ export function seriesFromRows(snapshots: SnapshotRow[], flow: FlowRow[]): Serie
   for (const [t, v] of liq) add("liq_usd", t, v);
   for (const k of Object.keys(out)) out[k]!.sort((a, b) => a.t - b.t);
   return out;
+}
+
+/**
+ * Open interest in contracts from its USD notional and the price at the same timestamp; NaN when either is missing or
+ * not positive. The one definition every OI *change* is taken on (Flow windows, scanner features).
+ */
+export const oiContracts = (oiUsd: number | null | undefined, price: number | null | undefined): number =>
+  oiUsd != null && price != null && oiUsd > 0 && price > 0 ? oiUsd / price : NaN;
+
+/**
+ * The points a metric's window change is taken on: the stored series, except oi_usd, which is converted to contracts
+ * with the price sample of the same timestamp. An OI point without a price stays in place as NaN, so a window ending
+ * on it reads unknown (windowStat: no positive endpoint) rather than falling back to USD or to a neighbour.
+ */
+export function changePoints(series: Series, metric: HeatmapMetric): Point[] | undefined {
+  if (metric !== "oi_usd" || !series.oi_usd) return series[metric];
+  const price = new Map((series.price ?? []).map((p) => [p.t, p.v]));
+  return series.oi_usd.map((p) => ({ t: p.t, v: oiContracts(p.v, price.get(p.t)) }));
 }
 
 /** Index of the first point with p.t > t (points ascending). */
@@ -169,7 +190,10 @@ export function spanResult(
 
 /** Every heatmap metric × fixed window; a metric with no series reads null. */
 export function computeWindows(series: Series, now: number): WindowResult[] {
-  return HEATMAP_METRICS.flatMap((m) => FIXED_WINDOWS.map((w) => windowResult(m, series[m], now, w)));
+  return HEATMAP_METRICS.flatMap((m) => {
+    const points = changePoints(series, m);
+    return FIXED_WINDOWS.map((w) => windowResult(m, points, now, w));
+  });
 }
 
 export function pickWindow(results: WindowResult[], metric: HeatmapMetric, window: FixedWindow): WindowResult | undefined {
@@ -223,6 +247,7 @@ const oiUpPriceDown = (oi: WindowResult, price: WindowResult): boolean | null =>
  */
 export function regimeFlags(asset: string, series: Series, now: number, thresholds: Threshold[]): FlowFlag[] {
   const flags: FlowFlag[] = [];
+  const oiPoints = changePoints(series, "oi_usd");
   for (const window of FIXED_WINDOWS) {
     const start = now - WINDOW_HOURS[window] * HOUR_MS;
     const zOf = (m: HeatmapMetric) => windowResult(m, series[m], now, window).z;
@@ -232,9 +257,9 @@ export function regimeFlags(asset: string, series: Series, now: number, threshol
       if (a == null || b == null || a === 0 || b === 0 || Math.sign(a) === Math.sign(b)) continue;
       flags.push(flowFlag({ asset, kind: "flip", name: `${metric}_flip`, window, numbers: { from: a, to: b }, score: absOr0(zOf(metric)), degraded: false, now }));
     }
-    const oi = windowResult("oi_usd", series.oi_usd, now, window);
+    const oi = windowResult("oi_usd", oiPoints, now, window);
     const price = windowResult("price", series.price, now, window);
-    const before = oiUpPriceDown(windowResult("oi_usd", series.oi_usd, start, window), windowResult("price", series.price, start, window));
+    const before = oiUpPriceDown(windowResult("oi_usd", oiPoints, start, window), windowResult("price", series.price, start, window));
     if (oiUpPriceDown(oi, price) && before === false) {
       flags.push(
         flowFlag({

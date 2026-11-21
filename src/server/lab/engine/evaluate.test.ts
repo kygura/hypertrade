@@ -4,7 +4,8 @@ import { evaluateRule, funnel, inZoneDays, livePerf, ruleFiresAt } from "./evalu
 import { eventStudy } from "./eventStudy.js";
 import golden from "./fixtures/oldRules.golden.json";
 import { ruleId, ruleText } from "./rules.js";
-import { synthetic } from "./testkit.js";
+import { TAKER_FEE_BPS } from "./backtest.js";
+import { synthetic, trendFor } from "./testkit.js";
 import { isoDate } from "./util.js";
 
 const planted: Rule = {
@@ -169,6 +170,60 @@ describe("firing and zones", () => {
     expect(live.days).toBe(99);
     expect(live.from).toBe(isoDate(data.t[501]!));
     expect(livePerf(planted, data, { slippageBps: 10, from: isoDate(data.t[599]!) })).toBeNull();
+  });
+});
+
+describe("the verdict does not pay for beta", () => {
+  // Metrics that predict nothing; the price drifts up enough for buy-and-hold to show a Sharpe near 2.
+  const drifting = synthetic({ seed: 7, trend: trendFor(2) });
+  const always: Rule = { asset: "SYN", direction: "long", horizonDays: 2, conditions: [{ feature: "syn:b|raw|0", op: ">=", threshold: -100 }] };
+  const coinFlip: Rule = { asset: "SYN", direction: "long", horizonDays: 2, conditions: [{ feature: "syn:d|raw|0", op: ">=", threshold: 0 }] };
+
+  test("always long on a drifting noise series: raw Sharpes clear the old bar, the rule is not robust", () => {
+    const ev = evaluateRule(always, drifting, { slippageBps: 10 });
+    expect(ev.walkForward!.exposure).toBe(1);
+    // What the bar read before: walk-forward Sharpe > 1, holdout Sharpe > 0, deflated (N = 1) ≥ 0.9 → "robust".
+    expect(ev.walkForward!.sharpe).toBeGreaterThan(1);
+    expect(ev.holdout!.sharpe).toBeGreaterThan(0);
+    // Holding the asset has no excess over holding the asset.
+    expect(ev.walkForward!.excessSharpe).toBe(0);
+    expect(ev.holdout!.excessSharpe).toBe(0);
+    expect(ev.deflatedSharpe!).toBeLessThan(0.9);
+    expect(ev.verdict!.level).toBe("fails_holdout");
+    expect(ev.verdict!.reasons).toContain("holdout excess Sharpe over the benchmark 0.00 ≤ 0");
+    expect(ev.verdict!.reasons).toContain("walk-forward excess Sharpe over the benchmark 0.00 ≤ 1");
+  });
+
+  test("long on a coin flip of the days on the same series: half the drift is not an edge", () => {
+    const ev = evaluateRule(coinFlip, drifting, { slippageBps: 0 });
+    expect(ev.walkForward!.exposure).toBeGreaterThan(0.4);
+    expect(ev.walkForward!.sharpe).toBeGreaterThan(1); // beta alone
+    expect(Math.abs(ev.walkForward!.excessSharpe!)).toBeLessThan(1);
+    expect(ev.verdict!.level).not.toBe("robust");
+    expect(ev.verdict!.level).not.toBe("candidate");
+  });
+
+  test("a planted edge over the benchmark is still robust, on a flat and on a drifting price", () => {
+    for (const trend of [0, trendFor(2)]) {
+      const ev = evaluateRule(planted, synthetic({ seed: 1, drift: 0.012, trend }), { slippageBps: 10, windows: [7, 30, 90] });
+      expect(ev.walkForward!.excessSharpe!).toBeGreaterThan(1);
+      expect(ev.holdout!.excessSharpe!).toBeGreaterThan(0);
+      expect(ev.verdict).toEqual({ level: "robust", reasons: [] });
+    }
+  });
+
+  test("the evaluation says what it charged; funding is charged only where the dataset has it", () => {
+    const data = synthetic({ seed: 1, drift: 0.012, days: 1500 });
+    const bare = evaluateRule(planted, data, { slippageBps: 10 });
+    expect(bare.costs).toEqual({ slippageBps: 10, feeBps: TAKER_FEE_BPS, fundingDays: 0, days: 1499 });
+    // Funding from day 1000 on (the perp listed late): a long pays it on the days it holds.
+    const funded = evaluateRule(planted, { ...data, metrics: { ...data.metrics, "ht:funding": data.t.map((_, i) => (i >= 1000 ? 0.0005 : NaN)) } }, { slippageBps: 10 });
+    expect(funded.costs).toEqual({ slippageBps: 10, feeBps: TAKER_FEE_BPS, fundingDays: 500, days: 1499 });
+    expect(funded.holdout!.trades).toBe(bare.holdout!.trades);
+    expect(funded.holdout!.totalReturn).toBeLessThan(bare.holdout!.totalReturn);
+    // Holdout = days 1200..1499, all funded: the log gap is the funding of the days in the market, to first order.
+    const paid = Math.log1p(bare.holdout!.totalReturn) - Math.log1p(funded.holdout!.totalReturn);
+    expect(paid / (0.0005 * funded.holdout!.exposure * funded.holdout!.days)).toBeCloseTo(1, 1);
   });
 });
 

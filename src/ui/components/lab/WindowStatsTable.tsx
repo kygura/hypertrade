@@ -22,7 +22,7 @@ export const WINDOW_TERMS: readonly Term[] = [
   ['HOLDOUT', T.holdout[1]],
   ['LIVE', `days after the rule was saved, which could not have influenced its choice. Numbers show from ${LIVE_MIN_DAYS} live days.`],
   T.then,
-  ['TOTAL RETURN', 'growth of 1 unit over the window, compounded daily, net of slippage.'],
+  ['TOTAL RETURN', 'growth of 1 unit over the window, compounded daily, net of fee, slippage and funding.'],
   ['CAGR', 'the same growth expressed per year.'],
   ['SHARPE', T.sharpe[1]],
   ['DEFLATED SHARPE', T.dsr[1]],

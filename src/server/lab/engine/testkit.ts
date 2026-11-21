@@ -13,11 +13,16 @@ export interface SyntheticOptions {
   /** Next-day drift while z(a, 30) < -1 AND b ≥ 0; 0 = pure noise. */
   drift?: number;
   noise?: number;
+  /** Drift added to every day's return, whatever the metrics say (beta, not edge): buy-and-hold Sharpe ≈ trend / noise × √365. Default 0. */
+  trend?: number;
 }
+
+/** The `trend` that gives buy-and-hold an annualised Sharpe of `sharpe` at daily `noise`. */
+export const trendFor = (sharpe: number, noise = 0.02): number => (sharpe * noise) / Math.sqrt(365);
 
 /**
  * Metrics: syn:a (random walk), syn:b (iid normal), syn:c (random walk), syn:d (iid normal).
- * Price: daily returns N(0, noise), plus `drift` on days after the planted zone fires.
+ * Price: daily returns N(0, noise), plus `drift` on days after the planted zone fires, plus `trend` every day.
  */
 export function synthetic(o: SyntheticOptions): LabDataset {
   const n = o.days ?? 2500;
@@ -42,7 +47,7 @@ export function synthetic(o: SyntheticOptions): LabDataset {
   const price = [100];
   for (let i = 1; i < n; i++) {
     const zone = za[i - 1]! < -1 && b[i - 1]! >= 0;
-    const r = (zone ? (o.drift ?? 0) : 0) + (o.noise ?? 0.02) * gauss(rng);
+    const r = (zone ? (o.drift ?? 0) : 0) + (o.trend ?? 0) + (o.noise ?? 0.02) * gauss(rng);
     price.push(price[i - 1]! * (1 + r));
   }
   return { asset: "SYN", t, price, metrics: { "syn:a": a, "syn:b": b, "syn:c": c, "syn:d": d } };

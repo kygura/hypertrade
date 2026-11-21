@@ -5,9 +5,20 @@ import { isoDate } from "./util.js";
 // Strategy scoring (docs/LAB.md §6). Day indices: pos[i] is the position decided
 // at the close of day i and held over day i+1, so the return of day i is
 //   r[i] = pos[i−1] · pr[i] − cost · |pos[i−1] − pos[i−2]|,
-// with pr[i] = price[i]/price[i−1] − 1 and cost = slippageBps / 1e4. A
-// window starts flat: entering on its first day pays slippage, and a position
-// still open at its end is marked to market without an exit charge.
+// with pr[i] = price[i]/price[i−1] − 1 − funding[i] (carryReturns: a long pays
+// positive funding on the day it holds, a short receives it) and
+// cost = (slippageBps + TAKER_FEE_BPS) / 1e4 per unit of position change. A
+// window starts flat: entering on its first day pays fee and slippage, and a
+// position still open at its end is marked to market without an exit charge.
+// The event study (eventStudy.ts) charges the same three costs per trade.
+
+/** Taker fee per side, basis points: charged on every position change here and twice per event in the event study. */
+export const TAKER_FEE_BPS = 4.5;
+/** The day's summed hourly funding rate: the fraction of notional a long pays for holding that day. */
+export const FUNDING = "ht:funding";
+
+/** Cost of one unit of position change, as a fraction: slippage plus the taker fee. */
+export const turnCost = (slippageBps: number): number => (slippageBps + TAKER_FEE_BPS) / 1e4;
 
 /** pr[i] = price[i]/price[i−1] − 1; 0 when either price is missing or non-positive. */
 export function priceReturns(price: ArrayLike<number>): Float64Array {
@@ -19,6 +30,26 @@ export function priceReturns(price: ArrayLike<number>): Float64Array {
     pr[i] = a > 0 && b > 0 && Number.isFinite(a) && Number.isFinite(b) ? b / a - 1 : 0;
   }
   return pr;
+}
+
+/**
+ * Daily return of holding +1 unit: the price return minus the day's funding. A day without a funding rate (no
+ * FUNDING series in the dataset, or NaN that day: before the perp listed, a collection gap) is charged none;
+ * `fundingDays` counts the return days that had one, so a result can say how much of its track paid funding.
+ * (The event study drops a trade whose hold lacks a funding bar; a daily track cannot drop a day without inventing a flat one.)
+ */
+export function carryReturns(price: ArrayLike<number>, funding?: ArrayLike<number> | null): { pr: Float64Array; fundingDays: number } {
+  const pr = priceReturns(price);
+  let fundingDays = 0;
+  if (funding) {
+    for (let i = 1; i < pr.length; i++) {
+      const f = funding[i]!;
+      if (!Number.isFinite(f)) continue;
+      pr[i] -= f;
+      fundingDays++;
+    }
+  }
+  return { pr, fundingDays };
 }
 
 /** Net returns of return days [a, b) and the position held on each. */
@@ -35,7 +66,7 @@ export function simulate(pr: Float64Array, pos: ArrayLike<number>, a: number, b:
   const len = b - a;
   const ret = new Float64Array(len);
   const held = new Float64Array(len);
-  const cost = slippageBps / 1e4;
+  const cost = turnCost(slippageBps);
   let prev = 0;
   for (let k = 0; k < len; k++) {
     const p = pos[a + k - 1]!;
@@ -57,7 +88,7 @@ export function quickScore(
   objective: Objective,
 ): number {
   a = Math.max(1, a);
-  const cost = slippageBps / 1e4;
+  const cost = turnCost(slippageBps);
   let prev = 0;
   let s = 0;
   let ss = 0;
@@ -121,12 +152,33 @@ export function concatReturns(segs: Segment[]): Float64Array {
 }
 
 /**
+ * Exposure-matched excess over the benchmark, segments concatenated: each day's return minus e × the benchmark's
+ * return that day, e = the segment's mean |position| (the share of its days in the market). `bench[k]` is
+ * hold-the-direction over the same days as `segs[k]`. Holding the asset earns nothing here (always in: e = 1, excess
+ * 0 every day), and a rule in the market on random days earns e × the drift and has it taken back: what is left is
+ * what the choice of days added.
+ */
+export function excessReturns(segs: Segment[], bench: Segment[]): Float64Array {
+  const out = new Float64Array(segs.reduce((a, s) => a + s.ret.length, 0));
+  let o = 0;
+  segs.forEach((s, k) => {
+    const b = bench[k]!;
+    let e = 0;
+    for (let i = 0; i < s.held.length; i++) e += Math.abs(s.held[i]!);
+    e = s.held.length ? e / s.held.length : 0;
+    for (let i = 0; i < s.ret.length; i++) out[o++] = s.ret[i]! - e * b.ret[i]!;
+  });
+  return out;
+}
+
+/**
  * Stats over one or more segments read as one track. A trade is a contiguous
  * run of non-zero position inside a segment; it is closed when the position
  * goes flat within the segment, and its net return includes the exit cost
- * charged on that day.
+ * charged on that day. With `bench` (the benchmark over the same days, one
+ * segment per segment) the stats carry excessSharpe (excessReturns).
  */
-export function perfStats(t: number[], segs: Segment[]): PerfStats {
+export function perfStats(t: number[], segs: Segment[], bench?: Segment[]): PerfStats {
   const nonEmpty = segs.filter((s) => s.b > s.a);
   const days = nonEmpty.reduce((a, s) => a + s.ret.length, 0);
   const first = nonEmpty[0] ?? segs[0];
@@ -185,6 +237,7 @@ export function perfStats(t: number[], segs: Segment[]): PerfStats {
     trades,
     tradesPerYear: years > 0 ? trades / years : 0,
     exposure: days ? inMkt / days : 0,
+    ...(bench ? { excessSharpe: fin(sharpeOf(excessReturns(nonEmpty, segs.flatMap((s, k) => (s.b > s.a ? [bench[k]!] : []))))) } : {}),
     ...(trades ? {} : { untested: true }),
   };
 }

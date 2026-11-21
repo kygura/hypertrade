@@ -3,14 +3,14 @@ import { fundingAprPct, median, robustSigma } from "../../shared/signalMath.js";
 import { classifyRegime } from "../desk/analytics.js";
 import type { Point } from "../intel/normalize.js";
 import { fin } from "../intel/util.js";
-import { robustLevelZ, spanResult, valueAt } from "../intel/windows.js";
+import { oiContracts, robustLevelZ, spanResult, valueAt } from "../intel/windows.js";
 import { depthWithin, midOf, type Book } from "./costs.js";
 
 // Per-asset feature set (docs/SPEC.md § Platform P0.9). Pure: history in, numbers out.
 // z-scores reuse the Flow machinery (intel/windows.ts): non-overlapping window
 // changes of the asset's own ring, median and MAD-based robust sigma. The ring
 // is 24 h, so the lookback is 1 day with at least MIN_HIST window samples
-// (fewer -> null). fundingZ24h / fundingPctile24h are computed on that same 24 h ring (feature keys are free-form). A feature that cannot be computed is null, never NaN.
+// (fewer -> null). oiChg1hZ / oiChg1hPct are the 1 h change of OI in contracts, not of its USD notional. fundingZ24h / fundingPctile24h are computed on that same 24 h ring (feature keys are free-form). A feature that cannot be computed is null, never NaN.
 
 export type RingPoint = { ts: number; mark: number; oiUsd: number; funding: number; dayNtlVlm: number };
 export type FeatureExtras = {
@@ -70,7 +70,8 @@ export function computeFeatures(history: RingPoint[], now: number, extras: Featu
   const ring = history.filter((p) => p.ts <= now && p.ts >= now - 14 * DAY && Number.isFinite(p.ts) && p.mark > 0).sort((a, b) => a.ts - b.ts);
   const last = ring.at(-1);
   const marks = series(ring, (p) => p.mark);
-  const oi = series(ring, (p) => p.oiUsd);
+  // OI change is taken on contracts (oiUsd / mark at the same point): in USD a price move with flat positioning reads as an OI move.
+  const oi = series(ring, (p) => oiContracts(p.oiUsd, p.mark));
   const funding = series(ring, (p) => p.funding);
   const day = ring.filter((p) => p.ts >= now - DAY);
 

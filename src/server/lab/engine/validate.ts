@@ -1,5 +1,5 @@
-import type { Condition, Objective, Rule, Sensitivity, SensitivityPoint } from "../types.js";
-import { concatReturns, objectiveOf, sharpeOf, simulate, totalReturnOf, type Segment } from "./backtest.js";
+import type { Condition, Rule, Sensitivity, SensitivityPoint } from "../types.js";
+import { sharpeOf, simulate, totalReturnOf, type Segment } from "./backtest.js";
 import type { EvalCtx } from "./context.js";
 import { featureId, parseFeatureId } from "./features.js";
 import { ecdf, quantileSorted } from "./util.js";
@@ -67,14 +67,16 @@ export function walkForwardSegments(ctx: EvalCtx, conds: Condition[], split: Spl
   });
 }
 
+/** Hold-the-direction over the same days as each segment (each starts flat and pays its entry, like the rule's). */
+export function benchmarkSegments(ctx: EvalCtx, segs: Segment[], dirSign: number, slippageBps: number): Segment[] {
+  const hold = new Float64Array(ctx.n).fill(dirSign);
+  return segs.map((s) => simulate(ctx.pr, hold, s.a, s.b, slippageBps));
+}
+
 export function positions(sig: Uint8Array, dirSign: number): Float64Array {
   const pos = new Float64Array(sig.length);
   for (let i = 0; i < sig.length; i++) pos[i] = sig[i] ? dirSign : 0;
   return pos;
-}
-
-export function walkForwardScore(segs: Segment[], objective: Objective): number {
-  return objectiveOf(concatReturns(segs), objective);
 }
 
 export interface SensitivityOptions {

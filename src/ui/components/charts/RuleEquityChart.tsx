@@ -25,7 +25,7 @@ const toMs = (d: string) => Date.parse(d.length === 10 ? `${d}T00:00:00Z` : d)
 /** How to read the chart: both lines, the shaded stretch, the dashed line and the axes. The page renders it under the chart. */
 export function RuleEquityGuide({ benchmarkLabel, saved, className }: { benchmarkLabel: string; saved: boolean; className?: string }) {
   const terms: Term[] = [
-    ['RULE line', 'what 1 unit became following the rule: in the market on the day after its conditions were true, out otherwise, net of slippage. Flat stretches are days out of the market.'],
+    ['RULE line', 'what 1 unit became following the rule: in the market on the day after its conditions were true, out otherwise, net of fee, slippage and funding. Flat stretches are days out of the market.'],
     [`${benchmarkLabel} line`, 'what 1 unit became simply holding the asset over the same days (holding it short, for a short rule).'],
     ['HOLDOUT shading', 'the most recent 20% of the history. It was set aside before any search, so the lines inside it are the part the rule was not chosen on.'],
     ...(saved ? ([['SAVED dashed line', 'the day the rule was saved. Everything to its right is the live record.']] as Term[]) : []),

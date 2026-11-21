@@ -9,7 +9,8 @@ import { flowFlag, LOOKBACK, pickWindow, robustLevelZ, valueAt, type Series, typ
 //   all true    → flag
 // Score = max |z| among the detector's conditions; liquidity_thinning uses
 // 1 + (p10 − depth)/p10 × 4. Funding and OI are HL's (snapshots);
-// liquidations and volumes come from the flow venue.
+// liquidations and volumes come from the flow venue. Every OI leg is the
+// change in contracts (windows.changePoints), so a price move alone moves none.
 //   crowded_long/short         funding level |z| ≥ 2 (z and funding agree in sign),
 //                              OI 24h z ≥ 1, price 24h |z| < 1
 //   negative_funding_oi_build  funding < 0, OI 24h z ≥ 1, price 24h z ≥ −0.5

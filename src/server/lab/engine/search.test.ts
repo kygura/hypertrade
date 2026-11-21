@@ -6,7 +6,7 @@ import { gauss, mulberry32 } from "./rng.js";
 import { runSearch, splitLabels } from "./search.js";
 import { calibrate } from "./calibrate.js";
 import { evaluateRule } from "./evaluate.js";
-import { isPlanted, pctileOverlap, SAME_ZONE_JACCARD, synthetic } from "./testkit.js";
+import { isPlanted, pctileOverlap, SAME_ZONE_JACCARD, synthetic, trendFor } from "./testkit.js";
 import { MIN_DEFLATED_SHARPE } from "./verdict.js";
 import { HOLDOUT_FRAC, makeSplit } from "./validate.js";
 
@@ -55,17 +55,38 @@ describe("runSearch", () => {
   // itself is chosen by `bun src/server/lab/engine/calibrate.ts` (noise seeds
   // 1000+, planted 2000+; docs/LAB.md "Calibration"); these check it out of sample,
   // on seeds that played no part in choosing it. Two tests to keep each short.
-  const validate = (noiseSeeds: number[], plantedSeeds: number[]) =>
-    calibrate({ thresholds: [MIN_DEFLATED_SHARPE], noiseSeeds, plantedSeeds, drifts: plantedSeeds.length ? [0.012] : [], config: { trials: 16 } }).rows[0]!;
+  const validate = (noiseSeeds: number[], plantedSeeds: number[], benchSharpes = [0]) =>
+    calibrate({ thresholds: [MIN_DEFLATED_SHARPE], noiseSeeds, plantedSeeds, drifts: plantedSeeds.length ? [0.012] : [], benchSharpes, config: { trials: 16 } }).rows[0]!;
 
   test("validation: at MIN_DEFLATED_SHARPE ≤ 1 of 10 fresh noise searches has a robust top-10 rule", () => {
     const row = validate(Array.from({ length: 10 }, (_, i) => 3000 + i), []);
-    expect(row.noiseAny).toBeLessThanOrEqual(1);
+    expect(row.noise[0]!.any).toBeLessThanOrEqual(1);
   }, 30_000);
+
+  // The same metrics that predict nothing, on a price that only drifts: before the benchmark gate 4 of 40 searches
+  // at buy-and-hold Sharpe ≈ 1 and 33 of 40 at ≈ 2 catalogued a "robust" rule for being long a rising asset.
+  test("validation: noise on a drifting price (buy-and-hold Sharpe ≈ 1 and ≈ 2) still ≤ 1 of 10 with a robust top-10 rule", () => {
+    const row = validate(Array.from({ length: 10 }, (_, i) => 3000 + i), [], [1, 2]);
+    expect(row.noise.map((x) => x.benchSharpe)).toEqual([1, 2]);
+    for (const x of row.noise) expect(x.any, `B&H Sharpe ${x.benchSharpe}`).toBeLessThanOrEqual(1);
+  }, 60_000);
 
   test("validation: ≥ 4 of 6 fresh planted searches (drift 0.012) find the rule robust", () => {
     const row = validate([], Array.from({ length: 6 }, (_, i) => 4000 + i));
     expect(row.planted[0]!.robust).toBeGreaterThanOrEqual(4);
+  }, 15_000);
+
+  test("validation: a planted rule is still found robust on a drifting price (buy-and-hold Sharpe ≈ 2)", () => {
+    const row = validate([], Array.from({ length: 6 }, (_, i) => 4000 + i), [2]);
+    expect(row.planted[0]!.robust).toBeGreaterThanOrEqual(3);
+  }, 15_000);
+
+  test("final rules are ranked by walk-forward excess over the benchmark, so drift does not reorder them by time in the market", () => {
+    const data = synthetic({ seed: 5, drift: 0.012, trend: trendFor(2) });
+    const res = runSearch(cfg(data, { seed: 5 }), data);
+    const ex = res.rules.map((r) => r.walkForward!.excessSharpe!);
+    expect(ex).toEqual([...ex].sort((a, b) => b - a));
+    expect(res.rules.slice(0, 3).some((r) => isPlanted(r, data))).toBe(true);
   }, 15_000);
 
   test("effectiveTrials is the N of every deflated Sharpe; an explicit re-evaluation deflates by the N it is given", () => {
@@ -102,10 +123,11 @@ describe("runSearch", () => {
   test("minDeflatedSharpe filters final rules; omitted = no filter", () => {
     const data = synthetic({ seed: 1, drift: 0.006, days: 1500 });
     const all = runSearch(cfg(data, { trials: 4 }), data);
-    expect(all.rules.some((r) => r.deflatedSharpe! < 0.8)).toBe(true);
-    const some = runSearch(cfg(data, { trials: 4, minDeflatedSharpe: 0.8 }), data);
+    // The deflated Sharpe is taken on the excess over the benchmark: a 0.006 edge over 1,500 days tops out near 0.6.
+    expect(all.rules.some((r) => r.deflatedSharpe! < 0.5)).toBe(true);
+    const some = runSearch(cfg(data, { trials: 4, minDeflatedSharpe: 0.5 }), data);
     expect(some.rules.length).toBeGreaterThan(0);
-    for (const r of some.rules) expect(r.deflatedSharpe!).toBeGreaterThanOrEqual(0.8);
+    for (const r of some.rules) expect(r.deflatedSharpe!).toBeGreaterThanOrEqual(0.5);
     const none = runSearch(cfg(data, { trials: 4, minDeflatedSharpe: 1 }), data);
     expect(none.rules).toEqual([]);
     expect(none.warnings.some((w) => /minDeflatedSharpe/.test(w))).toBe(true);
@@ -264,7 +286,8 @@ describe("runSearch", () => {
     expect(res.dataRange.holdoutFrom > res.rules[0]!.inSample.to).toBe(true);
     expect(res.warnings.some((w) => w.includes("syn:missing"))).toBe(true);
     expect(res.rules.length).toBeLessThanOrEqual(5);
-    const wf = res.rules.map((r) => r.walkForward!.sharpe);
+    // Ranked on the walk-forward excess over the exposure-matched benchmark, not on the raw Sharpe.
+    const wf = res.rules.map((r) => r.walkForward!.excessSharpe!);
     expect([...wf].sort((a, b) => b - a)).toEqual(wf);
     expect(new Set(res.rules.map((r) => r.id)).size).toBe(res.rules.length);
     for (const r of res.rules) {

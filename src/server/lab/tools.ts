@@ -155,7 +155,7 @@ const searchSchema = obj(
       items: obj({ from: daySchema("Zone start, YYYY-MM-DD."), to: daySchema("Zone end, YYYY-MM-DD.") }, ["from", "to"]),
       description: "Optional date ranges to label as good instead of the quantile labels.",
     },
-    objective: { type: "string", enum: ["sharpe", "return"], description: "What trials and rules are ranked by (walk-forward, net of slippage). Default sharpe." },
+    objective: { type: "string", enum: ["sharpe", "return"], description: "What trials and rules are ranked by (walk-forward, net of fee, slippage and funding). Default sharpe." },
     trials: { type: "integer", minimum: 1, maximum: 200, description: "Search budget: number of forest trials. Default 40. More trials take longer." },
     folds: { type: "integer", minimum: 2, maximum: 6, description: "Walk-forward folds over the search region (first 80% of history). Default 3." },
     minSupport: { type: "integer", minimum: 5, description: "Minimum in-zone training days for a rule to be kept. Default 30." },
@@ -181,10 +181,10 @@ const searchSchema = obj(
 
 // ---------------------------------------------------------------- tools
 
-const HONESTY = "Results are historical research, net of slippage.";
+const HONESTY = "Results are historical research, net of fee, slippage and funding.";
 
 /** The save bar in words (engine/verdict.ts holds the numbers). */
-const BAR = `verdict.level "robust": walk-forward Sharpe > ${MIN_WALK_FORWARD_SHARPE}, holdout Sharpe > 0 (not untested), stability ≥ ${MIN_STABILITY} and deflatedSharpe ≥ ${MIN_DEFLATED_SHARPE}`;
+const BAR = `verdict.level "robust": walk-forward Sharpe > ${MIN_WALK_FORWARD_SHARPE}, holdout Sharpe > 0 (not untested), both also on excessSharpe (the excess over holding the asset for the same share of days, so being long a rising asset earns nothing), stability ≥ ${MIN_STABILITY} and deflatedSharpe ≥ ${MIN_DEFLATED_SHARPE}`;
 const CANDIDATE = `A "candidate" (passes everything but the deflated Sharpe: could be the best of many noise variants) may be saved only with a note explaining why it is worth tracking anyway; never save "fragile", "weak" or "fails_holdout".`;
 const VERDICT = `verdict { level: robust | candidate | fragile | weak | fails_holdout, reasons: the failed checks with numbers }`;
 
@@ -221,7 +221,7 @@ export function labTools(service: LabService = getLabService()): ToolDef[] {
       name: "lab_search",
       title: "Search for trading heuristics",
       description:
-        `Searches the chosen metrics for simple one- or two-condition rules ("when feature A < x and B ≥ y, go long") that predict good forward returns, scored as strategies net of slippage. Fetches data from external providers and runs a seeded random-forest search: typically 5–50 s (server deadline ~50 s; it then returns the trials completed, with a warning). Returns { runId, result }: result.rules ranked by walk-forward objective, one per family (overlapping in-zone days collapse), each with precision, support, inSample, walkForward, walkForwardFolds (Sharpe per fold, null = no trade in that block), deflatedSharpe (null = undefined at extreme skew/kurtosis; else the probability the walk-forward Sharpe beats the best of result.effectiveTrials independent noise trials: the result.variantsScored variants clustered by return correlation), holdout (most recent 20%, never used for ranking; untested = no trade in it), benchmark, sensitivity.stability, firingNow and ${VERDICT}; plus featureImportance and warnings. Candidates must trade (exposure 5–95%, ≥ 0.5 trades/yr, ≥ 3 trades). A search rule's walk-forward = threshold-refit per fold by quantile matching (features and operators were chosen on the whole search region; lab_evaluate_rule instead keeps an explicit rule's thresholds fixed per fold); the trial score is fully out-of-sample, and the holdout is the clean check. The run is stored (runId). Next: compare walkForward vs holdout and stability on the top rules, then refine metrics/windows, lab_evaluate_rule a rule, or lab_catalogue_save only rules with ${BAR}. ${CANDIDATE} ` +
+        `Searches the chosen metrics for simple one- or two-condition rules ("when feature A < x and B ≥ y, go long") that predict good forward returns, scored as strategies net of fee, slippage and funding. Fetches data from external providers and runs a seeded random-forest search: typically 5–50 s (server deadline ~50 s; it then returns the trials completed, with a warning). Returns { runId, result }: result.rules ranked by walk-forward objective, one per family (overlapping in-zone days collapse), each with precision, support, inSample, walkForward, walkForwardFolds (Sharpe per fold, null = no trade in that block), deflatedSharpe (null = undefined at extreme skew/kurtosis; else the probability the walk-forward Sharpe beats the best of result.effectiveTrials independent noise trials: the result.variantsScored variants clustered by return correlation), holdout (most recent 20%, never used for ranking; untested = no trade in it), benchmark, sensitivity.stability, firingNow and ${VERDICT}; plus featureImportance and warnings. Candidates must trade (exposure 5–95%, ≥ 0.5 trades/yr, ≥ 3 trades). A search rule's walk-forward = threshold-refit per fold by quantile matching (features and operators were chosen on the whole search region; lab_evaluate_rule instead keeps an explicit rule's thresholds fixed per fold); the trial score is fully out-of-sample, and the holdout is the clean check. The run is stored (runId). Next: compare walkForward vs holdout and stability on the top rules, then refine metrics/windows, lab_evaluate_rule a rule, or lab_catalogue_save only rules with ${BAR}. ${CANDIDATE} ` +
         HONESTY,
       inputSchema: searchSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -439,7 +439,7 @@ export function labPrompts(): PromptDef[] {
   ];
 }
 
-export const LAB_INSTRUCTIONS = `Hypertrade Lab finds simple, human-readable trading heuristics for crypto assets ("when cm:CapMVRVCur z(90) < -1.1 and ht:funding ≥ 0, go long BTC"), scores them as strategies net of slippage, validates them out of sample and tracks the ones you save.
+export const LAB_INSTRUCTIONS = `Hypertrade Lab finds simple, human-readable trading heuristics for crypto assets ("when cm:CapMVRVCur z(90) < -1.1 and ht:funding ≥ 0, go long BTC"), scores them as strategies net of fee, slippage and funding, validates them out of sample and tracks the ones you save.
 
 Loop: lab_list_metrics → lab_search with a small related metric group (5–50 s) → inspect walk-forward vs holdout and stability of the top rules → refine metrics, windows or horizon → lab_catalogue_save only rules that hold up → lab_catalogue_health and lab_market_pulse to monitor. The autoresearch prompt walks through it.
 
