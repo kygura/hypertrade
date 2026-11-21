@@ -33,12 +33,34 @@ export function changeOver(hist: Array<[number, number]>, now: number, ms: numbe
   return base > 0 ? ((last - base) / base) * 100 : null;
 }
 
+/** The mark nearest `t` within 20 min in a mark history, null when none. */
+function markNear(hist: Array<[number, number]>, t: number): number | null {
+  let best: [number, number] | null = null;
+  for (const h of hist) if (Math.abs(h[0] - t) <= 20 * 60_000 && (!best || Math.abs(h[0] - t) < Math.abs(best[0] - t))) best = h;
+  return best && best[1] > 0 ? best[1] : null;
+}
+
+/**
+ * OI change in contracts over the last ~4h, percent, from the collector's hl.oi.<COIN> points (USD notional, OI × mark)
+ * and the watch's mark history: each point is divided by the mark at its time, so a price move alone reads 0. Null
+ * without 3h of points or a mark near either end (never the USD change, which a 10% price move turns into "OI +10%").
+ */
+export function oiContractsChange4h(pts: Array<{ t: number; v: number }>, marks: Array<[number, number]>, now: number): number | null {
+  const first = pts.find((p) => p.t >= now - 4.5 * HOUR);
+  const last = pts[pts.length - 1];
+  if (!first || !last || !(first.v > 0) || last.t - first.t < 3 * HOUR) return null;
+  const m0 = markNear(marks, first.t);
+  const m1 = markNear(marks, last.t);
+  if (m0 == null || m1 == null) return null;
+  return ((last.v / m1) / (first.v / m0) - 1) * 100;
+}
+
 interface TriggerInput {
   now: number;
   coins: string[];
   ctxs: AssetCtx[];
   marks: Record<string, Array<[number, number]>>;
-  /** OI change over the last ~4h, percent, per coin (from the collector's snapshots). */
+  /** OI change in contracts over the last ~4h, percent, per coin (oiContractsChange4h). */
   oiChange4h: Record<string, number | null>;
   account: AccountState;
 }
@@ -72,7 +94,7 @@ export function evaluateTriggers(i: TriggerInput): Trigger[] {
     }
     const oi = i.oiChange4h[coin];
     if (oi != null && Math.abs(oi) >= 10) {
-      out.push({ key: `oi:${coin}:${Math.sign(oi)}`, level: "info", title: `${coin} OI ${oi > 0 ? "+" : ""}${oi.toFixed(0)}% in 4h`, detail: `${coin} open interest changed ${oi.toFixed(1)}% over ~4h.`, wake: true });
+      out.push({ key: `oi:${coin}:${Math.sign(oi)}`, level: "info", title: `${coin} OI ${oi > 0 ? "+" : ""}${oi.toFixed(0)}% in 4h`, detail: `${coin} open interest (contracts) changed ${oi.toFixed(1)}% over ~4h.`, wake: true });
     }
   }
   for (const p of i.account.positions) {

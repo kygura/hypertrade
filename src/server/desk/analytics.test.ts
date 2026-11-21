@@ -55,6 +55,17 @@ describe("zScore", () => {
 });
 
 describe("rallyDiagnostics", () => {
+  test("OI is read in contracts: a 6% selloff with flat contracts is a spot selloff, not a long liquidation", () => {
+    // 72 flat hours, then 72 hours falling 6%. The USD OI snapshots fall with price (contracts flat).
+    const px = rally(-6);
+    const candles = hourly(px, NOW);
+    const oi = px.map((p, i) => ({ t: NOW - (144 - i) * HOUR, v: 1e7 * p }));
+    const d = rallyDiagnostics({ coin: "ETH", windowHours: 72, candles, funding: funding(30 * 24 + 72, () => 0.00001), oi, now: NOW });
+    expect(d.direction).toBe("down");
+    expect(Math.abs(d.oiChangePct!)).toBeLessThan(1);
+    expect(d.regime).toBe("spot_led_selloff");
+  });
+
   test("a rally on falling OI, hot funding and thinning volume reads as short covering with elevated trap risk", () => {
     const candles = hourly(rally(10), NOW, (i) => (i < 72 ? 200 : 100));
     const oi = Array.from({ length: 80 }, (_, i) => ({ t: NOW - (80 - i) * HOUR, v: i < 8 ? 1e9 : 1e9 * (1 - 0.1 * ((i - 7) / 72)) }));
@@ -76,8 +87,10 @@ describe("rallyDiagnostics", () => {
   });
 
   test("a rally on flat OI, neutral funding and rising volume reads as spot-led with low trap risk", () => {
-    const candles = hourly(rally(6), NOW, (i) => (i < 72 ? 100 : 200));
-    const oi = Array.from({ length: 80 }, (_, i) => ({ t: NOW - (80 - i) * HOUR, v: 1e9 * (1 + 0.001 * Math.sin(i)) }));
+    const px = rally(6);
+    const candles = hourly(px, NOW, (i) => (i < 72 ? 100 : 200));
+    // Flat contracts: the USD snapshots move with price.
+    const oi = Array.from({ length: 80 }, (_, i) => ({ t: NOW - (80 - i) * HOUR, v: 1e7 * px[64 + i]! * (1 + 0.001 * Math.sin(i)) }));
     const f = funding(30 * 24 + 72, (i) => 0.00001 * Math.sin(i));
     const d = rallyDiagnostics({ coin: "BTC", windowHours: 72, candles, funding: f, oi, now: NOW });
     expect(d.regime).toBe("spot_led_rally");

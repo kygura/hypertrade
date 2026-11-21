@@ -35,7 +35,7 @@ export interface RallyDiagnostics {
   windowHours: number;
   direction: "up" | "down" | "flat";
   priceChangePct: number;
-  /** Null when OI history does not cover the window. */
+  /** OI change in contracts (USD snapshots over the price at each end), %. Null when OI history does not cover the window. */
   oiChangePct: number | null;
   fundingAprNow: number | null;
   fundingAprWindow: number | null;
@@ -69,14 +69,16 @@ export const zScore = (x: number, base: number[]): number | null => zPopulation(
 const round = (x: number, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
-/** Value of a series at or just before `t` (series sorted ascending). */
-function valueAt(series: Array<{ t: number; v: number }>, t: number): number | null {
-  let out: number | null = null;
-  for (const p of series) {
-    if (p.t > t) break;
-    out = p.v;
+/** Price at `t` from 1h bars (ascending): the bar's open in its first half hour, else its close; `after` past the last bar. */
+function priceAt(bars: Candle[], t: number, after: number): number | null {
+  let bar: Candle | null = null;
+  for (const b of bars) {
+    if (b.t > t) break;
+    bar = b;
   }
-  return out;
+  if (!bar) return null;
+  if (t > bar.T) return bar === bars[bars.length - 1] ? after : bar.c;
+  return t - bar.t < 30 * 60_000 ? bar.o : bar.c;
 }
 
 /** Default classifyRegime thresholds (%), set for the desk's multi-hour flow_diagnostics windows (default 72 h). */
@@ -151,14 +153,18 @@ export function rallyDiagnostics(input: DiagnosticsInput): RallyDiagnostics {
   const direction: RallyDiagnostics["direction"] = Math.abs(priceChangePct) < 1.5 ? "flat" : priceChangePct > 0 ? "up" : "down";
   const dir = direction === "down" ? -1 : 1;
 
-  // Open interest over the window, from snapshots. Requires a point within
-  // 2h of the window start so a short history does not pass for a flat one.
+  // Open interest over the window, in contracts, from snapshots. Requires a point within
+  // 2h of the window start so a short history does not pass for a flat one. The snapshots are
+  // USD notional (OI × mark); each end is divided by the price at its time, or a 5% drop with
+  // flat contracts would read as OI -5% and classify a spot selloff as a long liquidation.
   let oiChangePct: number | null = null;
-  const oiStart = valueAt(input.oi, start);
   const firstOi = input.oi[0];
-  const oiNow = input.oi.length ? input.oi[input.oi.length - 1]!.v : null;
-  if (oiStart != null && oiNow != null && firstOi && firstOi.t <= start + 2 * HOUR && oiStart > 0) {
-    oiChangePct = ((oiNow - oiStart) / oiStart) * 100;
+  const startOi = [...input.oi].reverse().find((p) => p.t <= start) ?? null;
+  const lastOi = input.oi.length ? input.oi[input.oi.length - 1]! : null;
+  if (startOi && lastOi && firstOi && firstOi.t <= start + 2 * HOUR && startOi.v > 0) {
+    const pxStart = priceAt(bars, startOi.t, lastPx);
+    const pxNow = priceAt(bars, lastOi.t, lastPx);
+    if (pxStart && pxNow) oiChangePct = ((lastOi.v / pxNow) / (startOi.v / pxStart) - 1) * 100;
   }
 
   // Funding: window mean vs the hourly distribution before the window.

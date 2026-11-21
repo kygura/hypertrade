@@ -42,7 +42,8 @@ describe("read tools", () => {
     expect(r.isError).toBe(false);
     const d = JSON.parse(r.content);
     expect(d.coin).toBe("kPEPE");
-    expect(d.oiChangePct).toBeCloseTo(10, 5);
+    // USD OI +10% while price rose about 7%: about +2.5% in contracts.
+    expect(d.oiChangePct).toBeCloseTo(2.45, 1);
   });
 
   test("unknown coins and bad input come back as tool errors", async () => {

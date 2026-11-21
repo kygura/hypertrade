@@ -1,6 +1,6 @@
 import { fmtPx } from "../../shared/format.js";
 import { runDesk, type ProviderFactory } from "./agents.js";
-import { HOUR, evaluateTriggers, type Trigger } from "./triggers.js";
+import { HOUR, evaluateTriggers, oiContractsChange4h, type Trigger } from "./triggers.js";
 import type { UpkeepNote } from "./paper.js";
 import type { DeskService } from "./service.js";
 
@@ -137,9 +137,7 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
   await Promise.all(
     seen.map(async (c) => {
       const pts = await service.data.series(`hl.oi.${c}`, new Date(t - 5 * HOUR)).catch(() => []);
-      const first = pts.find((p) => p.t >= t - 4.5 * HOUR);
-      const last = pts[pts.length - 1];
-      oiChange4h[c] = first && last && first.v > 0 && last.t - first.t >= 3 * HOUR ? ((last.v - first.v) / first.v) * 100 : null;
+      oiChange4h[c] = oiContractsChange4h(pts, hist[c] ?? [], t);
     }),
   );
 

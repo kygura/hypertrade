@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { changeOver, evaluateTriggers } from "./triggers.js";
+import { changeOver, evaluateTriggers, oiContractsChange4h } from "./triggers.js";
 import { tick, WATCH_KEY, type WatchState } from "./watch.js";
 import { MemoryIntelStore } from "../intel/store.js";
 import { watchedAssets } from "../intel/positions.js";
@@ -18,6 +18,22 @@ describe("changeOver", () => {
     ];
     expect(changeOver(h, NOW, HOUR)).toBeCloseTo((105 / 102 - 1) * 100, 6);
     expect(changeOver(h, NOW, 4 * HOUR)).toBeNull(); // history too short
+  });
+});
+
+describe("oiContractsChange4h", () => {
+  // hl.oi.<COIN> is USD notional (OI × mark): a 10% rally with flat contracts is +10% in USD, 0 in contracts.
+  const pts = [{ t: NOW - 4 * HOUR, v: 1e9 }, { t: NOW, v: 1.1e9 }];
+  test("a price move alone is no OI change", () => {
+    expect(oiContractsChange4h(pts, [[NOW - 4 * HOUR, 100_000], [NOW, 110_000]], NOW)).toBeCloseTo(0, 9);
+  });
+  test("a real contracts change shows through the price move", () => {
+    // price -8%, USD OI -11.7% → contracts -4%
+    const p = [{ t: NOW - 4 * HOUR, v: 1e9 }, { t: NOW, v: 1e9 * 0.92 * 0.96 }];
+    expect(oiContractsChange4h(p, [[NOW - 4 * HOUR - 5 * 60_000, 100_000], [NOW, 92_000]], NOW)).toBeCloseTo(-4, 6);
+  });
+  test("no mark near an end: null, never the USD change", () => {
+    expect(oiContractsChange4h(pts, [[NOW, 110_000]], NOW)).toBeNull();
   });
 });
 
