@@ -179,11 +179,13 @@ export function createScanner(deps: ScannerDeps) {
     const bookCoins = [...new Set(cands.slice(0, topN).map((c) => c.ctx.name))];
     const books = new Map(await Promise.all(bookCoins.map(async (coin) => [coin, await bookOf(coin)] as const)));
 
-    // Ledger mean net return per setup kind, from the 4 h group (the HOLD_HOURS the costs are charged over).
+    // Ledger mean net return per setup kind, from the 4 h group (the HOLD_HOURS the costs are charged over). Only
+    // outcomes scored under the current SCORE_VERSION, as every quoted ledger record (stats.ts setupLedgerStats): a new
+    // score version resets the evidence, so the edge must not rest on the old version's outcomes either.
     const best = new Map<string, LedgerStats>();
     try {
       // Only candidates read it: a scan with none skips the full outcome read.
-      if (cands.length) for (const g of groupStats(await store.outcomeRows({}))) if (g.horizon === "4h") best.set(g.setupKind, g);
+      if (cands.length) for (const g of groupStats((await store.outcomeRows({})).filter((r) => r.scoreVersion === SCORE_VERSION))) if (g.horizon === "4h") best.set(g.setupKind, g);
     } catch (err) {
       console.error("[scanner] ledger stats failed:", err instanceof Error ? err.message : err);
     }
