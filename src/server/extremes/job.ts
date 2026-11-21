@@ -23,6 +23,8 @@ const DEFAULT_EXTREMES_COOLDOWN_H = 24;
 const DEFAULT_EXTREMES_DAILY_CAP = 3;
 /** Snapshots read to rank coins by their latest 24 h volume (the tick persists one every 5 min). */
 export const RANK_WINDOW_MS = HOUR;
+/** A coin's history is stale past this (the detectors' endpoint tolerance, intel/windows.ts ENDPOINT_TOLERANCE_MS). */
+const STALE_MS = 20 * MIN;
 
 const posInt = (v: string | undefined, d: number) => {
   const n = Number(v?.trim());
@@ -67,6 +69,8 @@ export interface ExtremesJobReport {
   expired: number;
   /** The calibration whose thresholds the detector ran with, or "defaults". */
   calibration: ThresholdsSource;
+  /** Coins whose newest snapshot is older than STALE_MS: the detector cannot read them, so they cannot fire. */
+  stale: number;
   lines: string[];
 }
 
@@ -114,6 +118,9 @@ export async function runExtremesJob(deps: ExtremesJobDeps): Promise<ExtremesJob
 
   // Universe: the top N by the latest stored 24 h volume, plus BTC (the detectors' market reference).
   const vol = latestVolumes(await deps.store.scanSnapshotsSince(iso(now - RANK_WINDOW_MS)));
+  // No snapshot in the rank window means the platform tick stopped. Fail the run (a 500 in ops.cron_status) instead of
+  // answering 200 with zero coins, which reads the same as a quiet market.
+  if (!vol.size) throw new Error(`no scan snapshots in the last ${RANK_WINDOW_MS / MIN} min: the platform tick looks stopped, extremes cannot be read`);
   const coins = selectUniverse([...vol].map(([coin, x]) => ({ coin, dayNtlVlm: x.dayNtlVlm })), { top: p.top, mine: ["BTC"] }).map((c) => c.coin);
   // One coin's history at a time (30 days of snapshots per coin), so the read never holds the whole universe at once.
   const since = iso(now - deps.lookbackMs);
@@ -122,12 +129,13 @@ export async function runExtremesJob(deps: ExtremesJobDeps): Promise<ExtremesJob
   const btc = btcPoints.length ? btcPoints : null;
 
   const { thresholds, source } = await deps.thresholds();
-  const report: ExtremesJobReport = { coins: coins.length, evaluated: 0, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired, calibration: source, lines: [] };
+  const report: ExtremesJobReport = { coins: coins.length, evaluated: 0, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired, calibration: source, lines: [], stale: 0 };
   const fired: ExtremeEvent[] = [];
   for (const coin of coins) {
     const points = coin === "BTC" ? btcPoints : await history(coin);
     if (!points.length) continue;
     report.evaluated++;
+    if (points[points.length - 1]!.ts < now - STALE_MS) report.stale++;
     fired.push(...deps.detect({ coin, points, btc, now }, thresholds));
   }
   report.fired = fired.length;

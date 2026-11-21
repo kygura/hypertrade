@@ -317,8 +317,16 @@ describe("POST /cron/extremes", () => {
   test("503 without a database, skipped when leased, counts otherwise", async () => {
     expect((await runExtremesCron({ hasDb: () => false, lease: lease(), job })).status).toBe(503);
     expect(await runExtremesCron({ hasDb: () => true, lease: lease(false), job })).toEqual({ status: 200, body: { ok: true, skipped: "leased" } });
+    const store = new MemoryPlatformStore();
+    await store.insertScanSnapshots([{ coin: "BTC", ts: new Date(NOW.getTime() - 5 * 60_000).toISOString(), inputs: { dayNtlVlm: 1e9 } } as never]);
+    const r = await runExtremesCron({ hasDb: () => true, lease: lease(), job: () => ({ ...job(), store }) });
+    expect(r).toEqual({ status: 200, body: { ok: true, coins: 1, evaluated: 0, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired: 0, calibration: "defaults", lines: [], stale: 0 } });
+  });
+
+  test("no snapshot in the rank window fails the run instead of answering zero coins", async () => {
     const r = await runExtremesCron({ hasDb: () => true, lease: lease(), job });
-    expect(r).toEqual({ status: 200, body: { ok: true, coins: 0, evaluated: 0, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired: 0, calibration: "defaults", lines: [] } });
+    expect(r.status).toBe(500);
+    expect(String(r.body.error)).toContain("platform tick looks stopped");
   });
 
   test("a failing job is a 500 body; the route needs the cron token", async () => {

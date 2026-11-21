@@ -51,8 +51,15 @@ describe("runExtremesJob", () => {
     const r = await runExtremesJob(h.deps);
     expect(h.seen.map((x) => x.coin)).toEqual(["ETH", "SOL", "BTC"]);
     expect(h.seen.every((x) => x.n === 12 && x.btc === 12)).toBe(true);
-    expect(r).toEqual({ coins: 3, evaluated: 3, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired: 0, calibration: "defaults", lines: [] });
+    expect(r).toEqual({ coins: 3, evaluated: 3, fired: 0, new: 0, woken: 0, pushed: 0, capped: 0, undelivered: 0, expired: 0, calibration: "defaults", lines: [], stale: 0 });
     expect(h.seen.every((x) => x.th === DEFAULT_EXTREME_THRESHOLDS)).toBe(true);
+  });
+
+  test("a coin whose newest snapshot is older than 20 min counts as stale", async () => {
+    const store = await storeWith(["ETH", "BTC"]);
+    const r = await runExtremesJob(harness(store, { now: NOW + 30 * 60_000 }).deps);
+    expect(r.evaluated).toBe(2);
+    expect(r.stale).toBe(2);
   });
 
   test("thresholds: the latest applied calibration (a proposal is ignored); a row that does not parse falls back to the defaults", async () => {
