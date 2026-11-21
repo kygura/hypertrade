@@ -21,9 +21,12 @@ by URL.
   (answer "is there an edge", heavy to load, no per-item state, dozens a day would fill the cap); Intel alerts (the
   asset can be a narrative id: needs an asset-to-perp mapping and a rule for alerts Telegram already pushed);
   Terminal changes (one brief, not per coin, an LLM run per open); Desk alerts (free text, no coin field).
-- [ ] Queue slots are strongest first (item score, then agreeing sources). Open: a separate `QUEUE_DAILY` so triage does
-  not use the whole `MOVES_TRIAGE_DAILY` budget, and cross-source score weights (an opportunity's own `score` is raw,
-  not normalised to its bar, so the queue still scores a ready setup and a radar call as 1).
+- [ ] Queue slots are strongest first (item score, then agreeing sources), after one reserved slot per source that
+  crossed its bar (2026-11-21: a raw moves score, `|z| / 2.5`, used to fill the cap and push a ready setup and a radar
+  call to `overCap`). Open: a separate `QUEUE_DAILY` so triage does not use the rest of the `MOVES_TRIAGE_DAILY`
+  budget, and cross-source score weights (an opportunity's own `score` is raw, not normalised to its bar, so the
+  queue still scores a ready setup and a radar call as 1; beyond the reserved slot they still lose every tie-free
+  comparison with a triage item).
 - [ ] `src/ui/pages/moves/Moves.tsx` still polls `/api/moves/triage` every 60 s, now only for `agentBlockedReason`
   (the unrendered `TriagePanel` was deleted); drop the poll or fetch the reason another way.
 - [ ] Telegram review links (`intel/mapper.ts`, `intel/terminal.ts`) still open `/terminal?review=1`, a hidden screen;

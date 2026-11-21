@@ -187,6 +187,23 @@ describe("mergeQueue", () => {
     expect(full.items.find((i) => i.coin === "xyz:TSLA")!.href).toBe("/coin/xyz%3ATSLA");
   });
 
+  test("a raw moves score cannot evict the other sources: each source that crossed its bar keeps a slot for its strongest item", () => {
+    // Eight triage items at z 2.6 (score 2.6 / 2.5 = 1.04) outscore a ready setup and a radar call (1 each) under a cap of 8.
+    const coins = ["A", "B", "C", "D", "E", "F", "G", "H"];
+    const q = mergeQueue(input({ cap: 8, triage: { ok: coins.map((c, i) => triage(c, 1, { score: 1.04 + i / 1000 })) }, opportunities: { ok: [opp("SOL", 4)] }, radar: { ok: [call("WIF", 2)] } }));
+    expect(q.items.map((i) => i.coin)).toContain("SOL");
+    expect(q.items.map((i) => i.coin)).toContain("WIF");
+    expect(q.items).toHaveLength(8);
+    expect(q.overCap).toBe(2);
+    // The six triage slots still go to the strongest six; the two weakest are over the cap.
+    expect(q.items.filter((i) => i.parts[0]!.source === "moves").map((i) => i.coin).sort()).toEqual(["C", "D", "E", "F", "G", "H"]);
+    // One slot per source, not per item: a second ready setup competes on strength like anything else.
+    const two = mergeQueue(input({ cap: 8, triage: { ok: coins.map((c) => triage(c, 1, { score: 1.04 })) }, opportunities: { ok: [opp("SOL", 4), opp("ETH", 5)] } }));
+    expect(two.items.map((i) => i.coin).filter((c) => c === "SOL" || c === "ETH")).toEqual(["SOL"]);
+    // A cap below the number of sources goes to the strongest reserved items.
+    expect(mergeQueue(input({ cap: 1, triage: { ok: [triage("A", 1, { score: 3 })] }, radar: { ok: [call("WIF", 2)] } })).items.map((i) => i.coin)).toEqual(["A"]);
+  });
+
   test("cap 0 lists nothing and counts everything over the cap", () => {
     const q = mergeQueue(input({ cap: 0, triage: { ok: [triage("A", 1), triage("B", 2)] }, radar: { ok: [call("C", 3)] } }));
     expect(q.items).toEqual([]);
