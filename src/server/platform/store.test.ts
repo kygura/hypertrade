@@ -237,6 +237,11 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(await s.outcomeRows({ setupKind: "breakout", regime: "new_longs", tier: 1 })).toHaveLength(1);
   expect(await s.outcomeRows({ tier: 2 })).toEqual([]);
   expect(await s.outcomeRows({ regime: "range" })).toEqual([]);
+  // The stop/target trade rides on its outcome entry's payload; an entry without one (written before it existed) loads without it.
+  const trade = { exit: "stop" as const, exitPx: 60760, exitAt: "2026-10-16T12:31:00.000Z", stopPx: 60760, targetPx: 64480, grossReturn: -0.02, netReturn: -0.0209, r: -1.045, ambiguous: true };
+  expect(await s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { ...outcome(o2).payload, horizon: "72h", trade } })).toMatchObject({ payload: { trade } });
+  await expect(s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { ...outcome(o2).payload, horizon: "4h", trade: { ...trade, exit: "liquidated" as never } } })).rejects.toThrow();
+  expect((await s.outcomeRows({})).map((r) => [r.opportunityId, r.horizon, r.trade])).toEqual([[o1, "1h", undefined], [o2, "72h", trade]]);
 
   // retention: BTC t0 + ETH t0 liqmaps, BTC t0 scan; changes are all at t2+. The ledger is untouched.
   expect(await s.pruneHistory(t(1))).toBe(3);

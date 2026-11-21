@@ -47,13 +47,13 @@ describe("ready push evidence line", () => {
     const { sent, bus } = setup(undefined, undefined, [...[0.01, 0.02, 0.03, 0.04, 0.05].map((x, i) => out(i, x)), out(9, 0.5, "24h", "score-v0"), out(10, 0.5, "1h")]);
     bus.publish("opportunity", { opportunity: opp(), change: "status" });
     await Bun.sleep(0);
-    expect(sent[0]!.body).toContain("\nledger 24h: n 5 \u00b7 5 clusters \u00b7 +3.00% (+1.0\u2026+5.0) \u00b7 edge unvalidated");
+    expect(sent[0]!.body).toContain("\nledger 24h hold (no stop/target): n 5 \u00b7 5 clusters \u00b7 +3.00% (+1.0\u2026+5.0) \u00b7 edge unvalidated");
   });
   test("empty ledger: n 0", async () => {
     const { sent, bus } = setup();
     bus.publish("opportunity", { opportunity: opp(), change: "status" });
     await Bun.sleep(0);
-    expect(sent[0]!.body).toContain("ledger 24h: n 0 \u00b7 0 clusters \u00b7 edge unvalidated");
+    expect(sent[0]!.body).toContain("ledger 24h hold (no stop/target): n 0 \u00b7 0 clusters \u00b7 edge unvalidated");
   });
 });
 

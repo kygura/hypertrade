@@ -453,6 +453,7 @@ export class MemoryPlatformStore implements PlatformStore {
       out.push({
         opportunityId: o.id, setupKind: o.setupKind, regime: o.regime, scoreVersion: o.scoreVersion, liquidityTier: o.liquidityTier,
         horizon: e.payload.horizon, createdAtMs: Date.parse(o.createdAt), grossReturn: e.payload.grossReturn, netReturn: e.payload.netReturn, hasCosts: o.costs != null,
+        ...(e.payload.trade && { trade: e.payload.trade }),
       });
     }
     return out;

@@ -22,6 +22,7 @@ import {
   type OpportunityStatus,
   type PolledPosition,
   type Position,
+  type TradeOutcome,
 } from "../../shared/platform.js";
 import { AgentRecordSchema, TriageItemSchema, type AgentRecord, type AgentRecordStatus, type TriageItem } from "../../shared/agentRecords.js";
 import { MovesResponseSchema, type MovesResponse, type MoveWindow } from "../../shared/moves.js";
@@ -89,6 +90,8 @@ export interface OutcomeRow {
   netReturn: number;
   /** The opportunity has a cost breakdown; stats exclude rows without one (P0.13). */
   hasCosts: boolean;
+  /** The stop/target trade resolved with this outcome (the longest horizon's entry); absent otherwise and on rows written before it existed. */
+  trade?: TradeOutcome;
 }
 
 /** Extra fields on a `status` entry: the desk proposal id and, for code-made moves, why. */

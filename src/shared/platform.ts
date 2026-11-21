@@ -106,6 +106,25 @@ export type FeatureVector = z.infer<typeof FeatureVectorSchema>;
 
 // ─── Ledger (P0.12) ───
 
+/**
+ * The trade as ticketed (P0.13): entry to the first touch of the idea's stop or target on 1-min candles (stop wins
+ * when both are inside one bar, shared/firstTouch.ts), else out at the longest horizon. Fractions net of costs; `r` is
+ * netReturn in units of the entry-to-stop distance.
+ */
+const TradeOutcomeSchema = z.object({
+  exit: z.enum(["stop", "target", "horizon"]),
+  exitPx: Pos,
+  exitAt: Iso,
+  stopPx: Pos,
+  targetPx: Pos,
+  grossReturn: Num,
+  netReturn: Num,
+  r: Num,
+  /** Stop and target inside one bar: scored as the stop. */
+  ambiguous: z.boolean(),
+});
+export type TradeOutcome = z.infer<typeof TradeOutcomeSchema>;
+
 const PAYLOADS = {
   created: z.object({ features: FeatureVectorSchema, market: JsonRecord, score: Num, scoreVersion: Text(32) }),
   status: z.object({
@@ -134,7 +153,11 @@ const PAYLOADS = {
       costs: CostsSchema.nullable(),
     }),
   }),
-  outcome: z.object({ horizon: HorizonSchema, entryBasis: z.enum(["mark", "fill"]), entryPx: Pos, horizonPx: Pos, grossReturn: Num, netReturn: Num }),
+  outcome: z.object({
+    horizon: HorizonSchema, entryBasis: z.enum(["mark", "fill"]), entryPx: Pos, horizonPx: Pos, grossReturn: Num, netReturn: Num,
+    /** The stop/target trade, on the longest horizon's entry only (outcomesLoop.ts). Absent on shorter horizons, on entries written before it existed, and when it could not be resolved. */
+    trade: TradeOutcomeSchema.optional(),
+  }),
 };
 const stored = { id: z.number().int().positive(), opportunityId: z.string().uuid(), createdAt: Iso };
 const entry = <K extends keyof typeof PAYLOADS>(kind: K) => z.object({ ...stored, kind: z.literal(kind), payload: PAYLOADS[kind] });
@@ -165,6 +188,22 @@ const LedgerStatsSchema = z.object({
   meanNet: Num.nullable(),
   /** 95% t-interval over cluster means; null below 5 clusters (P0.14). */
   ci95: z.tuple([Num, Num]).nullable(),
+  /**
+   * The stop/target trades among this group's outcomes (they sit on the longest horizon): the same clustering, in R.
+   * n and the exit counts are per trade; meanR, meanNet and ci95 (R) run over cluster means. Null when the group has none.
+   */
+  trade: z.object({
+    n: z.number().int().positive(),
+    clusters: z.number().int().positive(),
+    hitRate: Num,
+    meanR: Num,
+    meanNet: Num,
+    ci95: z.tuple([Num, Num]).nullable(),
+    stops: z.number().int().nonnegative(),
+    targets: z.number().int().nonnegative(),
+    timeouts: z.number().int().nonnegative(),
+    ambiguous: z.number().int().nonnegative(),
+  }).nullable().optional(),
 });
 export type LedgerStats = z.infer<typeof LedgerStatsSchema>;
 

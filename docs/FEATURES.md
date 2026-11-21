@@ -281,7 +281,7 @@ The trial count is how the operator judges luck: the ninth idea tried that looks
 
 **Partly covered.** The ledger already computes, per setup kind and horizon, n, hit rate, mean net return and a 95% t-interval, null below n = 5 (`src/server/platform/stats.ts:9`), and the opportunity detail shows them (docs/SPEC.md § Platform P0.14).
 
-**In scope (PS4):** the Telegram `Ready:` alert (`src/server/platform/alerts.ts:65`) gains the facts line `ledger 24h: n 37 · 11 clusters · +0.42% (−0.3…+1.1) · edge unvalidated`, built from PS2's clustered stats and showing the horizon used. The counter lives in the Lab store, written by PS1's authoring tool. Catalogue entries authored through it show `idea #n of N`.
+**In scope (PS4):** the Telegram `Ready:` alert (`src/server/platform/alerts.ts:65`) gains the facts line `ledger 24h hold (no stop/target): n 37 · 11 clusters · +0.42% (−0.3…+1.1) · edge unvalidated`, built from PS2's clustered stats and naming what it quotes (the 24 h hold-to-horizon record); a second line `ledger stop/target (72h max): …` in R quotes the stop/target trade record once the setup kind has one (docs/SPEC.md § Platform P0.13, P0.14). The counter lives in the Lab store, written by PS1's authoring tool. Catalogue entries authored through it show `idea #n of N`.
 
 ---
 
