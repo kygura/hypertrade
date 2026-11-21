@@ -1,5 +1,6 @@
 import { fmtPx } from "../../shared/format.js";
-import { runDesk, type ProviderFactory } from "./agents.js";
+import type { LlmCaps } from "../intel/llm.js";
+import { deskLlmRefusal, runDesk, type ProviderFactory } from "./agents.js";
 import { HOUR, evaluateTriggers, type Trigger } from "./triggers.js";
 import type { UpkeepNote } from "./paper.js";
 import type { DeskService } from "./service.js";
@@ -14,15 +15,27 @@ import type { DeskService } from "./service.js";
 //      near their stop, breadth shocks); each fires an alert, with a per-key
 //      cooldown so a condition that persists does not spam
 //   5. wake the agent team (a "cycle") when a trigger fired or a scheduled
-//      review is due, within the daily cycle cap and the cooldown
+//      review is due, within the daily cycle cap, the cooldown and the daily
+//      LLM cap
 //
 // The LLM only runs in step 5; everything before it is arithmetic.
+//
+// Several schedulers call this (pg_cron and collect.yml through POST
+// /desk/tick, the always-on loop, scripts/desk-worker.ts), so steps 1-4 run
+// under a store lease: a tick that finds it held does nothing. Each alert's
+// cooldown or flag is stored before the alert is sent (claim, then send), so a
+// throw later in the tick cannot make it repeat on the next one. The cycle
+// runs after the lease is released; lastCycleAt, stored under it, keeps a
+// second tick from starting another.
 
 const MIN = 60_000;
 export const WATCH_KEY = "watch";
 const COOLDOWN_KEY = "trigger_cooldowns";
 const TRIGGER_COOLDOWN_MS = 3 * HOUR;
 const MARK_HISTORY_MS = 26 * HOUR;
+const TICK_LEASE = "tick";
+/** Steps 1-4 take seconds; a holder that died frees the lease after this. */
+const TICK_LEASE_MS = 3 * MIN;
 
 export interface WatchState {
   lastTick?: string;
@@ -44,6 +57,8 @@ export interface TickResult {
   triggers: Trigger[];
   suppressed: string[];
   cycle: { runId: string; stop: string; reason: string } | { skipped: string } | null;
+  /** Set when this tick did nothing: another tick holds the lease. */
+  skipped?: string;
 }
 
 export interface TickOptions {
@@ -53,9 +68,37 @@ export interface TickOptions {
   makeProvider?: ProviderFactory;
   /** Force a review cycle regardless of triggers and schedule (still capped per day). */
   forceReview?: boolean;
+  /** Daily LLM caps for the cycle. Default: the service's. */
+  llm?: LlmCaps;
 }
 
 export async function tick(service: DeskService, opts: TickOptions = {}): Promise<TickResult> {
+  const holder = crypto.randomUUID();
+  if (!(await service.store.acquireLease(TICK_LEASE, holder, TICK_LEASE_MS))) {
+    return { at: service.now().toISOString(), expired: 0, settled: [], triggers: [], suppressed: [], cycle: null, skipped: "another tick is running" };
+  }
+  let watched: Awaited<ReturnType<typeof watch>>;
+  try {
+    watched = await watch(service, opts);
+  } finally {
+    await service.store.releaseLease(TICK_LEASE, holder).catch((err) => console.error("[desk] tick lease release:", err));
+  }
+  const { result, reason } = watched;
+  if (reason == null) return result;
+  try {
+    const r = await runDesk(
+      { service, kind: "cycle", input: reason, act: true, makeProvider: opts.makeProvider, timeoutMs: opts.cycleTimeoutMs, llm: opts.llm, trigger: { triggers: result.triggers } },
+      () => {},
+    );
+    result.cycle = { runId: r.runId, stop: r.stop, reason };
+  } catch (err) {
+    result.cycle = { skipped: err instanceof Error ? err.message : String(err) };
+  }
+  return result;
+}
+
+/** Steps 1-4 and the decision of step 5, under the tick lease. `reason` is set when a cycle was claimed (lastCycleAt stored) and is to run. */
+async function watch(service: DeskService, opts: TickOptions): Promise<{ result: TickResult; reason: string | null }> {
   const now = service.now();
   const t = now.getTime();
   const state = (await service.store.getState<WatchState>(WATCH_KEY)) ?? {};
@@ -104,6 +147,8 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
       } else next[n.key] = last;
     }
     state.upkeep = next;
+    // Claimed before sending: a throw after the push must not alert the same condition again next tick.
+    if (due.length) await service.store.setState(WATCH_KEY, state);
     for (const level of ["critical", "warn", "info"] as const) {
       const lines = due.filter((n) => n.level === level).map((n) => n.text);
       if (lines.length) await service.alert(level, `${service.broker.venue} ${level === "info" ? "housekeeping" : "account check"}`, lines.join("\n"));
@@ -115,6 +160,7 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
   const today = now.toISOString().slice(0, 10);
   if (dayLossPct >= service.config.limits.dailyLossLimitPct && state.dayLossAlerted !== today) {
     state.dayLossAlerted = today;
+    await service.store.setState(WATCH_KEY, state);
     await service.alert("critical", "Daily loss limit hit", `Day PnL $${account.dayPnlUsd.toFixed(2)} (${dayLossPct.toFixed(2)}%). New entries are blocked until 00:00 UTC.`);
   }
 
@@ -144,17 +190,19 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
 
   const all = evaluateTriggers({ now: t, coins: seen, ctxs, marks: hist, oiChange4h, account });
   const cooldowns = (await service.store.getState<Record<string, string>>(COOLDOWN_KEY)) ?? {};
+  for (const [k, v] of Object.entries(cooldowns)) if (t - new Date(v).getTime() > 24 * HOUR) delete cooldowns[k];
   for (const tr of all) {
     const last = cooldowns[tr.key];
     if (last && t - new Date(last).getTime() < TRIGGER_COOLDOWN_MS) {
       result.suppressed.push(tr.key);
       continue;
     }
+    // The cooldown is stored before the alert goes out (claim, then send): if anything later throws, it does not fire again next tick.
     cooldowns[tr.key] = now.toISOString();
+    await service.store.setState(COOLDOWN_KEY, cooldowns);
     result.triggers.push(tr);
     await service.alert(tr.level, tr.title, tr.detail);
   }
-  for (const [k, v] of Object.entries(cooldowns)) if (t - new Date(v).getTime() > 24 * HOUR) delete cooldowns[k];
   await service.store.setState(COOLDOWN_KEY, cooldowns);
 
   // Should the agents run?
@@ -172,25 +220,18 @@ export async function tick(service: DeskService, opts: TickOptions = {}): Promis
   if (reason && opts.runCycle !== false) {
     const dayStart = new Date(`${today}T00:00:00Z`);
     const done = await service.store.countRunsSince("cycle", dayStart);
-    if (done >= cfg.maxCyclesPerDay) {
-      result.cycle = { skipped: `daily cycle cap reached (${cfg.maxCyclesPerDay})` };
+    // The LLM cap is read before the cycle is claimed, so a refused cycle does not use up the cooldown or the review slot.
+    const refused = done >= cfg.maxCyclesPerDay ? `daily cycle cap reached (${cfg.maxCyclesPerDay})` : await deskLlmRefusal(opts.llm ?? service.llm);
+    if (refused) {
+      result.cycle = { skipped: refused };
     } else {
       state.lastCycleAt = now.toISOString();
       await service.store.setState(WATCH_KEY, state);
-      try {
-        const r = await runDesk(
-          { service, kind: "cycle", input: reason, act: true, makeProvider: opts.makeProvider, timeoutMs: opts.cycleTimeoutMs, trigger: { triggers: result.triggers } },
-          () => {},
-        );
-        result.cycle = { runId: r.runId, stop: r.stop, reason };
-      } catch (err) {
-        result.cycle = { skipped: err instanceof Error ? err.message : String(err) };
-      }
-      return result;
+      return { result, reason };
     }
   } else if (reason) {
     result.cycle = { skipped: "cycles disabled for this tick" };
   }
   await service.store.setState(WATCH_KEY, state);
-  return result;
+  return { result, reason: null };
 }

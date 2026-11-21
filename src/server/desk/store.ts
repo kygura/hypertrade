@@ -1,4 +1,4 @@
-import { sql } from "../db.js";
+import { acquireLease, releaseLease, sql } from "../db.js";
 import type { AlertLevel, ProposalRecord, ProposalStatus, Side } from "./types.js";
 
 // Desk persistence (db/migrations/003_desk.sql). Everything goes through the
@@ -91,7 +91,19 @@ export interface DeskStore {
   setState(key: string, value: unknown): Promise<void>;
   /** Atomically removes and returns the value when its `hash` field equals `hash`; null otherwise (a one-shot token). */
   takeState<T extends { hash: string }>(key: string, hash: string): Promise<T | null>;
+
+  /**
+   * A run lease (db.ts acquireLease, the mechanism platform-tick, novelty and extremes use): true when `holder` now
+   * holds `name` until it releases or ttlMs passes; false while another holder's is live. Two concurrent callers
+   * cannot both get it.
+   */
+  acquireLease(name: string, holder: string, ttlMs: number): Promise<boolean>;
+  /** Ends `holder`'s lease now; a lease someone else took after it expired is left alone. */
+  releaseLease(name: string, holder: string): Promise<void>;
 }
+
+/** sync_state coin of the desk's lease rows (series = the lease's name). */
+const LEASE_COIN = "_desk";
 
 // ---------------------------------------------------------------- postgres
 
@@ -250,6 +262,12 @@ export class PgStore implements DeskStore {
     const [row] = await sql()`delete from desk_state where key = ${key} and value->>'hash' = ${hash} returning value`;
     return row ? (row.value as T) : null;
   }
+  acquireLease(name: string, holder: string, ttlMs: number) {
+    return acquireLease(LEASE_COIN, name, holder, ttlMs);
+  }
+  releaseLease(name: string, holder: string) {
+    return releaseLease(LEASE_COIN, name, holder);
+  }
 }
 
 // ---------------------------------------------------------------- memory
@@ -262,6 +280,7 @@ export class MemoryStore implements DeskStore {
   fills: PaperFill[] = [];
   alerts: AlertRow[] = [];
   state = new Map<string, unknown>();
+  leases = new Map<string, { holder: string; until: number }>();
   private n = 0;
   constructor(private readonly clock: () => Date = () => new Date()) {}
   private id() {
@@ -371,5 +390,15 @@ export class MemoryStore implements DeskStore {
     if (v?.hash !== hash) return null;
     this.state.delete(key);
     return v;
+  }
+  async acquireLease(name: string, holder: string, ttlMs: number) {
+    const now = this.clock().getTime();
+    const cur = this.leases.get(name);
+    if (cur && cur.until > now) return false;
+    this.leases.set(name, { holder, until: now + ttlMs });
+    return true;
+  }
+  async releaseLease(name: string, holder: string) {
+    if (this.leases.get(name)?.holder === holder) this.leases.delete(name);
   }
 }
