@@ -1,5 +1,6 @@
 import type { FundingPoint } from "../../shared/hl-client.js";
 import type { AssetCtx, Candle } from "../../shared/types.js";
+import type { LlmCaps } from "../intel/llm.js";
 import type { Conversation, LLMProvider, StepHooks, StepResult, ToolOutcome, ToolSpec } from "../llm/provider.js";
 import { loadDeskConfig, type DeskConfig } from "./config.js";
 import type { MarketData } from "./data.js";
@@ -83,13 +84,13 @@ export class RecordingNotifier implements Notifier {
   }
 }
 
-export function makeService(opts: { ctxs?: AssetCtx[]; env?: Record<string, string>; now?: () => Date; config?: Partial<DeskConfig>; watchlist?: () => Promise<string[]> } = {}) {
+export function makeService(opts: { ctxs?: AssetCtx[]; env?: Record<string, string>; now?: () => Date; config?: Partial<DeskConfig>; watchlist?: () => Promise<string[]>; llm?: LlmCaps } = {}) {
   const now = opts.now ?? (() => new Date("2026-10-05T12:00:00Z"));
   const store = new MemoryStore(now);
   const data = new FakeData(opts.ctxs ?? [ctx("BTC", 100_000), ctx("ETH", 4_000), ctx("SOL", 200)]);
   const notifier = new RecordingNotifier();
   const config = { ...loadDeskConfig(opts.env ?? {}), ...opts.config };
-  const service = new DeskService({ config, store, data, notifier, now, watchlist: opts.watchlist });
+  const service = new DeskService({ config, store, data, notifier, now, watchlist: opts.watchlist, llm: opts.llm });
   return { service, store, data, notifier, config };
 }
 

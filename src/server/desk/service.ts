@@ -9,6 +9,7 @@ import { HlBroker } from "./hl/broker.js";
 import { PaperBroker, type Broker, type ExecutionResult } from "./paper.js";
 import { ProprBroker } from "./propr/broker.js";
 import type { DeskStore } from "./store.js";
+import type { LlmCaps } from "../intel/llm.js";
 import {
   OperatorOrderSchema,
   type AccountState,
@@ -94,6 +95,8 @@ export interface DeskDeps {
    * Intel store take that path.
    */
   watchlist?: () => Promise<string[]>;
+  /** Daily LLM caps and counter every desk run is checked against and billed to (production: Intel's, defaultLlmCaps). Absent: no cap (tests). */
+  llm?: LlmCaps;
 }
 
 export class DeskService {
@@ -102,6 +105,7 @@ export class DeskService {
   readonly data: MarketData;
   readonly notifier: Notifier;
   readonly broker: Broker;
+  readonly llm?: LlmCaps;
   private readonly clock: () => Date;
   private readonly watchlistSource: () => Promise<string[]>;
   /** Serializes operator submits in this process (the store's takeState guards across processes). */
@@ -112,6 +116,7 @@ export class DeskService {
     this.store = d.store;
     this.data = d.data;
     this.notifier = d.notifier;
+    this.llm = d.llm;
     this.clock = d.now ?? (() => new Date());
     this.watchlistSource = d.watchlist ?? (async () => this.config.watchlist);
     this.broker =
