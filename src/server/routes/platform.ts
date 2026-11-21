@@ -16,7 +16,7 @@ import { extremesReadyTtlMin } from "../platform/opportunity.js";
 import { DEFAULT_READY_TTL_MIN, envNum } from "../platform/scanner.js";
 import { approveBlockOf, placedBy, placing, type PlatformContext } from "../platform/context.js";
 import { Z_KEYS } from "../platform/score.js";
-import { evidenceLine, groupStats, setupLedgerStats } from "../platform/stats.js";
+import { evidenceLine, groupStats, LEDGER_HORIZON, setupLedgerStats, setupTradeStats } from "../platform/stats.js";
 import { tradeHints } from "../extremes/pricing.js";
 import { defaultDeskService } from "./desk.js";
 import { defaultIntelDeps } from "./intel/index.js";
@@ -201,7 +201,7 @@ export function createPlatformRoutes(deps: PlatformDeps) {
         signals,
         bearCase: research && (research.status === "found" || research.status === "no_cause") ? research.explanation : null,
         stats,
-        evidence: extreme ? extremesEvidence(opp) : evidenceLine(stats, opp.edgeBasis),
+        evidence: extreme ? extremesEvidence(opp) : evidenceLine(stats, opp.edgeBasis, LEDGER_HORIZON, setupTradeStats(opp.setupKind, outcomes)),
         risk,
         ticket: { side: opp.direction, entryPx: opp.entryPx, stopPx: opp.stopPx, targetPx: opp.targetPx, sizeUsd: size?.notionalUsd && size.notionalUsd > 0 ? size.notionalUsd : null, sizeSource: "governor" as const },
         canApprove: approveBlockedReason == null,

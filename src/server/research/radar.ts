@@ -19,7 +19,8 @@ const NOTE = /^(\d{4}-\d{2}-\d{2})\.md$/;
 const missing = (e: unknown) => (e as NodeJS.ErrnoException)?.code === "ENOENT";
 const unavailable = (reason: UnavailableReason): RadarResponse => ({ state: "unavailable", reason, latestNote: null, calls: [], scorecard: [] });
 
-export async function readRadar(dir: string, fs: RadarFs = nodeRadarFs): Promise<RadarResponse> {
+/** `today` (UTC date) decides which calls are past their grading window (scorecard `ungraded`). */
+export async function readRadar(dir: string, fs: RadarFs = nodeRadarFs, today: string = new Date().toISOString().slice(0, 10)): Promise<RadarResponse> {
   let names: string[];
   try {
     names = await fs.readdir(dir);
@@ -38,7 +39,7 @@ export async function readRadar(dir: string, fs: RadarFs = nodeRadarFs): Promise
     const md = last ? await fs.readFile(join(dir, "notes", last)) : null;
     const latestNote = last && md != null ? { date: NOTE.exec(last)![1]!, markdown: md.slice(0, RADAR_NOTE_MAX_CHARS), truncated: md.length > RADAR_NOTE_MAX_CHARS } : null;
     const graded = gradeCalls(file, state);
-    return { state: "ok", latestNote, calls: graded.calls.slice(-RADAR_MAX_CALLS_SHOWN), scorecard: scorecardRows(graded) };
+    return { state: "ok", latestNote, calls: graded.calls.slice(-RADAR_MAX_CALLS_SHOWN), scorecard: scorecardRows(graded, today) };
   } catch (e) {
     console.error("[radar] files unreadable:", e);
     return unavailable("radar files unreadable");

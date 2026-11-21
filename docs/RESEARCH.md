@@ -113,7 +113,15 @@ Routes (all zod-parsed in and out):
 - `GET /api/radar` → `{ state, latestNote: {date, markdown, truncated}|null, calls,
   scorecard }` read from `data/radar/` with the existing schemas (at most 50 calls). Needs a
   signed-in session (not guest-readable in PUBLIC_MODE). If the files are absent (Vercel
-  bundle), `state: 'unavailable'` with the reason.
+  bundle), `state: 'unavailable'` with the reason. Calls are graded against BTC at +3d and +7d
+  (`src/server/radar/calls.ts`): a call whose kill level was crossed stops there, so a horizon
+  after `killed_at` is graded at the kill-day snapshot, never held through it (grades stored
+  before 2026-11-21 are kept as they were). Each scorecard row is `{stance, horizonDays, n,
+  clusters, meanPct, ci95, hits, ungraded}`, through the ledger's `clusterStats`: calls of one
+  bucket `floor(date / max(1 day, horizon))` are one cluster, `meanPct` runs over cluster
+  means and `ci95` is null under 5 clusters. `ungraded` counts calls whose horizon passed with
+  no snapshot inside target + 2 days (missed runs, a delisted market): they can never be
+  graded, and are shown instead of dropped (`n: 0`, `meanPct: null` when a row has only those).
 
 Studies run on request only: evidence is on the board once someone ran that study today
 (cached, and kept across restarts in the Lab store), and every run counts as a trial. The
@@ -201,8 +209,8 @@ One question per region, top to bottom on mobile, two columns from `lg`:
 - **Source note**: an `ok` source's `note` (e.g. why the scanner is silent) is a visible line under the chips
   (`SETUP: …`, with a `*` on the chip and the note in its title), never hover-only.
 - **Side column**: PULSE summary (assets with rules firing, link to `/lab/pulse`), then
-  RADAR (latest note date, calls with stance and kill price, scorecard n/mean/hit per
-  horizon, link to the full note in a dialog as preformatted text). The radar needs a
+  RADAR (latest note date, calls with stance and kill price, scorecard calls, clusters,
+  mean, 95% interval, hit and ungraded per horizon, link to the full note in a dialog as preformatted text). The radar needs a
   session: a guest sees the sign-in affordance. The board renders the Lab tab row without
   the Lab data provider, so the landing starts no catalogue or pulse load; the PULSE dot
   reads the board's own counts.
@@ -384,7 +392,7 @@ recorded as a trial) and prints verdict, events, weeks, expectancy, upper95, tra
     record the alert line and the opportunity detail quote too): `n`, `clusters`, mean and interval, horizon.
     Null fields stay null under 5 clusters, as the ledger already does.
   - `scorecard` — for `radar`: the radar scorecard row for the call's horizon (`n`, mean
-    relative return, hit rate).
+    relative return, hit rate); null while that row has no graded call.
   Every source therefore shows what backs it; `no Lab twin` is deleted from the UI and docs.
 - An `opportunity` signal also carries `definitionId` (its daily definition, from
   `intradayKinds`) and that definition's `rule` with `scope: 'universe'`, so the row offers the

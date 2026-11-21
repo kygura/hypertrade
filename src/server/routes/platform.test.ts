@@ -129,7 +129,7 @@ describe("feed and detail", () => {
     await store.appendLedger({ opportunityId: o.id, kind: "outcome", payload: outcome("24h", 0.02) });
     await store.appendLedger({ opportunityId: old.id, kind: "outcome", payload: outcome("24h", 0.5) });
     const d = OpportunityDetailSchema.parse(await (await req(`/opportunities/${o.id}`)).json());
-    expect(d.evidence).toBe("ledger 24h: n 1 · 1 clusters · +2.00% · edge unvalidated");
+    expect(d.evidence).toBe("ledger 24h hold (no stop/target): n 1 · 1 clusters · +2.00% · edge unvalidated");
     // z-features carry their raw input as value (none for priceAccelZ); plain features carry themselves.
     expect(d.signals).toEqual([{ name: "ret15mZ", value: 0.012, z: 2.1 }, { name: "priceAccelZ", value: null, z: 1.2 }, { name: "fundingPctile14d", value: 0.9, z: null }]);
     expect(d.opportunity.costs?.absorbableUsd).toBe(50_000);

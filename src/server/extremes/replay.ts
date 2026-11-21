@@ -1,6 +1,7 @@
 import { EXTREME_KINDS, type ExtremeEvent, type ExtremeKind } from "../../shared/extremes.js";
 import { median } from "../../shared/signalMath.js";
 import type { RingPoint } from "../platform/features.js";
+import { clusterBucket, clusterStats } from "../platform/stats.js";
 import { BTC_COIN, DEFAULT_EXTREME_THRESHOLDS, detectExtremes, type ExtremeThresholds } from "./detect.js";
 
 // Replay of the extremes detector over historical streams (pure). Each grid step runs detectExtremes per coin on the
@@ -8,6 +9,7 @@ import { BTC_COIN, DEFAULT_EXTREME_THRESHOLDS, detectExtremes, type ExtremeThres
 // from its own ts; a suppressed hit does not extend it). Each event is graded on the fade side (event.side) at fixed
 // horizons: the gross return from the mark at the event to the stream's mark at ts + horizon (exactly, or the first
 // point within gradeToleranceMs after it), absolute and minus BTC's return over the same span. No fees or funding.
+// Stats carry n, clusters and a 95% interval that is null under 5 clusters (returnStats).
 // A kind reading OI is not evaluable when no stream carries OI (HL candles have none): reported as such, never as 0 events.
 
 const HOUR = 3_600_000;
@@ -16,7 +18,12 @@ const DEFAULT_EXTREME_COOLDOWN_MS = 24 * HOUR;
 const DEFAULT_EXTREME_HORIZONS_MS = [4 * HOUR, 24 * HOUR, 72 * HOUR];
 const READS_OI: Record<ExtremeKind, boolean> = { price_dislocation: false, oi_flush: true, crowded_asymmetry: true };
 
-export type ReturnStats = { n: number; hitRate: number | null; median: number | null; mean: number | null };
+/**
+ * One horizon's returns through the ledger's clusterStats (platform/stats.ts): events of one signal-time bucket
+ * floor(ts / max(1 day, horizon)) are one cluster (a market-wide move fires many coins at once). `mean` and `ci95` run
+ * over cluster means, the interval null under 5 clusters; n, hitRate and median stay per event.
+ */
+export type ReturnStats = { n: number; clusters: number; hitRate: number | null; median: number | null; mean: number | null; ci95: [number, number] | null };
 type ExtremeReplayRow = {
   kind: ExtremeKind;
   evaluable: boolean;
@@ -61,9 +68,11 @@ function markAt(points: RingPoint[] | undefined, t: number, toleranceMs: number)
 
 const horizonLabel = (ms: number) => (ms % HOUR === 0 ? `${ms / HOUR}h` : `${ms / 60_000}m`);
 
-export function returnStats(xs: number[]): ReturnStats {
-  if (!xs.length) return { n: 0, hitRate: null, median: null, mean: null };
-  return { n: xs.length, hitRate: xs.filter((x) => x > 0).length / xs.length, median: median(xs), mean: xs.reduce((a, b) => a + b, 0) / xs.length };
+/** `atMs` is the signal time of each return (its cluster), `horizonMs` the horizon they were graded at. */
+export function returnStats(xs: ReadonlyArray<{ x: number; atMs: number }>, horizonMs: number): ReturnStats {
+  const s = clusterStats(xs.map((v) => ({ x: v.x, bucket: clusterBucket(v.atMs, horizonMs) })));
+  if (!s) return { n: 0, clusters: 0, hitRate: null, median: null, mean: null, ci95: null };
+  return { n: s.n, clusters: s.clusters, hitRate: s.hitRate, median: median(xs.map((v) => v.x)), mean: s.mean, ci95: s.ci95 };
 }
 
 /** Fade-side return of an event at a horizon, absolute and vs BTC (null for BTC itself or without BTC marks). */
@@ -107,8 +116,11 @@ export function replayExtremes(o: ExtremeReplayOpts): ExtremeReplayResult {
       events: es.length, long: es.filter((e) => e.side === "long").length, short: es.filter((e) => e.side === "short").length,
       perWeek: evaluable && weeks > 0 ? es.length / weeks : null,
       horizons: horizons.map((h) => {
-        const g = es.flatMap((e) => gradeEvent(e, o.streams, h, o.gradeToleranceMs) ?? []);
-        return { horizon: horizonLabel(h), abs: returnStats(g.map((x) => x.abs)), vsBtc: returnStats(g.flatMap((x) => x.vsBtc ?? [])) };
+        const g = es.flatMap((e) => {
+          const x = gradeEvent(e, o.streams, h, o.gradeToleranceMs);
+          return x ? [{ ...x, atMs: Date.parse(e.ts) }] : [];
+        });
+        return { horizon: horizonLabel(h), abs: returnStats(g.map((x) => ({ x: x.abs, atMs: x.atMs })), h), vsBtc: returnStats(g.flatMap((x) => (x.vsBtc == null ? [] : [{ x: x.vsBtc, atMs: x.atMs }])), h) };
       }),
     };
   });

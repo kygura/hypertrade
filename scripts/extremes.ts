@@ -76,7 +76,9 @@ async function liveThresholds(): Promise<AppliedThresholds & { label: string }> 
 
 const pct = (x: number | null, d = 2) => (x == null ? "-" : `${x < 0 ? "-" : "+"}${Math.abs(x * 100).toFixed(d)}%`);
 const num = (x: number | null, d = 2) => (x == null ? "-" : x.toFixed(d));
-const cell = (s: ReturnStats) => (s.n ? `n${s.n} hit ${Math.round(s.hitRate! * 100)}% med ${pct(s.median)} mean ${pct(s.mean)}` : "n0");
+/** The 95% interval of the mean over clusters, or how many clusters it has when under 5. */
+const ci = (s: ReturnStats) => (s.ci95 ? `[${pct(s.ci95[0], 1)}, ${pct(s.ci95[1], 1)}]` : `(${s.clusters} cl, no CI)`);
+const cell = (s: ReturnStats) => (s.n ? `n${s.n} hit ${Math.round(s.hitRate! * 100)}% med ${pct(s.median)} mean ${pct(s.mean)} ${ci(s)}` : "n0");
 
 async function scan(top: number) {
   const { end, streams } = await candleStreams({ top, spanMs: EXTREME_LOOKBACK_MS + DAY });
@@ -159,15 +161,16 @@ async function replay(top: number) {
   }
 }
 
-/** The graded summary as a table: one row per group, raw and stopped per horizon (stopped differs only for takes). */
+/** The graded summary as a table: one row per group, raw (hold) per horizon; for takes a second row, the trade against the opportunity's stop and target (counts: stopped, target, open). */
 function scoreTable(rows: ExtremeSummaryRow[]): string[] {
-  const short = (st: ReturnStats) => (st.n ? `n${st.n} ${Math.round(st.hitRate! * 100)}% med ${pct(st.median)} mean ${pct(st.mean)}` : "-");
-  const lines = [`${"group".padEnd(24)} ${"n".padStart(3)} ${"grd".padStart(3)} ${"kill".padStart(5)}  ${["4h", "24h", "72h"].map((h) => h.padEnd(34)).join(" ")}`];
+  const W = 54;
+  const short = (st: ReturnStats) => (st.n ? `n${st.n} ${Math.round(st.hitRate! * 100)}% med ${pct(st.median)} mean ${pct(st.mean)} ${ci(st)}` : "-");
+  const lines = [`${"group".padEnd(24)} ${"n".padStart(3)} ${"grd".padStart(3)} ${"kill".padStart(5)}  ${["4h", "24h", "72h"].map((h) => h.padEnd(W)).join(" ")}`];
   for (const r of rows) {
     if (!r.n) continue;
     const kill = r.killHitRate == null ? "-" : `${Math.round(r.killHitRate * 100)}%`;
-    lines.push(`${`${r.by}:${r.group}`.padEnd(24)} ${String(r.n).padStart(3)} ${String(r.graded).padStart(3)} ${kill.padStart(5)}  ${r.horizons.map((h) => short(h.raw).padEnd(34)).join(" ")}`);
-    if (r.killHitRate != null) lines.push(`${"  stopped at kill".padEnd(24)} ${"".padStart(3)} ${"".padStart(3)} ${"".padStart(5)}  ${r.horizons.map((h) => short(h.stopped).padEnd(34)).join(" ")}`);
+    lines.push(`${`${r.by}:${r.group}`.padEnd(24)} ${String(r.n).padStart(3)} ${String(r.graded).padStart(3)} ${kill.padStart(5)}  ${r.horizons.map((h) => short(h.raw).padEnd(W)).join(" ")}`);
+    if (r.exits) lines.push(`${`  stop/target ${r.exits.stop}s ${r.exits.target}t ${r.exits.open}o`.padEnd(24)} ${"".padStart(3)} ${"".padStart(3)} ${"".padStart(5)}  ${r.horizons.map((h) => short(h.stopped).padEnd(W)).join(" ")}`);
   }
   return lines;
 }

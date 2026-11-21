@@ -171,7 +171,7 @@ async function score() {
     }
   } else console.log("kill check skipped: no scan from the last 2 h");
   await writeJson(CALLS, file);
-  console.log(scorecard(file).join("\n"));
+  console.log(scorecard(file, runDate(new Date())).join("\n"));
 }
 
 async function seed() {

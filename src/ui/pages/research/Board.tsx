@@ -553,14 +553,17 @@ function RadarBody({ r, onNote }: { r: RadarResponse; onNote: () => void }) {
       {r.scorecard.length > 0 && (
         <div className="table-scroll">
           <table className="dt w-full text-xs tabular">
-            <caption className="sr-only">radar scorecard: mean move vs BTC and hit count per horizon</caption>
+            <caption className="sr-only">radar scorecard: graded calls, clusters, mean move vs BTC with its interval, hit count and ungraded calls per horizon</caption>
             <thead>
               <tr>
                 <th className="text-left">STANCE</th>
                 <th className="text-right">DAYS</th>
                 <th className="text-right">CALLS</th>
+                <th className="text-right">CLUSTERS</th>
                 <th className="text-right">MEAN VS BTC</th>
+                <th className="text-right">95% CI</th>
                 <th className="text-right">HIT</th>
+                <th className="text-right">UNGRADED</th>
               </tr>
             </thead>
             <tbody>
@@ -569,9 +572,16 @@ function RadarBody({ r, onNote }: { r: RadarResponse; onNote: () => void }) {
                   <td>{row.stance}</td>
                   <td className="text-right">{row.horizonDays}d</td>
                   <td className="text-right">{row.n}</td>
-                  <td className="text-right">{fmtSigned(row.meanPct, '%', 1)}</td>
+                  <td className="text-right">{row.clusters}</td>
+                  <td className="text-right">{row.meanPct == null ? '—' : fmtSigned(row.meanPct, '%', 1)}</td>
+                  <td className="text-right" title={row.ci95 ? undefined : 'needs 5 clusters'}>
+                    {row.ci95 ? `${fmtSigned(row.ci95[0], '', 1)} to ${fmtSigned(row.ci95[1], '%', 1)}` : '—'}
+                  </td>
                   <td className="text-right">
                     {row.hits}/{row.n}
+                  </td>
+                  <td className="text-right" title="calls whose horizon passed with no price snapshot to grade them on">
+                    {row.ungraded}
                   </td>
                 </tr>
               ))}

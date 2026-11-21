@@ -177,7 +177,7 @@ const SCORECARD_HORIZON_DAYS = Math.max(...RADAR_HORIZONS);
 /** The call's stance in the radar scorecard at SCORECARD_HORIZON_DAYS; null without a row (no graded call yet). */
 function scorecardEvidence(c: Pick<RadarCall, "stance">, rows: readonly RadarScoreRow[]): ScorecardEvidence | null {
   const r = rows.find((x) => x.stance === c.stance && x.horizonDays === SCORECARD_HORIZON_DAYS);
-  return r ? { kind: "scorecard", stance: r.stance, horizonDays: r.horizonDays, n: r.n, meanPct: r.meanPct, hitRate: r.hits / r.n } : null;
+  return r && r.n > 0 && r.meanPct != null ? { kind: "scorecard", stance: r.stance, horizonDays: r.horizonDays, n: r.n, meanPct: r.meanPct, hitRate: r.hits / r.n } : null;
 }
 
 /** A landed radar call: a dated catalyst thesis, graded forward by the scorecard, not replayed (rule null). The headline carries the code-stamped numbers only. */

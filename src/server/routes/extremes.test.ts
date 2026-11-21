@@ -280,6 +280,9 @@ describe("GET /extremes", () => {
     expect(reads).toEqual([["SOL"], ["ETH"]]);
     const sol = body.records.find((r) => r.event.coin === "SOL")!;
     expect(sol.grade).toMatchObject({ direction: "long", entryPx: 100, entryBasis: "verdict", killHit: false });
+    // Graded against the opportunity the take became (the route reads it), not the verdict's kill alone.
+    const opp = (await store.getOpportunity(sol.opportunityId!))!;
+    expect(sol.grade).toMatchObject({ levels: "opportunity", stopPx: opp.stopPx, targetPx: opp.targetPx });
     expect(sol.grade.horizons.map((h) => h.horizon)).toEqual(["4h", "24h", "72h"]);
     expect(sol.grade.horizons[0]!.raw).toBeCloseTo(0.04, 3);
     expect(sol.grade.horizons[1]!.raw).toBeCloseTo(0.24, 3);

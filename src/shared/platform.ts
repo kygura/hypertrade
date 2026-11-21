@@ -106,6 +106,32 @@ export type FeatureVector = z.infer<typeof FeatureVectorSchema>;
 
 // ─── Ledger (P0.12) ───
 
+/**
+ * The trade as ticketed (P0.13): entry to the first touch of the idea's stop or target on 1-min candles (stop wins
+ * when both are inside one bar, shared/firstTouch.ts), else out at the longest horizon. Fractions net of costs; `r` is
+ * netReturn in units of the entry-to-stop distance.
+ */
+/**
+ * Why a horizon was given up on (P0.13): it came due further back than HL keeps 1-minute candles (the process was
+ * down), HL answered no candle at the horizon three times (a delisted coin), or the idea has no entry price.
+ */
+export const UNGRADED_REASONS = ["past_candle_range", "no_candles", "no_entry_price"] as const;
+export type UngradedReason = (typeof UNGRADED_REASONS)[number];
+
+const TradeOutcomeSchema = z.object({
+  exit: z.enum(["stop", "target", "horizon"]),
+  exitPx: Pos,
+  exitAt: Iso,
+  stopPx: Pos,
+  targetPx: Pos,
+  grossReturn: Num,
+  netReturn: Num,
+  r: Num,
+  /** Stop and target inside one bar: scored as the stop. */
+  ambiguous: z.boolean(),
+});
+export type TradeOutcome = z.infer<typeof TradeOutcomeSchema>;
+
 const PAYLOADS = {
   created: z.object({ features: FeatureVectorSchema, market: JsonRecord, score: Num, scoreVersion: Text(32) }),
   status: z.object({
@@ -134,7 +160,15 @@ const PAYLOADS = {
       costs: CostsSchema.nullable(),
     }),
   }),
-  outcome: z.object({ horizon: HorizonSchema, entryBasis: z.enum(["mark", "fill"]), entryPx: Pos, horizonPx: Pos, grossReturn: Num, netReturn: Num }),
+  /** A priced horizon, or the explicit record that it will never be priced (`ungraded`): the ledger keeps its losses of coverage visible. */
+  outcome: z.union([
+    z.object({
+      horizon: HorizonSchema, entryBasis: z.enum(["mark", "fill"]), entryPx: Pos, horizonPx: Pos, grossReturn: Num, netReturn: Num,
+      /** The stop/target trade, on the longest horizon's entry only (outcomesLoop.ts). Absent on shorter horizons, on entries written before it existed, and when it could not be resolved. */
+      trade: TradeOutcomeSchema.optional(),
+    }),
+    z.object({ horizon: HorizonSchema, ungraded: z.enum(UNGRADED_REASONS) }).strict(),
+  ]),
 };
 const stored = { id: z.number().int().positive(), opportunityId: z.string().uuid(), createdAt: Iso };
 const entry = <K extends keyof typeof PAYLOADS>(kind: K) => z.object({ ...stored, kind: z.literal(kind), payload: PAYLOADS[kind] });
@@ -165,6 +199,24 @@ const LedgerStatsSchema = z.object({
   meanNet: Num.nullable(),
   /** 95% t-interval over cluster means; null below 5 clusters (P0.14). */
   ci95: z.tuple([Num, Num]).nullable(),
+  /** Outcomes of this group that were given up on, never priced (UNGRADED_REASONS). Not in n: the numbers above cover n of n + ungraded ideas. */
+  ungraded: z.number().int().nonnegative().optional(),
+  /**
+   * The stop/target trades among this group's outcomes (they sit on the longest horizon): the same clustering, in R.
+   * n and the exit counts are per trade; meanR, meanNet and ci95 (R) run over cluster means. Null when the group has none.
+   */
+  trade: z.object({
+    n: z.number().int().positive(),
+    clusters: z.number().int().positive(),
+    hitRate: Num,
+    meanR: Num,
+    meanNet: Num,
+    ci95: z.tuple([Num, Num]).nullable(),
+    stops: z.number().int().nonnegative(),
+    targets: z.number().int().nonnegative(),
+    timeouts: z.number().int().nonnegative(),
+    ambiguous: z.number().int().nonnegative(),
+  }).nullable().optional(),
 });
 export type LedgerStats = z.infer<typeof LedgerStatsSchema>;
 
@@ -277,7 +329,7 @@ export const PlatformHealthSchema = z.object({
   scanHistoryMin: NonNeg.nullable().optional(),
   crawler: z.object({ pollsPerMin: NonNeg, addresses: z.number().int().nonnegative() }),
   llmSpendUsdToday: NonNeg.nullable(),
-  /** Outcome horizons too old to price from 1-minute candles (P0.13 gate amendment). */
+  /** Outcome horizons given up on by this process since boot (P0.13 gate amendment); each is also an `ungraded` ledger entry, counted in the ledger stats. */
   outcomesSkipped: z.number().int().nonnegative().optional(),
 });
 export type PlatformHealth = z.infer<typeof PlatformHealthSchema>;

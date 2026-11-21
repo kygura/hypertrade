@@ -185,7 +185,7 @@ describe("/radar route", () => {
     expect(r.state).toBe("ok");
     expect(r.latestNote?.date).toBe("2026-11-01");
     expect(r.calls).toHaveLength(2);
-    expect(r.scorecard.map((x) => x.stance)).toEqual(["ride", "fade"]);
+    expect(r.scorecard.filter((x) => x.n > 0).map((x) => x.stance)).toEqual(["ride", "fade"]); // rows with only ungraded calls depend on the clock
   });
 
   test("missing dir → 200 unavailable with the reason", async () => {

@@ -21,6 +21,9 @@ import type { DefinitionHit } from "../signals/scan.js";
 // - One attention budget (`cap`, MOVES_TRIAGE_DAILY) across sources, strongest first: all the day's items by score,
 //   then ideas, then earlier firstAt, then coin; the first `cap` are listed, the rest only counted
 //   (`overCap`). A stronger arrival displaces the weakest listed item. Dismissed and acted items still count and compete.
+//   Scores are not comparable across sources (a moves score is |z| / 2.5, unbounded; a ready setup and a radar call
+//   are 1), so each source that crossed its bar first keeps one slot for its strongest item (slotOrder): eight triage
+//   items cannot push the day's only ready setup or radar call over the cap.
 // - State: acted (an opportunity decided today) > dismissed (every part at or before the dismissal) > new.
 // - Display: new, acted, dismissed; then the same strength order as the slots.
 // - Reasons are facts written by code; the radar thesis (LLM text) never enters a reason.
@@ -139,6 +142,22 @@ const validCoin = (coin: string) => AssetSchema.safeParse(coin).success;
 /** The agent does not investigate a coin twice in 24 h (moves/agentLoop.ts), so the queue shows a record that long. */
 export const RECORD_WINDOW_MS = 24 * 3_600_000;
 
+/**
+ * The order slots are given in, from items sorted strongest first: one item per source that crossed its bar (its
+ * strongest; an item already reserved that carries the source's part counts for it), those in strength order, then
+ * everything else in strength order. With one source it is the input order.
+ */
+export function slotOrder(sorted: readonly QueueItem[]): QueueItem[] {
+  const reserved: QueueItem[] = [];
+  for (const s of QUEUE_SOURCES) {
+    const has = (i: QueueItem) => i.parts.some((p) => p.source === s && p.score > 0);
+    const best = reserved.some(has) ? undefined : sorted.find(has);
+    if (best) reserved.push(best);
+  }
+  const keep = new Set(reserved);
+  return [...sorted.filter((i) => keep.has(i)), ...sorted.filter((i) => !keep.has(i))];
+}
+
 export function mergeQueue(q: MergeInput): MergedQueue {
   const dayStart = new Date(`${q.day}T00:00:00Z`);
   const radarIn: SourceInput<RadarCall> = q.guest ? { unavailable: "sign in required" } : q.radar;
@@ -196,11 +215,11 @@ export function mergeQueue(q: MergeInput): MergedQueue {
     };
   });
 
-  // Slots: strongest first (score, ideas, earlier firstAt, coin); display: state, then the same order.
+  // Slots: one per bar-crossing source, then strongest first (score, ideas, earlier firstAt, coin); display: state, then strength.
   const cap = Math.max(0, Math.floor(q.cap));
   const strength = (x: QueueItem, y: QueueItem) =>
     y.score - x.score || y.ideas - x.ideas || ms(x.firstAt) - ms(y.firstAt) || cmp(x.coin, y.coin);
-  const slotted = [...items].sort(strength);
+  const slotted = slotOrder([...items].sort(strength));
   const listed = slotted.slice(0, cap).sort((x, y) => STATE_ORDER[x.state] - STATE_ORDER[y.state] || strength(x, y));
 
   return QueueResponseSchema.omit({ agentRuns: true, agentCap: true, agentBlockedReason: true, watched: true, freshness: true }).parse({

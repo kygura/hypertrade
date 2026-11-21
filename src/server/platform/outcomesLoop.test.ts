@@ -69,7 +69,7 @@ describe("outcomes loop", () => {
     expect(asked).toHaveLength(1);
   });
 
-  test("a horizon older than the candle range is counted in skipped(), once, and never marked", async () => {
+  test("a horizon older than the candle range is written as ungraded (and counted in skipped()), once, and never priced", async () => {
     const { store, created } = await seed();
     const before = skipped();
     const t = created + 4 * HOUR + 83.2 * HOUR; // 4h is just inside the ~5000-candle range, 1h is outside it
@@ -78,7 +78,25 @@ describe("outcomes loop", () => {
     await loop.tick();
     await loop.tick();
     expect(skipped()).toBe(before + 1);
-    expect((await store.outcomeRows({})).map((r) => r.horizon)).toEqual(["4h"]);
+    // Not dropped: the 1h horizon is in the ledger as ungraded, with its reason, and the stats count it.
+    const rows = await store.outcomeRows({});
+    expect(rows.map((r) => [r.horizon, r.ungraded])).toEqual([["1h", "past_candle_range"], ["4h", undefined]]);
+    expect(groupStats(rows).map((g) => [g.horizon, g.n, g.ungraded, g.meanNet === null])).toEqual([["1h", 0, 1, true], ["4h", 1, 0, false]]);
+    // A restart reads it back: not counted or written twice.
+    await createOutcomesLoop({ store, mid: () => 101, scanMark: () => 101, candles, horizons: ["1h", "4h"], now: () => t }).tick();
+    expect(skipped()).toBe(before + 1);
+    expect(await store.outcomeRows({})).toHaveLength(2);
+  });
+
+  test("an idea whose every horizon passed the candle range while the process was down: all its horizons become ungraded, once", async () => {
+    const { store, o, created } = await seed();
+    const before = skipped();
+    await createOutcomesLoop({ store, mid: () => 101, scanMark: () => null, horizons: ["1h", "4h"], now: () => created + HOUR + 1000 }).tick(); // 1h marked live
+    const loop = createOutcomesLoop({ store, mid: () => 101, scanMark: () => 101, candles: async () => [], horizons: ["1h", "4h"], now: () => created + 10 * 24 * HOUR });
+    await loop.tick();
+    await loop.tick();
+    expect((await store.outcomeRows({})).map((r) => [r.opportunityId, r.horizon, r.ungraded])).toEqual([[o.id, "1h", undefined], [o.id, "4h", "past_candle_range"]]);
+    expect(skipped() - before).toBe(1);
   });
 
   test("no price yet: nothing appended, retried next tick", async () => {
@@ -105,6 +123,7 @@ describe("outcomes loop", () => {
     const out = (await store.ledgerFor(o.id)).find((e) => e.kind === "outcome");
     if (out?.kind !== "outcome") throw new Error("no outcome");
     expect(asked).toEqual(["11111111-1111-1111-1111-111111111111"]);
+    if ("ungraded" in out.payload) throw new Error("ungraded");
     expect(out.payload).toMatchObject({ entryBasis: "fill", entryPx: 100.5, horizonPx: 102 });
     expect(out.payload.netReturn).toBeCloseTo(102 / 100.5 - 1 - 10.5 / 1e4, 9); // 2*5 fee + 2 bps funding × 1h/4h
   });
@@ -119,8 +138,52 @@ describe("outcomes loop", () => {
     expect(asked).toBe(10);
     expect(await store.outcomeRows({})).toHaveLength(10);
     await loop.tick();
-    expect(asked).toBe(12);
+    expect(asked).toBe(13); // 11h, then 12h (the longest) with its trade-path read
     expect(await store.outcomeRows({})).toHaveLength(12);
+  });
+
+  describe("stop/target trade (longest horizon)", () => {
+    const MIN = 60_000;
+    /** 1-min candles from the entry over 4 h, flat at 100 except the bars given by minute. */
+    const path = (created: number, bars: Record<number, { h?: number; l?: number; o?: number }>, minutes = 240) =>
+      Array.from({ length: minutes }, (_, i) => ({ t: created + i * MIN, T: created + (i + 1) * MIN - 1, o: 100, h: 100, l: 100, c: 100, v: 1, ...bars[i] }));
+    const run = async (bars: Parameters<typeof path>[1], horizonPx: number, minutes?: number) => {
+      const { store, created } = await seed(); // long, entry 100, stop 98, target 104; fee 5, slip 3, funding 2 bps per 4 h
+      const candles = async () => path(created, bars, minutes);
+      await createOutcomesLoop({ store, mid: () => horizonPx, scanMark: () => null, candles, horizons: ["1h", "4h"], now: () => created + 4 * HOUR + 1000 }).tick();
+      const rows = await store.outcomeRows({});
+      return { created, h1: rows.find((r) => r.horizon === "1h")!, h4: rows.find((r) => r.horizon === "4h")! };
+    };
+
+    test("the target is touched before a slide: the trade is +target while the fixed horizon is a loss", async () => {
+      const { created, h1, h4 } = await run({ 30: { h: 104.5 } }, 97);
+      expect(h4.grossReturn).toBeCloseTo(-0.03, 9); // hold to 4 h, as before
+      expect(h1.trade).toBeUndefined(); // only the longest horizon carries it
+      expect(h4.trade).toMatchObject({ exit: "target", exitPx: 104, stopPx: 98, targetPx: 104, ambiguous: false, exitAt: new Date(created + 31 * MIN - 1).toISOString() });
+      const net = 0.04 - (2 * 5 + 3 + (2 * (31 * MIN - 1)) / (4 * HOUR)) / 1e4; // funding over the 31 min held
+      expect(h4.trade!.netReturn).toBeCloseTo(net, 9);
+      expect(h4.trade!.r).toBeCloseTo(net / 0.02, 9);
+    });
+
+    test("stop and target inside one bar: the stop, flagged ambiguous; a gap through the stop fills at the open", async () => {
+      const both = (await run({ 10: { h: 105, l: 97 } }, 104)).h4;
+      expect(both.trade).toMatchObject({ exit: "stop", exitPx: 98, ambiguous: true });
+      expect(both.trade!.r).toBeLessThan(-1); // a full stop plus costs
+      expect(both.grossReturn).toBeCloseTo(0.04, 9);
+      expect((await run({ 10: { o: 97, h: 97, l: 96 } }, 100)).h4.trade).toMatchObject({ exit: "stop", exitPx: 97, ambiguous: false });
+    });
+
+    test("neither touched: out at the longest horizon's price, the same net as the fixed outcome", async () => {
+      const { h4 } = await run({}, 101);
+      expect(h4.trade).toMatchObject({ exit: "horizon", exitPx: 101 });
+      expect(h4.trade!.netReturn).toBeCloseTo(h4.netReturn, 9);
+    });
+
+    test("candles that do not cover the path: the fixed outcome is written without a trade", async () => {
+      const { h4 } = await run({ 10: { l: 97 } }, 101, 120); // the last 2 h are missing
+      expect(h4.netReturn).toBeGreaterThan(0);
+      expect(h4.trade).toBeUndefined();
+    });
   });
 
   test("late rows without an entry price do not spend the late-fetch budget", async () => {
@@ -139,7 +202,7 @@ describe("outcomes loop", () => {
     expect(await store.outcomeRows({})).toHaveLength(1);
   });
 
-  test("a horizon with 3 empty candle answers is counted skipped and not retried", async () => {
+  test("a horizon with 3 empty candle answers is written as ungraded and not retried", async () => {
     const { store, created } = await seed();
     let asked = 0;
     const before = skipped();
@@ -153,6 +216,6 @@ describe("outcomes loop", () => {
     }
     expect(asked).toBe(3);
     expect(skipped() - before).toBe(1);
-    expect(await store.outcomeRows({})).toHaveLength(0);
+    expect((await store.outcomeRows({})).map((r) => [r.horizon, r.ungraded, Number.isNaN(r.netReturn)])).toEqual([["1h", "no_candles", true]]);
   });
 });

@@ -31,6 +31,7 @@ import {
   UUID,
   type AddressSighting,
   type OpportunityInput,
+  outcomeFields,
   type OutcomeRow,
   type PlatformStore,
   type QueueDismissal,
@@ -614,7 +615,8 @@ export class PgPlatformStore implements PlatformStore {
     );
     return rows.map((r): OutcomeRow => ({
       opportunityId: r.id, setupKind: r.setup_kind, regime: r.regime, scoreVersion: r.score_version, liquidityTier: r.liquidity_tier,
-      horizon: r.payload.horizon, createdAtMs: new Date(r.opp_created_at).getTime(), grossReturn: r.payload.grossReturn, netReturn: r.payload.netReturn, hasCosts: Boolean(r.has_costs),
+      horizon: r.payload.horizon, createdAtMs: new Date(r.opp_created_at).getTime(), hasCosts: Boolean(r.has_costs),
+      ...outcomeFields(r.payload),
     }));
   }
 }

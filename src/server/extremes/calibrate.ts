@@ -225,7 +225,10 @@ export function cappedRate(events: ExtremeEvent[], kind: ExtremeKind, weeks: num
 function forward(events: ExtremeEvent[], kind: ExtremeKind, streams: Map<string, RingPoint[]>, toleranceMs: number) {
   const es = events.filter((e) => e.kind === kind);
   return HORIZONS_MS.map((h) => {
-    const s = returnStats(es.flatMap((e) => gradeEvent(e, streams, h, toleranceMs)?.abs ?? []));
+    const s = returnStats(es.flatMap((e) => {
+      const g = gradeEvent(e, streams, h, toleranceMs);
+      return g ? [{ x: g.abs, atMs: Date.parse(e.ts) }] : [];
+    }), h);
     return { horizon: `${h / HOUR}h`, abs: { n: s.n, hitRate: s.hitRate, median: s.median } };
   });
 }
