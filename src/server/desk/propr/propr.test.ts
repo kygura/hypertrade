@@ -575,7 +575,7 @@ describe("a stop is never cancelled in the pass that cancels its entry", () => {
       expect(plan[0]!.victims.every((v) => v.type === "limit")).toBe(true);
     }
     // No memory, or entriesOnly: stops are never victims.
-    const done = liveLadder().map((o) => (o.type === "limit" ? { ...o, status: "cancelled" } : o));
+    const done = liveLadder().map((o: Record<string, unknown>) => (o.type === "limit" ? { ...o, status: "cancelled" } : o));
     expect(sweepPlan(done, [], NOW.getTime() + 10 * 3_600_000, 8)).toEqual([]);
     const seen = new Map<string, number>();
     expect(sweepPlan(done, [], NOW.getTime(), 8, { flat: seen })).toEqual([]);
@@ -603,7 +603,7 @@ describe("housekeeping never strips a live position's stops", () => {
   });
 
   test("the leftover stop of a closed trade leaves a new position flagged unprotected", async () => {
-    const orders = liveLadder().map((o) => ({ ...o, positionId: "P1", ...(o.type === "limit" ? { status: "cancelled" } : {}) }));
+    const orders = liveLadder().map((o: Record<string, unknown>) => ({ ...o, positionId: "P1", ...(o.type === "limit" ? { status: "cancelled" } : {}) }));
     const api = fakePropr({ orders, positions: [{ ...ethPos(), positionId: "P2" }] });
     const notes = await new ProprBroker({ config: cfgOf({ PROPR_LIVE: "true" }), market, fetchFn: api.fetchFn }).housekeep(NOW);
     expect(notes).toEqual([{ level: "critical", key: "unprotected:ETH:long", text: expect.stringContaining("no full stop") }]);
@@ -757,7 +757,7 @@ describe("Propr answers are parsed and fail closed", () => {
       const { api, service } = build({ orders: [...liveLadder(), badOrder], positions: [ethPos()], statuses: [["filled"]] });
       const rec = await service.submitExit({ coin: "ETH", fraction: 1, reason: "out" }, null);
       expect(rec.status).toBe("executed");
-      expect(rec.execution?.fills[0]).toMatchObject({ side: "sell", size: 0.1 });
+      expect(rec).toMatchObject({ execution: { fills: [{ side: "sell", size: 0.1 }] } });
       expect(cancels(api).filter(Boolean)).toEqual(["e1", "e2"]);
     });
 
