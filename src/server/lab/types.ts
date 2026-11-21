@@ -257,7 +257,8 @@ export interface RuleEvaluation {
    * What the backtest charged: slippage and taker fee per unit of position change, and funding on each held day that
    * has a rate (`fundingDays` of the range's `days` return days; 0 = no funding series, none charged). Absent on
    * evaluations stored before fee and funding were charged (slippage only); those were also judged on the earlier
-   * bar (raw Sharpe, no benchmark), and a verdict stored with them is kept as stored.
+   * bar (raw Sharpe, no benchmark), so the service recomputes their verdict on read (verdict.ts currentVerdict); the
+   * stored one is left in place.
    */
   costs?: { slippageBps: number; feeBps: number; fundingDays: number; days: number };
 }

@@ -15,6 +15,7 @@ import {
   runSearch,
   SearchRefused,
   STUDY_METRICS,
+  currentVerdict,
   withVerdict,
   type EventStudyResult,
 } from "./engine/index.js";
@@ -179,12 +180,15 @@ function runTrials(result: SearchResult | null | undefined): number | undefined 
 /** Metrics to load for a backtest: the caller's plus the funding the engine charges on held days (not charged where the asset has none). */
 const withFunding = (metrics: string[]): string[] => [...new Set([...metrics, FUNDING])];
 
-/** Entries and run results stored before verdicts existed get one computed on read. */
-function ensureVerdict<T extends RuleEvaluation>(ev: T): T {
-  return ev.verdict ? ev : withVerdict(ev);
-}
+/**
+ * Entries and run results stored before verdicts existed, or before the excess bar (no `costs`), get today's verdict
+ * on read (engine/verdict.ts currentVerdict): a `robust` stored on raw Sharpe must not keep the badge. Whatever the
+ * store (pg, file, memory), since it is applied here and nothing stored is rewritten.
+ */
+const ensureVerdict = currentVerdict;
 function withEntryVerdict<T extends CatalogueEntry>(e: T): T {
-  return e.saved.verdict ? e : { ...e, saved: withVerdict(e.saved) };
+  const saved = currentVerdict(e.saved);
+  return saved === e.saved ? e : { ...e, saved };
 }
 
 export function createLabService(partial: Partial<LabServiceDeps> = {}) {
@@ -422,7 +426,7 @@ export function createLabService(partial: Partial<LabServiceDeps> = {}) {
     async getRun(id: string): Promise<StoredRun> {
       const run = await deps.store.getRun(id);
       if (!run) throw new ToolInputError(`no run with id ${id} (lab_list_runs lists them)`, "id");
-      return run.result && run.result.rules.some((r) => !r.verdict) ? { ...run, result: { ...run.result, rules: run.result.rules.map(ensureVerdict) } } : run;
+      return run.result && run.result.rules.some((r) => ensureVerdict(r) !== r) ? { ...run, result: { ...run.result, rules: run.result.rules.map(ensureVerdict) } } : run;
     },
 
     async listRuns(limit = 20): Promise<{ runs: RunSummary[] }> {

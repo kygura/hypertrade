@@ -184,12 +184,17 @@ without buying a key.
    never reaches deeper candidates, so the holdout still selects nothing.
    Catalogue entries and runs stored before verdicts existed get one
    computed on read (their stored deflated Sharpe used raw N, so they lean
-   `candidate`). **A stored verdict is kept as stored** (history is not
-   rewritten): an entry or run whose evaluation has no `costs` field was
-   judged on the earlier bar (raw Sharpe only, no benchmark, deflated Sharpe
-   on raw returns, backtest net of slippage alone), and its `robust` does not
-   mean it clears the bar above. Re-evaluate the rule (`lab_evaluate_rule`)
-   for a verdict on this bar. A verdict computed now over stats without
+   `candidate`). So does an entry or run whose evaluation has no `costs`
+   field: it was judged on the earlier bar (raw Sharpe only, no benchmark,
+   deflated Sharpe on raw returns, backtest net of slippage alone), so its
+   stored verdict is not shown. The verdict is recomputed on read from the
+   stored stats, which carry no excess, and is therefore at most `candidate`
+   with the reason "excess over the benchmark not measured … re-evaluate";
+   a re-save of such an entry needs a note like any candidate. **Nothing
+   stored is rewritten**: the recompute happens in the service, the same for
+   the Postgres, file and memory stores, and old files load as before.
+   Re-evaluate the rule (`lab_evaluate_rule`) for a verdict on this bar. An
+   evaluation that has `costs` keeps its stored verdict. A verdict computed now over stats without
    `excessSharpe` (a save that takes its walk-forward from an old run) is at
    most `candidate`. A catalogue save with a `runId` keeps the run's walk-forward,
    `walkForwardFolds` and deflated Sharpe (the numbers the rule was selected

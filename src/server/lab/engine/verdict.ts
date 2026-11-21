@@ -66,6 +66,16 @@ export function verdictOf(ev: VerdictInput, minDeflatedSharpe = MIN_DEFLATED_SHA
   return { level: failed[0]?.[0] ?? "robust", reasons };
 }
 
+/**
+ * A stored evaluation with the verdict it earns on today's bar. One stored with `costs` was judged on this bar and
+ * keeps its verdict. One without predates the excess bar (raw Sharpe, slippage only) or verdicts altogether: its
+ * verdict is recomputed from its stats, which carry no excess, so it is at most `candidate` with the reason to
+ * re-evaluate. A read-side view: nothing stored is rewritten.
+ */
+export function currentVerdict<T extends VerdictInput & { verdict?: Verdict; costs?: unknown }>(ev: T): T {
+  return ev.verdict && ev.costs ? ev : withVerdict(ev);
+}
+
 /** The evaluation with its verdict attached (recomputed, so stale stored verdicts are replaced). */
 export function withVerdict<T extends VerdictInput & { verdict?: Verdict }>(ev: T): T {
   return { ...ev, verdict: verdictOf(ev) };

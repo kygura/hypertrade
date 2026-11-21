@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ToolInputError, UpstreamError } from "../mcp/types.js";
 import { evaluateRule, ruleId, verdictOf } from "./engine/index.js";
 import { synthetic } from "./engine/testkit.js";
 import type { LoadConfig } from "./providers/registry.js";
 import { createLabService, SEARCH_FINISH_MS, type LabServiceDeps } from "./service.js";
-import { memoryStore, type LabStore } from "./store.js";
-import { DAY_MS, RuleSchema, type LabProvider, type MetricDef, type Rule } from "./types.js";
+import { fileStore, memoryStore, type LabStore } from "./store.js";
+import { DAY_MS, RuleSchema, type LabProvider, type MetricDef, type Rule, type RuleEvaluation } from "./types.js";
 
 const base = synthetic({ seed: 1, drift: 0.012 });
 const T0 = base.t[0]!;
@@ -336,6 +339,53 @@ describe("lab service: catalogue", () => {
     const ds = { ...base, metrics: { "syn:a": base.metrics["syn:a"]!, "syn:b": base.metrics["syn:b"]! } };
     expect(own.saved.deflatedSharpe).toBeCloseTo(evaluateRule(edited, ds, { slippageBps: 10, trials: result.effectiveTrials }).deflatedSharpe!, 12);
     expect(own.saved.deflatedSharpe!).toBeLessThan(evaluateRule(edited, ds, { slippageBps: 10 }).deflatedSharpe!);
+  }, 20_000);
+
+  // An evaluation stored before the excess bar has no `costs` and no excess stats; it was judged on raw Sharpe alone.
+  const oldBar = (ev: RuleEvaluation): RuleEvaluation => {
+    const strip = <T extends object | null>(p: T): T => {
+      if (!p) return p;
+      const { excessSharpe: _e, ...rest } = p as Record<string, unknown>;
+      return rest as T;
+    };
+    const { costs: _c, ...rest } = ev;
+    return { ...rest, inSample: strip(ev.inSample), walkForward: strip(ev.walkForward), holdout: strip(ev.holdout), verdict: { level: "robust", reasons: [] } };
+  };
+
+  // The file store is reopened from disk for every read, as a file written before the field existed would be.
+  const stores = (): Array<[string, () => LabStore]> => {
+    const mem = memoryStore(() => new Date(day(2000)));
+    const path = join(mkdtempSync(join(tmpdir(), "lab-verdict-")), "lab.json");
+    return [["memory", () => mem], ["file", () => fileStore(path, () => new Date(day(2000)))]];
+  };
+
+  test("a verdict stored on the old bar (no costs) is recomputed on read, in every store, and the stored one is left alone", async () => {
+    for (const [, open] of stores()) {
+      const store = open();
+      const fresh = evaluateRule(planted, base, { slippageBps: 10, windows: [20, 30, 40] });
+      expect(fresh.verdict!.level).toBe("robust");
+      const stale = oldBar(fresh);
+      const kept = { ...fresh, verdict: { level: "robust" as const, reasons: ["as stored"] } };
+      await store.saveCatalogueEntry({ id: ruleId(planted), name: "old", note: null, origin: "user", runId: null, rule: planted, saved: stale, savedAt: day(2000) });
+      const run = await store.saveRun({ source: "api", config: searchCfg as never, status: "ok", error: null, result: { rules: [stale, kept] } as never, durationMs: 1 });
+      const { service } = kit({ store: open() });
+      const [listed] = (await service.catalogueList({ live: false })).entries;
+      expect(listed!.saved.verdict!.level).toBe("candidate");
+      expect(listed!.saved.verdict!.reasons.join("; ")).toContain("excess over the benchmark not measured");
+      expect(listed!.saved.verdict).toEqual(verdictOf(stale));
+      // A re-save keeps the stored evaluation and returns the same recomputed verdict: a candidate now needs its note.
+      await expect(service.catalogueSave({ rule: planted, name: "renamed" })).rejects.toThrow("candidate");
+      expect((await service.catalogueSave({ rule: planted, name: "renamed", note: "tracking" })).saved.verdict!.level).toBe("candidate");
+      // Nothing stored was rewritten.
+      expect((await open().getCatalogueEntry(ruleId(planted)))!.saved.verdict).toEqual({ level: "robust", reasons: [] });
+      // An evaluation judged on today's bar (it has costs) keeps its stored verdict, whatever it says.
+      const [, other] = stores().find(([name]) => name === "memory")!;
+      await other().saveCatalogueEntry({ id: ruleId(planted), name: "new", note: null, origin: "user", runId: null, rule: planted, saved: kept, savedAt: day(2000) });
+      const [same] = (await kit({ store: other() }).service.catalogueList({ live: false })).entries;
+      expect(same!.saved.verdict).toEqual(kept.verdict);
+      // Run results read the same way.
+      expect((await service.getRun(run.id)).result!.rules.map((r) => r.verdict)).toEqual([verdictOf(stale), kept.verdict]);
+    }
   }, 20_000);
 
   test("entries and runs stored before verdicts get one on read", async () => {
