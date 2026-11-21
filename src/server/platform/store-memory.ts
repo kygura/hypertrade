@@ -445,6 +445,17 @@ export class MemoryPlatformStore implements PlatformStore {
     return this.ledger.filter((e) => e.opportunityId === opportunityId).map(clone);
   }
 
+  async unmarkedOpportunities({ before, horizons, limit }: Parameters<PlatformStore["unmarkedOpportunities"]>[0]) {
+    const have = new Map<string, Set<string>>();
+    for (const e of this.ledger) if (e.kind === "outcome") have.set(e.opportunityId, (have.get(e.opportunityId) ?? new Set()).add(e.payload.horizon));
+    const t = Date.parse(before);
+    return [...this.opportunities.values()]
+      .filter((o) => Date.parse(o.createdAt) < t && horizons.some((h) => !have.get(o.id)?.has(h)))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .slice(0, limit)
+      .map(clone);
+  }
+
   async outcomeRows({ setupKind, regime, tier }: Parameters<PlatformStore["outcomeRows"]>[0]): Promise<OutcomeRow[]> {
     const out: OutcomeRow[] = [];
     for (const e of this.ledger) {

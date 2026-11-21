@@ -186,6 +186,11 @@ export interface PlatformStore {
   appendLedger(e: Extract<NewLedgerEntry, { kind: "research" | "outcome" }>): Promise<LedgerEntry | null>;
   /** Entries for one opportunity in insertion order. */
   ledgerFor(opportunityId: string): Promise<LedgerEntry[]>;
+  /**
+   * Opportunities created before `before` that lack an outcome entry for at least one of `horizons`, oldest first,
+   * at most `limit`. The outcomes loop's backlog read: bounded, and empty once every old idea is marked or ungraded.
+   */
+  unmarkedOpportunities(opts: { before: string; horizons: string[]; limit: number }): Promise<Opportunity[]>;
   /** Every outcome entry joined with its opportunity, in insertion order. */
   outcomeRows(filter: { setupKind?: string; regime?: string; tier?: LiquidityTier }): Promise<OutcomeRow[]>;
 

@@ -99,6 +99,43 @@ describe("outcomes loop", () => {
     expect(skipped() - before).toBe(1);
   });
 
+  test("a backlog of old ideas is written over ticks by a fresh loop each time (cron), with a bounded read that ends when it is done", async () => {
+    const store = new MemoryPlatformStore();
+    const N = 450;
+    for (let i = 0; i < N; i++) {
+      await store.upsertOpportunity(
+        { coin: `C${i}`, direction: "long", setupKind: "k", tradeType: "directional", score: i % 7, scoreVersion: "v", tags: [], liquidityTier: 1, regime: "range", invalidation: "x", entryPx: 100, stopPx: 98, targetPx: 104, invalidationPx: 98 },
+        { features: { features: {}, inputs: {} }, market: {}, score: 2, scoreVersion: "v" },
+      );
+    }
+    const calls = { outcomeRows: 0, ledgerFor: 0 };
+    const counting = new Proxy(store, {
+      get(target, prop) {
+        const v = Reflect.get(target, prop);
+        if (typeof v !== "function") return v;
+        if (prop === "outcomeRows" || prop === "ledgerFor") calls[prop]++;
+        return v.bind(target);
+      },
+    });
+    const late = Date.now() + 10 * 24 * HOUR;
+    const freshTick = () => createOutcomesLoop({ store: counting, mid: () => null, scanMark: () => null, candles: async () => [], horizons: ["1h", "4h"], now: () => late }).tick();
+    const done = async () => new Set((await store.outcomeRows({})).map((r) => r.opportunityId)).size;
+    const before = skipped();
+    await freshTick();
+    expect(await done()).toBe(200);
+    await freshTick();
+    expect(await done()).toBe(400);
+    await freshTick();
+    expect(await done()).toBe(N);
+    expect(skipped() - before).toBe(2 * N);
+    expect(calls).toEqual({ outcomeRows: 0, ledgerFor: N });
+    // Nothing left: the next ticks read no ledger at all.
+    await freshTick();
+    await freshTick();
+    expect(calls).toEqual({ outcomeRows: 0, ledgerFor: N });
+    expect((await store.outcomeRows({})).every((r) => r.ungraded === "past_candle_range")).toBe(true);
+  });
+
   test("no price yet: nothing appended, retried next tick", async () => {
     const { store, created } = await seed();
     let px: number | null = null;

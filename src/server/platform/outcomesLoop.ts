@@ -33,7 +33,7 @@ class NoCandles extends Error {}
 /** PLATFORM_OUTCOME_HORIZONS default. */
 export const DEFAULT_OUTCOME_HORIZONS = "1h,4h,24h,72h";
 
-/** Ideas past every horizon's candle range that get their missing horizons written as ungraded per tick (the first tick after a long outage). */
+/** Ideas past every horizon's candle range that get their missing horizons written as ungraded per tick (after a long outage); the rest follow on later ticks. */
 const MAX_SETTLE_PER_TICK = 200;
 
 let skippedN = 0;
@@ -66,10 +66,6 @@ export function createOutcomesLoop(deps: OutcomesDeps) {
   /** Horizons already marked, per opportunity; loaded from the ledger the first time one comes due. */
   const marked = new Map<string, Set<string>>();
   const empties = new Map<string, number>();
-  /** Ideas past the candle range whose horizons are all in the ledger (priced or ungraded): nothing left to do. */
-  const settled = new Set<string>();
-  /** Horizons in the ledger per idea, read once (one outcomeRows read) the first time an unsettled old idea is seen. */
-  let ledgerMarks: Map<string, Set<string>> | null = null;
 
   /** Gives a horizon up for good: an explicit ledger entry, never a silent drop. */
   async function ungraded(o: Opportunity, horizon: string, reason: UngradedReason) {
@@ -80,23 +76,21 @@ export function createOutcomesLoop(deps: OutcomesDeps) {
     const t = now();
     const cutoff = t - maxMs - CANDLE_RANGE_MS;
     let lateFetches = 0;
-    let settles = 0;
+    // Ideas with every horizon past the candle range: whatever was never marked (the process was down) becomes ungraded.
+    // The store returns only ideas still missing a horizon, so each one costs a write, the backlog shrinks on every
+    // tick whether or not this process lives on, and once it is empty the read returns nothing.
+    for (const o of await store.unmarkedOpportunities({ before: new Date(cutoff).toISOString(), horizons, limit: MAX_SETTLE_PER_TICK })) {
+      try {
+        const have = new Set((await store.ledgerFor(o.id)).flatMap((e) => (e.kind === "outcome" ? [e.payload.horizon] : [])));
+        for (const h of horizons) if (!have.has(h)) await ungraded(o, h, o.entryPx == null ? "no_entry_price" : "past_candle_range");
+      } catch (err) {
+        console.error(`[outcomes] ${o.coin} backlog:`, err instanceof Error ? err.message : err);
+      }
+      marked.delete(o.id);
+    }
     // ponytail: scans up to 5000 rows a minute; add a createdAt filter to listOpportunities when the table outgrows it.
     for (const o of await store.listOpportunities({ limit: 5000 })) {
-      if (Date.parse(o.createdAt) < cutoff) {
-        // Every horizon is past the candle range. Whatever was never marked (the process was down) becomes ungraded, once.
-        if (settled.has(o.id) || settles++ >= MAX_SETTLE_PER_TICK) continue;
-        if (!ledgerMarks) {
-          ledgerMarks = new Map();
-          for (const r of await store.outcomeRows({})) ledgerMarks.set(r.opportunityId, (ledgerMarks.get(r.opportunityId) ?? new Set()).add(r.horizon));
-        }
-        const have = marked.get(o.id) ?? ledgerMarks.get(o.id);
-        for (const h of horizons) if (!have?.has(h)) await ungraded(o, h, o.entryPx == null ? "no_entry_price" : "past_candle_range");
-        settled.add(o.id);
-        marked.delete(o.id);
-        ledgerMarks.delete(o.id);
-        continue;
-      }
+      if (Date.parse(o.createdAt) < cutoff) continue; // the backlog read above owns these
       let due = dueHorizons(o.createdAt, horizons, marked.has(o.id) ? [...marked.get(o.id)!] : [], new Date(t));
       if (!due.length) continue;
       if (!marked.has(o.id)) {

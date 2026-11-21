@@ -248,6 +248,17 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   await expect(s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { horizon: "12h", ungraded: "bored" as never } })).rejects.toThrow();
   expect((await s.outcomeRows({ tier: 2 })).map((r) => [r.horizon, r.ungraded, r.netReturn])).toEqual([["72h", undefined, 0.0091], ["24h", "no_candles", NaN]]);
 
+  // The outcomes backlog: ideas older than `before` still missing one of the horizons. o1 has 1h; o2 has 72h and 24h.
+  const far = new Date(Date.now() + 60_000).toISOString();
+  const lacking = async (horizons: string[], limit = 10, before = far) => (await s.unmarkedOpportunities({ before, horizons, limit })).map((o) => o.id);
+  expect(await lacking(["1h"])).not.toContain(o1);
+  expect(await lacking(["1h"])).toContain(o2);
+  expect(await lacking(["1h", "24h"])).toEqual(expect.arrayContaining([o1, o2]));
+  expect(await lacking(["72h", "24h"])).not.toContain(o2);
+  expect(await lacking(["1h", "24h"], 1)).toHaveLength(1);
+  expect(await lacking(["1h", "24h"], 10, new Date(0).toISOString())).toEqual([]);
+  put("ledger.unmarked", (await s.unmarkedOpportunities({ before: far, horizons: ["72h"], limit: 100 })).length);
+
   // retention: BTC t0 + ETH t0 liqmaps, BTC t0 scan; changes are all at t2+. The ledger is untouched.
   expect(await s.pruneHistory(t(1))).toBe(3);
   expect(await s.pruneHistory(t(3), t(1))).toBe(1 + 2); // scans kept longer (PLATFORM_SCAN_RETENTION_DAYS): BTC t1 liqmap, two t2 opens

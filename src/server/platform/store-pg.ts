@@ -606,6 +606,19 @@ export class PgPlatformStore implements PlatformStore {
     return (await this.db.query(`select * from ledger_entries where opportunity_id = $1::uuid order by id`, [opportunityId])).map(toEntry);
   }
 
+  async unmarkedOpportunities({ before, horizons, limit }: Parameters<PlatformStore["unmarkedOpportunities"]>[0]) {
+    const hs = [...new Set(horizons)];
+    const rows = await this.db.query(
+      `select o.* from opportunities o
+       where o.created_at < $1::timestamptz
+         and (select count(*) from ledger_entries l
+              where l.opportunity_id = o.id and l.kind = 'outcome' and l.payload->>'horizon' in (select jsonb_array_elements_text($2::text::jsonb))) < $3::int
+       order by o.created_at, o.id limit $4::int`,
+      [before, J(hs), hs.length, limit],
+    );
+    return rows.map(toOpportunity);
+  }
+
   async outcomeRows({ setupKind, regime, tier }: Parameters<PlatformStore["outcomeRows"]>[0]) {
     const rows = await this.db.query<any>(
       `select o.id, o.created_at as opp_created_at, o.setup_kind, o.regime, o.score_version, o.liquidity_tier, (o.costs is not null) as has_costs, l.payload from ledger_entries l join opportunities o on o.id = l.opportunity_id
