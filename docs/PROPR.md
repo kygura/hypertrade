@@ -34,7 +34,11 @@ page is refused. Every entry waits for approve or reject, and so does an exit an
 (the operator's own exits go straight through). Approve and reject claim the proposal atomically in
 the store, so a double click or two tabs cannot send the same ladder twice; the second gets
 `proposal is already being decided`. An approval whose re-check cannot read market data or the
-account is recorded `failed` with `not sent`, and nothing goes to Propr.
+account is recorded `failed` with `not sent`, and nothing goes to Propr. A venue call that throws
+instead of answering is recorded `failed` with `the outcome is unknown, an order may have been sent`:
+check the venue by hand. A proposal is approved only on the venue it was made for (after a switch
+between paper, testnet and Propr the approve answers 409: reject it and propose again), and expiry
+never overwrites a proposal an approve has already claimed.
 
 ## Leverage
 

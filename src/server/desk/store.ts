@@ -76,6 +76,8 @@ export interface DeskStore {
   getProposal(id: string): Promise<ProposalRecord | null>;
   /** Takes a pending, undecided proposal for one decision (sets decidedBy/decidedAt). Null when another caller already took it or it is no longer pending. */
   claimProposal(id: string, by: string, at: string): Promise<ProposalRecord | null>;
+  /** Marks a proposal expired only while it is still pending and nobody has claimed it; null otherwise (an approve that just claimed it wins). */
+  expireProposal(id: string, at: string): Promise<ProposalRecord | null>;
   listProposals(opts: { status?: ProposalStatus; limit: number }): Promise<ProposalRecord[]>;
 
   paperPositions(): Promise<PaperPosition[]>;
@@ -188,6 +190,11 @@ export class PgStore implements DeskStore {
   }
   async claimProposal(id: string, by: string, at: string) {
     const [row] = await sql()`update desk_proposals set decided_by = ${by}, decided_at = ${at}
+      where id = ${id} and status = 'pending' and decided_by is null returning *`;
+    return row ? toProposal(row) : null;
+  }
+  async expireProposal(id: string, at: string) {
+    const [row] = await sql()`update desk_proposals set status = 'expired', decided_by = 'clock', decided_at = ${at}
       where id = ${id} and status = 'pending' and decided_by is null returning *`;
     return row ? toProposal(row) : null;
   }
@@ -346,6 +353,13 @@ export class MemoryStore implements DeskStore {
     const cur = this.proposals.get(id);
     if (!cur || cur.status !== "pending" || cur.decidedBy) return null;
     const next = { ...cur, decidedBy: by, decidedAt: at };
+    this.proposals.set(id, next);
+    return next;
+  }
+  async expireProposal(id: string, at: string) {
+    const cur = this.proposals.get(id);
+    if (!cur || cur.status !== "pending" || cur.decidedBy) return null;
+    const next = { ...cur, status: "expired" as const, decidedBy: "clock", decidedAt: at };
     this.proposals.set(id, next);
     return next;
   }
