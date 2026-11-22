@@ -484,6 +484,9 @@ export async function runDesk(o: DeskRunOptions, emit: (e: DeskEvent) => void): 
   }
   const total = [...st.usage.values()].reduce((a, u) => ({ input_tokens: a.input_tokens + u.input_tokens, output_tokens: a.output_tokens + u.output_tokens }), { input_tokens: 0, output_tokens: 0 });
   const costUsd = estimateCost(st.usage);
+  // Billed before the run is stored: a store write that throws below must not leave the spend off the daily cap.
+  // ponytail: the run total is billed at the PM model's price (scouts run the same or a cheaper model); bill per model from st.usage if that matters.
+  if (caps && (total.input_tokens || total.output_tokens || searches)) await recordLlmUsage(caps.cache, "desk", { ...total, searches }, pmProvider.model);
   if (st.citations.size) record({ type: "citations", citations: [...st.citations.values()].map((c) => ({ url: c.url, title: c.title })) });
   record({ type: "done", runId, stop, usage: total, costUsd });
   await flush();
@@ -494,7 +497,5 @@ export async function runDesk(o: DeskRunOptions, emit: (e: DeskEvent) => void): 
     costUsd,
     error,
   });
-  // ponytail: the run total is billed at the PM model's price (scouts run the same or a cheaper model); bill per model from st.usage if that matters.
-  if (caps && (total.input_tokens || total.output_tokens || searches)) await recordLlmUsage(caps.cache, "desk", { ...total, searches }, pmProvider.model);
   return { runId, answer, stop };
 }

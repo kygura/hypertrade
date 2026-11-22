@@ -14,10 +14,10 @@ import { VERDICT_LEVELS, type RuleEvaluation, type Verdict, type VerdictLevel } 
 // not robust for being long.
 
 /**
- * Deflated-Sharpe cut-off of the save bar, calibrated on synthetic searches
- * (docs/LAB.md "Calibration"): the lowest of {0.5, 0.8, 0.9, 0.95} at which no
- * more than 1 in 20 pure-noise searches has any top-10 rule passing the full
- * bar, which keeps the most planted rules.
+ * Deflated-Sharpe cut-off of the save bar. Kept at 0.9 on purpose: the calibration rule on synthetic searches
+ * (docs/LAB.md "Calibration"; calibrate.ts chooseThreshold: noise searches with any robust top-10 rule ≤ 1 in 20,
+ * then the most planted rules robust) now picks 0.5, since the deflated Sharpe is taken on the excess track. 0.9 is
+ * stricter than that rule asks: no noise search passes at it, at the cost of weak planted rules stopping at candidate.
  */
 export const MIN_DEFLATED_SHARPE = 0.9;
 export const MIN_WALK_FORWARD_SHARPE = 1;

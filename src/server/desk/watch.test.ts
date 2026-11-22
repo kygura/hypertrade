@@ -208,6 +208,75 @@ describe("tick", () => {
     expect(notifier.sent.map((a) => a.title)).toEqual(["paper account check", "Daily loss limit hit"]);
   });
 
+  test("day loss: nothing under the limit; at the limit one critical alert per UTC day, claimed in the store before it is sent", async () => {
+    const clock = { now: new Date(NOW) };
+    const { service, store, notifier } = makeService({ now: () => clock.now, env: { DESK_WATCHLIST: "BTC", DESK_REVIEW_HOURS: "0", DESK_DAILY_LOSS_PCT: "2" } });
+    // A store that hands out copies, as Postgres does: a flag set on the tick's own state object is not stored by that.
+    const getState = store.getState.bind(store);
+    store.getState = async <T>(key: string) => structuredClone(await getState<T>(key));
+    const account = service.broker.account.bind(service.broker);
+    let pnl = -199;
+    service.broker.account = async (m, n) => ({ ...(await account(m, n)), equityUsd: 10_000, dayPnlUsd: pnl });
+    const dayLoss = () => notifier.sent.filter((a) => a.title === "Daily loss limit hit");
+    await tick(service, { runCycle: false });
+    expect(dayLoss()).toEqual([]); // 1.99 % of equity
+    pnl = -200;
+    // The alert's own write fails after the push went out: the claim is already stored, so the next tick does not push again.
+    const insertAlert = store.insertAlert.bind(store);
+    store.insertAlert = async () => {
+      throw new Error("alert table down");
+    };
+    await expect(tick(service, { runCycle: false })).rejects.toThrow("alert table down");
+    store.insertAlert = insertAlert;
+    expect((await getState<WatchState>(WATCH_KEY))?.dayLossAlerted).toBe("2026-10-05");
+    await tick(service, { runCycle: false });
+    await tick(service, { runCycle: false });
+    expect(dayLoss()).toHaveLength(1);
+    expect(dayLoss()[0]).toMatchObject({ level: "critical", body: expect.stringContaining("Day PnL $-200.00 (2.00%)") });
+    // A new UTC day at the limit alerts again.
+    clock.now = new Date(NOW + 24 * HOUR);
+    await tick(service, { runCycle: false });
+    expect(dayLoss()).toHaveLength(2);
+  });
+
+  test("a trigger that would wake the team at the spent LLM cap raises one alert per UTC day; a scheduled review or another refusal raises none", async () => {
+    const clock = { now: new Date(NOW) };
+    const cache = new MemoryLlmCache();
+    const { service, store, data, provider, notifier } = await primed({ now: () => clock.now, llm: { cache, now: () => clock.now, dailyCap: 1, dailyUsd: 2 } });
+    const skips = () => notifier.sent.filter((a) => a.title === "Desk cycles skipped: LLM cap spent");
+    const broken = { cache: { ...cache, callsSince: async () => Promise.reject(new Error("db down")) } as unknown as MemoryLlmCache, now: () => clock.now, dailyCap: 5, dailyUsd: 2 };
+    // The counter cannot be read: the cycle is refused, but that is not "the cap is spent".
+    expect((await tick(service, { makeProvider: () => provider, llm: broken })).cycle).toEqual({ skipped: "LLM cap check failed: db down" });
+    expect(skips()).toEqual([]);
+    await cache.cachePut("other", "v", {}, { input_tokens: 1, output_tokens: 1 }, "m");
+    // A second move, past the trigger cooldown: it would wake the team, and the cap is spent.
+    const again = async (at: number, mark: number, from: number) => {
+      clock.now = new Date(at);
+      data.setMark("BTC", mark);
+      await store.setState(WATCH_KEY, { ...(await store.getState<WatchState>(WATCH_KEY)), marks: { BTC: [[at - HOUR, from]] } });
+      return tick(service, { makeProvider: () => provider });
+    };
+    const first = await again(NOW + 4 * HOUR, 106_000, 100_000);
+    expect(first.triggers.some((x) => x.wake)).toBe(true);
+    expect(first.cycle).toEqual({ skipped: "LLM cap reached" });
+    expect(skips()).toHaveLength(1);
+    expect(skips()[0]).toMatchObject({ level: "warn", body: expect.stringContaining("LLM cap reached") });
+    expect(provider.systems).toEqual([]);
+    // The same day, another trigger: skipped again, not alerted again.
+    expect((await again(NOW + 8 * HOUR, 113_000, 106_000)).cycle).toEqual({ skipped: "LLM cap reached" });
+    expect(skips()).toHaveLength(1);
+    expect((await store.getState<WatchState>(WATCH_KEY))?.capSkipAlerted).toBe("2026-10-05");
+  });
+
+  test("a scheduled review skipped at the LLM cap, with no trigger, raises no alert", async () => {
+    const cache = new MemoryLlmCache();
+    const { service, notifier } = makeService({ now: () => new Date(NOW), env: { DESK_WATCHLIST: "BTC", DESK_REVIEW_HOURS: "4" }, llm: { cache, now: () => new Date(NOW), dailyCap: 1, dailyUsd: 2 } });
+    await cache.cachePut("other", "v", {}, { input_tokens: 1, output_tokens: 1 }, "m");
+    const provider = new ScriptedProvider("claude-opus-5-5", () => [{ text: "ok" }]);
+    expect((await tick(service, { makeProvider: () => provider })).cycle).toEqual({ skipped: "LLM cap reached" });
+    expect(notifier.sent).toEqual([]);
+  });
+
   test("at the daily LLM cap a tick runs no cycle, calls no provider and keeps the review slot; a cycle that runs is billed", async () => {
     const cache = new MemoryLlmCache();
     const { service, store, provider } = await primed({ llm: { cache, now: () => new Date(NOW), dailyCap: 1, dailyUsd: 2 }, env: { DESK_REVIEW_HOURS: "4" } });

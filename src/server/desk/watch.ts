@@ -43,6 +43,8 @@ export interface WatchState {
   /** Recent marks per coin, [epoch ms, price], oldest first. */
   marks?: Record<string, Array<[number, number]>>;
   dayLossAlerted?: string;
+  /** UTC day on which "cycles skipped: the LLM cap is spent" was alerted (once a day). */
+  capSkipAlerted?: string;
   /** Venue upkeep conditions already alerted: key → when (epoch ms). A key gone from a tick is dropped, so it alerts again if it returns. */
   upkeep?: Record<string, number>;
 }
@@ -224,6 +226,12 @@ async function watch(service: DeskService, opts: TickOptions): Promise<{ result:
     const refused = done >= cfg.maxCyclesPerDay ? `daily cycle cap reached (${cfg.maxCyclesPerDay})` : await deskLlmRefusal(opts.llm ?? service.llm);
     if (refused) {
       result.cycle = { skipped: refused };
+      // A trigger wanted the team and the day's LLM budget is gone: said once a day, or the desk goes quiet unnoticed.
+      if (wake.length && !opts.forceReview && refused.startsWith("LLM cap reached") && state.capSkipAlerted !== today) {
+        state.capSkipAlerted = today;
+        await service.store.setState(WATCH_KEY, state);
+        await service.alert("warn", "Desk cycles skipped: LLM cap spent", `${refused}. ${wake.map((x) => x.title).join("; ")} would have woken the team. No agent cycle runs until 00:00 UTC or the cap is raised; alerts and stops are unaffected.`);
+      }
     } else {
       state.lastCycleAt = now.toISOString();
       await service.store.setState(WATCH_KEY, state);

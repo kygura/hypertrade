@@ -216,6 +216,21 @@ describe("outcomes loop", () => {
       expect(h4.trade!.netReturn).toBeCloseTo(h4.netReturn, 9);
     });
 
+    test("candles from before the entry are not the trade's path: their touches do not count, and they do not stand in for a missing start", async () => {
+      const before = (created: number, l: number) => ({ t: created - 10 * MIN, T: created - 9 * MIN - 1, o: 100, h: 100, l, c: 100, v: 1 });
+      const grade = async (candlesOf: (created: number) => ReturnType<typeof path>) => {
+        const { store, created } = await seed();
+        await createOutcomesLoop({ store, mid: () => 101, scanMark: () => null, candles: async () => candlesOf(created), horizons: ["1h", "4h"], now: () => created + 4 * HOUR + 1000 }).tick();
+        return (await store.outcomeRows({})).find((r) => r.horizon === "4h")!;
+      };
+      // The stop traded ten minutes before the idea existed; the path from the entry on never touches it.
+      expect((await grade((c) => [before(c, 97), ...path(c, {})])).trade).toMatchObject({ exit: "horizon", exitPx: 101 });
+      // The path itself starts 30 min late: the earlier candle does not make it complete, so no trade is graded.
+      const late = await grade((c) => [before(c, 100), ...path(c, {}).slice(30)]);
+      expect(late.netReturn).toBeGreaterThan(0);
+      expect(late.trade).toBeUndefined();
+    });
+
     test("candles that do not cover the path: the fixed outcome is written without a trade", async () => {
       const { h4 } = await run({ 10: { l: 97 } }, 101, 120); // the last 2 h are missing
       expect(h4.netReturn).toBeGreaterThan(0);

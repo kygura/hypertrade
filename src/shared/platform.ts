@@ -107,17 +107,17 @@ export type FeatureVector = z.infer<typeof FeatureVectorSchema>;
 // ─── Ledger (P0.12) ───
 
 /**
- * The trade as ticketed (P0.13): entry to the first touch of the idea's stop or target on 1-min candles (stop wins
- * when both are inside one bar, shared/firstTouch.ts), else out at the longest horizon. Fractions net of costs; `r` is
- * netReturn in units of the entry-to-stop distance.
- */
-/**
  * Why a horizon was given up on (P0.13): it came due further back than HL keeps 1-minute candles (the process was
  * down), HL answered no candle at the horizon three times (a delisted coin), or the idea has no entry price.
  */
 export const UNGRADED_REASONS = ["past_candle_range", "no_candles", "no_entry_price"] as const;
 export type UngradedReason = (typeof UNGRADED_REASONS)[number];
 
+/**
+ * The trade as ticketed (P0.13): entry to the first touch of the idea's stop or target on 1-min candles (stop wins
+ * when both are inside one bar, shared/firstTouch.ts), else out at the longest horizon. Fractions net of costs; `r` is
+ * netReturn in units of the entry-to-stop distance.
+ */
 const TradeOutcomeSchema = z.object({
   exit: z.enum(["stop", "target", "horizon"]),
   exitPx: Pos,
