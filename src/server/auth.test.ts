@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import { app } from "../../api/index.js";
-import { login, requireAuth, signSession, verifySession } from "./auth.js";
+import { guestPath, login, requireAuth, signSession, verifySession } from "./auth.js";
 
 // Read at call time by auth.ts, so setting them after import is safe.
 process.env.SESSION_SECRET = "test-session-secret";
@@ -396,6 +396,36 @@ describe("PUBLIC_MODE guest access", () => {
       expect((await req("/radar")).status).toBe(401);
       expect((await req("/research/study", "POST")).status).toBe(401);
     }));
+
+  test("percent-encoding, case or a malformed escape does not get a guest past the deny-list", () =>
+    withPublic("1", async () => {
+      // The router decodes these to /radar, /engine/status, /mcp and /mcp/x and would serve them.
+      for (const path of ["/%72adar", "/%65ngine/status", "/%6dcp", "/%6Dcp/x", "/r%61dar", "/%72%61%64%61%72"]) {
+        expect((await req(path)).status).toBe(401);
+      }
+      // Not routes at all once decoded as the router does, and never a 200 for a guest: double encoding, an encoded
+      // slash, upper case, a broken escape.
+      for (const path of ["/%2572adar", "/%252572adar", "/engine%2Fstatus", "/RADAR", "/Mcp/x", "/%zzradar", "/radar%", "/%E0%A4%A/radar"]) {
+        expect((await req(path)).status).not.toBe(200);
+      }
+      expect(guestPath("/%2572adar")).toBe("/radar");
+      expect(guestPath("/engine%2Fstatus")).toBe("/engine/status");
+      expect(guestPath("/%zzradar")).toBeNull();
+      expect(guestPath("/%25252525radar")).toBeNull();
+      // An encoded path that is not denied still reads, as its decoded form does.
+      expect((await req("/%62ranches")).status).toBe(200);
+      // The owner's cookie still reaches the radar, encoded or not.
+      const cookie = { cookie: `ht_session=${signSession()}` };
+      expect((await req("/radar", "GET", cookie)).status).toBe(200);
+      expect((await req("/%72adar", "GET", cookie)).status).toBe(200);
+    }));
+
+  test("the gate matches the decoded path for every rule, not only the guest one", async () => {
+    // Without PUBLIC_MODE: an encoded cron path needs the cron token, and an encoded health path stays public.
+    expect((await req("/cron/%63ollect", "POST", { cookie: `ht_session=${signSession()}` })).status).toBe(401);
+    expect((await req("/cron/%63ollect", "POST", { "x-cron-token": "cron-token-abc" })).status).toBe(200);
+    expect((await req("/%68ealth")).status).toBe(200);
+  });
 
   test("guests cannot write anywhere", () =>
     withPublic("1", async () => {

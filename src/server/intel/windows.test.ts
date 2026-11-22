@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { FlowRow, SnapshotRow } from "../../shared/intel.js";
 import type { Point } from "./normalize.js";
 import {
+  changePoints,
   computeWindows,
   DEFAULT_THRESHOLDS,
   parseThresholds,
@@ -86,6 +87,26 @@ describe("windowResult", () => {
     const r = windowResult("funding", f, NOW, "1h");
     expect(r.delta).toBeCloseTo(2e-6, 15);
     expect(r.z).toBeCloseTo(2, 6); // MAD of past Δs is 0 → σ = floor
+  });
+
+  test("OI in contracts with a flat history: no z (the floor would read +0.3 % as 30 σ and +1 % as 99.5); a history that moves keeps its robust z", () => {
+    for (const move of [0.003, 0.01]) {
+      const flat = series(10 * D, (t) => (t > NOW - 30 * MIN ? 1000 * (1 + move) : 1000));
+      const r = windowResult("oi_usd", flat, NOW, "1h");
+      expect(r.delta).toBeCloseTo(move * 100, 9);
+      expect(r.z).toBeNull();
+      // Price keeps its floor: only OI treats a dead history as unknown.
+      expect(windowResult("price", flat, NOW, "1h").z!).toBeGreaterThan(20);
+    }
+    // Hourly noise of ~0.1 %: +1 % is large but it is a number, taken on the history's own MAD.
+    const live = series(10 * D, (t, i) => 1000 * (1 + 0.001 * rnd(Math.floor(i / 4))) * (t > NOW - 30 * MIN ? 1.01 : 1));
+    const z = windowResult("oi_usd", live, NOW, "1h").z!;
+    expect(z).toBeGreaterThan(3);
+    expect(z).toBeLessThan(50);
+    // The Flow path (contracts from USD and price) reads the same: constant contracts, price moving, then +1 % contracts.
+    const price = series(10 * D, (_, i) => 100 * (1 + 0.002 * rnd(i)));
+    const usd = price.map((p) => ({ t: p.t, v: 5000 * p.v * (p.t > NOW - 30 * MIN ? 1.01 : 1) }));
+    expect(pickWindow(computeWindows({ price, oi_usd: usd }, NOW), "oi_usd", "1h")).toMatchObject({ z: null });
   });
 
   test("per-interval flows: delta is the window total, z on log(1 + total)", () => {
@@ -222,6 +243,26 @@ describe("regimeFlags", () => {
     expect(windowResult("oi_usd", held.oi_usd, NOW, "1h").z!).toBeGreaterThanOrEqual(1); // the condition holds now…
     expect(windowResult("price", held.price, NOW, "1h").z!).toBeLessThanOrEqual(-1);
     expect(regimeFlags("BTC", held, NOW, []).filter((x) => x.name === "oi_up_price_down" && x.window === "1h")).toEqual([]);
+  });
+
+  test("OI up while price down reads contracts: a dump with flat contracts is no flag, flat USD notional on a dump is", () => {
+    const price = walk(10 * D, 100, -3, 1);
+    const scaled = (contracts: Point[]) => contracts.map((c, i) => ({ t: c.t, v: c.v * price[i]!.v }));
+    const flags = (oi_usd: Point[]) => regimeFlags("BTC", { price, oi_usd }, NOW, []).filter((x) => x.name === "oi_up_price_down" && x.window === "1h");
+    // Contracts constant: the USD notional falls with the price, positioning did not move.
+    expect(flags(scaled(price.map((p) => ({ t: p.t, v: 1e7 }))))).toEqual([]);
+    // Contracts +3 % into the −3 % hour: the USD notional is flat, and that is the build.
+    const built = flags(scaled(walk(10 * D, 1e7, 3, 2)));
+    expect(built.length).toBe(1);
+    expect(built[0]!.numbers.oi_pct!).toBeGreaterThan(2);
+  });
+
+  test("changePoints: oi_usd becomes contracts at the same timestamp, unknown without a price; other metrics pass through", () => {
+    const s = { price: [{ t: 1, v: 2 }, { t: 3, v: 4 }], oi_usd: [{ t: 1, v: 10 }, { t: 2, v: 10 }, { t: 3, v: 10 }], funding: [{ t: 1, v: 1e-5 }] };
+    expect(changePoints(s, "oi_usd")).toEqual([{ t: 1, v: 5 }, { t: 2, v: NaN }, { t: 3, v: 2.5 }]);
+    expect(changePoints(s, "funding")).toBe(s.funding);
+    expect(changePoints({ oi_usd: s.oi_usd }, "oi_usd")!.every((p) => Number.isNaN(p.v))).toBe(true);
+    expect(windowResult("oi_usd", changePoints({ oi_usd: walk(10 * D, 1e9) }, "oi_usd"), NOW, "1h")).toMatchObject({ delta: null, z: null });
   });
 
   test("no series → no flags", () => {

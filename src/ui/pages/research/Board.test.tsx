@@ -24,7 +24,7 @@ const poll = <T,>(data: T | null, over: { loading?: boolean; error?: string | nu
 const radarOk: RadarResponse = {
   state: "ok", latestNote: { date: "2026-11-08", markdown: "# note", truncated: false },
   calls: [{ id: "c1", date: "2026-11-08", at: "2026-11-08T08:00:00Z", market: "HYPE", stance: "ride", direction: "long", kind: "catalyst", thesis: "a dated unlock", cause_url: "https://x.example", cause_date: "2026-11-07", kill_price: 30, kill_if: "close below 30", mark: 33, btc: 90000, rel: {}, killed_at: null }],
-  scorecard: [{ stance: "ride", horizonDays: 3, n: 4, meanPct: 2.1, hits: 3 }],
+  scorecard: [{ stance: "ride", horizonDays: 3, n: 4, clusters: 3, meanPct: 2.1, ci95: null, hits: 3, ungraded: 1 }],
 };
 
 // The reading guides' folded term lists name every badge and word a row can print, so assertions about what the rows

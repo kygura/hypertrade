@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { EXTREME_KINDS, EXTREMES_SCORE_VERSION } from "../../shared/extremes.js";
 import { Bus } from "./bus.js";
 import { SETUPS } from "./setups.js";
-import { scoreOpportunity } from "./score.js";
+import { SCORE_VERSION, scoreOpportunity } from "./score.js";
 import { clean, createScanner, type Info } from "./scanner.js";
 import { MemoryPlatformStore } from "./store-memory.js";
 import type { RingPoint } from "./features.js";
@@ -230,12 +230,23 @@ describe("scanner tick", () => {
     const probe = await seeded();
     await createScanner({ store: probe.store, info: probe.info, now: () => NOW + MIN, bus: probe.bus }).tick();
     const kind = (await probe.store.listOpportunities({ limit: 1 }))[0]!.setupKind;
-    const { opportunity: old } = await s.store.upsertOpportunity(
-      { coin: "OLD", direction: "long", setupKind: kind, tradeType: "directional", score: 1, scoreVersion: "v", tags: [], liquidityTier: 1, regime: "range", invalidation: "x", entryPx: 100, stopPx: 98, targetPx: 104, invalidationPx: 98 },
-      { features: { features: {}, inputs: {} }, market: {}, score: 1, scoreVersion: "v" },
-    );
-    await s.store.setOpportunityCosts(old.id, { feeBps: 5, slippageBps: 3, fundingBps: 2, absorbableUsd: 1e4, grossEdgeBps: 400, netEdgeBps: 385, edgeBasis: "unvalidated" });
-    await s.store.appendLedger({ opportunityId: old.id, kind: "outcome", payload: { horizon: "4h", entryBasis: "mark", entryPx: 100, horizonPx: 102, grossReturn: 0.02, netReturn: 0.0185 } });
+    const past = async (store: typeof s.store, coin: string, scoreVersion: string, horizonPx: number) => {
+      const { opportunity: old } = await store.upsertOpportunity(
+        { coin, direction: "long", setupKind: kind, tradeType: "directional", score: 1, scoreVersion, tags: [], liquidityTier: 1, regime: "range", invalidation: "x", entryPx: 100, stopPx: 98, targetPx: 104, invalidationPx: 98 },
+        { features: { features: {}, inputs: {} }, market: {}, score: 1, scoreVersion },
+      );
+      await store.setOpportunityCosts(old.id, { feeBps: 5, slippageBps: 3, fundingBps: 2, absorbableUsd: 1e4, grossEdgeBps: 400, netEdgeBps: 385, edgeBasis: "unvalidated" });
+      await store.appendLedger({ opportunityId: old.id, kind: "outcome", payload: { horizon: "4h", entryBasis: "mark", entryPx: 100, horizonPx, grossReturn: horizonPx / 100 - 1, netReturn: horizonPx / 100 - 1 - 0.0015 } });
+    };
+    // Outcomes of an earlier score version are not this version's evidence: the edge stays unvalidated on them alone
+    // (the push would otherwise quote a ledger edge above "ledger 24h hold … n 0").
+    const stale = await seeded();
+    await past(stale.store, "OLD", "score-v2", 105);
+    await createScanner({ store: stale.store, info: stale.info, now: () => NOW + MIN, bus: stale.bus, edgeMinN: 1 }).tick();
+    expect((await stale.store.listOpportunities({ limit: 50 })).find((x) => x.coin === "PUMP" && x.setupKind === kind)!.edgeBasis).toBe("unvalidated");
+    // With the current version's outcomes it is the ledger's, and the old version's +5 % stays out of the mean.
+    await past(s.store, "OLD", "score-v2", 105);
+    await past(s.store, "NEW", SCORE_VERSION, 102);
     await createScanner({ store: s.store, info: s.info, now: () => NOW + MIN, bus: s.bus, edgeMinN: 1 }).tick();
     const o = (await s.store.listOpportunities({ limit: 50 })).find((x) => x.coin === "PUMP" && x.setupKind === kind)!;
     expect(o.edgeBasis).toBe("ledger");

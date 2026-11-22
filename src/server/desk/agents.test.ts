@@ -3,6 +3,7 @@ import { ANTHROPIC_SCOUT_MODEL, deskProviderFactory, estimateCost, MAX_SPAWNS_PE
 import { CLAUDE_PRICES } from "../llm/prices.js";
 import { LLM_PRICES, usageCost } from "../intel/llm.js";
 import { DEFAULT_MODEL } from "../llm/provider.js";
+import { MemoryLlmCache } from "../routine/llm.js";
 import { makeService, ScriptedProvider, type ScriptStep } from "./testkit.js";
 import type { DeskEvent } from "./types.js";
 
@@ -173,6 +174,40 @@ describe("runDesk", () => {
     const res = await runDesk({ service, kind: "ask", input: "q", act: false, timeoutMs: 30, makeProvider: () => hangingProvider("hanging-pm") }, () => {});
     expect(res.stop).toBe("timeout");
     expect((await store.getRun(res.runId))!.status).toBe("timeout");
+  });
+});
+
+describe("runDesk and the daily LLM cap", () => {
+  const NOW = new Date("2026-10-05T12:00:00Z");
+  const caps = (cache: MemoryLlmCache, dailyCap: number) => ({ cache, now: () => NOW, dailyCap, dailyUsd: 2 });
+
+  test("at the cap runDesk itself throws before a run is recorded or a provider is called (the Telegram /ask relies on it alone)", async () => {
+    const cache = new MemoryLlmCache();
+    await cache.cachePut("other", "v", {}, { input_tokens: 1, output_tokens: 1 }, "m");
+    const { service, store } = makeService();
+    const provider = team([{ text: "should not run" }]);
+    await expect(runDesk({ service, kind: "ask", input: "anything?", act: false, makeProvider: () => provider, llm: caps(cache, 1) }, () => {})).rejects.toThrow("LLM cap reached");
+    expect(provider.systems).toEqual([]);
+    expect(await store.listRuns(5)).toEqual([]);
+    // The service's own caps apply when the caller passes none.
+    const capped = makeService({ llm: caps(cache, 1) });
+    await expect(runDesk({ service: capped.service, kind: "ask", input: "anything?", act: false, makeProvider: () => provider }, () => {})).rejects.toThrow("LLM cap reached");
+    // A counter that cannot be read refuses too.
+    const broken = { ...caps(cache, 5), cache: { ...cache, callsSince: async () => Promise.reject(new Error("db down")) } as unknown as MemoryLlmCache };
+    await expect(runDesk({ service, kind: "ask", input: "anything?", act: false, makeProvider: () => provider, llm: broken }, () => {})).rejects.toThrow("LLM cap check failed: db down");
+    expect(provider.systems).toEqual([]);
+  });
+
+  test("a run is billed before it is stored: a finishRun that throws leaves the spend on the counter", async () => {
+    const cache = new MemoryLlmCache();
+    const { service, store } = makeService();
+    store.finishRun = async () => {
+      throw new Error("runs table down");
+    };
+    const provider = team([{ text: "**Answer:** flat." }]);
+    await expect(runDesk({ service, kind: "ask", input: "anything?", act: false, makeProvider: () => provider, llm: caps(cache, 5) }, () => {})).rejects.toThrow("runs table down");
+    expect(cache.usage).toHaveLength(1);
+    expect(cache.usage[0]).toMatchObject({ model: "claude-opus-5-5", input_tokens: 1000, output_tokens: 100 });
   });
 });
 

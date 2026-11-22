@@ -59,6 +59,33 @@ describe("gradeExtreme", () => {
     expect(byH(g, "72h").stopped).toBeCloseTo(-0.1, 9);
   });
 
+  test("a priced take is graded against the opportunity's stop and target, not the kill: a kill inside the priced stop does not stop it", () => {
+    // Short from 100, kill 105, priced stop 110 (the farther of template and kill), target 90. Up to 107 by +7 h, then down 2 an hour.
+    const r = rec({ verdict: { key: "k", stance: "take", direction: "short", killPx: 105, cause: "x", sources: [] }, verdictAt: iso(T0), verdictMark: 100, opportunityId: "11111111-1111-4111-8111-111111111111" });
+    const pts = points((h) => (h <= 7 ? 100 + h : Math.max(60, 107 - (h - 7) * 2)));
+    const g = gradeExtreme(r, pts, T0 + 100 * HOUR, { stopPx: 110, targetPx: 90 });
+    expect(g).toMatchObject({ killHit: true, levels: "opportunity", stopPx: 110, targetPx: 90, exit: { kind: "target", px: 90, at: iso(T0 + 15.5 * HOUR) } });
+    expect(byH(g, "4h").stopped).toBeCloseTo(-0.04, 9); // before any level
+    expect(byH(g, "24h").raw).toBeCloseTo(0.27, 9); // hold to 73
+    expect(byH(g, "24h").stopped).toBeCloseTo(0.1, 9); // out at the target, not the hold
+    expect(byH(g, "72h").stopped).toBeCloseTo(0.1, 9);
+    // The same path against the kill alone (the old grade) stops at 105 for a loss.
+    const old = gradeExtreme({ ...r, opportunityId: null }, pts, T0 + 100 * HOUR);
+    expect(old).toMatchObject({ levels: "kill", stopPx: 105, targetPx: null, exit: { kind: "stop", px: 105 } });
+    expect(byH(old, "24h").stopped).toBeCloseTo(-0.05, 9);
+  });
+
+  test("the priced stop is touched first: the stop return, at the stored mark that crossed it; an unpriced take has stop = kill and no target", () => {
+    const r = rec({ verdict: { key: "k", stance: "take", direction: "long", killPx: 97, cause: "x", sources: [] }, verdictAt: iso(T0), verdictMark: 100 });
+    const pts = points((h) => (h < 2 ? 100 : h < 3 ? 94.5 : 120)); // gaps through the 95 stop between two snapshots, then to the target
+    const g = gradeExtreme(r, pts, T0 + 100 * HOUR, { stopPx: 95, targetPx: 110 });
+    expect(g.exit).toMatchObject({ kind: "stop", px: 94.5 });
+    expect(byH(g, "4h").stopped).toBeCloseTo(-0.055, 9);
+    expect(byH(g, "24h").raw).toBeCloseTo(0.2, 9);
+    expect(gradeExtreme(r, pts, T0 + 100 * HOUR, { stopPx: 97, targetPx: null })).toMatchObject({ levels: "opportunity", stopPx: 97, targetPx: null, exit: { kind: "stop" } });
+    expect(gradeExtreme(rec(), pts, T0 + 100 * HOUR, { stopPx: 95, targetPx: 110 })).toMatchObject({ levels: null, stopPx: null, targetPx: null, exit: null }); // not a take
+  });
+
   test("a verdict with no stamped mark grades from the event; no stored point near a horizon is null (tolerance)", () => {
     const r = rec({ verdict: { key: "k", stance: "pass", cause: "x", sources: [] }, verdictAt: iso(T0 + HOUR), verdictMark: null });
     const gap = (h: number) => h >= 4 && h < 4 + GRADE_TOLERANCE_MS / HOUR + 0.1;
@@ -88,7 +115,10 @@ describe("summarizeGrades", () => {
     expect(h24.raw.mean).toBeCloseTo(-0.24, 9);
     expect(h24.stopped.mean).toBeCloseTo((-0.1 - 0.24) / 2, 9);
     expect(h24.raw.hitRate).toBe(0);
-    expect(s.find((r) => r.by === "stance" && r.group === "none")).toMatchObject({ n: 1, graded: 1, killHitRate: null });
+    expect(takes.exits).toEqual({ stop: 1, target: 0, open: 1 });
+    // Three events of one bar are one cluster: n is shown, the interval is not.
+    expect(s.find((r) => r.by === "kind" && r.group === "price_dislocation")!.horizons[1]!.raw).toMatchObject({ n: 3, clusters: 1, ci95: null });
+    expect(s.find((r) => r.by === "stance" && r.group === "none")).toMatchObject({ n: 1, graded: 1, killHitRate: null, exits: null });
     expect(s.find((r) => r.by === "stance" && r.group === "watch")).toMatchObject({ n: 0, graded: 0 });
     expect(s.find((r) => r.by === "kind" && r.group === "price_dislocation")).toMatchObject({ n: 3, graded: 3, killHitRate: 0.5 });
   });

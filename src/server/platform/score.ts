@@ -16,8 +16,11 @@ import { ACTIVE_Z } from "./features.js";
 // v2: the regime quadrant is volatility-relative (platform/features.ts): a 1 h move is non-flat at
 // ACTIVE_Z × sigma1h, OI moves at |oiChg1hZ| ≥ ACTIVE_Z. v1 applied the desk's fixed 1.5 % / 3 % to a
 // 1 h change, so "regime" almost never fired; v2 fires on roughly a third of random-walk hours.
+// v3: oiChg1hZ (a surprise input, a snapshot-class input and the regime's OI leg) is the 1 h change of OI in
+// contracts. v1/v2 took it on the USD notional (contracts × mark), so a price move with flat positioning scored
+// as an OI move and labelled the quadrant with the price's own sign.
 
-export const SCORE_VERSION = "score-v2";
+export const SCORE_VERSION = "score-v3";
 /** The z-features: the single definition (surprise = the largest |z| among them). fundingZ24h is a 24 h-ring z. */
 export const Z_KEYS = ["ret15mZ", "priceAccelZ", "oiChg1hZ", "fundingZ24h", "volRatio1hZ"] as const;
 const SNAPSHOT_KEYS = ["ret15mZ", "priceAccelZ", "oiChg1hZ"];

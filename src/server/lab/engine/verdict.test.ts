@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { PerfStats, RuleEvaluation } from "../types.js";
 import { MIN_DEFLATED_SHARPE, verdictOf, verdictRank } from "./verdict.js";
 
-const perf = (sharpe: number, untested = false): PerfStats => ({
+/** `excess`: Sharpe of the exposure-matched excess over the benchmark; null = stats stored before it existed. */
+const perf = (sharpe: number, untested = false, excess: number | null = 2): PerfStats => ({
   from: "2020-01-01",
   to: "2021-01-01",
   days: 366,
@@ -15,6 +16,7 @@ const perf = (sharpe: number, untested = false): PerfStats => ({
   tradesPerYear: 5,
   exposure: 0.3,
   ...(untested && { untested: true }),
+  ...(excess != null && { excessSharpe: excess }),
 });
 type Ev = Pick<RuleEvaluation, "holdout" | "walkForward" | "sensitivity" | "deflatedSharpe">;
 const good: Ev = { holdout: perf(0.8), walkForward: perf(1.6), sensitivity: { base: { sharpe: 1, totalReturn: 0 }, stability: 0.75, points: [] }, deflatedSharpe: 0.97 };
@@ -53,6 +55,25 @@ describe("verdict", () => {
   test("without a sensitivity grid stability is not a failure, but is noted", () => {
     expect(v({ sensitivity: undefined })).toEqual({ level: "robust", reasons: ["stability not measured (no sensitivity grid)"] });
     expect(verdictOf(good, 0.99)).toEqual({ level: "candidate", reasons: ["deflated Sharpe 0.97 < 0.99"] });
+  });
+
+  test("beta is not edge: the holdout and walk-forward must also clear their bars in excess of the benchmark", () => {
+    // Raw Sharpes pass (the asset went up and the rule was long); the excess over holding it does not.
+    expect(v({ walkForward: perf(1.9, false, 0.31) })).toEqual({ level: "weak", reasons: ["walk-forward excess Sharpe over the benchmark 0.31 ≤ 1"] });
+    expect(v({ holdout: perf(2.1, false, -0.2) })).toEqual({ level: "fails_holdout", reasons: ["holdout excess Sharpe over the benchmark -0.20 ≤ 0"] });
+    expect(v({ holdout: perf(2.1, false, 0), walkForward: perf(1.9, false, 1) })).toEqual({
+      level: "fails_holdout",
+      reasons: ["holdout excess Sharpe over the benchmark 0.00 ≤ 0", "walk-forward excess Sharpe over the benchmark 1.00 ≤ 1"],
+    });
+    expect(v({ holdout: perf(0.4, false, 0.01), walkForward: perf(1.2, false, 1.01) }).level).toBe("robust");
+  });
+
+  test("stats stored before the benchmark gate: never robust, the reason says why", () => {
+    const old = v({ holdout: perf(0.8, false, null), walkForward: perf(1.6, false, null) });
+    expect(old).toEqual({ level: "candidate", reasons: ["excess over the benchmark not measured (evaluated before the benchmark gate; re-evaluate)"] });
+    // A fresh holdout beside a walk-forward taken from an old run (service: catalogue save with a runId) is still unmeasured.
+    expect(v({ walkForward: perf(1.6, false, null) }).level).toBe("candidate");
+    expect(v({ holdout: perf(-1, false, null), walkForward: perf(1.6, false, null) }).level).toBe("fails_holdout");
   });
 
   test("rank orders levels best first", () => {

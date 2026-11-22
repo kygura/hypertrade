@@ -5,7 +5,7 @@ import type { PerfStats, RuleEvaluation } from "../../lib/lab";
 import { RuleDrillHeader } from "./RuleDrillHeader";
 import { WINDOW_TERMS } from "./WindowStatsTable";
 
-const stats = (p: Partial<PerfStats>): PerfStats => ({ from: "2020-01-01", to: "2024-01-01", days: 900, totalReturn: 0.5, cagr: 0.1, sharpe: 1, maxDrawdown: -0.1, hitRate: 0.6, trades: 38, tradesPerYear: 5, exposure: 0.3, ...p });
+const stats = (p: Partial<PerfStats>): PerfStats => ({ from: "2020-01-01", to: "2024-01-01", days: 900, totalReturn: 0.5, cagr: 0.1, sharpe: 1, maxDrawdown: -0.1, hitRate: 0.6, trades: 38, tradesPerYear: 5, exposure: 0.3, excessSharpe: 2, ...p });
 const ev: RuleEvaluation = {
   id: "r1",
   rule: { asset: "BTC", direction: "long", horizonDays: 14, conditions: [{ feature: "ht:funding|z|90", op: "<", threshold: -1 }] },

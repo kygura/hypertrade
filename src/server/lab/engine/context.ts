@@ -1,5 +1,5 @@
 import type { Condition, LabDataset } from "../types.js";
-import { priceReturns } from "./backtest.js";
+import { carryReturns, FUNDING } from "./backtest.js";
 import { parseFeatureId, REGIME_PREFIX, regimeColumn, transformSeries } from "./features.js";
 import { conditionSignal } from "./rules.js";
 import { parseDay, SearchRefused, sortedFinite } from "./util.js";
@@ -14,7 +14,10 @@ export interface EvalCtx {
   n: number;
   t: number[];
   price: Float64Array;
+  /** Daily return of holding +1 unit: price return minus the day's funding where the dataset has it (backtest.ts carryReturns). */
   pr: Float64Array;
+  /** Return days of `pr` that carry a funding rate (0 when the dataset has no FUNDING series). */
+  fundingDays: number;
   col(id: string): Float64Array;
   /** Sorted finite values of a feature over days [0, end). */
   sorted(id: string, end: number): Float64Array;
@@ -49,6 +52,7 @@ export function makeCtx(data: LabDataset, lo = 0, hi = data.t.length - 1): EvalC
   const sorts = new Map<string, Float64Array>();
   const price = Float64Array.from(data.price.slice(lo, hi + 1), (x) => (Number.isFinite(x) ? x : NaN));
   const n = price.length;
+  const carry = carryReturns(price, data.metrics[FUNDING]?.slice(lo, hi + 1));
   const col = (id: string): Float64Array => {
     let c = cols.get(id);
     if (!c) {
@@ -68,7 +72,8 @@ export function makeCtx(data: LabDataset, lo = 0, hi = data.t.length - 1): EvalC
     n,
     t: data.t.slice(lo, hi + 1),
     price,
-    pr: priceReturns(price),
+    pr: carry.pr,
+    fundingDays: carry.fundingDays,
     col,
     sorted(id, end) {
       const k = `${id}@${end}`;

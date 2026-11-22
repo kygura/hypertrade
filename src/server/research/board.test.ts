@@ -187,7 +187,8 @@ describe("buildBoard", () => {
   });
 
   test("radar: the call's stance at the 7-day scorecard row as evidence; no rule", async () => {
-    const scorecard = [{ stance: "ride" as const, horizonDays: 3, n: 9, meanPct: 0.5, hits: 5 }, { stance: "ride" as const, horizonDays: 7, n: 8, meanPct: 1.25, hits: 6 }];
+    const rest = { clusters: 4, ci95: null, ungraded: 0 };
+    const scorecard = [{ stance: "ride" as const, horizonDays: 3, n: 9, meanPct: 0.5, hits: 5, ...rest }, { stance: "ride" as const, horizonDays: 7, n: 8, meanPct: 1.25, hits: 6, ...rest }, { stance: "fade" as const, horizonDays: 7, n: 0, meanPct: null, hits: 0, clusters: 0, ci95: null, ungraded: 2 }];
     const b = BoardResponseSchema.parse(await buildBoard(deps({ radar: async () => ({ calls: [call({}), call({ id: "f", stance: "fade" })], scorecard }) })));
     const ride = b.signals.find((s) => s.id === "radar:HYPE:c")!;
     expect(ride).toMatchObject({ rule: null, dailyStudy: null, definitionId: null });

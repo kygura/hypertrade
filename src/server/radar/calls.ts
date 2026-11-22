@@ -1,10 +1,12 @@
 import { RADAR_HORIZONS, type RadarCall, type RadarCallInput, type RadarCallsFile, type RadarState } from "../../shared/radar.js";
+import { CI_MIN_CLUSTERS } from "../../shared/platform.js";
 import type { RadarScoreRow } from "../../shared/research.js";
+import { clusterBucket, clusterStats } from "../platform/stats.js";
 import { line, moveSince, type RadarMarket } from "./scan.js";
 
 // The radar's call ledger (ROUTINE.md §3): the session proposes, code stamps prices, rejects what it cannot
-// check, writes the push lines, grades every call against BTC at fixed horizons and reports a crossed kill
-// level once. Pure: scripts/radar.ts does the I/O.
+// check, writes the push lines, grades every call against BTC at fixed horizons (stopping at a crossed kill) and
+// reports a crossed kill level once. Pure: scripts/radar.ts does the I/O.
 
 /** A call on the same market and direction within this many days is a repeat, not news. */
 const REPEAT_DAYS = 3;
@@ -84,7 +86,12 @@ const hostOf = (url: string) => {
   }
 };
 
-/** Fills each call's `rel[h]` once a snapshot h days later exists. Already graded horizons are kept as they are. */
+/**
+ * Fills each call's `rel[h]` once a snapshot h days later exists (the first one in [target, target + GRADE_SLACK_DAYS]).
+ * A killed call stops at its kill: a horizon after `killed_at` is graded at the snapshot of the kill day (the mark that
+ * crossed the level), never at +h days as if the position had been held through it. Already graded horizons are kept
+ * as they are.
+ */
 export function gradeCalls(file: RadarCallsFile, state: RadarState): RadarCallsFile {
   const days = [...state.days].sort((a, b) => (a.date < b.date ? -1 : 1));
   return {
@@ -93,7 +100,7 @@ export function gradeCalls(file: RadarCallsFile, state: RadarState): RadarCallsF
       for (const h of RADAR_HORIZONS) {
         if (rel[String(h)] != null) continue;
         const target = addDays(c.date, h);
-        const day = days.find((d) => d.date >= target && d.date <= addDays(target, GRADE_SLACK_DAYS));
+        const day = c.killed_at && c.killed_at < target ? days.find((d) => d.date === c.killed_at) : days.find((d) => d.date >= target && d.date <= addDays(target, GRADE_SLACK_DAYS));
         const mark = day?.marks[c.market]?.[0];
         const btc = day?.marks["BTC"]?.[0];
         if (!mark || !btc) continue;
@@ -121,20 +128,33 @@ export function checkKills(file: RadarCallsFile, markets: RadarMarket[], today: 
 
 export type ScoreRow = RadarScoreRow;
 
-/** Per stance and horizon with graded calls: count, mean move vs BTC, how many went the called way. */
-export function scorecardRows(file: RadarCallsFile): ScoreRow[] {
+/**
+ * Per stance and horizon: graded calls through the ledger's clusterStats (n, clusters of floor(call date / max(1 day,
+ * horizon)), mean over cluster means, 95% interval null under 5 clusters), how many went the called way, and
+ * `ungraded`: calls whose grading window (target + GRADE_SLACK_DAYS) closed before `today` with no grade. They can
+ * never be graded (missed runs, a delisted market), so they are counted, not dropped. Rows with neither are omitted.
+ */
+export function scorecardRows(file: RadarCallsFile, today: string): ScoreRow[] {
   const out: ScoreRow[] = [];
   for (const stance of ["ride", "fade"] as const)
     for (const h of RADAR_HORIZONS) {
-      const xs = file.calls.filter((c) => c.stance === stance).map((c) => c.rel[String(h)]).filter((x): x is number => x != null);
-      if (!xs.length) continue;
-      out.push({ stance, horizonDays: h, n: xs.length, meanPct: xs.reduce((s, x) => s + x, 0) / xs.length, hits: xs.filter((x) => x > 0).length });
+      const calls = file.calls.filter((c) => c.stance === stance);
+      const xs = calls.flatMap((c) => (c.rel[String(h)] == null ? [] : [{ x: c.rel[String(h)]!, bucket: clusterBucket(Date.parse(`${c.date}T00:00:00Z`), h * DAY_MS) }]));
+      const ungraded = calls.filter((c) => c.rel[String(h)] == null && addDays(c.date, h + GRADE_SLACK_DAYS) < today).length;
+      const s = clusterStats(xs);
+      if (!s && !ungraded) continue;
+      out.push({ stance, horizonDays: h, n: s?.n ?? 0, clusters: s?.clusters ?? 0, meanPct: s?.mean ?? null, ci95: s?.ci95 ?? null, hits: xs.filter((v) => v.x > 0).length, ungraded });
     }
   return out;
 }
 
-/** One line per scorecardRows row. */
-export function scorecard(file: RadarCallsFile): string[] {
-  const out = scorecardRows(file).map((r) => `${r.stance} +${r.horizonDays}d vs BTC: n=${r.n} · mean ${signed(r.meanPct)} · ${r.hits}/${r.n} went the called way`);
+/** One line per scorecardRows row: n, clusters, the mean with its interval (or that it has none yet), hits, ungraded. */
+export function scorecard(file: RadarCallsFile, today: string): string[] {
+  const out = scorecardRows(file, today).map((r) => {
+    const ungraded = r.ungraded ? ` · ${r.ungraded} ungraded` : "";
+    if (!r.n || r.meanPct == null) return `${r.stance} +${r.horizonDays}d vs BTC: n=0${ungraded}`;
+    const ci = r.ci95 ? ` (${signed(r.ci95[0])} to ${signed(r.ci95[1])})` : ` (no interval under ${CI_MIN_CLUSTERS} clusters)`;
+    return `${r.stance} +${r.horizonDays}d vs BTC: n=${r.n} · ${r.clusters} clusters · mean ${signed(r.meanPct)}${ci} · ${r.hits}/${r.n} went the called way${ungraded}`;
+  });
   return out.length ? out : ["no graded calls yet"];
 }

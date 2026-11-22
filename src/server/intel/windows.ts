@@ -12,11 +12,17 @@ import { median, robustSigma, zRobust } from "../../shared/signalMath.js";
 //   z = (Δ − median) / σ against the trailing non-overlapping Δs of the same
 //   length (stride = window, so samples are independent); σ = MAD × 1.4826,
 //   floored per metric (METRIC_RULES) so a flat series cannot explode z; sum
-//   metrics also need ≥ 5 nonzero history windows (else z null).
+//   metrics also need ≥ 5 nonzero history windows (else z null). OI is the
+//   exception to the floor: its history in contracts can be flat for hours on
+//   an illiquid coin, and a σ at or under the floor is no information, so z
+//   is null there instead of (move / floor).
 //   An endpoint counts when a sample sits within ±20 min of the grid point.
 //   Lookback 30 d for 1 h / 6 h (≥ 48 / 20 Δs), 90 d for 24 h (≥ 30); fewer → z null.
 // Flips and crossings fire on the transition only: state at the window's
 // start vs now, both known.
+// OI changes are taken on contracts (oiContracts, changePoints), never on the
+// stored USD notional: OI in USD = contracts × price, so with flat positioning
+// its change is the price change. The oi_usd level stays USD.
 
 const MIN_MS = 60_000;
 const HOUR_MS = 60 * MIN_MS;
@@ -38,9 +44,11 @@ const MIN_NONZERO_SUMS = 5;
 
 export type DeltaKind = "log" | "diff" | "sum";
 /** How each metric's Δ is taken and the floor on its σ, in Δ units (log points, raw units, or log(1 + USD)). */
-export const METRIC_RULES: Record<HeatmapMetric, { kind: DeltaKind; floor: number }> = {
+export const METRIC_RULES: Record<HeatmapMetric, { kind: DeltaKind; floor: number; flatIsUnknown?: boolean }> = {
   price: { kind: "log", floor: 1e-4 }, // 0.01%
-  oi_usd: { kind: "log", floor: 1e-4 },
+  // In contracts a quiet coin's OI does not move at all (in USD the price moved it), so the floor would bind: a +0.3%
+  // change against a flat history is 30 "sigmas". A history whose σ does not clear the floor gives no z.
+  oi_usd: { kind: "log", floor: 1e-4, flatIsUnknown: true },
   funding: { kind: "diff", floor: 1e-6 }, // hourly rate (SPEC F0.2)
   basis: { kind: "diff", floor: 1e-5 }, // 0.1 bp
   premium: { kind: "diff", floor: 1e-5 },
@@ -58,7 +66,7 @@ export type Series = Partial<Record<HeatmapMetric, Point[]>>;
 export type WindowResult = {
   metric: HeatmapMetric;
   window: FixedWindow;
-  /** pct change (log kind), raw difference (diff), window total (sum); null without both endpoints. */
+  /** pct change (log kind; oi_usd: of contracts, see changePoints), raw difference (diff), window total (sum); null without both endpoints. */
   delta: number | null;
   z: number | null;
 };
@@ -96,6 +104,24 @@ export function seriesFromRows(snapshots: SnapshotRow[], flow: FlowRow[]): Serie
   for (const [t, v] of liq) add("liq_usd", t, v);
   for (const k of Object.keys(out)) out[k]!.sort((a, b) => a.t - b.t);
   return out;
+}
+
+/**
+ * Open interest in contracts from its USD notional and the price at the same timestamp; NaN when either is missing or
+ * not positive. The one definition every OI *change* is taken on (Flow windows, scanner features).
+ */
+export const oiContracts = (oiUsd: number | null | undefined, price: number | null | undefined): number =>
+  oiUsd != null && price != null && oiUsd > 0 && price > 0 ? oiUsd / price : NaN;
+
+/**
+ * The points a metric's window change is taken on: the stored series, except oi_usd, which is converted to contracts
+ * with the price sample of the same timestamp. An OI point without a price stays in place as NaN, so a window ending
+ * on it reads unknown (windowStat: no positive endpoint) rather than falling back to USD or to a neighbour.
+ */
+export function changePoints(series: Series, metric: HeatmapMetric): Point[] | undefined {
+  if (metric !== "oi_usd" || !series.oi_usd) return series[metric];
+  const price = new Map((series.price ?? []).map((p) => [p.t, p.v]));
+  return series.oi_usd.map((p) => ({ t: p.t, v: oiContracts(p.v, price.get(p.t)) }));
 }
 
 /** Index of the first point with p.t > t (points ascending). */
@@ -163,13 +189,19 @@ export function spanResult(
     if (s) hist.push(s.stat);
   }
   if (METRIC_RULES[metric].kind === "sum" && hist.filter((x) => x > 0).length < MIN_NONZERO_SUMS) return out;
-  if (hist.length >= min) out.z = (cur.stat - median(hist)) / robustSigma(hist, METRIC_RULES[metric].floor);
+  if (hist.length < min) return out;
+  const rule = METRIC_RULES[metric];
+  if (rule.flatIsUnknown && !(robustSigma(hist, 0) > rule.floor)) return out;
+  out.z = (cur.stat - median(hist)) / robustSigma(hist, rule.floor);
   return out;
 }
 
 /** Every heatmap metric × fixed window; a metric with no series reads null. */
 export function computeWindows(series: Series, now: number): WindowResult[] {
-  return HEATMAP_METRICS.flatMap((m) => FIXED_WINDOWS.map((w) => windowResult(m, series[m], now, w)));
+  return HEATMAP_METRICS.flatMap((m) => {
+    const points = changePoints(series, m);
+    return FIXED_WINDOWS.map((w) => windowResult(m, points, now, w));
+  });
 }
 
 export function pickWindow(results: WindowResult[], metric: HeatmapMetric, window: FixedWindow): WindowResult | undefined {
@@ -223,6 +255,7 @@ const oiUpPriceDown = (oi: WindowResult, price: WindowResult): boolean | null =>
  */
 export function regimeFlags(asset: string, series: Series, now: number, thresholds: Threshold[]): FlowFlag[] {
   const flags: FlowFlag[] = [];
+  const oiPoints = changePoints(series, "oi_usd");
   for (const window of FIXED_WINDOWS) {
     const start = now - WINDOW_HOURS[window] * HOUR_MS;
     const zOf = (m: HeatmapMetric) => windowResult(m, series[m], now, window).z;
@@ -232,9 +265,9 @@ export function regimeFlags(asset: string, series: Series, now: number, threshol
       if (a == null || b == null || a === 0 || b === 0 || Math.sign(a) === Math.sign(b)) continue;
       flags.push(flowFlag({ asset, kind: "flip", name: `${metric}_flip`, window, numbers: { from: a, to: b }, score: absOr0(zOf(metric)), degraded: false, now }));
     }
-    const oi = windowResult("oi_usd", series.oi_usd, now, window);
+    const oi = windowResult("oi_usd", oiPoints, now, window);
     const price = windowResult("price", series.price, now, window);
-    const before = oiUpPriceDown(windowResult("oi_usd", series.oi_usd, start, window), windowResult("price", series.price, start, window));
+    const before = oiUpPriceDown(windowResult("oi_usd", oiPoints, start, window), windowResult("price", series.price, start, window));
     if (oiUpPriceDown(oi, price) && before === false) {
       flags.push(
         flowFlag({

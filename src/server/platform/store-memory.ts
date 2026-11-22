@@ -33,6 +33,7 @@ import {
   RESCAN_FIELDS,
   type AddressSighting,
   type OpportunityInput,
+  outcomeFields,
   type OutcomeRow,
   type PlatformStore,
   type QueueDismissal,
@@ -444,6 +445,17 @@ export class MemoryPlatformStore implements PlatformStore {
     return this.ledger.filter((e) => e.opportunityId === opportunityId).map(clone);
   }
 
+  async unmarkedOpportunities({ before, horizons, limit }: Parameters<PlatformStore["unmarkedOpportunities"]>[0]) {
+    const have = new Map<string, Set<string>>();
+    for (const e of this.ledger) if (e.kind === "outcome") have.set(e.opportunityId, (have.get(e.opportunityId) ?? new Set()).add(e.payload.horizon));
+    const t = Date.parse(before);
+    return [...this.opportunities.values()]
+      .filter((o) => Date.parse(o.createdAt) < t && horizons.some((h) => !have.get(o.id)?.has(h)))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .slice(0, limit)
+      .map(clone);
+  }
+
   async outcomeRows({ setupKind, regime, tier }: Parameters<PlatformStore["outcomeRows"]>[0]): Promise<OutcomeRow[]> {
     const out: OutcomeRow[] = [];
     for (const e of this.ledger) {
@@ -452,7 +464,8 @@ export class MemoryPlatformStore implements PlatformStore {
       if ((setupKind && o.setupKind !== setupKind) || (regime && o.regime !== regime) || (tier !== undefined && o.liquidityTier !== tier)) continue;
       out.push({
         opportunityId: o.id, setupKind: o.setupKind, regime: o.regime, scoreVersion: o.scoreVersion, liquidityTier: o.liquidityTier,
-        horizon: e.payload.horizon, createdAtMs: Date.parse(o.createdAt), grossReturn: e.payload.grossReturn, netReturn: e.payload.netReturn, hasCosts: o.costs != null,
+        horizon: e.payload.horizon, createdAtMs: Date.parse(o.createdAt), hasCosts: o.costs != null,
+        ...outcomeFields(e.payload),
       });
     }
     return out;

@@ -22,6 +22,8 @@ import {
   type OpportunityStatus,
   type PolledPosition,
   type Position,
+  type TradeOutcome,
+  type UngradedReason,
 } from "../../shared/platform.js";
 import { AgentRecordSchema, TriageItemSchema, type AgentRecord, type AgentRecordStatus, type TriageItem } from "../../shared/agentRecords.js";
 import { MovesResponseSchema, type MovesResponse, type MoveWindow } from "../../shared/moves.js";
@@ -85,10 +87,21 @@ export interface OutcomeRow {
   horizon: string;
   /** Opportunity creation time (ms): the cluster bucket for stats. */
   createdAtMs: number;
+  /** NaN on an ungraded row. */
   grossReturn: number;
   netReturn: number;
+  /** Set when the horizon was given up on, never priced; stats count these and skip their returns. */
+  ungraded?: UngradedReason;
   /** The opportunity has a cost breakdown; stats exclude rows without one (P0.13). */
   hasCosts: boolean;
+  /** The stop/target trade resolved with this outcome (the longest horizon's entry); absent otherwise and on rows written before it existed. */
+  trade?: TradeOutcome;
+}
+
+/** The payload-derived fields of an OutcomeRow, shared by the store twins: a graded outcome's returns (and trade), or an ungraded one's reason. */
+export function outcomeFields(p: LedgerPayload<"outcome">): Pick<OutcomeRow, "grossReturn" | "netReturn" | "ungraded" | "trade"> {
+  if ("ungraded" in p) return { grossReturn: NaN, netReturn: NaN, ungraded: p.ungraded };
+  return { grossReturn: p.grossReturn, netReturn: p.netReturn, ...(p.trade && { trade: p.trade }) };
 }
 
 /** Extra fields on a `status` entry: the desk proposal id and, for code-made moves, why. */
@@ -173,6 +186,11 @@ export interface PlatformStore {
   appendLedger(e: Extract<NewLedgerEntry, { kind: "research" | "outcome" }>): Promise<LedgerEntry | null>;
   /** Entries for one opportunity in insertion order. */
   ledgerFor(opportunityId: string): Promise<LedgerEntry[]>;
+  /**
+   * Opportunities created before `before` that lack an outcome entry for at least one of `horizons`, oldest first,
+   * at most `limit`. The outcomes loop's backlog read: bounded, and empty once every old idea is marked or ungraded.
+   */
+  unmarkedOpportunities(opts: { before: string; horizons: string[]; limit: number }): Promise<Opportunity[]>;
   /** Every outcome entry joined with its opportunity, in insertion order. */
   outcomeRows(filter: { setupKind?: string; regime?: string; tier?: LiquidityTier }): Promise<OutcomeRow[]>;
 

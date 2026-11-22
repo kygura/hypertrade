@@ -79,7 +79,7 @@ const rule = {
 };
 
 function stats(p: Partial<PerfStats>): PerfStats {
-  return { from: "2020-01-01", to: "2024-01-01", days: 1000, totalReturn: 0.5, cagr: 0.1, sharpe: 1, maxDrawdown: -0.1, hitRate: 0.6, trades: 20, tradesPerYear: 5, exposure: 0.3, ...p };
+  return { from: "2020-01-01", to: "2024-01-01", days: 1000, totalReturn: 0.5, cagr: 0.1, sharpe: 1, maxDrawdown: -0.1, hitRate: 0.6, trades: 20, tradesPerYear: 5, exposure: 0.3, excessSharpe: 2, ...p };
 }
 
 function ev(p: Partial<RuleEvaluation> & { conditions?: number }): RuleEvaluation {
@@ -417,7 +417,7 @@ describe("fact lines", () => {
   });
 
   test("saveBarChecks: the first miss is the level the engine's verdict gives (parity)", () => {
-    const LEVEL = { holdout: "fails_holdout", walkForward: "weak", stability: "fragile", deflatedSharpe: "candidate" } as const;
+    const LEVEL = { holdout: "fails_holdout", walkForward: "weak", stability: "fragile", deflatedSharpe: "candidate", excess: "candidate" } as const;
     const cases: Array<Partial<RuleEvaluation>> = [
       { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: 0.95, sensitivity: sens(0.7) },
       { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: 0.95 },
@@ -430,6 +430,14 @@ describe("fact lines", () => {
       { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0 }), deflatedSharpe: 0.95 },
       { walkForward: stats({ sharpe: 1.4 }), holdout: stats({ sharpe: 0, trades: 0, untested: true }), deflatedSharpe: 0.95 },
       { walkForward: stats({ sharpe: 1.4 }), holdout: null, deflatedSharpe: 0.95 },
+      // Excess over the exposure-matched benchmark: beta passes the raw Sharpe, not this.
+      { walkForward: stats({ sharpe: 1.9, excessSharpe: 0.3 }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: 0.95 },
+      { walkForward: stats({ sharpe: 1.9, excessSharpe: 1 }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: 0.95 },
+      { walkForward: stats({ sharpe: 1.9 }), holdout: stats({ sharpe: 2, excessSharpe: -0.1 }), deflatedSharpe: 0.95 },
+      // Stats stored before the excess existed: never robust.
+      { walkForward: stats({ sharpe: 1.4, excessSharpe: undefined }), holdout: stats({ sharpe: 0.6, excessSharpe: undefined }), deflatedSharpe: 0.95, sensitivity: sens(0.7) },
+      { walkForward: stats({ sharpe: 1.4, excessSharpe: undefined }), holdout: stats({ sharpe: 0.6 }), deflatedSharpe: 0.95 },
+      { walkForward: stats({ sharpe: 1.4, excessSharpe: undefined }), holdout: stats({ sharpe: -1, excessSharpe: undefined }), deflatedSharpe: 0.95 },
     ];
     for (const c of cases) {
       const e = ev(c);
@@ -451,6 +459,12 @@ describe("fact lines", () => {
     expect(none).toBe("No walk-forward; holdout had no trade in 120 days. Misses holdout (no trade), walk-forward (none), stability (0.20 of 0.5), deflated Sharpe (not computed).");
     expect(saveBarLine(ev({ walkForward: stats({ sharpe: 0.8, trades: 1 }), holdout: stats({ sharpe: -0.2 }), deflatedSharpe: 0.95 }))).toContain(
       "misses holdout (Sharpe −0.20, needs above 0), walk-forward (Sharpe +0.80, needs above 1)",
+    );
+    expect(saveBarLine(ev({ walkForward: stats({ sharpe: 1.9, excessSharpe: 0.3 }), holdout: ho, deflatedSharpe: 0.95 }))).toContain(
+      "Passes holdout, deflated Sharpe; misses walk-forward (excess over holding the asset: Sharpe +0.30, needs above 1)",
+    );
+    expect(saveBarLine(ev({ walkForward: stats({ sharpe: 1.4, excessSharpe: undefined }), holdout: ho, deflatedSharpe: 0.95 }))).toContain(
+      "misses excess over holding the asset (not measured: evaluated before that check)",
     );
   });
 

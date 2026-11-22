@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { RadarCallsInputSchema, type RadarCallInput, type RadarCallsFile, type RadarState } from "../../shared/radar.js";
-import { checkKills, gradeCalls, landCalls, scorecard } from "./calls.js";
+import { checkKills, gradeCalls, landCalls, scorecard, scorecardRows } from "./calls.js";
 import type { RadarMarket } from "./scan.js";
 
 const mk = (key: string, mark: number, o: Partial<RadarMarket> = {}): RadarMarket => ({ key, dex: "main", mark, chg24hPct: 1, vol24h: 1e7, oiUsd: 1e7, fundingApr: 11, premiumBps: 0, atCap: false, ...o });
@@ -107,9 +107,38 @@ describe("gradeCalls, checkKills, scorecard", () => {
     expect(checkKills(f, scan(80), "2026-11-10").killed).toEqual([]);
   });
 
-  test("scorecard summarises graded calls only", () => {
-    expect(scorecard(empty)).toEqual(["no graded calls yet"]);
-    const f: RadarCallsFile = { calls: [{ ...landCalls([call()], scan(90), noState, empty, "2026-10-30", AT).landed[0]!.call, rel: { "3": 4, "7": -2 } }] };
-    expect(scorecard(f)).toEqual(["ride +3d vs BTC: n=1 · mean +4.0% · 1/1 went the called way", "ride +7d vs BTC: n=1 · mean -2.0% · 0/1 went the called way"]);
+  test("a killed call stops at its kill: later horizons are graded at the kill-day snapshot, not held through it", () => {
+    const landed = landCalls([call()], scan(90), noState, empty, "2026-10-30", AT).file; // long HYPE at 90, BTC 100, kill 81
+    const killed = checkKills(landed, scan(80), "2026-10-31").file;
+    // Kill day: HYPE 80. By +3d it is 60 and by +7d 45 with BTC flat: held through, those would be -33% and -50%.
+    const days: RadarState = { days: [d("2026-10-31", { BTC: 100, HYPE: 80 }), d("2026-11-02", { BTC: 100, HYPE: 60 }), d("2026-11-06", { BTC: 100, HYPE: 45 })] };
+    expect(gradeCalls(killed, days).calls[0]!.rel).toEqual({ "3": -11.11, "7": -11.11 });
+    expect(gradeCalls(landed, days).calls[0]!.rel).toEqual({ "3": -33.33, "7": -50 }); // the same call, never killed
+    // Killed after +3d: the +3d grade stands, +7d stops at the kill day.
+    const late = { calls: [{ ...landed.calls[0]!, killed_at: "2026-11-04" }] };
+    expect(gradeCalls(late, { days: [...days.days, d("2026-11-04", { BTC: 100, HYPE: 72 })] }).calls[0]!.rel).toEqual({ "3": -33.33, "7": -20 });
+    // No snapshot of the kill day yet: left ungraded, never filled from a later day.
+    expect(gradeCalls(killed, { days: days.days.slice(1) }).calls[0]!.rel).toEqual({});
+  });
+
+  test("scorecard: n, clusters and the interval (none under 5 clusters); calls past their grading window are counted as ungraded", () => {
+    expect(scorecard(empty, "2026-11-20")).toEqual(["no graded calls yet"]);
+    const base = landCalls([call()], scan(90), noState, empty, "2026-10-30", AT).landed[0]!.call;
+    const f: RadarCallsFile = { calls: [{ ...base, rel: { "3": 4, "7": -2 } }] };
+    expect(scorecard(f, "2026-11-20")).toEqual([
+      "ride +3d vs BTC: n=1 · 1 clusters · mean +4.0% (no interval under 5 clusters) · 1/1 went the called way",
+      "ride +7d vs BTC: n=1 · 1 clusters · mean -2.0% (no interval under 5 clusters) · 0/1 went the called way",
+    ]);
+    // A second call with no snapshot inside target + 2 days: +3d closed on 11-04, +7d closes on 11-08.
+    const lost: RadarCallsFile = { calls: [...f.calls, { ...base, id: "x", date: "2026-10-30", rel: {} }] };
+    expect(scorecardRows(lost, "2026-11-05").map((r) => [r.horizonDays, r.n, r.ungraded])).toEqual([[3, 1, 1], [7, 1, 0]]);
+    expect(scorecardRows(lost, "2026-11-09").map((r) => [r.horizonDays, r.n, r.ungraded])).toEqual([[3, 1, 1], [7, 1, 1]]);
+    expect(scorecard({ calls: [lost.calls[1]!] }, "2026-11-09")).toEqual(["ride +3d vs BTC: n=0 · 1 ungraded", "ride +7d vs BTC: n=0 · 1 ungraded"]);
+    // Five calls on five separate days: an interval; five on one day: one cluster, none.
+    const spread = (dates: string[]): RadarCallsFile => ({ calls: dates.map((date, i) => ({ ...base, id: `c${i}`, date, rel: { "3": i + 1 } })) });
+    const five = scorecardRows(spread(["2026-10-01", "2026-10-05", "2026-10-09", "2026-10-13", "2026-10-17"]), "2026-10-18")[0]!;
+    expect(five).toMatchObject({ n: 5, clusters: 5, meanPct: 3, hits: 5 });
+    expect(five.ci95![0]).toBeCloseTo(3 - 1.963, 2);
+    expect(scorecardRows(spread(Array(5).fill("2026-10-01")), "2026-10-18")[0]).toMatchObject({ n: 5, clusters: 1, ci95: null });
   });
 });

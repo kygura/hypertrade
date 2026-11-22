@@ -183,6 +183,12 @@ export interface PerfStats {
   trades: number;
   tradesPerYear: number;
   exposure: number; // share of days in market
+  /**
+   * Sharpe of the exposure-matched excess over the benchmark: each day's return minus exposure × the benchmark's
+   * return that day, exposure taken per window (per walk-forward block). 0 for a rule that only holds the asset.
+   * Absent on benchmark stats, on live stats and on evaluations stored before it existed.
+   */
+  excessSharpe?: number;
   /** True when the window holds no trade: its Sharpe 0 is "not tested", not "no edge". */
   untested?: boolean;
 }
@@ -230,7 +236,8 @@ export interface RuleEvaluation {
   walkForwardFolds?: (number | null)[];
   /**
    * Deflated Sharpe (Bailey & López de Prado) of the concatenated walk-forward
-   * returns: probability the true Sharpe beats the best of N noise variants,
+   * returns in excess of the exposure-matched benchmark (raw returns on
+   * evaluations stored without `costs`): probability the true Sharpe beats the best of N noise variants,
    * N = the search's effectiveTrials (1 for an explicit rule unless `trials`
    * is given). Null without walk-forward, or when undefined (extreme
    * skew/kurtosis: the verdict says so); absent on evaluations stored before
@@ -245,7 +252,15 @@ export interface RuleEvaluation {
   latest: { date: string; values: Record<string, number | null> };
   equity?: Array<{ t: number; strategy: number; benchmark: number }>;
   /** Save-bar verdict; absent on evaluations stored before it existed (the service recomputes it on read). */
-  verdict?: { level: VerdictLevel; reasons: string[] };
+  verdict?: Verdict;
+  /**
+   * What the backtest charged: slippage and taker fee per unit of position change, and funding on each held day that
+   * has a rate (`fundingDays` of the range's `days` return days; 0 = no funding series, none charged). Absent on
+   * evaluations stored before fee and funding were charged (slippage only); those were also judged on the earlier
+   * bar (raw Sharpe, no benchmark), so the service recomputes their verdict on read (verdict.ts currentVerdict); the
+   * stored one is left in place.
+   */
+  costs?: { slippageBps: number; feeBps: number; fundingDays: number; days: number };
 }
 
 // ------------------------------------------------------------------ search

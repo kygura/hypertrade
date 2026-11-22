@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { llmCapError, recordLlmUsage, type LlmCaps } from "../intel/llm.js";
 import { buildCatalog } from "../llm/catalog.js";
 import { CLAUDE_PRICES } from "../llm/prices.js";
 import { providerError } from "../llm/providerError.js";
@@ -361,24 +362,48 @@ export interface DeskRunOptions {
   pmReserveMs?: number;
   signal?: AbortSignal;
   trigger?: unknown;
+  /** Daily LLM caps and counter for this run. Default: the service's (DeskDeps.llm). */
+  llm?: LlmCaps;
+}
+
+/**
+ * Why a desk run may not call a model right now ("LLM cap reached ...", or the counter cannot be read: fail closed),
+ * else null. Null too when no caps are configured (tests, a service built without them).
+ */
+export async function deskLlmRefusal(caps: LlmCaps | undefined): Promise<string | null> {
+  if (!caps) return null;
+  try {
+    return await llmCapError(caps);
+  } catch (e) {
+    return `LLM cap check failed: ${e instanceof Error ? e.message : String(e)}`;
+  }
 }
 
 const DEFAULT_RUN_TIMEOUT_MS = 240_000;
 
 /**
  * A full desk run: records the run, drives the PM (which drives the team),
- * persists events, and always finishes with a `done` event.
+ * persists events, and always finishes with a `done` event. Every caller (the
+ * routes, the watch tick, the worker's Telegram /ask) goes through the daily
+ * LLM cap here: at the cap it throws before a run is recorded or a provider is
+ * called, and what the run spent is billed to the same counter.
  */
 export async function runDesk(o: DeskRunOptions, emit: (e: DeskEvent) => void): Promise<{ runId: string; answer: string; stop: string }> {
   const { service } = o;
   const makeProvider = o.makeProvider ?? deskProviderFactory();
   const pmProvider = makeProvider("pm");
   if (!pmProvider) throw new Error("no model configured for the desk");
+  const caps = o.llm ?? service.llm;
+  const refused = await deskLlmRefusal(caps);
+  if (refused) throw new Error(refused);
 
   const runId = await service.store.createRun(o.kind, o.input, o.trigger ?? null);
   const persisted: Array<{ seq: number; agent: string; type: string; data: unknown }> = [];
   let seq = 0;
+  let searches = 0;
   const record = (e: DeskEvent) => {
+    // Server tool calls are billed as web searches.
+    if (e.type === "tool_call" && e.server) searches++;
     emit(e);
     // Deltas stream live only; the agent's full report lands with agent_done.
     if (e.type === "text" || e.type === "reasoning") return;
@@ -459,6 +484,9 @@ export async function runDesk(o: DeskRunOptions, emit: (e: DeskEvent) => void): 
   }
   const total = [...st.usage.values()].reduce((a, u) => ({ input_tokens: a.input_tokens + u.input_tokens, output_tokens: a.output_tokens + u.output_tokens }), { input_tokens: 0, output_tokens: 0 });
   const costUsd = estimateCost(st.usage);
+  // Billed before the run is stored: a store write that throws below must not leave the spend off the daily cap.
+  // ponytail: the run total is billed at the PM model's price (scouts run the same or a cheaper model); bill per model from st.usage if that matters.
+  if (caps && (total.input_tokens || total.output_tokens || searches)) await recordLlmUsage(caps.cache, "desk", { ...total, searches }, pmProvider.model);
   if (st.citations.size) record({ type: "citations", citations: [...st.citations.values()].map((c) => ({ url: c.url, title: c.title })) });
   record({ type: "done", runId, stop, usage: total, costUsd });
   await flush();

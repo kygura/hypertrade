@@ -123,7 +123,7 @@ describe("/research routes", () => {
       store, providers: [syn], now: () => NOW, hasDb: () => false, perpUniverse: async () => ["SYN"],
       loadDataset: async (cfg) => ({ dataset: { ...base, asset: cfg.asset, metrics: Object.fromEntries(cfg.metrics.map((m) => [m, all[m]!])) }, warnings: [] }),
     });
-    const planted: Rule = { asset: "SYN", direction: "long", horizonDays: 2, conditions: [{ feature: "syn:a|z|30", op: "<", threshold: -1 }] };
+    const planted: Rule = { asset: "SYN", direction: "long", horizonDays: 2, conditions: [{ feature: "syn:a|z|30", op: "<", threshold: -1 }, { feature: "syn:b|raw|0", op: ">=", threshold: 0 }] };
     const tools = () => labTools(service);
     const direct = (await tools().find((t) => t.name === "lab_event_study")!.run({ rule: planted, stopAtr: 1.5, targetAtr: 3, coins: ["SYN"] }, { source: "api" })) as { verdict: string; screen: unknown };
 
@@ -150,7 +150,7 @@ describe("/research routes", () => {
       store, providers: [syn], now: () => NOW, hasDb: () => false, perpUniverse: async () => ["SYN"],
       loadDataset: async (cfg) => ({ dataset: { ...base, asset: cfg.asset, metrics: Object.fromEntries(cfg.metrics.map((m) => [m, all[m]!])) }, warnings: [] }),
     });
-    const planted: Rule = { asset: "SYN", direction: "long", horizonDays: 2, conditions: [{ feature: "syn:a|z|30", op: "<", threshold: -1 }] };
+    const planted: Rule = { asset: "SYN", direction: "long", horizonDays: 2, conditions: [{ feature: "syn:a|z|30", op: "<", threshold: -1 }, { feature: "syn:b|raw|0", op: ">=", threshold: 0 }] };
     const tools = () => labTools(service);
     const direct = () => tools().find((t) => t.name === "lab_event_study")!.run({ rule: planted, stopAtr: 1.5, targetAtr: 3, coins: ["SYN"] }, { source: "api" }) as Promise<{ catalogueId: string | null }>;
     const a = app(toolEventStudy(tools), 50_000, false, catalogueIdOf(store));
@@ -185,7 +185,7 @@ describe("/radar route", () => {
     expect(r.state).toBe("ok");
     expect(r.latestNote?.date).toBe("2026-11-01");
     expect(r.calls).toHaveLength(2);
-    expect(r.scorecard.map((x) => x.stance)).toEqual(["ride", "fade"]);
+    expect(r.scorecard.filter((x) => x.n > 0).map((x) => x.stance)).toEqual(["ride", "fade"]); // rows with only ungraded calls depend on the clock
   });
 
   test("missing dir → 200 unavailable with the reason", async () => {

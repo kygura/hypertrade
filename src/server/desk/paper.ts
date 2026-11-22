@@ -40,8 +40,16 @@ export interface Broker {
   settle?(ranges: Map<string, { low: number; high: number }>, now: Date): Promise<Array<{ coin: string; kind: "stop" | "target"; result: ExecutionResult }>>;
   /** Paper only. */
   reset?(): Promise<void>;
-  /** Venue upkeep on each watch tick (Propr: cancel stale or finished ladder rungs, flag unprotected positions). */
-  housekeep?(now: Date): Promise<UpkeepNote[]>;
+  /**
+   * Venue upkeep on each watch tick (Propr: cancel stale or finished ladder rungs, flag unprotected positions). With
+   * the kill switch on, the desk's unfilled entry orders are cancelled too.
+   */
+  housekeep?(now: Date, ctx?: { killSwitch?: boolean }): Promise<UpkeepNote[]>;
+  /**
+   * Venues whose entries can rest (Propr's ladder rungs): cancel the desk's unfilled entry orders now, for the kill
+   * switch. Protective stops and take-profits stay. A venue that fills or cancels at once (paper, HL's IOC entry) has none.
+   */
+  cancelEntries?(now: Date): Promise<UpkeepNote[]>;
   /** Venues where a trade picks its own leverage (Propr): the leverage it runs at and the coin's maximum. */
   tradeLeverage?(coin: string, chosen: number | undefined, confidence?: Confidence): { leverage: number | null; max: number; warning?: string };
   /**

@@ -120,6 +120,21 @@ export const ExtremeThresholdsSchema = z.strictObject({
 });
 export type ExtremeThresholds = z.infer<typeof ExtremeThresholdsSchema>;
 
+/**
+ * How far past its own cut an event is, as a ratio (1 = at the cut): the one number comparable across kinds, since
+ * `severity` is |price z| against cuts of 6 to 11, |OI z| against 6 to 10, or |funding level z| against 5 (and that z
+ * runs to tens on a flat-funding history). price and OI: |z| / the window's cut, the ratio detect.ts eventsOf ranks windows by.
+ * crowded: the smaller of |funding z| / its cut and |funding apr| / the apr bar, since the apr bar is the gate that
+ * binds when the z is inflated. Ranks events for the job's daily cap; the stored severity is not touched.
+ */
+export function pastCut(e: ExtremeEvent, th: ExtremeThresholds): number {
+  if (e.kind === "price_dislocation") return e.severity / th.price.z[e.window as keyof typeof th.price.z];
+  if (e.kind === "oi_flush") return e.severity / th.oiFlush.z[e.window as keyof typeof th.oiFlush.z];
+  const z = e.severity / th.crowded.zFunding;
+  const apr = e.facts.fundingAprPct;
+  return apr == null ? z : Math.min(z, Math.abs(apr) / th.crowded.minAprPct);
+}
+
 const Rate = z.number().finite().nonnegative().nullable();
 const Stat = z.strictObject({ n: z.number().int().nonnegative(), hitRate: z.number().finite().nullable(), median: z.number().finite().nullable() });
 /** Forward fade-side returns of a kind's events, for information only: never part of the calibration objective. */
@@ -190,9 +205,18 @@ export const ExtremeGradeSchema = z.strictObject({
   /** verdictMark when stamped, else the event mark. */
   entryPx: z.number().positive(),
   entryBasis: z.enum(["verdict", "event"]),
-  /** Signed return in `direction` from entryPx; null before the horizon or with no stored mark near it. `stopped` caps a take at killPx once crossed (equal to raw otherwise). */
+  /**
+   * Signed return in `direction` from entryPx; null before the horizon or with no stored mark near it. `raw` holds to
+   * the horizon. `stopped` is the trade as placed: the return at `exit` once it happened by the horizon, raw otherwise.
+   */
   horizons: z.array(z.strictObject({ horizon: z.enum(EXTREME_GRADE_HORIZONS), raw: Ret, stopped: Ret })),
   /** Takes only: the mark crossed killPx between the verdict and now (or the last horizon); null for watch/pass. */
   killHit: z.boolean().nullable(),
+  /** Takes only: where stopPx and targetPx come from. `opportunity` = the take's opportunity (the priced stop and target, or stop = killPx and no target when unpriced); `kill` = no opportunity to read, stop = killPx. */
+  levels: z.enum(["opportunity", "kill"]).nullable(),
+  stopPx: z.number().positive().nullable(),
+  targetPx: z.number().positive().nullable(),
+  /** The first stored mark at or beyond the stop or the target (stop first), up to 72 h; null when neither was seen. Stored marks only: a wick between two snapshots is not seen. */
+  exit: z.strictObject({ kind: z.enum(["stop", "target"]), px: z.number().positive(), at: z.string() }).nullable(),
 });
 export type ExtremeGrade = z.infer<typeof ExtremeGradeSchema>;

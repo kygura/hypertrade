@@ -237,6 +237,27 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(await s.outcomeRows({ setupKind: "breakout", regime: "new_longs", tier: 1 })).toHaveLength(1);
   expect(await s.outcomeRows({ tier: 2 })).toEqual([]);
   expect(await s.outcomeRows({ regime: "range" })).toEqual([]);
+  // The stop/target trade rides on its outcome entry's payload; an entry without one (written before it existed) loads without it.
+  const trade = { exit: "stop" as const, exitPx: 60760, exitAt: "2026-10-16T12:31:00.000Z", stopPx: 60760, targetPx: 64480, grossReturn: -0.02, netReturn: -0.0209, r: -1.045, ambiguous: true };
+  expect(await s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { ...outcome(o2).payload, horizon: "72h", trade } })).toMatchObject({ payload: { trade } });
+  await expect(s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { ...outcome(o2).payload, horizon: "4h", trade: { ...trade, exit: "liquidated" as never } } })).rejects.toThrow();
+  expect((await s.outcomeRows({})).map((r) => [r.opportunityId, r.horizon, r.trade])).toEqual([[o1, "1h", undefined], [o2, "72h", trade]]);
+  // A horizon given up on is an outcome entry too: one per horizon like any other, read back with its reason and no return.
+  expect(await s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { horizon: "24h", ungraded: "no_candles" } })).toMatchObject({ kind: "outcome", payload: { horizon: "24h", ungraded: "no_candles" } });
+  expect(await s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { ...outcome(o2).payload, horizon: "24h" } })).toBeNull();
+  await expect(s.appendLedger({ opportunityId: o2, kind: "outcome", payload: { horizon: "12h", ungraded: "bored" as never } })).rejects.toThrow();
+  expect((await s.outcomeRows({ tier: 2 })).map((r) => [r.horizon, r.ungraded, r.netReturn])).toEqual([["72h", undefined, 0.0091], ["24h", "no_candles", NaN]]);
+
+  // The outcomes backlog: ideas older than `before` still missing one of the horizons. o1 has 1h; o2 has 72h and 24h.
+  const far = new Date(Date.now() + 60_000).toISOString();
+  const lacking = async (horizons: string[], limit = 10, before = far) => (await s.unmarkedOpportunities({ before, horizons, limit })).map((o) => o.id);
+  expect(await lacking(["1h"])).not.toContain(o1);
+  expect(await lacking(["1h"])).toContain(o2);
+  expect(await lacking(["1h", "24h"])).toEqual(expect.arrayContaining([o1, o2]));
+  expect(await lacking(["72h", "24h"])).not.toContain(o2);
+  expect(await lacking(["1h", "24h"], 1)).toHaveLength(1);
+  expect(await lacking(["1h", "24h"], 10, new Date(0).toISOString())).toEqual([]);
+  put("ledger.unmarked", (await s.unmarkedOpportunities({ before: far, horizons: ["72h"], limit: 100 })).length);
 
   // retention: BTC t0 + ETH t0 liqmaps, BTC t0 scan; changes are all at t2+. The ledger is untouched.
   expect(await s.pruneHistory(t(1))).toBe(3);

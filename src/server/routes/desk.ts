@@ -14,7 +14,7 @@ import { tick } from "../desk/watch.js";
 import { ExitProposalSchema } from "../desk/types.js";
 import { watchedAssets } from "../intel/positions.js";
 import { PgIntelStore } from "../intel/store.js";
-import { recordLlmUsage, type LlmCaps } from "../intel/llm.js";
+import type { LlmCaps } from "../intel/llm.js";
 import { hasWebSearch } from "../llm/tools.js";
 import { capRefusal, defaultLlmCaps } from "./analyst.js";
 import { body } from "./intel/http.js";
@@ -55,7 +55,7 @@ export interface DeskRouteOptions {
   env?: Record<string, string | undefined>;
   /** Intel /digest + 👍/👎 for the Telegram webhook (SPEC F0.6); absent → Desk-only. */
   intel?: () => TelegramIntel;
-  /** Daily LLM caps and counter for /ask and /review. Default: Intel's (defaultLlmCaps). */
+  /** Daily LLM caps and counter for /ask, /review and the tick's cycles (runDesk checks and bills them). Default: Intel's (defaultLlmCaps). */
   llm?: LlmCaps;
 }
 
@@ -64,7 +64,7 @@ export function defaultDeskService(): DeskService {
   if (!shared) {
     // Monitoring reads the WATCH-page list (intel_watchlist) each tick; DESK_WATCHLIST is its fallback.
     const intel = new PgIntelStore();
-    shared = new DeskService({ config: loadDeskConfig(), store: new PgStore(), data: liveMarketData, notifier: createNotifier(), watchlist: () => watchedAssets(intel) });
+    shared = new DeskService({ config: loadDeskConfig(), store: new PgStore(), data: liveMarketData, notifier: createNotifier(), watchlist: () => watchedAssets(intel), llm: defaultLlmCaps() });
   }
   return shared;
 }
@@ -93,13 +93,9 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
       const disconnect = new AbortController();
       s.onAbort(() => disconnect.abort());
       // A run the operator walks away from still finishes and is recorded;
-      // only the stream stops.
-      const bill: { usage: { input_tokens: number; output_tokens: number } | null; searches: number } = { usage: null, searches: 0 };
+      // only the stream stops. runDesk bills the run to `caps`.
       try {
-        await runDesk({ service: service(), kind, input, act, history, makeProvider, timeoutMs, trigger: kind === "cycle" ? { by: "operator" } : undefined }, (e) => {
-          // Billing sees every event, streamed or not. Server tool calls are billed as web searches.
-          if (e.type === "tool_call" && e.server) bill.searches++;
-          if (e.type === "done") bill.usage = e.usage;
+        await runDesk({ service: service(), kind, input, act, history, makeProvider, timeoutMs, llm: caps, trigger: kind === "cycle" ? { by: "operator" } : undefined }, (e) => {
           if (disconnect.signal.aborted) return;
           const { type, ...data } = e;
           void s.writeSSE({ event: type, data: JSON.stringify(data) }).catch(() => undefined);
@@ -107,8 +103,6 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
       } catch (err) {
         await s.writeSSE({ event: "error", data: JSON.stringify({ agent: "desk", error: err instanceof Error ? err.message : String(err) }) });
       }
-      // ponytail: done carries the run total only, billed at the PM model's price (scouts run the same or a cheaper model); bill per model if runDesk exposes it.
-      if (bill.usage) await recordLlmUsage(caps.cache, "desk", { ...bill.usage, searches: bill.searches }, pm.model);
     });
   };
 
@@ -263,7 +257,7 @@ export function createDeskRoutes(o: DeskRouteOptions = {}) {
       const parsed = z.object({ runCycle: z.boolean().optional(), forceReview: z.boolean().optional() }).safeParse(await body(c));
       if (!parsed.success) return c.json({ error: "invalid request" }, 400);
       try {
-        const res = await tick(service(), { ...parsed.data, makeProvider, cycleTimeoutMs: timeoutMs });
+        const res = await tick(service(), { ...parsed.data, makeProvider, cycleTimeoutMs: timeoutMs, llm: o.llm });
         return c.json(res);
       } catch (err) {
         return deskError(c, err);

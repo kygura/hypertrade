@@ -1,5 +1,7 @@
+import { barTouch } from "../../../shared/firstTouch.js";
 import { atrAt as atrAtBar, mean, sdSample } from "../../../shared/signalMath.js";
 import { DAY_MS, RuleSchema, type EventVerdict, type LabDataset, type Level, type Rule } from "../types.js";
+import { FUNDING, TAKER_FEE_BPS } from "./backtest.js";
 import { makeCtx } from "./context.js";
 import { funnel, inZoneDays, type FunnelStep } from "./evaluate.js";
 import { parseFeatureId } from "./features.js";
@@ -16,11 +18,12 @@ import { isoDate } from "./util.js";
 export const OPEN = "ht:open";
 export const HIGH = "ht:high";
 export const LOW = "ht:low";
-export const FUNDING = "ht:funding";
+export { FUNDING };
 /** Metrics every coin's dataset needs besides the rule's own (close is dataset.price, ht:price). */
 export const STUDY_METRICS = [OPEN, HIGH, LOW, FUNDING];
 
-const FEE_ROUND_TRIP_PCT = 0.09;
+/** Two taker fills, in percent of notional: the fee the backtest charges per position change (backtest.ts), twice. */
+const FEE_ROUND_TRIP_PCT = (2 * TAKER_FEE_BPS) / 100;
 const DEFAULT_SLIPPAGE_BPS = 5; // per side
 export const ATR_WINDOW = 14;
 /** A coin needs this many bars with a close and funding to be studied. */
@@ -191,15 +194,9 @@ export function replayCoin(rule: Rule, data: LabDataset, opts: EventStudyOptions
       if (invalid?.[i - 1] && k > 1) return i < n && Number.isFinite(o[i]) ? scored("invalidation", o[i]!, i, false) : null;
       if (i >= n || ![o[i], h[i], l[i], c[i], f[i]].every((x) => Number.isFinite(x))) return null;
       funding += dir * f[i]!; // ht:funding is the day's summed hourly rate; a long pays positive funding
-      const stopHit = dir > 0 ? l[i]! <= stop : h[i]! >= stop;
-      const tgtHit = dir > 0 ? h[i]! >= target : l[i]! <= target;
-      let exit: StudyEvent["exit"] | null = null;
-      let px = c[i]!;
-      if (stopHit) (exit = "stop"), (px = dir > 0 ? Math.min(stop, o[i]!) : Math.max(stop, o[i]!));
-      else if (tgtHit) (exit = "target"), (px = target);
-      else if (k === H) exit = "horizon";
-      if (!exit) continue;
-      return scored(exit, px, i, stopHit && tgtHit);
+      const touch = barTouch(dir, stop, target, { o: o[i]!, h: h[i]!, l: l[i]! });
+      if (touch) return scored(touch.exit, touch.px, i, touch.ambiguous);
+      if (k === H) return scored("horizon", c[i]!, i, false);
     }
     return null;
   };

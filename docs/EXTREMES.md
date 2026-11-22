@@ -19,7 +19,12 @@ says `take`. Contracts: `src/shared/extremes.ts`.
    :53). Top `EXTREMES_TOP` (30) coins by stored 24h volume plus BTC, read from
    `scan_snapshots`. A key (`kind|coin|side`) is silent for `EXTREMES_COOLDOWN_H` (24) after
    it fires. At most `EXTREMES_DAILY_CAP` (3) events go out per UTC day; the rest are stored
-   with delivery `none`. Every event is stored before it is sent, and a failed send is not
+   with delivery `none`. A run's events take the cap in order of how far each is past its own
+   kind's cut (`pastCut` in `src/shared/extremes.ts`: |z| over the window's cut for price and
+   OI; for crowded the smaller of |funding z| over its cut and |funding apr| over the apr bar),
+   not by raw `severity`: severities are z-scores of different quantities against different
+   cuts, and the funding z runs to tens. The stored `severity` and the take's `score` are
+   unchanged. Every event is stored before it is sent, and a failed send is not
    retried: a lost alert is preferred to a repeat.
 3. **Wake** (`src/server/extremes/wake.ts`). One POST per run to `EXTREMES_WAKE_URL` (a Claude
    Code routine's fire endpoint) with `EXTREMES_WAKE_TOKEN`. Never retried: the endpoint has no
@@ -182,8 +187,26 @@ cookie only, the research bearer cannot approve).
 Computed at read time from stored `scan_snapshots` (`src/server/extremes/grade.ts`), no job. Each horizon (4h, 24h,
 72h) is `gradeEvent` from the replay re-based at the verdict: signed gross return in the graded direction (a take's
 direction, else the event's fade side) from `verdictMark` at `verdictAt` (else the event mark at its bar) to the first
-stored tick in [start + horizon, + 6 min]; null before the horizon or with no tick there. For a take, `killHit` says
-whether a stored mark reached `killPx` between the start and now (capped at 72 h), and `stopped` caps each horizon's
-return at the kill level once it was crossed (raw otherwise). The summary groups by stance and by kind: n, graded n
-(24 h), `returnStats` per horizon (raw and stopped), kill-hit rate over takes. `bun run extremes score [--days 30]`
-prints it (needs `DATABASE_URL`).
+stored tick in [start + horizon, + 6 min]; null before the horizon or with no tick there. That is `raw`: hold to the
+horizon, whatever the levels.
+
+A take is also graded as the trade that was placed. Its levels are the opportunity's `stopPx` and `targetPx` (`levels:
+"opportunity"`): the priced stop (the farther of the template and the kill, at least 0.75 ATR) and the priced target,
+or stop = `killPx` and no target for an unpriced take. A take with no opportunity to read is graded against `killPx`
+alone (`levels: "kill"`). `exit` is the first stored mark between the start and now (capped at 72 h) at or beyond the
+stop or the target, by the first-touch rule the scanner ledger and the Lab event study use
+(`src/shared/firstTouch.ts`); `stopped` is each horizon's return at that exit once it happened by the horizon's tick,
+`raw` otherwise. `killHit` still says whether a stored mark reached the verdict's `killPx`: the kill is where the idea
+is wrong, the stop is where the trade ends, and they differ whenever the priced stop is farther.
+
+Known limit: touches are read on stored snapshot marks only (one per scan, about 5 minutes apart, with gaps when the
+scanner was down), never on candle highs and lows. A wick through the stop or the target between two snapshots is not
+seen, so both are undercounted, and a stop that gapped fills at the next stored mark, not at the level.
+
+The summary groups by stance and by kind: n, graded n (24 h), `returnStats` per horizon (`raw` and `stopped`), kill-hit
+rate and exit counts (stop, target, open) over takes. `returnStats` goes through the ledger's cluster helper
+(`platform/stats.ts clusterStats`): n, `clusters` (events of one bucket `floor(start / max(1 day, horizon))` are one
+cluster, since one market move fires many coins), hit rate and median per event, `mean` over cluster means and `ci95`,
+which is null under 5 clusters. The replay's per-kind stats (`replay.ts`) are the same shape. A thin
+sample therefore shows as a small n, few clusters and no interval; read it as that. `bun run extremes score [--days
+30]` prints it (needs `DATABASE_URL`).

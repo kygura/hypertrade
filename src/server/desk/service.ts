@@ -7,8 +7,9 @@ import { evaluateExit, evaluateOpen, evaluateRisk, operatorRiskOrder, type Gover
 import type { Alert, AlertAction, Notifier } from "./notify.js";
 import { HlBroker } from "./hl/broker.js";
 import { PaperBroker, type Broker, type ExecutionResult } from "./paper.js";
-import { ProprBroker } from "./propr/broker.js";
+import { PROPR_UPKEEP_KEY, ProprBroker, type ProprUpkeepState } from "./propr/broker.js";
 import type { DeskStore } from "./store.js";
+import type { LlmCaps } from "../intel/llm.js";
 import {
   OperatorOrderSchema,
   type AccountState,
@@ -35,8 +36,10 @@ import {
 //                        marks → execute. The confirm is the operator's
 //                        approval, so the approval mode does not apply.
 //
-// The kill switch blocks every new entry (exits stay allowed). Every
-// decision, fill and failure raises a stored alert.
+// The kill switch blocks every new entry (exits stay allowed) and cancels the
+// desk's entry orders still resting on the venue (Propr's unfilled ladder
+// rungs); protective stops stay. Every decision, fill and failure raises a
+// stored alert.
 
 const KILL_KEY = "kill_switch";
 const APPROVAL_KEY = "approval_override";
@@ -92,6 +95,8 @@ export interface DeskDeps {
    * Intel store take that path.
    */
   watchlist?: () => Promise<string[]>;
+  /** Daily LLM caps and counter every desk run is checked against and billed to (production: Intel's, defaultLlmCaps). Absent: no cap (tests). */
+  llm?: LlmCaps;
 }
 
 export class DeskService {
@@ -100,6 +105,7 @@ export class DeskService {
   readonly data: MarketData;
   readonly notifier: Notifier;
   readonly broker: Broker;
+  readonly llm?: LlmCaps;
   private readonly clock: () => Date;
   private readonly watchlistSource: () => Promise<string[]>;
   /** Serializes operator submits in this process (the store's takeState guards across processes). */
@@ -110,6 +116,7 @@ export class DeskService {
     this.store = d.store;
     this.data = d.data;
     this.notifier = d.notifier;
+    this.llm = d.llm;
     this.clock = d.now ?? (() => new Date());
     this.watchlistSource = d.watchlist ?? (async () => this.config.watchlist);
     this.broker =
@@ -117,7 +124,11 @@ export class DeskService {
       (d.config.venue === "hl-testnet" && d.config.hl
         ? new HlBroker({ ...d.config.hl, takerFee: d.config.limits.takerFee })
         : d.config.venue === "propr" && d.config.propr
-          ? new ProprBroker({ config: d.config.propr, market: async (coin) => DeskService.findMarket(await d.data.ctxs(), coin) })
+          ? new ProprBroker({
+              config: d.config.propr,
+              market: async (coin) => DeskService.findMarket(await d.data.ctxs(), coin),
+              state: { get: () => d.store.getState<ProprUpkeepState>(PROPR_UPKEEP_KEY), set: (v) => d.store.setState(PROPR_UPKEEP_KEY, v) },
+            })
           : new PaperBroker(d.store, {
             startingEquity: d.config.paperStartingEquity,
             slippage: d.config.paperSlippage,
@@ -135,7 +146,16 @@ export class DeskService {
 
   async setKillSwitch(on: boolean, reason: string, by: string): Promise<void> {
     await this.store.setState(KILL_KEY, { on, reason, at: this.now().toISOString(), by });
-    await this.alert(on ? "critical" : "info", on ? "Kill switch ON" : "Kill switch off", `${reason} (by ${by})`);
+    // Entries already resting on the venue would still fill: cancel them now. The switch is stored first, so whatever
+    // fails here is retried by housekeeping on every watch tick while it stays on.
+    const venue =
+      on && this.broker.cancelEntries
+        ? await this.broker.cancelEntries(this.now()).then(
+            (notes) => notes.map((n) => n.text),
+            (err) => [`resting entry orders on ${this.broker.venue} could not be cancelled (${err instanceof Error ? err.message : String(err)}); housekeeping retries on the next tick`],
+          )
+        : [];
+    await this.alert(on ? "critical" : "info", on ? "Kill switch ON" : "Kill switch off", [`${reason} (by ${by})`, ...venue].join("\n"));
   }
 
   /** Approval in force: manual on a venue that requires it (Propr), else an operator override from the UI, else the env default. */
@@ -343,9 +363,11 @@ export class DeskService {
     if (!rec) throw new DeskError(404, "proposal not found");
     if (rec.status !== "pending") throw new DeskError(409, `proposal is ${rec.status}`);
     if (rec.expiresAt && new Date(rec.expiresAt) < this.now()) {
-      await this.store.updateProposal(id, { status: "expired", decidedBy: "clock", decidedAt: this.now().toISOString() });
+      await this.store.expireProposal(id, this.now().toISOString());
       throw new DeskError(409, "proposal expired");
     }
+    // The verdict, the sizing and the operator's read were for the venue it was proposed on (paper, testnet, Propr).
+    if (rec.venue !== this.broker.venue) throw new DeskError(409, `proposal was made for the ${rec.venue} venue; the desk now runs on ${this.broker.venue}: reject it and propose again`);
     // One decision per proposal: only the caller whose claim lands goes on, so a double click or a Telegram and a UI
     // approve at once send it once.
     const claimed = await this.store.claimProposal(id, by, this.now().toISOString());
@@ -387,7 +409,7 @@ export class DeskService {
    */
   private async fillOpen(rec: ProposalRecord, p: RiskOrder, verdict: Verdict, sizing: Sizing, by: string, note: string): Promise<ProposalRecord> {
     const decidedAt = this.now().toISOString();
-    const result = await this.broker.open(p, sizing, rec.id, this.now());
+    const result = await this.broker.open(p, sizing, rec.id, this.now()).catch((err) => this.venueThrew(err));
     const patch = { status: result.ok ? ("executed" as const) : ("failed" as const), verdict, execution: result, decidedBy: by, decidedAt };
     const out = await this.store.updateProposal(rec.id, patch).catch((err) => (console.error(`[desk] proposal ${rec.id} ${patch.status} but not recorded`, err), null));
     const fill = result.fills[0];
@@ -415,7 +437,7 @@ export class DeskService {
       return (await this.store.updateProposal(rec.id, { status: "blocked", verdict, decidedBy: `governor (at ${by})`, decidedAt }))!;
     }
     // Once the venue has answered nothing here throws, as in fillOpen: a caller never reads "failed" while a close went out.
-    const result = await this.broker.exit(p.coin, verdict.sizing.size, verdict.sizing.markPx, "exit", rec.id, this.now());
+    const result = await this.broker.exit(p.coin, verdict.sizing.size, verdict.sizing.markPx, "exit", rec.id, this.now()).catch((err) => this.venueThrew(err));
     const patch = { status: result.ok ? ("executed" as const) : ("failed" as const), verdict, execution: result, decidedBy: by, decidedAt };
     const out = await this.store.updateProposal(rec.id, patch).catch((err) => (console.error(`[desk] proposal ${rec.id} ${patch.status} but not recorded`, err), null));
     const fill = result.fills[0];
@@ -431,12 +453,20 @@ export class DeskService {
   }
 
   /**
+   * A venue that threw from open/exit instead of answering: the outcome is unknown, an order may be live. Recorded as
+   * failed with that said, so the proposal is never left claimed and pending for good (expirePending skips claimed rows).
+   */
+  private venueThrew(err: unknown): ExecutionResult {
+    const error = `${this.broker.venue} threw (${err instanceof Error ? err.message : String(err)}): the outcome is unknown, an order may have been sent. Check the venue by hand`;
+    return { ok: false, venue: this.broker.venue, fills: [], error };
+  }
+
+  /**
    * A claimed proposal whose re-check threw (market data or account unreadable) before the venue was called: nothing
    * was sent, so it is recorded as failed. Left pending it would stay claimed for good: expirePending skips it and every
    * approve answers "already being decided".
    */
   private async failUnsent(rec: ProposalRecord, coin: string, by: string, err: unknown): Promise<ProposalRecord> {
-    // ponytail: a throw from broker.open/exit itself leaves the row claimed and pending (an order may have gone out); add an "unknown" outcome if a venue ever throws there.
     const error = `not sent: ${err instanceof Error ? err.message : String(err)}`;
     const execution: ExecutionResult = { ok: false, venue: this.broker.venue, fills: [], error };
     const out = await this.store.updateProposal(rec.id, { status: "failed", execution, decidedBy: by, decidedAt: this.now().toISOString() });
@@ -449,10 +479,8 @@ export class DeskService {
     for (const rec of await this.store.listProposals({ status: "pending", limit: 100 })) {
       // A claimed proposal is being sent right now: the send records its outcome.
       if (rec.decidedBy) continue;
-      if (rec.expiresAt && new Date(rec.expiresAt) < this.now()) {
-        await this.store.updateProposal(rec.id, { status: "expired", decidedBy: "clock", decidedAt: this.now().toISOString() });
-        n++;
-      }
+      // Conditional in the store: an approve that claimed it since the list was read keeps it.
+      if (rec.expiresAt && new Date(rec.expiresAt) < this.now() && (await this.store.expireProposal(rec.id, this.now().toISOString()))) n++;
     }
     return n;
   }

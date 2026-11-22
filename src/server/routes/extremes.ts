@@ -109,7 +109,7 @@ export function cronExtremesRoutes(deps: () => CronExtremesDeps = defaultCronDep
 
 type ExtremesRouteStore = Pick<
   PlatformStore,
-  | "listExtremes" | "latestExtreme" | "setExtremeVerdict" | "setExtremeOpportunity" | "scanSnapshotsSince" | "listOpportunities" | "upsertOpportunity" | "transitionOpportunity"
+  | "listExtremes" | "latestExtreme" | "setExtremeVerdict" | "setExtremeOpportunity" | "scanSnapshotsSince" | "listOpportunities" | "getOpportunity" | "upsertOpportunity" | "transitionOpportunity"
   | "latestAppliedExtremeCalibration" | "listExtremeCalibrations"
 >;
 

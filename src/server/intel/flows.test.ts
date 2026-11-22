@@ -108,6 +108,50 @@ describe("deleveraging", () => {
     expect(f.numbers.liq_z_6h!).toBeGreaterThanOrEqual(2);
   });
 
+  // OI in USD = contracts × price: on the stored notional a 9 % drop with nobody closing read OI −9 % and passed the −8 % leg.
+  describe("the OI leg is the change in contracts", () => {
+    /** 10 days of 15-min rows; `px` / `contracts` scale the last 6 h (0 → 1 along the window), liquidations burst over it. */
+    const rows = (px: (k: number) => number, contracts: (k: number) => number, price: (t: number, p: number) => number = (_, p) => p) => {
+      const snaps: SnapshotRow[] = [];
+      const flow: FlowRow[] = [];
+      for (let t = NOW - 10 * D, i = 0; t <= NOW; t += 15 * MIN, i++) {
+        const ts = new Date(t).toISOString();
+        const k = Math.max(0, (t - (NOW - 6 * H)) / (6 * H));
+        const p = 3000 * (1 + 0.001 * rnd(i)) * px(k);
+        const c = (1e9 / 3000) * (1 + 0.002 * rnd(i + 7)) * contracts(k);
+        snaps.push({
+          asset: "ETH", ts, price: price(t, p), vol24h: null, funding: 1e-5, oiUsd: c * p,
+          premium: null, basis: null, depthBid1: null, depthAsk1: null, depthBid2: null, depthAsk2: null, spreadBps: null,
+        });
+        flow.push({ asset: "ETH", venue: "agg", metric: "liq_long_usd", value: k > 0 ? 500_000 : 5_000 * (1 + 0.2 * rnd(i + 3)), ts }, { asset: "ETH", venue: "agg", metric: "liq_short_usd", value: 1_000, ts });
+      }
+      const series = seriesFromRows(snaps, flow);
+      const windows = computeWindows(series, NOW);
+      return { series, oi6: windows.find((w) => w.metric === "oi_usd" && w.window === "6h")!, deleveraging: flag({ asset: "ETH", now: NOW, series, windows }, "deleveraging") };
+    };
+
+    test("constant contracts through a 9 % dump with a liquidation burst: OI Δ ≈ 0, no flag", () => {
+      const r = rows((k) => 1 - 0.09 * k, () => 1);
+      const usd = r.series.oi_usd!;
+      expect((usd.at(-1)!.v / usd.at(-25)!.v - 1) * 100).toBeLessThan(-DELEV_OI_PCT); // the stored USD notional did fall past the threshold
+      expect(Math.abs(r.oi6.delta!)).toBeLessThan(0.5);
+      expect(r.deleveraging).toBeUndefined();
+    });
+
+    test("contracts −12 % at a flat price: fires as before", () => {
+      const r = rows(() => 1, (k) => Math.exp(Math.log(0.88) * k));
+      expect(r.oi6.delta!).toBeCloseTo(-12, 0);
+      expect(r.deleveraging).toMatchObject({ degraded: false });
+    });
+
+    test("no usable price at the window's end: the OI leg is unknown (degraded), never the USD change", () => {
+      const r = rows((k) => 1 - 0.09 * k, () => 1, (t, p) => (t === NOW ? NaN : p));
+      expect(r.oi6.delta).toBeNull();
+      expect(r.deleveraging).toMatchObject({ degraded: true });
+      expect(r.deleveraging!.numbers.oi_pct_6h).toBeUndefined();
+    });
+  });
+
   test("zero-heavy liquidation history + $1,000 now: z null, so OI alone is degraded, never a fired deleveraging", () => {
     const snaps: SnapshotRow[] = [];
     const flow: FlowRow[] = [];

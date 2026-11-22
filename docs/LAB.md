@@ -3,7 +3,8 @@
 Hypertrade's answer to Glassnode Alpha Lab (research.glassnode.com/glassnode-alpha-lab,
 Sep 2026): search a metric universe for **simple, human-readable trading
 heuristics** ("when feature A < x and feature B ≥ y, go long BTC"), score them as
-strategies net of slippage, validate them out of sample, keep the good ones in
+strategies net of fee, slippage and funding, validate them out of sample and
+against simply holding the asset, keep the good ones in
 a catalogue that is re-evaluated on new data, and expose all of it as one tool
 set that every client calls the same way: REST, MCP (HTTP and stdio), a CLI,
 and a `/lab` page.
@@ -61,14 +62,42 @@ without buying a key.
    5–95%) and entering at least max(3, `minTradesPerYear` × years) trades
    (default 0.5 a year); otherwise it is not scored.
 6. **Strategy scoring.** A rule is a daily signal: in zone at the close of day
-   t means position +1 (long) or −1 (short) over day t+1, else flat. Cost =
-   `slippageBps` × |position change|. Reported per window: total return,
+   t means position +1 (long) or −1 (short) over day t+1, else flat. Costs,
+   the same three the event study charges per trade (`engine/backtest.ts`,
+   shared constants): (`slippageBps` + the 4.5 bps taker fee,
+   `TAKER_FEE_BPS`) × |position change|, and funding on held exposure: a day
+   in the market pays that day's `ht:funding` (the day's summed hourly rate; a
+   short receives it). Every search, evaluation and catalogue re-run loads
+   `ht:funding` beside its own metrics. A day without a rate (an asset with no
+   Hyperliquid perp, the years before it listed, a collection gap) is charged
+   no funding; `costs { slippageBps, feeBps, fundingDays, days }` on every
+   evaluation says how many return days of the range carried a rate
+   (`fundingDays` 0 = none charged). The event study drops a trade whose hold
+   lacks a funding bar; a daily track cannot drop a day without inventing a
+   flat one, so it charges fee and slippage there and reports the coverage.
+   The two differ in their defaults only: slippage 10 bps a side here, 5 in
+   the event study (each is an argument). Reported per window: total return,
    CAGR, Sharpe (daily mean / stdev × √365), max drawdown, hit rate (share of
    closed trades, i.e. contiguous in-zone episodes, with positive net
    return), trades per year, exposure (share of days in market), and an equity
    curve on request. A buy-and-hold benchmark (or short-and-hold for short)
-   is reported for the same windows. All numbers are net of slippage. A
-   window with no trade is flagged `untested` (its Sharpe 0 is not a result).
+   is reported for the same windows, under the same costs. All numbers are
+   net of fee, slippage and funding (evaluations stored without `costs` are
+   net of slippage only). A window with no trade is flagged `untested` (its
+   Sharpe 0 is not a result).
+
+   *Excess over the benchmark.* Each window also reports `excessSharpe`: the
+   Sharpe of the rule's daily returns minus e × the benchmark's return that
+   day, where e is the share of the window's days the rule is in the market
+   (per walk-forward block for the walk-forward). It is the exposure-matched
+   excess: a rule that only holds the asset has e = 1 and an excess of 0
+   every day, and a rule in the market on days chosen at random earns e × the
+   asset's drift and has exactly that taken back. What is left is what the
+   choice of days added. (Subtracting the benchmark's return only on the days
+   the rule is in would cancel the rule's own return; the benchmark's Sharpe
+   as a hurdle would reject a real edge on a strongly trending asset and
+   leave the deflated Sharpe's null at zero drift.) The verdict, the deflated
+   Sharpe and the final ranking read this excess, so beta earns nothing.
 7. **Validation, three stages.**
    - *Holdout:* the most recent 20% of history is cut off before the search
      and used only to evaluate final rules. Never used for ranking.
@@ -88,11 +117,16 @@ without buying a key.
      training rows, since the rule is an input, not a search result.
    - *Live:* once catalogued, a rule is evaluated on data after `savedAt`,
      which could not have influenced its selection.
-   Final rules are ranked by walk-forward objective (support-filtered), never by
-   holdout. Each also reports `walkForwardFolds` (the Sharpe of every test
+   Final rules are ranked by the walk-forward objective of their excess over
+   the exposure-matched benchmark (§6; support-filtered), never by holdout:
+   on a drifting asset the raw objective ranks by time in the market and
+   crowds a real rule out of the top K. Trials are still scored on raw
+   walk-forward performance. Each also reports `walkForwardFolds` (the Sharpe of every test
    block, never ranked on; `null` for a block with no trade: untested, not a
    Sharpe of 0) and `deflatedSharpe` (Bailey & López de Prado):
-   the probability that the concatenated walk-forward returns' daily Sharpe,
+   the probability that the daily Sharpe of the concatenated walk-forward
+   excess returns (§6: its null is zero mean, which is true of noise only
+   once the asset's drift is taken out),
    corrected for their skew and kurtosis, beats the expected best of N noise
    strategies, with the null variance of a Sharpe 1/(T − 1). N is
    `effectiveTrials`, not the raw `variantsScored` (see *Effective trials*
@@ -108,8 +142,8 @@ without buying a key.
    rules. Holdout days never enter this comparison.
 
    *Effective trials.* A search scores thousands of distinct rule variants
-   (`variantsScored`, 2,100–5,000 at 16 trials on the synthetic tests,
-   4,100–11,600 at 40), but most are threshold neighbours and family members
+   (`variantsScored`, 2,000–5,600 at 16 trials on the synthetic tests,
+   4,000–11,900 at 40), but most are threshold neighbours and family members
    whose return tracks are nearly identical, so counting each as an
    independent trial over-deflates: with raw N the planted rule's deflated
    Sharpe was 0.39–0.89 and a 0.95 bar rejected it. Following López de
@@ -122,7 +156,7 @@ without buying a key.
    variant is first scored: N_eff matched exact return-correlation
    clustering within ±8%, and the whole step costs 1–4% of a search's time.
    Only search-region days count (the holdout never moves N). Typical
-   `effectiveTrials`: 92–181 at 16 trials, 132–234 at 40. A participation
+   `effectiveTrials`: 92–181 at 16 trials, 118–243 at 40. A participation
    ratio (Σλ)²/Σλ² was tried and rejected: cluster sizes are heavy-tailed
    (one family often holds a third of all variants), and the ratio, in effect
    a Simpson index of cluster shares, came out at 6–7 for searches with
@@ -132,11 +166,15 @@ without buying a key.
    *Verdict.* Every evaluation carries `verdict { level, reasons }`; the
    first failing check sets the level, `reasons` names every failed check
    with its numbers (e.g. "deflated Sharpe 0.71 < 0.9"):
-   `fails_holdout` (holdout missing, untested or Sharpe ≤ 0) → `weak`
-   (walk-forward missing or Sharpe ≤ 1) → `fragile` (stability < 0.5, when a
-   sensitivity grid is attached) → `candidate` (deflated Sharpe missing,
-   undefined — reason "deflated Sharpe undefined (extreme skew/kurtosis)" —
-   or < 0.9) → `robust`. **The save bar is `robust`.** A `candidate` may be
+   `fails_holdout` (holdout missing, untested, Sharpe ≤ 0 or excess Sharpe
+   ≤ 0) → `weak` (walk-forward missing, Sharpe ≤ 1 or excess Sharpe ≤ 1) →
+   `fragile` (stability < 0.5, when a sensitivity grid is attached) →
+   `candidate` (deflated Sharpe missing, undefined — reason "deflated Sharpe
+   undefined (extreme skew/kurtosis)" — or < 0.9; or stats that carry no
+   excess, reason "excess over the benchmark not measured") → `robust`. Each
+   window must clear its bar twice: on its own Sharpe (the rule made money)
+   and on its excess over the exposure-matched benchmark (it made more than
+   holding the asset for the same share of days would have). **The save bar is `robust`.** A `candidate` may be
    saved only with a note explaining why. `catalogueSave` enforces both: a
    verdict below `candidate` is refused, and so is a `candidate` without a
    note. An agent or MCP save also needs a `runId`, so the deflated Sharpe
@@ -146,7 +184,19 @@ without buying a key.
    never reaches deeper candidates, so the holdout still selects nothing.
    Catalogue entries and runs stored before verdicts existed get one
    computed on read (their stored deflated Sharpe used raw N, so they lean
-   `candidate`). A catalogue save with a `runId` keeps the run's walk-forward,
+   `candidate`). So does an entry or run whose evaluation has no `costs`
+   field: it was judged on the earlier bar (raw Sharpe only, no benchmark,
+   deflated Sharpe on raw returns, backtest net of slippage alone), so its
+   stored verdict is not shown. The verdict is recomputed on read from the
+   stored stats, which carry no excess, and is therefore at most `candidate`
+   with the reason "excess over the benchmark not measured … re-evaluate";
+   a re-save of such an entry needs a note like any candidate. **Nothing
+   stored is rewritten**: the recompute happens in the service, the same for
+   the Postgres, file and memory stores, and old files load as before.
+   Re-evaluate the rule (`lab_evaluate_rule`) for a verdict on this bar. An
+   evaluation that has `costs` keeps its stored verdict. A verdict computed now over stats without
+   `excessSharpe` (a save that takes its walk-forward from an old run) is at
+   most `candidate`. A catalogue save with a `runId` keeps the run's walk-forward,
    `walkForwardFolds` and deflated Sharpe (the numbers the rule was selected
    on, deflated by the run's `effectiveTrials`), evaluates the rest fresh with
    N = the run's `effectiveTrials` over the run's `from`/`to` and slippage
@@ -156,58 +206,96 @@ without buying a key.
    *Calibration* (`engine/calibrate.ts`; `bun src/server/lab/engine/calibrate.ts
    [trials]` reprints it). Synthetic data, 2,500 days: 40 pure-noise seeds
    and 20 planted seeds at each of two strengths (next-day drift 0.012 and
-   0.008 while z(a, 30) < −1 and b ≥ 0, daily noise 0.02). For each
-   deflated-Sharpe cut-off, the full bar is applied to the top 10 rules;
-   "planted rule robust" counts searches whose top 10 holds the planted rule
-   and it is `robust` ("found" = in the top 10 at all).
+   0.008 while z(a, 30) < −1 and b ≥ 0, daily noise 0.02), each searched at
+   three buy-and-hold Sharpe levels: 0, ≈ 1 and ≈ 2 (a drift added to every
+   day's return whatever the metrics say, `testkit.ts` `trend`; the metrics
+   still predict nothing). For each deflated-Sharpe cut-off, the full bar is
+   applied to the top 10 rules; "planted rule robust" counts searches whose
+   top 10 holds the planted rule and it is `robust` ("found" = in the top 10
+   at all). A planted series has a buy-and-hold Sharpe of its own (about 1.4
+   at drift 0.012 and 1.0 at 0.008, averaged over the seeds: the edge is in
+   the price), so its first column is not a flat asset.
 
    16 trials (the test configuration):
 
-   | DSR ≥ | noise: any top-10 robust | noise: top-1 robust | drift 0.012: planted rule robust | drift 0.012: any top-10 robust | drift 0.008: planted rule robust | drift 0.008: any top-10 robust |
+   | DSR ≥ | noise: any top-10 robust | noise: top-1 robust | noise, B&H Sharpe ≈ 1: any top-10 robust | noise, B&H Sharpe ≈ 1: top-1 robust | noise, B&H Sharpe ≈ 2: any top-10 robust | noise, B&H Sharpe ≈ 2: top-1 robust |
    |---|---|---|---|---|---|---|
-   | (none) | 14/40 | 5/40 | 17/20 (found 17) | 20/20 | 12/20 (found 12) | 20/20 |
-   | 0.50 | 3/40 | 2/40 | 17/20 (found 17) | 20/20 | 10/20 (found 12) | 19/20 |
-   | 0.80 | 1/40 | 0/40 | 17/20 (found 17) | 20/20 | 10/20 (found 12) | 15/20 |
-   | **0.90** | **1/40** | **0/40** | **17/20 (found 17)** | **20/20** | **10/20 (found 12)** | **15/20** |
-   | 0.95 | 0/40 | 0/40 | 16/20 (found 17) | 19/20 | 9/20 (found 12) | 13/20 |
+   | 0.00 | 4/40 | 2/40 | 13/40 | 7/40 | 10/40 | 6/40 |
+   | 0.50 | 2/40 | 1/40 | 2/40 | 2/40 | 2/40 | 2/40 |
+   | 0.80 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 |
+   | **0.90** | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 |
+   | 0.95 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 |
+
+   | DSR ≥ | drift 0.012: planted rule robust | drift 0.012: any top-10 robust | drift 0.012, B&H Sharpe ≈ 1: planted rule robust | drift 0.012, B&H Sharpe ≈ 1: any top-10 robust | drift 0.012, B&H Sharpe ≈ 2: planted rule robust | drift 0.012, B&H Sharpe ≈ 2: any top-10 robust | drift 0.008: planted rule robust | drift 0.008: any top-10 robust | drift 0.008, B&H Sharpe ≈ 1: planted rule robust | drift 0.008, B&H Sharpe ≈ 1: any top-10 robust | drift 0.008, B&H Sharpe ≈ 2: planted rule robust | drift 0.008, B&H Sharpe ≈ 2: any top-10 robust |
+   |---|---|---|---|---|---|---|---|---|---|---|---|---|
+   | 0.00 | 18/20 (found 18) | 20/20 | 19/20 (found 19) | 20/20 | 16/20 (found 16) | 20/20 | 8/20 (found 11) | 19/20 | 8/20 (found 11) | 18/20 | 9/20 (found 10) | 19/20 |
+   | 0.50 | 18/20 (found 18) | 20/20 | 18/20 (found 19) | 20/20 | 15/20 (found 16) | 20/20 | 8/20 (found 11) | 16/20 | 7/20 (found 11) | 14/20 | 7/20 (found 10) | 15/20 |
+   | 0.80 | 18/20 (found 18) | 19/20 | 16/20 (found 19) | 19/20 | 13/20 (found 16) | 18/20 | 5/20 (found 11) | 10/20 | 5/20 (found 11) | 10/20 | 5/20 (found 10) | 9/20 |
+   | **0.90** | 15/20 (found 18) | 18/20 | 16/20 (found 19) | 17/20 | 13/20 (found 16) | 17/20 | 4/20 (found 11) | 7/20 | 5/20 (found 11) | 9/20 | 4/20 (found 10) | 8/20 |
+   | 0.95 | 15/20 (found 18) | 16/20 | 15/20 (found 19) | 16/20 | 13/20 (found 16) | 16/20 | 4/20 (found 11) | 6/20 | 4/20 (found 11) | 7/20 | 4/20 (found 10) | 7/20 |
 
    40 trials (the tool default):
 
-   | DSR ≥ | noise: any top-10 robust | noise: top-1 robust | drift 0.012: planted rule robust | drift 0.012: any top-10 robust | drift 0.008: planted rule robust | drift 0.008: any top-10 robust |
+   | DSR ≥ | noise: any top-10 robust | noise: top-1 robust | noise, B&H Sharpe ≈ 1: any top-10 robust | noise, B&H Sharpe ≈ 1: top-1 robust | noise, B&H Sharpe ≈ 2: any top-10 robust | noise, B&H Sharpe ≈ 2: top-1 robust |
    |---|---|---|---|---|---|---|
-   | (none) | 13/40 | 7/40 | 17/20 (found 17) | 20/20 | 11/20 (found 11) | 20/20 |
-   | 0.50 | 3/40 | 2/40 | 17/20 (found 17) | 20/20 | 10/20 (found 11) | 19/20 |
-   | 0.80 | 1/40 | 0/40 | 17/20 (found 17) | 20/20 | 9/20 (found 11) | 14/20 |
-   | **0.90** | **0/40** | **0/40** | **17/20 (found 17)** | **20/20** | **8/20 (found 11)** | **13/20** |
-   | 0.95 | 0/40 | 0/40 | 17/20 (found 17) | 20/20 | 5/20 (found 11) | 11/20 |
+   | 0.00 | 7/40 | 4/40 | 8/40 | 4/40 | 8/40 | 4/40 |
+   | 0.50 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 |
+   | 0.80 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 |
+   | **0.90** | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 |
+   | 0.95 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 | 0/40 |
+
+   | DSR ≥ | drift 0.012: planted rule robust | drift 0.012: any top-10 robust | drift 0.012, B&H Sharpe ≈ 1: planted rule robust | drift 0.012, B&H Sharpe ≈ 1: any top-10 robust | drift 0.012, B&H Sharpe ≈ 2: planted rule robust | drift 0.012, B&H Sharpe ≈ 2: any top-10 robust | drift 0.008: planted rule robust | drift 0.008: any top-10 robust | drift 0.008, B&H Sharpe ≈ 1: planted rule robust | drift 0.008, B&H Sharpe ≈ 1: any top-10 robust | drift 0.008, B&H Sharpe ≈ 2: planted rule robust | drift 0.008, B&H Sharpe ≈ 2: any top-10 robust |
+   |---|---|---|---|---|---|---|---|---|---|---|---|---|
+   | 0.00 | 15/20 (found 15) | 20/20 | 17/20 (found 17) | 20/20 | 15/20 (found 15) | 20/20 | 10/20 (found 13) | 18/20 | 9/20 (found 10) | 17/20 | 11/20 (found 11) | 19/20 |
+   | 0.50 | 15/20 (found 15) | 20/20 | 17/20 (found 17) | 20/20 | 14/20 (found 15) | 20/20 | 10/20 (found 13) | 14/20 | 8/20 (found 10) | 15/20 | 8/20 (found 11) | 15/20 |
+   | 0.80 | 15/20 (found 15) | 18/20 | 17/20 (found 17) | 20/20 | 13/20 (found 15) | 18/20 | 6/20 (found 13) | 10/20 | 5/20 (found 10) | 11/20 | 7/20 (found 11) | 11/20 |
+   | **0.90** | 13/20 (found 15) | 17/20 | 15/20 (found 17) | 17/20 | 12/20 (found 15) | 18/20 | 5/20 (found 13) | 8/20 | 5/20 (found 10) | 10/20 | 6/20 (found 11) | 8/20 |
+   | 0.95 | 12/20 (found 15) | 16/20 | 14/20 (found 17) | 17/20 | 11/20 (found 15) | 15/20 | 4/20 (found 13) | 6/20 | 3/20 (found 10) | 7/20 | 3/20 (found 11) | 7/20 |
+
+   Why the drift columns exist: the bar before the benchmark gate (raw
+   walk-forward Sharpe > 1, raw holdout Sharpe > 0, deflated Sharpe of raw
+   returns ≥ 0.9, backtest net of slippage only), on the same seeds at 16
+   trials, passed some top-10 rule in 1/40 noise searches at buy-and-hold
+   Sharpe 0, 4/40 at ≈ 1 and 33/40 at ≈ 2: a long rule on a rising asset was
+   `robust` for being long. With the excess gates and the deflated Sharpe on
+   the excess track it is 0/40 at all three levels and both budgets. The
+   excess gates alone do not do it (the 0.00 row: up to 13/40); the deflated
+   Sharpe on excess returns does.
 
    Rule: the cut-off keeps noise searches with any robust top-10 rule at
-   ≤ 1 in 20 and, among those that do, keeps the most planted rules robust
-   (ties to the stricter). At 16 trials 0.8 and 0.9 tie and 0.9 is chosen;
-   at 40 trials the rule alone would pick 0.8, by one weak-drift seed in 20.
-   **`MIN_DEFLATED_SHARPE` = 0.9** (`engine/verdict.ts`): it meets the noise
-   limit at both budgets (1/40 and 0/40, against 1/40 and 1/40 for 0.8) and
-   keeps every found strong planted rule. 0.95 gives up more weak planted rules
-   for no measurable noise gain. Without the deflated Sharpe the rest of the
-   bar passes some top-10 rule in a third of noise searches. Every found
-   planted rule passes the rest of the bar; the ones lost at 0.9 (2 of 12 at
-   0.008 drift and 16 trials, 3 of 11 at 40) fail only the deflated Sharpe: a
-   0.008 edge over 2,500 days is near what the bar can tell from the best of
-   ~150 noise clusters.
+   ≤ 1 in 20 at every buy-and-hold Sharpe and, among those that do, keeps the
+   most planted rules robust (ties to the stricter). On these tables the
+   rule alone picks 0.5 (2/40 at each level at 16 trials, 0/40 at 40).
+   **`MIN_DEFLATED_SHARPE` stays 0.9** (`engine/verdict.ts`): it was not
+   lowered in the change that redefined what it is taken on. At 0.9 no noise
+   search passes at any level or budget (0/240), and the planted rule is
+   robust in 15 of the 18 searches that find it at drift 0.012 and 16 trials
+   (16 of 19 and 13 of 16 on the drifting price), 13 of 15 at 40 trials. The
+   price of the stricter statistic is the weak edge: at drift 0.008, 4 of the
+   11 found are robust (it was 10 of 12 on the earlier bar), the rest stop at
+   `candidate` on the deflated Sharpe. Two things lower it: the excess track
+   gives up about √(1 − e) of the Sharpe (the benchmark holds a share e of the
+   planted edge), and the planted zone trades nearly every in-zone day, so
+   the taker fee takes 9 bps a round trip from an 80 bps edge. Recalibrating
+   to 0.8 would keep noise at 0/240 and return 18 of 18 strong planted rules
+   at 16 trials (5 of 11 weak); that is a separate decision.
 
-   *How sure is the noise rate?* 1 noise search in 40 passing is a point
-   estimate of 2.5%; its exact (Clopper–Pearson) 95% interval is 0.06%–13%,
-   so 40 seeds show the false-positive rate is below about 13%, not that it
-   is below 5%. At 40 trials 0/40 bounds it below about 9%. More seeds would
-   narrow this; the threshold rests on the two budgets agreeing, not on
-   either table alone.
+   *How sure is the noise rate?* 0 noise searches in 40 passing bounds the
+   false-positive rate below about 9% (exact Clopper–Pearson 95%) at each
+   level and budget; pooled over the three levels and two budgets, 0 in 240
+   bounds it below about 1.5%, though the levels share seeds and are not
+   independent. More seeds would narrow this.
 
-   The suite does not re-run the calibration (it took ~24 s and tested the
+   The suite does not re-run the calibration (it takes ~2 min and tests the
    seeds the threshold was chosen on). Instead `search.test.ts` validates
    `MIN_DEFLATED_SHARPE` out of sample on disjoint seeds at 16 trials:
-   noise seeds 3000–3009, at most 1 of 10 with any robust top-10 rule, and
-   planted seeds 4000–4005 at drift 0.012, at least 4 of 6 with the planted
-   rule robust (currently 0/10 and 6/6, ~10 s over two tests).
+   noise seeds 3000–3009 at buy-and-hold Sharpe 0, ≈ 1 and ≈ 2, at most 1 of
+   10 with any robust top-10 rule at each level, and planted seeds 4000–4005
+   at drift 0.012, at least 4 of 6 with the planted rule robust on the flat
+   price and at least 3 of 6 on the drifting one (buy-and-hold Sharpe ≈ 2).
+   `evaluate.test.ts` holds the direct cases: always long on a drifting
+   noise series is not robust, a coin flip of the days is not, the planted
+   rule still is.
 
 8. **Sensitivity.** Each condition's threshold is shifted to quantiles
    q ± 0.05 and q ± 0.10, and its window is swapped for neighbouring windows in
@@ -340,9 +428,11 @@ implementations: Postgres (deployed), in-memory (no DB), and JSON file
   known two-condition rule drives returns, and the search recovers it (same
   features, thresholds within tolerance; a's pctile(30) counts as the same
   zone only when its in-zone days overlap z(30) < −1 with Jaccard ≥ 0.7,
-  asserted in the test) with a `robust` verdict, while on pure-noise data
-  the save bar (`robust`: walk-forward Sharpe > 1, holdout Sharpe > 0 and
-  tested, stability ≥ 0.5, deflatedSharpe ≥ 0.9 against `effectiveTrials`)
+  asserted in the test) with a `robust` verdict, while on pure-noise data,
+  on a flat price and on one drifting at a buy-and-hold Sharpe of ≈ 1 and
+  ≈ 2, the save bar (`robust`: walk-forward Sharpe > 1 and holdout Sharpe
+  > 0 and tested, both also in excess of the exposure-matched benchmark,
+  stability ≥ 0.5, deflatedSharpe ≥ 0.9 against `effectiveTrials`)
   passes some top-10 rule in at most 1 of 10 fresh seeds (the validation
   tests; the calibration itself is `bun src/server/lab/engine/calibrate.ts`);
   and replacing the holdout with noise leaves the rules and every
