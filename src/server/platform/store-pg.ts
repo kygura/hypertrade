@@ -38,6 +38,8 @@ import {
   type PolledPosition,
   type PositionChange,
   type ScanSnapshot,
+  SCAN_INPUT_KEYS,
+  scanInputs,
   type TriageScan,
   type NoveltyProgress,
 } from "./store.js";
@@ -430,11 +432,16 @@ export class PgPlatformStore implements PlatformStore {
   }
 
   async scanSnapshotsSince(since: string, coins?: readonly string[]) {
+    // Only the four numbers readers use, as float8 columns, and ts as epoch ms: about half the bytes of `select *`
+    // (jsonb text with its keys, a timestamptz string). These reads run every 15 min over days of rows, so their
+    // size is most of the project's egress. A non-number value reads as null and is dropped, as scanInputs does.
+    const num = (k: string) => `case when jsonb_typeof(inputs->'${k}') = 'number' then (inputs->>'${k}')::float8 end as "${k}"`;
+    const cols = `coin, (extract(epoch from ts) * 1000)::float8 as t, ${SCAN_INPUT_KEYS.map(num).join(", ")}`;
     // The coin list goes in as jsonb text (no array params: db.ts runs with fetch_types false).
     const rows = coins
-      ? await this.db.query<any>(`select * from scan_snapshots where ts >= $1::timestamptz and coin in (select jsonb_array_elements_text($2::text::jsonb)) order by ts, coin`, [iso(since), J(coins)])
-      : await this.db.query<any>(`select * from scan_snapshots where ts >= $1::timestamptz order by ts, coin`, [iso(since)]);
-    return rows.map((r): ScanSnapshot => ({ coin: r.coin, ts: iso(r.ts), inputs: r.inputs }));
+      ? await this.db.query<any>(`select ${cols} from scan_snapshots where ts >= $1::timestamptz and coin in (select jsonb_array_elements_text($2::text::jsonb)) order by ts, coin`, [iso(since), J(coins)])
+      : await this.db.query<any>(`select ${cols} from scan_snapshots where ts >= $1::timestamptz order by ts, coin`, [iso(since)]);
+    return rows.map((r): ScanSnapshot => ({ coin: r.coin, ts: iso(Number(r.t)), inputs: scanInputs(Object.fromEntries(SCAN_INPUT_KEYS.map((k) => [k, r[k] == null ? null : Number(r[k])]))) }));
   }
 
   async saveNovelty(entries: NoveltyEntry[]) {
