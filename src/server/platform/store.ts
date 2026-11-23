@@ -67,6 +67,23 @@ export interface ScanSnapshot {
   inputs: Record<string, unknown>;
 }
 
+/**
+ * The inputs keys every scan_snapshots reader uses. scanSnapshotsSince returns only these: the pg twin reads them as
+ * float8 columns instead of the whole jsonb, which roughly halves the bytes a history read pulls out of the database
+ * (egress: the extremes, tick and moves jobs re-read weeks of rows every run). Other keys (`seeded`) stay stored.
+ */
+export const SCAN_INPUT_KEYS = ["mark", "oiUsd", "funding", "dayNtlVlm"] as const;
+
+/** `inputs` cut to SCAN_INPUT_KEYS, keeping only finite numbers: the shape both twins return. */
+export function scanInputs(inputs: Record<string, unknown>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const k of SCAN_INPUT_KEYS) {
+    const v = inputs[k];
+    if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+  }
+  return out;
+}
+
 /** What the scanner supplies. Status starts at "new"; costs and edge come later via setOpportunityCosts. */
 export type OpportunityInput = Pick<
   Opportunity,

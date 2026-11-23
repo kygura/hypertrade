@@ -477,6 +477,9 @@ async function scenario(s: PlatformStore): Promise<Record<string, unknown>> {
   expect(listed.map((r) => [r.ranAt, r.applied])).toEqual([[t(5), false], [t(3), true], [t(2), false], [t(1), true]]);
   expect(listed[2]).toMatchObject({ from: null, to: null });
   expect((await s.listExtremeCalibrations(2)).length).toBe(2);
+  // Reads return only the four reader keys, numbers only: the pg twin selects them as columns (egress).
+  await s.insertScanSnapshots([{ coin: "SOL", ts: t(-48), inputs: { mark: 150.25, oiUsd: 2e9, funding: 0.0000125, dayNtlVlm: 1.5e9, seeded: "coinalyze", odd: "x" } }, { coin: "XPL", ts: t(-48), inputs: { mark: "bad", funding: -0.0001 } }]);
+  expect((await s.scanSnapshotsSince(t(-48), ["SOL", "XPL"])).map((r) => r.inputs)).toEqual([{ mark: 150.25, oiUsd: 2e9, funding: 0.0000125, dayNtlVlm: 1.5e9 }, { funding: -0.0001 }]);
   return out;
 }
 

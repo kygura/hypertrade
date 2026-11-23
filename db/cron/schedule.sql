@@ -176,8 +176,8 @@ revoke all on all functions in schema ops from public, anon, authenticated, serv
 --     repository variable INTEL_ENABLED=true (unset when this moved; switched on 2026-11-11).
 --   desk_enabled: /api/desk/tick; collect.yml ran it only with DESK_ENABLED=true (set: it ran).
 -- Each 15-minute quarter: collect :00, backfill :02, platform tick :04, snapshot seed :06 (fills the 15-min slot that
--- just closed, last 6 h; skipped without COINALYZE_API_KEY; a 14-day pass runs daily at 03:41), moves agent :07, extremes :08 (reads the snapshots the tick and
--- the seed stored), desk :09, intel ingest :12. Hourly jobs take free minutes. No two HTTP jobs share a minute.
+-- just closed, last 6 h; skipped without COINALYZE_API_KEY; a 14-day pass runs daily at 03:41), moves agent :07, extremes :08 once an hour (reads 30 days of
+-- snapshots per coin, the project's largest egress; hourly cuts it 4x), desk :09, intel ingest :12. Hourly jobs take free minutes. No two HTTP jobs share a minute.
 -- novelty :10 and :40 sits in the gap before a collect, so even a call that runs to its hard stop (240 s) ends before
 -- :15 / :45; each call checks coins for ~200 s and stores where it got to, and a full daily pass takes several calls.
 do $$
@@ -197,7 +197,7 @@ begin
       ('hypertrade-seed-snapshots',   '6,21,36,51 * * * *',  '/api/cron/seed-snapshots',   'on'),
       ('hypertrade-moves-agent',      '7,22,37,52 * * * *',  '/api/cron/moves-agent',      'on'),
       ('hypertrade-seed-deep',        '41 3 * * *',          '/api/cron/seed-snapshots/deep', 'on'),
-      ('hypertrade-extremes',         '8,23,38,53 * * * *',  '/api/cron/extremes',         'on'),
+      ('hypertrade-extremes',         '8 * * * *',           '/api/cron/extremes',         'on'),
       ('hypertrade-desk-tick',        '9,24,39,54 * * * *',  '/api/desk/tick',             'desk'),
       ('hypertrade-novelty',          '10,40 * * * *',       '/api/cron/novelty',          'on'),
       ('hypertrade-intel-ingest',     '12,27,42,57 * * * *', '/api/cron/intel/ingest',     'intel'),

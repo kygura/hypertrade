@@ -3,6 +3,7 @@ import type { AgentRecord, AgentRecordStatus, TriageItem } from "../../shared/ag
 import type { MovesResponse, MoveWindow } from "../../shared/moves.js";
 import type { ExtremeRecord, ExtremeVerdict, NewExtremeCalibration, StoredExtremeCalibration } from "../../shared/extremes.js";
 import {
+  scanInputs,
   byCalibrationNewest,
   byExtremeNewest,
   byNewest,
@@ -306,7 +307,7 @@ export class MemoryPlatformStore implements PlatformStore {
 
   async scanSnapshotsSince(since: string, coins?: readonly string[]) {
     const lo = iso(since);
-    return [...this.scans.values()].filter((r) => r.ts >= lo && (!coins || coins.includes(r.coin))).sort((a, b) => byTs(a, b) || a.coin.localeCompare(b.coin)).map(clone);
+    return [...this.scans.values()].filter((r) => r.ts >= lo && (!coins || coins.includes(r.coin))).sort((a, b) => byTs(a, b) || a.coin.localeCompare(b.coin)).map((r) => ({ ...clone(r), inputs: scanInputs(r.inputs) }));
   }
 
   async saveNovelty(entries: NoveltyEntry[]) {
