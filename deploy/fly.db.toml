@@ -1,0 +1,20 @@
+# Postgres for hypertrade on Fly (app hypertradedb, Frankfurt). Created and deployed by deploy/fly-setup.sh.
+# Official postgres:17 image on one machine with a volume. No public address: the app reaches it at
+# hypertradedb.internal:5432 over Fly's private network. Fly snapshots the volume daily (kept 14 days).
+app = "hypertradedb"
+primary_region = "fra"
+
+[build]
+  image = "postgres:17"
+
+[env]
+  # A subfolder, because the volume's root holds lost+found and initdb wants an empty directory.
+  PGDATA = "/var/lib/postgresql/data/pgdata"
+
+[mounts]
+  source = "pgdata"
+  destination = "/var/lib/postgresql/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
