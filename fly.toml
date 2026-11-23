@@ -1,0 +1,35 @@
+# hypertrade on Fly (Frankfurt): API, UI, worker loops and the 15-minute jobs in one always-on machine
+# (scripts/server.ts, docs/SELF-HOSTING.md). Created and deployed by deploy/fly-setup.sh.
+#
+# Inert until cutover: WORKER_LOOPS=off and CRON_IN_PROCESS=0 mean no scanner, jobs, alerts, desk or Telegram run here
+# while Vercel and Supabase still do. Cutover sets WORKER_LOOPS=all and CRON_IN_PROCESS=1 after the data copy.
+app = "hypertrade"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8787"
+  WORKER_LOOPS = "off"
+  CRON_IN_PROCESS = "0"
+  # Migrations are idempotent; running them on boot keeps the schema current on every deploy.
+  MIGRATE_ON_BOOT = "1"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/api/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "60s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
